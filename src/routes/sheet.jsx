@@ -25,7 +25,6 @@ import {
   optionsFor as optionsForField,
 } from "@/lib/appraisal-filters";
 import { exportToExcel } from "@/lib/export-excel";
-
 export function SheetPage() {
   const { rows, audit } = useAppraisal();
   const [search, setSearch] = useState("");
@@ -33,12 +32,10 @@ export function SheetPage() {
   const [selected, setSelected] = useState({});
   const [bulkOpen, setBulkOpen] = useState(false);
   const [drawerRow, setDrawerRow] = useState(null);
-
   const filtered = useMemo(
     () => applyFilters(rows, filters, search),
     [rows, filters, search],
   );
-
   const setFilter = (key, f) =>
     setFilters((prev) => {
       const next = { ...prev };
@@ -46,18 +43,14 @@ export function SheetPage() {
       else next[key] = f;
       return next;
     });
-
   const selectedIds = filtered.filter((r) => selected[r.id]).map((r) => r.id);
-
   const progress = useMemo(() => {
     const done = rows.filter(
       (r) => r.status === "Completed" || r.status === "Submitted",
     ).length;
     return Math.round((done / rows.length) * 100);
   }, [rows]);
-
   const activeFilters = Object.entries(filters);
-
   return _jsxs(AppShell, {
     children: [
       _jsxs("div", {
@@ -75,7 +68,7 @@ export function SheetPage() {
                   _jsx("p", {
                     className: "text-sm text-muted-foreground",
                     children:
-                      "Tab / Shift+Tab move across cells · Enter moves down · Arrow keys navigate like Excel",
+                      "Tab / Shift+Tab move across cells \u00B7 Enter moves down \u00B7 Arrow keys navigate like Excel",
                   }),
                 ],
               }),
@@ -87,10 +80,7 @@ export function SheetPage() {
                       "text-xs font-medium tracking-wide text-muted-foreground uppercase",
                     children: "Appraisal Progress",
                   }),
-                  _jsx(Progress, {
-                    value: progress,
-                    className: "mt-2 h-2.5",
-                  }),
+                  _jsx(Progress, { value: progress, className: "mt-2 h-2.5" }),
                   _jsxs("p", {
                     className: "mt-1 text-sm font-medium",
                     children: [progress, "% Completed"],
@@ -99,7 +89,6 @@ export function SheetPage() {
               }),
             ],
           }),
-
           _jsxs(Card, {
             className: "gap-0 p-3",
             children: [
@@ -116,12 +105,11 @@ export function SheetPage() {
                       _jsx(Input, {
                         value: search,
                         onChange: (e) => setSearch(e.target.value),
-                        placeholder: "Search employee, ID, department…",
+                        placeholder: "Search employee, ID, department\u2026",
                         className: "pl-9",
                       }),
                     ],
                   }),
-
                   _jsxs(Button, {
                     variant: "outline",
                     onClick: () => {
@@ -134,7 +122,6 @@ export function SheetPage() {
                       " Reset Filters",
                     ],
                   }),
-
                   _jsxs(Button, {
                     onClick: () => setBulkOpen(true),
                     disabled: selectedIds.length === 0,
@@ -145,7 +132,6 @@ export function SheetPage() {
                       ")",
                     ],
                   }),
-
                   _jsxs(UISheet, {
                     children: [
                       _jsx(SheetTrigger, {
@@ -160,7 +146,6 @@ export function SheetPage() {
                           ],
                         }),
                       }),
-
                       _jsxs(SheetContent, {
                         className: "w-full sm:max-w-xl",
                         children: [
@@ -171,15 +156,12 @@ export function SheetPage() {
                           }),
                           _jsx("div", {
                             className: "overflow-y-auto px-4 pb-6",
-                            children: _jsx(AuditPanel, {
-                              entries: audit,
-                            }),
+                            children: _jsx(AuditPanel, { entries: audit }),
                           }),
                         ],
                       }),
                     ],
                   }),
-
                   _jsxs(Button, {
                     variant: "outline",
                     onClick: () => exportToExcel(filtered),
@@ -213,16 +195,10 @@ export function SheetPage() {
                 }),
             ],
           }),
-
-          /* =====================================================
-             EMPLOYEE DETAILS
-             Moved here so it appears under the search/filter bar.
-             ===================================================== */
           _jsx(EmployeeDrawer, {
             employee: drawerRow,
             onOpenChange: (o) => !o && setDrawerRow(null),
           }),
-
           _jsxs("div", {
             className:
               "flex items-center justify-between text-xs text-muted-foreground",
@@ -245,14 +221,12 @@ export function SheetPage() {
               }),
             ],
           }),
-
           _jsx(AppraisalGrid, {
             rows: filtered,
             filters: filters,
             setFilter: setFilter,
             optionsFor: (key) => optionsForField(key, rows),
             selected: selected,
-
             toggleSelected: (id, on) =>
               setSelected((prev) => {
                 const next = { ...prev };
@@ -260,12 +234,10 @@ export function SheetPage() {
                 else delete next[id];
                 return next;
               }),
-
             toggleAll: (on) =>
               setSelected(
                 on ? Object.fromEntries(filtered.map((r) => [r.id, true])) : {},
               ),
-
             onRowOpen: setDrawerRow,
           }),
 
@@ -278,15 +250,12 @@ export function SheetPage() {
                 }),
               }),
               _jsx(CardContent, {
-                children: _jsx(AuditPanel, {
-                  entries: audit.slice(0, 40),
-                }),
+                children: _jsx(AuditPanel, { entries: audit.slice(0, 40) }),
               }),
             ],
           }),
         ],
       }),
-
       _jsx(BulkEditDialog, {
         open: bulkOpen,
         onOpenChange: setBulkOpen,

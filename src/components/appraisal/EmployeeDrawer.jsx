@@ -76,7 +76,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
   };
 
   return (
-    <div className="relative w-full rounded-xl border border-border bg-card shadow-sm">
+    <div className="w-full rounded-xl border border-border bg-card shadow-sm">
       {/* HEADER */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div>
@@ -97,9 +97,8 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
         </Button>
       </div>
 
-      {/* CONTENT */}
+      {/* TABS */}
       <Tabs defaultValue="details" className="w-full">
-        {/* TABS */}
         <div className="border-b border-border px-4 pt-3">
           <TabsList className="w-full sm:w-auto">
             <TabsTrigger value="details" className="min-w-[140px]">
