@@ -10,7 +10,23 @@ export function AppraisalProvider({ children }) {
     const [rows, setRows] = useState(() => {
         try {
             const saved = localStorage.getItem("employee-appraisal-rows");
-            return saved ? JSON.parse(saved) : buildEmployees(250);
+
+            if (saved) {
+                const parsed = JSON.parse(saved);
+
+                // If the browser contains data from the previous
+                // column structure, regenerate the demo rows so the
+                // new appraisal columns are populated.
+                if (
+                    Array.isArray(parsed) &&
+                    parsed.length > 0 &&
+                    parsed[0].currentAnnualBasePay !== undefined
+                ) {
+                    return parsed;
+                }
+            }
+
+            return buildEmployees(250);
         }
         catch {
             return buildEmployees(250);
