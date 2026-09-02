@@ -159,7 +159,7 @@ export const COLUMNS = [
     { key: "reportingManager", label: "Reporting Manager", type: "text", editable: false, width: 170 },
     { key: "compManager", label: "Comp. Manager", type: "text", editable: false, width: 150 },
     { key: "appraiserTechED", label: "Appraiser Tech-ED", type: "text", editable: true, width: 160 },
-    { key: "wissenExperience", label: "Wissen Experience", type: "decimal", editable: true, width: 150 },
+    { key: "wissenExperience", label: "Org. Experience", type: "decimal", editable: true, width: 150 },
     { key: "totalExperience", label: "Total Experience", type: "decimal", editable: true, width: 140 },
     { key: "lastAppraisalDate", label: "Last Appraisal (Date)", type: "date", editable: true, width: 160 },
     { key: "managerRating", label: "Manager Rating", type: "enum", editable: true, options: MANAGER_RATINGS, width: 210 },
