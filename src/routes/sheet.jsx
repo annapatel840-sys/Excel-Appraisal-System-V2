@@ -1,15 +1,15 @@
-import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useMemo, useState } from "react";
 import { Download, History, Layers, RotateCcw, Search, X } from "lucide-react";
+
 import { AppShell } from "@/components/appraisal/AppShell";
 import { AppraisalGrid } from "@/components/appraisal/AppraisalGrid";
 import { AuditPanel } from "@/components/appraisal/AuditTrail";
 import { BulkEditDialog } from "@/components/appraisal/BulkEditDialog";
 import { EmployeeDrawer } from "@/components/appraisal/EmployeeDrawer";
+
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
+
 import {
   Sheet as UISheet,
   SheetContent,
@@ -17,279 +17,245 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+
 import { useAppraisal } from "@/lib/appraisal-store";
+
 import {
   applyFilters,
   describeFilter,
   isEmptyFilter,
   optionsFor as optionsForField,
 } from "@/lib/appraisal-filters";
+
 import { exportToExcel } from "@/lib/export-excel";
+
 export function SheetPage() {
   const { rows, audit } = useAppraisal();
+
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({});
   const [selected, setSelected] = useState({});
   const [bulkOpen, setBulkOpen] = useState(false);
-  const [drawerRow, setDrawerRow] = useState(null);
+
+  const [drawerRowId, setDrawerRowId] = useState(null);
+
+  /*
+   * IMPORTANT:
+   *
+   * Store only the employee ID.
+   *
+   * This means when Hike % or Hike Amount changes,
+   * EmployeeDrawer receives the latest row from the store.
+   */
+  const drawerRow = useMemo(
+    () => rows.find((r) => r.id === drawerRowId) ?? null,
+    [rows, drawerRowId],
+  );
+
   const filtered = useMemo(
     () => applyFilters(rows, filters, search),
     [rows, filters, search],
   );
+
   const setFilter = (key, f) =>
     setFilters((prev) => {
       const next = { ...prev };
-      if (!f || isEmptyFilter(f)) delete next[key];
-      else next[key] = f;
+
+      if (!f || isEmptyFilter(f)) {
+        delete next[key];
+      } else {
+        next[key] = f;
+      }
+
       return next;
     });
+
   const selectedIds = filtered.filter((r) => selected[r.id]).map((r) => r.id);
-  const progress = useMemo(() => {
-    const done = rows.filter(
-      (r) => r.status === "Completed" || r.status === "Submitted",
-    ).length;
-    return Math.round((done / rows.length) * 100);
-  }, [rows]);
+
   const activeFilters = Object.entries(filters);
-  return _jsxs(AppShell, {
-    children: [
-      _jsxs("div", {
-        className: "space-y-4",
-        children: [
-          _jsxs("div", {
-            className: "flex flex-wrap items-end justify-between gap-4",
-            children: [
-              _jsxs("div", {
-                children: [
-                  _jsx("h2", {
-                    className: "text-2xl font-semibold tracking-tight",
-                    children: "Appraisal Sheet",
-                  }),
-                  _jsx("p", {
-                    className: "text-sm text-muted-foreground",
-                    children:
-                      "Tab / Shift+Tab move across cells · Enter moves down · Arrow keys navigate like Excel",
-                  }),
-                ],
-              }),
 
-              _jsxs("div", {
-                className: "w-64",
-                children: [
-                  _jsx("p", {
-                    className:
-                      "text-xs font-medium tracking-wide text-muted-foreground uppercase",
-                    children: "Appraisal Progress",
-                  }),
-                  _jsx(Progress, {
-                    value: progress,
-                    className: "mt-2 h-2.5",
-                  }),
-                  _jsxs("p", {
-                    className: "mt-1 text-sm font-medium",
-                    children: [progress, "% Completed"],
-                  }),
-                ],
-              }),
-            ],
-          }),
+  /*
+   * Header search + actions
+   */
+  const headerActions = (
+    <div className="flex min-w-0 items-center gap-1.5">
+      {/* Search */}
+      <div className="relative w-[230px]">
+        <Search className="absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
 
-          _jsxs(Card, {
-            className: "gap-0 p-3",
-            children: [
-              _jsxs("div", {
-                className: "flex flex-wrap items-center gap-2",
-                children: [
-                  _jsxs("div", {
-                    className: "relative min-w-[240px] flex-1",
-                    children: [
-                      _jsx(Search, {
-                        className:
-                          "absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground",
-                      }),
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search employee, ID, department..."
+          className="h-7 border-border bg-background pl-7 text-[11px]"
+        />
+      </div>
 
-                      _jsx(Input, {
-                        value: search,
-                        onChange: (e) => setSearch(e.target.value),
-                        placeholder: "Search employee, ID, department…",
-                        className: "pl-9",
-                      }),
-                    ],
-                  }),
+      {/* Reset */}
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 shrink-0 px-2 text-[10px]"
+        onClick={() => {
+          setFilters({});
+          setSearch("");
+        }}
+        disabled={activeFilters.length === 0 && !search}
+      >
+        <RotateCcw className="size-3" />
+        Reset
+      </Button>
 
-                  _jsxs(Button, {
-                    variant: "outline",
-                    onClick: () => {
-                      setFilters({});
-                      setSearch("");
-                    },
-                    disabled: activeFilters.length === 0 && !search,
-                    children: [
-                      _jsx(RotateCcw, { className: "size-4" }),
-                      " Reset Filters",
-                    ],
-                  }),
+      {/* Bulk Edit */}
+      <Button
+        size="sm"
+        className="h-7 shrink-0 px-2 text-[10px]"
+        onClick={() => setBulkOpen(true)}
+        disabled={selectedIds.length === 0}
+      >
+        <Layers className="size-3" />
+        Bulk ({selectedIds.length})
+      </Button>
 
-                  _jsxs(Button, {
-                    onClick: () => setBulkOpen(true),
-                    disabled: selectedIds.length === 0,
-                    children: [
-                      _jsx(Layers, { className: "size-4" }),
-                      " Bulk Edit (",
-                      selectedIds.length,
-                      ")",
-                    ],
-                  }),
+      {/* Audit */}
+      <UISheet>
+        <SheetTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 shrink-0 px-2 text-[10px]"
+          >
+            <History className="size-3" />
+            Audit ({audit.length})
+          </Button>
+        </SheetTrigger>
 
-                  _jsxs(UISheet, {
-                    children: [
-                      _jsx(SheetTrigger, {
-                        asChild: true,
-                        children: _jsxs(Button, {
-                          variant: "outline",
-                          children: [
-                            _jsx(History, { className: "size-4" }),
-                            " Audit Trail (",
-                            audit.length,
-                            ")",
-                          ],
-                        }),
-                      }),
+        <SheetContent className="w-full sm:max-w-xl">
+          <SheetHeader>
+            <SheetTitle>Compensation Audit Trail</SheetTitle>
+          </SheetHeader>
 
-                      _jsxs(SheetContent, {
-                        className: "w-full sm:max-w-xl",
-                        children: [
-                          _jsx(SheetHeader, {
-                            children: _jsx(SheetTitle, {
-                              children: "Compensation Audit Trail",
-                            }),
-                          }),
+          <div className="overflow-y-auto px-4 pb-6">
+            <AuditPanel entries={audit} />
+          </div>
+        </SheetContent>
+      </UISheet>
 
-                          _jsx("div", {
-                            className: "overflow-y-auto px-4 pb-6",
-                            children: _jsx(AuditPanel, {
-                              entries: audit,
-                            }),
-                          }),
-                        ],
-                      }),
-                    ],
-                  }),
+      {/* Export */}
+      <Button
+        variant="outline"
+        size="sm"
+        className="h-7 shrink-0 px-2 text-[10px]"
+        onClick={() => exportToExcel(filtered)}
+      >
+        <Download className="size-3" />
+        Export
+      </Button>
+    </div>
+  );
 
-                  _jsxs(Button, {
-                    variant: "outline",
-                    onClick: () => exportToExcel(filtered),
-                    children: [
-                      _jsx(Download, { className: "size-4" }),
-                      " Export Excel",
-                    ],
-                  }),
-                ],
-              }),
+  return (
+    <>
+      <AppShell headerActions={headerActions}>
+        <div className="space-y-1.5">
+          {/* Compact page heading */}
+          <div className="flex items-center justify-between px-0.5">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight">
+                Appraisal Sheet
+              </h2>
 
-              activeFilters.length > 0 &&
-                _jsx("div", {
-                  className:
-                    "mt-3 flex flex-wrap gap-2 border-t border-border pt-3",
-                  children: activeFilters.map(([key, f]) =>
-                    _jsxs(
-                      "button",
-                      {
-                        onClick: () => setFilter(key, undefined),
-                        className:
-                          "inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/18",
-                        children: [
-                          describeFilter(key, f),
-                          _jsx(X, { className: "size-3" }),
-                        ],
-                      },
-                      key,
-                    ),
-                  ),
-                }),
-            ],
-          }),
+              <p className="text-[10px] text-muted-foreground">
+                Click an employee for details · Double-click editable cells to
+                edit
+              </p>
+            </div>
 
-          // Employee details appear horizontally below the search bar
-          _jsx(EmployeeDrawer, {
-            employee: drawerRow,
-            onOpenChange: (o) => !o && setDrawerRow(null),
-          }),
+            <div className="text-right text-[10px] text-muted-foreground">
+              <span className="num font-semibold text-foreground">
+                {filtered.length}
+              </span>{" "}
+              / {rows.length}
+            </div>
+          </div>
 
-          _jsxs("div", {
-            className:
-              "flex items-center justify-between text-xs text-muted-foreground",
-            children: [
-              _jsxs("span", {
-                children: [
-                  "Showing ",
-                  _jsx("span", {
-                    className: "num font-medium text-foreground",
-                    children: filtered.length,
-                  }),
-                  " of ",
-                  rows.length,
-                  " employees",
-                ],
-              }),
+          {/* Active filters */}
+          {activeFilters.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1 border-b border-border pb-1">
+              {activeFilters.map(([key, f]) => (
+                <button
+                  key={key}
+                  onClick={() => setFilter(key, undefined)}
+                  className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-medium text-primary hover:bg-primary/20"
+                >
+                  {describeFilter(key, f)}
+                  <X className="size-2.5" />
+                </button>
+              ))}
+            </div>
+          )}
 
-              _jsx("span", {
-                children:
-                  "Modified cells are highlighted in yellow and saved automatically.",
-              }),
-            ],
-          }),
+          {/* Selected employee details */}
+          {drawerRow && (
+            <EmployeeDrawer
+              employee={drawerRow}
+              onOpenChange={(open) => {
+                if (!open) {
+                  setDrawerRowId(null);
+                }
+              }}
+            />
+          )}
 
-          _jsx(AppraisalGrid, {
-            rows: filtered,
-            filters: filters,
-            setFilter: setFilter,
-            optionsFor: (key) => optionsForField(key, rows),
-            selected: selected,
+          {/* Compact grid status */}
+          <div className="flex items-center justify-between px-0.5 text-[9px] text-muted-foreground">
+            <span>
+              Showing{" "}
+              <span className="num font-medium text-foreground">
+                {filtered.length}
+              </span>{" "}
+              of {rows.length}
+            </span>
 
-            toggleSelected: (id, on) =>
+            <span>Modified cells save automatically.</span>
+          </div>
+
+          {/* Grid */}
+          <AppraisalGrid
+            rows={filtered}
+            filters={filters}
+            setFilter={setFilter}
+            optionsFor={(key) => optionsForField(key, rows)}
+            selected={selected}
+            toggleSelected={(id, on) =>
               setSelected((prev) => {
                 const next = { ...prev };
 
-                if (on) next[id] = true;
-                else delete next[id];
+                if (on) {
+                  next[id] = true;
+                } else {
+                  delete next[id];
+                }
 
                 return next;
-              }),
-
-            toggleAll: (on) =>
+              })
+            }
+            toggleAll={(on) =>
               setSelected(
                 on ? Object.fromEntries(filtered.map((r) => [r.id, true])) : {},
-              ),
+              )
+            }
+            onRowOpen={(employee) => setDrawerRowId(employee.id)}
+          />
+        </div>
+      </AppShell>
 
-            onRowOpen: setDrawerRow,
-          }),
-
-          _jsxs(Card, {
-            children: [
-              _jsx(CardHeader, {
-                children: _jsx(CardTitle, {
-                  className: "text-base",
-                  children: "Recent Changes",
-                }),
-              }),
-
-              _jsx(CardContent, {
-                children: _jsx(AuditPanel, {
-                  entries: audit.slice(0, 40),
-                }),
-              }),
-            ],
-          }),
-        ],
-      }),
-
-      _jsx(BulkEditDialog, {
-        open: bulkOpen,
-        onOpenChange: setBulkOpen,
-        ids: selectedIds,
-        onDone: () => setSelected({}),
-      }),
-    ],
-  });
+      <BulkEditDialog
+        open={bulkOpen}
+        onOpenChange={setBulkOpen}
+        ids={selectedIds}
+        onDone={() => setSelected({})}
+      />
+    </>
+  );
 }

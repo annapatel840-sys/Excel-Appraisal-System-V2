@@ -1,266 +1,360 @@
-import { useEffect, useState } from "react";
 import { X } from "lucide-react";
-import { toast } from "sonner";
-
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
-
-import { AuditList } from "./AuditTrail";
-import { StatusBadge } from "./StatusBadge";
 
 import {
-  MANAGER_RATINGS,
+  hikeAmount,
   hikePct,
-  inr,
-  payoutPct,
-  revisedCTC,
-  totalPayout,
+  totalBonus,
+  totalOfPB,
+  pct,
 } from "@/lib/appraisal-data";
 
-import { useAppraisal } from "@/lib/appraisal-store";
+import { getPreviousYearData } from "@/lib/previous-year-data";
 
-function Field({ label, value }) {
+function valueOrDash(value) {
+  return value === undefined || value === null || value === ""
+    ? "—"
+    : String(value);
+}
+
+function currency(value) {
+  if (value === undefined || value === null || value === "") {
+    return "—";
+  }
+
+  return Math.round(Number(value) || 0).toLocaleString("en-IN");
+}
+
+function percentageChange(current, previous) {
+  const c = Number(current);
+  const p = Number(previous);
+
+  if (!Number.isFinite(c) || !Number.isFinite(p) || p === 0) {
+    return "—";
+  }
+
+  const change = ((c - p) / p) * 100;
+
+  return `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`;
+}
+
+function CompactInfo({ label, value }) {
   return (
-    <div className="rounded-lg border border-border bg-card p-3">
-      <p className="text-[11px] tracking-wide text-muted-foreground uppercase">
+    <div className="min-w-0 rounded border border-border bg-muted/20 px-1.5 py-1">
+      <div className="truncate text-[7px] font-medium uppercase tracking-wide text-muted-foreground">
         {label}
-      </p>
+      </div>
 
-      <p className="mt-1 text-sm font-medium">{value}</p>
+      <div className="mt-0.5 truncate text-[9px] font-semibold">
+        {valueOrDash(value)}
+      </div>
+    </div>
+  );
+}
+
+function ComparisonRow({ label, current, previous, type = "text" }) {
+  const format = (value) => {
+    if (value === undefined || value === null || value === "") {
+      return "—";
+    }
+
+    if (type === "currency") {
+      return currency(value);
+    }
+
+    if (type === "percent") {
+      return pct(value);
+    }
+
+    return valueOrDash(value);
+  };
+
+  let change = "—";
+
+  if (
+    current !== undefined &&
+    current !== null &&
+    current !== "" &&
+    previous !== undefined &&
+    previous !== null &&
+    previous !== ""
+  ) {
+    if (type === "currency" || type === "percent") {
+      change = percentageChange(current, previous);
+    } else {
+      change =
+        String(current) === String(previous)
+          ? "No change"
+          : `${valueOrDash(previous)} → ${valueOrDash(current)}`;
+    }
+  }
+
+  return (
+    <div className="grid grid-cols-[minmax(130px,1.5fr)_minmax(105px,1fr)_minmax(105px,1fr)_minmax(75px,0.7fr)] border-b border-border last:border-b-0">
+      <div className="truncate px-2 py-1 text-[9px] font-medium">{label}</div>
+
+      <div className="border-l border-border px-2 py-1 text-right text-[9px] font-semibold">
+        {format(current)}
+      </div>
+
+      <div className="border-l border-border px-2 py-1 text-right text-[9px] text-muted-foreground">
+        {format(previous)}
+      </div>
+
+      <div className="border-l border-border px-2 py-1 text-right text-[8px] font-semibold">
+        {change}
+      </div>
     </div>
   );
 }
 
 export function EmployeeDrawer({ employee, onOpenChange }) {
-  const { updateCell, historyFor } = useAppraisal();
-
-  const [comments, setComments] = useState("");
-
-  useEffect(() => {
-    setComments(employee?.comments ?? "");
-  }, [employee]);
-
   if (!employee) {
     return null;
   }
 
-  const history = historyFor(employee.empId);
+  const previous = getPreviousYearData(employee.empId) || {};
 
-  const save = () => {
-    updateCell(employee.id, "comments", comments, "Drawer");
+  /*
+   * Current values ALWAYS come from the current employee row.
+   *
+   * Therefore if Hike % or Hike Amount changes in the grid,
+   * this component automatically receives the latest values.
+   */
+  const currentBasePay = Number(employee.currentAnnualBasePay || 0);
 
-    toast.success("Appraisal saved", {
-      description: `${employee.name} · changes recorded in audit trail.`,
-    });
-  };
+  const currentAllocatedPB = employee.allocatedPBAmount;
 
-  const submit = () => {
-    updateCell(employee.id, "comments", comments, "Drawer");
-    updateCell(employee.id, "status", "Submitted", "Drawer");
+  const currentPerformanceBonus = employee.newPBToBeOffered;
 
-    toast.success("Appraisal submitted", {
-      description: `${employee.name} moved to Submitted.`,
-    });
+  const currentRetentionBonus = employee.newRB;
 
-    onOpenChange(false);
-  };
+  const currentTotalPB = totalOfPB(employee);
+
+  const currentTotalBonus = totalBonus(employee);
+
+  const currentHikeAmount = hikeAmount(employee);
+
+  const currentHikePct = hikePct(employee);
+
+  const currentNewBasePay = currentBasePay + currentHikeAmount;
+
+  const currentNewCTC = currentNewBasePay + currentTotalBonus;
+
+  const previousBasePay = previous.basePay ?? null;
+
+  const previousAllocatedPB = previous.allocatedPB ?? null;
+
+  const previousPerformanceBonus = previous.performanceBonus ?? null;
+
+  const previousRetentionBonus = previous.retentionBonus ?? null;
+
+  const previousTotalPB = previous.totalPB ?? null;
+
+  const previousTotalBonus = previous.totalBonus ?? null;
+
+  const previousHikeAmount = previous.hikeAmount ?? null;
+
+  const previousHikePct = previous.hikePct ?? null;
+
+  const previousNewCTC = previous.newCTC ?? null;
 
   return (
-    <div className="w-full rounded-xl border border-border bg-card shadow-sm">
-      {/* HEADER */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div>
-          <h3 className="text-lg font-semibold">Employee Details</h3>
+    <div className="w-full overflow-hidden rounded-md border border-border bg-card shadow-sm">
+      {/* Employee header */}
+      <div className="flex items-center justify-between border-b border-border px-2.5 py-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <h3 className="truncate text-[11px] font-semibold">
+            {employee.name}
+          </h3>
 
-          <p className="text-sm text-muted-foreground">
-            {employee.empId} · {employee.department}
-          </p>
+          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[8px] text-muted-foreground">
+            {employee.empId}
+          </span>
+
+          <span className="hidden truncate text-[8px] text-muted-foreground sm:inline">
+            {valueOrDash(employee.designation)}
+          </span>
         </div>
 
         <Button
+          type="button"
           variant="ghost"
           size="icon"
+          className="size-5 shrink-0"
           onClick={() => onOpenChange(false)}
-          aria-label="Close employee details"
         >
-          <X className="size-4" />
+          <X className="size-3" />
         </Button>
       </div>
 
-      {/* TABS */}
-      <Tabs defaultValue="details" className="w-full">
-        <div className="border-b border-border px-4 pt-3">
-          <TabsList className="w-full sm:w-auto">
-            <TabsTrigger value="details" className="min-w-[140px]">
-              Appraisal
-            </TabsTrigger>
+      {/* Small employee information row */}
+      <div className="border-b border-border px-2.5 py-1">
+        <div className="grid grid-cols-4 gap-1 md:grid-cols-8">
+          <CompactInfo
+            label="Wissen Exp."
+            value={
+              employee.wissenExperience !== undefined
+                ? `${employee.wissenExperience} yrs`
+                : null
+            }
+          />
 
-            <TabsTrigger value="history" className="min-w-[140px]">
-              History {history.length ? `(${history.length})` : ""}
-            </TabsTrigger>
-          </TabsList>
+          <CompactInfo
+            label="Total Exp."
+            value={
+              employee.totalExperience !== undefined
+                ? `${employee.totalExperience} yrs`
+                : null
+            }
+          />
+
+          <CompactInfo
+            label="Last Appraisal"
+            value={employee.lastAppraisalDate}
+          />
+
+          <CompactInfo label="Manager Rating" value={employee.managerRating} />
+
+          <CompactInfo label="Interviews" value={employee.interviewCount} />
+
+          <CompactInfo
+            label="RR%"
+            value={
+              employee.rrPercent !== undefined ? pct(employee.rrPercent) : null
+            }
+          />
+
+          <CompactInfo label="Gross Margin" value={employee.grossMargin} />
+
+          <CompactInfo label="Status" value={employee.status} />
+        </div>
+      </div>
+
+      {/* Current / Previous / Change */}
+      <div className="px-2.5 py-1">
+        <div className="mb-1 flex items-center justify-between">
+          <span className="text-[8px] font-semibold uppercase tracking-wide text-muted-foreground">
+            Compensation Comparison
+          </span>
+
+          <span className="text-[8px] text-muted-foreground">
+            Current vs Previous
+          </span>
         </div>
 
-        {/* APPRAISAL */}
-        <TabsContent value="details" className="mt-0">
-          <div className="space-y-4 p-4">
-            {/* EMPLOYEE INFORMATION */}
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
-              <Field label="Employee ID" value={employee.empId} />
-
-              <Field label="Employee Name" value={employee.name} />
-
-              <Field label="Department" value={employee.department} />
-
-              <Field label="Designation" value={employee.designation} />
-
-              <Field label="Manager" value={employee.manager} />
-
-              <Field
-                label="Status"
-                value={<StatusBadge status={employee.status} />}
-              />
+        <div className="overflow-x-auto rounded border border-border">
+          {/* Table header */}
+          <div className="grid min-w-[520px] grid-cols-[minmax(130px,1.5fr)_minmax(105px,1fr)_minmax(105px,1fr)_minmax(75px,0.7fr)] bg-muted/40">
+            <div className="px-2 py-1 text-[8px] font-semibold">
+              Particulars
             </div>
 
-            <Separator />
-
-            {/* MANAGER RATING */}
-            <div className="max-w-sm space-y-1.5">
-              <Label>Current Manager Rating</Label>
-
-              <Select
-                value={employee.managerRating}
-                onValueChange={(v) =>
-                  updateCell(employee.id, "managerRating", v, "Drawer")
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-
-                <SelectContent>
-                  {MANAGER_RATINGS.map((rating) => (
-                    <SelectItem key={rating} value={rating}>
-                      {rating}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="border-l border-border px-2 py-1 text-right text-[8px] font-semibold">
+              Current
             </div>
 
-            {/* COMPENSATION INFORMATION */}
-            <div className="grid grid-cols-2 gap-2 md:grid-cols-4 lg:grid-cols-8">
-              <Field
-                label="Current CTC"
-                value={<span className="num">{inr(employee.currentCTC)}</span>}
-              />
-
-              <Field
-                label="Revised CTC"
-                value={
-                  <span className="num text-primary">
-                    {inr(revisedCTC(employee))}
-                  </span>
-                }
-              />
-
-              <Field
-                label="Target Perf. Bonus"
-                value={
-                  <span className="num">
-                    {inr(employee.targetPerformanceBonus)}
-                  </span>
-                }
-              />
-
-              <Field
-                label="Performance Bonus"
-                value={
-                  <span className="num">{inr(employee.performanceBonus)}</span>
-                }
-              />
-
-              <Field
-                label="Retention Bonus"
-                value={
-                  <span className="num">{inr(employee.retentionBonus)}</span>
-                }
-              />
-
-              <Field
-                label="Bonus Payout %"
-                value={
-                  <span className="num">{payoutPct(employee).toFixed(1)}%</span>
-                }
-              />
-
-              <Field
-                label="Hike Amount"
-                value={<span className="num">{inr(employee.hikeAmount)}</span>}
-              />
-
-              <Field
-                label="Hike %"
-                value={
-                  <span className="num">{hikePct(employee).toFixed(1)}%</span>
-                }
-              />
+            <div className="border-l border-border px-2 py-1 text-right text-[8px] font-semibold text-muted-foreground">
+              Previous
             </div>
 
-            {/* TOTAL PAYOUT */}
-            <div className="rounded-lg border border-primary/25 bg-primary/6 p-3">
-              <p className="text-[11px] tracking-wide text-muted-foreground uppercase">
-                Total Payout
-              </p>
-
-              <p className="num mt-1 text-2xl font-semibold text-primary">
-                {inr(totalPayout(employee))}
-              </p>
-            </div>
-
-            {/* COMMENTS */}
-            <div className="space-y-1.5">
-              <Label htmlFor="comments">Manager Comments</Label>
-
-              <Textarea
-                id="comments"
-                rows={4}
-                value={comments}
-                placeholder="Summary of performance, compensation rationale…"
-                onChange={(e) => setComments(e.target.value)}
-              />
-            </div>
-
-            {/* ACTIONS */}
-            <div className="flex gap-2 pb-1">
-              <Button variant="outline" className="flex-1" onClick={save}>
-                Save
-              </Button>
-
-              <Button className="flex-1" onClick={submit}>
-                Submit Appraisal
-              </Button>
+            <div className="border-l border-border px-2 py-1 text-right text-[8px] font-semibold">
+              Change
             </div>
           </div>
-        </TabsContent>
 
-        {/* HISTORY */}
-        <TabsContent value="history" className="mt-0">
-          <div className="p-4">
-            <AuditList entries={history} compact={true} />
+          <div className="min-w-[520px]">
+            <ComparisonRow
+              label="Annual Base Pay"
+              current={currentBasePay}
+              previous={previousBasePay}
+              type="currency"
+            />
+
+            <ComparisonRow
+              label="Allocated PB"
+              current={currentAllocatedPB}
+              previous={previousAllocatedPB}
+              type="currency"
+            />
+
+            <ComparisonRow
+              label="Performance Bonus"
+              current={currentPerformanceBonus}
+              previous={previousPerformanceBonus}
+              type="currency"
+            />
+
+            <ComparisonRow
+              label="Retention Bonus"
+              current={currentRetentionBonus}
+              previous={previousRetentionBonus}
+              type="currency"
+            />
+
+            <ComparisonRow
+              label="Total PB"
+              current={currentTotalPB}
+              previous={previousTotalPB}
+              type="currency"
+            />
+
+            <ComparisonRow
+              label="Total Bonus"
+              current={currentTotalBonus}
+              previous={previousTotalBonus}
+              type="currency"
+            />
+
+            <ComparisonRow
+              label="Hike Amount"
+              current={currentHikeAmount}
+              previous={previousHikeAmount}
+              type="currency"
+            />
+
+            <ComparisonRow
+              label="Hike %"
+              current={currentHikePct}
+              previous={previousHikePct}
+              type="percent"
+            />
+
+            <div className="grid grid-cols-[minmax(130px,1.5fr)_minmax(105px,1fr)_minmax(105px,1fr)_minmax(75px,0.7fr)] bg-muted/30">
+              <div className="px-2 py-1 text-[9px] font-bold">New CTC</div>
+
+              <div className="border-l border-border px-2 py-1 text-right text-[9px] font-bold">
+                {currency(currentNewCTC)}
+              </div>
+
+              <div className="border-l border-border px-2 py-1 text-right text-[9px] font-medium text-muted-foreground">
+                {currency(previousNewCTC)}
+              </div>
+
+              <div className="border-l border-border px-2 py-1 text-right text-[8px] font-bold">
+                {percentageChange(currentNewCTC, previousNewCTC)}
+              </div>
+            </div>
           </div>
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
+
+      {/* Payment summary */}
+      <div className="grid grid-cols-4 gap-1 border-t border-border bg-muted/10 px-2.5 py-1">
+        <CompactInfo
+          label="RB to be Paid"
+          value={currency(employee.rbToBePaid)}
+        />
+
+        <CompactInfo label="Month RB" value={employee.monthRB} />
+
+        <CompactInfo
+          label="PB to be Paid"
+          value={currency(employee.pbToBePaid)}
+        />
+
+        <CompactInfo label="Month PB" value={employee.monthPB} />
+      </div>
     </div>
   );
 }
