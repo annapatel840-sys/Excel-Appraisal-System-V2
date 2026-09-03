@@ -165,10 +165,10 @@ export function SheetPage() {
                 Appraisal Sheet
               </h2>
 
-              <p className="text-[10px] text-muted-foreground">
+              {/*<p className="text-[10px] text-muted-foreground">
                 Click an employee for details · Double-click editable cells to
                 edit
-              </p>
+              </p>*/}
             </div>
 
             <div className="text-right text-[10px] text-muted-foreground">

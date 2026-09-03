@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check } from "lucide-react";
 
 import { Checkbox } from "@/components/ui/checkbox";
@@ -114,9 +114,23 @@ export function AppraisalGrid({
   const { updateCell, modified } = useAppraisal();
 
   const cellRefs = useRef({});
+  const clickTimerRef = useRef(null);
 
   const [active, setActive] = useState(null);
   const [saving, setSaving] = useState({});
+
+  // ==========================================================
+  // CLEANUP CLICK TIMER
+  // ==========================================================
+
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+      }
+    };
+  }, []);
 
   // ==========================================================
   // FOCUS CELL
@@ -174,7 +188,7 @@ export function AppraisalGrid({
   };
 
   // ==========================================================
-  // HIKE CALCULATION
+  // HIKE PERCENTAGE
   // ==========================================================
 
   const updateHikePct = useCallback(
@@ -202,6 +216,10 @@ export function AppraisalGrid({
     },
     [updateCell, flashSaved],
   );
+
+  // ==========================================================
+  // HIKE AMOUNT
+  // ==========================================================
 
   const updateHikeAmount = useCallback(
     (row, raw) => {
@@ -324,6 +342,63 @@ export function AppraisalGrid({
   };
 
   // ==========================================================
+  // SINGLE CLICK / DOUBLE CLICK
+  // ==========================================================
+
+  const handleCellClick = useCallback(
+    (row, isEditable) => {
+      // Read-only cells open details immediately.
+      if (!isEditable) {
+        onRowOpen(row);
+        return;
+      }
+
+      // Editable cells wait briefly so a double-click can
+      // enter edit mode instead of opening the drawer.
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+      }
+
+      clickTimerRef.current = setTimeout(() => {
+        onRowOpen(row);
+        clickTimerRef.current = null;
+      }, 220);
+    },
+    [onRowOpen],
+  );
+
+  // ==========================================================
+  // EDITABLE DOUBLE CLICK
+  // ==========================================================
+
+  const handleEditableDoubleClick = useCallback(
+    (event, rowIndex, editableColumnIndex) => {
+      event.stopPropagation();
+
+      if (clickTimerRef.current) {
+        clearTimeout(clickTimerRef.current);
+        clickTimerRef.current = null;
+      }
+
+      const element = cellRefs.current[`${rowIndex}:${editableColumnIndex}`];
+
+      if (!element) {
+        return;
+      }
+
+      element.focus();
+
+      if (
+        element instanceof HTMLInputElement ||
+        element instanceof HTMLTextAreaElement
+      ) {
+        element.select();
+      }
+    },
+    [],
+  );
+
+  // ==========================================================
   // SELECTION
   // ==========================================================
 
@@ -354,8 +429,8 @@ export function AppraisalGrid({
         "rounded-md border border-border bg-card",
       )}
       style={{
-        height: "calc(100vh - 190px)",
-        minHeight: "520px",
+        height: "calc(100vh - 140px)",
+        minHeight: 0,
       }}
     >
       <table
@@ -381,7 +456,7 @@ export function AppraisalGrid({
             <th
               className={cn(
                 "sticky top-0 left-0",
-                "z-[300]",
+                "z-[500]",
                 "border-r border-b border-grid-line",
                 "bg-grid-header",
                 "px-0.5 py-1",
@@ -426,8 +501,8 @@ export function AppraisalGrid({
                   className={cn(
                     "sticky top-0",
                     isSticky
-                      ? "z-[300] bg-grid-header"
-                      : "z-[200] bg-grid-header",
+                      ? "z-[500] bg-grid-header"
+                      : "z-[400] bg-grid-header",
                     "border-r border-b border-grid-line",
                     "px-1 py-1",
                     "text-left text-[8px]",
@@ -476,9 +551,9 @@ export function AppraisalGrid({
               <td
                 className={cn(
                   "sticky left-0",
-                  "z-[150]",
+                  "z-[300]",
                   "border-r border-b border-grid-line",
-                  "bg-card",
+                  "!bg-card",
                   "px-0 py-0 align-middle",
                 )}
                 style={{
@@ -488,7 +563,7 @@ export function AppraisalGrid({
                   minWidth: SELECT_COL_WIDTH,
                   maxWidth: SELECT_COL_WIDTH,
                   boxSizing: "border-box",
-                  backgroundColor: "var(--card)",
+                  backgroundColor: "hsl(var(--card))",
                 }}
                 onClick={() => onRowOpen(row)}
               >
@@ -530,11 +605,15 @@ export function AppraisalGrid({
                 const isNewTitleDisabled =
                   col.key === "newTitle" && row.eligibleForPromotion !== "Yes";
 
+                // ==================================================
                 // IMPORTANT:
-                // At Risk must always be treated as an editable textarea.
-                const isAtRisk = col.key === "atRisk";
+                // NO SPECIAL AT-RISK LOGIC.
+                //
+                // Every textarea behaves exactly the same way.
+                // COLUMNS controls whether it is editable.
+                // ==================================================
 
-                const isTextarea = isAtRisk || col.type === "textarea";
+                const isTextarea = col.type === "textarea";
 
                 const isEditable = col.editable === true;
 
@@ -547,7 +626,7 @@ export function AppraisalGrid({
                       "overflow-hidden",
 
                       isSticky
-                        ? ["sticky", "z-[150]", "bg-card"]
+                        ? ["sticky", "z-[300]", "!bg-card"]
                         : ["relative", "z-0", "bg-transparent"],
 
                       !isSticky && isModified && "bg-cell-modified/70",
@@ -569,16 +648,16 @@ export function AppraisalGrid({
 
                       boxSizing: "border-box",
 
-                      // Critical for sticky rows:
-                      // every sticky cell gets its own complete
-                      // background so rows never visually merge.
+                      // Solid background prevents horizontally
+                      // scrolling cells from showing through
+                      // the sticky EMP ID / EMP Name cells.
                       ...(isSticky
                         ? {
-                            backgroundColor: "var(--card)",
+                            backgroundColor: "hsl(var(--card))",
                           }
                         : {}),
                     }}
-                    onClick={() => onRowOpen(row)}
+                    onClick={() => handleCellClick(row, isEditable)}
                   >
                     {/* =================================================
                         COMPUTED FIELD
@@ -649,7 +728,13 @@ export function AppraisalGrid({
                         onKeyDown={(event) =>
                           onKeyDown(event, rowIndex, editableColumnIndex)
                         }
-                        onDoubleClick={(event) => event.stopPropagation()}
+                        onDoubleClick={(event) =>
+                          handleEditableDoubleClick(
+                            event,
+                            rowIndex,
+                            editableColumnIndex,
+                          )
+                        }
                         onChange={(event) => {
                           updateCell(row.id, col.key, event.target.value);
 
@@ -679,9 +764,10 @@ export function AppraisalGrid({
                       </select>
                     ) : isTextarea ? (
                       /* =================================================
-                         TEXTAREA
-                         At Risk ALWAYS comes here.
-                      ================================================= */
+                         GENERIC TEXTAREA
+                         
+                         No At Risk-specific handling.
+                         ================================================= */
 
                       <textarea
                         ref={(element) => {
@@ -701,7 +787,13 @@ export function AppraisalGrid({
                         onKeyDown={(event) =>
                           onKeyDown(event, rowIndex, editableColumnIndex)
                         }
-                        onDoubleClick={(event) => event.stopPropagation()}
+                        onDoubleClick={(event) =>
+                          handleEditableDoubleClick(
+                            event,
+                            rowIndex,
+                            editableColumnIndex,
+                          )
+                        }
                         className={cn(
                           "relative z-[1]",
                           "h-6 min-h-6 w-full",
@@ -770,7 +862,6 @@ export function AppraisalGrid({
 
                             if (raw === "") {
                               updateCell(row.id, col.key, "");
-
                               return;
                             }
 
@@ -808,7 +899,13 @@ export function AppraisalGrid({
 
                             onKeyDown(event, rowIndex, editableColumnIndex);
                           }}
-                          onDoubleClick={(event) => event.stopPropagation()}
+                          onDoubleClick={(event) =>
+                            handleEditableDoubleClick(
+                              event,
+                              rowIndex,
+                              editableColumnIndex,
+                            )
+                          }
                           className={cn(
                             "h-6 w-full",
                             "bg-transparent",
@@ -822,7 +919,7 @@ export function AppraisalGrid({
 
                             isNumericType(col.type) && "text-right",
 
-                            "font-variant-numeric: tabular-nums",
+                            "font-variant-numeric-tabular-nums",
                           )}
                         />
 
