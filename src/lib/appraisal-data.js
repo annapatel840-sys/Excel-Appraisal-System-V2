@@ -43,6 +43,53 @@ export const MANAGERS = [
   "Sunita Rao",
 ];
 
+const DESIGNATIONS = [
+  "Program Executive",
+  "Senior Analyst",
+  "Team Lead",
+  "Manager",
+  "Associate",
+  "Specialist",
+];
+
+const FIRST = [
+  "Rahul",
+  "Anita",
+  "Sahil",
+  "Meera",
+  "Karan",
+  "Divya",
+  "Rohit",
+  "Sneha",
+  "Amit",
+  "Pooja",
+  "Vivek",
+  "Isha",
+  "Nikhil",
+  "Tara",
+  "Manoj",
+  "Farah",
+  "Dev",
+  "Ritu",
+  "Aakash",
+  "Leena",
+];
+
+const LAST = [
+  "Sharma",
+  "Roy",
+  "Khan",
+  "Pillai",
+  "Verma",
+  "Menon",
+  "Das",
+  "Kulkarni",
+  "Bose",
+  "Chopra",
+  "Nanda",
+  "Sen",
+];
+
 // ============================================================
 // CALCULATIONS
 // ============================================================
@@ -84,7 +131,6 @@ export const totalBonusHikeAmount = (r) => totalBonus(r) - currentRewards(r);
 
 export const totalBonusHikePct = (r) => {
   const current = currentRewards(r);
-
   return current ? (totalBonusHikeAmount(r) / current) * 100 : 0;
 };
 
@@ -93,13 +139,11 @@ export const totalRewardsHikeAmount = (r) =>
 
 export const totalRewardsHikePct = (r) => {
   const current = Number(r.currentAnnualBasePay || 0);
-
   return current ? (totalRewardsHikeAmount(r) / current) * 100 : 0;
 };
 
 export const payoutPct = (r) => {
   const target = Number(r.targetPBAllocatedForMay || 0);
-
   return target ? (totalOfPB(r) / target) * 100 : 0;
 };
 
@@ -122,7 +166,7 @@ export const COLUMNS = [
   },
   {
     key: "name",
-    label: "Employee Name",
+    label: "EMP Name",
     type: "text",
     editable: false,
     width: 190,
@@ -150,9 +194,9 @@ export const COLUMNS = [
   },
   {
     key: "appraiserTechED",
-    label: "Appraiser Tech-ED",
+    label: "Appraiser Tech/ED",
     type: "text",
-    editable: false,
+    editable: true,
     width: 160,
   },
   {
@@ -171,7 +215,7 @@ export const COLUMNS = [
   },
   {
     key: "lastAppraisalDate",
-    label: "Last Appraisal (Date)",
+    label: "Last Appraisal Date",
     type: "date",
     editable: true,
     width: 160,
@@ -193,7 +237,7 @@ export const COLUMNS = [
   },
   {
     key: "rrPercent",
-    label: "RR%",
+    label: "RR %",
     type: "percent",
     editable: true,
     width: 100,
@@ -207,28 +251,28 @@ export const COLUMNS = [
   },
   {
     key: "rbToBePaid",
-    label: "RB to be paid",
+    label: "RB to be Paid",
     type: "currency",
     editable: true,
     width: 140,
   },
   {
     key: "monthRB",
-    label: "Month (RB)",
+    label: "Month RB",
     type: "text",
     editable: true,
     width: 120,
   },
   {
     key: "pbToBePaid",
-    label: "PB to be paid",
+    label: "PB to be Paid",
     type: "currency",
     editable: true,
     width: 140,
   },
   {
     key: "monthPB",
-    label: "Month (PB)",
+    label: "Month PB",
     type: "text",
     editable: true,
     width: 120,
@@ -242,7 +286,7 @@ export const COLUMNS = [
   },
   {
     key: "targetPBAllocatedForMay",
-    label: "Target PB allocated for May",
+    label: "Target PB Allocated for May",
     type: "currency",
     editable: true,
     width: 190,
@@ -256,7 +300,7 @@ export const COLUMNS = [
   },
   {
     key: "pbInstallment",
-    label: "Instalment",
+    label: "PB Installment",
     type: "enum",
     editable: true,
     options: INSTALLMENT_OPTIONS,
@@ -271,7 +315,7 @@ export const COLUMNS = [
   },
   {
     key: "newPBInstallment",
-    label: "Instalment",
+    label: "New PB Installment",
     type: "enum",
     editable: true,
     options: INSTALLMENT_OPTIONS,
@@ -295,7 +339,7 @@ export const COLUMNS = [
   },
   {
     key: "totalBonus",
-    label: "Total Bonus (PB and RB)",
+    label: "Total Bonus",
     type: "currency",
     editable: false,
     computed: true,
@@ -311,7 +355,7 @@ export const COLUMNS = [
   },
   {
     key: "hikePct",
-    label: "Hike%",
+    label: "Hike %",
     type: "percent",
     editable: true,
     width: 100,
@@ -336,7 +380,7 @@ export const COLUMNS = [
   },
   {
     key: "totalBonusHikePct",
-    label: "Total Bonus Hike%",
+    label: "Total Bonus Hike %",
     type: "percent",
     editable: false,
     computed: true,
@@ -354,7 +398,7 @@ export const COLUMNS = [
   },
   {
     key: "totalRewardsHikePct",
-    label: "Total Rewards Hike%",
+    label: "Total Rewards Hike %",
     type: "percent",
     editable: false,
     computed: true,
@@ -372,7 +416,7 @@ export const COLUMNS = [
   },
   {
     key: "targetPBNextYear",
-    label: "Target PB for Next Year",
+    label: "Target PB Next Year",
     type: "currency",
     editable: true,
     width: 180,
@@ -403,7 +447,7 @@ export const COLUMNS = [
 ];
 
 // ============================================================
-// COMPUTED / EDITABLE KEYS
+// COMPUTED / EDITABLE COLUMN HELPERS
 // ============================================================
 
 export const COMPUTED_COLUMNS = COLUMNS.filter((c) => c.computed).map((c) => ({
@@ -417,6 +461,129 @@ export const COMPUTED_COLUMNS = COLUMNS.filter((c) => c.computed).map((c) => ({
 export const EDITABLE_KEYS = COLUMNS.filter((c) => c.editable).map(
   (c) => c.key,
 );
+
+// ============================================================
+// DEMO DATA GENERATOR
+// ============================================================
+
+function mulberry(seed) {
+  return () => {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+export function buildEmployees(count = 250) {
+  const rand = mulberry(42);
+  const pick = (arr) => arr[Math.floor(rand() * arr.length)];
+  const rows = [];
+
+  for (let i = 0; i < count; i++) {
+    const currentAnnualBasePay =
+      Math.round((600000 + rand() * 2400000) / 10000) * 10000;
+
+    const targetPBAllocatedForMay =
+      Math.round((currentAnnualBasePay * (0.06 + rand() * 0.1)) / 1000) * 1000;
+
+    const rating = pick(MANAGER_RATINGS);
+
+    const hikeRate =
+      rating === "Exceeds Expectation"
+        ? 0.12 + rand() * 0.04
+        : rating === "Meets Expectation"
+          ? 0.08 + rand() * 0.04
+          : 0.04 + rand() * 0.04;
+
+    const initialHikeAmount = Math.round(currentAnnualBasePay * hikeRate);
+
+    const initialHikePct = Number(
+      ((initialHikeAmount / currentAnnualBasePay) * 100).toFixed(1),
+    );
+
+    const allocatedPBAmount =
+      Math.round((targetPBAllocatedForMay * (0.45 + rand() * 0.35)) / 1000) *
+      1000;
+
+    const newPBToBeOffered =
+      Math.round((targetPBAllocatedForMay * (0.1 + rand() * 0.2)) / 1000) *
+      1000;
+
+    const rbToBePaid =
+      rand() > 0.65
+        ? Math.round((currentAnnualBasePay * 0.01 * rand()) / 1000) * 1000
+        : 0;
+
+    const newRB =
+      rand() > 0.55
+        ? Math.round((currentAnnualBasePay * 0.005 * rand()) / 1000) * 1000
+        : 0;
+
+    const status = pick(STATUSES);
+
+    const performanceBonus = totalOfPB({
+      allocatedPBAmount,
+      newPBToBeOffered,
+    });
+
+    rows.push({
+      id: `emp-${i + 1}`,
+      empId: `E${String(i + 1).padStart(3, "0")}`,
+      name: `${pick(FIRST)} ${pick(LAST)}`,
+      designation: pick(DESIGNATIONS),
+      reportingManager: pick(MANAGERS),
+      compManager: pick(MANAGERS),
+      appraiserTechED: pick(["Yes", "No", "Tech", "ED"]),
+      wissenExperience: Number((0.5 + rand() * 7).toFixed(1)),
+      totalExperience: Number((1 + rand() * 10).toFixed(1)),
+      lastAppraisalDate: `${2025 + (rand() > 0.5 ? 0 : -1)}-${String(
+        1 + Math.floor(rand() * 12),
+      ).padStart(2, "0")}-${String(1 + Math.floor(rand() * 28)).padStart(
+        2,
+        "0",
+      )}`,
+      managerRating: rating,
+      interviewCount: Math.floor(rand() * 16),
+      rrPercent: Number((40 + rand() * 60).toFixed(1)),
+      grossMargin: Number((10 + rand() * 35).toFixed(2)),
+      rbToBePaid,
+      monthRB: rbToBePaid ? pick(["May", "June", "July", "August"]) : "",
+      pbToBePaid:
+        Math.round((targetPBAllocatedForMay * (0.35 + rand() * 0.3)) / 1000) *
+        1000,
+      monthPB: pick(["May", "June", "July", "August"]),
+      currentAnnualBasePay,
+      targetPBAllocatedForMay,
+      allocatedPBAmount,
+      pbInstallment: pick(INSTALLMENT_OPTIONS),
+      newPBToBeOffered,
+      newPBInstallment: pick(INSTALLMENT_OPTIONS),
+      newRB,
+      targetPBNextYear:
+        Math.round((targetPBAllocatedForMay * (1.0 + rand() * 0.2)) / 1000) *
+        1000,
+      eligibleForPromotion: rand() > 0.7 ? "Yes" : "No",
+      newTitle: pick(NEW_TITLES),
+      atRisk:
+        rand() > 0.82 ? "Needs close review before final submission." : "",
+      hikeRate,
+      hikeAmount: initialHikeAmount,
+      hikePct: initialHikePct,
+      department: pick(DEPARTMENTS),
+      manager: pick(MANAGERS),
+      status,
+      currentCTC: currentAnnualBasePay,
+      targetPerformanceBonus: targetPBAllocatedForMay,
+      performanceBonus,
+      retentionBonus: newRB,
+      comments: "",
+    });
+  }
+
+  return rows;
+}
 
 // ============================================================
 // FORMATTING
@@ -434,9 +601,7 @@ export function formatValue(row, col) {
 
   if (col.type === "percent") return pct(value);
 
-  if (col.type === "decimal") {
-    return Number(value || 0).toFixed(2);
-  }
+  if (col.type === "decimal") return Number(value || 0).toFixed(2);
 
   return String(value ?? "");
 }
