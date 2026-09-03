@@ -7,23 +7,17 @@ import { ColumnFilter } from "./ColumnFilter";
 import { COLUMNS, formatValue } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
 
-const editableCols = COLUMNS.filter((c) => c.editable);
+// ============================================================
+// EDITABLE COLUMNS
+// ============================================================
+
+const editableCols = COLUMNS.filter((c) => c.editable === true);
 const editableIndex = new Map(editableCols.map((c, i) => [c.key, i]));
 
-/*
- * VERY COMPACT COLUMN WIDTHS
- *
- * The widths are intentionally based on the type of data.
- *
- * Small:
- *   percentage / month / count / experience
- *
- * Medium:
- *   employee name / designation / manager
- *
- * Large:
- *   salary / bonus / CTC
- */
+// ============================================================
+// COMPACT COLUMN WIDTHS
+// ============================================================
+
 const COMPACT_WIDTHS = {
   empId: 72,
   name: 145,
@@ -78,6 +72,10 @@ const COMPACT_WIDTHS = {
   atRisk: 130,
 };
 
+// ============================================================
+// STICKY COLUMN WIDTHS
+// ============================================================
+
 const SELECT_COL_WIDTH = 30;
 
 const EMP_ID_WIDTH = COMPACT_WIDTHS.empId;
@@ -86,8 +84,22 @@ const EMP_NAME_WIDTH = COMPACT_WIDTHS.name;
 const EMP_ID_LEFT = SELECT_COL_WIDTH;
 const EMP_NAME_LEFT = SELECT_COL_WIDTH + EMP_ID_WIDTH;
 
+// ============================================================
+// HELPERS
+// ============================================================
+
 const widthOf = (column) =>
   COMPACT_WIDTHS[column.key] ?? Math.min(column.width ?? 120, 120);
+
+const isNumericType = (type) =>
+  type === "currency" ||
+  type === "number" ||
+  type === "decimal" ||
+  type === "percent";
+
+// ============================================================
+// APPRAISAL GRID
+// ============================================================
 
 export function AppraisalGrid({
   rows,
@@ -106,6 +118,10 @@ export function AppraisalGrid({
   const [active, setActive] = useState(null);
   const [saving, setSaving] = useState({});
 
+  // ==========================================================
+  // FOCUS CELL
+  // ==========================================================
+
   const focusCell = useCallback((r, c) => {
     const el = cellRefs.current[`${r}:${c}`];
 
@@ -119,6 +135,10 @@ export function AppraisalGrid({
       el.select();
     }
   }, []);
+
+  // ==========================================================
+  // SAVE INDICATOR
+  // ==========================================================
 
   const flashSaved = useCallback((key) => {
     setSaving((previous) => ({
@@ -135,63 +155,99 @@ export function AppraisalGrid({
     }, 1200);
   }, []);
 
+  // ==========================================================
+  // VALUE CONVERSION
+  // ==========================================================
+
   const convertValue = (col, raw) => {
-    if (
-      col.type === "currency" ||
-      col.type === "number" ||
-      col.type === "decimal" ||
-      col.type === "percent"
-    ) {
-      return Number(raw) || 0;
+    if (isNumericType(col.type)) {
+      if (raw === "") {
+        return "";
+      }
+
+      const number = Number(raw);
+
+      return Number.isFinite(number) ? number : 0;
     }
 
     return raw;
   };
 
-  /*
-   * Hike % <-> Hike Amount
-   *
-   * Keep both directions synchronized.
-   */
-  const commit = useCallback(
-    (row, col, raw) => {
-      const value = convertValue(col, raw);
+  // ==========================================================
+  // HIKE CALCULATION
+  // ==========================================================
 
-      if (col.key === "hikePct") {
-        const basePay = Number(row.currentAnnualBasePay || 0);
-
-        const hikePctValue = Number(raw) || 0;
-
-        const newHikeAmount = Math.round(basePay * (hikePctValue / 100));
-
-        updateCell(row.id, "hikePct", hikePctValue);
-
-        updateCell(row.id, "hikeAmount", newHikeAmount);
+  const updateHikePct = useCallback(
+    (row, raw) => {
+      if (raw === "") {
+        updateCell(row.id, "hikePct", "");
+        updateCell(row.id, "hikeAmount", "");
 
         flashSaved(`${row.id}:hikePct`);
         flashSaved(`${row.id}:hikeAmount`);
 
+        return;
+      }
+
+      const basePay = Number(row.currentAnnualBasePay || 0);
+      const hikePctValue = Number(raw) || 0;
+
+      const newHikeAmount = Math.round(basePay * (hikePctValue / 100));
+
+      updateCell(row.id, "hikePct", hikePctValue);
+      updateCell(row.id, "hikeAmount", newHikeAmount);
+
+      flashSaved(`${row.id}:hikePct`);
+      flashSaved(`${row.id}:hikeAmount`);
+    },
+    [updateCell, flashSaved],
+  );
+
+  const updateHikeAmount = useCallback(
+    (row, raw) => {
+      if (raw === "") {
+        updateCell(row.id, "hikeAmount", "");
+        updateCell(row.id, "hikePct", "");
+
+        flashSaved(`${row.id}:hikeAmount`);
+        flashSaved(`${row.id}:hikePct`);
+
+        return;
+      }
+
+      const basePay = Number(row.currentAnnualBasePay || 0);
+      const hikeAmountValue = Number(raw) || 0;
+
+      const newHikePct = basePay
+        ? Number(((hikeAmountValue / basePay) * 100).toFixed(1))
+        : 0;
+
+      updateCell(row.id, "hikeAmount", hikeAmountValue);
+      updateCell(row.id, "hikePct", newHikePct);
+
+      flashSaved(`${row.id}:hikeAmount`);
+      flashSaved(`${row.id}:hikePct`);
+    },
+    [updateCell, flashSaved],
+  );
+
+  // ==========================================================
+  // NORMAL CELL COMMIT
+  // ==========================================================
+
+  const commit = useCallback(
+    (row, col, raw) => {
+      if (col.key === "hikePct") {
+        updateHikePct(row, raw);
         return;
       }
 
       if (col.key === "hikeAmount") {
-        const basePay = Number(row.currentAnnualBasePay || 0);
-
-        const hikeAmountValue = Number(raw) || 0;
-
-        const newHikePct = basePay
-          ? Number(((hikeAmountValue / basePay) * 100).toFixed(1))
-          : 0;
-
-        updateCell(row.id, "hikeAmount", hikeAmountValue);
-
-        updateCell(row.id, "hikePct", newHikePct);
-
-        flashSaved(`${row.id}:hikeAmount`);
-        flashSaved(`${row.id}:hikePct`);
-
+        updateHikeAmount(row, raw);
         return;
       }
+
+      const value = convertValue(col, raw);
 
       if (String(row[col.key] ?? "") === String(value)) {
         return;
@@ -201,12 +257,16 @@ export function AppraisalGrid({
 
       flashSaved(`${row.id}:${col.key}`);
     },
-    [updateCell, flashSaved],
+    [updateCell, flashSaved, updateHikePct, updateHikeAmount],
   );
 
+  // ==========================================================
+  // KEYBOARD NAVIGATION
+  // ==========================================================
+
   const onKeyDown = (e, r, c) => {
-    const max = rows.length - 1;
-    const maxC = editableCols.length - 1;
+    const maxRow = rows.length - 1;
+    const maxCol = editableCols.length - 1;
     const target = e.target;
 
     const atStart =
@@ -223,31 +283,55 @@ export function AppraisalGrid({
 
       e.preventDefault();
 
-      focusCell(e.shiftKey ? Math.max(0, r - 1) : Math.min(max, r + 1), c);
-    } else if (e.key === "ArrowDown") {
-      e.preventDefault();
+      focusCell(e.shiftKey ? Math.max(0, r - 1) : Math.min(maxRow, r + 1), c);
 
-      focusCell(Math.min(max, r + 1), c);
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
+      return;
+    }
 
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      focusCell(Math.min(maxRow, r + 1), c);
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
       focusCell(Math.max(0, r - 1), c);
-    } else if (e.key === "ArrowRight" && atEnd) {
-      if (c < maxC) {
+      return;
+    }
+
+    if (e.key === "ArrowRight" && atEnd) {
+      if (c < maxCol) {
         e.preventDefault();
         focusCell(r, c + 1);
       }
-    } else if (e.key === "ArrowLeft" && atStart) {
+
+      return;
+    }
+
+    if (e.key === "ArrowLeft" && atStart) {
       if (c > 0) {
         e.preventDefault();
         focusCell(r, c - 1);
       }
-    } else if (e.key === "Escape") {
+
+      return;
+    }
+
+    if (e.key === "Escape") {
       target.blur();
     }
   };
 
+  // ==========================================================
+  // SELECTION
+  // ==========================================================
+
   const allSelected = rows.length > 0 && rows.every((r) => selected[r.id]);
+
+  // ==========================================================
+  // HEADERS
+  // ==========================================================
 
   const headers = useMemo(
     () =>
@@ -259,81 +343,117 @@ export function AppraisalGrid({
     [],
   );
 
+  // ==========================================================
+  // RENDER
+  // ==========================================================
+
   return (
     <div
-      className="relative isolate overflow-auto rounded-md border border-border bg-card"
+      className={cn(
+        "relative isolate overflow-auto",
+        "rounded-md border border-border bg-card",
+      )}
       style={{
-        maxHeight: "calc(100vh - 230px)",
+        height: "calc(100vh - 190px)",
+        minHeight: "520px",
       }}
     >
-      <table className="relative w-max border-separate border-spacing-0 text-[10px]">
+      <table
+        className={cn(
+          "relative w-max",
+          "border-separate border-spacing-0",
+          "text-[10px]",
+        )}
+        style={{
+          tableLayout: "fixed",
+        }}
+      >
+        {/* ====================================================
+            HEADER
+        ==================================================== */}
+
         <thead>
           <tr>
-            {/* Selection */}
+            {/* =================================================
+                STICKY SELECTION HEADER
+            ================================================= */}
+
             <th
               className={cn(
-                "sticky top-0 left-0 z-[100]",
+                "sticky top-0 left-0",
+                "z-[300]",
                 "border-r border-b border-grid-line",
                 "bg-grid-header",
                 "px-0.5 py-1",
               )}
               style={{
+                position: "sticky",
+                top: 0,
+                left: 0,
                 width: SELECT_COL_WIDTH,
                 minWidth: SELECT_COL_WIDTH,
                 maxWidth: SELECT_COL_WIDTH,
+                boxSizing: "border-box",
               }}
             >
-              <Checkbox
-                checked={allSelected}
-                onCheckedChange={(v) => toggleAll(!!v)}
-                aria-label="Select all"
-              />
+              <div className="flex items-center justify-center pl-1">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={(value) => toggleAll(!!value)}
+                  aria-label="Select all"
+                />
+              </div>
             </th>
 
-            {headers.map((h, i) => {
-              const isEmpId = i === 0;
-              const isEmployeeName = i === 1;
+            {/* =================================================
+                COLUMN HEADERS
+            ================================================= */}
+
+            {headers.map((header, index) => {
+              const isEmpId = index === 0;
+              const isEmployeeName = index === 1;
               const isSticky = isEmpId || isEmployeeName;
+
+              const stickyLeft = isEmpId
+                ? EMP_ID_LEFT
+                : isEmployeeName
+                  ? EMP_NAME_LEFT
+                  : undefined;
 
               return (
                 <th
-                  key={h.key}
-                  style={{
-                    width: h.width,
-                    minWidth: h.width,
-                    maxWidth: h.width,
-
-                    ...(isEmpId
-                      ? {
-                          left: EMP_ID_LEFT,
-                        }
-                      : isEmployeeName
-                        ? {
-                            left: EMP_NAME_LEFT,
-                          }
-                        : {}),
-                  }}
+                  key={header.key}
                   className={cn(
                     "sticky top-0",
                     isSticky
-                      ? "z-[100] bg-grid-header"
-                      : "z-[80] bg-grid-header",
+                      ? "z-[300] bg-grid-header"
+                      : "z-[200] bg-grid-header",
                     "border-r border-b border-grid-line",
                     "px-1 py-1",
-                    "text-left text-[8px] font-semibold",
-                    "tracking-wide text-muted-foreground uppercase",
+                    "text-left text-[8px]",
+                    "font-semibold uppercase",
+                    "tracking-wide text-muted-foreground",
                   )}
+                  style={{
+                    position: "sticky",
+                    top: 0,
+                    left: stickyLeft,
+                    width: header.width,
+                    minWidth: header.width,
+                    maxWidth: header.width,
+                    boxSizing: "border-box",
+                  }}
                 >
                   <div className="flex min-w-0 items-center justify-between gap-0.5">
-                    <span className="truncate" title={h.label}>
-                      {h.label}
+                    <span className="truncate" title={header.label}>
+                      {header.label}
                     </span>
 
                     <ColumnFilter
-                      columnKey={h.key}
-                      filter={filters[h.key]}
-                      options={optionsFor(h.key)}
-                      onChange={(f) => setFilter(h.key, f)}
+                      columnKey={header.key}
+                      filter={filters[header.key]}
+                      options={optionsFor(header.key)}
+                      onChange={(filter) => setFilter(header.key, filter)}
                     />
                   </div>
                 </th>
@@ -342,206 +462,381 @@ export function AppraisalGrid({
           </tr>
         </thead>
 
+        {/* ====================================================
+            BODY
+        ==================================================== */}
+
         <tbody>
-          {rows.map((row, r) => (
-            <tr
-              key={row.id}
-              className="group transition-colors hover:bg-accent/40"
-            >
-              {/* Selection */}
+          {rows.map((row, rowIndex) => (
+            <tr key={row.id} className="group">
+              {/* =================================================
+                  STICKY SELECTION COLUMN
+              ================================================= */}
+
               <td
                 className={cn(
-                  "sticky left-0 z-[60]",
+                  "sticky left-0",
+                  "z-[150]",
                   "border-r border-b border-grid-line",
                   "bg-card",
-                  "px-0.5 py-0",
+                  "px-0 py-0 align-middle",
                 )}
                 style={{
+                  position: "sticky",
+                  left: 0,
                   width: SELECT_COL_WIDTH,
                   minWidth: SELECT_COL_WIDTH,
                   maxWidth: SELECT_COL_WIDTH,
+                  boxSizing: "border-box",
+                  backgroundColor: "var(--card)",
                 }}
+                onClick={() => onRowOpen(row)}
               >
-                <Checkbox
-                  checked={!!selected[row.id]}
-                  onCheckedChange={(v) => toggleSelected(row.id, !!v)}
-                  aria-label={`Select ${row.name}`}
-                />
+                <div className="flex items-center justify-center pl-1">
+                  <Checkbox
+                    checked={!!selected[row.id]}
+                    onCheckedChange={(value) => toggleSelected(row.id, !!value)}
+                    aria-label={`Select ${row.name}`}
+                    onClick={(event) => event.stopPropagation()}
+                  />
+                </div>
               </td>
 
-              {COLUMNS.map((col, ci) => {
+              {/* =================================================
+                  ALL DATA COLUMNS
+              ================================================= */}
+
+              {COLUMNS.map((col, columnIndex) => {
                 const cellKey = `${row.id}:${col.key}`;
 
                 const isModified = !!modified[cellKey];
 
-                const c = editableIndex.get(col.key);
+                const editableColumnIndex = editableIndex.get(col.key);
 
-                const isActive = active === `${r}:${c}`;
+                const isActive =
+                  active === `${rowIndex}:${editableColumnIndex}`;
 
-                const isSticky = ci < 2;
+                const isSticky = columnIndex === 0 || columnIndex === 1;
 
                 const stickyLeft =
-                  ci === 0 ? EMP_ID_LEFT : ci === 1 ? EMP_NAME_LEFT : undefined;
+                  columnIndex === 0
+                    ? EMP_ID_LEFT
+                    : columnIndex === 1
+                      ? EMP_NAME_LEFT
+                      : undefined;
 
                 const columnWidth = widthOf(col);
+
+                const isNewTitleDisabled =
+                  col.key === "newTitle" && row.eligibleForPromotion !== "Yes";
+
+                // IMPORTANT:
+                // At Risk must always be treated as an editable textarea.
+                const isAtRisk = col.key === "atRisk";
+
+                const isTextarea = isAtRisk || col.type === "textarea";
+
+                const isEditable = col.editable === true;
 
                 return (
                   <td
                     key={col.key}
-                    style={{
-                      width: columnWidth,
-                      minWidth: columnWidth,
-                      maxWidth: columnWidth,
-
-                      ...(isSticky
-                        ? {
-                            left: stickyLeft,
-                          }
-                        : {}),
-                    }}
-                    onDoubleClick={() =>
-                      !col.editable && !col.computed && onRowOpen(row)
-                    }
                     className={cn(
-                      "relative border-r border-b border-grid-line",
+                      "border-r border-b border-grid-line",
                       "px-0 py-0 align-middle",
+                      "overflow-hidden",
 
                       isSticky
-                        ? ["sticky z-[60]", "!bg-card"]
-                        : ["relative", "bg-transparent"],
+                        ? ["sticky", "z-[150]", "bg-card"]
+                        : ["relative", "z-0", "bg-transparent"],
 
                       !isSticky && isModified && "bg-cell-modified/70",
 
                       !isSticky && "group-hover:bg-accent/40",
 
                       isActive && "ring-2 ring-primary ring-inset",
+
+                      isNewTitleDisabled && "bg-muted/20",
                     )}
+                    style={{
+                      position: isSticky ? "sticky" : "relative",
+
+                      left: stickyLeft,
+
+                      width: columnWidth,
+                      minWidth: columnWidth,
+                      maxWidth: columnWidth,
+
+                      boxSizing: "border-box",
+
+                      // Critical for sticky rows:
+                      // every sticky cell gets its own complete
+                      // background so rows never visually merge.
+                      ...(isSticky
+                        ? {
+                            backgroundColor: "var(--card)",
+                          }
+                        : {}),
+                    }}
+                    onClick={() => onRowOpen(row)}
                   >
-                    {/* Computed */}
+                    {/* =================================================
+                        COMPUTED FIELD
+                    ================================================= */}
+
                     {col.computed ? (
                       <div
                         className={cn(
-                          "num w-full truncate px-1 py-1",
-                          "text-right text-[9px] font-medium",
-
+                          "w-full truncate",
+                          "px-1 py-1",
+                          "text-right text-[9px]",
+                          "font-medium",
+                          "font-sans",
                           isModified
                             ? "text-foreground"
                             : "text-muted-foreground",
                         )}
                         title="Calculated automatically"
                       >
-                        {formatValue(row, col)}
+                        {col.type === "currency"
+                          ? formatValue(row, col).replace(/^₹/, "")
+                          : formatValue(row, col)}
                       </div>
-                    ) : !col.editable ? (
-                      /* Read-only */
+                    ) : !isEditable ? (
+                      /* =================================================
+                         READ ONLY FIELD
+                      ================================================= */
+
                       <button
                         type="button"
-                        onClick={() => onRowOpen(row)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onRowOpen(row);
+                        }}
                         className={cn(
+                          "relative z-[1]",
                           "block w-full truncate",
-                          "px-1 py-1 text-left",
-                          "text-[9px]",
+                          "px-1 py-1",
+                          "text-left text-[9px]",
+                          "font-sans",
 
                           col.key === "name" &&
                             "font-medium text-foreground hover:text-primary",
 
                           col.key === "empId" &&
-                            "num text-[9px] text-muted-foreground",
+                            "text-[9px] text-muted-foreground",
                         )}
                       >
                         {String(row[col.key] ?? "")}
                       </button>
                     ) : col.type === "enum" ? (
-                      /* Enum */
+                      /* =================================================
+                         ENUM FIELD
+                      ================================================= */
+
                       <select
-                        ref={(el) => {
-                          cellRefs.current[`${r}:${c}`] = el;
+                        ref={(element) => {
+                          cellRefs.current[
+                            `${rowIndex}:${editableColumnIndex}`
+                          ] = element;
                         }}
                         value={String(row[col.key] ?? "")}
-                        onFocus={() => setActive(`${r}:${c}`)}
+                        disabled={isNewTitleDisabled}
+                        onFocus={() =>
+                          setActive(`${rowIndex}:${editableColumnIndex}`)
+                        }
                         onBlur={() => setActive(null)}
-                        onKeyDown={(e) => onKeyDown(e, r, c)}
-                        onChange={(e) => {
-                          updateCell(row.id, col.key, e.target.value);
+                        onKeyDown={(event) =>
+                          onKeyDown(event, rowIndex, editableColumnIndex)
+                        }
+                        onDoubleClick={(event) => event.stopPropagation()}
+                        onChange={(event) => {
+                          updateCell(row.id, col.key, event.target.value);
 
                           flashSaved(cellKey);
                         }}
-                        className="h-6 w-full cursor-pointer appearance-none bg-transparent px-1 text-[9px] outline-none"
+                        className={cn(
+                          "relative z-[1]",
+                          "h-6 w-full",
+                          "cursor-pointer",
+                          "appearance-none",
+                          "bg-transparent",
+                          "px-1",
+                          "text-[9px]",
+                          "font-sans",
+                          "outline-none",
+
+                          isNewTitleDisabled && "cursor-not-allowed opacity-50",
+                        )}
                       >
                         <option value="">Select...</option>
 
-                        {(col.options ?? []).map((o) => (
-                          <option key={o} value={o}>
-                            {o}
+                        {(col.options ?? []).map((option) => (
+                          <option key={option} value={option}>
+                            {option}
                           </option>
                         ))}
                       </select>
-                    ) : col.type === "textarea" ? (
-                      /* Textarea */
+                    ) : isTextarea ? (
+                      /* =================================================
+                         TEXTAREA
+                         At Risk ALWAYS comes here.
+                      ================================================= */
+
                       <textarea
-                        ref={(el) => {
-                          cellRefs.current[`${r}:${c}`] = el;
+                        ref={(element) => {
+                          cellRefs.current[
+                            `${rowIndex}:${editableColumnIndex}`
+                          ] = element;
                         }}
                         value={String(row[col.key] ?? "")}
-                        onFocus={() => setActive(`${r}:${c}`)}
-                        onBlur={(e) => {
+                        onFocus={() =>
+                          setActive(`${rowIndex}:${editableColumnIndex}`)
+                        }
+                        onBlur={(event) => {
                           setActive(null);
 
-                          commit(row, col, e.target.value);
+                          commit(row, col, event.target.value);
                         }}
-                        onKeyDown={(e) => onKeyDown(e, r, c)}
-                        className="h-6 min-h-6 w-full resize-none overflow-hidden bg-transparent px-1 py-1 text-[9px] outline-none"
+                        onKeyDown={(event) =>
+                          onKeyDown(event, rowIndex, editableColumnIndex)
+                        }
+                        onDoubleClick={(event) => event.stopPropagation()}
+                        className={cn(
+                          "relative z-[1]",
+                          "h-6 min-h-6 w-full",
+                          "resize-none",
+                          "overflow-hidden",
+                          "bg-transparent",
+                          "px-1 py-1",
+                          "text-[9px]",
+                          "font-sans",
+                          "outline-none",
+                        )}
                       />
                     ) : (
-                      /* Input */
-                      <div className="relative">
+                      /* =================================================
+                         TEXT / NUMBER / DATE INPUT
+                      ================================================= */
+
+                      <div className="relative z-[1]">
                         <input
-                          ref={(el) => {
-                            cellRefs.current[`${r}:${c}`] = el;
+                          ref={(element) => {
+                            cellRefs.current[
+                              `${rowIndex}:${editableColumnIndex}`
+                            ] = element;
                           }}
                           type={col.type === "date" ? "date" : "text"}
-                          defaultValue={String(row[col.key] ?? "")}
+                          value={String(row[col.key] ?? "")}
                           inputMode={
-                            col.type === "currency" ||
-                            col.type === "number" ||
-                            col.type === "decimal" ||
-                            col.type === "percent"
-                              ? "decimal"
-                              : undefined
+                            isNumericType(col.type) ? "decimal" : undefined
                           }
-                          onFocus={(e) => {
-                            setActive(`${r}:${c}`);
+                          onFocus={(event) => {
+                            setActive(`${rowIndex}:${editableColumnIndex}`);
 
                             if (col.type !== "date") {
-                              e.currentTarget.select();
+                              event.currentTarget.select();
                             }
                           }}
-                          onBlur={(e) => {
+                          onChange={(event) => {
+                            const raw = event.target.value;
+
+                            if (col.key === "hikePct") {
+                              updateHikePct(row, raw);
+                              return;
+                            }
+
+                            if (col.key === "hikeAmount") {
+                              updateHikeAmount(row, raw);
+                              return;
+                            }
+
+                            if (col.type === "date") {
+                              updateCell(row.id, col.key, raw);
+
+                              flashSaved(cellKey);
+                              return;
+                            }
+
+                            if (
+                              col.type === "text" ||
+                              col.type === "textarea"
+                            ) {
+                              updateCell(row.id, col.key, raw);
+
+                              flashSaved(cellKey);
+                              return;
+                            }
+
+                            if (raw === "") {
+                              updateCell(row.id, col.key, "");
+
+                              return;
+                            }
+
+                            const numericValue = Number(raw);
+
+                            if (Number.isFinite(numericValue)) {
+                              updateCell(row.id, col.key, numericValue);
+
+                              flashSaved(cellKey);
+                            }
+                          }}
+                          onBlur={(event) => {
                             setActive(null);
 
-                            commit(row, col, e.target.value);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              commit(row, col, e.target.value);
+                            if (
+                              col.key === "hikePct" ||
+                              col.key === "hikeAmount"
+                            ) {
+                              return;
                             }
 
-                            onKeyDown(e, r, c);
+                            if (isNumericType(col.type)) {
+                              commit(row, col, event.target.value);
+                            }
                           }}
-                          className={cn(
-                            "h-6 w-full bg-transparent px-1 py-1",
-                            "text-[9px] outline-none",
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              if (
+                                col.key !== "hikePct" &&
+                                col.key !== "hikeAmount"
+                              ) {
+                                commit(row, col, event.target.value);
+                              }
+                            }
 
-                            (col.type === "currency" ||
-                              col.type === "number" ||
-                              col.type === "decimal" ||
-                              col.type === "percent") &&
-                              "text-right num",
+                            onKeyDown(event, rowIndex, editableColumnIndex);
+                          }}
+                          onDoubleClick={(event) => event.stopPropagation()}
+                          className={cn(
+                            "h-6 w-full",
+                            "bg-transparent",
+                            "px-1 py-1",
+                            "text-[9px]",
+                            "font-sans",
+                            "outline-none",
+
+                            isNumericType(col.type) &&
+                              "font-medium text-foreground",
+
+                            isNumericType(col.type) && "text-right",
+
+                            "font-variant-numeric: tabular-nums",
                           )}
                         />
 
+                        {/* Save indicator */}
+
                         {saving[cellKey] !== undefined && (
-                          <span className="pointer-events-none absolute top-1/2 right-0 -translate-y-1/2 text-status-submitted">
+                          <span
+                            className={cn(
+                              "pointer-events-none",
+                              "absolute top-1/2 right-0",
+                              "-translate-y-1/2",
+                              "text-status-submitted",
+                            )}
+                          >
                             <Check className="size-2.5" />
                           </span>
                         )}
@@ -553,11 +848,20 @@ export function AppraisalGrid({
             </tr>
           ))}
 
+          {/* =====================================================
+              EMPTY STATE
+          ===================================================== */}
+
           {rows.length === 0 && (
             <tr>
               <td
                 colSpan={headers.length + 1}
-                className="px-3 py-6 text-center text-[10px] text-muted-foreground"
+                className={cn(
+                  "px-3 py-6",
+                  "text-center",
+                  "text-[10px]",
+                  "text-muted-foreground",
+                )}
               >
                 No employees match the current filters.
               </td>
