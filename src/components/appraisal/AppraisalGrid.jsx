@@ -625,9 +625,7 @@ export function AppraisalGrid({
                       "px-0 py-0 align-middle",
                       "overflow-hidden",
 
-                      isSticky
-                        ? ["sticky", "z-[300]", "!bg-card"]
-                        : ["relative", "z-0", "bg-transparent"],
+                      "relative z-0 bg-transparent",
 
                       !isSticky && isModified && "bg-cell-modified/70",
 
@@ -638,267 +636,165 @@ export function AppraisalGrid({
                       isNewTitleDisabled && "bg-muted/20",
                     )}
                     style={{
-                      position: isSticky ? "sticky" : "relative",
-
-                      left: stickyLeft,
-
+                      position: "relative",
                       width: columnWidth,
                       minWidth: columnWidth,
                       maxWidth: columnWidth,
-
                       boxSizing: "border-box",
-
-                      // Solid background prevents horizontally
-                      // scrolling cells from showing through
-                      // the sticky EMP ID / EMP Name cells.
-                      ...(isSticky
-                        ? {
-                            backgroundColor: "hsl(var(--card))",
-                          }
-                        : {}),
                     }}
                     onClick={() => handleCellClick(row, isEditable)}
                   >
-                    {/* =================================================
+                    <div
+                      className={cn(
+                        "relative h-full min-h-6",
+                        isSticky && "sticky z-[300] !bg-card",
+                      )}
+                      style={{
+                        ...(isSticky
+                          ? {
+                              left: stickyLeft,
+                              width: columnWidth,
+                              minWidth: columnWidth,
+                              maxWidth: columnWidth,
+                              boxSizing: "border-box",
+                              backgroundColor: "hsl(var(--card))",
+                            }
+                          : {}),
+                      }}
+                    >
+                      {/* =================================================
                         COMPUTED FIELD
                     ================================================= */}
 
-                    {col.computed ? (
-                      <div
-                        className={cn(
-                          "w-full truncate",
-                          "px-1 py-1",
-                          "text-right text-[9px]",
-                          "font-medium",
-                          "font-sans",
-                          isModified
-                            ? "text-foreground"
-                            : "text-muted-foreground",
-                        )}
-                        title="Calculated automatically"
-                      >
-                        {col.type === "currency"
-                          ? formatValue(row, col).replace(/^₹/, "")
-                          : formatValue(row, col)}
-                      </div>
-                    ) : !isEditable ? (
-                      /* =================================================
+                      {col.computed ? (
+                        <div
+                          className={cn(
+                            "w-full truncate",
+                            "px-1 py-1",
+                            "text-right text-[9px]",
+                            "font-medium",
+                            "font-sans",
+                            isModified
+                              ? "text-foreground"
+                              : "text-muted-foreground",
+                          )}
+                          title="Calculated automatically"
+                        >
+                          {col.type === "currency"
+                            ? formatValue(row, col).replace(/^₹/, "")
+                            : formatValue(row, col)}
+                        </div>
+                      ) : !isEditable ? (
+                        /* =================================================
                          READ ONLY FIELD
                       ================================================= */
 
-                      <button
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          onRowOpen(row);
-                        }}
-                        className={cn(
-                          "relative z-[1]",
-                          "block w-full truncate",
-                          "px-1 py-1",
-                          "text-left text-[9px]",
-                          "font-sans",
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            onRowOpen(row);
+                          }}
+                          className={cn(
+                            "relative z-[1]",
+                            "block w-full truncate",
+                            "px-1 py-1",
+                            "text-left text-[9px]",
+                            "font-sans",
 
-                          col.key === "name" &&
-                            "font-medium text-foreground hover:text-primary",
+                            col.key === "name" &&
+                              "font-medium text-foreground hover:text-primary",
 
-                          col.key === "empId" &&
-                            "text-[9px] text-muted-foreground",
-                        )}
-                      >
-                        {String(row[col.key] ?? "")}
-                      </button>
-                    ) : col.type === "enum" ? (
-                      /* =================================================
+                            col.key === "empId" &&
+                              "text-[9px] text-muted-foreground",
+                          )}
+                        >
+                          {String(row[col.key] ?? "")}
+                        </button>
+                      ) : col.type === "enum" ? (
+                        /* =================================================
                          ENUM FIELD
                       ================================================= */
 
-                      <select
-                        ref={(element) => {
-                          cellRefs.current[
-                            `${rowIndex}:${editableColumnIndex}`
-                          ] = element;
-                        }}
-                        value={String(row[col.key] ?? "")}
-                        disabled={isNewTitleDisabled}
-                        onFocus={() =>
-                          setActive(`${rowIndex}:${editableColumnIndex}`)
-                        }
-                        onBlur={() => setActive(null)}
-                        onKeyDown={(event) =>
-                          onKeyDown(event, rowIndex, editableColumnIndex)
-                        }
-                        onDoubleClick={(event) =>
-                          handleEditableDoubleClick(
-                            event,
-                            rowIndex,
-                            editableColumnIndex,
-                          )
-                        }
-                        onChange={(event) => {
-                          updateCell(row.id, col.key, event.target.value);
-
-                          flashSaved(cellKey);
-                        }}
-                        className={cn(
-                          "relative z-[1]",
-                          "h-6 w-full",
-                          "cursor-pointer",
-                          "appearance-none",
-                          "bg-transparent",
-                          "px-1",
-                          "text-[9px]",
-                          "font-sans",
-                          "outline-none",
-
-                          isNewTitleDisabled && "cursor-not-allowed opacity-50",
-                        )}
-                      >
-                        <option value="">Select...</option>
-
-                        {(col.options ?? []).map((option) => (
-                          <option key={option} value={option}>
-                            {option}
-                          </option>
-                        ))}
-                      </select>
-                    ) : isTextarea ? (
-                      /* =================================================
-                         GENERIC TEXTAREA
-                         
-                         No At Risk-specific handling.
-                         ================================================= */
-
-                      <textarea
-                        ref={(element) => {
-                          cellRefs.current[
-                            `${rowIndex}:${editableColumnIndex}`
-                          ] = element;
-                        }}
-                        value={String(row[col.key] ?? "")}
-                        onFocus={() =>
-                          setActive(`${rowIndex}:${editableColumnIndex}`)
-                        }
-                        onBlur={(event) => {
-                          setActive(null);
-
-                          commit(row, col, event.target.value);
-                        }}
-                        onKeyDown={(event) =>
-                          onKeyDown(event, rowIndex, editableColumnIndex)
-                        }
-                        onDoubleClick={(event) =>
-                          handleEditableDoubleClick(
-                            event,
-                            rowIndex,
-                            editableColumnIndex,
-                          )
-                        }
-                        className={cn(
-                          "relative z-[1]",
-                          "h-6 min-h-6 w-full",
-                          "resize-none",
-                          "overflow-hidden",
-                          "bg-transparent",
-                          "px-1 py-1",
-                          "text-[9px]",
-                          "font-sans",
-                          "outline-none",
-                        )}
-                      />
-                    ) : (
-                      /* =================================================
-                         TEXT / NUMBER / DATE INPUT
-                      ================================================= */
-
-                      <div className="relative z-[1]">
-                        <input
+                        <select
                           ref={(element) => {
                             cellRefs.current[
                               `${rowIndex}:${editableColumnIndex}`
                             ] = element;
                           }}
-                          type={col.type === "date" ? "date" : "text"}
                           value={String(row[col.key] ?? "")}
-                          inputMode={
-                            isNumericType(col.type) ? "decimal" : undefined
+                          disabled={isNewTitleDisabled}
+                          onFocus={() =>
+                            setActive(`${rowIndex}:${editableColumnIndex}`)
                           }
-                          onFocus={(event) => {
-                            setActive(`${rowIndex}:${editableColumnIndex}`);
-
-                            if (col.type !== "date") {
-                              event.currentTarget.select();
-                            }
-                          }}
+                          onBlur={() => setActive(null)}
+                          onKeyDown={(event) =>
+                            onKeyDown(event, rowIndex, editableColumnIndex)
+                          }
+                          onDoubleClick={(event) =>
+                            handleEditableDoubleClick(
+                              event,
+                              rowIndex,
+                              editableColumnIndex,
+                            )
+                          }
                           onChange={(event) => {
-                            const raw = event.target.value;
+                            updateCell(row.id, col.key, event.target.value);
 
-                            if (col.key === "hikePct") {
-                              updateHikePct(row, raw);
-                              return;
-                            }
+                            flashSaved(cellKey);
+                          }}
+                          className={cn(
+                            "relative z-[1]",
+                            "h-6 w-full",
+                            "cursor-pointer",
+                            "appearance-none",
+                            "bg-transparent",
+                            "px-1",
+                            "text-[9px]",
+                            "font-sans",
+                            "outline-none",
 
-                            if (col.key === "hikeAmount") {
-                              updateHikeAmount(row, raw);
-                              return;
-                            }
+                            isNewTitleDisabled &&
+                              "cursor-not-allowed opacity-50",
+                          )}
+                        >
+                          <option value="">Select...</option>
 
-                            if (col.type === "date") {
-                              updateCell(row.id, col.key, raw);
+                          {(col.options ?? []).map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      ) : isTextarea ? (
+                        /* =================================================
+                         GENERIC TEXTAREA
+                         
+                         No At Risk-specific handling.
+                         ================================================= */
 
-                              flashSaved(cellKey);
-                              return;
-                            }
-
-                            if (
-                              col.type === "text" ||
-                              col.type === "textarea"
-                            ) {
-                              updateCell(row.id, col.key, raw);
-
-                              flashSaved(cellKey);
-                              return;
-                            }
-
-                            if (raw === "") {
-                              updateCell(row.id, col.key, "");
-                              return;
-                            }
-
-                            const numericValue = Number(raw);
-
-                            if (Number.isFinite(numericValue)) {
-                              updateCell(row.id, col.key, numericValue);
-
-                              flashSaved(cellKey);
-                            }
+                        <textarea
+                          ref={(element) => {
+                            cellRefs.current[
+                              `${rowIndex}:${editableColumnIndex}`
+                            ] = element;
+                          }}
+                          value={String(row[col.key] ?? "")}
+                          onFocus={() =>
+                            setActive(`${rowIndex}:${editableColumnIndex}`)
+                          }
+                          onChange={(event) => {
+                            updateCell(row.id, col.key, event.target.value);
+                            flashSaved(cellKey);
                           }}
                           onBlur={(event) => {
                             setActive(null);
 
-                            if (
-                              col.key === "hikePct" ||
-                              col.key === "hikeAmount"
-                            ) {
-                              return;
-                            }
-
-                            if (isNumericType(col.type)) {
-                              commit(row, col, event.target.value);
-                            }
+                            commit(row, col, event.target.value);
                           }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              if (
-                                col.key !== "hikePct" &&
-                                col.key !== "hikeAmount"
-                              ) {
-                                commit(row, col, event.target.value);
-                              }
-                            }
-
-                            onKeyDown(event, rowIndex, editableColumnIndex);
-                          }}
+                          onKeyDown={(event) =>
+                            onKeyDown(event, rowIndex, editableColumnIndex)
+                          }
                           onDoubleClick={(event) =>
                             handleEditableDoubleClick(
                               event,
@@ -907,38 +803,151 @@ export function AppraisalGrid({
                             )
                           }
                           className={cn(
-                            "h-6 w-full",
+                            "relative z-[1]",
+                            "h-6 min-h-6 w-full",
+                            "resize-none",
+                            "overflow-hidden",
                             "bg-transparent",
                             "px-1 py-1",
                             "text-[9px]",
                             "font-sans",
                             "outline-none",
-
-                            isNumericType(col.type) &&
-                              "font-medium text-foreground",
-
-                            isNumericType(col.type) && "text-right",
-
-                            "font-variant-numeric-tabular-nums",
                           )}
                         />
+                      ) : (
+                        /* =================================================
+                         TEXT / NUMBER / DATE INPUT
+                      ================================================= */
 
-                        {/* Save indicator */}
+                        <div className="relative z-[1]">
+                          <input
+                            ref={(element) => {
+                              cellRefs.current[
+                                `${rowIndex}:${editableColumnIndex}`
+                              ] = element;
+                            }}
+                            type={col.type === "date" ? "date" : "text"}
+                            value={String(row[col.key] ?? "")}
+                            inputMode={
+                              isNumericType(col.type) ? "decimal" : undefined
+                            }
+                            onFocus={(event) => {
+                              setActive(`${rowIndex}:${editableColumnIndex}`);
 
-                        {saving[cellKey] !== undefined && (
-                          <span
+                              if (col.type !== "date") {
+                                event.currentTarget.select();
+                              }
+                            }}
+                            onChange={(event) => {
+                              const raw = event.target.value;
+
+                              if (col.key === "hikePct") {
+                                updateHikePct(row, raw);
+                                return;
+                              }
+
+                              if (col.key === "hikeAmount") {
+                                updateHikeAmount(row, raw);
+                                return;
+                              }
+
+                              if (col.type === "date") {
+                                updateCell(row.id, col.key, raw);
+
+                                flashSaved(cellKey);
+                                return;
+                              }
+
+                              if (
+                                col.type === "text" ||
+                                col.type === "textarea"
+                              ) {
+                                updateCell(row.id, col.key, raw);
+
+                                flashSaved(cellKey);
+                                return;
+                              }
+
+                              if (raw === "") {
+                                updateCell(row.id, col.key, "");
+                                return;
+                              }
+
+                              const numericValue = Number(raw);
+
+                              if (Number.isFinite(numericValue)) {
+                                updateCell(row.id, col.key, numericValue);
+
+                                flashSaved(cellKey);
+                              }
+                            }}
+                            onBlur={(event) => {
+                              setActive(null);
+
+                              if (
+                                col.key === "hikePct" ||
+                                col.key === "hikeAmount"
+                              ) {
+                                return;
+                              }
+
+                              if (isNumericType(col.type)) {
+                                commit(row, col, event.target.value);
+                              }
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                if (
+                                  col.key !== "hikePct" &&
+                                  col.key !== "hikeAmount"
+                                ) {
+                                  commit(row, col, event.target.value);
+                                }
+                              }
+
+                              onKeyDown(event, rowIndex, editableColumnIndex);
+                            }}
+                            onDoubleClick={(event) =>
+                              handleEditableDoubleClick(
+                                event,
+                                rowIndex,
+                                editableColumnIndex,
+                              )
+                            }
                             className={cn(
-                              "pointer-events-none",
-                              "absolute top-1/2 right-0",
-                              "-translate-y-1/2",
-                              "text-status-submitted",
+                              "h-6 w-full",
+                              "bg-transparent",
+                              "px-1 py-1",
+                              "text-[9px]",
+                              "font-sans",
+                              "outline-none",
+
+                              isNumericType(col.type) &&
+                                "font-medium text-foreground",
+
+                              isNumericType(col.type) && "text-right",
+
+                              "font-variant-numeric:tabular-nums",
                             )}
-                          >
-                            <Check className="size-2.5" />
-                          </span>
-                        )}
-                      </div>
-                    )}
+                          />
+
+                          {/* Save indicator */}
+
+                          {saving[cellKey] !== undefined && (
+                            <span
+                              className={cn(
+                                "pointer-events-none",
+                                "absolute top-1/2 right-0",
+                                "-translate-y-1/2",
+                                "text-status-submitted",
+                              )}
+                            >
+                              <Check className="size-2.5" />
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </td>
                 );
               })}
