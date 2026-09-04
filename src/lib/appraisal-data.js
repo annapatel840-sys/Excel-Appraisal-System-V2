@@ -201,7 +201,7 @@ export const COLUMNS = [
   },
   {
     key: "wissenExperience",
-    label: "Wissen Experience",
+    label: "Organization Experience",
     type: "decimal",
     editable: true,
     width: 150,
@@ -536,7 +536,7 @@ export function buildEmployees(count = 250) {
       reportingManager: pick(MANAGERS),
       compManager: pick(MANAGERS),
       appraiserTechED: pick(["Yes", "No", "Tech", "ED"]),
-      wissenExperience: Number((0.5 + rand() * 7).toFixed(1)),
+      organizationExperience: Number((0.5 + rand() * 7).toFixed(1)),
       totalExperience: Number((1 + rand() * 10).toFixed(1)),
       lastAppraisalDate: `${2025 + (rand() > 0.5 ? 0 : -1)}-${String(
         1 + Math.floor(rand() * 12),

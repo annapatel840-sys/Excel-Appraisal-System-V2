@@ -1,409 +1,3 @@
-// import { X } from "lucide-react";
-// import { Button } from "@/components/ui/button";
-
-// import {
-//   hikeAmount,
-//   hikePct,
-//   totalBonus,
-//   totalOfPB,
-//   pct,
-// } from "@/lib/appraisal-data";
-
-// import { getPreviousYearData } from "@/lib/previous-year-data";
-
-// // ============================================================
-// // HELPERS
-// // ============================================================
-
-// function valueOrDash(value) {
-//   return value === undefined || value === null || value === ""
-//     ? "—"
-//     : String(value);
-// }
-
-// function currency(value) {
-//   if (value === undefined || value === null || value === "") {
-//     return "—";
-//   }
-
-//   return Math.round(Number(value) || 0).toLocaleString("en-IN");
-// }
-
-// function percentageChange(current, previous) {
-//   const c = Number(current);
-//   const p = Number(previous);
-
-//   if (!Number.isFinite(c) || !Number.isFinite(p) || p === 0) {
-//     return "—";
-//   }
-
-//   const change = ((c - p) / p) * 100;
-
-//   return `${change >= 0 ? "+" : ""}${change.toFixed(1)}%`;
-// }
-
-// function formatValue(value, type) {
-//   if (value === undefined || value === null || value === "") {
-//     return "—";
-//   }
-
-//   if (type === "currency") {
-//     return currency(value);
-//   }
-
-//   if (type === "percent") {
-//     return pct(value);
-//   }
-
-//   return valueOrDash(value);
-// }
-
-// // ============================================================
-// // INFO BOX
-// // ============================================================
-
-// function Info({ label, value }) {
-//   return (
-//     <div className="min-w-0 rounded border border-border bg-muted/20 px-1.5 py-1">
-//       <div className="truncate text-[7px] uppercase tracking-wide text-muted-foreground">
-//         {label}
-//       </div>
-
-//       <div className="mt-0.5 truncate text-[9px] font-semibold">
-//         {valueOrDash(value)}
-//       </div>
-//     </div>
-//   );
-// }
-
-// // ============================================================
-// // COMPENSATION ITEM
-// // ============================================================
-
-// function CompensationItem({ label, value, change }) {
-//   return (
-//     <div className="border-b border-border px-2 py-1 last:border-b-0">
-//       <div className="truncate text-[7px] uppercase tracking-wide text-muted-foreground">
-//         {label}
-//       </div>
-
-//       <div className="mt-0.5 truncate text-[9px] font-semibold">{value}</div>
-
-//       {change !== undefined && (
-//         <div className="mt-0.5 truncate text-[8px] font-semibold">{change}</div>
-//       )}
-//     </div>
-//   );
-// }
-
-// // ============================================================
-// // EMPLOYEE DRAWER
-// // ============================================================
-
-// export function EmployeeDrawer({ employee, onOpenChange }) {
-//   if (!employee) {
-//     return null;
-//   }
-
-//   // ----------------------------------------------------------
-//   // Previous Year
-//   // ----------------------------------------------------------
-
-//   const previous = getPreviousYearData(employee.empId) || {};
-
-//   const previousBasePay = previous.basePay ?? null;
-//   const previousAllocatedPB = previous.allocatedPB ?? null;
-//   const previousPerformanceBonus = previous.performanceBonus ?? null;
-//   const previousRetentionBonus = previous.retentionBonus ?? null;
-//   const previousTotalPB = previous.totalPB ?? null;
-//   const previousTotalBonus = previous.totalBonus ?? null;
-//   const previousHikeAmount = previous.hikeAmount ?? null;
-//   const previousHikePct = previous.hikePct ?? null;
-//   const previousNewCTC = previous.newCTC ?? null;
-
-//   // ----------------------------------------------------------
-//   // Current Year
-//   // ----------------------------------------------------------
-
-//   const currentBasePay = Number(employee.currentAnnualBasePay || 0);
-//   const currentAllocatedPB = employee.allocatedPBAmount;
-//   const currentPerformanceBonus = employee.newPBToBeOffered;
-//   const currentRetentionBonus = employee.newRB;
-
-//   const currentTotalPB = totalOfPB(employee);
-//   const currentTotalBonus = totalBonus(employee);
-
-//   const currentHikeAmount = hikeAmount(employee);
-//   const currentHikePct = hikePct(employee);
-
-//   const currentNewBasePay = currentBasePay + currentHikeAmount;
-//   const currentNewCTC = currentNewBasePay + currentTotalBonus;
-
-//   // ----------------------------------------------------------
-//   // Changes
-//   // ----------------------------------------------------------
-
-//   const changes = {
-//     basePay: percentageChange(currentBasePay, previousBasePay),
-//     allocatedPB: percentageChange(currentAllocatedPB, previousAllocatedPB),
-//     performanceBonus: percentageChange(
-//       currentPerformanceBonus,
-//       previousPerformanceBonus,
-//     ),
-//     retentionBonus: percentageChange(
-//       currentRetentionBonus,
-//       previousRetentionBonus,
-//     ),
-//     totalPB: percentageChange(currentTotalPB, previousTotalPB),
-//     totalBonus: percentageChange(currentTotalBonus, previousTotalBonus),
-//     hikeAmount: percentageChange(currentHikeAmount, previousHikeAmount),
-//     hikePct: percentageChange(currentHikePct, previousHikePct),
-//     newCTC: percentageChange(currentNewCTC, previousNewCTC),
-//   };
-
-//   return (
-//     <div className="w-full overflow-hidden rounded-md border border-border bg-card shadow-sm">
-//       {/* ======================================================
-//           HEADER
-//       ====================================================== */}
-
-//       <div className="flex h-7 items-center justify-between border-b border-border px-2.5">
-//         <div className="flex min-w-0 items-center gap-1.5">
-//           <h3 className="truncate text-[10px] font-semibold">
-//             {employee.name}
-//           </h3>
-
-//           <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[7px] text-muted-foreground">
-//             {employee.empId}
-//           </span>
-
-//           <span className="hidden truncate text-[7px] text-muted-foreground sm:inline">
-//             {valueOrDash(employee.designation)}
-//           </span>
-//         </div>
-
-//         <Button
-//           type="button"
-//           variant="ghost"
-//           size="icon"
-//           className="size-5 shrink-0"
-//           onClick={() => onOpenChange(false)}
-//         >
-//           <X className="size-3" />
-//         </Button>
-//       </div>
-
-//       {/* ======================================================
-//           EMPLOYEE INFORMATION
-//       ====================================================== */}
-
-//       <div className="border-b border-border px-2.5 py-1">
-//         <div className="grid grid-cols-4 gap-1 md:grid-cols-8">
-//           <Info
-//             label="Wissen Exp."
-//             value={
-//               employee.wissenExperience !== undefined
-//                 ? `${employee.wissenExperience} yrs`
-//                 : null
-//             }
-//           />
-
-//           <Info
-//             label="Total Exp."
-//             value={
-//               employee.totalExperience !== undefined
-//                 ? `${employee.totalExperience} yrs`
-//                 : null
-//             }
-//           />
-
-//           <Info label="Last Appraisal" value={employee.lastAppraisalDate} />
-
-//           <Info label="Manager Rating" value={employee.managerRating} />
-
-//           <Info label="Interviews" value={employee.interviewCount} />
-
-//           <Info
-//             label="RR%"
-//             value={
-//               employee.rrPercent !== undefined ? pct(employee.rrPercent) : null
-//             }
-//           />
-
-//           <Info label="Gross Margin" value={employee.grossMargin} />
-
-//           <Info label="Status" value={employee.status} />
-//         </div>
-//       </div>
-
-//       {/* ======================================================
-//           THREE SEPARATE PANELS
-//           Previous | Current | Changes
-//       ====================================================== */}
-
-//       <div className="grid grid-cols-3 gap-1 px-2.5 py-1">
-//         {/* ====================================================
-//             PREVIOUS YEAR
-//         ==================================================== */}
-
-//         <div className="min-w-0 overflow-hidden rounded border border-border">
-//           <div className="border-b border-border bg-muted/40 px-2 py-1 text-[8px] font-bold uppercase tracking-wide">
-//             Previous Year
-//           </div>
-
-//           <CompensationItem
-//             label="Annual Base Pay"
-//             value={formatValue(previousBasePay, "currency")}
-//           />
-
-//           <CompensationItem
-//             label="Allocated PB"
-//             value={formatValue(previousAllocatedPB, "currency")}
-//           />
-
-//           <CompensationItem
-//             label="Performance Bonus"
-//             value={formatValue(previousPerformanceBonus, "currency")}
-//           />
-
-//           <CompensationItem
-//             label="Retention Bonus"
-//             value={formatValue(previousRetentionBonus, "currency")}
-//           />
-
-//           <CompensationItem
-//             label="Total PB"
-//             value={formatValue(previousTotalPB, "currency")}
-//           />
-
-//           <CompensationItem
-//             label="Total Bonus"
-//             value={formatValue(previousTotalBonus, "currency")}
-//           />
-
-//           <CompensationItem
-//             label="Hike Amount"
-//             value={formatValue(previousHikeAmount, "currency")}
-//           />
-
-//           <CompensationItem
-//             label="Hike %"
-//             value={formatValue(previousHikePct, "percent")}
-//           />
-
-//           <CompensationItem
-//             label="New CTC"
-//             value={formatValue(previousNewCTC, "currency")}
-//           />
-//         </div>
-
-//         {/* ====================================================
-//             CURRENT YEAR
-//         ==================================================== */}
-
-//         <div className="min-w-0 overflow-hidden rounded border border-border">
-//           <div className="border-b border-border bg-primary/10 px-2 py-1 text-[8px] font-bold uppercase tracking-wide">
-//             Current Year
-//           </div>
-
-//           <CompensationItem
-//             label="Annual Base Pay"
-//             value={formatValue(currentBasePay, "currency")}
-//           />
-
-//           <CompensationItem
-//             label="Allocated PB"
-//             value={formatValue(currentAllocatedPB, "currency")}
-//           />
-
-//           <CompensationItem
-//             label="Performance Bonus"
-//             value={formatValue(currentPerformanceBonus, "currency")}
-//           />
-
-//           <CompensationItem
-//             label="Retention Bonus"
-//             value={formatValue(currentRetentionBonus, "currency")}
-//           />
-
-//           <CompensationItem
-//             label="Total PB"
-//             value={formatValue(currentTotalPB, "currency")}
-//           />
-
-//           <CompensationItem
-//             label="Total Bonus"
-//             value={formatValue(currentTotalBonus, "currency")}
-//           />
-
-//           <CompensationItem
-//             label="Hike Amount"
-//             value={formatValue(currentHikeAmount, "currency")}
-//           />
-
-//           <CompensationItem
-//             label="Hike %"
-//             value={formatValue(currentHikePct, "percent")}
-//           />
-
-//           <CompensationItem
-//             label="New CTC"
-//             value={formatValue(currentNewCTC, "currency")}
-//           />
-//         </div>
-
-//         {/* ====================================================
-//             CHANGES
-//         ==================================================== */}
-
-//         <div className="min-w-0 overflow-hidden rounded border border-border">
-//           <div className="border-b border-border bg-muted/40 px-2 py-1 text-[8px] font-bold uppercase tracking-wide">
-//             Changes
-//           </div>
-
-//           <CompensationItem label="Annual Base Pay" value={changes.basePay} />
-
-//           <CompensationItem label="Allocated PB" value={changes.allocatedPB} />
-
-//           <CompensationItem
-//             label="Performance Bonus"
-//             value={changes.performanceBonus}
-//           />
-
-//           <CompensationItem
-//             label="Retention Bonus"
-//             value={changes.retentionBonus}
-//           />
-
-//           <CompensationItem label="Total PB" value={changes.totalPB} />
-
-//           <CompensationItem label="Total Bonus" value={changes.totalBonus} />
-
-//           <CompensationItem label="Hike Amount" value={changes.hikeAmount} />
-
-//           <CompensationItem label="Hike %" value={changes.hikePct} />
-
-//           <CompensationItem label="New CTC" value={changes.newCTC} />
-//         </div>
-//       </div>
-
-//       {/* ======================================================
-//           PAYMENT SUMMARY
-//       ====================================================== */}
-
-//       <div className="grid grid-cols-4 gap-1 border-t border-border bg-muted/10 px-2.5 py-1">
-//         <Info label="RB to be Paid" value={currency(employee.rbToBePaid)} />
-
-//         <Info label="Month RB" value={employee.monthRB} />
-
-//         <Info label="PB to be Paid" value={currency(employee.pbToBePaid)} />
-
-//         <Info label="Month PB" value={employee.monthPB} />
-//       </div>
-//     </div>
-//   );
-// }
-
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -416,6 +10,10 @@ import {
 } from "@/lib/appraisal-data";
 
 import { getPreviousYearData } from "@/lib/previous-year-data";
+
+// ============================================================
+// HELPERS
+// ============================================================
 
 function valueOrDash(value) {
   return value === undefined || value === null || value === ""
@@ -460,35 +58,62 @@ function formatValue(value, type = "text") {
   return valueOrDash(value);
 }
 
-function Info({ label, value }) {
+// ============================================================
+// COMPACT INFO CELL
+// ============================================================
+
+function InfoCell({ label, value }) {
   return (
-    <div className="min-w-0 rounded border border-border bg-muted/20 px-1.5 py-1">
-      <div className="truncate text-[7px] font-medium uppercase tracking-wide text-muted-foreground">
+    <div
+      className="
+        min-w-0
+        rounded
+        border
+        border-border
+        bg-muted/20
+        px-1.5
+        py-1
+      "
+    >
+      <div
+        className="
+          truncate
+          text-[7px]
+          font-medium
+          uppercase
+          tracking-wide
+          text-muted-foreground
+        "
+      >
         {label}
       </div>
 
-      <div className="mt-0.5 truncate text-[9px] font-semibold">
+      <div
+        className="
+          mt-0.5
+          truncate
+          text-[9px]
+          font-semibold
+          leading-tight
+        "
+      >
         {valueOrDash(value)}
       </div>
     </div>
   );
 }
 
-function CompensationItem({ label, value, type = "text" }) {
-  return (
-    <div className="flex items-center justify-between gap-2 border-b border-border px-2 py-1 last:border-b-0">
-      <span className="min-w-0 truncate text-[8px] font-medium text-muted-foreground">
-        {label}
-      </span>
+// ============================================================
+// COMPARISON ROW
+// ============================================================
 
-      <span className="shrink-0 text-right text-[9px] font-semibold tabular-nums">
-        {formatValue(value, type)}
-      </span>
-    </div>
-  );
-}
-
-function ChangeItem({ label, current, previous, type = "text" }) {
+function ComparisonRow({
+  label,
+  current,
+  previous,
+  type = "currency",
+  bold = false,
+}) {
   let change = "—";
 
   if (
@@ -504,88 +129,221 @@ function ChangeItem({ label, current, previous, type = "text" }) {
     } else {
       change =
         String(current) === String(previous)
-          ? "No change"
+          ? "—"
           : `${valueOrDash(previous)} → ${valueOrDash(current)}`;
     }
   }
 
-  return (
-    <div className="flex items-center justify-between gap-2 border-b border-border px-2 py-1 last:border-b-0">
-      <span className="min-w-0 truncate text-[8px] font-medium text-muted-foreground">
-        {label}
-      </span>
+  const isPositive = typeof change === "string" && change.startsWith("+");
 
-      <span className="shrink-0 text-right text-[9px] font-bold tabular-nums">
+  const isNegative = typeof change === "string" && change.startsWith("-");
+
+  return (
+    <div
+      className="
+        grid
+        grid-cols-[1.6fr_1fr_1fr_0.8fr]
+        items-center
+        border-b
+        border-border
+        last:border-b-0
+      "
+    >
+      {/* FIELD */}
+      <div
+        className={`
+          min-w-0
+          truncate
+          px-2
+          py-1
+          ${bold ? "text-[9px] font-bold" : "text-[8px] font-medium"}
+        `}
+      >
+        {label}
+      </div>
+
+      {/* THIS YEAR */}
+      <div
+        className={`
+          px-2
+          py-1
+          text-right
+          tabular-nums
+          ${bold ? "text-[9px] font-bold" : "text-[8px] font-semibold"}
+        `}
+      >
+        {formatValue(current, type)}
+      </div>
+
+      {/* PREVIOUS YEAR */}
+      <div
+        className={`
+          px-2
+          py-1
+          text-right
+          tabular-nums
+          text-muted-foreground
+          ${bold ? "text-[9px] font-bold" : "text-[8px] font-semibold"}
+        `}
+      >
+        {formatValue(previous, type)}
+      </div>
+
+      {/* CHANGE */}
+      <div
+        className={`
+          px-2
+          py-1
+          text-right
+          tabular-nums
+          ${bold ? "text-[9px] font-bold" : "text-[8px] font-bold"}
+          ${
+            isPositive
+              ? "text-green-600"
+              : isNegative
+                ? "text-red-600"
+                : "text-muted-foreground"
+          }
+        `}
+      >
         {change}
-      </span>
+      </div>
     </div>
   );
 }
+
+// ============================================================
+// EMPLOYEE DRAWER
+// ============================================================
 
 export function EmployeeDrawer({ employee, onOpenChange }) {
   if (!employee) return null;
 
   /*
-   * IMPORTANT:
-   * employee comes directly from the current rows in SheetPage.
-   * Therefore all grid edits are reflected here immediately.
+   * employee comes directly from the current rows.
+   * Therefore all current grid edits are reflected immediately.
    */
+
   const previous = getPreviousYearData(employee.empId) || {};
 
-  // ------------------------------------------------------------
+  // ==========================================================
   // CURRENT YEAR
-  // ------------------------------------------------------------
+  // ==========================================================
 
   const currentBasePay = Number(employee.currentAnnualBasePay || 0);
 
   const currentAllocatedPB = employee.allocatedPBAmount;
+
   const currentPerformanceBonus = employee.newPBToBeOffered;
+
   const currentRetentionBonus = employee.newRB;
 
   const currentTotalPB = totalOfPB(employee);
+
   const currentTotalBonus = totalBonus(employee);
 
   const currentHikeAmount = hikeAmount(employee);
+
   const currentHikePct = hikePct(employee);
 
-  const currentNewBasePay = currentBasePay + currentHikeAmount;
-  const currentNewCTC = currentNewBasePay + currentTotalBonus;
+  const currentNewBasePay = currentBasePay + Number(currentHikeAmount || 0);
 
-  // ------------------------------------------------------------
+  const currentNewCTC = currentNewBasePay + Number(currentTotalBonus || 0);
+
+  // ==========================================================
   // PREVIOUS YEAR
-  // ------------------------------------------------------------
+  // ==========================================================
 
   const previousBasePay = previous.basePay ?? null;
+
   const previousAllocatedPB = previous.allocatedPB ?? null;
+
   const previousPerformanceBonus = previous.performanceBonus ?? null;
+
   const previousRetentionBonus = previous.retentionBonus ?? null;
+
   const previousTotalPB = previous.totalPB ?? null;
+
   const previousTotalBonus = previous.totalBonus ?? null;
+
   const previousHikeAmount = previous.hikeAmount ?? null;
+
   const previousHikePct = previous.hikePct ?? null;
+
   const previousNewCTC = previous.newCTC ?? null;
 
+  // ==========================================================
+  // RENDER
+  // ==========================================================
+
   return (
-    <div className="w-full overflow-hidden rounded-md border border-border bg-card shadow-sm">
-      {/* ========================================================
+    <div
+      className="
+        w-full
+        overflow-hidden
+        rounded-md
+        border
+        border-border
+        bg-card
+        shadow-sm
+      "
+    >
+      {/* ======================================================
           HEADER
-      ======================================================== */}
-      <div className="flex items-center justify-between border-b border-border px-2.5 py-1">
+      ======================================================= */}
+
+      <div
+        className="
+          flex
+          h-9
+          items-center
+          justify-between
+          border-b
+          border-border
+          px-2.5
+        "
+      >
         <div className="flex min-w-0 items-center gap-1.5">
+          {/* NAME */}
+
           <h3 className="truncate text-[11px] font-semibold">
             {employee.name}
           </h3>
 
-          <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[8px] text-muted-foreground">
+          {/* EMPLOYEE ID */}
+
+          <span
+            className="
+              shrink-0
+              rounded
+              bg-muted
+              px-1.5
+              py-0.5
+              font-mono
+              text-[8px]
+              text-muted-foreground
+            "
+          >
             {employee.empId}
           </span>
 
-          <span className="hidden truncate text-[8px] text-muted-foreground sm:inline">
+          {/* DESIGNATION */}
+
+          <span
+            className="
+              hidden
+              truncate
+              text-[8px]
+              text-muted-foreground
+              sm:inline
+            "
+          >
             {valueOrDash(employee.designation)}
           </span>
         </div>
 
-        {/* ONE X BUTTON FOR THE WHOLE DETAILS PANEL */}
+        {/* CLOSE */}
+
         <Button
           type="button"
           variant="ghost"
@@ -597,14 +355,58 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
         </Button>
       </div>
 
-      {/* ========================================================
-          TOP INFORMATION
-          ALL 12 ITEMS IN ONE SINGLE ROW
-      ======================================================== */}
-      <div className="overflow-x-auto border-b border-border px-2.5 py-1">
-        <div className="grid min-w-[900px] grid-cols-12 gap-1">
-          <Info
-            label="Wissen Exp."
+      {/* ======================================================
+          MAIN CONTENT
+          LEFT = NON-EDITABLE FIELDS
+          RIGHT = EXISTING COMPARISON
+      ======================================================= */}
+
+      <div
+        className="
+          grid
+          grid-cols-1
+          gap-2
+          p-2
+          lg:grid-cols-[1fr_1.45fr]
+        "
+      >
+        {/* ====================================================
+            LEFT SIDE
+            NON-EDITABLE FIELDS
+        ===================================================== */}
+
+        <div
+          className="
+            grid
+            grid-cols-2
+            gap-1
+            sm:grid-cols-3
+            lg:grid-cols-3
+            content-start
+          "
+        >
+          {/* Reporting Manager */}
+
+          <InfoCell
+            label="Reporting Manager"
+            value={employee.reportingManager}
+          />
+
+          {/* Comp Manager */}
+
+          <InfoCell label="Comp. Manager" value={employee.compManager} />
+
+          {/* Appraiser Tech / ED */}
+
+          <InfoCell
+            label="Appraiser Tech/ED"
+            value={employee.appraiserTechED}
+          />
+
+          {/* Wissen Experience */}
+
+          <InfoCell
+            label="Organization Exp."
             value={
               employee.wissenExperience !== undefined
                 ? `${employee.wissenExperience} yrs`
@@ -612,7 +414,9 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
             }
           />
 
-          <Info
+          {/* Total Experience */}
+
+          <InfoCell
             label="Total Exp."
             value={
               employee.totalExperience !== undefined
@@ -621,250 +425,250 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
             }
           />
 
-          <Info label="Last Appraisal" value={employee.lastAppraisalDate} />
+          {/* Last Appraisal */}
 
-          <Info label="Manager Rating" value={employee.managerRating} />
+          <InfoCell label="Last Appraisal" value={employee.lastAppraisalDate} />
 
-          <Info label="Interviews" value={employee.interviewCount} />
+          {/* Manager Rating */}
 
-          <Info
-            label="RR%"
+          <InfoCell label="Manager Rating" value={employee.managerRating} />
+
+          {/* Interview Count */}
+
+          <InfoCell label="Interviews" value={employee.interviewCount} />
+
+          {/* RR % */}
+
+          <InfoCell
+            label="RR %"
             value={
               employee.rrPercent !== undefined ? pct(employee.rrPercent) : null
             }
           />
 
-          <Info label="Gross Margin" value={employee.grossMargin} />
+          {/* Gross Margin */}
 
-          <Info label="Status" value={employee.status} />
+          <InfoCell label="Gross Margin" value={employee.grossMargin} />
 
-          <Info label="RB to be Paid" value={currency(employee.rbToBePaid)} />
+          {/* Status */}
 
-          <Info label="Month RB" value={employee.monthRB} />
+          <InfoCell label="Status" value={employee.status} />
 
-          <Info label="PB to be Paid" value={currency(employee.pbToBePaid)} />
+          {/* RB to be Paid */}
 
-          <Info label="Month PB" value={employee.monthPB} />
-        </div>
-      </div>
+          <InfoCell
+            label="RB to be Paid"
+            value={currency(employee.rbToBePaid)}
+          />
 
-      {/* ========================================================
-          THREE SEPARATE PANELS
-          PREVIOUS | CURRENT | CHANGES
-      ======================================================== */}
-      <div className="grid grid-cols-1 gap-1.5 p-2.5 lg:grid-cols-3">
-        {/* ======================================================
-            PREVIOUS YEAR
-        ====================================================== */}
-        <div className="min-w-0 overflow-hidden rounded border border-border bg-muted/10">
-          <div className="border-b border-border bg-muted/40 px-2 py-1">
-            <div className="text-[9px] font-bold uppercase tracking-wide">
-              Previous Year
-            </div>
-          </div>
+          {/* Month RB */}
 
-          <div>
-            <CompensationItem
-              label="Annual Base Pay"
-              value={previousBasePay}
-              type="currency"
-            />
+          <InfoCell label="Month RB" value={employee.monthRB} />
 
-            <CompensationItem
-              label="Allocated PB"
-              value={previousAllocatedPB}
-              type="currency"
-            />
+          {/* PB to be Paid */}
 
-            <CompensationItem
-              label="Performance Bonus"
-              value={previousPerformanceBonus}
-              type="currency"
-            />
+          <InfoCell
+            label="PB to be Paid"
+            value={currency(employee.pbToBePaid)}
+          />
 
-            <CompensationItem
-              label="Retention Bonus"
-              value={previousRetentionBonus}
-              type="currency"
-            />
+          {/* Month PB */}
 
-            <CompensationItem
-              label="Total PB"
-              value={previousTotalPB}
-              type="currency"
-            />
+          <InfoCell label="Month PB" value={employee.monthPB} />
 
-            <CompensationItem
-              label="Total Bonus"
-              value={previousTotalBonus}
-              type="currency"
-            />
+          {/* ------------------------------------------------
+              OTHER NON-EDITABLE COLUMN DATA
+              ------------------------------------------------
 
-            <CompensationItem
-              label="Hike Amount"
-              value={previousHikeAmount}
-              type="currency"
-            />
+              These are intentionally NOT repeated here:
 
-            <CompensationItem
-              label="Hike %"
-              value={previousHikePct}
-              type="percent"
-            />
+              currentAnnualBasePay
+              targetPBAllocatedForMay
+              allocatedPBAmount
+              newPBToBeOffered
+              newRB
+              hikeAmount
+              hikePct
+              totalOfPB
+              totalBonus
+              totalCTCWithRewards
 
-            <div className="flex items-center justify-between gap-2 bg-muted/30 px-2 py-1">
-              <span className="text-[9px] font-bold">New CTC</span>
+              Those belong to the comparison section on
+              the RIGHT.
+          ------------------------------------------------- */}
 
-              <span className="text-right text-[9px] font-bold tabular-nums">
-                {currency(previousNewCTC)}
-              </span>
-            </div>
-          </div>
+          {/* Current CTC - extra existing row data */}
+
+          <InfoCell label="Current CTC" value={currency(employee.currentCTC)} />
+
+          {/* Target Performance Bonus */}
+
+          <InfoCell
+            label="Target Performance Bonus"
+            value={currency(employee.targetPerformanceBonus)}
+          />
         </div>
 
-        {/* ======================================================
-            CURRENT YEAR
-        ====================================================== */}
-        <div className="min-w-0 overflow-hidden rounded border border-border bg-muted/10">
-          <div className="border-b border-border bg-muted/40 px-2 py-1">
-            <div className="text-[9px] font-bold uppercase tracking-wide">
-              Current Year
+        {/* ====================================================
+            RIGHT SIDE
+            EXISTING COMPARISON SECTION
+        ===================================================== */}
+
+        <div className="min-w-0 overflow-x-auto">
+          <div className="min-w-[500px]">
+            {/* COMPARISON HEADER */}
+
+            <div
+              className="
+                grid
+                grid-cols-[1.6fr_1fr_1fr_0.8fr]
+                border-b
+                border-border
+                bg-muted/20
+              "
+            >
+              <div
+                className="
+                  px-2
+                  py-1
+                  text-left
+                  text-[7px]
+                  font-semibold
+                  uppercase
+                  tracking-wide
+                  text-muted-foreground
+                "
+              >
+                Field
+              </div>
+
+              <div
+                className="
+                  px-2
+                  py-1
+                  text-right
+                  text-[7px]
+                  font-semibold
+                  uppercase
+                  tracking-wide
+                  text-muted-foreground
+                "
+              >
+                This Year
+              </div>
+
+              <div
+                className="
+                  px-2
+                  py-1
+                  text-right
+                  text-[7px]
+                  font-semibold
+                  uppercase
+                  tracking-wide
+                  text-muted-foreground
+                "
+              >
+                Previous Year
+              </div>
+
+              <div
+                className="
+                  px-2
+                  py-1
+                  text-right
+                  text-[7px]
+                  font-semibold
+                  uppercase
+                  tracking-wide
+                  text-muted-foreground
+                "
+              >
+                Change
+              </div>
             </div>
-          </div>
 
-          <div>
-            <CompensationItem
-              label="Annual Base Pay"
-              value={currentBasePay}
-              type="currency"
-            />
+            {/* ANNUAL BASE PAY */}
 
-            <CompensationItem
-              label="Allocated PB"
-              value={currentAllocatedPB}
-              type="currency"
-            />
-
-            <CompensationItem
-              label="Performance Bonus"
-              value={currentPerformanceBonus}
-              type="currency"
-            />
-
-            <CompensationItem
-              label="Retention Bonus"
-              value={currentRetentionBonus}
-              type="currency"
-            />
-
-            <CompensationItem
-              label="Total PB"
-              value={currentTotalPB}
-              type="currency"
-            />
-
-            <CompensationItem
-              label="Total Bonus"
-              value={currentTotalBonus}
-              type="currency"
-            />
-
-            <CompensationItem
-              label="Hike Amount"
-              value={currentHikeAmount}
-              type="currency"
-            />
-
-            <CompensationItem
-              label="Hike %"
-              value={currentHikePct}
-              type="percent"
-            />
-
-            <div className="flex items-center justify-between gap-2 bg-muted/30 px-2 py-1">
-              <span className="text-[9px] font-bold">New CTC</span>
-
-              <span className="text-right text-[9px] font-bold tabular-nums">
-                {currency(currentNewCTC)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* ======================================================
-            CHANGES
-        ====================================================== */}
-        <div className="min-w-0 overflow-hidden rounded border border-border bg-muted/10">
-          <div className="border-b border-border bg-muted/40 px-2 py-1">
-            <div className="text-[9px] font-bold uppercase tracking-wide">
-              Changes
-            </div>
-          </div>
-
-          <div>
-            <ChangeItem
+            <ComparisonRow
               label="Annual Base Pay"
               current={currentBasePay}
               previous={previousBasePay}
               type="currency"
             />
 
-            <ChangeItem
+            {/* ALLOCATED PB */}
+
+            <ComparisonRow
               label="Allocated PB"
               current={currentAllocatedPB}
               previous={previousAllocatedPB}
               type="currency"
             />
 
-            <ChangeItem
+            {/* PERFORMANCE BONUS */}
+
+            <ComparisonRow
               label="Performance Bonus"
               current={currentPerformanceBonus}
               previous={previousPerformanceBonus}
               type="currency"
             />
 
-            <ChangeItem
+            {/* RETENTION BONUS */}
+
+            <ComparisonRow
               label="Retention Bonus"
               current={currentRetentionBonus}
               previous={previousRetentionBonus}
               type="currency"
             />
 
-            <ChangeItem
+            {/* TOTAL PB */}
+
+            <ComparisonRow
               label="Total PB"
               current={currentTotalPB}
               previous={previousTotalPB}
               type="currency"
             />
 
-            <ChangeItem
+            {/* TOTAL BONUS */}
+
+            <ComparisonRow
               label="Total Bonus"
               current={currentTotalBonus}
               previous={previousTotalBonus}
               type="currency"
             />
 
-            <ChangeItem
+            {/* HIKE AMOUNT */}
+
+            <ComparisonRow
               label="Hike Amount"
               current={currentHikeAmount}
               previous={previousHikeAmount}
               type="currency"
             />
 
-            <ChangeItem
+            {/* HIKE % */}
+
+            <ComparisonRow
               label="Hike %"
               current={currentHikePct}
               previous={previousHikePct}
               type="percent"
             />
 
-            <div className="flex items-center justify-between gap-2 bg-muted/30 px-2 py-1">
-              <span className="text-[9px] font-bold">New CTC</span>
+            {/* NEW CTC */}
 
-              <span className="text-right text-[9px] font-bold tabular-nums">
-                {percentageChange(currentNewCTC, previousNewCTC)}
-              </span>
-            </div>
+            <ComparisonRow
+              label="New CTC"
+              current={currentNewCTC}
+              previous={previousNewCTC}
+              type="currency"
+              bold
+            />
           </div>
         </div>
       </div>
