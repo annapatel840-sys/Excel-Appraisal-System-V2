@@ -157,7 +157,7 @@ export function SheetPage() {
         <Input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search employee, ID, department..."
+          placeholder="Search employee, ID, designation..."
           className="h-7 border-border bg-background pl-7 text-[11px]"
         />
       </div>
