@@ -69,8 +69,8 @@ function InfoCell({ label, value }) {
         min-w-0
         rounded
         border
-        border-border
-        bg-muted/20
+        border-[#d9e0e8]
+        bg-[#f8fafc]
         px-1.5
         py-1
       "
@@ -82,7 +82,7 @@ function InfoCell({ label, value }) {
           font-medium
           uppercase
           tracking-wide
-          text-muted-foreground
+          text-[#64748b]
         "
       >
         {label}
@@ -95,6 +95,7 @@ function InfoCell({ label, value }) {
           text-[9px]
           font-semibold
           leading-tight
+          text-[#334155]
         "
       >
         {valueOrDash(value)}
@@ -145,17 +146,19 @@ function ComparisonRow({
         grid-cols-[1.6fr_1fr_1fr_0.8fr]
         items-center
         border-b
-        border-border
+        border-[#d9e0e8]
         last:border-b-0
       "
     >
       {/* FIELD */}
+
       <div
         className={`
           min-w-0
           truncate
           px-2
           py-1
+          text-[#334155]
           ${bold ? "text-[9px] font-bold" : "text-[8px] font-medium"}
         `}
       >
@@ -163,12 +166,15 @@ function ComparisonRow({
       </div>
 
       {/* THIS YEAR */}
+
       <div
         className={`
+          bg-[#fff7c7]
           px-2
           py-1
           text-right
           tabular-nums
+          text-[#173b63]
           ${bold ? "text-[9px] font-bold" : "text-[8px] font-semibold"}
         `}
       >
@@ -176,13 +182,14 @@ function ComparisonRow({
       </div>
 
       {/* PREVIOUS YEAR */}
+
       <div
         className={`
           px-2
           py-1
           text-right
           tabular-nums
-          text-muted-foreground
+          text-[#64748b]
           ${bold ? "text-[9px] font-bold" : "text-[8px] font-semibold"}
         `}
       >
@@ -190,6 +197,7 @@ function ComparisonRow({
       </div>
 
       {/* CHANGE */}
+
       <div
         className={`
           px-2
@@ -199,10 +207,10 @@ function ComparisonRow({
           ${bold ? "text-[9px] font-bold" : "text-[8px] font-bold"}
           ${
             isPositive
-              ? "text-green-600"
+              ? "text-[#16803c]"
               : isNegative
-                ? "text-red-600"
-                : "text-muted-foreground"
+                ? "text-[#dc2626]"
+                : "text-[#64748b]"
           }
         `}
       >
@@ -283,9 +291,9 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
         overflow-hidden
         rounded-md
         border
-        border-border
-        bg-card
-        shadow-sm
+        border-[#cbd5e1]
+        bg-white
+        shadow-[0_4px_14px_rgba(15,23,42,.08)]
       "
     >
       {/* ======================================================
@@ -299,14 +307,15 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
           items-center
           justify-between
           border-b
-          border-border
+          border-[#cbd5e1]
+          bg-[#173b63]
           px-2.5
         "
       >
         <div className="flex min-w-0 items-center gap-1.5">
           {/* NAME */}
 
-          <h3 className="truncate text-[11px] font-semibold">
+          <h3 className="truncate text-[11px] font-semibold text-white">
             {employee.name}
           </h3>
 
@@ -316,12 +325,14 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
             className="
               shrink-0
               rounded
-              bg-muted
+              border
+              border-white/20
+              bg-white/10
               px-1.5
               py-0.5
               font-mono
               text-[8px]
-              text-muted-foreground
+              text-white/85
             "
           >
             {employee.empId}
@@ -334,7 +345,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
               hidden
               truncate
               text-[8px]
-              text-muted-foreground
+              text-white/65
               sm:inline
             "
           >
@@ -348,7 +359,13 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
           type="button"
           variant="ghost"
           size="icon"
-          className="size-5 shrink-0"
+          className="
+            size-5
+            shrink-0
+            text-white
+            hover:bg-white/10
+            hover:text-white
+          "
           onClick={() => onOpenChange(false)}
         >
           <X className="size-3" />
@@ -366,6 +383,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
           grid
           grid-cols-1
           gap-2
+          bg-white
           p-2
           lg:grid-cols-[1fr_1.45fr]
         "
@@ -378,11 +396,11 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
         <div
           className="
             grid
+            content-start
             grid-cols-2
             gap-1
             sm:grid-cols-3
             lg:grid-cols-3
-            content-start
           "
         >
           {/* Reporting Manager */}
@@ -515,7 +533,15 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
         ===================================================== */}
 
         <div className="min-w-0 overflow-x-auto">
-          <div className="min-w-[500px]">
+          <div
+            className="
+              min-w-[500px]
+              overflow-hidden
+              rounded
+              border
+              border-[#d9e0e8]
+            "
+          >
             {/* COMPARISON HEADER */}
 
             <div
@@ -523,8 +549,8 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
                 grid
                 grid-cols-[1.6fr_1fr_1fr_0.8fr]
                 border-b
-                border-border
-                bg-muted/20
+                border-[#cbd5e1]
+                bg-[#e8eef5]
               "
             >
               <div
@@ -536,7 +562,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
                   font-semibold
                   uppercase
                   tracking-wide
-                  text-muted-foreground
+                  text-[#334155]
                 "
               >
                 Field
@@ -551,7 +577,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
                   font-semibold
                   uppercase
                   tracking-wide
-                  text-muted-foreground
+                  text-[#334155]
                 "
               >
                 This Year
@@ -566,7 +592,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
                   font-semibold
                   uppercase
                   tracking-wide
-                  text-muted-foreground
+                  text-[#334155]
                 "
               >
                 Previous Year
@@ -581,7 +607,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
                   font-semibold
                   uppercase
                   tracking-wide
-                  text-muted-foreground
+                  text-[#334155]
                 "
               >
                 Change

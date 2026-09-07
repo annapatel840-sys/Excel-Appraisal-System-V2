@@ -1,5 +1,13 @@
 import { useMemo, useState } from "react";
-import { Download, History, Layers, RotateCcw, Search, X } from "lucide-react";
+import {
+  Download,
+  History,
+  Layers,
+  Menu,
+  RotateCcw,
+  Search,
+  X,
+} from "lucide-react";
 
 import { AppShell } from "@/components/appraisal/AppShell";
 import { AppraisalGrid } from "@/components/appraisal/AppraisalGrid";
@@ -39,14 +47,19 @@ export function SheetPage() {
 
   const [drawerRowId, setDrawerRowId] = useState(null);
 
+  /* ============================================================
+     HISTORY TOGGLE
+     ============================================================ */
+
+  const [showHistory, setShowHistory] = useState(false);
+
   /*
-   * IMPORTANT:
-   *
    * Store only the employee ID.
    *
    * This means when Hike % or Hike Amount changes,
    * EmployeeDrawer receives the latest row from the store.
    */
+
   const drawerRow = useMemo(
     () => rows.find((r) => r.id === drawerRowId) ?? null,
     [rows, drawerRowId],
@@ -74,12 +87,45 @@ export function SheetPage() {
 
   const activeFilters = Object.entries(filters);
 
-  /*
-   * Header search + actions
-   */
+  /* ============================================================
+     HEADER SEARCH + ACTIONS
+     ============================================================ */
+
   const headerActions = (
     <div className="flex min-w-0 items-center gap-1.5">
-      {/* Search */}
+      {/* ========================================================
+          SHOW HISTORY
+          ======================================================== */}
+
+      <button
+        type="button"
+        onClick={() => setShowHistory((previous) => !previous)}
+        aria-pressed={showHistory}
+        aria-label="Show History"
+        className="flex shrink-0 items-center gap-2 border-0 bg-transparent p-0 outline-none"
+      >
+        <span className="text-[11px] font-medium text-[#334155]">
+          Show History
+        </span>
+
+        <span
+          className={`relative block h-[22px] w-[46px] rounded-full transition-colors duration-200 ${
+            showHistory ? "bg-[#39b878]" : "bg-[#647da0]"
+          }`}
+        >
+          <span
+            className="absolute top-[3px] left-[3px] h-[16px] w-[16px] rounded-full bg-white shadow-sm transition-transform duration-200"
+            style={{
+              transform: showHistory ? "translateX(24px)" : "translateX(0)",
+            }}
+          />
+        </span>
+      </button>
+
+      {/* ========================================================
+          SEARCH
+          ======================================================== */}
+
       <div className="relative w-[230px]">
         <Search className="absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
 
@@ -91,7 +137,10 @@ export function SheetPage() {
         />
       </div>
 
-      {/* Reset */}
+      {/* ========================================================
+          RESET
+          ======================================================== */}
+
       <Button
         variant="outline"
         size="sm"
@@ -106,51 +155,77 @@ export function SheetPage() {
         Reset
       </Button>
 
-      {/* Bulk Edit */}
-      <Button
-        size="sm"
-        className="h-7 shrink-0 px-2 text-[10px]"
-        onClick={() => setBulkOpen(true)}
-        disabled={selectedIds.length === 0}
-      >
-        <Layers className="size-3" />
-        Bulk ({selectedIds.length})
-      </Button>
+      {/* ========================================================
+          MENU
+          Bulk Edit + Audit + Export
+          ======================================================== */}
 
-      {/* Audit */}
-      <UISheet>
-        <SheetTrigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-7 shrink-0 px-2 text-[10px]"
-          >
-            <History className="size-3" />
-            Audit ({audit.length})
-          </Button>
-        </SheetTrigger>
+      <div className="relative">
+        <details className="group">
+          <summary className="flex h-7 cursor-pointer list-none items-center gap-1.5 rounded-md border border-border bg-background px-2 text-[10px] font-medium text-foreground hover:bg-muted [&::-webkit-details-marker]:hidden">
+            <Menu className="size-3.5" />
+            Menu
+          </summary>
 
-        <SheetContent className="w-full sm:max-w-xl">
-          <SheetHeader>
-            <SheetTitle>Compensation Audit Trail</SheetTitle>
-          </SheetHeader>
+          <div className="absolute top-full right-0 z-50 mt-1 w-[160px] overflow-hidden rounded-md border border-[#cbd5e1] bg-white shadow-lg">
+            {/* ==================================================
+                BULK EDIT
+                ================================================== */}
 
-          <div className="overflow-y-auto px-4 pb-6">
-            <AuditPanel entries={audit} />
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] text-[#334155] hover:bg-[#f1f5f9] disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => setBulkOpen(true)}
+              disabled={selectedIds.length === 0}
+            >
+              <Layers className="size-3.5" />
+
+              <span>Bulk Edit ({selectedIds.length})</span>
+            </button>
+
+            {/* ==================================================
+                AUDIT
+                ================================================== */}
+
+            <UISheet>
+              <SheetTrigger asChild>
+                <button
+                  type="button"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] text-[#334155] hover:bg-[#f1f5f9]"
+                >
+                  <History className="size-3.5" />
+
+                  <span>Audit ({audit.length})</span>
+                </button>
+              </SheetTrigger>
+
+              <SheetContent className="w-full sm:max-w-xl">
+                <SheetHeader>
+                  <SheetTitle>Compensation Audit Trail</SheetTitle>
+                </SheetHeader>
+
+                <div className="overflow-y-auto px-4 pb-6">
+                  <AuditPanel entries={audit} />
+                </div>
+              </SheetContent>
+            </UISheet>
+
+            {/* ==================================================
+                EXPORT
+                ================================================== */}
+
+            <button
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] text-[#334155] hover:bg-[#f1f5f9]"
+              onClick={() => exportToExcel(filtered)}
+            >
+              <Download className="size-3.5" />
+
+              <span>Export</span>
+            </button>
           </div>
-        </SheetContent>
-      </UISheet>
-
-      {/* Export */}
-      <Button
-        variant="outline"
-        size="sm"
-        className="h-7 shrink-0 px-2 text-[10px]"
-        onClick={() => exportToExcel(filtered)}
-      >
-        <Download className="size-3" />
-        Export
-      </Button>
+        </details>
+      </div>
     </div>
   );
 
@@ -158,17 +233,15 @@ export function SheetPage() {
     <>
       <AppShell headerActions={headerActions}>
         <div className="space-y-1.5">
-          {/* Compact page heading */}
+          {/* ======================================================
+              COMPACT PAGE HEADING
+              ====================================================== */}
+
           <div className="flex items-center justify-between px-0.5">
             <div>
               <h2 className="text-lg font-semibold tracking-tight">
                 Appraisal Sheet
               </h2>
-
-              {/*<p className="text-[10px] text-muted-foreground">
-                Click an employee for details · Double-click editable cells to
-                edit
-              </p>*/}
             </div>
 
             <div className="text-right text-[10px] text-muted-foreground">
@@ -179,7 +252,10 @@ export function SheetPage() {
             </div>
           </div>
 
-          {/* Active filters */}
+          {/* ======================================================
+              ACTIVE FILTERS
+              ====================================================== */}
+
           {activeFilters.length > 0 && (
             <div className="flex flex-wrap items-center gap-1 border-b border-border pb-1">
               {activeFilters.map(([key, f]) => (
@@ -189,13 +265,17 @@ export function SheetPage() {
                   className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[9px] font-medium text-primary hover:bg-primary/20"
                 >
                   {describeFilter(key, f)}
+
                   <X className="size-2.5" />
                 </button>
               ))}
             </div>
           )}
 
-          {/* Selected employee details */}
+          {/* ======================================================
+              SELECTED EMPLOYEE DETAILS
+              ====================================================== */}
+
           {drawerRow && (
             <EmployeeDrawer
               employee={drawerRow}
@@ -207,7 +287,10 @@ export function SheetPage() {
             />
           )}
 
-          {/* Compact grid status */}
+          {/* ======================================================
+              COMPACT GRID STATUS
+              ====================================================== */}
+
           <div className="flex items-center justify-between px-0.5 text-[9px] text-muted-foreground">
             <span>
               Showing{" "}
@@ -220,7 +303,10 @@ export function SheetPage() {
             <span>Modified cells save automatically.</span>
           </div>
 
-          {/* Grid */}
+          {/* ======================================================
+              GRID
+              ====================================================== */}
+
           <AppraisalGrid
             rows={filtered}
             filters={filters}
@@ -246,9 +332,15 @@ export function SheetPage() {
               )
             }
             onRowOpen={(employee) => setDrawerRowId(employee.id)}
+            showHistory={showHistory}
+            setShowHistory={setShowHistory}
           />
         </div>
       </AppShell>
+
+      {/* ========================================================
+          BULK EDIT DIALOG
+          ======================================================== */}
 
       <BulkEditDialog
         open={bulkOpen}
