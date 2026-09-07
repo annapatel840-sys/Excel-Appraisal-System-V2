@@ -19,64 +19,66 @@ const APPRAISAL_FONT = "Arial, Helvetica, sans-serif";
 
 const PAGE_SIZE = 20;
 
+/* Smaller row height */
+const CELL_MIN_HEIGHT = 30;
+
 const SELECT_WIDTH = 30;
-const EMP_ID_WIDTH = 72;
-const EMP_NAME_WIDTH = 145;
 
-const MIN_WIDTH = 55;
-const MAX_WIDTH = 165;
+const MIN_WIDTH = 52;
+const MAX_WIDTH = 160;
 
+/* Slightly tighter columns */
 const WIDTHS = {
-  empId: 72,
-  name: 145,
+  empId: 68,
+  name: 135,
 
-  designation: 100,
-  reportingManager: 108,
-  compManager: 108,
-  appraiserTechED: 112,
+  designation: 94,
+  reportingManager: 100,
+  compManager: 100,
+  appraiserTechED: 104,
 
-  wissenExperience: 88,
-  totalExperience: 82,
-  lastAppraisalDate: 108,
+  wissenExperience: 82,
+  totalExperience: 76,
+  lastAppraisalDate: 100,
 
-  managerRating: 125,
-  interviewCount: 72,
-  rrPercent: 65,
-  grossMargin: 78,
+  managerRating: 116,
+  interviewCount: 68,
+  rrPercent: 60,
+  grossMargin: 72,
 
-  rbToBePaid: 88,
-  monthRB: 62,
-  pbToBePaid: 88,
-  monthPB: 62,
+  rbToBePaid: 82,
+  monthRB: 58,
+  pbToBePaid: 82,
+  monthPB: 58,
 
-  currentAnnualBasePay: 108,
-  targetPBAllocatedForMay: 115,
-  allocatedPBAmount: 105,
-  pbInstallment: 68,
-  newPBToBeOffered: 105,
-  newPBInstallment: 68,
+  currentAnnualBasePay: 102,
+  targetPBAllocatedForMay: 108,
+  allocatedPBAmount: 98,
+  pbInstallment: 64,
+  newPBToBeOffered: 98,
+  newPBInstallment: 64,
 
-  totalOfPB: 92,
-  newRB: 88,
-  totalBonus: 92,
+  totalOfPB: 86,
+  newRB: 82,
+  totalBonus: 86,
 
-  hikeAmount: 95,
-  hikePct: 62,
+  hikeAmount: 90,
+  hikePct: 58,
 
-  totalCTCWithRewards: 110,
+  totalCTCWithRewards: 104,
 
-  totalBonusHikeAmount: 112,
-  totalBonusHikePct: 88,
+  totalBonusHikeAmount: 106,
+  totalBonusHikePct: 82,
 
-  totalRewardsHikeAmount: 118,
-  totalRewardsHikePct: 92,
+  totalRewardsHikeAmount: 112,
+  totalRewardsHikePct: 86,
 
-  newBaseSalary: 108,
-  targetPBNextYear: 112,
+  newBaseSalary: 102,
+  targetPBNextYear: 106,
 
-  eligibleForPromotion: 92,
-  newTitle: 105,
-  atRisk: 125,
+  eligibleForPromotion: 88,
+  newTitle: 100,
+  atRisk: 118,
 };
 
 const GRID_COLUMNS = COLUMNS;
@@ -148,9 +150,6 @@ export function AppraisalGrid({
   toggleAll,
   onRowOpen,
 
-  /* ==========================================================
-     SHOW HISTORY IS CONTROLLED BY SHEET.JSX
-     ========================================================== */
   showHistory,
   setShowHistory,
 }) {
@@ -159,19 +158,118 @@ export function AppraisalGrid({
   const cellRefs = useRef({});
   const clickTimerRef = useRef(null);
 
+  /* ============================================================
+     GRID VIEWPORT REF
+     Used to prevent hover popup from covering page heading
+     ============================================================ */
+
+  const gridViewportRef = useRef(null);
+
+  /* ============================================================
+     COLUMN RESIZE
+     ============================================================ */
+
+  const [columnWidths, setColumnWidths] = useState(() =>
+    Object.fromEntries(
+      GRID_COLUMNS.map((column) => [column.key, getWidth(column)]),
+    ),
+  );
+
+  const resizeRef = useRef(null);
+
+  const widthOf = useCallback(
+    (column) => {
+      return columnWidths[column.key] ?? getWidth(column);
+    },
+    [columnWidths],
+  );
+
+  const startColumnResize = useCallback(
+    (event, column) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      resizeRef.current = {
+        key: column.key,
+        startX: event.clientX,
+        startWidth: widthOf(column),
+      };
+
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [widthOf],
+  );
+
+  useEffect(() => {
+    const handlePointerMove = (event) => {
+      if (!resizeRef.current) {
+        return;
+      }
+
+      const { key, startX, startWidth } = resizeRef.current;
+
+      const nextWidth = Math.min(
+        MAX_WIDTH,
+        Math.max(MIN_WIDTH, startWidth + event.clientX - startX),
+      );
+
+      setColumnWidths((previous) => ({
+        ...previous,
+        [key]: nextWidth,
+      }));
+    };
+
+    const handlePointerUp = () => {
+      resizeRef.current = null;
+
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, []);
+
+  /* ============================================================
+     STICKY COLUMN WIDTHS
+     ============================================================ */
+
+  const empIdColumn = GRID_COLUMNS.find((column) => column.key === "empId");
+  const nameColumn = GRID_COLUMNS.find((column) => column.key === "name");
+
+  const empIdWidth = empIdColumn ? widthOf(empIdColumn) : MIN_WIDTH;
+
+  const nameWidth = nameColumn ? widthOf(nameColumn) : MIN_WIDTH;
+
+  /* Avoid unused-variable warning if nameWidth is not directly needed */
+  void nameWidth;
+
+  /* ============================================================
+     STATES
+     ============================================================ */
+
   const [active, setActive] = useState(null);
   const [saving, setSaving] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
 
-  /* ==========================================================
+  /* ============================================================
      HISTORY DETAILS
-     ========================================================== */
+     ============================================================ */
 
   const [historyRow, setHistoryRow] = useState(null);
 
-  /* ==========================================================
+  /* ============================================================
      HOVER
-     ========================================================== */
+     ============================================================ */
 
   const [hoverEmployee, setHoverEmployee] = useState(null);
 
@@ -179,6 +277,11 @@ export function AppraisalGrid({
     left: 0,
     top: 0,
   });
+
+  /* ============================================================
+     HISTORY AUTO SCROLL
+     ============================================================ */
+
   useEffect(() => {
     if (showHistory) {
       requestAnimationFrame(() => {
@@ -235,12 +338,6 @@ export function AppraisalGrid({
   const pageStart = rows.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
 
   const pageEnd = Math.min(currentPage * PAGE_SIZE, rows.length);
-
-  /* ============================================================
-     WIDTH
-     ============================================================ */
-
-  const widthOf = useCallback((column) => getWidth(column), []);
 
   /* ============================================================
      FOCUS
@@ -396,18 +493,50 @@ export function AppraisalGrid({
   );
 
   /* ============================================================
+     ROW-SPECIFIC EDITABILITY
+     ============================================================ */
+
+  const isColumnEditable = useCallback((row, column) => {
+    if (!column.editable) {
+      return false;
+    }
+
+    if (column.key === "newTitle") {
+      return row.eligibleForPromotion === "Yes";
+    }
+
+    return true;
+  }, []);
+
+  const getEditableColumnsForRow = useCallback(
+    (row) => editableColumns.filter((column) => isColumnEditable(row, column)),
+    [editableColumns, isColumnEditable],
+  );
+
+  /* ============================================================
      KEYBOARD NAVIGATION
      ============================================================ */
 
   const onKeyDown = (event, rowIndex, columnKey) => {
+    const currentRow = pageRows[rowIndex];
+
+    if (!currentRow) {
+      return;
+    }
+
     const editableColumnIndex = editableIndex.get(columnKey);
 
     if (editableColumnIndex === undefined) {
       return;
     }
 
+    const rowEditableColumns = getEditableColumnsForRow(currentRow);
+
+    const currentRowColumnIndex = rowEditableColumns.findIndex(
+      (column) => column.key === columnKey,
+    );
+
     const maxRow = pageRows.length - 1;
-    const maxCol = editableColumns.length - 1;
 
     const target = event.target;
 
@@ -418,6 +547,10 @@ export function AppraisalGrid({
       !("selectionEnd" in target) ||
       target.selectionEnd === (target.value?.length ?? 0);
 
+    /* ----------------------------------------------------------
+       ENTER
+       ---------------------------------------------------------- */
+
     if (event.key === "Enter") {
       if (target instanceof HTMLTextAreaElement && !event.shiftKey) {
         return;
@@ -425,46 +558,117 @@ export function AppraisalGrid({
 
       event.preventDefault();
 
-      const nextRow = event.shiftKey
-        ? Math.max(0, rowIndex - 1)
-        : Math.min(maxRow, rowIndex + 1);
+      const direction = event.shiftKey ? -1 : 1;
 
-      focusCell(nextRow, editableColumns[editableColumnIndex].key);
+      let nextRowIndex = rowIndex + direction;
+
+      while (nextRowIndex >= 0 && nextRowIndex <= maxRow) {
+        const nextRow = pageRows[nextRowIndex];
+
+        if (
+          nextRow &&
+          isColumnEditable(nextRow, {
+            ...COLUMNS.find((column) => column.key === columnKey),
+            key: columnKey,
+          })
+        ) {
+          focusCell(nextRowIndex, columnKey);
+
+          return;
+        }
+
+        nextRowIndex += direction;
+      }
 
       return;
     }
+
+    /* ----------------------------------------------------------
+       ARROW DOWN
+       ---------------------------------------------------------- */
 
     if (event.key === "ArrowDown") {
       event.preventDefault();
 
-      focusCell(Math.min(maxRow, rowIndex + 1), columnKey);
+      const nextRowIndex = Math.min(maxRow, rowIndex + 1);
+
+      const nextRow = pageRows[nextRowIndex];
+
+      if (
+        nextRow &&
+        isColumnEditable(
+          nextRow,
+          COLUMNS.find((column) => column.key === columnKey) ?? {
+            key: columnKey,
+            editable: false,
+          },
+        )
+      ) {
+        focusCell(nextRowIndex, columnKey);
+      }
 
       return;
     }
+
+    /* ----------------------------------------------------------
+       ARROW UP
+       ---------------------------------------------------------- */
 
     if (event.key === "ArrowUp") {
       event.preventDefault();
 
-      focusCell(Math.max(0, rowIndex - 1), columnKey);
+      const nextRowIndex = Math.max(0, rowIndex - 1);
+
+      const nextRow = pageRows[nextRowIndex];
+
+      if (
+        nextRow &&
+        isColumnEditable(
+          nextRow,
+          COLUMNS.find((column) => column.key === columnKey) ?? {
+            key: columnKey,
+            editable: false,
+          },
+        )
+      ) {
+        focusCell(nextRowIndex, columnKey);
+      }
 
       return;
     }
 
-    if (event.key === "ArrowRight" && atEnd && editableColumnIndex < maxCol) {
+    /* ----------------------------------------------------------
+       ARROW RIGHT
+       ---------------------------------------------------------- */
+
+    if (
+      event.key === "ArrowRight" &&
+      atEnd &&
+      currentRowColumnIndex >= 0 &&
+      currentRowColumnIndex < rowEditableColumns.length - 1
+    ) {
       event.preventDefault();
 
-      focusCell(rowIndex, editableColumns[editableColumnIndex + 1].key);
+      focusCell(rowIndex, rowEditableColumns[currentRowColumnIndex + 1].key);
 
       return;
     }
 
-    if (event.key === "ArrowLeft" && atStart && editableColumnIndex > 0) {
+    /* ----------------------------------------------------------
+       ARROW LEFT
+       ---------------------------------------------------------- */
+
+    if (event.key === "ArrowLeft" && atStart && currentRowColumnIndex > 0) {
       event.preventDefault();
 
-      focusCell(rowIndex, editableColumns[editableColumnIndex - 1].key);
+      focusCell(rowIndex, rowEditableColumns[currentRowColumnIndex - 1].key);
 
       return;
     }
+
+    /* ----------------------------------------------------------
+       ESCAPE
+       ---------------------------------------------------------- */
 
     if (event.key === "Escape") {
       target.blur();
@@ -491,8 +695,8 @@ export function AppraisalGrid({
      ============================================================ */
 
   const handleCellClick = useCallback(
-    (row, isEditable) => {
-      if (!isEditable) {
+    (row, editable) => {
+      if (!editable) {
         openRow(row);
         return;
       }
@@ -537,7 +741,21 @@ export function AppraisalGrid({
     const height = 390;
     const margin = 14;
 
+    /*
+     * IMPORTANT:
+     * The popup must stay BELOW the actual grid header.
+     * This prevents it from getting hidden behind the
+     * Appraisal Sheet / Search / Filter area.
+     */
+
+    const viewport = gridViewportRef.current;
+
+    const viewportRect = viewport?.getBoundingClientRect();
+
+    const minimumTop = viewportRect ? viewportRect.top + 42 : 115;
+
     let left = event.clientX + margin;
+
     let top = event.clientY + margin;
 
     if (left + width > window.innerWidth) {
@@ -546,6 +764,18 @@ export function AppraisalGrid({
 
     if (top + height > window.innerHeight) {
       top = event.clientY - height - margin;
+    }
+
+    /*
+     * Never allow popup to go above grid header.
+     */
+    top = Math.max(minimumTop, top);
+
+    /*
+     * Keep popup inside viewport.
+     */
+    if (top + height > window.innerHeight - 8) {
+      top = Math.max(minimumTop, window.innerHeight - height - 8);
     }
 
     return {
@@ -719,9 +949,7 @@ export function AppraisalGrid({
   const renderCellContent = (row, col, rowIndex) => {
     const cellKey = `${row.id}:${col.key}`;
 
-    const isEditable = col.editable === true;
-
-    const editableColumnIndex = editableIndex.get(col.key);
+    const isEditable = isColumnEditable(row, col);
 
     const isNewTitleDisabled =
       col.key === "newTitle" && row.eligibleForPromotion !== "Yes";
@@ -736,11 +964,12 @@ export function AppraisalGrid({
       return (
         <div
           className={cn(
-            "flex h-full w-full items-center",
-            "overflow-hidden px-1.5",
-            "whitespace-nowrap",
+            `flex min-h-[${CELL_MIN_HEIGHT}px] h-auto w-full items-center`,
+            "px-1.5 py-0.5",
+            "whitespace-normal break-words",
+            "leading-tight",
             "text-right",
-            "text-[10px]",
+            "text-[9px]",
             "font-medium",
             "tabular-nums",
             modified[cellKey] ? "text-slate-900" : "text-[#064e7a]",
@@ -767,17 +996,17 @@ export function AppraisalGrid({
             openRow(row);
           }}
           className={cn(
-            "block h-full w-full",
-            "overflow-hidden",
-            "px-1.5",
+            `flex min-h-[${CELL_MIN_HEIGHT}px] h-auto w-full`,
+            "items-center",
+            "px-1.5 py-0.5",
             "text-left",
-            "text-[10px]",
+            "text-[9px]",
             "font-normal",
-            "whitespace-nowrap",
-            "text-ellipsis",
+            "whitespace-normal break-words",
+            "leading-tight",
             col.key === "name" &&
               "font-semibold text-[#07528a] hover:underline",
-            col.key === "empId" && "text-[9px] text-slate-500",
+            col.key === "empId" && "text-[8px] text-slate-500",
           )}
           title={String(row[col.key] ?? "")}
         >
@@ -810,13 +1039,14 @@ export function AppraisalGrid({
             flashSaved(cellKey);
           }}
           className={cn(
-            "h-full w-full",
+            `min-h-[${CELL_MIN_HEIGHT}px] h-full w-full`,
             "appearance-none",
             "cursor-pointer",
             "bg-transparent",
-            "px-1.5",
-            "text-[10px]",
+            "px-1.5 py-0.5",
+            "text-[9px]",
             "outline-none",
+            "whitespace-normal",
             isNewTitleDisabled && "cursor-not-allowed opacity-50",
           )}
         >
@@ -840,13 +1070,24 @@ export function AppraisalGrid({
         <textarea
           ref={(element) => {
             cellRefs.current[`${rowIndex}:${col.key}`] = element;
+
+            if (element) {
+              element.style.height = "auto";
+
+              element.style.height = `${element.scrollHeight}px`;
+            }
           }}
+          rows={1}
           value={String(row[col.key] ?? "")}
           onFocus={() => setActive(`${rowIndex}:${col.key}`)}
           onChange={(event) => {
             updateCell(row.id, col.key, event.target.value);
 
             flashSaved(cellKey);
+
+            event.target.style.height = "auto";
+
+            event.target.style.height = `${event.target.scrollHeight}px`;
           }}
           onBlur={(event) => {
             setActive(null);
@@ -858,13 +1099,16 @@ export function AppraisalGrid({
             handleEditableDoubleClick(event, rowIndex, col.key)
           }
           className={cn(
-            "h-full min-h-full w-full",
+            `min-h-[${CELL_MIN_HEIGHT}px] h-auto w-full`,
             "resize-none",
             "overflow-hidden",
             "bg-transparent",
-            "px-1.5 py-1",
-            "text-[10px]",
+            "px-1.5 py-0.5",
+            "text-[9px]",
             "outline-none",
+            "whitespace-normal",
+            "break-words",
+            "leading-tight",
           )}
         />
       );
@@ -875,7 +1119,7 @@ export function AppraisalGrid({
        ---------------------------------------------------------- */
 
     return (
-      <div className="relative h-full w-full">
+      <div className={`relative min-h-[${CELL_MIN_HEIGHT}px] h-full w-full`}>
         <input
           ref={(element) => {
             cellRefs.current[`${rowIndex}:${col.key}`] = element;
@@ -941,12 +1185,13 @@ export function AppraisalGrid({
             handleEditableDoubleClick(event, rowIndex, col.key)
           }
           className={cn(
-            "h-full w-full",
+            `min-h-[${CELL_MIN_HEIGHT}px] h-full w-full`,
             "bg-transparent",
             "px-1.5",
-            "text-[10px]",
+            "text-[9px]",
             "outline-none",
-            "whitespace-nowrap",
+            "whitespace-normal",
+            "break-words",
             isNumericType(col.type) && "text-right font-medium tabular-nums",
           )}
         />
@@ -1005,7 +1250,12 @@ export function AppraisalGrid({
         "bg-white",
       )}
       style={{
-        height: "calc(100vh - 140px)",
+        /*
+         * More usable vertical space.
+         * Search/filter/action bar outside this component
+         * is NOT changed.
+         */
+        height: "calc(100vh - 126px)",
         isolation: "isolate",
         fontFamily: APPRAISAL_FONT,
       }}
@@ -1015,24 +1265,20 @@ export function AppraisalGrid({
           ====================================================== */}
 
       <div
-        className="flex h-11 shrink-0 items-center justify-between border-b border-[#d5dce5] bg-white px-3"
+        className="flex h-9 shrink-0 items-center justify-between border-b border-[#d5dce5] bg-white px-3"
         style={{
           fontFamily: APPRAISAL_FONT,
         }}
       >
-        {/* LEFT SIDE */}
-
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <span className="text-[13px] font-bold text-[#173b63]">
+            <span className="text-[12px] font-bold text-[#173b63]">
               Compensation Management
             </span>
           </div>
         </div>
 
-        {/* RIGHT SIDE */}
-
-        <div className="text-[9px] text-slate-500">
+        <div className="text-[8px] text-slate-500">
           {rows.length > 0 ? `${rows.length} employees` : "0 employees"}
         </div>
       </div>
@@ -1041,7 +1287,10 @@ export function AppraisalGrid({
           GRID AREA
           ====================================================== */}
 
-      <div className={cn("min-h-0 flex-1", "overflow-auto")}>
+      <div
+        ref={gridViewportRef}
+        className={cn("min-h-0 flex-1", "overflow-auto")}
+      >
         <table
           className="border-separate border-spacing-0"
           style={{
@@ -1081,7 +1330,7 @@ export function AppraisalGrid({
           >
             <tr
               style={{
-                height: 38,
+                height: 34,
               }}
             >
               {/* SELECT ALL */}
@@ -1095,12 +1344,12 @@ export function AppraisalGrid({
                   width: SELECT_WIDTH,
                   minWidth: SELECT_WIDTH,
                   maxWidth: SELECT_WIDTH,
-                  height: 38,
+                  height: 34,
                   background: "#e8eef5",
                   zIndex: 80,
                 }}
               >
-                <div className="flex h-[38px] items-center justify-center">
+                <div className="flex h-[34px] items-center justify-center">
                   <Checkbox
                     checked={allSelected}
                     onCheckedChange={(value) => toggleAll(!!value)}
@@ -1122,7 +1371,7 @@ export function AppraisalGrid({
                 const left = isEmpId
                   ? SELECT_WIDTH
                   : isName
-                    ? SELECT_WIDTH + EMP_ID_WIDTH
+                    ? SELECT_WIDTH + empIdWidth
                     : undefined;
 
                 const width = widthOf(col);
@@ -1131,7 +1380,7 @@ export function AppraisalGrid({
                   <th
                     key={col.key}
                     className={cn(
-                      "border-r border-b border-[#cbd5e1] p-0",
+                      "relative border-r border-b border-[#cbd5e1] p-0",
                       isFrozen && "sticky",
                     )}
                     style={{
@@ -1147,7 +1396,7 @@ export function AppraisalGrid({
                       minWidth: width,
                       maxWidth: width,
 
-                      height: 38,
+                      height: 34,
 
                       boxSizing: "border-box",
 
@@ -1158,9 +1407,9 @@ export function AppraisalGrid({
                       fontFamily: APPRAISAL_FONT,
                     }}
                   >
-                    <div className="flex h-[38px] w-full items-center gap-0.5 overflow-hidden px-1.5">
+                    <div className="flex min-h-[34px] h-auto w-full items-center gap-0.5 px-1.5">
                       <span
-                        className="min-w-0 flex-1 overflow-hidden break-words text-left text-[9px] font-bold leading-[10px] text-[#334155]"
+                        className="min-w-0 flex-1 overflow-hidden break-words text-left text-[8px] font-bold leading-[9px] text-[#334155]"
                         title={col.label}
                       >
                         {col.label}
@@ -1175,6 +1424,16 @@ export function AppraisalGrid({
                         />
                       </div>
                     </div>
+
+                    {/* RESIZE HANDLE */}
+
+                    <div
+                      role="separator"
+                      aria-label={`Resize ${col.label} column`}
+                      title="Drag to resize column"
+                      onPointerDown={(event) => startColumnResize(event, col)}
+                      className="absolute top-0 right-[-2px] z-[100] h-full w-[5px] cursor-col-resize touch-none"
+                    />
                   </th>
                 );
               })}
@@ -1191,7 +1450,7 @@ export function AppraisalGrid({
                 key={row.id}
                 className="group"
                 style={{
-                  height: 34,
+                  minHeight: CELL_MIN_HEIGHT,
                 }}
               >
                 {/* SELECT */}
@@ -1209,7 +1468,7 @@ export function AppraisalGrid({
 
                     maxWidth: SELECT_WIDTH,
 
-                    height: 34,
+                    minHeight: CELL_MIN_HEIGHT,
 
                     zIndex: 20,
 
@@ -1219,7 +1478,7 @@ export function AppraisalGrid({
                   }}
                   onClick={() => openRow(row)}
                 >
-                  <div className="flex h-[34px] items-center justify-center">
+                  <div className="flex min-h-[30px] h-full items-center justify-center">
                     <Checkbox
                       checked={!!selected[row.id]}
                       onCheckedChange={(value) =>
@@ -1246,12 +1505,14 @@ export function AppraisalGrid({
                   const left = isEmpId
                     ? SELECT_WIDTH
                     : isName
-                      ? SELECT_WIDTH + EMP_ID_WIDTH
+                      ? SELECT_WIDTH + empIdWidth
                       : undefined;
 
                   const width = widthOf(col);
 
                   const isComputed = col.computed;
+
+                  const isEditable = isColumnEditable(row, col);
 
                   const isActive = active === `${rowIndex}:${col.key}`;
 
@@ -1278,7 +1539,7 @@ export function AppraisalGrid({
                         minWidth: width,
                         maxWidth: width,
 
-                        height: 34,
+                        minHeight: CELL_MIN_HEIGHT,
 
                         boxSizing: "border-box",
 
@@ -1290,13 +1551,11 @@ export function AppraisalGrid({
                             ? "#edf6fc"
                             : "#fff",
                       }}
-                      onClick={() =>
-                        handleCellClick(row, col.editable === true)
-                      }
+                      onClick={() => handleCellClick(row, isEditable)}
                     >
                       <div
                         className={cn(
-                          "relative h-[34px] w-full overflow-hidden",
+                          "relative min-h-[30px] h-auto w-full",
 
                           isFrozen && "bg-[#f8fafc]",
 
@@ -1304,7 +1563,7 @@ export function AppraisalGrid({
 
                           !isFrozen &&
                             !isComputed &&
-                            col.editable &&
+                            isEditable &&
                             "bg-[#fffdf1]",
 
                           !isFrozen && modified[cellKey] && "bg-[#fff0a8]",
@@ -1312,7 +1571,7 @@ export function AppraisalGrid({
                       >
                         {isName ? (
                           <div
-                            className="h-full w-full"
+                            className="min-h-[30px] h-auto w-full"
                             onMouseEnter={(event) => showHoverPopup(row, event)}
                             onMouseMove={moveHoverPopup}
                             onMouseLeave={() => setHoverEmployee(null)}
@@ -1333,7 +1592,7 @@ export function AppraisalGrid({
               <tr>
                 <td
                   colSpan={GRID_COLUMNS.length + 1}
-                  className="px-3 py-10 text-center text-[10px] text-slate-500"
+                  className="px-3 py-8 text-center text-[10px] text-slate-500"
                 >
                   No employees match the current filters.
                 </td>
@@ -1348,12 +1607,12 @@ export function AppraisalGrid({
           ====================================================== */}
 
       <div
-        className="flex h-9 shrink-0 items-center justify-between border-t border-[#d5dce5] bg-[#f8fafc] px-2.5"
+        className="flex h-8 shrink-0 items-center justify-between border-t border-[#d5dce5] bg-[#f8fafc] px-2.5"
         style={{
           fontFamily: APPRAISAL_FONT,
         }}
       >
-        <div className="text-[9px] text-slate-500">
+        <div className="text-[8px] text-slate-500">
           {rows.length === 0
             ? "0 employees"
             : `Showing ${pageStart}-${pageEnd} of ${rows.length} employees`}
@@ -1364,7 +1623,7 @@ export function AppraisalGrid({
             type="button"
             disabled={currentPage === 1}
             onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-            className="flex size-6 items-center justify-center rounded border border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40"
+            className="flex size-5 items-center justify-center rounded border border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40"
           >
             <ChevronLeft className="size-3" />
           </button>
@@ -1375,7 +1634,7 @@ export function AppraisalGrid({
               type="button"
               onClick={() => setCurrentPage(page)}
               className={cn(
-                "flex size-6 items-center justify-center rounded border text-[9px] font-medium",
+                "flex size-5 items-center justify-center rounded border text-[8px] font-medium",
 
                 page === currentPage
                   ? "border-[#173b63] bg-[#173b63] text-white"
@@ -1392,7 +1651,7 @@ export function AppraisalGrid({
             onClick={() =>
               setCurrentPage((page) => Math.min(totalPages, page + 1))
             }
-            className="flex size-6 items-center justify-center rounded border border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40"
+            className="flex size-5 items-center justify-center rounded border border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40"
           >
             <ChevronRight className="size-3" />
           </button>
@@ -1401,8 +1660,6 @@ export function AppraisalGrid({
 
       {/* ======================================================
           HISTORY DETAILS PANEL
-          
-          SHOW/HIDE IS CONTROLLED FROM SHEET.JSX
           ====================================================== */}
 
       {showHistory && (
@@ -1412,46 +1669,48 @@ export function AppraisalGrid({
           style={{
             fontFamily: APPRAISAL_FONT,
 
-            height: "min(310px, 38vh)",
+            /*
+             * Slightly shorter than before so more employees
+             * remain visible above it.
+             */
+            height: "min(270px, 32vh)",
 
-            minHeight: 190,
+            minHeight: 175,
           }}
         >
           {/* HISTORY HEADER */}
 
-          <div className="flex h-9 items-center justify-between bg-[#173b63] px-3 text-white">
+          <div className="flex h-8 items-center justify-between bg-[#173b63] px-3 text-white">
             <div className="flex items-center gap-2">
-              <History className="size-3.5" />
+              <History className="size-3" />
 
-              <span className="text-[11px] font-bold">
+              <span className="text-[10px] font-bold">
                 History
                 {historyRow ? ` - ${historyRow.name}` : ""}
               </span>
 
               {historyRow && (
-                <span className="text-[9px] opacity-75">
+                <span className="text-[8px] opacity-75">
                   {historyRows.length} cycles
                 </span>
               )}
             </div>
 
-            {/* CLOSE HISTORY */}
-
             <button
               type="button"
               onClick={() => setShowHistory(false)}
-              className="flex size-6 items-center justify-center rounded text-white hover:bg-white/10"
+              className="flex size-5 items-center justify-center rounded text-white hover:bg-white/10"
               aria-label="Close history"
             >
-              <X className="size-3.5" />
+              <X className="size-3" />
             </button>
           </div>
 
           {/* HISTORY CONTENT */}
 
-          <div className="h-[calc(100%-61px)] overflow-auto">
+          <div className="h-[calc(100%-52px)] overflow-auto">
             {!historyRow ? (
-              <div className="flex h-full items-center justify-center px-3 text-center text-[10px] text-slate-500">
+              <div className="flex h-full items-center justify-center px-3 text-center text-[9px] text-slate-500">
                 Select an employee to view history.
               </div>
             ) : (
@@ -1464,130 +1723,121 @@ export function AppraisalGrid({
                 <colgroup>
                   <col
                     style={{
-                      width: 80,
+                      width: 75,
                     }}
                   />
-
-                  <col
-                    style={{
-                      width: 115,
-                    }}
-                  />
-
                   <col
                     style={{
                       width: 105,
                     }}
                   />
-
+                  <col
+                    style={{
+                      width: 95,
+                    }}
+                  />
+                  <col
+                    style={{
+                      width: 95,
+                    }}
+                  />
                   <col
                     style={{
                       width: 105,
                     }}
                   />
-
                   <col
                     style={{
-                      width: 115,
+                      width: 95,
                     }}
                   />
-
                   <col
                     style={{
-                      width: 105,
+                      width: 95,
                     }}
                   />
-
                   <col
                     style={{
-                      width: 105,
+                      width: 95,
                     }}
                   />
-
                   <col
                     style={{
-                      width: 105,
+                      width: 95,
                     }}
                   />
-
                   <col
                     style={{
-                      width: 105,
-                    }}
-                  />
-
-                  <col
-                    style={{
-                      width: 105,
+                      width: 95,
                     }}
                   />
                 </colgroup>
 
                 <thead>
                   <tr className="bg-[#e8eef5]">
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1.5 text-left text-[9px] font-bold text-[#334155]">
+                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-left text-[8px] font-bold text-[#334155]">
                       Year
                     </th>
 
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1.5 text-right text-[9px] font-bold text-[#334155]">
+                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
                       Current Base Pay
-                      <small className="block text-[8px] font-normal text-slate-500">
+                      <small className="block text-[7px] font-normal text-slate-500">
                         % change below
                       </small>
                     </th>
 
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1.5 text-right text-[9px] font-bold text-[#334155]">
+                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
                       Joining Bonus
-                      <small className="block text-[8px] font-normal text-slate-500">
+                      <small className="block text-[7px] font-normal text-slate-500">
                         % change below
                       </small>
                     </th>
 
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1.5 text-right text-[9px] font-bold text-[#334155]">
+                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
                       Perf. Bonus
-                      <small className="block text-[8px] font-normal text-slate-500">
+                      <small className="block text-[7px] font-normal text-slate-500">
                         % change below
                       </small>
                     </th>
 
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1.5 text-right text-[9px] font-bold text-[#334155]">
+                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
                       Retention Bonus
-                      <small className="block text-[8px] font-normal text-slate-500">
+                      <small className="block text-[7px] font-normal text-slate-500">
                         % change below
                       </small>
                     </th>
 
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1.5 text-right text-[9px] font-bold text-[#334155]">
+                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
                       Total Bonus
-                      <small className="block text-[8px] font-normal text-slate-500">
+                      <small className="block text-[7px] font-normal text-slate-500">
                         % change below
                       </small>
                     </th>
 
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1.5 text-right text-[9px] font-bold text-[#334155]">
+                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
                       Hike Amount
-                      <small className="block text-[8px] font-normal text-slate-500">
+                      <small className="block text-[7px] font-normal text-slate-500">
                         % change below
                       </small>
                     </th>
 
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1.5 text-right text-[9px] font-bold text-[#334155]">
+                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
                       Total CTC
-                      <small className="block text-[8px] font-normal text-slate-500">
+                      <small className="block text-[7px] font-normal text-slate-500">
                         % change below
                       </small>
                     </th>
 
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1.5 text-right text-[9px] font-bold text-[#334155]">
+                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
                       Target PB
-                      <small className="block text-[8px] font-normal text-slate-500">
+                      <small className="block text-[7px] font-normal text-slate-500">
                         % change below
                       </small>
                     </th>
 
-                    <th className="border-b border-[#cbd5e1] px-2 py-1.5 text-right text-[9px] font-bold text-[#334155]">
+                    <th className="border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
                       New Base Pay
-                      <small className="block text-[8px] font-normal text-slate-500">
+                      <small className="block text-[7px] font-normal text-slate-500">
                         % change below
                       </small>
                     </th>
@@ -1602,34 +1852,28 @@ export function AppraisalGrid({
                       <tr
                         key={`${item.year}-${index}`}
                         className={cn(
-                          "h-[36px]",
+                          "h-[32px]",
                           index === 0 && "bg-[#fff7c7]",
                         )}
                       >
-                        {/* YEAR */}
-
-                        <td className="border-r border-b border-[#d9e0e8] px-2 py-1.5 text-left text-[9px] font-medium text-[#173b63]">
+                        <td className="border-r border-b border-[#d9e0e8] px-2 py-1 text-left text-[8px] font-medium text-[#173b63]">
                           {item.year}
                         </td>
 
-                        {/* BASE PAY */}
-
-                        <td className="border-r border-b border-[#d9e0e8] px-2 py-1 text-right text-[9px]">
+                        <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
                           <div>{formatHistoryNumber(item.basePay)}</div>
 
-                          <div className="text-[7px] text-slate-500">
+                          <div className="text-[6px] text-slate-500">
                             {previous
                               ? percentChange(item.basePay, previous.basePay)
                               : "—"}
                           </div>
                         </td>
 
-                        {/* JOINING BONUS */}
-
-                        <td className="border-r border-b border-[#d9e0e8] px-2 py-1 text-right text-[9px]">
+                        <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
                           <div>{formatHistoryNumber(item.joiningBonus)}</div>
 
-                          <div className="text-[7px] text-slate-500">
+                          <div className="text-[6px] text-slate-500">
                             {previous
                               ? percentChange(
                                   item.joiningBonus,
@@ -1639,12 +1883,10 @@ export function AppraisalGrid({
                           </div>
                         </td>
 
-                        {/* PERF BONUS */}
-
-                        <td className="border-r border-b border-[#d9e0e8] px-2 py-1 text-right text-[9px]">
+                        <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
                           <div>{formatHistoryNumber(item.perfBonus)}</div>
 
-                          <div className="text-[7px] text-slate-500">
+                          <div className="text-[6px] text-slate-500">
                             {previous
                               ? percentChange(
                                   item.perfBonus,
@@ -1654,24 +1896,20 @@ export function AppraisalGrid({
                           </div>
                         </td>
 
-                        {/* RETENTION BONUS */}
-
-                        <td className="border-r border-b border-[#d9e0e8] px-2 py-1 text-right text-[9px]">
+                        <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
                           <div>{formatHistoryNumber(item.retBonus)}</div>
 
-                          <div className="text-[7px] text-slate-500">
+                          <div className="text-[6px] text-slate-500">
                             {previous
                               ? percentChange(item.retBonus, previous.retBonus)
                               : "—"}
                           </div>
                         </td>
 
-                        {/* TOTAL BONUS */}
-
-                        <td className="border-r border-b border-[#d9e0e8] px-2 py-1 text-right text-[9px]">
+                        <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
                           <div>{formatHistoryNumber(item.totalBonus)}</div>
 
-                          <div className="text-[7px] text-slate-500">
+                          <div className="text-[6px] text-slate-500">
                             {previous
                               ? percentChange(
                                   item.totalBonus,
@@ -1681,12 +1919,10 @@ export function AppraisalGrid({
                           </div>
                         </td>
 
-                        {/* HIKE */}
-
-                        <td className="border-r border-b border-[#d9e0e8] px-2 py-1 text-right text-[9px]">
+                        <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
                           <div>{formatHistoryNumber(item.hikeAmount)}</div>
 
-                          <div className="text-[7px] text-slate-500">
+                          <div className="text-[6px] text-slate-500">
                             {previous
                               ? percentChange(
                                   item.hikeAmount,
@@ -1696,36 +1932,30 @@ export function AppraisalGrid({
                           </div>
                         </td>
 
-                        {/* TOTAL CTC */}
-
-                        <td className="border-r border-b border-[#d9e0e8] px-2 py-1 text-right text-[9px]">
+                        <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
                           <div>{formatHistoryNumber(item.totalCTC)}</div>
 
-                          <div className="text-[7px] text-slate-500">
+                          <div className="text-[6px] text-slate-500">
                             {previous
                               ? percentChange(item.totalCTC, previous.totalCTC)
                               : "—"}
                           </div>
                         </td>
 
-                        {/* TARGET PB */}
-
-                        <td className="border-r border-b border-[#d9e0e8] px-2 py-1 text-right text-[9px]">
+                        <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
                           <div>{formatHistoryNumber(item.targetPB)}</div>
 
-                          <div className="text-[7px] text-slate-500">
+                          <div className="text-[6px] text-slate-500">
                             {previous
                               ? percentChange(item.targetPB, previous.targetPB)
                               : "—"}
                           </div>
                         </td>
 
-                        {/* NEW BASE */}
-
-                        <td className="border-b border-[#d9e0e8] px-2 py-1 text-right text-[9px]">
+                        <td className="border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
                           <div>{formatHistoryNumber(item.newBasePay)}</div>
 
-                          <div className="text-[7px] text-slate-500">
+                          <div className="text-[6px] text-slate-500">
                             {previous
                               ? percentChange(
                                   item.newBasePay,
@@ -1744,7 +1974,7 @@ export function AppraisalGrid({
 
           {/* HISTORY FOOTER */}
 
-          <div className="flex h-[22px] items-center border-t border-[#e2e8f0] bg-[#f8fafc] px-3 text-[8px] text-slate-500">
+          <div className="flex h-[20px] items-center border-t border-[#e2e8f0] bg-[#f8fafc] px-3 text-[7px] text-slate-500">
             The starred row reflects the employee currently selected in the grid
             above, live. Older cycles are reference data.
           </div>
@@ -1775,9 +2005,7 @@ export function AppraisalGrid({
 
             <div className="mt-0.5 text-[9px] text-slate-500">
               {hoverEmployee.designation}
-
               {" · "}
-
               {hoverEmployee.empId}
             </div>
           </div>

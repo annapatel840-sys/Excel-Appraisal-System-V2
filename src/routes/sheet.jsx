@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Download,
   History,
@@ -52,6 +52,31 @@ export function SheetPage() {
      ============================================================ */
 
   const [showHistory, setShowHistory] = useState(false);
+
+  /* ============================================================
+     MENU
+     ============================================================ */
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  /* ============================================================
+     CLOSE MENU WHEN CLICKING OUTSIDE
+     ============================================================ */
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+    };
+  }, []);
 
   /*
    * Store only the employee ID.
@@ -157,25 +182,41 @@ export function SheetPage() {
 
       {/* ========================================================
           MENU
-          Bulk Edit + Audit + Export
           ======================================================== */}
 
-      <div className="relative">
-        <details className="group">
-          <summary className="flex h-7 cursor-pointer list-none items-center gap-1.5 rounded-md border border-border bg-background px-2 text-[10px] font-medium text-foreground hover:bg-muted [&::-webkit-details-marker]:hidden">
-            <Menu className="size-3.5" />
-            Menu
-          </summary>
+      <div ref={menuRef} className="relative">
+        {/* MENU BUTTON */}
 
-          <div className="absolute top-full right-0 z-50 mt-1 w-[160px] overflow-hidden rounded-md border border-[#cbd5e1] bg-white shadow-lg">
+        <button
+          type="button"
+          onClick={() => setMenuOpen((previous) => !previous)}
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          className="flex h-7 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-background px-2 text-[10px] font-medium text-foreground hover:bg-muted"
+        >
+          <Menu className="size-3.5" />
+          Menu
+        </button>
+
+        {/* MENU DROPDOWN */}
+
+        {menuOpen && (
+          <div
+            className="absolute top-full right-0 z-50 mt-1 w-[160px] overflow-hidden rounded-md border border-[#cbd5e1] bg-white shadow-lg"
+            role="menu"
+          >
             {/* ==================================================
                 BULK EDIT
                 ================================================== */}
 
             <button
               type="button"
+              role="menuitem"
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] text-[#334155] hover:bg-[#f1f5f9] disabled:cursor-not-allowed disabled:opacity-50"
-              onClick={() => setBulkOpen(true)}
+              onClick={() => {
+                setMenuOpen(false);
+                setBulkOpen(true);
+              }}
               disabled={selectedIds.length === 0}
             >
               <Layers className="size-3.5" />
@@ -191,7 +232,9 @@ export function SheetPage() {
               <SheetTrigger asChild>
                 <button
                   type="button"
+                  role="menuitem"
                   className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] text-[#334155] hover:bg-[#f1f5f9]"
+                  onClick={() => setMenuOpen(false)}
                 >
                   <History className="size-3.5" />
 
@@ -216,18 +259,26 @@ export function SheetPage() {
 
             <button
               type="button"
+              role="menuitem"
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-[10px] text-[#334155] hover:bg-[#f1f5f9]"
-              onClick={() => exportToExcel(filtered)}
+              onClick={() => {
+                exportToExcel(filtered);
+                setMenuOpen(false);
+              }}
             >
               <Download className="size-3.5" />
 
               <span>Export</span>
             </button>
           </div>
-        </details>
+        )}
       </div>
     </div>
   );
+
+  /* ============================================================
+     PAGE
+     ============================================================ */
 
   return (
     <>
