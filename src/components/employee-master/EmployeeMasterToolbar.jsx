@@ -19,36 +19,90 @@ export function EmployeeMasterToolbar({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
+  // ============================================================
+  // CLOSE MENU WHEN CLICKING OUTSIDE
+  // ============================================================
   useEffect(() => {
-    function handleOutside(event) {
-      if (!menuRef.current?.contains(event.target)) {
+    const handleOutsideClick = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
         setMenuOpen(false);
       }
-    }
+    };
 
-    document.addEventListener("mousedown", handleOutside);
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
 
     return () => {
-      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("mousedown", handleOutsideClick);
+
+      document.removeEventListener("keydown", handleEscape);
     };
   }, []);
 
+  // ============================================================
+  // SEARCH CHANGE
+  // CLOSE MENU WHEN USER STARTS SEARCHING
+  // ============================================================
+  const handleSearchChange = (event) => {
+    setSearch(event.target.value);
+    setMenuOpen(false);
+  };
+
+  // ============================================================
+  // STATUS CHANGE
+  // CLOSE MENU WHEN STATUS CHANGES
+  // ============================================================
+  const handleStatusChange = (event) => {
+    setStatusFilter(event.target.value);
+    setMenuOpen(false);
+  };
+
+  // ============================================================
+  // MENU ITEM HANDLERS
+  // ============================================================
+  const handleDownloadTemplate = () => {
+    setMenuOpen(false);
+    onDownloadTemplate();
+  };
+
+  const handleUpload = () => {
+    setMenuOpen(false);
+    onUpload();
+  };
+
+  const handleDownloadData = () => {
+    setMenuOpen(false);
+    onDownloadData();
+  };
+
   return (
     <div className="em-toolbar">
+      {/* ======================================================
+          SEARCH
+          ====================================================== */}
       <div className="em-search">
         <Search size={14} />
 
         <input
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={handleSearchChange}
           placeholder="Search employee..."
         />
       </div>
 
+      {/* ======================================================
+          STATUS FILTER
+          ====================================================== */}
       <select
         className="em-status-select"
         value={statusFilter}
-        onChange={(event) => setStatusFilter(event.target.value)}
+        onChange={handleStatusChange}
       >
         <option value="All">All Status</option>
         <option value="Active">Active</option>
@@ -57,49 +111,55 @@ export function EmployeeMasterToolbar({
 
       <div className="em-toolbar-spacer" />
 
+      {/* ======================================================
+          MENU
+          ====================================================== */}
       <div className="em-menu-wrapper" ref={menuRef}>
         <button
           type="button"
           className="em-btn em-btn-ghost"
-          onClick={() => setMenuOpen((current) => !current)}
+          onClick={(event) => {
+            event.stopPropagation();
+            setMenuOpen((current) => !current);
+          }}
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
         >
-          Actions
-          <ChevronDown size={14} />
+          Menu
+          <ChevronDown
+            size={14}
+            className={menuOpen ? "em-menu-chevron-open" : ""}
+          />
         </button>
 
         {menuOpen && (
-          <div className="em-menu-dropdown">
+          <div
+            className="em-menu-dropdown"
+            role="menu"
+            onMouseDown={(event) => {
+              event.stopPropagation();
+            }}
+          >
+            {/* Download Template */}
             <button
               type="button"
-              onClick={() => {
-                onDownloadTemplate();
-                setMenuOpen(false);
-              }}
+              role="menuitem"
+              onClick={handleDownloadTemplate}
             >
               <FileSpreadsheet size={14} />
-              Download Template
+              <span>Download Template</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                onUpload();
-                setMenuOpen(false);
-              }}
-            >
+            {/* Upload Employee Data */}
+            <button type="button" role="menuitem" onClick={handleUpload}>
               <Upload size={14} />
-              Upload Employee Data
+              <span>Upload Employee Data</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                onDownloadData();
-                setMenuOpen(false);
-              }}
-            >
+            {/* Download Visible Data */}
+            <button type="button" role="menuitem" onClick={handleDownloadData}>
               <Download size={14} />
-              Download Visible Data
+              <span>Download Visible Data</span>
             </button>
           </div>
         )}

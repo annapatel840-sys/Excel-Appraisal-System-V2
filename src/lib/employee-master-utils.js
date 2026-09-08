@@ -58,14 +58,25 @@ export function fmtDoj(dojStr) {
 export function parseCsv(text) {
   if (!text) return [];
 
+  /*
+   * Remove UTF-8 BOM if present.
+   *
+   * Excel-generated CSV files can start with:
+   * \uFEFFEmployee ID
+   *
+   * Without removing it, the first header can become:
+   * "\uFEFFEmployee ID"
+   */
+  const cleanText = String(text).replace(/^\uFEFF/, "");
+
   const rows = [];
   let row = [];
   let cell = "";
   let insideQuotes = false;
 
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const next = text[i + 1];
+  for (let i = 0; i < cleanText.length; i++) {
+    const char = cleanText[i];
+    const next = cleanText[i + 1];
 
     if (char === '"') {
       if (insideQuotes && next === '"') {
@@ -115,17 +126,28 @@ export function csvRowsToObjects(rows) {
     return [];
   }
 
-  const headers = rows[0].map((header) => String(header || "").trim());
+  const headers = rows[0].map((header) =>
+    String(header ?? "")
+      .replace(/^\uFEFF/, "")
+      .trim(),
+  );
 
-  return rows.slice(1).map((row) => {
-    const obj = {};
+  return rows
+    .slice(1)
+    .map((row) => {
+      const obj = {};
 
-    headers.forEach((header, index) => {
-      obj[header] = row[index] ?? "";
-    });
+      headers.forEach((header, index) => {
+        if (!header) return;
 
-    return obj;
-  });
+        obj[header] = String(row[index] ?? "").trim();
+      });
+
+      return obj;
+    })
+    .filter((obj) =>
+      Object.values(obj).some((value) => String(value).trim() !== ""),
+    );
 }
 
 /* ============================================================
@@ -133,7 +155,8 @@ export function csvRowsToObjects(rows) {
 ============================================================ */
 
 function normalizeHeader(value) {
-  return String(value || "")
+  return String(value ?? "")
+    .replace(/^\uFEFF/, "")
     .trim()
     .toLowerCase()
     .replace(/[\s._/-]+/g, "")
@@ -151,13 +174,73 @@ export function findFieldForHeader(header) {
     return null;
   }
 
+  /*
+   * First use FIELD_DEFS.
+   *
+   * This keeps all existing field mappings working.
+   */
   for (const field of FIELD_DEFS) {
     const candidates = [field.label, field.key, ...(field.uploadHeaders || [])];
 
     for (const candidate of candidates) {
       if (normalizeHeader(candidate) === normalized) {
-        return field.key;
+        return field;
       }
+    }
+  }
+
+  /*
+   * Extra aliases for common Employee Master files.
+   *
+   * These do NOT change existing fields.
+   */
+  const aliases = {
+    empid: "empId",
+    employeeid: "empId",
+
+    employeename: "name",
+
+    department: "organization",
+    orgtn: "organization",
+
+    dateofjoining: "doj",
+
+    totalexperience: "totalExp",
+    totalexperienceason1stjan: "totalExp",
+
+    reportingmanager: "reportingManager",
+
+    compmanager: "compManager",
+
+    supermanager: "superManager",
+    supermanagernamename: "superManager",
+
+    appraiser: "appraiser",
+    appraisersupermanager: "appraiser",
+
+    manageremail: "managerMail",
+    manageremailid: "managerMail",
+    managermail: "managerMail",
+
+    supermanageremail: "superManagerMail",
+    supermanageremailid: "superManagerMail",
+    supermanagermail: "superManagerMail",
+
+    employeeStatus: "status",
+    activestatus: "status",
+    activeinactive: "status",
+  };
+
+  const aliasKey = aliases[normalized];
+
+  if (aliasKey) {
+    /*
+     * Return the actual FIELD_DEFS field object.
+     */
+    const field = FIELD_DEFS.find((item) => item.key === aliasKey);
+
+    if (field) {
+      return field;
     }
   }
 
@@ -169,18 +252,26 @@ export function findFieldForHeader(header) {
 ============================================================ */
 
 export function normalizeEligibleValue(value) {
-  const normalized = String(value || "")
+  const normalized = String(value ?? "")
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 
-  if (["yes", "eligible", "y", "true", "1"].includes(normalized)) {
+  if (["yes", "eligible", "y", "true", "1", "active"].includes(normalized)) {
     return "Yes";
   }
 
   if (
-    ["no", "not eligible", "noteligible", "n", "false", "0"].includes(
-      normalized,
-    )
+    [
+      "no",
+      "not eligible",
+      "noteligible",
+      "n",
+      "false",
+      "0",
+      "inactive",
+      "not-eligible",
+    ].includes(normalized)
   ) {
     return "No";
   }

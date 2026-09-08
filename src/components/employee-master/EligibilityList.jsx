@@ -1,5 +1,12 @@
-import { useMemo, useRef, useState } from "react";
-import { ChevronDown, Download, Search, Upload } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Search,
+  Upload,
+} from "lucide-react";
 
 import { ColumnFilter } from "./ColumnFilter";
 import { fmtDoj } from "@/lib/employee-master-utils";
@@ -50,6 +57,8 @@ const COLUMNS = [
   },
 ];
 
+const PAGE_SIZE = 10;
+
 export function EligibilityList({
   employees,
   search,
@@ -62,21 +71,69 @@ export function EligibilityList({
   onExport,
 }) {
   const fileInputRef = useRef(null);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  /*
+   * ------------------------------------------------------------
+   * CLOSE MENU WHEN CLICKING OUTSIDE
+   * ------------------------------------------------------------
+   */
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (!menuRef.current?.contains(event.target)) {
+        setMenuOpen(false);
+      }
+    };
+
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, []);
+
+  /*
+   * ------------------------------------------------------------
+   * ACTIVE EMPLOYEES
+   * ------------------------------------------------------------
+   */
   const activeEmployees = useMemo(
-    () => employees.filter((employee) => employee.status === "Active"),
+    () =>
+      employees.filter(
+        (employee) =>
+          employee.status === "Active" || employee.eligible === "No",
+      ),
     [employees],
   );
 
+  /*
+   * ------------------------------------------------------------
+   * FILTERED ROWS
+   * ------------------------------------------------------------
+   */
   const rows = useMemo(() => {
     return activeEmployees.filter((employee) => {
       const searchTerm = search.trim().toLowerCase();
 
       if (
         searchTerm &&
-        !employee.name.toLowerCase().includes(searchTerm) &&
-        !employee.empId.toLowerCase().includes(searchTerm)
+        !String(employee.name ?? "")
+          .toLowerCase()
+          .includes(searchTerm) &&
+        !String(employee.empId ?? "")
+          .toLowerCase()
+          .includes(searchTerm)
       ) {
         return false;
       }
@@ -91,7 +148,7 @@ export function EligibilityList({
         const value = String(column.get?.(employee) ?? "").toLowerCase();
 
         if (filter.type === "text") {
-          return value.includes(filter.term.toLowerCase());
+          return value.includes(String(filter.term || "").toLowerCase());
         }
 
         return filter.values.has(column.get?.(employee) ?? "");
@@ -99,14 +156,97 @@ export function EligibilityList({
     });
   }, [activeEmployees, filters, search]);
 
+  /*
+   * ------------------------------------------------------------
+   * COUNTS
+   * ------------------------------------------------------------
+   */
   const eligibleCount = activeEmployees.filter(
     (employee) => employee.eligible === "Yes",
   ).length;
 
   const notEligibleCount = activeEmployees.length - eligibleCount;
 
+  /*
+   * ------------------------------------------------------------
+   * PAGINATION
+   * ------------------------------------------------------------
+   */
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+
+  const safePage = Math.min(currentPage, totalPages);
+
+  const paginatedRows = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE;
+
+    return rows.slice(start, start + PAGE_SIZE);
+  }, [rows, safePage]);
+
+  /*
+   * ------------------------------------------------------------
+   * SEARCH
+   * ------------------------------------------------------------
+   */
+  const handleSearchChange = (value) => {
+    setSearch(value);
+    setCurrentPage(1);
+    setMenuOpen(false);
+  };
+
+  /*
+   * ------------------------------------------------------------
+   * FILTER CHANGE
+   * ------------------------------------------------------------
+   */
+  const handleFilterChange = (key, value) => {
+    setFilters((current) => {
+      const next = {
+        ...current,
+      };
+
+      if (!value) {
+        delete next[key];
+      } else {
+        next[key] = value;
+      }
+
+      return next;
+    });
+
+    setCurrentPage(1);
+
+    /*
+     * If a filter is changed, make sure the Menu is closed.
+     */
+    setMenuOpen(false);
+  };
+
+  /*
+   * ------------------------------------------------------------
+   * PAGINATION DISPLAY
+   * ------------------------------------------------------------
+   */
+  const startRecord = rows.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
+
+  const endRecord = Math.min(safePage * PAGE_SIZE, rows.length);
+
+  /*
+   * ------------------------------------------------------------
+   * ROW ELIGIBILITY ACTION
+   * ------------------------------------------------------------
+   */
+  const getActionLabel = (employee) => {
+    return employee.eligible === "Yes"
+      ? "Update to Not Eligible"
+      : "Update to Eligible";
+  };
+
   return (
     <div className="em-eligibility-list">
+      {/* ======================================================
+          HEADER
+          ====================================================== */}
+
       <div className="em-eligibility-header">
         <div className="em-eligibility-stats">
           <div>
@@ -126,33 +266,55 @@ export function EligibilityList({
         </div>
 
         <div className="em-eligibility-actions">
+          {/* ==================================================
+              SEARCH
+              ================================================== */}
+
           <div className="em-search">
             <Search size={14} />
 
             <input
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => handleSearchChange(event.target.value)}
               placeholder="Search employee..."
             />
           </div>
 
-          <div className="em-menu-wrapper">
+          {/* ==================================================
+              MENU
+              ================================================== */}
+
+          <div
+            ref={menuRef}
+            className="em-menu-wrapper"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
             <button
               type="button"
               className="em-btn em-btn-ghost"
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
               onClick={() => setMenuOpen((current) => !current)}
             >
-              Actions
-              <ChevronDown size={14} />
+              Menu
+              <ChevronDown
+                size={14}
+                className={menuOpen ? "em-menu-chevron-open" : ""}
+              />
             </button>
 
             {menuOpen && (
-              <div className="em-menu-dropdown">
+              <div
+                className="em-menu-dropdown"
+                role="menu"
+                onMouseDown={(event) => event.stopPropagation()}
+              >
                 <button
                   type="button"
+                  role="menuitem"
                   onClick={() => {
-                    onDownloadTemplate();
                     setMenuOpen(false);
+                    onDownloadTemplate();
                   }}
                 >
                   <Download size={14} />
@@ -161,9 +323,10 @@ export function EligibilityList({
 
                 <button
                   type="button"
+                  role="menuitem"
                   onClick={() => {
-                    fileInputRef.current?.click();
                     setMenuOpen(false);
+                    fileInputRef.current?.click();
                   }}
                 >
                   <Upload size={14} />
@@ -172,9 +335,10 @@ export function EligibilityList({
 
                 <button
                   type="button"
+                  role="menuitem"
                   onClick={() => {
-                    onExport(rows);
                     setMenuOpen(false);
+                    onExport(rows);
                   }}
                 >
                   <Download size={14} />
@@ -202,6 +366,10 @@ export function EligibilityList({
         </div>
       </div>
 
+      {/* ======================================================
+          TABLE
+          ====================================================== */}
+
       <div className="em-grid-wrap">
         <table className="em-table">
           <thead>
@@ -216,19 +384,7 @@ export function EligibilityList({
                       rows={activeEmployees}
                       value={filters[column.key]}
                       onChange={(value) =>
-                        setFilters((current) => {
-                          const next = {
-                            ...current,
-                          };
-
-                          if (!value) {
-                            delete next[column.key];
-                          } else {
-                            next[column.key] = value;
-                          }
-
-                          return next;
-                        })
+                        handleFilterChange(column.key, value)
                       }
                     />
                   </div>
@@ -240,8 +396,12 @@ export function EligibilityList({
           </thead>
 
           <tbody>
-            {rows.map((employee) => (
+            {paginatedRows.map((employee) => (
               <tr key={employee.empId}>
+                {/* ==================================================
+                    EMPLOYEE
+                    ================================================== */}
+
                 <td>
                   <div className="em-name-cell">
                     <strong>{employee.name}</strong>
@@ -249,13 +409,33 @@ export function EligibilityList({
                   </div>
                 </td>
 
+                {/* ==================================================
+                    APPRAISAL YEAR
+                    ================================================== */}
+
                 <td>Apr-26</td>
+
+                {/* ==================================================
+                    ORGANIZATION
+                    ================================================== */}
 
                 <td>{employee.organization}</td>
 
+                {/* ==================================================
+                    DESIGNATION
+                    ================================================== */}
+
                 <td>{employee.designation}</td>
 
+                {/* ==================================================
+                    DOJ
+                    ================================================== */}
+
                 <td>{fmtDoj(employee.doj)}</td>
+
+                {/* ==================================================
+                    ELIGIBILITY
+                    ================================================== */}
 
                 <td>
                   <span
@@ -267,6 +447,10 @@ export function EligibilityList({
                   </span>
                 </td>
 
+                {/* ==================================================
+                    REASON
+                    ================================================== */}
+
                 <td>
                   <div className="em-reason">
                     {employee.eligibleReason || "—"}
@@ -275,19 +459,23 @@ export function EligibilityList({
                   </div>
                 </td>
 
+                {/* ==================================================
+                    ACTION
+                    ================================================== */}
+
                 <td>
                   <button
                     type="button"
                     className="em-change-btn"
                     onClick={() => onChangeEligibility(employee)}
                   >
-                    Change
+                    {getActionLabel(employee)}
                   </button>
                 </td>
               </tr>
             ))}
 
-            {!rows.length && (
+            {!paginatedRows.length && (
               <tr>
                 <td colSpan={8} className="em-empty">
                   No eligibility records found.
@@ -296,6 +484,55 @@ export function EligibilityList({
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* ======================================================
+          PAGINATION
+          ====================================================== */}
+
+      <div className="em-pagination">
+        <div className="em-pagination-info">
+          Showing{" "}
+          <strong>
+            {startRecord}-{endRecord}
+          </strong>{" "}
+          of <strong>{rows.length}</strong> employees
+        </div>
+
+        <div className="em-pagination-controls">
+          <button
+            type="button"
+            disabled={safePage <= 1}
+            onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+            aria-label="Previous page"
+          >
+            <ChevronLeft size={14} />
+          </button>
+
+          {Array.from({ length: totalPages }, (_, index) => index + 1).map(
+            (page) => (
+              <button
+                key={page}
+                type="button"
+                className={page === safePage ? "active" : ""}
+                onClick={() => setCurrentPage(page)}
+              >
+                {page}
+              </button>
+            ),
+          )}
+
+          <button
+            type="button"
+            disabled={safePage >= totalPages}
+            onClick={() =>
+              setCurrentPage((page) => Math.min(totalPages, page + 1))
+            }
+            aria-label="Next page"
+          >
+            <ChevronRight size={14} />
+          </button>
+        </div>
       </div>
     </div>
   );
