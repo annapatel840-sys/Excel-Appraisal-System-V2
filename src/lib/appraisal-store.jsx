@@ -1,110 +1,3 @@
-// import { jsx as _jsx } from "react/jsx-runtime";
-// import { createContext, useCallback, useContext, useMemo, useState, useEffect } from "react";
-// import { buildEmployees, COLUMNS, } from "./appraisal-data";
-// const CURRENT_USER = "Ashok Kumar (HR Ops)";
-// const AppraisalContext = createContext(null);
-// const labelOf = (key) => COLUMNS.find((c) => c.key === key)?.label ?? String(key);
-// let seq = 0;
-// const nextId = () => `a${Date.now()}-${seq++}`;
-// export function AppraisalProvider({ children }) {
-//     const [rows, setRows] = useState(() => {
-//         try {
-//             const saved = localStorage.getItem("employee-appraisal-rows");
-
-//             if (saved) {
-//                 const parsed = JSON.parse(saved);
-
-//                 // If the browser contains data from the previous
-//                 // column structure, regenerate the demo rows so the
-//                 // new appraisal columns are populated.
-//                 if (
-//                     Array.isArray(parsed) &&
-//                     parsed.length > 0 &&
-//                     parsed[0].currentAnnualBasePay !== undefined
-//                 ) {
-//                     return parsed;
-//                 }
-//             }
-
-//             return buildEmployees(250);
-//         }
-//         catch {
-//             return buildEmployees(250);
-//         }
-//     });
-//     const [audit, setAudit] = useState(() => {
-//         try {
-//             const saved = localStorage.getItem("employee-appraisal-audit");
-//             return saved ? JSON.parse(saved) : [];
-//         }
-//         catch {
-//             return [];
-//         }
-//     });
-//     const [modified, setModified] = useState({});
-//     useEffect(() => {
-//         localStorage.setItem("employee-appraisal-rows", JSON.stringify(rows));
-//     }, [rows]);
-//     useEffect(() => {
-//         localStorage.setItem("employee-appraisal-audit", JSON.stringify(audit));
-//     }, [audit]);
-//     const applyEdits = useCallback((ids, key, compute, source, batchId) => {
-//         const entries = [];
-//         const touched = {};
-//         setRows((prev) => prev.map((row) => {
-//             if (!ids.includes(row.id))
-//                 return row;
-//             const next = compute(row);
-//             const before = row[key];
-//             if (String(before) === String(next))
-//                 return row;
-//             entries.push({
-//                 id: nextId(),
-//                 at: new Date().toISOString(),
-//                 user: CURRENT_USER,
-//                 empId: row.empId,
-//                 employeeName: row.name,
-//                 field: labelOf(key),
-//                 from: String(before),
-//                 to: String(next),
-//                 source,
-//                 ...(batchId ? { batchId } : {}),
-//             });
-//             touched[`${row.id}:${key}`] = true;
-//             return { ...row, [key]: next };
-//         }));
-//         if (entries.length) {
-//             setAudit((prev) => [...entries.reverse(), ...prev]);
-//             setModified((prev) => ({ ...prev, ...touched }));
-//         }
-//         return entries.length;
-//     }, []);
-//     const updateCell = useCallback((id, key, value, source = "Inline edit") => {
-//         applyEdits([id], key, () => value, source);
-//     }, [applyEdits]);
-//     const bulkUpdate = useCallback((ids, key, mode, value) => {
-//         const batchId = nextId();
-//         return applyEdits(ids, key, (row) => {
-//             if (mode === "set")
-//                 return value;
-//             const current = Number(row[key]) || 0;
-//             const v = Number(value) || 0;
-//             return mode === "increaseAmount"
-//                 ? Math.round(current + v)
-//                 : Math.round(current * (1 + v / 100));
-//         }, "Bulk edit", batchId);
-//     }, [applyEdits]);
-//     const historyFor = useCallback((empId) => audit.filter((a) => a.empId === empId), [audit]);
-//     const value = useMemo(() => ({ rows, audit, modified, updateCell, bulkUpdate, historyFor }), [rows, audit, modified, updateCell, bulkUpdate, historyFor]);
-//     return _jsx(AppraisalContext.Provider, { value: value, children: children });
-// }
-// export function useAppraisal() {
-//     const ctx = useContext(AppraisalContext);
-//     if (!ctx)
-//         throw new Error("useAppraisal must be used inside AppraisalProvider");
-//     return ctx;
-// }
-
 import { jsx as _jsx } from "react/jsx-runtime";
 import {
   createContext,
@@ -129,29 +22,27 @@ let seq = 0;
 const nextId = () => `a${Date.now()}-${seq++}`;
 
 /* ============================================================
-   EMPLOYEE MASTER STORAGE
+   STORAGE
    ============================================================ */
 
 const EMPLOYEE_MASTER_STORAGE_KEY = "employee-master-employees";
 const EMPLOYEE_MASTER_EVENT = "employee-master-updated";
+const APPRAISAL_ROWS_STORAGE_KEY = "employee-appraisal-rows";
+const APPRAISAL_AUDIT_STORAGE_KEY = "employee-appraisal-audit";
 
 /* ============================================================
-   READ EMPLOYEE MASTER
+   EMPLOYEE MASTER
    ============================================================ */
 
 const getEmployeeMasterMap = () => {
   try {
     const saved = localStorage.getItem(EMPLOYEE_MASTER_STORAGE_KEY);
 
-    if (!saved) {
-      return null;
-    }
+    if (!saved) return null;
 
     const employees = JSON.parse(saved);
 
-    if (!Array.isArray(employees)) {
-      return null;
-    }
+    if (!Array.isArray(employees)) return null;
 
     return new Map(
       employees
@@ -164,16 +55,12 @@ const getEmployeeMasterMap = () => {
 };
 
 /* ============================================================
-   SYNC ELIGIBILITY
+   ELIGIBILITY SYNC
    ============================================================ */
 
 const syncEligibility = (rows) => {
   const employeeMap = getEmployeeMasterMap();
 
-  /*
-   * If Employee Master has not been created/saved yet,
-   * don't modify the existing appraisal rows.
-   */
   if (!employeeMap) {
     return rows;
   }
@@ -181,10 +68,6 @@ const syncEligibility = (rows) => {
   return rows.map((row) => {
     const employee = employeeMap.get(String(row.empId));
 
-    /*
-     * If there is no matching Employee Master record,
-     * leave the appraisal row exactly as it is.
-     */
     if (!employee) {
       return row;
     }
@@ -193,59 +76,34 @@ const syncEligibility = (rows) => {
 
     return {
       ...row,
-
-      /*
-       * Employee Master is the source of truth.
-       */
       eligibility: isNotEligible ? "No" : "Yes",
-
-      /*
-       * Keep the reason available for future use/UI.
-       */
       eligibleReason: employee.eligibleReason || "",
-
-      /*
-       * Keep track of whether eligibility was manually overridden.
-       */
       manualEligibilityOverride: Boolean(employee.manualOverride),
     };
   });
 };
 
 /* ============================================================
-   APPRAISAL PROVIDER
+   PROVIDER
    ============================================================ */
 
 export function AppraisalProvider({ children }) {
   const [rows, setRows] = useState(() => {
     try {
-      const saved = localStorage.getItem("employee-appraisal-rows");
+      const saved = localStorage.getItem(APPRAISAL_ROWS_STORAGE_KEY);
 
       if (saved) {
         const parsed = JSON.parse(saved);
 
-        /*
-         * If the browser contains data from the previous
-         * column structure, regenerate the demo rows so the
-         * new appraisal columns are populated.
-         */
         if (
           Array.isArray(parsed) &&
           parsed.length > 0 &&
           parsed[0].currentAnnualBasePay !== undefined
         ) {
-          /*
-           * IMPORTANT:
-           * Keep the existing appraisal data.
-           * Only synchronize eligibility.
-           */
           return syncEligibility(parsed);
         }
       }
 
-      /*
-       * First-time initialization.
-       */
       return syncEligibility(buildEmployees(250));
     } catch {
       return syncEligibility(buildEmployees(250));
@@ -254,7 +112,7 @@ export function AppraisalProvider({ children }) {
 
   const [audit, setAudit] = useState(() => {
     try {
-      const saved = localStorage.getItem("employee-appraisal-audit");
+      const saved = localStorage.getItem(APPRAISAL_AUDIT_STORAGE_KEY);
 
       return saved ? JSON.parse(saved) : [];
     } catch {
@@ -265,11 +123,11 @@ export function AppraisalProvider({ children }) {
   const [modified, setModified] = useState({});
 
   /* ============================================================
-     SAVE APPRAISAL ROWS
+     SAVE ROWS
      ============================================================ */
 
   useEffect(() => {
-    localStorage.setItem("employee-appraisal-rows", JSON.stringify(rows));
+    localStorage.setItem(APPRAISAL_ROWS_STORAGE_KEY, JSON.stringify(rows));
   }, [rows]);
 
   /* ============================================================
@@ -277,7 +135,7 @@ export function AppraisalProvider({ children }) {
      ============================================================ */
 
   useEffect(() => {
-    localStorage.setItem("employee-appraisal-audit", JSON.stringify(audit));
+    localStorage.setItem(APPRAISAL_AUDIT_STORAGE_KEY, JSON.stringify(audit));
   }, [audit]);
 
   /* ============================================================
@@ -289,9 +147,6 @@ export function AppraisalProvider({ children }) {
       setRows((previousRows) => {
         const syncedRows = syncEligibility(previousRows);
 
-        /*
-         * Avoid unnecessary state updates.
-         */
         const changed = syncedRows.some(
           (row, index) =>
             row.eligibility !== previousRows[index]?.eligibility ||
@@ -304,15 +159,8 @@ export function AppraisalProvider({ children }) {
       });
     };
 
-    /*
-     * EmployeeMaster.jsx dispatches this event after
-     * saving eligibility changes.
-     */
     window.addEventListener(EMPLOYEE_MASTER_EVENT, refreshEligibility);
 
-    /*
-     * Also support changes coming from another browser tab.
-     */
     const handleStorageChange = (event) => {
       if (event.key === EMPLOYEE_MASTER_STORAGE_KEY) {
         refreshEligibility();
@@ -321,9 +169,6 @@ export function AppraisalProvider({ children }) {
 
     window.addEventListener("storage", handleStorageChange);
 
-    /*
-     * Initial synchronization after provider mounts.
-     */
     refreshEligibility();
 
     return () => {
@@ -334,7 +179,7 @@ export function AppraisalProvider({ children }) {
   }, []);
 
   /* ============================================================
-     EXISTING EDIT LOGIC
+     EDIT LOGIC
      ============================================================ */
 
   const applyEdits = useCallback((ids, key, compute, source, batchId) => {
@@ -361,8 +206,8 @@ export function AppraisalProvider({ children }) {
           empId: row.empId,
           employeeName: row.name,
           field: labelOf(key),
-          from: String(before),
-          to: String(next),
+          from: String(before ?? ""),
+          to: String(next ?? ""),
           source,
           ...(batchId ? { batchId } : {}),
         });
@@ -430,16 +275,50 @@ export function AppraisalProvider({ children }) {
   );
 
   /* ============================================================
-     HISTORY
+     AUDIT / EDIT HISTORY
      ============================================================ */
 
   const historyFor = useCallback(
-    (empId) => audit.filter((a) => a.empId === empId),
+    (empId) => {
+      return audit
+        .filter((item) => String(item.empId) === String(empId))
+        .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+    },
     [audit],
   );
 
   /* ============================================================
-     CONTEXT VALUE
+     EMPLOYEE APPRAISAL HISTORY
+     *
+     * IMPORTANT:
+     * This returns year-wise appraisal history stored on the
+     * employee row.
+     *
+     * It does NOT replace it with current-year data.
+     * ============================================================ */
+
+  const appraisalHistoryFor = useCallback((employee) => {
+    if (!employee) {
+      return [];
+    }
+
+    const possibleHistory =
+      employee.history ??
+      employee.appraisalHistory ??
+      employee.appraisal_history ??
+      employee.previousYears ??
+      employee.previousYearHistory ??
+      [];
+
+    if (Array.isArray(possibleHistory)) {
+      return possibleHistory;
+    }
+
+    return [];
+  }, []);
+
+  /* ============================================================
+     CONTEXT
      ============================================================ */
 
   const value = useMemo(
@@ -447,16 +326,34 @@ export function AppraisalProvider({ children }) {
       rows,
       audit,
       modified,
+
+      updateCell,
+      bulkUpdate,
+
+      /*
+       * Edit/audit history.
+       */
+      historyFor,
+
+      /*
+       * Actual previous appraisal-year history.
+       */
+      appraisalHistoryFor,
+    }),
+    [
+      rows,
+      audit,
+      modified,
       updateCell,
       bulkUpdate,
       historyFor,
-    }),
-    [rows, audit, modified, updateCell, bulkUpdate, historyFor],
+      appraisalHistoryFor,
+    ],
   );
 
   return _jsx(AppraisalContext.Provider, {
-    value: value,
-    children: children,
+    value,
+    children,
   });
 }
 

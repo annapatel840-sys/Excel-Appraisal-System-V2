@@ -1,11 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  ChevronDown,
-  Download,
-  FileSpreadsheet,
-  Search,
-  Upload,
-} from "lucide-react";
+import { Download, FileSpreadsheet, Menu, Search, Upload } from "lucide-react";
 
 export function EmployeeMasterToolbar({
   search,
@@ -40,7 +34,6 @@ export function EmployeeMasterToolbar({
 
     return () => {
       document.removeEventListener("mousedown", handleOutsideClick);
-
       document.removeEventListener("keydown", handleEscape);
     };
   }, []);
@@ -122,14 +115,11 @@ export function EmployeeMasterToolbar({
             event.stopPropagation();
             setMenuOpen((current) => !current);
           }}
+          aria-label="Menu"
           aria-expanded={menuOpen}
           aria-haspopup="menu"
         >
-          Menu
-          <ChevronDown
-            size={14}
-            className={menuOpen ? "em-menu-chevron-open" : ""}
-          />
+          <Menu size={18} />
         </button>
 
         {menuOpen && (

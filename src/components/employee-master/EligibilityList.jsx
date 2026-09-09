@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Download,
+  Menu,
   Search,
   Upload,
 } from "lucide-react";
@@ -214,10 +214,6 @@ export function EligibilityList({
     });
 
     setCurrentPage(1);
-
-    /*
-     * If a filter is changed, make sure the Menu is closed.
-     */
     setMenuOpen(false);
   };
 
@@ -281,7 +277,7 @@ export function EligibilityList({
           </div>
 
           {/* ==================================================
-              MENU
+              3-LINE MENU
               ================================================== */}
 
           <div
@@ -292,15 +288,12 @@ export function EligibilityList({
             <button
               type="button"
               className="em-btn em-btn-ghost"
+              aria-label="Menu"
               aria-haspopup="menu"
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen((current) => !current)}
             >
-              Menu
-              <ChevronDown
-                size={14}
-                className={menuOpen ? "em-menu-chevron-open" : ""}
-              />
+              <Menu size={16} />
             </button>
 
             {menuOpen && (
