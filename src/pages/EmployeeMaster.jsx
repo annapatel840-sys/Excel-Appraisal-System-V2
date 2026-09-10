@@ -3,7 +3,7 @@ import { CheckCircle2, AlertCircle } from "lucide-react";
 
 import { AppShell } from "@/components/appraisal/AppShell";
 
-import { FIELD_DEFS, INITIAL_EMPLOYEES } from "@/lib/employee-master-data";
+import { FIELD_DEFS } from "@/lib/employee-master-data";
 
 import {
   findFieldForHeader,
@@ -28,26 +28,32 @@ import { ImportPreviewModal } from "@/components/employee-master/ImportPreviewMo
 
 import "@/styles/employee-master.css";
 
+/* ============================================================
+   STORAGE
+   ============================================================ */
+
 const EMPLOYEE_MASTER_STORAGE_KEY = "employee-master-employees";
 const EMPLOYEE_MASTER_EVENT = "employee-master-updated";
-
-/*
- * Version increased so old localStorage data can be migrated
- * while still preserving employee eligibility information.
- */
-const EMPLOYEE_MASTER_DATA_VERSION = 5;
+const EMPLOYEE_MASTER_DATA_VERSION = 6;
 const EMPLOYEE_MASTER_VERSION_KEY = "employee-master-data-version";
 
-function buildFreshEmployees() {
-  return INITIAL_EMPLOYEES.map((employee) => ({
-    ...employee,
-  }));
-}
+/* ============================================================
+   CATALYST API
+   ============================================================ */
+
+const EMPLOYEE_API_URL =
+  "https://excelappraisal-904056216.development.catalystserverless.com/server/employee-api-v2/";
 
 /* ============================================================
-   IMPORT FIX:
-   Normalize employee IDs before comparing them.
+   SERVER PAGE SIZE
    ============================================================ */
+
+const PAGE_SIZE = 20;
+
+/* ============================================================
+   EMPLOYEE ID
+   ============================================================ */
+
 function normalizeEmpId(value) {
   return String(value ?? "")
     .trim()
@@ -55,13 +61,9 @@ function normalizeEmpId(value) {
 }
 
 /* ============================================================
-   IMPORT FIX:
-   Normalize headers so these all work:
-   Emp ID
-   Employee ID
-   EmpID
-   EmployeeID
+   IMPORT HEADER NORMALIZATION
    ============================================================ */
+
 function normalizeImportHeader(value) {
   return String(value ?? "")
     .trim()
@@ -71,9 +73,9 @@ function normalizeImportHeader(value) {
 }
 
 /* ============================================================
-   IMPORT FIX:
-   Find Employee ID regardless of exact header spelling.
+   GET EMPLOYEE ID FROM IMPORT
    ============================================================ */
+
 function getImportedEmpId(row) {
   const directHeaders = [
     "Emp ID",
@@ -110,135 +112,197 @@ function getImportedEmpId(row) {
   return "";
 }
 
-function loadEmployees() {
+/* ============================================================
+   NORMALIZE EMPLOYEE
+   ============================================================ */
+
+function normalizeEmployee(employee) {
+  return {
+    empId: String(employee?.emp_id ?? employee?.empId ?? ""),
+
+    name: String(employee?.name ?? ""),
+
+    designation: String(employee?.designation ?? ""),
+
+    organization: String(
+      employee?.organization ?? employee?.department ?? employee?.orgtn ?? "",
+    ),
+
+    doj: String(
+      employee?.doj ??
+        employee?.date_of_joining ??
+        employee?.dateOfJoining ??
+        employee?.joiningDate ??
+        "",
+    ),
+
+    totalExp: String(
+      employee?.total_experience ??
+        employee?.totalExperience ??
+        employee?.totalExp ??
+        "",
+    ),
+
+    reportingManager: String(
+      employee?.reporting_manager ??
+        employee?.reportingManager ??
+        employee?.manager ??
+        "",
+    ),
+
+    compManager: String(employee?.comp_manager ?? employee?.compManager ?? ""),
+
+    superManager: String(
+      employee?.super_manager ??
+        employee?.superManager ??
+        employee?.appraiser_tech_ed ??
+        employee?.appraiserTechED ??
+        "",
+    ),
+
+    appraiser: String(
+      employee?.appraiser ??
+        employee?.appraiser_tech_ed ??
+        employee?.appraiserTechED ??
+        employee?.super_manager ??
+        employee?.superManager ??
+        "",
+    ),
+
+    managerMail: String(
+      employee?.manager_mail ??
+        employee?.managerMail ??
+        employee?.manager_email ??
+        employee?.managerEmail ??
+        "",
+    ),
+
+    superManagerMail: String(
+      employee?.super_manager_mail ??
+        employee?.superManagerMail ??
+        employee?.super_manager_email ??
+        employee?.superManagerEmail ??
+        "",
+    ),
+
+    status:
+      String(employee?.status ?? "").toLowerCase() === "inactive"
+        ? "Inactive"
+        : "Active",
+
+    eligible:
+      employee?.eligible === "No"
+        ? "No"
+        : employee?.eligible === "Yes"
+          ? "Yes"
+          : "Yes",
+
+    eligibleReason: String(employee?.eligibleReason ?? ""),
+
+    manualOverride: Boolean(employee?.manualOverride),
+  };
+}
+
+/* ============================================================
+   LOAD LOCAL ELIGIBILITY DATA ONLY
+   ============================================================ */
+
+function loadSavedEmployeeData() {
   try {
     const stored = localStorage.getItem(EMPLOYEE_MASTER_STORAGE_KEY);
 
-    const storedVersion = Number(
-      localStorage.getItem(EMPLOYEE_MASTER_VERSION_KEY) || "0",
-    );
-
-    /*
-     * ========================================================
-     * IMPORTANT IMPORT FIX
-     *
-     * Previously the application only returned localStorage
-     * when the stored employee count was exactly 250.
-     *
-     * Therefore imported records could be saved but were
-     * discarded on refresh.
-     *
-     * Now ANY valid stored employee array is accepted.
-     * ========================================================
-     */
-
-    if (stored) {
-      const parsed = JSON.parse(stored);
-
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        /*
-         * Normalize old records so missing properties do not
-         * break Employee Master components.
-         */
-        const normalizedEmployees = parsed.map((employee) => ({
-          ...employee,
-
-          empId: String(employee?.empId ?? ""),
-
-          name: String(employee?.name ?? ""),
-
-          designation: String(employee?.designation ?? ""),
-
-          organization: String(employee?.organization ?? ""),
-
-          doj: String(employee?.doj ?? ""),
-
-          totalExp: String(employee?.totalExp ?? ""),
-
-          reportingManager: String(employee?.reportingManager ?? ""),
-
-          compManager: String(employee?.compManager ?? ""),
-
-          superManager: String(employee?.superManager ?? ""),
-
-          appraiser: String(employee?.appraiser ?? ""),
-
-          managerMail: String(employee?.managerMail ?? ""),
-
-          superManagerMail: String(employee?.superManagerMail ?? ""),
-
-          status: employee?.status === "Inactive" ? "Inactive" : "Active",
-
-          eligible: employee?.eligible === "No" ? "No" : "Yes",
-
-          eligibleReason: String(employee?.eligibleReason ?? ""),
-
-          manualOverride: Boolean(employee?.manualOverride),
-        }));
-
-        /*
-         * Update storage to the current version without
-         * replacing imported employees with the demo 250.
-         */
-        try {
-          localStorage.setItem(
-            EMPLOYEE_MASTER_STORAGE_KEY,
-            JSON.stringify(normalizedEmployees),
-          );
-
-          localStorage.setItem(
-            EMPLOYEE_MASTER_VERSION_KEY,
-            String(EMPLOYEE_MASTER_DATA_VERSION),
-          );
-        } catch {
-          // Ignore localStorage errors.
-        }
-
-        return normalizedEmployees;
-      }
+    if (!stored) {
+      return [];
     }
 
-    /*
-     * No valid stored data exists.
-     * Start with the original 250 employees.
-     */
-    const fresh = buildFreshEmployees();
+    const parsed = JSON.parse(stored);
 
-    localStorage.setItem(EMPLOYEE_MASTER_STORAGE_KEY, JSON.stringify(fresh));
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
 
-    localStorage.setItem(
-      EMPLOYEE_MASTER_VERSION_KEY,
-      String(EMPLOYEE_MASTER_DATA_VERSION),
-    );
+    return parsed.map((employee) => ({
+      empId: String(employee?.empId ?? ""),
 
-    return fresh;
+      eligible: employee?.eligible === "No" ? "No" : "Yes",
+
+      eligibleReason: String(employee?.eligibleReason ?? ""),
+
+      manualOverride: Boolean(employee?.manualOverride),
+    }));
   } catch {
-    /*
-     * If localStorage is invalid, use fresh 250 employees.
-     */
+    return [];
   }
-
-  const fresh = buildFreshEmployees();
-
-  try {
-    localStorage.setItem(EMPLOYEE_MASTER_STORAGE_KEY, JSON.stringify(fresh));
-
-    localStorage.setItem(
-      EMPLOYEE_MASTER_VERSION_KEY,
-      String(EMPLOYEE_MASTER_DATA_VERSION),
-    );
-  } catch {
-    // Ignore localStorage errors.
-  }
-
-  return fresh;
 }
+
+/* ============================================================
+   MERGE CATALYST EMPLOYEES WITH LOCAL ELIGIBILITY
+   ============================================================ */
+
+function mergeCatalystEmployees(catalystEmployees) {
+  const savedEmployees = loadSavedEmployeeData();
+
+  const savedMap = new Map(
+    savedEmployees.map((employee) => [
+      normalizeEmpId(employee.empId),
+      employee,
+    ]),
+  );
+
+  return catalystEmployees.map((employee) => {
+    const saved = savedMap.get(normalizeEmpId(employee.empId));
+
+    if (!saved) {
+      return employee;
+    }
+
+    return {
+      ...employee,
+
+      eligible: saved.eligible,
+
+      eligibleReason: saved.eligibleReason,
+
+      manualOverride: saved.manualOverride,
+
+      status: employee.status,
+    };
+  });
+}
+
+/* ============================================================
+   SAVE LOCAL ELIGIBILITY CACHE
+   ============================================================ */
 
 function saveEmployees(employees) {
   try {
+    const existing = loadSavedEmployeeData();
+
+    const existingMap = new Map(
+      existing.map((employee) => [normalizeEmpId(employee.empId), employee]),
+    );
+
+    employees.forEach((employee) => {
+      const empId = normalizeEmpId(employee.empId);
+
+      if (!empId) {
+        return;
+      }
+
+      existingMap.set(empId, {
+        empId: employee.empId,
+
+        eligible: employee.eligible === "No" ? "No" : "Yes",
+
+        eligibleReason: employee.eligibleReason || "",
+
+        manualOverride: Boolean(employee.manualOverride),
+      });
+    });
+
     localStorage.setItem(
       EMPLOYEE_MASTER_STORAGE_KEY,
-      JSON.stringify(employees),
+      JSON.stringify(Array.from(existingMap.values())),
     );
 
     localStorage.setItem(
@@ -256,26 +320,211 @@ function saveEmployees(employees) {
   }
 }
 
+/* ============================================================
+   FETCH ONE PAGE FROM CATALYST
+   ============================================================ */
+
+async function fetchEmployeesFromCatalyst(page = 1, limit = PAGE_SIZE) {
+  const safeRequestedPage = Math.max(1, Number(page) || 1);
+
+  const safeRequestedLimit = Math.min(
+    100,
+    Math.max(1, Number(limit) || PAGE_SIZE),
+  );
+
+  const url = new URL(EMPLOYEE_API_URL);
+
+  url.searchParams.set("page", String(safeRequestedPage));
+  url.searchParams.set("limit", String(safeRequestedLimit));
+
+  console.log(
+    "[EmployeeMaster] Fetching Catalyst page:",
+    safeRequestedPage,
+    "limit:",
+    safeRequestedLimit,
+    "URL:",
+    url.toString(),
+  );
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Employee API failed with status ${response.status}.`);
+  }
+
+  const payload = await response.json();
+
+  console.log("[EmployeeMaster] Catalyst response:", payload);
+
+  if (!payload?.success) {
+    throw new Error(
+      payload?.message || "Unable to load employees from Catalyst.",
+    );
+  }
+
+  if (!Array.isArray(payload.data)) {
+    throw new Error("Employee API returned invalid employee data.");
+  }
+
+  const apiPagination = payload.pagination || {};
+
+  const totalCount = Number(apiPagination.totalCount) || 0;
+
+  const totalPages =
+    Number(apiPagination.totalPages) ||
+    Math.max(1, Math.ceil(totalCount / safeRequestedLimit));
+
+  const apiCounts = payload.counts || {};
+
+  const total = Number(apiCounts.total) || totalCount;
+
+  const active = Number(apiCounts.active) || 0;
+
+  const inactive = Number(apiCounts.inactive) || 0;
+
+  return {
+    employees: payload.data.map(normalizeEmployee),
+
+    pagination: {
+      page: Number(apiPagination.page) || safeRequestedPage,
+
+      limit: Number(apiPagination.limit) || safeRequestedLimit,
+
+      totalCount,
+
+      totalPages: Math.max(1, totalPages),
+    },
+
+    counts: {
+      total,
+
+      active,
+
+      inactive,
+    },
+  };
+}
+
+/* ============================================================
+   FETCH ALL EMPLOYEES FOR ELIGIBILITY LIST
+   ============================================================ */
+
+async function fetchAllEmployeesFromCatalyst() {
+  console.log("[EmployeeMaster] Loading all employees for Eligibility List.");
+
+  const firstPage = await fetchEmployeesFromCatalyst(1, PAGE_SIZE);
+
+  let allEmployees = [...firstPage.employees];
+
+  const totalPages = firstPage.pagination.totalPages;
+
+  if (totalPages > 1) {
+    for (let page = 2; page <= totalPages; page += 1) {
+      const result = await fetchEmployeesFromCatalyst(page, PAGE_SIZE);
+
+      allEmployees = allEmployees.concat(result.employees);
+    }
+  }
+
+  const mergedEmployees = mergeCatalystEmployees(allEmployees);
+
+  console.log(
+    "[EmployeeMaster] All Eligibility employees loaded:",
+    mergedEmployees.length,
+  );
+
+  return mergedEmployees;
+}
+
+/* ============================================================
+   EMPLOYEE MASTER
+   ============================================================ */
+
 export function EmployeeMaster() {
-  const [employees, setEmployees] = useState(loadEmployees);
+  /* ==========================================================
+     CURRENT API PAGE
+     ========================================================== */
+
+  const [employees, setEmployees] = useState([]);
+
+  /* ==========================================================
+     ALL EMPLOYEES FOR ELIGIBILITY
+     ========================================================== */
+
+  const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
+
+  /* ==========================================================
+     ELIGIBILITY LOADING
+     ========================================================== */
+
+  const [eligibilityLoading, setEligibilityLoading] = useState(false);
+
+  /* ==========================================================
+     LOADING STATE
+     ========================================================== */
+
+  const [loading, setLoading] = useState(true);
+
+  /* ==========================================================
+     ACTIVE TAB
+     ========================================================== */
 
   const [activeTab, setActiveTab] = useState("roster");
 
+  /* ==========================================================
+     ROSTER SEARCH
+     ========================================================== */
+
   const [search, setSearch] = useState("");
+
+  /* ==========================================================
+     STATUS FILTER
+     ========================================================== */
 
   const [statusFilter, setStatusFilter] = useState("All");
 
+  /* ==========================================================
+     COLUMN FILTERS
+     ========================================================== */
+
   const [rosterFilters, setRosterFilters] = useState({});
+
+  /* ==========================================================
+     ELIGIBILITY SEARCH
+     ========================================================== */
 
   const [eligibilitySearch, setEligibilitySearch] = useState("");
 
+  /* ==========================================================
+     ELIGIBILITY FILTERS
+     ========================================================== */
+
   const [eligibilityFilters, setEligibilityFilters] = useState({});
+
+  /* ==========================================================
+     EXCLUDED EMPLOYEES
+     ========================================================== */
 
   const [excludedEmployees, setExcludedEmployees] = useState([]);
 
+  /* ==========================================================
+     BANNER
+     ========================================================== */
+
   const [banner, setBanner] = useState(null);
 
+  /* ==========================================================
+     ELIGIBILITY MODAL EMPLOYEE
+     ========================================================== */
+
   const [eligibilityEmployee, setEligibilityEmployee] = useState(null);
+
+  /* ==========================================================
+     IMPORT PREVIEW
+     ========================================================== */
 
   const [previewOpen, setPreviewOpen] = useState(false);
 
@@ -283,19 +532,229 @@ export function EmployeeMaster() {
 
   const [pendingImportType, setPendingImportType] = useState(null);
 
+  /* ==========================================================
+     FILE INPUT
+     ========================================================== */
+
   const fileInputRef = useRef(null);
 
+  /* ==========================================================
+     SERVER PAGINATION
+     ========================================================== */
+
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const [pagination, setPagination] = useState({
+    page: 1,
+
+    limit: PAGE_SIZE,
+
+    totalCount: 0,
+
+    totalPages: 1,
+  });
+
+  /* ==========================================================
+     SERVER COUNTS
+     ========================================================== */
+
+  const [counts, setCounts] = useState({
+    total: 0,
+
+    active: 0,
+
+    inactive: 0,
+  });
+
+  /* ============================================================
+     LOAD CURRENT EMPLOYEE MASTER PAGE
+     ============================================================ */
+
   useEffect(() => {
-    saveEmployees(employees);
-  }, [employees]);
+    let cancelled = false;
 
-  const total = employees.length;
+    const loadCatalystEmployees = async () => {
+      try {
+        setLoading(true);
 
-  const active = employees.filter(
-    (employee) => employee.status === "Active",
-  ).length;
+        const result = await fetchEmployeesFromCatalyst(currentPage, PAGE_SIZE);
 
-  const inactive = total - active;
+        if (cancelled) {
+          return;
+        }
+
+        const mergedEmployees = mergeCatalystEmployees(result.employees);
+
+        setEmployees(mergedEmployees);
+
+        setPagination(result.pagination);
+
+        setCounts(result.counts);
+
+        /*
+         * Cache current page eligibility values.
+         */
+        saveEmployees(mergedEmployees);
+
+        setBanner({
+          title: "Employee data loaded",
+
+          body: `${result.pagination.totalCount} employee(s) available in Catalyst.`,
+
+          error: false,
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setEmployees([]);
+
+        setPagination({
+          page: currentPage,
+
+          limit: PAGE_SIZE,
+
+          totalCount: 0,
+
+          totalPages: 1,
+        });
+
+        setCounts({
+          total: 0,
+
+          active: 0,
+
+          inactive: 0,
+        });
+
+        setBanner({
+          title: "Employee data failed to load",
+
+          body: error?.message || "Unable to load employee data from Catalyst.",
+
+          error: true,
+        });
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadCatalystEmployees();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPage]);
+
+  /* ============================================================
+     LOAD ALL EMPLOYEES WHEN ELIGIBILITY TAB OPENS
+     ============================================================ */
+
+  useEffect(() => {
+    if (activeTab !== "eligibility") {
+      return;
+    }
+
+    /*
+     * Already loaded.
+     */
+    if (eligibilityEmployees.length > 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadEligibilityEmployees = async () => {
+      try {
+        setEligibilityLoading(true);
+
+        const allEmployees = await fetchAllEmployeesFromCatalyst();
+
+        if (cancelled) {
+          return;
+        }
+
+        setEligibilityEmployees(allEmployees);
+
+        /*
+         * Save all eligibility values locally.
+         * Catalyst remains the roster source for now.
+         */
+        saveEmployees(allEmployees);
+
+        setBanner({
+          title: "Eligibility data loaded",
+
+          body: `${allEmployees.length} employee(s) loaded for eligibility.`,
+
+          error: false,
+        });
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setEligibilityEmployees([]);
+
+        setBanner({
+          title: "Eligibility data failed to load",
+
+          body:
+            error?.message ||
+            "Unable to load all employees for the Eligibility List.",
+
+          error: true,
+        });
+      } finally {
+        if (!cancelled) {
+          setEligibilityLoading(false);
+        }
+      }
+    };
+
+    loadEligibilityEmployees();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, eligibilityEmployees.length]);
+
+  /* ============================================================
+     SAVE CURRENT PAGE ELIGIBILITY CACHE
+     ============================================================ */
+
+  useEffect(() => {
+    if (!loading && employees.length > 0) {
+      saveEmployees(employees);
+    }
+  }, [employees, loading]);
+
+  /* ============================================================
+     SAVE ALL ELIGIBILITY DATA
+     ============================================================ */
+
+  useEffect(() => {
+    if (!eligibilityLoading && eligibilityEmployees.length > 0) {
+      saveEmployees(eligibilityEmployees);
+    }
+  }, [eligibilityEmployees, eligibilityLoading]);
+
+  /* ============================================================
+     TOTAL / ACTIVE / INACTIVE
+     ============================================================ */
+
+  const total = counts.total;
+
+  const active = counts.active;
+
+  const inactive = counts.inactive;
+
+  /* ============================================================
+     ROSTER SEARCH + STATUS FILTER
+     ============================================================ */
 
   const filteredRosterEmployees = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -323,10 +782,26 @@ export function EmployeeMaster() {
     });
   }, [employees, search, statusFilter]);
 
+  /* ============================================================
+     RESET ROSTER PAGE WHEN SEARCH/FILTER CHANGES
+     ============================================================ */
+
+  useEffect(() => {
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+  }, [search, statusFilter]);
+
+  /* ============================================================
+     BANNER
+     ============================================================ */
+
   const showBanner = (title, body, error = false) => {
     setBanner({
       title,
+
       body,
+
       error,
     });
   };
@@ -334,6 +809,7 @@ export function EmployeeMaster() {
   /* ============================================================
      READ CSV / XLSX
      ============================================================ */
+
   const readFile = async (file) => {
     const extension = file.name.split(".").pop()?.toLowerCase();
 
@@ -360,6 +836,7 @@ export function EmployeeMaster() {
 
       return XLSX.utils.sheet_to_json(firstSheet, {
         defval: "",
+
         raw: false,
       });
     }
@@ -372,6 +849,7 @@ export function EmployeeMaster() {
   /* ============================================================
      ROSTER IMPORT
      ============================================================ */
+
   const buildRosterImportChanges = (rows) => {
     const changes = [];
 
@@ -386,9 +864,6 @@ export function EmployeeMaster() {
 
       const mapped = {};
 
-      /*
-       * Map every supported import header.
-       */
       Object.entries(row).forEach(([header, value]) => {
         const field = findFieldForHeader(header);
 
@@ -397,22 +872,12 @@ export function EmployeeMaster() {
         }
       });
 
-      /*
-       * ======================================================
-       * IMPORTANT:
-       * Get Employee ID independently because Excel/CSV
-       * headers can vary.
-       * ======================================================
-       */
       const importedEmpId = getImportedEmpId(row);
 
       if (importedEmpId) {
         mapped.empId = importedEmpId;
       }
 
-      /*
-       * Employee ID is mandatory for matching/updating.
-       */
       if (!mapped.empId) {
         return;
       }
@@ -425,30 +890,17 @@ export function EmployeeMaster() {
 
       const fields = {};
 
-      /*
-       * Compare every Employee Master field.
-       */
       FIELD_DEFS.forEach((field) => {
-        /*
-         * Never change Employee ID.
-         */
         if (field.key === "empId") {
           return;
         }
 
-        /*
-         * Header was not present in import.
-         */
         if (mapped[field.key] === undefined) {
           return;
         }
 
         const importedValue = String(mapped[field.key] ?? "").trim();
 
-        /*
-         * Empty import cells should not erase existing
-         * employee information.
-         */
         if (importedValue === "") {
           return;
         }
@@ -460,28 +912,28 @@ export function EmployeeMaster() {
         }
       });
 
-      /*
-       * NEW EMPLOYEE
-       */
       if (!existing) {
         changes.push({
           empId: mapped.empId,
+
           name: mapped.name || "",
+
           fields,
+
           isNew: true,
         });
 
         return;
       }
 
-      /*
-       * EXISTING EMPLOYEE
-       */
       if (Object.keys(fields).length > 0) {
         changes.push({
           empId: existing.empId,
+
           name: mapped.name || existing.name || "",
+
           fields,
+
           isNew: false,
         });
       }
@@ -493,6 +945,7 @@ export function EmployeeMaster() {
   /* ============================================================
      ELIGIBILITY IMPORT
      ============================================================ */
+
   const buildEligibilityImportChanges = (rows) => {
     const changes = [];
 
@@ -549,7 +1002,7 @@ export function EmployeeMaster() {
         }
       });
 
-      const employee = employees.find(
+      const employee = eligibilityEmployees.find(
         (item) => normalizeEmpId(item.empId) === normalizeEmpId(empId),
       );
 
@@ -565,9 +1018,12 @@ export function EmployeeMaster() {
       ) {
         changes.push({
           empId: employee.empId,
+
           name: employee.name,
+
           fields: {
             Eligible: eligible,
+
             Reason: nextReason,
           },
         });
@@ -580,6 +1036,7 @@ export function EmployeeMaster() {
   /* ============================================================
      HANDLE ROSTER FILE
      ============================================================ */
+
   const handleRosterFile = async (file) => {
     try {
       const rows = await readFile(file);
@@ -594,7 +1051,9 @@ export function EmployeeMaster() {
     } catch (error) {
       showBanner(
         "Import failed",
+
         error.message || "Unable to read the file.",
+
         true,
       );
     }
@@ -603,11 +1062,122 @@ export function EmployeeMaster() {
   /* ============================================================
      HANDLE ELIGIBILITY FILE
      ============================================================ */
+
   const handleEligibilityFile = async (file) => {
     try {
+      /*
+       * If Eligibility List data is not loaded yet,
+       * load it before processing the import.
+       */
+      let sourceEmployees = eligibilityEmployees;
+
+      if (sourceEmployees.length === 0) {
+        setEligibilityLoading(true);
+
+        sourceEmployees = await fetchAllEmployeesFromCatalyst();
+
+        setEligibilityEmployees(sourceEmployees);
+
+        setEligibilityLoading(false);
+      }
+
+      const originalEmployees = employees;
+
+      /*
+       * Temporarily use all eligibility employees for import matching.
+       */
+      const originalEmployeesReference = employees;
+
+      setEmployees(sourceEmployees);
+
       const rows = await readFile(file);
 
-      const changes = buildEligibilityImportChanges(rows);
+      /*
+       * Build import changes against the full eligibility dataset.
+       */
+      const changes = [];
+
+      if (Array.isArray(rows)) {
+        rows.forEach((row) => {
+          if (!row || typeof row !== "object") {
+            return;
+          }
+
+          const empId = getImportedEmpId(row);
+
+          if (!empId) {
+            return;
+          }
+
+          let eligibleValue = "";
+
+          Object.entries(row).forEach(([header, value]) => {
+            const normalized = normalizeImportHeader(header);
+
+            if (
+              normalized === "eligible" ||
+              normalized === "eligibility" ||
+              normalized === "status"
+            ) {
+              eligibleValue = String(value ?? "").trim();
+            }
+          });
+
+          if (!eligibleValue) {
+            return;
+          }
+
+          const eligible = normalizeEligibleValue(eligibleValue);
+
+          if (!eligible) {
+            return;
+          }
+
+          let reason = "";
+
+          Object.entries(row).forEach(([header, value]) => {
+            const normalized = normalizeImportHeader(header);
+
+            if (
+              normalized === "reason" ||
+              normalized === "eligiblereason" ||
+              normalized === "remarks"
+            ) {
+              reason = String(value ?? "").trim();
+            }
+          });
+
+          const employee = sourceEmployees.find(
+            (item) => normalizeEmpId(item.empId) === normalizeEmpId(empId),
+          );
+
+          if (!employee) {
+            return;
+          }
+
+          const nextReason =
+            reason !== "" ? reason : employee.eligibleReason || "";
+
+          if (
+            employee.eligible !== eligible ||
+            employee.eligibleReason !== nextReason
+          ) {
+            changes.push({
+              empId: employee.empId,
+
+              name: employee.name,
+
+              fields: {
+                Eligible: eligible,
+
+                Reason: nextReason,
+              },
+            });
+          }
+        });
+      }
+
+      setEmployees(originalEmployeesReference);
 
       setPendingImportType("eligibility");
 
@@ -615,9 +1185,13 @@ export function EmployeeMaster() {
 
       setPreviewOpen(true);
     } catch (error) {
+      setEligibilityLoading(false);
+
       showBanner(
         "Import failed",
+
         error.message || "Unable to read the file.",
+
         true,
       );
     }
@@ -626,60 +1200,58 @@ export function EmployeeMaster() {
   /* ============================================================
      CONFIRM IMPORT
      ============================================================ */
+
   const confirmImport = () => {
     /* ==========================================================
        ELIGIBILITY IMPORT
        ========================================================== */
+
     if (pendingImportType === "eligibility") {
-      setEmployees((current) => {
-        /*
-         * Map changes by normalized Employee ID.
-         */
-        const changeMap = new Map(
-          previewChanges.map((change) => [
-            normalizeEmpId(change.empId),
-            change,
-          ]),
-        );
+      const changeMap = new Map(
+        previewChanges.map((change) => [normalizeEmpId(change.empId), change]),
+      );
 
-        return current.map((employee) => {
-          const change = changeMap.get(normalizeEmpId(employee.empId));
+      const updateEligibilityEmployee = (employee) => {
+        const change = changeMap.get(normalizeEmpId(employee.empId));
 
-          if (!change) {
-            return employee;
-          }
+        if (!change) {
+          return employee;
+        }
 
-          const nextEligible = change.fields.Eligible === "Yes" ? "Yes" : "No";
+        const nextEligible = change.fields.Eligible === "Yes" ? "Yes" : "No";
 
-          return {
-            ...employee,
+        return {
+          ...employee,
 
-            eligible: nextEligible,
+          eligible: nextEligible,
 
-            eligibleReason:
-              change.fields.Reason || employee.eligibleReason || "",
+          eligibleReason: change.fields.Reason || employee.eligibleReason || "",
 
-            manualOverride: true,
+          manualOverride: true,
 
-            status: nextEligible === "Yes" ? "Active" : "Inactive",
-          };
-        });
-      });
+          status: nextEligible === "Yes" ? "Active" : "Inactive",
+        };
+      };
+
+      setEligibilityEmployees((current) =>
+        current.map(updateEligibilityEmployee),
+      );
+
+      setEmployees((current) => current.map(updateEligibilityEmployee));
 
       showBanner(
         "Eligibility imported",
+
         `${previewChanges.length} employee record(s) updated.`,
       );
     } else {
-      /* ==========================================================
-       ROSTER IMPORT
-       ========================================================== */
+      /* ========================================================
+         ROSTER IMPORT
+         ======================================================== */
+
       setEmployees((current) => {
         const next = [...current];
 
-        /*
-         * Keep a map of existing Employee IDs.
-         */
         const indexByEmpId = new Map();
 
         next.forEach((employee, index) => {
@@ -690,9 +1262,6 @@ export function EmployeeMaster() {
           }
         });
 
-        /*
-         * Apply every previewed import change.
-         */
         previewChanges.forEach((change) => {
           const key = normalizeEmpId(change.empId);
 
@@ -702,9 +1271,10 @@ export function EmployeeMaster() {
 
           const existingIndex = indexByEmpId.get(key);
 
-          /* ----------------------------------------------
-                 NEW EMPLOYEE
-                 ---------------------------------------------- */
+          /* ====================================================
+             NEW EMPLOYEE
+             ==================================================== */
+
           if (existingIndex === undefined) {
             const newEmployee = {
               empId: String(change.empId ?? "").trim(),
@@ -748,17 +1318,15 @@ export function EmployeeMaster() {
             return;
           }
 
-          /* ----------------------------------------------
-                 EXISTING EMPLOYEE
-                 ---------------------------------------------- */
+          /* ====================================================
+             EXISTING EMPLOYEE
+             ==================================================== */
+
           const updatedEmployee = {
             ...next[existingIndex],
           };
 
           Object.entries(change.fields || {}).forEach(([field, value]) => {
-            /*
-             * Only update actual Employee Master fields.
-             */
             const isSupportedField = FIELD_DEFS.some(
               (definition) => definition.key === field,
             );
@@ -776,18 +1344,22 @@ export function EmployeeMaster() {
 
       showBanner(
         "Employee data imported",
+
         `${previewChanges.length} employee record(s) updated.`,
       );
     }
 
     setPreviewOpen(false);
+
     setPreviewChanges([]);
+
     setPendingImportType(null);
   };
 
   /* ============================================================
      ELIGIBILITY CRITERIA
      ============================================================ */
+
   const applyEligibilityCriteria = ({
     departments,
     designations,
@@ -796,55 +1368,68 @@ export function EmployeeMaster() {
   }) => {
     let evaluated = 0;
 
-    setEmployees((current) =>
-      current.map((employee) => {
-        if (employee.status !== "Active" || employee.manualOverride) {
-          return employee;
-        }
+    const updateEmployee = (employee) => {
+      if (employee.status !== "Active" || employee.manualOverride) {
+        return employee;
+      }
 
-        evaluated += 1;
+      evaluated += 1;
 
-        const reasons = [];
+      const reasons = [];
 
-        if (departments.length && departments.includes(employee.organization)) {
-          reasons.push("Department excluded");
-        }
+      if (departments.length && departments.includes(employee.organization)) {
+        reasons.push("Department excluded");
+      }
 
-        if (
-          designations.length &&
-          designations.includes(employee.designation)
-        ) {
-          reasons.push("Designation excluded");
-        }
+      if (designations.length && designations.includes(employee.designation)) {
+        reasons.push("Designation excluded");
+      }
 
-        if (excluded.includes(employee.empId)) {
-          reasons.push("Employee excluded");
-        }
+      if (excluded.includes(employee.empId)) {
+        reasons.push("Employee excluded");
+      }
 
-        if (cutoffDate && employee.doj > cutoffDate) {
-          reasons.push("Joined after cutoff date");
-        }
+      if (cutoffDate && employee.doj > cutoffDate) {
+        reasons.push("Joined after cutoff date");
+      }
 
-        if (reasons.length > 0) {
-          return {
-            ...employee,
-            eligible: "No",
-            eligibleReason: reasons.join(", "),
-            status: "Inactive",
-          };
-        }
-
+      if (reasons.length > 0) {
         return {
           ...employee,
-          eligible: "Yes",
-          eligibleReason: "",
-          status: "Active",
+
+          eligible: "No",
+
+          eligibleReason: reasons.join(", "),
+
+          status: "Inactive",
         };
-      }),
-    );
+      }
+
+      return {
+        ...employee,
+
+        eligible: "Yes",
+
+        eligibleReason: "",
+
+        status: "Active",
+      };
+    };
+
+    /*
+     * Apply criteria to ALL eligibility employees.
+     */
+    setEligibilityEmployees((current) => current.map(updateEmployee));
+
+    /*
+     * Also update current roster page if those employees
+     * are currently visible there.
+     */
+    setEmployees((current) => current.map(updateEmployee));
 
     showBanner(
       "Criteria applied",
+
       `${evaluated} active employee(s) evaluated. Manual overrides were left unchanged.`,
     );
   };
@@ -852,40 +1437,69 @@ export function EmployeeMaster() {
   /* ============================================================
      SAVE INDIVIDUAL ELIGIBILITY
      ============================================================ */
+
   const saveEligibility = ({ empId, eligible, eligibleReason }) => {
     const nextStatus = eligible === "Yes" ? "Active" : "Inactive";
 
-    setEmployees((current) =>
-      current.map((employee) =>
-        normalizeEmpId(employee.empId) === normalizeEmpId(empId)
-          ? {
-              ...employee,
+    const updateEmployee = (employee) =>
+      normalizeEmpId(employee.empId) === normalizeEmpId(empId)
+        ? {
+            ...employee,
 
-              eligible,
+            eligible,
 
-              eligibleReason: eligibleReason || "",
+            eligibleReason: eligibleReason || "",
 
-              manualOverride: true,
+            manualOverride: true,
 
-              status: nextStatus,
-            }
-          : employee,
-      ),
+            status: nextStatus,
+          }
+        : employee;
+
+    /*
+     * Update the full Eligibility List dataset.
+     */
+    setEligibilityEmployees((current) => current.map(updateEmployee));
+
+    /*
+     * Update the current Employee Master page if the employee
+     * happens to be visible there.
+     */
+    setEmployees((current) => current.map(updateEmployee));
+
+    /*
+     * Keep local eligibility cache updated.
+     */
+    const savedEmployee = eligibilityEmployees.find(
+      (employee) => normalizeEmpId(employee.empId) === normalizeEmpId(empId),
     );
+
+    if (savedEmployee) {
+      saveEmployees([updateEmployee(savedEmployee)]);
+    }
 
     setEligibilityEmployee(null);
 
     showBanner(
       "Eligibility updated",
+
       `${empId} is now ${
         eligible === "Yes" ? "Eligible / Active" : "Not Eligible / Inactive"
       }.`,
     );
   };
 
+  /* ============================================================
+     UI
+     ============================================================ */
+
   return (
     <AppShell>
       <div className="employee-master-page">
+        {/* ======================================================
+            PAGE HEADING
+            ====================================================== */}
+
         <div className="em-page-heading">
           <div>
             <h2>Employee Master</h2>
@@ -896,20 +1510,27 @@ export function EmployeeMaster() {
           <div className="em-page-stats">
             <div>
               <span>Total</span>
+
               <strong>{total}</strong>
             </div>
 
             <div>
               <span>Active</span>
+
               <strong className="active">{active}</strong>
             </div>
 
             <div>
               <span>Inactive</span>
+
               <strong className="inactive">{inactive}</strong>
             </div>
           </div>
         </div>
+
+        {/* ======================================================
+            TABS
+            ====================================================== */}
 
         <div className="em-tabs">
           <button
@@ -928,6 +1549,10 @@ export function EmployeeMaster() {
             Eligibility List
           </button>
         </div>
+
+        {/* ======================================================
+            BANNER
+            ====================================================== */}
 
         {banner && (
           <div className={`em-banner ${banner.error ? "error" : ""}`}>
@@ -951,6 +1576,10 @@ export function EmployeeMaster() {
           </div>
         )}
 
+        {/* ======================================================
+            EMPLOYEE MASTER TAB
+            ====================================================== */}
+
         {activeTab === "roster" && (
           <div className="em-tab-content">
             <EmployeeMasterToolbar
@@ -962,6 +1591,10 @@ export function EmployeeMaster() {
               onUpload={() => fileInputRef.current?.click()}
               onDownloadData={() => downloadRosterData(filteredRosterEmployees)}
             />
+
+            {/* ==================================================
+                IMPORT FILE INPUT
+                ================================================== */}
 
             <input
               ref={fileInputRef}
@@ -975,18 +1608,31 @@ export function EmployeeMaster() {
                   handleRosterFile(file);
                 }
 
-                /*
-                 * Allows the same file to be selected again.
-                 */
                 event.target.value = "";
               }}
             />
 
-            <EmployeeRosterTable
-              rows={filteredRosterEmployees}
-              filters={rosterFilters}
-              setFilters={setRosterFilters}
-            />
+            {/* ==================================================
+                EMPLOYEE GRID
+                ================================================== */}
+
+            {loading ? (
+              <div className="em-empty">Loading employees...</div>
+            ) : (
+              <EmployeeRosterTable
+                rows={filteredRosterEmployees}
+                filters={rosterFilters}
+                setFilters={setRosterFilters}
+                currentPage={currentPage}
+                setCurrentPage={setCurrentPage}
+                totalPages={pagination.totalPages}
+                totalCount={pagination.totalCount}
+              />
+            )}
+
+            {/* ==================================================
+                FOOTER NOTE
+                ================================================== */}
 
             <div className="em-footer-note">
               Employee Master is the roster of record. Appraisal-cycle data
@@ -995,36 +1641,54 @@ export function EmployeeMaster() {
           </div>
         )}
 
+        {/* ======================================================
+            ELIGIBILITY TAB
+            ====================================================== */}
+
         {activeTab === "eligibility" && (
           <div className="em-tab-content">
-            <div className="em-eligibility-layout">
-              <EligibilityCriteria
-                employees={employees}
-                excludedEmployees={excludedEmployees}
-                setExcludedEmployees={setExcludedEmployees}
-                onApply={applyEligibilityCriteria}
-              />
+            {eligibilityLoading ? (
+              <div className="em-empty">
+                Loading all employees for Eligibility List...
+              </div>
+            ) : (
+              <div className="em-eligibility-layout">
+                <EligibilityCriteria
+                  employees={eligibilityEmployees}
+                  excludedEmployees={excludedEmployees}
+                  setExcludedEmployees={setExcludedEmployees}
+                  onApply={applyEligibilityCriteria}
+                />
 
-              <EligibilityList
-                employees={employees}
-                search={eligibilitySearch}
-                setSearch={setEligibilitySearch}
-                filters={eligibilityFilters}
-                setFilters={setEligibilityFilters}
-                onChangeEligibility={setEligibilityEmployee}
-                onDownloadTemplate={downloadEligibilityTemplate}
-                onImport={handleEligibilityFile}
-                onExport={exportEligibilityData}
-              />
-            </div>
+                <EligibilityList
+                  employees={eligibilityEmployees}
+                  search={eligibilitySearch}
+                  setSearch={setEligibilitySearch}
+                  filters={eligibilityFilters}
+                  setFilters={setEligibilityFilters}
+                  onChangeEligibility={setEligibilityEmployee}
+                  onDownloadTemplate={downloadEligibilityTemplate}
+                  onImport={handleEligibilityFile}
+                  onExport={exportEligibilityData}
+                />
+              </div>
+            )}
           </div>
         )}
+
+        {/* ======================================================
+            ELIGIBILITY MODAL
+            ====================================================== */}
 
         <EligibilityModal
           employee={eligibilityEmployee}
           onClose={() => setEligibilityEmployee(null)}
           onSave={saveEligibility}
         />
+
+        {/* ======================================================
+            IMPORT PREVIEW
+            ====================================================== */}
 
         <ImportPreviewModal
           open={previewOpen}
