@@ -1,0 +1,12 @@
+{
+  "functions": {
+    "targets": [
+      "employee-api",
+      "excel_appraisal_function",
+      "employee-seed",
+      "employee-api-v2"
+    ],
+    "ignore": [],
+    "source": "functions"
+  }
+}

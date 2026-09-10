@@ -1,0 +1,30 @@
+{
+  "defaults": {
+    "project": 1,
+    "env": 1
+  },
+  "actives": {
+    "project": 1,
+    "env": 1
+  },
+  "projects": [
+    {
+      "idx": 1,
+      "id": "34995000000089004",
+      "name": "ExcelAppraisal",
+      "domain": {
+        "id": "10132667904",
+        "name": "excelappraisal-904056216.development"
+      },
+      "timezone": "Asia/Kolkata",
+      "env": [
+        {
+          "idx": 1,
+          "id": "904056216",
+          "name": "Development",
+          "type": 3
+        }
+      ]
+    }
+  ]
+}

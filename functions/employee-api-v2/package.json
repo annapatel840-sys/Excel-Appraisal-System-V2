@@ -1,0 +1,9 @@
+{
+	"name": "employee-api-v2",
+	"version": "1.0.0",
+	"main": "index.js",
+	"author": "user8@demo1.race2cloud.com",
+	"dependencies": {
+		"zcatalyst-sdk-node": "latest"
+	}
+}
