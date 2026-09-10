@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -9,7 +10,12 @@ import {
   pct,
 } from "@/lib/appraisal-data";
 
-import { getPreviousYearData } from "@/lib/previous-year-data";
+// ============================================================
+// API
+// ============================================================
+
+const APPRAISAL_HISTORY_API_URL =
+  "https://excelappraisal-904056216.development.catalystserverless.com/server/appraisal-history-api/";
 
 // ============================================================
 // HELPERS
@@ -225,14 +231,89 @@ function ComparisonRow({
 // ============================================================
 
 export function EmployeeDrawer({ employee, onOpenChange }) {
+  const [previous, setPrevious] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+
+  // ==========================================================
+  // FETCH PREVIOUS APPRAISAL
+  // ==========================================================
+
+  useEffect(() => {
+    if (!employee?.empId) {
+      setPrevious(null);
+      setHistoryError("");
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadPreviousAppraisal() {
+      setHistoryLoading(true);
+      setHistoryError("");
+      setPrevious(null);
+
+      try {
+        const url =
+          `${APPRAISAL_HISTORY_API_URL}?emp_id=` +
+          encodeURIComponent(employee.empId);
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to fetch appraisal history (${response.status})`,
+          );
+        }
+
+        const result = await response.json();
+
+        if (!result.success) {
+          throw new Error(
+            result.message || "Failed to fetch appraisal history.",
+          );
+        }
+
+        if (cancelled) return;
+
+        /*
+         * API returns latest year first:
+         *
+         * 2025-26
+         * 2024-25
+         * 2023-24
+         *
+         * Employee Drawer needs ONLY the latest previous year.
+         */
+
+        const latestPreviousYear =
+          Array.isArray(result.data) && result.data.length > 0
+            ? result.data[0]
+            : null;
+
+        setPrevious(latestPreviousYear);
+      } catch (error) {
+        if (cancelled) return;
+
+        console.error("Employee appraisal history error:", error);
+
+        setPrevious(null);
+        setHistoryError(error.message || "Unable to load previous appraisal.");
+      } finally {
+        if (!cancelled) {
+          setHistoryLoading(false);
+        }
+      }
+    }
+
+    loadPreviousAppraisal();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [employee?.empId]);
+
   if (!employee) return null;
-
-  /*
-   * employee comes directly from the current rows.
-   * Therefore all current grid edits are reflected immediately.
-   */
-
-  const previous = getPreviousYearData(employee.empId) || {};
 
   // ==========================================================
   // CURRENT YEAR
@@ -254,6 +335,21 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
 
   const currentHikePct = hikePct(employee);
 
+  /*
+   * TARGET PERFORMANCE BONUS
+   *
+   * This comes from the current employee record:
+   * targetPBNextYear
+   *
+   * Do NOT use employee.targetPerformanceBonus.
+   */
+  const currentTargetPerformanceBonus = employee.targetPBNextYear;
+
+  /*
+   * NEW CTC shown in the comparison section.
+   *
+   * Existing calculation is preserved.
+   */
   const currentNewBasePay = currentBasePay + Number(currentHikeAmount || 0);
 
   const currentNewCTC = currentNewBasePay + Number(currentTotalBonus || 0);
@@ -262,23 +358,37 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
   // PREVIOUS YEAR
   // ==========================================================
 
-  const previousBasePay = previous.basePay ?? null;
+  /*
+   * Catalyst field names from Previous_Appraisal:
+   *
+   * base_pay
+   * allocated_pb
+   * performance_bonus
+   * retention_bonus
+   * total_pb
+   * total_bonus
+   * hike_amount
+   * hike_pct
+   * new_ctc
+   */
 
-  const previousAllocatedPB = previous.allocatedPB ?? null;
+  const previousBasePay = previous?.base_pay ?? null;
 
-  const previousPerformanceBonus = previous.performanceBonus ?? null;
+  const previousAllocatedPB = previous?.allocated_pb ?? null;
 
-  const previousRetentionBonus = previous.retentionBonus ?? null;
+  const previousPerformanceBonus = previous?.performance_bonus ?? null;
 
-  const previousTotalPB = previous.totalPB ?? null;
+  const previousRetentionBonus = previous?.retention_bonus ?? null;
 
-  const previousTotalBonus = previous.totalBonus ?? null;
+  const previousTotalPB = previous?.total_pb ?? null;
 
-  const previousHikeAmount = previous.hikeAmount ?? null;
+  const previousTotalBonus = previous?.total_bonus ?? null;
 
-  const previousHikePct = previous.hikePct ?? null;
+  const previousHikeAmount = previous?.hike_amount ?? null;
 
-  const previousNewCTC = previous.newCTC ?? null;
+  const previousHikePct = previous?.hike_pct ?? null;
+
+  const previousNewCTC = previous?.new_ctc ?? null;
 
   // ==========================================================
   // RENDER
@@ -374,8 +484,6 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
 
       {/* ======================================================
           MAIN CONTENT
-          LEFT = NON-EDITABLE FIELDS
-          RIGHT = EXISTING COMPARISON
       ======================================================= */}
 
       <div
@@ -390,7 +498,6 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
       >
         {/* ====================================================
             LEFT SIDE
-            NON-EDITABLE FIELDS
         ===================================================== */}
 
         <div
@@ -403,25 +510,17 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
             lg:grid-cols-3
           "
         >
-          {/* Reporting Manager */}
-
           <InfoCell
             label="Reporting Manager"
             value={employee.reportingManager}
           />
 
-          {/* Comp Manager */}
-
           <InfoCell label="Comp. Manager" value={employee.compManager} />
-
-          {/* Appraiser Tech / ED */}
 
           <InfoCell
             label="Appraiser Tech/ED"
             value={employee.appraiserTechED}
           />
-
-          {/* Wissen Experience */}
 
           <InfoCell
             label="Organization Exp."
@@ -432,8 +531,6 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
             }
           />
 
-          {/* Total Experience */}
-
           <InfoCell
             label="Total Exp."
             value={
@@ -443,19 +540,11 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
             }
           />
 
-          {/* Last Appraisal */}
-
           <InfoCell label="Last Appraisal" value={employee.lastAppraisalDate} />
-
-          {/* Manager Rating */}
 
           <InfoCell label="Manager Rating" value={employee.managerRating} />
 
-          {/* Interview Count */}
-
           <InfoCell label="Interviews" value={employee.interviewCount} />
-
-          {/* RR % */}
 
           <InfoCell
             label="RR %"
@@ -464,72 +553,45 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
             }
           />
 
-          {/* Gross Margin */}
-
           <InfoCell label="Gross Margin" value={employee.grossMargin} />
 
-          {/* Status */}
-
           <InfoCell label="Status" value={employee.status} />
-
-          {/* RB to be Paid */}
 
           <InfoCell
             label="RB to be Paid"
             value={currency(employee.rbToBePaid)}
           />
 
-          {/* Month RB */}
-
           <InfoCell label="Month RB" value={employee.monthRB} />
-
-          {/* PB to be Paid */}
 
           <InfoCell
             label="PB to be Paid"
             value={currency(employee.pbToBePaid)}
           />
 
-          {/* Month PB */}
-
           <InfoCell label="Month PB" value={employee.monthPB} />
 
-          {/* ------------------------------------------------
-              OTHER NON-EDITABLE COLUMN DATA
-              ------------------------------------------------
+          {/* ==================================================
+              FIXED CURRENT CTC
+              ================================================== */}
 
-              These are intentionally NOT repeated here:
+          <InfoCell
+            label="Current CTC"
+            value={currency(employee.currentAnnualBasePay)}
+          />
 
-              currentAnnualBasePay
-              targetPBAllocatedForMay
-              allocatedPBAmount
-              newPBToBeOffered
-              newRB
-              hikeAmount
-              hikePct
-              totalOfPB
-              totalBonus
-              totalCTCWithRewards
-
-              Those belong to the comparison section on
-              the RIGHT.
-          ------------------------------------------------- */}
-
-          {/* Current CTC - extra existing row data */}
-
-          <InfoCell label="Current CTC" value={currency(employee.currentCTC)} />
-
-          {/* Target Performance Bonus */}
+          {/* ==================================================
+              FIXED TARGET PERFORMANCE BONUS
+              ================================================== */}
 
           <InfoCell
             label="Target Performance Bonus"
-            value={currency(employee.targetPerformanceBonus)}
+            value={currency(currentTargetPerformanceBonus)}
           />
         </div>
 
         {/* ====================================================
             RIGHT SIDE
-            EXISTING COMPARISON SECTION
         ===================================================== */}
 
         <div className="min-w-0 overflow-x-auto">
@@ -614,87 +676,144 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
               </div>
             </div>
 
-            {/* ANNUAL BASE PAY */}
+            {/* LOADING */}
 
-            <ComparisonRow
-              label="Annual Base Pay"
-              current={currentBasePay}
-              previous={previousBasePay}
-              type="currency"
-            />
+            {historyLoading && (
+              <div
+                className="
+                  px-3
+                  py-2
+                  text-center
+                  text-[8px]
+                  font-medium
+                  text-[#64748b]
+                "
+              >
+                Loading previous appraisal...
+              </div>
+            )}
 
-            {/* ALLOCATED PB */}
+            {/* ERROR */}
 
-            <ComparisonRow
-              label="Allocated PB"
-              current={currentAllocatedPB}
-              previous={previousAllocatedPB}
-              type="currency"
-            />
+            {!historyLoading && historyError && (
+              <div
+                className="
+                  px-3
+                  py-2
+                  text-center
+                  text-[8px]
+                  font-medium
+                  text-red-600
+                "
+              >
+                {historyError}
+              </div>
+            )}
 
-            {/* PERFORMANCE BONUS */}
+            {/* NO PREVIOUS RECORD */}
 
-            <ComparisonRow
-              label="Performance Bonus"
-              current={currentPerformanceBonus}
-              previous={previousPerformanceBonus}
-              type="currency"
-            />
+            {!historyLoading && !historyError && !previous && (
+              <div
+                className="
+                    px-3
+                    py-2
+                    text-center
+                    text-[8px]
+                    font-medium
+                    text-[#64748b]
+                  "
+              >
+                No previous appraisal found.
+              </div>
+            )}
 
-            {/* RETENTION BONUS */}
+            {/* COMPARISON DATA */}
 
-            <ComparisonRow
-              label="Retention Bonus"
-              current={currentRetentionBonus}
-              previous={previousRetentionBonus}
-              type="currency"
-            />
+            {!historyLoading && previous && (
+              <>
+                {/* ANNUAL BASE PAY */}
 
-            {/* TOTAL PB */}
+                <ComparisonRow
+                  label="Annual Base Pay"
+                  current={currentBasePay}
+                  previous={previousBasePay}
+                  type="currency"
+                />
 
-            <ComparisonRow
-              label="Total PB"
-              current={currentTotalPB}
-              previous={previousTotalPB}
-              type="currency"
-            />
+                {/* ALLOCATED PB */}
 
-            {/* TOTAL BONUS */}
+                <ComparisonRow
+                  label="Allocated PB"
+                  current={currentAllocatedPB}
+                  previous={previousAllocatedPB}
+                  type="currency"
+                />
 
-            <ComparisonRow
-              label="Total Bonus"
-              current={currentTotalBonus}
-              previous={previousTotalBonus}
-              type="currency"
-            />
+                {/* PERFORMANCE BONUS */}
 
-            {/* HIKE AMOUNT */}
+                <ComparisonRow
+                  label="Performance Bonus"
+                  current={currentPerformanceBonus}
+                  previous={previousPerformanceBonus}
+                  type="currency"
+                />
 
-            <ComparisonRow
-              label="Hike Amount"
-              current={currentHikeAmount}
-              previous={previousHikeAmount}
-              type="currency"
-            />
+                {/* RETENTION BONUS */}
 
-            {/* HIKE % */}
+                <ComparisonRow
+                  label="Retention Bonus"
+                  current={currentRetentionBonus}
+                  previous={previousRetentionBonus}
+                  type="currency"
+                />
 
-            <ComparisonRow
-              label="Hike %"
-              current={currentHikePct}
-              previous={previousHikePct}
-              type="percent"
-            />
+                {/* TOTAL PB */}
 
-            {/* NEW CTC */}
+                <ComparisonRow
+                  label="Total PB"
+                  current={currentTotalPB}
+                  previous={previousTotalPB}
+                  type="currency"
+                />
 
-            <ComparisonRow
-              label="New CTC"
-              current={currentNewCTC}
-              previous={previousNewCTC}
-              type="currency"
-              bold
-            />
+                {/* TOTAL BONUS */}
+
+                <ComparisonRow
+                  label="Total Bonus"
+                  current={currentTotalBonus}
+                  previous={previousTotalBonus}
+                  type="currency"
+                />
+
+                {/* HIKE AMOUNT */}
+
+                <ComparisonRow
+                  label="Hike Amount"
+                  current={currentHikeAmount}
+                  previous={previousHikeAmount}
+                  type="currency"
+                />
+
+                {/* HIKE % */}
+
+                <ComparisonRow
+                  label="Hike %"
+                  current={currentHikePct}
+                  previous={previousHikePct}
+                  type="percent"
+                />
+
+                {/* NEW CTC */}
+
+                <ComparisonRow
+                  label="New CTC"
+                  current={currentNewCTC}
+                  previous={previousNewCTC}
+                  type="currency"
+                  bold
+                />
+              </>
+            )}
           </div>
         </div>
       </div>

@@ -6,7 +6,13 @@ import { cn } from "@/lib/utils";
 import { ColumnFilter } from "./ColumnFilter";
 import { COLUMNS, formatValue } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
-import { getPreviousYearData } from "@/lib/previous-year-data";
+
+/* ============================================================
+   API
+   ============================================================ */
+
+const APPRAISAL_HISTORY_API_URL =
+  "https://excelappraisal-904056216.development.catalystserverless.com/server/appraisal-history-api/";
 
 /* ============================================================
    FONT
@@ -25,7 +31,6 @@ const SELECT_WIDTH = 30;
 const MIN_WIDTH = 52;
 const MAX_WIDTH = 160;
 
-/* Slightly tighter columns */
 const WIDTHS = {
   empId: 68,
   name: 135,
@@ -112,16 +117,74 @@ const numericValue = (value) => {
    ============================================================ */
 
 const formatHistoryNumber = (value) => {
-  const n = Number(value || 0);
+  if (value === null || value === undefined || value === "") {
+    return "0";
+  }
+
+  const n = Number(value);
+
+  if (!Number.isFinite(n)) {
+    return "0";
+  }
 
   return Math.round(n).toLocaleString("en-IN");
 };
 
 const formatHistoryPercent = (value) => {
-  const n = Number(value || 0);
+  if (value === null || value === undefined || value === "") {
+    return "0.0%";
+  }
+
+  const n = Number(value);
+
+  if (!Number.isFinite(n)) {
+    return "0.0%";
+  }
 
   return `${n.toFixed(1)}%`;
 };
+
+/* ============================================================
+   HISTORY RECORD NORMALIZER
+   ============================================================ */
+
+const normalizeHistoryRecord = (record) => ({
+  year: String(record?.appraisal_year ?? "—"),
+
+  basePay: Number(record?.base_pay) || 0,
+
+  allocatedPB: Number(record?.allocated_pb) || 0,
+
+  performanceBonus: Number(record?.performance_bonus) || 0,
+
+  retentionBonus: Number(record?.retention_bonus) || 0,
+
+  totalPB: Number(record?.total_pb) || 0,
+
+  totalBonus: Number(record?.total_bonus) || 0,
+
+  hikeAmount: Number(record?.hike_amount) || 0,
+
+  hikePct: Number(record?.hike_pct) || 0,
+
+  promotion:
+    record?.promotion !== null &&
+    record?.promotion !== undefined &&
+    String(record?.promotion).trim() !== ""
+      ? String(record.promotion)
+      : "—",
+
+  title:
+    record?.title !== null &&
+    record?.title !== undefined &&
+    String(record?.title).trim() !== ""
+      ? String(record.title)
+      : "—",
+
+  targetPB: Number(record?.target_performance_bonus) || 0,
+
+  newCTC: Number(record?.new_ctc) || 0,
+});
 
 /* ============================================================
    COMPONENT
@@ -251,6 +314,10 @@ export function AppraisalGrid({
 
   const [historyRow, setHistoryRow] = useState(null);
 
+  const [historyData, setHistoryData] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
+
   /* ============================================================
      HOVER
      ============================================================ */
@@ -261,6 +328,83 @@ export function AppraisalGrid({
     left: 0,
     top: 0,
   });
+
+  /* ============================================================
+     FETCH APPRAISAL HISTORY
+     ============================================================ */
+
+  useEffect(() => {
+    if (!showHistory || !historyRow?.empId) {
+      return;
+    }
+
+    const empId = String(historyRow.empId).trim();
+
+    if (!empId) {
+      setHistoryData([]);
+      setHistoryError("");
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadHistory = async () => {
+      setHistoryLoading(true);
+      setHistoryError("");
+      setHistoryData([]);
+
+      try {
+        const url = `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(
+          empId,
+        )}`;
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to load appraisal history (${response.status}).`,
+          );
+        }
+
+        const result = await response.json();
+
+        if (!result?.success) {
+          throw new Error(
+            result?.message || "Failed to load appraisal history.",
+          );
+        }
+
+        const records = Array.isArray(result?.data) ? result.data : [];
+
+        const normalized = records
+          .map(normalizeHistoryRecord)
+          .sort((a, b) => String(b.year).localeCompare(String(a.year)));
+
+        if (!cancelled) {
+          setHistoryData(normalized);
+        }
+      } catch (error) {
+        console.error("Appraisal history fetch error:", error);
+
+        if (!cancelled) {
+          setHistoryData([]);
+          setHistoryError(
+            error?.message || "Unable to load appraisal history.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setHistoryLoading(false);
+        }
+      }
+    };
+
+    loadHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showHistory, historyRow?.empId]);
 
   /* ============================================================
      HISTORY AUTO SCROLL
@@ -278,6 +422,18 @@ export function AppraisalGrid({
           });
         }
       });
+    }
+  }, [showHistory]);
+
+  /* ============================================================
+     RESET HISTORY WHEN PANEL CLOSES
+     ============================================================ */
+
+  useEffect(() => {
+    if (!showHistory) {
+      setHistoryData([]);
+      setHistoryError("");
+      setHistoryLoading(false);
     }
   }, [showHistory]);
 
@@ -636,8 +792,13 @@ export function AppraisalGrid({
       if (onRowOpen) {
         onRowOpen(row);
       }
+
+      if (showHistory) {
+        setHistoryData([]);
+        setHistoryError("");
+      }
     },
-    [onRowOpen],
+    [onRowOpen, showHistory],
   );
 
   /* ============================================================
@@ -739,52 +900,10 @@ export function AppraisalGrid({
   );
 
   /* ============================================================
-     HISTORY DATA
+     MAIN HISTORY DATA
      ============================================================ */
 
-  const previousYearData = useMemo(() => {
-    if (!historyRow) {
-      return null;
-    }
-
-    return getPreviousYearData(historyRow.empId);
-  }, [historyRow]);
-
-  const historyRows = useMemo(() => {
-    if (!historyRow || !previousYearData) {
-      return [];
-    }
-
-    return [
-      {
-        year: previousYearData.appraisalYear,
-
-        basePay: Number(previousYearData.basePay) || 0,
-
-        allocatedPB: Number(previousYearData.allocatedPB) || 0,
-
-        performanceBonus: Number(previousYearData.performanceBonus) || 0,
-
-        retentionBonus: Number(previousYearData.retentionBonus) || 0,
-
-        totalPB: Number(previousYearData.totalPB) || 0,
-
-        totalBonus: Number(previousYearData.totalBonus) || 0,
-
-        hikeAmount: Number(previousYearData.hikeAmount) || 0,
-
-        hikePct: Number(previousYearData.hikePct) || 0,
-
-        promotion: previousYearData.promotion || "—",
-
-        title: previousYearData.title || "—",
-
-        targetPB: Number(previousYearData.targetPerformanceBonus) || 0,
-
-        newCTC: Number(previousYearData.newCTC) || 0,
-      },
-    ];
-  }, [historyRow, previousYearData]);
+  const latestHistory = historyData[0] ?? null;
 
   /* ============================================================
      RENDER CELL
@@ -1467,10 +1586,10 @@ export function AppraisalGrid({
                 {historyRow ? ` - ${historyRow.name}` : ""}
               </span>
 
-              {historyRow && (
+              {historyRow && !historyLoading && (
                 <span className="text-[8px] opacity-75">
-                  {historyRows.length} appraisal year
-                  {historyRows.length === 1 ? "" : "s"}
+                  {historyData.length} appraisal year
+                  {historyData.length === 1 ? "" : "s"}
                 </span>
               )}
             </div>
@@ -1492,7 +1611,18 @@ export function AppraisalGrid({
               <div className="flex h-full items-center justify-center px-3 text-center text-[9px] text-slate-500">
                 Select an employee to view previous-year appraisal history.
               </div>
-            ) : !previousYearData ? (
+            ) : historyLoading ? (
+              <div className="flex h-full items-center justify-center px-3 text-center text-[9px] text-slate-500">
+                Loading appraisal history...
+              </div>
+            ) : historyError ? (
+              <div className="flex h-full flex-col items-center justify-center gap-1 px-3 text-center text-[9px] text-red-500">
+                <span>Unable to load appraisal history.</span>
+                <span className="text-[8px] text-slate-400">
+                  {historyError}
+                </span>
+              </div>
+            ) : historyData.length === 0 ? (
               <div className="flex h-full items-center justify-center px-3 text-center text-[9px] text-slate-500">
                 No previous-year appraisal data available for this employee.
               </div>
@@ -1571,10 +1701,13 @@ export function AppraisalGrid({
                 </thead>
 
                 <tbody>
-                  {historyRows.map((item, index) => (
+                  {historyData.map((item, index) => (
                     <tr
                       key={`${item.year}-${index}`}
-                      className="h-[32px] bg-white"
+                      className={cn(
+                        "h-[32px]",
+                        index === 0 ? "bg-[#fff7c7]" : "bg-white",
+                      )}
                     >
                       <td className="border-r border-b border-[#d9e0e8] px-2 py-1 text-left text-[8px] font-medium text-[#173b63]">
                         {item.year}
@@ -1769,14 +1902,10 @@ export function AppraisalGrid({
 
                 <tbody>
                   <tr className="bg-[#fff7c7]">
-                    <td className="px-2 py-1">
-                      {previousYearData?.appraisalYear ?? "—"}
-                    </td>
+                    <td className="px-2 py-1">{latestHistory?.year ?? "—"}</td>
 
                     <td className="px-2 py-1">
-                      {previousYearData?.title ??
-                        hoverEmployee.designation ??
-                        "—"}
+                      {latestHistory?.title ?? hoverEmployee.designation ?? "—"}
                     </td>
 
                     <td className="px-2 py-1">
@@ -1784,7 +1913,7 @@ export function AppraisalGrid({
                     </td>
 
                     <td className="px-2 py-1">
-                      {previousYearData?.promotion ?? "—"}
+                      {latestHistory?.promotion ?? "—"}
                     </td>
                   </tr>
                 </tbody>

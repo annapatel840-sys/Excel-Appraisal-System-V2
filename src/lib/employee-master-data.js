@@ -1,4 +1,5 @@
-import { buildEmployees } from "./appraisal-data";
+const EMPLOYEE_API_URL =
+  "https://excelappraisal-904056216.development.catalystserverless.com/server/employee-api-v2/";
 
 export const EXPERIENCE_REF_DATE = new Date(2026, 0, 1);
 export const APPRAISAL_YEAR = "Apr-26";
@@ -75,260 +76,242 @@ export const FIELD_DEFS = [
   },
 ];
 
-/*
- * ============================================================
- * SAME EMPLOYEE SOURCE AS APPRAISAL SHEET
- * ============================================================
- *
- * Appraisal Sheet already generates 250 employees through
- * buildEmployees(250).
- *
- * Employee Master derives its employee roster from the
- * same source so both screens always use the same employees
- * and employee IDs.
- */
-
-const appraisalEmployees = buildEmployees(250);
-
-/*
- * ============================================================
- * STATUS
- * ============================================================
- */
+// ============================================================
+// HELPERS
+// ============================================================
 
 function normalizeStatus(status) {
-  return status === "Inactive" ? "Inactive" : "Active";
+  return String(status || "").toLowerCase() === "inactive"
+    ? "Inactive"
+    : "Active";
 }
 
-/*
- * ============================================================
- * DATE OF JOINING
- * ============================================================
- *
- * If appraisal-data already contains DOJ, use it.
- *
- * If DOJ is missing, generate demo DOJ values so that all
- * 250 employees have Date of Joining data.
- */
+function calculateOrganizationExperience(joiningDate) {
+  if (!joiningDate) return "";
 
-function getEmployeeDate(employee, index) {
-  if (employee.doj || employee.dateOfJoining || employee.joiningDate) {
-    return employee.doj || employee.dateOfJoining || employee.joiningDate || "";
+  const joining = new Date(joiningDate);
+
+  if (Number.isNaN(joining.getTime())) {
+    return "";
   }
 
-  const year = 2017 + (index % 9);
-  const month = (index % 12) + 1;
-  const day = (index % 25) + 1;
+  const referenceDate = EXPERIENCE_REF_DATE;
 
-  return `${year}-${String(month).padStart(
-    2,
-    "0",
-  )}-${String(day).padStart(2, "0")}`;
-}
+  let years = referenceDate.getFullYear() - joining.getFullYear();
 
-/*
- * ============================================================
- * EMAIL HELPER
- * ============================================================
- *
- * Creates a clean demo email from the manager's name.
- *
- * Example:
- * Ashok Kumar -> ashok.kumar@r2c.com
- */
+  let months = referenceDate.getMonth() - joining.getMonth();
 
-function createDemoEmail(name, fallback) {
-  const cleanName = String(name || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ".")
-    .replace(/^\.+|\.+$/g, "");
+  let days = referenceDate.getDate() - joining.getDate();
 
-  return cleanName ? `${cleanName}@r2c.com` : fallback;
-}
-
-/*
- * ============================================================
- * ORGANIZATION
- * ============================================================
- */
-
-function getOrganization(employee) {
-  return employee.organization || employee.department || employee.orgtn || "";
-}
-
-/*
- * ============================================================
- * REPORTING MANAGER
- * ============================================================
- */
-
-function getReportingManager(employee) {
-  return employee.reportingManager || employee.manager || "";
-}
-
-/*
- * ============================================================
- * COMP MANAGER
- * ============================================================
- */
-
-function getCompManager(employee) {
-  return (
-    employee.compManager || employee.reportingManager || employee.manager || ""
-  );
-}
-
-/*
- * ============================================================
- * SUPER MANAGER
- * ============================================================
- */
-
-function getSuperManager(employee) {
-  return (
-    employee.superManager ||
-    employee.appraiserTechED ||
-    employee.appraiser ||
-    ""
-  );
-}
-
-/*
- * ============================================================
- * APPRAISER
- * ============================================================
- */
-
-function getAppraiser(employee) {
-  return (
-    employee.appraiser ||
-    employee.appraiserTechED ||
-    employee.superManager ||
-    ""
-  );
-}
-
-/*
- * ============================================================
- * MANAGER EMAIL
- * ============================================================
- *
- * Existing email is preserved.
- *
- * If missing, demo email is generated automatically.
- */
-
-function getManagerMail(employee, index) {
-  if (employee.managerMail || employee.managerEmail) {
-    return employee.managerMail || employee.managerEmail;
+  if (days < 0) {
+    months--;
   }
 
-  return createDemoEmail(
-    employee.reportingManager || employee.manager,
-    `manager${(index % 10) + 1}@r2c.com`,
-  );
-}
-
-/*
- * ============================================================
- * SUPER MANAGER EMAIL
- * ============================================================
- *
- * Existing email is preserved.
- *
- * If missing, demo email is generated automatically.
- */
-
-function getSuperManagerMail(employee, index) {
-  if (employee.superManagerMail || employee.superManagerEmail) {
-    return employee.superManagerMail || employee.superManagerEmail;
+  if (months < 0) {
+    years--;
   }
 
-  return createDemoEmail(
-    employee.superManager || employee.appraiserTechED || employee.appraiser,
-    `supermanager${(index % 5) + 1}@r2c.com`,
-  );
+  const totalMonths = Math.max(0, years * 12 + months);
+
+  return Number((totalMonths / 12).toFixed(1));
 }
 
-/*
- * ============================================================
- * TOTAL EXPERIENCE
- * ============================================================
- */
+// ============================================================
+// MAP CATALYST EMPLOYEE → EMPLOYEE MASTER EMPLOYEE
+// ============================================================
 
-function getTotalExperience(employee) {
-  return employee.totalExperience || employee.totalExp || "";
+export function mapEmployeeFromApi(employee) {
+  const joiningDate = employee?.joining_date || employee?.Joining_date || "";
+
+  const reportingManager =
+    employee?.reporting_manager || employee?.manager || "";
+
+  const compManager = employee?.comp_manager || "";
+
+  const superManager = employee?.super_man_email_id || "";
+
+  return {
+    // ----------------------------------------------------------
+    // BASIC DETAILS
+    // ----------------------------------------------------------
+
+    empId: String(employee?.emp_id ?? ""),
+
+    name: String(employee?.name ?? ""),
+
+    designation: String(employee?.designation ?? ""),
+
+    organization: String(employee?.department ?? employee?.organization ?? ""),
+
+    // ----------------------------------------------------------
+    // DATE OF JOINING
+    // ----------------------------------------------------------
+
+    doj: String(joiningDate),
+
+    // ----------------------------------------------------------
+    // EXPERIENCE
+    // ----------------------------------------------------------
+
+    totalExp:
+      employee?.total_experience ??
+      calculateOrganizationExperience(joiningDate),
+
+    // ----------------------------------------------------------
+    // MANAGERS
+    // ----------------------------------------------------------
+
+    reportingManager: String(reportingManager),
+
+    compManager: String(compManager),
+
+    /*
+     * The employees table currently does not have a
+     * super-manager-name field.
+     *
+     * So keep the existing appraiser/super-manager value
+     * when available.
+     */
+    superManager: String(employee?.appraiser_tech_ed || ""),
+
+    appraiser: String(employee?.appraiser_tech_ed || ""),
+
+    // ----------------------------------------------------------
+    // EMAILS
+    // ----------------------------------------------------------
+
+    managerMail: String(employee?.manager_email_id || ""),
+
+    superManagerMail: String(employee?.super_man_email_id || ""),
+
+    // ----------------------------------------------------------
+    // STATUS
+    // ----------------------------------------------------------
+
+    status: normalizeStatus(employee?.status),
+
+    // ----------------------------------------------------------
+    // ELIGIBILITY
+    // ----------------------------------------------------------
+
+    eligible: "Yes",
+
+    eligibleReason: "",
+
+    manualOverride: false,
+
+    // ----------------------------------------------------------
+    // ORIGINAL CATALYST DATA
+    // ----------------------------------------------------------
+
+    catalystRowId: employee?.ROWID || "",
+
+    rawEmployee: employee,
+  };
 }
 
-/*
- * ============================================================
- * INITIAL EMPLOYEE MASTER DATA
- * ============================================================
- *
- * Same 250 employees as Appraisal Sheet.
- *
- * Added demo data:
- *   - Date of Joining
- *   - Manager Email ID
- *   - Super Manager Email ID
- *
- * Existing values are always preserved when available.
- */
+// ============================================================
+// FETCH EMPLOYEES FROM CATALYST API
+// ============================================================
 
-export const INITIAL_EMPLOYEES = appraisalEmployees.map((employee, index) => ({
-  empId: String(employee.empId ?? ""),
+export async function fetchEmployeeMasterEmployees({
+  page = 1,
+  limit = 20,
+} = {}) {
+  const url = new URL(EMPLOYEE_API_URL);
 
-  name: String(employee.name ?? ""),
+  url.searchParams.set("page", String(page));
+  url.searchParams.set("limit", String(limit));
 
-  designation: String(employee.designation ?? ""),
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+  });
 
-  organization: String(getOrganization(employee)),
+  if (!response.ok) {
+    throw new Error(`Employee API failed with status ${response.status}`);
+  }
 
-  /*
-   * Date of Joining
-   * Existing value if available,
-   * otherwise generated demo value.
-   */
-  doj: String(getEmployeeDate(employee, index)),
+  const result = await response.json();
 
-  totalExp: String(getTotalExperience(employee)),
+  if (!result?.success) {
+    throw new Error(result?.message || "Failed to load employees.");
+  }
 
-  reportingManager: String(getReportingManager(employee)),
+  const employees = Array.isArray(result.data)
+    ? result.data.map(mapEmployeeFromApi)
+    : [];
 
-  compManager: String(getCompManager(employee)),
+  return {
+    data: employees,
 
-  superManager: String(getSuperManager(employee)),
+    pagination: {
+      page: result?.pagination?.page ?? page,
 
-  appraiser: String(getAppraiser(employee)),
+      limit: result?.pagination?.limit ?? limit,
 
-  /*
-   * Manager Email ID
-   * Existing value if available,
-   * otherwise generated demo email.
-   */
-  managerMail: String(getManagerMail(employee, index)),
+      totalCount: result?.pagination?.totalCount ?? employees.length,
 
-  /*
-   * Super Manager Email ID
-   * Existing value if available,
-   * otherwise generated demo email.
-   */
-  superManagerMail: String(getSuperManagerMail(employee, index)),
+      totalPages: result?.pagination?.totalPages ?? 1,
+    },
 
-  status: normalizeStatus(employee.status),
+    counts: {
+      total:
+        result?.counts?.total ??
+        result?.pagination?.totalCount ??
+        employees.length,
 
-  /*
-   * ========================================================
-   * ELIGIBILITY
-   * ========================================================
-   *
-   * Every employee starts as eligible.
-   *
-   * Employee Master controls this value.
-   */
-  eligible: "Yes",
+      active: result?.counts?.active ?? 0,
 
-  eligibleReason: "",
+      inactive: result?.counts?.inactive ?? 0,
+    },
+  };
+}
 
-  manualOverride: false,
-}));
+// ============================================================
+// FETCH ALL EMPLOYEES
+// ============================================================
+//
+// This helper is kept for places that still need the complete
+// employee list, such as eligibility processing.
+//
+// The main Employee Master table should use
+// fetchEmployeeMasterEmployees() with pagination.
+//
+
+export async function fetchAllEmployeeMasterEmployees() {
+  const firstPage = await fetchEmployeeMasterEmployees({
+    page: 1,
+    limit: 100,
+  });
+
+  const allEmployees = [...firstPage.data];
+
+  const totalPages = firstPage.pagination.totalPages;
+
+  for (let page = 2; page <= totalPages; page++) {
+    const result = await fetchEmployeeMasterEmployees({
+      page,
+      limit: 100,
+    });
+
+    allEmployees.push(...result.data);
+  }
+
+  return allEmployees;
+}
+
+// ============================================================
+// BACKWARD COMPATIBILITY
+// ============================================================
+//
+// Some existing Employee Master files may still import
+// INITIAL_EMPLOYEES.
+//
+// Do NOT use this as the database source.
+// It is only an empty initial state until the API loads.
+//
+
+export const INITIAL_EMPLOYEES = [];

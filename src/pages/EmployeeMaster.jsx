@@ -118,6 +118,10 @@ function getImportedEmpId(row) {
 
 function normalizeEmployee(employee) {
   return {
+    // ==========================================================
+    // BASIC DETAILS
+    // ==========================================================
+
     empId: String(employee?.emp_id ?? employee?.empId ?? ""),
 
     name: String(employee?.name ?? ""),
@@ -128,13 +132,25 @@ function normalizeEmployee(employee) {
       employee?.organization ?? employee?.department ?? employee?.orgtn ?? "",
     ),
 
+    // ==========================================================
+    // DATE OF JOINING
+    // ==========================================================
+    // Catalyst column:
+    // joining_date
+
     doj: String(
-      employee?.doj ??
+      employee?.Joining_date ??
+        employee?.joining_date ??
+        employee?.doj ??
         employee?.date_of_joining ??
         employee?.dateOfJoining ??
         employee?.joiningDate ??
         "",
     ),
+
+    // ==========================================================
+    // TOTAL EXPERIENCE
+    // ==========================================================
 
     totalExp: String(
       employee?.total_experience ??
@@ -143,6 +159,10 @@ function normalizeEmployee(employee) {
         "",
     ),
 
+    // ==========================================================
+    // REPORTING MANAGER
+    // ==========================================================
+
     reportingManager: String(
       employee?.reporting_manager ??
         employee?.reportingManager ??
@@ -150,7 +170,15 @@ function normalizeEmployee(employee) {
         "",
     ),
 
+    // ==========================================================
+    // COMP MANAGER
+    // ==========================================================
+
     compManager: String(employee?.comp_manager ?? employee?.compManager ?? ""),
+
+    // ==========================================================
+    // SUPER MANAGER
+    // ==========================================================
 
     superManager: String(
       employee?.super_manager ??
@@ -159,6 +187,10 @@ function normalizeEmployee(employee) {
         employee?.appraiserTechED ??
         "",
     ),
+
+    // ==========================================================
+    // APPRAISER
+    // ==========================================================
 
     appraiser: String(
       employee?.appraiser ??
@@ -169,33 +201,50 @@ function normalizeEmployee(employee) {
         "",
     ),
 
+    // ==========================================================
+    // MANAGER EMAIL
+    // ==========================================================
+    // Catalyst column:
+    // manager_email_id
+
     managerMail: String(
-      employee?.manager_mail ??
+      employee?.manager_email_id ??
+        employee?.manager_mail ??
         employee?.managerMail ??
         employee?.manager_email ??
         employee?.managerEmail ??
         "",
     ),
 
+    // ==========================================================
+    // SUPER MANAGER EMAIL
+    // ==========================================================
+    // Catalyst column:
+    // super_man_email_id
+
     superManagerMail: String(
-      employee?.super_manager_mail ??
+      employee?.super_man_email_id ??
+        employee?.super_manager_mail ??
         employee?.superManagerMail ??
         employee?.super_manager_email ??
         employee?.superManagerEmail ??
         "",
     ),
 
+    // ==========================================================
+    // STATUS
+    // ==========================================================
+
     status:
       String(employee?.status ?? "").toLowerCase() === "inactive"
         ? "Inactive"
         : "Active",
 
-    eligible:
-      employee?.eligible === "No"
-        ? "No"
-        : employee?.eligible === "Yes"
-          ? "Yes"
-          : "Yes",
+    // ==========================================================
+    // ELIGIBILITY
+    // ==========================================================
+
+    eligible: employee?.eligible === "No" ? "No" : "Yes",
 
     eligibleReason: String(employee?.eligibleReason ?? ""),
 
