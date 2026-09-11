@@ -3,9 +3,9 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
-  useEffect,
 } from "react";
 
 import { COLUMNS } from "./appraisal-data";
@@ -14,55 +14,31 @@ const CURRENT_USER = "Ashok Kumar (HR Ops)";
 
 const AppraisalContext = createContext(null);
 
-const labelOf = (key) =>
-  COLUMNS.find((c) => c.key === key)?.label ?? String(key);
-
 let seq = 0;
 
 const nextId = () => `a${Date.now()}-${seq++}`;
 
-/* ============================================================
-   CATALYST API
-   ============================================================ */
-
 const EMPLOYEE_API_URL =
   "https://excelappraisal-904056216.development.catalystserverless.com/server/employee-api-v2/";
 
-/* ============================================================
-   STORAGE
-   ============================================================ */
+/*
+ * IMPORTANT:
+ *
+ * appraisal-history-api is NOT used here for saving changes.
+ *
+ * AppraisalGrid uses appraisal-history-api separately to FETCH
+ * previous appraisal history for the History panel.
+ */
 
-const EMPLOYEE_MASTER_STORAGE_KEY = "employee-master-employees";
-const EMPLOYEE_MASTER_EVENT = "employee-master-updated";
-const APPRAISAL_AUDIT_STORAGE_KEY = "employee-appraisal-audit";
-
-/* ============================================================
-   EMPLOYEE MASTER
-   ============================================================ */
-
-const getEmployeeMasterMap = () => {
-  try {
-    const saved = localStorage.getItem(EMPLOYEE_MASTER_STORAGE_KEY);
-
-    if (!saved) return null;
-
-    const employees = JSON.parse(saved);
-
-    if (!Array.isArray(employees)) return null;
-
-    return new Map(
-      employees
-        .filter((employee) => employee?.empId)
-        .map((employee) => [String(employee.empId), employee]),
-    );
-  } catch {
-    return null;
-  }
-};
-
-/* ============================================================
-   CATALYST FIELD MAPPING
-   ============================================================ */
+/*
+ * Each employee gets its own save queue.
+ *
+ * This prevents two quick edits on the same employee from
+ * running PATCH requests at the same time and causing one
+ * update
+ * to overwrite another.
+ */
+const employeeSaveQueues = new Map();
 
 const REACT_TO_CATALYST_FIELD = {
   empId: "emp_id",
@@ -78,6 +54,7 @@ const REACT_TO_CATALYST_FIELD = {
   lastAppraisalDate: "last_appraisal_date",
   managerRating: "manager_rating",
   interviewCount: "interview_count",
+
   rrPercent: "rr_percent",
   grossMargin: "gross_margin",
 
@@ -88,7 +65,6 @@ const REACT_TO_CATALYST_FIELD = {
   monthPB: "month_pb",
 
   currentAnnualBasePay: "current_annual_base_pay",
-
   targetPBAllocatedForMay: "target_pb_allocated_for_may",
   allocatedPBAmount: "allocated_pb_amount",
 
@@ -106,17 +82,13 @@ const REACT_TO_CATALYST_FIELD = {
 
   eligibleForPromotion: "eligible_for_promotion",
   newTitle: "new_title",
-
   atRisk: "at_risk",
 
   manager: "manager",
   department: "department",
+
   status: "status",
 };
-
-/* ============================================================
-   VALUE NORMALIZATION
-   ============================================================ */
 
 const NUMERIC_FIELDS = new Set([
   "wissenExperience",
@@ -136,6 +108,9 @@ const NUMERIC_FIELDS = new Set([
   "targetPBNextYear",
 ]);
 
+const labelOf = (key) =>
+  COLUMNS.find((column) => column.key === key)?.label ?? String(key);
+
 const normalizeValueForCatalyst = (key, value) => {
   if (value === "" || value === null || value === undefined) {
     return value;
@@ -150,10 +125,6 @@ const normalizeValueForCatalyst = (key, value) => {
   return value;
 };
 
-/* ============================================================
-   CATALYST DATA → REACT DATA
-   ============================================================ */
-
 const mapCatalystEmployee = (employee, index) => {
   const id =
     employee.ROWID ??
@@ -166,55 +137,41 @@ const mapCatalystEmployee = (employee, index) => {
     id: String(id),
 
     empId: String(employee.emp_id ?? ""),
-
     name: String(employee.name ?? ""),
-
     designation: String(employee.designation ?? ""),
 
     reportingManager: String(employee.reporting_manager ?? ""),
-
     compManager: String(employee.comp_manager ?? ""),
-
     appraiserTechED: String(employee.appraiser_tech_ed ?? ""),
 
     wissenExperience: Number(employee.wissen_experience ?? 0),
-
     totalExperience: Number(employee.total_experience ?? 0),
 
     lastAppraisalDate: String(employee.last_appraisal_date ?? ""),
-
     managerRating: String(employee.manager_rating ?? ""),
-
     interviewCount: Number(employee.interview_count ?? 0),
 
     rrPercent: Number(employee.rr_percent ?? 0),
-
     grossMargin: Number(employee.gross_margin ?? 0),
 
     rbToBePaid: Number(employee.rb_to_be_paid ?? 0),
-
     monthRB: String(employee.month_rb ?? ""),
 
     pbToBePaid: Number(employee.pb_to_be_paid ?? 0),
-
     monthPB: String(employee.month_pb ?? ""),
 
     currentAnnualBasePay: Number(employee.current_annual_base_pay ?? 0),
-
     targetPBAllocatedForMay: Number(employee.target_pb_allocated_for_may ?? 0),
-
     allocatedPBAmount: Number(employee.allocated_pb_amount ?? 0),
 
     pbInstallment: String(employee.pb_installment ?? ""),
 
     newPBToBeOffered: Number(employee.new_pb_to_be_offered ?? 0),
-
     newPBInstallment: String(employee.new_pb_installment ?? ""),
 
     newRB: Number(employee.new_rb ?? 0),
 
     hikeAmount: Number(employee.hike_amount ?? 0),
-
     hikePct: Number(employee.hike_pct ?? 0),
 
     targetPBNextYear: Number(employee.target_pb_next_year ?? 0),
@@ -222,59 +179,88 @@ const mapCatalystEmployee = (employee, index) => {
     eligibleForPromotion: String(employee.eligible_for_promotion ?? ""),
 
     newTitle: String(employee.new_title ?? ""),
-
     atRisk: String(employee.at_risk ?? ""),
 
     manager: String(employee.manager ?? ""),
-
     department: String(employee.department ?? ""),
 
     status: String(employee.status ?? "Active"),
 
     creatorId: employee.CREATORID ?? null,
-
     createdTime: employee.CREATEDTIME ?? null,
-
     modifiedTime: employee.MODIFIEDTIME ?? null,
   };
 };
 
-/* ============================================================
-   FETCH ONE PAGE FROM CATALYST
-   ============================================================ */
+const parseApiResponse = async (response, apiName) => {
+  let result;
 
-const fetchEmployeePageFromCatalyst = async (page = 1, limit = 100) => {
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(`${apiName} returned invalid JSON.`);
+  }
+
+  let payload = result;
+
+  /*
+   * Catalyst may return:
+   *
+   * {
+   *   output: "{\"success\":true,...}"
+   * }
+   *
+   * So unwrap output when required.
+   */
+  if (typeof result?.output === "string") {
+    try {
+      payload = JSON.parse(result.output);
+    } catch {
+      throw new Error(`${apiName} returned invalid JSON output.`);
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      payload?.message || `${apiName} failed with status ${response.status}.`,
+    );
+  }
+
+  if (!payload?.success) {
+    throw new Error(
+      payload?.message || `${apiName} returned an unsuccessful response.`,
+    );
+  }
+
+  return payload;
+};
+
+/*
+ * ------------------------------------------------------------
+ * GET EMPLOYEE PAGE
+ * ------------------------------------------------------------
+ */
+
+const fetchEmployeePageFromCatalyst = async (
+  page = 1,
+  limit = 30,
+  status = "",
+) => {
   const url = new URL(EMPLOYEE_API_URL);
 
   url.searchParams.set("page", String(page));
   url.searchParams.set("limit", String(limit));
+
+  if (status) {
+    url.searchParams.set("status", status);
+  }
 
   const response = await fetch(url.toString(), {
     method: "GET",
     cache: "no-store",
   });
 
-  if (!response.ok) {
-    throw new Error(`Employee API failed with status ${response.status}`);
-  }
-
-  const result = await response.json();
-
-  let payload = result;
-
-  if (typeof result?.output === "string") {
-    try {
-      payload = JSON.parse(result.output);
-    } catch {
-      throw new Error("Employee API returned invalid JSON output.");
-    }
-  }
-
-  if (!payload?.success) {
-    throw new Error(
-      payload?.message || "Employee API returned an unsuccessful response.",
-    );
-  }
+  const payload = await parseApiResponse(response, "Employee API");
 
   return {
     data: Array.isArray(payload.data) ? payload.data : [],
@@ -283,50 +269,95 @@ const fetchEmployeePageFromCatalyst = async (page = 1, limit = 100) => {
   };
 };
 
-/* ============================================================
-   FETCH ALL EMPLOYEES
-   ============================================================ */
+/*
+ * ------------------------------------------------------------
+ * GET ALL EMPLOYEES
+ * ------------------------------------------------------------
+ *
+ * Used by the Appraisal Sheet.
+ *
+ * Employee Master will use server-side pagination separately.
+ */
 
-const fetchEmployeesFromCatalyst = async () => {
-  const allEmployees = [];
+const fetchAllEmployeesFromCatalyst = async (status = "") => {
+  const firstPage = await fetchEmployeePageFromCatalyst(1, 100, status);
 
-  let page = 1;
-  const limit = 100;
+  const allEmployees = [...firstPage.data];
 
-  let totalPages = 1;
+  const totalPages = Math.max(1, Number(firstPage.pagination?.totalPages || 1));
 
-  do {
-    const result = await fetchEmployeePageFromCatalyst(page, limit);
+  if (totalPages > 1) {
+    for (let page = 2; page <= totalPages; page += 1) {
+      const result = await fetchEmployeePageFromCatalyst(page, 100, status);
 
-    allEmployees.push(...result.data);
+      allEmployees.push(...result.data);
+    }
+  }
 
-    totalPages = Math.max(1, Number(result.pagination?.totalPages || 1));
-
-    page += 1;
-  } while (page <= totalPages);
-
-  return allEmployees.map(mapCatalystEmployee);
+  return {
+    employees: allEmployees,
+    counts: firstPage.counts || {},
+    pagination: firstPage.pagination || {},
+  };
 };
 
-/* ============================================================
-   UPDATE ONE EMPLOYEE IN CATALYST
-   ============================================================ */
+/*
+ * ------------------------------------------------------------
+ * GET ONE EMPLOYEE
+ * ------------------------------------------------------------
+ *
+ * This is important for saving edits.
+ *
+ * Flow:
+ *
+ * PATCH employee
+ *      ↓
+ * GET employee again
+ *      ↓
+ * database becomes source of truth
+ *      ↓
+ * update React row
+ */
 
-const updateEmployeeInCatalyst = async (empId, key, value) => {
+const fetchEmployeeByIdFromCatalyst = async (empId) => {
+  const url = new URL(EMPLOYEE_API_URL);
+
+  url.searchParams.set("emp_id", String(empId));
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    cache: "no-store",
+  });
+
+  const payload = await parseApiResponse(response, "Employee API");
+
+  if (!payload.data) {
+    throw new Error(`Employee ${empId} was not returned from the database.`);
+  }
+
+  return payload.data;
+};
+
+/*
+ * ------------------------------------------------------------
+ * PATCH EMPLOYEE
+ * ------------------------------------------------------------
+ */
+
+const saveEmployeeChangeToCatalyst = async ({ empId, key, newValue }) => {
   const catalystField = REACT_TO_CATALYST_FIELD[key];
 
   if (!catalystField) {
-    console.warn(`No Catalyst field mapping found for React field: ${key}`);
-
-    return;
+    throw new Error(`No Catalyst field mapping found for React field: ${key}`);
   }
 
-  const catalystValue = normalizeValueForCatalyst(key, value);
+  const catalystValue = normalizeValueForCatalyst(key, newValue);
 
   const response = await fetch(EMPLOYEE_API_URL, {
-    method: "PUT",
+    method: "PATCH",
     headers: {
       "Content-Type": "application/json",
+      Accept: "application/json",
     },
     body: JSON.stringify({
       emp_id: String(empId),
@@ -334,127 +365,166 @@ const updateEmployeeInCatalyst = async (empId, key, value) => {
     }),
   });
 
-  if (!response.ok) {
-    let message = `Employee update failed with status ${response.status}`;
+  const payload = await parseApiResponse(response, "Employee API");
 
-    try {
-      const result = await response.json();
-
-      message = result?.message || message;
-    } catch {
-      // Ignore JSON parsing error.
-    }
-
-    throw new Error(message);
-  }
-
-  const result = await response.json();
-
-  if (!result?.success) {
-    throw new Error(result?.message || `Failed to update employee ${empId}.`);
-  }
-
-  return result.data;
+  return payload.data;
 };
 
-/* ============================================================
-   PERSIST MULTIPLE FIELD CHANGES
-   ============================================================ */
+/*
+ * ------------------------------------------------------------
+ * EMPLOYEE SAVE QUEUE
+ * ------------------------------------------------------------
+ *
+ * Same employee:
+ *
+ * Edit 1
+ *   ↓
+ * PATCH
+ *   ↓
+ * GET
+ *   ↓
+ * Edit 2
+ *   ↓
+ * PATCH
+ *   ↓
+ * GET
+ *
+ * Different employees can still save independently.
+ */
 
-const persistEmployeeChanges = async (empId, changes) => {
-  const entries = Object.entries(changes);
+const queueEmployeeSave = (empId, saveFunction) => {
+  const employeeKey = String(empId);
 
-  if (!entries.length) {
-    return;
-  }
+  const previousPromise =
+    employeeSaveQueues.get(employeeKey) || Promise.resolve();
 
-  for (const [key, value] of entries) {
-    try {
-      await updateEmployeeInCatalyst(empId, key, value);
-    } catch (error) {
-      console.error(`Failed to save ${key} for employee ${empId}:`, error);
-    }
-  }
+  const nextPromise = previousPromise
+    .catch(() => {
+      /*
+       * Allow the next edit to continue even if the
+       * previous edit failed.
+       */
+    })
+    .then(saveFunction);
+
+  employeeSaveQueues.set(
+    employeeKey,
+    nextPromise.finally(() => {
+      if (employeeSaveQueues.get(employeeKey) === nextPromise) {
+        employeeSaveQueues.delete(employeeKey);
+      }
+    }),
+  );
+
+  return nextPromise;
 };
-
-/* ============================================================
-   ELIGIBILITY SYNC
-   ============================================================ */
-
-const syncEligibility = (rows) => {
-  const employeeMap = getEmployeeMasterMap();
-
-  if (!employeeMap) {
-    return rows;
-  }
-
-  return rows.map((row) => {
-    const employee = employeeMap.get(String(row.empId));
-
-    if (!employee) {
-      return row;
-    }
-
-    const isNotEligible = employee.eligible === "No";
-
-    return {
-      ...row,
-
-      eligibility: isNotEligible ? "No" : "Yes",
-
-      eligibleReason: employee.eligibleReason || "",
-
-      manualEligibilityOverride: Boolean(employee.manualOverride),
-    };
-  });
-};
-
-/* ============================================================
-   PROVIDER
-   ============================================================ */
 
 export function AppraisalProvider({ children }) {
   const [rows, setRows] = useState([]);
+
+  /*
+   * Local audit entries for the current application session.
+   *
+   * IMPORTANT:
+   * This is NOT the appraisal history API.
+   *
+   * A dedicated database audit table/API will be added
+   * separately in the next step.
+   */
+  const [audit, setAudit] = useState([]);
+
+  const [modified, setModified] = useState({});
 
   const [loading, setLoading] = useState(true);
 
   const [error, setError] = useState("");
 
-  /* ==========================================================
-     LOAD REAL EMPLOYEES FROM CATALYST
-     ========================================================== */
+  const [employeeCounts, setEmployeeCounts] = useState({
+    total: 0,
+    active: 0,
+    inactive: 0,
+  });
+
+  /*
+   * ----------------------------------------------------------
+   * LOAD ACTIVE EMPLOYEES
+   * ----------------------------------------------------------
+   *
+   * Used by Appraisal Sheet.
+   */
+
+  const loadEmployees = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const result = await fetchAllEmployeesFromCatalyst("active");
+
+      const employees = result.employees.map(mapCatalystEmployee);
+
+      setRows(employees);
+
+      setEmployeeCounts({
+        total: Number(result.counts?.total || 0),
+        active: Number(result.counts?.active || 0),
+        inactive: Number(result.counts?.inactive || 0),
+      });
+
+      if (!employees.length) {
+        setError("No active employees found in Catalyst Data Store.");
+      }
+    } catch (err) {
+      console.error("Failed to load employees:", err);
+
+      setRows([]);
+
+      setError(err?.message || "Failed to load employees from Catalyst.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  /*
+   * ----------------------------------------------------------
+   * INITIAL LOAD
+   * ----------------------------------------------------------
+   *
+   * NO appraisal-history-api call here.
+   */
 
   useEffect(() => {
     let cancelled = false;
 
-    const loadEmployees = async () => {
+    const load = async () => {
       try {
         setLoading(true);
         setError("");
 
-        const employees = await fetchEmployeesFromCatalyst();
+        const result = await fetchAllEmployeesFromCatalyst("active");
 
         if (cancelled) {
           return;
         }
+
+        const employees = result.employees.map(mapCatalystEmployee);
+
+        setRows(employees);
+
+        setEmployeeCounts({
+          total: Number(result.counts?.total || 0),
+          active: Number(result.counts?.active || 0),
+          inactive: Number(result.counts?.inactive || 0),
+        });
 
         if (!employees.length) {
-          setRows([]);
-
-          setError("No employees found in Catalyst Data Store.");
-
-          return;
+          setError("No active employees found in Catalyst Data Store.");
         }
-
-        const syncedEmployees = syncEligibility(employees);
-
-        setRows(syncedEmployees);
       } catch (err) {
-        console.error("Failed to load employees:", err);
-
         if (cancelled) {
           return;
         }
+
+        console.error("Failed to load employees:", err);
 
         setRows([]);
 
@@ -466,89 +536,29 @@ export function AppraisalProvider({ children }) {
       }
     };
 
-    loadEmployees();
+    load();
 
     return () => {
       cancelled = true;
     };
   }, []);
 
-  /* ==========================================================
-     AUDIT
-     ========================================================== */
-
-  const [audit, setAudit] = useState(() => {
-    try {
-      const saved = localStorage.getItem(APPRAISAL_AUDIT_STORAGE_KEY);
-
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [modified, setModified] = useState({});
-
-  /* ==========================================================
-     SAVE AUDIT
-     ========================================================== */
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(APPRAISAL_AUDIT_STORAGE_KEY, JSON.stringify(audit));
-    } catch {
-      // Ignore localStorage errors.
-    }
-  }, [audit]);
-
-  /* ==========================================================
-     EMPLOYEE MASTER ELIGIBILITY CHANGE
-     ========================================================== */
-
-  useEffect(() => {
-    const refreshEligibility = () => {
-      setRows((previousRows) => {
-        const syncedRows = syncEligibility(previousRows);
-
-        const changed = syncedRows.some(
-          (row, index) =>
-            row.eligibility !== previousRows[index]?.eligibility ||
-            row.eligibleReason !== previousRows[index]?.eligibleReason ||
-            row.manualEligibilityOverride !==
-              previousRows[index]?.manualEligibilityOverride,
-        );
-
-        return changed ? syncedRows : previousRows;
-      });
-    };
-
-    window.addEventListener(EMPLOYEE_MASTER_EVENT, refreshEligibility);
-
-    const handleStorageChange = (event) => {
-      if (event.key === EMPLOYEE_MASTER_STORAGE_KEY) {
-        refreshEligibility();
-      }
-    };
-
-    window.addEventListener("storage", handleStorageChange);
-
-    refreshEligibility();
-
-    return () => {
-      window.removeEventListener(EMPLOYEE_MASTER_EVENT, refreshEligibility);
-
-      window.removeEventListener("storage", handleStorageChange);
-    };
-  }, []);
-
-  /* ==========================================================
-     APPLY EDITS
-     ========================================================== */
+  /*
+   * ----------------------------------------------------------
+   * APPLY EDITS
+   * ----------------------------------------------------------
+   *
+   * 1. Update UI immediately.
+   * 2. PATCH database.
+   * 3. GET employee again.
+   * 4. Replace UI row with fresh database row.
+   *
+   * appraisal-history-api is NOT called here.
+   */
 
   const applyEdits = useCallback((ids, key, compute, source, batchId) => {
     const entries = [];
     const touched = {};
-
     const persistenceQueue = [];
 
     setRows((prev) =>
@@ -558,43 +568,45 @@ export function AppraisalProvider({ children }) {
         }
 
         const next = compute(row);
-
         const before = row[key];
 
-        if (String(before) === String(next)) {
+        /*
+         * Do nothing when value did not actually change.
+         */
+        if (String(before ?? "") === String(next ?? "")) {
           return row;
         }
 
-        entries.push({
+        const entry = {
           id: nextId(),
-
           at: new Date().toISOString(),
-
           user: CURRENT_USER,
-
           empId: row.empId,
-
           employeeName: row.name,
-
           field: labelOf(key),
-
           from: String(before ?? ""),
-
           to: String(next ?? ""),
-
-          source,
-
+          source: source || "Inline edit",
           ...(batchId ? { batchId } : {}),
-        });
+        };
+
+        entries.push(entry);
 
         touched[`${row.id}:${key}`] = true;
 
         persistenceQueue.push({
           empId: row.empId,
+          employeeName: row.name,
           key,
-          value: next,
+          oldValue: before,
+          newValue: next,
+          source,
+          batchId,
         });
 
+        /*
+         * Optimistic UI update.
+         */
         return {
           ...row,
           [key]: next,
@@ -602,35 +614,181 @@ export function AppraisalProvider({ children }) {
       }),
     );
 
-    if (entries.length) {
-      setAudit((prev) => [...entries.reverse(), ...prev]);
-
-      setModified((prev) => ({
-        ...prev,
-        ...touched,
-      }));
-
-      /*
-       * Persist after local state is updated.
-       *
-       * The UI remains immediate while Catalyst
-       * is updated in the background.
-       */
-      void Promise.all(
-        persistenceQueue.map(({ empId, key, value }) =>
-          updateEmployeeInCatalyst(empId, key, value).catch((error) => {
-            console.error(`Catalyst save failed for ${empId} / ${key}:`, error);
-          }),
-        ),
-      );
+    if (!entries.length) {
+      return 0;
     }
+
+    /*
+     * Keep local audit immediately.
+     *
+     * This will later be replaced/extended with the
+     * dedicated database audit API.
+     */
+    setAudit((prev) => [...entries.slice().reverse(), ...prev]);
+
+    setModified((prev) => ({
+      ...prev,
+      ...touched,
+    }));
+
+    /*
+     * Persist every changed field.
+     */
+    persistenceQueue.forEach(
+      ({ empId, employeeName, key, oldValue, newValue, source, batchId }) => {
+        void queueEmployeeSave(empId, async () => {
+          try {
+            console.log("Saving employee change:", empId, key, newValue);
+
+            /*
+             * STEP 1:
+             * Update Employee Data Store.
+             */
+            await saveEmployeeChangeToCatalyst({
+              empId,
+              key,
+              newValue,
+            });
+
+            console.log("PATCH successful:", empId, key);
+
+            /*
+             * STEP 2:
+             * Get the employee again from the database.
+             */
+            const freshEmployee = await fetchEmployeeByIdFromCatalyst(empId);
+
+            /*
+             * Convert Catalyst row to React row.
+             */
+            const freshReactEmployee = mapCatalystEmployee(freshEmployee, 0);
+
+            /*
+             * STEP 3:
+             * Database is now the source of truth.
+             *
+             * Replace the complete employee row.
+             */
+            setRows((prev) =>
+              prev.map((row) =>
+                String(row.empId) === String(empId)
+                  ? {
+                      ...freshReactEmployee,
+                      id: row.id,
+                    }
+                  : row,
+              ),
+            );
+
+            /*
+             * Update local audit "to" value using
+             * the value that actually exists in DB.
+             */
+            const actualCatalystField = REACT_TO_CATALYST_FIELD[key];
+
+            const actualReactValue = freshReactEmployee[key];
+
+            setAudit((prev) =>
+              prev.map((item) => {
+                if (
+                  item.empId === empId &&
+                  item.field === labelOf(key) &&
+                  item.to === String(newValue ?? "") &&
+                  item.from === String(oldValue ?? "")
+                ) {
+                  return {
+                    ...item,
+                    to: String(actualReactValue ?? ""),
+                    saved: true,
+                  };
+                }
+
+                return item;
+              }),
+            );
+
+            console.log(
+              "Database refresh successful:",
+              empId,
+              actualCatalystField,
+              actualReactValue,
+            );
+
+            return freshReactEmployee;
+          } catch (saveError) {
+            console.error(
+              `Employee save failed for ${empId} / ${key}:`,
+              saveError,
+            );
+
+            /*
+             * If PATCH or GET fails, fetch the current
+             * database value and restore the UI.
+             */
+            try {
+              const currentEmployee =
+                await fetchEmployeeByIdFromCatalyst(empId);
+
+              const currentReactEmployee = mapCatalystEmployee(
+                currentEmployee,
+                0,
+              );
+
+              setRows((prev) =>
+                prev.map((row) =>
+                  String(row.empId) === String(empId)
+                    ? {
+                        ...currentReactEmployee,
+                        id: row.id,
+                      }
+                    : row,
+                ),
+              );
+            } catch (refreshError) {
+              console.error(
+                "Could not restore employee from database:",
+                refreshError,
+              );
+            }
+
+            /*
+             * Remove the local audit entry because
+             * the database update did not succeed.
+             */
+            setAudit((prev) =>
+              prev.filter(
+                (item) =>
+                  !(
+                    item.empId === empId &&
+                    item.field === labelOf(key) &&
+                    item.to === String(newValue ?? "") &&
+                    item.from === String(oldValue ?? "")
+                  ),
+              ),
+            );
+
+            throw saveError;
+          }
+        }).catch(() => {
+          /*
+           * Error has already been handled above.
+           *
+           * We intentionally do not throw into React
+           * because this is a background persistence
+           * operation.
+           */
+        });
+      },
+    );
 
     return entries.length;
   }, []);
 
-  /* ==========================================================
-     INLINE EDIT
-     ========================================================== */
+  /*
+   * ----------------------------------------------------------
+   * SINGLE CELL UPDATE
+   * ----------------------------------------------------------
+   */
 
   const updateCell = useCallback(
     (id, key, value, source = "Inline edit") => {
@@ -639,9 +797,11 @@ export function AppraisalProvider({ children }) {
     [applyEdits],
   );
 
-  /* ==========================================================
-     BULK EDIT
-     ========================================================== */
+  /*
+   * ----------------------------------------------------------
+   * BULK UPDATE
+   * ----------------------------------------------------------
+   */
 
   const bulkUpdate = useCallback(
     (ids, key, mode, value) => {
@@ -657,11 +817,13 @@ export function AppraisalProvider({ children }) {
 
           const current = Number(row[key]) || 0;
 
-          const v = Number(value) || 0;
+          const numericValue = Number(value) || 0;
 
-          return mode === "increaseAmount"
-            ? Math.round(current + v)
-            : Math.round(current * (1 + v / 100));
+          if (mode === "increaseAmount") {
+            return Math.round(current + numericValue);
+          }
+
+          return Math.round(current * (1 + numericValue / 100));
         },
         "Bulk edit",
         batchId,
@@ -670,9 +832,120 @@ export function AppraisalProvider({ children }) {
     [applyEdits],
   );
 
-  /* ==========================================================
-     AUDIT / EDIT HISTORY
-     ========================================================== */
+  /*
+   * ----------------------------------------------------------
+   * UPDATE EMPLOYEE STATUS
+   * ----------------------------------------------------------
+   *
+   * Used by Eligibility List.
+   *
+   * This does NOT change the eligibility logic.
+   */
+
+  const updateEmployeeStatus = useCallback(
+    async (empId, status) => {
+      const normalizedStatus =
+        String(status).toLowerCase() === "inactive" ? "Inactive" : "Active";
+
+      const currentEmployee = rows.find(
+        (row) => String(row.empId) === String(empId),
+      );
+
+      const wasActive =
+        String(currentEmployee?.status || "").toLowerCase() === "active";
+
+      /*
+       * Update database.
+       */
+      const response = await fetch(EMPLOYEE_API_URL, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          emp_id: String(empId),
+          status: normalizedStatus,
+        }),
+      });
+
+      const payload = await parseApiResponse(response, "Employee API");
+
+      /*
+       * Get fresh database record after update.
+       */
+      let freshEmployee = payload.data;
+
+      try {
+        freshEmployee = await fetchEmployeeByIdFromCatalyst(empId);
+      } catch (refreshError) {
+        console.warn(
+          "Could not refresh employee after status update:",
+          refreshError,
+        );
+      }
+
+      const freshReactEmployee = mapCatalystEmployee(freshEmployee, 0);
+
+      /*
+       * Appraisal Sheet contains only active employees.
+       */
+      if (normalizedStatus === "Inactive") {
+        setRows((prev) =>
+          prev.filter((row) => String(row.empId) !== String(empId)),
+        );
+      } else {
+        setRows((prev) =>
+          prev.map((row) =>
+            String(row.empId) === String(empId)
+              ? {
+                  ...freshReactEmployee,
+                  id: row.id,
+                }
+              : row,
+          ),
+        );
+      }
+
+      /*
+       * Update global counts.
+       */
+      setEmployeeCounts((prev) => {
+        if (wasActive && normalizedStatus === "Inactive") {
+          return {
+            ...prev,
+            active: Math.max(0, prev.active - 1),
+            inactive: prev.inactive + 1,
+          };
+        }
+
+        if (!wasActive && normalizedStatus === "Active") {
+          return {
+            ...prev,
+            active: prev.active + 1,
+            inactive: Math.max(0, prev.inactive - 1),
+          };
+        }
+
+        return prev;
+      });
+
+      return freshEmployee;
+    },
+    [rows],
+  );
+
+  /*
+   * ----------------------------------------------------------
+   * LOCAL CHANGE HISTORY
+   * ----------------------------------------------------------
+   *
+   * This is only the current-session local audit.
+   *
+   * It is NOT appraisal-history-api.
+   *
+   * Database audit storage will be implemented separately.
+   */
 
   const historyFor = useCallback(
     (empId) => {
@@ -683,9 +956,17 @@ export function AppraisalProvider({ children }) {
     [audit],
   );
 
-  /* ==========================================================
-     EMPLOYEE APPRAISAL HISTORY
-     ========================================================== */
+  /*
+   * ----------------------------------------------------------
+   * PREVIOUS-YEAR APPRAISAL HISTORY
+   * ----------------------------------------------------------
+   *
+   * AppraisalGrid handles the actual API request:
+   *
+   * GET /appraisal-history-api/?emp_id=...
+   *
+   * We do NOT fetch or save that data here.
+   */
 
   const appraisalHistoryFor = useCallback((employee) => {
     if (!employee) {
@@ -700,36 +981,44 @@ export function AppraisalProvider({ children }) {
       employee.previousYearHistory ??
       [];
 
-    if (Array.isArray(possibleHistory)) {
-      return possibleHistory;
-    }
-
-    return [];
+    return Array.isArray(possibleHistory) ? possibleHistory : [];
   }, []);
 
-  /* ==========================================================
-     CONTEXT
-     ========================================================== */
+  /*
+   * ----------------------------------------------------------
+   * REFRESH EMPLOYEES
+   * ----------------------------------------------------------
+   */
+
+  const refreshEmployees = useCallback(async () => {
+    await loadEmployees();
+  }, [loadEmployees]);
+
+  /*
+   * ----------------------------------------------------------
+   * CONTEXT VALUE
+   * ----------------------------------------------------------
+   */
 
   const value = useMemo(
     () => ({
       rows,
-
       audit,
-
       modified,
 
       loading,
-
       error,
 
-      updateCell,
+      employeeCounts,
 
+      updateCell,
       bulkUpdate,
+      updateEmployeeStatus,
 
       historyFor,
-
       appraisalHistoryFor,
+
+      refreshEmployees,
     }),
     [
       rows,
@@ -737,10 +1026,13 @@ export function AppraisalProvider({ children }) {
       modified,
       loading,
       error,
+      employeeCounts,
       updateCell,
       bulkUpdate,
+      updateEmployeeStatus,
       historyFor,
       appraisalHistoryFor,
+      refreshEmployees,
     ],
   );
 
@@ -749,10 +1041,6 @@ export function AppraisalProvider({ children }) {
     children,
   });
 }
-
-/* ============================================================
-   HOOK
-   ============================================================ */
 
 export function useAppraisal() {
   const ctx = useContext(AppraisalContext);

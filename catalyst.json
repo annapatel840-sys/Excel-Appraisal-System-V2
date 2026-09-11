@@ -1,12 +1,7 @@
 {
   "functions": {
     "targets": [
-      "employee-api",
-      "excel_appraisal_function",
-      "employee-seed",
       "employee-api-v2",
-      "data-seed",
-      "appraisal-gistory-api",
       "appraisal-history-api"
     ],
     "ignore": [],

@@ -7,16 +7,12 @@ import { ColumnFilter } from "./ColumnFilter";
 import { COLUMNS, formatValue } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
 
-/* ============================================================
-   API
-   ============================================================ */
-
+  //  API
 const APPRAISAL_HISTORY_API_URL =
   "https://excelappraisal-904056216.development.catalystserverless.com/server/appraisal-history-api/";
 
-/* ============================================================
-   FONT
-   ============================================================ */
+
+  //  FONT
 
 const APPRAISAL_FONT = "Arial, Helvetica, sans-serif";
 

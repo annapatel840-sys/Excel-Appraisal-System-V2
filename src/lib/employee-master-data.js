@@ -76,10 +76,6 @@ export const FIELD_DEFS = [
   },
 ];
 
-// ============================================================
-// HELPERS
-// ============================================================
-
 function normalizeStatus(status) {
   return String(status || "").toLowerCase() === "inactive"
     ? "Inactive"
@@ -87,7 +83,9 @@ function normalizeStatus(status) {
 }
 
 function calculateOrganizationExperience(joiningDate) {
-  if (!joiningDate) return "";
+  if (!joiningDate) {
+    return "";
+  }
 
   const joining = new Date(joiningDate);
 
@@ -98,9 +96,7 @@ function calculateOrganizationExperience(joiningDate) {
   const referenceDate = EXPERIENCE_REF_DATE;
 
   let years = referenceDate.getFullYear() - joining.getFullYear();
-
   let months = referenceDate.getMonth() - joining.getMonth();
-
   let days = referenceDate.getDate() - joining.getDate();
 
   if (days < 0) {
@@ -116,25 +112,17 @@ function calculateOrganizationExperience(joiningDate) {
   return Number((totalMonths / 12).toFixed(1));
 }
 
-// ============================================================
-// MAP CATALYST EMPLOYEE → EMPLOYEE MASTER EMPLOYEE
-// ============================================================
-
 export function mapEmployeeFromApi(employee) {
-  const joiningDate = employee?.joining_date || employee?.Joining_date || "";
+  const joiningDate = employee?.Joining_date || employee?.joining_date || "";
 
   const reportingManager =
     employee?.reporting_manager || employee?.manager || "";
 
   const compManager = employee?.comp_manager || "";
 
-  const superManager = employee?.super_man_email_id || "";
+  const appraiser = employee?.appraiser_tech_ed || "";
 
   return {
-    // ----------------------------------------------------------
-    // BASIC DETAILS
-    // ----------------------------------------------------------
-
     empId: String(employee?.emp_id ?? ""),
 
     name: String(employee?.name ?? ""),
@@ -143,56 +131,27 @@ export function mapEmployeeFromApi(employee) {
 
     organization: String(employee?.department ?? employee?.organization ?? ""),
 
-    // ----------------------------------------------------------
-    // DATE OF JOINING
-    // ----------------------------------------------------------
-
     doj: String(joiningDate),
 
-    // ----------------------------------------------------------
-    // EXPERIENCE
-    // ----------------------------------------------------------
-
     totalExp:
-      employee?.total_experience ??
-      calculateOrganizationExperience(joiningDate),
-
-    // ----------------------------------------------------------
-    // MANAGERS
-    // ----------------------------------------------------------
+      employee?.total_experience !== undefined &&
+      employee?.total_experience !== null
+        ? Number(employee.total_experience)
+        : calculateOrganizationExperience(joiningDate),
 
     reportingManager: String(reportingManager),
 
     compManager: String(compManager),
 
-    /*
-     * The employees table currently does not have a
-     * super-manager-name field.
-     *
-     * So keep the existing appraiser/super-manager value
-     * when available.
-     */
-    superManager: String(employee?.appraiser_tech_ed || ""),
+    superManager: String(appraiser),
 
-    appraiser: String(employee?.appraiser_tech_ed || ""),
-
-    // ----------------------------------------------------------
-    // EMAILS
-    // ----------------------------------------------------------
+    appraiser: String(appraiser),
 
     managerMail: String(employee?.manager_email_id || ""),
 
     superManagerMail: String(employee?.super_man_email_id || ""),
 
-    // ----------------------------------------------------------
-    // STATUS
-    // ----------------------------------------------------------
-
     status: normalizeStatus(employee?.status),
-
-    // ----------------------------------------------------------
-    // ELIGIBILITY
-    // ----------------------------------------------------------
 
     eligible: "Yes",
 
@@ -200,28 +159,36 @@ export function mapEmployeeFromApi(employee) {
 
     manualOverride: false,
 
-    // ----------------------------------------------------------
-    // ORIGINAL CATALYST DATA
-    // ----------------------------------------------------------
-
     catalystRowId: employee?.ROWID || "",
 
     rawEmployee: employee,
   };
 }
 
-// ============================================================
-// FETCH EMPLOYEES FROM CATALYST API
-// ============================================================
-
 export async function fetchEmployeeMasterEmployees({
   page = 1,
   limit = 20,
+  search = "",
+  status = "all",
 } = {}) {
   const url = new URL(EMPLOYEE_API_URL);
 
   url.searchParams.set("page", String(page));
   url.searchParams.set("limit", String(limit));
+
+  const normalizedSearch = String(search || "").trim();
+
+  const normalizedStatus = String(status || "all")
+    .trim()
+    .toLowerCase();
+
+  if (normalizedSearch) {
+    url.searchParams.set("search", normalizedSearch);
+  }
+
+  if (normalizedStatus && normalizedStatus !== "all") {
+    url.searchParams.set("status", normalizedStatus);
+  }
 
   const response = await fetch(url.toString(), {
     method: "GET",
@@ -267,19 +234,52 @@ export async function fetchEmployeeMasterEmployees({
 
       inactive: result?.counts?.inactive ?? 0,
     },
+
+    filters: {
+      search: result?.filters?.search ?? normalizedSearch,
+
+      status: result?.filters?.status ?? normalizedStatus,
+    },
   };
 }
 
-// ============================================================
-// FETCH ALL EMPLOYEES
-// ============================================================
-//
-// This helper is kept for places that still need the complete
-// employee list, such as eligibility processing.
-//
-// The main Employee Master table should use
-// fetchEmployeeMasterEmployees() with pagination.
-//
+export async function updateEmployeeMasterEmployee(empId, data = {}) {
+  const normalizedEmpId = String(empId || "").trim();
+
+  if (!normalizedEmpId) {
+    throw new Error("Employee ID is required.");
+  }
+
+  const response = await fetch(EMPLOYEE_API_URL, {
+    method: "PATCH",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      emp_id: normalizedEmpId,
+      ...data,
+    }),
+  });
+
+  const result = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(
+      result?.message ||
+        `Employee update failed with status ${response.status}`,
+    );
+  }
+
+  if (!result?.success) {
+    throw new Error(result?.message || "Failed to update employee.");
+  }
+
+  return {
+    ...result,
+    data: result?.data ? mapEmployeeFromApi(result.data) : null,
+  };
+}
 
 export async function fetchAllEmployeeMasterEmployees() {
   const firstPage = await fetchEmployeeMasterEmployees({
@@ -302,16 +302,5 @@ export async function fetchAllEmployeeMasterEmployees() {
 
   return allEmployees;
 }
-
-// ============================================================
-// BACKWARD COMPATIBILITY
-// ============================================================
-//
-// Some existing Employee Master files may still import
-// INITIAL_EMPLOYEES.
-//
-// Do NOT use this as the database source.
-// It is only an empty initial state until the API loads.
-//
 
 export const INITIAL_EMPLOYEES = [];
