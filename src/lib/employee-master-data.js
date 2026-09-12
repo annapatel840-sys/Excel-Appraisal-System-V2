@@ -97,7 +97,7 @@ function calculateOrganizationExperience(joiningDate) {
 
   let years = referenceDate.getFullYear() - joining.getFullYear();
   let months = referenceDate.getMonth() - joining.getMonth();
-  let days = referenceDate.getDate() - joining.getDate();
+  const days = referenceDate.getDate() - joining.getDate();
 
   if (days < 0) {
     months--;
@@ -105,6 +105,7 @@ function calculateOrganizationExperience(joiningDate) {
 
   if (months < 0) {
     years--;
+    months += 12;
   }
 
   const totalMonths = Math.max(0, years * 12 + months);
@@ -112,56 +113,125 @@ function calculateOrganizationExperience(joiningDate) {
   return Number((totalMonths / 12).toFixed(1));
 }
 
+/*
+ * Catalyst ZCQL currently returns rows like:
+ *
+ * {
+ *   Employees: {
+ *     emp_id: "EMP001",
+ *     name: "Amit Kumar",
+ *     ...
+ *   }
+ * }
+ *
+ * This function unwraps the Employees object before mapping.
+ */
+function unwrapEmployee(employee) {
+  if (
+    employee &&
+    typeof employee === "object" &&
+    employee.Employees &&
+    typeof employee.Employees === "object"
+  ) {
+    return employee.Employees;
+  }
+
+  return employee || {};
+}
+
 export function mapEmployeeFromApi(employee) {
-  const joiningDate = employee?.Joining_date || employee?.joining_date || "";
+  const row = unwrapEmployee(employee);
+
+  const joiningDate =
+    row?.Joining_date ||
+    row?.joining_date ||
+    row?.doj ||
+    row?.date_of_joining ||
+    row?.dateOfJoining ||
+    row?.joiningDate ||
+    "";
 
   const reportingManager =
-    employee?.reporting_manager || employee?.manager || "";
+    row?.reporting_manager || row?.reportingManager || row?.manager || "";
 
-  const compManager = employee?.comp_manager || "";
+  const compManager = row?.comp_manager || row?.compManager || "";
 
-  const appraiser = employee?.appraiser_tech_ed || "";
+  const superManager =
+    row?.super_manager ||
+    row?.superManager ||
+    row?.appraiser_tech_ed ||
+    row?.appraiserTechED ||
+    "";
+
+  const appraiser =
+    row?.appraiser ||
+    row?.appraiser_tech_ed ||
+    row?.appraiserTechED ||
+    row?.super_manager ||
+    row?.superManager ||
+    "";
 
   return {
-    empId: String(employee?.emp_id ?? ""),
+    empId: String(row?.emp_id ?? row?.empId ?? "").trim(),
 
-    name: String(employee?.name ?? ""),
+    name: String(row?.name ?? "").trim(),
 
-    designation: String(employee?.designation ?? ""),
+    designation: String(row?.designation ?? "").trim(),
 
-    organization: String(employee?.department ?? employee?.organization ?? ""),
+    organization: String(
+      row?.organization ?? row?.department ?? row?.orgtn ?? "",
+    ).trim(),
 
-    doj: String(joiningDate),
+    doj: String(joiningDate).trim(),
 
     totalExp:
-      employee?.total_experience !== undefined &&
-      employee?.total_experience !== null
-        ? Number(employee.total_experience)
+      row?.total_experience !== undefined &&
+      row?.total_experience !== null &&
+      row?.total_experience !== ""
+        ? Number(row.total_experience)
         : calculateOrganizationExperience(joiningDate),
 
-    reportingManager: String(reportingManager),
+    reportingManager: String(reportingManager).trim(),
 
-    compManager: String(compManager),
+    compManager: String(compManager).trim(),
 
-    superManager: String(appraiser),
+    superManager: String(superManager).trim(),
 
-    appraiser: String(appraiser),
+    appraiser: String(appraiser).trim(),
 
-    managerMail: String(employee?.manager_email_id || ""),
+    managerMail: String(
+      row?.manager_email_id ??
+        row?.manager_mail ??
+        row?.managerMail ??
+        row?.manager_email ??
+        row?.managerEmail ??
+        "",
+    ).trim(),
 
-    superManagerMail: String(employee?.super_man_email_id || ""),
+    superManagerMail: String(
+      row?.super_man_email_id ??
+        row?.super_manager_mail ??
+        row?.superManagerMail ??
+        row?.super_manager_email ??
+        row?.superManagerEmail ??
+        "",
+    ).trim(),
 
-    status: normalizeStatus(employee?.status),
+    status: normalizeStatus(row?.status),
 
-    eligible: "Yes",
+    eligible: String(row?.eligible || "").toLowerCase() === "no" ? "No" : "Yes",
 
-    eligibleReason: "",
+    eligibleReason: String(
+      row?.eligibleReason ?? row?.eligible_reason ?? "",
+    ).trim(),
 
-    manualOverride: false,
+    manualOverride: Boolean(
+      row?.manualOverride ?? row?.manual_override ?? false,
+    ),
 
-    catalystRowId: employee?.ROWID || "",
+    catalystRowId: String(row?.ROWID ?? row?.rowid ?? ""),
 
-    rawEmployee: employee,
+    rawEmployee: row,
   };
 }
 

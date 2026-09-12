@@ -48,6 +48,111 @@ function normalizeImportHeader(value) {
     .replace(/[()]/g, "");
 }
 
+/*
+ * Catalyst ZCQL may return rows in this shape:
+ *
+ * {
+ *   Employees: {
+ *     emp_id: "EMP001",
+ *     name: "Amit Kumar",
+ *     ...
+ *   }
+ * }
+ *
+ * Some responses may already be flat.
+ *
+ * This helper supports both formats.
+ */
+function normalizeEmployee(employee) {
+  const row = employee?.Employees ?? employee ?? {};
+
+  return {
+    empId: String(row?.emp_id ?? row?.empId ?? "").trim(),
+
+    name: String(row?.name ?? "").trim(),
+
+    designation: String(row?.designation ?? "").trim(),
+
+    organization: String(
+      row?.organization ?? row?.department ?? row?.orgtn ?? "",
+    ).trim(),
+
+    doj: String(
+      row?.Joining_date ??
+        row?.joining_date ??
+        row?.doj ??
+        row?.date_of_joining ??
+        row?.dateOfJoining ??
+        row?.joiningDate ??
+        "",
+    ).trim(),
+
+    totalExp: String(
+      row?.total_experience ?? row?.totalExperience ?? row?.totalExp ?? "",
+    ).trim(),
+
+    reportingManager: String(
+      row?.reporting_manager ?? row?.reportingManager ?? row?.manager ?? "",
+    ).trim(),
+
+    compManager: String(row?.comp_manager ?? row?.compManager ?? "").trim(),
+
+    superManager: String(
+      row?.super_manager ??
+        row?.superManager ??
+        row?.appraiser_tech_ed ??
+        row?.appraiserTechED ??
+        "",
+    ).trim(),
+
+    appraiser: String(
+      row?.appraiser ??
+        row?.appraiser_tech_ed ??
+        row?.appraiserTechED ??
+        row?.super_manager ??
+        row?.superManager ??
+        "",
+    ).trim(),
+
+    managerMail: String(
+      row?.manager_email_id ??
+        row?.manager_mail ??
+        row?.managerMail ??
+        row?.manager_email ??
+        row?.managerEmail ??
+        "",
+    ).trim(),
+
+    superManagerMail: String(
+      row?.super_man_email_id ??
+        row?.super_manager_mail ??
+        row?.superManagerMail ??
+        row?.super_manager_email ??
+        row?.superManagerEmail ??
+        "",
+    ).trim(),
+
+    status:
+      String(row?.status ?? "").toLowerCase() === "inactive"
+        ? "Inactive"
+        : "Active",
+
+    eligible: row?.eligible === "No" ? "No" : "Yes",
+
+    eligibleReason: String(row?.eligibleReason ?? "").trim(),
+
+    manualOverride: Boolean(row?.manualOverride),
+  };
+}
+
+function normalizeEmployeeList(data) {
+  if (!Array.isArray(data)) {
+    return [];
+  }
+
+  return data.map(normalizeEmployee);
+}
+
 function getImportedEmpId(row) {
   const directHeaders = [
     "Emp ID",
@@ -220,7 +325,9 @@ export function EmployeeMaster() {
     });
   };
 
-  // Reload the current roster page from Catalyst.
+  /*
+   * Load only the current Employee Master page.
+   */
   useEffect(() => {
     let cancelled = false;
 
@@ -241,14 +348,41 @@ export function EmployeeMaster() {
 
         const savedEligibility = loadSavedEligibility();
 
+        /*
+         * Normalize here as a safety layer too.
+         * This makes the component safe whether
+         * employee-master-data already normalizes
+         * the response or returns raw Catalyst rows.
+         */
+        const normalizedEmployees = normalizeEmployeeList(result?.data);
+
         const mergedEmployees = mergeEligibilityData(
-          result.data,
+          normalizedEmployees,
           savedEligibility,
         );
 
         setEmployees(mergedEmployees);
-        setPagination(result.pagination);
-        setCounts(result.counts);
+
+        setPagination(
+          result?.pagination || {
+            page: currentPage,
+            limit: PAGE_SIZE,
+            totalCount: mergedEmployees.length,
+            totalPages: 1,
+          },
+        );
+
+        setCounts(
+          result?.counts || {
+            total: mergedEmployees.length,
+            active: mergedEmployees.filter(
+              (employee) => employee.status === "Active",
+            ).length,
+            inactive: mergedEmployees.filter(
+              (employee) => employee.status === "Inactive",
+            ).length,
+          },
+        );
       } catch (error) {
         if (cancelled) {
           return;
@@ -288,14 +422,22 @@ export function EmployeeMaster() {
     };
   }, [currentPage, search, statusFilter, refreshKey]);
 
-  // Reset pagination when the server-side filters change.
+  /*
+   * Reset pagination when server-side filters change.
+   */
   useEffect(() => {
     if (currentPage !== 1) {
       setCurrentPage(1);
     }
   }, [search, statusFilter]);
 
-  // Load eligibility data when the eligibility tab is opened.
+  /*
+   * Load employees for Eligibility List.
+   *
+   * This intentionally loads all employees because
+   * Eligibility Criteria currently evaluates the
+   * complete employee population.
+   */
   useEffect(() => {
     if (activeTab !== "eligibility") {
       return;
@@ -317,9 +459,9 @@ export function EmployeeMaster() {
           status: "all",
         });
 
-        let allEmployees = [...firstPage.data];
+        let allEmployees = normalizeEmployeeList(firstPage?.data);
 
-        const totalPages = firstPage.pagination.totalPages;
+        const totalPages = Number(firstPage?.pagination?.totalPages) || 1;
 
         for (let page = 2; page <= totalPages; page += 1) {
           if (cancelled) {
@@ -332,7 +474,9 @@ export function EmployeeMaster() {
             status: "all",
           });
 
-          allEmployees = allEmployees.concat(result.data);
+          allEmployees = allEmployees.concat(
+            normalizeEmployeeList(result?.data),
+          );
         }
 
         if (cancelled) {
@@ -385,7 +529,10 @@ export function EmployeeMaster() {
 
   const inactive = counts.inactive;
 
-  // Apply local column filters to the currently loaded roster page.
+  /*
+   * Apply local column filters to the currently
+   * loaded roster page.
+   */
   const filteredRosterEmployees = useMemo(() => {
     return employees.filter((employee) => {
       return Object.entries(rosterFilters).every(([field, filter]) => {
@@ -624,7 +771,9 @@ export function EmployeeMaster() {
       const changes = buildRosterImportChanges(rows);
 
       setPendingImportType("roster");
+
       setPreviewChanges(changes);
+
       setPreviewOpen(true);
     } catch (error) {
       showBanner(
@@ -648,16 +797,20 @@ export function EmployeeMaster() {
           status: "all",
         });
 
-        sourceEmployees = [...firstPage.data];
+        sourceEmployees = normalizeEmployeeList(firstPage?.data);
 
-        for (let page = 2; page <= firstPage.pagination.totalPages; page += 1) {
+        const totalPages = Number(firstPage?.pagination?.totalPages) || 1;
+
+        for (let page = 2; page <= totalPages; page += 1) {
           const result = await fetchEmployeeMasterEmployees({
             page,
             limit: 100,
             status: "all",
           });
 
-          sourceEmployees = sourceEmployees.concat(result.data);
+          sourceEmployees = sourceEmployees.concat(
+            normalizeEmployeeList(result?.data),
+          );
         }
 
         const savedEligibility = loadSavedEligibility();
@@ -677,7 +830,9 @@ export function EmployeeMaster() {
       const changes = buildEligibilityImportChanges(rows, sourceEmployees);
 
       setPendingImportType("eligibility");
+
       setPreviewChanges(changes);
+
       setPreviewOpen(true);
     } catch (error) {
       setEligibilityLoading(false);
@@ -690,14 +845,19 @@ export function EmployeeMaster() {
     }
   };
 
-  // Persist one employee status change to Catalyst.
+  /*
+   * Persist employee status to Catalyst.
+   */
   const persistStatusChange = async (empId, nextStatus) => {
     return updateEmployeeMasterEmployee(empId, {
       status: nextStatus,
     });
   };
 
-  // Update the local eligibility state after successful backend changes.
+  /*
+   * Update local eligibility state after
+   * successful backend changes.
+   */
   const updateEligibilityState = (successfulChanges) => {
     const changeMap = new Map(
       successfulChanges.map((change) => [normalizeEmpId(change.empId), change]),
@@ -759,6 +919,7 @@ export function EmployeeMaster() {
         );
 
         const successfulChanges = [];
+
         let failedCount = 0;
 
         results.forEach((result) => {
@@ -800,6 +961,10 @@ export function EmployeeMaster() {
       return;
     }
 
+    /*
+     * Roster import remains local-preview behavior
+     * exactly as in your current implementation.
+     */
     setEmployees((current) => {
       const next = [...current];
 
@@ -825,21 +990,36 @@ export function EmployeeMaster() {
         if (existingIndex === undefined) {
           const newEmployee = {
             empId: String(change.empId ?? "").trim(),
+
             name: change.fields?.name || change.name || "",
+
             designation: change.fields?.designation || "",
+
             organization: change.fields?.organization || "",
+
             doj: change.fields?.doj || "",
+
             totalExp: change.fields?.totalExp || "",
+
             reportingManager: change.fields?.reportingManager || "",
+
             compManager: change.fields?.compManager || "",
+
             superManager: change.fields?.superManager || "",
+
             appraiser: change.fields?.appraiser || "",
+
             managerMail: change.fields?.managerMail || "",
+
             superManagerMail: change.fields?.superManagerMail || "",
+
             status:
               change.fields?.status === "Inactive" ? "Inactive" : "Active",
+
             eligible: "Yes",
+
             eligibleReason: "",
+
             manualOverride: false,
           };
 
@@ -959,6 +1139,7 @@ export function EmployeeMaster() {
       );
 
       const successfulIds = new Set();
+
       let failedCount = 0;
 
       results.forEach((result, index) => {
@@ -1048,7 +1229,9 @@ export function EmployeeMaster() {
       if (existingEmployee && existingEmployee.status !== nextStatus) {
         setCounts((current) => ({
           ...current,
+
           active: current.active + (nextStatus === "Active" ? 1 : -1),
+
           inactive: current.inactive + (nextStatus === "Inactive" ? 1 : -1),
         }));
       }

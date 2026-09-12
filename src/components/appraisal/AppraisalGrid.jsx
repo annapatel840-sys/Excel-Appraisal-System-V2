@@ -7,12 +7,16 @@ import { ColumnFilter } from "./ColumnFilter";
 import { COLUMNS, formatValue } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
 
-  //  API
+/* ============================================================
+   API
+   ============================================================ */
+
 const APPRAISAL_HISTORY_API_URL =
   "https://excelappraisal-904056216.development.catalystserverless.com/server/appraisal-history-api/";
 
-
-  //  FONT
+/* ============================================================
+   FONT
+   ============================================================ */
 
 const APPRAISAL_FONT = "Arial, Helvetica, sans-serif";
 
@@ -434,12 +438,8 @@ export function AppraisalGrid({
   }, [showHistory]);
 
   /* ============================================================
-     RESET PAGE WHEN ROW COUNT CHANGES
+     KEEP PAGINATION STABLE
      ============================================================ */
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [rows.length]);
 
   /* ============================================================
      CLEANUP
@@ -460,10 +460,8 @@ export function AppraisalGrid({
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
 
   useEffect(() => {
-    if (currentPage > totalPages) {
-      setCurrentPage(totalPages);
-    }
-  }, [currentPage, totalPages]);
+    setCurrentPage((page) => Math.min(Math.max(page, 1), totalPages));
+  }, [totalPages]);
 
   const pageRows = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE;
@@ -1247,13 +1245,7 @@ export function AppraisalGrid({
               HEADER
               ================================================== */}
 
-          <thead
-            style={{
-              position: "sticky",
-              top: 0,
-              zIndex: 50,
-            }}
-          >
+          <thead>
             <tr
               style={{
                 height: 34,
@@ -1320,9 +1312,13 @@ export function AppraisalGrid({
 
                       boxSizing: "border-box",
 
-                      zIndex: isFrozen ? 70 : 50,
+                      zIndex: isFrozen ? 90 : 60,
 
                       background: "#e8eef5",
+                      boxShadow:
+                        isFrozen && isName
+                          ? "2px 0 4px -2px rgba(71,85,105,.45)"
+                          : undefined,
 
                       fontFamily: APPRAISAL_FONT,
                     }}
@@ -1442,7 +1438,12 @@ export function AppraisalGrid({
 
                         boxSizing: "border-box",
 
-                        zIndex: isFrozen ? 20 : 1,
+                        zIndex: isFrozen ? 30 : 1,
+
+                        boxShadow:
+                          isFrozen && isName
+                            ? "2px 0 4px -2px rgba(71,85,105,.35)"
+                            : "none",
 
                         backgroundColor: isFrozen
                           ? "#f8fafc"

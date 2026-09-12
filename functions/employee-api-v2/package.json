@@ -4,6 +4,7 @@
 	"main": "index.js",
 	"author": "user8@demo1.race2cloud.com",
 	"dependencies": {
+		"express": "^5.2.1",
 		"zcatalyst-sdk-node": "latest"
 	}
 }
