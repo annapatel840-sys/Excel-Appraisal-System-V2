@@ -1135,7 +1135,15 @@ export function AppraisalGrid({
             }
           }}
           onChange={(event) => {
-            setEditingValue(cellKey, event.target.value);
+            const value = event.target.value;
+
+            setEditingValue(cellKey, value);
+
+            if (col.key === "hikePct") {
+              updateHikePct(row, value);
+            } else if (col.key === "hikeAmount") {
+              updateHikeAmount(row, value);
+            }
           }}
           onBlur={(event) => {
             setActive(null);
