@@ -323,6 +323,7 @@ const fetchEmployeeByIdFromCatalyst = async (empId) => {
   const url = new URL(EMPLOYEE_API_URL);
 
   url.searchParams.set("emp_id", String(empId));
+  url.searchParams.set("limit", "100");
 
   const response = await fetch(url.toString(), {
     method: "GET",
@@ -331,11 +332,17 @@ const fetchEmployeeByIdFromCatalyst = async (empId) => {
 
   const payload = await parseApiResponse(response, "Employee API");
 
-  if (!payload.data) {
+  const employees = Array.isArray(payload.data) ? payload.data : [];
+
+  const employee = employees.find(
+    (item) => String(item.emp_id || "").trim() === String(empId).trim(),
+  );
+
+  if (!employee) {
     throw new Error(`Employee ${empId} was not returned from the database.`);
   }
 
-  return payload.data;
+  return employee;
 };
 
 /*

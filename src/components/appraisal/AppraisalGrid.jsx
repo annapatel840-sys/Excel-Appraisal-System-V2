@@ -209,6 +209,47 @@ export function AppraisalGrid({
   const clickTimerRef = useRef(null);
 
   /* ============================================================
+     LOCAL EDIT DRAFTS
+
+     IMPORTANT:
+     These drafts prevent the controlled input from being
+     overwritten while the user is typing.
+
+     Example:
+       DB/UI value = 45
+       User enters cell
+       45 is selected
+       User types 67
+       Draft becomes "67"
+       Row is updated only when edit is committed.
+   ============================================================ */
+
+  const [editingValues, setEditingValues] = useState({});
+
+  const setEditingValue = useCallback((cellKey, value) => {
+    setEditingValues((previous) => ({
+      ...previous,
+      [cellKey]: value,
+    }));
+  }, []);
+
+  const clearEditingValue = useCallback((cellKey) => {
+    setEditingValues((previous) => {
+      if (!(cellKey in previous)) {
+        return previous;
+      }
+
+      const next = {
+        ...previous,
+      };
+
+      delete next[cellKey];
+
+      return next;
+    });
+  }, []);
+
+  /* ============================================================
      GRID VIEWPORT REF
      ============================================================ */
 
@@ -436,10 +477,6 @@ export function AppraisalGrid({
       setHistoryLoading(false);
     }
   }, [showHistory]);
-
-  /* ============================================================
-     KEEP PAGINATION STABLE
-     ============================================================ */
 
   /* ============================================================
      CLEANUP
@@ -1051,6 +1088,25 @@ export function AppraisalGrid({
       );
     }
 
+    /*
+     * IMPORTANT:
+     *
+     * For normal editable inputs we no longer update the row on every
+     * keystroke.
+     *
+     * The local draft is the input value while editing.
+     * This prevents:
+     *
+     *     45 -> type 67 -> 4567
+     *
+     * because React is no longer replacing the input value after every
+     * keystroke.
+     */
+    const draftValue =
+      editingValues[cellKey] !== undefined
+        ? editingValues[cellKey]
+        : String(row[col.key] ?? "");
+
     return (
       <div className={`relative min-h-[${CELL_MIN_HEIGHT}px] h-full w-full`}>
         <input
@@ -1058,56 +1114,40 @@ export function AppraisalGrid({
             cellRefs.current[`${rowIndex}:${col.key}`] = element;
           }}
           type={col.type === "date" ? "date" : "text"}
-          value={String(row[col.key] ?? "")}
+          value={draftValue}
           inputMode={isNumericType(col.type) ? "decimal" : undefined}
           onFocus={(event) => {
             setActive(`${rowIndex}:${col.key}`);
 
+            const initialValue = String(row[col.key] ?? "");
+
+            setEditingValues((previous) => ({
+              ...previous,
+              [cellKey]: initialValue,
+            }));
+
             if (col.type !== "date") {
-              event.currentTarget.select();
+              requestAnimationFrame(() => {
+                if (document.activeElement === event.currentTarget) {
+                  event.currentTarget.select();
+                }
+              });
             }
           }}
           onChange={(event) => {
-            const raw = event.target.value;
-
-            if (col.key === "hikePct") {
-              updateHikePct(row, raw);
-              return;
-            }
-
-            if (col.key === "hikeAmount") {
-              updateHikeAmount(row, raw);
-              return;
-            }
-
-            if (col.type === "date" || col.type === "text") {
-              updateCell(row.id, col.key, raw);
-              flashSaved(cellKey);
-              return;
-            }
-
-            if (raw === "") {
-              updateCell(row.id, col.key, "");
-              return;
-            }
-
-            if (isNumericType(col.type)) {
-              const value = Number(raw);
-
-              if (Number.isFinite(value)) {
-                updateCell(row.id, col.key, value);
-                flashSaved(cellKey);
-              }
-            }
+            setEditingValue(cellKey, event.target.value);
           }}
           onBlur={(event) => {
             setActive(null);
 
-            if (col.key === "hikePct" || col.key === "hikeAmount") {
-              return;
-            }
+            const raw =
+              editingValues[cellKey] !== undefined
+                ? editingValues[cellKey]
+                : event.target.value;
 
-            commit(row, col, event.target.value);
+            clearEditingValue(cellKey);
+
+            commit(row, col, raw);
           }}
           onKeyDown={(event) => onKeyDown(event, rowIndex, col.key)}
           onDoubleClick={(event) =>
@@ -1292,11 +1332,11 @@ export function AppraisalGrid({
                   <th
                     key={col.key}
                     className={cn(
-                      "relative border-r border-b border-[#cbd5e1] p-0",
-                      isFrozen && "sticky",
+                      "sticky border-r border-b border-[#cbd5e1] p-0",
                     )}
                     style={{
-                      position: isFrozen ? "sticky" : "relative",
+                      position: "sticky",
+                      top: 0,
 
                       ...(isFrozen
                         ? {
