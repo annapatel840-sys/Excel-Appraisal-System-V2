@@ -58,32 +58,50 @@ const SEARCH_FIELDS = [
   "super_man_email_id",
 ];
 
+/* ============================================================
+   CORS
+   ============================================================ */
+
 function setCorsHeaders(res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  );
+
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+
   res.setHeader(
     "Access-Control-Allow-Headers",
     "Content-Type, Accept, Authorization, X-Requested-With",
   );
+
   res.setHeader("Access-Control-Max-Age", "86400");
+
   res.setHeader("Vary", "Origin");
 }
+
+/* ============================================================
+   JSON RESPONSE
+   ============================================================ */
 
 function sendJson(res, statusCode, payload) {
   setCorsHeaders(res);
 
   res.statusCode = statusCode;
+
   res.setHeader("Content-Type", "application/json");
 
   res.end(JSON.stringify(payload));
 }
 
+/* ============================================================
+   REQUEST URL
+   ============================================================ */
+
 function getRequestUrl(req) {
   return new URL(req.url || "/", `https://${req.headers.host || "localhost"}`);
 }
+
+/* ============================================================
+   NORMALIZE STATUS
+   ============================================================ */
 
 function normalizeStatus(value) {
   return String(value || "")
@@ -92,6 +110,10 @@ function normalizeStatus(value) {
     ? "Inactive"
     : "Active";
 }
+
+/* ============================================================
+   NORMALIZE LIMIT
+   ============================================================ */
 
 function normalizeLimit(value) {
   const parsed = Number.parseInt(value, 10);
@@ -103,6 +125,10 @@ function normalizeLimit(value) {
   return Math.min(parsed, MAX_LIMIT);
 }
 
+/* ============================================================
+   NORMALIZE PAGE
+   ============================================================ */
+
 function normalizePage(value) {
   const parsed = Number.parseInt(value, 10);
 
@@ -113,17 +139,9 @@ function normalizePage(value) {
   return parsed;
 }
 
-function getAllowedPayload(payload) {
-  const result = {};
-
-  ALLOWED_FIELDS.forEach((field) => {
-    if (payload[field] !== undefined) {
-      result[field] = payload[field];
-    }
-  });
-
-  return result;
-}
+/* ============================================================
+   SEARCH
+   ============================================================ */
 
 function matchesSearch(record, search) {
   const normalizedSearch = String(search || "")
@@ -140,6 +158,10 @@ function matchesSearch(record, search) {
       .includes(normalizedSearch),
   );
 }
+
+/* ============================================================
+   GET ALL EMPLOYEES FROM DATA STORE
+   ============================================================ */
 
 async function getAllEmployees(table) {
   const records = [];
@@ -163,11 +185,16 @@ async function getAllEmployees(table) {
     records.push(...rows);
 
     moreRecords = result?.more_records === true;
+
     nextToken = result?.next_token;
   }
 
   return records;
 }
+
+/* ============================================================
+   COUNTS
+   ============================================================ */
 
 function buildCounts(records) {
   let active = 0;
@@ -175,9 +202,9 @@ function buildCounts(records) {
 
   records.forEach((record) => {
     if (normalizeStatus(record.status) === "Inactive") {
-      inactive += 1;
+      inactive++;
     } else {
-      active += 1;
+      active++;
     }
   });
 
@@ -188,22 +215,9 @@ function buildCounts(records) {
   };
 }
 
-async function findEmployee(table, empId) {
-  const records = await getAllEmployees(table);
-
-  const normalizedEmpId = String(empId || "")
-    .trim()
-    .toLowerCase();
-
-  return (
-    records.find(
-      (record) =>
-        String(record.emp_id || "")
-          .trim()
-          .toLowerCase() === normalizedEmpId,
-    ) || null
-  );
-}
+/* ============================================================
+   GET EMPLOYEES
+   ============================================================ */
 
 async function handleGet(req, res, table) {
   const requestUrl = getRequestUrl(req);
@@ -220,7 +234,15 @@ async function handleGet(req, res, table) {
 
   const empId = String(requestUrl.searchParams.get("emp_id") || "").trim();
 
+  /* ----------------------------------------------------------
+     Fetch employees
+     ---------------------------------------------------------- */
+
   const allRecords = await getAllEmployees(table);
+
+  /* ----------------------------------------------------------
+     Fetch one employee by EMP ID
+     ---------------------------------------------------------- */
 
   if (empId) {
     const employee = allRecords.find(
@@ -247,7 +269,15 @@ async function handleGet(req, res, table) {
     return;
   }
 
+  /* ----------------------------------------------------------
+     Overall counts
+     ---------------------------------------------------------- */
+
   const counts = buildCounts(allRecords);
+
+  /* ----------------------------------------------------------
+     Status filtering
+     ---------------------------------------------------------- */
 
   let filteredRecords = allRecords;
 
@@ -259,11 +289,19 @@ async function handleGet(req, res, table) {
     );
   }
 
+  /* ----------------------------------------------------------
+     Search filtering
+     ---------------------------------------------------------- */
+
   if (search) {
     filteredRecords = filteredRecords.filter((record) =>
       matchesSearch(record, search),
     );
   }
+
+  /* ----------------------------------------------------------
+     Pagination
+     ---------------------------------------------------------- */
 
   const totalCount = filteredRecords.length;
 
@@ -275,16 +313,24 @@ async function handleGet(req, res, table) {
 
   const pageData = filteredRecords.slice(startIndex, startIndex + limit);
 
+  /* ----------------------------------------------------------
+     Response
+     ---------------------------------------------------------- */
+
   sendJson(res, 200, {
     success: true,
+
     data: pageData,
+
     pagination: {
       page: safePage,
       limit,
       totalCount,
       totalPages,
     },
+
     counts,
+
     filters: {
       search,
       status,
@@ -292,140 +338,58 @@ async function handleGet(req, res, table) {
   });
 }
 
-async function handleUpdate(req, res, table) {
-  const payload = req.body || {};
-
-  const empId = String(payload.emp_id || "").trim();
-
-  if (!empId) {
-    sendJson(res, 400, {
-      success: false,
-      message: "emp_id is required.",
-    });
-
-    return;
-  }
-
-  const existingEmployee = await findEmployee(table, empId);
-
-  if (!existingEmployee) {
-    sendJson(res, 404, {
-      success: false,
-      message: `Employee ${empId} not found.`,
-    });
-
-    return;
-  }
-
-  const updateData = getAllowedPayload(payload);
-
-  delete updateData.emp_id;
-
-  if (updateData.status !== undefined) {
-    updateData.status = normalizeStatus(updateData.status);
-  }
-
-  if (Object.keys(updateData).length === 0) {
-    sendJson(res, 400, {
-      success: false,
-      message: "No valid employee fields were provided for update.",
-    });
-
-    return;
-  }
-
-  const updatedEmployee = await table.updateRow({
-    ...existingEmployee,
-    ...updateData,
-  });
-
-  sendJson(res, 200, {
-    success: true,
-    message: "Employee updated successfully.",
-    data: updatedEmployee,
-  });
-}
-
-async function handleDelete(req, res, table) {
-  const requestUrl = getRequestUrl(req);
-
-  const empId = String(requestUrl.searchParams.get("emp_id") || "").trim();
-
-  if (!empId) {
-    sendJson(res, 400, {
-      success: false,
-      message: "emp_id is required.",
-    });
-
-    return;
-  }
-
-  const existingEmployee = await findEmployee(table, empId);
-
-  if (!existingEmployee) {
-    sendJson(res, 404, {
-      success: false,
-      message: `Employee ${empId} not found.`,
-    });
-
-    return;
-  }
-
-  const updatedEmployee = await table.updateRow({
-    ...existingEmployee,
-    status: "Inactive",
-  });
-
-  sendJson(res, 200, {
-    success: true,
-    message: "Employee deactivated successfully.",
-    data: updatedEmployee,
-  });
-}
+/* ============================================================
+   MAIN HANDLER
+   ============================================================ */
 
 module.exports = async (req, res) => {
-  setCorsHeaders(res);
-
-  if (req.method === "OPTIONS") {
-    res.statusCode = 204;
-    res.end();
-    return;
-  }
-
   try {
+    setCorsHeaders(res);
+
+    /* --------------------------------------------------------
+       OPTIONS - CORS PREFLIGHT
+       -------------------------------------------------------- */
+
+    if (String(req.method || "").toUpperCase() === "OPTIONS") {
+      res.statusCode = 204;
+      res.end();
+      return;
+    }
+
+    /* --------------------------------------------------------
+       GET ONLY
+       -------------------------------------------------------- */
+
+    if (String(req.method || "").toUpperCase() !== "GET") {
+      sendJson(res, 405, {
+        success: false,
+        message: "Method Not Allowed. Use GET.",
+      });
+
+      return;
+    }
+
+    /* --------------------------------------------------------
+       Catalyst initialization
+       -------------------------------------------------------- */
+
     const app = catalyst.initialize(req);
 
-    const table = app.datastore().table(EMPLOYEES_TABLE_ID);
+    const datastore = app.datastore();
 
-    if (req.method === "GET") {
-      await handleGet(req, res, table);
-      return;
-    }
+    const table = datastore.table(EMPLOYEES_TABLE_ID);
 
-    if (
-      req.method === "PATCH" ||
-      req.method === "PUT" ||
-      req.method === "POST"
-    ) {
-      await handleUpdate(req, res, table);
-      return;
-    }
+    /* --------------------------------------------------------
+       GET
+       -------------------------------------------------------- */
 
-    if (req.method === "DELETE") {
-      await handleDelete(req, res, table);
-      return;
-    }
-
-    sendJson(res, 405, {
-      success: false,
-      message: `Method ${req.method} is not allowed.`,
-    });
+    await handleGet(req, res, table);
   } catch (error) {
-    console.error("Employee API error:", error);
+    console.error("employee-api-v2 error:", error);
 
     sendJson(res, 500, {
       success: false,
-      message: error?.message || "Employee API failed.",
+      message: error?.message || "Internal Server Error",
     });
   }
 };
