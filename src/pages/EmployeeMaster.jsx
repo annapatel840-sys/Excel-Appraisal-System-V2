@@ -80,6 +80,10 @@ function normalizeEmployee(employee) {
         "",
     ).trim(),
 
+    orgExp: String(
+      row?.wissen_experience ?? row?.wissenExperience ?? row?.orgExp ?? "",
+    ).trim(),
+
     totalExp: String(
       row?.total_experience ?? row?.totalExperience ?? row?.totalExp ?? "",
     ).trim(),
@@ -1035,8 +1039,13 @@ export function EmployeeMaster() {
      BULK ACTIVE / INACTIVE
      ============================================================ */
 
-  const bulkUpdateEmployeeStatus = async (empIds, nextStatus) => {
-    if (!Array.isArray(empIds) || empIds.length === 0) {
+  const bulkUpdateEmployeeStatus = async (nextStatus, selectedEmployees) => {
+    if (!Array.isArray(selectedEmployees) || selectedEmployees.length === 0) {
+      showBanner(
+        "No employees selected",
+        "Please select at least one employee before using Active or Inactive.",
+        true,
+      );
       return;
     }
 
@@ -1046,40 +1055,49 @@ export function EmployeeMaster() {
       return;
     }
 
-    /*
-     * Remove duplicate employee IDs.
-     */
-
-    const uniqueIds = Array.from(
-      new Set(empIds.map((id) => String(id ?? "").trim()).filter(Boolean)),
+    const uniqueEmployees = Array.from(
+      new Map(
+        selectedEmployees
+          .filter((employee) => employee?.empId)
+          .map((employee) => [normalizeEmpId(employee.empId), employee]),
+      ).values(),
     );
 
-    if (uniqueIds.length === 0) {
+    if (uniqueEmployees.length === 0) {
+      return;
+    }
+
+    /*
+     * Skip employees that already have the requested status.
+     */
+    const employeesToUpdate = uniqueEmployees.filter(
+      (employee) => employee.status !== normalizedStatus,
+    );
+
+    if (employeesToUpdate.length === 0) {
+      showBanner(
+        "No status changes needed",
+        `All selected employees are already ${normalizedStatus}.`,
+      );
       return;
     }
 
     try {
       setStatusActionLoading(true);
 
-      /*
-       * Update each employee in Catalyst.
-       *
-       * Only status is sent.
-       */
-
       const results = await Promise.allSettled(
-        uniqueIds.map(async (empId) => {
-          await persistStatusChange(empId, normalizedStatus);
+        employeesToUpdate.map(async (employee) => {
+          await persistStatusChange(employee.empId, normalizedStatus);
 
           return {
-            empId,
+            empId: employee.empId,
             status: normalizedStatus,
+            previousStatus: employee.status,
           };
         }),
       );
 
       const successfulChanges = [];
-
       let failedCount = 0;
 
       results.forEach((result) => {
@@ -1094,48 +1112,40 @@ export function EmployeeMaster() {
 
       if (successfulChanges.length > 0) {
         /*
-         * Update only status locally.
+         * Update ONLY status locally.
+         *
+         * Eligibility fields remain untouched.
          */
-
         applyLocalStatusChanges(successfulChanges);
 
-        /*
-         * Recalculate counts from
-         * successful operations only.
-         */
-
         let activeDelta = 0;
-
         let inactiveDelta = 0;
 
         successfulChanges.forEach((change) => {
-          const previous = employees.find(
-            (employee) =>
-              normalizeEmpId(employee.empId) === normalizeEmpId(change.empId),
-          );
-
-          if (!previous) {
+          if (change.previousStatus === change.status) {
             return;
           }
 
-          if (previous.status !== change.status) {
-            if (change.status === "Active") {
-              activeDelta += 1;
-              inactiveDelta -= 1;
-            } else {
-              activeDelta -= 1;
-              inactiveDelta += 1;
-            }
+          if (change.status === "Active") {
+            activeDelta += 1;
+            inactiveDelta -= 1;
+          } else {
+            activeDelta -= 1;
+            inactiveDelta += 1;
           }
         });
 
         setCounts((current) => ({
           ...current,
-
           active: current.active + activeDelta,
-
           inactive: current.inactive + inactiveDelta,
         }));
+
+        /*
+         * Reload current server page so status filters,
+         * pagination and Catalyst data stay synchronized.
+         */
+        setRefreshKey((value) => value + 1);
       }
 
       if (failedCount > 0) {
@@ -1678,15 +1688,9 @@ export function EmployeeMaster() {
                 setCurrentPage={setCurrentPage}
                 totalPages={pagination.totalPages}
                 totalCount={pagination.totalCount}
-                /*
-                 * =================================================
-                 * STATUS ACTIONS
-                 * =================================================
-                 */
-
                 onToggleStatus={toggleEmployeeStatus}
                 onBulkStatusChange={bulkUpdateEmployeeStatus}
-                statusActionLoading={statusActionLoading}
+                bulkStatusUpdating={statusActionLoading}
               />
             )}
 

@@ -31,6 +31,11 @@ export const FIELD_DEFS = [
     uploadHeaders: ["Date of Joining", "DOJ"],
   },
   {
+    key: "orgExp",
+    label: "Organization Experience",
+    uploadHeaders: ["Organization Experience", "Org Exp", "wissen_experience"],
+  },
+  {
     key: "totalExp",
     label: "Total Experience (as on 1 Jan)",
     uploadHeaders: ["Total Experience as on 1st Jan", "Total Experience"],
@@ -158,6 +163,23 @@ export function mapEmployeeFromApi(employee) {
     row?.superManager ||
     "";
 
+  /*
+   * ============================================================
+   * ORGANIZATION EXPERIENCE
+   * ============================================================
+   *
+   * IMPORTANT:
+   * This value comes DIRECTLY from the Catalyst Data Store
+   * field:
+   *
+   *     wissen_experience
+   *
+   * It is NOT calculated from Joining_date.
+   */
+
+  const organizationExperience =
+    row?.wissen_experience ?? row?.wissenExperience ?? row?.orgExp ?? "";
+
   return {
     empId: String(row?.emp_id ?? row?.empId ?? "").trim(),
 
@@ -170,6 +192,19 @@ export function mapEmployeeFromApi(employee) {
     ).trim(),
 
     doj: String(joiningDate).trim(),
+
+    /*
+     * Organization Experience
+     *
+     * Directly from Data Store:
+     * wissen_experience
+     */
+    orgExp:
+      organizationExperience !== "" &&
+      organizationExperience !== null &&
+      organizationExperience !== undefined
+        ? Number(organizationExperience)
+        : "",
 
     totalExp:
       row?.total_experience !== undefined &&
@@ -222,6 +257,9 @@ export function mapEmployeeFromApi(employee) {
 
     catalystRowId: String(row?.ROWID ?? row?.rowid ?? ""),
 
+    /*
+     * Keep original Catalyst row available.
+     */
     rawEmployee: row,
   };
 }
@@ -312,22 +350,10 @@ export async function fetchEmployeeMasterEmployees({
  *
  * Used by Employee Master for Active / Inactive updates.
  *
- * Example:
- *
- * updateEmployeeMasterEmployee("EMP001", {
- *   status: "Inactive"
- * })
- *
- * Sends:
- *
- * {
- *   emp_id: "EMP001",
- *   status: "Inactive"
- * }
- *
  * IMPORTANT:
  * This function does NOT modify eligibility.
  */
+
 export async function updateEmployeeMasterEmployee(empId, data = {}) {
   const normalizedEmpId = String(empId || "").trim();
 
@@ -335,18 +361,11 @@ export async function updateEmployeeMasterEmployee(empId, data = {}) {
     throw new Error("Employee ID is required.");
   }
 
-  /*
-   * Only allow fields that actually belong to
-   * Employee Master.
-   */
   const payload = {
     emp_id: normalizedEmpId,
     ...data,
   };
 
-  /*
-   * Normalize status before sending to Catalyst.
-   */
   if (payload.status !== undefined) {
     const normalizedStatus = String(payload.status || "").trim();
 
@@ -359,9 +378,6 @@ export async function updateEmployeeMasterEmployee(empId, data = {}) {
 
   console.log("[Employee Master] Updating employee:", payload);
 
-  /*
-   * Use PUT for the employee-api-v2 update route.
-   */
   const response = await fetch(EMPLOYEE_API_URL, {
     method: "PUT",
 

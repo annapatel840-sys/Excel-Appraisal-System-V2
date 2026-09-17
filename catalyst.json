@@ -2,7 +2,8 @@
   "functions": {
     "targets": [
       "employee-api-v2",
-      "appraisal-history-api"
+      "appraisal-history-api",
+      "appraisal-audit-api"
     ],
     "ignore": [],
     "source": "functions"
