@@ -422,7 +422,35 @@ export async function updateEmployeeMasterEmployee(empId, data = {}) {
     data: result?.data ? mapEmployeeFromApi(result.data) : null,
   };
 }
+export async function createEmployeeMasterEmployees(records) {
+  if (!Array.isArray(records) || records.length === 0) {
+    throw new Error("No employee records to import.");
+  }
 
+  const response = await fetch(EMPLOYEE_API_URL, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ employees: records }),
+  });
+
+  const result = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(
+      result?.message ||
+        `Employee import failed with status ${response.status}`,
+    );
+  }
+
+  if (!result?.success) {
+    throw new Error(result?.message || "Failed to import employees.");
+  }
+
+  return result;
+}
 export async function fetchAllEmployeeMasterEmployees() {
   const firstPage = await fetchEmployeeMasterEmployees({
     page: 1,

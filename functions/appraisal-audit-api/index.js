@@ -7,7 +7,7 @@ const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 
 /* ============================================================
-   RESPONSE
+   SEND JSON RESPONSE
    ============================================================ */
 
 function sendJson(res, statusCode, body) {
@@ -22,7 +22,7 @@ function sendJson(res, statusCode, body) {
 }
 
 /* ============================================================
-   QUERY PARAMETERS
+   GET QUERY PARAMETERS
    ============================================================ */
 
 function getQueryParams(req) {
@@ -30,34 +30,31 @@ function getQueryParams(req) {
     return req.queryParams;
   }
 
-  const url = String(req.url || "");
-
-  const queryIndex = url.indexOf("?");
+  var url = String(req.url || "");
+  var queryIndex = url.indexOf("?");
 
   if (queryIndex === -1) {
     return {};
   }
 
-  const queryString = url.slice(queryIndex + 1);
+  var queryString = url.substring(queryIndex + 1);
+  var params = new URLSearchParams(queryString);
+  var result = {};
 
-  const params = new URLSearchParams(queryString);
-
-  const result = {};
-
-  for (const [key, value] of params.entries()) {
+  params.forEach(function (value, key) {
     result[key] = value;
-  }
+  });
 
   return result;
 }
 
 /* ============================================================
-   REQUEST BODY
+   READ REQUEST BODY
    ============================================================ */
 
 function readBody(req) {
   return new Promise(function (resolve, reject) {
-    let body = "";
+    var body = "";
 
     req.on("data", function (chunk) {
       body += chunk;
@@ -87,60 +84,55 @@ function readBody(req) {
    ============================================================ */
 
 function getPositiveInteger(value, fallback) {
-  const number = Number(value);
+  var number = Number(value);
 
-  if (!Number.isFinite(number)) {
+  if (!isFinite(number)) {
     return fallback;
   }
 
-  return Math.max(1, Math.floor(number));
+  number = Math.floor(number);
+
+  if (number < 1) {
+    return 1;
+  }
+
+  return number;
 }
 
 /* ============================================================
-   CATALYST DATETIME
+   DATETIME
    ============================================================ */
 
-function normalizeDateTime(value) {
-  /*
-   * Catalyst Data Store datetime columns expect:
-   *
-   * YYYY-MM-DD HH:mm:ss
-   *
-   * Example:
-   * 2026-09-17 10:00:00
-   */
-
-  if (!value) {
-    const now = new Date();
-
-    return formatDateTime(now);
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    throw new Error("Invalid changed_at datetime: " + String(value));
-  }
-
-  return formatDateTime(date);
-}
-
 function formatDateTime(date) {
-  const year = date.getFullYear();
+  var year = date.getFullYear();
 
-  const month = String(date.getMonth() + 1).padStart(2, "0");
+  var month = String(date.getMonth() + 1).padStart(2, "0");
 
-  const day = String(date.getDate()).padStart(2, "0");
+  var day = String(date.getDate()).padStart(2, "0");
 
-  const hours = String(date.getHours()).padStart(2, "0");
+  var hours = String(date.getHours()).padStart(2, "0");
 
-  const minutes = String(date.getMinutes()).padStart(2, "0");
+  var minutes = String(date.getMinutes()).padStart(2, "0");
 
-  const seconds = String(date.getSeconds()).padStart(2, "0");
+  var seconds = String(date.getSeconds()).padStart(2, "0");
 
   return (
     year + "-" + month + "-" + day + " " + hours + ":" + minutes + ":" + seconds
   );
+}
+
+function normalizeDateTime(value) {
+  if (!value) {
+    return formatDateTime(new Date());
+  }
+
+  var date = new Date(value);
+
+  if (isNaN(date.getTime())) {
+    throw new Error("Invalid changed_at datetime: " + String(value));
+  }
+
+  return formatDateTime(date);
 }
 
 /* ============================================================
@@ -148,34 +140,36 @@ function formatDateTime(date) {
    ============================================================ */
 
 function normalizeAuditResponse(row) {
-  const audit = row || {};
+  if (!row) {
+    row = {};
+  }
 
   return {
-    ROWID: audit.ROWID ?? audit.rowid ?? "",
+    ROWID: row.ROWID || row.rowid || "",
 
-    emp_id: audit.emp_id ?? "",
+    emp_id: row.emp_id || "",
 
-    employee_name: audit.employee_name ?? "",
+    employee_name: row.employee_name || "",
 
-    field_name: audit.field_name ?? "",
+    field_name: row.field_name || "",
 
-    old_value: audit.old_value ?? "",
+    old_value: row.old_value || "",
 
-    new_value: audit.new_value ?? "",
+    new_value: row.new_value || "",
 
-    changed_by: audit.changed_by ?? "",
+    changed_by: row.changed_by || "",
 
-    changed_at: audit.changed_at ?? "",
+    changed_at: row.changed_at || "",
 
-    source: audit.source ?? "",
+    source: row.source || "",
 
-    batch_id: audit.batch_id ?? "",
+    batch_id: row.batch_id || "",
 
-    appraisal_year: audit.appraisal_year ?? "",
+    appraisal_year: row.appraisal_year || "",
 
-    CREATEDTIME: audit.CREATEDTIME ?? "",
+    CREATEDTIME: row.CREATEDTIME || "",
 
-    MODIFIEDTIME: audit.MODIFIEDTIME ?? "",
+    MODIFIEDTIME: row.MODIFIEDTIME || "",
   };
 }
 
@@ -184,38 +178,48 @@ function normalizeAuditResponse(row) {
    ============================================================ */
 
 function normalizeAuditPayload(item) {
-  const row = item || {};
+  var row = item || {};
+
+  var empId = row.emp_id || row.empId || "";
+
+  var employeeName = row.employee_name || row.employeeName || row.name || "";
+
+  var fieldName = row.field_name || row.fieldName || row.field || "";
+
+  var oldValue = row.old_value || row.oldValue || row.from || "";
+
+  var newValue = row.new_value || row.newValue || row.to || "";
+
+  var changedBy = row.changed_by || row.changedBy || row.user || "";
+
+  var changedAt = row.changed_at || row.changedAt || row.at || "";
+
+  var source = row.source || "manual";
+
+  var batchId = row.batch_id || row.batchId || "";
+
+  var appraisalYear = row.appraisal_year || row.appraisalYear || "Apr-26";
 
   return {
-    emp_id: String(row.emp_id ?? row.empId ?? "").trim(),
+    emp_id: String(empId).trim(),
 
-    employee_name: String(
-      row.employee_name ?? row.employeeName ?? row.name ?? "",
-    ).trim(),
+    employee_name: String(employeeName).trim(),
 
-    field_name: String(
-      row.field_name ?? row.fieldName ?? row.field ?? "",
-    ).trim(),
+    field_name: String(fieldName).trim(),
 
-    old_value: String(row.old_value ?? row.oldValue ?? row.from ?? ""),
+    old_value: String(oldValue),
 
-    new_value: String(row.new_value ?? row.newValue ?? row.to ?? ""),
+    new_value: String(newValue),
 
-    changed_by: String(
-      row.changed_by ?? row.changedBy ?? row.user ?? "",
-    ).trim(),
+    changed_by: String(changedBy).trim(),
 
-    changed_at: normalizeDateTime(
-      row.changed_at ?? row.changedAt ?? row.at ?? new Date(),
-    ),
+    changed_at: normalizeDateTime(changedAt),
 
-    source: String(row.source ?? "manual").trim(),
+    source: String(source).trim(),
 
-    batch_id: String(row.batch_id ?? row.batchId ?? "").trim(),
+    batch_id: String(batchId).trim(),
 
-    appraisal_year: String(
-      row.appraisal_year ?? row.appraisalYear ?? "Apr-26",
-    ).trim(),
+    appraisal_year: String(appraisalYear).trim(),
   };
 }
 
@@ -224,60 +228,111 @@ function normalizeAuditPayload(item) {
    ============================================================ */
 
 async function getAuditHistory(req, res) {
-  const appInstance = catalyst.initialize(req);
+  var appInstance = catalyst.initialize(req);
 
-  const zcql = appInstance.zcql();
+  var datastore = appInstance.datastore();
 
-  const params = getQueryParams(req);
+  var table = datastore.table(AUDIT_TABLE_ID);
 
-  const empId = String(params.emp_id ?? params.empId ?? "").trim();
+  var params = getQueryParams(req);
 
-  const appraisalYear = String(
-    params.appraisal_year ?? params.appraisalYear ?? "",
+  var empId = String(params.emp_id || params.empId || "").trim();
+
+  var appraisalYear = String(
+    params.appraisal_year || params.appraisalYear || "",
   ).trim();
 
-  const requestedLimit = getPositiveInteger(params.limit, DEFAULT_LIMIT);
+  var requestedLimit = getPositiveInteger(params.limit, DEFAULT_LIMIT);
 
-  const limit = Math.min(requestedLimit, MAX_LIMIT);
+  var limit = Math.min(requestedLimit, MAX_LIMIT);
 
-  let query = `
-    SELECT *
-    FROM Appraisal_Audit
-  `;
+  console.log("AUDIT GET STARTED");
 
-  const conditions = [];
+  console.log("AUDIT TABLE:", AUDIT_TABLE_ID);
 
-  if (empId) {
-    conditions.push("emp_id = '" + empId.replace(/'/g, "''") + "'");
+  console.log("AUDIT EMP ID:", empId || "ALL");
+
+  console.log("AUDIT YEAR:", appraisalYear || "ALL");
+
+  console.log("AUDIT LIMIT:", limit);
+
+  /* ----------------------------------------------------------
+     GET ALL AUDIT ROWS FROM DATA STORE
+     ---------------------------------------------------------- */
+
+  var allRows = await table.getAllRows();
+
+  if (!Array.isArray(allRows)) {
+    allRows = [];
   }
 
-  if (appraisalYear) {
-    conditions.push(
-      "appraisal_year = '" + appraisalYear.replace(/'/g, "''") + "'",
-    );
-  }
+  console.log("AUDIT TOTAL ROWS:", allRows.length);
 
-  if (conditions.length > 0) {
-    query += " WHERE " + conditions.join(" AND ");
-  }
+  /* ----------------------------------------------------------
+     FILTER
+     ---------------------------------------------------------- */
 
-  query += " ORDER BY changed_at DESC LIMIT " + limit;
+  var filteredRows = allRows.filter(function (row) {
+    if (empId) {
+      var rowEmpId = String(row.emp_id || "").trim();
 
-  console.log("AUDIT GET QUERY:", query);
+      if (rowEmpId !== empId) {
+        return false;
+      }
+    }
 
-  const result = await zcql.executeZCQLQuery(query);
+    if (appraisalYear) {
+      var rowYear = String(row.appraisal_year || "").trim();
 
-  const data = (result || []).map(function (item) {
-    const row = item?.Appraisal_Audit ?? item?.appraisal_audit ?? item;
+      if (rowYear !== appraisalYear) {
+        return false;
+      }
+    }
 
+    return true;
+  });
+
+  /* ----------------------------------------------------------
+     SORT NEWEST FIRST
+     ---------------------------------------------------------- */
+
+  filteredRows.sort(function (a, b) {
+    var dateA = new Date(a.changed_at || a.CREATEDTIME || 0).getTime();
+
+    var dateB = new Date(b.changed_at || b.CREATEDTIME || 0).getTime();
+
+    if (isNaN(dateA)) {
+      dateA = 0;
+    }
+
+    if (isNaN(dateB)) {
+      dateB = 0;
+    }
+
+    return dateB - dateA;
+  });
+
+  /* ----------------------------------------------------------
+     LIMIT
+     ---------------------------------------------------------- */
+
+  var limitedRows = filteredRows.slice(0, limit);
+
+  /* ----------------------------------------------------------
+     NORMALIZE
+     ---------------------------------------------------------- */
+
+  var data = limitedRows.map(function (row) {
     return normalizeAuditResponse(row);
   });
 
+  console.log("AUDIT FILTERED ROWS:", filteredRows.length);
+
+  console.log("AUDIT RETURNED ROWS:", data.length);
+
   sendJson(res, 200, {
     success: true,
-
     count: data.length,
-
     data: data,
   });
 }
@@ -287,23 +342,15 @@ async function getAuditHistory(req, res) {
    ============================================================ */
 
 async function createAuditRecords(req, res) {
-  const appInstance = catalyst.initialize(req);
+  var appInstance = catalyst.initialize(req);
 
-  const datastore = appInstance.datastore();
+  var datastore = appInstance.datastore();
 
-  const body = await readBody(req);
+  var body = await readBody(req);
 
-  console.log("==============================================");
+  console.log("AUDIT POST BODY:", JSON.stringify(body));
 
-  console.log("AUDIT POST REQUEST");
-
-  console.log("METHOD:", req.method);
-
-  console.log("BODY:", JSON.stringify(body));
-
-  console.log("==============================================");
-
-  let incoming;
+  var incoming;
 
   if (Array.isArray(body)) {
     incoming = body;
@@ -326,12 +373,12 @@ async function createAuditRecords(req, res) {
     return;
   }
 
-  const rowsToInsert = [];
-  const skipped = [];
+  var rowsToInsert = [];
+  var skipped = [];
 
   incoming.forEach(function (item, index) {
     try {
-      const audit = normalizeAuditPayload(item);
+      var audit = normalizeAuditPayload(item);
 
       if (!audit.emp_id) {
         skipped.push({
@@ -345,9 +392,7 @@ async function createAuditRecords(req, res) {
       if (!audit.field_name) {
         skipped.push({
           index: index,
-
           emp_id: audit.emp_id,
-
           reason: "field_name is required.",
         });
 
@@ -378,8 +423,7 @@ async function createAuditRecords(req, res) {
     } catch (error) {
       skipped.push({
         index: index,
-
-        reason: error?.message || "Invalid audit record.",
+        reason: error.message || "Invalid audit record.",
       });
     }
   });
@@ -387,9 +431,7 @@ async function createAuditRecords(req, res) {
   if (!rowsToInsert.length) {
     sendJson(res, 400, {
       success: false,
-
       message: "No valid audit records were provided.",
-
       skipped: skipped,
     });
 
@@ -398,13 +440,17 @@ async function createAuditRecords(req, res) {
 
   console.log("AUDIT INSERT ROWS:", JSON.stringify(rowsToInsert));
 
-  const table = datastore.table(AUDIT_TABLE_ID);
+  var table = datastore.table(AUDIT_TABLE_ID);
 
-  const insertedRows = await table.insertRows(rowsToInsert);
+  var insertedRows = await table.insertRows(rowsToInsert);
 
   console.log("AUDIT INSERT RESULT:", JSON.stringify(insertedRows));
 
-  const data = (insertedRows || []).map(function (row) {
+  if (!Array.isArray(insertedRows)) {
+    insertedRows = [];
+  }
+
+  var data = insertedRows.map(function (row) {
     return normalizeAuditResponse(row);
   });
 
@@ -424,11 +470,11 @@ async function createAuditRecords(req, res) {
 }
 
 /* ============================================================
-   MAIN CATALYST ENTRY
+   MAIN FUNCTION
    ============================================================ */
 
 module.exports = async function (req, res) {
-  const method = String(req.method || "GET").toUpperCase();
+  var method = String(req.method || "GET").toUpperCase();
 
   console.log("==============================================");
 
@@ -472,9 +518,9 @@ module.exports = async function (req, res) {
     sendJson(res, 500, {
       success: false,
 
-      message: error?.message || "Internal server error.",
+      message: error.message || "Internal server error.",
 
-      error: error?.stack || String(error),
+      error: error.stack || String(error),
     });
   }
 };

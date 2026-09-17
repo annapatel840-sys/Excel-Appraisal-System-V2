@@ -7,6 +7,7 @@ import {
   FIELD_DEFS,
   fetchEmployeeMasterEmployees,
   updateEmployeeMasterEmployee,
+  createEmployeeMasterEmployees,
 } from "@/lib/employee-master-data";
 
 import {
@@ -33,6 +34,25 @@ import { ImportPreviewModal } from "@/components/employee-master/ImportPreviewMo
 import "@/styles/employee-master.css";
 
 const PAGE_SIZE = 20;
+/*
+ * Maps the React field keys used by the roster import preview
+ * to the Catalyst column names the employee-api-v2 POST route
+ * accepts.
+ */
+const ROSTER_FIELD_TO_CATALYST = {
+  name: "name",
+  designation: "designation",
+  organization: "department",
+  doj: "Joining_date",
+  totalExp: "total_experience",
+  reportingManager: "reporting_manager",
+  compManager: "comp_manager",
+  superManager: "appraiser_tech_ed",
+  appraiser: "appraiser_tech_ed",
+  managerMail: "manager_email_id",
+  superManagerMail: "super_man_email_id",
+  status: "status",
+};
 
 /* ============================================================
    HELPERS
@@ -1305,101 +1325,52 @@ export function EmployeeMaster() {
          Keep existing local preview behavior.
          ======================================================== */
 
-    setEmployees((current) => {
-      const next = [...current];
+    try {
+      const records = previewChanges.map((change) => {
+        const payload = { emp_id: change.empId };
 
-      const indexByEmpId = new Map();
+        Object.entries(change.fields || {}).forEach(([key, value]) => {
+          const catalystField = ROSTER_FIELD_TO_CATALYST[key];
 
-      next.forEach((employee, index) => {
-        const key = normalizeEmpId(employee.empId);
-
-        if (key) {
-          indexByEmpId.set(key, index);
-        }
-      });
-
-      previewChanges.forEach((change) => {
-        const key = normalizeEmpId(change.empId);
-
-        if (!key) {
-          return;
-        }
-
-        const existingIndex = indexByEmpId.get(key);
-
-        if (existingIndex === undefined) {
-          const newEmployee = {
-            empId: String(change.empId ?? "").trim(),
-
-            name: change.fields?.name || change.name || "",
-
-            designation: change.fields?.designation || "",
-
-            organization: change.fields?.organization || "",
-
-            doj: change.fields?.doj || "",
-
-            totalExp: change.fields?.totalExp || "",
-
-            reportingManager: change.fields?.reportingManager || "",
-
-            compManager: change.fields?.compManager || "",
-
-            superManager: change.fields?.superManager || "",
-
-            appraiser: change.fields?.appraiser || "",
-
-            managerMail: change.fields?.managerMail || "",
-
-            superManagerMail: change.fields?.superManagerMail || "",
-
-            status:
-              change.fields?.status === "Inactive" ? "Inactive" : "Active",
-
-            eligible: "Yes",
-
-            eligibleReason: "",
-
-            manualOverride: false,
-          };
-
-          next.push(newEmployee);
-
-          indexByEmpId.set(key, next.length - 1);
-
-          return;
-        }
-
-        const updatedEmployee = {
-          ...next[existingIndex],
-        };
-
-        Object.entries(change.fields || {}).forEach(([field, value]) => {
-          const supported = FIELD_DEFS.some(
-            (definition) => definition.key === field,
-          );
-
-          if (supported) {
-            updatedEmployee[field] = String(value ?? "").trim();
+          if (catalystField) {
+            payload[catalystField] = value;
           }
         });
 
-        next[existingIndex] = updatedEmployee;
+        if (change.isNew && !payload.status) {
+          payload.status = "Active";
+        }
+
+        return payload;
       });
 
-      return next;
-    });
+      const result = await createEmployeeMasterEmployees(records);
 
-    setPreviewOpen(false);
+      setPreviewOpen(false);
 
-    setPreviewChanges([]);
+      setPreviewChanges([]);
 
-    setPendingImportType(null);
+      setPendingImportType(null);
 
-    showBanner(
-      "Employee import preview applied locally",
-      `${previewChanges.length} employee record(s) prepared.`,
-    );
+      setRefreshKey((value) => value + 1);
+
+      const created = result?.data?.created ?? 0;
+      const updated = result?.data?.updated ?? 0;
+      const skipped = result?.data?.skipped ?? 0;
+
+      showBanner(
+        "Employee import completed",
+        `${created} created, ${updated} updated${
+          skipped ? `, ${skipped} skipped` : ""
+        } in Catalyst.`,
+      );
+    } catch (error) {
+      showBanner(
+        "Employee import failed",
+        error?.message || "Unable to import employees to Catalyst.",
+        true,
+      );
+    }
   };
 
   /* ============================================================

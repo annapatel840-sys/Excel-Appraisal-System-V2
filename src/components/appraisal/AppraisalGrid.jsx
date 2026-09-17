@@ -130,61 +130,131 @@ const formatHistoryNumber = (value) => {
   return Math.round(n).toLocaleString("en-IN");
 };
 
-const formatHistoryPercent = (value) => {
-  if (value === null || value === undefined || value === "") {
-    return "0.0%";
+/*
+ * ------------------------------------------------------------
+ * HISTORY % CHANGE
+ * ------------------------------------------------------------
+ *
+ * historyData is sorted newest-first. For a given row, the
+ * "previous" value is the NEXT row in the array (the year
+ * before it). If there is no next row, this is the oldest
+ * year on record, so it's labelled "new" instead of a %.
+ */
+
+const computeHistoryChange = (currentValue, previousValue) => {
+  if (previousValue === undefined) {
+    return { label: "new", tone: "neutral" };
   }
 
-  const n = Number(value);
+  const current = Number(currentValue) || 0;
+  const previous = Number(previousValue) || 0;
 
-  if (!Number.isFinite(n)) {
-    return "0.0%";
+  if (previous === 0) {
+    if (current === 0) {
+      return { label: "0.00%", tone: "neutral" };
+    }
+
+    return { label: "new", tone: "neutral" };
   }
 
-  return `${n.toFixed(1)}%`;
+  const change = ((current - previous) / previous) * 100;
+  const sign = change > 0 ? "+" : "";
+
+  return {
+    label: `${sign}${change.toFixed(2)}%`,
+    tone: change > 0 ? "up" : change < 0 ? "down" : "neutral",
+  };
 };
+
+/*
+ * ------------------------------------------------------------
+ * BOTTOM HISTORY PANEL METRIC COLUMNS
+ * ------------------------------------------------------------
+ */
+
+const HISTORY_METRIC_COLUMNS = [
+  { key: "basePay", label: "Curr Base Pay" },
+  { key: "joiningBonus", label: "Joining Bonus" },
+  { key: "performanceBonus", label: "Perf. Bonus" },
+  { key: "retentionBonus", label: "Retention Bonus" },
+  { key: "totalBonus", label: "Total Bonus" },
+  { key: "hikeAmount", label: "Hike Amount" },
+  { key: "newCTC", label: "Total CTC" },
+  { key: "targetPB", label: "Target PB" },
+  { key: "newBasePay", label: "New Base Pay" },
+];
 
 /* ============================================================
    HISTORY RECORD NORMALIZER
    ============================================================ */
 
-const normalizeHistoryRecord = (record) => ({
-  year: String(record?.appraisal_year ?? "—"),
+const normalizeHistoryRecord = (record) => {
+  const basePay = Number(record?.base_pay) || 0;
+  const hikeAmount = Number(record?.hike_amount) || 0;
 
-  basePay: Number(record?.base_pay) || 0,
+  return {
+    year: String(record?.appraisal_year ?? "—"),
 
-  allocatedPB: Number(record?.allocated_pb) || 0,
+    basePay,
 
-  performanceBonus: Number(record?.performance_bonus) || 0,
+    /*
+     * Guessing the Catalyst column name is "joining_bonus".
+     * If the real column is named differently, change this
+     * one line — everything else keeps working.
+     */
+    joiningBonus: Number(record?.joining_bonus) || 0,
 
-  retentionBonus: Number(record?.retention_bonus) || 0,
+    allocatedPB: Number(record?.allocated_pb) || 0,
 
-  totalPB: Number(record?.total_pb) || 0,
+    performanceBonus: Number(record?.performance_bonus) || 0,
 
-  totalBonus: Number(record?.total_bonus) || 0,
+    retentionBonus: Number(record?.retention_bonus) || 0,
 
-  hikeAmount: Number(record?.hike_amount) || 0,
+    totalPB: Number(record?.total_pb) || 0,
 
-  hikePct: Number(record?.hike_pct) || 0,
+    totalBonus: Number(record?.total_bonus) || 0,
 
-  promotion:
-    record?.promotion !== null &&
-    record?.promotion !== undefined &&
-    String(record?.promotion).trim() !== ""
-      ? String(record.promotion)
-      : "—",
+    hikeAmount,
 
-  title:
-    record?.title !== null &&
-    record?.title !== undefined &&
-    String(record?.title).trim() !== ""
-      ? String(record.title)
-      : "—",
+    hikePct: Number(record?.hike_pct) || 0,
 
-  targetPB: Number(record?.target_performance_bonus) || 0,
+    promotion:
+      record?.promotion !== null &&
+      record?.promotion !== undefined &&
+      String(record?.promotion).trim() !== ""
+        ? String(record.promotion)
+        : "—",
 
-  newCTC: Number(record?.new_ctc) || 0,
-});
+    title:
+      record?.title !== null &&
+      record?.title !== undefined &&
+      String(record?.title).trim() !== ""
+        ? String(record.title)
+        : "—",
+
+    /*
+     * Guessing the Catalyst column name is "feedback".
+     * If the real column is named differently, change this
+     * one line — everything else keeps working.
+     */
+    feedback:
+      record?.feedback !== null &&
+      record?.feedback !== undefined &&
+      String(record?.feedback).trim() !== ""
+        ? String(record.feedback)
+        : "",
+
+    targetPB: Number(record?.target_performance_bonus) || 0,
+
+    newCTC: Number(record?.new_ctc) || 0,
+
+    /*
+     * New Base Pay is not a stored column — it's the base pay
+     * plus that year's hike, computed here.
+     */
+    newBasePay: basePay + hikeAmount,
+  };
+};
 
 /* ============================================================
    COMPONENT
@@ -209,18 +279,6 @@ export function AppraisalGrid({
 
   /* ============================================================
      LOCAL EDIT DRAFTS
-
-     IMPORTANT:
-     These drafts prevent the controlled input from being
-     overwritten while the user is typing.
-
-     Example:
-       DB/UI value = 45
-       User enters cell
-       45 is selected
-       User types 67
-       Draft becomes "67"
-       Row is updated only when edit is committed.
    ============================================================ */
 
   const [editingValues, setEditingValues] = useState({});
@@ -349,7 +407,7 @@ export function AppraisalGrid({
   const [currentPage, setCurrentPage] = useState(1);
 
   /* ============================================================
-     HISTORY DETAILS
+     HISTORY DETAILS (bottom panel)
      ============================================================ */
 
   const [historyRow, setHistoryRow] = useState(null);
@@ -370,7 +428,84 @@ export function AppraisalGrid({
   });
 
   /* ============================================================
-     FETCH APPRAISAL HISTORY
+     HOVER HISTORY (fetched per hovered employee, cached)
+
+     The hover popup's "Recent History" must reflect whichever
+     employee is currently hovered, not whichever row is open
+     in the bottom History panel. So this fetches and caches
+     history per empId independently, from the same
+     appraisal-history-api used by the bottom panel.
+     ============================================================ */
+
+  const hoverHistoryRequestedRef = useRef(new Set());
+
+  const [hoverHistoryByEmpId, setHoverHistoryByEmpId] = useState({});
+
+  const loadHoverHistory = useCallback((empId) => {
+    const key = String(empId || "").trim();
+
+    if (!key || hoverHistoryRequestedRef.current.has(key)) {
+      return;
+    }
+
+    hoverHistoryRequestedRef.current.add(key);
+
+    setHoverHistoryByEmpId((previous) => ({
+      ...previous,
+      [key]: { loading: true, data: [], error: "" },
+    }));
+
+    (async () => {
+      try {
+        const url = `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(
+          key,
+        )}`;
+
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error(
+            `Failed to load appraisal history (${response.status}).`,
+          );
+        }
+
+        const result = await response.json();
+
+        if (!result?.success) {
+          throw new Error(
+            result?.message || "Failed to load appraisal history.",
+          );
+        }
+
+        const records = Array.isArray(result?.data) ? result.data : [];
+
+        const normalized = records
+          .map(normalizeHistoryRecord)
+          .sort((a, b) => String(b.year).localeCompare(String(a.year)));
+
+        setHoverHistoryByEmpId((previous) => ({
+          ...previous,
+          [key]: { loading: false, data: normalized, error: "" },
+        }));
+      } catch (error) {
+        console.error("Hover history fetch error:", error);
+
+        setHoverHistoryByEmpId((previous) => ({
+          ...previous,
+          [key]: {
+            loading: false,
+            data: [],
+            error: error?.message || "Unable to load history.",
+          },
+        }));
+
+        hoverHistoryRequestedRef.current.delete(key);
+      }
+    })();
+  }, []);
+
+  /* ============================================================
+     FETCH APPRAISAL HISTORY (bottom panel)
      ============================================================ */
 
   useEffect(() => {
@@ -555,13 +690,6 @@ export function AppraisalGrid({
 
   /* ============================================================
      HIKE %
-
-     Both hikePct and hikeAmount are saved together in ONE
-     PATCH request via updateLinkedCells.
-
-     Saving them as two separate requests caused the refreshed
-     database row from the first save to overwrite the second
-     field, because the database still held its old value.
      ============================================================ */
 
   const updateHikePct = useCallback(
@@ -828,10 +956,6 @@ export function AppraisalGrid({
 
   /* ============================================================
      ROW OPEN
-
-     The employee drawer has been removed.
-     Selecting a row now only drives the History panel.
-     Employee details are shown in the hover popup.
      ============================================================ */
 
   const openRow = useCallback(
@@ -894,7 +1018,7 @@ export function AppraisalGrid({
 
   const calculateHoverPosition = useCallback((event) => {
     const width = 330;
-    const height = 390;
+    const height = 420;
     const margin = 14;
 
     const viewport = gridViewportRef.current;
@@ -929,8 +1053,9 @@ export function AppraisalGrid({
     (row, event) => {
       setHoverEmployee(row);
       setHoverPosition(calculateHoverPosition(event));
+      loadHoverHistory(row.empId);
     },
-    [calculateHoverPosition],
+    [calculateHoverPosition, loadHoverHistory],
   );
 
   const moveHoverPopup = useCallback(
@@ -945,10 +1070,16 @@ export function AppraisalGrid({
   );
 
   /* ============================================================
-     MAIN HISTORY DATA
+     HOVER HISTORY DERIVED STATE
      ============================================================ */
 
-  const latestHistory = historyData[0] ?? null;
+  const hoverEmpKey = hoverEmployee
+    ? String(hoverEmployee.empId || "").trim()
+    : "";
+
+  const hoverHistoryState = hoverHistoryByEmpId[hoverEmpKey];
+
+  const hoverLatestHistory = hoverHistoryState?.data?.[0] ?? null;
 
   /* ============================================================
      RENDER CELL
@@ -963,10 +1094,6 @@ export function AppraisalGrid({
       col.key === "newTitle" && row.eligibleForPromotion !== "Yes";
 
     const displayValue = formatValue(row, col);
-
-    /* ==========================================================
-       COMPUTED CELL
-       ========================================================== */
 
     if (col.computed) {
       return (
@@ -990,10 +1117,6 @@ export function AppraisalGrid({
         </div>
       );
     }
-
-    /* ==========================================================
-       READ-ONLY CELL
-       ========================================================== */
 
     if (!isEditable) {
       return (
@@ -1022,10 +1145,6 @@ export function AppraisalGrid({
         </button>
       );
     }
-
-    /* ==========================================================
-       EDITABLE DROPDOWN (boxed, like screenshot)
-       ========================================================== */
 
     if (col.type === "enum") {
       return (
@@ -1067,17 +1186,6 @@ export function AppraisalGrid({
         </div>
       );
     }
-
-    /* ==========================================================
-       AT RISK (TEXTAREA)
-
-       FIX:
-       Previously updateCell ran on every keystroke, which sent
-       a PATCH + GET per character. The refreshed database row
-       then replaced the text while the user was still typing.
-
-       Now the draft is local and the value is saved on blur.
-       ========================================================== */
 
     if (col.type === "textarea") {
       const textareaDraft =
@@ -1139,15 +1247,6 @@ export function AppraisalGrid({
         </div>
       );
     }
-
-    /* ==========================================================
-       EDITABLE INPUT (boxed, like screenshot)
-
-       The local draft is the input value while editing.
-       This prevents:
-
-           45 -> type 67 -> 4567
-       ========================================================== */
 
     const draftValue =
       editingValues[cellKey] !== undefined
@@ -1325,10 +1424,6 @@ export function AppraisalGrid({
             ))}
           </colgroup>
 
-          {/* ==================================================
-              HEADER
-              ================================================== */}
-
           <thead>
             <tr
               style={{
@@ -1437,10 +1532,6 @@ export function AppraisalGrid({
               })}
             </tr>
           </thead>
-
-          {/* ==================================================
-              BODY
-              ================================================== */}
 
           <tbody>
             {pageRows.map((row, rowIndex) => (
@@ -1658,7 +1749,7 @@ export function AppraisalGrid({
 
               {historyRow && !historyLoading && (
                 <span className="text-[8px] opacity-75">
-                  {historyData.length} appraisal year
+                  {historyData.length} cycle
                   {historyData.length === 1 ? "" : "s"}
                 </span>
               )}
@@ -1704,130 +1795,80 @@ export function AppraisalGrid({
                 }}
               >
                 <colgroup>
-                  <col style={{ width: 80 }} />
-                  <col style={{ width: 105 }} />
-                  <col style={{ width: 95 }} />
-                  <col style={{ width: 105 }} />
-                  <col style={{ width: 105 }} />
-                  <col style={{ width: 90 }} />
-                  <col style={{ width: 95 }} />
-                  <col style={{ width: 90 }} />
                   <col style={{ width: 75 }} />
-                  <col style={{ width: 95 }} />
-                  <col style={{ width: 110 }} />
-                  <col style={{ width: 100 }} />
+
+                  {HISTORY_METRIC_COLUMNS.map((col) => (
+                    <col key={col.key} style={{ width: 105 }} />
+                  ))}
                 </colgroup>
 
                 <thead>
                   <tr className="bg-[#e8eef5]">
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-left text-[8px] font-bold text-[#334155]">
-                      Appraisal Year
+                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-left align-bottom text-[8px] font-bold text-[#334155]">
+                      Year
                     </th>
 
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
-                      Base Pay
-                    </th>
-
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
-                      Allocated PB
-                    </th>
-
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
-                      Performance Bonus
-                    </th>
-
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
-                      Retention Bonus
-                    </th>
-
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
-                      Total PB
-                    </th>
-
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
-                      Total Bonus
-                    </th>
-
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
-                      Hike Amount
-                    </th>
-
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
-                      Hike %
-                    </th>
-
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-left text-[8px] font-bold text-[#334155]">
-                      Promotion
-                    </th>
-
-                    <th className="border-r border-b border-[#cbd5e1] px-2 py-1 text-left text-[8px] font-bold text-[#334155]">
-                      Title
-                    </th>
-
-                    <th className="border-b border-[#cbd5e1] px-2 py-1 text-right text-[8px] font-bold text-[#334155]">
-                      New CTC
-                    </th>
+                    {HISTORY_METRIC_COLUMNS.map((col) => (
+                      <th
+                        key={col.key}
+                        className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right align-bottom text-[8px] font-bold text-[#334155]"
+                      >
+                        <div>{col.label}</div>
+                        <div className="text-[7px] font-normal text-slate-400">
+                          % change below
+                        </div>
+                      </th>
+                    ))}
                   </tr>
                 </thead>
 
                 <tbody>
-                  {historyData.map((item, index) => (
-                    <tr
-                      key={`${item.year}-${index}`}
-                      className={cn(
-                        "h-[32px]",
-                        index === 0 ? "bg-[#fff7c7]" : "bg-white",
-                      )}
-                    >
-                      <td className="border-r border-b border-[#d9e0e8] px-2 py-1 text-left text-[8px] font-medium text-[#173b63]">
-                        {item.year}
-                      </td>
+                  {historyData.map((item, index) => {
+                    const previous = historyData[index + 1];
+                    const isLatest = index === 0;
 
-                      <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
-                        {formatHistoryNumber(item.basePay)}
-                      </td>
+                    return (
+                      <tr
+                        key={`${item.year}-${index}`}
+                        className={cn(
+                          "h-[38px]",
+                          isLatest ? "bg-[#eaf1fb]" : "bg-white",
+                        )}
+                      >
+                        <td className="border-r border-b border-[#d9e0e8] px-2 py-1 text-left text-[8px] font-bold text-[#173b63]">
+                          {item.year}
+                          {isLatest ? " ★" : ""}
+                        </td>
 
-                      <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
-                        {formatHistoryNumber(item.allocatedPB)}
-                      </td>
+                        {HISTORY_METRIC_COLUMNS.map((col) => {
+                          const change = computeHistoryChange(
+                            item[col.key],
+                            previous ? previous[col.key] : undefined,
+                          );
 
-                      <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
-                        {formatHistoryNumber(item.performanceBonus)}
-                      </td>
+                          return (
+                            <td
+                              key={col.key}
+                              className="border-r border-b border-[#d9e0e8] px-2 py-1 text-right text-[8px]"
+                            >
+                              <div>{formatHistoryNumber(item[col.key])}</div>
 
-                      <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
-                        {formatHistoryNumber(item.retentionBonus)}
-                      </td>
-
-                      <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
-                        {formatHistoryNumber(item.totalPB)}
-                      </td>
-
-                      <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
-                        {formatHistoryNumber(item.totalBonus)}
-                      </td>
-
-                      <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
-                        {formatHistoryNumber(item.hikeAmount)}
-                      </td>
-
-                      <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
-                        {formatHistoryPercent(item.hikePct)}
-                      </td>
-
-                      <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-left text-[8px]">
-                        {item.promotion}
-                      </td>
-
-                      <td className="border-r border-b border-[#d9e0e8] px-2 py-0.5 text-left text-[8px]">
-                        {item.title}
-                      </td>
-
-                      <td className="border-b border-[#d9e0e8] px-2 py-0.5 text-right text-[8px]">
-                        {formatHistoryNumber(item.newCTC)}
-                      </td>
-                    </tr>
-                  ))}
+                              <div
+                                className={cn(
+                                  "text-[7px]",
+                                  change.tone === "up" && "text-[#16803c]",
+                                  change.tone === "down" && "text-[#dc2626]",
+                                  change.tone === "neutral" && "text-slate-400",
+                                )}
+                              >
+                                {change.label}
+                              </div>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
@@ -1836,8 +1877,8 @@ export function AppraisalGrid({
           {/* HISTORY FOOTER */}
 
           <div className="flex h-[20px] items-center border-t border-[#e2e8f0] bg-[#f8fafc] px-3 text-[7px] text-slate-500">
-            Showing previous-year appraisal data only. Current-year appraisal
-            values are not included in this history.
+            The starred row reflects the employee currently selected in the grid
+            above, live. Older cycles are reference data.
           </div>
         </div>
       )}
@@ -1949,7 +1990,21 @@ export function AppraisalGrid({
             </div>
           </div>
 
-          {/* RECENT HISTORY */}
+          {/* MANAGER FEEDBACK (latest cycle only) */}
+
+          {hoverLatestHistory?.feedback && (
+            <div className="border-t border-[#d9e0e8] px-3 py-2">
+              <div className="mb-1 text-[8px] font-bold uppercase tracking-wide text-slate-500">
+                Manager Feedback
+              </div>
+
+              <div className="text-[10px] font-semibold leading-snug text-[#1e293b]">
+                {hoverLatestHistory.feedback}
+              </div>
+            </div>
+          )}
+
+          {/* RECENT HISTORY (all cycles, fetched per hovered employee) */}
 
           <div className="border-t border-[#d9e0e8]">
             <div className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-wide text-slate-500">
@@ -1957,37 +2012,57 @@ export function AppraisalGrid({
             </div>
 
             <div className="max-h-[130px] overflow-auto">
-              <table className="w-full border-collapse text-[8px]">
-                <thead>
-                  <tr className="bg-[#f1f5f9]">
-                    <th className="px-2 py-1 text-left">Year</th>
+              {hoverHistoryState?.loading ? (
+                <div className="px-3 py-2 text-[8px] text-slate-500">
+                  Loading history...
+                </div>
+              ) : hoverHistoryState?.error ? (
+                <div className="px-3 py-2 text-[8px] text-red-500">
+                  {hoverHistoryState.error}
+                </div>
+              ) : !hoverHistoryState?.data?.length ? (
+                <div className="px-3 py-2 text-[8px] text-slate-500">
+                  No previous-year history available.
+                </div>
+              ) : (
+                <table className="w-full border-collapse text-[8px]">
+                  <thead>
+                    <tr className="bg-[#f1f5f9]">
+                      <th className="px-2 py-1 text-left">Year</th>
 
-                    <th className="px-2 py-1 text-left">Desig.</th>
+                      <th className="px-2 py-1 text-left">Desig.</th>
 
-                    <th className="px-2 py-1 text-left">Rating</th>
+                      <th className="px-2 py-1 text-left">Rating</th>
 
-                    <th className="px-2 py-1 text-left">Promo</th>
-                  </tr>
-                </thead>
+                      <th className="px-2 py-1 text-left">Promo</th>
+                    </tr>
+                  </thead>
 
-                <tbody>
-                  <tr className="bg-[#fff7c7]">
-                    <td className="px-2 py-1">{latestHistory?.year ?? "—"}</td>
+                  <tbody>
+                    {hoverHistoryState.data.map((item, index) => (
+                      <tr
+                        key={`${item.year}-${index}`}
+                        className={index === 0 ? "bg-[#fff7c7]" : "bg-white"}
+                      >
+                        <td className="px-2 py-1">
+                          {item.year}
+                          {index === 0 ? " ★" : ""}
+                        </td>
 
-                    <td className="px-2 py-1">
-                      {latestHistory?.title ?? hoverEmployee.designation ?? "—"}
-                    </td>
+                        <td className="px-2 py-1">{item.title}</td>
 
-                    <td className="px-2 py-1">
-                      {hoverEmployee.managerRating ?? "—"}
-                    </td>
+                        {/*
+                          Rating history is not wired up yet — will
+                          be added once the rating column is ready.
+                        */}
+                        <td className="px-2 py-1">—</td>
 
-                    <td className="px-2 py-1">
-                      {latestHistory?.promotion ?? "—"}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                        <td className="px-2 py-1">{item.promotion}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
             </div>
           </div>
         </div>
