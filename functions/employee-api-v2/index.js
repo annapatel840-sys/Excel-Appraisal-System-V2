@@ -78,14 +78,68 @@ function normalizeStatus(value) {
     .toLowerCase();
 
   if (status === "active") {
-    return "active";
+    return "Active";
   }
 
   if (status === "inactive") {
-    return "inactive";
+    return "Inactive";
   }
 
   return "";
+}
+
+/* ============================================================
+   ALLOWED FIELDS
+   ============================================================ */
+
+const ALLOWED_FIELDS = [
+  "name",
+  "designation",
+  "reporting_manager",
+  "comp_manager",
+  "appraiser_tech_ed",
+  "department",
+  "manager",
+  "status",
+  "wissen_experience",
+  "total_experience",
+  "last_appraisal_date",
+  "manager_rating",
+  "interview_count",
+  "rr_percent",
+  "gross_margin",
+  "rb_to_be_paid",
+  "month_rb",
+  "pb_to_be_paid",
+  "month_pb",
+  "current_annual_base_pay",
+  "target_pb_allocated_for_may",
+  "allocated_pb_amount",
+  "pb_installment",
+  "new_pb_to_be_offered",
+  "new_pb_installment",
+  "new_rb",
+  "hike_amount",
+  "hike_pct",
+  "target_pb_next_year",
+  "eligible_for_promotion",
+  "new_title",
+  "at_risk",
+  "Joining_date",
+  "manager_email_id",
+  "super_man_email_id",
+];
+
+function pickAllowedFields(body) {
+  const data = {};
+
+  ALLOWED_FIELDS.forEach(function (field) {
+    if (Object.prototype.hasOwnProperty.call(body, field)) {
+      data[field] = body[field];
+    }
+  });
+
+  return data;
 }
 
 /* ============================================================
@@ -100,8 +154,6 @@ async function getAllEmployees(zcql) {
   `;
 
   const result = await zcql.executeZCQLQuery(query);
-
-  console.log("RAW EMPLOYEE RESULT:", JSON.stringify(result));
 
   return (result || []).map(function (item) {
     return item.Employees || item.employees || item;
@@ -143,7 +195,7 @@ function filterEmployees(employees, search, status) {
       return (
         String(employee.status || "")
           .trim()
-          .toLowerCase() === status
+          .toLowerCase() === status.toLowerCase()
       );
     });
   }
@@ -170,13 +222,11 @@ async function getEmployees(req, res) {
 
   const search = String(params.search || "").trim();
 
-  const status = normalizeStatus(params.status);
+  const status = String(params.status || "")
+    .trim()
+    .toLowerCase();
 
   const allEmployees = await getAllEmployees(zcql);
-
-  /* ==========================================================
-     GLOBAL COUNTS
-     ========================================================== */
 
   const totalCount = allEmployees.length;
 
@@ -196,33 +246,21 @@ async function getEmployees(req, res) {
     );
   }).length;
 
-  /* ==========================================================
-     APPLY FILTERS
-     ========================================================== */
-
-  const filteredEmployees = filterEmployees(allEmployees, search, status);
+  const filteredEmployees = filterEmployees(
+    allEmployees,
+    search,
+    status === "all" ? "" : status,
+  );
 
   const filteredCount = filteredEmployees.length;
-
-  /* ==========================================================
-     TOTAL PAGES
-     ========================================================== */
 
   const totalPages = filteredCount === 0 ? 1 : Math.ceil(filteredCount / limit);
 
   const safePage = Math.min(requestedPage, totalPages);
 
-  /* ==========================================================
-     PAGE SLICE
-     ========================================================== */
-
   const offset = (safePage - 1) * limit;
 
   const data = filteredEmployees.slice(offset, offset + limit);
-
-  /* ==========================================================
-     RESPONSE
-     ========================================================== */
 
   sendJson(res, 200, {
     success: true,
@@ -245,7 +283,135 @@ async function getEmployees(req, res) {
 
     filters: {
       search: search,
-      status: status || "All",
+      status: status || "all",
+    },
+  });
+}
+
+/* ============================================================
+   CREATE / IMPORT EMPLOYEES
+   ============================================================ */
+
+async function createEmployees(req, res) {
+  const appInstance = catalyst.initialize(req);
+
+  const datastore = appInstance.datastore();
+
+  const body = req.body || {};
+
+  const incoming = Array.isArray(body.employees)
+    ? body.employees
+    : Array.isArray(body)
+      ? body
+      : [body];
+
+  if (!incoming.length) {
+    return sendJson(res, 400, {
+      success: false,
+      message: "No employee records were provided.",
+    });
+  }
+
+  const table = datastore.table("employees");
+
+  const existingRows = await table.getAllRows();
+
+  const existingByEmpId = new Map();
+
+  (existingRows || []).forEach(function (row) {
+    const key = String(row.emp_id || "")
+      .trim()
+      .toLowerCase();
+
+    if (key) {
+      existingByEmpId.set(key, row);
+    }
+  });
+
+  const rowsToInsert = [];
+  const rowsToUpdate = [];
+  const skipped = [];
+
+  incoming.forEach(function (item) {
+    const record = item || {};
+
+    const empId = String(record.emp_id || record.empId || "").trim();
+
+    if (!empId) {
+      skipped.push({
+        emp_id: "",
+        reason: "emp_id is missing.",
+      });
+
+      return;
+    }
+
+    const data = pickAllowedFields(record);
+
+    if (data.status !== undefined) {
+      const normalizedStatus = normalizeStatus(data.status);
+
+      if (normalizedStatus) {
+        data.status = normalizedStatus;
+      }
+    }
+
+    const existing = existingByEmpId.get(empId.toLowerCase());
+
+    if (existing) {
+      const rowId = existing.ROWID || existing.rowid;
+
+      if (!rowId) {
+        skipped.push({
+          emp_id: empId,
+          reason: "Existing row has no ROWID.",
+        });
+
+        return;
+      }
+
+      rowsToUpdate.push({
+        ROWID: rowId,
+        ...data,
+      });
+
+      return;
+    }
+
+    rowsToInsert.push({
+      emp_id: empId,
+      status: data.status || "Active",
+      ...data,
+    });
+  });
+
+  let insertedRows = [];
+
+  if (rowsToInsert.length) {
+    insertedRows = await table.insertRows(rowsToInsert);
+  }
+
+  let updatedRows = [];
+
+  if (rowsToUpdate.length) {
+    updatedRows = await table.updateRows(rowsToUpdate);
+  }
+
+  sendJson(res, 200, {
+    success: true,
+    message:
+      "Employee import completed. " +
+      rowsToInsert.length +
+      " created, " +
+      rowsToUpdate.length +
+      " updated.",
+    data: {
+      created: rowsToInsert.length,
+      updated: rowsToUpdate.length,
+      skipped: skipped.length,
+      skippedRecords: skipped,
+      insertedRows: insertedRows,
+      updatedRows: updatedRows,
     },
   });
 }
@@ -259,17 +425,13 @@ async function updateEmployee(req, res) {
 
   const datastore = appInstance.datastore();
 
-  /*
-   * Express has already parsed JSON.
-   */
-
-  console.log("REQ BODY:", JSON.stringify(req.body || {}));
-
-  console.log("REQ QUERY:", JSON.stringify(req.query || {}));
-
   const body = req.body || {};
 
-  console.log("UPDATE EMPLOYEE REQUEST:", JSON.stringify(body));
+  console.log("==============================================");
+  console.log("EMPLOYEE UPDATE REQUEST");
+  console.log("METHOD:", req.method);
+  console.log("BODY:", JSON.stringify(body));
+  console.log("==============================================");
 
   /* ==========================================================
      EMPLOYEE ID
@@ -278,75 +440,10 @@ async function updateEmployee(req, res) {
   const empId = String(body.emp_id || body.empId || "").trim();
 
   if (!empId) {
-    sendJson(res, 400, {
+    return sendJson(res, 400, {
       success: false,
       message: "emp_id is required.",
     });
-
-    return;
-  }
-
-  /* ==========================================================
-     ALLOWED FIELDS
-     ========================================================== */
-
-  const allowedFields = [
-    "name",
-    "designation",
-    "reporting_manager",
-    "comp_manager",
-    "appraiser_tech_ed",
-    "department",
-    "manager",
-    "status",
-    "wissen_experience",
-    "total_experience",
-    "last_appraisal_date",
-    "manager_rating",
-    "interview_count",
-    "rr_percent",
-    "gross_margin",
-    "rb_to_be_paid",
-    "month_rb",
-    "pb_to_be_paid",
-    "month_pb",
-    "current_annual_base_pay",
-    "target_pb_allocated_for_may",
-    "allocated_pb_amount",
-    "pb_installment",
-    "new_pb_to_be_offered",
-    "new_pb_installment",
-    "new_rb",
-    "hike_amount",
-    "hike_pct",
-    "target_pb_next_year",
-    "eligible_for_promotion",
-    "new_title",
-    "at_risk",
-    "Joining_date",
-    "manager_email_id",
-    "super_man_email_id",
-  ];
-
-  /* ==========================================================
-     BUILD UPDATE DATA
-     ========================================================== */
-
-  const updateData = {};
-
-  allowedFields.forEach(function (field) {
-    if (Object.prototype.hasOwnProperty.call(body, field)) {
-      updateData[field] = body[field];
-    }
-  });
-
-  if (Object.keys(updateData).length === 0) {
-    sendJson(res, 400, {
-      success: false,
-      message: "No valid employee fields were provided.",
-    });
-
-    return;
   }
 
   /* ==========================================================
@@ -358,44 +455,124 @@ async function updateEmployee(req, res) {
   const rows = await table.getAllRows();
 
   const existingRow = (rows || []).find(function (row) {
-    return String(row.emp_id || "").trim() === empId;
+    return (
+      String(row.emp_id || "")
+        .trim()
+        .toLowerCase() === empId.toLowerCase()
+    );
   });
 
   if (!existingRow) {
-    sendJson(res, 404, {
+    console.log("EMPLOYEE NOT FOUND:", empId);
+
+    return sendJson(res, 404, {
       success: false,
       message: "Employee " + empId + " not found.",
     });
-
-    return;
   }
-
-  /* ==========================================================
-     ROW ID
-     ========================================================== */
 
   const rowId = existingRow.ROWID || existingRow.rowid;
 
   if (!rowId) {
-    throw new Error("Employee ROWID not found.");
+    throw new Error("Employee ROWID not found for " + empId);
   }
 
   /* ==========================================================
-     UPDATE ROW
+     STATUS UPDATE
+     
+     Active/Inactive is completely independent from eligibility.
      ========================================================== */
+
+  if (Object.prototype.hasOwnProperty.call(body, "status")) {
+    const normalizedStatus = normalizeStatus(body.status);
+
+    if (!normalizedStatus) {
+      return sendJson(res, 400, {
+        success: false,
+        message: 'status must be either "Active" or "Inactive".',
+      });
+    }
+
+    console.log(
+      "STATUS UPDATE:",
+      empId,
+      "FROM:",
+      existingRow.status,
+      "TO:",
+      normalizedStatus,
+    );
+
+    const statusUpdateRow = {
+      ROWID: rowId,
+      status: normalizedStatus,
+    };
+
+    console.log("CATALYST STATUS UPDATE ROW:", JSON.stringify(statusUpdateRow));
+
+    const updateResult = await table.updateRow(statusUpdateRow);
+
+    console.log("CATALYST STATUS UPDATE RESULT:", JSON.stringify(updateResult));
+
+    /* ========================================================
+       READ THE ROW AGAIN AFTER UPDATE
+       ======================================================== */
+
+    const verifyRows = await table.getAllRows();
+
+    const verifiedRow = (verifyRows || []).find(function (row) {
+      return (
+        String(row.emp_id || "")
+          .trim()
+          .toLowerCase() === empId.toLowerCase()
+      );
+    });
+
+    console.log("VERIFIED EMPLOYEE:", JSON.stringify(verifiedRow));
+
+    const verifiedStatus = normalizeStatus(verifiedRow?.status);
+
+    if (verifiedStatus !== normalizedStatus) {
+      return sendJson(res, 500, {
+        success: false,
+        message: "Catalyst update completed but status verification failed.",
+        data: {
+          emp_id: empId,
+          requestedStatus: normalizedStatus,
+          actualStatus: verifiedRow?.status ?? null,
+        },
+      });
+    }
+
+    return sendJson(res, 200, {
+      success: true,
+      message: "Employee status updated successfully.",
+      data: verifiedRow,
+    });
+  }
+
+  /* ==========================================================
+     GENERIC EMPLOYEE UPDATE
+     ========================================================== */
+
+  const updateData = pickAllowedFields(body);
+
+  if (Object.keys(updateData).length === 0) {
+    return sendJson(res, 400, {
+      success: false,
+      message: "No valid employee fields were provided.",
+    });
+  }
 
   const updateRow = {
     ROWID: rowId,
     ...updateData,
   };
 
-  console.log("UPDATE EMPLOYEE ROW:", JSON.stringify(updateRow));
+  console.log("GENERIC EMPLOYEE UPDATE:", JSON.stringify(updateRow));
 
-  await table.updateRow(updateRow);
+  const updateResult = await table.updateRow(updateRow);
 
-  /* ==========================================================
-     SUCCESS RESPONSE
-     ========================================================== */
+  console.log("GENERIC UPDATE RESULT:", JSON.stringify(updateResult));
 
   sendJson(res, 200, {
     success: true,
@@ -411,8 +588,6 @@ async function updateEmployee(req, res) {
    EXPRESS ROUTES
    ============================================================ */
 
-/* GET */
-
 app.get("/", async function (req, res) {
   try {
     await getEmployees(req, res);
@@ -421,15 +596,23 @@ app.get("/", async function (req, res) {
 
     sendJson(res, 500, {
       success: false,
-      message:
-        error && error.message ? error.message : "Internal server error.",
+      message: error?.message || "Internal server error.",
     });
   }
 });
 
-/* PUT */
+app.post("/", async function (req, res) {
+  try {
+    await createEmployees(req, res);
+  } catch (error) {
+    console.error("employee-api-v2 POST ERROR:", error);
 
-/* PUT */
+    sendJson(res, 500, {
+      success: false,
+      message: error?.message || "Internal server error.",
+    });
+  }
+});
 
 app.put("/", async function (req, res) {
   try {
@@ -439,13 +622,10 @@ app.put("/", async function (req, res) {
 
     sendJson(res, 500, {
       success: false,
-      message:
-        error && error.message ? error.message : "Internal server error.",
+      message: error?.message || "Internal server error.",
     });
   }
 });
-
-/* PATCH */
 
 app.patch("/", async function (req, res) {
   try {
@@ -455,8 +635,7 @@ app.patch("/", async function (req, res) {
 
     sendJson(res, 500, {
       success: false,
-      message:
-        error && error.message ? error.message : "Internal server error.",
+      message: error?.message || "Internal server error.",
     });
   }
 });

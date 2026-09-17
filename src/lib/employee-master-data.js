@@ -113,19 +113,6 @@ function calculateOrganizationExperience(joiningDate) {
   return Number((totalMonths / 12).toFixed(1));
 }
 
-/*
- * Catalyst ZCQL currently returns rows like:
- *
- * {
- *   Employees: {
- *     emp_id: "EMP001",
- *     name: "Amit Kumar",
- *     ...
- *   }
- * }
- *
- * This function unwraps the Employees object before mapping.
- */
 function unwrapEmployee(employee) {
   if (
     employee &&
@@ -219,6 +206,10 @@ export function mapEmployeeFromApi(employee) {
 
     status: normalizeStatus(row?.status),
 
+    /*
+     * Eligibility remains completely separate
+     * from Active / Inactive status.
+     */
     eligible: String(row?.eligible || "").toLowerCase() === "no" ? "No" : "Yes",
 
     eligibleReason: String(
@@ -262,6 +253,7 @@ export async function fetchEmployeeMasterEmployees({
 
   const response = await fetch(url.toString(), {
     method: "GET",
+
     headers: {
       Accept: "application/json",
     },
@@ -313,6 +305,29 @@ export async function fetchEmployeeMasterEmployees({
   };
 }
 
+/*
+ * ============================================================
+ * UPDATE EMPLOYEE
+ * ============================================================
+ *
+ * Used by Employee Master for Active / Inactive updates.
+ *
+ * Example:
+ *
+ * updateEmployeeMasterEmployee("EMP001", {
+ *   status: "Inactive"
+ * })
+ *
+ * Sends:
+ *
+ * {
+ *   emp_id: "EMP001",
+ *   status: "Inactive"
+ * }
+ *
+ * IMPORTANT:
+ * This function does NOT modify eligibility.
+ */
 export async function updateEmployeeMasterEmployee(empId, data = {}) {
   const normalizedEmpId = String(empId || "").trim();
 
@@ -320,33 +335,74 @@ export async function updateEmployeeMasterEmployee(empId, data = {}) {
     throw new Error("Employee ID is required.");
   }
 
+  /*
+   * Only allow fields that actually belong to
+   * Employee Master.
+   */
+  const payload = {
+    emp_id: normalizedEmpId,
+    ...data,
+  };
+
+  /*
+   * Normalize status before sending to Catalyst.
+   */
+  if (payload.status !== undefined) {
+    const normalizedStatus = String(payload.status || "").trim();
+
+    if (normalizedStatus !== "Active" && normalizedStatus !== "Inactive") {
+      throw new Error("Status must be Active or Inactive.");
+    }
+
+    payload.status = normalizedStatus;
+  }
+
+  console.log("[Employee Master] Updating employee:", payload);
+
+  /*
+   * Use PUT for the employee-api-v2 update route.
+   */
   const response = await fetch(EMPLOYEE_API_URL, {
-    method: "PATCH",
+    method: "PUT",
+
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      emp_id: normalizedEmpId,
-      ...data,
-    }),
+
+    body: JSON.stringify(payload),
   });
 
-  const result = await response.json().catch(() => null);
+  const responseText = await response.text();
+
+  let result = null;
+
+  try {
+    result = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    result = null;
+  }
+
+  console.log("[Employee Master] Update response:", response.status, result);
 
   if (!response.ok) {
     throw new Error(
       result?.message ||
+        result?.error ||
+        responseText ||
         `Employee update failed with status ${response.status}`,
     );
   }
 
   if (!result?.success) {
-    throw new Error(result?.message || "Failed to update employee.");
+    throw new Error(
+      result?.message || result?.error || "Failed to update employee.",
+    );
   }
 
   return {
     ...result,
+
     data: result?.data ? mapEmployeeFromApi(result.data) : null,
   };
 }

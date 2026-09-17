@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 import { ColumnFilter } from "./ColumnFilter";
@@ -96,21 +96,11 @@ export function EmployeeRosterTable({
   totalPages = 1,
   totalCount = 0,
   loading = false,
+  onToggleStatus,
+  onBulkStatusChange,
+  statusUpdatingIds = new Set(),
+  bulkStatusUpdating = false,
 }) {
-  /*
-   * ============================================================
-   * LOCAL COLUMN FILTERING
-   * ============================================================
-   *
-   * Backend pagination gives us only the current page.
-   *
-   * Therefore column filters are applied to the currently
-   * loaded backend page.
-   *
-   * Global search/status filtering will be handled by the
-   * EmployeeMaster API request.
-   */
-
   const filteredRows = useMemo(() => {
     return rows.filter((employee) =>
       COLUMNS.every((column) => {
@@ -132,12 +122,6 @@ export function EmployeeRosterTable({
     );
   }, [rows, filters]);
 
-  /*
-   * ============================================================
-   * PAGE SAFETY
-   * ============================================================
-   */
-
   const safePage = Math.min(Math.max(1, currentPage), Math.max(1, totalPages));
 
   useEffect(() => {
@@ -146,22 +130,10 @@ export function EmployeeRosterTable({
     }
   }, [currentPage, safePage, setCurrentPage]);
 
-  /*
-   * ============================================================
-   * DISPLAY RANGE
-   * ============================================================
-   */
-
   const startRecord = totalCount === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
 
   const endRecord =
     totalCount === 0 ? 0 : Math.min(safePage * PAGE_SIZE, totalCount);
-
-  /*
-   * ============================================================
-   * PAGE CHANGE
-   * ============================================================
-   */
 
   const goToPage = (page) => {
     if (!setCurrentPage) {
@@ -175,12 +147,16 @@ export function EmployeeRosterTable({
     }
   };
 
+  const handleBulkStatus = async (status) => {
+    if (!onBulkStatusChange || !filteredRows.length) {
+      return;
+    }
+
+    await onBulkStatusChange(status, filteredRows);
+  };
+
   return (
     <div className="em-roster-container">
-      {/* =====================================================
-          TABLE
-      ===================================================== */}
-
       <div className="em-grid-wrap">
         <table className="em-table">
           <thead>
@@ -213,71 +189,245 @@ export function EmployeeRosterTable({
                   </div>
                 </th>
               ))}
+
+              {/* ACTION HEADER */}
+              <th
+                className="em-action-header"
+                style={{
+                  minWidth: "155px",
+                  width: "155px",
+                  padding: "8px 10px",
+                  borderLeft: "1px solid rgba(0,0,0,0.08)",
+                  borderRight: "1px solid rgba(0,0,0,0.08)",
+                  whiteSpace: "nowrap",
+                  verticalAlign: "middle",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "7px",
+                    width: "100%",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      fontSize: "13px",
+                      lineHeight: "16px",
+                    }}
+                  >
+                    Action
+                  </span>
+
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "5px",
+                      width: "100%",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      disabled={
+                        loading ||
+                        bulkStatusUpdating ||
+                        filteredRows.length === 0
+                      }
+                      onClick={() => handleBulkStatus("Active")}
+                      title="Set Active for employees on the current page"
+                      style={{
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "5px",
+                        background: "#ffffff",
+                        color: "#166534",
+                        padding: "4px 7px",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        lineHeight: "14px",
+                        cursor:
+                          loading ||
+                          bulkStatusUpdating ||
+                          filteredRows.length === 0
+                            ? "not-allowed"
+                            : "pointer",
+                        opacity:
+                          loading ||
+                          bulkStatusUpdating ||
+                          filteredRows.length === 0
+                            ? 0.5
+                            : 1,
+                      }}
+                    >
+                      Active
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={
+                        loading ||
+                        bulkStatusUpdating ||
+                        filteredRows.length === 0
+                      }
+                      onClick={() => handleBulkStatus("Inactive")}
+                      title="Set Inactive for employees on the current page"
+                      style={{
+                        border: "1px solid #cbd5e1",
+                        borderRadius: "5px",
+                        background: "#ffffff",
+                        color: "#991b1b",
+                        padding: "4px 7px",
+                        fontSize: "11px",
+                        fontWeight: 600,
+                        lineHeight: "14px",
+                        cursor:
+                          loading ||
+                          bulkStatusUpdating ||
+                          filteredRows.length === 0
+                            ? "not-allowed"
+                            : "pointer",
+                        opacity:
+                          loading ||
+                          bulkStatusUpdating ||
+                          filteredRows.length === 0
+                            ? 0.5
+                            : 1,
+                      }}
+                    >
+                      Inactive
+                    </button>
+                  </div>
+                </div>
+              </th>
             </tr>
           </thead>
 
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={COLUMNS.length} className="em-empty">
+                <td colSpan={COLUMNS.length + 1} className="em-empty">
                   Loading employees...
                 </td>
               </tr>
             ) : (
-              filteredRows.map((employee) => (
-                <tr
-                  key={employee.empId}
-                  className={
-                    employee.status === "Inactive" ? "inactive-row" : ""
-                  }
-                >
-                  <td>
-                    <div className="em-name-cell">
-                      <strong>{employee.name}</strong>
-                      <span>{employee.empId}</span>
-                    </div>
-                  </td>
+              filteredRows.map((employee) => {
+                const employeeId = String(employee.empId || "").trim();
+                const isUpdating =
+                  statusUpdatingIds instanceof Set &&
+                  statusUpdatingIds.has(employeeId);
 
-                  <td>
-                    <span
-                      className={`em-status ${
-                        employee.status === "Active" ? "active" : "inactive"
-                      }`}
+                const isActive =
+                  String(employee.status || "")
+                    .trim()
+                    .toLowerCase() === "active";
+
+                return (
+                  <tr
+                    key={employee.empId}
+                    className={isActive ? "" : "inactive-row"}
+                  >
+                    <td>
+                      <div className="em-name-cell">
+                        <strong>{employee.name}</strong>
+                        <span>{employee.empId}</span>
+                      </div>
+                    </td>
+
+                    <td>
+                      <span
+                        className={`em-status ${
+                          isActive ? "active" : "inactive"
+                        }`}
+                      >
+                        {employee.status}
+                      </span>
+                    </td>
+
+                    <td>{employee.designation}</td>
+                    <td>{employee.organization}</td>
+                    <td>{fmtDoj(employee.doj)}</td>
+
+                    <td className="em-calc-cell">
+                      {calcOrgExperience(employee.doj)}
+                    </td>
+
+                    <td>{employee.totalExp}</td>
+                    <td>{employee.reportingManager}</td>
+                    <td>{employee.compManager}</td>
+                    <td>{employee.superManager}</td>
+                    <td>{employee.appraiser}</td>
+                    <td>{employee.managerMail}</td>
+                    <td>{employee.superManagerMail}</td>
+
+                    {/* ACTION CELL */}
+                    <td
+                      className="em-action-cell"
+                      style={{
+                        background: "inherit",
+                        padding: "8px 10px",
+                        textAlign: "center",
+                        verticalAlign: "middle",
+                        borderLeft: "1px solid rgba(0,0,0,0.08)",
+                        borderRight: "1px solid rgba(0,0,0,0.08)",
+                        whiteSpace: "nowrap",
+                      }}
                     >
-                      {employee.status}
-                    </span>
-                  </td>
-
-                  <td>{employee.designation}</td>
-
-                  <td>{employee.organization}</td>
-
-                  <td>{fmtDoj(employee.doj)}</td>
-
-                  <td className="em-calc-cell">
-                    {calcOrgExperience(employee.doj)}
-                  </td>
-
-                  <td>{employee.totalExp}</td>
-
-                  <td>{employee.reportingManager}</td>
-
-                  <td>{employee.compManager}</td>
-
-                  <td>{employee.superManager}</td>
-
-                  <td>{employee.appraiser}</td>
-
-                  <td>{employee.managerMail}</td>
-
-                  <td>{employee.superManagerMail}</td>
-                </tr>
-              ))
+                      <button
+                        type="button"
+                        disabled={
+                          loading ||
+                          bulkStatusUpdating ||
+                          isUpdating ||
+                          !onToggleStatus
+                        }
+                        onClick={() =>
+                          onToggleStatus && onToggleStatus(employee)
+                        }
+                        style={{
+                          minWidth: "105px",
+                          height: "30px",
+                          padding: "5px 9px",
+                          borderRadius: "5px",
+                          border: "1px solid #cbd5e1",
+                          background: "#ffffff",
+                          color: isActive ? "#991b1b" : "#166534",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          lineHeight: "16px",
+                          cursor:
+                            loading ||
+                            bulkStatusUpdating ||
+                            isUpdating ||
+                            !onToggleStatus
+                              ? "not-allowed"
+                              : "pointer",
+                          opacity:
+                            loading || bulkStatusUpdating || isUpdating
+                              ? 0.55
+                              : 1,
+                          boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                        }}
+                      >
+                        {isUpdating
+                          ? "Saving..."
+                          : isActive
+                            ? "Set Inactive"
+                            : "Set Active"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
             )}
 
             {!loading && !filteredRows.length && (
               <tr>
-                <td colSpan={COLUMNS.length} className="em-empty">
+                <td colSpan={COLUMNS.length + 1} className="em-empty">
                   No employees found.
                 </td>
               </tr>
@@ -285,10 +435,6 @@ export function EmployeeRosterTable({
           </tbody>
         </table>
       </div>
-
-      {/* =====================================================
-          PAGINATION
-      ===================================================== */}
 
       <div className="em-pagination">
         <div className="em-pagination-info">
@@ -310,9 +456,7 @@ export function EmployeeRosterTable({
           </button>
 
           {Array.from(
-            {
-              length: Math.max(1, totalPages),
-            },
+            { length: Math.max(1, totalPages) },
             (_, index) => index + 1,
           ).map((page) => (
             <button

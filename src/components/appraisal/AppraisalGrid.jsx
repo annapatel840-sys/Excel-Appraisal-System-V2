@@ -198,12 +198,11 @@ export function AppraisalGrid({
   selected,
   toggleSelected,
   toggleAll,
-  onRowOpen,
 
   showHistory,
   setShowHistory,
 }) {
-  const { updateCell, modified } = useAppraisal();
+  const { updateCell, updateLinkedCells, modified } = useAppraisal();
 
   const cellRefs = useRef({});
   const clickTimerRef = useRef(null);
@@ -556,13 +555,22 @@ export function AppraisalGrid({
 
   /* ============================================================
      HIKE %
+
+     Both hikePct and hikeAmount are saved together in ONE
+     PATCH request via updateLinkedCells.
+
+     Saving them as two separate requests caused the refreshed
+     database row from the first save to overwrite the second
+     field, because the database still held its old value.
      ============================================================ */
 
   const updateHikePct = useCallback(
     (row, raw) => {
       if (raw === "") {
-        updateCell(row.id, "hikePct", "");
-        updateCell(row.id, "hikeAmount", "");
+        updateLinkedCells(row.id, {
+          hikePct: "",
+          hikeAmount: "",
+        });
 
         flashSaved(`${row.id}:hikePct`);
         flashSaved(`${row.id}:hikeAmount`);
@@ -574,13 +582,15 @@ export function AppraisalGrid({
       const pct = Number(raw) || 0;
       const amount = Math.round(basePay * (pct / 100));
 
-      updateCell(row.id, "hikePct", pct);
-      updateCell(row.id, "hikeAmount", amount);
+      updateLinkedCells(row.id, {
+        hikePct: pct,
+        hikeAmount: amount,
+      });
 
       flashSaved(`${row.id}:hikePct`);
       flashSaved(`${row.id}:hikeAmount`);
     },
-    [updateCell, flashSaved],
+    [updateLinkedCells, flashSaved],
   );
 
   /* ============================================================
@@ -590,8 +600,10 @@ export function AppraisalGrid({
   const updateHikeAmount = useCallback(
     (row, raw) => {
       if (raw === "") {
-        updateCell(row.id, "hikeAmount", "");
-        updateCell(row.id, "hikePct", "");
+        updateLinkedCells(row.id, {
+          hikeAmount: "",
+          hikePct: "",
+        });
 
         flashSaved(`${row.id}:hikeAmount`);
         flashSaved(`${row.id}:hikePct`);
@@ -604,13 +616,15 @@ export function AppraisalGrid({
 
       const pct = basePay ? Number(((amount / basePay) * 100).toFixed(1)) : 0;
 
-      updateCell(row.id, "hikeAmount", amount);
-      updateCell(row.id, "hikePct", pct);
+      updateLinkedCells(row.id, {
+        hikeAmount: amount,
+        hikePct: pct,
+      });
 
       flashSaved(`${row.id}:hikeAmount`);
       flashSaved(`${row.id}:hikePct`);
     },
-    [updateCell, flashSaved],
+    [updateLinkedCells, flashSaved],
   );
 
   /* ============================================================
@@ -814,22 +828,22 @@ export function AppraisalGrid({
 
   /* ============================================================
      ROW OPEN
+
+     The employee drawer has been removed.
+     Selecting a row now only drives the History panel.
+     Employee details are shown in the hover popup.
      ============================================================ */
 
   const openRow = useCallback(
     (row) => {
       setHistoryRow(row);
 
-      if (onRowOpen) {
-        onRowOpen(row);
-      }
-
       if (showHistory) {
         setHistoryData([]);
         setHistoryError("");
       }
     },
-    [onRowOpen, showHistory],
+    [showHistory],
   );
 
   /* ============================================================
@@ -950,11 +964,15 @@ export function AppraisalGrid({
 
     const displayValue = formatValue(row, col);
 
+    /* ==========================================================
+       COMPUTED CELL
+       ========================================================== */
+
     if (col.computed) {
       return (
         <div
           className={cn(
-            `flex min-h-[${CELL_MIN_HEIGHT}px] h-auto w-full items-center`,
+            "flex min-h-[30px] h-auto w-full items-center",
             "px-1.5 py-0.5",
             "whitespace-normal break-words",
             "leading-tight",
@@ -973,6 +991,10 @@ export function AppraisalGrid({
       );
     }
 
+    /* ==========================================================
+       READ-ONLY CELL
+       ========================================================== */
+
     if (!isEditable) {
       return (
         <button
@@ -982,7 +1004,7 @@ export function AppraisalGrid({
             openRow(row);
           }}
           className={cn(
-            `flex min-h-[${CELL_MIN_HEIGHT}px] h-auto w-full`,
+            "flex min-h-[30px] h-auto w-full",
             "items-center",
             "px-1.5 py-0.5",
             "text-left",
@@ -1001,114 +1023,139 @@ export function AppraisalGrid({
       );
     }
 
+    /* ==========================================================
+       EDITABLE DROPDOWN (boxed, like screenshot)
+       ========================================================== */
+
     if (col.type === "enum") {
       return (
-        <select
-          ref={(element) => {
-            cellRefs.current[`${rowIndex}:${col.key}`] = element;
-          }}
-          value={String(row[col.key] ?? "")}
-          disabled={isNewTitleDisabled}
-          onFocus={() => setActive(`${rowIndex}:${col.key}`)}
-          onBlur={() => setActive(null)}
-          onKeyDown={(event) => onKeyDown(event, rowIndex, col.key)}
-          onDoubleClick={(event) =>
-            handleEditableDoubleClick(event, rowIndex, col.key)
-          }
-          onChange={(event) => {
-            updateCell(row.id, col.key, event.target.value);
-            flashSaved(cellKey);
-          }}
-          className={cn(
-            `min-h-[${CELL_MIN_HEIGHT}px] h-full w-full`,
-            "appearance-none",
-            "cursor-pointer",
-            "bg-transparent",
-            "px-1.5 py-0.5",
-            "text-[9px]",
-            "outline-none",
-            "whitespace-normal",
-            isNewTitleDisabled && "cursor-not-allowed opacity-50",
-          )}
-        >
-          <option value="">Select...</option>
+        <div className="flex min-h-[30px] w-full items-center px-1 py-[3px]">
+          <select
+            ref={(element) => {
+              cellRefs.current[`${rowIndex}:${col.key}`] = element;
+            }}
+            value={String(row[col.key] ?? "")}
+            disabled={isNewTitleDisabled}
+            onFocus={() => setActive(`${rowIndex}:${col.key}`)}
+            onBlur={() => setActive(null)}
+            onKeyDown={(event) => onKeyDown(event, rowIndex, col.key)}
+            onDoubleClick={(event) =>
+              handleEditableDoubleClick(event, rowIndex, col.key)
+            }
+            onChange={(event) => {
+              updateCell(row.id, col.key, event.target.value);
+              flashSaved(cellKey);
+            }}
+            className={cn(
+              "h-[22px] w-full cursor-pointer rounded-[3px] border px-1 text-[9px] outline-none",
+              modified[cellKey]
+                ? "border-[#d9a406] bg-[#ffe680] font-bold text-[#1e293b]"
+                : "border-[#ddd0a8] bg-[#fffdf4] text-[#1e293b]",
+              "focus:border-[#2563eb] focus:bg-white",
+              isNewTitleDisabled &&
+                "cursor-not-allowed border-[#e2e8f0] bg-[#f1f5f9] opacity-60",
+            )}
+          >
+            <option value="">Select...</option>
 
-          {(col.options ?? []).map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </select>
+            {(col.options ?? []).map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </div>
       );
     }
+
+    /* ==========================================================
+       AT RISK (TEXTAREA)
+
+       FIX:
+       Previously updateCell ran on every keystroke, which sent
+       a PATCH + GET per character. The refreshed database row
+       then replaced the text while the user was still typing.
+
+       Now the draft is local and the value is saved on blur.
+       ========================================================== */
 
     if (col.type === "textarea") {
+      const textareaDraft =
+        editingValues[cellKey] !== undefined
+          ? editingValues[cellKey]
+          : String(row[col.key] ?? "");
+
       return (
-        <textarea
-          ref={(element) => {
-            cellRefs.current[`${rowIndex}:${col.key}`] = element;
+        <div className="flex min-h-[30px] w-full items-center px-1 py-[3px]">
+          <textarea
+            ref={(element) => {
+              cellRefs.current[`${rowIndex}:${col.key}`] = element;
+            }}
+            rows={1}
+            value={textareaDraft}
+            onFocus={(event) => {
+              setActive(`${rowIndex}:${col.key}`);
 
-            if (element) {
-              element.style.height = "auto";
-              element.style.height = `${element.scrollHeight}px`;
+              setEditingValues((previous) => ({
+                ...previous,
+                [cellKey]: String(row[col.key] ?? ""),
+              }));
+
+              event.currentTarget.style.height = "auto";
+              event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+            }}
+            onChange={(event) => {
+              setEditingValue(cellKey, event.target.value);
+
+              event.target.style.height = "auto";
+              event.target.style.height = `${event.target.scrollHeight}px`;
+            }}
+            onBlur={(event) => {
+              setActive(null);
+
+              const raw =
+                editingValues[cellKey] !== undefined
+                  ? editingValues[cellKey]
+                  : event.target.value;
+
+              clearEditingValue(cellKey);
+
+              commit(row, col, raw);
+
+              event.target.style.height = "";
+            }}
+            onKeyDown={(event) => onKeyDown(event, rowIndex, col.key)}
+            onDoubleClick={(event) =>
+              handleEditableDoubleClick(event, rowIndex, col.key)
             }
-          }}
-          rows={1}
-          value={String(row[col.key] ?? "")}
-          onFocus={() => setActive(`${rowIndex}:${col.key}`)}
-          onChange={(event) => {
-            updateCell(row.id, col.key, event.target.value);
-
-            flashSaved(cellKey);
-
-            event.target.style.height = "auto";
-            event.target.style.height = `${event.target.scrollHeight}px`;
-          }}
-          onBlur={(event) => {
-            setActive(null);
-            commit(row, col, event.target.value);
-          }}
-          onKeyDown={(event) => onKeyDown(event, rowIndex, col.key)}
-          onDoubleClick={(event) =>
-            handleEditableDoubleClick(event, rowIndex, col.key)
-          }
-          className={cn(
-            `min-h-[${CELL_MIN_HEIGHT}px] h-auto w-full`,
-            "resize-none",
-            "overflow-hidden",
-            "bg-transparent",
-            "px-1.5 py-0.5",
-            "text-[9px]",
-            "outline-none",
-            "whitespace-normal",
-            "break-words",
-            "leading-tight",
-          )}
-        />
+            className={cn(
+              "min-h-[22px] w-full resize-none overflow-hidden rounded-[3px] border px-1 py-[3px] text-[9px] leading-tight outline-none",
+              modified[cellKey]
+                ? "border-[#d9a406] bg-[#ffe680] font-bold text-[#1e293b]"
+                : "border-[#ddd0a8] bg-[#fffdf4] text-[#1e293b]",
+              "focus:border-[#2563eb] focus:bg-white",
+            )}
+          />
+        </div>
       );
     }
 
-    /*
-     * IMPORTANT:
-     *
-     * For normal editable inputs we no longer update the row on every
-     * keystroke.
-     *
-     * The local draft is the input value while editing.
-     * This prevents:
-     *
-     *     45 -> type 67 -> 4567
-     *
-     * because React is no longer replacing the input value after every
-     * keystroke.
-     */
+    /* ==========================================================
+       EDITABLE INPUT (boxed, like screenshot)
+
+       The local draft is the input value while editing.
+       This prevents:
+
+           45 -> type 67 -> 4567
+       ========================================================== */
+
     const draftValue =
       editingValues[cellKey] !== undefined
         ? editingValues[cellKey]
         : String(row[col.key] ?? "");
 
     return (
-      <div className={`relative min-h-[${CELL_MIN_HEIGHT}px] h-full w-full`}>
+      <div className="relative flex min-h-[30px] w-full items-center px-1 py-[3px]">
         <input
           ref={(element) => {
             cellRefs.current[`${rowIndex}:${col.key}`] = element;
@@ -1119,11 +1166,9 @@ export function AppraisalGrid({
           onFocus={(event) => {
             setActive(`${rowIndex}:${col.key}`);
 
-            const initialValue = String(row[col.key] ?? "");
-
             setEditingValues((previous) => ({
               ...previous,
-              [cellKey]: initialValue,
+              [cellKey]: String(row[col.key] ?? ""),
             }));
 
             if (col.type !== "date") {
@@ -1135,15 +1180,7 @@ export function AppraisalGrid({
             }
           }}
           onChange={(event) => {
-            const value = event.target.value;
-
-            setEditingValue(cellKey, value);
-
-            if (col.key === "hikePct") {
-              updateHikePct(row, value);
-            } else if (col.key === "hikeAmount") {
-              updateHikeAmount(row, value);
-            }
+            setEditingValue(cellKey, event.target.value);
           }}
           onBlur={(event) => {
             setActive(null);
@@ -1162,19 +1199,18 @@ export function AppraisalGrid({
             handleEditableDoubleClick(event, rowIndex, col.key)
           }
           className={cn(
-            `min-h-[${CELL_MIN_HEIGHT}px] h-full w-full`,
-            "bg-transparent",
-            "px-1.5",
-            "text-[9px]",
-            "outline-none",
-            "whitespace-normal",
-            "break-words",
+            "h-[22px] w-full rounded-[3px] border px-1.5 text-[9px] outline-none",
+            modified[cellKey]
+              ? "border-[#d9a406] bg-[#ffe680] font-bold text-[#1e293b]"
+              : "border-[#ddd0a8] bg-[#fffdf4] text-[#1e293b]",
+            "focus:border-[#2563eb] focus:bg-white",
             isNumericType(col.type) && "text-right font-medium tabular-nums",
+            modified[cellKey] && isNumericType(col.type) && "font-bold",
           )}
         />
 
         {saving[cellKey] !== undefined && (
-          <span className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 text-[#16803c]">
+          <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[#16803c]">
             <Check className="size-2.5" />
           </span>
         )}
@@ -1444,8 +1480,6 @@ export function AppraisalGrid({
                 </td>
 
                 {GRID_COLUMNS.map((col) => {
-                  const cellKey = `${row.id}:${col.key}`;
-
                   const isEmpId = col.key === "empId";
                   const isName = col.key === "name";
                   const isFrozen = isEmpId || isName;
@@ -1459,7 +1493,6 @@ export function AppraisalGrid({
                   const width = widthOf(col);
                   const isComputed = col.computed;
                   const isEditable = isColumnEditable(row, col);
-                  const isActive = active === `${rowIndex}:${col.key}`;
 
                   return (
                     <td
@@ -1467,7 +1500,6 @@ export function AppraisalGrid({
                       className={cn(
                         isFrozen && "sticky",
                         "border-r border-b border-[#d9e0e8] p-0 align-middle",
-                        isActive && "ring-2 ring-[#2563eb] ring-inset",
                       )}
                       style={{
                         position: isFrozen ? "sticky" : "relative",
@@ -1508,13 +1540,6 @@ export function AppraisalGrid({
                           isFrozen && "bg-[#f8fafc]",
 
                           !isFrozen && isComputed && "bg-[#edf6fc]",
-
-                          !isFrozen &&
-                            !isComputed &&
-                            isEditable &&
-                            "bg-[#fffdf1]",
-
-                          !isFrozen && modified[cellKey] && "bg-[#fff0a8]",
                         )}
                       >
                         {isName ? (

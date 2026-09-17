@@ -13,7 +13,6 @@ import { AppShell } from "@/components/appraisal/AppShell";
 import { AppraisalGrid } from "@/components/appraisal/AppraisalGrid";
 import { AuditPanel } from "@/components/appraisal/AuditTrail";
 import { BulkEditDialog } from "@/components/appraisal/BulkEditDialog";
-import { EmployeeDrawer } from "@/components/appraisal/EmployeeDrawer";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,8 +43,6 @@ export function SheetPage() {
   const [selected, setSelected] = useState({});
   const [bulkOpen, setBulkOpen] = useState(false);
 
-  const [drawerRowId, setDrawerRowId] = useState(null);
-
   const [showHistory, setShowHistory] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -66,11 +63,6 @@ export function SheetPage() {
       document.removeEventListener("mousedown", handleOutsideClick);
     };
   }, []);
-
-  const drawerRow = useMemo(
-    () => rows.find((r) => r.id === drawerRowId) ?? null,
-    [rows, drawerRowId],
-  );
 
   const filtered = useMemo(() => {
     const eligibleRows = rows.filter((row) => row.eligibility !== "No");
@@ -243,17 +235,6 @@ export function SheetPage() {
             </div>
           )}
 
-          {drawerRow && (
-            <EmployeeDrawer
-              employee={drawerRow}
-              onOpenChange={(open) => {
-                if (!open) {
-                  setDrawerRowId(null);
-                }
-              }}
-            />
-          )}
-
           <div className="flex items-center justify-between px-0.5 text-[9px] text-muted-foreground">
             <span>
               Showing{" "}
@@ -290,16 +271,11 @@ export function SheetPage() {
                 on ? Object.fromEntries(filtered.map((r) => [r.id, true])) : {},
               )
             }
-            onRowOpen={(employee) => setDrawerRowId(employee.id)}
             showHistory={showHistory}
             setShowHistory={setShowHistory}
           />
         </div>
       </AppShell>
-
-      {/* ========================================================
-          AUDIT TRAIL CENTER POPUP
-          ======================================================== */}
 
       <Dialog open={auditOpen} onOpenChange={setAuditOpen}>
         <DialogContent

@@ -108,14 +108,16 @@ export function EligibilityList({
    * ACTIVE EMPLOYEES
    * ------------------------------------------------------------
    */
-  const activeEmployees = useMemo(
-    () =>
-      employees.filter(
-        (employee) =>
-          employee.status === "Active" || employee.eligible === "No",
-      ),
-    [employees],
-  );
+  // const activeEmployees = useMemo(
+  //   () =>
+  //     employees.filter(
+  //       (employee) =>
+  //         employee.status === "Active" || employee.eligible === "No",
+  //     ),
+  //   [employees],
+  // );
+
+  const activeEmployees = useMemo(() => employees, [employees]);
 
   /*
    * ------------------------------------------------------------
