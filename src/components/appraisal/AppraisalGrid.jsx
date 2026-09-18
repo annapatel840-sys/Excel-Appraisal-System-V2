@@ -473,7 +473,29 @@ export function AppraisalGrid({
   // GROUP BY
   // ============================================================
 
-  const [groupBy, setGroupBy] = useState(null); // { key, dir, label } | null
+  const [groupBy, setGroupBy] = useState([]);
+
+  const addGroup = useCallback((key, dir, label) => {
+    setGroupBy((previous) => {
+      const existingIndex = previous.findIndex((item) => item.key === key);
+
+      if (existingIndex >= 0) {
+        return previous.map((item, index) =>
+          index === existingIndex ? { ...item, dir, label } : item,
+        );
+      }
+
+      return [...previous, { key, dir, label }];
+    });
+  }, []);
+
+  const removeGroup = useCallback((key) => {
+    setGroupBy((previous) => previous.filter((item) => item.key !== key));
+  }, []);
+
+  const clearAllGroups = useCallback(() => {
+    setGroupBy([]);
+  }, []);
 
   const getGroupValue = useCallback((row, col) => {
     if (col.computed && typeof col.fn === "function") {
@@ -499,74 +521,126 @@ export function AppraisalGrid({
     [getGroupValue],
   );
 
-  const groupedSections = useMemo(() => {
-    if (!groupBy) {
+  const groupedRows = useMemo(() => {
+    if (!groupBy.length) {
       return null;
     }
 
-    const col = GRID_COLUMNS.find((item) => item.key === groupBy.key);
+    const groupColumns = groupBy
+      .map((group) => {
+        const column = GRID_COLUMNS.find((item) => item.key === group.key);
 
-    if (!col) {
-      return null;
-    }
+        if (!column) {
+          return null;
+        }
 
-    const sorted = [...rows].sort((a, b) => {
-      const result = compareGroupValues(a, b, col);
-
-      return groupBy.dir === "desc" ? -result : result;
-    });
-
-    const sections = [];
-    let currentKey;
-    let currentSection = null;
-
-    sorted.forEach((row) => {
-      const rawValue = getGroupValue(row, col);
-
-      const displayValue = formatValue(row, col);
-
-      const label =
-        displayValue === "" ||
-        displayValue === null ||
-        displayValue === undefined
-          ? "(blank)"
-          : displayValue;
-
-      if (currentSection === null || rawValue !== currentKey) {
-        currentKey = rawValue;
-
-        currentSection = {
-          key: `${groupBy.key}:${String(rawValue)}:${sections.length}`,
-          label,
-          rows: [],
+        return {
+          ...group,
+          column,
         };
+      })
+      .filter(Boolean);
 
-        sections.push(currentSection);
-      }
-
-      currentSection.rows.push(row);
-    });
-
-    return sections;
-  }, [groupBy, rows, compareGroupValues, getGroupValue]);
-
-  const flattenedGroupOrder = useMemo(() => {
-    if (!groupedSections) {
+    if (!groupColumns.length) {
       return null;
     }
 
-    const order = new Map();
-    let index = 0;
+    const sortRows = (sourceRows) => {
+      return [...sourceRows].sort((rowA, rowB) => {
+        for (const group of groupColumns) {
+          const result = compareGroupValues(rowA, rowB, group.column);
 
-    groupedSections.forEach((section) => {
-      section.rows.forEach((row) => {
-        order.set(row.id, index);
-        index += 1;
+          if (result !== 0) {
+            return group.dir === "desc" ? -result : result;
+          }
+        }
+
+        return 0;
       });
-    });
+    };
 
-    return order;
-  }, [groupedSections]);
+    const buildLevel = (sourceRows, level) => {
+      const group = groupColumns[level];
+      const sortedRows = sortRows(sourceRows);
+
+      const sections = [];
+      let currentKey;
+      let currentRows = [];
+      let hasCurrent = false;
+
+      const pushSection = () => {
+        if (!hasCurrent) {
+          return;
+        }
+
+        const rawValue = currentKey;
+        const sampleRow = currentRows[0];
+
+        const displayValue = sampleRow
+          ? formatValue(sampleRow, group.column)
+          : "";
+
+        const label =
+          displayValue === "" ||
+          displayValue === null ||
+          displayValue === undefined
+            ? "(blank)"
+            : displayValue;
+
+        sections.push({
+          key: `${group.key}:${String(rawValue)}:${level}:${sections.length}`,
+          level,
+          groupKey: group.key,
+          label,
+          rows: currentRows,
+          children:
+            level < groupColumns.length - 1
+              ? buildLevel(currentRows, level + 1)
+              : null,
+        });
+      };
+
+      sortedRows.forEach((row) => {
+        const value = getGroupValue(row, group.column);
+
+        if (!hasCurrent || value !== currentKey) {
+          pushSection();
+
+          currentKey = value;
+          currentRows = [row];
+          hasCurrent = true;
+        } else {
+          currentRows.push(row);
+        }
+      });
+
+      pushSection();
+
+      return sections;
+    };
+
+    return buildLevel(rows, 0);
+  }, [rows, groupBy, compareGroupValues, getGroupValue]);
+
+  const flattenGroupedSections = useCallback((sections) => {
+    const result = [];
+
+    const walk = (items) => {
+      items.forEach((section) => {
+        if (section.children) {
+          walk(section.children);
+        } else {
+          section.rows.forEach((row) => {
+            result.push(row);
+          });
+        }
+      });
+    };
+
+    walk(sections);
+
+    return result;
+  }, []);
 
   // ============================================================
   // HISTORY FLASH
@@ -834,15 +908,24 @@ export function AppraisalGrid({
 
   const pageEnd = Math.min(currentPage * PAGE_SIZE, rows.length);
 
-  // Unified display order — matches whichever mode is active, so
-  // keyboard navigation always looks up the right row.
+  // Unified display order — matches whichever mode is active.
   const displayRows = useMemo(() => {
-    if (groupedSections) {
-      return groupedSections.flatMap((section) => section.rows);
+    if (groupedRows) {
+      return flattenGroupedSections(groupedRows);
     }
 
     return pageRows;
-  }, [groupedSections, pageRows]);
+  }, [groupedRows, flattenGroupedSections, pageRows]);
+
+  const flattenedGroupOrder = useMemo(() => {
+    const order = new Map();
+
+    displayRows.forEach((row, index) => {
+      order.set(row.id, index);
+    });
+
+    return order;
+  }, [displayRows]);
 
   // ============================================================
   // FOCUS
@@ -1037,9 +1120,6 @@ export function AppraisalGrid({
 
   // ============================================================
   // KEYBOARD NAVIGATION
-  //
-  // Uses `displayRows` (not `pageRows`) so navigation is correct
-  // whether the grid is grouped or not.
   // ============================================================
 
   const onKeyDown = (event, rowIndex, columnKey) => {
@@ -1559,7 +1639,7 @@ export function AppraisalGrid({
   };
 
   // ============================================================
-  // RENDER ONE DATA ROW (shared by normal and grouped views)
+  // RENDER ONE DATA ROW
   // ============================================================
 
   const renderDataRow = (row, rowIndex) => (
@@ -1660,6 +1740,66 @@ export function AppraisalGrid({
   );
 
   // ============================================================
+  // RENDER GROUPED SECTIONS
+  // ============================================================
+
+  const renderGroupedSections = useCallback(
+    (sections) => {
+      return sections.map((section) => {
+        const childSections = section.children;
+
+        return (
+          <Fragment key={section.key}>
+            <tr className="bg-[#dbe6f3]">
+              <td
+                colSpan={GRID_COLUMNS.length + 1}
+                className="border-b border-[#b9cbe0] p-0"
+              >
+                <div
+                  className={cn(
+                    "sticky left-0 inline-flex min-h-[25px] max-w-max",
+                    "items-center whitespace-nowrap",
+                    "px-2 py-1.5",
+                    "text-left text-[9px] font-bold text-[#173b63]",
+                    section.level > 0 && "pl-4",
+                  )}
+                >
+                  <span>
+                    {section.groupKey
+                      ? `${
+                          GRID_COLUMNS.find(
+                            (column) => column.key === section.groupKey,
+                          )?.label || ""
+                        }: ${section.label}`
+                      : section.label}
+                  </span>
+
+                  <span className="ml-1.5 font-normal text-slate-500">
+                    ({section.rows.length} employee
+                    {section.rows.length === 1 ? "" : "s"})
+                  </span>
+                </div>
+              </td>
+            </tr>
+
+            {childSections
+              ? renderGroupedSections(childSections)
+              : section.rows.map((row) =>
+                  renderDataRow(
+                    row,
+                    flattenedGroupOrder.get(row.id) !== undefined
+                      ? flattenedGroupOrder.get(row.id)
+                      : 0,
+                  ),
+                )}
+          </Fragment>
+        );
+      });
+    },
+    [renderDataRow, flattenedGroupOrder],
+  );
+
+  // ============================================================
   // SELECT ALL
   // ============================================================
 
@@ -1690,13 +1830,27 @@ export function AppraisalGrid({
   );
 
   // ============================================================
-  // MAIN UI
+  // GROUP LABEL
   // ============================================================
 
-  const groupByColumnLabel =
-    groupBy?.label ||
-    GRID_COLUMNS.find((column) => column.key === groupBy?.key)?.label ||
-    "";
+  const groupByColumnLabel = groupBy.length
+    ? groupBy
+        .map((group) => {
+          const column = GRID_COLUMNS.find((item) => item.key === group.key);
+
+          if (!column) {
+            return "";
+          }
+
+          return `${column.label} ${group.dir === "desc" ? "↓" : "↑"}`;
+        })
+        .filter(Boolean)
+        .join(" → ")
+    : "";
+
+  // ============================================================
+  // MAIN UI
+  // ============================================================
 
   return (
     <div
@@ -1831,23 +1985,14 @@ export function AppraisalGrid({
                           onChange={(filter) => setFilter(col.key, filter)}
                           groupable={col.key !== "empId" && col.key !== "name"}
                           groupDirection={
-                            groupBy?.key === col.key ? groupBy.dir : null
+                            groupBy.find((item) => item.key === col.key)?.dir ||
+                            null
                           }
-                          onGroupAsc={() =>
-                            setGroupBy({
-                              key: col.key,
-                              dir: "asc",
-                              label: col.label,
-                            })
-                          }
+                          onGroupAsc={() => addGroup(col.key, "asc", col.label)}
                           onGroupDesc={() =>
-                            setGroupBy({
-                              key: col.key,
-                              dir: "desc",
-                              label: col.label,
-                            })
+                            addGroup(col.key, "desc", col.label)
                           }
-                          onClearGroup={() => setGroupBy(null)}
+                          onClearGroup={() => removeGroup(col.key)}
                         />
                       </div>
                     </div>
@@ -1866,8 +2011,8 @@ export function AppraisalGrid({
           </thead>
 
           <tbody>
-            {groupedSections ? (
-              groupedSections.length === 0 ? (
+            {groupedRows ? (
+              groupedRows.length === 0 ? (
                 <tr>
                   <td
                     colSpan={GRID_COLUMNS.length + 1}
@@ -1877,26 +2022,7 @@ export function AppraisalGrid({
                   </td>
                 </tr>
               ) : (
-                groupedSections.map((section) => (
-                  <Fragment key={section.key}>
-                    <tr className="bg-[#dbe6f3]">
-                      <td
-                        colSpan={GRID_COLUMNS.length + 1}
-                        className="border-b border-[#b9cbe0] px-2 py-1.5 text-left text-[9px] font-bold text-[#173b63]"
-                      >
-                        {groupByColumnLabel}: {section.label}
-                        <span className="ml-1.5 font-normal text-slate-500">
-                          ({section.rows.length} employee
-                          {section.rows.length === 1 ? "" : "s"})
-                        </span>
-                      </td>
-                    </tr>
-
-                    {section.rows.map((row) =>
-                      renderDataRow(row, flattenedGroupOrder?.get(row.id) ?? 0),
-                    )}
-                  </Fragment>
-                ))
+                renderGroupedSections(groupedRows)
               )
             ) : (
               <>
@@ -1925,17 +2051,17 @@ export function AppraisalGrid({
         style={{ fontFamily: APPRAISAL_FONT }}
       >
         <div className="text-[8px] text-slate-500">
-          {groupBy
+          {groupBy.length
             ? `Grouped by ${groupByColumnLabel} — showing all ${rows.length} employees`
             : rows.length === 0
               ? "0 employees"
               : `Showing ${pageStart}-${pageEnd} of ${rows.length} employees`}
         </div>
 
-        {groupBy ? (
+        {groupBy.length ? (
           <button
             type="button"
-            onClick={() => setGroupBy(null)}
+            onClick={clearAllGroups}
             className="flex h-5 items-center justify-center rounded border border-[#cbd5e1] bg-white px-2 text-[8px] font-medium text-slate-600 hover:bg-slate-100"
           >
             Clear grouping
