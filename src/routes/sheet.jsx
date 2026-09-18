@@ -74,7 +74,7 @@ export function SheetPage() {
     setFilters((prev) => {
       const next = { ...prev };
 
-      if (!f || isEmptyFilter(f)) {
+      if (!f) {
         delete next[key];
       } else {
         next[key] = f;
@@ -85,8 +85,9 @@ export function SheetPage() {
 
   const selectedIds = filtered.filter((r) => selected[r.id]).map((r) => r.id);
 
-  const activeFilters = Object.entries(filters);
-
+  const activeFilters = Object.entries(filters).filter(
+    ([, filter]) => !isEmptyFilter(filter),
+  );
   const headerActions = (
     <div className="flex min-w-0 items-center gap-1.5">
       <button

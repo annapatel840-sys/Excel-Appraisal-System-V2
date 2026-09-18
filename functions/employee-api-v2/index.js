@@ -8,6 +8,9 @@ const app = express();
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
+const EMPLOYEES_TABLE_ID = "34995000000121039";
+const EMPLOYEE_MASTER_TABLE_ID = "34995000000136129";
+
 /* ============================================================
    EXPRESS JSON BODY PARSER
    ============================================================ */
@@ -95,22 +98,31 @@ function normalizeStatus(value) {
 function normalizeEmployeeResponse(employee) {
   const row = employee || {};
 
+  const wissenExperience =
+    row.wissen_experience !== undefined && row.wissen_experience !== null
+      ? row.wissen_experience
+      : row.wissenExperience !== undefined && row.wissenExperience !== null
+        ? row.wissenExperience
+        : "";
+
+  const orgExp =
+    row.orgExp !== undefined && row.orgExp !== null
+      ? row.orgExp
+      : wissenExperience;
+
   return {
     ...row,
 
     /*
-     * IMPORTANT:
-     * Organization Experience comes directly from the
-     * Catalyst Data Store field "wissen_experience".
-     *
-     * No calculation from Joining_date is performed.
+     * Organization Experience comes directly from
+     * Employees.wissen_experience.
      */
-    wissen_experience: row.wissen_experience ?? row.wissenExperience ?? "",
+    wissen_experience: wissenExperience,
 
     /*
-     * Keep a frontend-friendly alias as well.
+     * Frontend-friendly alias.
      */
-    orgExp: row.wissen_experience ?? row.wissenExperience ?? row.orgExp ?? "",
+    orgExp: orgExp,
   };
 }
 
@@ -157,6 +169,8 @@ const ALLOWED_FIELDS = [
   "Joining_date",
   "manager_email_id",
   "super_man_email_id",
+  "rating",
+  "eligible_status",
 ];
 
 function pickAllowedFields(body) {
@@ -192,11 +206,138 @@ async function getAllEmployees(zcql) {
 }
 
 /* ============================================================
+   GET ALL EMPLOYEE MASTER RECORDS
+   ============================================================ */
+
+async function getAllEmployeeMaster(datastore) {
+  const table = datastore.table(EMPLOYEE_MASTER_TABLE_ID);
+
+  let allRows = [];
+  let nextToken;
+  let moreRecords = true;
+
+  while (moreRecords) {
+    const options = {
+      maxRows: 200,
+    };
+
+    if (nextToken) {
+      options.nextToken = nextToken;
+    }
+
+    const result = await table.getPagedRows(options);
+
+    allRows = allRows.concat(result.data || []);
+
+    moreRecords = result.more_records === true;
+    nextToken = result.next_token;
+  }
+
+  return allRows;
+}
+
+/* ============================================================
+   BUILD EMPLOYEE MASTER MAP
+   ============================================================ */
+
+function buildEmployeeMasterMap(masterRows) {
+  const map = new Map();
+
+  (masterRows || []).forEach(function (row) {
+    const empId = String(row.emp_id || "")
+      .trim()
+      .toLowerCase();
+
+    if (!empId) {
+      return;
+    }
+
+    map.set(empId, row);
+  });
+
+  return map;
+}
+
+/* ============================================================
+   CHECK APPRAISAL SHEET ELIGIBILITY
+ *
+ * Employee must satisfy BOTH:
+ *
+ * 1. Employee_Master.emp_status = Active
+ * 2. Employees.eligible_status = Eligible
+ *
+ * Employee_Master does NOT contain eligibility.
+ * Employees does NOT get eligibility changed here.
+ * ============================================================ */
+
+function isAppraisalEligible(employee, employeeMasterMap) {
+  const empId = String(employee.emp_id || "")
+    .trim()
+    .toLowerCase();
+
+  if (!empId) {
+    return false;
+  }
+
+  const master = employeeMasterMap.get(empId);
+
+  if (!master) {
+    return false;
+  }
+
+  const masterStatus = normalizeStatus(master.emp_status);
+
+  const eligibility = String(employee.eligible_status || "")
+    .trim()
+    .toLowerCase();
+
+  return masterStatus === "Active" && eligibility === "eligible";
+}
+
+/* ============================================================
    FILTER EMPLOYEES
    ============================================================ */
 
-function filterEmployees(employees, search, status) {
+function filterEmployees(
+  employees,
+  employeeMasterMap,
+  search,
+  status,
+  eligible,
+  view,
+) {
   let filtered = employees;
+
+  /*
+   * ==========================================================
+   * APPRAISAL SHEET BASE FILTER
+   *
+   * Normal/default view:
+   *
+   * Employee_Master Active
+   * AND
+   * Employees Eligible
+   *
+   * Eligibility view:
+   *
+   * ALL Employees
+   *
+   * This allows HR to see both Eligible and Not Eligible
+   * employees in the Eligibility List.
+   * ==========================================================
+   */
+
+  if (view !== "eligibility" && view !== "master") {
+    filtered = filtered.filter(function (employee) {
+      return isAppraisalEligible(employee, employeeMasterMap);
+    });
+  }
+
+  /*
+   * ==========================================================
+   * SEARCH
+   * ==========================================================
+   */
 
   if (search) {
     const searchValue = search.toLowerCase();
@@ -221,6 +362,14 @@ function filterEmployees(employees, search, status) {
     });
   }
 
+  /*
+   * ==========================================================
+   * STATUS FILTER
+   *
+   * Employees.status is synchronized from Employee_Master.
+   * ==========================================================
+   */
+
   if (status) {
     filtered = filtered.filter(function (employee) {
       return (
@@ -228,6 +377,36 @@ function filterEmployees(employees, search, status) {
           .trim()
           .toLowerCase() === status.toLowerCase()
       );
+    });
+  }
+
+  /*
+   * ==========================================================
+   * ELIGIBILITY FILTER
+   *
+   * Strictly uses Employees.eligible_status.
+   * ==========================================================
+   */
+
+  if (eligible) {
+    filtered = filtered.filter(function (employee) {
+      const value = String(employee.eligible_status || "")
+        .trim()
+        .toLowerCase();
+
+      if (eligible === "eligible") {
+        return value === "eligible";
+      }
+
+      if (eligible === "not eligible") {
+        return value === "not eligible";
+      }
+
+      if (eligible === "noteligible") {
+        return value === "noteligible";
+      }
+
+      return true;
     });
   }
 
@@ -243,6 +422,8 @@ async function getEmployees(req, res) {
 
   const zcql = appInstance.zcql();
 
+  const datastore = appInstance.datastore();
+
   const params = getQueryParams(req);
 
   const requestedPage = getPositiveInteger(params.page, 1);
@@ -257,7 +438,51 @@ async function getEmployees(req, res) {
     .trim()
     .toLowerCase();
 
+  const eligibleParam = String(params.eligible || "")
+    .trim()
+    .toLowerCase();
+
+  /*
+   * ==========================================================
+   * VIEW
+   *
+   * Normal/default:
+   * Appraisal Sheet behavior
+   *
+   * eligibility:
+   * All Employees for Eligibility List
+   * ==========================================================
+   */
+
+  const view = String(params.view || "")
+    .trim()
+    .toLowerCase();
+
+  /*
+   * ==========================================================
+   * GET EMPLOYEES DATA
+   * ==========================================================
+   */
+
   const allEmployees = await getAllEmployees(zcql);
+
+  /*
+   * ==========================================================
+   * GET EMPLOYEE MASTER DATA
+   * ==========================================================
+   */
+
+  const employeeMasterRows = await getAllEmployeeMaster(datastore);
+
+  const employeeMasterMap = buildEmployeeMasterMap(employeeMasterRows);
+
+  /*
+   * ==========================================================
+   * COUNTS
+   *
+   * Counts remain based on the complete Employees dataset.
+   * ==========================================================
+   */
 
   const totalCount = allEmployees.length;
 
@@ -277,13 +502,28 @@ async function getEmployees(req, res) {
     );
   }).length;
 
+  /*
+   * ==========================================================
+   * FILTER
+   * ==========================================================
+   */
+
   const filteredEmployees = filterEmployees(
     allEmployees,
+    employeeMasterMap,
     search,
     status === "all" ? "" : status,
+    eligibleParam === "all" ? "" : eligibleParam,
+    view,
   );
 
   const filteredCount = filteredEmployees.length;
+
+  /*
+   * ==========================================================
+   * PAGINATION
+   * ==========================================================
+   */
 
   const totalPages = filteredCount === 0 ? 1 : Math.ceil(filteredCount / limit);
 
@@ -296,6 +536,12 @@ async function getEmployees(req, res) {
     .map(function (employee) {
       return normalizeEmployeeResponse(employee);
     });
+
+  /*
+   * ==========================================================
+   * RESPONSE
+   * ==========================================================
+   */
 
   sendJson(res, 200, {
     success: true,
@@ -319,6 +565,8 @@ async function getEmployees(req, res) {
     filters: {
       search: search,
       status: status || "all",
+      eligible: eligibleParam || "all",
+      view: view || "appraisal",
     },
   });
 }
@@ -347,7 +595,7 @@ async function createEmployees(req, res) {
     });
   }
 
-  const table = datastore.table("employees");
+  const table = datastore.table(EMPLOYEES_TABLE_ID);
 
   const existingRows = await table.getAllRows();
 
@@ -450,7 +698,6 @@ async function createEmployees(req, res) {
     },
   });
 }
-
 /* ============================================================
    UPDATE EMPLOYEE
    ============================================================ */
@@ -482,14 +729,14 @@ async function updateEmployee(req, res) {
   }
 
   /* ==========================================================
-     FIND EMPLOYEE
+     FIND EMPLOYEE IN EMPLOYEES TABLE
      ========================================================== */
 
-  const table = datastore.table("employees");
+  const employeeTable = datastore.table(EMPLOYEES_TABLE_ID);
 
-  const rows = await table.getAllRows();
+  const employeeRows = await employeeTable.getAllRows();
 
-  const existingRow = (rows || []).find(function (row) {
+  const existingEmployeeRow = (employeeRows || []).find(function (row) {
     return (
       String(row.emp_id || "")
         .trim()
@@ -497,7 +744,7 @@ async function updateEmployee(req, res) {
     );
   });
 
-  if (!existingRow) {
+  if (!existingEmployeeRow) {
     console.log("EMPLOYEE NOT FOUND:", empId);
 
     return sendJson(res, 404, {
@@ -506,16 +753,25 @@ async function updateEmployee(req, res) {
     });
   }
 
-  const rowId = existingRow.ROWID || existingRow.rowid;
+  const employeeRowId = existingEmployeeRow.ROWID || existingEmployeeRow.rowid;
 
-  if (!rowId) {
+  if (!employeeRowId) {
     throw new Error("Employee ROWID not found for " + empId);
   }
 
   /* ==========================================================
      STATUS UPDATE
-
-     Active/Inactive is completely independent from eligibility.
+     
+     IMPORTANT:
+     
+     Employee_Master.emp_status is the source of truth.
+     
+     When status changes:
+     
+     1. Update Employee_Master.emp_status
+     2. Update Employees.status
+     
+     Both tables stay synchronized.
      ========================================================== */
 
   if (Object.prototype.hasOwnProperty.call(body, "status")) {
@@ -528,33 +784,17 @@ async function updateEmployee(req, res) {
       });
     }
 
-    console.log(
-      "STATUS UPDATE:",
-      empId,
-      "FROM:",
-      existingRow.status,
-      "TO:",
-      normalizedStatus,
-    );
-
-    const statusUpdateRow = {
-      ROWID: rowId,
-      status: normalizedStatus,
-    };
-
-    console.log("CATALYST STATUS UPDATE ROW:", JSON.stringify(statusUpdateRow));
-
-    const updateResult = await table.updateRow(statusUpdateRow);
-
-    console.log("CATALYST STATUS UPDATE RESULT:", JSON.stringify(updateResult));
+    console.log("STATUS UPDATE:", empId, "TO:", normalizedStatus);
 
     /* ========================================================
-       READ THE ROW AGAIN AFTER UPDATE
+       FIND EMPLOYEE MASTER RECORD
        ======================================================== */
 
-    const verifyRows = await table.getAllRows();
+    const employeeMasterTable = datastore.table(EMPLOYEE_MASTER_TABLE_ID);
 
-    const verifiedRow = (verifyRows || []).find(function (row) {
+    const employeeMasterRows = await employeeMasterTable.getAllRows();
+
+    const existingMasterRow = (employeeMasterRows || []).find(function (row) {
       return (
         String(row.emp_id || "")
           .trim()
@@ -562,26 +802,145 @@ async function updateEmployee(req, res) {
       );
     });
 
-    console.log("VERIFIED EMPLOYEE:", JSON.stringify(verifiedRow));
+    if (!existingMasterRow) {
+      console.log("EMPLOYEE MASTER RECORD NOT FOUND:", empId);
 
-    const verifiedStatus = normalizeStatus(verifiedRow?.status);
+      return sendJson(res, 404, {
+        success: false,
+        message: "Employee Master record not found for employee " + empId + ".",
+      });
+    }
 
-    if (verifiedStatus !== normalizedStatus) {
+    const masterRowId = existingMasterRow.ROWID || existingMasterRow.rowid;
+
+    if (!masterRowId) {
+      throw new Error("Employee Master ROWID not found for " + empId);
+    }
+
+    /* ========================================================
+       UPDATE EMPLOYEE MASTER STATUS
+       ======================================================== */
+
+    const masterUpdateRow = {
+      ROWID: masterRowId,
+      emp_status: normalizedStatus,
+    };
+
+    console.log(
+      "EMPLOYEE MASTER STATUS UPDATE:",
+      JSON.stringify(masterUpdateRow),
+    );
+
+    const masterUpdateResult =
+      await employeeMasterTable.updateRow(masterUpdateRow);
+
+    console.log(
+      "EMPLOYEE MASTER UPDATE RESULT:",
+      JSON.stringify(masterUpdateResult),
+    );
+
+    /* ========================================================
+       UPDATE EMPLOYEES STATUS
+       ======================================================== */
+
+    const employeeUpdateRow = {
+      ROWID: employeeRowId,
+      status: normalizedStatus,
+    };
+
+    console.log("EMPLOYEES STATUS UPDATE:", JSON.stringify(employeeUpdateRow));
+
+    const employeeUpdateResult =
+      await employeeTable.updateRow(employeeUpdateRow);
+
+    console.log(
+      "EMPLOYEES UPDATE RESULT:",
+      JSON.stringify(employeeUpdateResult),
+    );
+
+    /* ========================================================
+       VERIFY EMPLOYEE MASTER
+       ======================================================== */
+
+    const verifyMasterRows = await employeeMasterTable.getAllRows();
+
+    const verifiedMasterRow = (verifyMasterRows || []).find(function (row) {
+      return (
+        String(row.emp_id || "")
+          .trim()
+          .toLowerCase() === empId.toLowerCase()
+      );
+    });
+
+    const verifiedMasterStatus = normalizeStatus(
+      verifiedMasterRow && verifiedMasterRow.emp_status,
+    );
+
+    console.log("VERIFIED EMPLOYEE MASTER:", JSON.stringify(verifiedMasterRow));
+
+    if (verifiedMasterStatus !== normalizedStatus) {
       return sendJson(res, 500, {
         success: false,
-        message: "Catalyst update completed but status verification failed.",
+        message: "Employee Master status update verification failed.",
         data: {
           emp_id: empId,
           requestedStatus: normalizedStatus,
-          actualStatus: verifiedRow?.status ?? null,
+          actualMasterStatus:
+            verifiedMasterRow && verifiedMasterRow.emp_status !== undefined
+              ? verifiedMasterRow.emp_status
+              : null,
         },
       });
     }
 
+    /* ========================================================
+       VERIFY EMPLOYEES
+       ======================================================== */
+
+    const verifyEmployeeRows = await employeeTable.getAllRows();
+
+    const verifiedEmployeeRow = (verifyEmployeeRows || []).find(function (row) {
+      return (
+        String(row.emp_id || "")
+          .trim()
+          .toLowerCase() === empId.toLowerCase()
+      );
+    });
+
+    const verifiedEmployeeStatus = normalizeStatus(
+      verifiedEmployeeRow && verifiedEmployeeRow.status,
+    );
+
+    console.log("VERIFIED EMPLOYEE:", JSON.stringify(verifiedEmployeeRow));
+
+    if (verifiedEmployeeStatus !== normalizedStatus) {
+      return sendJson(res, 500, {
+        success: false,
+        message: "Employees status update verification failed.",
+        data: {
+          emp_id: empId,
+          requestedStatus: normalizedStatus,
+          actualEmployeeStatus:
+            verifiedEmployeeRow && verifiedEmployeeRow.status !== undefined
+              ? verifiedEmployeeRow.status
+              : null,
+        },
+      });
+    }
+
+    /* ========================================================
+       SUCCESS
+       ======================================================== */
+
     return sendJson(res, 200, {
       success: true,
-      message: "Employee status updated successfully.",
-      data: normalizeEmployeeResponse(verifiedRow),
+      message:
+        "Employee status updated successfully in Employee Master and Employees.",
+      data: normalizeEmployeeResponse(verifiedEmployeeRow),
+      employeeMaster: {
+        emp_id: empId,
+        emp_status: verifiedMasterStatus,
+      },
     });
   }
 
@@ -599,13 +958,13 @@ async function updateEmployee(req, res) {
   }
 
   const updateRow = {
-    ROWID: rowId,
+    ROWID: employeeRowId,
     ...updateData,
   };
 
   console.log("GENERIC EMPLOYEE UPDATE:", JSON.stringify(updateRow));
 
-  const updateResult = await table.updateRow(updateRow);
+  const updateResult = await employeeTable.updateRow(updateRow);
 
   console.log("GENERIC UPDATE RESULT:", JSON.stringify(updateResult));
 
@@ -631,7 +990,8 @@ app.get("/", async function (req, res) {
 
     sendJson(res, 500, {
       success: false,
-      message: error?.message || "Internal server error.",
+      message:
+        error && error.message ? error.message : "Internal server error.",
     });
   }
 });
@@ -644,7 +1004,8 @@ app.post("/", async function (req, res) {
 
     sendJson(res, 500, {
       success: false,
-      message: error?.message || "Internal server error.",
+      message:
+        error && error.message ? error.message : "Internal server error.",
     });
   }
 });
@@ -657,7 +1018,8 @@ app.put("/", async function (req, res) {
 
     sendJson(res, 500, {
       success: false,
-      message: error?.message || "Internal server error.",
+      message:
+        error && error.message ? error.message : "Internal server error.",
     });
   }
 });
@@ -670,7 +1032,8 @@ app.patch("/", async function (req, res) {
 
     sendJson(res, 500, {
       success: false,
-      message: error?.message || "Internal server error.",
+      message:
+        error && error.message ? error.message : "Internal server error.",
     });
   }
 });

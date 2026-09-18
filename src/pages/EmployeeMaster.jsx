@@ -6,7 +6,9 @@ import { AppShell } from "@/components/appraisal/AppShell";
 import {
   FIELD_DEFS,
   fetchEmployeeMasterEmployees,
+  fetchEligibilityEmployees,
   updateEmployeeMasterEmployee,
+  updateEmployeeEligibility,
   createEmployeeMasterEmployees,
 } from "@/lib/employee-master-data";
 
@@ -34,11 +36,7 @@ import { ImportPreviewModal } from "@/components/employee-master/ImportPreviewMo
 import "@/styles/employee-master.css";
 
 const PAGE_SIZE = 20;
-/*
- * Maps the React field keys used by the roster import preview
- * to the Catalyst column names the employee-api-v2 POST route
- * accepts.
- */
+
 const ROSTER_FIELD_TO_CATALYST = {
   name: "name",
   designation: "designation",
@@ -59,141 +57,18 @@ const ROSTER_FIELD_TO_CATALYST = {
    ============================================================ */
 
 function normalizeEmpId(value) {
-  return String(value ?? "")
+  return String(value || "")
     .trim()
     .toLowerCase();
 }
 
 function normalizeImportHeader(value) {
-  return String(value ?? "")
+  return String(value || "")
     .trim()
     .toLowerCase()
     .replace(/[\s._/-]+/g, "")
     .replace(/[()]/g, "");
 }
-
-/* ============================================================
-   NORMALIZE EMPLOYEE
-   ============================================================ */
-
-function normalizeEmployee(employee) {
-  const row = employee?.Employees ?? employee ?? {};
-
-  return {
-    empId: String(row?.emp_id ?? row?.empId ?? "").trim(),
-
-    name: String(row?.name ?? "").trim(),
-
-    designation: String(row?.designation ?? "").trim(),
-
-    organization: String(
-      row?.organization ?? row?.department ?? row?.orgtn ?? "",
-    ).trim(),
-
-    doj: String(
-      row?.Joining_date ??
-        row?.joining_date ??
-        row?.doj ??
-        row?.date_of_joining ??
-        row?.dateOfJoining ??
-        row?.joiningDate ??
-        "",
-    ).trim(),
-
-    orgExp: String(
-      row?.wissen_experience ?? row?.wissenExperience ?? row?.orgExp ?? "",
-    ).trim(),
-
-    totalExp: String(
-      row?.total_experience ?? row?.totalExperience ?? row?.totalExp ?? "",
-    ).trim(),
-
-    reportingManager: String(
-      row?.reporting_manager ?? row?.reportingManager ?? row?.manager ?? "",
-    ).trim(),
-
-    compManager: String(row?.comp_manager ?? row?.compManager ?? "").trim(),
-
-    superManager: String(
-      row?.super_manager ??
-        row?.superManager ??
-        row?.appraiser_tech_ed ??
-        row?.appraiserTechED ??
-        "",
-    ).trim(),
-
-    appraiser: String(
-      row?.appraiser ??
-        row?.appraiser_tech_ed ??
-        row?.appraiserTechED ??
-        row?.super_manager ??
-        row?.superManager ??
-        "",
-    ).trim(),
-
-    managerMail: String(
-      row?.manager_email_id ??
-        row?.manager_mail ??
-        row?.managerMail ??
-        row?.manager_email ??
-        row?.managerEmail ??
-        "",
-    ).trim(),
-
-    superManagerMail: String(
-      row?.super_man_email_id ??
-        row?.super_manager_mail ??
-        row?.superManagerMail ??
-        row?.super_manager_email ??
-        row?.superManagerEmail ??
-        "",
-    ).trim(),
-
-    /* ========================================================
-       STATUS
-       Completely independent from eligibility.
-       ======================================================== */
-
-    status:
-      String(row?.status ?? "")
-        .trim()
-        .toLowerCase() === "inactive"
-        ? "Inactive"
-        : "Active",
-
-    /* ========================================================
-       ELIGIBILITY
-       Completely independent from status.
-       ======================================================== */
-
-    eligible:
-      String(row?.eligible ?? "")
-        .trim()
-        .toLowerCase() === "no"
-        ? "No"
-        : "Yes",
-
-    eligibleReason: String(
-      row?.eligibleReason ?? row?.eligible_reason ?? "",
-    ).trim(),
-
-    manualOverride: Boolean(
-      row?.manualOverride ?? row?.manual_override ?? false,
-    ),
-  };
-}
-
-function normalizeEmployeeList(data) {
-  if (!Array.isArray(data)) {
-    return [];
-  }
-
-  return data.map(normalizeEmployee);
-}
-
-/* ============================================================
-   IMPORT HELPERS
-   ============================================================ */
 
 function getImportedEmpId(row) {
   const directHeaders = [
@@ -220,7 +95,7 @@ function getImportedEmpId(row) {
     const normalized = normalizeImportHeader(header);
 
     if (normalized === "empid" || normalized === "employeeid") {
-      const result = String(value ?? "").trim();
+      const result = String(value || "").trim();
 
       if (result) {
         return result;
@@ -232,111 +107,12 @@ function getImportedEmpId(row) {
 }
 
 /* ============================================================
-   ELIGIBILITY CACHE
-   ============================================================ */
-
-function mergeEligibilityData(employees, savedEligibility = []) {
-  const savedMap = new Map(
-    savedEligibility.map((employee) => [
-      normalizeEmpId(employee.empId),
-      employee,
-    ]),
-  );
-
-  return employees.map((employee) => {
-    const saved = savedMap.get(normalizeEmpId(employee.empId));
-
-    if (!saved) {
-      return employee;
-    }
-
-    return {
-      ...employee,
-
-      /*
-       * Only eligibility fields
-       * come from the cache.
-       *
-       * STATUS IS NOT READ FROM
-       * THE ELIGIBILITY CACHE.
-       */
-
-      eligible: saved.eligible,
-
-      eligibleReason: saved.eligibleReason,
-
-      manualOverride: saved.manualOverride,
-    };
-  });
-}
-
-function loadSavedEligibility() {
-  try {
-    const stored = localStorage.getItem("employee-master-eligibility");
-
-    if (!stored) {
-      return [];
-    }
-
-    const parsed = JSON.parse(stored);
-
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-
-    return parsed;
-  } catch {
-    return [];
-  }
-}
-
-function saveEligibilityCache(employees) {
-  try {
-    const existing = loadSavedEligibility();
-
-    const map = new Map(
-      existing.map((employee) => [normalizeEmpId(employee.empId), employee]),
-    );
-
-    employees.forEach((employee) => {
-      const empId = normalizeEmpId(employee.empId);
-
-      if (!empId) {
-        return;
-      }
-
-      /*
-       * IMPORTANT:
-       * status is intentionally NOT
-       * stored in eligibility cache.
-       */
-
-      map.set(empId, {
-        empId: employee.empId,
-
-        eligible: employee.eligible === "No" ? "No" : "Yes",
-
-        eligibleReason: employee.eligibleReason || "",
-
-        manualOverride: Boolean(employee.manualOverride),
-      });
-    });
-
-    localStorage.setItem(
-      "employee-master-eligibility",
-      JSON.stringify(Array.from(map.values())),
-    );
-  } catch {
-    // Ignore localStorage errors.
-  }
-}
-
-/* ============================================================
    COMPONENT
    ============================================================ */
 
 export function EmployeeMaster() {
-  const [employees, setEmployees] = useState([]);
+  // Only the currently requested page is kept in memory.
+  const [allEmployees, setAllEmployees] = useState([]);
 
   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
 
@@ -374,37 +150,35 @@ export function EmployeeMaster() {
 
   const [currentPage, setCurrentPage] = useState(1);
 
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  const [pagination, setPagination] = useState({
+  const [rosterPagination, setRosterPagination] = useState({
     page: 1,
     limit: PAGE_SIZE,
     totalCount: 0,
     totalPages: 1,
   });
 
-  const [counts, setCounts] = useState({
+  const [rosterCounts, setRosterCounts] = useState({
     total: 0,
     active: 0,
     inactive: 0,
   });
 
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const eligibilityLoadedKeyRef = useRef(null);
+
   const showBanner = (title, body, error = false) => {
-    setBanner({
-      title,
-      body,
-      error,
-    });
+    setBanner({ title, body, error });
   };
 
   /* ============================================================
-     LOAD CURRENT ROSTER PAGE
+     LOAD ONLY CURRENT ROSTER PAGE
      ============================================================ */
 
   useEffect(() => {
     let cancelled = false;
 
-    const loadEmployees = async () => {
+    const load = async () => {
       try {
         setLoading(true);
 
@@ -412,61 +186,68 @@ export function EmployeeMaster() {
           page: currentPage,
           limit: PAGE_SIZE,
           search,
-          status: statusFilter,
+          status:
+            statusFilter === "All"
+              ? "all"
+              : String(statusFilter || "").toLowerCase(),
         });
 
         if (cancelled) {
           return;
         }
 
-        const savedEligibility = loadSavedEligibility();
+        const employees = Array.isArray(result?.data) ? result.data : [];
 
-        const normalizedEmployees = normalizeEmployeeList(result?.data);
+        setAllEmployees(employees);
 
-        const mergedEmployees = mergeEligibilityData(
-          normalizedEmployees,
-          savedEligibility,
-        );
+        setRosterPagination({
+          page:
+            result?.pagination?.page !== undefined
+              ? Number(result.pagination.page)
+              : currentPage,
+          limit:
+            result?.pagination?.limit !== undefined
+              ? Number(result.pagination.limit)
+              : PAGE_SIZE,
+          totalCount:
+            result?.pagination?.totalCount !== undefined
+              ? Number(result.pagination.totalCount)
+              : employees.length,
+          totalPages:
+            result?.pagination?.totalPages !== undefined
+              ? Number(result.pagination.totalPages)
+              : 1,
+        });
 
-        setEmployees(mergedEmployees);
-
-        setPagination(
-          result?.pagination || {
-            page: currentPage,
-            limit: PAGE_SIZE,
-            totalCount: mergedEmployees.length,
-            totalPages: 1,
-          },
-        );
-
-        setCounts(
-          result?.counts || {
-            total: mergedEmployees.length,
-
-            active: mergedEmployees.filter(
-              (employee) => employee.status === "Active",
-            ).length,
-
-            inactive: mergedEmployees.filter(
-              (employee) => employee.status === "Inactive",
-            ).length,
-          },
-        );
+        setRosterCounts({
+          total:
+            result?.counts?.total !== undefined
+              ? Number(result.counts.total)
+              : employees.length,
+          active:
+            result?.counts?.active !== undefined
+              ? Number(result.counts.active)
+              : 0,
+          inactive:
+            result?.counts?.inactive !== undefined
+              ? Number(result.counts.inactive)
+              : 0,
+        });
       } catch (error) {
         if (cancelled) {
           return;
         }
 
-        setEmployees([]);
+        setAllEmployees([]);
 
-        setPagination({
-          page: currentPage,
+        setRosterPagination({
+          page: 1,
           limit: PAGE_SIZE,
           totalCount: 0,
           totalPages: 1,
         });
 
-        setCounts({
+        setRosterCounts({
           total: 0,
           active: 0,
           inactive: 0,
@@ -484,7 +265,7 @@ export function EmployeeMaster() {
       }
     };
 
-    loadEmployees();
+    load();
 
     return () => {
       cancelled = true;
@@ -492,17 +273,61 @@ export function EmployeeMaster() {
   }, [currentPage, search, statusFilter, refreshKey]);
 
   /* ============================================================
-     RESET PAGINATION WHEN SERVER FILTER CHANGES
+     RESET PAGE WHEN SEARCH / STATUS FILTER CHANGES
      ============================================================ */
 
   useEffect(() => {
-    if (currentPage !== 1) {
-      setCurrentPage(1);
-    }
+    setCurrentPage(1);
   }, [search, statusFilter]);
 
   /* ============================================================
-     LOAD ALL EMPLOYEES FOR ELIGIBILITY
+     COUNTS
+     ============================================================ */
+
+  const counts = useMemo(() => {
+    return {
+      total: rosterCounts.total,
+      active: rosterCounts.active,
+      inactive: rosterCounts.inactive,
+    };
+  }, [rosterCounts]);
+
+  /* ============================================================
+     CURRENT PAGE ROSTER FILTERS
+     ============================================================ */
+
+  const filteredRosterEmployees = useMemo(() => {
+    return allEmployees.filter((employee) => {
+      return Object.entries(rosterFilters).every(([field, filter]) => {
+        if (!filter) {
+          return true;
+        }
+
+        if (typeof filter === "string" && filter.trim() === "") {
+          return true;
+        }
+
+        const value = String(employee?.[field] || "").toLowerCase();
+
+        if (typeof filter === "string") {
+          return value.includes(filter.toLowerCase());
+        }
+
+        if (typeof filter === "object" && filter.value) {
+          return value.includes(String(filter.value).toLowerCase());
+        }
+
+        return true;
+      });
+    });
+  }, [allEmployees, rosterFilters]);
+
+  const rosterTotalPages = Math.max(1, rosterPagination.totalPages);
+
+  const rosterSafePage = Math.min(currentPage, rosterTotalPages);
+
+  /* ============================================================
+     LOAD ELIGIBILITY LIST
      ============================================================ */
 
   useEffect(() => {
@@ -510,9 +335,11 @@ export function EmployeeMaster() {
       return;
     }
 
-    if (eligibilityEmployees.length > 0) {
+    if (eligibilityLoadedKeyRef.current === "loaded") {
       return;
     }
+
+    eligibilityLoadedKeyRef.current = "loaded";
 
     let cancelled = false;
 
@@ -520,13 +347,13 @@ export function EmployeeMaster() {
       try {
         setEligibilityLoading(true);
 
-        const firstPage = await fetchEmployeeMasterEmployees({
+        const firstPage = await fetchEligibilityEmployees({
           page: 1,
           limit: 100,
-          status: "all",
+          search: "",
         });
 
-        let allEmployees = normalizeEmployeeList(firstPage?.data);
+        let all = Array.isArray(firstPage?.data) ? firstPage.data : [];
 
         const totalPages = Number(firstPage?.pagination?.totalPages) || 1;
 
@@ -535,40 +362,28 @@ export function EmployeeMaster() {
             return;
           }
 
-          const result = await fetchEmployeeMasterEmployees({
+          const result = await fetchEligibilityEmployees({
             page,
             limit: 100,
-            status: "all",
+            search: "",
           });
 
-          allEmployees = allEmployees.concat(
-            normalizeEmployeeList(result?.data),
-          );
+          all = all.concat(Array.isArray(result?.data) ? result.data : []);
         }
 
         if (cancelled) {
           return;
         }
 
-        const savedEligibility = loadSavedEligibility();
-
-        const mergedEmployees = mergeEligibilityData(
-          allEmployees,
-          savedEligibility,
-        );
-
-        setEligibilityEmployees(mergedEmployees);
-
-        showBanner(
-          "Eligibility data loaded",
-          `${mergedEmployees.length} employee(s) loaded for eligibility.`,
-        );
+        setEligibilityEmployees(all);
       } catch (error) {
         if (cancelled) {
           return;
         }
 
         setEligibilityEmployees([]);
+
+        eligibilityLoadedKeyRef.current = null;
 
         showBanner(
           "Eligibility data failed to load",
@@ -588,43 +403,7 @@ export function EmployeeMaster() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab, eligibilityEmployees.length]);
-
-  const total = counts.total;
-
-  const active = counts.active;
-
-  const inactive = counts.inactive;
-
-  /* ============================================================
-     LOCAL ROSTER COLUMN FILTERS
-     ============================================================ */
-
-  const filteredRosterEmployees = useMemo(() => {
-    return employees.filter((employee) => {
-      return Object.entries(rosterFilters).every(([field, filter]) => {
-        if (!filter) {
-          return true;
-        }
-
-        if (typeof filter === "string" && filter.trim() === "") {
-          return true;
-        }
-
-        const value = String(employee?.[field] ?? "").toLowerCase();
-
-        if (typeof filter === "string") {
-          return value.includes(filter.toLowerCase());
-        }
-
-        if (typeof filter === "object" && filter.value) {
-          return value.includes(String(filter.value).toLowerCase());
-        }
-
-        return true;
-      });
-    });
-  }, [employees, rosterFilters]);
+  }, [activeTab]);
 
   /* ============================================================
      FILE READING
@@ -644,9 +423,7 @@ export function EmployeeMaster() {
 
       const buffer = await file.arrayBuffer();
 
-      const workbook = XLSX.read(buffer, {
-        type: "array",
-      });
+      const workbook = XLSX.read(buffer, { type: "array" });
 
       const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
 
@@ -687,7 +464,7 @@ export function EmployeeMaster() {
         const field = findFieldForHeader(header);
 
         if (field) {
-          mapped[field.key] = String(value ?? "").trim();
+          mapped[field.key] = String(value || "").trim();
         }
       });
 
@@ -703,7 +480,7 @@ export function EmployeeMaster() {
 
       const normalizedImportedId = normalizeEmpId(mapped.empId);
 
-      const existing = employees.find(
+      const existing = allEmployees.find(
         (employee) => normalizeEmpId(employee.empId) === normalizedImportedId,
       );
 
@@ -718,13 +495,13 @@ export function EmployeeMaster() {
           return;
         }
 
-        const importedValue = String(mapped[field.key] ?? "").trim();
+        const importedValue = String(mapped[field.key] || "").trim();
 
         if (importedValue === "") {
           return;
         }
 
-        const existingValue = String(existing?.[field.key] ?? "").trim();
+        const existingValue = String(existing?.[field.key] || "").trim();
 
         if (!existing || existingValue !== importedValue) {
           fields[field.key] = importedValue;
@@ -734,11 +511,8 @@ export function EmployeeMaster() {
       if (!existing) {
         changes.push({
           empId: mapped.empId,
-
           name: mapped.name || "",
-
           fields,
-
           isNew: true,
         });
 
@@ -748,11 +522,8 @@ export function EmployeeMaster() {
       if (Object.keys(fields).length > 0) {
         changes.push({
           empId: existing.empId,
-
           name: mapped.name || existing.name || "",
-
           fields,
-
           isNew: false,
         });
       }
@@ -763,10 +534,6 @@ export function EmployeeMaster() {
 
   /* ============================================================
      ELIGIBILITY IMPORT CHANGES
-
-     IMPORTANT:
-     "Status" is NO LONGER accepted as an
-     eligibility header.
      ============================================================ */
 
   const buildEligibilityImportChanges = (rows, sourceEmployees) => {
@@ -792,14 +559,8 @@ export function EmployeeMaster() {
       Object.entries(row).forEach(([header, value]) => {
         const normalized = normalizeImportHeader(header);
 
-        /*
-         * IMPORTANT:
-         * "status" is deliberately
-         * excluded here.
-         */
-
         if (normalized === "eligible" || normalized === "eligibility") {
-          eligibleValue = String(value ?? "").trim();
+          eligibleValue = String(value || "").trim();
         }
       });
 
@@ -823,7 +584,7 @@ export function EmployeeMaster() {
           normalized === "eligiblereason" ||
           normalized === "remarks"
         ) {
-          reason = String(value ?? "").trim();
+          reason = String(value || "").trim();
         }
       });
 
@@ -843,12 +604,9 @@ export function EmployeeMaster() {
       ) {
         changes.push({
           empId: employee.empId,
-
           name: employee.name,
-
           fields: {
             Eligible: eligible,
-
             Reason: nextReason,
           },
         });
@@ -869,9 +627,7 @@ export function EmployeeMaster() {
       const changes = buildRosterImportChanges(rows);
 
       setPendingImportType("roster");
-
       setPreviewChanges(changes);
-
       setPreviewOpen(true);
     } catch (error) {
       showBanner(
@@ -889,37 +645,30 @@ export function EmployeeMaster() {
       if (sourceEmployees.length === 0) {
         setEligibilityLoading(true);
 
-        const firstPage = await fetchEmployeeMasterEmployees({
+        const firstPage = await fetchEligibilityEmployees({
           page: 1,
           limit: 100,
-          status: "all",
+          search: "",
         });
 
-        sourceEmployees = normalizeEmployeeList(firstPage?.data);
+        sourceEmployees = Array.isArray(firstPage?.data) ? firstPage.data : [];
 
         const totalPages = Number(firstPage?.pagination?.totalPages) || 1;
 
         for (let page = 2; page <= totalPages; page += 1) {
-          const result = await fetchEmployeeMasterEmployees({
+          const result = await fetchEligibilityEmployees({
             page,
             limit: 100,
-            status: "all",
+            search: "",
           });
 
           sourceEmployees = sourceEmployees.concat(
-            normalizeEmployeeList(result?.data),
+            Array.isArray(result?.data) ? result.data : [],
           );
         }
 
-        const savedEligibility = loadSavedEligibility();
-
-        sourceEmployees = mergeEligibilityData(
-          sourceEmployees,
-          savedEligibility,
-        );
-
         setEligibilityEmployees(sourceEmployees);
-
+        eligibilityLoadedKeyRef.current = "loaded";
         setEligibilityLoading(false);
       }
 
@@ -928,9 +677,7 @@ export function EmployeeMaster() {
       const changes = buildEligibilityImportChanges(rows, sourceEmployees);
 
       setPendingImportType("eligibility");
-
       setPreviewChanges(changes);
-
       setPreviewOpen(true);
     } catch (error) {
       setEligibilityLoading(false);
@@ -945,20 +692,16 @@ export function EmployeeMaster() {
 
   /* ============================================================
      STATUS PERSISTENCE
-     
-     ONLY STATUS IS UPDATED.
      ============================================================ */
 
   const persistStatusChange = async (empId, nextStatus) => {
-    const normalizedStatus = String(nextStatus ?? "").trim();
+    const normalizedStatus = String(nextStatus || "").trim();
 
     if (normalizedStatus !== "Active" && normalizedStatus !== "Inactive") {
       throw new Error("Invalid employee status.");
     }
 
-    return updateEmployeeMasterEmployee(empId, {
-      status: normalizedStatus,
-    });
+    return updateEmployeeMasterEmployee(empId, { status: normalizedStatus });
   };
 
   /* ============================================================
@@ -980,26 +723,44 @@ export function EmployeeMaster() {
         return employee;
       }
 
-      /*
-       * IMPORTANT:
-       * We change ONLY status.
-       *
-       * eligible
-       * eligibleReason
-       * manualOverride
-       *
-       * remain untouched.
-       */
-
       return {
         ...employee,
         status: nextStatus,
       };
     };
 
-    setEmployees((current) => current.map(updateEmployee));
+    setAllEmployees((current) => current.map(updateEmployee));
 
     setEligibilityEmployees((current) => current.map(updateEmployee));
+
+    setRosterCounts((current) => {
+      let activeDelta = 0;
+
+      successfulChanges.forEach((change) => {
+        const previous = allEmployees.find(
+          (employee) =>
+            normalizeEmpId(employee.empId) === normalizeEmpId(change.empId),
+        );
+
+        if (!previous) {
+          return;
+        }
+
+        if (previous.status === "Active" && change.status === "Inactive") {
+          activeDelta -= 1;
+        }
+
+        if (previous.status === "Inactive" && change.status === "Active") {
+          activeDelta += 1;
+        }
+      });
+
+      return {
+        ...current,
+        active: current.active + activeDelta,
+        inactive: current.inactive - activeDelta,
+      };
+    });
   };
 
   /* ============================================================
@@ -1021,24 +782,9 @@ export function EmployeeMaster() {
       applyLocalStatusChanges([
         {
           empId: employee.empId,
-
           status: nextStatus,
         },
       ]);
-
-      setCounts((current) => ({
-        ...current,
-
-        active: current.active + (nextStatus === "Active" ? 1 : -1),
-
-        inactive: current.inactive + (nextStatus === "Inactive" ? 1 : -1),
-      }));
-
-      /*
-       * No eligibility update.
-       * No eligibility cache write.
-       * No eligibility recalculation.
-       */
 
       showBanner(
         "Status updated",
@@ -1069,7 +815,7 @@ export function EmployeeMaster() {
       return;
     }
 
-    const normalizedStatus = String(nextStatus ?? "").trim();
+    const normalizedStatus = String(nextStatus || "").trim();
 
     if (normalizedStatus !== "Active" && normalizedStatus !== "Inactive") {
       return;
@@ -1083,13 +829,6 @@ export function EmployeeMaster() {
       ).values(),
     );
 
-    if (uniqueEmployees.length === 0) {
-      return;
-    }
-
-    /*
-     * Skip employees that already have the requested status.
-     */
     const employeesToUpdate = uniqueEmployees.filter(
       (employee) => employee.status !== normalizedStatus,
     );
@@ -1112,7 +851,6 @@ export function EmployeeMaster() {
           return {
             empId: employee.empId,
             status: normalizedStatus,
-            previousStatus: employee.status,
           };
         }),
       );
@@ -1131,41 +869,7 @@ export function EmployeeMaster() {
       });
 
       if (successfulChanges.length > 0) {
-        /*
-         * Update ONLY status locally.
-         *
-         * Eligibility fields remain untouched.
-         */
         applyLocalStatusChanges(successfulChanges);
-
-        let activeDelta = 0;
-        let inactiveDelta = 0;
-
-        successfulChanges.forEach((change) => {
-          if (change.previousStatus === change.status) {
-            return;
-          }
-
-          if (change.status === "Active") {
-            activeDelta += 1;
-            inactiveDelta -= 1;
-          } else {
-            activeDelta -= 1;
-            inactiveDelta += 1;
-          }
-        });
-
-        setCounts((current) => ({
-          ...current,
-          active: current.active + activeDelta,
-          inactive: current.inactive + inactiveDelta,
-        }));
-
-        /*
-         * Reload current server page so status filters,
-         * pagination and Catalyst data stay synchronized.
-         */
-        setRefreshKey((value) => value + 1);
       }
 
       if (failedCount > 0) {
@@ -1192,13 +896,10 @@ export function EmployeeMaster() {
   };
 
   /* ============================================================
-     ELIGIBILITY LOCAL STATE
-     
-     IMPORTANT:
-     Eligibility NEVER modifies status.
+     LOCAL ELIGIBILITY UPDATE
      ============================================================ */
 
-  const updateEligibilityState = (successfulChanges) => {
+  const applyLocalEligibilityChanges = (successfulChanges) => {
     const changeMap = new Map(
       successfulChanges.map((change) => [normalizeEmpId(change.empId), change]),
     );
@@ -1214,33 +915,38 @@ export function EmployeeMaster() {
 
       return {
         ...employee,
-
-        /*
-         * Eligibility changes ONLY.
-         */
-
         eligible: nextEligible,
-
+        eligibleStatus: nextEligible === "Yes" ? "Eligible" : "Not Eligible",
         eligibleReason: change.fields?.Reason || employee.eligibleReason || "",
-
         manualOverride: true,
-
-        /*
-         * DO NOT CHANGE STATUS.
-         */
         status: employee.status,
       };
     };
 
-    setEligibilityEmployees((current) => {
-      const updated = current.map(updateEmployee);
+    setEligibilityEmployees((current) => current.map(updateEmployee));
 
-      saveEligibilityCache(updated);
+    setAllEmployees((current) => current.map(updateEmployee));
+  };
 
-      return updated;
-    });
+  /* ============================================================
+     SAVE ELIGIBILITY TO CATALYST
+     ============================================================ */
 
-    setEmployees((current) => current.map(updateEmployee));
+  const persistEligibilityChange = async (change) => {
+    const eligible = change.fields?.Eligible === "Yes" ? "Yes" : "No";
+
+    const eligibleReason = change.fields?.Reason || "";
+
+    await updateEmployeeEligibility(change.empId, eligible, eligibleReason);
+
+    return {
+      empId: change.empId,
+      name: change.name,
+      fields: {
+        Eligible: eligible,
+        Reason: eligibleReason,
+      },
+    };
   };
 
   /* ============================================================
@@ -1250,9 +956,7 @@ export function EmployeeMaster() {
   const confirmImport = async () => {
     if (previewChanges.length === 0) {
       setPreviewOpen(false);
-
       setPreviewChanges([]);
-
       setPendingImportType(null);
 
       showBanner("Nothing to import", "No changes were found in the file.");
@@ -1260,52 +964,43 @@ export function EmployeeMaster() {
       return;
     }
 
-    /* ========================================================
-         ELIGIBILITY IMPORT
-
-         ONLY eligibility fields.
-         NO status update.
-         ======================================================== */
-
     if (pendingImportType === "eligibility") {
       try {
-        const successfulChanges = [];
+        const results = await Promise.allSettled(
+          previewChanges.map((change) => persistEligibilityChange(change)),
+        );
 
+        const successfulChanges = [];
         let failedCount = 0;
 
-        for (const change of previewChanges) {
-          try {
-            /*
-             * Eligibility is currently
-             * a classification only.
-             *
-             * No status persistence.
-             */
-
-            successfulChanges.push(change);
-          } catch {
+        results.forEach((result) => {
+          if (result.status === "fulfilled") {
+            successfulChanges.push(result.value);
+          } else {
             failedCount += 1;
+
+            console.error("Eligibility import update failed:", result.reason);
           }
+        });
+
+        if (successfulChanges.length > 0) {
+          applyLocalEligibilityChanges(successfulChanges);
         }
 
-        updateEligibilityState(successfulChanges);
-
         setPreviewOpen(false);
-
         setPreviewChanges([]);
-
         setPendingImportType(null);
 
         if (failedCount > 0) {
           showBanner(
             "Eligibility import partially completed",
-            `${successfulChanges.length} updated. ${failedCount} record(s) failed.`,
+            `${successfulChanges.length} updated in Catalyst. ${failedCount} record(s) failed.`,
             true,
           );
         } else {
           showBanner(
             "Eligibility imported",
-            `${successfulChanges.length} employee record(s) updated. Active/Inactive status was not changed.`,
+            `${successfulChanges.length} employee record(s) updated in Employees table. Active/Inactive status was not changed.`,
           );
         }
       } catch (error) {
@@ -1319,15 +1014,13 @@ export function EmployeeMaster() {
       return;
     }
 
-    /* ========================================================
-         ROSTER IMPORT
-
-         Keep existing local preview behavior.
-         ======================================================== */
+    /* Roster import */
 
     try {
       const records = previewChanges.map((change) => {
-        const payload = { emp_id: change.empId };
+        const payload = {
+          emp_id: change.empId,
+        };
 
         Object.entries(change.fields || {}).forEach(([key, value]) => {
           const catalystField = ROSTER_FIELD_TO_CATALYST[key];
@@ -1347,16 +1040,16 @@ export function EmployeeMaster() {
       const result = await createEmployeeMasterEmployees(records);
 
       setPreviewOpen(false);
-
       setPreviewChanges([]);
-
       setPendingImportType(null);
 
       setRefreshKey((value) => value + 1);
 
-      const created = result?.data?.created ?? 0;
-      const updated = result?.data?.updated ?? 0;
-      const skipped = result?.data?.skipped ?? 0;
+      const created = result?.data?.created || 0;
+
+      const updated = result?.data?.updated || 0;
+
+      const skipped = result?.data?.skipped || 0;
 
       showBanner(
         "Employee import completed",
@@ -1375,9 +1068,6 @@ export function EmployeeMaster() {
 
   /* ============================================================
      ELIGIBILITY CRITERIA
-     
-     IMPORTANT:
-     This changes ONLY eligibility.
      ============================================================ */
 
   const applyEligibilityCriteria = async ({
@@ -1388,9 +1078,11 @@ export function EmployeeMaster() {
   }) => {
     let evaluated = 0;
 
-    const evaluatedEmployees = eligibilityEmployees.map((employee) => {
+    const changes = [];
+
+    eligibilityEmployees.forEach((employee) => {
       if (employee.manualOverride) {
-        return employee;
+        return;
       }
 
       evaluated += 1;
@@ -1413,77 +1105,75 @@ export function EmployeeMaster() {
         reasons.push("Joined after cutoff date");
       }
 
-      if (reasons.length > 0) {
-        return {
-          ...employee,
+      const nextEligible = reasons.length > 0 ? "No" : "Yes";
 
-          eligible: "No",
+      const nextReason = reasons.join(", ");
 
-          eligibleReason: reasons.join(", "),
-
-          /*
-           * STATUS REMAINS
-           * EXACTLY AS IT WAS.
-           */
-          status: employee.status,
-        };
+      if (
+        employee.eligible !== nextEligible ||
+        employee.eligibleReason !== nextReason
+      ) {
+        changes.push({
+          empId: employee.empId,
+          name: employee.name,
+          fields: {
+            Eligible: nextEligible,
+            Reason: nextReason,
+          },
+        });
       }
-
-      return {
-        ...employee,
-
-        eligible: "Yes",
-
-        eligibleReason: "",
-
-        /*
-         * STATUS REMAINS
-         * EXACTLY AS IT WAS.
-         */
-        status: employee.status,
-      };
     });
 
-    setEligibilityEmployees(evaluatedEmployees);
-
-    setEmployees((current) => {
-      const eligibilityMap = new Map(
-        evaluatedEmployees.map((employee) => [
-          normalizeEmpId(employee.empId),
-          employee,
-        ]),
+    if (changes.length === 0) {
+      showBanner(
+        "Criteria applied",
+        `${evaluated} employee(s) evaluated. No eligibility changes were required.`,
       );
 
-      return current.map((employee) => {
-        const updated = eligibilityMap.get(normalizeEmpId(employee.empId));
+      return;
+    }
 
-        if (!updated) {
-          return employee;
+    try {
+      const results = await Promise.allSettled(
+        changes.map((change) => persistEligibilityChange(change)),
+      );
+
+      const successfulChanges = [];
+      let failedCount = 0;
+
+      results.forEach((result) => {
+        if (result.status === "fulfilled") {
+          successfulChanges.push(result.value);
+        } else {
+          failedCount += 1;
+
+          console.error("Eligibility criteria update failed:", result.reason);
         }
-
-        return {
-          ...employee,
-
-          eligible: updated.eligible,
-
-          eligibleReason: updated.eligibleReason,
-
-          manualOverride: updated.manualOverride,
-
-          /*
-           * Preserve roster status.
-           */
-          status: employee.status,
-        };
       });
-    });
 
-    saveEligibilityCache(evaluatedEmployees);
+      if (successfulChanges.length > 0) {
+        applyLocalEligibilityChanges(successfulChanges);
+      }
 
-    showBanner(
-      "Criteria applied",
-      `${evaluated} employee(s) evaluated. Eligibility was updated without changing Active/Inactive status.`,
-    );
+      if (failedCount > 0) {
+        showBanner(
+          "Criteria partially applied",
+          `${successfulChanges.length} employee(s) updated in Catalyst. ${failedCount} employee(s) failed.`,
+          true,
+        );
+      } else {
+        showBanner(
+          "Criteria applied",
+          `${successfulChanges.length} employee(s) eligibility updated in Catalyst. Active/Inactive status was not changed.`,
+        );
+      }
+    } catch (error) {
+      showBanner(
+        "Criteria update failed",
+        error?.message || "Unable to save eligibility changes to Catalyst.",
+        true,
+      );
+    }
   };
 
   /* ============================================================
@@ -1491,42 +1181,40 @@ export function EmployeeMaster() {
      ============================================================ */
 
   const saveEligibility = async ({ empId, eligible, eligibleReason }) => {
-    const updateEmployee = (employee) =>
-      normalizeEmpId(employee.empId) === normalizeEmpId(empId)
-        ? {
-            ...employee,
+    try {
+      const normalizedEligible = eligible === "Yes" ? "Yes" : "No";
 
-            eligible,
+      await updateEmployeeEligibility(
+        empId,
+        normalizedEligible,
+        eligibleReason || "",
+      );
 
-            eligibleReason: eligibleReason || "",
+      applyLocalEligibilityChanges([
+        {
+          empId,
+          fields: {
+            Eligible: normalizedEligible,
+            Reason: eligibleReason || "",
+          },
+        },
+      ]);
 
-            manualOverride: true,
+      setEligibilityEmployee(null);
 
-            /*
-             * Preserve status.
-             */
-            status: employee.status,
-          }
-        : employee;
-
-    setEligibilityEmployees((current) => {
-      const updated = current.map(updateEmployee);
-
-      saveEligibilityCache(updated);
-
-      return updated;
-    });
-
-    setEmployees((current) => current.map(updateEmployee));
-
-    setEligibilityEmployee(null);
-
-    showBanner(
-      "Eligibility updated",
-      `${empId} is now ${
-        eligible === "Yes" ? "Eligible" : "Not Eligible"
-      }. Active/Inactive status was not changed.`,
-    );
+      showBanner(
+        "Eligibility updated",
+        `${empId} is now ${
+          normalizedEligible === "Yes" ? "Eligible" : "Not Eligible"
+        }. Saved to Employees table. Active/Inactive status was not changed.`,
+      );
+    } catch (error) {
+      showBanner(
+        "Eligibility update failed",
+        error?.message || "Unable to save eligibility to Catalyst.",
+        true,
+      );
+    }
   };
 
   /* ============================================================
@@ -1536,10 +1224,6 @@ export function EmployeeMaster() {
   return (
     <AppShell>
       <div className="employee-master-page">
-        {/* ======================================================
-            PAGE HEADER
-            ====================================================== */}
-
         <div className="em-page-heading">
           <div>
             <h2>Employee Master</h2>
@@ -1550,27 +1234,20 @@ export function EmployeeMaster() {
           <div className="em-page-stats">
             <div>
               <span>Total</span>
-
-              <strong>{total}</strong>
+              <strong>{counts.total}</strong>
             </div>
 
             <div>
               <span>Active</span>
-
-              <strong className="active">{active}</strong>
+              <strong className="active">{counts.active}</strong>
             </div>
 
             <div>
               <span>Inactive</span>
-
-              <strong className="inactive">{inactive}</strong>
+              <strong className="inactive">{counts.inactive}</strong>
             </div>
           </div>
         </div>
-
-        {/* ======================================================
-            TABS
-            ====================================================== */}
 
         <div className="em-tabs">
           <button
@@ -1589,10 +1266,6 @@ export function EmployeeMaster() {
             Eligibility List
           </button>
         </div>
-
-        {/* ======================================================
-            BANNER
-            ====================================================== */}
 
         {banner && (
           <div className={`em-banner ${banner.error ? "error" : ""}`}>
@@ -1615,10 +1288,6 @@ export function EmployeeMaster() {
             </button>
           </div>
         )}
-
-        {/* ======================================================
-            ROSTER TAB
-            ====================================================== */}
 
         {activeTab === "roster" && (
           <div className="em-tab-content">
@@ -1655,10 +1324,10 @@ export function EmployeeMaster() {
                 rows={filteredRosterEmployees}
                 filters={rosterFilters}
                 setFilters={setRosterFilters}
-                currentPage={currentPage}
+                currentPage={rosterSafePage}
                 setCurrentPage={setCurrentPage}
-                totalPages={pagination.totalPages}
-                totalCount={pagination.totalCount}
+                totalPages={rosterTotalPages}
+                totalCount={rosterPagination.totalCount}
                 onToggleStatus={toggleEmployeeStatus}
                 onBulkStatusChange={bulkUpdateEmployeeStatus}
                 bulkStatusUpdating={statusActionLoading}
@@ -1671,10 +1340,6 @@ export function EmployeeMaster() {
             </div>
           </div>
         )}
-
-        {/* ======================================================
-            ELIGIBILITY TAB
-            ====================================================== */}
 
         {activeTab === "eligibility" && (
           <div className="em-tab-content">
@@ -1707,19 +1372,11 @@ export function EmployeeMaster() {
           </div>
         )}
 
-        {/* ======================================================
-            ELIGIBILITY MODAL
-            ====================================================== */}
-
         <EligibilityModal
           employee={eligibilityEmployee}
           onClose={() => setEligibilityEmployee(null)}
           onSave={saveEligibility}
         />
-
-        {/* ======================================================
-            IMPORT PREVIEW
-            ====================================================== */}
 
         <ImportPreviewModal
           open={previewOpen}
@@ -1731,9 +1388,7 @@ export function EmployeeMaster() {
           changes={previewChanges}
           onCancel={() => {
             setPreviewOpen(false);
-
             setPreviewChanges([]);
-
             setPendingImportType(null);
           }}
           onConfirm={confirmImport}

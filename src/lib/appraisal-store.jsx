@@ -29,6 +29,9 @@ const EMPLOYEE_API_URL =
 const AUDIT_API_URL =
   "https://excelappraisal-904056216.development.catalystserverless.com/server/appraisal-audit-api/";
 
+const APPRAISAL_HISTORY_API_URL =
+  "https://excelappraisal-904056216.development.catalystserverless.com/server/appraisal-history-api/";
+
 /* ============================================================
 EMPLOYEE SAVE QUEUE
 ============================================================ */
@@ -36,7 +39,7 @@ EMPLOYEE SAVE QUEUE
 const employeeSaveQueues = new Map();
 
 /* ============================================================
-REACT → CATALYST FIELD MAPPING
+REACT → CATALYST EMPLOYEE FIELD MAPPING
 ============================================================ */
 
 const REACT_TO_CATALYST_FIELD = {
@@ -90,6 +93,42 @@ const REACT_TO_CATALYST_FIELD = {
 };
 
 /* ============================================================
+REACT → PREVIOUS APPRAISAL FIELD MAPPING
+============================================================ */
+
+const REACT_TO_HISTORY_FIELD = {
+  currentAnnualBasePay: "base_pay",
+
+  targetPBAllocatedForMay: "allocated_pb",
+
+  pbInstallment: "allocated_pb_installment",
+
+  pbToBePaid: "performance_bonus",
+
+  newPBInstallment: "performance_bonus_installment",
+
+  newRB: "retention_bonus",
+
+  totalOfPB: "total_pb",
+
+  totalBonus: "total_bonus",
+
+  hikeAmount: "hike_amount",
+
+  hikePct: "hike_pct",
+
+  eligibleForPromotion: "promotion",
+
+  newTitle: "title",
+
+  targetPBNextYear: "target_performance_bonus",
+
+  rating: "rating",
+
+  managerRating: "manager_rating",
+};
+
+/* ============================================================
 NUMERIC FIELDS
 ============================================================ */
 
@@ -109,14 +148,18 @@ const NUMERIC_FIELDS = new Set([
   "hikeAmount",
   "hikePct",
   "targetPBNextYear",
+  "rating",
 ]);
 
 /* ============================================================
 FIELD LABEL
 ============================================================ */
 
-const labelOf = (key) =>
-  COLUMNS.find((column) => column.key === key)?.label ?? String(key);
+const labelOf = (key) => {
+  const column = COLUMNS.find((item) => item.key === key);
+
+  return column?.label || String(key);
+};
 
 /* ============================================================
 VALUE NORMALIZATION
@@ -137,73 +180,102 @@ const normalizeValueForCatalyst = (key, value) => {
 };
 
 /* ============================================================
+HISTORY VALUE NORMALIZATION
+============================================================ */
+
+const normalizeHistoryValue = (key, value) => {
+  if (value === "" || value === null || value === undefined) {
+    return value;
+  }
+
+  if (NUMERIC_FIELDS.has(key)) {
+    const numberValue = Number(value);
+
+    return Number.isFinite(numberValue) ? numberValue : 0;
+  }
+
+  return value;
+};
+
+/* ============================================================
 CATALYST EMPLOYEE → REACT EMPLOYEE
 ============================================================ */
 
 const mapCatalystEmployee = (employee, index) => {
   const id =
-    employee.ROWID ??
-    employee.rowid ??
-    employee.id ??
-    employee.emp_id ??
+    employee.ROWID ||
+    employee.rowid ||
+    employee.id ||
+    employee.emp_id ||
     `employee-${index + 1}`;
 
   return {
     id: String(id),
 
-    empId: String(employee.emp_id ?? ""),
-    name: String(employee.name ?? ""),
-    designation: String(employee.designation ?? ""),
+    empId: String(employee.emp_id || ""),
+    name: String(employee.name || ""),
+    designation: String(employee.designation || ""),
 
-    reportingManager: String(employee.reporting_manager ?? ""),
-    compManager: String(employee.comp_manager ?? ""),
-    appraiserTechED: String(employee.appraiser_tech_ed ?? ""),
+    reportingManager: String(employee.reporting_manager || ""),
+    compManager: String(employee.comp_manager || ""),
+    appraiserTechED: String(employee.appraiser_tech_ed || ""),
 
-    wissenExperience: Number(employee.wissen_experience ?? 0),
-    totalExperience: Number(employee.total_experience ?? 0),
+    wissenExperience: Number(employee.wissen_experience || 0),
+    totalExperience: Number(employee.total_experience || 0),
 
-    lastAppraisalDate: String(employee.last_appraisal_date ?? ""),
-    managerRating: String(employee.manager_rating ?? ""),
-    interviewCount: Number(employee.interview_count ?? 0),
+    lastAppraisalDate: String(employee.last_appraisal_date || ""),
 
-    rrPercent: Number(employee.rr_percent ?? 0),
-    grossMargin: Number(employee.gross_margin ?? 0),
+    rating:
+      employee.rating !== null &&
+      employee.rating !== undefined &&
+      String(employee.rating).trim() !== ""
+        ? Number(employee.rating)
+        : "",
 
-    rbToBePaid: Number(employee.rb_to_be_paid ?? 0),
-    monthRB: String(employee.month_rb ?? ""),
+    managerRating: String(employee.manager_rating || ""),
+    interviewCount: Number(employee.interview_count || 0),
 
-    pbToBePaid: Number(employee.pb_to_be_paid ?? 0),
-    monthPB: String(employee.month_pb ?? ""),
+    rrPercent: Number(employee.rr_percent || 0),
+    grossMargin: Number(employee.gross_margin || 0),
 
-    currentAnnualBasePay: Number(employee.current_annual_base_pay ?? 0),
-    targetPBAllocatedForMay: Number(employee.target_pb_allocated_for_may ?? 0),
-    allocatedPBAmount: Number(employee.allocated_pb_amount ?? 0),
+    rbToBePaid: Number(employee.rb_to_be_paid || 0),
+    monthRB: String(employee.month_rb || ""),
 
-    pbInstallment: String(employee.pb_installment ?? ""),
+    pbToBePaid: Number(employee.pb_to_be_paid || 0),
+    monthPB: String(employee.month_pb || ""),
 
-    newPBToBeOffered: Number(employee.new_pb_to_be_offered ?? 0),
-    newPBInstallment: String(employee.new_pb_installment ?? ""),
+    currentAnnualBasePay: Number(employee.current_annual_base_pay || 0),
 
-    newRB: Number(employee.new_rb ?? 0),
+    targetPBAllocatedForMay: Number(employee.target_pb_allocated_for_may || 0),
 
-    hikeAmount: Number(employee.hike_amount ?? 0),
-    hikePct: Number(employee.hike_pct ?? 0),
+    allocatedPBAmount: Number(employee.allocated_pb_amount || 0),
 
-    targetPBNextYear: Number(employee.target_pb_next_year ?? 0),
+    pbInstallment: String(employee.pb_installment || ""),
 
-    eligibleForPromotion: String(employee.eligible_for_promotion ?? ""),
+    newPBToBeOffered: Number(employee.new_pb_to_be_offered || 0),
 
-    newTitle: String(employee.new_title ?? ""),
-    atRisk: String(employee.at_risk ?? ""),
+    newPBInstallment: String(employee.new_pb_installment || ""),
 
-    manager: String(employee.manager ?? ""),
-    department: String(employee.department ?? ""),
+    newRB: Number(employee.new_rb || 0),
 
-    status: String(employee.status ?? "Active"),
+    hikeAmount: Number(employee.hike_amount || 0),
+    hikePct: Number(employee.hike_pct || 0),
 
-    creatorId: employee.CREATORID ?? null,
-    createdTime: employee.CREATEDTIME ?? null,
-    modifiedTime: employee.MODIFIEDTIME ?? null,
+    targetPBNextYear: Number(employee.target_pb_next_year || 0),
+
+    eligibleForPromotion: String(employee.eligible_for_promotion || ""),
+
+    newTitle: String(employee.new_title || ""),
+    atRisk: String(employee.at_risk || ""),
+
+    manager: String(employee.manager || ""),
+    department: String(employee.department || ""),
+
+    status: String(employee.status || "Active"),
+
+    creatorId: employee.CREATORID || null,
+    createdTime: employee.CREATEDTIME || null,
+    modifiedTime: employee.MODIFIEDTIME || null,
   };
 };
 
@@ -253,6 +325,7 @@ const fetchEmployeePageFromCatalyst = async (
   page = 1,
   limit = 30,
   status = "",
+  eligible = "",
 ) => {
   const url = new URL(EMPLOYEE_API_URL);
 
@@ -261,6 +334,10 @@ const fetchEmployeePageFromCatalyst = async (
 
   if (status) {
     url.searchParams.set("status", status);
+  }
+
+  if (eligible) {
+    url.searchParams.set("eligible", eligible);
   }
 
   const response = await fetch(url.toString(), {
@@ -281,8 +358,13 @@ const fetchEmployeePageFromCatalyst = async (
 FETCH ALL EMPLOYEES
 ============================================================ */
 
-const fetchAllEmployeesFromCatalyst = async (status = "") => {
-  const firstPage = await fetchEmployeePageFromCatalyst(1, 100, status);
+const fetchAllEmployeesFromCatalyst = async (status = "", eligible = "") => {
+  const firstPage = await fetchEmployeePageFromCatalyst(
+    1,
+    100,
+    status,
+    eligible,
+  );
 
   const allEmployees = [...firstPage.data];
 
@@ -290,7 +372,12 @@ const fetchAllEmployeesFromCatalyst = async (status = "") => {
 
   if (totalPages > 1) {
     for (let page = 2; page <= totalPages; page += 1) {
-      const result = await fetchEmployeePageFromCatalyst(page, 100, status);
+      const result = await fetchEmployeePageFromCatalyst(
+        page,
+        100,
+        status,
+        eligible,
+      );
 
       allEmployees.push(...result.data);
     }
@@ -304,7 +391,7 @@ const fetchAllEmployeesFromCatalyst = async (status = "") => {
 };
 
 /* ============================================================
-FETCH ONE EMPLOYEE
+FETCH ONE EMPLOYEE (used only to REVERT on save failure)
 ============================================================ */
 
 const fetchEmployeeByIdFromCatalyst = async (empId) => {
@@ -364,6 +451,86 @@ const saveEmployeeChangeToCatalyst = async ({ empId, key, newValue }) => {
 };
 
 /* ============================================================
+SAVE PREVIOUS APPRAISAL CHANGE
+============================================================ */
+
+const savePreviousAppraisalChangeToCatalyst = async ({
+  empId,
+  key,
+  newValue,
+}) => {
+  const historyField = REACT_TO_HISTORY_FIELD[key];
+
+  if (!historyField) {
+    return null;
+  }
+
+  const historyValue = normalizeHistoryValue(key, newValue);
+
+  const response = await fetch(APPRAISAL_HISTORY_API_URL, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({
+      emp_id: String(empId),
+      appraisal_year: APPRAISAL_YEAR,
+      [historyField]: historyValue,
+    }),
+  });
+
+  const payload = await parseApiResponse(response, "Appraisal History API");
+
+  return payload.data || null;
+};
+
+/* ============================================================
+SAVE MULTIPLE PREVIOUS APPRAISAL CHANGES
+============================================================ */
+
+const savePreviousAppraisalChangesToCatalyst = async ({
+  empId,
+  fieldValues,
+}) => {
+  const historyPayload = {
+    emp_id: String(empId),
+    appraisal_year: APPRAISAL_YEAR,
+  };
+
+  let hasHistoryField = false;
+
+  Object.entries(fieldValues).forEach(([key, value]) => {
+    const historyField = REACT_TO_HISTORY_FIELD[key];
+
+    if (!historyField) {
+      return;
+    }
+
+    historyPayload[historyField] = normalizeHistoryValue(key, value);
+
+    hasHistoryField = true;
+  });
+
+  if (!hasHistoryField) {
+    return null;
+  }
+
+  const response = await fetch(APPRAISAL_HISTORY_API_URL, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify(historyPayload),
+  });
+
+  const payload = await parseApiResponse(response, "Appraisal History API");
+
+  return payload.data || null;
+};
+
+/* ============================================================
 EMPLOYEE SAVE QUEUE
 ============================================================ */
 
@@ -392,49 +559,43 @@ AUDIT RESPONSE → REACT
 ============================================================ */
 
 const mapAuditFromCatalyst = (record, index = 0) => {
-  /*
-   * Catalyst audit API already returns normalized
-   * Appraisal_Audit rows.
-   *
-   * This also supports wrapped rows just in case.
-   */
   const row =
-    record?.Appraisal_Audit ?? record?.appraisal_audit ?? record ?? {};
+    record?.Appraisal_Audit || record?.appraisal_audit || record || {};
 
   const changedAt =
-    row.changed_at ??
-    row.changedAt ??
-    row.at ??
-    row.CREATEDTIME ??
+    row.changed_at ||
+    row.changedAt ||
+    row.at ||
+    row.CREATEDTIME ||
     new Date().toISOString();
 
   return {
     id: String(
-      row.ROWID ?? row.rowid ?? row.id ?? `audit-${Date.now()}-${index}`,
+      row.ROWID || row.rowid || row.id || `audit-${Date.now()}-${index}`,
     ),
 
     at: changedAt,
 
-    user: String(row.changed_by ?? row.changedBy ?? row.user ?? CURRENT_USER),
+    user: String(row.changed_by || row.changedBy || row.user || CURRENT_USER),
 
-    empId: String(row.emp_id ?? row.empId ?? ""),
+    empId: String(row.emp_id || row.empId || ""),
 
     employeeName: String(
-      row.employee_name ?? row.employeeName ?? row.name ?? "",
+      row.employee_name || row.employeeName || row.name || "",
     ),
 
-    field: String(row.field_name ?? row.fieldName ?? row.field ?? ""),
+    field: String(row.field_name || row.fieldName || row.field || ""),
 
-    from: String(row.old_value ?? row.oldValue ?? row.from ?? ""),
+    from: String(row.old_value || row.oldValue || row.from || ""),
 
-    to: String(row.new_value ?? row.newValue ?? row.to ?? ""),
+    to: String(row.new_value || row.newValue || row.to || ""),
 
-    source: String(row.source ?? "manual"),
+    source: String(row.source || "manual"),
 
-    batchId: String(row.batch_id ?? row.batchId ?? ""),
+    batchId: String(row.batch_id || row.batchId || ""),
 
     appraisalYear: String(
-      row.appraisal_year ?? row.appraisalYear ?? APPRAISAL_YEAR,
+      row.appraisal_year || row.appraisalYear || APPRAISAL_YEAR,
     ),
 
     saved: true,
@@ -454,13 +615,7 @@ const fetchAuditHistoryFromCatalyst = async (empId = "") => {
     url.searchParams.set("emp_id", String(empId).trim());
   }
 
-  /*
-   * Cache-buster makes sure the browser does not
-   * reuse an older GET response after refresh.
-   */
   url.searchParams.set("_ts", String(Date.now()));
-
-  console.log("Fetching audit history:", url.toString());
 
   const response = await fetch(url.toString(), {
     method: "GET",
@@ -475,8 +630,6 @@ const fetchAuditHistoryFromCatalyst = async (empId = "") => {
   const payload = await parseApiResponse(response, "Audit API");
 
   const records = Array.isArray(payload.data) ? payload.data : [];
-
-  console.log("Audit API response:", payload);
 
   const mappedRecords = records
     .map((record, index) => mapAuditFromCatalyst(record, index))
@@ -493,8 +646,6 @@ const fetchAuditHistoryFromCatalyst = async (empId = "") => {
     return bTime - aTime;
   });
 
-  console.log("Mapped audit records:", mappedRecords);
-
   return mappedRecords;
 };
 
@@ -508,28 +659,26 @@ const createAuditRecordsInCatalyst = async (entries) => {
   }
 
   const payload = entries.map((entry) => ({
-    emp_id: String(entry.empId ?? ""),
+    emp_id: String(entry.empId || ""),
 
-    employee_name: String(entry.employeeName ?? ""),
+    employee_name: String(entry.employeeName || ""),
 
-    field_name: String(entry.field ?? ""),
+    field_name: String(entry.field || ""),
 
-    old_value: String(entry.from ?? ""),
+    old_value: String(entry.from || ""),
 
-    new_value: String(entry.to ?? ""),
+    new_value: String(entry.to || ""),
 
-    changed_by: String(entry.user ?? CURRENT_USER),
+    changed_by: String(entry.user || CURRENT_USER),
 
-    changed_at: entry.at ?? new Date().toISOString(),
+    changed_at: entry.at || new Date().toISOString(),
 
-    source: String(entry.source ?? "manual"),
+    source: String(entry.source || "manual"),
 
-    batch_id: String(entry.batchId ?? ""),
+    batch_id: String(entry.batchId || ""),
 
-    appraisal_year: String(entry.appraisalYear ?? APPRAISAL_YEAR),
+    appraisal_year: String(entry.appraisalYear || APPRAISAL_YEAR),
   }));
-
-  console.log("Creating audit records:", payload);
 
   const response = await fetch(AUDIT_API_URL, {
     method: "POST",
@@ -565,8 +714,6 @@ const createAuditRecordsInCatalyst = async (entries) => {
     );
   }
 
-  console.log("Audit POST response:", result);
-
   const insertedRecords = Array.isArray(result.data) ? result.data : [];
 
   if (insertedRecords.length) {
@@ -579,24 +726,15 @@ const createAuditRecordsInCatalyst = async (entries) => {
     mapAuditFromCatalyst(
       {
         ...entry,
-
         emp_id: entry.empId,
-
         employee_name: entry.employeeName,
-
         field_name: entry.field,
-
         old_value: entry.from,
-
         new_value: entry.to,
-
         changed_by: entry.user,
-
         changed_at: entry.at,
-
         batch_id: entry.batchId,
-
-        appraisal_year: entry.appraisalYear ?? APPRAISAL_YEAR,
+        appraisal_year: entry.appraisalYear || APPRAISAL_YEAR,
       },
       index,
     ),
@@ -633,7 +771,7 @@ export function AppraisalProvider({ children }) {
       setLoading(true);
       setError("");
 
-      const result = await fetchAllEmployeesFromCatalyst("active");
+      const result = await fetchAllEmployeesFromCatalyst("active", "eligible");
 
       const employees = result.employees.map(mapCatalystEmployee);
 
@@ -641,9 +779,7 @@ export function AppraisalProvider({ children }) {
 
       setEmployeeCounts({
         total: Number(result.counts?.total || 0),
-
         active: Number(result.counts?.active || 0),
-
         inactive: Number(result.counts?.inactive || 0),
       });
 
@@ -673,7 +809,10 @@ export function AppraisalProvider({ children }) {
         setLoading(true);
         setError("");
 
-        const result = await fetchAllEmployeesFromCatalyst("active");
+        const result = await fetchAllEmployeesFromCatalyst(
+          "active",
+          "eligible",
+        );
 
         if (cancelled) {
           return;
@@ -685,9 +824,7 @@ export function AppraisalProvider({ children }) {
 
         setEmployeeCounts({
           total: Number(result.counts?.total || 0),
-
           active: Number(result.counts?.active || 0),
-
           inactive: Number(result.counts?.inactive || 0),
         });
 
@@ -724,16 +861,9 @@ export function AppraisalProvider({ children }) {
 
   const refreshAuditHistory = useCallback(async (empId = "") => {
     try {
-      console.log("Refreshing audit history...", empId || "ALL");
-
       const records = await fetchAuditHistoryFromCatalyst(empId);
 
       setAudit((previous) => {
-        /*
-         * If requesting all history,
-         * replace the server history but
-         * preserve unsaved local records.
-         */
         if (!String(empId).trim()) {
           const serverIds = new Set(records.map((item) => String(item.id)));
 
@@ -746,11 +876,6 @@ export function AppraisalProvider({ children }) {
           );
         }
 
-        /*
-         * If requesting one employee,
-         * replace only that employee's
-         * backend history.
-         */
         const otherEmployees = previous.filter(
           (item) => String(item.empId) !== String(empId),
         );
@@ -764,15 +889,8 @@ export function AppraisalProvider({ children }) {
         );
       });
 
-      console.log("Audit history refreshed successfully:", records);
-
       return records;
     } catch (err) {
-      /*
-       * IMPORTANT:
-       * Do NOT clear existing audit data
-       * if refresh fails.
-       */
       console.error("Failed to refresh audit history:", err);
 
       return [];
@@ -787,11 +905,6 @@ export function AppraisalProvider({ children }) {
     let cancelled = false;
 
     const loadAudit = async () => {
-      /*
-       * Small delay gives the frontend time to
-       * finish provider initialization before
-       * requesting audit data.
-       */
       await new Promise((resolve) => setTimeout(resolve, 150));
 
       if (cancelled) {
@@ -799,15 +912,11 @@ export function AppraisalProvider({ children }) {
       }
 
       try {
-        console.log("Initial audit history load...");
-
         const records = await fetchAuditHistoryFromCatalyst();
 
         if (cancelled) {
           return;
         }
-
-        console.log("Initial audit history loaded:", records);
 
         setAudit((previous) => {
           const serverIds = new Set(records.map((item) => String(item.id)));
@@ -823,9 +932,6 @@ export function AppraisalProvider({ children }) {
       } catch (err) {
         console.error("Initial audit history load failed:", err);
 
-        /*
-         * Retry once.
-         */
         if (!cancelled) {
           setTimeout(async () => {
             if (cancelled) {
@@ -833,15 +939,11 @@ export function AppraisalProvider({ children }) {
             }
 
             try {
-              console.log("Retrying audit history load...");
-
               const retryRecords = await fetchAuditHistoryFromCatalyst();
 
               if (cancelled) {
                 return;
               }
-
-              console.log("Audit history retry successful:", retryRecords);
 
               setAudit((previous) => {
                 const serverIds = new Set(
@@ -858,10 +960,6 @@ export function AppraisalProvider({ children }) {
               });
             } catch (retryError) {
               console.error("Audit history retry failed:", retryError);
-
-              /*
-               * Do NOT clear existing audit state.
-               */
             }
           }, 1000);
         }
@@ -877,6 +975,19 @@ export function AppraisalProvider({ children }) {
 
   /* ==========================================================
   APPLY EDITS — SINGLE FIELD
+
+  IMPORTANT:
+  We no longer re-fetch the employee from Catalyst after a
+  successful save. The optimistic value already applied to
+  `rows` IS the value we just told the backend to store, so
+  there is nothing more accurate to fetch. Re-fetching here
+  used to race with the write and could silently revert a
+  field to a stale value (this is what broke Hike Amount ->
+  Hike % syncing) — and it added a full extra round trip to
+  every single edit, making the grid feel slow.
+
+  On FAILURE we still re-fetch, to resync the UI with whatever
+  the database actually has.
   ========================================================== */
 
   const applyEdits = useCallback((ids, key, compute, source, batchId) => {
@@ -894,33 +1005,22 @@ export function AppraisalProvider({ children }) {
 
         const before = row[key];
 
-        if (String(before ?? "") === String(next ?? "")) {
+        if (String(before || "") === String(next || "")) {
           return row;
         }
 
         const entry = {
           id: nextId(),
-
           at: new Date().toISOString(),
-
           user: CURRENT_USER,
-
           empId: row.empId,
-
           employeeName: row.name,
-
           field: labelOf(key),
-
-          from: String(before ?? ""),
-
-          to: String(next ?? ""),
-
+          from: String(before || ""),
+          to: String(next || ""),
           source: source || "Inline edit",
-
           ...(batchId ? { batchId } : {}),
-
           appraisalYear: APPRAISAL_YEAR,
-
           saved: false,
         };
 
@@ -930,19 +1030,8 @@ export function AppraisalProvider({ children }) {
 
         persistenceQueue.push({
           empId: row.empId,
-
-          employeeName: row.name,
-
           key,
-
-          oldValue: before,
-
           newValue: next,
-
-          source: source || "Inline edit",
-
-          batchId,
-
           auditEntry: entry,
         });
 
@@ -957,9 +1046,6 @@ export function AppraisalProvider({ children }) {
       return 0;
     }
 
-    /*
-     * Show immediately.
-     */
     setAudit((prev) => [...entries.slice().reverse(), ...prev]);
 
     setModified((prev) => ({
@@ -967,150 +1053,83 @@ export function AppraisalProvider({ children }) {
       ...touched,
     }));
 
-    /* ====================================================
-        SAVE EMPLOYEE → AUDIT
-        ==================================================== */
+    persistenceQueue.forEach(({ empId, key, newValue, auditEntry }) => {
+      void queueEmployeeSave(empId, async () => {
+        try {
+          await saveEmployeeChangeToCatalyst({ empId, key, newValue });
 
-    persistenceQueue.forEach(
-      ({ empId, key, oldValue, newValue, auditEntry }) => {
-        void queueEmployeeSave(empId, async () => {
-          try {
-            /*
-             * STEP 1:
-             * Save employee.
-             */
-            console.log("Saving employee change:", empId, key, newValue);
-
-            await saveEmployeeChangeToCatalyst({
+          if (REACT_TO_HISTORY_FIELD[key]) {
+            await savePreviousAppraisalChangeToCatalyst({
               empId,
               key,
               newValue,
             });
+          }
 
-            console.log("Employee PATCH successful:", empId, key);
+          const insertedAudit = await createAuditRecordsInCatalyst([
+            auditEntry,
+          ]);
 
-            /*
-             * STEP 2:
-             * Refresh employee.
-             */
-            const freshEmployee = await fetchEmployeeByIdFromCatalyst(empId);
+          if (insertedAudit.length) {
+            setAudit((prev) =>
+              prev.map((item) =>
+                item.id === auditEntry.id ? insertedAudit[0] : item,
+              ),
+            );
+          } else {
+            setAudit((prev) =>
+              prev.map((item) =>
+                item.id === auditEntry.id
+                  ? { ...item, to: String(newValue || ""), saved: true }
+                  : item,
+              ),
+            );
+          }
+        } catch (saveError) {
+          console.error(
+            `Employee save/history/audit failed for ${empId} / ${key}:`,
+            saveError,
+          );
 
-            const freshReactEmployee = mapCatalystEmployee(freshEmployee, 0);
+          try {
+            const currentEmployee = await fetchEmployeeByIdFromCatalyst(empId);
+
+            const currentReactEmployee = mapCatalystEmployee(
+              currentEmployee,
+              0,
+            );
 
             setRows((prev) =>
               prev.map((row) =>
                 String(row.empId) === String(empId)
-                  ? {
-                      ...freshReactEmployee,
-                      id: row.id,
-                    }
+                  ? { ...currentReactEmployee, id: row.id }
                   : row,
               ),
             );
-
-            /*
-             * STEP 3:
-             * Save audit AFTER
-             * employee save.
-             */
-            const insertedAudit = await createAuditRecordsInCatalyst([
-              auditEntry,
-            ]);
-
-            console.log("Audit POST successful:", insertedAudit);
-
-            /*
-             * STEP 4:
-             * Replace temporary
-             * frontend audit with
-             * Catalyst audit row.
-             */
-            if (insertedAudit.length) {
-              setAudit((prev) =>
-                prev.map((item) =>
-                  item.id === auditEntry.id ? insertedAudit[0] : item,
-                ),
-              );
-            } else {
-              setAudit((prev) =>
-                prev.map((item) =>
-                  item.id === auditEntry.id
-                    ? {
-                        ...item,
-                        saved: true,
-                      }
-                    : item,
-                ),
-              );
-            }
-
-            const actualReactValue = freshReactEmployee[key];
-
-            setAudit((prev) =>
-              prev.map((item) =>
-                item.id === auditEntry.id
-                  ? {
-                      ...item,
-                      to: String(actualReactValue ?? newValue ?? ""),
-                      saved: true,
-                    }
-                  : item,
-              ),
-            );
-
-            return freshReactEmployee;
-          } catch (saveError) {
+          } catch (refreshError) {
             console.error(
-              `Employee save/audit failed for ${empId} / ${key}:`,
-              saveError,
+              "Could not restore employee from database:",
+              refreshError,
             );
-
-            /*
-             * Restore employee only
-             * when employee save failed.
-             */
-            try {
-              const currentEmployee =
-                await fetchEmployeeByIdFromCatalyst(empId);
-
-              const currentReactEmployee = mapCatalystEmployee(
-                currentEmployee,
-                0,
-              );
-
-              setRows((prev) =>
-                prev.map((row) =>
-                  String(row.empId) === String(empId)
-                    ? {
-                        ...currentReactEmployee,
-                        id: row.id,
-                      }
-                    : row,
-                ),
-              );
-            } catch (refreshError) {
-              console.error(
-                "Could not restore employee from database:",
-                refreshError,
-              );
-            }
-
-            setAudit((prev) =>
-              prev.filter((item) => item.id !== auditEntry.id),
-            );
-
-            throw saveError;
           }
-        }).catch(() => {});
-      },
-    );
+
+          setAudit((prev) => prev.filter((item) => item.id !== auditEntry.id));
+
+          throw saveError;
+        }
+      }).catch(() => {});
+    });
 
     return entries.length;
   }, []);
 
   /* ==========================================================
   APPLY LINKED FIELDS EDIT
-  Hike % ↔ Hike Amount
+  HIKE % ↔ HIKE AMOUNT
+
+  Same principle as applyEdits: no re-fetch on success. Both
+  fields are already saved atomically (one PATCH carries both),
+  so both optimistic values are trusted as-is.
   ========================================================== */
 
   const applyLinkedFieldsEdit = useCallback(
@@ -1134,31 +1153,21 @@ export function AppraisalProvider({ children }) {
           Object.entries(fieldValues).forEach(([key, next]) => {
             const before = row[key];
 
-            if (String(before ?? "") === String(next ?? "")) {
+            if (String(before || "") === String(next || "")) {
               return;
             }
 
             const entry = {
               id: nextId(),
-
               at: new Date().toISOString(),
-
               user: CURRENT_USER,
-
               empId: row.empId,
-
               employeeName: row.name,
-
               field: labelOf(key),
-
-              from: String(before ?? ""),
-
-              to: String(next ?? ""),
-
+              from: String(before || ""),
+              to: String(next || ""),
               source,
-
               appraisalYear: APPRAISAL_YEAR,
-
               saved: false,
             };
 
@@ -1203,12 +1212,6 @@ export function AppraisalProvider({ children }) {
             );
           });
 
-          console.log(
-            "Saving linked employee changes:",
-            empId,
-            catalystPayload,
-          );
-
           const response = await fetch(EMPLOYEE_API_URL, {
             method: "PATCH",
             headers: {
@@ -1223,30 +1226,12 @@ export function AppraisalProvider({ children }) {
 
           await parseApiResponse(response, "Employee API");
 
-          console.log("Linked PATCH successful:", empId);
+          await savePreviousAppraisalChangesToCatalyst({
+            empId,
+            fieldValues,
+          });
 
-          const freshEmployee = await fetchEmployeeByIdFromCatalyst(empId);
-
-          const freshReactEmployee = mapCatalystEmployee(freshEmployee, 0);
-
-          setRows((prev) =>
-            prev.map((row) =>
-              String(row.empId) === String(empId)
-                ? {
-                    ...freshReactEmployee,
-                    id: row.id,
-                  }
-                : row,
-            ),
-          );
-
-          /*
-           * Save all linked audit
-           * entries together.
-           */
           const insertedAudit = await createAuditRecordsInCatalyst(entries);
-
-          console.log("Linked audit POST successful:", insertedAudit);
 
           if (insertedAudit.length === entries.length) {
             setAudit((prev) =>
@@ -1270,43 +1255,14 @@ export function AppraisalProvider({ children }) {
             setAudit((prev) =>
               prev.map((item) =>
                 entries.some((entry) => entry.id === item.id)
-                  ? {
-                      ...item,
-                      saved: true,
-                    }
+                  ? { ...item, saved: true }
                   : item,
               ),
             );
           }
-
-          setAudit((prev) =>
-            prev.map((item) => {
-              const entry = entries.find((e) => e.id === item.id);
-
-              if (!entry) {
-                return item;
-              }
-
-              const reactKey = Object.keys(fieldValues).find(
-                (key) => labelOf(key) === entry.field,
-              );
-
-              if (!reactKey) {
-                return item;
-              }
-
-              return {
-                ...item,
-                to: String(freshReactEmployee[reactKey] ?? entry.to ?? ""),
-                saved: true,
-              };
-            }),
-          );
-
-          return freshReactEmployee;
         } catch (saveError) {
           console.error(
-            `Linked employee save/audit failed for ${empId}:`,
+            `Linked employee/history/audit save failed for ${empId}:`,
             saveError,
           );
 
@@ -1321,10 +1277,7 @@ export function AppraisalProvider({ children }) {
             setRows((prev) =>
               prev.map((row) =>
                 String(row.empId) === String(empId)
-                  ? {
-                      ...currentReactEmployee,
-                      id: row.id,
-                    }
+                  ? { ...currentReactEmployee, id: row.id }
                   : row,
               ),
             );
@@ -1436,20 +1389,7 @@ export function AppraisalProvider({ children }) {
         }),
       });
 
-      const payload = await parseApiResponse(response, "Employee API");
-
-      let freshEmployee = payload.data;
-
-      try {
-        freshEmployee = await fetchEmployeeByIdFromCatalyst(empId);
-      } catch (refreshError) {
-        console.warn(
-          "Could not refresh employee after status update:",
-          refreshError,
-        );
-      }
-
-      const freshReactEmployee = mapCatalystEmployee(freshEmployee, 0);
+      await parseApiResponse(response, "Employee API");
 
       if (normalizedStatus === "Inactive") {
         setRows((prev) =>
@@ -1459,10 +1399,7 @@ export function AppraisalProvider({ children }) {
         setRows((prev) =>
           prev.map((row) =>
             String(row.empId) === String(empId)
-              ? {
-                  ...freshReactEmployee,
-                  id: row.id,
-                }
+              ? { ...row, status: normalizedStatus }
               : row,
           ),
         );
@@ -1492,53 +1429,34 @@ export function AppraisalProvider({ children }) {
 
       const statusAudit = {
         id: nextId(),
-
         at: new Date().toISOString(),
-
         user: CURRENT_USER,
-
         empId: String(empId),
-
-        employeeName: String(
-          currentEmployee?.name ?? freshReactEmployee?.name ?? "",
-        ),
-
+        employeeName: String(currentEmployee?.name || ""),
         field: labelOf("status"),
-
         from: previousStatus,
-
         to: normalizedStatus,
-
         source: "Status change",
-
         appraisalYear: APPRAISAL_YEAR,
-
         saved: false,
       };
 
       try {
         const insertedAudit = await createAuditRecordsInCatalyst([statusAudit]);
 
-        if (insertedAudit.length) {
-          setAudit((prev) => [...insertedAudit, ...prev]);
-        } else {
-          setAudit((prev) => [statusAudit, ...prev]);
-        }
-
-        console.log("Status audit saved:", insertedAudit);
+        setAudit((prev) => [
+          insertedAudit.length
+            ? insertedAudit[0]
+            : { ...statusAudit, saved: true },
+          ...prev,
+        ]);
       } catch (auditError) {
         console.error("Status audit save failed:", auditError);
 
-        setAudit((prev) => [
-          {
-            ...statusAudit,
-            saved: false,
-          },
-          ...prev,
-        ]);
+        setAudit((prev) => [{ ...statusAudit, saved: false }, ...prev]);
       }
 
-      return freshEmployee;
+      return currentEmployee;
     },
     [rows],
   );
@@ -1553,7 +1471,6 @@ export function AppraisalProvider({ children }) {
         .filter((item) => String(item.empId) === String(empId))
         .sort((a, b) => {
           const aTime = new Date(a.at).getTime();
-
           const bTime = new Date(b.at).getTime();
 
           if (Number.isNaN(aTime) || Number.isNaN(bTime)) {
@@ -1576,11 +1493,11 @@ export function AppraisalProvider({ children }) {
     }
 
     const possibleHistory =
-      employee.history ??
-      employee.appraisalHistory ??
-      employee.appraisal_history ??
-      employee.previousYears ??
-      employee.previousYearHistory ??
+      employee.history ||
+      employee.appraisalHistory ||
+      employee.appraisal_history ||
+      employee.previousYears ||
+      employee.previousYearHistory ||
       [];
 
     return Array.isArray(possibleHistory) ? possibleHistory : [];
@@ -1601,67 +1518,40 @@ export function AppraisalProvider({ children }) {
   const value = useMemo(
     () => ({
       rows,
-
       audit,
-
       modified,
-
       loading,
-
       error,
-
       employeeCounts,
-
       updateCell,
-
       updateLinkedCells,
-
       bulkUpdate,
-
       updateEmployeeStatus,
-
       historyFor,
-
       appraisalHistoryFor,
-
       refreshEmployees,
-
       refreshAuditHistory,
     }),
     [
       rows,
-
       audit,
-
       modified,
-
       loading,
-
       error,
-
       employeeCounts,
-
       updateCell,
-
       updateLinkedCells,
-
       bulkUpdate,
-
       updateEmployeeStatus,
-
       historyFor,
-
       appraisalHistoryFor,
-
       refreshEmployees,
-
       refreshAuditHistory,
     ],
   );
 
   return _jsx(AppraisalContext.Provider, {
     value,
-
     children,
   });
 }

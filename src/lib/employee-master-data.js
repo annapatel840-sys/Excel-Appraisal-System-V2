@@ -87,6 +87,31 @@ function normalizeStatus(status) {
     : "Active";
 }
 
+function normalizeEligibility(value) {
+  const eligibility = String(value || "")
+    .trim()
+    .toLowerCase();
+
+  if (
+    eligibility === "eligible" ||
+    eligibility === "yes" ||
+    eligibility === "true"
+  ) {
+    return "Yes";
+  }
+
+  if (
+    eligibility === "not eligible" ||
+    eligibility === "noteligible" ||
+    eligibility === "no" ||
+    eligibility === "false"
+  ) {
+    return "No";
+  }
+
+  return "";
+}
+
 function calculateOrganizationExperience(joiningDate) {
   if (!joiningDate) {
     return "";
@@ -135,32 +160,32 @@ export function mapEmployeeFromApi(employee) {
   const row = unwrapEmployee(employee);
 
   const joiningDate =
-    row?.Joining_date ||
-    row?.joining_date ||
-    row?.doj ||
-    row?.date_of_joining ||
-    row?.dateOfJoining ||
-    row?.joiningDate ||
+    row.Joining_date ||
+    row.joining_date ||
+    row.doj ||
+    row.date_of_joining ||
+    row.dateOfJoining ||
+    row.joiningDate ||
     "";
 
   const reportingManager =
-    row?.reporting_manager || row?.reportingManager || row?.manager || "";
+    row.reporting_manager || row.reportingManager || row.manager || "";
 
-  const compManager = row?.comp_manager || row?.compManager || "";
+  const compManager = row.comp_manager || row.compManager || "";
 
   const superManager =
-    row?.super_manager ||
-    row?.superManager ||
-    row?.appraiser_tech_ed ||
-    row?.appraiserTechED ||
+    row.super_manager ||
+    row.superManager ||
+    row.appraiser_tech_ed ||
+    row.appraiserTechED ||
     "";
 
   const appraiser =
-    row?.appraiser ||
-    row?.appraiser_tech_ed ||
-    row?.appraiserTechED ||
-    row?.super_manager ||
-    row?.superManager ||
+    row.appraiser ||
+    row.appraiser_tech_ed ||
+    row.appraiserTechED ||
+    row.super_manager ||
+    row.superManager ||
     "";
 
   /*
@@ -168,27 +193,59 @@ export function mapEmployeeFromApi(employee) {
    * ORGANIZATION EXPERIENCE
    * ============================================================
    *
-   * IMPORTANT:
-   * This value comes DIRECTLY from the Catalyst Data Store
-   * field:
+   * This value comes directly from:
    *
-   *     wissen_experience
-   *
-   * It is NOT calculated from Joining_date.
+   * Employees.wissen_experience
    */
 
   const organizationExperience =
-    row?.wissen_experience ?? row?.wissenExperience ?? row?.orgExp ?? "";
+    row.wissen_experience !== undefined &&
+    row.wissen_experience !== null &&
+    row.wissen_experience !== ""
+      ? row.wissen_experience
+      : row.wissenExperience !== undefined &&
+          row.wissenExperience !== null &&
+          row.wissenExperience !== ""
+        ? row.wissenExperience
+        : row.orgExp !== undefined && row.orgExp !== null && row.orgExp !== ""
+          ? row.orgExp
+          : "";
+
+  /*
+   * ============================================================
+   * ELIGIBILITY
+   * ============================================================
+   *
+   * Source of truth:
+   *
+   * Employees.eligible_status
+   *
+   * The existing UI uses employee.eligible as Yes / No,
+   * so we keep that frontend property for compatibility.
+   */
+
+  const eligibilityValue =
+    row.eligible_status !== undefined &&
+    row.eligible_status !== null &&
+    row.eligible_status !== ""
+      ? row.eligible_status
+      : row.eligible;
+
+  const mappedEligibility = normalizeEligibility(eligibilityValue);
 
   return {
-    empId: String(row?.emp_id ?? row?.empId ?? "").trim(),
+    empId: String(
+      row.emp_id !== undefined && row.emp_id !== null
+        ? row.emp_id
+        : row.empId || "",
+    ).trim(),
 
-    name: String(row?.name ?? "").trim(),
+    name: String(row.name || "").trim(),
 
-    designation: String(row?.designation ?? "").trim(),
+    designation: String(row.designation || "").trim(),
 
     organization: String(
-      row?.organization ?? row?.department ?? row?.orgtn ?? "",
+      row.organization || row.department || row.orgtn || "",
     ).trim(),
 
     doj: String(joiningDate).trim(),
@@ -207,9 +264,9 @@ export function mapEmployeeFromApi(employee) {
         : "",
 
     totalExp:
-      row?.total_experience !== undefined &&
-      row?.total_experience !== null &&
-      row?.total_experience !== ""
+      row.total_experience !== undefined &&
+      row.total_experience !== null &&
+      row.total_experience !== ""
         ? Number(row.total_experience)
         : calculateOrganizationExperience(joiningDate),
 
@@ -222,40 +279,50 @@ export function mapEmployeeFromApi(employee) {
     appraiser: String(appraiser).trim(),
 
     managerMail: String(
-      row?.manager_email_id ??
-        row?.manager_mail ??
-        row?.managerMail ??
-        row?.manager_email ??
-        row?.managerEmail ??
+      row.manager_email_id ||
+        row.manager_mail ||
+        row.managerMail ||
+        row.manager_email ||
+        row.managerEmail ||
         "",
     ).trim(),
 
     superManagerMail: String(
-      row?.super_man_email_id ??
-        row?.super_manager_mail ??
-        row?.superManagerMail ??
-        row?.super_manager_email ??
-        row?.superManagerEmail ??
+      row.super_man_email_id ||
+        row.super_manager_mail ||
+        row.superManagerMail ||
+        row.super_manager_email ||
+        row.superManagerEmail ||
         "",
     ).trim(),
 
-    status: normalizeStatus(row?.status),
+    status: normalizeStatus(row.status),
 
     /*
-     * Eligibility remains completely separate
-     * from Active / Inactive status.
+     * Eligibility comes from Employees.eligible_status.
+     *
+     * Existing UI continues to use:
+     * Yes = Eligible
+     * No = Not Eligible
      */
-    eligible: String(row?.eligible || "").toLowerCase() === "no" ? "No" : "Yes",
+    eligible: mappedEligibility || "No",
 
-    eligibleReason: String(
-      row?.eligibleReason ?? row?.eligible_reason ?? "",
+    /*
+     * Keep the actual Data Store value available.
+     */
+    eligibleStatus: String(
+      row.eligible_status !== undefined && row.eligible_status !== null
+        ? row.eligible_status
+        : "",
     ).trim(),
 
-    manualOverride: Boolean(
-      row?.manualOverride ?? row?.manual_override ?? false,
-    ),
+    eligibleReason: String(
+      row.eligibleReason || row.eligible_reason || "",
+    ).trim(),
 
-    catalystRowId: String(row?.ROWID ?? row?.rowid ?? ""),
+    manualOverride: Boolean(row.manualOverride || row.manual_override || false),
+
+    catalystRowId: String(row.ROWID || row.rowid || ""),
 
     /*
      * Keep original Catalyst row available.
@@ -263,6 +330,10 @@ export function mapEmployeeFromApi(employee) {
     rawEmployee: row,
   };
 }
+
+/* ============================================================
+   FETCH EMPLOYEE MASTER EMPLOYEES
+   ============================================================ */
 
 export async function fetchEmployeeMasterEmployees({
   page = 1,
@@ -274,6 +345,7 @@ export async function fetchEmployeeMasterEmployees({
 
   url.searchParams.set("page", String(page));
   url.searchParams.set("limit", String(limit));
+  url.searchParams.set("view", "master");
 
   const normalizedSearch = String(search || "").trim();
 
@@ -303,8 +375,8 @@ export async function fetchEmployeeMasterEmployees({
 
   const result = await response.json();
 
-  if (!result?.success) {
-    throw new Error(result?.message || "Failed to load employees.");
+  if (!result.success) {
+    throw new Error(result.message || "Failed to load employees.");
   }
 
   const employees = Array.isArray(result.data)
@@ -315,38 +387,170 @@ export async function fetchEmployeeMasterEmployees({
     data: employees,
 
     pagination: {
-      page: result?.pagination?.page ?? page,
+      page:
+        result.pagination && result.pagination.page !== undefined
+          ? result.pagination.page
+          : page,
 
-      limit: result?.pagination?.limit ?? limit,
+      limit:
+        result.pagination && result.pagination.limit !== undefined
+          ? result.pagination.limit
+          : limit,
 
-      totalCount: result?.pagination?.totalCount ?? employees.length,
+      totalCount:
+        result.pagination && result.pagination.totalCount !== undefined
+          ? result.pagination.totalCount
+          : employees.length,
 
-      totalPages: result?.pagination?.totalPages ?? 1,
+      totalPages:
+        result.pagination && result.pagination.totalPages !== undefined
+          ? result.pagination.totalPages
+          : 1,
     },
 
     counts: {
       total:
-        result?.counts?.total ??
-        result?.pagination?.totalCount ??
-        employees.length,
+        result.counts && result.counts.total !== undefined
+          ? result.counts.total
+          : result.pagination && result.pagination.totalCount !== undefined
+            ? result.pagination.totalCount
+            : employees.length,
 
-      active: result?.counts?.active ?? 0,
+      active:
+        result.counts && result.counts.active !== undefined
+          ? result.counts.active
+          : 0,
 
-      inactive: result?.counts?.inactive ?? 0,
+      inactive:
+        result.counts && result.counts.inactive !== undefined
+          ? result.counts.inactive
+          : 0,
     },
 
     filters: {
-      search: result?.filters?.search ?? normalizedSearch,
+      search:
+        result.filters && result.filters.search !== undefined
+          ? result.filters.search
+          : normalizedSearch,
 
-      status: result?.filters?.status ?? normalizedStatus,
+      status:
+        result.filters && result.filters.status !== undefined
+          ? result.filters.status
+          : normalizedStatus,
     },
   };
 }
 
-/*
- * ============================================================
- * UPDATE EMPLOYEE
- * ============================================================
+/* ============================================================
+   FETCH ELIGIBILITY LIST
+   ============================================================
+ *
+ * Source:
+ * Employees Data Store
+ *
+ * Backend view:
+ * ?view=eligibility
+ *
+ * This returns ALL employees:
+ * Eligible + Not Eligible
+ * Active + Inactive
+ */
+
+export async function fetchEligibilityEmployees({
+  page = 1,
+  limit = 20,
+  search = "",
+} = {}) {
+  const url = new URL(EMPLOYEE_API_URL);
+
+  url.searchParams.set("view", "eligibility");
+  url.searchParams.set("page", String(page));
+  url.searchParams.set("limit", String(limit));
+
+  const normalizedSearch = String(search || "").trim();
+
+  if (normalizedSearch) {
+    url.searchParams.set("search", normalizedSearch);
+  }
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `Eligibility Employee API failed with status ${response.status}`,
+    );
+  }
+
+  const result = await response.json();
+
+  if (!result.success) {
+    throw new Error(
+      result.message || "Failed to load Eligibility List employees.",
+    );
+  }
+
+  const employees = Array.isArray(result.data)
+    ? result.data.map(mapEmployeeFromApi)
+    : [];
+
+  return {
+    data: employees,
+
+    pagination: {
+      page:
+        result.pagination && result.pagination.page !== undefined
+          ? result.pagination.page
+          : page,
+
+      limit:
+        result.pagination && result.pagination.limit !== undefined
+          ? result.pagination.limit
+          : limit,
+
+      totalCount:
+        result.pagination && result.pagination.totalCount !== undefined
+          ? result.pagination.totalCount
+          : employees.length,
+
+      totalPages:
+        result.pagination && result.pagination.totalPages !== undefined
+          ? result.pagination.totalPages
+          : 1,
+
+      returnedCount:
+        result.pagination && result.pagination.returnedCount !== undefined
+          ? result.pagination.returnedCount
+          : employees.length,
+    },
+
+    counts: {
+      total:
+        result.counts && result.counts.total !== undefined
+          ? result.counts.total
+          : 0,
+
+      active:
+        result.counts && result.counts.active !== undefined
+          ? result.counts.active
+          : 0,
+
+      inactive:
+        result.counts && result.counts.inactive !== undefined
+          ? result.counts.inactive
+          : 0,
+    },
+  };
+}
+
+/* ============================================================
+   UPDATE EMPLOYEE
+   ============================================================
  *
  * Used by Employee Master for Active / Inactive updates.
  *
@@ -403,25 +607,130 @@ export async function updateEmployeeMasterEmployee(empId, data = {}) {
 
   if (!response.ok) {
     throw new Error(
-      result?.message ||
-        result?.error ||
+      (result && result.message) ||
+        (result && result.error) ||
         responseText ||
         `Employee update failed with status ${response.status}`,
     );
   }
 
-  if (!result?.success) {
+  if (!result || !result.success) {
     throw new Error(
-      result?.message || result?.error || "Failed to update employee.",
+      (result && result.message) ||
+        (result && result.error) ||
+        "Failed to update employee.",
     );
   }
 
   return {
     ...result,
 
-    data: result?.data ? mapEmployeeFromApi(result.data) : null,
+    data: result.data ? mapEmployeeFromApi(result.data) : null,
   };
 }
+
+/* ============================================================
+   UPDATE EMPLOYEE ELIGIBILITY
+   ============================================================
+ *
+ * Source of truth:
+ * Employees.eligible_status
+ *
+ * Yes -> Eligible
+ * No  -> Not Eligible
+ */
+
+export async function updateEmployeeEligibility(
+  empId,
+  eligible,
+  eligibleReason = "",
+) {
+  const normalizedEmpId = String(empId || "").trim();
+
+  if (!normalizedEmpId) {
+    throw new Error("Employee ID is required.");
+  }
+
+  const normalizedEligible = String(eligible || "")
+    .trim()
+    .toLowerCase();
+
+  let eligibleStatus = "";
+
+  if (normalizedEligible === "yes" || normalizedEligible === "eligible") {
+    eligibleStatus = "Eligible";
+  } else if (
+    normalizedEligible === "no" ||
+    normalizedEligible === "not eligible" ||
+    normalizedEligible === "noteligible"
+  ) {
+    eligibleStatus = "Not Eligible";
+  } else {
+    throw new Error("Eligibility must be Eligible or Not Eligible.");
+  }
+
+  const payload = {
+    emp_id: normalizedEmpId,
+    eligible_status: eligibleStatus,
+  };
+
+  console.log("[Eligibility List] Updating eligibility:", payload);
+
+  const response = await fetch(EMPLOYEE_API_URL, {
+    method: "PATCH",
+
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+
+    body: JSON.stringify(payload),
+  });
+
+  const responseText = await response.text();
+
+  let result = null;
+
+  try {
+    result = responseText ? JSON.parse(responseText) : null;
+  } catch {
+    result = null;
+  }
+
+  console.log("[Eligibility List] Update response:", response.status, result);
+
+  if (!response.ok) {
+    throw new Error(
+      (result && result.message) ||
+        (result && result.error) ||
+        responseText ||
+        `Eligibility update failed with status ${response.status}`,
+    );
+  }
+
+  if (!result || !result.success) {
+    throw new Error(
+      (result && result.message) ||
+        (result && result.error) ||
+        "Failed to update employee eligibility.",
+    );
+  }
+
+  return {
+    ...result,
+
+    data: result.data ? mapEmployeeFromApi(result.data) : null,
+
+    eligibleStatus: eligibleStatus,
+
+    eligibleReason: String(eligibleReason || "").trim(),
+  };
+}
+
+/* ============================================================
+   CREATE / IMPORT EMPLOYEES
+   ============================================================ */
+
 export async function createEmployeeMasterEmployees(records) {
   if (!Array.isArray(records) || records.length === 0) {
     throw new Error("No employee records to import.");
@@ -429,28 +738,39 @@ export async function createEmployeeMasterEmployees(records) {
 
   const response = await fetch(EMPLOYEE_API_URL, {
     method: "POST",
+
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ employees: records }),
+
+    body: JSON.stringify({
+      employees: records,
+    }),
   });
 
   const result = await response.json().catch(() => null);
 
   if (!response.ok) {
     throw new Error(
-      result?.message ||
+      (result && result.message) ||
         `Employee import failed with status ${response.status}`,
     );
   }
 
-  if (!result?.success) {
-    throw new Error(result?.message || "Failed to import employees.");
+  if (!result || !result.success) {
+    throw new Error(
+      (result && result.message) || "Failed to import employees.",
+    );
   }
 
   return result;
 }
+
+/* ============================================================
+   FETCH ALL EMPLOYEE MASTER EMPLOYEES
+   ============================================================ */
+
 export async function fetchAllEmployeeMasterEmployees() {
   const firstPage = await fetchEmployeeMasterEmployees({
     page: 1,

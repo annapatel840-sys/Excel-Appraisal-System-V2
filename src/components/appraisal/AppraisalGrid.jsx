@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Check, ChevronLeft, ChevronRight, History, X } from "lucide-react";
 
 import { Checkbox } from "@/components/ui/checkbox";
@@ -7,22 +14,24 @@ import { ColumnFilter } from "./ColumnFilter";
 import { COLUMNS, formatValue } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
 
-/* ============================================================
-   API
-   ============================================================ */
+// ============================================================
+// API
+// ============================================================
 
 const APPRAISAL_HISTORY_API_URL =
   "https://excelappraisal-904056216.development.catalystserverless.com/server/appraisal-history-api/";
 
-/* ============================================================
-   FONT
-   ============================================================ */
+const CURRENT_APPRAISAL_YEAR = "Apr-26";
+
+// ============================================================
+// FONT
+// ============================================================
 
 const APPRAISAL_FONT = "Arial, Helvetica, sans-serif";
 
-/* ============================================================
-   GRID SETTINGS
-   ============================================================ */
+// ============================================================
+// GRID SETTINGS
+// ============================================================
 
 const PAGE_SIZE = 20;
 const CELL_MIN_HEIGHT = 30;
@@ -86,9 +95,9 @@ const WIDTHS = {
 
 const GRID_COLUMNS = COLUMNS;
 
-/* ============================================================
-   HELPERS
-   ============================================================ */
+// ============================================================
+// HELPERS
+// ============================================================
 
 const isNumericType = (type) =>
   type === "currency" ||
@@ -99,7 +108,14 @@ const isNumericType = (type) =>
 const getWidth = (column) =>
   Math.min(
     MAX_WIDTH,
-    Math.max(MIN_WIDTH, WIDTHS[column.key] ?? column.width ?? 90),
+    Math.max(
+      MIN_WIDTH,
+      WIDTHS[column.key] !== undefined
+        ? WIDTHS[column.key]
+        : column.width !== undefined
+          ? column.width
+          : 90,
+    ),
   );
 
 const numericValue = (value) => {
@@ -112,9 +128,9 @@ const numericValue = (value) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-/* ============================================================
-   HISTORY HELPERS
-   ============================================================ */
+// ============================================================
+// HISTORY HELPERS
+// ============================================================
 
 const formatHistoryNumber = (value) => {
   if (value === null || value === undefined || value === "") {
@@ -129,17 +145,6 @@ const formatHistoryNumber = (value) => {
 
   return Math.round(n).toLocaleString("en-IN");
 };
-
-/*
- * ------------------------------------------------------------
- * HISTORY % CHANGE
- * ------------------------------------------------------------
- *
- * historyData is sorted newest-first. For a given row, the
- * "previous" value is the NEXT row in the array (the year
- * before it). If there is no next row, this is the oldest
- * year on record, so it's labelled "new" instead of a %.
- */
 
 const computeHistoryChange = (currentValue, previousValue) => {
   if (previousValue === undefined) {
@@ -166,11 +171,22 @@ const computeHistoryChange = (currentValue, previousValue) => {
   };
 };
 
-/*
- * ------------------------------------------------------------
- * BOTTOM HISTORY PANEL METRIC COLUMNS
- * ------------------------------------------------------------
- */
+// ============================================================
+// FIELD -> HISTORY COLUMN KEYS TO FLASH ON EDIT
+// ============================================================
+
+const HISTORY_FLASH_FIELDS = {
+  allocatedPBAmount: ["performanceBonus", "totalBonus", "newCTC"],
+  newPBToBeOffered: ["performanceBonus", "totalBonus", "newCTC"],
+  newRB: ["retentionBonus", "totalBonus", "newCTC"],
+  hikeAmount: ["hikeAmount", "newCTC", "newBasePay"],
+  hikePct: ["hikeAmount", "newCTC", "newBasePay"],
+  targetPBNextYear: ["targetPB"],
+};
+
+// ============================================================
+// BOTTOM HISTORY PANEL METRIC COLUMNS
+// ============================================================
 
 const HISTORY_METRIC_COLUMNS = [
   { key: "basePay", label: "Curr Base Pay" },
@@ -184,24 +200,24 @@ const HISTORY_METRIC_COLUMNS = [
   { key: "newBasePay", label: "New Base Pay" },
 ];
 
-/* ============================================================
-   HISTORY RECORD NORMALIZER
-   ============================================================ */
+// ============================================================
+// HISTORY RECORD NORMALIZER
+// ============================================================
 
 const normalizeHistoryRecord = (record) => {
   const basePay = Number(record?.base_pay) || 0;
   const hikeAmount = Number(record?.hike_amount) || 0;
 
   return {
-    year: String(record?.appraisal_year ?? "—"),
+    year:
+      record?.appraisal_year !== null &&
+      record?.appraisal_year !== undefined &&
+      String(record.appraisal_year).trim() !== ""
+        ? String(record.appraisal_year)
+        : "—",
 
     basePay,
 
-    /*
-     * Guessing the Catalyst column name is "joining_bonus".
-     * If the real column is named differently, change this
-     * one line — everything else keeps working.
-     */
     joiningBonus: Number(record?.joining_bonus) || 0,
 
     allocatedPB: Number(record?.allocated_pb) || 0,
@@ -221,44 +237,96 @@ const normalizeHistoryRecord = (record) => {
     promotion:
       record?.promotion !== null &&
       record?.promotion !== undefined &&
-      String(record?.promotion).trim() !== ""
+      String(record.promotion).trim() !== ""
         ? String(record.promotion)
         : "—",
 
     title:
       record?.title !== null &&
       record?.title !== undefined &&
-      String(record?.title).trim() !== ""
+      String(record.title).trim() !== ""
         ? String(record.title)
         : "—",
 
-    /*
-     * Guessing the Catalyst column name is "feedback".
-     * If the real column is named differently, change this
-     * one line — everything else keeps working.
-     */
+    rating:
+      record?.rating !== null &&
+      record?.rating !== undefined &&
+      String(record.rating).trim() !== ""
+        ? String(record.rating)
+        : "—",
+
     feedback:
-      record?.feedback !== null &&
-      record?.feedback !== undefined &&
-      String(record?.feedback).trim() !== ""
-        ? String(record.feedback)
-        : "",
+      record?.manager_rating !== null &&
+      record?.manager_rating !== undefined &&
+      String(record.manager_rating).trim() !== ""
+        ? String(record.manager_rating)
+        : "—",
 
     targetPB: Number(record?.target_performance_bonus) || 0,
 
     newCTC: Number(record?.new_ctc) || 0,
 
-    /*
-     * New Base Pay is not a stored column — it's the base pay
-     * plus that year's hike, computed here.
-     */
     newBasePay: basePay + hikeAmount,
   };
 };
 
-/* ============================================================
-   COMPONENT
-   ============================================================ */
+// ============================================================
+// APPLY LIVE SHEET VALUES TO CURRENT-YEAR HISTORY
+// ============================================================
+
+const applyCurrentYearSheetValues = (historyRecord, row) => {
+  if (!row) {
+    return historyRecord;
+  }
+
+  if (String(historyRecord.year) !== CURRENT_APPRAISAL_YEAR) {
+    return historyRecord;
+  }
+
+  const allocatedPBAmount = Number(row.allocatedPBAmount) || 0;
+  const newPBToBeOffered = Number(row.newPBToBeOffered) || 0;
+  const newRB = Number(row.newRB) || 0;
+  const currentAnnualBasePay = Number(row.currentAnnualBasePay) || 0;
+  const hikeAmount = Number(row.hikeAmount) || 0;
+  const targetPBNextYear = Number(row.targetPBNextYear) || 0;
+
+  const totalPB = allocatedPBAmount + newPBToBeOffered;
+  const totalBonus = totalPB + newRB;
+
+  const newBaseSalary = currentAnnualBasePay + hikeAmount;
+  const newCTC = newBaseSalary + totalBonus;
+
+  return {
+    ...historyRecord,
+    basePay: currentAnnualBasePay,
+    allocatedPB: allocatedPBAmount,
+    performanceBonus: totalPB,
+    retentionBonus: newRB,
+    totalPB,
+    totalBonus,
+    hikeAmount,
+    hikePct: Number(row.hikePct) || 0,
+    promotion:
+      row.eligibleForPromotion !== null &&
+      row.eligibleForPromotion !== undefined &&
+      String(row.eligibleForPromotion).trim() !== ""
+        ? String(row.eligibleForPromotion)
+        : "—",
+    title:
+      row.newTitle !== null &&
+      row.newTitle !== undefined &&
+      String(row.newTitle).trim() !== ""
+        ? String(row.newTitle)
+        : "—",
+    targetPB: targetPBNextYear,
+    newCTC,
+    newBasePay: newBaseSalary,
+  };
+};
+
+// ============================================================
+// COMPONENT
+// ============================================================
 
 export function AppraisalGrid({
   rows,
@@ -272,14 +340,15 @@ export function AppraisalGrid({
   showHistory,
   setShowHistory,
 }) {
-  const { updateCell, updateLinkedCells, modified } = useAppraisal();
+  const { updateCell, updateLinkedCells, modified, historyRefreshVersion } =
+    useAppraisal();
 
   const cellRefs = useRef({});
   const clickTimerRef = useRef(null);
 
-  /* ============================================================
-     LOCAL EDIT DRAFTS
-   ============================================================ */
+  // ============================================================
+  // LOCAL EDIT DRAFTS
+  // ============================================================
 
   const [editingValues, setEditingValues] = useState({});
 
@@ -296,9 +365,7 @@ export function AppraisalGrid({
         return previous;
       }
 
-      const next = {
-        ...previous,
-      };
+      const next = { ...previous };
 
       delete next[cellKey];
 
@@ -306,15 +373,15 @@ export function AppraisalGrid({
     });
   }, []);
 
-  /* ============================================================
-     GRID VIEWPORT REF
-     ============================================================ */
+  // ============================================================
+  // GRID VIEWPORT REF
+  // ============================================================
 
   const gridViewportRef = useRef(null);
 
-  /* ============================================================
-     COLUMN RESIZE
-     ============================================================ */
+  // ============================================================
+  // COLUMN RESIZE
+  // ============================================================
 
   const [columnWidths, setColumnWidths] = useState(() =>
     Object.fromEntries(
@@ -325,9 +392,10 @@ export function AppraisalGrid({
   const resizeRef = useRef(null);
 
   const widthOf = useCallback(
-    (column) => {
-      return columnWidths[column.key] ?? getWidth(column);
-    },
+    (column) =>
+      columnWidths[column.key] !== undefined
+        ? columnWidths[column.key]
+        : getWidth(column),
     [columnWidths],
   );
 
@@ -361,15 +429,11 @@ export function AppraisalGrid({
         Math.max(MIN_WIDTH, startWidth + event.clientX - startX),
       );
 
-      setColumnWidths((previous) => ({
-        ...previous,
-        [key]: nextWidth,
-      }));
+      setColumnWidths((previous) => ({ ...previous, [key]: nextWidth }));
     };
 
     const handlePointerUp = () => {
       resizeRef.current = null;
-
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
@@ -380,15 +444,14 @@ export function AppraisalGrid({
     return () => {
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
-
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
   }, []);
 
-  /* ============================================================
-     STICKY COLUMN WIDTHS
-     ============================================================ */
+  // ============================================================
+  // STICKY COLUMN WIDTHS
+  // ============================================================
 
   const empIdColumn = GRID_COLUMNS.find((column) => column.key === "empId");
   const nameColumn = GRID_COLUMNS.find((column) => column.key === "name");
@@ -398,17 +461,149 @@ export function AppraisalGrid({
 
   void nameWidth;
 
-  /* ============================================================
-     STATES
-     ============================================================ */
+  // ============================================================
+  // STATES
+  // ============================================================
 
   const [active, setActive] = useState(null);
   const [saving, setSaving] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
 
-  /* ============================================================
-     HISTORY DETAILS (bottom panel)
-     ============================================================ */
+  // ============================================================
+  // GROUP BY
+  // ============================================================
+
+  const [groupBy, setGroupBy] = useState(null); // { key, dir, label } | null
+
+  const getGroupValue = useCallback((row, col) => {
+    if (col.computed && typeof col.fn === "function") {
+      return col.fn(row);
+    }
+
+    return row[col.key];
+  }, []);
+
+  const compareGroupValues = useCallback(
+    (rowA, rowB, col) => {
+      const a = getGroupValue(rowA, col);
+      const b = getGroupValue(rowB, col);
+
+      if (isNumericType(col.type)) {
+        return (Number(a) || 0) - (Number(b) || 0);
+      }
+
+      return String(a !== null && a !== undefined ? a : "").localeCompare(
+        String(b !== null && b !== undefined ? b : ""),
+      );
+    },
+    [getGroupValue],
+  );
+
+  const groupedSections = useMemo(() => {
+    if (!groupBy) {
+      return null;
+    }
+
+    const col = GRID_COLUMNS.find((item) => item.key === groupBy.key);
+
+    if (!col) {
+      return null;
+    }
+
+    const sorted = [...rows].sort((a, b) => {
+      const result = compareGroupValues(a, b, col);
+
+      return groupBy.dir === "desc" ? -result : result;
+    });
+
+    const sections = [];
+    let currentKey;
+    let currentSection = null;
+
+    sorted.forEach((row) => {
+      const rawValue = getGroupValue(row, col);
+
+      const displayValue = formatValue(row, col);
+
+      const label =
+        displayValue === "" ||
+        displayValue === null ||
+        displayValue === undefined
+          ? "(blank)"
+          : displayValue;
+
+      if (currentSection === null || rawValue !== currentKey) {
+        currentKey = rawValue;
+
+        currentSection = {
+          key: `${groupBy.key}:${String(rawValue)}:${sections.length}`,
+          label,
+          rows: [],
+        };
+
+        sections.push(currentSection);
+      }
+
+      currentSection.rows.push(row);
+    });
+
+    return sections;
+  }, [groupBy, rows, compareGroupValues, getGroupValue]);
+
+  const flattenedGroupOrder = useMemo(() => {
+    if (!groupedSections) {
+      return null;
+    }
+
+    const order = new Map();
+    let index = 0;
+
+    groupedSections.forEach((section) => {
+      section.rows.forEach((row) => {
+        order.set(row.id, index);
+        index += 1;
+      });
+    });
+
+    return order;
+  }, [groupedSections]);
+
+  // ============================================================
+  // HISTORY FLASH
+  // ============================================================
+
+  const [historyFlashKeys, setHistoryFlashKeys] = useState(new Set());
+  const historyFlashTimerRef = useRef(null);
+
+  const flashHistoryFields = useCallback((field) => {
+    const keys = HISTORY_FLASH_FIELDS[field];
+
+    if (!keys || !keys.length) {
+      return;
+    }
+
+    if (historyFlashTimerRef.current) {
+      clearTimeout(historyFlashTimerRef.current);
+    }
+
+    setHistoryFlashKeys(new Set(keys));
+
+    historyFlashTimerRef.current = setTimeout(() => {
+      setHistoryFlashKeys(new Set());
+    }, 1600);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (historyFlashTimerRef.current) {
+        clearTimeout(historyFlashTimerRef.current);
+      }
+    };
+  }, []);
+
+  // ============================================================
+  // HISTORY DETAILS
+  // ============================================================
 
   const [historyRow, setHistoryRow] = useState(null);
 
@@ -416,26 +611,17 @@ export function AppraisalGrid({
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
 
-  /* ============================================================
-     HOVER
-     ============================================================ */
+  // ============================================================
+  // HOVER
+  // ============================================================
 
   const [hoverEmployee, setHoverEmployee] = useState(null);
 
-  const [hoverPosition, setHoverPosition] = useState({
-    left: 0,
-    top: 0,
-  });
+  const [hoverPosition, setHoverPosition] = useState({ left: 0, top: 0 });
 
-  /* ============================================================
-     HOVER HISTORY (fetched per hovered employee, cached)
-
-     The hover popup's "Recent History" must reflect whichever
-     employee is currently hovered, not whichever row is open
-     in the bottom History panel. So this fetches and caches
-     history per empId independently, from the same
-     appraisal-history-api used by the bottom panel.
-     ============================================================ */
+  // ============================================================
+  // HOVER HISTORY
+  // ============================================================
 
   const hoverHistoryRequestedRef = useRef(new Set());
 
@@ -504,9 +690,9 @@ export function AppraisalGrid({
     })();
   }, []);
 
-  /* ============================================================
-     FETCH APPRAISAL HISTORY (bottom panel)
-     ============================================================ */
+  // ============================================================
+  // FETCH APPRAISAL HISTORY
+  // ============================================================
 
   useEffect(() => {
     if (!showHistory || !historyRow?.empId) {
@@ -526,7 +712,6 @@ export function AppraisalGrid({
     const loadHistory = async () => {
       setHistoryLoading(true);
       setHistoryError("");
-      setHistoryData([]);
 
       try {
         const url = `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(
@@ -551,8 +736,16 @@ export function AppraisalGrid({
 
         const records = Array.isArray(result?.data) ? result.data : [];
 
+        const latestRow =
+          rows.find((row) => String(row.empId || "").trim() === empId) ||
+          historyRow;
+
         const normalized = records
-          .map(normalizeHistoryRecord)
+          .map((record) => {
+            const normalizedRecord = normalizeHistoryRecord(record);
+
+            return applyCurrentYearSheetValues(normalizedRecord, latestRow);
+          })
           .sort((a, b) => String(b.year).localeCompare(String(a.year)));
 
         if (!cancelled) {
@@ -579,11 +772,11 @@ export function AppraisalGrid({
     return () => {
       cancelled = true;
     };
-  }, [showHistory, historyRow?.empId]);
+  }, [showHistory, historyRow?.empId, historyRefreshVersion, rows]);
 
-  /* ============================================================
-     HISTORY AUTO SCROLL
-     ============================================================ */
+  // ============================================================
+  // HISTORY AUTO SCROLL
+  // ============================================================
 
   useEffect(() => {
     if (showHistory) {
@@ -591,18 +784,15 @@ export function AppraisalGrid({
         const historyPanel = document.getElementById("history-panel");
 
         if (historyPanel) {
-          historyPanel.scrollIntoView({
-            behavior: "smooth",
-            block: "end",
-          });
+          historyPanel.scrollIntoView({ behavior: "smooth", block: "end" });
         }
       });
     }
   }, [showHistory]);
 
-  /* ============================================================
-     RESET HISTORY WHEN PANEL CLOSES
-     ============================================================ */
+  // ============================================================
+  // RESET HISTORY WHEN PANEL CLOSES
+  // ============================================================
 
   useEffect(() => {
     if (!showHistory) {
@@ -612,9 +802,9 @@ export function AppraisalGrid({
     }
   }, [showHistory]);
 
-  /* ============================================================
-     CLEANUP
-     ============================================================ */
+  // ============================================================
+  // CLEANUP
+  // ============================================================
 
   useEffect(() => {
     return () => {
@@ -624,9 +814,9 @@ export function AppraisalGrid({
     };
   }, []);
 
-  /* ============================================================
-     PAGINATION
-     ============================================================ */
+  // ============================================================
+  // PAGINATION
+  // ============================================================
 
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
 
@@ -644,9 +834,19 @@ export function AppraisalGrid({
 
   const pageEnd = Math.min(currentPage * PAGE_SIZE, rows.length);
 
-  /* ============================================================
-     FOCUS
-     ============================================================ */
+  // Unified display order — matches whichever mode is active, so
+  // keyboard navigation always looks up the right row.
+  const displayRows = useMemo(() => {
+    if (groupedSections) {
+      return groupedSections.flatMap((section) => section.rows);
+    }
+
+    return pageRows;
+  }, [groupedSections, pageRows]);
+
+  // ============================================================
+  // FOCUS
+  // ============================================================
 
   const focusCell = useCallback((rowIndex, columnKey) => {
     const element = cellRefs.current[`${rowIndex}:${columnKey}`];
@@ -665,21 +865,16 @@ export function AppraisalGrid({
     }
   }, []);
 
-  /* ============================================================
-     SAVE FLASH
-     ============================================================ */
+  // ============================================================
+  // SAVE FLASH
+  // ============================================================
 
   const flashSaved = useCallback((key) => {
-    setSaving((previous) => ({
-      ...previous,
-      [key]: Date.now(),
-    }));
+    setSaving((previous) => ({ ...previous, [key]: Date.now() }));
 
     setTimeout(() => {
       setSaving((previous) => {
-        const next = {
-          ...previous,
-        };
+        const next = { ...previous };
 
         delete next[key];
 
@@ -688,17 +883,14 @@ export function AppraisalGrid({
     }, 1200);
   }, []);
 
-  /* ============================================================
-     HIKE %
-     ============================================================ */
+  // ============================================================
+  // HIKE %
+  // ============================================================
 
   const updateHikePct = useCallback(
     (row, raw) => {
       if (raw === "") {
-        updateLinkedCells(row.id, {
-          hikePct: "",
-          hikeAmount: "",
-        });
+        updateLinkedCells(row.id, { hikePct: "", hikeAmount: "" });
 
         flashSaved(`${row.id}:hikePct`);
         flashSaved(`${row.id}:hikeAmount`);
@@ -710,10 +902,7 @@ export function AppraisalGrid({
       const pct = Number(raw) || 0;
       const amount = Math.round(basePay * (pct / 100));
 
-      updateLinkedCells(row.id, {
-        hikePct: pct,
-        hikeAmount: amount,
-      });
+      updateLinkedCells(row.id, { hikePct: pct, hikeAmount: amount });
 
       flashSaved(`${row.id}:hikePct`);
       flashSaved(`${row.id}:hikeAmount`);
@@ -721,17 +910,14 @@ export function AppraisalGrid({
     [updateLinkedCells, flashSaved],
   );
 
-  /* ============================================================
-     HIKE AMOUNT
-     ============================================================ */
+  // ============================================================
+  // HIKE AMOUNT
+  // ============================================================
 
   const updateHikeAmount = useCallback(
     (row, raw) => {
       if (raw === "") {
-        updateLinkedCells(row.id, {
-          hikeAmount: "",
-          hikePct: "",
-        });
+        updateLinkedCells(row.id, { hikeAmount: "", hikePct: "" });
 
         flashSaved(`${row.id}:hikeAmount`);
         flashSaved(`${row.id}:hikePct`);
@@ -744,10 +930,7 @@ export function AppraisalGrid({
 
       const pct = basePay ? Number(((amount / basePay) * 100).toFixed(1)) : 0;
 
-      updateLinkedCells(row.id, {
-        hikeAmount: amount,
-        hikePct: pct,
-      });
+      updateLinkedCells(row.id, { hikeAmount: amount, hikePct: pct });
 
       flashSaved(`${row.id}:hikeAmount`);
       flashSaved(`${row.id}:hikePct`);
@@ -755,19 +938,29 @@ export function AppraisalGrid({
     [updateLinkedCells, flashSaved],
   );
 
-  /* ============================================================
-     COMMIT
-     ============================================================ */
+  // ============================================================
+  // COMMIT
+  // ============================================================
 
   const commit = useCallback(
     (row, col, raw) => {
       if (col.key === "hikePct") {
         updateHikePct(row, raw);
+
+        if (row.id === historyRow?.id) {
+          flashHistoryFields(col.key);
+        }
+
         return;
       }
 
       if (col.key === "hikeAmount") {
         updateHikeAmount(row, raw);
+
+        if (row.id === historyRow?.id) {
+          flashHistoryFields(col.key);
+        }
+
         return;
       }
 
@@ -777,20 +970,39 @@ export function AppraisalGrid({
         value = numericValue(raw);
       }
 
-      if (String(row[col.key] ?? "") === String(value ?? "")) {
+      const oldValue =
+        row[col.key] === null || row[col.key] === undefined
+          ? ""
+          : String(row[col.key]);
+
+      const newValue =
+        value === null || value === undefined ? "" : String(value);
+
+      if (oldValue === newValue) {
         return;
       }
 
       updateCell(row.id, col.key, value);
 
       flashSaved(`${row.id}:${col.key}`);
+
+      if (row.id === historyRow?.id) {
+        flashHistoryFields(col.key);
+      }
     },
-    [updateCell, flashSaved, updateHikePct, updateHikeAmount],
+    [
+      updateCell,
+      flashSaved,
+      updateHikePct,
+      updateHikeAmount,
+      historyRow,
+      flashHistoryFields,
+    ],
   );
 
-  /* ============================================================
-     EDITABLE COLUMNS
-     ============================================================ */
+  // ============================================================
+  // EDITABLE COLUMNS
+  // ============================================================
 
   const editableColumns = useMemo(
     () => COLUMNS.filter((column) => column.editable),
@@ -802,9 +1014,9 @@ export function AppraisalGrid({
     [editableColumns],
   );
 
-  /* ============================================================
-     ROW-SPECIFIC EDITABILITY
-     ============================================================ */
+  // ============================================================
+  // ROW-SPECIFIC EDITABILITY
+  // ============================================================
 
   const isColumnEditable = useCallback((row, column) => {
     if (!column.editable) {
@@ -823,12 +1035,15 @@ export function AppraisalGrid({
     [editableColumns, isColumnEditable],
   );
 
-  /* ============================================================
-     KEYBOARD NAVIGATION
-     ============================================================ */
+  // ============================================================
+  // KEYBOARD NAVIGATION
+  //
+  // Uses `displayRows` (not `pageRows`) so navigation is correct
+  // whether the grid is grouped or not.
+  // ============================================================
 
   const onKeyDown = (event, rowIndex, columnKey) => {
-    const currentRow = pageRows[rowIndex];
+    const currentRow = displayRows[rowIndex];
 
     if (!currentRow) {
       return;
@@ -846,7 +1061,7 @@ export function AppraisalGrid({
       (column) => column.key === columnKey,
     );
 
-    const maxRow = pageRows.length - 1;
+    const maxRow = displayRows.length - 1;
     const target = event.target;
 
     const atStart =
@@ -854,7 +1069,8 @@ export function AppraisalGrid({
 
     const atEnd =
       !("selectionEnd" in target) ||
-      target.selectionEnd === (target.value?.length ?? 0);
+      target.selectionEnd ===
+        (target.value !== undefined ? target.value.length : 0);
 
     if (event.key === "Enter") {
       if (target instanceof HTMLTextAreaElement && !event.shiftKey) {
@@ -867,7 +1083,7 @@ export function AppraisalGrid({
       let nextRowIndex = rowIndex + direction;
 
       while (nextRowIndex >= 0 && nextRowIndex <= maxRow) {
-        const nextRow = pageRows[nextRowIndex];
+        const nextRow = displayRows[nextRowIndex];
 
         if (
           nextRow &&
@@ -890,18 +1106,14 @@ export function AppraisalGrid({
       event.preventDefault();
 
       const nextRowIndex = Math.min(maxRow, rowIndex + 1);
-      const nextRow = pageRows[nextRowIndex];
+      const nextRow = displayRows[nextRowIndex];
 
-      if (
-        nextRow &&
-        isColumnEditable(
-          nextRow,
-          COLUMNS.find((column) => column.key === columnKey) ?? {
-            key: columnKey,
-            editable: false,
-          },
-        )
-      ) {
+      const column = COLUMNS.find((item) => item.key === columnKey) || {
+        key: columnKey,
+        editable: false,
+      };
+
+      if (nextRow && isColumnEditable(nextRow, column)) {
         focusCell(nextRowIndex, columnKey);
       }
 
@@ -912,18 +1124,14 @@ export function AppraisalGrid({
       event.preventDefault();
 
       const nextRowIndex = Math.max(0, rowIndex - 1);
-      const nextRow = pageRows[nextRowIndex];
+      const nextRow = displayRows[nextRowIndex];
 
-      if (
-        nextRow &&
-        isColumnEditable(
-          nextRow,
-          COLUMNS.find((column) => column.key === columnKey) ?? {
-            key: columnKey,
-            editable: false,
-          },
-        )
-      ) {
+      const column = COLUMNS.find((item) => item.key === columnKey) || {
+        key: columnKey,
+        editable: false,
+      };
+
+      if (nextRow && isColumnEditable(nextRow, column)) {
         focusCell(nextRowIndex, columnKey);
       }
 
@@ -939,6 +1147,7 @@ export function AppraisalGrid({
       event.preventDefault();
 
       focusCell(rowIndex, rowEditableColumns[currentRowColumnIndex + 1].key);
+
       return;
     }
 
@@ -946,6 +1155,7 @@ export function AppraisalGrid({
       event.preventDefault();
 
       focusCell(rowIndex, rowEditableColumns[currentRowColumnIndex - 1].key);
+
       return;
     }
 
@@ -954,9 +1164,9 @@ export function AppraisalGrid({
     }
   };
 
-  /* ============================================================
-     ROW OPEN
-     ============================================================ */
+  // ============================================================
+  // ROW OPEN
+  // ============================================================
 
   const openRow = useCallback(
     (row) => {
@@ -970,9 +1180,9 @@ export function AppraisalGrid({
     [showHistory],
   );
 
-  /* ============================================================
-     CELL CLICK
-     ============================================================ */
+  // ============================================================
+  // CELL CLICK
+  // ============================================================
 
   const handleCellClick = useCallback(
     (row, editable) => {
@@ -993,9 +1203,9 @@ export function AppraisalGrid({
     [openRow],
   );
 
-  /* ============================================================
-     DOUBLE CLICK
-     ============================================================ */
+  // ============================================================
+  // DOUBLE CLICK
+  // ============================================================
 
   const handleEditableDoubleClick = useCallback(
     (event, rowIndex, columnKey) => {
@@ -1003,7 +1213,6 @@ export function AppraisalGrid({
 
       if (clickTimerRef.current) {
         clearTimeout(clickTimerRef.current);
-
         clickTimerRef.current = null;
       }
 
@@ -1012,17 +1221,17 @@ export function AppraisalGrid({
     [focusCell],
   );
 
-  /* ============================================================
-     HOVER POPUP
-     ============================================================ */
+  // ============================================================
+  // HOVER POPUP
+  // ============================================================
 
   const calculateHoverPosition = useCallback((event) => {
     const width = 330;
-    const height = 420;
+    const height = 400;
     const margin = 14;
 
     const viewport = gridViewportRef.current;
-    const viewportRect = viewport?.getBoundingClientRect();
+    const viewportRect = viewport ? viewport.getBoundingClientRect() : null;
 
     const minimumTop = viewportRect ? viewportRect.top + 42 : 115;
 
@@ -1043,10 +1252,7 @@ export function AppraisalGrid({
       top = Math.max(minimumTop, window.innerHeight - height - 8);
     }
 
-    return {
-      left: Math.max(8, left),
-      top: Math.max(8, top),
-    };
+    return { left: Math.max(8, left), top: Math.max(8, top) };
   }, []);
 
   const showHoverPopup = useCallback(
@@ -1069,9 +1275,9 @@ export function AppraisalGrid({
     [hoverEmployee, calculateHoverPosition],
   );
 
-  /* ============================================================
-     HOVER HISTORY DERIVED STATE
-     ============================================================ */
+  // ============================================================
+  // HOVER HISTORY DERIVED STATE
+  // ============================================================
 
   const hoverEmpKey = hoverEmployee
     ? String(hoverEmployee.empId || "").trim()
@@ -1079,11 +1285,9 @@ export function AppraisalGrid({
 
   const hoverHistoryState = hoverHistoryByEmpId[hoverEmpKey];
 
-  const hoverLatestHistory = hoverHistoryState?.data?.[0] ?? null;
-
-  /* ============================================================
-     RENDER CELL
-     ============================================================ */
+  // ============================================================
+  // RENDER CELL
+  // ============================================================
 
   const renderCellContent = (row, col, rowIndex) => {
     const cellKey = `${row.id}:${col.key}`;
@@ -1139,9 +1343,17 @@ export function AppraisalGrid({
               "font-semibold text-[#07528a] hover:underline",
             col.key === "empId" && "text-[8px] text-slate-500",
           )}
-          title={String(row[col.key] ?? "")}
+          title={String(
+            row[col.key] !== null && row[col.key] !== undefined
+              ? row[col.key]
+              : "",
+          )}
         >
-          {String(row[col.key] ?? "")}
+          {String(
+            row[col.key] !== null && row[col.key] !== undefined
+              ? row[col.key]
+              : "",
+          )}
         </button>
       );
     }
@@ -1153,7 +1365,11 @@ export function AppraisalGrid({
             ref={(element) => {
               cellRefs.current[`${rowIndex}:${col.key}`] = element;
             }}
-            value={String(row[col.key] ?? "")}
+            value={String(
+              row[col.key] !== null && row[col.key] !== undefined
+                ? row[col.key]
+                : "",
+            )}
             disabled={isNewTitleDisabled}
             onFocus={() => setActive(`${rowIndex}:${col.key}`)}
             onBlur={() => setActive(null)}
@@ -1163,21 +1379,26 @@ export function AppraisalGrid({
             }
             onChange={(event) => {
               updateCell(row.id, col.key, event.target.value);
+
               flashSaved(cellKey);
+
+              if (row.id === historyRow?.id) {
+                flashHistoryFields(col.key);
+              }
             }}
             className={cn(
-              "h-[22px] w-full cursor-pointer rounded-[3px] border px-1 text-[9px] outline-none",
+              "h-[26px] w-full cursor-pointer rounded-[4px] border px-1 text-[10px] outline-none",
               modified[cellKey]
-                ? "border-[#d9a406] bg-[#ffe680] font-bold text-[#1e293b]"
-                : "border-[#ddd0a8] bg-[#fffdf4] text-[#1e293b]",
-              "focus:border-[#2563eb] focus:bg-white",
+                ? "border-[#c9a400] bg-[#ffe066] font-semibold text-[#1e293b]"
+                : "border-[#d7c96b] bg-[#fffef3] text-[#1e293b]",
+              "focus:border-[#2563eb] focus:bg-white focus:ring-1 focus:ring-[#2563eb]",
               isNewTitleDisabled &&
                 "cursor-not-allowed border-[#e2e8f0] bg-[#f1f5f9] opacity-60",
             )}
           >
             <option value="">Select...</option>
 
-            {(col.options ?? []).map((option) => (
+            {(col.options || []).map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
@@ -1191,7 +1412,11 @@ export function AppraisalGrid({
       const textareaDraft =
         editingValues[cellKey] !== undefined
           ? editingValues[cellKey]
-          : String(row[col.key] ?? "");
+          : String(
+              row[col.key] !== null && row[col.key] !== undefined
+                ? row[col.key]
+                : "",
+            );
 
       return (
         <div className="flex min-h-[30px] w-full items-center px-1 py-[3px]">
@@ -1206,7 +1431,11 @@ export function AppraisalGrid({
 
               setEditingValues((previous) => ({
                 ...previous,
-                [cellKey]: String(row[col.key] ?? ""),
+                [cellKey]: String(
+                  row[col.key] !== null && row[col.key] !== undefined
+                    ? row[col.key]
+                    : "",
+                ),
               }));
 
               event.currentTarget.style.height = "auto";
@@ -1237,11 +1466,11 @@ export function AppraisalGrid({
               handleEditableDoubleClick(event, rowIndex, col.key)
             }
             className={cn(
-              "min-h-[22px] w-full resize-none overflow-hidden rounded-[3px] border px-1 py-[3px] text-[9px] leading-tight outline-none",
+              "min-h-[26px] w-full resize-none overflow-hidden rounded-[4px] border px-1 py-[3px] text-[10px] leading-tight outline-none",
               modified[cellKey]
-                ? "border-[#d9a406] bg-[#ffe680] font-bold text-[#1e293b]"
-                : "border-[#ddd0a8] bg-[#fffdf4] text-[#1e293b]",
-              "focus:border-[#2563eb] focus:bg-white",
+                ? "border-[#c9a400] bg-[#ffe066] font-semibold text-[#1e293b]"
+                : "border-[#d7c96b] bg-[#fffef3] text-[#1e293b]",
+              "focus:border-[#2563eb] focus:bg-white focus:ring-1 focus:ring-[#2563eb]",
             )}
           />
         </div>
@@ -1251,7 +1480,11 @@ export function AppraisalGrid({
     const draftValue =
       editingValues[cellKey] !== undefined
         ? editingValues[cellKey]
-        : String(row[col.key] ?? "");
+        : String(
+            row[col.key] !== null && row[col.key] !== undefined
+              ? row[col.key]
+              : "",
+          );
 
     return (
       <div className="relative flex min-h-[30px] w-full items-center px-1 py-[3px]">
@@ -1259,15 +1492,24 @@ export function AppraisalGrid({
           ref={(element) => {
             cellRefs.current[`${rowIndex}:${col.key}`] = element;
           }}
-          type={col.type === "date" ? "date" : "text"}
+          type={
+            col.type === "date"
+              ? "date"
+              : isNumericType(col.type)
+                ? "number"
+                : "text"
+          }
           value={draftValue}
-          inputMode={isNumericType(col.type) ? "decimal" : undefined}
           onFocus={(event) => {
             setActive(`${rowIndex}:${col.key}`);
 
             setEditingValues((previous) => ({
               ...previous,
-              [cellKey]: String(row[col.key] ?? ""),
+              [cellKey]: String(
+                row[col.key] !== null && row[col.key] !== undefined
+                  ? row[col.key]
+                  : "",
+              ),
             }));
 
             if (col.type !== "date") {
@@ -1298,13 +1540,12 @@ export function AppraisalGrid({
             handleEditableDoubleClick(event, rowIndex, col.key)
           }
           className={cn(
-            "h-[22px] w-full rounded-[3px] border px-1.5 text-[9px] outline-none",
+            "h-[26px] w-full rounded-[4px] border px-1.5 text-[10px] outline-none",
             modified[cellKey]
-              ? "border-[#d9a406] bg-[#ffe680] font-bold text-[#1e293b]"
-              : "border-[#ddd0a8] bg-[#fffdf4] text-[#1e293b]",
-            "focus:border-[#2563eb] focus:bg-white",
+              ? "border-[#c9a400] bg-[#ffe066] font-semibold text-[#1e293b]"
+              : "border-[#d7c96b] bg-[#fffef3] text-[#1e293b]",
+            "focus:border-[#2563eb] focus:bg-white focus:ring-1 focus:ring-[#2563eb]",
             isNumericType(col.type) && "text-right font-medium tabular-nums",
-            modified[cellKey] && isNumericType(col.type) && "font-bold",
           )}
         />
 
@@ -1317,21 +1558,120 @@ export function AppraisalGrid({
     );
   };
 
-  /* ============================================================
-     SELECT ALL
-     ============================================================ */
+  // ============================================================
+  // RENDER ONE DATA ROW (shared by normal and grouped views)
+  // ============================================================
+
+  const renderDataRow = (row, rowIndex) => (
+    <tr key={row.id} className="group" style={{ minHeight: CELL_MIN_HEIGHT }}>
+      <td
+        className="sticky left-0 border-r border-b border-[#d9e0e8] p-0 align-middle"
+        style={{
+          position: "sticky",
+          left: 0,
+          width: SELECT_WIDTH,
+          minWidth: SELECT_WIDTH,
+          maxWidth: SELECT_WIDTH,
+          minHeight: CELL_MIN_HEIGHT,
+          zIndex: 20,
+          background: "#f8fafc",
+          boxShadow: "1px 0 0 rgba(148,163,184,.35)",
+        }}
+        onClick={() => openRow(row)}
+      >
+        <div className="flex min-h-[30px] h-full items-center justify-center">
+          <Checkbox
+            checked={!!selected[row.id]}
+            onCheckedChange={(value) => toggleSelected(row.id, !!value)}
+            aria-label={`Select ${row.name}`}
+            onClick={(event) => event.stopPropagation()}
+            className="size-3"
+          />
+        </div>
+      </td>
+
+      {GRID_COLUMNS.map((col) => {
+        const isEmpId = col.key === "empId";
+        const isName = col.key === "name";
+        const isFrozen = isEmpId || isName;
+
+        const left = isEmpId
+          ? SELECT_WIDTH
+          : isName
+            ? SELECT_WIDTH + empIdWidth
+            : undefined;
+
+        const width = widthOf(col);
+        const isComputed = col.computed;
+        const isEditable = isColumnEditable(row, col);
+
+        return (
+          <td
+            key={col.key}
+            className={cn(
+              isFrozen && "sticky",
+              "border-r border-b border-[#d9e0e8] p-0 align-middle",
+            )}
+            style={{
+              position: isFrozen ? "sticky" : "relative",
+              ...(isFrozen ? { left } : {}),
+              width,
+              minWidth: width,
+              maxWidth: width,
+              minHeight: CELL_MIN_HEIGHT,
+              boxSizing: "border-box",
+              zIndex: isFrozen ? 30 : 1,
+              boxShadow:
+                isFrozen && isName
+                  ? "2px 0 4px -2px rgba(71,85,105,.35)"
+                  : "none",
+              backgroundColor: isFrozen
+                ? "#f8fafc"
+                : isComputed
+                  ? "#edf6fc"
+                  : "#fff",
+            }}
+            onClick={() => handleCellClick(row, isEditable)}
+          >
+            <div
+              className={cn(
+                "relative min-h-[30px] h-auto w-full",
+                isFrozen && "bg-[#f8fafc]",
+                !isFrozen && isComputed && "bg-[#edf6fc]",
+              )}
+            >
+              {isName ? (
+                <div
+                  className="min-h-[30px] h-auto w-full"
+                  onMouseEnter={(event) => showHoverPopup(row, event)}
+                  onMouseMove={moveHoverPopup}
+                  onMouseLeave={() => setHoverEmployee(null)}
+                >
+                  {renderCellContent(row, col, rowIndex)}
+                </div>
+              ) : (
+                renderCellContent(row, col, rowIndex)
+              )}
+            </div>
+          </td>
+        );
+      })}
+    </tr>
+  );
+
+  // ============================================================
+  // SELECT ALL
+  // ============================================================
 
   const allSelected =
     pageRows.length > 0 && pageRows.every((row) => selected[row.id]);
 
-  /* ============================================================
-     PAGE BUTTONS
-     ============================================================ */
+  // ============================================================
+  // PAGE BUTTONS
+  // ============================================================
 
   const pageButtons = Array.from(
-    {
-      length: Math.min(totalPages, 7),
-    },
+    { length: Math.min(totalPages, 7) },
     (_, index) => {
       let page = index + 1;
 
@@ -1349,9 +1689,14 @@ export function AppraisalGrid({
     },
   );
 
-  /* ============================================================
-     MAIN UI
-     ============================================================ */
+  // ============================================================
+  // MAIN UI
+  // ============================================================
+
+  const groupByColumnLabel =
+    groupBy?.label ||
+    GRID_COLUMNS.find((column) => column.key === groupBy?.key)?.label ||
+    "";
 
   return (
     <div
@@ -1367,15 +1712,11 @@ export function AppraisalGrid({
         fontFamily: APPRAISAL_FONT,
       }}
     >
-      {/* ======================================================
-          TOP TOOLBAR
-          ====================================================== */}
+      {/* TOP TOOLBAR */}
 
       <div
-        className="flex h-9 shrink-0 items-center justify-between border-b border-[#d5dce5] bg-white px-3"
-        style={{
-          fontFamily: APPRAISAL_FONT,
-        }}
+        className="flex h-9 shrink-0 items-center justify-between border-b border-[#d5dce5] bg-[#e8eef5] px-3"
+        style={{ fontFamily: APPRAISAL_FONT }}
       >
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -1390,9 +1731,7 @@ export function AppraisalGrid({
         </div>
       </div>
 
-      {/* ======================================================
-          GRID AREA
-          ====================================================== */}
+      {/* GRID AREA */}
 
       <div
         ref={gridViewportRef}
@@ -1408,28 +1747,15 @@ export function AppraisalGrid({
           }}
         >
           <colgroup>
-            <col
-              style={{
-                width: SELECT_WIDTH,
-              }}
-            />
+            <col style={{ width: SELECT_WIDTH }} />
 
             {GRID_COLUMNS.map((col) => (
-              <col
-                key={col.key}
-                style={{
-                  width: widthOf(col),
-                }}
-              />
+              <col key={col.key} style={{ width: widthOf(col) }} />
             ))}
           </colgroup>
 
           <thead>
-            <tr
-              style={{
-                height: 34,
-              }}
-            >
+            <tr style={{ height: 34 }}>
               <th
                 className="sticky left-0 top-0 border-r border-b border-[#cbd5e1] p-0"
                 style={{
@@ -1470,35 +1796,22 @@ export function AppraisalGrid({
                 return (
                   <th
                     key={col.key}
-                    className={cn(
-                      "sticky border-r border-b border-[#cbd5e1] p-0",
-                    )}
+                    className="sticky border-r border-b border-[#cbd5e1] p-0"
                     style={{
                       position: "sticky",
                       top: 0,
-
-                      ...(isFrozen
-                        ? {
-                            left,
-                          }
-                        : {}),
-
+                      ...(isFrozen ? { left } : {}),
                       width,
                       minWidth: width,
                       maxWidth: width,
-
                       height: 34,
-
                       boxSizing: "border-box",
-
                       zIndex: isFrozen ? 90 : 60,
-
                       background: "#e8eef5",
                       boxShadow:
                         isFrozen && isName
                           ? "2px 0 4px -2px rgba(71,85,105,.45)"
                           : undefined,
-
                       fontFamily: APPRAISAL_FONT,
                     }}
                   >
@@ -1516,6 +1829,25 @@ export function AppraisalGrid({
                           filter={filters[col.key]}
                           options={optionsFor(col.key)}
                           onChange={(filter) => setFilter(col.key, filter)}
+                          groupable={col.key !== "empId" && col.key !== "name"}
+                          groupDirection={
+                            groupBy?.key === col.key ? groupBy.dir : null
+                          }
+                          onGroupAsc={() =>
+                            setGroupBy({
+                              key: col.key,
+                              dir: "asc",
+                              label: col.label,
+                            })
+                          }
+                          onGroupDesc={() =>
+                            setGroupBy({
+                              key: col.key,
+                              dir: "desc",
+                              label: col.label,
+                            })
+                          }
+                          onClearGroup={() => setGroupBy(null)}
                         />
                       </div>
                     </div>
@@ -1534,197 +1866,122 @@ export function AppraisalGrid({
           </thead>
 
           <tbody>
-            {pageRows.map((row, rowIndex) => (
-              <tr
-                key={row.id}
-                className="group"
-                style={{
-                  minHeight: CELL_MIN_HEIGHT,
-                }}
-              >
-                <td
-                  className="sticky left-0 border-r border-b border-[#d9e0e8] p-0 align-middle"
-                  style={{
-                    position: "sticky",
-                    left: 0,
-                    width: SELECT_WIDTH,
-                    minWidth: SELECT_WIDTH,
-                    maxWidth: SELECT_WIDTH,
-                    minHeight: CELL_MIN_HEIGHT,
-                    zIndex: 20,
-                    background: "#f8fafc",
-                    boxShadow: "1px 0 0 rgba(148,163,184,.35)",
-                  }}
-                  onClick={() => openRow(row)}
-                >
-                  <div className="flex min-h-[30px] h-full items-center justify-center">
-                    <Checkbox
-                      checked={!!selected[row.id]}
-                      onCheckedChange={(value) =>
-                        toggleSelected(row.id, !!value)
-                      }
-                      aria-label={`Select ${row.name}`}
-                      onClick={(event) => event.stopPropagation()}
-                      className="size-3"
-                    />
-                  </div>
-                </td>
-
-                {GRID_COLUMNS.map((col) => {
-                  const isEmpId = col.key === "empId";
-                  const isName = col.key === "name";
-                  const isFrozen = isEmpId || isName;
-
-                  const left = isEmpId
-                    ? SELECT_WIDTH
-                    : isName
-                      ? SELECT_WIDTH + empIdWidth
-                      : undefined;
-
-                  const width = widthOf(col);
-                  const isComputed = col.computed;
-                  const isEditable = isColumnEditable(row, col);
-
-                  return (
-                    <td
-                      key={col.key}
-                      className={cn(
-                        isFrozen && "sticky",
-                        "border-r border-b border-[#d9e0e8] p-0 align-middle",
-                      )}
-                      style={{
-                        position: isFrozen ? "sticky" : "relative",
-
-                        ...(isFrozen
-                          ? {
-                              left,
-                            }
-                          : {}),
-
-                        width,
-                        minWidth: width,
-                        maxWidth: width,
-
-                        minHeight: CELL_MIN_HEIGHT,
-
-                        boxSizing: "border-box",
-
-                        zIndex: isFrozen ? 30 : 1,
-
-                        boxShadow:
-                          isFrozen && isName
-                            ? "2px 0 4px -2px rgba(71,85,105,.35)"
-                            : "none",
-
-                        backgroundColor: isFrozen
-                          ? "#f8fafc"
-                          : isComputed
-                            ? "#edf6fc"
-                            : "#fff",
-                      }}
-                      onClick={() => handleCellClick(row, isEditable)}
-                    >
-                      <div
-                        className={cn(
-                          "relative min-h-[30px] h-auto w-full",
-
-                          isFrozen && "bg-[#f8fafc]",
-
-                          !isFrozen && isComputed && "bg-[#edf6fc]",
-                        )}
+            {groupedSections ? (
+              groupedSections.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={GRID_COLUMNS.length + 1}
+                    className="px-3 py-8 text-center text-[10px] text-slate-500"
+                  >
+                    No employees match the current filters.
+                  </td>
+                </tr>
+              ) : (
+                groupedSections.map((section) => (
+                  <Fragment key={section.key}>
+                    <tr className="bg-[#dbe6f3]">
+                      <td
+                        colSpan={GRID_COLUMNS.length + 1}
+                        className="border-b border-[#b9cbe0] px-2 py-1.5 text-left text-[9px] font-bold text-[#173b63]"
                       >
-                        {isName ? (
-                          <div
-                            className="min-h-[30px] h-auto w-full"
-                            onMouseEnter={(event) => showHoverPopup(row, event)}
-                            onMouseMove={moveHoverPopup}
-                            onMouseLeave={() => setHoverEmployee(null)}
-                          >
-                            {renderCellContent(row, col, rowIndex)}
-                          </div>
-                        ) : (
-                          renderCellContent(row, col, rowIndex)
-                        )}
-                      </div>
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+                        {groupByColumnLabel}: {section.label}
+                        <span className="ml-1.5 font-normal text-slate-500">
+                          ({section.rows.length} employee
+                          {section.rows.length === 1 ? "" : "s"})
+                        </span>
+                      </td>
+                    </tr>
 
-            {pageRows.length === 0 && (
-              <tr>
-                <td
-                  colSpan={GRID_COLUMNS.length + 1}
-                  className="px-3 py-8 text-center text-[10px] text-slate-500"
-                >
-                  No employees match the current filters.
-                </td>
-              </tr>
+                    {section.rows.map((row) =>
+                      renderDataRow(row, flattenedGroupOrder?.get(row.id) ?? 0),
+                    )}
+                  </Fragment>
+                ))
+              )
+            ) : (
+              <>
+                {pageRows.map((row, rowIndex) => renderDataRow(row, rowIndex))}
+
+                {pageRows.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={GRID_COLUMNS.length + 1}
+                      className="px-3 py-8 text-center text-[10px] text-slate-500"
+                    >
+                      No employees match the current filters.
+                    </td>
+                  </tr>
+                )}
+              </>
             )}
           </tbody>
         </table>
       </div>
 
-      {/* ======================================================
-          PAGINATION
-          ====================================================== */}
+      {/* PAGINATION / GROUP STATUS BAR */}
 
       <div
         className="flex h-8 shrink-0 items-center justify-between border-t border-[#d5dce5] bg-[#f8fafc] px-2.5"
-        style={{
-          fontFamily: APPRAISAL_FONT,
-        }}
+        style={{ fontFamily: APPRAISAL_FONT }}
       >
         <div className="text-[8px] text-slate-500">
-          {rows.length === 0
-            ? "0 employees"
-            : `Showing ${pageStart}-${pageEnd} of ${rows.length} employees`}
+          {groupBy
+            ? `Grouped by ${groupByColumnLabel} — showing all ${rows.length} employees`
+            : rows.length === 0
+              ? "0 employees"
+              : `Showing ${pageStart}-${pageEnd} of ${rows.length} employees`}
         </div>
 
-        <div className="flex items-center gap-1">
+        {groupBy ? (
           <button
             type="button"
-            disabled={currentPage === 1}
-            onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-            className="flex size-5 items-center justify-center rounded border border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40"
+            onClick={() => setGroupBy(null)}
+            className="flex h-5 items-center justify-center rounded border border-[#cbd5e1] bg-white px-2 text-[8px] font-medium text-slate-600 hover:bg-slate-100"
           >
-            <ChevronLeft className="size-3" />
+            Clear grouping
           </button>
-
-          {pageButtons.map((page) => (
+        ) : (
+          <div className="flex items-center gap-1">
             <button
-              key={page}
               type="button"
-              onClick={() => setCurrentPage(page)}
-              className={cn(
-                "flex size-5 items-center justify-center rounded border text-[8px] font-medium",
-
-                page === currentPage
-                  ? "border-[#173b63] bg-[#173b63] text-white"
-                  : "border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100",
-              )}
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+              className="flex size-5 items-center justify-center rounded border border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40"
             >
-              {page}
+              <ChevronLeft className="size-3" />
             </button>
-          ))}
 
-          <button
-            type="button"
-            disabled={currentPage >= totalPages}
-            onClick={() =>
-              setCurrentPage((page) => Math.min(totalPages, page + 1))
-            }
-            className="flex size-5 items-center justify-center rounded border border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40"
-          >
-            <ChevronRight className="size-3" />
-          </button>
-        </div>
+            {pageButtons.map((page) => (
+              <button
+                key={page}
+                type="button"
+                onClick={() => setCurrentPage(page)}
+                className={cn(
+                  "flex size-5 items-center justify-center rounded border text-[8px] font-medium",
+                  page === currentPage
+                    ? "border-[#173b63] bg-[#173b63] text-white"
+                    : "border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100",
+                )}
+              >
+                {page}
+              </button>
+            ))}
+
+            <button
+              type="button"
+              disabled={currentPage >= totalPages}
+              onClick={() =>
+                setCurrentPage((page) => Math.min(totalPages, page + 1))
+              }
+              className="flex size-5 items-center justify-center rounded border border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40"
+            >
+              <ChevronRight className="size-3" />
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* ======================================================
-          HISTORY DETAILS PANEL
-          ====================================================== */}
+      {/* HISTORY DETAILS PANEL */}
 
       {showHistory && (
         <div
@@ -1736,8 +1993,6 @@ export function AppraisalGrid({
             minHeight: 175,
           }}
         >
-          {/* HISTORY HEADER */}
-
           <div className="flex h-8 items-center justify-between bg-[#173b63] px-3 text-white">
             <div className="flex items-center gap-2">
               <History className="size-3" />
@@ -1765,8 +2020,6 @@ export function AppraisalGrid({
             </button>
           </div>
 
-          {/* HISTORY CONTENT */}
-
           <div className="h-[calc(100%-52px)] overflow-auto">
             {!historyRow ? (
               <div className="flex h-full items-center justify-center px-3 text-center text-[9px] text-slate-500">
@@ -1779,6 +2032,7 @@ export function AppraisalGrid({
             ) : historyError ? (
               <div className="flex h-full flex-col items-center justify-center gap-1 px-3 text-center text-[9px] text-red-500">
                 <span>Unable to load appraisal history.</span>
+
                 <span className="text-[8px] text-slate-400">
                   {historyError}
                 </span>
@@ -1790,9 +2044,7 @@ export function AppraisalGrid({
             ) : (
               <table
                 className="w-full border-collapse"
-                style={{
-                  tableLayout: "fixed",
-                }}
+                style={{ tableLayout: "fixed" }}
               >
                 <colgroup>
                   <col style={{ width: 75 }} />
@@ -1814,6 +2066,7 @@ export function AppraisalGrid({
                         className="border-r border-b border-[#cbd5e1] px-2 py-1 text-right align-bottom text-[8px] font-bold text-[#334155]"
                       >
                         <div>{col.label}</div>
+
                         <div className="text-[7px] font-normal text-slate-400">
                           % change below
                         </div>
@@ -1825,6 +2078,7 @@ export function AppraisalGrid({
                 <tbody>
                   {historyData.map((item, index) => {
                     const previous = historyData[index + 1];
+
                     const isLatest = index === 0;
 
                     return (
@@ -1832,7 +2086,7 @@ export function AppraisalGrid({
                         key={`${item.year}-${index}`}
                         className={cn(
                           "h-[38px]",
-                          isLatest ? "bg-[#eaf1fb]" : "bg-white",
+                          isLatest ? "bg-[#fff9dc]" : "bg-white",
                         )}
                       >
                         <td className="border-r border-b border-[#d9e0e8] px-2 py-1 text-left text-[8px] font-bold text-[#173b63]">
@@ -1846,10 +2100,16 @@ export function AppraisalGrid({
                             previous ? previous[col.key] : undefined,
                           );
 
+                          const shouldFlash =
+                            isLatest && historyFlashKeys.has(col.key);
+
                           return (
                             <td
                               key={col.key}
-                              className="border-r border-b border-[#d9e0e8] px-2 py-1 text-right text-[8px]"
+                              className={cn(
+                                "border-r border-b border-[#d9e0e8] px-2 py-1 text-right text-[8px] transition-colors duration-500",
+                                shouldFlash && "bg-[#ffd54f]",
+                              )}
                             >
                               <div>{formatHistoryNumber(item[col.key])}</div>
 
@@ -1874,8 +2134,6 @@ export function AppraisalGrid({
             )}
           </div>
 
-          {/* HISTORY FOOTER */}
-
           <div className="flex h-[20px] items-center border-t border-[#e2e8f0] bg-[#f8fafc] px-3 text-[7px] text-slate-500">
             The starred row reflects the employee currently selected in the grid
             above, live. Older cycles are reference data.
@@ -1883,9 +2141,7 @@ export function AppraisalGrid({
         </div>
       )}
 
-      {/* ======================================================
-          EMPLOYEE HOVER POPUP
-          ====================================================== */}
+      {/* EMPLOYEE HOVER POPUP */}
 
       {hoverEmployee && (
         <div
@@ -1898,10 +2154,8 @@ export function AppraisalGrid({
           onMouseEnter={() => setHoverEmployee(hoverEmployee)}
           onMouseLeave={() => setHoverEmployee(null)}
         >
-          {/* NAME */}
-
           <div className="border-b border-[#d9e0e8] bg-white px-3 py-2">
-            <div className="text-[13px] font-bold text-[#173b63]">
+            <div className="text-[13px] font-bold text-[#17365d]">
               {hoverEmployee.name}
             </div>
 
@@ -1912,99 +2166,57 @@ export function AppraisalGrid({
             </div>
           </div>
 
-          {/* METRICS */}
-
-          <div className="grid grid-cols-3 gap-px border-b border-[#d9e0e8] bg-[#d9e0e8]">
-            <div className="bg-[#f8fafc] px-2 py-2">
-              <div className="text-[8px] font-semibold uppercase text-slate-500">
+          <div className="grid grid-cols-2 gap-x-3 gap-y-2 px-3 py-2">
+            <div>
+              <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
                 Rating
               </div>
 
-              <div className="mt-1 text-[11px] font-bold text-[#173b63]">
-                {hoverEmployee.managerRating ?? "—"}
+              <div className="mt-0.5 text-[14px] font-bold text-[#b98a2f]">
+                {hoverEmployee.rating !== null &&
+                hoverEmployee.rating !== undefined &&
+                String(hoverEmployee.rating).trim() !== ""
+                  ? `${hoverEmployee.rating}/5`
+                  : "—"}
               </div>
             </div>
 
-            <div className="bg-[#f8fafc] px-2 py-2">
-              <div className="text-[8px] font-semibold uppercase text-slate-500">
+            <div>
+              <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
                 RR %
               </div>
 
-              <div className="mt-1 text-[11px] font-bold text-[#173b63]">
+              <div className="mt-0.5 text-[14px] font-bold text-[#2c6b5c]">
                 {hoverEmployee.rrPercent !== undefined
                   ? `${hoverEmployee.rrPercent}%`
                   : "—"}
               </div>
             </div>
 
-            <div className="bg-[#f8fafc] px-2 py-2">
-              <div className="text-[8px] font-semibold uppercase text-slate-500">
+            <div>
+              <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
                 Interviews
               </div>
 
-              <div className="mt-1 text-[11px] font-bold text-[#173b63]">
-                {hoverEmployee.interviewCount ?? "—"}
+              <div className="mt-0.5 text-[14px] font-bold text-[#1f2937]">
+                {hoverEmployee.interviewCount !== undefined
+                  ? hoverEmployee.interviewCount
+                  : "—"}
+              </div>
+            </div>
+
+            <div />
+
+            <div className="col-span-2 border-t border-[#edf0f4] pt-2">
+              <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                Manager feedback
+              </div>
+
+              <div className="mt-0.5 max-h-[56px] overflow-y-auto text-[11px] font-semibold leading-snug text-[#1f2937]">
+                {hoverEmployee.managerRating || "—"}
               </div>
             </div>
           </div>
-
-          {/* DETAILS */}
-
-          <div className="px-3 py-2">
-            <div className="mb-1 text-[8px] font-bold uppercase tracking-wide text-slate-500">
-              Employee Details
-            </div>
-
-            <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[9px]">
-              <div>
-                <span className="text-slate-400">Reporting Manager</span>
-
-                <div className="font-medium text-slate-700">
-                  {hoverEmployee.reportingManager ?? "—"}
-                </div>
-              </div>
-
-              <div>
-                <span className="text-slate-400">Comp. Manager</span>
-
-                <div className="font-medium text-slate-700">
-                  {hoverEmployee.compManager ?? "—"}
-                </div>
-              </div>
-
-              <div>
-                <span className="text-slate-400">Organization Exp.</span>
-
-                <div className="font-medium text-slate-700">
-                  {hoverEmployee.wissenExperience ?? "—"}
-                </div>
-              </div>
-
-              <div>
-                <span className="text-slate-400">Total Experience</span>
-
-                <div className="font-medium text-slate-700">
-                  {hoverEmployee.totalExperience ?? "—"}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* MANAGER FEEDBACK (latest cycle only) */}
-
-          {hoverLatestHistory?.feedback && (
-            <div className="border-t border-[#d9e0e8] px-3 py-2">
-              <div className="mb-1 text-[8px] font-bold uppercase tracking-wide text-slate-500">
-                Manager Feedback
-              </div>
-
-              <div className="text-[10px] font-semibold leading-snug text-[#1e293b]">
-                {hoverLatestHistory.feedback}
-              </div>
-            </div>
-          )}
-
-          {/* RECENT HISTORY (all cycles, fetched per hovered employee) */}
 
           <div className="border-t border-[#d9e0e8]">
             <div className="px-3 py-1.5 text-[8px] font-bold uppercase tracking-wide text-slate-500">
@@ -2035,6 +2247,8 @@ export function AppraisalGrid({
                       <th className="px-2 py-1 text-left">Rating</th>
 
                       <th className="px-2 py-1 text-left">Promo</th>
+
+                      <th className="px-2 py-1 text-left">Feedback</th>
                     </tr>
                   </thead>
 
@@ -2051,13 +2265,17 @@ export function AppraisalGrid({
 
                         <td className="px-2 py-1">{item.title}</td>
 
-                        {/*
-                          Rating history is not wired up yet — will
-                          be added once the rating column is ready.
-                        */}
-                        <td className="px-2 py-1">—</td>
+                        <td className="px-2 py-1">
+                          {item.rating !== null &&
+                          item.rating !== undefined &&
+                          String(item.rating).trim() !== ""
+                            ? `${item.rating}/5`
+                            : "—"}
+                        </td>
 
                         <td className="px-2 py-1">{item.promotion}</td>
+
+                        <td className="px-2 py-1">{item.feedback || "—"}</td>
                       </tr>
                     ))}
                   </tbody>
