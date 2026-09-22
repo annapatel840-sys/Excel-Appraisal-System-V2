@@ -206,11 +206,33 @@ const computeHistoryChange = (currentValue, previousValue) => {
   };
 };
 
+// Date of joining shown in the hover card header.
+const formatDoj = (value) => {
+  if (!value) {
+    return "—";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+};
+
 // ============================================================
 // FIELD -> HISTORY COLUMN KEYS TO FLASH ON EDIT
 // ============================================================
 
 const HISTORY_FLASH_FIELDS = {
+  currentAnnualBasePay: ["basePay", "newBasePay", "newCTC"],
+  targetPBAllocatedForMay: ["performanceBonus", "totalBonus", "newCTC"],
+  eligibleForPromotion: ["newCTC"],
   allocatedPBAmount: ["performanceBonus", "totalBonus", "newCTC"],
   newPBToBeOffered: ["performanceBonus", "totalBonus", "newCTC"],
   newRB: ["retentionBonus", "totalBonus", "newCTC"],
@@ -458,7 +480,8 @@ export function AppraisalGrid({
   showHistory,
   setShowHistory,
 }) {
-  const { updateCell, updateLinkedCells, modified } = useAppraisal();
+  const { updateCell, updateLinkedCells, bulkUpdate, modified } =
+    useAppraisal();
 
   const cellRefs = useRef({});
   const clickTimerRef = useRef(null);
@@ -583,7 +606,7 @@ export function AppraisalGrid({
   const [currentPage, setCurrentPage] = useState(1);
 
   // ============================================================
-  // GROUP BY
+  // GROUP BY / SORT
   // ============================================================
 
   const [groupBy, setGroupBy] = useState([]);
@@ -989,6 +1012,8 @@ export function AppraisalGrid({
             priorValue,
             left,
             top,
+            mode: "yoy",
+            isText: false,
           });
 
           if (cellToastTimerRef.current) {
@@ -1002,6 +1027,48 @@ export function AppraisalGrid({
         .catch(() => {});
     },
     [loadHistory],
+  );
+
+  // Toast for any editable field that has no year-over-year mapping.
+  const showChangeToast = useCallback(
+    (anchor, label, priorValue, currentValue, isText) => {
+      if (!anchor) {
+        return;
+      }
+
+      const rect = anchor.getBoundingClientRect();
+      const toastWidth = 280;
+
+      const left = Math.max(
+        8,
+        Math.min(rect.left, window.innerWidth - toastWidth - 8),
+      );
+
+      let top = rect.bottom + 6;
+
+      if (top + 70 > window.innerHeight) {
+        top = Math.max(8, rect.top - 76);
+      }
+
+      setCellToast({
+        label,
+        currentValue,
+        priorValue,
+        left,
+        top,
+        mode: "prev",
+        isText: !!isText,
+      });
+
+      if (cellToastTimerRef.current) {
+        clearTimeout(cellToastTimerRef.current);
+      }
+
+      cellToastTimerRef.current = setTimeout(() => {
+        setCellToast(null);
+      }, 3500);
+    },
+    [],
   );
 
   // ============================================================
@@ -1282,7 +1349,19 @@ export function AppraisalGrid({
         flashHistoryFields(col.key);
       }
 
-      showYoyToast(anchor, col.key, { ...row, [col.key]: value });
+      if (YOY_FIELDS[col.key]) {
+        showYoyToast(anchor, col.key, { ...row, [col.key]: value });
+      } else if (isNumericType(col.type)) {
+        showChangeToast(
+          anchor,
+          col.label,
+          Number(row[col.key]) || 0,
+          Number(value) || 0,
+          false,
+        );
+      } else {
+        showChangeToast(anchor, col.label, oldValue, newValue, true);
+      }
     },
     [
       updateCell,
@@ -1293,7 +1372,82 @@ export function AppraisalGrid({
       historyRow,
       flashHistoryFields,
       showYoyToast,
+      showChangeToast,
     ],
+  );
+
+  // ============================================================
+  // LIVE COMMIT WHILE TYPING
+  // (grid, history panel and toast stay in sync on every keystroke)
+  // ============================================================
+
+  const liveTimersRef = useRef({});
+
+  const cancelLiveCommit = useCallback((cellKey) => {
+    const timer = liveTimersRef.current[cellKey];
+
+    if (timer) {
+      clearTimeout(timer);
+      delete liveTimersRef.current[cellKey];
+    }
+  }, []);
+
+  const scheduleLiveCommit = useCallback(
+    (row, col, raw, anchor) => {
+      const cellKey = `${row.id}:${col.key}`;
+
+      cancelLiveCommit(cellKey);
+
+      liveTimersRef.current[cellKey] = setTimeout(() => {
+        delete liveTimersRef.current[cellKey];
+        commit(row, col, raw, anchor);
+      }, 600);
+    },
+    [commit, cancelLiveCommit],
+  );
+
+  useEffect(() => {
+    return () => {
+      Object.values(liveTimersRef.current).forEach((timer) =>
+        clearTimeout(timer),
+      );
+
+      liveTimersRef.current = {};
+    };
+  }, []);
+
+  // ============================================================
+  // BULK EDIT ONE COLUMN (from the column filter popover)
+  // ============================================================
+
+  const applyColumnBulkEdit = useCallback(
+    (col, rawValue) => {
+      if (!rows.length) {
+        return;
+      }
+
+      if (col.key === "hikePct" || col.key === "hikeAmount") {
+        rows.forEach((row) => {
+          if (col.key === "hikePct") {
+            updateHikePct(row, String(rawValue));
+          } else {
+            updateHikeAmount(row, String(rawValue));
+          }
+        });
+
+        return;
+      }
+
+      const value = isNumericType(col.type) ? numericValue(rawValue) : rawValue;
+
+      bulkUpdate(
+        rows.map((row) => row.id),
+        col.key,
+        "set",
+        value,
+      );
+    },
+    [rows, bulkUpdate, updateHikePct, updateHikeAmount],
   );
 
   // ============================================================
@@ -1516,8 +1670,8 @@ export function AppraisalGrid({
   // ============================================================
 
   const calculateHoverPosition = useCallback((event) => {
-    const width = 350;
-    const height = 420;
+    const width = 430;
+    const height = 300;
     const margin = 14;
 
     const viewport = gridViewportRef.current;
@@ -1631,7 +1785,7 @@ export function AppraisalGrid({
               "font-semibold text-[#1559a6] hover:underline",
             col.key === "empId" && "text-[11px] text-slate-500",
           )}
-          title={text}
+          title={col.key === "name" ? undefined : text}
         >
           {text}
         </button>
@@ -1661,6 +1815,7 @@ export function AppraisalGrid({
             }
             onChange={(event) => {
               const value = event.target.value;
+              const anchor = event.currentTarget;
 
               if (col.key === "eligibleForPromotion" && value === "No") {
                 updateLinkedCells(
@@ -1684,6 +1839,14 @@ export function AppraisalGrid({
                   flashHistoryFields("newTitle");
                 }
 
+                showChangeToast(
+                  anchor,
+                  col.label,
+                  String(row[col.key] || ""),
+                  "No",
+                  true,
+                );
+
                 return;
               }
 
@@ -1695,6 +1858,14 @@ export function AppraisalGrid({
               if (row.id === historyRow?.id) {
                 flashHistoryFields(col.key);
               }
+
+              showChangeToast(
+                anchor,
+                col.label,
+                String(row[col.key] || ""),
+                value,
+                true,
+              );
             }}
             className={cn(
               "h-[30px] w-full cursor-pointer rounded-[4px] border px-1 text-[12px] outline-none",
@@ -1836,9 +2007,13 @@ export function AppraisalGrid({
           }}
           onChange={(event) => {
             setEditingValue(cellKey, event.target.value);
+
+            scheduleLiveCommit(row, col, event.target.value, event.target);
           }}
           onBlur={(event) => {
             setActive(null);
+
+            cancelLiveCommit(cellKey);
 
             const raw =
               editingValues[cellKey] !== undefined
@@ -2105,9 +2280,22 @@ export function AppraisalGrid({
 
         const hasPrior = !!cellToast.priorValue;
 
+        const suffix = cellToast.mode === "prev" ? "vs previous" : "YoY";
+
+        if (cellToast.isText) {
+          return {
+            valueText: `"${cellToast.currentValue || "—"}"`,
+            text: cellToast.priorValue
+              ? `was "${cellToast.priorValue}"`
+              : "set for this cycle",
+            down: false,
+          };
+        }
+
         return {
+          valueText: formatHistoryNumber(cellToast.currentValue),
           text: hasPrior
-            ? `${diff >= 0 ? "+" : ""}${formatHistoryNumber(diff)} (${change.label} YoY)`
+            ? `${diff >= 0 ? "+" : ""}${formatHistoryNumber(diff)} (${change.label} ${suffix})`
             : "new this cycle",
           down: hasPrior && change.tone === "down",
         };
@@ -2241,18 +2429,22 @@ export function AppraisalGrid({
                             filter={filters[col.key]}
                             options={optionsFor(col.key)}
                             onChange={(filter) => setFilter(col.key, filter)}
-                            groupable
-                            groupDirection={
+                            sortDirection={
                               groupBy.find((item) => item.key === col.key)
                                 ?.dir || null
                             }
-                            onGroupAsc={() =>
+                            onSortAsc={() =>
                               addGroup(col.key, "asc", col.label)
                             }
-                            onGroupDesc={() =>
+                            onSortDesc={() =>
                               addGroup(col.key, "desc", col.label)
                             }
-                            onClearGroup={() => removeGroup(col.key)}
+                            onClearSort={() => removeGroup(col.key)}
+                            bulkEditable={!!col.editable && !col.computed}
+                            bulkRowCount={rows.length}
+                            onBulkApply={(value) =>
+                              applyColumnBulkEdit(col, value)
+                            }
                           />
                         </div>
                       )}
@@ -2528,7 +2720,7 @@ export function AppraisalGrid({
         </div>
       )}
 
-      {/* YEAR-OVER-YEAR TOAST */}
+      {/* CHANGE TOAST */}
 
       {cellToast && toastParts && (
         <div
@@ -2540,7 +2732,7 @@ export function AppraisalGrid({
           }}
         >
           <b className="text-[#ffd54f]">{cellToast.label}</b> is now{" "}
-          {formatHistoryNumber(cellToast.currentValue)} —{" "}
+          {toastParts.valueText} —{" "}
           <span
             className={toastParts.down ? "text-[#ff9a8a]" : "text-[#8ee6ad]"}
           >
@@ -2553,7 +2745,7 @@ export function AppraisalGrid({
 
       {hoverEmployee && liveHoverEmployee && (
         <div
-          className="fixed z-[9999] w-[350px] overflow-hidden rounded-md border border-[#cbd5e1] bg-white shadow-[0_12px_35px_rgba(15,23,42,.25)]"
+          className="fixed z-[9999] w-[430px] overflow-hidden rounded-md border border-[#cbd5e1] bg-white shadow-[0_12px_35px_rgba(15,23,42,.25)]"
           style={{
             left: hoverPosition.left,
             top: hoverPosition.top,
@@ -2562,138 +2754,95 @@ export function AppraisalGrid({
           onMouseEnter={() => setHoverEmployee(hoverEmployee)}
           onMouseLeave={() => setHoverEmployee(null)}
         >
-          <div className="border-b border-[#d9e0e8] bg-white px-3.5 py-2.5">
-            <div className="text-[15px] font-bold text-[#17365d]">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-[#d9e0e8] bg-white px-3 py-2.5">
+            <span className="text-[15px] font-bold text-[#17365d]">
               {liveHoverEmployee.name}
-            </div>
+            </span>
 
-            <div className="mt-0.5 text-[11px] text-slate-500">
-              {liveHoverEmployee.designation}
-              {" · "}
-              {liveHoverEmployee.empId}
-            </div>
+            <span className="text-[11px] text-slate-500">
+              DOJ: {formatDoj(liveHoverEmployee.doj)}
+            </span>
+
+            <span className="text-[11px] text-slate-400">·</span>
+
+            <span className="text-[11px] text-slate-500">
+              Org Exp: {liveHoverEmployee.wissenExperience || 0} yrs
+            </span>
+
+            <span className="text-[11px] text-slate-400">·</span>
+
+            <span className="text-[11px] text-slate-500">
+              Overall Exp: {liveHoverEmployee.totalExperience || 0} yrs
+            </span>
           </div>
 
-          <div className="grid grid-cols-2 gap-x-3 gap-y-2 px-3.5 py-2.5">
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Rating
+          <div className="max-h-[230px] overflow-auto">
+            {!hoverHistoryState || hoverHistoryState.loading ? (
+              <div className="px-3 py-3 text-[11px] text-slate-500">
+                Loading history...
               </div>
-
-              <div className="mt-0.5 text-[16px] font-bold text-[#b98a2f]">
-                {liveHoverEmployee.rating !== null &&
-                liveHoverEmployee.rating !== undefined &&
-                String(liveHoverEmployee.rating).trim() !== ""
-                  ? `${liveHoverEmployee.rating}/5`
-                  : "—"}
+            ) : hoverHistoryState.error ? (
+              <div className="px-3 py-3 text-[11px] text-red-500">
+                {hoverHistoryState.error}
               </div>
-            </div>
-
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                RR %
+            ) : !hoverHistoryRows.length ? (
+              <div className="px-3 py-3 text-[11px] text-slate-500">
+                No appraisal history yet.
               </div>
+            ) : (
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-[#f4f7fb]">
+                    <th className="w-[68px] border-b border-[#e2e8f0] px-3 py-1.5 text-left text-[10px] font-bold tracking-wide text-slate-500">
+                      YEAR
+                    </th>
 
-              <div className="mt-0.5 text-[16px] font-bold text-[#2c6b5c]">
-                {liveHoverEmployee.rrPercent !== undefined
-                  ? `${liveHoverEmployee.rrPercent}%`
-                  : "—"}
-              </div>
-            </div>
+                    <th className="w-[108px] border-b border-[#e2e8f0] px-3 py-1.5 text-left text-[10px] font-bold tracking-wide text-slate-500">
+                      DESIGNATION
+                    </th>
 
-            <div>
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Interviews
-              </div>
+                    <th className="w-[62px] border-b border-[#e2e8f0] px-3 py-1.5 text-left text-[10px] font-bold tracking-wide text-slate-500">
+                      RATING
+                    </th>
 
-              <div className="mt-0.5 text-[16px] font-bold text-[#1f2937]">
-                {liveHoverEmployee.interviewCount !== undefined
-                  ? liveHoverEmployee.interviewCount
-                  : "—"}
-              </div>
-            </div>
+                    <th className="border-b border-[#e2e8f0] px-3 py-1.5 text-left text-[10px] font-bold tracking-wide text-slate-500">
+                      FEEDBACK
+                    </th>
+                  </tr>
+                </thead>
 
-            <div />
+                <tbody>
+                  {hoverHistoryRows.map((item, index) => (
+                    <tr
+                      key={`${item.year}-${index}`}
+                      className={index === 0 ? "bg-[#fffbe8]" : "bg-white"}
+                    >
+                      <td className="border-b border-[#eef2f7] px-3 py-2 align-top text-[12px] font-bold text-[#1559a6]">
+                        {item.year}
+                        {index === 0 ? " ★" : ""}
+                      </td>
 
-            <div className="col-span-2 border-t border-[#edf0f4] pt-2">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-                Manager feedback
-              </div>
+                      <td className="border-b border-[#eef2f7] px-3 py-2 align-top text-[12px] text-[#334155]">
+                        {item.title}
+                      </td>
 
-              <div className="mt-0.5 max-h-[60px] overflow-y-auto text-[12px] font-semibold leading-snug text-[#1f2937]">
-                {liveHoverEmployee.managerRating || "—"}
-              </div>
-            </div>
-          </div>
+                      <td className="border-b border-[#eef2f7] px-3 py-2 align-top text-[12px] text-[#334155]">
+                        {item.rating !== null &&
+                        item.rating !== undefined &&
+                        String(item.rating).trim() !== "" &&
+                        item.rating !== "—"
+                          ? `${item.rating} / 5`
+                          : "—"}
+                      </td>
 
-          <div className="border-t border-[#d9e0e8]">
-            <div className="px-3.5 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-              Recent History
-            </div>
-
-            <div className="max-h-[150px] overflow-auto">
-              {!hoverHistoryState || hoverHistoryState.loading ? (
-                <div className="px-3.5 py-2 text-[11px] text-slate-500">
-                  Loading history...
-                </div>
-              ) : hoverHistoryState.error ? (
-                <div className="px-3.5 py-2 text-[11px] text-red-500">
-                  {hoverHistoryState.error}
-                </div>
-              ) : !hoverHistoryRows.length ? (
-                <div className="px-3.5 py-2 text-[11px] text-slate-500">
-                  No previous-year history available.
-                </div>
-              ) : (
-                <table className="w-full border-collapse text-[10px]">
-                  <thead>
-                    <tr className="bg-[#f1f5f9]">
-                      <th className="px-2 py-1 text-left">Year</th>
-
-                      <th className="px-2 py-1 text-left">Desig.</th>
-
-                      <th className="px-2 py-1 text-left">Rating</th>
-
-                      <th className="px-2 py-1 text-left">Promo</th>
-
-                      <th className="px-2 py-1 text-left">Feedback</th>
+                      <td className="border-b border-[#eef2f7] px-3 py-2 align-top text-[12px] leading-snug text-[#334155]">
+                        {item.feedback || "—"}
+                      </td>
                     </tr>
-                  </thead>
-
-                  <tbody>
-                    {hoverHistoryRows.map((item, index) => (
-                      <tr
-                        key={`${item.year}-${index}`}
-                        className={index === 0 ? "bg-[#fff7c7]" : "bg-white"}
-                      >
-                        <td className="px-2 py-1 align-top font-semibold text-[#1559a6]">
-                          {item.year}
-                          {index === 0 ? " ★" : ""}
-                        </td>
-
-                        <td className="px-2 py-1 align-top">{item.title}</td>
-
-                        <td className="px-2 py-1 align-top">
-                          {item.rating !== null &&
-                          item.rating !== undefined &&
-                          String(item.rating).trim() !== ""
-                            ? `${item.rating}/5`
-                            : "—"}
-                        </td>
-
-                        <td className="px-2 py-1 align-top">
-                          {item.promotion}
-                        </td>
-
-                        <td className="px-2 py-1 align-top">
-                          {item.feedback || "—"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       )}

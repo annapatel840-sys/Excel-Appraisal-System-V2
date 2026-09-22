@@ -6,6 +6,7 @@ import {
   Layers,
   RotateCcw,
   Search,
+  Upload,
   X,
 } from "lucide-react";
 
@@ -13,6 +14,7 @@ import { AppShell } from "@/components/appraisal/AppShell";
 import { AppraisalGrid } from "@/components/appraisal/AppraisalGrid";
 import { AuditPanel } from "@/components/appraisal/AuditTrail";
 import { BulkEditDialog } from "@/components/appraisal/BulkEditDialog";
+import { useAppraisalImport } from "@/components/appraisal/ImportAppraisalButton"; // <-- update path if your file is named differently
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -79,7 +81,7 @@ function BudgetCounter({ label, value, valueClassName, title }) {
 
 export function SheetPage() {
   const { rows, audit } = useAppraisal();
-
+  const { openImportPicker, importUi } = useAppraisalImport();
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({});
   const [selected, setSelected] = useState({});
@@ -295,6 +297,18 @@ export function SheetPage() {
                       <History className="size-4" />
                       <span>Audit ({audit.length})</span>
                     </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        openImportPicker();
+                      }}
+                    >
+                      <Upload className="size-4" />
+                      <span>Import</span>
+                    </button>
 
                     <button
                       type="button"
@@ -386,6 +400,8 @@ export function SheetPage() {
         ids={selectedIds}
         onDone={() => setSelected({})}
       />
+
+      {importUi}
     </>
   );
 }

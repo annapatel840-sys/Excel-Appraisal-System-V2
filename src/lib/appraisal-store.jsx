@@ -530,6 +530,39 @@ const savePreviousAppraisalChangesToCatalyst = async ({
   return payload.data || null;
 };
 
+/* CREATE EMPLOYEE */
+const createEmployeeInCatalyst = async (fieldValues) => {
+  const payload = {};
+
+  Object.entries(fieldValues).forEach(([key, value]) => {
+    const catalystField = REACT_TO_CATALYST_FIELD[key];
+
+    if (
+      !catalystField ||
+      value === "" ||
+      value === null ||
+      value === undefined
+    ) {
+      return;
+    }
+
+    payload[catalystField] = normalizeValueForCatalyst(key, value);
+  });
+
+  const response = await fetch(EMPLOYEE_API_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const result = await parseApiResponse(response, "Employee API");
+
+  const record = Array.isArray(result.data) ? result.data[0] : result.data;
+
+  // catalyst-shaped object so mapCatalystEmployee() can read it
+  return { ...payload, ...(record || {}) };
+};
+
 /* ============================================================
 EMPLOYEE SAVE QUEUE
 ============================================================ */
@@ -1510,6 +1543,92 @@ export function AppraisalProvider({ children }) {
   const refreshEmployees = useCallback(async () => {
     await loadEmployees();
   }, [loadEmployees]);
+
+  const createEmployees = useCallback(async (employees) => {
+    const created = [];
+    const failed = [];
+
+    for (const fieldValues of employees) {
+      const empId = String(fieldValues.empId || "").trim();
+
+      try {
+        if (!empId) {
+          throw new Error("Missing EMP ID.");
+        }
+
+        // don't duplicate someone who exists in the DB but isn't in the sheet
+        let alreadyExists = false;
+
+        try {
+          await fetchEmployeeByIdFromCatalyst(empId);
+          alreadyExists = true;
+        } catch {
+          alreadyExists = false;
+        }
+
+        if (alreadyExists) {
+          throw new Error(
+            "Already exists in the database (inactive or not eligible) — not created.",
+          );
+        }
+
+        const record = await createEmployeeInCatalyst({
+          status: "Active",
+          ...fieldValues,
+        });
+
+        const employee = mapCatalystEmployee(record, 0);
+
+        setRows((prev) => [...prev, employee]);
+
+        setEmployeeCounts((prev) => ({
+          ...prev,
+          total: prev.total + 1,
+          active: prev.active + 1,
+        }));
+
+        try {
+          await savePreviousAppraisalChangesToCatalyst({ empId, fieldValues });
+        } catch (historyError) {
+          console.error("History save failed for new employee:", historyError);
+        }
+
+        const auditEntry = {
+          id: nextId(),
+          at: new Date().toISOString(),
+          user: CURRENT_USER,
+          empId,
+          employeeName: employee.name,
+          field: "Employee",
+          from: "",
+          to: "Created",
+          source: "Import",
+          appraisalYear: APPRAISAL_YEAR,
+          saved: false,
+        };
+
+        try {
+          const inserted = await createAuditRecordsInCatalyst([auditEntry]);
+
+          setAudit((prev) => [
+            inserted.length ? inserted[0] : { ...auditEntry, saved: true },
+            ...prev,
+          ]);
+        } catch {
+          setAudit((prev) => [auditEntry, ...prev]);
+        }
+
+        created.push(empId);
+      } catch (err) {
+        failed.push({
+          empId,
+          message: err?.message || "Failed to create employee.",
+        });
+      }
+    }
+
+    return { created, failed };
+  }, []);
 
   /* ==========================================================
   CONTEXT VALUE
