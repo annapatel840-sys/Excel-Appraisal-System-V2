@@ -347,6 +347,12 @@ const normalizeHistoryRecord = (record) => {
       String(record.title).trim() !== ""
         ? String(record.title)
         : "—",
+    designation:
+      record?.designation !== null &&
+      record?.designation !== undefined &&
+      String(record.designation).trim() !== ""
+        ? String(record.designation)
+        : "—",
 
     rating:
       record?.rating !== null &&
@@ -383,6 +389,7 @@ const emptyHistoryRecord = (year) => ({
   hikePct: 0,
   promotion: "—",
   title: "—",
+  designation: "—",
   rating: "—",
   feedback: "—",
   targetPB: 0,
@@ -441,6 +448,8 @@ const applyCurrentYearSheetValues = (historyRecord, row) => {
       String(row.newTitle).trim() !== ""
         ? String(row.newTitle)
         : "—",
+    designation: row.designation ? String(row.designation) : "—",
+
     targetPB: targetPBNextYear,
     newCTC,
     newBasePay: newBaseSalary,
@@ -2844,7 +2853,7 @@ export function AppraisalGrid({
                       </td>
 
                       <td className="border-b border-[#eef2f7] px-3 py-2 align-top text-[12px] text-[#334155]">
-                        {item.title}
+                        {item.designation}
                       </td>
 
                       <td className="border-b border-[#eef2f7] px-3 py-2 align-top text-[12px] text-[#334155]">

@@ -475,13 +475,13 @@ async function getEmployees(req, res) {
   const employeeMasterRows = await getAllEmployeeMaster(datastore);
 
   const employeeMasterMap = buildEmployeeMasterMap(employeeMasterRows);
-  /* NEW: attach DOJ from Employee_Master (source of truth) */
+  /*
+   * DOJ must come from Employees.Joining_date — Employees is the
+   * source of truth for joining date, not Employee_Master.
+   */
   allEmployees.forEach(function (employee) {
-    const empId = String(employee.emp_id || "")
-      .trim()
-      .toLowerCase();
-    const master = employeeMasterMap.get(empId);
-    employee.date_of_join = master ? master.date_of_join || "" : "";
+    employee.date_of_join =
+      employee.Joining_date || employee.joining_date || "";
   });
 
   /*
