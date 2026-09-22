@@ -224,6 +224,7 @@ const mapCatalystEmployee = (employee, index) => {
     totalExperience: Number(employee.total_experience || 0),
 
     lastAppraisalDate: String(employee.last_appraisal_date || ""),
+    doj: String(employee.date_of_join || ""),
 
     rating:
       employee.rating !== null &&

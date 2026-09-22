@@ -1849,6 +1849,27 @@ export function AppraisalGrid({
 
                 return;
               }
+              /* NEW: remind to set New Title the moment Promotion flips to Yes */
+              if (col.key === "eligibleForPromotion" && value === "Yes") {
+                updateCell(row.id, col.key, value);
+                flashSaved(cellKey);
+                markEdited(cellKey);
+                if (row.id === historyRow?.id) flashHistoryFields(col.key);
+                showChangeToast(
+                  anchor,
+                  col.label,
+                  String(row[col.key] || ""),
+                  "Yes",
+                  true,
+                );
+
+                if (!row.newTitle) {
+                  window.alert(
+                    `${row.name || "This employee"} is now marked eligible for promotion. Please set the New Title — it is mandatory.`,
+                  );
+                }
+                return;
+              }
 
               updateCell(row.id, col.key, value);
 
