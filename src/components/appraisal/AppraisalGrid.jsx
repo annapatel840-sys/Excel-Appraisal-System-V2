@@ -109,6 +109,65 @@ const GRID_STYLES = `
   50% { box-shadow: 0 0 0 3px rgba(201,164,0,.55); }
 }
 .appraisal-cell-blink { animation: appraisalCellBlink .5s ease-in-out 3; }
+
+.detail-panel {
+  position: fixed;
+  z-index: 9999;
+  background: white;
+  border: 1px solid #c7d0dc;
+  border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(20,30,50,.22);
+  overflow: auto;
+  min-width: 360px;
+  min-height: 160px;
+}
+.panel-head {
+  background: #17365d;
+  color: white;
+  padding: 9px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: move;
+  user-select: none;
+}
+.panel-head-left.hp-header {
+  font-size: 11px;
+  color: #cdd8e8;
+  line-height: 1.4;
+}
+.hp-header b { color: #fff; font-size: 14px; font-weight: 600; }
+.hp-header .hp-sep { color: #5c7396; margin: 0 6px; }
+.hp-header .hp-field-label { color: #9db1cc; }
+.panel-controls { display: flex; align-items: center; gap: 6px; }
+.panel-btn {
+  width: 24px; height: 24px; border: none; border-radius: 4px;
+  background: rgba(255,255,255,.15); color: white; cursor: pointer;
+  font-size: 13px; line-height: 1; display: flex; align-items: center; justify-content: center;
+}
+.panel-btn:hover { background: rgba(255,255,255,.28); }
+.hp-cycle-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.hp-cycle-table th {
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: .03em; color: #8592a6; font-weight: 700;
+  text-align: left; padding: 7px 10px; border-bottom: 1px solid #e1e5eb; background: #fafbfd;
+}
+.hp-cycle-table td {
+  font-size: 11px; color: #1f2937; text-align: left; padding: 8px 10px; vertical-align: top;
+  border-bottom: 1px solid #eef1f5; line-height: 1.4;
+}
+.hp-cycle-table tr:last-child td { border-bottom: none; }
+.hp-cycle-table tr.current td { background: #fff9dc; }
+.hp-cycle-table td.hp-year { color: #1559a6; font-weight: 700; white-space: nowrap; }
+.hp-cycle-table td.hp-feedback { white-space: normal; word-break: normal; }
+.resize-handle { position: absolute; z-index: 5; }
+.rh-n { top: -3px; left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
+.rh-s { bottom: -3px; left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
+.rh-e { right: -3px; top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
+.rh-w { left: -3px; top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
+.rh-ne { top: -3px; right: -3px; width: 12px; height: 12px; cursor: nesw-resize; }
+.rh-nw { top: -3px; left: -3px; width: 12px; height: 12px; cursor: nwse-resize; }
+.rh-se { bottom: -3px; right: -3px; width: 12px; height: 12px; cursor: nwse-resize; }
+.rh-sw { bottom: -3px; left: -3px; width: 12px; height: 12px; cursor: nesw-resize; }
 `;
 
 // ============================================================
@@ -528,6 +587,15 @@ export function AppraisalGrid({
 
   const gridViewportRef = useRef(null);
 
+  const DOCKED_LEFT = 18;
+
+  const getDockedTop = () => {
+    const viewport = gridViewportRef.current;
+    const viewportRect = viewport ? viewport.getBoundingClientRect() : null;
+
+    // Anchor just below the grid's own header row, never under the page header.
+    return viewportRect ? viewportRect.top + 8 : 130;
+  };
   // ============================================================
   // COLUMN RESIZE
   // ============================================================
@@ -1084,33 +1152,44 @@ export function AppraisalGrid({
   // HOVER
   // ============================================================
 
-  const [hoverEmployee, setHoverEmployee] = useState(null);
+  // ============================================================
+  // DETAIL PANEL (click-triggered, draggable, resizable, dockable —
+  // replaces the old hover popup)
+  // ============================================================
 
-  const [hoverPosition, setHoverPosition] = useState({ left: 0, top: 0 });
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailEmployee, setDetailEmployee] = useState(null);
+  const [detailFloating, setDetailFloating] = useState(false);
+  const [detailPos, setDetailPos] = useState({ left: DOCKED_LEFT, top: 130 });
+  const [detailSize, setDetailSize] = useState({ width: 560, height: null });
 
-  const hoverEmpKey = hoverEmployee
-    ? String(hoverEmployee.empId || "").trim()
+  const detailPanelRef = useRef(null);
+  const detailDragRef = useRef(null);
+  const detailResizeRef = useRef(null);
+
+  const detailEmpKey = detailEmployee
+    ? String(detailEmployee.empId || "").trim()
     : "";
 
-  const hoverHistoryState = historyByEmpId[hoverEmpKey];
+  const detailHistoryState = historyByEmpId[detailEmpKey];
 
-  const liveHoverEmployee = useMemo(() => {
-    if (!hoverEmployee) {
+  const liveDetailEmployee = useMemo(() => {
+    if (!detailEmployee) {
       return null;
     }
 
-    return rows.find((row) => row.id === hoverEmployee.id) || hoverEmployee;
-  }, [rows, hoverEmployee]);
+    return rows.find((row) => row.id === detailEmployee.id) || detailEmployee;
+  }, [rows, detailEmployee]);
 
-  const hoverHistoryRows = useMemo(() => {
-    if (!hoverHistoryState?.data) {
+  const detailHistoryRows = useMemo(() => {
+    if (!detailHistoryState?.data) {
       return [];
     }
 
-    return hoverHistoryState.data.map((record) =>
-      applyCurrentYearSheetValues(record, liveHoverEmployee),
+    return detailHistoryState.data.map((record) =>
+      applyCurrentYearSheetValues(record, liveDetailEmployee),
     );
-  }, [hoverHistoryState, liveHoverEmployee]);
+  }, [detailHistoryState, liveDetailEmployee]);
 
   // ============================================================
   // HISTORY AUTO SCROLL
@@ -1678,55 +1757,177 @@ export function AppraisalGrid({
   // HOVER POPUP
   // ============================================================
 
-  const calculateHoverPosition = useCallback((event) => {
-    const width = 430;
-    const height = 300;
-    const margin = 14;
+  // ============================================================
+  // DETAIL PANEL — open / close / dock
+  // ============================================================
 
-    const viewport = gridViewportRef.current;
-    const viewportRect = viewport ? viewport.getBoundingClientRect() : null;
+  const openDetailPanel = useCallback(
+    (row) => {
+      // Only ever updates content — never touches position or
+      // docked-vs-floating state, so clicking another employee
+      // just refreshes what's inside the same panel. The docked
+      // top position IS recalculated here (not on every render)
+      // so the very first open lands below the app header instead
+      // of at the raw viewport top.
+      setDetailFloating((floating) => {
+        if (!floating) {
+          setDetailPos({ left: DOCKED_LEFT, top: getDockedTop() });
+        }
 
-    const minimumTop = viewportRect ? viewportRect.top + 46 : 115;
+        return floating;
+      });
 
-    let left = event.clientX + margin;
-    let top = event.clientY + margin;
-
-    if (left + width > window.innerWidth) {
-      left = event.clientX - width - margin;
-    }
-
-    if (top + height > window.innerHeight) {
-      top = event.clientY - height - margin;
-    }
-
-    top = Math.max(minimumTop, top);
-
-    if (top + height > window.innerHeight - 8) {
-      top = Math.max(minimumTop, window.innerHeight - height - 8);
-    }
-
-    return { left: Math.max(8, left), top: Math.max(8, top) };
-  }, []);
-
-  const showHoverPopup = useCallback(
-    (row, event) => {
-      setHoverEmployee(row);
-      setHoverPosition(calculateHoverPosition(event));
+      setDetailEmployee(row);
+      setDetailOpen(true);
       loadHistory(row.empId).catch(() => {});
     },
-    [calculateHoverPosition, loadHistory],
+    [loadHistory],
   );
 
-  const moveHoverPopup = useCallback(
+  const closeDetailPanel = useCallback(() => {
+    setDetailOpen(false);
+  }, []);
+
+  const dockDetailPanel = useCallback(() => {
+    setDetailFloating(false);
+    setDetailPos({ left: DOCKED_LEFT, top: getDockedTop() });
+    setDetailSize({ width: 560, height: null });
+  }, []);
+
+  // ============================================================
+  // DETAIL PANEL — drag (from the header)
+  // ============================================================
+
+  const handleDetailHeaderMouseDown = useCallback(
     (event) => {
-      if (!hoverEmployee) {
+      if (event.target.closest("button")) {
+        return; // don't start a drag from the control buttons
+      }
+
+      const panel = detailPanelRef.current;
+
+      if (!panel) {
         return;
       }
 
-      setHoverPosition(calculateHoverPosition(event));
+      const rect = panel.getBoundingClientRect();
+
+      if (!detailFloating) {
+        setDetailFloating(true);
+        setDetailPos({ left: rect.left, top: rect.top });
+        setDetailSize({ width: rect.width, height: rect.height });
+      }
+
+      detailDragRef.current = {
+        offsetX: event.clientX - rect.left,
+        offsetY: event.clientY - rect.top,
+      };
     },
-    [hoverEmployee, calculateHoverPosition],
+    [detailFloating],
   );
+
+  useEffect(() => {
+    const handleMouseMove = (event) => {
+      if (!detailDragRef.current) {
+        return;
+      }
+
+      setDetailPos({
+        left: event.clientX - detailDragRef.current.offsetX,
+        top: event.clientY - detailDragRef.current.offsetY,
+      });
+    };
+
+    const handleMouseUp = () => {
+      detailDragRef.current = null;
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
+
+  // ============================================================
+  // DETAIL PANEL — resize (all 4 edges + 4 corners)
+  // ============================================================
+
+  const startDetailResize = useCallback((event, dir) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const panel = detailPanelRef.current;
+
+    if (!panel) {
+      return;
+    }
+
+    const rect = panel.getBoundingClientRect();
+
+    detailResizeRef.current = {
+      dir,
+      startX: event.clientX,
+      startY: event.clientY,
+      startW: rect.width,
+      startH: rect.height,
+      startLeft: rect.left,
+      startTop: rect.top,
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleMove = (event) => {
+      const r = detailResizeRef.current;
+
+      if (!r) {
+        return;
+      }
+
+      const dx = event.clientX - r.startX;
+      const dy = event.clientY - r.startY;
+
+      let newW = r.startW;
+      let newH = r.startH;
+
+      if (r.dir.includes("e")) newW = Math.max(360, r.startW + dx);
+      if (r.dir.includes("w")) newW = Math.max(360, r.startW - dx);
+      if (r.dir.includes("s")) newH = Math.max(160, r.startH + dy);
+      if (r.dir.includes("n")) newH = Math.max(160, r.startH - dy);
+
+      setDetailSize({ width: newW, height: newH });
+
+      // Only floating panels need left/top adjusted on a west/north
+      // drag so the opposite edge stays put — a docked panel is
+      // anchored by CSS, matching the HTML prototype's behaviour.
+      setDetailFloating((floating) => {
+        if (floating) {
+          setDetailPos((pos) => ({
+            left: r.dir.includes("w")
+              ? r.startLeft + (r.startW - newW)
+              : pos.left,
+            top: r.dir.includes("n") ? r.startTop + (r.startH - newH) : pos.top,
+          }));
+        }
+
+        return floating;
+      });
+    };
+
+    const handleUp = () => {
+      detailResizeRef.current = null;
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, []);
 
   // ============================================================
   // RENDER CELL
@@ -1780,6 +1981,10 @@ export function AppraisalGrid({
           onClick={(event) => {
             event.stopPropagation();
             openRow(row);
+
+            if (col.key === "name") {
+              openDetailPanel(row);
+            }
           }}
           className={cn(
             "flex min-h-[38px] h-auto w-full",
@@ -2167,12 +2372,7 @@ export function AppraisalGrid({
             >
               <div className="relative min-h-[38px] h-auto w-full">
                 {isName ? (
-                  <div
-                    className="min-h-[38px] h-auto w-full"
-                    onMouseEnter={(event) => showHoverPopup(row, event)}
-                    onMouseMove={moveHoverPopup}
-                    onMouseLeave={() => setHoverEmployee(null)}
-                  >
+                  <div className="min-h-[38px] h-auto w-full">
                     {renderCellContent(row, col, rowIndex)}
                   </div>
                 ) : (
@@ -2773,107 +2973,128 @@ export function AppraisalGrid({
 
       {/* EMPLOYEE HOVER POPUP */}
 
-      {hoverEmployee && liveHoverEmployee && (
+      {/* DETAIL PANEL — click-triggered, draggable, resizable, dockable */}
+
+      {detailOpen && liveDetailEmployee && (
         <div
-          className="fixed z-[9999] w-[430px] overflow-hidden rounded-md border border-[#cbd5e1] bg-white shadow-[0_12px_35px_rgba(15,23,42,.25)]"
+          ref={detailPanelRef}
+          className="detail-panel"
           style={{
-            left: hoverPosition.left,
-            top: hoverPosition.top,
+            left: detailPos.left,
+            top: detailPos.top,
+            width: detailSize.width,
+            height: detailSize.height || undefined,
             fontFamily: APPRAISAL_FONT,
           }}
-          onMouseEnter={() => setHoverEmployee(hoverEmployee)}
-          onMouseLeave={() => setHoverEmployee(null)}
         >
-          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-[#d9e0e8] bg-white px-3 py-2.5">
-            <span className="text-[15px] font-bold text-[#17365d]">
-              {liveHoverEmployee.name}
-            </span>
+          <div className="panel-head" onMouseDown={handleDetailHeaderMouseDown}>
+            <div className="panel-head-left hp-header">
+              <b>{liveDetailEmployee.name}</b>
+              <span className="hp-sep">·</span>
+              <span className="hp-field-label">DOJ:</span>{" "}
+              {formatDoj(liveDetailEmployee.doj)}
+              <span className="hp-sep">·</span>
+              <span className="hp-field-label">Org Exp:</span>{" "}
+              {liveDetailEmployee.wissenExperience || 0} yrs
+              <span className="hp-sep">·</span>
+              <span className="hp-field-label">Overall Exp:</span>{" "}
+              {liveDetailEmployee.totalExperience || 0} yrs
+            </div>
 
-            <span className="text-[11px] text-slate-500">
-              DOJ: {formatDoj(liveHoverEmployee.doj)}
-            </span>
+            <div className="panel-controls">
+              {detailFloating && (
+                <button
+                  type="button"
+                  className="panel-btn"
+                  onClick={dockDetailPanel}
+                  title="Return to top-left"
+                >
+                  &#8681;
+                </button>
+              )}
 
-            <span className="text-[11px] text-slate-400">·</span>
-
-            <span className="text-[11px] text-slate-500">
-              Org Exp: {liveHoverEmployee.wissenExperience || 0} yrs
-            </span>
-
-            <span className="text-[11px] text-slate-400">·</span>
-
-            <span className="text-[11px] text-slate-500">
-              Overall Exp: {liveHoverEmployee.totalExperience || 0} yrs
-            </span>
+              <button
+                type="button"
+                className="panel-btn"
+                onClick={closeDetailPanel}
+                title="Close"
+              >
+                &#10005;
+              </button>
+            </div>
           </div>
 
-          <div className="max-h-[230px] overflow-auto">
-            {!hoverHistoryState || hoverHistoryState.loading ? (
-              <div className="px-3 py-3 text-[11px] text-slate-500">
-                Loading history...
-              </div>
-            ) : hoverHistoryState.error ? (
-              <div className="px-3 py-3 text-[11px] text-red-500">
-                {hoverHistoryState.error}
-              </div>
-            ) : !hoverHistoryRows.length ? (
-              <div className="px-3 py-3 text-[11px] text-slate-500">
-                No appraisal history yet.
-              </div>
-            ) : (
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-[#f4f7fb]">
-                    <th className="w-[68px] border-b border-[#e2e8f0] px-3 py-1.5 text-left text-[10px] font-bold tracking-wide text-slate-500">
-                      YEAR
-                    </th>
+          <table className="hp-cycle-table">
+            <colgroup>
+              <col />
+              <col />
+              <col />
+              <col />
+            </colgroup>
 
-                    <th className="w-[108px] border-b border-[#e2e8f0] px-3 py-1.5 text-left text-[10px] font-bold tracking-wide text-slate-500">
-                      DESIGNATION
-                    </th>
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th>Designation</th>
+                <th>Rating</th>
+                <th>Feedback</th>
+              </tr>
+            </thead>
 
-                    <th className="w-[62px] border-b border-[#e2e8f0] px-3 py-1.5 text-left text-[10px] font-bold tracking-wide text-slate-500">
-                      RATING
-                    </th>
+            <tbody>
+              {!detailHistoryState || detailHistoryState.loading ? (
+                <tr>
+                  <td colSpan={4} style={{ padding: "12px", color: "#8592a6" }}>
+                    Loading history...
+                  </td>
+                </tr>
+              ) : detailHistoryState.error ? (
+                <tr>
+                  <td colSpan={4} style={{ padding: "12px", color: "#dc2626" }}>
+                    {detailHistoryState.error}
+                  </td>
+                </tr>
+              ) : !detailHistoryRows.length ? (
+                <tr>
+                  <td colSpan={4} style={{ padding: "12px", color: "#8592a6" }}>
+                    No appraisal history yet.
+                  </td>
+                </tr>
+              ) : (
+                detailHistoryRows.map((item, index) => (
+                  <tr
+                    key={`${item.year}-${index}`}
+                    className={index === 0 ? "current" : ""}
+                  >
+                    <td className="hp-year">
+                      {item.year}
+                      {index === 0 ? " ★" : ""}
+                    </td>
 
-                    <th className="border-b border-[#e2e8f0] px-3 py-1.5 text-left text-[10px] font-bold tracking-wide text-slate-500">
-                      FEEDBACK
-                    </th>
+                    <td>{item.designation}</td>
+
+                    <td>
+                      {item.rating &&
+                      String(item.rating).trim() !== "" &&
+                      item.rating !== "—"
+                        ? `${item.rating} / 5`
+                        : "—"}
+                    </td>
+
+                    <td className="hp-feedback">{item.feedback || "—"}</td>
                   </tr>
-                </thead>
+                ))
+              )}
+            </tbody>
+          </table>
 
-                <tbody>
-                  {hoverHistoryRows.map((item, index) => (
-                    <tr
-                      key={`${item.year}-${index}`}
-                      className={index === 0 ? "bg-[#fffbe8]" : "bg-white"}
-                    >
-                      <td className="border-b border-[#eef2f7] px-3 py-2 align-top text-[12px] font-bold text-[#1559a6]">
-                        {item.year}
-                        {index === 0 ? " ★" : ""}
-                      </td>
-
-                      <td className="border-b border-[#eef2f7] px-3 py-2 align-top text-[12px] text-[#334155]">
-                        {item.designation}
-                      </td>
-
-                      <td className="border-b border-[#eef2f7] px-3 py-2 align-top text-[12px] text-[#334155]">
-                        {item.rating !== null &&
-                        item.rating !== undefined &&
-                        String(item.rating).trim() !== "" &&
-                        item.rating !== "—"
-                          ? `${item.rating} / 5`
-                          : "—"}
-                      </td>
-
-                      <td className="border-b border-[#eef2f7] px-3 py-2 align-top text-[12px] leading-snug text-[#334155]">
-                        {item.feedback || "—"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
+          {["n", "s", "e", "w", "ne", "nw", "se", "sw"].map((dir) => (
+            <div
+              key={dir}
+              className={`resize-handle rh-${dir}`}
+              onMouseDown={(event) => startDetailResize(event, dir)}
+            />
+          ))}
         </div>
       )}
     </div>
