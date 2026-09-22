@@ -1,4 +1,4 @@
-import { LayoutDashboard, Table2, Users } from "lucide-react";
+import { LayoutDashboard, Table2, Users, BookOpen } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -9,6 +9,7 @@ export function AppShell({ children, headerActions }) {
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
     { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
     { to: "/employee-master", label: "Employee Master", icon: Users },
+    { to: "/detail-screen", label: "Detail Screen", icon: BookOpen },
   ];
 
   const navigate = (event, to) => {

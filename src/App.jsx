@@ -5,6 +5,10 @@ import { Dashboard } from "@/routes/index";
 import { SheetPage } from "@/routes/sheet";
 import { EmployeeMaster } from "@/pages/EmployeeMaster";
 
+//this might be remove later (detail-screen)
+import { DetailScreenPage } from "@/components/appraisal/DetailScreenPage";
+import { AppShell } from "./components/appraisal/AppShell";
+
 export default function App() {
   const [path, setPath] = useState(window.location.pathname);
 
@@ -26,6 +30,12 @@ export default function App() {
     page = <SheetPage />;
   } else if (path === "/employee-master") {
     page = <EmployeeMaster />;
+  } else if (path === "/detail-screen") {
+    page = (
+      <AppShell>
+        <DetailScreenPage />
+      </AppShell>
+    );
   } else {
     page = <Dashboard />;
   }
