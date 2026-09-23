@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Download, FileSpreadsheet, Menu, Search, Upload } from "lucide-react";
+import {
+  Download,
+  FileSpreadsheet,
+  History,
+  Menu,
+  Search,
+  Upload,
+} from "lucide-react";
 
 export function EmployeeMasterToolbar({
   search,
@@ -9,6 +16,7 @@ export function EmployeeMasterToolbar({
   onDownloadTemplate,
   onUpload,
   onDownloadData,
+  onAuditHistory,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -40,7 +48,6 @@ export function EmployeeMasterToolbar({
 
   // ============================================================
   // SEARCH CHANGE
-  // CLOSE MENU WHEN USER STARTS SEARCHING
   // ============================================================
   const handleSearchChange = (event) => {
     setSearch(event.target.value);
@@ -49,7 +56,6 @@ export function EmployeeMasterToolbar({
 
   // ============================================================
   // STATUS CHANGE
-  // CLOSE MENU WHEN STATUS CHANGES
   // ============================================================
   const handleStatusChange = (event) => {
     setStatusFilter(event.target.value);
@@ -72,6 +78,11 @@ export function EmployeeMasterToolbar({
   const handleDownloadData = () => {
     setMenuOpen(false);
     onDownloadData();
+  };
+
+  const handleAuditHistory = () => {
+    setMenuOpen(false);
+    onAuditHistory?.();
   };
 
   return (
@@ -150,6 +161,14 @@ export function EmployeeMasterToolbar({
             <button type="button" role="menuitem" onClick={handleDownloadData}>
               <Download size={14} />
               <span>Download Visible Data</span>
+            </button>
+
+            {/* ==================================================
+                AUDIT HISTORY
+                ================================================== */}
+            <button type="button" role="menuitem" onClick={handleAuditHistory}>
+              <History size={14} />
+              <span>Audit History</span>
             </button>
           </div>
         )}

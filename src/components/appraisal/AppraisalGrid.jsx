@@ -547,6 +547,40 @@ const buildHistoryView = (records, row) => {
 
 const sortHistoryDesc = (a, b) => String(b.year).localeCompare(String(a.year));
 
+// Some backends send more than one row for the current cycle (e.g. one
+// tagged "Apr-26" and another tagged "2026"). Collapse those into a
+// single record — the one carrying the most real data — so the current
+// cycle never renders twice in either history view.
+const dedupeCurrentYearRecords = (records) => {
+  const currentRecords = records.filter(isCurrentYearRecord);
+  const otherRecords = records.filter((record) => !isCurrentYearRecord(record));
+
+  if (currentRecords.length <= 1) {
+    return records;
+  }
+
+  const scoreRecord = (record) =>
+    Object.values(record).reduce((score, value) => {
+      if (
+        value === 0 ||
+        value === "" ||
+        value === "—" ||
+        value === null ||
+        value === undefined
+      ) {
+        return score;
+      }
+
+      return score + 1;
+    }, 0);
+
+  const bestCurrent = currentRecords.reduce((best, record) =>
+    scoreRecord(record) > scoreRecord(best) ? record : best,
+  );
+
+  return [bestCurrent, ...otherRecords];
+};
+
 // ============================================================
 // COMPONENT
 // ============================================================
@@ -991,7 +1025,11 @@ export function AppraisalGrid({
 
       const records = Array.isArray(result?.data) ? result.data : [];
 
-      return records.map(normalizeHistoryRecord).sort(sortHistoryDesc);
+      const normalized = records
+        .map(normalizeHistoryRecord)
+        .sort(sortHistoryDesc);
+
+      return dedupeCurrentYearRecords(normalized);
     })();
 
     historyPromiseRef.current.set(key, promise);

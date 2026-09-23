@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CheckCircle2, AlertCircle } from "lucide-react";
+import { CheckCircle2, AlertCircle, X, History } from "lucide-react";
 
 import { AppShell } from "@/components/appraisal/AppShell";
 
@@ -110,11 +110,327 @@ function getImportedEmpId(row) {
 }
 
 /* ============================================================
+   AUDIT PANEL
+   ============================================================ */
+
+function AuditHistoryPanel({ open, title, description, entries, onClose }) {
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 9999,
+        background: "rgba(15, 23, 42, 0.35)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "24px",
+      }}
+      onMouseDown={onClose}
+    >
+      <div
+        style={{
+          width: "min(1100px, 95vw)",
+          maxHeight: "85vh",
+          background: "#fff",
+          borderRadius: "10px",
+          boxShadow: "0 20px 60px rgba(0,0,0,0.2)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+        }}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        {/* HEADER */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "18px 20px",
+            borderBottom: "1px solid #e5e7eb",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <History size={18} />
+
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: "18px",
+                  fontWeight: 700,
+                }}
+              >
+                {title}
+              </h2>
+            </div>
+
+            <p
+              style={{
+                margin: "4px 0 0",
+                fontSize: "12px",
+                color: "#64748b",
+              }}
+            >
+              {description}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              width: "32px",
+              height: "32px",
+              border: 0,
+              background: "transparent",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* COUNT */}
+        <div
+          style={{
+            padding: "10px 20px",
+            borderBottom: "1px solid #e5e7eb",
+            fontSize: "12px",
+            color: "#64748b",
+          }}
+        >
+          {entries.length} change{entries.length === 1 ? "" : "s"} recorded
+        </div>
+
+        {/* TABLE */}
+        <div
+          style={{
+            flex: 1,
+            overflow: "auto",
+          }}
+        >
+          <table
+            style={{
+              width: "100%",
+              borderCollapse: "collapse",
+              fontSize: "12px",
+            }}
+          >
+            <thead>
+              <tr>
+                <th
+                  style={{
+                    position: "sticky",
+                    top: 0,
+                    background: "#f8fafc",
+                    padding: "10px 12px",
+                    textAlign: "left",
+                    borderBottom: "1px solid #e2e8f0",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Employee ID
+                </th>
+
+                <th
+                  style={{
+                    position: "sticky",
+                    top: 0,
+                    background: "#f8fafc",
+                    padding: "10px 12px",
+                    textAlign: "left",
+                    borderBottom: "1px solid #e2e8f0",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Employee Name
+                </th>
+
+                <th
+                  style={{
+                    position: "sticky",
+                    top: 0,
+                    background: "#f8fafc",
+                    padding: "10px 12px",
+                    textAlign: "left",
+                    borderBottom: "1px solid #e2e8f0",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Field
+                </th>
+
+                <th
+                  style={{
+                    position: "sticky",
+                    top: 0,
+                    background: "#f8fafc",
+                    padding: "10px 12px",
+                    textAlign: "left",
+                    borderBottom: "1px solid #e2e8f0",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Old Value
+                </th>
+
+                <th
+                  style={{
+                    position: "sticky",
+                    top: 0,
+                    background: "#f8fafc",
+                    padding: "10px 12px",
+                    textAlign: "left",
+                    borderBottom: "1px solid #e2e8f0",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  New Value
+                </th>
+
+                <th
+                  style={{
+                    position: "sticky",
+                    top: 0,
+                    background: "#f8fafc",
+                    padding: "10px 12px",
+                    textAlign: "left",
+                    borderBottom: "1px solid #e2e8f0",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Changed At
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {entries.map((entry) => (
+                <tr key={entry.id}>
+                  <td
+                    style={{
+                      padding: "10px 12px",
+                      borderBottom: "1px solid #f1f5f9",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {entry.empId}
+                  </td>
+
+                  <td
+                    style={{
+                      padding: "10px 12px",
+                      borderBottom: "1px solid #f1f5f9",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {entry.employeeName}
+                  </td>
+
+                  <td
+                    style={{
+                      padding: "10px 12px",
+                      borderBottom: "1px solid #f1f5f9",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {entry.fieldName}
+                  </td>
+
+                  <td
+                    style={{
+                      padding: "10px 12px",
+                      borderBottom: "1px solid #f1f5f9",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {entry.oldValue || "—"}
+                  </td>
+
+                  <td
+                    style={{
+                      padding: "10px 12px",
+                      borderBottom: "1px solid #f1f5f9",
+                      whiteSpace: "nowrap",
+                      fontWeight: 600,
+                    }}
+                  >
+                    {entry.newValue || "—"}
+                  </td>
+
+                  <td
+                    style={{
+                      padding: "10px 12px",
+                      borderBottom: "1px solid #f1f5f9",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {entry.changedAt}
+                  </td>
+                </tr>
+              ))}
+
+              {entries.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    style={{
+                      padding: "40px 20px",
+                      textAlign: "center",
+                      color: "#94a3b8",
+                    }}
+                  >
+                    No audit history available.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* FOOTER */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            padding: "12px 20px",
+            borderTop: "1px solid #e5e7eb",
+          }}
+        >
+          <button
+            type="button"
+            className="em-btn em-btn-secondary"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
    COMPONENT
    ============================================================ */
 
 export function EmployeeMaster() {
-  // Only the currently requested page is kept in memory.
   const [allEmployees, setAllEmployees] = useState([]);
 
   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
@@ -169,6 +485,87 @@ export function EmployeeMaster() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const eligibilityLoadedKeyRef = useRef(null);
+
+  /* ============================================================
+     SEPARATE AUDIT STATES
+     ============================================================ */
+
+  const [employeeMasterAudit, setEmployeeMasterAudit] = useState([]);
+
+  const [eligibilityAudit, setEligibilityAudit] = useState([]);
+
+  const [employeeMasterAuditOpen, setEmployeeMasterAuditOpen] = useState(false);
+
+  const [eligibilityAuditOpen, setEligibilityAuditOpen] = useState(false);
+
+  /* ============================================================
+     AUDIT HELPERS
+     ============================================================ */
+
+  const addEmployeeMasterAudit = ({
+    empId,
+    employeeName,
+    oldValue,
+    newValue,
+  }) => {
+    const oldText = String(oldValue ?? "").trim();
+    const newText = String(newValue ?? "").trim();
+
+    if (oldText === newText) {
+      return;
+    }
+
+    setEmployeeMasterAudit((current) => [
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        empId: String(empId || "").trim(),
+        employeeName: String(employeeName || "").trim(),
+        fieldName: "Status",
+        oldValue: oldText,
+        newValue: newText,
+        changedAt: new Date().toLocaleString("en-IN", {
+          dateStyle: "medium",
+          timeStyle: "medium",
+        }),
+      },
+      ...current,
+    ]);
+  };
+
+  const addEligibilityAudit = ({ empId, employeeName, oldValue, newValue }) => {
+    const oldText = String(oldValue ?? "").trim();
+    const newText = String(newValue ?? "").trim();
+
+    if (oldText === newText) {
+      return;
+    }
+
+    setEligibilityAudit((current) => [
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        empId: String(empId || "").trim(),
+        employeeName: String(employeeName || "").trim(),
+        fieldName: "Eligibility",
+        oldValue:
+          oldText === "Yes"
+            ? "Eligible"
+            : oldText === "No"
+              ? "Not Eligible"
+              : oldText,
+        newValue:
+          newText === "Yes"
+            ? "Eligible"
+            : newText === "No"
+              ? "Not Eligible"
+              : newText,
+        changedAt: new Date().toLocaleString("en-IN", {
+          dateStyle: "medium",
+          timeStyle: "medium",
+        }),
+      },
+      ...current,
+    ]);
+  };
 
   const showBanner = (title, body, error = false) => {
     setBanner({ title, body, error });
@@ -704,7 +1101,9 @@ export function EmployeeMaster() {
       throw new Error("Invalid employee status.");
     }
 
-    return updateEmployeeMasterEmployee(empId, { status: normalizedStatus });
+    return updateEmployeeMasterEmployee(empId, {
+      status: normalizedStatus,
+    });
   };
 
   /* ============================================================
@@ -775,12 +1174,21 @@ export function EmployeeMaster() {
       return;
     }
 
+    const oldStatus = employee.status;
+
     const nextStatus = employee.status === "Active" ? "Inactive" : "Active";
 
     try {
       setStatusActionLoading(true);
 
       await persistStatusChange(employee.empId, nextStatus);
+
+      addEmployeeMasterAudit({
+        empId: employee.empId,
+        employeeName: employee.name,
+        oldValue: oldStatus,
+        newValue: nextStatus,
+      });
 
       applyLocalStatusChanges([
         {
@@ -849,10 +1257,14 @@ export function EmployeeMaster() {
 
       const results = await Promise.allSettled(
         employeesToUpdate.map(async (employee) => {
+          const oldStatus = employee.status;
+
           await persistStatusChange(employee.empId, normalizedStatus);
 
           return {
             empId: employee.empId,
+            employeeName: employee.name,
+            oldStatus,
             status: normalizedStatus,
           };
         }),
@@ -864,6 +1276,13 @@ export function EmployeeMaster() {
       results.forEach((result) => {
         if (result.status === "fulfilled") {
           successfulChanges.push(result.value);
+
+          addEmployeeMasterAudit({
+            empId: result.value.empId,
+            employeeName: result.value.employeeName,
+            oldValue: result.value.oldStatus,
+            newValue: result.value.status,
+          });
         } else {
           failedCount += 1;
 
@@ -970,7 +1389,21 @@ export function EmployeeMaster() {
     if (pendingImportType === "eligibility") {
       try {
         const results = await Promise.allSettled(
-          previewChanges.map((change) => persistEligibilityChange(change)),
+          previewChanges.map(async (change) => {
+            const oldEmployee = eligibilityEmployees.find(
+              (employee) =>
+                normalizeEmpId(employee.empId) === normalizeEmpId(change.empId),
+            );
+
+            const oldEligible = oldEmployee?.eligible;
+
+            const result = await persistEligibilityChange(change);
+
+            return {
+              ...result,
+              oldEligible,
+            };
+          }),
         );
 
         const successfulChanges = [];
@@ -979,6 +1412,13 @@ export function EmployeeMaster() {
         results.forEach((result) => {
           if (result.status === "fulfilled") {
             successfulChanges.push(result.value);
+
+            addEligibilityAudit({
+              empId: result.value.empId,
+              employeeName: result.value.name,
+              oldValue: result.value.oldEligible,
+              newValue: result.value.fields?.Eligible,
+            });
           } else {
             failedCount += 1;
 
@@ -1017,7 +1457,9 @@ export function EmployeeMaster() {
       return;
     }
 
-    /* Roster import */
+    /* ==========================================================
+       ROSTER IMPORT
+       ========================================================== */
 
     try {
       const records = previewChanges.map((change) => {
@@ -1042,6 +1484,36 @@ export function EmployeeMaster() {
 
       const result = await createEmployeeMasterEmployees(records);
 
+      /* Log status changes from roster import only when the
+         employee already existed and its status was changed. */
+      previewChanges.forEach((change) => {
+        if (change.isNew) {
+          return;
+        }
+
+        const importedStatus = change.fields?.status;
+
+        if (!importedStatus) {
+          return;
+        }
+
+        const existing = allEmployees.find(
+          (employee) =>
+            normalizeEmpId(employee.empId) === normalizeEmpId(change.empId),
+        );
+
+        if (!existing || existing.status === importedStatus) {
+          return;
+        }
+
+        addEmployeeMasterAudit({
+          empId: existing.empId,
+          employeeName: existing.name,
+          oldValue: existing.status,
+          newValue: importedStatus,
+        });
+      });
+
       setPreviewOpen(false);
       setPreviewChanges([]);
       setPendingImportType(null);
@@ -1049,9 +1521,7 @@ export function EmployeeMaster() {
       setRefreshKey((value) => value + 1);
 
       const created = result?.data?.created || 0;
-
       const updated = result?.data?.updated || 0;
-
       const skipped = result?.data?.skipped || 0;
 
       showBanner(
@@ -1119,6 +1589,7 @@ export function EmployeeMaster() {
         changes.push({
           empId: employee.empId,
           name: employee.name,
+          oldEligible: employee.eligible,
           fields: {
             Eligible: nextEligible,
             Reason: nextReason,
@@ -1144,9 +1615,16 @@ export function EmployeeMaster() {
       const successfulChanges = [];
       let failedCount = 0;
 
-      results.forEach((result) => {
+      results.forEach((result, index) => {
         if (result.status === "fulfilled") {
           successfulChanges.push(result.value);
+
+          addEligibilityAudit({
+            empId: result.value.empId,
+            employeeName: result.value.name,
+            oldValue: changes[index].oldEligible,
+            newValue: result.value.fields?.Eligible,
+          });
         } else {
           failedCount += 1;
 
@@ -1187,11 +1665,24 @@ export function EmployeeMaster() {
     try {
       const normalizedEligible = eligible === "Yes" ? "Yes" : "No";
 
+      const existingEmployee = eligibilityEmployees.find(
+        (employee) => normalizeEmpId(employee.empId) === normalizeEmpId(empId),
+      );
+
+      const oldEligible = existingEmployee?.eligible;
+
       await updateEmployeeEligibility(
         empId,
         normalizedEligible,
         eligibleReason || "",
       );
+
+      addEligibilityAudit({
+        empId,
+        employeeName: existingEmployee?.name || "",
+        oldValue: oldEligible,
+        newValue: normalizedEligible,
+      });
 
       applyLocalEligibilityChanges([
         {
@@ -1227,6 +1718,10 @@ export function EmployeeMaster() {
   return (
     <AppShell>
       <div className="employee-master-page">
+        {/* ======================================================
+            PAGE HEADING
+            ====================================================== */}
+
         <div className="em-page-heading">
           <div>
             <h2>Employee Master</h2>
@@ -1252,6 +1747,10 @@ export function EmployeeMaster() {
           </div>
         </div>
 
+        {/* ======================================================
+            TABS
+            ====================================================== */}
+
         <div className="em-tabs">
           <button
             type="button"
@@ -1276,6 +1775,7 @@ export function EmployeeMaster() {
           >
             Appraisal Cycle Master
           </button>
+
           <button
             type="button"
             className={activeTab === "payroll-data" ? "active" : ""}
@@ -1292,6 +1792,10 @@ export function EmployeeMaster() {
             Payroll Upload
           </button>
         </div>
+
+        {/* ======================================================
+            BANNER
+            ====================================================== */}
 
         {banner && (
           <div className={`em-banner ${banner.error ? "error" : ""}`}>
@@ -1315,6 +1819,10 @@ export function EmployeeMaster() {
           </div>
         )}
 
+        {/* ======================================================
+            EMPLOYEE MASTER TAB
+            ====================================================== */}
+
         {activeTab === "roster" && (
           <div className="em-tab-content">
             <EmployeeMasterToolbar
@@ -1325,6 +1833,7 @@ export function EmployeeMaster() {
               onDownloadTemplate={downloadRosterTemplate}
               onUpload={() => fileInputRef.current?.click()}
               onDownloadData={() => downloadRosterData(filteredRosterEmployees)}
+              onAuditHistory={() => setEmployeeMasterAuditOpen(true)}
             />
 
             <input
@@ -1367,6 +1876,10 @@ export function EmployeeMaster() {
           </div>
         )}
 
+        {/* ======================================================
+            ELIGIBILITY TAB
+            ====================================================== */}
+
         {activeTab === "eligibility" && (
           <div className="em-tab-content">
             {eligibilityLoading ? (
@@ -1392,22 +1905,37 @@ export function EmployeeMaster() {
                   onDownloadTemplate={downloadEligibilityTemplate}
                   onImport={handleEligibilityFile}
                   onExport={exportEligibilityData}
+                  onAuditHistory={() => setEligibilityAuditOpen(true)}
                 />
               </div>
             )}
           </div>
         )}
 
+        {/* ======================================================
+            APPRAISAL CYCLE MASTER
+            NO AUDIT HISTORY HERE
+            ====================================================== */}
+
         {activeTab === "appraisal-cycle" && (
           <div className="em-tab-content">
             <AppraisalCycleMasterPage />
           </div>
         )}
+
+        {/* ======================================================
+            PAYROLL DATA
+            ====================================================== */}
+
         {activeTab === "payroll-data" && (
           <div className="em-tab-content">
             <PayrollDataPage />
           </div>
         )}
+
+        {/* ======================================================
+            PAYROLL UPLOAD
+            ====================================================== */}
 
         {activeTab === "payroll-upload" && (
           <div
@@ -1422,11 +1950,19 @@ export function EmployeeMaster() {
           </div>
         )}
 
+        {/* ======================================================
+            ELIGIBILITY MODAL
+            ====================================================== */}
+
         <EligibilityModal
           employee={eligibilityEmployee}
           onClose={() => setEligibilityEmployee(null)}
           onSave={saveEligibility}
         />
+
+        {/* ======================================================
+            IMPORT PREVIEW
+            ====================================================== */}
 
         <ImportPreviewModal
           open={previewOpen}
@@ -1442,6 +1978,30 @@ export function EmployeeMaster() {
             setPendingImportType(null);
           }}
           onConfirm={confirmImport}
+        />
+
+        {/* ======================================================
+            EMPLOYEE MASTER AUDIT HISTORY
+            ====================================================== */}
+
+        <AuditHistoryPanel
+          open={employeeMasterAuditOpen}
+          title="Employee Master Audit History"
+          description="Active / Inactive status changes only."
+          entries={employeeMasterAudit}
+          onClose={() => setEmployeeMasterAuditOpen(false)}
+        />
+
+        {/* ======================================================
+            ELIGIBILITY AUDIT HISTORY
+            ====================================================== */}
+
+        <AuditHistoryPanel
+          open={eligibilityAuditOpen}
+          title="Eligibility Audit History"
+          description="Eligible / Not Eligible changes only."
+          entries={eligibilityAudit}
+          onClose={() => setEligibilityAuditOpen(false)}
         />
       </div>
     </AppShell>

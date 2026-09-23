@@ -3,6 +3,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  History,
   Menu,
   Search,
   Upload,
@@ -69,6 +70,7 @@ export function EligibilityList({
   onDownloadTemplate,
   onImport,
   onExport,
+  onAuditHistory,
 }) {
   const fileInputRef = useRef(null);
   const menuRef = useRef(null);
@@ -108,15 +110,6 @@ export function EligibilityList({
    * ACTIVE EMPLOYEES
    * ------------------------------------------------------------
    */
-  // const activeEmployees = useMemo(
-  //   () =>
-  //     employees.filter(
-  //       (employee) =>
-  //         employee.status === "Active" || employee.eligible === "No",
-  //     ),
-  //   [employees],
-  // );
-
   const activeEmployees = useMemo(() => employees, [employees]);
 
   /*
@@ -304,6 +297,7 @@ export function EligibilityList({
                 role="menu"
                 onMouseDown={(event) => event.stopPropagation()}
               >
+                {/* Download Template */}
                 <button
                   type="button"
                   role="menuitem"
@@ -316,6 +310,7 @@ export function EligibilityList({
                   Download Template
                 </button>
 
+                {/* Import Eligibility */}
                 <button
                   type="button"
                   role="menuitem"
@@ -328,6 +323,7 @@ export function EligibilityList({
                   Import Eligibility
                 </button>
 
+                {/* Export Visible */}
                 <button
                   type="button"
                   role="menuitem"
@@ -338,6 +334,19 @@ export function EligibilityList({
                 >
                   <Download size={14} />
                   Export Visible
+                </button>
+
+                {/* Audit History */}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onAuditHistory?.();
+                  }}
+                >
+                  <History size={14} />
+                  Audit History
                 </button>
               </div>
             )}
@@ -393,10 +402,7 @@ export function EligibilityList({
           <tbody>
             {paginatedRows.map((employee) => (
               <tr key={employee.empId}>
-                {/* ==================================================
-                    EMPLOYEE
-                    ================================================== */}
-
+                {/* EMPLOYEE */}
                 <td>
                   <div className="em-name-cell">
                     <strong>{employee.name}</strong>
@@ -404,34 +410,19 @@ export function EligibilityList({
                   </div>
                 </td>
 
-                {/* ==================================================
-                    APPRAISAL YEAR
-                    ================================================== */}
-
+                {/* APPRAISAL YEAR */}
                 <td>Apr-26</td>
 
-                {/* ==================================================
-                    ORGANIZATION
-                    ================================================== */}
-
+                {/* ORGANIZATION */}
                 <td>{employee.organization}</td>
 
-                {/* ==================================================
-                    DESIGNATION
-                    ================================================== */}
-
+                {/* DESIGNATION */}
                 <td>{employee.designation}</td>
 
-                {/* ==================================================
-                    DOJ
-                    ================================================== */}
-
+                {/* DOJ */}
                 <td>{fmtDoj(employee.doj)}</td>
 
-                {/* ==================================================
-                    ELIGIBILITY
-                    ================================================== */}
-
+                {/* ELIGIBILITY */}
                 <td>
                   <span
                     className={`em-elig-badge ${
@@ -442,10 +433,7 @@ export function EligibilityList({
                   </span>
                 </td>
 
-                {/* ==================================================
-                    REASON
-                    ================================================== */}
-
+                {/* REASON */}
                 <td>
                   <div className="em-reason">
                     {employee.eligibleReason || "—"}
@@ -454,10 +442,7 @@ export function EligibilityList({
                   </div>
                 </td>
 
-                {/* ==================================================
-                    ACTION
-                    ================================================== */}
-
+                {/* ACTION */}
                 <td>
                   <button
                     type="button"
