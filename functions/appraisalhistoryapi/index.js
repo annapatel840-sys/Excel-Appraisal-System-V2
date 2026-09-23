@@ -1,16 +1,32 @@
+"use strict";
+
 const catalyst = require("zcatalyst-sdk-node");
 
 const PREVIOUS_APPRAISAL_TABLE_ID = "71873000000020833";
+
+const DATASTORE_PAGE_SIZE = 200;
+
+/* ============================================================
+CORS
+============================================================ */
+
 function setCorsHeaders(res) {
-  // Do NOT set Access-Control-Allow-Origin here.
-  // Catalyst automatically adds the allowed origin.
+  // DO NOT set Access-Control-Allow-Origin.
+  // Catalyst automatically handles the allowed origin.
+
   res.setHeader("Access-Control-Allow-Methods", "GET, PATCH, OPTIONS");
+
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Accept, Authorization",
+    "Content-Type, Accept, Authorization, X-Requested-With",
   );
+
   res.setHeader("Access-Control-Max-Age", "86400");
 }
+
+/* ============================================================
+SEND JSON
+============================================================ */
 
 function sendJson(res, statusCode, payload) {
   res.statusCode = statusCode;
@@ -52,112 +68,169 @@ const readRequestBody = async (req) => {
 };
 
 /* ============================================================
+ALLOWED HISTORY FIELDS
+============================================================ */
+
+const ALLOWED_FIELDS = [
+  "base_pay",
+  "allocated_pb",
+  "allocated_pb_installment",
+  "performance_bonus",
+  "performance_bonus_installment",
+  "retention_bonus",
+  "total_pb",
+  "total_bonus",
+  "hike_amount",
+  "hike_pct",
+  "promotion",
+  "title",
+  "target_performance_bonus",
+  "new_ctc",
+  "manager_rating",
+  "rating",
+];
+
+/* ============================================================
 GET ALL PREVIOUS APPRAISAL RECORDS
 ============================================================ */
 
 const getAllPreviousAppraisalRecords = async (table) => {
   let allRecords = [];
   let nextToken = undefined;
-  let moreRecords = true;
 
-  while (moreRecords) {
+  while (true) {
     const options = {
-      maxRows: 200,
+      maxRows: DATASTORE_PAGE_SIZE,
     };
 
     if (nextToken) {
       options.nextToken = nextToken;
     }
 
+    console.log("Previous_Appraisal getPagedRows:", options);
+
     const result = await table.getPagedRows(options);
 
-    const rows = Array.isArray(result.data) ? result.data : [];
+    const rows = Array.isArray(result?.data) ? result.data : [];
+
+    console.log(
+      "Previous_Appraisal page received:",
+      rows.length,
+      "more_records:",
+      result?.more_records,
+    );
 
     allRecords = allRecords.concat(rows);
 
-    moreRecords = result.more_records === true;
-    nextToken = result.next_token;
+    if (result?.more_records !== true) {
+      break;
+    }
+
+    nextToken = result?.next_token;
+
+    if (!nextToken) {
+      console.warn(
+        "Previous_Appraisal says more_records=true but no next_token was returned.",
+      );
+      break;
+    }
   }
+
+  console.log("Previous_Appraisal total records fetched:", allRecords.length);
 
   return allRecords;
 };
 
 /* ============================================================
-GET HISTORY
+GET HISTORY FOR EMPLOYEE
 ============================================================ */
 
 const getHistory = async (table, empId) => {
   const allRecords = await getAllPreviousAppraisalRecords(table);
 
-  return allRecords
+  const history = allRecords
     .filter((record) => String(record.emp_id || "").trim() === empId)
     .sort((a, b) =>
       String(b.appraisal_year || "").localeCompare(
         String(a.appraisal_year || ""),
       ),
     );
+
+  console.log("History records for", empId, ":", history.length);
+
+  return history;
 };
 
 /* ============================================================
-PATCH CURRENT-YEAR HISTORY
+BUILD UPDATE DATA
 ============================================================ */
 
-const updateCurrentYearHistory = async (
-  table,
-  empId,
-  appraisalYear,
-  updates,
-) => {
+const buildUpdateData = (body) => {
+  const updateData = {};
+
+  ALLOWED_FIELDS.forEach((field) => {
+    if (Object.prototype.hasOwnProperty.call(body, field)) {
+      updateData[field] = body[field];
+    }
+  });
+
+  return updateData;
+};
+
+/* ============================================================
+FIND CURRENT YEAR RECORD
+============================================================ */
+
+const findHistoryRecord = async (table, empId, appraisalYear) => {
   const allRecords = await getAllPreviousAppraisalRecords(table);
 
-  const record = allRecords.find(
+  return allRecords.find(
     (item) =>
       String(item.emp_id || "").trim() === empId &&
       String(item.appraisal_year || "").trim() === appraisalYear,
   );
+};
 
-  if (!record) {
-    throw new Error(
-      `Previous_Appraisal record not found for employee ${empId} and appraisal year ${appraisalYear}.`,
-    );
-  }
+/* ============================================================
+UPDATE EXISTING HISTORY
+============================================================ */
 
-  const allowedFields = [
-    "base_pay",
-    "allocated_pb",
-    "allocated_pb_installment",
-    "performance_bonus",
-    "performance_bonus_installment",
-    "retention_bonus",
-    "total_pb",
-    "total_bonus",
-    "hike_amount",
-    "hike_pct",
-    "promotion",
-    "title",
-    "target_performance_bonus",
-    "new_ctc",
-    "manager_rating",
-    "rating",
-  ];
+const updateExistingHistory = async (table, record, updateData) => {
+  const payload = {
+    ...updateData,
+    ROWID: record.ROWID,
+  };
 
-  const updateData = {};
+  console.log("Previous_Appraisal updateRow payload:", JSON.stringify(payload));
 
-  allowedFields.forEach((field) => {
-    if (Object.prototype.hasOwnProperty.call(updates, field)) {
-      updateData[field] = updates[field];
-    }
-  });
+  const result = await table.updateRow(payload);
 
-  if (!Object.keys(updateData).length) {
-    throw new Error("No valid Previous_Appraisal fields were provided.");
-  }
+  console.log("Previous_Appraisal updateRow result:", JSON.stringify(result));
 
-  updateData.ROWID = record.ROWID;
+  return result;
+};
 
-  const updatedRecord = await table.updateRow(updateData);
+/* ============================================================
+CREATE HISTORY RECORD IF MISSING
+============================================================ */
 
-  return updatedRecord;
+const createHistoryRecord = async (table, empId, appraisalYear, updateData) => {
+  const payload = {
+    emp_id: empId,
+    appraisal_year: appraisalYear,
+    ...updateData,
+  };
+
+  console.log(
+    "Previous_Appraisal insertRows payload:",
+    JSON.stringify(payload),
+  );
+
+  const result = await table.insertRows([payload]);
+
+  console.log("Previous_Appraisal insertRows result:", JSON.stringify(result));
+
+  return Array.isArray(result) ? result[0] : result;
 };
 
 /* ============================================================
@@ -166,6 +239,13 @@ MAIN API
 
 module.exports = async (req, res) => {
   setCorsHeaders(res);
+
+  console.log("================================================");
+  console.log("APPRAISAL HISTORY API REQUEST");
+  console.log("METHOD:", req.method);
+  console.log("URL:", req.url);
+  console.log("TABLE ID:", PREVIOUS_APPRAISAL_TABLE_ID);
+  console.log("================================================");
 
   /* ----------------------------------------------------------
   OPTIONS
@@ -177,14 +257,16 @@ module.exports = async (req, res) => {
     return;
   }
 
-  /* ----------------------------------------------------------
-  INITIALIZE CATALYST
-  ---------------------------------------------------------- */
-
   try {
+    /* --------------------------------------------------------
+    INITIALIZE CATALYST
+    -------------------------------------------------------- */
+
     const app = catalyst.initialize(req);
 
-    const table = app.datastore().table(PREVIOUS_APPRAISAL_TABLE_ID);
+    const datastore = app.datastore();
+
+    const table = datastore.table(PREVIOUS_APPRAISAL_TABLE_ID);
 
     const requestUrl = new URL(
       req.url,
@@ -197,6 +279,8 @@ module.exports = async (req, res) => {
 
     if (req.method === "GET") {
       const empId = String(requestUrl.searchParams.get("emp_id") || "").trim();
+
+      console.log("GET emp_id:", empId);
 
       if (!empId) {
         sendJson(res, 400, {
@@ -225,9 +309,14 @@ module.exports = async (req, res) => {
     if (req.method === "PATCH") {
       const body = await readRequestBody(req);
 
+      console.log("PATCH BODY:", JSON.stringify(body));
+
       const empId = String(body.emp_id || "").trim();
 
       const appraisalYear = String(body.appraisal_year || "").trim();
+
+      console.log("PATCH emp_id:", empId);
+      console.log("PATCH appraisal_year:", appraisalYear);
 
       if (!empId) {
         sendJson(res, 400, {
@@ -245,34 +334,35 @@ module.exports = async (req, res) => {
         return;
       }
 
-      const updates = {};
+      /* ------------------------------------------------------
+      ONLY ALLOW 2025 AND 2026 HISTORY
+      ------------------------------------------------------ */
 
-      const allowedFields = [
-        "base_pay",
-        "allocated_pb",
-        "allocated_pb_installment",
-        "performance_bonus",
-        "performance_bonus_installment",
-        "retention_bonus",
-        "total_pb",
-        "total_bonus",
-        "hike_amount",
-        "hike_pct",
-        "promotion",
-        "title",
-        "target_performance_bonus",
-        "new_ctc",
-        "manager_rating",
-        "rating",
-      ];
+      const normalizedYear = appraisalYear.toLowerCase().trim();
 
-      allowedFields.forEach((field) => {
-        if (Object.prototype.hasOwnProperty.call(body, field)) {
-          updates[field] = body[field];
-        }
-      });
+      const is2025 =
+        normalizedYear.includes("2025") || normalizedYear.includes("apr-25");
 
-      if (!Object.keys(updates).length) {
+      const is2026 =
+        normalizedYear.includes("2026") || normalizedYear.includes("apr-26");
+
+      if (!is2025 && !is2026) {
+        sendJson(res, 400, {
+          success: false,
+          message: "Only 2025 and 2026 appraisal history can be updated.",
+        });
+        return;
+      }
+
+      /* ------------------------------------------------------
+      BUILD UPDATE DATA
+      ------------------------------------------------------ */
+
+      const updateData = buildUpdateData(body);
+
+      console.log("VALID HISTORY UPDATE DATA:", JSON.stringify(updateData));
+
+      if (!Object.keys(updateData).length) {
         sendJson(res, 400, {
           success: false,
           message: "No valid Previous_Appraisal fields were provided.",
@@ -280,26 +370,68 @@ module.exports = async (req, res) => {
         return;
       }
 
-      console.log(
-        "Updating Previous_Appraisal:",
-        empId,
-        appraisalYear,
-        updates,
-      );
+      /* ------------------------------------------------------
+      FIND EXISTING RECORD
+      ------------------------------------------------------ */
 
-      const updatedRecord = await updateCurrentYearHistory(
+      console.log("Searching Previous_Appraisal for:", empId, appraisalYear);
+
+      const existingRecord = await findHistoryRecord(
         table,
         empId,
         appraisalYear,
-        updates,
+      );
+
+      /* ------------------------------------------------------
+      UPDATE EXISTING RECORD
+      ------------------------------------------------------ */
+
+      if (existingRecord) {
+        console.log(
+          "Existing Previous_Appraisal record found:",
+          existingRecord.ROWID,
+        );
+
+        const updatedRecord = await updateExistingHistory(
+          table,
+          existingRecord,
+          updateData,
+        );
+
+        sendJson(res, 200, {
+          success: true,
+          action: "updated",
+          emp_id: empId,
+          appraisal_year: appraisalYear,
+          message: "Previous_Appraisal updated successfully.",
+          data: updatedRecord,
+        });
+
+        return;
+      }
+
+      /* ------------------------------------------------------
+      CREATE RECORD IF IT DOES NOT EXIST
+      ------------------------------------------------------ */
+
+      console.log("No Previous_Appraisal record found.");
+
+      console.log("Creating new history record for:", empId, appraisalYear);
+
+      const createdRecord = await createHistoryRecord(
+        table,
+        empId,
+        appraisalYear,
+        updateData,
       );
 
       sendJson(res, 200, {
         success: true,
+        action: "created",
         emp_id: empId,
         appraisal_year: appraisalYear,
-        message: "Previous_Appraisal updated successfully.",
-        data: updatedRecord,
+        message: "Previous_Appraisal history created successfully.",
+        data: createdRecord,
       });
 
       return;
@@ -314,11 +446,24 @@ module.exports = async (req, res) => {
       message: "Only GET, PATCH and OPTIONS methods are allowed.",
     });
   } catch (error) {
-    console.error("Appraisal history API error:", error);
+    console.error("================================================");
+
+    console.error("APPRAISAL HISTORY API ERROR");
+
+    console.error("MESSAGE:", error?.message);
+
+    console.error("STACK:", error?.stack);
+
+    console.error(
+      "FULL ERROR:",
+      JSON.stringify(error, Object.getOwnPropertyNames(error)),
+    );
+
+    console.error("================================================");
 
     sendJson(res, 500, {
       success: false,
-      message: error.message || "Failed to process appraisal history request.",
+      message: error?.message || "Failed to process appraisal history request.",
     });
   }
 };

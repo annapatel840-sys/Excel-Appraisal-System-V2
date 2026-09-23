@@ -3,8 +3,10 @@
 const catalyst = require("zcatalyst-sdk-node");
 
 const AUDIT_TABLE_ID = "71873000000021235";
+
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
+const DATASTORE_PAGE_SIZE = 200;
 
 /* ============================================================
    SEND JSON RESPONSE
@@ -30,16 +32,16 @@ function getQueryParams(req) {
     return req.queryParams;
   }
 
-  var url = String(req.url || "");
-  var queryIndex = url.indexOf("?");
+  const url = String(req.url || "");
+  const queryIndex = url.indexOf("?");
 
   if (queryIndex === -1) {
     return {};
   }
 
-  var queryString = url.substring(queryIndex + 1);
-  var params = new URLSearchParams(queryString);
-  var result = {};
+  const queryString = url.substring(queryIndex + 1);
+  const params = new URLSearchParams(queryString);
+  const result = {};
 
   params.forEach(function (value, key) {
     result[key] = value;
@@ -54,7 +56,7 @@ function getQueryParams(req) {
 
 function readBody(req) {
   return new Promise(function (resolve, reject) {
-    var body = "";
+    let body = "";
 
     req.on("data", function (chunk) {
       body += chunk;
@@ -84,19 +86,19 @@ function readBody(req) {
    ============================================================ */
 
 function getPositiveInteger(value, fallback) {
-  var number = Number(value);
+  const number = Number(value);
 
   if (!isFinite(number)) {
     return fallback;
   }
 
-  number = Math.floor(number);
+  const integer = Math.floor(number);
 
-  if (number < 1) {
+  if (integer < 1) {
     return 1;
   }
 
-  return number;
+  return integer;
 }
 
 /* ============================================================
@@ -104,17 +106,12 @@ function getPositiveInteger(value, fallback) {
    ============================================================ */
 
 function formatDateTime(date) {
-  var year = date.getFullYear();
-
-  var month = String(date.getMonth() + 1).padStart(2, "0");
-
-  var day = String(date.getDate()).padStart(2, "0");
-
-  var hours = String(date.getHours()).padStart(2, "0");
-
-  var minutes = String(date.getMinutes()).padStart(2, "0");
-
-  var seconds = String(date.getSeconds()).padStart(2, "0");
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
 
   return (
     year + "-" + month + "-" + day + " " + hours + ":" + minutes + ":" + seconds
@@ -126,7 +123,7 @@ function normalizeDateTime(value) {
     return formatDateTime(new Date());
   }
 
-  var date = new Date(value);
+  const date = new Date(value);
 
   if (isNaN(date.getTime())) {
     throw new Error("Invalid changed_at datetime: " + String(value));
@@ -140,9 +137,7 @@ function normalizeDateTime(value) {
    ============================================================ */
 
 function normalizeAuditResponse(row) {
-  if (!row) {
-    row = {};
-  }
+  row = row || {};
 
   return {
     ROWID: row.ROWID || row.rowid || "",
@@ -153,9 +148,15 @@ function normalizeAuditResponse(row) {
 
     field_name: row.field_name || "",
 
-    old_value: row.old_value || "",
+    old_value:
+      row.old_value !== undefined && row.old_value !== null
+        ? String(row.old_value)
+        : "",
 
-    new_value: row.new_value || "",
+    new_value:
+      row.new_value !== undefined && row.new_value !== null
+        ? String(row.new_value)
+        : "",
 
     changed_by: row.changed_by || "",
 
@@ -178,27 +179,41 @@ function normalizeAuditResponse(row) {
    ============================================================ */
 
 function normalizeAuditPayload(item) {
-  var row = item || {};
+  const row = item || {};
 
-  var empId = row.emp_id || row.empId || "";
+  const empId = row.emp_id || row.empId || "";
 
-  var employeeName = row.employee_name || row.employeeName || row.name || "";
+  const employeeName = row.employee_name || row.employeeName || row.name || "";
 
-  var fieldName = row.field_name || row.fieldName || row.field || "";
+  const fieldName = row.field_name || row.fieldName || row.field || "";
 
-  var oldValue = row.old_value || row.oldValue || row.from || "";
+  const oldValue =
+    row.old_value !== undefined
+      ? row.old_value
+      : row.oldValue !== undefined
+        ? row.oldValue
+        : row.from !== undefined
+          ? row.from
+          : "";
 
-  var newValue = row.new_value || row.newValue || row.to || "";
+  const newValue =
+    row.new_value !== undefined
+      ? row.new_value
+      : row.newValue !== undefined
+        ? row.newValue
+        : row.to !== undefined
+          ? row.to
+          : "";
 
-  var changedBy = row.changed_by || row.changedBy || row.user || "";
+  const changedBy = row.changed_by || row.changedBy || row.user || "system";
 
-  var changedAt = row.changed_at || row.changedAt || row.at || "";
+  const changedAt = row.changed_at || row.changedAt || row.at || "";
 
-  var source = row.source || "manual";
+  const source = row.source || "manual";
 
-  var batchId = row.batch_id || row.batchId || "";
+  const batchId = row.batch_id || row.batchId || "";
 
-  var appraisalYear = row.appraisal_year || row.appraisalYear || "Apr-26";
+  const appraisalYear = row.appraisal_year || row.appraisalYear || "Apr-26";
 
   return {
     emp_id: String(empId).trim(),
@@ -207,9 +222,11 @@ function normalizeAuditPayload(item) {
 
     field_name: String(fieldName).trim(),
 
-    old_value: String(oldValue),
+    old_value:
+      oldValue === null || oldValue === undefined ? "" : String(oldValue),
 
-    new_value: String(newValue),
+    new_value:
+      newValue === null || newValue === undefined ? "" : String(newValue),
 
     changed_by: String(changedBy).trim(),
 
@@ -228,63 +245,88 @@ function normalizeAuditPayload(item) {
    ============================================================ */
 
 async function getAuditHistory(req, res) {
-  var appInstance = catalyst.initialize(req);
+  const appInstance = catalyst.initialize(req);
 
-  var datastore = appInstance.datastore();
+  const datastore = appInstance.datastore();
 
-  var table = datastore.table(AUDIT_TABLE_ID);
+  const table = datastore.table(AUDIT_TABLE_ID);
 
-  var params = getQueryParams(req);
+  const params = getQueryParams(req);
 
-  var empId = String(params.emp_id || params.empId || "").trim();
+  const empId = String(params.emp_id || params.empId || "").trim();
 
-  var appraisalYear = String(
+  const appraisalYear = String(
     params.appraisal_year || params.appraisalYear || "",
   ).trim();
 
-  var requestedLimit = getPositiveInteger(params.limit, DEFAULT_LIMIT);
+  const requestedLimit = getPositiveInteger(params.limit, DEFAULT_LIMIT);
 
-  var limit = Math.min(requestedLimit, MAX_LIMIT);
+  const limit = Math.min(requestedLimit, MAX_LIMIT);
 
-  console.log("AUDIT GET STARTED");
+  console.log("==============================================");
+  console.log("AUDIT GET");
+  console.log("TABLE:", AUDIT_TABLE_ID);
+  console.log("EMP ID:", empId || "ALL");
+  console.log("YEAR:", appraisalYear || "ALL");
+  console.log("LIMIT:", limit);
+  console.log("==============================================");
 
-  console.log("AUDIT TABLE:", AUDIT_TABLE_ID);
+  /*
+   * Fetch enough pages so filtering happens against
+   * the complete available audit history.
+   */
 
-  console.log("AUDIT EMP ID:", empId || "ALL");
+  let allRows = [];
+  let nextToken = null;
 
-  console.log("AUDIT YEAR:", appraisalYear || "ALL");
+  while (true) {
+    const options = {
+      maxRows: DATASTORE_PAGE_SIZE,
+    };
 
-  console.log("AUDIT LIMIT:", limit);
+    if (nextToken) {
+      options.nextToken = nextToken;
+    }
 
-  /* ----------------------------------------------------------
-     GET ALL AUDIT ROWS FROM DATA STORE
-     ---------------------------------------------------------- */
+    const result = await table.getPagedRows(options);
 
-  var allRows = await table.getAllRows();
+    const pageRows = Array.isArray(result.data) ? result.data : [];
 
-  if (!Array.isArray(allRows)) {
-    allRows = [];
+    allRows = allRows.concat(pageRows);
+
+    console.log(
+      "AUDIT PAGE FETCHED:",
+      pageRows.length,
+      "TOTAL:",
+      allRows.length,
+    );
+
+    if (result.more_records !== true || !result.next_token) {
+      break;
+    }
+
+    nextToken = result.next_token;
   }
 
-  console.log("AUDIT TOTAL ROWS:", allRows.length);
+  console.log("AUDIT TOTAL DATASTORE ROWS:", allRows.length);
 
-  /* ----------------------------------------------------------
+  /* ==========================================================
      FILTER
-     ---------------------------------------------------------- */
+     ========================================================== */
 
-  var filteredRows = allRows.filter(function (row) {
+  let filteredRows = allRows.filter(function (row) {
     if (empId) {
-      var rowEmpId = String(row.emp_id || "").trim();
+      const rowEmpId = String(row.emp_id || "").trim();
 
-      if (rowEmpId !== empId) {
+      if (rowEmpId.toLowerCase() !== empId.toLowerCase()) {
         return false;
       }
     }
 
     if (appraisalYear) {
-      var rowYear = String(row.appraisal_year || "").trim();
+      const rowYear = String(row.appraisal_year || "").trim();
 
-      if (rowYear !== appraisalYear) {
+      if (rowYear.toLowerCase() !== appraisalYear.toLowerCase()) {
         return false;
       }
     }
@@ -292,47 +334,36 @@ async function getAuditHistory(req, res) {
     return true;
   });
 
-  /* ----------------------------------------------------------
+  /* ==========================================================
      SORT NEWEST FIRST
-     ---------------------------------------------------------- */
+     ========================================================== */
 
   filteredRows.sort(function (a, b) {
-    var dateA = new Date(a.changed_at || a.CREATEDTIME || 0).getTime();
+    const dateA = new Date(a.changed_at || a.CREATEDTIME || 0).getTime();
 
-    var dateB = new Date(b.changed_at || b.CREATEDTIME || 0).getTime();
+    const dateB = new Date(b.changed_at || b.CREATEDTIME || 0).getTime();
 
-    if (isNaN(dateA)) {
-      dateA = 0;
-    }
-
-    if (isNaN(dateB)) {
-      dateB = 0;
-    }
-
-    return dateB - dateA;
+    return (isNaN(dateB) ? 0 : dateB) - (isNaN(dateA) ? 0 : dateA);
   });
 
-  /* ----------------------------------------------------------
-     LIMIT
-     ---------------------------------------------------------- */
+  /* ==========================================================
+     LIMIT AFTER FILTERING
+     ========================================================== */
 
-  var limitedRows = filteredRows.slice(0, limit);
+  const limitedRows = filteredRows.slice(0, limit);
 
-  /* ----------------------------------------------------------
-     NORMALIZE
-     ---------------------------------------------------------- */
-
-  var data = limitedRows.map(function (row) {
+  const data = limitedRows.map(function (row) {
     return normalizeAuditResponse(row);
   });
 
-  console.log("AUDIT FILTERED ROWS:", filteredRows.length);
+  console.log("AUDIT MATCHING ROWS:", filteredRows.length);
 
-  console.log("AUDIT RETURNED ROWS:", data.length);
+  console.log("AUDIT RETURNING ROWS:", data.length);
 
   sendJson(res, 200, {
     success: true,
     count: data.length,
+    total: filteredRows.length,
     data: data,
   });
 }
@@ -342,15 +373,19 @@ async function getAuditHistory(req, res) {
    ============================================================ */
 
 async function createAuditRecords(req, res) {
-  var appInstance = catalyst.initialize(req);
+  const appInstance = catalyst.initialize(req);
 
-  var datastore = appInstance.datastore();
+  const datastore = appInstance.datastore();
 
-  var body = await readBody(req);
+  const body = await readBody(req);
 
-  console.log("AUDIT POST BODY:", JSON.stringify(body));
+  console.log("==============================================");
+  console.log("AUDIT POST RECEIVED");
+  console.log("BODY:", JSON.stringify(body));
+  console.log("TABLE:", AUDIT_TABLE_ID);
+  console.log("==============================================");
 
-  var incoming;
+  let incoming;
 
   if (Array.isArray(body)) {
     incoming = body;
@@ -373,12 +408,14 @@ async function createAuditRecords(req, res) {
     return;
   }
 
-  var rowsToInsert = [];
-  var skipped = [];
+  console.log("AUDIT INCOMING COUNT:", incoming.length);
+
+  const rowsToInsert = [];
+  const skipped = [];
 
   incoming.forEach(function (item, index) {
     try {
-      var audit = normalizeAuditPayload(item);
+      const audit = normalizeAuditPayload(item);
 
       if (!audit.emp_id) {
         skipped.push({
@@ -438,35 +475,53 @@ async function createAuditRecords(req, res) {
     return;
   }
 
-  console.log("AUDIT INSERT ROWS:", JSON.stringify(rowsToInsert));
+  console.log("AUDIT VALID ROW COUNT:", rowsToInsert.length);
 
-  var table = datastore.table(AUDIT_TABLE_ID);
+  console.log("AUDIT INSERT PAYLOAD:", JSON.stringify(rowsToInsert));
 
-  var insertedRows = await table.insertRows(rowsToInsert);
+  const table = datastore.table(AUDIT_TABLE_ID);
 
-  console.log("AUDIT INSERT RESULT:", JSON.stringify(insertedRows));
+  try {
+    const insertedRows = await table.insertRows(rowsToInsert);
 
-  if (!Array.isArray(insertedRows)) {
-    insertedRows = [];
+    console.log("AUDIT INSERT RESULT:", JSON.stringify(insertedRows));
+
+    const insertedArray = Array.isArray(insertedRows) ? insertedRows : [];
+
+    const data = insertedArray.map(function (row) {
+      return normalizeAuditResponse(row);
+    });
+
+    console.log("AUDIT INSERTED COUNT:", data.length);
+
+    sendJson(res, 200, {
+      success: true,
+
+      message: data.length + " audit record(s) created successfully.",
+
+      count: data.length,
+
+      data: data,
+
+      skipped: skipped.length,
+
+      skippedRecords: skipped,
+    });
+  } catch (error) {
+    console.error("AUDIT DATASTORE INSERT ERROR:", error);
+
+    sendJson(res, 500, {
+      success: false,
+
+      message: "Failed to insert audit records into Data Store.",
+
+      error: error.message || String(error),
+
+      skipped: skipped.length,
+
+      skippedRecords: skipped,
+    });
   }
-
-  var data = insertedRows.map(function (row) {
-    return normalizeAuditResponse(row);
-  });
-
-  sendJson(res, 200, {
-    success: true,
-
-    message: data.length + " audit record(s) created successfully.",
-
-    count: data.length,
-
-    data: data,
-
-    skipped: skipped.length,
-
-    skippedRecords: skipped,
-  });
 }
 
 /* ============================================================
@@ -474,16 +529,13 @@ async function createAuditRecords(req, res) {
    ============================================================ */
 
 module.exports = async function (req, res) {
-  var method = String(req.method || "GET").toUpperCase();
+  const method = String(req.method || "GET").toUpperCase();
 
   console.log("==============================================");
-
   console.log("APPRAISAL AUDIT API");
-
   console.log("METHOD:", method);
-
   console.log("URL:", req.url);
-
+  console.log("TABLE:", AUDIT_TABLE_ID);
   console.log("==============================================");
 
   try {

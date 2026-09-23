@@ -7,6 +7,7 @@ const app = express();
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
+const DATASTORE_PAGE_SIZE = 200;
 
 const EMPLOYEES_TABLE_ID = "71873000000020001";
 const EMPLOYEE_MASTER_TABLE_ID = "71873000000020438";
@@ -40,7 +41,7 @@ app.use(function (req, res, next) {
    ============================================================ */
 
 function sendJson(res, statusCode, body) {
-  res.status(statusCode).json(body);
+  return res.status(statusCode).json(body);
 }
 
 /* ============================================================
@@ -113,15 +114,8 @@ function normalizeEmployeeResponse(employee) {
   return {
     ...row,
 
-    /*
-     * Organization Experience comes directly from
-     * Employees.wissen_experience.
-     */
     wissen_experience: wissenExperience,
 
-    /*
-     * Frontend-friendly alias.
-     */
     orgExp: orgExp,
   };
 }
@@ -139,10 +133,7 @@ const ALLOWED_FIELDS = [
   "department",
   "manager",
   "status",
-
-  /* Organization Experience */
   "wissen_experience",
-
   "total_experience",
   "last_appraisal_date",
   "manager_rating",
@@ -187,39 +178,19 @@ function pickAllowedFields(body) {
 }
 
 /* ============================================================
-   GET ALL EMPLOYEES
+   GET ALL EMPLOYEES USING DATASTORE PAGINATION
    ============================================================ */
 
-async function getAllEmployees(zcql) {
-  const query = `
-    SELECT *
-    FROM employees
-    ORDER BY CREATEDTIME
-  `;
-
-  const result = await zcql.executeZCQLQuery(query);
-
-  return (result || []).map(function (item) {
-    const employee = item.Employees || item.employees || item;
-
-    return normalizeEmployeeResponse(employee);
-  });
-}
-
-/* ============================================================
-   GET ALL EMPLOYEE MASTER RECORDS
-   ============================================================ */
-
-async function getAllEmployeeMaster(datastore) {
-  const table = datastore.table(EMPLOYEE_MASTER_TABLE_ID);
+async function getAllEmployees(datastore) {
+  const table = datastore.table(EMPLOYEES_TABLE_ID);
 
   let allRows = [];
-  let nextToken;
+  let nextToken = null;
   let moreRecords = true;
 
   while (moreRecords) {
     const options = {
-      maxRows: 200,
+      maxRows: DATASTORE_PAGE_SIZE,
     };
 
     if (nextToken) {
@@ -228,10 +199,57 @@ async function getAllEmployeeMaster(datastore) {
 
     const result = await table.getPagedRows(options);
 
-    allRows = allRows.concat(result.data || []);
+    const pageRows = Array.isArray(result.data) ? result.data : [];
+
+    allRows = allRows.concat(
+      pageRows.map(function (employee) {
+        return normalizeEmployeeResponse(employee);
+      }),
+    );
 
     moreRecords = result.more_records === true;
-    nextToken = result.next_token;
+    nextToken = result.next_token || null;
+
+    if (!nextToken) {
+      moreRecords = false;
+    }
+  }
+
+  return allRows;
+}
+
+/* ============================================================
+   GET ALL EMPLOYEE MASTER RECORDS USING DATASTORE PAGINATION
+   ============================================================ */
+
+async function getAllEmployeeMaster(datastore) {
+  const table = datastore.table(EMPLOYEE_MASTER_TABLE_ID);
+
+  let allRows = [];
+  let nextToken = null;
+  let moreRecords = true;
+
+  while (moreRecords) {
+    const options = {
+      maxRows: DATASTORE_PAGE_SIZE,
+    };
+
+    if (nextToken) {
+      options.nextToken = nextToken;
+    }
+
+    const result = await table.getPagedRows(options);
+
+    const pageRows = Array.isArray(result.data) ? result.data : [];
+
+    allRows = allRows.concat(pageRows);
+
+    moreRecords = result.more_records === true;
+    nextToken = result.next_token || null;
+
+    if (!nextToken) {
+      moreRecords = false;
+    }
   }
 
   return allRows;
@@ -261,15 +279,7 @@ function buildEmployeeMasterMap(masterRows) {
 
 /* ============================================================
    CHECK APPRAISAL SHEET ELIGIBILITY
- *
- * Employee must satisfy BOTH:
- *
- * 1. Employee_Master.emp_status = Active
- * 2. Employees.eligible_status = Eligible
- *
- * Employee_Master does NOT contain eligibility.
- * Employees does NOT get eligibility changed here.
- * ============================================================ */
+   ============================================================ */
 
 function isAppraisalEligible(employee, employeeMasterMap) {
   const empId = String(employee.emp_id || "")
@@ -310,22 +320,13 @@ function filterEmployees(
   let filtered = employees;
 
   /*
-   * ==========================================================
-   * APPRAISAL SHEET BASE FILTER
+   * NORMAL APPRAISAL VIEW
    *
-   * Normal/default view:
-   *
-   * Employee_Master Active
+   * Employee_Master = Active
    * AND
-   * Employees Eligible
+   * Employees = Eligible
    *
-   * Eligibility view:
-   *
-   * ALL Employees
-   *
-   * This allows HR to see both Eligible and Not Eligible
-   * employees in the Eligibility List.
-   * ==========================================================
+   * Eligibility view and Master view show all employees.
    */
 
   if (view !== "eligibility" && view !== "master") {
@@ -334,11 +335,9 @@ function filterEmployees(
     });
   }
 
-  /*
-   * ==========================================================
-   * SEARCH
-   * ==========================================================
-   */
+  /* ==========================================================
+     SEARCH
+     ========================================================== */
 
   if (search) {
     const searchValue = search.toLowerCase();
@@ -363,13 +362,9 @@ function filterEmployees(
     });
   }
 
-  /*
-   * ==========================================================
-   * STATUS FILTER
-   *
-   * Employees.status is synchronized from Employee_Master.
-   * ==========================================================
-   */
+  /* ==========================================================
+     STATUS FILTER
+     ========================================================== */
 
   if (status) {
     filtered = filtered.filter(function (employee) {
@@ -381,13 +376,9 @@ function filterEmployees(
     });
   }
 
-  /*
-   * ==========================================================
-   * ELIGIBILITY FILTER
-   *
-   * Strictly uses Employees.eligible_status.
-   * ==========================================================
-   */
+  /* ==========================================================
+     ELIGIBILITY FILTER
+     ========================================================== */
 
   if (eligible) {
     filtered = filtered.filter(function (employee) {
@@ -421,8 +412,6 @@ function filterEmployees(
 async function getEmployees(req, res) {
   const appInstance = catalyst.initialize(req);
 
-  const zcql = appInstance.zcql();
-
   const datastore = appInstance.datastore();
 
   const params = getQueryParams(req);
@@ -443,55 +432,38 @@ async function getEmployees(req, res) {
     .trim()
     .toLowerCase();
 
-  /*
-   * ==========================================================
-   * VIEW
-   *
-   * Normal/default:
-   * Appraisal Sheet behavior
-   *
-   * eligibility:
-   * All Employees for Eligibility List
-   * ==========================================================
-   */
-
   const view = String(params.view || "")
     .trim()
     .toLowerCase();
 
-  /*
-   * ==========================================================
-   * GET EMPLOYEES DATA
-   * ==========================================================
-   */
+  /* ==========================================================
+     LOAD EMPLOYEES
+     ========================================================== */
 
-  const allEmployees = await getAllEmployees(zcql);
+  const allEmployees = await getAllEmployees(datastore);
 
-  /*
-   * ==========================================================
-   * GET EMPLOYEE MASTER DATA
-   * ==========================================================
-   */
+  /* ==========================================================
+     LOAD EMPLOYEE MASTER
+     ========================================================== */
 
   const employeeMasterRows = await getAllEmployeeMaster(datastore);
 
   const employeeMasterMap = buildEmployeeMasterMap(employeeMasterRows);
-  /*
-   * DOJ must come from Employees.Joining_date — Employees is the
-   * source of truth for joining date, not Employee_Master.
-   */
+
+  /* ==========================================================
+     DOJ SOURCE
+     
+     Employees.joining_date is the source of truth.
+     ========================================================== */
+
   allEmployees.forEach(function (employee) {
     employee.date_of_join =
       employee.Joining_date || employee.joining_date || "";
   });
 
-  /*
-   * ==========================================================
-   * COUNTS
-   *
-   * Counts remain based on the complete Employees dataset.
-   * ==========================================================
-   */
+  /* ==========================================================
+     COUNTS
+     ========================================================== */
 
   const totalCount = allEmployees.length;
 
@@ -511,11 +483,9 @@ async function getEmployees(req, res) {
     );
   }).length;
 
-  /*
-   * ==========================================================
-   * FILTER
-   * ==========================================================
-   */
+  /* ==========================================================
+     FILTER
+     ========================================================== */
 
   const filteredEmployees = filterEmployees(
     allEmployees,
@@ -528,11 +498,9 @@ async function getEmployees(req, res) {
 
   const filteredCount = filteredEmployees.length;
 
-  /*
-   * ==========================================================
-   * PAGINATION
-   * ==========================================================
-   */
+  /* ==========================================================
+     PAGINATION
+     ========================================================== */
 
   const totalPages = filteredCount === 0 ? 1 : Math.ceil(filteredCount / limit);
 
@@ -546,13 +514,11 @@ async function getEmployees(req, res) {
       return normalizeEmployeeResponse(employee);
     });
 
-  /*
-   * ==========================================================
-   * RESPONSE
-   * ==========================================================
-   */
+  /* ==========================================================
+     RESPONSE
+     ========================================================== */
 
-  sendJson(res, 200, {
+  return sendJson(res, 200, {
     success: true,
 
     data: data,
@@ -689,24 +655,32 @@ async function createEmployees(req, res) {
     updatedRows = await table.updateRows(rowsToUpdate);
   }
 
-  sendJson(res, 200, {
+  return sendJson(res, 200, {
     success: true,
+
     message:
       "Employee import completed. " +
       rowsToInsert.length +
       " created, " +
       rowsToUpdate.length +
       " updated.",
+
     data: {
       created: rowsToInsert.length,
+
       updated: rowsToUpdate.length,
+
       skipped: skipped.length,
+
       skippedRecords: skipped,
+
       insertedRows: insertedRows,
+
       updatedRows: updatedRows,
     },
   });
 }
+
 /* ============================================================
    UPDATE EMPLOYEE
    ============================================================ */
@@ -719,9 +693,13 @@ async function updateEmployee(req, res) {
   const body = req.body || {};
 
   console.log("==============================================");
+
   console.log("EMPLOYEE UPDATE REQUEST");
+
   console.log("METHOD:", req.method);
+
   console.log("BODY:", JSON.stringify(body));
+
   console.log("==============================================");
 
   /* ==========================================================
@@ -738,7 +716,7 @@ async function updateEmployee(req, res) {
   }
 
   /* ==========================================================
-     FIND EMPLOYEE IN EMPLOYEES TABLE
+     FIND EMPLOYEE
      ========================================================== */
 
   const employeeTable = datastore.table(EMPLOYEES_TABLE_ID);
@@ -754,8 +732,6 @@ async function updateEmployee(req, res) {
   });
 
   if (!existingEmployeeRow) {
-    console.log("EMPLOYEE NOT FOUND:", empId);
-
     return sendJson(res, 404, {
       success: false,
       message: "Employee " + empId + " not found.",
@@ -770,17 +746,6 @@ async function updateEmployee(req, res) {
 
   /* ==========================================================
      STATUS UPDATE
-     
-     IMPORTANT:
-     
-     Employee_Master.emp_status is the source of truth.
-     
-     When status changes:
-     
-     1. Update Employee_Master.emp_status
-     2. Update Employees.status
-     
-     Both tables stay synchronized.
      ========================================================== */
 
   if (Object.prototype.hasOwnProperty.call(body, "status")) {
@@ -795,10 +760,6 @@ async function updateEmployee(req, res) {
 
     console.log("STATUS UPDATE:", empId, "TO:", normalizedStatus);
 
-    /* ========================================================
-       FIND EMPLOYEE MASTER RECORD
-       ======================================================== */
-
     const employeeMasterTable = datastore.table(EMPLOYEE_MASTER_TABLE_ID);
 
     const employeeMasterRows = await employeeMasterTable.getAllRows();
@@ -812,8 +773,6 @@ async function updateEmployee(req, res) {
     });
 
     if (!existingMasterRow) {
-      console.log("EMPLOYEE MASTER RECORD NOT FOUND:", empId);
-
       return sendJson(res, 404, {
         success: false,
         message: "Employee Master record not found for employee " + empId + ".",
@@ -827,18 +786,13 @@ async function updateEmployee(req, res) {
     }
 
     /* ========================================================
-       UPDATE EMPLOYEE MASTER STATUS
+       UPDATE EMPLOYEE MASTER
        ======================================================== */
 
     const masterUpdateRow = {
       ROWID: masterRowId,
       emp_status: normalizedStatus,
     };
-
-    console.log(
-      "EMPLOYEE MASTER STATUS UPDATE:",
-      JSON.stringify(masterUpdateRow),
-    );
 
     const masterUpdateResult =
       await employeeMasterTable.updateRow(masterUpdateRow);
@@ -849,15 +803,13 @@ async function updateEmployee(req, res) {
     );
 
     /* ========================================================
-       UPDATE EMPLOYEES STATUS
+       UPDATE EMPLOYEES
        ======================================================== */
 
     const employeeUpdateRow = {
       ROWID: employeeRowId,
       status: normalizedStatus,
     };
-
-    console.log("EMPLOYEES STATUS UPDATE:", JSON.stringify(employeeUpdateRow));
 
     const employeeUpdateResult =
       await employeeTable.updateRow(employeeUpdateRow);
@@ -884,8 +836,6 @@ async function updateEmployee(req, res) {
     const verifiedMasterStatus = normalizeStatus(
       verifiedMasterRow && verifiedMasterRow.emp_status,
     );
-
-    console.log("VERIFIED EMPLOYEE MASTER:", JSON.stringify(verifiedMasterRow));
 
     if (verifiedMasterStatus !== normalizedStatus) {
       return sendJson(res, 500, {
@@ -920,8 +870,6 @@ async function updateEmployee(req, res) {
       verifiedEmployeeRow && verifiedEmployeeRow.status,
     );
 
-    console.log("VERIFIED EMPLOYEE:", JSON.stringify(verifiedEmployeeRow));
-
     if (verifiedEmployeeStatus !== normalizedStatus) {
       return sendJson(res, 500, {
         success: false,
@@ -937,15 +885,14 @@ async function updateEmployee(req, res) {
       });
     }
 
-    /* ========================================================
-       SUCCESS
-       ======================================================== */
-
     return sendJson(res, 200, {
       success: true,
+
       message:
         "Employee status updated successfully in Employee Master and Employees.",
+
       data: normalizeEmployeeResponse(verifiedEmployeeRow),
+
       employeeMaster: {
         emp_id: empId,
         emp_status: verifiedMasterStatus,
@@ -977,9 +924,11 @@ async function updateEmployee(req, res) {
 
   console.log("GENERIC UPDATE RESULT:", JSON.stringify(updateResult));
 
-  sendJson(res, 200, {
+  return sendJson(res, 200, {
     success: true,
+
     message: "Employee updated successfully.",
+
     data: normalizeEmployeeResponse({
       emp_id: empId,
       ...updateData,
@@ -988,44 +937,52 @@ async function updateEmployee(req, res) {
 }
 
 /* ============================================================
-   EXPRESS ROUTES
+   GET
    ============================================================ */
 
 app.get("/", async function (req, res) {
   try {
     await getEmployees(req, res);
   } catch (error) {
-    console.error("employee-api-v2 GET ERROR:", error);
+    console.error("employeesapi GET ERROR:", error);
 
-    sendJson(res, 500, {
+    return sendJson(res, 500, {
       success: false,
       message:
         error && error.message ? error.message : "Internal server error.",
     });
   }
 });
+
+/* ============================================================
+   POST
+   ============================================================ */
 
 app.post("/", async function (req, res) {
   try {
     await createEmployees(req, res);
   } catch (error) {
-    console.error("employee-api-v2 POST ERROR:", error);
+    console.error("employeesapi POST ERROR:", error);
 
-    sendJson(res, 500, {
+    return sendJson(res, 500, {
       success: false,
       message:
         error && error.message ? error.message : "Internal server error.",
     });
   }
 });
+
+/* ============================================================
+   PUT
+   ============================================================ */
 
 app.put("/", async function (req, res) {
   try {
     await updateEmployee(req, res);
   } catch (error) {
-    console.error("employee-api-v2 PUT ERROR:", error);
+    console.error("employeesapi PUT ERROR:", error);
 
-    sendJson(res, 500, {
+    return sendJson(res, 500, {
       success: false,
       message:
         error && error.message ? error.message : "Internal server error.",
@@ -1033,13 +990,17 @@ app.put("/", async function (req, res) {
   }
 });
 
+/* ============================================================
+   PATCH
+   ============================================================ */
+
 app.patch("/", async function (req, res) {
   try {
     await updateEmployee(req, res);
   } catch (error) {
-    console.error("employee-api-v2 PATCH ERROR:", error);
+    console.error("employeesapi PATCH ERROR:", error);
 
-    sendJson(res, 500, {
+    return sendJson(res, 500, {
       success: false,
       message:
         error && error.message ? error.message : "Internal server error.",
@@ -1052,7 +1013,7 @@ app.patch("/", async function (req, res) {
    ============================================================ */
 
 app.use(function (req, res) {
-  sendJson(res, 405, {
+  return sendJson(res, 405, {
     success: false,
     message: "Method " + req.method + " not allowed.",
   });

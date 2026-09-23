@@ -96,7 +96,7 @@ const WIDTHS = {
 const GRID_COLUMNS = COLUMNS;
 
 // Columns that should NOT show the filter / group menu in the header
-const NO_FILTER_COLUMNS = new Set(["empId", "name"]);
+const NO_FILTER_COLUMNS = new Set();
 
 // ============================================================
 // LOCAL STYLES (blink animation for the last edited cell)
@@ -455,8 +455,24 @@ const emptyHistoryRecord = (year) => ({
   newBasePay: 0,
 });
 
-const isCurrentYearRecord = (record) =>
-  String(record.year) === CURRENT_APPRAISAL_YEAR;
+const CURRENT_APPRAISAL_YEAR_NUMERIC = (() => {
+  const match = CURRENT_APPRAISAL_YEAR.match(/(\d{2,4})$/);
+
+  if (!match) {
+    return null;
+  }
+
+  return match[1].length === 2 ? `20${match[1]}` : match[1];
+})();
+
+const isCurrentYearRecord = (record) => {
+  const year = String(record?.year ?? "").trim();
+
+  return (
+    year === CURRENT_APPRAISAL_YEAR ||
+    (CURRENT_APPRAISAL_YEAR_NUMERIC && year === CURRENT_APPRAISAL_YEAR_NUMERIC)
+  );
+};
 
 // ============================================================
 // APPLY LIVE SHEET VALUES TO CURRENT-YEAR HISTORY

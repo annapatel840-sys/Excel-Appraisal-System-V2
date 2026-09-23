@@ -211,6 +211,7 @@ export function ColumnFilter({
 
   const darkButtonClass =
     "h-8 w-full rounded bg-[#17365d] px-3 text-[12px] font-semibold text-white hover:bg-[#122b4a] disabled:opacity-50";
+  const isSimpleTextColumn = columnKey === "empId" || columnKey === "name";
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -232,51 +233,59 @@ export function ColumnFilter({
         className="w-[300px] overflow-hidden p-0"
         style={{ fontFamily: "Arial, Helvetica, sans-serif" }}
       >
-        {/* SORT */}
+        {/* SORT — hidden for empId / name */}
 
-        <div className="flex border-b border-[#e2e8f0]">
-          <button
-            type="button"
-            onClick={onSortAsc}
-            className={cn(
-              "flex flex-1 items-center justify-center gap-1 py-2 text-[12px] font-medium text-slate-600 hover:bg-slate-100",
-              sortDirection === "asc" && "bg-[#e6eefb] text-[#17365d]",
-            )}
-          >
-            <ChevronUp className="size-3.5" />
-            Sort
-          </button>
+        {!isSimpleTextColumn && (
+          <div className="flex border-b border-[#e2e8f0]">
+            <button
+              type="button"
+              onClick={onSortAsc}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1 py-2 text-[12px] font-medium text-slate-600 hover:bg-slate-100",
+                sortDirection === "asc" && "bg-[#e6eefb] text-[#17365d]",
+              )}
+            >
+              <ChevronUp className="size-3.5" />
+              Sort
+            </button>
 
-          <div className="w-px bg-[#e2e8f0]" />
+            <div className="w-px bg-[#e2e8f0]" />
 
-          <button
-            type="button"
-            onClick={onSortDesc}
-            className={cn(
-              "flex flex-1 items-center justify-center gap-1 py-2 text-[12px] font-medium text-slate-600 hover:bg-slate-100",
-              sortDirection === "desc" && "bg-[#e6eefb] text-[#17365d]",
-            )}
-          >
-            <ChevronDown className="size-3.5" />
-            Sort
-          </button>
-        </div>
+            <button
+              type="button"
+              onClick={onSortDesc}
+              className={cn(
+                "flex flex-1 items-center justify-center gap-1 py-2 text-[12px] font-medium text-slate-600 hover:bg-slate-100",
+                sortDirection === "desc" && "bg-[#e6eefb] text-[#17365d]",
+              )}
+            >
+              <ChevronDown className="size-3.5" />
+              Sort
+            </button>
+          </div>
+        )}
 
         {/* OPERATOR FILTER */}
 
         {!isEnumColumn && (
           <div className="space-y-2 px-3 py-3">
-            <select
-              value={op}
-              onChange={(event) => setOp(event.target.value)}
-              className={cn(inputClass, "cursor-pointer")}
-            >
-              {operators.map((operator) => (
-                <option key={operator.value} value={operator.value}>
-                  {operator.label}
-                </option>
-              ))}
-            </select>
+            {isSimpleTextColumn ? (
+              <div className="flex h-8 w-full items-center rounded border border-[#cbd5e1] bg-slate-50 px-2 text-[12px] font-medium text-[#1e293b]">
+                Contains
+              </div>
+            ) : (
+              <select
+                value={op}
+                onChange={(event) => setOp(event.target.value)}
+                className={cn(inputClass, "cursor-pointer")}
+              >
+                {operators.map((operator) => (
+                  <option key={operator.value} value={operator.value}>
+                    {operator.label}
+                  </option>
+                ))}
+              </select>
+            )}
 
             <div className="flex gap-2">
               <input
@@ -315,91 +324,103 @@ export function ColumnFilter({
             >
               Apply filter
             </button>
+
+            {isSimpleTextColumn && (
+              <button
+                type="button"
+                onClick={clearAll}
+                className="h-8 w-full rounded border border-[#e0b4ab] bg-white text-[12px] font-medium text-[#b4402c] hover:bg-[#fdf2f0]"
+              >
+                Clear
+              </button>
+            )}
           </div>
         )}
 
-        {/* PICK VALUES */}
+        {/* PICK VALUES — hidden for empId / name */}
 
-        <div className="border-t border-[#e2e8f0] px-3 py-2">
-          {!isEnumColumn && (
-            <p className="mb-2 text-center text-[10px] font-semibold tracking-wide text-slate-400">
-              OR PICK VALUES
-            </p>
-          )}
-
-          <input
-            className={inputClass}
-            placeholder="Search values..."
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-
-          <label className="mt-2 flex cursor-pointer items-center gap-2 px-1 py-1 text-[12px] font-semibold text-slate-700">
-            <input
-              type="checkbox"
-              className="size-3.5 accent-[#17365d]"
-              checked={allVisibleSelected}
-              onChange={(event) => toggleSelectAll(event.target.checked)}
-            />
-            (Select all)
-          </label>
-
-          <div className="max-h-[180px] overflow-y-auto pr-1">
-            {visibleOptions.length === 0 ? (
-              <p className="px-1 py-2 text-[11px] text-slate-400">
-                No values match this search.
+        {!isSimpleTextColumn && (
+          <div className="border-t border-[#e2e8f0] px-3 py-2">
+            {!isEnumColumn && (
+              <p className="mb-2 text-center text-[10px] font-semibold tracking-wide text-slate-400">
+                OR PICK VALUES
               </p>
-            ) : (
-              visibleOptions.map((option) => {
-                const text = String(
-                  option === null || option === undefined ? "" : option,
-                );
-
-                return (
-                  <label
-                    key={text}
-                    className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[12px] text-slate-700 hover:bg-slate-100"
-                  >
-                    <input
-                      type="checkbox"
-                      className="size-3.5 accent-[#17365d]"
-                      checked={picked.includes(option)}
-                      onChange={(event) => {
-                        setPicked(
-                          event.target.checked
-                            ? [...picked, option]
-                            : picked.filter((item) => item !== option),
-                        );
-                      }}
-                    />
-
-                    <span className="truncate">
-                      {formatOption(option) || "(blank)"}
-                    </span>
-                  </label>
-                );
-              })
             )}
-          </div>
 
-          <div className="mt-2 flex gap-2">
-            <button
-              type="button"
-              onClick={clearAll}
-              className="h-8 flex-1 rounded border border-[#e0b4ab] bg-white text-[12px] font-medium text-[#b4402c] hover:bg-[#fdf2f0]"
-            >
-              Clear
-            </button>
+            <input
+              className={inputClass}
+              placeholder="Search values..."
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
 
-            <button
-              type="button"
-              onClick={applyPickedValues}
-              className={cn(darkButtonClass, "flex-1")}
-            >
-              Apply
-            </button>
+            <label className="mt-2 flex cursor-pointer items-center gap-2 px-1 py-1 text-[12px] font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                className="size-3.5 accent-[#17365d]"
+                checked={allVisibleSelected}
+                onChange={(event) => toggleSelectAll(event.target.checked)}
+              />
+              (Select all)
+            </label>
+
+            <div className="max-h-[180px] overflow-y-auto pr-1">
+              {visibleOptions.length === 0 ? (
+                <p className="px-1 py-2 text-[11px] text-slate-400">
+                  No values match this search.
+                </p>
+              ) : (
+                visibleOptions.map((option) => {
+                  const text = String(
+                    option === null || option === undefined ? "" : option,
+                  );
+
+                  return (
+                    <label
+                      key={text}
+                      className="flex cursor-pointer items-center gap-2 rounded px-1 py-1 text-[12px] text-slate-700 hover:bg-slate-100"
+                    >
+                      <input
+                        type="checkbox"
+                        className="size-3.5 accent-[#17365d]"
+                        checked={picked.includes(option)}
+                        onChange={(event) => {
+                          setPicked(
+                            event.target.checked
+                              ? [...picked, option]
+                              : picked.filter((item) => item !== option),
+                          );
+                        }}
+                      />
+
+                      <span className="truncate">
+                        {formatOption(option) || "(blank)"}
+                      </span>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={clearAll}
+                className="h-8 flex-1 rounded border border-[#e0b4ab] bg-white text-[12px] font-medium text-[#b4402c] hover:bg-[#fdf2f0]"
+              >
+                Clear
+              </button>
+
+              <button
+                type="button"
+                onClick={applyPickedValues}
+                className={cn(darkButtonClass, "flex-1")}
+              >
+                Apply
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* BULK EDIT — editable columns only */}
 

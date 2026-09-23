@@ -32,6 +32,9 @@ import { EligibilityCriteria } from "@/components/employee-master/EligibilityCri
 import { EligibilityList } from "@/components/employee-master/EligibilityList";
 import { EligibilityModal } from "@/components/employee-master/EligibilityModal";
 import { ImportPreviewModal } from "@/components/employee-master/ImportPreviewModal";
+import { AppraisalCycleMasterPage } from "@/components/employee-master/AppraisalCycleMasterPage";
+import { PayrollDataPage } from "@/components/employee-master/PayrollDataPage";
+import { PayrollUploadPage } from "@/components/employee-master/PayrollUploadPage";
 
 import "@/styles/employee-master.css";
 
@@ -1265,6 +1268,29 @@ export function EmployeeMaster() {
           >
             Eligibility List
           </button>
+
+          <button
+            type="button"
+            className={activeTab === "appraisal-cycle" ? "active" : ""}
+            onClick={() => setActiveTab("appraisal-cycle")}
+          >
+            Appraisal Cycle Master
+          </button>
+          <button
+            type="button"
+            className={activeTab === "payroll-data" ? "active" : ""}
+            onClick={() => setActiveTab("payroll-data")}
+          >
+            Payroll Data
+          </button>
+
+          <button
+            type="button"
+            className={activeTab === "payroll-upload" ? "active" : ""}
+            onClick={() => setActiveTab("payroll-upload")}
+          >
+            Payroll Upload
+          </button>
         </div>
 
         {banner && (
@@ -1369,6 +1395,30 @@ export function EmployeeMaster() {
                 />
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === "appraisal-cycle" && (
+          <div className="em-tab-content">
+            <AppraisalCycleMasterPage />
+          </div>
+        )}
+        {activeTab === "payroll-data" && (
+          <div className="em-tab-content">
+            <PayrollDataPage />
+          </div>
+        )}
+
+        {activeTab === "payroll-upload" && (
+          <div
+            className="em-tab-content"
+            style={{
+              height: "calc(100vh - 180px)",
+              overflowY: "auto",
+              overflowX: "hidden",
+            }}
+          >
+            <PayrollUploadPage />
           </div>
         )}
 
