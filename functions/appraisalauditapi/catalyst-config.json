@@ -1,6 +1,6 @@
 {
 	"deployment": {
-		"name": "employee-api-v2",
+		"name": "appraisalauditapi",
 		"stack": "node24",
 		"type": "advancedio",
 		"env_variables": {}

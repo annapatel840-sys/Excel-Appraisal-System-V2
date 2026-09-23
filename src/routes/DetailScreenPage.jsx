@@ -12,8 +12,7 @@ import {
 } from "@/lib/appraisal-data";
 
 const APPRAISAL_HISTORY_API_URL =
-  "https://excelappraisal-904056216.development.catalystserverless.com/server/appraisal-history-api/";
-
+  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisalhistoryapi/";
 const NAVY = "#17365d";
 
 // ============================================================

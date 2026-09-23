@@ -24,14 +24,11 @@ CATALYST API
 ============================================================ */
 
 const EMPLOYEE_API_URL =
-  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/employee-api-v2/";
-
+  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/employeesapi/";
 const AUDIT_API_URL =
-  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisal-audit-api/";
-
+  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisalauditapi/";
 const APPRAISAL_HISTORY_API_URL =
-  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisal-history-api/";
-
+  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisalhistoryapi/";
 /* ============================================================
 EMPLOYEE SAVE QUEUE
 ============================================================ */

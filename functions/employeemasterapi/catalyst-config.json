@@ -1,6 +1,6 @@
 {
 	"deployment": {
-		"name": "employee-master-api",
+		"name": "employeemasterapi",
 		"stack": "node24",
 		"type": "advancedio",
 		"env_variables": {}

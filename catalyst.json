@@ -1,10 +1,11 @@
 {
   "functions": {
     "targets": [
-      "employee-api-v2",
-      "appraisal-history-api",
-      "appraisal-audit-api",
-      "employee-master-api"    ],
+      "employeesapi",
+      "appraisalhistoryapi",
+      "appraisalauditapi",
+      "employeemasterapi"
+    ],
     "ignore": [],
     "source": "functions"
   }

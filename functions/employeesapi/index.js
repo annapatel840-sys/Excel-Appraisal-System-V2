@@ -22,7 +22,6 @@ app.use(express.json());
    ============================================================ */
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers":
     "Content-Type, Authorization, X-Requested-With",
@@ -167,7 +166,7 @@ const ALLOWED_FIELDS = [
   "eligible_for_promotion",
   "new_title",
   "at_risk",
-  "Joining_date",
+  "joining_date",
   "manager_email_id",
   "super_man_email_id",
   "rating",

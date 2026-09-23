@@ -1,6 +1,6 @@
 {
 	"deployment": {
-		"name": "appraisal-history-api",
+		"name": "appraisalhistoryapi",
 		"stack": "node24",
 		"type": "advancedio",
 		"env_variables": {}
