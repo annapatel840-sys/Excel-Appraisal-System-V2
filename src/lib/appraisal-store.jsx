@@ -24,13 +24,13 @@ CATALYST API
 ============================================================ */
 
 const EMPLOYEE_API_URL =
-  "https://excelappraisal-904056216.development.catalystserverless.com/server/employee-api-v2/";
+  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/employee-api-v2/";
 
 const AUDIT_API_URL =
-  "https://excelappraisal-904056216.development.catalystserverless.com/server/appraisal-audit-api/";
+  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisal-audit-api/";
 
 const APPRAISAL_HISTORY_API_URL =
-  "https://excelappraisal-904056216.development.catalystserverless.com/server/appraisal-history-api/";
+  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisal-history-api/";
 
 /* ============================================================
 EMPLOYEE SAVE QUEUE

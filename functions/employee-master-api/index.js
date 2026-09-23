@@ -6,9 +6,8 @@ const catalyst = require("zcatalyst-sdk-node");
 // TABLE IDs
 // ============================================================
 
-const EMPLOYEE_MASTER_TABLE_ID = "34995000000136129";
-const EMPLOYEES_TABLE_ID = "34995000000121039";
-
+const EMPLOYEE_MASTER_TABLE_ID = "71873000000020438";
+const EMPLOYEES_TABLE_ID = "71873000000020001";
 // ============================================================
 // TABLE NAME
 // ============================================================

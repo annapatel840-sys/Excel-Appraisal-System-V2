@@ -2,7 +2,7 @@
 
 const catalyst = require("zcatalyst-sdk-node");
 
-const AUDIT_TABLE_ID = "34995000000121862";
+const AUDIT_TABLE_ID = "71873000000021235";
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 
@@ -13,6 +13,7 @@ const MAX_LIMIT = 500;
 function sendJson(res, statusCode, body) {
   res.writeHead(statusCode, {
     "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers":
       "Content-Type, Authorization, X-Requested-With",
@@ -20,7 +21,6 @@ function sendJson(res, statusCode, body) {
 
   res.end(JSON.stringify(body));
 }
-
 /* ============================================================
    GET QUERY PARAMETERS
    ============================================================ */

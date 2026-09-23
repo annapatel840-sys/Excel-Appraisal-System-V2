@@ -1,5 +1,5 @@
 const EMPLOYEE_API_URL =
-  "https://excelappraisal-904056216.development.catalystserverless.com/server/employee-api-v2/";
+  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/employee-api-v2/";
 
 export const EXPERIENCE_REF_DATE = new Date(2026, 0, 1);
 export const APPRAISAL_YEAR = "Apr-26";

@@ -1,7 +1,6 @@
 const catalyst = require("zcatalyst-sdk-node");
 
-const PREVIOUS_APPRAISAL_TABLE_ID = "34995000000121471";
-
+const PREVIOUS_APPRAISAL_TABLE_ID = "71873000000020833";
 function setCorsHeaders(res) {
   // Do NOT set Access-Control-Allow-Origin here.
   // Catalyst automatically adds the allowed origin.

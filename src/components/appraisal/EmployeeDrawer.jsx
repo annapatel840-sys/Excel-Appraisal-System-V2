@@ -15,7 +15,7 @@ import {
 // ============================================================
 
 const APPRAISAL_HISTORY_API_URL =
-  "https://excelappraisal-904056216.development.catalystserverless.com/server/appraisal-history-api/";
+  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisal-history-api/";
 
 // ============================================================
 // HELPERS

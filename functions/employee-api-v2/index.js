@@ -8,8 +8,8 @@ const app = express();
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
-const EMPLOYEES_TABLE_ID = "34995000000121039";
-const EMPLOYEE_MASTER_TABLE_ID = "34995000000136129";
+const EMPLOYEES_TABLE_ID = "71873000000020001";
+const EMPLOYEE_MASTER_TABLE_ID = "71873000000020438";
 
 /* ============================================================
    EXPRESS JSON BODY PARSER
@@ -22,6 +22,7 @@ app.use(express.json());
    ============================================================ */
 
 const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
   "Access-Control-Allow-Headers":
     "Content-Type, Authorization, X-Requested-With",
@@ -171,6 +172,7 @@ const ALLOWED_FIELDS = [
   "super_man_email_id",
   "rating",
   "eligible_status",
+  "joining_bonus",
 ];
 
 function pickAllowedFields(body) {

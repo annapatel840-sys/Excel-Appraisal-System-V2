@@ -12,9 +12,66 @@ import {
 } from "@/lib/appraisal-data";
 
 const APPRAISAL_HISTORY_API_URL =
-  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisal-history-api/";
+  "https://excelappraisal-904056216.development.catalystserverless.com/server/appraisal-history-api/";
 
 const NAVY = "#17365d";
+
+// ============================================================
+// STATIC DEMO FALLBACK (only used if no real rows are loaded yet)
+// ============================================================
+
+const DEMO_ROWS = [
+  {
+    id: "demo-1",
+    empId: "EMP00125",
+    name: "Rohan Kapoor",
+    designation: "Senior Manager",
+    reportingManager: "Anita Sharma",
+    managerRating: "4.3 / 5",
+    totalExperience: 9.8,
+    wissenExperience: 6.3,
+    interviewCount: 6,
+    rrPercent: 92,
+    currentAnnualBasePay: 2500000,
+    targetPBAllocatedForMay: 500000,
+    allocatedPBAmount: 300000,
+    pbInstallment: "1",
+    newPBToBeOffered: 450000,
+    newPBInstallment: "1",
+    newRB: 250000,
+    hikeAmount: 250000,
+    hikePct: 10,
+    targetPBNextYear: 550000,
+    eligibleForPromotion: "Yes",
+    newTitle: "Senior Manager",
+    atRisk: "",
+  },
+  {
+    id: "demo-2",
+    empId: "EMP00146",
+    name: "Anita Rao",
+    designation: "Manager",
+    reportingManager: "Rohan Kapoor",
+    managerRating: "4.6 / 5",
+    totalExperience: 6.2,
+    wissenExperience: 4.7,
+    interviewCount: 9,
+    rrPercent: 88,
+    currentAnnualBasePay: 2200000,
+    targetPBAllocatedForMay: 440000,
+    allocatedPBAmount: 250000,
+    pbInstallment: "1",
+    newPBToBeOffered: 350000,
+    newPBInstallment: "1",
+    newRB: 176000,
+    hikeAmount: 176000,
+    hikePct: 8,
+    targetPBNextYear: 500000,
+    eligibleForPromotion: "No",
+    newTitle: "Manager",
+    atRisk: "",
+  },
+];
 
 // ============================================================
 // HISTORY LOADING (mirrors AppraisalGrid's loader; local copy
@@ -66,7 +123,7 @@ const fmt = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
 export function DetailScreenPage() {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
 
-  const rows = liveRows && liveRows.length > 0 ? liveRows : "-";
+  const rows = liveRows && liveRows.length > 0 ? liveRows : DEMO_ROWS;
   const isDemo = !(liveRows && liveRows.length > 0);
 
   const [index, setIndex] = useState(0);
@@ -157,6 +214,7 @@ export function DetailScreenPage() {
   const empKey = employee ? String(employee.empId || "").trim() : "";
   const historyState = historyByEmpId[empKey];
   const historyRecords = historyState?.data || [];
+
   // ----------------------------------------------------------
   // DERIVED CALCULATIONS (reusing your existing formula fns)
   // ----------------------------------------------------------
@@ -319,13 +377,13 @@ export function DetailScreenPage() {
                     {employee.designation}
                   </td>
                   <td className="border-b border-[#eef1f5] px-1.5 py-1 text-[9.5px]">
-                    {employee.rating}
+                    {employee.managerRating}
                   </td>
                   <td className="border-b border-[#eef1f5] px-1.5 py-1 text-[9.5px] leading-tight">
                     {employee.atRisk || "Feedback captured during the review."}
                   </td>
                 </tr>
-                {historyRecords.slice(1).map((h, i) => (
+                {historyRecords.slice(0, 2).map((h, i) => (
                   <tr key={i}>
                     <td className="border-b border-[#eef1f5] px-1.5 py-1 text-[9.5px] font-bold text-[#1559a6]">
                       {h.year}
@@ -552,7 +610,8 @@ export function DetailScreenPage() {
           className="px-3.5 py-2 text-[13px] font-semibold text-white"
           style={{ background: NAVY }}
         >
-          Employee History — {employee.name} · {historyRecords.length} cycles
+          Employee History — {employee.name} · {historyRecords.length + 1}{" "}
+          cycles
         </div>
         <div className="max-h-[30vh] overflow-auto">
           <table className="w-full min-w-[1100px] border-collapse">
@@ -604,7 +663,7 @@ export function DetailScreenPage() {
                   {fmt(derived.newBase)}
                 </td>
               </tr>
-              {historyRecords.slice(1).map((h, i) => (
+              {historyRecords.map((h, i) => (
                 <tr key={i}>
                   <td className="border-t border-[#eef1f5] px-2 py-1.5 text-center text-[12px] font-bold text-[#1859a8]">
                     {h.year}

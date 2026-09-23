@@ -8,7 +8,7 @@ export function AppShell({ children, headerActions }) {
   const nav = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
     { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
-    { to: "/employee-master", label: "Employee Master", icon: Users },
+    { to: "/employee-master", label: "HR Operations", icon: Users },
     { to: "/detail-screen", label: "Detail Screen", icon: BookOpen },
   ];
 
