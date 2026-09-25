@@ -1,3 +1,4 @@
+import { authFetch } from "@/lib/catalyst-auth";
 import { jsx as _jsx } from "react/jsx-runtime";
 import {
   createContext,
@@ -338,7 +339,7 @@ const fetchEmployeePageFromCatalyst = async (
     url.searchParams.set("eligible", eligible);
   }
 
-  const response = await fetch(url.toString(), {
+  const response = await authFetch(url.toString(), {
     method: "GET",
     cache: "no-store",
   });
@@ -398,7 +399,7 @@ const fetchEmployeeByIdFromCatalyst = async (empId) => {
   url.searchParams.set("emp_id", String(empId));
   url.searchParams.set("limit", "100");
 
-  const response = await fetch(url.toString(), {
+  const response = await authFetch(url.toString(), {
     method: "GET",
     cache: "no-store",
   });
@@ -431,7 +432,7 @@ const saveEmployeeChangeToCatalyst = async ({ empId, key, newValue }) => {
 
   const catalystValue = normalizeValueForCatalyst(key, newValue);
 
-  const response = await fetch(EMPLOYEE_API_URL, {
+  const response = await authFetch(EMPLOYEE_API_URL, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -465,7 +466,7 @@ const savePreviousAppraisalChangeToCatalyst = async ({
 
   const historyValue = normalizeHistoryValue(key, newValue);
 
-  const response = await fetch(APPRAISAL_HISTORY_API_URL, {
+  const response = await authFetch(APPRAISAL_HISTORY_API_URL, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -514,7 +515,7 @@ const savePreviousAppraisalChangesToCatalyst = async ({
     return null;
   }
 
-  const response = await fetch(APPRAISAL_HISTORY_API_URL, {
+  const response = await authFetch(APPRAISAL_HISTORY_API_URL, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -547,7 +548,7 @@ const createEmployeeInCatalyst = async (fieldValues) => {
     payload[catalystField] = normalizeValueForCatalyst(key, value);
   });
 
-  const response = await fetch(EMPLOYEE_API_URL, {
+  const response = await authFetch(EMPLOYEE_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(payload),
@@ -648,7 +649,7 @@ const fetchAuditHistoryFromCatalyst = async (empId = "") => {
 
   url.searchParams.set("_ts", String(Date.now()));
 
-  const response = await fetch(url.toString(), {
+  const response = await authFetch(url.toString(), {
     method: "GET",
     cache: "no-store",
     headers: {
@@ -711,7 +712,7 @@ const createAuditRecordsInCatalyst = async (entries) => {
     appraisal_year: String(entry.appraisalYear || APPRAISAL_YEAR),
   }));
 
-  const response = await fetch(AUDIT_API_URL, {
+  const response = await authFetch(AUDIT_API_URL, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -1243,7 +1244,7 @@ export function AppraisalProvider({ children }) {
             );
           });
 
-          const response = await fetch(EMPLOYEE_API_URL, {
+          const response = await authFetch(EMPLOYEE_API_URL, {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
@@ -1408,7 +1409,7 @@ export function AppraisalProvider({ children }) {
         return currentEmployee;
       }
 
-      const response = await fetch(EMPLOYEE_API_URL, {
+      const response = await authFetch(EMPLOYEE_API_URL, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

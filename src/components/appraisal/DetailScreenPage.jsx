@@ -1,3 +1,4 @@
+import { authFetch } from "@/lib/catalyst-auth";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAppraisal } from "@/lib/appraisal-store";
@@ -137,7 +138,7 @@ export function DetailScreenPage() {
       }));
 
       const promise = (async () => {
-        const response = await fetch(
+        const response = await authFetch(
           `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(key)}`,
         );
 

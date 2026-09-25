@@ -1,3 +1,4 @@
+import { authFetch } from "@/lib/catalyst-auth";
 import {
   Fragment,
   useCallback,
@@ -1037,7 +1038,7 @@ export function AppraisalGrid({
         key,
       )}`;
 
-      const response = await fetch(url);
+      const response = await authFetch(url);
 
       if (!response.ok) {
         throw new Error(

@@ -1,3 +1,5 @@
+import { authFetch } from "@/lib/catalyst-auth";
+
 const EMPLOYEE_API_URL =
   "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/employeesapi/";
 export const EXPERIENCE_REF_DATE = new Date(2026, 0, 1);
@@ -360,7 +362,7 @@ export async function fetchEmployeeMasterEmployees({
     url.searchParams.set("status", normalizedStatus);
   }
 
-  const response = await fetch(url.toString(), {
+  const response = await authFetch(url.toString(), {
     method: "GET",
 
     headers: {
@@ -472,7 +474,7 @@ export async function fetchEligibilityEmployees({
     url.searchParams.set("search", normalizedSearch);
   }
 
-  const response = await fetch(url.toString(), {
+  const response = await authFetch(url.toString(), {
     method: "GET",
 
     headers: {
@@ -581,7 +583,7 @@ export async function updateEmployeeMasterEmployee(empId, data = {}) {
 
   console.log("[Employee Master] Updating employee:", payload);
 
-  const response = await fetch(EMPLOYEE_API_URL, {
+  const response = await authFetch(EMPLOYEE_API_URL, {
     method: "PUT",
 
     headers: {
@@ -675,7 +677,7 @@ export async function updateEmployeeEligibility(
 
   console.log("[Eligibility List] Updating eligibility:", payload);
 
-  const response = await fetch(EMPLOYEE_API_URL, {
+  const response = await authFetch(EMPLOYEE_API_URL, {
     method: "PATCH",
 
     headers: {
@@ -735,7 +737,7 @@ export async function createEmployeeMasterEmployees(records) {
     throw new Error("No employee records to import.");
   }
 
-  const response = await fetch(EMPLOYEE_API_URL, {
+  const response = await authFetch(EMPLOYEE_API_URL, {
     method: "POST",
 
     headers: {

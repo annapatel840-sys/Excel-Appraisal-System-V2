@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { AppraisalProvider } from "@/lib/appraisal-store";
+import { AuthGate } from "@/lib/auth-context";
 import { Dashboard } from "@/routes/index";
 import { SheetPage } from "@/routes/sheet";
 import { EmployeeMaster } from "@/pages/EmployeeMaster";
@@ -24,6 +25,15 @@ export default function App() {
     };
   }, []);
 
+  // The Catalyst SDK can redirect to the legacy Web Client path /app/ after login;
+  // Slate serves from root, so send those back to the dashboard.
+  useEffect(() => {
+    if (path === "/app" || path.startsWith("/app/")) {
+      window.history.replaceState({}, "", "/");
+      setPath("/");
+    }
+  }, [path]);
+
   let page;
 
   if (path === "/sheet") {
@@ -40,5 +50,9 @@ export default function App() {
     page = <Dashboard />;
   }
 
-  return <AppraisalProvider>{page}</AppraisalProvider>;
+  return (
+    <AuthGate>
+      <AppraisalProvider>{page}</AppraisalProvider>
+    </AuthGate>
+  );
 }

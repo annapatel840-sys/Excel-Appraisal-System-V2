@@ -19,6 +19,8 @@ export default defineConfig({
   },
   server: {
     host: '0.0.0.0',
-    port: 5173,
+    // `catalyst serve` supplies ZC_SLATE_PORT and proxies to it, so the port must match exactly.
+    port: Number(process.env.ZC_SLATE_PORT) || 5173,
+    strictPort: Boolean(process.env.ZC_SLATE_PORT),
   },
 });

@@ -1,3 +1,4 @@
+import { authFetch } from "@/lib/catalyst-auth";
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -257,7 +258,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
           `${APPRAISAL_HISTORY_API_URL}?emp_id=` +
           encodeURIComponent(employee.empId);
 
-        const response = await fetch(url);
+        const response = await authFetch(url);
 
         if (!response.ok) {
           throw new Error(
