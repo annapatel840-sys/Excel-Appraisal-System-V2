@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { AppraisalProvider } from "@/lib/appraisal-store";
+import { BudgetProvider } from "@/lib/budget-store";
 import { Dashboard } from "@/routes/index";
 import { SheetPage } from "@/routes/sheet";
 import { EmployeeMaster } from "@/pages/EmployeeMaster";
@@ -40,5 +41,9 @@ export default function App() {
     page = <Dashboard />;
   }
 
-  return <AppraisalProvider>{page}</AppraisalProvider>;
+  return (
+    <AppraisalProvider>
+      <BudgetProvider>{page}</BudgetProvider>
+    </AppraisalProvider>
+  );
 }

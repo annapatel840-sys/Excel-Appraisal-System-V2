@@ -35,6 +35,8 @@ import { ImportPreviewModal } from "@/components/employee-master/ImportPreviewMo
 import { AppraisalCycleMasterPage } from "@/components/employee-master/AppraisalCycleMasterPage";
 import { PayrollDataPage } from "@/components/employee-master/PayrollDataPage";
 import { PayrollUploadPage } from "@/components/employee-master/PayrollUploadPage";
+import { TeamChangesPage } from "@/components/employee-master/TeamChangesPage";
+import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
 
 import "@/styles/employee-master.css";
 
@@ -679,6 +681,13 @@ export function EmployeeMaster() {
   useEffect(() => {
     setCurrentPage(1);
   }, [search, statusFilter]);
+
+  // Deep link from the Detail Screen's "View all changes" link.
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    if (tab === "teamChanges") setActiveTab("team-changes");
+    if (tab === "budgetAllocation") setActiveTab("budget-allocation");
+  }, []);
 
   /* ============================================================
      COUNTS
@@ -1791,6 +1800,20 @@ export function EmployeeMaster() {
           >
             Payroll Upload
           </button>
+          <button
+            type="button"
+            className={activeTab === "team-changes" ? "active" : ""}
+            onClick={() => setActiveTab("team-changes")}
+          >
+            Team Changes
+          </button>
+          <button
+            type="button"
+            className={activeTab === "budget-allocation" ? "active" : ""}
+            onClick={() => setActiveTab("budget-allocation")}
+          >
+            Budget Allocation
+          </button>
         </div>
 
         {/* ======================================================
@@ -1949,6 +1972,8 @@ export function EmployeeMaster() {
             <PayrollUploadPage />
           </div>
         )}
+        {activeTab === "team-changes" && <TeamChangesPage />}
+        {activeTab === "budget-allocation" && <BudgetAllocationPage />}
 
         {/* ======================================================
             ELIGIBILITY MODAL
