@@ -1,9 +1,11 @@
-import { LayoutDashboard, Table2, Users, BookOpen } from "lucide-react";
+import { LayoutDashboard, Table2, Users, BookOpen, LogOut } from "lucide-react";
 
+import { useCatalystSignOut } from "@/lib/catalyst-auth";
 import { cn } from "@/lib/utils";
 
 export function AppShell({ children, headerActions }) {
   const pathname = window.location.pathname;
+  const signOut = useCatalystSignOut();
 
   const nav = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -61,11 +63,18 @@ export function AppShell({ children, headerActions }) {
             })}
           </nav>
 
-          {headerActions && (
-            <div className="ml-auto flex min-w-0 items-center gap-1.5">
-              {headerActions}
-            </div>
-          )}
+          <div className="ml-auto flex min-w-0 items-center gap-1.5">
+            {headerActions}
+            <button
+              type="button"
+              onClick={signOut}
+              className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-white/85 transition-colors hover:bg-white/10 hover:text-white"
+              aria-label="Sign out"
+            >
+              <LogOut className="size-3.5" />
+              Sign out
+            </button>
+          </div>
         </div>
       </header>
 
