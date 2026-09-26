@@ -571,8 +571,18 @@ async function createEmployees(req, res) {
   }
 
   const table = datastore.table(EMPLOYEES_TABLE_ID);
+  const masterTable = datastore.table(EMPLOYEE_MASTER_TABLE_ID);
 
-  const existingRows = await table.getAllRows();
+  const [existingRows, masterRows] = await Promise.all([
+    table.getAllRows(),
+    masterTable.getAllRows(),
+  ]);
+  const masterByEmpId = new Map();
+  (masterRows || []).forEach(function (row) {
+    const key = String(row.emp_id || "").trim().toLowerCase();
+    const rowId = row.ROWID || row.rowid;
+    if (key && rowId) masterByEmpId.set(key, String(rowId));
+  });
 
   const existingByEmpId = new Map();
 
@@ -605,6 +615,8 @@ async function createEmployees(req, res) {
     }
 
     const data = pickAllowedFields(record);
+    const masterRowId = masterByEmpId.get(empId.toLowerCase());
+    if (masterRowId) data.emp_master_row_id = masterRowId;
 
     if (data.status !== undefined) {
       const normalizedStatus = normalizeStatus(data.status);

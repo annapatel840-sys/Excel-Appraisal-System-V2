@@ -1,229 +1,5 @@
-import { useMemo, useRef, useState } from "react";
-
-const BATCH_PRIOR = "BATCH-2025Q4-0021";
-const BATCH_ID = "BATCH-2026Q3-0043";
-const CYCLE_ORDER = {
-  "FY25-Q4": 1,
-  "Mid-Year Review FY25-26": 1.5,
-  "FY26-Q3": 2,
-};
-
-const STORED = [
-  {
-    empId: "E10231",
-    cycle: "FY25-Q4",
-    empName: "A. Kumar",
-    designation: "Sr. Consultant",
-    compManager: "R. Iyer",
-    superManager: "V. Rao",
-    managerMail: "r.iyer@r2c.com",
-    appraiser: "V. Rao",
-    basePay: 5850000,
-    targetPB: 585000,
-    allocPB: 460000,
-    newPB: 0,
-    newRB: 180000,
-    hikeAmt: 350000,
-    promo: "No",
-    newTitle: "",
-    batch: BATCH_PRIOR,
-  },
-  {
-    empId: "E10231",
-    cycle: "FY26-Q3",
-    empName: "A. Kumar",
-    designation: "Sr. Consultant",
-    compManager: "R. Iyer",
-    superManager: "V. Rao",
-    managerMail: "r.iyer@r2c.com",
-    appraiser: "V. Rao",
-    basePay: 6200000,
-    targetPB: 620000,
-    allocPB: 600000,
-    newPB: 0,
-    newRB: 180000,
-    hikeAmt: 372000,
-    promo: "No",
-    newTitle: "",
-    batch: BATCH_ID,
-  },
-  {
-    empId: "E10232",
-    cycle: "FY25-Q4",
-    empName: "S. Nair",
-    designation: "Sr. Consultant",
-    compManager: "R. Iyer",
-    superManager: "V. Rao",
-    managerMail: "r.iyer@r2c.com",
-    appraiser: "V. Rao",
-    basePay: 7010000,
-    targetPB: 701000,
-    allocPB: 560000,
-    newPB: 0,
-    newRB: 200000,
-    hikeAmt: 440000,
-    promo: "No",
-    newTitle: "",
-    batch: BATCH_PRIOR,
-  },
-  {
-    empId: "E10232",
-    cycle: "FY26-Q3",
-    empName: "S. Nair",
-    designation: "Sr. Consultant",
-    compManager: "R. Iyer",
-    superManager: "V. Rao",
-    managerMail: "r.iyer@r2c.com",
-    appraiser: "V. Rao",
-    basePay: 7450000,
-    targetPB: 745000,
-    allocPB: 720000,
-    newPB: 60000,
-    newRB: 210000,
-    hikeAmt: 447000,
-    promo: "No",
-    newTitle: "",
-    batch: BATCH_ID,
-  },
-  {
-    empId: "E10233",
-    cycle: "FY25-Q4",
-    empName: "P. Das",
-    designation: "Consultant",
-    compManager: "A. Verma",
-    superManager: "V. Rao",
-    managerMail: "a.verma@r2c.com",
-    appraiser: "V. Rao",
-    basePay: 4870000,
-    targetPB: 487000,
-    allocPB: 390000,
-    newPB: 0,
-    newRB: 140000,
-    hikeAmt: 250000,
-    promo: "No",
-    newTitle: "",
-    batch: BATCH_PRIOR,
-  },
-  {
-    empId: "E10233",
-    cycle: "FY26-Q3",
-    empName: "P. Das",
-    designation: "Consultant",
-    compManager: "A. Verma",
-    superManager: "V. Rao",
-    managerMail: "a.verma@r2c.com",
-    appraiser: "V. Rao",
-    basePay: 5120000,
-    targetPB: 512000,
-    allocPB: 490000,
-    newPB: 0,
-    newRB: 140000,
-    hikeAmt: 307200,
-    promo: "No",
-    newTitle: "",
-    batch: BATCH_ID,
-  },
-  {
-    empId: "E10234",
-    cycle: "FY25-Q4",
-    empName: "M. Iyer",
-    designation: "Consultant",
-    compManager: "A. Verma",
-    superManager: "V. Rao",
-    managerMail: "a.verma@r2c.com",
-    appraiser: "V. Rao",
-    basePay: 8230000,
-    targetPB: 823000,
-    allocPB: 660000,
-    newPB: 0,
-    newRB: 240000,
-    hikeAmt: 670000,
-    promo: "No",
-    newTitle: "",
-    batch: BATCH_PRIOR,
-  },
-  {
-    empId: "E10234",
-    cycle: "FY26-Q3",
-    empName: "M. Iyer",
-    designation: "Consultant",
-    compManager: "A. Verma",
-    superManager: "V. Rao",
-    managerMail: "a.verma@r2c.com",
-    appraiser: "V. Rao",
-    basePay: 8900000,
-    targetPB: 890000,
-    allocPB: 860000,
-    newPB: 120000,
-    newRB: 260000,
-    hikeAmt: 801000,
-    promo: "Yes",
-    newTitle: "Principal Consultant",
-    batch: BATCH_ID,
-  },
-  {
-    empId: "E10235",
-    cycle: "FY26-Q3",
-    empName: "K. Reddy",
-    designation: "Sr. Analyst",
-    compManager: "R. Iyer",
-    superManager: "V. Rao",
-    managerMail: "r.iyer@r2c.com",
-    appraiser: "V. Rao",
-    basePay: 4680000,
-    targetPB: 468000,
-    allocPB: 440000,
-    newPB: 0,
-    newRB: 125000,
-    hikeAmt: 280800,
-    promo: "No",
-    newTitle: "",
-    batch: BATCH_ID,
-  },
-];
-
-const AUDIT_TRAIL = [
-  {
-    time: "22 Sep 2026, 14:12",
-    user: "HR — N. Subramanian",
-    empId: "E10234",
-    empName: "M. Iyer",
-    cycle: "FY26-Q3",
-    field: "Hike Amount",
-    oldVal: "₹7,50,000",
-    newVal: "₹8,01,000",
-  },
-  {
-    time: "20 Sep 2026, 10:47",
-    user: "HR — N. Subramanian",
-    empId: "E10232",
-    empName: "S. Nair",
-    cycle: "FY26-Q3",
-    field: "New PB to be Offered",
-    oldVal: "₹0",
-    newVal: "₹60,000",
-  },
-  {
-    time: "18 Sep 2026, 16:30",
-    user: "Comp Admin — R. Iyer",
-    empId: "E10231",
-    empName: "A. Kumar",
-    cycle: "FY26-Q3",
-    field: "New RB",
-    oldVal: "₹1,60,000",
-    newVal: "₹1,80,000",
-  },
-  {
-    time: "12 Sep 2026, 09:05",
-    user: "HR — N. Subramanian",
-    empId: "E10233",
-    empName: "P. Das",
-    cycle: "FY25-Q4",
-    field: "Target PB Allocated",
-    oldVal: "₹4,60,000",
-    newVal: "₹4,87,000",
-  },
-];
+import { useEffect, useMemo, useRef, useState } from "react";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 const COLS = [
   { key: "empId", label: "Employee ID", type: "text", frozen: true },
@@ -358,40 +134,30 @@ const TEXT_OPS = [
 ];
 const opsForType = (type) => (type === "number" ? NUMBER_OPS : TEXT_OPS);
 
-function compute(r) {
-  const totalPB = r.allocPB + r.newPB;
-  const totalBonus = totalPB + r.newRB;
-  const hikePct = r.basePay > 0 ? (r.hikeAmt / r.basePay) * 100 : 0;
-  const newBasePay = r.basePay + r.hikeAmt;
-  const totalCtc = newBasePay + totalBonus;
-  return { totalPB, totalBonus, hikePct, newBasePay, totalCtc };
-}
-function priorRecordFor(rec, stored) {
+function priorRecordFor(rec, stored, cycleOrder = {}) {
   const mine = stored
     .filter((r) => r.empId === rec.empId)
-    .sort((a, b) => (CYCLE_ORDER[a.cycle] || 0) - (CYCLE_ORDER[b.cycle] || 0));
+    .sort((a, b) => (cycleOrder[a.cycle] || 0) - (cycleOrder[b.cycle] || 0));
   const idx = mine.findIndex((r) => r === rec);
   return idx > 0 ? mine[idx - 1] : null;
 }
 function fmtMoney(v) {
   return v == null ? "—" : "₹" + Math.round(v).toLocaleString("en-IN");
 }
-function yoyPctFor(r, baseKey, stored) {
-  const prior = priorRecordFor(r, stored);
+function yoyPctFor(r, baseKey, stored, cycleOrder) {
+  const prior = priorRecordFor(r, stored, cycleOrder);
   if (!prior) return null;
-  const curVal = baseKey === "basePay" ? r.basePay : compute(r)[baseKey];
-  const priorVal =
-    baseKey === "basePay" ? prior.basePay : compute(prior)[baseKey];
+  const curVal = r[baseKey];
+  const priorVal = prior[baseKey];
   if (priorVal === 0) return null;
   return ((curVal - priorVal) / Math.abs(priorVal)) * 100;
 }
-function rawValueFor(r, col, stored) {
-  if (col.isYoy) return yoyPctFor(r, col.baseKey, stored);
-  if (col.computed) return compute(r)[col.key];
+function rawValueFor(r, col, stored, cycleOrder) {
+  if (col.isYoy) return yoyPctFor(r, col.baseKey, stored, cycleOrder);
   return r[col.key];
 }
-function displayValueFor(r, col, stored) {
-  const val = rawValueFor(r, col, stored);
+function displayValueFor(r, col, stored, cycleOrder) {
+  const val = rawValueFor(r, col, stored, cycleOrder);
   if (col.isYoy)
     return val == null ? "new" : (val >= 0 ? "+" : "") + val.toFixed(2) + "%";
   if (col.money) return fmtMoney(val);
@@ -454,6 +220,7 @@ function ColumnFilterPopover({
   stored,
   active,
   position,
+  cycleOrder,
   onSort,
   onApplyCondition,
   onApplySelect,
@@ -463,9 +230,9 @@ function ColumnFilterPopover({
   const values = useMemo(
     () =>
       Array.from(
-        new Set(stored.map((r) => displayValueFor(r, colDef, stored))),
+          new Set(stored.map((r) => displayValueFor(r, colDef, stored, cycleOrder))),
       ).sort(),
-    [stored, colDef],
+      [stored, colDef, cycleOrder],
   );
   const activeIsCondition = active && !(active instanceof Set);
   const ops = opsForType(colDef.type);
@@ -486,7 +253,7 @@ function ColumnFilterPopover({
   const needsVal2 = op === "between";
 
   const visibleValues = values.filter((v) =>
-    v.toLowerCase().includes(search.toLowerCase()),
+    String(v ?? "").toLowerCase().includes(search.toLowerCase()),
   );
   const allChecked = values.every((v) => checkedSet.has(v));
 
@@ -607,7 +374,12 @@ function ColumnFilterPopover({
    ============================================================ */
 
 export function PayrollDataPage() {
-  const [stored] = useState(STORED);
+  const [stored, setStored] = useState([]);
+  const [audit, setAudit] = useState([]);
+  const [cycles, setCycles] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [reloadToken, setReloadToken] = useState(0);
   const [search, setSearch] = useState("");
   const [batchFilter, setBatchFilter] = useState("all");
   const [columnFilters, setColumnFilters] = useState({});
@@ -617,6 +389,42 @@ export function PayrollDataPage() {
   const [openFilterCol, setOpenFilterCol] = useState(null);
   const [filterPos, setFilterPos] = useState({ left: 0, top: 0 });
   const btnRefs = useRef({});
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError("");
+    Promise.all([
+      payrollCycleRequest("payroll"),
+      payrollCycleRequest("audit"),
+      payrollCycleRequest("cycles"),
+    ])
+      .then(([payroll, auditRows, cycleRows]) => {
+        if (!active) return;
+        setStored(payroll);
+        setAudit(auditRows);
+        setCycles(cycleRows);
+        setLoadError("");
+      })
+      .catch((error) => {
+        if (active) setLoadError(error.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [reloadToken]);
+
+  const cycleOrder = useMemo(
+    () => Object.fromEntries(
+      [...cycles]
+        .sort((a, b) => String(a.start).localeCompare(String(b.start)))
+        .map((cycle, index) => [cycle.name, index + 1]),
+    ),
+    [cycles],
+  );
 
   const batches = useMemo(
     () => Array.from(new Set(stored.map((r) => r.batch))),
@@ -630,8 +438,8 @@ export function PayrollDataPage() {
       const term = search.toLowerCase();
       const matchesTerm =
         !term ||
-        r.empName.toLowerCase().includes(term) ||
-        r.empId.toLowerCase().includes(term);
+        String(r.empName || "").toLowerCase().includes(term) ||
+        String(r.empId || "").toLowerCase().includes(term);
       const matchesBatch = batchFilter === "all" || r.batch === batchFilter;
       return matchesTerm && matchesBatch;
     });
@@ -642,9 +450,9 @@ export function PayrollDataPage() {
         filterKeys.every((key) => {
           const filter = columnFilters[key];
           const colDef = colByKey(key);
-          const raw = rawValueFor(r, colDef, stored);
+          const raw = rawValueFor(r, colDef, stored, cycleOrder);
           if (filter instanceof Set)
-            return filter.has(displayValueFor(r, colDef, stored));
+            return filter.has(displayValueFor(r, colDef, stored, cycleOrder));
           return matchesCondition(raw, filter, colDef.type);
         }),
       );
@@ -653,8 +461,8 @@ export function PayrollDataPage() {
     if (sortState) {
       const colDef = colByKey(sortState.col);
       list = [...list].sort((a, b) => {
-        let av = rawValueFor(a, colDef, stored);
-        let bv = rawValueFor(b, colDef, stored);
+        let av = rawValueFor(a, colDef, stored, cycleOrder);
+        let bv = rawValueFor(b, colDef, stored, cycleOrder);
         if (av == null) av = colDef.type === "number" ? -Infinity : "";
         if (bv == null) bv = colDef.type === "number" ? -Infinity : "";
         if (av < bv) return sortState.dir === "asc" ? -1 : 1;
@@ -664,12 +472,12 @@ export function PayrollDataPage() {
     } else {
       list = [...list].sort((a, b) => {
         if (a.empId !== b.empId) return a.empId < b.empId ? -1 : 1;
-        return (CYCLE_ORDER[b.cycle] || 0) - (CYCLE_ORDER[a.cycle] || 0);
+        return (cycleOrder[b.cycle] || 0) - (cycleOrder[a.cycle] || 0);
       });
     }
 
     return list;
-  }, [stored, search, batchFilter, columnFilters, sortState]);
+  }, [stored, search, batchFilter, columnFilters, sortState, cycleOrder]);
 
   const openColFilter = (colKey) => {
     const btn = btnRefs.current[colKey];
@@ -684,19 +492,20 @@ export function PayrollDataPage() {
 
   const handleExport = () => {
     const headers = COLS.map((c) => c.label);
-    const lines = [headers.join(",")];
+    const csvCell = (value) => {
+      const text = String(value ?? "");
+      const safeText = /^[\s]*[=+\-@]/.test(text) ? `'${text}` : text;
+      return `"${safeText.replace(/"/g, '""')}"`;
+    };
+    const lines = [headers.map(csvCell).join(",")];
     rows.forEach((r) => {
-      const c = compute(r);
-      const merged = { ...r, ...c };
       const vals = COLS.map((col) => {
-        const val = merged[col.key];
-        if (col.money) return Math.round(val);
-        if (col.pct) return val.toFixed(2) + "%";
-        return val == null ? "" : val;
+        const val = rawValueFor(r, col, stored, cycleOrder);
+        if (col.money) return val == null ? "" : Math.round(val);
+        if (col.pct) return val == null ? "" : val.toFixed(2) + "%";
+        return val ?? "";
       });
-      lines.push(
-        vals.map((v) => (String(v).includes(",") ? `"${v}"` : v)).join(","),
-      );
+      lines.push(vals.map(csvCell).join(","));
     });
     const blob = new Blob([lines.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -719,6 +528,15 @@ export function PayrollDataPage() {
       }}
     >
       <style>{PAYROLL_DATA_CSS}</style>
+      {loadError && (
+        <div role="alert" className="pd-footer-note">
+          {loadError}{" "}
+          <button type="button" onClick={() => setReloadToken((token) => token + 1)}>
+            Retry
+          </button>
+        </div>
+      )}
+      {loading && <div className="pd-footer-note">Loading payroll records…</div>}
 
       <div className="pd-topbar">
         <div>
@@ -827,10 +645,20 @@ export function PayrollDataPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => (
+            {rows.length === 0 ? (
+              <tr>
+                <td colSpan={COLS.length} className="pd-footer-note">
+                  {loading
+                    ? "Loading payroll records…"
+                    : stored.length
+                      ? "No payroll records match the current filters."
+                      : "No payroll records are available yet."}
+                </td>
+              </tr>
+            ) : rows.map((r, i) => (
               <tr key={`${r.empId}-${r.cycle}-${i}`}>
                 {COLS.map((col) => {
-                  const val = rawValueFor(r, col, stored);
+                  const val = rawValueFor(r, col, stored, cycleOrder);
                   if (col.isYoy) {
                     const cls = val == null ? "new" : val >= 0 ? "pos" : "neg";
                     const label =
@@ -893,6 +721,7 @@ export function PayrollDataPage() {
           stored={stored}
           active={columnFilters[openFilterCol]}
           position={filterPos}
+          cycleOrder={cycleOrder}
           onSort={(dir) => {
             setSortState({ col: openFilterCol, dir });
             setOpenFilterCol(null);
@@ -954,20 +783,21 @@ export function PayrollDataPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {AUDIT_TRAIL.map((a, i) => (
-                    <tr key={i}>
+                  {audit.map((a) => (
+                    <tr key={a.id}>
                       <td>{a.time}</td>
                       <td>{a.user}</td>
                       <td>
-                        {a.empName}{" "}
+                        {a.empName || "—"}{" "}
                         <span style={{ color: "#8592a6" }}>({a.empId})</span>
                       </td>
                       <td>{a.cycle}</td>
                       <td>{a.field}</td>
-                      <td className="pd-old-val">{a.oldVal}</td>
-                      <td className="pd-new-val">{a.newVal}</td>
+                      <td className="pd-old-val">{a.oldVal || "—"}</td>
+                      <td className="pd-new-val">{a.newVal || a.details || "—"}</td>
                     </tr>
                   ))}
+                  {!audit.length && <tr><td colSpan={7}>No audit history yet.</td></tr>}
                 </tbody>
               </table>
             </div>

@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import * as XLSX from "xlsx";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 const SYSTEM_FIELDS = [
   { key: "empId", label: "Employee ID", cat: "key", required: true },
@@ -22,7 +24,7 @@ const SYSTEM_FIELDS = [
   { key: "newPBInst", label: "Inst. (New PB)", cat: "input" },
   { key: "newRB", label: "New RB", cat: "input" },
   { key: "hikeAmt", label: "Hike Amount", cat: "input" },
-  { key: "hikePct", label: "Hike %", cat: "input" },
+  { key: "hikePct", label: "Hike %", cat: "calc" },
   { key: "tpbNext", label: "Target PB for Next Year", cat: "input" },
   { key: "promo", label: "Promo? (Yes/No)", cat: "input" },
   { key: "newTitle", label: "New Title", cat: "input" },
@@ -35,7 +37,7 @@ const FILE_COLUMNS = [
   { name: "Designation", guess: "designation" },
   { name: "Comp Manager", guess: "compManager" },
   { name: "Super Manager", guess: "superManager" },
-  { name: "Mgr Email", guess: "" },
+  { name: "Mgr Email", guess: "managerMail" },
   { name: "Super Mgr Email", guess: "superManagerMail" },
   { name: "Appraiser/Super Mgr", guess: "appraiser" },
   { name: "Base Pay (Annual)", guess: "basePay" },
@@ -49,7 +51,7 @@ const FILE_COLUMNS = [
   { name: "PB Inst", guess: "allocInst" },
   { name: "New PB Offered", guess: "newPB" },
   { name: "New PB Inst", guess: "newPBInst" },
-  { name: "Revised RB", guess: "" },
+  { name: "Revised RB", guess: "newRB" },
   { name: "Hike Amt", guess: "hikeAmt" },
   { name: "Hike %", guess: "hikePct" },
   { name: "Target PB Next Yr", guess: "tpbNext" },
@@ -59,181 +61,6 @@ const FILE_COLUMNS = [
   { name: "Notes", guess: "" },
 ];
 
-function mk(overrides) {
-  const base = {
-    empId: "E10231",
-    empName: "A. Kumar",
-    designation: "Sr. Consultant",
-    compManager: "R. Iyer",
-    superManager: "V. Rao",
-    managerMail: "v.rao@r2c.com",
-    superManagerMail: "v.rao@r2c.com",
-    appraiser: "V. Rao",
-    basePay: 6200000,
-    targetPB: 620000,
-    rbPaid: 300000,
-    rbMonth: "Apr",
-    joiningBonus: 0,
-    pbPaid: 250000,
-    pbMonth: "Apr",
-    allocPB: 600000,
-    allocInst: 1,
-    newPB: 0,
-    newPBInst: 0,
-    newRB: 180000,
-    hikeAmt: 84000,
-    hikePct: 6,
-    tpbNext: 640000,
-    promo: "No",
-    newTitle: "",
-    remarks: "",
-  };
-  return { ...base, ...overrides };
-}
-
-const CLEAN_ROWS = [
-  { row: 2, ok: true, ...mk({}) },
-  {
-    row: 3,
-    ok: true,
-    ...mk({
-      empId: "E10232",
-      empName: "S. Nair",
-      basePay: 7450000,
-      targetPB: 745000,
-      hikeAmt: 96000,
-    }),
-  },
-  {
-    row: 4,
-    ok: true,
-    ...mk({
-      empId: "E10233",
-      empName: "P. Das",
-      basePay: 5120000,
-      targetPB: 512000,
-      hikeAmt: 60000,
-    }),
-  },
-  {
-    row: 5,
-    ok: true,
-    ...mk({
-      empId: "E10234",
-      empName: "M. Iyer",
-      basePay: 8900000,
-      targetPB: 890000,
-      promo: "Yes",
-      newTitle: "Principal Consultant",
-      hikeAmt: 112000,
-    }),
-  },
-  {
-    row: 6,
-    ok: true,
-    ...mk({
-      empId: "E10235",
-      empName: "K. Reddy",
-      basePay: 4680000,
-      targetPB: 468000,
-      joiningBonus: 150000,
-      hikeAmt: 54000,
-    }),
-  },
-];
-
-const ERROR_ROWS = [
-  { row: 2, ok: true, ...mk({}) },
-  {
-    row: 3,
-    ok: false,
-    reason: "Employee ID not found in Employee Master",
-    badFields: ["empId"],
-    ...mk({
-      empId: "E10236",
-      empName: "New Joiner",
-      basePay: 5900000,
-      targetPB: 590000,
-    }),
-  },
-  {
-    row: 4,
-    ok: true,
-    ...mk({
-      empId: "E10233",
-      empName: "P. Das",
-      basePay: 5120000,
-      targetPB: 512000,
-      hikeAmt: 60000,
-    }),
-  },
-  {
-    row: 5,
-    ok: false,
-    reason:
-      "Duplicate Employee ID within this file for the selected cycle (row 4 already covers E10233)",
-    badFields: ["empId"],
-    ...mk({
-      empId: "E10233",
-      empName: "P. Das",
-      basePay: 5120000,
-      targetPB: 512000,
-      hikeAmt: 60000,
-    }),
-  },
-  {
-    row: 6,
-    ok: false,
-    reason: "Missing required field: Employee ID",
-    badFields: ["empId"],
-    ...mk({
-      empId: "",
-      empName: "M. Iyer",
-      basePay: 8900000,
-      targetPB: 890000,
-      hikeAmt: 112000,
-    }),
-  },
-  {
-    row: 7,
-    ok: false,
-    reason:
-      "Existing record conflict — this Employee ID already has a manual edit in the open cycle",
-    badFields: ["empId"],
-    ...mk({
-      empId: "E10237",
-      empName: "R. Bose",
-      basePay: 5300000,
-      targetPB: 530000,
-      hikeAmt: 58000,
-    }),
-  },
-  {
-    row: 8,
-    ok: false,
-    reason: "Base Pay must be a positive number",
-    badFields: ["basePay"],
-    ...mk({
-      empId: "E10238",
-      empName: "T. Nambiar",
-      basePay: -50000,
-      targetPB: 500000,
-      hikeAmt: 45000,
-    }),
-  },
-  {
-    row: 9,
-    ok: true,
-    ...mk({
-      empId: "E10235",
-      empName: "K. Reddy",
-      basePay: 4680000,
-      targetPB: 468000,
-      hikeAmt: 54000,
-    }),
-  },
-];
-
 function fmt(v, field) {
   if (v === null || v === undefined || v === "")
     return field && field.required ? "—" : "—";
@@ -241,122 +68,233 @@ function fmt(v, field) {
   return v;
 }
 function nextBatchId() {
-  return "BATCH-2026Q3-" + String(Math.floor(Math.random() * 900) + 100);
+  return `BATCH-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
-const INITIAL_HISTORY = [
-  {
-    batchId: "BATCH-2026Q3-0041",
-    file: "payroll_new_joiners_sep.xlsx",
-    uploaded: "18 Sep 2026, 11:20",
-    succeeded: 27,
-    failed: 0,
-  },
-  {
-    batchId: "BATCH-2026Q3-0038",
-    file: "payroll_batch2.xlsx",
-    uploaded: "15 Sep 2026, 16:04",
-    succeeded: 19,
-    failed: 4,
-  },
-  {
-    batchId: "BATCH-2026Q2-0117",
-    file: "payroll_q2_final.xlsx",
-    uploaded: "30 Jun 2026, 09:47",
-    succeeded: 12,
-    failed: 0,
-  },
-];
+function downloadFailureReport(rows, batchId, cycleName) {
+  const failures = rows.filter((row) => row.ok === false);
+  if (!failures.length) return;
+
+  const headers = ["Batch ID", "Cycle", "Source Row", "Employee ID", "Reason"];
+  const csvCell = (value) => {
+    const text = String(value ?? "");
+    const safeText = /^[\s]*[=+\-@]/.test(text) ? `'${text}` : text;
+    return `"${safeText.replace(/"/g, '""')}"`;
+  };
+  const csv = [
+    headers.map(csvCell).join(","),
+    ...failures.map((row) =>
+      [
+        batchId,
+        cycleName,
+        row.row,
+        row.empId,
+        row.reason,
+      ].map(csvCell).join(","),
+    ),
+  ].join("\r\n");
+  const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `failure_report_${batchId}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
 
 export function PayrollUploadPage() {
+  const [cycles, setCycles] = useState([]);
   const [selectedCycle, setSelectedCycle] = useState("");
   const [step, setStep] = useState(1); // 1 upload, 2 map, 3 validate
   const [currentRows, setCurrentRows] = useState([]);
+  const [fileColumns, setFileColumns] = useState([]);
+  const [sourceRows, setSourceRows] = useState([]);
+  const [fileName, setFileName] = useState("");
   const [mapping, setMapping] = useState({});
   const [batchId, setBatchId] = useState("");
   const [rowStatus, setRowStatus] = useState({}); // row -> "pending" | "locked" | "uploaded"
   const [outcome, setOutcome] = useState(null);
   const [committing, setCommitting] = useState(false);
-  const [history, setHistory] = useState(INITIAL_HISTORY);
+  const [history, setHistory] = useState([]);
+  const [currentUser, setCurrentUser] = useState(null);
+  const [undoingBatch, setUndoingBatch] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadToken, setLoadToken] = useState(0);
+  const [error, setError] = useState("");
+  const fileInputRef = useRef(null);
+  const selectedCycleRecord = cycles.find((cycle) => cycle.id === selectedCycle);
+  const isClosedCycle = selectedCycleRecord?.status === "Closed";
 
-  const isClosedCycle = selectedCycle === "FY25-Q4";
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError("");
+    Promise.all([
+      payrollCycleRequest("cycles"),
+      payrollCycleRequest("history"),
+      payrollCycleRequest("session"),
+    ])
+      .then(([cycleData, historyData, session]) => {
+        if (!active) return;
+        setCycles(cycleData);
+        setHistory(historyData);
+        setCurrentUser(session);
+        setLoadError("");
+      })
+      .catch((requestError) => {
+        if (active) setLoadError(requestError.message);
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [loadToken]);
 
   const resetAll = () => {
     setStep(1);
     setCurrentRows([]);
+    setSourceRows([]);
+    setFileColumns([]);
+    setFileName("");
+    setBatchId("");
+    setError("");
     setOutcome(null);
     setRowStatus({});
   };
 
-  const runSim = (kind) => {
-    setCurrentRows(kind === "clean" ? CLEAN_ROWS : ERROR_ROWS);
-    const initMap = {};
-    FILE_COLUMNS.forEach((c) => {
-      initMap[c.name] = c.guess;
-    });
-    setMapping(initMap);
-    setStep(2);
+  const parseFile = async (file) => {
+    if (!file) return;
+    setError("");
+    try {
+      const extension = file.name.split(".").pop()?.toLowerCase();
+      if (!["xlsx", "xls", "csv"].includes(extension)) {
+        throw new Error("Choose an Excel or CSV file.");
+      }
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!sheet) throw new Error("The selected file does not contain a worksheet.");
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+      const headers = (rows.shift() || []).map((value) => String(value || "").trim());
+      if (!headers.length || !headers.some(Boolean)) throw new Error("The worksheet is missing its header row.");
+      const columns = headers.map((name, index) => ({
+        name: name || `Column ${index + 1}`,
+        guess: FILE_COLUMNS.find((column) => column.name.toLowerCase() === name.toLowerCase())?.guess ||
+          SYSTEM_FIELDS.find((field) =>
+            [field.key, field.label].some((value) =>
+              value.toLowerCase().replace(/[^a-z0-9]/g, "") === name.toLowerCase().replace(/[^a-z0-9]/g, ""),
+            ),
+          )?.key || "",
+      }));
+      const dataRows = rows
+        .map((cells, index) => ({ row: index + 2, cells }))
+        .filter(({ cells }) => cells.some((value) => value !== ""));
+      if (!dataRows.length) throw new Error("The worksheet does not contain any payroll rows.");
+      setFileName(file.name);
+      setFileColumns(columns);
+      setSourceRows(dataRows);
+      setCurrentRows([]);
+      setMapping(Object.fromEntries(columns.map((column) => [column.name, column.guess])));
+      setStep(2);
+    } catch (parseError) {
+      setError(parseError.message || "Unable to read the selected payroll file.");
+    }
   };
 
   const missingRequired = SYSTEM_FIELDS.filter(
     (f) => f.required && !Object.values(mapping).includes(f.key),
   );
+  const duplicateMappings = Object.values(mapping).filter(Boolean).filter(
+    (field, index, mapped) => mapped.indexOf(field) !== index,
+  );
 
-  const goToValidate = () => {
+  const goToValidate = async () => {
+    if (!sourceRows.length || !selectedCycle) return;
     const id = nextBatchId();
     setBatchId(id);
-    const initStatus = {};
-    currentRows.forEach((r) => {
-      initStatus[r.row] = "pending";
+    setError("");
+    const records = sourceRows.map(({ row, cells }) => {
+      const record = { row };
+      fileColumns.forEach((column, index) => {
+        const field = mapping[column.name];
+        if (field) record[field] = cells[index];
+      });
+      return record;
     });
-    setRowStatus(initStatus);
-    setOutcome(null);
-    setStep(3);
+    try {
+      const result = await payrollCycleRequest("validate", {
+        method: "POST",
+        body: { cycleId: selectedCycle, batchId: id, fileName, records },
+      });
+      setCurrentRows(result.rows.map((row) => {
+        const input = records.find((record) => record.row === row.row) || {};
+        return { ...input, ...row };
+      }));
+      setRowStatus(Object.fromEntries(result.rows.map((row) => [row.row, row.ok ? "pending" : "locked"])));
+      setOutcome(null);
+      setStep(3);
+    } catch (validationError) {
+      setError(validationError.message);
+    }
   };
 
-  const validCount = currentRows.filter((r) => r.ok !== false).length;
+  const validCount = currentRows.filter((r) => r.ok === true).length;
   const invalidCount = currentRows.length - validCount;
 
-  const commitBatch = () => {
+  const commitBatch = async () => {
     setCommitting(true);
-    const validRows = currentRows.filter((r) => r.ok !== false);
-
-    validRows.forEach((r, i) => {
-      setTimeout(() => {
-        setRowStatus((prev) => ({ ...prev, [r.row]: "locked" }));
-      }, i * 100);
-    });
-
-    setTimeout(
-      () => {
-        setRowStatus((prev) => {
-          const next = { ...prev };
-          validRows.forEach((r) => {
-            next[r.row] = "uploaded";
-          });
-          return next;
+    setError("");
+    try {
+      const records = sourceRows.map(({ row, cells }) => {
+        const record = { row };
+        fileColumns.forEach((column, index) => {
+          const field = mapping[column.name];
+          if (field) record[field] = cells[index];
         });
+        return record;
+      });
+      const result = await payrollCycleRequest("commit", {
+        method: "POST",
+        body: { cycleId: selectedCycle, batchId, fileName, records },
+      });
+      setRowStatus(Object.fromEntries(result.rows.map((row) => [row.row, row.ok ? "uploaded" : "locked"])));
+      setOutcome(result);
+      try {
+        setHistory(await payrollCycleRequest("history"));
+        setLoadError("");
+      } catch (refreshError) {
+        setLoadError(`Upload succeeded, but upload history could not be refreshed: ${refreshError.message}`);
+      }
+    } catch (commitError) {
+      setError(commitError.message);
+    } finally {
+      setCommitting(false);
+    }
+  };
 
-        const failed = currentRows.filter((r) => r.ok === false).length;
-        const succeeded = validRows.length;
-        const total = currentRows.length;
-
-        setOutcome({ succeeded, failed, total, batchId });
-        setCommitting(false);
-
-        setHistory((prev) => [
-          {
-            batchId,
-            file: "payroll_upload_q3.xlsx",
-            uploaded: "Just now",
-            succeeded,
-            failed,
-          },
-          ...prev,
-        ]);
-      },
-      validRows.length * 100 + 260,
+  const undoBatch = async (batch) => {
+    if (!batch.undoable || undoingBatch) return;
+    const confirmed = window.confirm(
+      `Undo batch ${batch.batchId}? This permanently removes its ${batch.succeeded} payroll row${batch.succeeded === 1 ? "" : "s"}.`,
     );
+    if (!confirmed) return;
+
+    setUndoingBatch(batch.batchId);
+    setError("");
+    try {
+      await payrollCycleRequest("undo", {
+        method: "POST",
+        body: { batchId: batch.batchId },
+      });
+      setHistory(await payrollCycleRequest("history"));
+    } catch (undoError) {
+      setError(undoError.message);
+    } finally {
+      setUndoingBatch("");
+    }
   };
 
   return (
@@ -375,6 +313,9 @@ export function PayrollUploadPage() {
               Master + Input columns only. Calculated columns are never
               uploaded; the DB recomputes them after write.
             </p>
+            {currentUser?.name && (
+              <p className="pu-meta">Signed in as {currentUser.name}</p>
+            )}
           </div>
         </div>
 
@@ -393,20 +334,24 @@ export function PayrollUploadPage() {
             <select
               className="pu-cycle-select"
               value={selectedCycle}
+              disabled={loading || !!loadError}
               onChange={(e) => {
                 setSelectedCycle(e.target.value);
                 resetAll();
               }}
             >
               <option value="">— Select appraisal cycle —</option>
-              <option value="FY26-Q3">FY26-Q3 (Open)</option>
-              <option value="Mid-Year Review FY25-26">
-                Mid-Year Review FY25-26 (Open)
-              </option>
-              <option value="FY25-Q4">
-                FY25-Q4 (Closed — corrections only)
-              </option>
+              {cycles.filter((cycle) => !cycle.archived).map((cycle) => (
+                <option key={cycle.id} value={cycle.id}>
+                  {cycle.name} ({cycle.status}{cycle.status === "Closed" ? " — corrections only" : ""})
+                </option>
+              ))}
             </select>
+            {!loading && !loadError && cycles.length === 0 && (
+              <div className="pu-cycle-warning">
+                No appraisal cycles are available. Create a cycle before uploading payroll.
+              </div>
+            )}
             {isClosedCycle && (
               <div className="pu-cycle-warning">
                 This cycle is closed — only correction uploads are expected
@@ -416,25 +361,21 @@ export function PayrollUploadPage() {
           </div>
         </div>
 
+        {loadError && <div className="pu-cycle-warning">{loadError}</div>}
+        {loadError && (
+          <button
+            type="button"
+            className="pu-btn pu-btn-ghost pu-btn-sm"
+            onClick={() => setLoadToken((token) => token + 1)}
+          >
+            Retry loading data
+          </button>
+        )}
+        {error && <div className="pu-cycle-warning">{error}</div>}
+        {loading && <div className="pu-toolbar-note">Loading cycles and upload history…</div>}
         {selectedCycle && (
           <>
-            <p className="pu-toolbar-note">
-              Mock screen — simulates parsing, since there's no real file behind
-              it.
-            </p>
             <div className="pu-sim-toggle">
-              <button
-                className="pu-btn pu-btn-ghost pu-btn-sm"
-                onClick={() => runSim("clean")}
-              >
-                Simulate upload — clean file
-              </button>
-              <button
-                className="pu-btn pu-btn-ghost pu-btn-sm"
-                onClick={() => runSim("errors")}
-              >
-                Simulate upload — file with some bad rows
-              </button>
               <button
                 className="pu-btn pu-btn-ghost pu-btn-sm"
                 onClick={resetAll}
@@ -467,34 +408,51 @@ export function PayrollUploadPage() {
                 <div className="pu-card-head">
                   <div>
                     <h2>Select file</h2>
-                    <div className="pu-meta">Cycle: {selectedCycle}</div>
+                    <div className="pu-meta">Cycle: {selectedCycleRecord?.name || selectedCycle}</div>
                   </div>
                   <button
                     className="pu-link-btn"
-                    onClick={() =>
-                      alert(
-                        "Would download the Payroll upload template — all Master + Input columns as headers, no calculated columns.",
-                      )
-                    }
+                    onClick={() => {
+                      const headers = SYSTEM_FIELDS.filter((field) => field.cat !== "calc").map((field) => field.label);
+                      const sheet = XLSX.utils.aoa_to_sheet([headers]);
+                      const workbook = XLSX.utils.book_new();
+                      XLSX.utils.book_append_sheet(workbook, sheet, "Payroll Upload");
+                      XLSX.writeFile(workbook, "payroll_upload_template.xlsx");
+                    }}
                   >
                     Download template ↓
                   </button>
                 </div>
                 <div className="pu-card-body">
-                  <div className="pu-dropzone">
+                    <div
+                      className="pu-dropzone"
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        parseFile(event.dataTransfer.files?.[0]);
+                      }}
+                    >
                     <strong>Drag a payroll file here, or browse</strong>
                     <p>
                       .xlsx or .csv · headers can use any names — you'll map
                       them next
                     </p>
                     <div className="pu-dz-actions">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".xlsx,.xls,.csv"
+                        hidden
+                        onChange={(event) => parseFile(event.target.files?.[0])}
+                      />
                       <button
                         className="pu-btn pu-btn-primary pu-btn-sm"
-                        onClick={() => runSim("clean")}
+                        onClick={() => fileInputRef.current?.click()}
                       >
                         Browse files
                       </button>
                     </div>
+                    {fileName && <p className="pu-meta">Selected: {fileName}</p>}
                   </div>
                   <div className="pu-upload-meta-row">
                     <span>
@@ -518,17 +476,16 @@ export function PayrollUploadPage() {
                   <div>
                     <h2>Map fields</h2>
                     <div className="pu-meta">
-                      payroll_upload_q3.xlsx · {FILE_COLUMNS.length} columns
-                      detected
+                      {fileName} · {fileColumns.length} columns detected
                     </div>
                   </div>
-                  {missingRequired.length > 0 && (
+                  {(missingRequired.length > 0 || duplicateMappings.length > 0) && (
                     <span
                       className="pu-link-btn"
                       style={{ color: "var(--pu-warn)", cursor: "default" }}
                     >
-                      {missingRequired.length} required field
-                      {missingRequired.length > 1 ? "s" : ""} unmapped
+                      {missingRequired.length > 0 && `${missingRequired.length} required field${missingRequired.length > 1 ? "s" : ""} unmapped`}
+                      {duplicateMappings.length > 0 && `${missingRequired.length > 0 ? "; " : ""}${duplicateMappings.length} duplicate mapping${duplicateMappings.length > 1 ? "s" : ""}`}
                     </span>
                   )}
                 </div>
@@ -564,7 +521,7 @@ export function PayrollUploadPage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {FILE_COLUMNS.map((col) => (
+                        {fileColumns.map((col) => (
                           <tr key={col.name}>
                             <td className="pu-fromcol">{col.name}</td>
                             <td>
@@ -579,7 +536,7 @@ export function PayrollUploadPage() {
                                 }
                               >
                                 <option value="">— Ignore this column —</option>
-                                {SYSTEM_FIELDS.map((f) => (
+                                {SYSTEM_FIELDS.filter((field) => field.cat !== "calc").map((f) => (
                                   <option key={f.key} value={f.key}>
                                     {f.label}
                                     {f.required ? " *" : ""}
@@ -614,7 +571,7 @@ export function PayrollUploadPage() {
                     </button>
                     <button
                       className="pu-btn pu-btn-primary"
-                      disabled={missingRequired.length > 0}
+                      disabled={missingRequired.length > 0 || duplicateMappings.length > 0 || loading}
                       onClick={goToValidate}
                     >
                       Continue to validation
@@ -769,8 +726,10 @@ export function PayrollUploadPage() {
                         <button
                           className="pu-btn pu-btn-ghost pu-btn-sm"
                           onClick={() =>
-                            alert(
-                              `Would download failure_report_${outcome.batchId}.csv`,
+                            downloadFailureReport(
+                              currentRows,
+                              outcome.batchId,
+                              selectedCycleRecord?.name || selectedCycle,
                             )
                           }
                         >
@@ -833,7 +792,13 @@ export function PayrollUploadPage() {
               </tr>
             </thead>
             <tbody>
-              {history.map((h) => (
+              {history.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="pu-meta">
+                    {loading ? "Loading upload history…" : "No payroll upload batches found."}
+                  </td>
+                </tr>
+              ) : history.map((h) => (
                 <tr key={h.batchId + h.uploaded}>
                   <td>
                     <span className="pu-batch-tag">{h.batchId}</span>
@@ -845,27 +810,17 @@ export function PayrollUploadPage() {
                   <td>
                     <div className="pu-hist-actions">
                       {h.failed > 0 && (
-                        <button
-                          className="pu-fail-link"
-                          onClick={() =>
-                            alert(
-                              `Would open the retained failure report for ${h.batchId}.`,
-                            )
-                          }
-                        >
-                          View report ({h.failed})
-                        </button>
+                        <span className="pu-meta">
+                          {h.failed} failed (report is available only after the current upload)
+                        </span>
                       )}
-                      {h.succeeded > 0 && (
+                      {h.undoable && (
                         <button
                           className="pu-btn pu-btn-danger-ghost pu-btn-sm"
-                          onClick={() =>
-                            alert(
-                              `Would remove the ${h.succeeded} rows tagged ${h.batchId} and log the undo.`,
-                            )
-                          }
+                          disabled={undoingBatch !== ""}
+                          onClick={() => undoBatch(h)}
                         >
-                          Undo
+                          {undoingBatch === h.batchId ? "Undoing…" : "Undo"}
                         </button>
                       )}
                     </div>

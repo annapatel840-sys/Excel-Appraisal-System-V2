@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  Archive,
+  ArchiveRestore,
   CheckCircle2,
   Clock3,
   History,
@@ -10,109 +12,14 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { useCatalystUser } from "@/lib/catalyst-auth";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-
-const CURRENT_USER = "Priya Menon";
-
-const INITIAL_CYCLES = [
-  {
-    id: "c1",
-    name: "Mid-Year Review FY25-26",
-    start: "2025-10-01",
-    end: "2025-11-15",
-    status: "Closed",
-    remarks: "Mid-year review cycle completed.",
-    changedBy: "Priya Menon",
-    changedAt: "2026-01-10 10:30",
-    archived: true,
-  },
-  {
-    id: "c2",
-    name: "Annual Appraisal FY25-26",
-    start: "2026-04-01",
-    end: "2026-06-30",
-    status: "Active",
-    remarks: "Annual appraisal currently active.",
-    changedBy: "Priya Menon",
-    changedAt: "2026-04-01 09:00",
-    archived: false,
-  },
-  {
-    id: "c3",
-    name: "Annual Appraisal FY26-27",
-    start: "2027-04-01",
-    end: "2027-06-30",
-    status: "Upcoming",
-    remarks: "Next annual appraisal cycle.",
-    changedBy: "Priya Menon",
-    changedAt: "2026-09-23 09:30",
-    archived: false,
-  },
-];
-
-const INITIAL_AUDIT = [
-  {
-    id: "a0",
-    cycle: "Annual Appraisal FY26-27",
-    action: "Created cycle",
-    changedBy: "Priya Menon",
-    changedAt: "2026-09-23 09:30",
-    details: "Cycle created as Upcoming.",
-  },
-  {
-    id: "a1",
-    cycle: "Annual Appraisal FY25-26",
-    action: "End date changed",
-    changedBy: "Priya Menon",
-    changedAt: "2026-03-25 14:20",
-    details: "End date changed to 30-Jun-2026.",
-  },
-  {
-    id: "a2",
-    cycle: "Annual Appraisal FY25-26",
-    action: "Status changed",
-    changedBy: "Priya Menon",
-    changedAt: "2026-04-01 09:00",
-    details: "Previous active cycle closed.",
-  },
-  {
-    id: "a3",
-    cycle: "Annual Appraisal FY25-26",
-    action: "Status changed",
-    changedBy: "Priya Menon",
-    changedAt: "2026-04-01 09:00",
-    details: "Cycle activated.",
-  },
-];
-
-const INITIAL_REMARKS_HISTORY = {
-  c1: [
-    {
-      remarks: "Mid-year review cycle completed.",
-      changedBy: "Priya Menon",
-      changedAt: "2026-01-10 10:30",
-    },
-  ],
-  c2: [
-    {
-      remarks: "Annual appraisal currently active.",
-      changedBy: "Priya Menon",
-      changedAt: "2026-04-01 09:00",
-    },
-  ],
-  c3: [
-    {
-      remarks: "Next annual appraisal cycle.",
-      changedBy: "Priya Menon",
-      changedAt: "2026-09-23 09:30",
-    },
-  ],
-};
 
 const formatDate = (value) => {
   if (!value) return "";
@@ -131,18 +38,6 @@ const formatDateTime = (value) => {
   return value;
 };
 
-const getNow = () => {
-  const now = new Date();
-  const date = now.toLocaleDateString("en-CA");
-  const time = now.toLocaleTimeString("en-IN", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-
-  return `${date} ${time}`;
-};
-
 const STATUS_CLASS = {
   Upcoming: "acm-status-upcoming",
   Active: "acm-status-active",
@@ -150,10 +45,13 @@ const STATUS_CLASS = {
 };
 
 export function AppraisalCycleMasterPage() {
-  const [cycles, setCycles] = useState(INITIAL_CYCLES);
-  const [audit, setAudit] = useState(INITIAL_AUDIT);
-  const [remarksHistory, setRemarksHistory] = useState(INITIAL_REMARKS_HISTORY);
-
+  const user = useCatalystUser();
+  const canManageCycles = String(user?.role || "").trim().toLowerCase() === "hr";
+  const [cycles, setCycles] = useState([]);
+  const [audit, setAudit] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState(null);
 
   const [editCycle, setEditCycle] = useState(null);
@@ -176,114 +74,90 @@ export function AppraisalCycleMasterPage() {
     remarks: "",
   });
 
-  const activeCycle = useMemo(
-    () => cycles.find((cycle) => cycle.status === "Active"),
-    [cycles],
+  const loadData = useCallback(async () => {
+    const [cycleRows, auditRows] = await Promise.all([
+      payrollCycleRequest("cycles"),
+      payrollCycleRequest("audit"),
+    ]);
+    setCycles(cycleRows);
+    setAudit(auditRows.map((entry) => ({
+      id: entry.id,
+      cycleId: entry.cycleId,
+      cycle: entry.cycle,
+      action: entry.field,
+      changedBy: entry.user,
+      changedAt: entry.time,
+      details: entry.details,
+      remarks: entry.remarks,
+    })));
+    setLoadError("");
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    loadData()
+      .catch((error) => {
+        if (mounted) setLoadError(error.message);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [loadData]);
+
+  const remarksHistory = useMemo(
+    () => audit
+      .filter((entry) =>
+        entry.cycleId === remarksCycle?.id &&
+        (entry.action === "Remarks changed" || entry.action === "Created cycle"),
+      )
+      .map((entry) => ({
+        remarks: entry.remarks || "",
+        changedBy: entry.changedBy,
+        changedAt: entry.changedAt,
+      }))
+      .reverse(),
+    [audit, remarksCycle],
   );
 
   const showBanner = (title, body, error = false) => {
     setBanner({ title, body, error });
   };
 
-  const addAudit = (cycle, action, details) => {
-    const now = getNow();
-
-    setAudit((current) => [
-      {
-        id: `a-${Date.now()}-${Math.random()}`,
-        cycle: cycle.name,
-        action,
-        changedBy: CURRENT_USER,
-        changedAt: now,
-        details,
-      },
-      ...current,
-    ]);
+  const mutateCycle = async (resource, body, successTitle, successMessage) => {
+    if (!canManageCycles) {
+      showBanner("Permission denied", "HR role is required to administer appraisal cycles.", true);
+      return false;
+    }
+    setSaving(true);
+    try {
+      await payrollCycleRequest(resource, { method: "POST", body });
+    } catch (error) {
+      showBanner("Unable to save appraisal cycle", error.message, true);
+      setSaving(false);
+      return false;
+    }
+    try {
+      await loadData();
+    } catch (error) {
+      setLoadError(`The change was saved, but the latest data could not be refreshed: ${error.message}`);
+    }
+    setSaving(false);
+    showBanner(successTitle, successMessage);
+    return true;
   };
 
-  const handleStatusChange = (cycleId, nextStatus) => {
+  const handleStatusChange = async (cycleId, nextStatus) => {
     const cycle = cycles.find((item) => item.id === cycleId);
-
-    if (!cycle || cycle.status === nextStatus) {
-      return;
-    }
-
-    if (nextStatus === "Active") {
-      const previousActive = cycles.find(
-        (item) => item.status === "Active" && item.id !== cycleId,
-      );
-
-      if (previousActive && !previousActive.archived) {
-        showBanner(
-          "Activation blocked",
-          `"${previousActive.name}" is still active and has not been archived. Archive it before activating another cycle.`,
-          true,
-        );
-        return;
-      }
-
-      const updated = cycles.map((item) => {
-        if (item.id === cycleId) {
-          return {
-            ...item,
-            status: "Active",
-            changedBy: CURRENT_USER,
-            changedAt: getNow(),
-          };
-        }
-
-        if (item.status === "Active") {
-          return {
-            ...item,
-            status: "Closed",
-            changedBy: CURRENT_USER,
-            changedAt: getNow(),
-          };
-        }
-
-        return item;
-      });
-
-      setCycles(updated);
-
-      addAudit(cycle, "Status changed", "Cycle activated.");
-
-      if (previousActive) {
-        addAudit(
-          previousActive,
-          "Status changed",
-          "Previous active cycle closed.",
-        );
-      }
-
-      showBanner(
-        "Appraisal cycle activated",
-        `${cycle.name} is now Active. Eligibility List generated.`,
-      );
-
-      return;
-    }
-
-    setCycles((current) =>
-      current.map((item) =>
-        item.id === cycleId
-          ? {
-              ...item,
-              status: nextStatus,
-              changedBy: CURRENT_USER,
-              changedAt: getNow(),
-            }
-          : item,
-      ),
+    if (!cycle || cycle.status === nextStatus) return;
+    await mutateCycle(
+      `cycles/status/${cycleId}`,
+      { status: nextStatus },
+      "Status updated",
+      `${cycle.name} is now ${nextStatus}.`,
     );
-
-    addAudit(
-      cycle,
-      "Status changed",
-      `Cycle status changed from ${cycle.status} to ${nextStatus}.`,
-    );
-
-    showBanner("Status updated", `${cycle.name} is now ${nextStatus}.`);
   };
 
   const openEditCycle = (cycle) => {
@@ -295,17 +169,13 @@ export function AppraisalCycleMasterPage() {
     });
   };
 
-  const saveEditCycle = () => {
+  const saveEditCycle = async () => {
     if (!editCycle) return;
 
     const name = editForm.name.trim();
 
-    if (!name || !editForm.start || !editForm.end) {
-      showBanner(
-        "Validation failed",
-        "Cycle name, start date and end date are required.",
-        true,
-      );
+    if (!name || name.length > 100 || !editForm.start || !editForm.end) {
+      showBanner("Validation failed", "Cycle name (up to 100 characters), start date and end date are required.", true);
       return;
     }
 
@@ -318,29 +188,13 @@ export function AppraisalCycleMasterPage() {
       return;
     }
 
-    const previous = editCycle;
-
-    const updatedCycle = {
-      ...previous,
-      name,
-      start: editForm.start,
-      end: editForm.end,
-      changedBy: CURRENT_USER,
-      changedAt: getNow(),
-    };
-
-    setCycles((current) =>
-      current.map((item) => (item.id === previous.id ? updatedCycle : item)),
-    );
-
-    addAudit(previous, "Cycle edited", "Cycle name or dates updated.");
-
-    setEditCycle(null);
-
-    showBanner(
+    const saved = await mutateCycle(
+      `cycles/update/${editCycle.id}`,
+      { name, start: editForm.start, end: editForm.end },
       "Cycle updated",
-      `${updatedCycle.name} was updated successfully.`,
+      `${name} was updated successfully.`,
     );
+    if (saved) setEditCycle(null);
   };
 
   const openRemarks = (cycle) => {
@@ -348,80 +202,50 @@ export function AppraisalCycleMasterPage() {
     setRemarksText(cycle.remarks || "");
   };
 
-  const saveRemarks = () => {
+  const saveRemarks = async () => {
     if (!remarksCycle) return;
 
     const remarks = remarksText.trim();
-
-    const now = getNow();
-
-    setCycles((current) =>
-      current.map((item) =>
-        item.id === remarksCycle.id
-          ? {
-              ...item,
-              remarks,
-              changedBy: CURRENT_USER,
-              changedAt: now,
-            }
-          : item,
-      ),
-    );
-
-    setRemarksHistory((current) => ({
-      ...current,
-      [remarksCycle.id]: [
-        {
-          remarks,
-          changedBy: CURRENT_USER,
-          changedAt: now,
-        },
-        ...(current[remarksCycle.id] || []),
-      ],
-    }));
-
-    addAudit(remarksCycle, "Remarks changed", "Cycle remarks updated.");
-
-    setRemarksCycle(null);
-
-    showBanner("Remarks updated", `${remarksCycle.name} remarks were saved.`);
-  };
-
-  const handleDelete = (cycle) => {
-    const today = new Date();
-    const startDate = new Date(`${cycle.start}T00:00:00`);
-
-    if (today >= startDate) {
-      showBanner(
-        "Delete blocked",
-        "A cycle can only be deleted before its Start Date.",
-        true,
-      );
+    if (remarks.length > 10000) {
+      showBanner("Validation failed", "Remarks cannot exceed 10,000 characters.", true);
       return;
     }
+    const saved = await mutateCycle(
+      `cycles/remarks/${remarksCycle.id}`,
+      { remarks },
+      "Remarks updated",
+      `${remarksCycle.name} remarks were saved.`,
+    );
+    if (saved) setRemarksCycle(null);
+  };
 
+  const handleArchive = async (cycle) => {
+    await mutateCycle(
+      `cycles/archive/${cycle.id}`,
+      { archived: !cycle.archived },
+      cycle.archived ? "Cycle unarchived" : "Cycle archived",
+      `${cycle.name} was ${cycle.archived ? "unarchived" : "archived"}.`,
+    );
+  };
+
+  const handleDelete = async (cycle) => {
     const confirmed = window.confirm(
       `Delete "${cycle.name}"? This action cannot be undone.`,
     );
-
     if (!confirmed) return;
-
-    setCycles((current) => current.filter((item) => item.id !== cycle.id));
-
-    addAudit(cycle, "Cycle deleted", "Cycle deleted before its start date.");
-
-    showBanner("Cycle deleted", `${cycle.name} was deleted.`);
+    await mutateCycle(
+      `cycles/delete/${cycle.id}`,
+      {},
+      "Cycle deleted",
+      `${cycle.name} was deleted.`,
+    );
   };
 
-  const createCycle = () => {
+  const createCycle = async () => {
     const name = newForm.name.trim();
 
-    if (!name || !newForm.start || !newForm.end) {
-      showBanner(
-        "Validation failed",
-        "Cycle name, start date and end date are required.",
-        true,
-      );
+    if (!name || name.length > 100 || !newForm.start || !newForm.end) {
+      showBanner("Validation failed", "Cycle name (up to 100 characters), start date and end date are required.", true);
       return;
     }
 
@@ -434,45 +258,20 @@ export function AppraisalCycleMasterPage() {
       return;
     }
 
-    const now = getNow();
-
-    const cycle = {
-      id: `c-${Date.now()}`,
-      name,
-      start: newForm.start,
-      end: newForm.end,
-      status: "Upcoming",
-      remarks: newForm.remarks.trim(),
-      changedBy: CURRENT_USER,
-      changedAt: now,
-      archived: false,
-    };
-
-    setCycles((current) => [...current, cycle]);
-
-    setRemarksHistory((current) => ({
-      ...current,
-      [cycle.id]: [
-        {
-          remarks: cycle.remarks,
-          changedBy: CURRENT_USER,
-          changedAt: now,
-        },
-      ],
-    }));
-
-    addAudit(cycle, "Created cycle", "Cycle created as Upcoming.");
-
-    setNewCycleOpen(false);
-
-    setNewForm({
-      name: "",
-      start: "",
-      end: "",
-      remarks: "",
-    });
-
-    showBanner("Cycle created", `${cycle.name} was created as Upcoming.`);
+    if (newForm.remarks.length > 10000) {
+      showBanner("Validation failed", "Remarks cannot exceed 10,000 characters.", true);
+      return;
+    }
+    const saved = await mutateCycle(
+      "cycles/create",
+      { name, start: newForm.start, end: newForm.end, remarks: newForm.remarks.trim() },
+      "Cycle created",
+      `${name} was created as Upcoming.`,
+    );
+    if (saved) {
+      setNewCycleOpen(false);
+      setNewForm({ name: "", start: "", end: "", remarks: "" });
+    }
   };
 
   return (
@@ -845,22 +644,57 @@ export function AppraisalCycleMasterPage() {
           <button
             type="button"
             className="acm-btn"
+            disabled={loading}
             onClick={() => setAuditOpen(true)}
           >
             <History size={14} />
             Audit Trail
           </button>
 
-          <button
-            type="button"
-            className="acm-btn acm-btn-primary"
-            onClick={() => setNewCycleOpen(true)}
-          >
-            <Plus size={14} />
-            New Cycle
-          </button>
+          {canManageCycles && (
+            <button
+              type="button"
+              className="acm-btn acm-btn-primary"
+              disabled={loading || saving}
+              onClick={() => setNewCycleOpen(true)}
+            >
+              <Plus size={14} />
+              New Cycle
+            </button>
+          )}
         </div>
       </div>
+
+      {loading && <div className="acm-empty">Loading appraisal cycles…</div>}
+      {!loading && loadError && (
+        <div className="acm-banner error" role="alert">
+          <AlertCircle size={17} />
+          <div>
+            <strong>Unable to load appraisal cycle data</strong>
+            <span>{loadError}</span>
+          </div>
+          <button
+            type="button"
+            className="acm-btn"
+            onClick={() => {
+              setLoading(true);
+              loadData()
+                .catch((error) => setLoadError(error.message))
+                .finally(() => setLoading(false));
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+      {!canManageCycles && !loading && !loadError && (
+        <div className="acm-banner">
+          <div>
+            <strong>Read-only access</strong>
+            <span>HR role is required to administer appraisal cycles.</span>
+          </div>
+        </div>
+      )}
 
       {banner && (
         <div className={`acm-banner ${banner.error ? "error" : ""}`}>
@@ -886,9 +720,9 @@ export function AppraisalCycleMasterPage() {
       )}
 
       <div className="acm-table-wrap">
-        {cycles.length === 0 ? (
+        {!loading && !loadError && cycles.length === 0 ? (
           <div className="acm-empty">No appraisal cycles found.</div>
-        ) : (
+        ) : !loading && !loadError ? (
           <table className="acm-table">
             <thead>
               <tr>
@@ -914,17 +748,25 @@ export function AppraisalCycleMasterPage() {
                   <td>{formatDate(cycle.end)}</td>
 
                   <td>
-                    <select
-                      className={`acm-select-status ${STATUS_CLASS[cycle.status] || ""}`}
-                      value={cycle.status}
-                      onChange={(event) =>
-                        handleStatusChange(cycle.id, event.target.value)
-                      }
-                    >
-                      <option value="Upcoming">Upcoming</option>
-                      <option value="Active">Active</option>
-                      <option value="Closed">Closed</option>
-                    </select>
+                    {canManageCycles ? (
+                      <select
+                        className={`acm-select-status ${STATUS_CLASS[cycle.status] || ""}`}
+                        value={cycle.status}
+                        disabled={saving || cycle.archived}
+                        onChange={(event) =>
+                          handleStatusChange(cycle.id, event.target.value)
+                        }
+                      >
+                        <option value="Upcoming">Upcoming</option>
+                        <option value="Active">Active</option>
+                        <option value="Closed">Closed</option>
+                      </select>
+                    ) : (
+                      <span className={`acm-status ${STATUS_CLASS[cycle.status] || ""}`}>
+                        {cycle.status}
+                      </span>
+                    )}
+                    {cycle.archived && <div className="acm-muted">Archived</div>}
                   </td>
 
                   <td>
@@ -939,11 +781,13 @@ export function AppraisalCycleMasterPage() {
                   </td>
 
                   <td>
+                    {canManageCycles ? (
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
                           type="button"
                           className="acm-icon-btn"
+                          disabled={saving}
                           aria-label={`Actions for ${cycle.name}`}
                         >
                           <MoreHorizontal size={15} />
@@ -952,18 +796,28 @@ export function AppraisalCycleMasterPage() {
 
                       <DropdownMenuContent align="end" className="min-w-[160px]">
                         <DropdownMenuItem
+                          disabled={saving || cycle.archived}
                           onSelect={() => openEditCycle(cycle)}
                         >
                           <Pencil />
                           Edit Cycle
                         </DropdownMenuItem>
 
-                        <DropdownMenuItem onSelect={() => openRemarks(cycle)}>
+                        <DropdownMenuItem disabled={saving} onSelect={() => openRemarks(cycle)}>
                           <Clock3 />
                           Edit Remarks
                         </DropdownMenuItem>
 
                         <DropdownMenuItem
+                          disabled={saving}
+                          onSelect={() => handleArchive(cycle)}
+                        >
+                          {cycle.archived ? <ArchiveRestore /> : <Archive />}
+                          {cycle.archived ? "Unarchive Cycle" : "Archive Cycle"}
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem
+                          disabled={saving}
                           className="text-red-600 focus:text-red-600"
                           onSelect={() => handleDelete(cycle)}
                         >
@@ -972,12 +826,13 @@ export function AppraisalCycleMasterPage() {
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
+                    ) : null}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        )}
+        ) : null}
       </div>
 
       {editCycle && (
@@ -989,6 +844,7 @@ export function AppraisalCycleMasterPage() {
               <button
                 type="button"
                 className="acm-modal-close"
+                disabled={saving}
                 onClick={() => setEditCycle(null)}
               >
                 <X size={18} />
@@ -1000,6 +856,7 @@ export function AppraisalCycleMasterPage() {
                 <div className="acm-field full">
                   <label>Cycle Name</label>
                   <input
+                    disabled={saving}
                     value={editForm.name}
                     onChange={(event) =>
                       setEditForm((current) => ({
@@ -1014,6 +871,7 @@ export function AppraisalCycleMasterPage() {
                   <label>Start Date</label>
                   <input
                     type="date"
+                    disabled={saving}
                     value={editForm.start}
                     onChange={(event) =>
                       setEditForm((current) => ({
@@ -1028,6 +886,7 @@ export function AppraisalCycleMasterPage() {
                   <label>End Date</label>
                   <input
                     type="date"
+                    disabled={saving}
                     value={editForm.end}
                     onChange={(event) =>
                       setEditForm((current) => ({
@@ -1044,6 +903,7 @@ export function AppraisalCycleMasterPage() {
               <button
                 type="button"
                 className="acm-btn"
+                disabled={saving}
                 onClick={() => setEditCycle(null)}
               >
                 Cancel
@@ -1052,9 +912,10 @@ export function AppraisalCycleMasterPage() {
               <button
                 type="button"
                 className="acm-btn acm-btn-primary"
+                disabled={saving}
                 onClick={saveEditCycle}
               >
-                Save Changes
+                {saving ? "Saving…" : "Save Changes"}
               </button>
             </div>
           </div>
@@ -1070,6 +931,7 @@ export function AppraisalCycleMasterPage() {
               <button
                 type="button"
                 className="acm-modal-close"
+                disabled={saving}
                 onClick={() => setRemarksCycle(null)}
               >
                 <X size={18} />
@@ -1081,6 +943,7 @@ export function AppraisalCycleMasterPage() {
                 <label>{remarksCycle.name}</label>
 
                 <textarea
+                  disabled={saving}
                   value={remarksText}
                   onChange={(event) => setRemarksText(event.target.value)}
                 />
@@ -1098,8 +961,7 @@ export function AppraisalCycleMasterPage() {
                 </div>
 
                 <div className="acm-history">
-                  {(remarksHistory[remarksCycle.id] || []).map(
-                    (item, index) => (
+                  {remarksHistory.map((item, index) => (
                       <div
                         className="acm-history-item"
                         key={`${remarksCycle.id}-${index}`}
@@ -1110,7 +972,9 @@ export function AppraisalCycleMasterPage() {
                           {item.changedBy} · {item.changedAt}
                         </div>
                       </div>
-                    ),
+                    ))}
+                  {!remarksHistory.length && (
+                    <div className="acm-muted">No remarks history yet.</div>
                   )}
                 </div>
               </div>
@@ -1120,6 +984,7 @@ export function AppraisalCycleMasterPage() {
               <button
                 type="button"
                 className="acm-btn"
+                disabled={saving}
                 onClick={() => setRemarksCycle(null)}
               >
                 Cancel
@@ -1128,9 +993,10 @@ export function AppraisalCycleMasterPage() {
               <button
                 type="button"
                 className="acm-btn acm-btn-primary"
+                disabled={saving}
                 onClick={saveRemarks}
               >
-                Save Remarks
+                {saving ? "Saving…" : "Save Remarks"}
               </button>
             </div>
           </div>
@@ -1172,7 +1038,7 @@ export function AppraisalCycleMasterPage() {
                         <td>{item.action}</td>
                         <td>{item.changedBy}</td>
                         <td>{item.changedAt}</td>
-                        <td>{item.details}</td>
+                        <td>{item.details || item.remarks || "—"}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1202,6 +1068,7 @@ export function AppraisalCycleMasterPage() {
               <button
                 type="button"
                 className="acm-modal-close"
+                disabled={saving}
                 onClick={() => setNewCycleOpen(false)}
               >
                 <X size={18} />
@@ -1214,6 +1081,7 @@ export function AppraisalCycleMasterPage() {
                   <label>Cycle Name</label>
 
                   <input
+                    disabled={saving}
                     value={newForm.name}
                     onChange={(event) =>
                       setNewForm((current) => ({
@@ -1230,6 +1098,7 @@ export function AppraisalCycleMasterPage() {
 
                   <input
                     type="date"
+                    disabled={saving}
                     value={newForm.start}
                     onChange={(event) =>
                       setNewForm((current) => ({
@@ -1245,6 +1114,7 @@ export function AppraisalCycleMasterPage() {
 
                   <input
                     type="date"
+                    disabled={saving}
                     value={newForm.end}
                     onChange={(event) =>
                       setNewForm((current) => ({
@@ -1259,6 +1129,7 @@ export function AppraisalCycleMasterPage() {
                   <label>Remarks</label>
 
                   <textarea
+                    disabled={saving}
                     value={newForm.remarks}
                     onChange={(event) =>
                       setNewForm((current) => ({
@@ -1276,6 +1147,7 @@ export function AppraisalCycleMasterPage() {
               <button
                 type="button"
                 className="acm-btn"
+                disabled={saving}
                 onClick={() => setNewCycleOpen(false)}
               >
                 Cancel
@@ -1284,9 +1156,10 @@ export function AppraisalCycleMasterPage() {
               <button
                 type="button"
                 className="acm-btn acm-btn-primary"
+                disabled={saving}
                 onClick={createCycle}
               >
-                Create Cycle
+                {saving ? "Creating…" : "Create Cycle"}
               </button>
             </div>
           </div>

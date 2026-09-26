@@ -241,6 +241,7 @@ async function synchronizeEmployeeStatus(
   employeeMap,
   empId,
   normalizedStatus,
+  masterRowId,
 ) {
   const employee = findEmployeeByEmpId(employeeMap, empId);
 
@@ -261,6 +262,7 @@ async function synchronizeEmployeeStatus(
   await employeesTable.updateRow({
     ROWID: rowId,
     status: normalizedStatus,
+    emp_master_row_id: masterRowId,
   });
 
   return {
@@ -603,7 +605,6 @@ async function createRoster(req, res, table, employeesTable) {
 
       rowsToUpdate.push({
         ROWID: masterRowId,
-        emp_row_id: employeeRowId,
         ...data,
       });
 
@@ -619,7 +620,6 @@ async function createRoster(req, res, table, employeesTable) {
 
     rowsToInsert.push({
       emp_id: empId,
-      emp_row_id: employeeRowId,
       emp_status: masterStatus,
       ...data,
     });
@@ -641,14 +641,46 @@ async function createRoster(req, res, table, employeesTable) {
     updatedRows = await table.updateRows(rowsToUpdate);
   }
 
+  const updatedMasterRows = rowsToInsert.length
+    ? await getAllRoster(table)
+    : existingRows;
+  const masterByEmpId = new Map(
+    updatedMasterRows.map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]),
+  );
+  const affectedEmpIds = new Set([
+    ...rowsToInsert.map((row) => row.emp_id),
+    ...rowsToUpdate.map((row) => existingRows.find((existing) =>
+      String(existing.ROWID || existing.rowid) === String(row.ROWID),
+    )?.emp_id).filter(Boolean),
+  ]);
+  for (const empId of affectedEmpIds) {
+    const master = masterByEmpId.get(String(empId).trim().toLowerCase());
+    const employee = findEmployeeByEmpId(employeeMap, empId);
+    const parentRowId = master && (master.ROWID || master.rowid);
+    const childRowId = employee && (employee.ROWID || employee.rowid);
+    if (!parentRowId || !childRowId) {
+      throw new Error("Unable to synchronize Employee_Master reference for " + empId);
+    }
+    await employeesTable.updateRow({
+      ROWID: childRowId,
+      emp_master_row_id: parentRowId,
+    });
+  }
+
   const statusSyncResults = [];
 
   for (const statusChange of statusChanges) {
+    const master = masterByEmpId.get(statusChange.empId.toLowerCase());
+    const masterRowId = master && (master.ROWID || master.rowid);
+    if (!masterRowId) {
+      throw new Error("Employee_Master ROWID not found for " + statusChange.empId);
+    }
     const result = await synchronizeEmployeeStatus(
       employeesTable,
       employeeMap,
       statusChange.empId,
       statusChange.status,
+      masterRowId,
     );
 
     statusSyncResults.push(result);
@@ -759,6 +791,7 @@ async function updateRosterEmployee(req, res, table, employeesTable) {
       employeeMap,
       empId,
       normalized,
+      masterRowId,
     );
 
     return sendJson(res, 200, {
@@ -771,7 +804,6 @@ async function updateRosterEmployee(req, res, table, employeesTable) {
       data: {
         emp_id: empId,
         emp_status: normalized,
-        emp_row_id: employeeRowId,
         employees_status: statusSync.found ? normalized : null,
         statusSync: statusSync,
       },
@@ -784,8 +816,6 @@ async function updateRosterEmployee(req, res, table, employeesTable) {
 
   const updateData = pickAllowedFields(body);
 
-  updateData.emp_row_id = employeeRowId;
-
   if (Object.keys(updateData).length === 0) {
     return sendJson(res, 400, {
       success: false,
@@ -795,8 +825,12 @@ async function updateRosterEmployee(req, res, table, employeesTable) {
 
   await table.updateRow({
     ROWID: masterRowId,
-    emp_row_id: employeeRowId,
     ...updateData,
+  });
+
+  await employeesTable.updateRow({
+    ROWID: employeeRowId,
+    emp_master_row_id: masterRowId,
   });
 
   sendJson(res, 200, {
@@ -804,7 +838,6 @@ async function updateRosterEmployee(req, res, table, employeesTable) {
     message: "Employee updated successfully.",
     data: {
       emp_id: empId,
-      emp_row_id: employeeRowId,
       ...updateData,
     },
   });

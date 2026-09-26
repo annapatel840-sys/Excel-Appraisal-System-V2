@@ -9,6 +9,7 @@ import { EmployeeMaster } from "@/pages/EmployeeMaster";
 //this might be remove later (detailscreen)
 import { DetailScreenPage } from "@/components/appraisal/DetailScreenPage";
 import { AppShell } from "./components/appraisal/AppShell";
+import { CatalystAuthGate } from "@/lib/catalyst-auth";
 
 export default function App() {
   const [path, setPath] = useState(window.location.pathname);
@@ -42,8 +43,10 @@ export default function App() {
   }
 
   return (
-    <AppraisalProvider>
-      <BudgetProvider>{page}</BudgetProvider>
-    </AppraisalProvider>
+    <CatalystAuthGate>
+      <AppraisalProvider>
+        <BudgetProvider>{page}</BudgetProvider>
+      </AppraisalProvider>
+    </CatalystAuthGate>
   );
 }
