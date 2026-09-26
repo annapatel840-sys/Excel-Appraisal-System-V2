@@ -39,7 +39,8 @@ export function CatalystAuthGate({ children }) {
         if (
           error?.status === 401 ||
           error?.statusCode === 401 ||
-          error?.response?.status === 401
+          error?.response?.status === 401 ||
+          error?.code === 700
         ) {
           setState("signed-out");
           return;
