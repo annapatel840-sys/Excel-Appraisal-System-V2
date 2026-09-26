@@ -12,7 +12,6 @@ import {
 } from "@/lib/appraisal-data";
 import { useBudget } from "@/lib/budget-store";
 import { currentTeamOf } from "@/lib/budget-engine";
-import { TeamInsightsPanel } from "@/components/appraisal/TeamInsightsPanel";
 
 const APPRAISAL_HISTORY_API_URL =
   "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisalhistoryapi/";
@@ -96,11 +95,6 @@ const isBlankRecord = (h) =>
   !h.totalBonus &&
   !h.newCTC &&
   !h.hikeAmount;
-
-function goToTeamChanges() {
-  window.history.pushState({}, "", "/employee-master?tab=teamChanges");
-  window.dispatchEvent(new PopStateEvent("popstate"));
-}
 
 export function DetailScreenPage() {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
@@ -874,8 +868,6 @@ export function DetailScreenPage() {
           )}
         </div>
       </div>
-
-      <TeamInsightsPanel onViewChanges={goToTeamChanges} />
     </div>
   );
 }
