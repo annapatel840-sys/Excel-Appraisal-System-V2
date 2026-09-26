@@ -1880,10 +1880,6 @@ export function EmployeeMaster() {
               />
             )}
 
-            <div className="em-footer-note">
-              Employee Master is the roster of record. Appraisal-cycle data
-              should reference these employees.
-            </div>
           </div>
         )}
 

@@ -19,12 +19,6 @@ const PILL_CLASS = {
   out: "bg-[#f9f0ff] text-[#531dab]",
 };
 
-// Note: this panel's budget/team numbers currently come from the static
-// sample data in budget-store.jsx (see the comment above SAMPLE_ROWS in
-// budget-engine.js) rather than from the live employee list shown on the
-// Detail Screen, since there's no real feed linking employees to the demo
-// manager hierarchy yet. Once that's wired up, node()/budgetFor() will
-// reflect real numbers automatically and nothing here needs to change.
 export function TeamInsightsPanel({ onViewChanges }) {
   const {
     currentUser,
@@ -35,6 +29,7 @@ export function TeamInsightsPanel({ onViewChanges }) {
     eligibilityEvents,
     gridSupervisorChanges,
     allocationSnapshot,
+    budgetRows,
   } = useBudget();
 
   const [open, setOpen] = useState(true);
@@ -79,6 +74,25 @@ export function TeamInsightsPanel({ onViewChanges }) {
           allocationSnapshot.teams[currentUser.name]) ||
         []
       ).length;
+
+  if (budgetRows.length === 0 || Object.keys(hierarchy).length === 0) {
+    return (
+      <aside
+        className="flex w-[280px] flex-shrink-0 flex-col border-l border-[#d4dbe5] bg-white"
+        aria-label="Team insights"
+      >
+        <div
+          className="flex h-9 items-center px-3 text-sm font-bold text-white"
+          style={{ background: NAVY }}
+        >
+          Team insights
+        </div>
+        <p className="px-3 py-4 text-xs text-slate-500">
+          Budget and team data is not configured for this cycle.
+        </p>
+      </aside>
+    );
+  }
 
   if (!open) {
     return (

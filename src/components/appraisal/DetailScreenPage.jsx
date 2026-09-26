@@ -13,8 +13,9 @@ import {
 import { useBudget } from "@/lib/budget-store";
 import { currentTeamOf } from "@/lib/budget-engine";
 
-const APPRAISAL_HISTORY_API_URL =
-  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisalhistoryapi/";
+import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+
+const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 
 // Final computed palette from the reference — the "v11 look" block near
 // the bottom of the source CSS overrides the earlier declarations, so
@@ -100,21 +101,14 @@ export function DetailScreenPage() {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
   const { currentUser, isHR, hierarchy } = useBudget();
 
-  const allRows = liveRows && liveRows.length > 0 ? liveRows : [];
-  const isDemo = !(liveRows && liveRows.length > 0);
+  const allRows = liveRows || [];
 
-  // Try to scope to the logged-in manager's team (everyone below them in
-  // the demo hierarchy). Until real employees' `compManager` values match
-  // real manager names, that scoping won't find anyone — so fall back to
-  // the full live roster instead of showing a blank screen. Once real
-  // manager names line up, this starts scoping automatically with no
-  // further changes needed here.
   const teamMatch = useMemo(() => {
-    if (isDemo || isHR) return null;
+    if (isHR) return null;
     return currentTeamOf(allRows, hierarchy, currentUser.name);
-  }, [allRows, isDemo, isHR, hierarchy, currentUser]);
+  }, [allRows, isHR, hierarchy, currentUser]);
 
-  const rows = teamMatch && teamMatch.length > 0 ? teamMatch : allRows;
+  const rows = isHR ? allRows : teamMatch || [];
   const isScopedToTeam = !!(teamMatch && teamMatch.length > 0);
 
   const [index, setIndex] = useState(0);
@@ -133,7 +127,7 @@ export function DetailScreenPage() {
     (empId) => {
       const key = String(empId || "").trim();
 
-      if (!key || isDemo) {
+      if (!key) {
         return Promise.resolve([]);
       }
 
@@ -149,7 +143,7 @@ export function DetailScreenPage() {
       }));
 
       const promise = (async () => {
-        const response = await fetch(
+        const response = await catalystFetch(
           `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(key)}`,
         );
 
@@ -194,7 +188,7 @@ export function DetailScreenPage() {
 
       return promise;
     },
-    [isDemo],
+    [],
   );
 
   useEffect(() => {
@@ -255,12 +249,10 @@ export function DetailScreenPage() {
   };
 
   const commit = (field, value) => {
-    if (isDemo) return;
     updateCell(employee.id, field, value, "Detail screen edit");
   };
 
   const commitLinked = (fields) => {
-    if (isDemo) return;
     updateLinkedCells(employee.id, fields, "Detail screen edit");
   };
 
@@ -287,7 +279,7 @@ export function DetailScreenPage() {
     ? "All employees"
     : isScopedToTeam
       ? `${currentUser.name}'s team`
-      : "All employees";
+      : "No assigned team";
 
   return (
     <div
@@ -303,20 +295,6 @@ export function DetailScreenPage() {
         }}
       >
         <div className="mx-auto flex max-w-[1200px] flex-col gap-2">
-          {isDemo && (
-            <div
-              className="rounded-[6px] border px-2.5 py-1.5 text-[11.5px]"
-              style={{
-                borderColor: "#fcd34d",
-                background: "#fffbeb",
-                color: "#92400e",
-              }}
-            >
-              Showing static demo data — no employees are loaded yet from
-              Catalyst.
-            </div>
-          )}
-
           {!employee ? (
             <div className="p-6 text-sm text-slate-500">
               No employees are visible for this login.
@@ -326,23 +304,10 @@ export function DetailScreenPage() {
               <div className="grid grid-cols-1 gap-2 min-[1000px]:grid-cols-[370px_minmax(0,1fr)]">
                 {/* LEFT COLUMN */}
                 <div className="flex flex-col gap-2">
-                  {/* Employee Details */}
                   <div
                     className="overflow-hidden rounded-[10px] border shadow-[0_1px_2px_rgba(18,48,79,0.06)]"
                     style={{ background: "#fff", borderColor: "#d3dbe6" }}
                   >
-                    <div
-                      className="py-1.5 text-center text-[13px]"
-                      style={{
-                        background: NAVY,
-                        color: "#fff",
-                        fontWeight: 600,
-                        letterSpacing: ".15px",
-                      }}
-                    >
-                      Employee Details
-                    </div>
-
                     <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 px-3 py-2 text-[12px]">
                       <Field label="Employee Name" value={employee.name} bold />
 
@@ -447,7 +412,7 @@ export function DetailScreenPage() {
                             />
                           ))}
 
-                          {!priorCycles.length && !isDemo && (
+                          {!priorCycles.length && (
                             <tr>
                               <td
                                 colSpan={4}

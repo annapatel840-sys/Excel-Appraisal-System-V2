@@ -99,6 +99,18 @@ function AuditTable({ rows }) {
 
 export function BudgetAllocationPage() {
   const budget = useBudget();
+  if (
+    budget.budgetRows.length === 0 ||
+    Object.keys(budget.hierarchy).length === 0
+  ) {
+    return (
+      <div className="em-tab-content">
+        <div className="em-empty">
+          Budget allocation data is not configured for this cycle.
+        </div>
+      </div>
+    );
+  }
   return budget.isHR ? (
     <HRBudgetView budget={budget} />
   ) : (

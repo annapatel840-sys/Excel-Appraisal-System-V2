@@ -7,67 +7,45 @@ import {
 } from "react";
 
 import {
-  DEFAULT_HIERARCHY,
-  DEFAULT_ALLOCATION,
   DEFAULT_BUDGET_CONFIG,
-  DEFAULT_LEVELS,
-  SAMPLE_ROWS,
-  SAMPLE_ALLOCATION_SNAPSHOT,
-  SAMPLE_LEAVERS,
-  SAMPLE_ELIGIBILITY_EVENTS,
-  SAMPLE_GRID_SUPERVISOR_CHANGES,
   computeNode,
   budgetForUser,
   rootsOf,
 } from "@/lib/budget-engine";
+import { useCatalystUser } from "@/lib/catalyst-auth";
 
 const BudgetContext = createContext(null);
 
-// Demo logins until this is wired to real auth/session data.
-// Swap DEMO_LOGINS + the login/setLogin pair below for your real session.
-const DEMO_LOGINS = [
-  { name: "Vikram Rao", role: "Manager" },
-  { name: "Meera Nair", role: "Manager" },
-  { name: "Anita Sharma", role: "Manager" },
-  { name: "Raj Mehta", role: "Manager" },
-  { name: "HR Admin", role: "HR" },
-];
-
 export function BudgetProvider({ children }) {
-  const [hierarchy] = useState(DEFAULT_HIERARCHY);
-  const [levels, setLevels] = useState(DEFAULT_LEVELS);
+  const authenticatedUser = useCatalystUser();
+  const currentUser = {
+    name: authenticatedUser?.name || authenticatedUser?.email || "Unknown user",
+    role: authenticatedUser?.role || "",
+  };
+  const [hierarchy] = useState({});
+  const [levels, setLevels] = useState([]);
   const [budgetConfig, setBudgetConfig] = useState(DEFAULT_BUDGET_CONFIG);
 
-  // ---------------------------------------------------------------------
-  // Team Changes & Budget Allocation run on this static sample set for now
-  // (see the big comment above SAMPLE_ROWS in budget-engine.js) because
-  // there's no real feed yet linking employees to DEFAULT_HIERARCHY's
-  // manager names. Call setBudgetRows / setEligibilityEvents /
-  // setGridSupervisorChanges / setAllocationSnapshot / setLeavers once that
-  // real data is available — nothing else in this file needs to change.
-  const [budgetRows, setBudgetRows] = useState(SAMPLE_ROWS);
-  const [eligibilityEvents, setEligibilityEvents] = useState(
-    SAMPLE_ELIGIBILITY_EVENTS,
-  );
-  const [gridSupervisorChanges, setGridSupervisorChanges] = useState(
-    SAMPLE_GRID_SUPERVISOR_CHANGES,
-  );
-  const [allocationSnapshot, setAllocationSnapshot] = useState(
-    SAMPLE_ALLOCATION_SNAPSHOT,
-  );
-  const [leavers, setLeavers] = useState(SAMPLE_LEAVERS);
+  const [budgetRows, setBudgetRows] = useState([]);
+  const [eligibilityEvents, setEligibilityEvents] = useState([]);
+  const [gridSupervisorChanges, setGridSupervisorChanges] = useState([]);
+  const [allocationSnapshot, setAllocationSnapshot] = useState({
+    date: "",
+    by: "",
+    teams: {},
+  });
+  const [leavers, setLeavers] = useState({});
 
-  const [pct, setPctMap] = useState(DEFAULT_ALLOCATION.pct);
-  const [originalPct] = useState(DEFAULT_ALLOCATION.pct);
-  const [orgPct, setOrgPct] = useState(DEFAULT_ALLOCATION.orgPct);
-  const [overrides, setOverrides] = useState({ "Meera Nair": true });
+  const [pct, setPctMap] = useState({});
+  const [originalPct] = useState({});
+  const [orgPct, setOrgPct] = useState(0);
+  const [overrides, setOverrides] = useState({});
 
   const [pctLog, setPctLog] = useState([]);
   const [orgLog, setOrgLog] = useState([]);
 
-  const [login, setLogin] = useState(0);
-  const currentUser = DEMO_LOGINS[login];
-  const isHR = currentUser.role === "HR";
+  const isHR =
+    currentUser.role === "HR" || currentUser.role === "Comp. Manager";
 
   const empById = useCallback(
     (id) => budgetRows.find((r) => r.empId === id) || leavers[id],
@@ -76,13 +54,13 @@ export function BudgetProvider({ children }) {
 
   const allocation = useMemo(
     () => ({
-      date: DEFAULT_ALLOCATION.date,
-      by: DEFAULT_ALLOCATION.by,
+      date: allocationSnapshot.date,
+      by: allocationSnapshot.by,
       pct,
       orgPct,
       originalPct,
     }),
-    [pct, orgPct, originalPct],
+    [allocationSnapshot.date, allocationSnapshot.by, pct, orgPct, originalPct],
   );
 
   const node = useCallback(
@@ -190,6 +168,7 @@ export function BudgetProvider({ children }) {
 
   const applyOrgPct = useCallback(
     (to, reason) => {
+      if (Object.keys(hierarchy).length === 0) return;
       const now = new Date();
       const before = budgetForUser({
         isHR: true,
@@ -253,9 +232,6 @@ export function BudgetProvider({ children }) {
     setAllocationSnapshot,
     leavers,
     setLeavers,
-    logins: DEMO_LOGINS,
-    login,
-    setLogin,
     currentUser,
     isHR,
     node,

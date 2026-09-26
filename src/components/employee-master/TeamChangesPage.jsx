@@ -67,8 +67,10 @@ export function TeamChangesPage() {
           className="px-4 py-2.5 text-[13px] font-semibold text-white"
           style={{ background: "#17365d" }}
         >
-          Team Changes — {isHR ? "all teams" : `${currentUser.name}'s team`} ·
-          since allocation on {allocationSnapshot.date}
+          Team Changes — {isHR ? "all teams" : `${currentUser.name}'s team`} ·{" "}
+          {allocationSnapshot.date
+            ? `since allocation on ${allocationSnapshot.date}`
+            : "no allocation snapshot configured"}
         </div>
 
         <div className="flex flex-wrap gap-2 px-4 pt-3">
@@ -154,7 +156,10 @@ export function TeamChangesPage() {
               {list.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-4 text-slate-500">
-                    No changes match these filters.
+                    {eligibilityEvents.length === 0 &&
+                    gridSupervisorChanges.length === 0
+                      ? "Team-change data is not configured."
+                      : "No changes match these filters."}
                   </td>
                 </tr>
               )}

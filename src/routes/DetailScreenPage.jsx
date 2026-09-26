@@ -10,9 +10,9 @@ import {
   newBaseSalary,
   totalCTCWithRewards,
 } from "@/lib/appraisal-data";
+import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
-const APPRAISAL_HISTORY_API_URL =
-  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisalhistoryapi/";
+const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#17365d";
 
 // ============================================================
@@ -156,7 +156,7 @@ export function DetailScreenPage() {
       }));
 
       const promise = (async () => {
-        const response = await fetch(
+        const response = await catalystFetch(
           `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(key)}`,
         );
 

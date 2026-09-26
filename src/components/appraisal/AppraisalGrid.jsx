@@ -13,13 +13,13 @@ import { cn } from "@/lib/utils";
 import { ColumnFilter } from "./ColumnFilter";
 import { COLUMNS, formatValue } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
+import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
 // ============================================================
 // API
 // ============================================================
 
-const APPRAISAL_HISTORY_API_URL =
-  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisalhistoryapi/";
+const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const CURRENT_APPRAISAL_YEAR = "Apr-26";
 
 // ============================================================
@@ -1037,7 +1037,7 @@ export function AppraisalGrid({
         key,
       )}`;
 
-      const response = await fetch(url);
+      const response = await catalystFetch(url);
 
       if (!response.ok) {
         throw new Error(

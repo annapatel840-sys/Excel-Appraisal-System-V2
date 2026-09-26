@@ -1,4 +1,4 @@
-@import "tailwindcss" source(none);
+@import "tailwindcss";
 @source "../src";
 @import "tw-animate-css";
 
@@ -173,4 +173,11 @@
 @utility grid-cell {
   border-right: 1px solid var(--grid-line);
   border-bottom: 1px solid var(--grid-line);
+}
+
+#catalyst-login-container iframe {
+  display: block;
+  width: 100%;
+  min-height: 420px;
+  border: 0;
 }

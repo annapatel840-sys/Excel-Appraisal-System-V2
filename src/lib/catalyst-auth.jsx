@@ -17,35 +17,58 @@ export function CatalystAuthGate({ children }) {
   useEffect(() => {
     let mounted = true;
 
-    payrollCycleRequest("session")
-      .then((session) => {
+    const checkSession = async () => {
+      const deadline = Date.now() + 5000;
+      while (!window.catalyst?.auth?.isUserAuthenticated && Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, 100));
+      }
+
+      if (!mounted) return;
+      const auth = window.catalyst?.auth;
+      if (!auth?.isUserAuthenticated || !auth?.signIn) {
+        setMessage("Catalyst authentication did not initialize. Reload the Slate app or run it with catalyst serve.");
+        setState("error");
+        return;
+      }
+
+      setLoginReady(true);
+      try {
+        await auth.isUserAuthenticated();
+      } catch (error) {
+        if (!mounted) return;
+        if (
+          error?.status === 401 ||
+          error?.statusCode === 401 ||
+          error?.response?.status === 401
+        ) {
+          setState("signed-out");
+          return;
+        }
+        setMessage(
+          error?.message ||
+            "Unable to verify your Catalyst session. Check your connection and retry.",
+        );
+        setState("error");
+        return;
+      }
+
+      try {
+        const session = await payrollCycleRequest("session");
         if (mounted) {
           setUser(session);
           setState("authenticated");
         }
-      })
-      .catch((error) => {
+      } catch (error) {
         if (!mounted) return;
         setMessage(error.message);
-        setState(error.status === 401 ? "signed-out" : "error");
-      });
-
-    const timer = window.setInterval(() => {
-      if (window.catalyst?.auth?.signIn) {
-        setLoginReady(true);
-        window.clearInterval(timer);
+        setState("error");
       }
-    }, 100);
+    };
 
-    const timeout = window.setTimeout(() => {
-      window.clearInterval(timer);
-      setLoginReady(Boolean(window.catalyst?.auth?.signIn));
-    }, 5000);
+    checkSession();
 
     return () => {
       mounted = false;
-      window.clearInterval(timer);
-      window.clearTimeout(timeout);
     };
   }, []);
 
@@ -59,7 +82,7 @@ export function CatalystAuthGate({ children }) {
     }
 
     window.catalyst.auth.signIn("catalyst-login-container", {
-      redirect_url: `${window.location.origin}${window.location.pathname}`,
+      redirect_url: "/",
     });
   };
 

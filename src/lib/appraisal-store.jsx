@@ -9,8 +9,10 @@ import {
 } from "react";
 
 import { COLUMNS } from "./appraisal-data";
+import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
+import { useCatalystUser } from "./catalyst-auth";
 
-const CURRENT_USER = "Ashok Kumar (HR Ops)";
+const CURRENT_USER = "Unknown user";
 const APPRAISAL_YEAR = "Apr-26";
 
 const AppraisalContext = createContext(null);
@@ -23,12 +25,9 @@ const nextId = () => `a${Date.now()}-${seq++}`;
 CATALYST API
 ============================================================ */
 
-const EMPLOYEE_API_URL =
-  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/employeesapi/";
-const AUDIT_API_URL =
-  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisalauditapi/";
-const APPRAISAL_HISTORY_API_URL =
-  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisalhistoryapi/";
+const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
+const AUDIT_API_URL = catalystFunctionUrl("appraisalauditapi");
+const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 /* ============================================================
 EMPLOYEE SAVE QUEUE
 ============================================================ */
@@ -338,7 +337,7 @@ const fetchEmployeePageFromCatalyst = async (
     url.searchParams.set("eligible", eligible);
   }
 
-  const response = await fetch(url.toString(), {
+  const response = await catalystFetch(url.toString(), {
     method: "GET",
     cache: "no-store",
   });
@@ -398,7 +397,7 @@ const fetchEmployeeByIdFromCatalyst = async (empId) => {
   url.searchParams.set("emp_id", String(empId));
   url.searchParams.set("limit", "100");
 
-  const response = await fetch(url.toString(), {
+  const response = await catalystFetch(url.toString(), {
     method: "GET",
     cache: "no-store",
   });
@@ -431,7 +430,7 @@ const saveEmployeeChangeToCatalyst = async ({ empId, key, newValue }) => {
 
   const catalystValue = normalizeValueForCatalyst(key, newValue);
 
-  const response = await fetch(EMPLOYEE_API_URL, {
+  const response = await catalystFetch(EMPLOYEE_API_URL, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -465,7 +464,7 @@ const savePreviousAppraisalChangeToCatalyst = async ({
 
   const historyValue = normalizeHistoryValue(key, newValue);
 
-  const response = await fetch(APPRAISAL_HISTORY_API_URL, {
+  const response = await catalystFetch(APPRAISAL_HISTORY_API_URL, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -514,7 +513,7 @@ const savePreviousAppraisalChangesToCatalyst = async ({
     return null;
   }
 
-  const response = await fetch(APPRAISAL_HISTORY_API_URL, {
+  const response = await catalystFetch(APPRAISAL_HISTORY_API_URL, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",
@@ -547,7 +546,7 @@ const createEmployeeInCatalyst = async (fieldValues) => {
     payload[catalystField] = normalizeValueForCatalyst(key, value);
   });
 
-  const response = await fetch(EMPLOYEE_API_URL, {
+  const response = await catalystFetch(EMPLOYEE_API_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify(payload),
@@ -648,7 +647,7 @@ const fetchAuditHistoryFromCatalyst = async (empId = "") => {
 
   url.searchParams.set("_ts", String(Date.now()));
 
-  const response = await fetch(url.toString(), {
+  const response = await catalystFetch(url.toString(), {
     method: "GET",
     cache: "no-store",
     headers: {
@@ -711,7 +710,7 @@ const createAuditRecordsInCatalyst = async (entries) => {
     appraisal_year: String(entry.appraisalYear || APPRAISAL_YEAR),
   }));
 
-  const response = await fetch(AUDIT_API_URL, {
+  const response = await catalystFetch(AUDIT_API_URL, {
     method: "POST",
     headers: {
       Accept: "application/json",
@@ -777,6 +776,9 @@ PROVIDER
 ============================================================ */
 
 export function AppraisalProvider({ children }) {
+  const authenticatedUser = useCatalystUser();
+  const currentUserName =
+    authenticatedUser?.name || authenticatedUser?.email || CURRENT_USER;
   const [rows, setRows] = useState([]);
 
   const [audit, setAudit] = useState([]);
@@ -1043,7 +1045,7 @@ export function AppraisalProvider({ children }) {
         const entry = {
           id: nextId(),
           at: new Date().toISOString(),
-          user: CURRENT_USER,
+          user: currentUserName,
           empId: row.empId,
           employeeName: row.name,
           field: labelOf(key),
@@ -1152,7 +1154,7 @@ export function AppraisalProvider({ children }) {
     });
 
     return entries.length;
-  }, []);
+  }, [currentUserName]);
 
   /* ==========================================================
   APPLY LINKED FIELDS EDIT
@@ -1191,7 +1193,7 @@ export function AppraisalProvider({ children }) {
             const entry = {
               id: nextId(),
               at: new Date().toISOString(),
-              user: CURRENT_USER,
+              user: currentUserName,
               empId: row.empId,
               employeeName: row.name,
               field: labelOf(key),
@@ -1243,7 +1245,7 @@ export function AppraisalProvider({ children }) {
             );
           });
 
-          const response = await fetch(EMPLOYEE_API_URL, {
+          const response = await catalystFetch(EMPLOYEE_API_URL, {
             method: "PATCH",
             headers: {
               "Content-Type": "application/json",
@@ -1331,7 +1333,7 @@ export function AppraisalProvider({ children }) {
 
       return entries.length;
     },
-    [],
+    [currentUserName],
   );
 
   /* ==========================================================
@@ -1408,7 +1410,7 @@ export function AppraisalProvider({ children }) {
         return currentEmployee;
       }
 
-      const response = await fetch(EMPLOYEE_API_URL, {
+      const response = await catalystFetch(EMPLOYEE_API_URL, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
@@ -1461,7 +1463,7 @@ export function AppraisalProvider({ children }) {
       const statusAudit = {
         id: nextId(),
         at: new Date().toISOString(),
-        user: CURRENT_USER,
+        user: currentUserName,
         empId: String(empId),
         employeeName: String(currentEmployee?.name || ""),
         field: labelOf("status"),
@@ -1489,7 +1491,7 @@ export function AppraisalProvider({ children }) {
 
       return currentEmployee;
     },
-    [rows],
+    [rows, currentUserName],
   );
 
   /* ==========================================================
@@ -1594,7 +1596,7 @@ export function AppraisalProvider({ children }) {
         const auditEntry = {
           id: nextId(),
           at: new Date().toISOString(),
-          user: CURRENT_USER,
+          user: currentUserName,
           empId,
           employeeName: employee.name,
           field: "Employee",
@@ -1626,7 +1628,7 @@ export function AppraisalProvider({ children }) {
     }
 
     return { created, failed };
-  }, []);
+  }, [currentUserName]);
 
   /* ==========================================================
   CONTEXT VALUE

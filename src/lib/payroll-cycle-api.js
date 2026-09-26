@@ -1,12 +1,11 @@
-const API_URL = "/server/payrollcycleapi/execute";
+import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 
 export async function payrollCycleRequest(resource, { method = "GET", body } = {}) {
-  const url = new URL(API_URL, window.location.origin);
+  const url = new URL("execute", catalystFunctionUrl("payrollcycleapi"));
   url.searchParams.set("resource", resource);
 
-  const response = await fetch(url, {
+  const response = await catalystFetch(url, {
     method,
-    credentials: "include",
     headers: body ? { "Content-Type": "application/json" } : undefined,
     body: body ? JSON.stringify(body) : undefined,
   });

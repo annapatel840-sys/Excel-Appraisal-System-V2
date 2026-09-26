@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
 import {
   hikeAmount,
@@ -14,8 +15,7 @@ import {
 // API
 // ============================================================
 
-const APPRAISAL_HISTORY_API_URL =
-  "https://appraisalperformancehike-60088966704.development.catalystserverless.in/server/appraisalhistoryapi/";
+const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 // ============================================================
 // HELPERS
 // ============================================================
@@ -257,7 +257,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
           `${APPRAISAL_HISTORY_API_URL}?emp_id=` +
           encodeURIComponent(employee.empId);
 
-        const response = await fetch(url);
+        const response = await catalystFetch(url);
 
         if (!response.ok) {
           throw new Error(
