@@ -1727,32 +1727,20 @@ export function EmployeeMaster() {
   return (
     <AppShell>
       <div className="employee-master-page">
-        {/* ======================================================
-            PAGE HEADING
-            ====================================================== */}
-
-        <div className="em-page-heading">
+        <div className="em-page-stats mb-2">
           <div>
-            <h2>Employee Master</h2>
-
-            <p>Roster of record — independent of any appraisal cycle</p>
+            <span>Total</span>
+            <strong>{counts.total}</strong>
           </div>
 
-          <div className="em-page-stats">
-            <div>
-              <span>Total</span>
-              <strong>{counts.total}</strong>
-            </div>
+          <div>
+            <span>Active</span>
+            <strong className="active">{counts.active}</strong>
+          </div>
 
-            <div>
-              <span>Active</span>
-              <strong className="active">{counts.active}</strong>
-            </div>
-
-            <div>
-              <span>Inactive</span>
-              <strong className="inactive">{counts.inactive}</strong>
-            </div>
+          <div>
+            <span>Inactive</span>
+            <strong className="inactive">{counts.inactive}</strong>
           </div>
         </div>
 

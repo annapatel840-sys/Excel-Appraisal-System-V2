@@ -295,8 +295,12 @@ export function DetailScreenPage() {
       style={{ fontFamily: FONT, background: "#eef2f6" }}
     >
       <div
-        className="flex-1 overflow-y-auto p-2.5 pb-6"
-        style={{ color: "#0f1f33", fontSize: "12.5px" }}
+        className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-2.5 pb-6 [&::-webkit-scrollbar]:hidden"
+        style={{
+          color: "#0f1f33",
+          fontSize: "12.5px",
+          scrollbarWidth: "none",
+        }}
       >
         <div className="mx-auto flex max-w-[1200px] flex-col gap-2">
           {isDemo && (
@@ -810,8 +814,11 @@ export function DetailScreenPage() {
                   cycles
                 </div>
 
-                <div className="max-h-[40vh] overflow-auto">
-                  <table className="w-full min-w-[760px] border-collapse text-[11px]">
+                <div
+                  className="min-w-0 max-h-[40vh] overflow-x-hidden overflow-y-auto [&::-webkit-scrollbar]:hidden"
+                  style={{ scrollbarWidth: "none" }}
+                >
+                  <table className="w-full table-fixed border-collapse text-[10px]">
                     <thead>
                       <tr>
                         <HistHead width="62px">Year</HistHead>
@@ -1104,7 +1111,7 @@ function Legend({ sw, border, label }) {
 function HistHead({ children, width }) {
   return (
     <th
-      className="border-b px-1.5 py-1 text-center text-[10.5px] font-bold"
+      className="break-words border-b px-1 py-1 text-center text-[9px] font-bold"
       style={{
         width,
         borderColor: "#d7dce3",
@@ -1130,7 +1137,7 @@ function HistRow({ year, vals, current }) {
       {vals.map((v, i) => (
         <td
           key={i}
-          className="border-b px-1.5 py-1 text-right"
+          className="break-all border-b px-1 py-1 text-right text-[9px]"
           style={{ borderColor: "#eef1f5" }}
         >
           {fmt(v)}

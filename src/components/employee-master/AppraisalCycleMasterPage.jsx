@@ -4,11 +4,18 @@ import {
   CheckCircle2,
   Clock3,
   History,
+  MoreHorizontal,
   Pencil,
   Plus,
   Trash2,
   X,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const CURRENT_USER = "Priya Menon";
 
@@ -646,13 +653,6 @@ export function AppraisalCycleMasterPage() {
           background: #fff;
         }
 
-        .acm-row-actions {
-          display: flex;
-          align-items: center;
-          gap: 5px;
-          white-space: nowrap;
-        }
-
         .acm-icon-btn {
           border: 1px solid #e2e8f0;
           background: #fff;
@@ -939,34 +939,39 @@ export function AppraisalCycleMasterPage() {
                   </td>
 
                   <td>
-                    <div className="acm-row-actions">
-                      <button
-                        type="button"
-                        className="acm-icon-btn"
-                        title="Edit cycle"
-                        onClick={() => openEditCycle(cycle)}
-                      >
-                        <Pencil size={13} />
-                      </button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <button
+                          type="button"
+                          className="acm-icon-btn"
+                          aria-label={`Actions for ${cycle.name}`}
+                        >
+                          <MoreHorizontal size={15} />
+                        </button>
+                      </DropdownMenuTrigger>
 
-                      <button
-                        type="button"
-                        className="acm-icon-btn"
-                        title="Edit remarks"
-                        onClick={() => openRemarks(cycle)}
-                      >
-                        <Clock3 size={13} />
-                      </button>
+                      <DropdownMenuContent align="end" className="min-w-[160px]">
+                        <DropdownMenuItem
+                          onSelect={() => openEditCycle(cycle)}
+                        >
+                          <Pencil />
+                          Edit Cycle
+                        </DropdownMenuItem>
 
-                      <button
-                        type="button"
-                        className="acm-icon-btn delete"
-                        title="Delete cycle"
-                        onClick={() => handleDelete(cycle)}
-                      >
-                        <Trash2 size={13} />
-                      </button>
-                    </div>
+                        <DropdownMenuItem onSelect={() => openRemarks(cycle)}>
+                          <Clock3 />
+                          Edit Remarks
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem
+                          className="text-red-600 focus:text-red-600"
+                          onSelect={() => handleDelete(cycle)}
+                        >
+                          <Trash2 />
+                          Delete Cycle
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </td>
                 </tr>
               ))}
