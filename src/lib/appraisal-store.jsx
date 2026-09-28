@@ -779,6 +779,14 @@ export function AppraisalProvider({ children }) {
   const authenticatedUser = useCatalystUser();
   const currentUserName =
     authenticatedUser?.name || authenticatedUser?.email || CURRENT_USER;
+
+  // HR users have universal appraisal visibility:
+  // no status/eligibility restriction is applied to their employee data.
+  const isHRUser =
+    String(authenticatedUser?.role || "")
+      .trim()
+      .toLowerCase() === "hr";
+
   const [rows, setRows] = useState([]);
 
   const [audit, setAudit] = useState([]);
@@ -804,7 +812,10 @@ export function AppraisalProvider({ children }) {
       setLoading(true);
       setError("");
 
-      const result = await fetchAllEmployeesFromCatalyst("active", "eligible");
+      const result = await fetchAllEmployeesFromCatalyst(
+        isHRUser ? "" : "active",
+        isHRUser ? "" : "eligible",
+      );
 
       const employees = result.employees.map(mapCatalystEmployee);
 
@@ -828,7 +839,7 @@ export function AppraisalProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isHRUser]);
 
   /* ==========================================================
   INITIAL EMPLOYEE LOAD
@@ -843,8 +854,8 @@ export function AppraisalProvider({ children }) {
         setError("");
 
         const result = await fetchAllEmployeesFromCatalyst(
-          "active",
-          "eligible",
+          isHRUser ? "" : "active",
+          isHRUser ? "" : "eligible",
         );
 
         if (cancelled) {
@@ -886,7 +897,7 @@ export function AppraisalProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isHRUser]);
 
   /* ==========================================================
   REFRESH AUDIT HISTORY
