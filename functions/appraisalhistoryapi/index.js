@@ -2,7 +2,7 @@
 
 const catalyst = require("zcatalyst-sdk-node");
 
-const PREVIOUS_APPRAISAL_TABLE_ID = "71873000000020833";
+const PAYROLL_DATA_TABLE_ID = "71873000000020833";
 
 const DATASTORE_PAGE_SIZE = 200;
 
@@ -107,14 +107,14 @@ const getAllPreviousAppraisalRecords = async (table) => {
       options.nextToken = nextToken;
     }
 
-    console.log("Previous_Appraisal getPagedRows:", options);
+    console.log("Payroll_Data getPagedRows:", options);
 
     const result = await table.getPagedRows(options);
 
     const rows = Array.isArray(result?.data) ? result.data : [];
 
     console.log(
-      "Previous_Appraisal page received:",
+      "Payroll_Data page received:",
       rows.length,
       "more_records:",
       result?.more_records,
@@ -130,13 +130,13 @@ const getAllPreviousAppraisalRecords = async (table) => {
 
     if (!nextToken) {
       console.warn(
-        "Previous_Appraisal says more_records=true but no next_token was returned.",
+        "Payroll_Data says more_records=true but no next_token was returned.",
       );
       break;
     }
   }
 
-  console.log("Previous_Appraisal total records fetched:", allRecords.length);
+  console.log("Payroll_Data total records fetched:", allRecords.length);
 
   return allRecords;
 };
@@ -201,11 +201,11 @@ const updateExistingHistory = async (table, record, updateData) => {
     ROWID: record.ROWID,
   };
 
-  console.log("Previous_Appraisal updateRow payload:", JSON.stringify(payload));
+  console.log("Payroll_Data updateRow payload:", JSON.stringify(payload));
 
   const result = await table.updateRow(payload);
 
-  console.log("Previous_Appraisal updateRow result:", JSON.stringify(result));
+  console.log("Payroll_Data updateRow result:", JSON.stringify(result));
 
   return result;
 };
@@ -222,13 +222,13 @@ const createHistoryRecord = async (table, empId, appraisalYear, updateData) => {
   };
 
   console.log(
-    "Previous_Appraisal insertRows payload:",
+    "Payroll_Data insertRows payload:",
     JSON.stringify(payload),
   );
 
   const result = await table.insertRows([payload]);
 
-  console.log("Previous_Appraisal insertRows result:", JSON.stringify(result));
+  console.log("Payroll_Data insertRows result:", JSON.stringify(result));
 
   return Array.isArray(result) ? result[0] : result;
 };
@@ -244,7 +244,7 @@ module.exports = async (req, res) => {
   console.log("APPRAISAL HISTORY API REQUEST");
   console.log("METHOD:", req.method);
   console.log("URL:", req.url);
-  console.log("TABLE ID:", PREVIOUS_APPRAISAL_TABLE_ID);
+  console.log("TABLE ID:", PAYROLL_DATA_TABLE_ID);
   console.log("================================================");
 
   /* ----------------------------------------------------------
@@ -266,7 +266,7 @@ module.exports = async (req, res) => {
 
     const datastore = app.datastore();
 
-    const table = datastore.table(PREVIOUS_APPRAISAL_TABLE_ID);
+    const table = datastore.table(PAYROLL_DATA_TABLE_ID);
 
     const requestUrl = new URL(
       req.url,
@@ -365,7 +365,7 @@ module.exports = async (req, res) => {
       if (!Object.keys(updateData).length) {
         sendJson(res, 400, {
           success: false,
-          message: "No valid Previous_Appraisal fields were provided.",
+          message: "No valid Payroll_Data fields were provided.",
         });
         return;
       }
@@ -374,7 +374,7 @@ module.exports = async (req, res) => {
       FIND EXISTING RECORD
       ------------------------------------------------------ */
 
-      console.log("Searching Previous_Appraisal for:", empId, appraisalYear);
+      console.log("Searching Payroll_Data for:", empId, appraisalYear);
 
       const existingRecord = await findHistoryRecord(
         table,
@@ -388,7 +388,7 @@ module.exports = async (req, res) => {
 
       if (existingRecord) {
         console.log(
-          "Existing Previous_Appraisal record found:",
+          "Existing Payroll_Data record found:",
           existingRecord.ROWID,
         );
 
@@ -403,7 +403,7 @@ module.exports = async (req, res) => {
           action: "updated",
           emp_id: empId,
           appraisal_year: appraisalYear,
-          message: "Previous_Appraisal updated successfully.",
+          message: "Payroll_Data updated successfully.",
           data: updatedRecord,
         });
 
@@ -414,7 +414,7 @@ module.exports = async (req, res) => {
       CREATE RECORD IF IT DOES NOT EXIST
       ------------------------------------------------------ */
 
-      console.log("No Previous_Appraisal record found.");
+      console.log("No Payroll_Data record found.");
 
       console.log("Creating new history record for:", empId, appraisalYear);
 
@@ -430,7 +430,7 @@ module.exports = async (req, res) => {
         action: "created",
         emp_id: empId,
         appraisal_year: appraisalYear,
-        message: "Previous_Appraisal history created successfully.",
+        message: "Payroll_Data history created successfully.",
         data: createdRecord,
       });
 
