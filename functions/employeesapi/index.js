@@ -574,39 +574,29 @@ async function getEmployees(req, res) {
      COUNTS
      ========================================================== */
 
-  const totalCount = allEmployees.length;
-
-  const activeCount = allEmployees.filter(function (employee) {
-    return (
-      String(employee.status || "")
-        .trim()
-        .toLowerCase() === "active"
-    );
-  }).length;
-
-  const inactiveCount = allEmployees.filter(function (employee) {
-    return (
-      String(employee.status || "")
-        .trim()
-        .toLowerCase() === "inactive"
-    );
-  }).length;
-
   /* ==========================================================
      FILTER
      ========================================================== */
 
   /*
-   * Scope by Tech-Ed assignment FIRST.
-   * Then apply the normal appraisal filters to that user's employees.
-   * This prevents a missing/incorrect Employee_Master row from hiding
-   * every employee belonging to a Tech-Ed user.
+   * Scope by the signed-in user's access first.
+   * HR sees all employees; non-HR users see only their assigned employees.
+   * Counts must use this same scoped set so the dashboard reflects the
+   * current user's visible Employee Master records, not the whole table.
    */
   const scopedEmployees = hrUser
     ? allEmployees
     : allEmployees.filter(function (employee) {
         return employeeBelongsToCurrentUser(employee, currentUser);
       });
+
+  const scopedTotalCount = scopedEmployees.length;
+  const scopedActiveCount = scopedEmployees.filter(function (employee) {
+    return String(employee.status || "").trim().toLowerCase() === "active";
+  }).length;
+  const scopedInactiveCount = scopedEmployees.filter(function (employee) {
+    return String(employee.status || "").trim().toLowerCase() === "inactive";
+  }).length;
 
   const filteredEmployees = filterEmployees(
     scopedEmployees,
@@ -655,9 +645,9 @@ async function getEmployees(req, res) {
     },
 
     counts: {
-      total: totalCount,
-      active: activeCount,
-      inactive: inactiveCount,
+      total: scopedTotalCount,
+      active: scopedActiveCount,
+      inactive: scopedInactiveCount,
     },
 
     filters: {
