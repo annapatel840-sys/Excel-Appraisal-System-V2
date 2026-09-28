@@ -583,7 +583,9 @@ async function getEmployees(req, res) {
     search,
     status === "all" ? "" : status,
     eligibleParam === "all" ? "" : eligibleParam,
-    hrUser ? "master" : view,
+    // Once a Tech-Ed assignment is established, show that user's employees
+    // regardless of Employee_Master eligibility. Eligibility remains separate.
+    "master",
   );
 
   const userScopedEmployees = filteredEmployees;
