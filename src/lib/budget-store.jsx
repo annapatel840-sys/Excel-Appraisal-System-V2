@@ -45,7 +45,7 @@ export function BudgetProvider({ children }) {
   const [orgLog, setOrgLog] = useState([]);
 
   const isHR =
-    currentUser.role === "HR" || currentUser.role === "Comp. Manager";
+    String(currentUser.role || "").trim().toLowerCase() === "hr";
 
   const empById = useCallback(
     (id) => budgetRows.find((r) => r.empId === id) || leavers[id],
