@@ -155,6 +155,47 @@ function employeeBelongsToCurrentUser(employee, user) {
   });
 }
 
+function buildDemoTechEdEmployees() {
+  return [
+    {
+      ROWID: "DEMO-EMP0058",
+      emp_id: "EMP0058",
+      name: "Demo Employee 1",
+      designation: "Software Engineer",
+      reporting_manager: "EMP0057 - Prabhu Prasad Parida",
+      comp_manager: "Prabhu Prasad Parida",
+      appraiser_tech_ed: "EMP0057 - Prabhu Prasad Parida",
+      department: "Technology",
+      status: "Active",
+      eligible_status: "eligible",
+      current_annual_base_pay: 480000,
+      wissen_experience: 2,
+      total_experience: 3,
+      hike_amount: 0,
+      hike_pct: 0,
+      new_title: "Software Engineer",
+    },
+    {
+      ROWID: "DEMO-EMP0059",
+      emp_id: "EMP0059",
+      name: "Demo Employee 2",
+      designation: "Senior Software Engineer",
+      reporting_manager: "EMP0057 - Prabhu Prasad Parida",
+      comp_manager: "Prabhu Prasad Parida",
+      appraiser_tech_ed: "EMP0057 - Prabhu Prasad Parida",
+      department: "Technology",
+      status: "Active",
+      eligible_status: "eligible",
+      current_annual_base_pay: 620000,
+      wissen_experience: 3,
+      total_experience: 5,
+      hike_amount: 0,
+      hike_pct: 0,
+      new_title: "Senior Software Engineer",
+    },
+  ];
+}
+
 /* ============================================================
    EMPLOYEE RESPONSE NORMALIZATION
    ============================================================ */
