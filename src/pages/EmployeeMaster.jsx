@@ -1838,7 +1838,7 @@ export function EmployeeMaster() {
             EMPLOYEE MASTER TAB
             ====================================================== */}
 
-        {!isTechEd && activeTab === "roster" && (
+        {activeTab === "roster" && (
           <div className="em-tab-content">
             <EmployeeMasterToolbar
               search={search}
