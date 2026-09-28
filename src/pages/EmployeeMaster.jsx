@@ -1769,13 +1769,13 @@ export function EmployeeMaster() {
             Eligibility List
           </button>
 
-          <button
+          {!isTechEd && <button
             type="button"
             className={activeTab === "appraisal-cycle" ? "active" : ""}
             onClick={() => setActiveTab("appraisal-cycle")}
           >
             Appraisal Cycle Master
-          </button>
+          </button>}
 
           <button
             type="button"
@@ -1785,27 +1785,27 @@ export function EmployeeMaster() {
             Payroll Data
           </button>
 
-          <button
+          {!isTechEd && <button
             type="button"
             className={activeTab === "payroll-upload" ? "active" : ""}
             onClick={() => setActiveTab("payroll-upload")}
           >
             Payroll Upload
-          </button>
-          <button
+          </button>}
+          {!isTechEd && <button
             type="button"
             className={activeTab === "team-changes" ? "active" : ""}
             onClick={() => setActiveTab("team-changes")}
           >
             Team Changes
-          </button>
-          <button
+          </button>}
+          {!isTechEd && <button
             type="button"
             className={activeTab === "budget-allocation" ? "active" : ""}
             onClick={() => setActiveTab("budget-allocation")}
           >
             Budget Allocation
-          </button>
+          </button>}
         </div>
 
         {/* ======================================================
