@@ -146,59 +146,13 @@ function employeeBelongsToCurrentUser(employee, user) {
   if (!assigned) return false;
 
   return getCurrentUserMatchValues(user).some(function (value) {
-    return assigned === value || assigned.includes(value) || value.includes(assigned);
-  });
-}
-
-function isPrabhuPrasadUser(user) {
-  return getCurrentUserMatchValues(user).some(function (value) {
     return (
-      value === normalizeText("Prabhu Prasad Parida") ||
-      value === normalizeText("Prabhuprasad Parida") ||
-      value === normalizeText("EMP0057 - Prabhu Prasad Parida")
+      assigned === value ||
+      assigned.includes(value) ||
+      value.includes(assigned) ||
+      (value.includes("emp0057") && assigned.includes("emp0057"))
     );
   });
-}
-
-function buildDemoTechEdEmployees() {
-  return [
-    {
-      ROWID: "DEMO-EMP0058",
-      emp_id: "EMP0058",
-      name: "Demo Employee 1",
-      designation: "Software Engineer",
-      department: "Technology",
-      reporting_manager: "EMP0057 - Prabhu Prasad Parida",
-      comp_manager: "Prabhu Prasad Parida",
-      appraiser_tech_ed: "EMP0057 - Prabhu Prasad Parida",
-      status: "Active",
-      eligible_status: "eligible",
-      wissen_experience: 2,
-      total_experience: 3,
-      current_annual_base_pay: 480000,
-      hike_amount: 0,
-      hike_pct: 0,
-      new_title: "",
-    },
-    {
-      ROWID: "DEMO-EMP0059",
-      emp_id: "EMP0059",
-      name: "Demo Employee 2",
-      designation: "Senior Software Engineer",
-      department: "Technology",
-      reporting_manager: "EMP0057 - Prabhu Prasad Parida",
-      comp_manager: "Prabhu Prasad Parida",
-      appraiser_tech_ed: "EMP0057 - Prabhu Prasad Parida",
-      status: "Active",
-      eligible_status: "eligible",
-      wissen_experience: 3,
-      total_experience: 5,
-      current_annual_base_pay: 620000,
-      hike_amount: 0,
-      hike_pct: 0,
-      new_title: "",
-    },
-  ];
 }
 
 /* ============================================================
@@ -611,31 +565,28 @@ async function getEmployees(req, res) {
      FILTER
      ========================================================== */
 
+  /*
+   * Scope by Tech-Ed assignment FIRST.
+   * Then apply the normal appraisal filters to that user's employees.
+   * This prevents a missing/incorrect Employee_Master row from hiding
+   * every employee belonging to a Tech-Ed user.
+   */
+  const scopedEmployees = hrUser
+    ? allEmployees
+    : allEmployees.filter(function (employee) {
+        return employeeBelongsToCurrentUser(employee, currentUser);
+      });
+
   const filteredEmployees = filterEmployees(
-    allEmployees,
+    scopedEmployees,
     employeeMasterMap,
     search,
     status === "all" ? "" : status,
     eligibleParam === "all" ? "" : eligibleParam,
-    // HR is universal: ignore the normal Active + Eligible appraisal restriction.
     hrUser ? "master" : view,
   );
 
-  let userScopedEmployees = hrUser
-    ? filteredEmployees
-    : filteredEmployees.filter(function (employee) {
-        return employeeBelongsToCurrentUser(employee, currentUser);
-      });
-
-  // Temporary development/demo fallback for Prabhu Prasad Tech-Ed.
-  // These records are returned only when no real assignment exists.
-  if (
-    !hrUser &&
-    userScopedEmployees.length === 0 &&
-    isPrabhuPrasadUser(currentUser)
-  ) {
-    userScopedEmployees = buildDemoTechEdEmployees();
-  }
+  const userScopedEmployees = filteredEmployees;
 
   const filteredCount = userScopedEmployees.length;
 
