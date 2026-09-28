@@ -139,18 +139,51 @@ function getCurrentUserMatchValues(user) {
 }
 
 function employeeBelongsToCurrentUser(employee, user) {
-  const assigned = normalizeText(employee?.appraiser_tech_ed);
-  if (!assigned) return false;
+  const assignedRaw = String(employee?.appraiser_tech_ed || "").trim();
+  if (!assignedRaw) return false;
 
-  return getCurrentUserMatchValues(user).some(function (value) {
-    return (
-      assigned === value ||
-      assigned.includes(value) ||
-      value.includes(assigned) ||
-      (value.includes("emp0057") && assigned.includes("emp0057"))
-    );
+  const assigned = normalizeText(assignedRaw);
 
-  });
+  // Direct dynamic matches: user id, email, or complete profile value.
+  if (
+    getCurrentUserMatchValues(user).some(function (value) {
+      return (
+        value &&
+        (assigned === value || assigned.includes(value) || value.includes(assigned))
+      );
+    })
+  ) {
+    return true;
+  }
+
+  // Dynamic name match. Catalyst user profiles commonly provide first_name
+  // and last_name separately, while the employee assignment can contain
+  // "EMPxxxx - First Last". Match the user's name tokens without hardcoding
+  // any employee ID or person.
+  const firstName = normalizeText(user?.first_name);
+  const lastName = normalizeText(user?.last_name);
+
+  if (lastName && !assigned.includes(lastName)) {
+    return false;
+  }
+
+  if (firstName) {
+    const firstNameParts = String(user?.first_name || "")
+      .trim()
+      .split(/[^A-Za-z0-9]+/)
+      .map(normalizeText)
+      .filter(Boolean);
+
+    const firstPartMatches = firstNameParts.some(function (part) {
+      return part.length >= 3 && assigned.includes(part);
+    });
+
+    if (!firstPartMatches) {
+      return false;
+    }
+  }
+
+  return Boolean(lastName || firstName);
 }
 
 /* ============================================================
@@ -569,6 +602,12 @@ async function getEmployees(req, res) {
    * This prevents a missing/incorrect Employee_Master row from hiding
    * every employee belonging to a Tech-Ed user.
    */
+  const scopedEmployees = hrUser
+    ? allEmployees
+    : allEmployees.filter(function (employee) {
+        return employeeBelongsToCurrentUser(employee, currentUser);
+      });
+
   const filteredEmployees = filterEmployees(
     scopedEmployees,
     employeeMasterMap,
