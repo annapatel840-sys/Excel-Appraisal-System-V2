@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, AlertCircle, X, History } from "lucide-react";
 
 import { AppShell } from "@/components/appraisal/AppShell";
+import { useCatalystUser } from "@/lib/catalyst-auth";
 
 import {
   FIELD_DEFS,
@@ -433,6 +434,9 @@ function AuditHistoryPanel({ open, title, description, entries, onClose }) {
    ============================================================ */
 
 export function EmployeeMaster() {
+  const catalystUser = useCatalystUser();
+  const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const isTechEd = role.includes("teched");
   const [allEmployees, setAllEmployees] = useState([]);
 
   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
@@ -443,7 +447,7 @@ export function EmployeeMaster() {
 
   const [statusActionLoading, setStatusActionLoading] = useState(false);
 
-  const [activeTab, setActiveTab] = useState("roster");
+  const [activeTab, setActiveTab] = useState(isTechEd ? "eligibility" : "roster");
 
   const [search, setSearch] = useState("");
 
@@ -1834,7 +1838,7 @@ export function EmployeeMaster() {
             EMPLOYEE MASTER TAB
             ====================================================== */}
 
-        {activeTab === "roster" && (
+        {!isTechEd && activeTab === "roster" && (
           <div className="em-tab-content">
             <EmployeeMasterToolbar
               search={search}
@@ -1924,7 +1928,7 @@ export function EmployeeMaster() {
             NO AUDIT HISTORY HERE
             ====================================================== */}
 
-        {activeTab === "appraisal-cycle" && (
+        {!isTechEd && activeTab === "appraisal-cycle" && (
           <div className="em-tab-content">
             <AppraisalCycleMasterPage />
           </div>
@@ -1944,7 +1948,7 @@ export function EmployeeMaster() {
             PAYROLL UPLOAD
             ====================================================== */}
 
-        {activeTab === "payroll-upload" && (
+        {!isTechEd && activeTab === "payroll-upload" && (
           <div
             className="em-tab-content"
             style={{
@@ -1956,8 +1960,8 @@ export function EmployeeMaster() {
             <PayrollUploadPage />
           </div>
         )}
-        {activeTab === "team-changes" && <TeamChangesPage />}
-        {activeTab === "budget-allocation" && <BudgetAllocationPage />}
+        {!isTechEd && activeTab === "team-changes" && <TeamChangesPage />}
+        {!isTechEd && activeTab === "budget-allocation" && <BudgetAllocationPage />}
 
         {/* ======================================================
             ELIGIBILITY MODAL
