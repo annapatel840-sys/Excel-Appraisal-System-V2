@@ -343,7 +343,7 @@ function mapPayroll(row, cycleById) {
     newPB: Number(row.new_pb) || 0,
     newPBInst: Number(row.new_pb_inst) || 0,
     newRB: Number(row.new_rb) || 0,
-    hikeAmt: Number(row.hike_amt) || 0,
+    hikeAmt: Number(row.hike_amt ?? row.hike_amount) || 0,
     hikePct: Number(row.hike_pct) || 0,
     tpbNext: Number(row.target_pb_next_year) || 0,
     promo: row.promo || "",
