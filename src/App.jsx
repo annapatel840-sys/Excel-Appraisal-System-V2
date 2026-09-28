@@ -9,10 +9,14 @@ import { EmployeeMaster } from "@/pages/EmployeeMaster";
 //this might be remove later (detailscreen)
 import { DetailScreenPage } from "@/components/appraisal/DetailScreenPage";
 import { AppShell } from "./components/appraisal/AppShell";
-import { CatalystAuthGate } from "@/lib/catalyst-auth";
+import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 
 export default function App() {
   const [path, setPath] = useState(window.location.pathname);
+  const user = useCatalystUser();
+  const role = String(user?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const isTechEd = role.includes("teched");
+  const effectivePath = isTechEd && !["/", "/employee-master", "/detail-screen"].includes(path) ? "/employee-master" : path;
 
   useEffect(() => {
     const onPopState = () => {
@@ -28,11 +32,11 @@ export default function App() {
 
   let page;
 
-  if (path === "/sheet") {
+  if (effectivePath === "/sheet") {
     page = <SheetPage />;
-  } else if (path === "/employee-master") {
+  } else if (effectivePath === "/employee-master") {
     page = <EmployeeMaster />;
-  } else if (path === "/detail-screen") {
+  } else if (effectivePath === "/detail-screen") {
     page = (
       <AppShell>
         <DetailScreenPage />
