@@ -93,6 +93,21 @@ function normalizeStatus(value) {
 }
 
 /* ============================================================
+   HR UNIVERSAL ACCESS
+   HR users are not restricted by appraisal status/eligibility.
+   ============================================================ */
+
+function isHRUser(user) {
+  const role = String(
+    user?.role_details?.role_name || user?.role_name || "",
+  )
+    .trim()
+    .toLowerCase();
+
+  return role === "hr";
+}
+
+/* ============================================================
    EMPLOYEE RESPONSE NORMALIZATION
    ============================================================ */
 
@@ -414,6 +429,14 @@ async function getEmployees(req, res) {
 
   const datastore = appInstance.datastore();
 
+  let currentUser = null;
+  try {
+    currentUser = await appInstance.userManagement().getCurrentUser();
+  } catch (error) {
+    console.warn("Unable to resolve current Catalyst user for role filtering:", error?.message);
+  }
+
+  const hrUser = isHRUser(currentUser);
   const params = getQueryParams(req);
 
   const requestedPage = getPositiveInteger(params.page, 1);
@@ -493,7 +516,8 @@ async function getEmployees(req, res) {
     search,
     status === "all" ? "" : status,
     eligibleParam === "all" ? "" : eligibleParam,
-    view,
+    // HR is universal: ignore the normal Active + Eligible appraisal restriction.
+    hrUser ? "master" : view,
   );
 
   const filteredCount = filteredEmployees.length;
