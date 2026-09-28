@@ -108,6 +108,50 @@ function isHRUser(user) {
 }
 
 /* ============================================================
+   TECHED ACCESS
+   Non-HR users see only employees assigned to them in
+   Employees.appraiser_tech_ed.
+   The assignment may contain EMP ID + name, so compare against
+   the signed-in user's id, email, and display/name variants.
+   ============================================================ */
+
+function normalizeText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function getCurrentUserMatchValues(user) {
+  const values = [
+    user?.user_id,
+    user?.email_id,
+    user?.email,
+    user?.display_name,
+    user?.name,
+    user?.first_name,
+    user?.last_name,
+    [user?.first_name, user?.last_name].filter(Boolean).join(" "),
+  ];
+
+  return values
+    .map(normalizeText)
+    .filter(Boolean);
+}
+
+function employeeBelongsToCurrentUser(employee, user) {
+  const assigned = normalizeText(employee?.appraiser_tech_ed);
+
+  if (!assigned) {
+    return false;
+  }
+
+  return getCurrentUserMatchValues(user).some(function (value) {
+    return assigned === value || assigned.includes(value) || value.includes(assigned);
+  });
+}
+
+/* ============================================================
    EMPLOYEE RESPONSE NORMALIZATION
    ============================================================ */
 
@@ -436,6 +480,13 @@ async function getEmployees(req, res) {
     console.warn("Unable to resolve current Catalyst user for role filtering:", error?.message);
   }
 
+  if (!currentUser || !currentUser.user_id) {
+    return sendJson(res, 401, {
+      success: false,
+      message: "Authentication is required.",
+    });
+  }
+
   const hrUser = isHRUser(currentUser);
   const params = getQueryParams(req);
 
@@ -520,7 +571,13 @@ async function getEmployees(req, res) {
     hrUser ? "master" : view,
   );
 
-  const filteredCount = filteredEmployees.length;
+  const userScopedEmployees = hrUser
+    ? filteredEmployees
+    : filteredEmployees.filter(function (employee) {
+        return employeeBelongsToCurrentUser(employee, currentUser);
+      });
+
+  const filteredCount = userScopedEmployees.length;
 
   /* ==========================================================
      PAGINATION
@@ -532,7 +589,7 @@ async function getEmployees(req, res) {
 
   const offset = (safePage - 1) * limit;
 
-  const data = filteredEmployees
+  const data = userScopedEmployees
     .slice(offset, offset + limit)
     .map(function (employee) {
       return normalizeEmployeeResponse(employee);
