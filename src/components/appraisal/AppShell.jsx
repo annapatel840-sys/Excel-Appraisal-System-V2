@@ -10,17 +10,12 @@ export function AppShell({ children, headerActions }) {
   const role = String(user?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
 
-  const nav = isTechEd
-    ? [
-        { to: "/employee-master", label: "HR Operations", icon: Users },
-        { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
-      ]
-    : [
-        { to: "/", label: "Dashboard", icon: LayoutDashboard },
-        { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
-        { to: "/employee-master", label: "HR Operations", icon: Users },
-        { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
-      ];
+  const nav = [
+    { to: "/", label: "Dashboard", icon: LayoutDashboard },
+    { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
+    { to: "/employee-master", label: "HR Operations", icon: Users },
+    { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
+  ];
 
   const navigate = (event, to) => {
     event.preventDefault();
