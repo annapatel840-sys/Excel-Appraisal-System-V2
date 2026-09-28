@@ -153,47 +153,6 @@ function employeeBelongsToCurrentUser(employee, user) {
   });
 }
 
-function buildDemoTechEdEmployees() {
-  return [
-    {
-      ROWID: "DEMO-EMP0058",
-      emp_id: "EMP0058",
-      name: "Demo Employee 1",
-      designation: "Software Engineer",
-      reporting_manager: "EMP0057 - Prabhu Prasad Parida",
-      comp_manager: "Prabhu Prasad Parida",
-      appraiser_tech_ed: "EMP0057 - Prabhu Prasad Parida",
-      department: "Technology",
-      status: "Active",
-      eligible_status: "eligible",
-      current_annual_base_pay: 480000,
-      wissen_experience: 2,
-      total_experience: 3,
-      hike_amount: 0,
-      hike_pct: 0,
-      new_title: "Software Engineer",
-    },
-    {
-      ROWID: "DEMO-EMP0059",
-      emp_id: "EMP0059",
-      name: "Demo Employee 2",
-      designation: "Senior Software Engineer",
-      reporting_manager: "EMP0057 - Prabhu Prasad Parida",
-      comp_manager: "Prabhu Prasad Parida",
-      appraiser_tech_ed: "EMP0057 - Prabhu Prasad Parida",
-      department: "Technology",
-      status: "Active",
-      eligible_status: "eligible",
-      current_annual_base_pay: 620000,
-      wissen_experience: 3,
-      total_experience: 5,
-      hike_amount: 0,
-      hike_pct: 0,
-      new_title: "Senior Software Engineer",
-    },
-  ];
-}
-
 /* ============================================================
    EMPLOYEE RESPONSE NORMALIZATION
    ============================================================ */
@@ -610,58 +569,6 @@ async function getEmployees(req, res) {
    * This prevents a missing/incorrect Employee_Master row from hiding
    * every employee belonging to a Tech-Ed user.
    */
-  /*
-   * DEVELOPMENT SEED:
-   * Create real Data Store rows for Prabhu's Tech-Ed experiment when none
-   * are assigned yet. This is intentionally limited to the two demo IDs.
-   */
-  let effectiveAllEmployees = allEmployees;
-
-  if (
-    !hrUser &&
-    getCurrentUserMatchValues(currentUser).some(function (value) {
-      return (
-        value.includes("prabh") ||
-        value.includes("emp0057")
-      );
-    }) &&
-    !allEmployees.some(function (employee) {
-      return employeeBelongsToCurrentUser(employee, currentUser);
-    })
-  ) {
-    const employeeTable = datastore.table(EMPLOYEES_TABLE_ID);
-    const demoRows = buildDemoTechEdEmployees();
-
-    const existingIds = new Set(
-      allEmployees.map(function (employee) {
-        return String(employee.emp_id || "").trim().toLowerCase();
-      }),
-    );
-
-    const rowsToInsert = demoRows
-      .filter(function (employee) {
-        return !existingIds.has(String(employee.emp_id).trim().toLowerCase());
-      })
-      .map(function (employee) {
-        const row = { ...employee };
-        delete row.ROWID;
-        return row;
-      });
-
-    if (rowsToInsert.length) {
-      await employeeTable.insertRows(rowsToInsert);
-      effectiveAllEmployees = await getAllEmployees(datastore);
-    } else {
-      effectiveAllEmployees = allEmployees;
-    }
-  }
-
-  const scopedEmployees = hrUser
-    ? effectiveAllEmployees
-    : effectiveAllEmployees.filter(function (employee) {
-        return employeeBelongsToCurrentUser(employee, currentUser);
-      });
-
   const filteredEmployees = filterEmployees(
     scopedEmployees,
     employeeMasterMap,
