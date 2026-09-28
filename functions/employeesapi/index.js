@@ -135,9 +135,6 @@ function getCurrentUserMatchValues(user) {
     firstName,
     lastName,
     [firstName, lastName].filter(Boolean).join(" "),
-    "Prabhu Prasad Parida",
-    "Prabhuprasad Parida",
-    "EMP0057 - Prabhu Prasad Parida",
   ].map(normalizeText).filter(Boolean);
 }
 
@@ -152,6 +149,7 @@ function employeeBelongsToCurrentUser(employee, user) {
       value.includes(assigned) ||
       (value.includes("emp0057") && assigned.includes("emp0057"))
     );
+
   });
 }
 
