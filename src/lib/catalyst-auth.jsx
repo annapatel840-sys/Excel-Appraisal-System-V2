@@ -95,7 +95,7 @@ export function CatalystAuthGate({ children }) {
     window.sessionStorage.removeItem(SIGNED_OUT_STORAGE_KEY);
     setMessage("");
     window.catalyst.auth.signIn("catalyst-login-container", {
-      redirect_url: "/",
+      service_url: window.location.origin + "/",
     });
   };
 
