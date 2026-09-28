@@ -168,8 +168,46 @@ function isHR(user) {
   return roleName(user) === "hr";
 }
 
+function isTechEd(user) {
+  return roleName(user).replace(/[^a-z0-9]/g, "").includes("teched");
+}
+
 function canAccessPayroll(user) {
-  return isHR(user) || roleName(user) === "comp. manager";
+  return isHR(user) || roleName(user) === "comp. manager" || isTechEd(user);
+}
+
+function getCurrentUserMatchValues(user) {
+  const firstName = user?.first_name || "";
+  const lastName = user?.last_name || "";
+  return [
+    user?.user_id,
+    user?.email_id,
+    user?.email,
+    user?.display_name,
+    user?.name,
+    firstName,
+    lastName,
+    [firstName, lastName].filter(Boolean).join(" "),
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+}
+
+function employeeBelongsToCurrentUser(employee, user) {
+  const assigned = String(employee?.appraiser_tech_ed || "").trim().toLowerCase();
+  if (!assigned) return false;
+
+  if (getCurrentUserMatchValues(user).some((value) =>
+    assigned === value || assigned.includes(value) || value.includes(assigned)
+  )) {
+    return true;
+  }
+
+  const firstName = String(user?.first_name || "").trim().toLowerCase();
+  const lastName = String(user?.last_name || "").trim().toLowerCase();
+
+  if (lastName && !assigned.includes(lastName)) return false;
+  if (firstName && !assigned.includes(firstName)) return false;
+
+  return Boolean(firstName || lastName);
 }
 
 function normalizeText(value, key) {
@@ -402,8 +440,17 @@ async function routeRequest(req, res, identity, resource) {
   if (resource === "session") {
     return sendJson(res, 200, { success: true, data: { id: identity.id, name: identity.name, email: identity.email, role: identity.role } });
   }
-  if (!canAccessPayroll(identity.user) && !resource.startsWith("cycles")) {
-    return sendJson(res, 403, { success: false, message: "HR or Comp. Manager role is required for payroll access." });
+  const techEdUser = isTechEd(identity.user);
+
+  if (
+    !canAccessPayroll(identity.user) &&
+    !resource.startsWith("cycles")
+  ) {
+    return sendJson(res, 403, { success: false, message: "HR, Comp. Manager, or Tech-Ed role is required for payroll access." });
+  }
+
+  if (techEdUser && req.method !== "GET" && resource !== "session") {
+    return sendJson(res, 403, { success: false, message: "Tech-Ed users have read-only payroll access." });
   }
 
   const adminApp = catalyst.initialize(req, { scope: "admin" });
@@ -476,12 +523,30 @@ async function routeRequest(req, res, identity, resource) {
   }
 
   if (resource === "payroll" && req.method === "GET") {
-    const [rows, cycles] = await Promise.all([
+    const [rows, cycles, masterRows] = await Promise.all([
       getAllRows(tables.payroll),
       getAllRows(tables.cycles),
+      getAllRows(tables.employeeMaster),
     ]);
+
     const cycleById = new Map(cycles.map((row) => [rowId(row), normalizeCycle(row)]));
-    return sendJson(res, 200, { success: true, data: rows.map((row) => mapPayroll(row, cycleById)) });
+    const assignedEmpIds = techEdUser
+      ? new Set(
+          masterRows
+            .filter((employee) => employeeBelongsToCurrentUser(employee, identity.user))
+            .map((employee) => String(employee.emp_id || "").trim().toLowerCase())
+            .filter(Boolean),
+        )
+      : null;
+
+    const visibleRows = assignedEmpIds
+      ? rows.filter((row) => assignedEmpIds.has(String(row.emp_id || "").trim().toLowerCase()))
+      : rows;
+
+    return sendJson(res, 200, {
+      success: true,
+      data: visibleRows.map((row) => mapPayroll(row, cycleById)),
+    });
   }
 
   if (resource === "validate" && req.method === "POST") {
