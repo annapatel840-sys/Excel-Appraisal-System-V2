@@ -1,18 +1,26 @@
 import { LayoutDashboard, Table2, Users, BookOpen, LogOut } from "lucide-react";
 
-import { useCatalystSignOut } from "@/lib/catalyst-auth";
+import { useCatalystSignOut, useCatalystUser } from "@/lib/catalyst-auth";
 import { cn } from "@/lib/utils";
 
 export function AppShell({ children, headerActions }) {
   const pathname = window.location.pathname;
   const signOut = useCatalystSignOut();
+  const user = useCatalystUser();
+  const role = String(user?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const isTechEd = role.includes("teched");
 
-  const nav = [
-    { to: "/", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
-    { to: "/employee-master", label: "HR Operations", icon: Users },
-    { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
-  ];
+  const nav = isTechEd
+    ? [
+        { to: "/employee-master", label: "HR Operations", icon: Users },
+        { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
+      ]
+    : [
+        { to: "/", label: "Dashboard", icon: LayoutDashboard },
+        { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
+        { to: "/employee-master", label: "HR Operations", icon: Users },
+        { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
+      ];
 
   const navigate = (event, to) => {
     event.preventDefault();
