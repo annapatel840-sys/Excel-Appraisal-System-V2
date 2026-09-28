@@ -11,6 +11,7 @@ import {
   totalCTCWithRewards,
 } from "@/lib/appraisal-data";
 import { useBudget } from "@/lib/budget-store";
+import { useCatalystUser } from "@/lib/catalyst-auth";
 import { currentTeamOf } from "@/lib/budget-engine";
 
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
@@ -100,16 +101,18 @@ const isBlankRecord = (h) =>
 export function DetailScreenPage() {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
   const { currentUser, isHR, hierarchy } = useBudget();
-
+  const catalystUser = useCatalystUser();
   const allRows = liveRows || [];
+  const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const isTechEd = role.includes("teched");
 
   const teamMatch = useMemo(() => {
-    if (isHR) return null;
+    if (isHR || isTechEd) return null;
     return currentTeamOf(allRows, hierarchy, currentUser.name);
-  }, [allRows, isHR, hierarchy, currentUser]);
+  }, [allRows, isHR, isTechEd, hierarchy, currentUser]);
 
-  const rows = isHR ? allRows : teamMatch || [];
-  const isScopedToTeam = !!(teamMatch && teamMatch.length > 0);
+  const rows = isHR || isTechEd ? allRows : teamMatch || [];
+  const isScopedToTeam = isTechEd || !!(teamMatch && teamMatch.length > 0);
 
   const [index, setIndex] = useState(0);
   const [search, setSearch] = useState("");
