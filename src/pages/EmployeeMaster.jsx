@@ -447,7 +447,7 @@ export function EmployeeMaster() {
 
   const [statusActionLoading, setStatusActionLoading] = useState(false);
 
-  const [activeTab, setActiveTab] = useState(isTechEd ? "eligibility" : "roster");
+  const [activeTab, setActiveTab] = useState("roster");
 
   const [search, setSearch] = useState("");
 
