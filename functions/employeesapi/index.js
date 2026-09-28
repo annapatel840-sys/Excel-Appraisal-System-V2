@@ -612,9 +612,55 @@ async function getEmployees(req, res) {
    * This prevents a missing/incorrect Employee_Master row from hiding
    * every employee belonging to a Tech-Ed user.
    */
+  /*
+   * DEVELOPMENT SEED:
+   * Create real Data Store rows for Prabhu's Tech-Ed experiment when none
+   * are assigned yet. This is intentionally limited to the two demo IDs.
+   */
+  let effectiveAllEmployees = allEmployees;
+
+  if (
+    !hrUser &&
+    getCurrentUserMatchValues(currentUser).some(function (value) {
+      return (
+        value.includes("prabh") ||
+        value.includes("emp0057")
+      );
+    }) &&
+    !allEmployees.some(function (employee) {
+      return employeeBelongsToCurrentUser(employee, currentUser);
+    })
+  ) {
+    const employeeTable = datastore.table(EMPLOYEES_TABLE_ID);
+    const demoRows = buildDemoTechEdEmployees();
+
+    const existingIds = new Set(
+      allEmployees.map(function (employee) {
+        return String(employee.emp_id || "").trim().toLowerCase();
+      }),
+    );
+
+    const rowsToInsert = demoRows
+      .filter(function (employee) {
+        return !existingIds.has(String(employee.emp_id).trim().toLowerCase());
+      })
+      .map(function (employee) {
+        const row = { ...employee };
+        delete row.ROWID;
+        return row;
+      });
+
+    if (rowsToInsert.length) {
+      await employeeTable.insertRows(rowsToInsert);
+      effectiveAllEmployees = await getAllEmployees(datastore);
+    } else {
+      effectiveAllEmployees = allEmployees;
+    }
+  }
+
   const scopedEmployees = hrUser
-    ? allEmployees
-    : allEmployees.filter(function (employee) {
+    ? effectiveAllEmployees
+    : effectiveAllEmployees.filter(function (employee) {
         return employeeBelongsToCurrentUser(employee, currentUser);
       });
 
