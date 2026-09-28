@@ -4,7 +4,6 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 const COLS = [
   { key: "empId", label: "Employee ID", type: "text", frozen: true },
   { key: "cycle", label: "Cycle", type: "text" },
-  { key: "batch", label: "Source Batch", type: "text" },
   { key: "empName", label: "Employee Name", type: "text", cat: "master" },
   { key: "designation", label: "Designation", type: "text", cat: "master" },
   { key: "compManager", label: "Compensation Manager", type: "text", cat: "master" },
