@@ -85,12 +85,26 @@ function Tile({ label, value, sub }) {
 function AllocationTable({ rows, selectedId, onSelect }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[980px] border-collapse text-[12.5px]">
+      <table className="w-full min-w-[1100px] table-fixed border-collapse text-[12.5px]">
+        <colgroup>
+          <col className="w-[18%]" />
+          <col className="w-[9%]" />
+          <col className="w-[14%]" />
+          <col className="w-[11%]" />
+          <col className="w-[14%]" />
+          <col className="w-[11%]" />
+          <col className="w-[12%]" />
+          <col className="w-[6%]" />
+          <col className="w-[9%]" />
+        </colgroup>
         <thead>
           <tr>
-            {["Tech ED", "Budget %", "Original Budget", "Additional", "Updated Budget", "Utilised", "Remaining", "Team", "Status"].map(function (head) {
+            {["Tech ED", "Budget %", "Original Budget", "Additional", "Updated Budget", "Utilised", "Remaining", "Team", "Status"].map(function (head, index) {
               return (
-                <th key={head} className="border-b-2 border-[#9fb3cf] bg-[#eef2f7] px-2.5 py-2 text-left text-[12px] font-bold text-[#1e3a5f]">
+                <th
+                  key={head}
+                  className={"border-b-2 border-[#9fb3cf] bg-[#eef2f7] px-3 py-2 text-[12px] font-bold text-[#1e3a5f] " + (index > 0 && index < 8 ? "text-right" : "text-left")}
+                >
                   {head}
                 </th>
               );
@@ -103,15 +117,15 @@ function AllocationTable({ rows, selectedId, onSelect }) {
             var remaining = updated - row.budget_utilized;
             return (
               <tr key={row.id} className={selectedId === row.id ? "bg-[#f0fdfa]" : ""} onClick={function () { onSelect(row.id); }}>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 font-bold">{row.tech_ed_id}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{percent(row.budget_percentage)}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(row.budget_amount)}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(row.additional_budget)}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right font-bold">{money(updated)}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(row.budget_utilized)}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(remaining)}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{row.team_size}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2">{row.status}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-left font-bold align-middle">{row.tech_ed_id}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-right align-middle">{percent(row.budget_percentage)}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-right align-middle">{money(row.budget_amount)}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-right align-middle">{money(row.additional_budget)}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-right font-bold align-middle">{money(updated)}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-right align-middle">{money(row.budget_utilized)}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-right align-middle">{money(remaining)}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-right align-middle">{row.team_size}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-left align-middle">{row.status}</td>
               </tr>
             );
           })}
