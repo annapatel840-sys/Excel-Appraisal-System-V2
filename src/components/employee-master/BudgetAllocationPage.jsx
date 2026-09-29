@@ -398,9 +398,7 @@ export function BudgetAllocationPage() {
         </div>
       ) : null}
 
-      {activePage === "allocation" && (
-        <>
-          {budget.isHR ? (
+      {activePage === "allocation" && budget.isHR && (
         <>
           <div className="mt-2 overflow-hidden rounded-lg border border-[#d4dbe5] bg-white">
             <div className="px-4 py-2.5 text-[13px] font-semibold text-white" style={{ background: NAVY }}>
@@ -425,7 +423,6 @@ export function BudgetAllocationPage() {
             </div>
             <BudgetTable rows={rows} employeeCounts={budget.employeeCounts} selectedId={selected?.id} onSelect={setSelectedId} />
           </div>
-          ) : null}
         </>
       )}
 
