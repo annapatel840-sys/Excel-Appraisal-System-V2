@@ -35,9 +35,9 @@ export function BudgetProvider({ children }) {
   const authenticatedUser = useCatalystUser();
   const currentUser = useMemo(
     () => ({
-      name: authenticatedUser?.name || authenticatedUser?.email || "Unknown user",
-      email: authenticatedUser?.email || "",
-      role: authenticatedUser?.role || "",
+      name: authenticatedUser && authenticatedUser.name || authenticatedUser && authenticatedUser.email || "Unknown user",
+      email: authenticatedUser && authenticatedUser.email || "",
+      role: authenticatedUser && authenticatedUser.role || "",
     }),
     [authenticatedUser],
   );
@@ -63,19 +63,19 @@ export function BudgetProvider({ children }) {
       if (!budgetResponse.ok) {
         const statusText = budgetResponse.status === 404
           ? "Budget Master API is not deployed in the current Catalyst environment."
-          : (budgetJson?.message || `Failed to load Budget Master (${budgetResponse.status}).`);
+          : (budgetJson && budgetJson.message || `Failed to load Budget Master (${budgetResponse.status}).`);
         throw new Error(statusText);
       }
       let employeeJson = {};
       try { employeeJson = employeeResponse.ok ? await employeeResponse.json() : {}; } catch (_) { employeeJson = {}; }
 
-      setBudgetRows((Array.isArray(budgetJson?.data) ? budgetJson.data : []).map(normalizeRow));
-      setEmployeeRows(Array.isArray(employeeJson?.data) ? employeeJson.data : []);
+      setBudgetRows((Array.isArray(budgetJson && budgetJson.data) ? budgetJson.data : []).map(normalizeRow));
+      setEmployeeRows(Array.isArray(employeeJson && employeeJson.data) ? employeeJson.data : []);
     } catch (e) {
       console.error("Failed to load Budget Master:", e);
       setBudgetRows([]);
       setEmployeeRows([]);
-      setError(e?.message || "Failed to load Budget Master.");
+      setError(e && e.message || "Failed to load Budget Master.");
     } finally {
       setLoading(false);
     }
@@ -150,7 +150,7 @@ export function BudgetProvider({ children }) {
       body: JSON.stringify({ id, ...changes }),
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result?.message || "Budget update failed.");
+    if (!response.ok) throw new Error(result && result.message || "Budget update failed.");
     await load();
     return result;
   }, [load]);
