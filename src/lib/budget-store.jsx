@@ -1,298 +1,160 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-  useEffect,
-} from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 
-import {
-  DEFAULT_BUDGET_CONFIG,
-  computeNode,
-  budgetForUser,
-  rootsOf,
-} from "@/lib/budget-engine";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
-
 const BudgetContext = createContext(null);
+
+function number(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalizeRow(row) {
+  const base = number(row.budget_amount);
+  const additional = number(row.additional_budget);
+  const updated = base + additional;
+  const utilized = number(row.budget_utilized);
+  return {
+    ...row,
+    id: String(row.id || ""),
+    appraisal_cycle_id: String(row.appraisal_cycle_id || ""),
+    tech_ed_id: String(row.tech_ed_id || ""),
+    budget_percentage: number(row.budget_percentage),
+    budget_amount: base,
+    additional_budget: additional,
+    budget_utilized: utilized,
+    budget_remaining: updated - utilized,
+    status: String(row.status || ""),
+    updated_budget: updated,
+    utilization_percentage: updated > 0 ? (utilized / updated) * 100 : 0,
+  };
+}
 
 export function BudgetProvider({ children }) {
   const authenticatedUser = useCatalystUser();
-  const currentUser = {
-    name: authenticatedUser?.name || authenticatedUser?.email || "Unknown user",
-    role: authenticatedUser?.role || "",
-  };
-  const [budgetRows, setBudgetRows] = useState([]);
+  const currentUser = useMemo(
+    () => ({
+      name: authenticatedUser?.name || authenticatedUser?.email || "Unknown user",
+      email: authenticatedUser?.email || "",
+      role: authenticatedUser?.role || "",
+    }),
+    [authenticatedUser],
+  );
 
-  const hierarchy = useMemo(() => {
-    const next = {};
-    budgetRows.forEach((row) => {
-      const owner = String(row.tech_ed_id || "").trim();
-      if (owner) next[owner] = { level: 1, parent: null };
-    });
-    return next;
-  }, [budgetRows]);
-  const [levels, setLevels] = useState(["Tech ED"]);
-  const [budgetConfig, setBudgetConfig] = useState({
-    baseColumns: ["currentAnnualBasePay"],
-    baseLocked: true,
-    utilisedColumns: [{ key: "hikeAmount", label: "Hike Amount" }],
-  });
+  const isHR = String(currentUser.role || "").trim().toLowerCase() === "hr";
+  const [budgetRows, setBudgetRows] = useState([]);
+  const [employeeRows, setEmployeeRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const [budgetResponse, employeeResponse] = await Promise.all([
+        catalystFetch(catalystFunctionUrl("budgetmasterapi")),
+        catalystFetch(catalystFunctionUrl("employeesapi") + "?page=1&limit=500&status=active&eligible=eligible"),
+      ]);
+
+      const budgetJson = await budgetResponse.json();
+      if (!budgetResponse.ok) throw new Error(budgetJson?.message || "Failed to load Budget Master.");
+      const employeeJson = employeeResponse.ok ? await employeeResponse.json() : { data: [] };
+
+      setBudgetRows((Array.isArray(budgetJson?.data) ? budgetJson.data : []).map(normalizeRow));
+      setEmployeeRows(Array.isArray(employeeJson?.data) ? employeeJson.data : []);
+    } catch (e) {
+      console.error("Failed to load Budget Master:", e);
+      setBudgetRows([]);
+      setEmployeeRows([]);
+      setError(e?.message || "Failed to load Budget Master.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    async function loadBudgetMaster() {
-      try {
-        const response = await catalystFetch(catalystFunctionUrl("budgetmasterapi"));
-        if (!response.ok) throw new Error("Failed to load Budget Master.");
-        const result = await response.json();
-        if (!cancelled) {
-          const rows = Array.isArray(result?.data) ? result.data : [];
-          setBudgetRows(rows.map((row) => ({
-            ...row,
-            empId: String(row.id || row.tech_ed_id || ""),
-            name: String(row.tech_ed_id || ""),
-            compManager: String(row.tech_ed_id || ""),
-            currentAnnualBasePay: Number(row.budget_amount || 0),
-            hikeAmount: Number(row.budget_utilized || 0),
-            allocatedPBAmount: 0,
-          })));
-          setPctMap(Object.fromEntries(rows.map((row) => [String(row.tech_ed_id || ""), Number(row.budget_percentage || 0)])));
-          setOrgPct(rows.length ? Number(rows[0].budget_percentage || 0) : 0);
-        }
-      } catch (error) {
-        console.error("Failed to load Budget Master:", error);
-        if (!cancelled) setBudgetRows([]);
-      }
-    }
-    loadBudgetMaster();
-    return () => { cancelled = true; };
-  }, []);
-  const [eligibilityEvents, setEligibilityEvents] = useState([]);
-  const [gridSupervisorChanges, setGridSupervisorChanges] = useState([]);
-  const [allocationSnapshot, setAllocationSnapshot] = useState({
-    date: "",
-    by: "",
-    teams: {},
-  });
-  const [leavers, setLeavers] = useState({});
+    load();
+  }, [load]);
 
-  const [pct, setPctMap] = useState({});
-  const [originalPct] = useState({});
-  const [orgPct, setOrgPct] = useState(0);
-  const [overrides, setOverrides] = useState({});
+  const rows = useMemo(() => {
+    const active = budgetRows.filter((row) => !row.status || row.status.toLowerCase() === "active");
+    if (isHR) return active;
+    const key = currentUser.name.trim().toLowerCase();
+    const email = currentUser.email.trim().toLowerCase();
+    return active.filter((row) => {
+      const owner = row.tech_ed_id.trim().toLowerCase();
+      return owner === key || owner === email || owner.includes(key) || (email && owner.includes(email));
+    });
+  }, [budgetRows, currentUser, isHR]);
 
-  const [pctLog, setPctLog] = useState([]);
-  const [orgLog, setOrgLog] = useState([]);
+  const employeeCounts = useMemo(() => {
+    const getOwner = (employee) =>
+      String(
+        employee.appraiser_tech_ed ||
+        employee.tech_ed_id ||
+        employee.tech_ed ||
+        employee.appraiserTechEd ||
+        employee.appraiser ||
+        "",
+      ).trim().toLowerCase();
 
-  const isHR =
-    String(currentUser.role || "").trim().toLowerCase() === "hr";
+    return rows.reduce((map, row) => {
+      const owner = row.tech_ed_id.trim().toLowerCase();
+      const matched = employeeRows.filter((employee) => getOwner(employee) === owner);
+      map[row.tech_ed_id] = matched.length;
+      return map;
+    }, {});
+  }, [rows, employeeRows]);
 
-  const empById = useCallback(
-    (id) => budgetRows.find((r) => r.empId === id) || leavers[id],
-    [budgetRows, leavers],
-  );
-
-  const allocation = useMemo(
-    () => ({
-      date: allocationSnapshot.date,
-      by: allocationSnapshot.by,
-      pct,
-      orgPct,
-      originalPct,
-    }),
-    [allocationSnapshot.date, allocationSnapshot.by, pct, orgPct, originalPct],
-  );
-
-  const node = useCallback(
-    (name) =>
-      computeNode({
-        name,
-        rows: budgetRows,
-        hierarchy,
-        allocation,
-        budgetConfig,
-        allocationSnapshot,
-        empById,
-      }),
-    [
-      budgetRows,
-      hierarchy,
-      allocation,
-      budgetConfig,
-      allocationSnapshot,
-      empById,
-    ],
-  );
-
-  const budgetFor = useCallback(
+  const totals = useMemo(
     () =>
-      budgetForUser({
-        isHR,
-        userName: currentUser.name,
-        rows: budgetRows,
-        hierarchy,
-        allocation,
-        budgetConfig,
-        allocationSnapshot,
-        empById,
-      }),
-    [
-      isHR,
-      currentUser,
-      budgetRows,
-      hierarchy,
-      allocation,
-      budgetConfig,
-      allocationSnapshot,
-      empById,
-    ],
+      rows.reduce(
+        (sum, row) => ({
+          base: sum.base + row.budget_amount,
+          additional: sum.additional + row.additional_budget,
+          updated: sum.updated + row.updated_budget,
+          utilized: sum.utilized + row.budget_utilized,
+          remaining: sum.remaining + row.budget_remaining,
+        }),
+        { base: 0, additional: 0, updated: 0, utilized: 0, remaining: 0 },
+      ),
+    [rows],
   );
 
-  const canEdit = useCallback(
-    (name) => {
-      const h = hierarchy[name];
-      if (!h) return false;
-      return isHR ? !h.parent : h.parent === currentUser.name;
-    },
-    [hierarchy, isHR, currentUser],
-  );
-
-  /** Returns an error string if the change is blocked, otherwise null. */
-  const setPct = useCallback(
-    (name, to, reason) => {
-      const nd = node(name);
-      if (!nd) return "No such owner.";
-      const newUpdated = (nd.base * to) / 100;
-
-      if (nd.parent) {
-        const parentNode = node(nd.parent);
-        const sum = parentNode.allotted - nd.updated + newUpdated;
-        if (sum > parentNode.updated + 0.5) {
-          return `Blocked: ${to}% for ${name} would take total allotted to ₹${(
-            sum / 1e5
-          ).toFixed(
-            2,
-          )} L, more than ${nd.parent}'s updated budget of ₹${(parentNode.updated / 1e5).toFixed(2)} L.`;
-        }
-      }
-      if (nd.allotted > newUpdated + 0.5) {
-        return `Blocked: at ${to}%, ${name}'s budget would fall below what is already allotted to their reports.`;
-      }
-
-      const now = new Date();
-      setPctLog((log) => [
-        ...log,
-        {
-          name,
-          from: nd.pct,
-          to,
-          by: currentUser.name,
-          date: now.toISOString().slice(0, 10),
-          time: now.toTimeString().slice(0, 5),
-          before: nd.updated,
-          after: newUpdated,
-          reason: reason || "",
-        },
-      ]);
-      setPctMap((m) => ({ ...m, [name]: to }));
-      setOverrides((o) => {
-        const next = { ...o };
-        if (to === orgPct) delete next[name];
-        else next[name] = true;
-        return next;
-      });
-      return null;
-    },
-    [node, orgPct, currentUser],
-  );
-
-  const applyOrgPct = useCallback(
-    (to, reason) => {
-      if (Object.keys(hierarchy).length === 0) return;
-      const now = new Date();
-      const before = budgetForUser({
-        isHR: true,
-        userName: "",
-        rows: budgetRows,
-        hierarchy,
-        allocation,
-        budgetConfig,
-        allocationSnapshot,
-        empById,
-      }).updated;
-
-      setOrgLog((log) => [
-        ...log,
-        {
-          date: now.toISOString().slice(0, 10),
-          time: now.toTimeString().slice(0, 5),
-          from: orgPct,
-          to,
-          before,
-          by: currentUser.name,
-          reason: reason || "",
-        },
-      ]);
-
-      rootsOf(hierarchy).forEach((r) => {
-        if (!overrides[r]) setPctMap((m) => ({ ...m, [r]: to }));
-      });
-      setOrgPct(to);
-    },
-    [
-      orgPct,
-      overrides,
-      hierarchy,
-      budgetRows,
-      allocation,
-      budgetConfig,
-      allocationSnapshot,
-      empById,
-      currentUser,
-    ],
-  );
-
-  const value = {
-    hierarchy,
-    levels,
-    setLevels,
-    budgetConfig,
-    setBudgetConfig,
-    budgetRows,
-    setBudgetRows,
-    allocation,
-    pctLog,
-    orgLog,
-    overrides,
-    eligibilityEvents,
-    setEligibilityEvents,
-    gridSupervisorChanges,
-    setGridSupervisorChanges,
-    allocationSnapshot,
-    setAllocationSnapshot,
-    leavers,
-    setLeavers,
-    currentUser,
-    isHR,
-    node,
-    budgetFor,
-    canEdit,
-    setPct,
-    applyOrgPct,
-    empById,
-  };
+  const updateBudget = useCallback(async (id, changes) => {
+    const response = await catalystFetch(catalystFunctionUrl("budgetmasterapi"), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, ...changes }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result?.message || "Budget update failed.");
+    await load();
+    return result;
+  }, [load]);
 
   return (
-    <BudgetContext.Provider value={value}>{children}</BudgetContext.Provider>
+    <BudgetContext.Provider
+      value={{
+        currentUser,
+        isHR,
+        budgetRows: rows,
+        employeeCounts,
+        totals,
+        loading,
+        error,
+        reload: load,
+        updateBudget,
+      }}
+    >
+      {children}
+    </BudgetContext.Provider>
   );
 }
 
 export function useBudget() {
   const ctx = useContext(BudgetContext);
-  if (!ctx) throw new Error("useBudget must be used within a BudgetProvider");
+  if (!ctx) throw new Error("useBudget must be used within BudgetProvider");
   return ctx;
 }
