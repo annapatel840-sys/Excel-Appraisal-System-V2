@@ -25,6 +25,8 @@ export function BudgetProvider({ children }) {
     name: authenticatedUser?.name || authenticatedUser?.email || "Unknown user",
     role: authenticatedUser?.role || "",
   };
+  const [budgetRows, setBudgetRows] = useState([]);
+
   const hierarchy = useMemo(() => {
     const next = {};
     budgetRows.forEach((row) => {
@@ -39,8 +41,6 @@ export function BudgetProvider({ children }) {
     baseLocked: true,
     utilisedColumns: [{ key: "hikeAmount", label: "Hike Amount" }],
   });
-
-  const [budgetRows, setBudgetRows] = useState([]);
 
   useEffect(() => {
     let cancelled = false;
