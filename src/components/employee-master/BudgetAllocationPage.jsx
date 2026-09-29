@@ -297,7 +297,7 @@ export function BudgetAllocationPage() {
       ) : null}
 
       {isHR && page === "apply" ? (
-        <div className="mt-2 max-h-[calc(100vh-210px)] overflow-y-auto overflow-x-hidden pr-1">
+        <div className="mt-2 h-[calc(100vh-210px)] min-h-0 overflow-y-auto overflow-x-hidden pr-1">
           <div className="mb-2 rounded-lg border border-[#d4dbe5] bg-white p-3">
             <label className="text-[12px] font-semibold text-[#334155]">
               Select Tech ED
