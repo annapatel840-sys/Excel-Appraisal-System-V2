@@ -154,13 +154,18 @@ module.exports = async function (req, res) {
 
     if (method === "GET") {
       var table = app.datastore().table(TABLE_ID);
-      var result = await table.getAllRows();
-      var allRows = Array.isArray(result) ? result : [];
+      var result = await table.getPagedRows({
+        maxRows: 100,
+      });
+
+      var rows = result && Array.isArray(result.data) ? result.data : [];
 
       return sendJson(res, 200, {
         success: true,
-        data: allRows.map(mapRow),
+        data: rows.map(mapRow),
         current_user: null,
+        more_records: result && result.more_records === true,
+        next_token: result && result.next_token ? result.next_token : null,
       });
     }
 
