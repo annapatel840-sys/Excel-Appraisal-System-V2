@@ -25,9 +25,20 @@ export function BudgetProvider({ children }) {
     name: authenticatedUser?.name || authenticatedUser?.email || "Unknown user",
     role: authenticatedUser?.role || "",
   };
-  const [hierarchy] = useState({});
-  const [levels, setLevels] = useState([]);
-  const [budgetConfig, setBudgetConfig] = useState(DEFAULT_BUDGET_CONFIG);
+  const hierarchy = useMemo(() => {
+    const next = {};
+    budgetRows.forEach((row) => {
+      const owner = String(row.tech_ed_id || "").trim();
+      if (owner) next[owner] = { level: 1, parent: null };
+    });
+    return next;
+  }, [budgetRows]);
+  const [levels, setLevels] = useState(["Tech ED"]);
+  const [budgetConfig, setBudgetConfig] = useState({
+    baseColumns: ["currentAnnualBasePay"],
+    baseLocked: true,
+    utilisedColumns: [{ key: "hikeAmount", label: "Hike Amount" }],
+  });
 
   const [budgetRows, setBudgetRows] = useState([]);
 
@@ -38,7 +49,20 @@ export function BudgetProvider({ children }) {
         const response = await catalystFetch(catalystFunctionUrl("budgetmasterapi"));
         if (!response.ok) throw new Error("Failed to load Budget Master.");
         const result = await response.json();
-        if (!cancelled) setBudgetRows(Array.isArray(result?.data) ? result.data : []);
+        if (!cancelled) {
+          const rows = Array.isArray(result?.data) ? result.data : [];
+          setBudgetRows(rows.map((row) => ({
+            ...row,
+            empId: String(row.id || row.tech_ed_id || ""),
+            name: String(row.tech_ed_id || ""),
+            compManager: String(row.tech_ed_id || ""),
+            currentAnnualBasePay: Number(row.budget_amount || 0),
+            hikeAmount: Number(row.budget_utilized || 0),
+            allocatedPBAmount: 0,
+          })));
+          setPctMap(Object.fromEntries(rows.map((row) => [String(row.tech_ed_id || ""), Number(row.budget_percentage || 0)])));
+          setOrgPct(rows.length ? Number(rows[0].budget_percentage || 0) : 0);
+        }
       } catch (error) {
         console.error("Failed to load Budget Master:", error);
         if (!cancelled) setBudgetRows([]);
