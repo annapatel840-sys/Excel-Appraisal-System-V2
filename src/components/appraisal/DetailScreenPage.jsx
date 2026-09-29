@@ -18,12 +18,20 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 
-// Final computed palette from the reference — the "v11 look" block near
-// the bottom of the source CSS overrides the earlier declarations, so
-// these are the values actually rendered, not the first ones written.
 const NAVY = "#12304f";
 const TEAL = "#14a3a3";
-const FONT = '"IBM Plex Sans", "Segoe UI", Arial, Helvetica, sans-serif';
+/* Ledger look: Manrope. Load it once in index.html:
+   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"> */
+const FONT = '"Manrope", "Segoe UI", system-ui, Arial, sans-serif';
+
+/* Ledger tokens used by the left pane */
+const INK = "#102A43";
+const LTEAL = "#0B7A75";
+const LINE = "#E3E9EC";
+const SOFT = "#EEF3F3";
+const MUTED = "#5F7482";
+
+const CURRENT_CYCLE = "Apr-26";
 
 const normalizeHistoryRecord = (record) => {
   const basePay = Number(record?.base_pay) || 0;
@@ -62,6 +70,22 @@ const HISTORY_COLUMNS = [
 ];
 
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
+const lakhs = (n) => `${((Number(n) || 0) / 1e5).toFixed(2)} L`;
+const dash = (v) => (v === null || v === undefined || v === "" ? "—" : v);
+const yrs = (v) => {
+  const d = dash(v);
+  return d === "—" || /yr/i.test(String(d)) ? d : `${d} yrs`;
+};
+const pctText = (v) => {
+  const d = dash(v);
+  return d === "—" || /%/.test(String(d)) ? d : `${d}%`;
+};
+const ordinal = (n) => {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+};
+const signedPct = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}%`;
 
 const normalizeYearKey = (y) =>
   String(y ?? "")
@@ -100,7 +124,8 @@ const isBlankRecord = (h) =>
 
 export function DetailScreenPage() {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
-  const { currentUser, isHR, hierarchy } = useBudget();
+  const budgetCtx = useBudget();
+  const { currentUser, isHR, hierarchy } = budgetCtx;
   const catalystUser = useCatalystUser();
   const allRows = liveRows || [];
   const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -116,6 +141,7 @@ export function DetailScreenPage() {
 
   const [index, setIndex] = useState(0);
   const [search, setSearch] = useState("");
+  const [ctxTab, setCtxTab] = useState("feedback");
   const [historyByEmpId, setHistoryByEmpId] = useState({});
   const historyPromiseRef = useRef(new Map());
 
@@ -234,6 +260,52 @@ export function DetailScreenPage() {
     };
   }, [employee]);
 
+  /* ---------- Team metrics (computed from the rows this login can see) ---------- */
+  // Team budget: expects the budget store to expose the updated budget for this login.
+  // If your store uses a different name, change this one line. 0 = not connected.
+  const teamBudget = Number(
+    budgetCtx?.teamBudget ??
+      budgetCtx?.updatedBudget ??
+      budgetCtx?.budget?.updated ??
+      0,
+  );
+
+  const metrics = useMemo(() => {
+    const used = rows.reduce((s, r) => s + (Number(r.hikeAmount) || 0), 0);
+    const tpb = rows.reduce((s, r) => s + (Number(r.targetPBNextYear) || 0), 0);
+    const cur = teamBudget ? (used / teamBudget) * 100 : null;
+    const withT = teamBudget ? ((used + tpb) / teamBudget) * 100 : null;
+
+    const hikes = rows
+      .filter((r) => Number(r.currentAnnualBasePay) > 0)
+      .map((r) => ({
+        r,
+        v: ((Number(r.hikeAmount) || 0) / Number(r.currentAnnualBasePay)) * 100,
+      }));
+    const mine = employee ? hikes.find((x) => x.r === employee) : null;
+    let percentile = null;
+    let top = null;
+    let median = null;
+    if (mine && hikes.length > 1) {
+      const below = hikes.filter((x) => x.v < mine.v).length;
+      percentile = Math.round((below / (hikes.length - 1)) * 100);
+      const sorted = hikes.slice().sort((a, b) => a.v - b.v);
+      top = sorted[sorted.length - 1];
+      const n = sorted.length;
+      median =
+        n % 2 ? sorted[(n - 1) / 2].v : (sorted[n / 2 - 1].v + sorted[n / 2].v) / 2;
+    }
+
+    const noHike = rows.filter((r) => !(Number(r.hikeAmount) > 0)).length;
+    const pbPaid = rows.reduce((s, r) => s + (Number(r.allocatedPBAmount) || 0), 0);
+    const pbTarget = rows.reduce(
+      (s, r) => s + (Number(r.targetPBAllocatedForMay) || 0),
+      0,
+    );
+
+    return { used, tpb, cur, withT, mine, percentile, top, median, noHike, pbPaid, pbTarget };
+  }, [rows, employee, teamBudget]);
+
   const handleSearch = (value) => {
     setSearch(value);
 
@@ -305,141 +377,19 @@ export function DetailScreenPage() {
           ) : (
             <>
               <div className="grid grid-cols-1 gap-2 min-[1000px]:grid-cols-[370px_minmax(0,1fr)]">
-                {/* LEFT COLUMN */}
-                <div className="flex flex-col gap-2">
-                  <div
-                    className="overflow-hidden rounded-[10px] border shadow-[0_1px_2px_rgba(18,48,79,0.06)]"
-                    style={{ background: "#fff", borderColor: "#d3dbe6" }}
-                  >
-                    <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 px-3 py-2 text-[12px]">
-                      <Field label="Employee Name" value={employee.name} bold />
-
-                      <div>
-                        <span
-                          className="text-[11px]"
-                          style={{ color: "#5b6b80", fontWeight: 500 }}
-                        >
-                          Employee ID
-                        </span>
-                        <br />
-                        <span
-                          className="text-[12px] font-bold"
-                          style={{ color: "#1859a8" }}
-                        >
-                          {employee.empId ?? "—"}
-                        </span>
-                      </div>
-
-                      <Field label="Designation" value={employee.designation} />
-                      <Field
-                        label="Reporting Manager"
-                        value={employee.reportingManager}
-                      />
-                      <Field
-                        label="Manager Rating"
-                        value={employee.managerRating}
-                      />
-                      <Field
-                        label="Total Exp"
-                        value={`${employee.totalExperience ?? "—"} yrs`}
-                      />
-                      <Field
-                        label="Org Exp"
-                        value={`${employee.wissenExperience ?? "—"} yrs`}
-                      />
-                      <Field
-                        label="Interview Count"
-                        value={employee.interviewCount ?? "—"}
-                      />
-                      <Field
-                        label="RR %"
-                        value={`${employee.rrPercent ?? "—"}%`}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Rating & feedback history */}
-                  <div
-                    className="flex flex-1 flex-col overflow-hidden rounded-[10px] border shadow-[0_1px_2px_rgba(18,48,79,0.06)]"
-                    style={{ background: "#fff", borderColor: "#d3dbe6" }}
-                  >
-                    <div
-                      className="px-3 py-1.5 text-left text-[12px]"
-                      style={{
-                        background: NAVY,
-                        color: "#fff",
-                        fontWeight: 600,
-                        letterSpacing: ".15px",
-                      }}
-                    >
-                      Rating &amp; feedback history
-                    </div>
-
-                    <div className="max-h-[280px] overflow-y-auto">
-                      <table
-                        className="w-full table-fixed border-collapse text-[11px]"
-                        style={{ lineHeight: 1.35 }}
-                      >
-                        <thead>
-                          <tr>
-                            <RfHead width="50px">Year</RfHead>
-                            <RfHead width="66px">Desig.</RfHead>
-                            <RfHead width="46px" center>
-                              RR %
-                            </RfHead>
-                            <RfHead>Manager Rating</RfHead>
-                          </tr>
-                        </thead>
-
-                        <tbody>
-                          <RfRow
-                            year="Apr-26 ★"
-                            desig={employee.designation}
-                            rr={employee.rrPercent}
-                            rating={employee.managerRating}
-                            feedback={
-                              employee.atRisk ||
-                              "Feedback captured during the review."
-                            }
-                            current
-                          />
-
-                          {priorCycles.map((h, i) => (
-                            <RfRow
-                              key={h.year ?? i}
-                              year={h.year}
-                              desig={h.designation}
-                              rr={null}
-                              rating={h.rating}
-                              feedback={h.feedback}
-                            />
-                          ))}
-
-                          {!priorCycles.length && (
-                            <tr>
-                              <td
-                                colSpan={4}
-                                className="px-2 py-2.5 text-[12px]"
-                                style={{ color: "#94a3b8" }}
-                              >
-                                {historyState?.loading
-                                  ? "Loading..."
-                                  : "No prior cycles."}
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <div
-                      className="px-2 py-1.5 text-[10.5px]"
-                      style={{ color: "#64748b" }}
-                    >
-                      Client rating and past RR % are not in the sheet yet, so
-                      they show “—”.
-                    </div>
-                  </div>
+                {/* LEFT COLUMN — employee details + Feedback / Team metrics */}
+                <div className="relative min-h-[460px]">
+                  <LeftPane
+                    employee={employee}
+                    priorCycles={priorCycles}
+                    loading={!!historyState?.loading}
+                    tab={ctxTab}
+                    onTab={setCtxTab}
+                    metrics={metrics}
+                    teamBudget={teamBudget}
+                    rowsCount={rows.length}
+                    scopeLabel={scopeLabel}
+                  />
                 </div>
 
                 {/* RIGHT COLUMN — Compensation Input Screen */}
@@ -856,77 +806,395 @@ export function DetailScreenPage() {
 }
 
 /* ============================================================
-   Small display primitives, matching the reference's classes 1:1
+   LEFT PANE — employee details + Feedback / Team metrics tabs
    ============================================================ */
 
-function Field({ label, value, bold }) {
+function LeftPane({
+  employee,
+  priorCycles,
+  loading,
+  tab,
+  onTab,
+  metrics,
+  teamBudget,
+  rowsCount,
+  scopeLabel,
+}) {
+  const initials = String(employee.name || "?")
+    .split(/\s+/)
+    .map((w) => w.charAt(0))
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
+  const facts = [
+    ["Manager rating", dash(employee.managerRating)],
+    ["RR", pctText(employee.rrPercent)],
+    [
+      "Experience",
+      `${yrs(employee.totalExperience)} · ${yrs(employee.wissenExperience)} here`,
+    ],
+    ["Interviews", dash(employee.interviewCount)],
+  ];
+
+  const items = [
+    {
+      year: CURRENT_CYCLE,
+      current: true,
+      designation: employee.designation,
+      client: employee.clientRating,
+      rr: employee.rrPercent,
+      rating: employee.managerRating,
+      feedback:
+        employee.feedback ||
+        employee.atRisk ||
+        "Feedback captured during the review.",
+    },
+    ...priorCycles.map((h) => ({
+      year: h.year,
+      designation: h.designation,
+      client: h.clientRating,
+      rr: h.rrPercent,
+      rating: h.rating,
+      feedback: h.feedback,
+    })),
+  ];
+
+  const pctNow = metrics.cur;
+  const badgeStyle =
+    pctNow > 100
+      ? { background: "#FDECEA", color: "#912018" }
+      : pctNow > 90
+        ? { background: "#FBF3E4", color: "#7A5212" }
+        : { background: "#E6F3F2", color: "#0B5F5B" };
+
   return (
-    <div>
-      <span
-        className="text-[11px]"
-        style={{ color: "#5b6b80", fontWeight: 500 }}
+    <section
+      aria-label="Employee"
+      className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border bg-white min-[1000px]:absolute min-[1000px]:inset-0"
+      style={{
+        borderColor: LINE,
+        boxShadow: "0 1px 2px rgba(16,42,67,.04)",
+      }}
+    >
+      {/* Who */}
+      <div className="flex shrink-0 items-center gap-3 px-3.5 pb-2.5 pt-3.5">
+        <div
+          aria-hidden="true"
+          className="grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full text-[16px] font-extrabold"
+          style={{ background: "#E6F3F2", color: "#0B5F5B" }}
+        >
+          {initials}
+        </div>
+        <div className="min-w-0">
+          <div
+            className="text-[17px] font-extrabold leading-tight"
+            style={{ color: INK, letterSpacing: "-.01em" }}
+          >
+            {employee.name}
+          </div>
+          <div className="mt-0.5 truncate text-[12.5px]" style={{ color: MUTED }}>
+            <span className="font-bold" style={{ color: "#0B6A66" }}>
+              {employee.empId ?? "—"}
+            </span>{" "}
+            · {dash(employee.designation)}
+          </div>
+          <div className="truncate text-[12.5px]" style={{ color: MUTED }}>
+            Reports to {dash(employee.reportingManager)}
+          </div>
+        </div>
+      </div>
+
+      {/* Facts */}
+      <dl
+        className="mx-3.5 mb-3 grid shrink-0 grid-cols-2 gap-px overflow-hidden rounded-lg border"
+        style={{ background: SOFT, borderColor: SOFT }}
       >
-        {label}
-      </span>
-      <br />
-      <span className={`text-[12px] ${bold ? "font-bold" : ""}`}>
-        {value ?? "—"}
-      </span>
+        {facts.map(([label, value]) => (
+          <div key={label} className="bg-white px-2.5 py-[7px]">
+            <dt className="text-[11px]" style={{ color: MUTED }}>
+              {label}
+            </dt>
+            <dd
+              className="m-0 mt-px truncate text-[13px] font-bold"
+              style={{ color: INK }}
+              title={String(value)}
+            >
+              {value}
+            </dd>
+          </div>
+        ))}
+      </dl>
+
+      {/* Tabs */}
+      <div
+        className="flex shrink-0 gap-[18px] border-b px-3.5"
+        style={{ borderColor: LINE }}
+        role="tablist"
+      >
+        {[
+          ["feedback", "Feedback"],
+          ["metrics", "Team metrics"],
+        ].map(([key, label]) => {
+          const active = tab === key;
+          return (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              onClick={() => onTab(key)}
+              className="inline-flex items-center gap-1.5 border-b-2 pb-[9px] pt-2.5 text-[13px]"
+              style={{
+                color: active ? INK : MUTED,
+                fontWeight: active ? 700 : 600,
+                borderBottomColor: active ? LTEAL : "transparent",
+              }}
+            >
+              {label}
+              {key === "metrics" && pctNow !== null && (
+                <span
+                  className="rounded-full px-[7px] py-px text-[11px] font-bold"
+                  style={badgeStyle}
+                >
+                  {pctNow.toFixed(0)}%
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        className="max-h-[420px] min-h-0 flex-1 overflow-auto px-3.5 pb-3.5 pt-3 min-[1000px]:max-h-none"
+        role="tabpanel"
+      >
+        {tab === "feedback" ? (
+          <>
+            <ol
+              className="m-0 list-none border-l-2 py-0 pl-3.5 pr-0"
+              style={{ borderColor: SOFT }}
+            >
+              {items.map((x, i) => (
+                <li key={`${x.year}-${i}`} className="relative pb-3.5 pl-1">
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-1 h-2.5 w-2.5 rounded-full border-2"
+                    style={{
+                      left: -21,
+                      background: x.current ? LTEAL : "#fff",
+                      borderColor: x.current ? LTEAL : "#CBD5DA",
+                    }}
+                  />
+                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                    <b className="text-[13px]" style={{ color: INK }}>
+                      {x.year}
+                    </b>
+                    {x.current && (
+                      <span
+                        className="rounded-full px-[7px] py-px text-[10.5px] font-bold"
+                        style={{ background: "#E6F3F2", color: "#0B5F5B" }}
+                      >
+                        This cycle
+                      </span>
+                    )}
+                    <span
+                      className="basis-full text-[11.5px]"
+                      style={{ color: MUTED }}
+                    >
+                      {dash(x.designation)} · Manager {dash(x.rating)} · Client{" "}
+                      {dash(x.client)} · RR {pctText(x.rr)}
+                    </span>
+                  </div>
+                  <p
+                    className="m-0 mt-[5px] text-[12.5px] leading-normal"
+                    style={{ color: "#334E5C" }}
+                  >
+                    {dash(x.feedback)}
+                  </p>
+                </li>
+              ))}
+            </ol>
+
+            {!priorCycles.length && (
+              <div className="text-[12px]" style={{ color: "#9AACB6" }}>
+                {loading ? "Loading..." : "No prior cycles."}
+              </div>
+            )}
+
+            <div className="mt-2.5 text-[11.5px]" style={{ color: MUTED }}>
+              Client rating and past RR % are not in the sheet yet, so they show
+              “—”.
+            </div>
+          </>
+        ) : (
+          <TeamMetrics
+            employee={employee}
+            metrics={metrics}
+            teamBudget={teamBudget}
+            rowsCount={rowsCount}
+            scopeLabel={scopeLabel}
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function BarRow({ label, pct, sub }) {
+  const over = pct > 100;
+  return (
+    <>
+      <div
+        className="flex items-baseline justify-between gap-1.5 text-[12px]"
+        style={{ color: "#334E5C" }}
+      >
+        <span>{label}</span>
+        <b
+          className="text-[15px]"
+          style={{ color: over ? "#C0392B" : LTEAL }}
+        >
+          {pct.toFixed(0)}%
+        </b>
+      </div>
+      <div
+        className="my-1.5 h-1.5 overflow-hidden rounded-[3px]"
+        style={{ background: SOFT }}
+      >
+        <div
+          className="h-1.5"
+          style={{
+            width: `${Math.min(pct, 100)}%`,
+            background: over ? "#C0392B" : LTEAL,
+          }}
+        />
+      </div>
+      <div className="text-[11px]" style={{ color: MUTED }}>
+        {sub}
+      </div>
+    </>
+  );
+}
+
+function MetricBox({ title, tag, children }) {
+  return (
+    <div
+      className="mt-2 rounded-lg border px-[11px] py-2"
+      style={{ borderColor: LINE }}
+    >
+      <div
+        className="flex justify-between gap-1.5 text-[11px]"
+        style={{ color: MUTED }}
+      >
+        <span>{title}</span>
+        <i
+          className="whitespace-nowrap rounded-[3px] px-1 text-[9.5px] not-italic"
+          style={{ background: "#EEF2F7" }}
+        >
+          {tag}
+        </i>
+      </div>
+      {children}
     </div>
   );
 }
 
-function RfHead({ children, width, center }) {
+function TeamMetrics({ employee, metrics: m, teamBudget, rowsCount, scopeLabel }) {
+  const left = teamBudget - m.used;
+  const leftT = teamBudget - m.used - m.tpb;
+
   return (
-    <th
-      className={`border-b px-[5px] py-1 text-left text-[10.5px] font-bold ${center ? "text-center" : ""}`}
-      style={{
-        width,
-        borderColor: "#d7dce3",
-        background: "#eef2f7",
-        color: "#1e3a5f",
-        lineHeight: 1.25,
-      }}
-    >
-      {children}
-    </th>
+    <div>
+      <div className="mb-2.5 text-[11.5px]" style={{ color: MUTED }}>
+        {scopeLabel} · {CURRENT_CYCLE}
+      </div>
+
+      <div className="rounded-lg border px-[11px] py-[9px]" style={{ borderColor: LINE }}>
+        {m.cur !== null ? (
+          <>
+            <BarRow
+              label="Current consumption"
+              pct={m.cur}
+              sub={`${lakhs(m.used)} used · ${
+                left >= 0 ? `${lakhs(left)} left` : `${lakhs(-left)} over`
+              } of ${lakhs(teamBudget)}`}
+            />
+            <div className="h-2" />
+            <BarRow
+              label="Including Target PB"
+              pct={m.withT}
+              sub={`+${lakhs(m.tpb)} Target PB · ${
+                leftT >= 0 ? `${lakhs(leftT)} left` : `${lakhs(-leftT)} over`
+              }`}
+            />
+          </>
+        ) : (
+          <div className="text-[12px]" style={{ color: MUTED }}>
+            Team budget is not connected yet. Used so far: {lakhs(m.used)} of
+            hike, plus {lakhs(m.tpb)} Target PB.
+          </div>
+        )}
+      </div>
+
+      <MetricBox title="Hike % — percentile in team" tag="Metric 2">
+        {m.percentile !== null ? (
+          <>
+            <div className="mt-0.5 text-[16px] font-bold" style={{ color: INK }}>
+              {ordinal(m.percentile)}{" "}
+              <span className="text-[12px] font-normal" style={{ color: MUTED }}>
+                percentile · {String(employee.name).split(" ")[0]}{" "}
+                {signedPct(m.mine.v)}
+              </span>
+            </div>
+            <div
+              className="relative my-1.5 h-1.5 rounded-[3px]"
+              style={{ background: SOFT }}
+            >
+              <div
+                className="absolute -top-[3px] h-3 w-[3px] rounded-[1px]"
+                style={{ left: `${m.percentile}%`, background: "#B7791F" }}
+              />
+            </div>
+            <div className="text-[11px]" style={{ color: MUTED }}>
+              Highest {signedPct(m.top.v)} ({m.top.r.name}) · median{" "}
+              {signedPct(m.median)}
+            </div>
+          </>
+        ) : (
+          <div className="text-[11px]" style={{ color: MUTED }}>
+            Not enough people in the team yet.
+          </div>
+        )}
+      </MetricBox>
+
+      <MetricBox title="No hike this cycle" tag="Metric 3">
+        <div className="mt-0.5 text-[16px] font-bold" style={{ color: INK }}>
+          {m.noHike}{" "}
+          <span className="text-[12px] font-normal" style={{ color: MUTED }}>
+            of {rowsCount} employees
+          </span>
+        </div>
+      </MetricBox>
+
+      <MetricBox title="PB paid vs target" tag="Metric 4">
+        <div className="mt-0.5 text-[16px] font-bold" style={{ color: INK }}>
+          {m.pbTarget ? `${((m.pbPaid / m.pbTarget) * 100).toFixed(0)}%` : "—"}{" "}
+          <span className="text-[12px] font-normal" style={{ color: MUTED }}>
+            {lakhs(m.pbPaid)} of {lakhs(m.pbTarget)} target
+          </span>
+        </div>
+      </MetricBox>
+
+      <div className="mt-2.5 text-[11.5px]" style={{ color: MUTED }}>
+        Team only; org comparisons are HR-only.
+      </div>
+    </div>
   );
 }
 
-function RfRow({ year, desig, rr, rating, feedback, current }) {
-  const bg = current ? "#fff9dc" : undefined;
-
-  return (
-    <tr style={{ background: bg }}>
-      <td
-        className="border-b px-[5px] py-1 font-bold"
-        style={{ borderColor: "#eef1f5", color: "#1559a6" }}
-      >
-        {year}
-      </td>
-      <td className="border-b px-[5px] py-1" style={{ borderColor: "#eef1f5" }}>
-        {desig ?? "—"}
-      </td>
-      <td
-        className="border-b px-[5px] py-1 text-center"
-        style={{ borderColor: "#eef1f5", color: rr ? undefined : "#94a3b8" }}
-      >
-        {rr ? `${rr}%` : "—"}
-      </td>
-      <td
-        className="border-b px-[5px] py-1 leading-snug"
-        style={{
-          borderColor: "#eef1f5",
-          color: "#334155",
-          overflowWrap: "anywhere",
-        }}
-        title={feedback}
-      >
-        {rating ?? "—"}
-      </td>
-    </tr>
-  );
-}
+/* ============================================================
+   Small display primitives for the right pane and history grid
+   ============================================================ */
 
 function CompHead({ children, bg, center }) {
   return (
