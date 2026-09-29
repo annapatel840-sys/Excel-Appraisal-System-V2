@@ -5,7 +5,8 @@
       "appraisalhistoryapi",
       "appraisalauditapi",
       "employeemasterapi",
-      "payrollcycleapi"
+      "payrollcycleapi",
+      "budgetmasterapi"
     ],
     "ignore": [],
     "source": "functions"
