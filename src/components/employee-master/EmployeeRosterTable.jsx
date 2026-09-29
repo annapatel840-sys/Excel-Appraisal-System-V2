@@ -96,6 +96,7 @@ export function EmployeeRosterTable({
   onBulkStatusChange,
   statusUpdatingIds = new Set(),
   bulkStatusUpdating = false,
+  canEdit = true,
 }) {
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState(new Set());
 
