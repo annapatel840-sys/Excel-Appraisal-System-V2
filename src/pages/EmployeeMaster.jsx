@@ -590,7 +590,23 @@ export function EmployeeMaster() {
 
   const [statusActionLoading, setStatusActionLoading] = useState(false);
 
-  const [activeTab, setActiveTab] = useState("roster");
+  const initialTab = new URLSearchParams(window.location.search).get("tab");
+  const allowedTabs = new Set([
+    "roster",
+    "eligibility",
+    "appraisal-cycle",
+    "payroll-data",
+    "payroll-upload",
+    "team-changes",
+    "budget-allocation",
+  ]);
+  const [activeTab, setActiveTab] = useState(
+    isTechEd
+      ? "roster"
+      : allowedTabs.has(initialTab)
+        ? initialTab
+        : "roster",
+  );
 
   const [search, setSearch] = useState("");
 
@@ -642,6 +658,25 @@ export function EmployeeMaster() {
   });
 
   const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const onPopState = () => {
+      const tab = new URLSearchParams(window.location.search).get("tab");
+
+      if (isTechEd) {
+        setActiveTab("roster");
+        return;
+      }
+
+      setActiveTab(allowedTabs.has(tab) ? tab : "roster");
+    };
+
+    window.addEventListener("popstate", onPopState);
+
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+    };
+  }, [isTechEd]);
 
   const eligibilityLoadedKeyRef = useRef(null);
 
@@ -2419,7 +2454,18 @@ export function EmployeeMaster() {
           </div>
         )}
         {!isTechEd && activeTab === "team-changes" && <TeamChangesPage />}
-        {!isTechEd && activeTab === "budget-allocation" && <BudgetAllocationPage />}
+        {!isTechEd && activeTab === "budget-allocation" && (
+          <div
+            className="em-tab-content"
+            style={{
+              height: "calc(100vh - 180px)",
+              overflowY: "auto",
+              overflowX: "hidden",
+            }}
+          >
+            <BudgetAllocationPage />
+          </div>
+        )}
 
         {/* ======================================================
             ELIGIBILITY MODAL

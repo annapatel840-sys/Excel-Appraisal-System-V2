@@ -246,7 +246,7 @@ export function ColumnFilter({
               )}
             >
               <ChevronUp className="size-3.5" />
-              Sort
+              Group ASC
             </button>
 
             <div className="w-px bg-[#e2e8f0]" />
@@ -260,7 +260,7 @@ export function ColumnFilter({
               )}
             >
               <ChevronDown className="size-3.5" />
-              Sort
+              Group DESC
             </button>
           </div>
         )}

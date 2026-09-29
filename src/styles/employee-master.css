@@ -27,7 +27,8 @@
   display: flex;
   flex-direction: column;
 
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   box-sizing: border-box;
 }
 
@@ -220,7 +221,13 @@
   display: flex;
   flex-direction: column;
 
-  overflow: hidden;
+  overflow: visible;
+}
+
+.employee-master-page .budget-allocation-content {
+  flex: 0 0 auto;
+  min-height: max-content;
+  overflow: visible;
 }
 
 

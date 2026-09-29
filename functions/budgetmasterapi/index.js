@@ -4,113 +4,245 @@ const catalyst = require("zcatalyst-sdk-node");
 
 const TABLE_ID = "71873000000030413";
 
-function send(res, status, body) {
+function sendJson(res, status, body) {
   res.writeHead(status, {
     "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
   });
   res.end(JSON.stringify(body));
 }
 
+function value(row, key) {
+  if (row && row[key] !== undefined && row[key] !== null) return row[key];
+  return "";
+}
+
 function mapRow(row) {
-  const budget = Number(row.budget_amount || 0);
-  const additional = Number(row.additional_budget || 0);
-  const updated = budget + additional;
-  const utilized = Number(row.budget_utilized || 0);
+  var budget = Number(value(row, "budget_amount")) || 0;
+  var additional = Number(value(row, "additional_budget")) || 0;
+  var updated = budget + additional;
+  var utilized = Number(value(row, "budget_utilized")) || 0;
+  var remaining = value(row, "budget_remaining");
+
   return {
-    id: String(row.ROWID || ""),
-    appraisal_cycle_id: String(row.appraisal_cycle_id || ""),
-    tech_ed_id: String(row.tech_ed_id || ""),
-    budget_percentage: Number(row.budget_percentage || 0),
+    id: String(value(row, "ROWID") || value(row, "rowid")),
+    appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
+    tech_ed_id: String(value(row, "tech_ed_id")),
+    budget_percentage: Number(value(row, "budget_percentage")) || 0,
     budget_amount: budget,
     additional_budget: additional,
     budget_utilized: utilized,
-    budget_remaining: updated - utilized,
-    status: String(row.status || ""),
+    budget_remaining:
+      remaining === "" ? updated - utilized : Number(remaining) || 0,
+    status: String(value(row, "status")),
     updated_budget: updated,
   };
 }
 
-async function getUser(app) {
-  const user = await app.userManagement().getCurrentUser();
-  if (!user || !user.user_id) throw new Error("Authentication is required.");
-  return user;
+function getUserField(user, key) {
+  if (user && user[key] !== undefined && user[key] !== null) {
+    return String(user[key]).trim();
+  }
+  return "";
 }
 
-module.exports = async (req, res) => {
-  try {
-    if (req.method === "OPTIONS") return send(res, 204, {});
-    const app = catalyst.initialize(req);
-    const user = await getUser(app);
-    const adminApp = catalyst.initialize(req, { scope: "admin" });
-    const table = adminApp.datastore().table(TABLE_ID);
+function getCurrentUserName(user) {
+  var first = getUserField(user, "first_name");
+  var last = getUserField(user, "last_name");
+  var full = (first + " " + last).trim();
 
-    if (req.method === "GET") {
-      const result = await table.getPagedRows({ maxRows: 300 });
-      return send(res, 200, {
+  return (
+    getUserField(user, "display_name") ||
+    getUserField(user, "name") ||
+    full ||
+    getUserField(user, "email") ||
+    getUserField(user, "email_id")
+  );
+}
+
+function getUserRole(user) {
+  var role = "";
+
+  if (user && user.role_details) {
+    role = user.role_details.role_name || "";
+  }
+
+  if (!role && user) role = user.role_name || "";
+  if (!role && user) role = user.role || "";
+
+  return String(role).trim().toLowerCase();
+}
+
+function isHR(user) {
+  var role = getUserRole(user);
+  return role === "hr" || role.indexOf("hr") !== -1;
+}
+
+function getUserValues(user) {
+  var values = [];
+  var keys = [
+    "user_id",
+    "email",
+    "email_id",
+    "display_name",
+    "name",
+  ];
+
+  keys.forEach(function (key) {
+    var v = getUserField(user, key).toLowerCase();
+    if (v) values.push(v);
+  });
+
+  var full = (
+    getUserField(user, "first_name") +
+    " " +
+    getUserField(user, "last_name")
+  ).trim().toLowerCase();
+
+  if (full) values.push(full);
+
+  return values;
+}
+
+function matchesUser(techEdId, user) {
+  var owner = String(techEdId || "").trim().toLowerCase();
+  if (!owner) return false;
+
+  var values = getUserValues(user);
+
+  for (var i = 0; i < values.length; i += 1) {
+    if (
+      owner === values[i] ||
+      owner.indexOf(values[i]) !== -1 ||
+      values[i].indexOf(owner) !== -1
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function getCurrentUser(app) {
+  var user = await app.userManagement().getCurrentUser();
+  if (user && user.user_id) return user;
+  return null;
+}
+
+function parseBody(req) {
+  if (req.body && typeof req.body === "object") return req.body;
+
+  if (typeof req.body === "string" && req.body.trim()) {
+    try {
+      return JSON.parse(req.body);
+    } catch (error) {
+      return {};
+    }
+  }
+
+  return {};
+}
+
+module.exports = async function (req, res) {
+  try {
+    var method = String(req.method || "GET").toUpperCase();
+
+    if (method === "OPTIONS") {
+      return sendJson(res, 204, {});
+    }
+
+    var app = catalyst.initialize(req);
+
+    if (method === "GET") {
+      var table = app.datastore().table(TABLE_ID);
+      var result = await table.getPagedRows({
+        maxRows: 100,
+      });
+
+      var rows = result && Array.isArray(result.data) ? result.data : [];
+
+      return sendJson(res, 200, {
         success: true,
-        data: (result.data || []).map(mapRow),
-        current_user: {
-          id: String(user.user_id || ""),
-          name: String(
-            user.first_name
-              ? `${user.first_name} ${user.last_name || ""}`.trim()
-              : user.email || "",
-          ),
-          email: String(user.email || ""),
-        },
+        data: rows.map(mapRow),
+        current_user: null,
+        more_records: result && result.more_records === true,
+        next_token: result && result.next_token ? result.next_token : null,
       });
     }
 
-    if (req.method === "PUT") {
-      const body = req.body || {};
-      const id = String(body.id || "").trim();
-      if (!id)
-        return send(res, 400, {
+    if (method === "PUT") {
+      var putUser = await getCurrentUser(app);
+
+      if (!putUser) {
+        return sendJson(res, 401, {
+          success: false,
+          message: "Authentication is required.",
+        });
+      }
+
+      if (!isHR(putUser)) {
+        return sendJson(res, 403, {
+          success: false,
+          message: "Only HR can update Budget Master.",
+        });
+      }
+
+      var body = parseBody(req);
+      var id = String(body.id || "").trim();
+
+      if (!id) {
+        return sendJson(res, 400, {
           success: false,
           message: "Budget Master row id is required.",
         });
+      }
 
-      const allowed = [
+      var allowed = [
         "budget_percentage",
         "budget_amount",
         "additional_budget",
         "budget_utilized",
         "status",
       ];
-      const update = { ROWID: id };
-      allowed.forEach((key) => {
-        if (Object.prototype.hasOwnProperty.call(body, key))
+
+      var update = { ROWID: id };
+
+      allowed.forEach(function (key) {
+        if (Object.prototype.hasOwnProperty.call(body, key)) {
           update[key] = body[key];
+        }
       });
 
       if (Object.keys(update).length === 1) {
-        return send(res, 400, {
+        return sendJson(res, 400, {
           success: false,
           message: "No Budget Master fields were provided.",
         });
       }
 
-      const updated = await table.updateRow(update);
-      return send(res, 200, {
+      var putTable = app.datastore().table(TABLE_ID);
+      var updated = await putTable.updateRow(update);
+
+      return sendJson(res, 200, {
         success: true,
         data: mapRow(updated),
-        changed_by: String(user.email || user.user_id || ""),
+        changed_by:
+          getUserField(putUser, "email") ||
+          getUserField(putUser, "email_id") ||
+          getUserField(putUser, "user_id"),
       });
     }
 
-    return send(res, 405, { success: false, message: "Method not allowed" });
+    return sendJson(res, 405, {
+      success: false,
+      message: "Method not allowed",
+    });
   } catch (error) {
     console.error("budgetmasterapi:", error);
-    return send(
-      res,
-      error.message === "Authentication is required." ? 401 : 500,
-      {
-        success: false,
-        message: error.message || "Budget Master API failed.",
-      },
-    );
+
+    return sendJson(res, 500, {
+      success: false,
+      message:
+        error && error.message ? error.message : "Budget Master API failed.",
+    });
   }
 };

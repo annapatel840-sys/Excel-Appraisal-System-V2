@@ -1,21 +1,78 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
-import { useBudget } from "@/lib/budget-store";
-import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
-import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { useCatalystUser } from "@/lib/catalyst-auth";
 
 const NAVY = "#17365d";
 const TEAL = "#14a3a3";
 
-function lakh(value) {
-  return `₹ ${(Number(value || 0) / 100000).toFixed(2)} L`;
+const STATIC_BUDGETS = [
+  {
+    id: "BUD001",
+    appraisal_cycle_id: "Apr-26",
+    tech_ed_id: "Tech ED 01",
+    budget_percentage: 8.5,
+    budget_amount: 42500000,
+    additional_budget: 2500000,
+    budget_utilized: 28750000,
+    status: "Active",
+    team_size: 48,
+  },
+  {
+    id: "BUD002",
+    appraisal_cycle_id: "Apr-26",
+    tech_ed_id: "Tech ED 02",
+    budget_percentage: 8.0,
+    budget_amount: 38000000,
+    additional_budget: 1500000,
+    budget_utilized: 24100000,
+    status: "Active",
+    team_size: 42,
+  },
+  {
+    id: "BUD003",
+    appraisal_cycle_id: "Apr-26",
+    tech_ed_id: "Tech ED 03",
+    budget_percentage: 7.5,
+    budget_amount: 32000000,
+    additional_budget: 1000000,
+    budget_utilized: 19800000,
+    status: "Active",
+    team_size: 36,
+  },
+];
+
+const STATIC_AUDIT = [
+  {
+    id: "AUD001",
+    date: "28-Sep-2026 13:42",
+    tech_ed: "Tech ED 01",
+    field: "Budget Percentage",
+    oldValue: "8.0%",
+    newValue: "8.5%",
+    changedBy: "HR",
+    reason: "Annual appraisal budget revision",
+  },
+  {
+    id: "AUD002",
+    date: "26-Sep-2026 16:18",
+    tech_ed: "Tech ED 02",
+    field: "Additional Budget",
+    oldValue: "1000000",
+    newValue: "1500000",
+    changedBy: "HR",
+    reason: "Team allocation adjustment",
+  },
+];
+
+function money(value) {
+  return "₹ " + (Number(value || 0) / 10000000).toFixed(2) + " Cr";
 }
 
-function pct(value) {
-  return `${Number(value || 0).toFixed(1)}%`;
+function percent(value) {
+  return Number(value || 0).toFixed(1) + "%";
 }
 
-function SummaryTile({ label, value, sub }) {
+function Tile({ label, value, sub }) {
   return (
     <div className="px-4 py-3">
       <div className="text-[11px] text-slate-500">{label}</div>
@@ -25,503 +82,257 @@ function SummaryTile({ label, value, sub }) {
   );
 }
 
-function BudgetTable({ rows, employeeCounts, selectedId, onSelect }) {
+function AllocationTable({ rows, selectedId, onSelect }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[980px] border-collapse text-[12.5px]">
+      <table className="w-full min-w-[1100px] table-fixed border-collapse text-[12.5px]">
+        <colgroup>
+          <col className="w-[18%]" />
+          <col className="w-[9%]" />
+          <col className="w-[14%]" />
+          <col className="w-[11%]" />
+          <col className="w-[14%]" />
+          <col className="w-[11%]" />
+          <col className="w-[12%]" />
+          <col className="w-[6%]" />
+          <col className="w-[9%]" />
+        </colgroup>
         <thead>
           <tr>
-            {["Tech ED", "Budget %", "Original Budget", "Additional", "Updated Budget", "Utilised", "Remaining", "Team", "Status"].map((h) => (
-              <th key={h} className="border-b-2 border-[#9fb3cf] bg-[#eef2f7] px-2.5 py-2 text-left text-[12px] font-bold text-[#1e3a5f]">{h}</th>
-            ))}
+            {["Tech ED", "Budget %", "Original Budget", "Additional", "Updated Budget", "Utilised", "Remaining", "Team", "Status"].map(function (head, index) {
+              return (
+                <th
+                  key={head}
+                  className={"border-b-2 border-[#9fb3cf] bg-[#eef2f7] px-3 py-2 text-[12px] font-bold text-[#1e3a5f] " + (index > 0 && index < 8 ? "text-right" : "text-left")}
+                >
+                  {head}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr
-              key={row.id}
-              className={selectedId === row.id ? "bg-[#f0fdfa]" : ""}
-              onClick={() => onSelect(row.id)}
-            >
-              <td className="border-b border-[#e1e5eb] px-2.5 py-2 font-bold">{row.tech_ed_id || "—"}</td>
-              <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{pct(row.budget_percentage)}</td>
-              <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{lakh(row.budget_amount)}</td>
-              <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{lakh(row.additional_budget)}</td>
-              <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right font-bold">{lakh(row.updated_budget)}</td>
-              <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{lakh(row.budget_utilized)}</td>
-              <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{lakh(row.budget_remaining)}</td>
-              <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{employeeCounts[row.tech_ed_id] || 0}</td>
-              <td className="border-b border-[#e1e5eb] px-2.5 py-2">{row.status || "—"}</td>
-            </tr>
-          ))}
+          {rows.map(function (row) {
+            var updated = row.budget_amount + row.additional_budget;
+            var remaining = updated - row.budget_utilized;
+            return (
+              <tr key={row.id} className={selectedId === row.id ? "bg-[#f0fdfa]" : ""} onClick={function () { onSelect(row.id); }}>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-left font-bold align-middle">{row.tech_ed_id}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-right align-middle">{percent(row.budget_percentage)}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-right align-middle">{money(row.budget_amount)}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-right align-middle">{money(row.additional_budget)}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-right font-bold align-middle">{money(updated)}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-right align-middle">{money(row.budget_utilized)}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-right align-middle">{money(remaining)}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-right align-middle">{row.team_size}</td>
+                <td className="border-b border-[#e1e5eb] px-3 py-2 text-left align-middle">{row.status}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
   );
 }
 
-function ApplyBudget({ rows, selected, employeeCounts, updateBudget, currentUser, onSaved }) {
-  const [percentage, setPercentage] = useState("");
-  const [additional, setAdditional] = useState("");
-  const [status, setStatus] = useState("");
-  const [reason, setReason] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState("");
-
-  useEffect(() => {
-    if (!selected) return;
-    setPercentage(String(selected.budget_percentage ?? ""));
-    setAdditional(String(selected.additional_budget ?? ""));
-    setStatus(selected.status || "Active");
-    setReason("");
-    setMessage("");
-  }, [selected]);
-
-  if (!selected) return null;
-
-  const save = async () => {
-    const nextPercentage = Number(percentage);
-    const nextAdditional = Number(additional);
-
-    if (!Number.isFinite(nextPercentage) || nextPercentage < 0 || nextPercentage > 100) {
-      setMessage("Budget percentage must be between 0 and 100.");
-      return;
-    }
-
-    if (!Number.isFinite(nextAdditional) || nextAdditional < 0) {
-      setMessage("Additional budget cannot be negative.");
-      return;
-    }
-
-    if (!reason.trim()) {
-      setMessage("Reason is required.");
-      return;
-    }
-
-    const changes = {};
-    const audits = [];
-
-    if (nextPercentage !== Number(selected.budget_percentage || 0)) {
-      changes.budget_percentage = nextPercentage;
-      audits.push(["Budget Percentage", selected.budget_percentage, nextPercentage]);
-    }
-
-    if (nextAdditional !== Number(selected.additional_budget || 0)) {
-      changes.additional_budget = nextAdditional;
-      audits.push(["Additional Budget", selected.additional_budget, nextAdditional]);
-    }
-
-    if (status !== (selected.status || "Active")) {
-      changes.status = status;
-      audits.push(["Status", selected.status || "", status]);
-    }
-
-    if (!Object.keys(changes).length) {
-      setMessage("No changes to apply.");
-      return;
-    }
-
-    setSaving(true);
-    setMessage("");
-
-    try {
-      await updateBudget(selected.id, changes);
-
-      const auditResponse = await catalystFetch(catalystFunctionUrl("appraisalauditapi"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          audits: audits.map(([field, oldValue, newValue]) => ({
-            emp_id: selected.tech_ed_id,
-            employee_name: selected.tech_ed_id,
-            field_name: field,
-            old_value: oldValue,
-            new_value: newValue,
-            changed_by: currentUser.email || currentUser.name || "HR",
-            changed_at: new Date().toISOString(),
-            source: `budget_allocation | reason: ${reason.trim()}`,
-            appraisal_year: selected.appraisal_cycle_id || "Apr-26",
-          })),
-        }),
-      });
-
-      const auditJson = await auditResponse.json().catch(() => ({}));
-      if (!auditResponse.ok) {
-        throw new Error(auditJson?.message || "Budget saved, but audit trail could not be recorded.");
-      }
-
-      setMessage("Budget applied successfully and audit trail recorded.");
-      setReason("");
-      onSaved();
-    } catch (error) {
-      setMessage(error?.message || "Unable to apply budget.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
+function AuditPage() {
   return (
-    <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
-      <div className="rounded-lg border border-[#d4dbe5] bg-white">
-        <div className="px-4 py-2.5 text-[13px] font-semibold text-white" style={{ background: NAVY }}>
-          Apply Budget · {selected.tech_ed_id}
-        </div>
-
-        <div className="grid gap-3 p-4 sm:grid-cols-2">
-          <SummaryTile label="Original Budget" value={lakh(selected.budget_amount)} />
-          <SummaryTile label="Current Additional" value={lakh(selected.additional_budget)} />
-          <SummaryTile label="Current Budget %" value={pct(selected.budget_percentage)} />
-          <SummaryTile label="Current Updated Budget" value={lakh(selected.updated_budget)} />
-
-          <label className="text-[12px] font-semibold text-[#334155]">
-            Budget %
-            <input
-              type="number"
-              min="0"
-              max="100"
-              step="0.1"
-              value={percentage}
-              onChange={(e) => setPercentage(e.target.value)}
-              className="mt-1 h-9 w-full rounded-md border border-[#cbd5e1] px-2.5 font-normal outline-none focus:border-[#14a3a3]"
-            />
-          </label>
-
-          <label className="text-[12px] font-semibold text-[#334155]">
-            Additional Budget
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              value={additional}
-              onChange={(e) => setAdditional(e.target.value)}
-              className="mt-1 h-9 w-full rounded-md border border-[#cbd5e1] px-2.5 font-normal outline-none focus:border-[#14a3a3]"
-            />
-          </label>
-
-          <label className="text-[12px] font-semibold text-[#334155]">
-            Status
-            <select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="mt-1 h-9 w-full rounded-md border border-[#cbd5e1] px-2.5 font-normal outline-none focus:border-[#14a3a3]"
-            >
-              <option value="Active">Active</option>
-              <option value="Inactive">Inactive</option>
-              <option value="Pending">Pending</option>
-            </select>
-          </label>
-
-          <label className="text-[12px] font-semibold text-[#334155] sm:col-span-2">
-            Reason
-            <textarea
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              rows={3}
-              placeholder="Enter reason for this budget change"
-              className="mt-1 w-full rounded-md border border-[#cbd5e1] p-2.5 font-normal outline-none focus:border-[#14a3a3]"
-            />
-          </label>
-        </div>
-
-        {message ? (
-          <div className={`mx-4 mb-4 rounded-md border px-3 py-2 text-[12px] ${message.includes("successfully") ? "border-[#b7ebd5] bg-[#f0fdf4] text-[#166534]" : "border-[#f0c7c7] bg-[#fff5f5] text-[#a8071a]"}`}>
-            {message}
-          </div>
-        ) : null}
-
-        <div className="flex justify-end border-t border-[#e1e5eb] px-4 py-3">
-          <button
-            type="button"
-            disabled={saving}
-            onClick={save}
-            className="rounded-md px-3 py-2 text-[12px] font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
-            style={{ background: TEAL }}
-          >
-            {saving ? "Applying..." : "Apply Budget"}
-          </button>
-        </div>
+    <div className="overflow-hidden rounded-lg border border-[#d4dbe5] bg-white">
+      <div className="px-4 py-2.5 text-[13px] font-semibold text-white" style={{ background: NAVY }}>
+        Budget Audit Trail
       </div>
-
-      <div className="rounded-lg border border-[#d4dbe5] bg-white">
-        <div className="px-4 py-2.5 text-[13px] font-semibold text-white" style={{ background: NAVY }}>
-          Budget Summary
-        </div>
-        <div className="grid grid-cols-1 divide-y divide-[#e1e5eb]">
-          <SummaryTile label="Team size" value={String(employeeCounts[selected.tech_ed_id] || 0)} sub="Active + eligible" />
-          <SummaryTile label="Utilised" value={lakh(selected.budget_utilized)} />
-          <SummaryTile label="Remaining" value={lakh(selected.budget_remaining)} />
-          <SummaryTile label="Updated budget" value={lakh(selected.updated_budget)} />
-        </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[900px] border-collapse text-[12px]">
+          <thead>
+            <tr>
+              {["Date", "Tech ED", "Field", "Old Value", "New Value", "Changed By", "Reason"].map(function (head) {
+                return <th key={head} className="border-b-2 border-[#9fb3cf] bg-[#eef2f7] px-3 py-2 text-left font-bold text-[#1e3a5f]">{head}</th>;
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {STATIC_AUDIT.map(function (row) {
+              return (
+                <tr key={row.id}>
+                  <td className="border-b border-[#e1e5eb] px-3 py-2">{row.date}</td>
+                  <td className="border-b border-[#e1e5eb] px-3 py-2 font-bold">{row.tech_ed}</td>
+                  <td className="border-b border-[#e1e5eb] px-3 py-2">{row.field}</td>
+                  <td className="border-b border-[#e1e5eb] px-3 py-2">{row.oldValue}</td>
+                  <td className="border-b border-[#e1e5eb] px-3 py-2 font-semibold">{row.newValue}</td>
+                  <td className="border-b border-[#e1e5eb] px-3 py-2">{row.changedBy}</td>
+                  <td className="border-b border-[#e1e5eb] px-3 py-2">{row.reason}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
     </div>
   );
 }
 
-function AuditTrail({ rows, loading, error, onReload }) {
+function ApplyPage({ selected, onChange }) {
+  const [percentage, setPercentage] = useState(String(selected.budget_percentage));
+  const [additional, setAdditional] = useState(String(selected.additional_budget));
+  const [reason, setReason] = useState("");
+
+  var updated = selected.budget_amount + selected.additional_budget;
+  var nextUpdated = selected.budget_amount + Number(additional || 0);
+
   return (
-    <div className="overflow-hidden rounded-lg border border-[#d4dbe5] bg-white">
-      <div className="flex items-center justify-between px-4 py-2.5" style={{ background: NAVY }}>
-        <div className="text-[13px] font-semibold text-white">Budget Audit Trail</div>
-        <button type="button" onClick={onReload} className="rounded-md bg-white/10 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-white/20">
-          Refresh
-        </button>
+    <div className="pr-1"><div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="rounded-lg border border-[#d4dbe5] bg-white">
+        <div className="px-4 py-2.5 text-[13px] font-semibold text-white" style={{ background: NAVY }}>
+          Apply Budget · {selected.tech_ed_id}
+        </div>
+        <div className="grid gap-3 p-4 sm:grid-cols-2">
+          <Tile label="Original Budget" value={money(selected.budget_amount)} />
+          <Tile label="Current Additional" value={money(selected.additional_budget)} />
+          <Tile label="Current Budget %" value={percent(selected.budget_percentage)} />
+          <Tile label="Current Updated Budget" value={money(updated)} />
+
+          <label className="text-[12px] font-semibold text-[#334155]">
+            Budget %
+            <input type="number" min="0" max="100" step="0.1" value={percentage} onChange={function (e) { setPercentage(e.target.value); }} className="mt-1 h-9 w-full rounded-md border border-[#cbd5e1] px-2.5 font-normal" />
+          </label>
+
+          <label className="text-[12px] font-semibold text-[#334155]">
+            Additional Budget
+            <input type="number" min="0" step="0.01" value={additional} onChange={function (e) { setAdditional(e.target.value); }} className="mt-1 h-9 w-full rounded-md border border-[#cbd5e1] px-2.5 font-normal" />
+          </label>
+
+          <div className="rounded-md border border-[#dbe3ec] bg-[#f8fafc] p-3">
+            <div className="text-[11px] text-slate-500">New Budget Preview</div>
+            <div className="mt-1 text-[18px] font-bold" style={{ color: TEAL }}>{money(nextUpdated)}</div>
+          </div>
+
+          <label className="text-[12px] font-semibold text-[#334155] sm:col-span-2">
+            Reason
+            <textarea value={reason} onChange={function (e) { setReason(e.target.value); }} rows={3} placeholder="Enter reason for this budget change" className="mt-1 w-full rounded-md border border-[#cbd5e1] p-2.5 font-normal" />
+          </label>
+        </div>
+        <div className="flex justify-end border-t border-[#e1e5eb] px-4 py-3">
+          <button type="button" onClick={function () { onChange(selected.id, Number(percentage), Number(additional)); }} className="rounded-md px-3 py-2 text-[12px] font-bold text-white" style={{ background: TEAL }}>
+            Apply Budget
+          </button>
+        </div>
       </div>
 
-      {loading ? (
-        <div className="p-6 text-center text-[12px] text-slate-500">Loading audit trail...</div>
-      ) : error ? (
-        <div className="p-6 text-center text-[12px] text-[#a8071a]">{error}</div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1000px] border-collapse text-[12px]">
-            <thead>
-              <tr>
-                {["Date", "Tech ED", "Field", "Old Value", "New Value", "Changed By", "Source"].map((h) => (
-                  <th key={h} className="border-b-2 border-[#9fb3cf] bg-[#eef2f7] px-2.5 py-2 text-left font-bold text-[#1e3a5f]">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row, index) => (
-                <tr key={row.ROWID || row.id || `${row.emp_id}-${row.changed_at}-${index}`}>
-                  <td className="border-b border-[#e1e5eb] px-2.5 py-2 whitespace-nowrap">{row.changed_at || row.CREATEDTIME || "—"}</td>
-                  <td className="border-b border-[#e1e5eb] px-2.5 py-2 font-bold">{row.emp_id || "—"}</td>
-                  <td className="border-b border-[#e1e5eb] px-2.5 py-2">{row.field_name || "—"}</td>
-                  <td className="border-b border-[#e1e5eb] px-2.5 py-2">{row.old_value || "—"}</td>
-                  <td className="border-b border-[#e1e5eb] px-2.5 py-2 font-semibold">{row.new_value || "—"}</td>
-                  <td className="border-b border-[#e1e5eb] px-2.5 py-2">{row.changed_by || "—"}</td>
-                  <td className="border-b border-[#e1e5eb] px-2.5 py-2 max-w-[360px]">{row.source || "—"}</td>
-                </tr>
-              ))}
-              {!rows.length && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-[12px] text-slate-400">No budget changes recorded.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      )}
+      <div className="rounded-lg border border-[#d4dbe5] bg-white">
+        <div className="px-4 py-2.5 text-[13px] font-semibold text-white" style={{ background: NAVY }}>Budget Summary</div>
+        <Tile label="Team size" value={String(selected.team_size)} sub="Active + eligible" />
+        <Tile label="Utilised" value={money(selected.budget_utilized)} />
+        <Tile label="Remaining" value={money(updated - selected.budget_utilized)} />
+        <Tile label="Updated budget" value={money(updated)} />
+      </div>
+      </div>
     </div>
   );
 }
 
 export function BudgetAllocationPage() {
-  const budget = useBudget();
-  const [activePage, setActivePage] = useState("allocation");
-  const [selectedId, setSelectedId] = useState(null);
-  const [auditRows, setAuditRows] = useState([]);
-  const [auditLoading, setAuditLoading] = useState(false);
-  const [auditError, setAuditError] = useState("");
-  const [cycles, setCycles] = useState([]);
-  const [selectedCycleId, setSelectedCycleId] = useState("");
+  const user = useCatalystUser();
+  const role = String(user && user.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const isHR = role === "hr";
+  const [page, setPage] = useState("apply");
+  const [rows, setRows] = useState(STATIC_BUDGETS);
+  const [selectedId, setSelectedId] = useState(STATIC_BUDGETS[0].id);
 
-  // Cycle names/dates for the selector; budget rows only carry the cycle id.
-  useEffect(() => {
-    let active = true;
-    payrollCycleRequest("cycles")
-      .then((data) => {
-        if (active) setCycles(Array.isArray(data) ? data : []);
-      })
-      .catch(() => {
-        if (active) setCycles([]);
+  const selected = useMemo(function () {
+    return rows.find(function (row) { return row.id === selectedId; }) || rows[0];
+  }, [rows, selectedId]);
+
+  function updateLocal(id, percentage, additional) {
+    setRows(function (current) {
+      return current.map(function (row) {
+        if (row.id !== id) return row;
+        return {
+          ...row,
+          budget_percentage: percentage,
+          additional_budget: additional,
+        };
       });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const cycleOptions = useMemo(() => {
-    const ids = [...new Set(budget.budgetRows.map((row) => row.appraisal_cycle_id).filter(Boolean))];
-    return ids
-      .map((id) => {
-        const cycle = cycles.find((item) => String(item.id) === id);
-        return { id, name: cycle?.name || id, status: cycle?.status || "", start: cycle?.start || "" };
-      })
-      .sort((a, b) => String(b.start).localeCompare(String(a.start)) || a.name.localeCompare(b.name));
-  }, [budget.budgetRows, cycles]);
-
-  // Default to the Active cycle, else the latest one.
-  const defaultCycleId = (cycleOptions.find((cycle) => cycle.status === "Active") || cycleOptions[0])?.id || "";
-  const cycleId = cycleOptions.some((cycle) => cycle.id === selectedCycleId) ? selectedCycleId : defaultCycleId;
-  const cycleRecord = cycleOptions.find((cycle) => cycle.id === cycleId);
-
-  // Totals and tables are scoped to one cycle to avoid double counting.
-  const cycleRows = useMemo(
-    () => (cycleId ? budget.budgetRows.filter((row) => row.appraisal_cycle_id === cycleId) : budget.budgetRows),
-    [budget.budgetRows, cycleId],
-  );
-
-  const cycleTotals = useMemo(
-    () =>
-      cycleRows.reduce(
-        (sum, row) => ({
-          base: sum.base + row.budget_amount,
-          additional: sum.additional + row.additional_budget,
-          updated: sum.updated + row.updated_budget,
-          utilized: sum.utilized + row.budget_utilized,
-          remaining: sum.remaining + row.budget_remaining,
-        }),
-        { base: 0, additional: 0, updated: 0, utilized: 0, remaining: 0 },
-      ),
-    [cycleRows],
-  );
-
-  const selected = useMemo(
-    () => cycleRows.find((row) => row.id === selectedId) || cycleRows[0] || null,
-    [cycleRows, selectedId],
-  );
-
-  const loadAudit = useCallback(async () => {
-    setAuditLoading(true);
-    setAuditError("");
-
-    try {
-      const response = await catalystFetch(
-        catalystFunctionUrl("appraisalauditapi") + "?limit=500",
-      );
-      const json = await response.json().catch(() => ({}));
-
-      if (!response.ok) {
-        throw new Error(json?.message || `Failed to load audit trail (${response.status}).`);
-      }
-
-      const rows = Array.isArray(json?.data) ? json.data : [];
-      setAuditRows(rows.filter((row) => String(row.source || "").toLowerCase().includes("budget_allocation")));
-    } catch (error) {
-      setAuditRows([]);
-      setAuditError(error?.message || "Unable to load budget audit trail.");
-    } finally {
-      setAuditLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (activePage === "audit") loadAudit();
-  }, [activePage, loadAudit]);
-
-  if (budget.loading) {
-    return <div className="em-tab-content"><div className="em-empty">Loading Budget Master...</div></div>;
+    });
+    setPage("allocation");
   }
 
-  if (budget.error) {
-    return <div className="em-tab-content"><div className="em-empty text-[#a8071a]">{budget.error}</div></div>;
-  }
+  var totals = rows.reduce(function (sum, row) {
+    var updated = row.budget_amount + row.additional_budget;
+    sum.original += row.budget_amount;
+    sum.additional += row.additional_budget;
+    sum.updated += updated;
+    sum.utilized += row.budget_utilized;
+    return sum;
+  }, { original: 0, additional: 0, updated: 0, utilized: 0 });
 
-  if (!budget.budgetRows.length) {
-    return <div className="em-tab-content"><div className="em-empty">No Budget Master record is available for this user/cycle.</div></div>;
-  }
-
-  const rows = cycleRows;
-  const t = cycleTotals;
-  const utilization = t.updated ? (t.utilized / t.updated) * 100 : 0;
-  const selectedCount = selected ? (budget.employeeCounts[selected.tech_ed_id] || 0) : 0;
+  var remaining = totals.updated - totals.utilized;
+  var utilization = totals.updated ? (totals.utilized / totals.updated) * 100 : 0;
 
   return (
-    <div className="em-tab-content">
-      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#d4dbe5] bg-white px-4 py-2.5 text-[12.5px]" style={{ borderLeft: `4px solid ${TEAL}` }}>
-        {cycleOptions.length > 1 ? (
-          <label>
-            Appraisal cycle{" "}
-            <select
-              value={cycleId}
-              onChange={(e) => {
-                setSelectedCycleId(e.target.value);
-                setSelectedId(null);
-              }}
-              className="ml-1 h-7 rounded-md border border-[#cbd5e1] px-2 text-[12px] font-bold outline-none focus:border-[#14a3a3]"
-            >
-              {cycleOptions.map((cycle) => (
-                <option key={cycle.id} value={cycle.id}>
-                  {cycle.name}{cycle.status ? ` (${cycle.status})` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <span>Appraisal cycle <b>{cycleRecord?.name || cycleId || "—"}</b></span>
-        )}
+    <div className="em-tab-content pr-1">
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#d4dbe5] bg-white px-4 py-2.5 text-[12.5px]" style={{ borderLeft: "4px solid " + TEAL }}>
+        <span>Appraisal cycle <b>Apr-26</b></span>
         <span className="h-4 w-px bg-[#d7dce3]" />
-        <span><b>HR</b></span>
+        <span><b>{isHR ? "HR" : "Tech ED"}</b></span>
         <span className="h-4 w-px bg-[#d7dce3]" />
-        <span>Current user <b>{budget.currentUser.name}</b></span>
+        <span>Current user <b>{user && (user.name || user.email) || "Current User"}</b></span>
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-1 rounded-lg border border-[#d4dbe5] bg-white p-1.5">
-        {[
-          ["allocation", "Budget Allocation"],
-          ["apply", "Apply Budget"],
-          ["audit", "Audit Trail"],
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setActivePage(key)}
-            className={`rounded-md px-3 py-2 text-[12px] font-semibold ${activePage === key ? "bg-[#17365d] text-white" : "text-[#334155] hover:bg-[#eef2f7]"}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {isHR ? (
+        <div className="mt-2 flex flex-wrap gap-1 rounded-lg border border-[#d4dbe5] bg-white p-1.5">
+          {[["apply", "Apply Budget"], ["audit", "Audit Trail"]].map(function (item) {
+            return (
+              <button key={item[0]} type="button" onClick={function () { setPage(item[0]); }} className={"rounded-md px-3 py-2 text-[12px] font-semibold " + (page === item[0] ? "bg-[#17365d] text-white" : "text-[#334155] hover:bg-[#eef2f7]")}>
+                {item[1]}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
 
-      {activePage === "allocation" && (
+      {isHR && page === "apply" ? (
         <>
           <div className="mt-2 overflow-hidden rounded-lg border border-[#d4dbe5] bg-white">
-            <div className="px-4 py-2.5 text-[13px] font-semibold text-white" style={{ background: NAVY }}>
-              All Budgets
-            </div>
+            <div className="px-4 py-2.5 text-[13px] font-semibold text-white" style={{ background: NAVY }}>Budget Allocation</div>
             <div className="grid grid-cols-2 divide-x divide-[#d7dce3] sm:grid-cols-3 lg:grid-cols-6">
-              <SummaryTile label="Original allotted" value={lakh(t.base)} sub="Budget Master" />
-              <SummaryTile label="Additional budget" value={lakh(t.additional)} />
-              <SummaryTile label="Updated budget" value={lakh(t.updated)} />
-              <SummaryTile label="Team size" value={String(rows.reduce((n, r) => n + (budget.employeeCounts[r.tech_ed_id] || 0), 0))} sub="Active + eligible employees" />
-              <SummaryTile label="Utilised" value={`${lakh(t.utilized)} (${pct(utilization)})`} />
-              <SummaryTile label="Remaining" value={lakh(t.remaining)} />
-            </div>
-            <div className="mx-4 mb-3 h-2 overflow-hidden rounded-full bg-[#e6ebf2]">
-              <div className="h-full rounded-full" style={{ width: `${Math.min(utilization, 100)}%`, background: utilization > 100 ? "#cf1322" : "linear-gradient(90deg,#14a3a3,#1b6fb5)" }} />
+              <Tile label="Original allotted" value={money(totals.original)} sub="Budget Master" />
+              <Tile label="Additional budget" value={money(totals.additional)} />
+              <Tile label="Updated budget" value={money(totals.updated)} />
+              <Tile label="Team size" value={String(rows.reduce(function (n, row) { return n + row.team_size; }, 0))} />
+              <Tile label="Utilised" value={money(totals.utilized) + " (" + percent(utilization) + ")"} />
+              <Tile label="Remaining" value={money(remaining)} />
             </div>
           </div>
-
           <div className="mt-2 rounded-lg border border-[#d4dbe5] bg-white">
-            <div className="px-4 py-2.5 text-[13px] font-semibold text-white" style={{ background: NAVY }}>
-              Allocation · {rows.length} Tech ED{rows.length === 1 ? "" : "s"}
-            </div>
-            <BudgetTable rows={rows} employeeCounts={budget.employeeCounts} selectedId={selected?.id} onSelect={setSelectedId} />
+            <div className="px-4 py-2.5 text-[13px] font-semibold text-white" style={{ background: NAVY }}>Tech ED-wise Allocation</div>
+            <AllocationTable rows={rows} selectedId={selected.id} onSelect={setSelectedId} />
           </div>
         </>
-      )}
+      ) : null}
 
-      {activePage === "apply" && (
+      {isHR && page === "apply" ? (
         <div className="mt-2">
           <div className="mb-2 rounded-lg border border-[#d4dbe5] bg-white p-3">
             <label className="text-[12px] font-semibold text-[#334155]">
               Select Tech ED
-              <select
-                value={selected?.id || ""}
-                onChange={(e) => setSelectedId(e.target.value)}
-                className="ml-2 h-8 rounded-md border border-[#cbd5e1] px-2 text-[12px] font-normal outline-none focus:border-[#14a3a3]"
-              >
-                {rows.map((row) => <option key={row.id} value={row.id}>{row.tech_ed_id}</option>)}
+              <select value={selected.id} onChange={function (e) { setSelectedId(e.target.value); }} className="ml-2 h-8 rounded-md border border-[#cbd5e1] px-2 text-[12px] font-normal">
+                {rows.map(function (row) { return <option key={row.id} value={row.id}>{row.tech_ed_id}</option>; })}
               </select>
             </label>
           </div>
-          <ApplyBudget
-            rows={rows}
-            selected={selected}
-            employeeCounts={budget.employeeCounts}
-            updateBudget={budget.updateBudget}
-            currentUser={budget.currentUser}
-            onSaved={() => setActivePage("audit")}
-          />
+          <ApplyPage selected={selected} onChange={updateLocal} />
         </div>
-      )}
+      ) : null}
 
-      {activePage === "audit" && (
-        <div className="mt-2">
-          <AuditTrail rows={auditRows} loading={auditLoading} error={auditError} onReload={loadAudit} />
+      {isHR && page === "audit" ? <div className="mt-2"><AuditPage /></div> : null}
+
+      {!isHR ? (
+        <div className="mt-2 grid gap-3 md:grid-cols-3">
+          <div className="rounded-lg border border-[#d4dbe5] bg-white"><Tile label="My Budget" value={money(selected.updated_budget || selected.budget_amount + selected.additional_budget)} sub={"Original " + money(selected.budget_amount) + " + Additional " + money(selected.additional_budget)} /></div>
+          <div className="rounded-lg border border-[#d4dbe5] bg-white"><Tile label="Allocation" value={money(selected.budget_amount + selected.additional_budget - selected.budget_utilized)} sub={"Utilised " + money(selected.budget_utilized)} /></div>
+          <div className="rounded-lg border border-[#d4dbe5] bg-white"><Tile label="% Applied" value={percent(selected.budget_percentage)} sub="Current appraisal budget percentage" /></div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

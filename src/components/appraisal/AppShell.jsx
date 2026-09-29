@@ -1,4 +1,4 @@
-import { LayoutDashboard, Table2, Users, BookOpen, LogOut } from "lucide-react";
+import { LayoutDashboard, Table2, Users, BookOpen, LogOut, ChevronDown } from "lucide-react";
 
 import { useCatalystSignOut, useCatalystUser } from "@/lib/catalyst-auth";
 import { cn } from "@/lib/utils";
@@ -12,11 +12,14 @@ export function AppShell({ children, headerActions }) {
   const user = useCatalystUser();
   const role = String(user?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
+  const isHR = role === "hr" || role === "humanresources" || role === "hroperation";
 
   const allNav = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
     { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
-    { to: "/employee-master", label: "HR Operations", icon: Users },
+    ...(isTechEd
+      ? []
+      : [{ to: "/employee-master", label: "HR Operations", icon: Users, dropdown: isHR }]),
     { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
   ];
 
@@ -67,22 +70,60 @@ export function AppShell({ children, headerActions }) {
           <nav className="flex items-center gap-0.5">
             {nav.map((item) => {
               const Icon = item.icon;
+              const isHrMenu = item.dropdown;
 
               return (
-                <a
+                <div
                   key={item.to}
-                  href={item.to}
-                  onClick={(event) => navigate(event, item.to)}
-                  className={cn(
-                    "flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors",
-                    pathname === item.to
-                      ? "bg-white/15 text-white"
-                      : "text-white/75 hover:bg-white/10 hover:text-white",
-                  )}
+                  className={cn("relative", isHrMenu && "group")}
                 >
-                  <Icon className="size-3.5" />
-                  {item.label}
-                </a>
+                  <a
+                    href={item.to}
+                    onClick={(event) => navigate(event, item.to)}
+                    className={cn(
+                      "flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors",
+                      pathname.startsWith(item.to)
+                        ? "bg-white/15 text-white"
+                        : "text-white/75 hover:bg-white/10 hover:text-white",
+                    )}
+                    aria-haspopup={isHrMenu ? "menu" : undefined}
+                  >
+                    <Icon className="size-3.5" />
+                    {item.label}
+                    {isHrMenu && <ChevronDown className="size-3" />}
+                  </a>
+
+                  {isHrMenu && (
+                    <div
+                      className="invisible absolute left-0 top-full z-[100] min-w-[190px] pt-1 opacity-0 transition-opacity group-hover:visible group-hover:opacity-100"
+                      role="menu"
+                    >
+                      <div className="overflow-hidden rounded-md border border-[#d8e0ea] bg-white py-1 shadow-xl">
+                        {[
+                          ["Employee Master", "roster"],
+                          ["Eligibility List", "eligibility"],
+                          ["Appraisal Cycle Master", "appraisal-cycle"],
+                          ["Payroll Data", "payroll-data"],
+                          ["Payroll Upload", "payroll-upload"],
+                          ["Team Changes", "team-changes"],
+                          ["Budget Allocation", "budget-allocation"],
+                        ].map(([label, tab]) => (
+                          <a
+                            key={tab}
+                            href={`/employee-master?tab=${tab}`}
+                            onClick={(event) =>
+                              navigate(event, `/employee-master?tab=${tab}`)
+                            }
+                            className="block whitespace-nowrap px-3 py-2 text-[11px] font-medium text-[#334155] hover:bg-[#eef5f5] hover:text-[#0B6A66]"
+                            role="menuitem"
+                          >
+                            {label}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               );
             })}
           </nav>

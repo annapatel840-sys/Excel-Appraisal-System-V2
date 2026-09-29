@@ -61,11 +61,11 @@ async function fetchAllEligibleEmployees() {
     const response = await catalystFetch(url.toString());
     let json = {};
     try { json = await response.json(); } catch (_) { json = {}; }
-    if (!response.ok || json?.success === false) {
-      throw new Error(json?.message || `Failed to load employees for budget counts (${response.status}).`);
+    if (!response.ok || json && json.success === false) {
+      throw new Error(json && json.message || `Failed to load employees for budget counts (${response.status}).`);
     }
-    employees.push(...(Array.isArray(json?.data) ? json.data : []));
-    totalPages = Math.max(1, Number(json?.pagination?.totalPages || 1));
+    employees.push(...(Array.isArray(json && json.data) ? json.data : []));
+    totalPages = Math.max(1, Number(json && json.pagination && json.pagination.totalPages || 1));
     page += 1;
   } while (page <= totalPages);
   return employees;
@@ -75,9 +75,9 @@ export function BudgetProvider({ children }) {
   const authenticatedUser = useCatalystUser();
   const currentUser = useMemo(
     () => ({
-      name: authenticatedUser?.name || authenticatedUser?.email || "Unknown user",
-      email: authenticatedUser?.email || "",
-      role: authenticatedUser?.role || "",
+      name: authenticatedUser && authenticatedUser.name || authenticatedUser && authenticatedUser.email || "Unknown user",
+      email: authenticatedUser && authenticatedUser.email || "",
+      role: authenticatedUser && authenticatedUser.role || "",
     }),
     [authenticatedUser],
   );
@@ -106,11 +106,11 @@ export function BudgetProvider({ children }) {
       if (!budgetResponse.ok) {
         const statusText = budgetResponse.status === 404
           ? "Budget Master API is not deployed in the current Catalyst environment."
-          : (budgetJson?.message || `Failed to load Budget Master (${budgetResponse.status}).`);
+          : (budgetJson && budgetJson.message || `Failed to load Budget Master (${budgetResponse.status}).`);
         throw new Error(statusText);
       }
 
-      setBudgetRows((Array.isArray(budgetJson?.data) ? budgetJson.data : []).map(normalizeRow));
+      setBudgetRows((Array.isArray(budgetJson && budgetJson.data) ? budgetJson.data : []).map(normalizeRow));
       setEmployeeRows(employeeResult.employees);
       if (employeeResult.employeeError) {
         console.error("Failed to load employees for budget counts:", employeeResult.employeeError);
@@ -120,7 +120,7 @@ export function BudgetProvider({ children }) {
       console.error("Failed to load Budget Master:", e);
       setBudgetRows([]);
       setEmployeeRows([]);
-      setError(e?.message || "Failed to load Budget Master.");
+      setError(e && e.message || "Failed to load Budget Master.");
     } finally {
       setLoading(false);
     }
@@ -134,9 +134,9 @@ export function BudgetProvider({ children }) {
     const active = budgetRows.filter((row) => !row.status || row.status.toLowerCase() === "active");
     if (isHR) return active;
     const identities = [
-      authenticatedUser?.id,
-      authenticatedUser?.name,
-      authenticatedUser?.email,
+      authenticatedUser && authenticatedUser.id,
+      authenticatedUser && authenticatedUser.name,
+      authenticatedUser && authenticatedUser.email,
     ].map(normalizeOwner).filter(Boolean);
     return active.filter((row) => ownerMatches(row.tech_ed_id, identities));
   }, [budgetRows, authenticatedUser, isHR]);
@@ -195,7 +195,7 @@ export function BudgetProvider({ children }) {
       body: JSON.stringify({ id, ...changes }),
     });
     const result = await response.json();
-    if (!response.ok) throw new Error(result?.message || "Budget update failed.");
+    if (!response.ok) throw new Error(result && result.message || "Budget update failed.");
     await load();
     return result;
   }, [load]);
