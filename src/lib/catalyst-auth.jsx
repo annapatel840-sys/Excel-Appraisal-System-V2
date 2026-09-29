@@ -1,8 +1,10 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
+import { CATALYST_SESSION_EXPIRED_EVENT } from "./catalyst-api";
 import { payrollCycleRequest } from "./payroll-cycle-api";
 
 const CatalystAuthContext = createContext(null);
+// Legacy key from an old sign-out workaround; it is only cleared now.
 const SIGNED_OUT_STORAGE_KEY = "catalyst-app-signed-out";
 
 export function useCatalystUser() {
@@ -13,6 +15,21 @@ export function useCatalystSignOut() {
   return useContext(CatalystAuthContext)?.signOut;
 }
 
+// Signed in only when Catalyst reports 200 with a user id; a logged-out
+// browser resolves with status 400 and empty content.
+function isSignedInResult(result) {
+  return result?.status === 200 && Boolean(result?.content?.user_id);
+}
+
+function isUnauthorizedError(error) {
+  return (
+    error?.status === 401 ||
+    error?.statusCode === 401 ||
+    error?.response?.status === 401 ||
+    error?.code === 700
+  );
+}
+
 export function CatalystAuthGate({ children }) {
   const [user, setUser] = useState(null);
   const [state, setState] = useState("loading");
@@ -20,6 +37,8 @@ export function CatalystAuthGate({ children }) {
 
   useEffect(() => {
     let mounted = true;
+    // The real Catalyst session is the source of truth; drop the old flag.
+    window.sessionStorage.removeItem(SIGNED_OUT_STORAGE_KEY);
 
     const checkSession = async () => {
       const deadline = Date.now() + 5000;
@@ -35,21 +54,16 @@ export function CatalystAuthGate({ children }) {
         return;
       }
 
-      if (window.sessionStorage.getItem(SIGNED_OUT_STORAGE_KEY) === "true") {
-        setState("signed-out");
-        return;
-      }
-
       try {
-        await auth.isUserAuthenticated();
+        const result = await auth.isUserAuthenticated();
+        if (!mounted) return;
+        if (!isSignedInResult(result)) {
+          setState("signed-out");
+          return;
+        }
       } catch (error) {
         if (!mounted) return;
-        if (
-          error?.status === 401 ||
-          error?.statusCode === 401 ||
-          error?.response?.status === 401 ||
-          error?.code === 700
-        ) {
+        if (isUnauthorizedError(error)) {
           setState("signed-out");
           return;
         }
@@ -81,6 +95,30 @@ export function CatalystAuthGate({ children }) {
     };
   }, []);
 
+  // API calls report an expired session (401 / token timeout). Confirm with
+  // Catalyst and return to sign-in only if the session is really gone.
+  useEffect(() => {
+    if (state !== "authenticated") return;
+    let active = true;
+    const onSessionExpired = async () => {
+      let signedIn = false;
+      try {
+        signedIn = isSignedInResult(await window.catalyst?.auth?.isUserAuthenticated?.());
+      } catch {
+        signedIn = false;
+      }
+      if (!active || signedIn) return;
+      setUser(null);
+      setMessage("Your Catalyst session has ended. Sign in again to continue.");
+      setState("signed-out");
+    };
+    window.addEventListener(CATALYST_SESSION_EXPIRED_EVENT, onSessionExpired);
+    return () => {
+      active = false;
+      window.removeEventListener(CATALYST_SESSION_EXPIRED_EVENT, onSessionExpired);
+    };
+  }, [state]);
+
   const signIn = () => {
     const auth = window.catalyst?.auth;
     if (!auth?.signIn) {
@@ -90,9 +128,6 @@ export function CatalystAuthGate({ children }) {
       setState("error");
       return;
     }
-
-    window.sessionStorage.removeItem(SIGNED_OUT_STORAGE_KEY);
-    setMessage("");
 
     window.requestAnimationFrame(() => {
       auth.signIn("catalyst-login-container", {
@@ -107,7 +142,10 @@ export function CatalystAuthGate({ children }) {
     return () => window.clearTimeout(timer);
   }, [state]);
 
-  const signOut = async () => {
+  // auth.signOut() synchronously navigates to the Catalyst logout URL, which
+  // ends the session and returns to the app origin. Switch to "loading" so the
+  // auto sign-in effect and the app tree don't run during the redirect.
+  const signOut = () => {
     const auth = window.catalyst?.auth;
     if (!auth?.signOut) {
       setMessage("Catalyst sign out is unavailable. Reload the Slate app and try again.");
@@ -115,19 +153,10 @@ export function CatalystAuthGate({ children }) {
       return;
     }
 
-    window.sessionStorage.setItem(SIGNED_OUT_STORAGE_KEY, "true");
-    try {
-      await auth.signOut(window.location.origin);
-      setUser(null);
-      setMessage(
-        "You are signed out of this app. The Catalyst backend session may remain active because Slate and the API use separate origins.",
-      );
-      setState("signed-out");
-    } catch (error) {
-      window.sessionStorage.removeItem(SIGNED_OUT_STORAGE_KEY);
-      setMessage(error?.message || "Unable to sign out of Catalyst.");
-      setState("error");
-    }
+    setUser(null);
+    setMessage("");
+    setState("loading");
+    auth.signOut(window.location.origin);
   };
 
   if (state === "authenticated") {

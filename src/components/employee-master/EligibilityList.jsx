@@ -52,7 +52,9 @@ const COLUMNS = [
   },
   {
     key: "eligibleReason",
-    label: "Reason",
+    // Reason has no backend column: it is derived/entered locally and is
+    // lost on reload.
+    label: "Reason (not saved)",
     type: "text",
     get: (employee) => employee.eligibleReason || "",
   },
@@ -170,6 +172,13 @@ export function EligibilityList({
   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
 
   const safePage = Math.min(currentPage, totalPages);
+
+  // Keep currentPage in range when the row count shrinks.
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
 
   const paginatedRows = useMemo(() => {
     const start = (safePage - 1) * PAGE_SIZE;
@@ -310,18 +319,20 @@ export function EligibilityList({
                   Download Template
                 </button>
 
-                {/* Import Eligibility */}
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    fileInputRef.current?.click();
-                  }}
-                >
-                  <Upload size={14} />
-                  Import Eligibility
-                </button>
+                {/* Import Eligibility (only when the user may write) */}
+                {onImport && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      fileInputRef.current?.click();
+                    }}
+                  >
+                    <Upload size={14} />
+                    Import Eligibility
+                  </button>
+                )}
 
                 {/* Export Visible */}
                 <button
@@ -360,7 +371,7 @@ export function EligibilityList({
                 const file = event.target.files?.[0];
 
                 if (file) {
-                  onImport(file);
+                  onImport?.(file);
                 }
 
                 event.target.value = "";
@@ -395,7 +406,7 @@ export function EligibilityList({
                 </th>
               ))}
 
-              <th>Action</th>
+              {onChangeEligibility && <th>Action</th>}
             </tr>
           </thead>
 
@@ -436,22 +447,26 @@ export function EligibilityList({
                 {/* REASON */}
                 <td>
                   <div className="em-reason">
-                    {employee.eligibleReason || "—"}
+                    <span title="Not saved: there is no backend column for the reason">
+                      {employee.eligibleReason || "—"}
+                    </span>
 
                     {employee.manualOverride && <small>Manual</small>}
                   </div>
                 </td>
 
-                {/* ACTION */}
-                <td>
-                  <button
-                    type="button"
-                    className="em-change-btn"
-                    onClick={() => onChangeEligibility(employee)}
-                  >
-                    {getActionLabel(employee)}
-                  </button>
-                </td>
+                {/* ACTION (only when the user may write) */}
+                {onChangeEligibility && (
+                  <td>
+                    <button
+                      type="button"
+                      className="em-change-btn"
+                      onClick={() => onChangeEligibility(employee)}
+                    >
+                      {getActionLabel(employee)}
+                    </button>
+                  </td>
+                )}
               </tr>
             ))}
 
@@ -483,7 +498,7 @@ export function EligibilityList({
           <button
             type="button"
             disabled={safePage <= 1}
-            onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+            onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
             aria-label="Previous page"
           >
             <ChevronLeft size={14} />
@@ -505,9 +520,7 @@ export function EligibilityList({
           <button
             type="button"
             disabled={safePage >= totalPages}
-            onClick={() =>
-              setCurrentPage((page) => Math.min(totalPages, page + 1))
-            }
+            onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
             aria-label="Next page"
           >
             <ChevronRight size={14} />

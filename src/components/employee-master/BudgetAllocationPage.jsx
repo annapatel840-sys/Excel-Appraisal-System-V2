@@ -233,7 +233,7 @@ function ApplyPage({ selected, onChange }) {
 export function BudgetAllocationPage() {
   const user = useCatalystUser();
   const role = String(user && user.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
-  const isHR = role === "hr" || role.includes("hr");
+  const isHR = role === "hr";
   const [page, setPage] = useState("apply");
   const [rows, setRows] = useState(STATIC_BUDGETS);
   const [selectedId, setSelectedId] = useState(STATIC_BUDGETS[0].id);

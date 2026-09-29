@@ -6,6 +6,8 @@ export function ImportPreviewModal({
   title = "Import Preview",
   message = "",
   changes = [],
+  warnings = [],
+  submitting = false,
   onCancel,
   onConfirm,
 }) {
@@ -29,6 +31,7 @@ export function ImportPreviewModal({
           <button
             type="button"
             onClick={onCancel}
+            disabled={submitting}
             className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <X className="size-4" />
@@ -37,6 +40,14 @@ export function ImportPreviewModal({
 
         {/* Preview */}
         <div className="max-h-[55vh] overflow-auto p-5">
+          {warnings.length > 0 && (
+            <div className="mb-3 space-y-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+              {warnings.map((warning) => (
+                <p key={warning}>{warning}</p>
+              ))}
+            </div>
+          )}
+
           {changes.length === 0 ? (
             <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
               No changes found.
@@ -63,12 +74,44 @@ export function ImportPreviewModal({
                 <tbody>
                   {changes.map((change, index) => (
                     <tr key={change.empId || index} className="border-t">
-                      <td className="px-3 py-2">{change.name || "-"}</td>
+                      <td className="px-3 py-2">
+                        {change.name || "-"}
+                        {change.isNew && (
+                          <span className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+                            New
+                          </span>
+                        )}
+                      </td>
 
                       <td className="px-3 py-2">{change.empId || "-"}</td>
 
                       <td className="px-3 py-2">
-                        {change.change || change.description || "Updated"}
+                        {Array.isArray(change.diffs) && change.diffs.length > 0 ? (
+                          <ul className="space-y-0.5">
+                            {change.diffs.map((diff) => (
+                              <li key={diff.field}>
+                                <span className="font-medium">
+                                  {diff.field}:
+                                </span>{" "}
+                                {change.isNew ? (
+                                  diff.to
+                                ) : (
+                                  <>
+                                    <span className="text-muted-foreground">
+                                      {diff.from || "(empty)"}
+                                    </span>
+                                    {" → "}
+                                    {diff.to}
+                                  </>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          change.change ||
+                          change.description ||
+                          (change.isNew ? "New employee" : "Updated")
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -80,12 +123,17 @@ export function ImportPreviewModal({
 
         {/* Footer */}
         <div className="flex justify-end gap-2 border-t px-5 py-4">
-          <Button type="button" variant="outline" onClick={onCancel}>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={submitting}
+          >
             Cancel
           </Button>
 
-          <Button type="button" onClick={onConfirm}>
-            Confirm Import
+          <Button type="button" onClick={onConfirm} disabled={submitting}>
+            {submitting ? "Importing..." : "Confirm Import"}
           </Button>
         </div>
       </div>

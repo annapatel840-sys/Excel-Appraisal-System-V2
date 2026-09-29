@@ -249,6 +249,7 @@ export function EmployeeRosterTable({
             {/* =====================================================
                 SELECTION COLUMN
             ====================================================== */}
+            {canEdit && (
             <th
               style={{
                 whiteSpace: "nowrap",
@@ -345,6 +346,7 @@ export function EmployeeRosterTable({
                 </button>
               </div>
             </th>
+            )}
 
             {/* =====================================================
                 EMPLOYEE COLUMN
@@ -377,6 +379,7 @@ export function EmployeeRosterTable({
                 ACTION COLUMN
                 ALWAYS LAST.
             ====================================================== */}
+            {canEdit && (
             <th
               style={{
                 whiteSpace: "nowrap",
@@ -385,6 +388,7 @@ export function EmployeeRosterTable({
             >
               Action
             </th>
+            )}
           </tr>
         </thead>
 
@@ -392,7 +396,7 @@ export function EmployeeRosterTable({
           {filteredRows.length === 0 ? (
             <tr>
               <td
-                colSpan={COLUMNS.length + 2}
+                colSpan={COLUMNS.length + (canEdit ? 2 : 1)}
                 style={{
                   textAlign: "center",
                   padding: "24px",
@@ -420,6 +424,7 @@ export function EmployeeRosterTable({
                   {/* =================================================
                       SELECTION CELL
                   ================================================== */}
+            {canEdit && (
                   <td
                     style={{
                       width: "105px",
@@ -440,6 +445,7 @@ export function EmployeeRosterTable({
                       }}
                     />
                   </td>
+            )}
 
                   {/* =================================================
                       EMPLOYEE CELL
@@ -498,6 +504,7 @@ export function EmployeeRosterTable({
                       ACTION - LAST COLUMN
                       NO CHECKBOX HERE.
                   ================================================== */}
+            {canEdit && (
                   <td>
                     <button
                       type="button"
@@ -523,6 +530,7 @@ export function EmployeeRosterTable({
                           : "Set Active"}
                     </button>
                   </td>
+            )}
                 </tr>
               );
             })

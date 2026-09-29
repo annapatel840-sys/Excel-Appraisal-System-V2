@@ -31,6 +31,46 @@ function normalizeRow(row) {
   };
 }
 
+// Lowercase and collapse whitespace so "EMP001 -  Jane  Doe" == "emp001 - jane doe".
+function normalizeOwner(value) {
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+// Exact ownership match on the Tech-ED value, which is either a plain id/name/email
+// or "EMPxxxx - Name". Empty owners or identities never match.
+function ownerMatches(owner, identities) {
+  const normalized = normalizeOwner(owner);
+  if (!normalized) return false;
+  const parts = normalized.match(/^(\S+)\s*-\s*(.+)$/);
+  const candidates = parts ? [normalized, parts[1], parts[2]] : [normalized];
+  return identities.some((identity) => identity && candidates.includes(identity));
+}
+
+const EMPLOYEE_PAGE_LIMIT = 100; // employeesapi caps limit at 100
+
+async function fetchAllEligibleEmployees() {
+  const employees = [];
+  let page = 1;
+  let totalPages = 1;
+  do {
+    const url = new URL(catalystFunctionUrl("employeesapi"));
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("limit", String(EMPLOYEE_PAGE_LIMIT));
+    url.searchParams.set("status", "active");
+    url.searchParams.set("eligible", "eligible");
+    const response = await catalystFetch(url.toString());
+    let json = {};
+    try { json = await response.json(); } catch (_) { json = {}; }
+    if (!response.ok || json && json.success === false) {
+      throw new Error(json && json.message || `Failed to load employees for budget counts (${response.status}).`);
+    }
+    employees.push(...(Array.isArray(json && json.data) ? json.data : []));
+    totalPages = Math.max(1, Number(json && json.pagination && json.pagination.totalPages || 1));
+    page += 1;
+  } while (page <= totalPages);
+  return employees;
+}
+
 export function BudgetProvider({ children }) {
   const authenticatedUser = useCatalystUser();
   const currentUser = useMemo(
@@ -43,7 +83,7 @@ export function BudgetProvider({ children }) {
   );
 
   const roleText = String(currentUser.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
-  const isHR = roleText === "hr" || roleText.includes("hr");
+  const isHR = roleText === "hr";
   const [budgetRows, setBudgetRows] = useState([]);
   const [employeeRows, setEmployeeRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,9 +93,12 @@ export function BudgetProvider({ children }) {
     setLoading(true);
     setError("");
     try {
-      const [budgetResponse, employeeResponse] = await Promise.all([
+      const [budgetResponse, employeeResult] = await Promise.all([
         catalystFetch(catalystFunctionUrl("budgetmasterapi")),
-        catalystFetch(catalystFunctionUrl("employeesapi") + "?page=1&limit=500&status=active&eligible=eligible"),
+        fetchAllEligibleEmployees().then(
+          (employees) => ({ employees }),
+          (employeeError) => ({ employees: [], employeeError }),
+        ),
       ]);
 
       let budgetJson = {};
@@ -66,11 +109,13 @@ export function BudgetProvider({ children }) {
           : (budgetJson && budgetJson.message || `Failed to load Budget Master (${budgetResponse.status}).`);
         throw new Error(statusText);
       }
-      let employeeJson = {};
-      try { employeeJson = employeeResponse.ok ? await employeeResponse.json() : {}; } catch (_) { employeeJson = {}; }
 
       setBudgetRows((Array.isArray(budgetJson && budgetJson.data) ? budgetJson.data : []).map(normalizeRow));
-      setEmployeeRows(Array.isArray(employeeJson && employeeJson.data) ? employeeJson.data : []);
+      setEmployeeRows(employeeResult.employees);
+      if (employeeResult.employeeError) {
+        console.error("Failed to load employees for budget counts:", employeeResult.employeeError);
+        setError(employeeResult.employeeError.message || "Failed to load employee counts.");
+      }
     } catch (e) {
       console.error("Failed to load Budget Master:", e);
       setBudgetRows([]);
@@ -88,28 +133,28 @@ export function BudgetProvider({ children }) {
   const rows = useMemo(() => {
     const active = budgetRows.filter((row) => !row.status || row.status.toLowerCase() === "active");
     if (isHR) return active;
-    const key = currentUser.name.trim().toLowerCase();
-    const email = currentUser.email.trim().toLowerCase();
-    return active.filter((row) => {
-      const owner = row.tech_ed_id.trim().toLowerCase();
-      return owner === key || owner === email || owner.includes(key) || key.includes(owner) || (email && (owner.includes(email) || email.includes(owner)));
-    });
-  }, [budgetRows, currentUser, isHR]);
+    const identities = [
+      authenticatedUser && authenticatedUser.id,
+      authenticatedUser && authenticatedUser.name,
+      authenticatedUser && authenticatedUser.email,
+    ].map(normalizeOwner).filter(Boolean);
+    return active.filter((row) => ownerMatches(row.tech_ed_id, identities));
+  }, [budgetRows, authenticatedUser, isHR]);
 
   const employeeCounts = useMemo(() => {
     const getOwner = (employee) =>
-      String(
+      normalizeOwner(
         employee.appraiser_tech_ed ||
         employee.tech_ed_id ||
         employee.tech_ed ||
         employee.appraiserTechEd ||
         employee.appraiser ||
         "",
-      ).trim().toLowerCase();
+      );
 
     return rows.reduce((map, row) => {
-      const owner = row.tech_ed_id.trim().toLowerCase();
-      const matched = employeeRows.filter((employee) => getOwner(employee) === owner);
+      const owner = normalizeOwner(row.tech_ed_id);
+      const matched = owner ? employeeRows.filter((employee) => getOwner(employee) === owner) : [];
       map[row.tech_ed_id] = matched.length;
       return map;
     }, {});

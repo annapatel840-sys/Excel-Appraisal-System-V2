@@ -4,10 +4,9 @@ import {
   hikePct as calcHikePct,
 } from "@/lib/appraisal-data";
 
-// TODO: replace with the real allocated-budget figure once budget-store.jsx
-// reads live appraisal rows instead of its own SAMPLE_ROWS. Until then this
-// is a placeholder percentage of current base pay — same demo-value approach
-// already used elsewhere in the app for the budget total.
+// Placeholder estimate (percentage of current base pay). Used for the
+// org total only when Budget Master data is unavailable, and for the
+// per-manager / per-designation splits, which Budget Master doesn't provide.
 const PLACEHOLDER_BUDGET_PCT = 0.08;
 
 export function groupBy(rows, keyFn) {
@@ -32,12 +31,15 @@ export function orgAllocated(rows) {
   return sum(rows, (r) => r.currentAnnualBasePay) * PLACEHOLDER_BUDGET_PCT;
 }
 
-export function budgetTotals(rows) {
+// realAllocated: the Budget Master total (from the budget store). When it
+// is missing, fall back to the placeholder estimate and flag it.
+export function budgetTotals(rows, realAllocated) {
   const hike = sum(rows, calcHikeAmount);
   const pb = sum(rows, totalOfPB);
   const rb = sum(rows, (r) => r.newRB);
   const consumed = hike + pb + rb;
-  const allocated = orgAllocated(rows);
+  const hasReal = Number(realAllocated) > 0;
+  const allocated = hasReal ? Number(realAllocated) : orgAllocated(rows);
 
   return {
     hike,
@@ -45,6 +47,7 @@ export function budgetTotals(rows) {
     rb,
     consumed,
     allocated,
+    allocatedIsEstimate: !hasReal,
     utilisation: allocated ? (consumed / allocated) * 100 : 0,
   };
 }
@@ -132,13 +135,26 @@ export function payoutDistribution(rows) {
     { label: "120%+", test: (p) => p >= 120 },
   ];
 
-  return buckets.map((b) => ({
-    label: b.label,
-    count: rows.filter((r) => {
-      const target = Number(r.targetPBAllocatedForMay) || 0;
-      const pct = target ? (totalOfPB(r) / target) * 100 : 0;
+  // Employees without a PB target have no payout % — count them
+  // separately instead of dropping them into "< 80%".
+  const withTarget = rows.filter(
+    (r) => (Number(r.targetPBAllocatedForMay) || 0) > 0,
+  );
 
-      return b.test(pct);
+  const result = buckets.map((b) => ({
+    label: b.label,
+    count: withTarget.filter((r) => {
+      const target = Number(r.targetPBAllocatedForMay) || 0;
+
+      return b.test((totalOfPB(r) / target) * 100);
     }).length,
   }));
+
+  const noTarget = rows.length - withTarget.length;
+
+  if (noTarget > 0) {
+    result.push({ label: "No target", count: noTarget });
+  }
+
+  return result;
 }

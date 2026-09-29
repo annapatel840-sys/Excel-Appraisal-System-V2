@@ -28,6 +28,7 @@ import {
 
 import { cn } from "@/lib/utils";
 import { useAppraisal } from "@/lib/appraisal-store";
+import { useBudget } from "@/lib/budget-store";
 
 import {
   applyFilters,
@@ -39,12 +40,13 @@ import {
 import { exportToExcel } from "@/lib/export-excel";
 
 // ============================================================
-// BUDGET (DEMO)
-// TODO: replace BUDGET_ALLOCATED with the real value once the
-// budget data store is created and exposed by the store.
+// BUDGET
+// The real total comes from Budget Master (budget store). This demo
+// value is only a fallback when that data is unavailable, and is
+// labelled as an estimate in the header.
 // ============================================================
 
-const BUDGET_ALLOCATED = 42500000; // ₹ 4.25 Cr (demo value)
+const FALLBACK_BUDGET_ALLOCATED = 42500000; // ₹ 4.25 Cr (estimate)
 const ONE_CRORE = 10000000;
 
 const formatCrore = (amount) => `₹ ${(amount / ONE_CRORE).toFixed(2)} Cr`;
@@ -80,7 +82,18 @@ function BudgetCounter({ label, value, valueClassName, title }) {
 // ============================================================
 
 export function SheetPage() {
-  const { rows, audit } = useAppraisal();
+  const {
+    rows,
+    audit,
+    error: loadError,
+    saveError,
+    clearSaveError,
+  } = useAppraisal();
+  const {
+    totals: budgetMasterTotals,
+    loading: budgetLoading,
+    error: budgetError,
+  } = useBudget();
   const { openImportPicker, importUi } = useAppraisalImport();
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({});
@@ -155,8 +168,15 @@ export function SheetPage() {
     [rows],
   );
 
-  const budgetUtilisation = BUDGET_ALLOCATED
-    ? (budgetConsumed / BUDGET_ALLOCATED) * 100
+  const realBudget =
+    !budgetLoading && !budgetError ? Number(budgetMasterTotals?.updated) || 0 : 0;
+  const budgetIsEstimate = realBudget <= 0;
+  const budgetAllocated = budgetIsEstimate
+    ? FALLBACK_BUDGET_ALLOCATED
+    : realBudget;
+
+  const budgetUtilisation = budgetAllocated
+    ? (budgetConsumed / budgetAllocated) * 100
     : 0;
 
   const utilisationTone =
@@ -198,8 +218,13 @@ export function SheetPage() {
       </button>
 
       <BudgetCounter
-        label="Budget Allocated"
-        value={formatCrore(BUDGET_ALLOCATED)}
+        label={budgetIsEstimate ? "Budget Allocated (est.)" : "Budget Allocated"}
+        title={
+          budgetIsEstimate
+            ? "Estimate — Budget Master data is unavailable"
+            : "Total from Budget Master"
+        }
+        value={formatCrore(budgetAllocated)}
       />
 
       <BudgetCounter
@@ -220,6 +245,24 @@ export function SheetPage() {
     <>
       <AppShell headerActions={headerActions}>
         <div className="space-y-2">
+          {(saveError || loadError) && (
+            <div
+              role="alert"
+              className="flex items-start justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-800"
+            >
+              <span>{saveError || loadError}</span>
+              {saveError && (
+                <button
+                  type="button"
+                  onClick={clearSaveError}
+                  className="shrink-0 text-xs font-medium underline"
+                >
+                  Dismiss
+                </button>
+              )}
+            </div>
+          )}
+
           {/* TOOLBAR: search on the left, reset + menu on the right */}
 
           <div className="flex items-center gap-2 rounded-md border border-[#d9dee7] bg-white px-3 py-2">
@@ -315,7 +358,13 @@ export function SheetPage() {
                       role="menuitem"
                       className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
                       onClick={() => {
-                        exportToExcel(filtered);
+                        exportToExcel(filtered).catch((error) => {
+                          console.error("Excel export failed:", error);
+                          window.alert(
+                            "Excel export failed: " +
+                              (error?.message || "unknown error"),
+                          );
+                        });
                         setMenuOpen(false);
                       }}
                     >
@@ -362,10 +411,22 @@ export function SheetPage() {
                 return next;
               })
             }
-            toggleAll={(on) =>
-              setSelected(
-                on ? Object.fromEntries(filtered.map((r) => [r.id, true])) : {},
-              )
+            toggleAll={(on, ids) =>
+              // Only the rows the grid is showing (current page); other
+              // pages keep their selections.
+              setSelected((prev) => {
+                const next = { ...prev };
+
+                ids.forEach((id) => {
+                  if (on) {
+                    next[id] = true;
+                  } else {
+                    delete next[id];
+                  }
+                });
+
+                return next;
+              })
             }
             showHistory={showHistory}
             setShowHistory={setShowHistory}
