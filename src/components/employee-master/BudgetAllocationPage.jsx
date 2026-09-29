@@ -219,7 +219,7 @@ export function BudgetAllocationPage() {
   const user = useCatalystUser();
   const role = String(user && user.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isHR = role === "hr" || role.includes("hr");
-  const [page, setPage] = useState("allocation");
+  const [page, setPage] = useState("apply");
   const [rows, setRows] = useState(STATIC_BUDGETS);
   const [selectedId, setSelectedId] = useState(STATIC_BUDGETS[0].id);
 
@@ -254,7 +254,7 @@ export function BudgetAllocationPage() {
   var utilization = totals.updated ? (totals.utilized / totals.updated) * 100 : 0;
 
   return (
-    <div className="em-tab-content">
+    <div className="em-tab-content overflow-auto max-h-[calc(100vh-150px)] pr-1">
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#d4dbe5] bg-white px-4 py-2.5 text-[12.5px]" style={{ borderLeft: "4px solid " + TEAL }}>
         <span>Appraisal cycle <b>Apr-26</b></span>
         <span className="h-4 w-px bg-[#d7dce3]" />
@@ -265,7 +265,7 @@ export function BudgetAllocationPage() {
 
       {isHR ? (
         <div className="mt-2 flex flex-wrap gap-1 rounded-lg border border-[#d4dbe5] bg-white p-1.5">
-          {[["allocation", "Budget Allocation"], ["apply", "Apply Budget"], ["audit", "Audit Trail"]].map(function (item) {
+          {[["apply", "Apply Budget"], ["audit", "Audit Trail"]].map(function (item) {
             return (
               <button key={item[0]} type="button" onClick={function () { setPage(item[0]); }} className={"rounded-md px-3 py-2 text-[12px] font-semibold " + (page === item[0] ? "bg-[#17365d] text-white" : "text-[#334155] hover:bg-[#eef2f7]")}>
                 {item[1]}
@@ -275,7 +275,7 @@ export function BudgetAllocationPage() {
         </div>
       ) : null}
 
-      {isHR && page === "allocation" ? (
+      {isHR && page === "apply" ? (
         <>
           <div className="mt-2 overflow-hidden rounded-lg border border-[#d4dbe5] bg-white">
             <div className="px-4 py-2.5 text-[13px] font-semibold text-white" style={{ background: NAVY }}>Budget Allocation</div>
