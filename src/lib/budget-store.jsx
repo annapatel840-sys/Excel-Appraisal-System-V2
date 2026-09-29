@@ -4,6 +4,7 @@ import {
   useContext,
   useMemo,
   useState,
+  useEffect,
 } from "react";
 
 import {
@@ -13,6 +14,8 @@ import {
   rootsOf,
 } from "@/lib/budget-engine";
 import { useCatalystUser } from "@/lib/catalyst-auth";
+import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+
 
 const BudgetContext = createContext(null);
 
@@ -27,6 +30,23 @@ export function BudgetProvider({ children }) {
   const [budgetConfig, setBudgetConfig] = useState(DEFAULT_BUDGET_CONFIG);
 
   const [budgetRows, setBudgetRows] = useState([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadBudgetMaster() {
+      try {
+        const response = await catalystFetch(catalystFunctionUrl("budgetmasterapi"));
+        if (!response.ok) throw new Error("Failed to load Budget Master.");
+        const result = await response.json();
+        if (!cancelled) setBudgetRows(Array.isArray(result?.data) ? result.data : []);
+      } catch (error) {
+        console.error("Failed to load Budget Master:", error);
+        if (!cancelled) setBudgetRows([]);
+      }
+    }
+    loadBudgetMaster();
+    return () => { cancelled = true; };
+  }, []);
   const [eligibilityEvents, setEligibilityEvents] = useState([]);
   const [gridSupervisorChanges, setGridSupervisorChanges] = useState([]);
   const [allocationSnapshot, setAllocationSnapshot] = useState({
