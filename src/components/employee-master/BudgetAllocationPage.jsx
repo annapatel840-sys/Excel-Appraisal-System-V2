@@ -211,6 +211,7 @@ function ApplyPage({ selected, onChange }) {
         <Tile label="Remaining" value={money(updated - selected.budget_utilized)} />
         <Tile label="Updated budget" value={money(updated)} />
       </div>
+      </div>
     </div>
   );
 }
