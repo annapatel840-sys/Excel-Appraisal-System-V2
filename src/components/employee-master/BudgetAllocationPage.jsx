@@ -373,24 +373,35 @@ export function BudgetAllocationPage() {
         <span>Current user <b>{budget.currentUser.name}</b></span>
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-1 rounded-lg border border-[#d4dbe5] bg-white p-1.5">
-        {[
-          ["allocation", "Budget Allocation"],
-          ["apply", "Apply Budget"],
-          ["audit", "Audit Trail"],
-        ].map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setActivePage(key)}
-            className={`rounded-md px-3 py-2 text-[12px] font-semibold ${activePage === key ? "bg-[#17365d] text-white" : "text-[#334155] hover:bg-[#eef2f7]"}`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {budget.isHR ? (
+        <div className="mt-2 flex flex-wrap gap-1 rounded-lg border border-[#d4dbe5] bg-white p-1.5">
+          {[
+            ["apply", "Apply Budget"],
+            ["audit", "Audit Trail"],
+          ].map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setActivePage(key)}
+              className={`rounded-md px-3 py-2 text-[12px] font-semibold ${activePage === key ? "bg-[#17365d] text-white" : "text-[#334155] hover:bg-[#eef2f7]"}`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {!budget.isHR && (
+        <div className="mt-2 grid gap-2 md:grid-cols-3">
+          <SummaryTile label="My Budget" value={lakh(selected?.updated_budget)} sub={`Original ${lakh(selected?.budget_amount)} + Additional ${lakh(selected?.additional_budget)}`} />
+          <SummaryTile label="Allocation" value={lakh(selected?.budget_remaining)} sub={`Utilised ${lakh(selected?.budget_utilized)}`} />
+          <SummaryTile label="% Applied" value={pct(selected?.budget_percentage)} sub="Current appraisal budget percentage" />
+        </div>
+      ) : null}
 
       {activePage === "allocation" && (
+        <>
+          {budget.isHR ? (
         <>
           <div className="mt-2 overflow-hidden rounded-lg border border-[#d4dbe5] bg-white">
             <div className="px-4 py-2.5 text-[13px] font-semibold text-white" style={{ background: NAVY }}>
@@ -415,6 +426,7 @@ export function BudgetAllocationPage() {
             </div>
             <BudgetTable rows={rows} employeeCounts={budget.employeeCounts} selectedId={selected?.id} onSelect={setSelectedId} />
           </div>
+          ) : null}
         </>
       )}
 
