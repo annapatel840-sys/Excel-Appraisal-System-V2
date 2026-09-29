@@ -259,52 +259,6 @@ export function DetailScreenPage() {
     };
   }, [employee]);
 
-  /* ---------- Team metrics (computed from the rows this login can see) ---------- */
-  // Team budget: expects the budget store to expose the updated budget for this login.
-  // If your store uses a different name, change this one line. 0 = not connected.
-  const teamBudget = Number(
-    budgetCtx?.teamBudget ??
-      budgetCtx?.updatedBudget ??
-      budgetCtx?.budget?.updated ??
-      0,
-  );
-
-  const metrics = useMemo(() => {
-    const used = rows.reduce((s, r) => s + (Number(r.hikeAmount) || 0), 0);
-    const tpb = rows.reduce((s, r) => s + (Number(r.targetPBNextYear) || 0), 0);
-    const cur = teamBudget ? (used / teamBudget) * 100 : null;
-    const withT = teamBudget ? ((used + tpb) / teamBudget) * 100 : null;
-
-    const hikes = rows
-      .filter((r) => Number(r.currentAnnualBasePay) > 0)
-      .map((r) => ({
-        r,
-        v: ((Number(r.hikeAmount) || 0) / Number(r.currentAnnualBasePay)) * 100,
-      }));
-    const mine = employee ? hikes.find((x) => x.r === employee) : null;
-    let percentile = null;
-    let top = null;
-    let median = null;
-    if (mine && hikes.length > 1) {
-      const below = hikes.filter((x) => x.v < mine.v).length;
-      percentile = Math.round((below / (hikes.length - 1)) * 100);
-      const sorted = hikes.slice().sort((a, b) => a.v - b.v);
-      top = sorted[sorted.length - 1];
-      const n = sorted.length;
-      median =
-        n % 2 ? sorted[(n - 1) / 2].v : (sorted[n / 2 - 1].v + sorted[n / 2].v) / 2;
-    }
-
-    const noHike = rows.filter((r) => !(Number(r.hikeAmount) > 0)).length;
-    const pbPaid = rows.reduce((s, r) => s + (Number(r.allocatedPBAmount) || 0), 0);
-    const pbTarget = rows.reduce(
-      (s, r) => s + (Number(r.targetPBAllocatedForMay) || 0),
-      0,
-    );
-
-    return { used, tpb, cur, withT, mine, percentile, top, median, noHike, pbPaid, pbTarget };
-  }, [rows, employee, teamBudget]);
-
   const handleSearch = (value) => {
     setSearch(value);
 
@@ -848,14 +802,6 @@ function LeftPane({
       feedback: h.feedback,
     })),
   ];
-
-  const pctNow = metrics.cur;
-  const badgeStyle =
-    pctNow > 100
-      ? { background: "#FDECEA", color: "#912018" }
-      : pctNow > 90
-        ? { background: "#FBF3E4", color: "#7A5212" }
-        : { background: "#E6F3F2", color: "#0B5F5B" };
 
   return (
     <section
