@@ -255,7 +255,7 @@ export function BudgetAllocationPage() {
   var utilization = totals.updated ? (totals.utilized / totals.updated) * 100 : 0;
 
   return (
-    <div className="em-tab-content h-full min-h-0 overflow-y-auto overflow-x-hidden max-h-[calc(100vh-150px)] pr-1">
+    <div className="em-tab-content min-h-0 overflow-y-auto overflow-x-hidden pr-1">
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#d4dbe5] bg-white px-4 py-2.5 text-[12.5px]" style={{ borderLeft: "4px solid " + TEAL }}>
         <span>Appraisal cycle <b>Apr-26</b></span>
         <span className="h-4 w-px bg-[#d7dce3]" />
