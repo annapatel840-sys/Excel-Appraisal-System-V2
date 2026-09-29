@@ -19,6 +19,7 @@ function mapRow(row) {
   const additional = Number(row.additional_budget || 0);
   const updated = budget + additional;
   const utilized = Number(row.budget_utilized || 0);
+
   return {
     id: String(row.ROWID || ""),
     appraisal_cycle_id: String(row.appraisal_cycle_id || ""),
@@ -37,58 +38,12 @@ module.exports = async (req, res) => {
   try {
     if (req.method === "OPTIONS") return send(res, 204, {});
 
-    const adminApp = catalyst.initialize(req, { scope: "admin" });
-    const table = adminApp.datastore().table(TABLE_ID);
-
     if (req.method === "GET") {
-      const result = await table.getPagedRows({ maxRows: 300 });
       return send(res, 200, {
         success: true,
-        data: (result.data || []).map(mapRow),
-        current_user: null,
-      });
-    }
-
-    if (req.method === "PUT") {
-      const body = req.body || {};
-      const id = String(body.id || "").trim();
-
-      if (!id) {
-        return send(res, 400, {
-          success: false,
-          message: "Budget Master row id is required.",
-        });
-      }
-
-      const allowed = [
-        "budget_percentage",
-        "budget_amount",
-        "additional_budget",
-        "budget_utilized",
-        "status",
-      ];
-
-      const update = { ROWID: id };
-
-      allowed.forEach((key) => {
-        if (Object.prototype.hasOwnProperty.call(body, key)) {
-          update[key] = body[key];
-        }
-      });
-
-      if (Object.keys(update).length === 1) {
-        return send(res, 400, {
-          success: false,
-          message: "No Budget Master fields were provided.",
-        });
-      }
-
-      const updated = await table.updateRow(update);
-
-      return send(res, 200, {
-        success: true,
-        data: mapRow(updated),
-        changed_by: "catalyst-user",
+        diagnostic: true,
+        data: [],
+        message: "budgetmasterapi route and function execution are working; Data Store access is the next diagnostic step.",
       });
     }
 
