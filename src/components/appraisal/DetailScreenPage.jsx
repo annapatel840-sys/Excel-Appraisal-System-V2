@@ -516,6 +516,14 @@ export function DetailScreenPage() {
                     </CompRow>
 
                     <CompRow
+                      label="Retention Bonus"
+                      current={inr(employee.newRB ?? 0)}
+                      diffText="—"
+                    >
+                      <ReadOnlyInput value={inr(employee.newRB ?? 0)} disabled />
+                    </CompRow>
+
+                    <CompRow
                       label="PB Allotted / Instalments"
                       current={`${inr(employee.targetPBAllocatedForMay)} / ${employee.pbInstallment ?? "—"}`}
                       diffText="—"
