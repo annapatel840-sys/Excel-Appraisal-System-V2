@@ -172,7 +172,14 @@ module.exports = async function (req, res) {
       }
 
       var table = app.datastore().table(TABLE_ID);
-      var result = await table.getAllRows();
+      var result = await Promise.race([
+        table.getAllRows(),
+        new Promise(function (_, reject) {
+          setTimeout(function () {
+            reject(new Error("Budget Master Data Store request timed out."));
+          }, 10000);
+        }),
+      ]);
       var allRows = Array.isArray(result) ? result : [];
 
       var activeRows = allRows.filter(function (row) {
