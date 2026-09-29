@@ -311,16 +311,15 @@ export function DetailScreenPage() {
 
   return (
     <div
-      className="flex h-[calc(100vh-60px)]"
+      className="min-h-screen"
       style={{ fontFamily: FONT, background: "#eef2f6" }}
     >
       <div
-        className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-2.5 pb-6 [&::-webkit-scrollbar]:hidden"
+        className="min-w-0 overflow-x-hidden overflow-y-auto p-2.5 pb-6"
         style={{
           color: "#0f1f33",
           fontSize: "12.5px",
-          scrollbarWidth: "none",
-        }}
+          }}
       >
         <div className="mx-auto flex max-w-[1200px] flex-col gap-2">
           {!employee ? (
@@ -418,7 +417,15 @@ export function DetailScreenPage() {
                       current={inr(employee.newRB ?? 0)}
                       diffText="—"
                     >
-                      <ReadOnlyInput value={inr(employee.newRB ?? 0)} disabled />
+                      <EditInput
+                        defaultValue={fmt(employee.newRB ?? 0)}
+                        onCommit={(v) =>
+                          commit(
+                            "newRB",
+                            Number(String(v).replace(/[^0-9.]/g, "")) || 0,
+                          )
+                        }
+                      />
                     </CompRow>
 
                     <CompRow
