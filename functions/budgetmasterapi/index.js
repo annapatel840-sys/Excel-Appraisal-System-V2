@@ -153,41 +153,14 @@ module.exports = async function (req, res) {
     var app = catalyst.initialize(req);
 
     if (method === "GET") {
-      var user = await getCurrentUser(app);
-
-      if (!user) {
-        return sendJson(res, 401, {
-          success: false,
-          message: "Authentication is required.",
-        });
-      }
-
       var table = app.datastore().table(TABLE_ID);
       var result = await table.getAllRows();
       var allRows = Array.isArray(result) ? result : [];
 
-      var activeRows = allRows.filter(function (row) {
-        var status = String(value(row, "status")).trim().toLowerCase();
-        return !status || status === "active";
-      });
-
-      var rows = activeRows;
-
-      if (!isHR(user)) {
-        rows = activeRows.filter(function (row) {
-          return matchesUser(value(row, "tech_ed_id"), user);
-        });
-      }
-
       return sendJson(res, 200, {
         success: true,
-        data: rows.map(mapRow),
-        current_user: {
-          id: String(getUserField(user, "user_id")),
-          name: getCurrentUserName(user),
-          email: getUserField(user, "email") || getUserField(user, "email_id"),
-          role: getUserRole(user),
-        },
+        data: allRows.map(mapRow),
+        current_user: null,
       });
     }
 
