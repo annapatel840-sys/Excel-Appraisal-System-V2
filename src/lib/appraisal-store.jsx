@@ -812,10 +812,7 @@ export function AppraisalProvider({ children }) {
       setLoading(true);
       setError("");
 
-      const result = await fetchAllEmployeesFromCatalyst(
-        isHRUser ? "" : "active",
-        isHRUser ? "" : "eligible",
-      );
+      const result = await fetchAllEmployeesFromCatalyst("active", "eligible");
 
       const employees = result.employees.map(mapCatalystEmployee);
 
@@ -853,10 +850,7 @@ export function AppraisalProvider({ children }) {
         setLoading(true);
         setError("");
 
-        const result = await fetchAllEmployeesFromCatalyst(
-          isHRUser ? "" : "active",
-          isHRUser ? "" : "eligible",
-        );
+        const result = await fetchAllEmployeesFromCatalyst("active", "eligible");
 
         if (cancelled) {
           return;
