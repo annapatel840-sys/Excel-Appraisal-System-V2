@@ -166,7 +166,7 @@ function ApplyPage({ selected, onChange }) {
   var nextUpdated = selected.budget_amount + Number(additional || 0);
 
   return (
-    <div className="max-h-[calc(100vh-260px)] overflow-y-auto overflow-x-hidden pr-1"><div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="pr-1"><div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="rounded-lg border border-[#d4dbe5] bg-white">
         <div className="px-4 py-2.5 text-[13px] font-semibold text-white" style={{ background: NAVY }}>
           Apply Budget · {selected.tech_ed_id}
