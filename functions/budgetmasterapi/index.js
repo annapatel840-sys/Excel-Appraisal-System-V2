@@ -87,10 +87,10 @@ module.exports = async (req, res) => {
     }
 
     const app = catalyst.initialize(req);
-    const table = app.datastore().table(TABLE_ID);
 
     if (req.method === "GET") {
       const user = await getCurrentUser(app);
+      const table = app.datastore().table(TABLE_ID);
       if (!user) {
         return send(res, 401, {
           success: false,
@@ -98,7 +98,7 @@ module.exports = async (req, res) => {
         });
       }
 
-      const result = await table.getPagedRows({ maxRows: 200 });
+      const result = await Promise.race([table.getPagedRows({ maxRows: 200 }), new Promise((_, reject) => setTimeout(() => reject(new Error("Budget Master Data Store request timed out.")), 15000))]);
       const allRows = Array.isArray(result?.data) ? result.data : [];
 
       const activeRows = allRows.filter(
@@ -133,6 +133,7 @@ module.exports = async (req, res) => {
 
     if (req.method === "PUT") {
       const user = await getCurrentUser(app);
+      const table = app.datastore().table(TABLE_ID);
       if (!user) {
         return send(res, 401, {
           success: false,
