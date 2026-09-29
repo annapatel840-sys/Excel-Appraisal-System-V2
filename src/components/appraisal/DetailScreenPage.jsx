@@ -141,7 +141,6 @@ export function DetailScreenPage() {
 
   const [index, setIndex] = useState(0);
   const [search, setSearch] = useState("");
-  const [ctxTab, setCtxTab] = useState("feedback");
   const [historyByEmpId, setHistoryByEmpId] = useState({});
   const historyPromiseRef = useRef(new Map());
 
@@ -383,11 +382,6 @@ export function DetailScreenPage() {
                     employee={employee}
                     priorCycles={priorCycles}
                     loading={!!historyState?.loading}
-                    tab={ctxTab}
-                    onTab={setCtxTab}
-                    metrics={metrics}
-                    teamBudget={teamBudget}
-                    rowsCount={rows.length}
                     scopeLabel={scopeLabel}
                   />
                 </div>
@@ -806,18 +800,13 @@ export function DetailScreenPage() {
 }
 
 /* ============================================================
-   LEFT PANE — employee details + Feedback / Team metrics tabs
+   LEFT PANE — employee details + Feedback
    ============================================================ */
 
 function LeftPane({
   employee,
   priorCycles,
   loading,
-  tab,
-  onTab,
-  metrics,
-  teamBudget,
-  rowsCount,
   scopeLabel,
 }) {
   const initials = String(employee.name || "?")
@@ -926,50 +915,32 @@ function LeftPane({
         ))}
       </dl>
 
-      {/* Tabs */}
+      {/* Feedback */}
       <div
-        className="flex shrink-0 gap-[18px] border-b px-3.5"
+        className="flex shrink-0 border-b px-3.5"
         style={{ borderColor: LINE }}
         role="tablist"
       >
-        {[
-          ["feedback", "Feedback"],
-          ["metrics", "Team metrics"],
-        ].map(([key, label]) => {
-          const active = tab === key;
-          return (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              onClick={() => onTab(key)}
-              className="inline-flex items-center gap-1.5 border-b-2 pb-[9px] pt-2.5 text-[13px]"
-              style={{
-                color: active ? INK : MUTED,
-                fontWeight: active ? 700 : 600,
-                borderBottomColor: active ? LTEAL : "transparent",
-              }}
-            >
-              {label}
-              {key === "metrics" && pctNow !== null && (
-                <span
-                  className="rounded-full px-[7px] py-px text-[11px] font-bold"
-                  style={badgeStyle}
-                >
-                  {pctNow.toFixed(0)}%
-                </span>
-              )}
-            </button>
-          );
-        })}
+        <button
+          type="button"
+          role="tab"
+          aria-selected="true"
+          className="inline-flex items-center border-b-2 pb-[9px] pt-2.5 text-[13px]"
+          style={{
+            color: INK,
+            fontWeight: 700,
+            borderBottomColor: LTEAL,
+          }}
+        >
+          Feedback
+        </button>
       </div>
 
       <div
         className="max-h-[420px] min-h-0 flex-1 overflow-auto px-3.5 pb-3.5 pt-3 min-[1000px]:max-h-none"
         role="tabpanel"
       >
-        {tab === "feedback" ? (
+        {(
           <>
             <ol
               className="m-0 list-none border-l-2 py-0 pl-3.5 pr-0"
@@ -1027,15 +998,7 @@ function LeftPane({
               “—”.
             </div>
           </>
-        ) : (
-          <TeamMetrics
-            employee={employee}
-            metrics={metrics}
-            teamBudget={teamBudget}
-            rowsCount={rowsCount}
-            scopeLabel={scopeLabel}
-          />
-        )}
+)}
       </div>
     </section>
   );
