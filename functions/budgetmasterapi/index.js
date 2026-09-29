@@ -162,7 +162,14 @@ module.exports = async function (req, res) {
     var app = catalyst.initialize(req);
 
     if (method === "GET") {
-      var user = await getCurrentUser(app);
+      var user = await Promise.race([
+      getCurrentUser(app),
+      new Promise(function (_, reject) {
+        setTimeout(function () {
+          reject(new Error("Budget Master current-user request timed out."));
+        }, 10000);
+      }),
+    ]);
 
       if (!user) {
         return sendJson(res, 401, {
