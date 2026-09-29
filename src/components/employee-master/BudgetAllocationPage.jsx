@@ -396,7 +396,7 @@ export function BudgetAllocationPage() {
           <SummaryTile label="Allocation" value={lakh(selected?.budget_remaining)} sub={`Utilised ${lakh(selected?.budget_utilized)}`} />
           <SummaryTile label="% Applied" value={pct(selected?.budget_percentage)} sub="Current appraisal budget percentage" />
         </div>
-      ) : null}
+       )}
 
       {activePage === "allocation" && budget.isHR && (
         <>
