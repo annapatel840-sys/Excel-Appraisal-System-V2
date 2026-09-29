@@ -22,23 +22,27 @@ export function TeamChangesPage() {
     hierarchy,
     eligibilityEvents,
     gridSupervisorChanges,
-    allocationSnapshot,
+    allocationSnapshot = { date: "", teams: {} },
   } = useBudget();
 
   const [type, setType] = useState("all");
   const [manager, setManager] = useState("all");
   const [search, setSearch] = useState("");
 
+  const safeEligibilityEvents = Array.isArray(eligibilityEvents) ? eligibilityEvents : [];
+  const safeGridSupervisorChanges = Array.isArray(gridSupervisorChanges) ? gridSupervisorChanges : [];
+  const safeHierarchy = hierarchy || {};
+
   const allChanges = useMemo(
-    () => buildChangeLog(eligibilityEvents, gridSupervisorChanges),
-    [eligibilityEvents, gridSupervisorChanges],
+    () => buildChangeLog(safeEligibilityEvents, safeGridSupervisorChanges),
+    [safeEligibilityEvents, safeGridSupervisorChanges],
   );
 
   const scoped = useMemo(() => {
     if (isHR) return allChanges;
-    const tree = subtreeOf(hierarchy, currentUser.name);
+    const tree = subtreeOf(safeHierarchy, currentUser.name);
     return allChanges.filter((c) => tree.indexOf(c.manager) > -1);
-  }, [allChanges, isHR, hierarchy, currentUser]);
+  }, [allChanges, isHR, safeHierarchy, currentUser]);
 
   const managers = [];
   scoped.forEach((c) => {
@@ -156,8 +160,8 @@ export function TeamChangesPage() {
               {list.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-4 text-slate-500">
-                    {eligibilityEvents.length === 0 &&
-                    gridSupervisorChanges.length === 0
+                    {safeEligibilityEvents.length === 0 &&
+                    safeGridSupervisorChanges.length === 0
                       ? "Team-change data is not configured."
                       : "No changes match these filters."}
                   </td>
