@@ -361,14 +361,13 @@ export function BudgetAllocationPage() {
   const rows = budget.budgetRows;
   const t = budget.totals;
   const utilization = t.updated ? (t.utilized / t.updated) * 100 : 0;
-  const selectedCount = selected ? (budget.employeeCounts[selected.tech_ed_id] || 0) : 0;
 
   return (
     <div className="em-tab-content">
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#d4dbe5] bg-white px-4 py-2.5 text-[12.5px]" style={{ borderLeft: `4px solid ${TEAL}` }}>
         <span>Appraisal cycle <b>{selected?.appraisal_cycle_id || "—"}</b></span>
         <span className="h-4 w-px bg-[#d7dce3]" />
-        <span><b>HR</b></span>
+        <span><b>{budget.isHR ? "HR" : "Tech ED"}</b></span>
         <span className="h-4 w-px bg-[#d7dce3]" />
         <span>Current user <b>{budget.currentUser.name}</b></span>
       </div>
