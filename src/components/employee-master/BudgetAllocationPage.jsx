@@ -255,7 +255,7 @@ export function BudgetAllocationPage() {
   var utilization = totals.updated ? (totals.utilized / totals.updated) * 100 : 0;
 
   return (
-    <div className="em-tab-content overflow-visible pr-1">
+    <div className="em-tab-content overflow-y-auto overflow-x-hidden pr-1">
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#d4dbe5] bg-white px-4 py-2.5 text-[12.5px]" style={{ borderLeft: "4px solid " + TEAL }}>
         <span>Appraisal cycle <b>Apr-26</b></span>
         <span className="h-4 w-px bg-[#d7dce3]" />
@@ -297,7 +297,7 @@ export function BudgetAllocationPage() {
       ) : null}
 
       {isHR && page === "apply" ? (
-        <div className="mt-2 h-[calc(100vh-210px)] min-h-0 overflow-y-auto overflow-x-hidden pr-1">
+        <div className="mt-2">
           <div className="mb-2 rounded-lg border border-[#d4dbe5] bg-white p-3">
             <label className="text-[12px] font-semibold text-[#334155]">
               Select Tech ED
