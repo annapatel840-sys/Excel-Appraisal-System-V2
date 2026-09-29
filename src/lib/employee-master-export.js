@@ -1,4 +1,4 @@
-import { FIELD_DEFS } from "./employee-master-data";
+import { EXPERIENCE_REF_DATE, FIELD_DEFS } from "./employee-master-data";
 import { calcOrgExperience, fmtDoj } from "./employee-master-utils";
 
 /* ============================================================
@@ -80,7 +80,7 @@ export function downloadRosterData(employees = []) {
     "Date of Joining": employee.doj || "",
     "Org. Exp (as on 1 Jan)": calcOrgExperience(
       employee.doj,
-      new Date(2026, 0, 1),
+      EXPERIENCE_REF_DATE,
     ),
     "Total Experience (as on 1 Jan)": employee.totalExp || "",
     "Reporting Manager": employee.reportingManager || "",

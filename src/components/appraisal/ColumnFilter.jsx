@@ -436,18 +436,34 @@ export function ColumnFilter({
             </p>
 
             <div className="mt-2 flex gap-2">
-              <input
-                className={inputClass}
-                type={isNumberColumn ? "number" : "text"}
-                placeholder="New value"
-                value={bulkValue}
-                onChange={(event) => setBulkValue(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    applyBulkEdit();
-                  }
-                }}
-              />
+              {isEnumColumn && meta.options ? (
+                // Enum columns: only the allowed options, no free text.
+                <select
+                  className={cn(inputClass, "cursor-pointer")}
+                  value={bulkValue}
+                  onChange={(event) => setBulkValue(event.target.value)}
+                >
+                  <option value="">Select value...</option>
+                  {meta.options.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className={inputClass}
+                  type={isNumberColumn ? "number" : "text"}
+                  placeholder="New value"
+                  value={bulkValue}
+                  onChange={(event) => setBulkValue(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      applyBulkEdit();
+                    }
+                  }}
+                />
+              )}
 
               <button
                 type="button"

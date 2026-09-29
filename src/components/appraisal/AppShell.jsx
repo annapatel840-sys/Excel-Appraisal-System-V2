@@ -3,6 +3,9 @@ import { LayoutDashboard, Table2, Users, BookOpen, LogOut } from "lucide-react";
 import { useCatalystSignOut, useCatalystUser } from "@/lib/catalyst-auth";
 import { cn } from "@/lib/utils";
 
+// Must match the Tech-ED allow-list in src/App.jsx.
+const TECH_ED_PATHS = ["/", "/employee-master", "/detail-screen"];
+
 export function AppShell({ children, headerActions }) {
   const pathname = window.location.pathname;
   const signOut = useCatalystSignOut();
@@ -10,14 +13,32 @@ export function AppShell({ children, headerActions }) {
   const role = String(user?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
 
-  const nav = [
+  const allNav = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
     { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
     { to: "/employee-master", label: "HR Operations", icon: Users },
     { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
   ];
 
+  // Tech-ED users are redirected away from every other route (see App.jsx),
+  // so only show the links they can actually open.
+  const nav = isTechEd
+    ? allNav.filter((item) => TECH_ED_PATHS.includes(item.to))
+    : allNav;
+
   const navigate = (event, to) => {
+    // Let the browser handle modified / non-left clicks (open in new tab etc.).
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+
     event.preventDefault();
     window.history.pushState({}, "", to);
     window.dispatchEvent(new PopStateEvent("popstate"));

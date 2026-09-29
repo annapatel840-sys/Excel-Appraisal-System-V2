@@ -1,4 +1,4 @@
-import { FIELD_DEFS } from "./employee-master-data";
+import { FIELD_DEFS, parseDateValue } from "./employee-master-data";
 
 /* ============================================================
    DATE / EXPERIENCE
@@ -7,9 +7,9 @@ import { FIELD_DEFS } from "./employee-master-data";
 export function calcOrgExperience(dojStr, refDate) {
   if (!dojStr) return "";
 
-  const doj = new Date(dojStr);
+  const doj = parseDateValue(dojStr);
 
-  if (Number.isNaN(doj.getTime())) {
+  if (!doj) {
     return "";
   }
 
@@ -38,9 +38,9 @@ export function calcOrgExperience(dojStr, refDate) {
 export function fmtDoj(dojStr) {
   if (!dojStr) return "";
 
-  const date = new Date(dojStr);
+  const date = parseDateValue(dojStr);
 
-  if (Number.isNaN(date.getTime())) {
+  if (!date) {
     return dojStr;
   }
 
@@ -226,7 +226,7 @@ export function findFieldForHeader(header) {
     supermanageremailid: "superManagerMail",
     supermanagermail: "superManagerMail",
 
-    employeeStatus: "status",
+    employeestatus: "status",
     activestatus: "status",
     activeinactive: "status",
   };

@@ -133,30 +133,47 @@ const TEXT_OPS = [
 ];
 const opsForType = (type) => (type === "number" ? NUMBER_OPS : TEXT_OPS);
 
-function priorRecordFor(rec, stored, cycleOrder = {}) {
-  const mine = stored
-    .filter((r) => r.empId === rec.empId)
-    .sort((a, b) => (cycleOrder[a.cycle] || 0) - (cycleOrder[b.cycle] || 0));
-  const idx = mine.findIndex((r) => r === rec);
-  return idx > 0 ? mine[idx - 1] : null;
+// Precomputed record -> previous-cycle record for the same employee, ordered
+// by cycle start date. Records whose cycle is unknown (e.g. deleted) have no
+// start date, so they are left out of the ordering instead of being treated
+// as the earliest cycle.
+function buildPriorMap(stored, cycleOrder = {}) {
+  const byEmp = new Map();
+  stored.forEach((r) => {
+    if (cycleOrder[r.cycleId] == null) return;
+    const list = byEmp.get(r.empId) || [];
+    list.push(r);
+    byEmp.set(r.empId, list);
+  });
+  const prior = new Map();
+  byEmp.forEach((list) => {
+    list.sort((a, b) => cycleOrder[a.cycleId] - cycleOrder[b.cycleId]);
+    list.forEach((r, index) => {
+      if (index > 0) prior.set(r, list[index - 1]);
+    });
+  });
+  return prior;
+}
+function priorRecordFor(rec, priorMap) {
+  return priorMap?.get(rec) || null;
 }
 function fmtMoney(v) {
   return v == null ? "—" : "₹" + Math.round(v).toLocaleString("en-IN");
 }
-function yoyPctFor(r, baseKey, stored, cycleOrder) {
-  const prior = priorRecordFor(r, stored, cycleOrder);
+function yoyPctFor(r, baseKey, priorMap) {
+  const prior = priorRecordFor(r, priorMap);
   if (!prior) return null;
   const curVal = r[baseKey];
   const priorVal = prior[baseKey];
   if (priorVal === 0) return null;
   return ((curVal - priorVal) / Math.abs(priorVal)) * 100;
 }
-function rawValueFor(r, col, stored, cycleOrder) {
-  if (col.isYoy) return yoyPctFor(r, col.baseKey, stored, cycleOrder);
+function rawValueFor(r, col, priorMap) {
+  if (col.isYoy) return yoyPctFor(r, col.baseKey, priorMap);
   return r[col.key];
 }
-function displayValueFor(r, col, stored, cycleOrder) {
-  const val = rawValueFor(r, col, stored, cycleOrder);
+function displayValueFor(r, col, priorMap) {
+  const val = rawValueFor(r, col, priorMap);
   if (col.isYoy)
     return val == null ? "new" : (val >= 0 ? "+" : "") + val.toFixed(2) + "%";
   if (col.money) return fmtMoney(val);
@@ -219,7 +236,7 @@ function ColumnFilterPopover({
   stored,
   active,
   position,
-  cycleOrder,
+  priorMap,
   onSort,
   onApplyCondition,
   onApplySelect,
@@ -229,9 +246,9 @@ function ColumnFilterPopover({
   const values = useMemo(
     () =>
       Array.from(
-          new Set(stored.map((r) => displayValueFor(r, colDef, stored, cycleOrder))),
+          new Set(stored.map((r) => displayValueFor(r, colDef, priorMap))),
       ).sort(),
-      [stored, colDef, cycleOrder],
+      [stored, colDef, priorMap],
   );
   const activeIsCondition = active && !(active instanceof Set);
   const ops = opsForType(colDef.type);
@@ -420,10 +437,12 @@ export function PayrollDataPage() {
     () => Object.fromEntries(
       [...cycles]
         .sort((a, b) => String(a.start).localeCompare(String(b.start)))
-        .map((cycle, index) => [cycle.name, index + 1]),
+        .map((cycle, index) => [String(cycle.id), index + 1]),
     ),
     [cycles],
   );
+
+  const priorMap = useMemo(() => buildPriorMap(stored, cycleOrder), [stored, cycleOrder]);
 
   const batches = useMemo(
     () => Array.from(new Set(stored.map((r) => r.batch))),
@@ -449,9 +468,9 @@ export function PayrollDataPage() {
         filterKeys.every((key) => {
           const filter = columnFilters[key];
           const colDef = colByKey(key);
-          const raw = rawValueFor(r, colDef, stored, cycleOrder);
+          const raw = rawValueFor(r, colDef, priorMap);
           if (filter instanceof Set)
-            return filter.has(displayValueFor(r, colDef, stored, cycleOrder));
+            return filter.has(displayValueFor(r, colDef, priorMap));
           return matchesCondition(raw, filter, colDef.type);
         }),
       );
@@ -460,8 +479,8 @@ export function PayrollDataPage() {
     if (sortState) {
       const colDef = colByKey(sortState.col);
       list = [...list].sort((a, b) => {
-        let av = rawValueFor(a, colDef, stored, cycleOrder);
-        let bv = rawValueFor(b, colDef, stored, cycleOrder);
+        let av = rawValueFor(a, colDef, priorMap);
+        let bv = rawValueFor(b, colDef, priorMap);
         if (av == null) av = colDef.type === "number" ? -Infinity : "";
         if (bv == null) bv = colDef.type === "number" ? -Infinity : "";
         if (av < bv) return sortState.dir === "asc" ? -1 : 1;
@@ -471,12 +490,12 @@ export function PayrollDataPage() {
     } else {
       list = [...list].sort((a, b) => {
         if (a.empId !== b.empId) return a.empId < b.empId ? -1 : 1;
-        return (cycleOrder[b.cycle] || 0) - (cycleOrder[a.cycle] || 0);
+        return (cycleOrder[b.cycleId] || 0) - (cycleOrder[a.cycleId] || 0);
       });
     }
 
     return list;
-  }, [stored, search, batchFilter, columnFilters, sortState, cycleOrder]);
+  }, [stored, search, batchFilter, columnFilters, sortState, cycleOrder, priorMap]);
 
   const openColFilter = (colKey) => {
     const btn = btnRefs.current[colKey];
@@ -499,7 +518,7 @@ export function PayrollDataPage() {
     const lines = [headers.map(csvCell).join(",")];
     rows.forEach((r) => {
       const vals = COLS.map((col) => {
-        const val = rawValueFor(r, col, stored, cycleOrder);
+        const val = rawValueFor(r, col, priorMap);
         if (col.money) return val == null ? "" : Math.round(val);
         if (col.pct) return val == null ? "" : val.toFixed(2) + "%";
         return val ?? "";
@@ -657,7 +676,7 @@ export function PayrollDataPage() {
             ) : rows.map((r, i) => (
               <tr key={`${r.empId}-${r.cycle}-${i}`}>
                 {COLS.map((col) => {
-                  const val = rawValueFor(r, col, stored, cycleOrder);
+                  const val = rawValueFor(r, col, priorMap);
                   if (col.isYoy) {
                     const cls = val == null ? "new" : val >= 0 ? "pos" : "neg";
                     const label =
@@ -720,7 +739,7 @@ export function PayrollDataPage() {
           stored={stored}
           active={columnFilters[openFilterCol]}
           position={filterPos}
-          cycleOrder={cycleOrder}
+          priorMap={priorMap}
           onSort={(dir) => {
             setSortState({ col: openFilterCol, dir });
             setOpenFilterCol(null);

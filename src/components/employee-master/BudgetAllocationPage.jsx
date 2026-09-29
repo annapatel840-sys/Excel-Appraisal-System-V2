@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useBudget } from "@/lib/budget-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 const NAVY = "#17365d";
 const TEAL = "#14a3a3";
@@ -312,10 +313,63 @@ export function BudgetAllocationPage() {
   const [auditRows, setAuditRows] = useState([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditError, setAuditError] = useState("");
+  const [cycles, setCycles] = useState([]);
+  const [selectedCycleId, setSelectedCycleId] = useState("");
+
+  // Cycle names/dates for the selector; budget rows only carry the cycle id.
+  useEffect(() => {
+    let active = true;
+    payrollCycleRequest("cycles")
+      .then((data) => {
+        if (active) setCycles(Array.isArray(data) ? data : []);
+      })
+      .catch(() => {
+        if (active) setCycles([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const cycleOptions = useMemo(() => {
+    const ids = [...new Set(budget.budgetRows.map((row) => row.appraisal_cycle_id).filter(Boolean))];
+    return ids
+      .map((id) => {
+        const cycle = cycles.find((item) => String(item.id) === id);
+        return { id, name: cycle?.name || id, status: cycle?.status || "", start: cycle?.start || "" };
+      })
+      .sort((a, b) => String(b.start).localeCompare(String(a.start)) || a.name.localeCompare(b.name));
+  }, [budget.budgetRows, cycles]);
+
+  // Default to the Active cycle, else the latest one.
+  const defaultCycleId = (cycleOptions.find((cycle) => cycle.status === "Active") || cycleOptions[0])?.id || "";
+  const cycleId = cycleOptions.some((cycle) => cycle.id === selectedCycleId) ? selectedCycleId : defaultCycleId;
+  const cycleRecord = cycleOptions.find((cycle) => cycle.id === cycleId);
+
+  // Totals and tables are scoped to one cycle to avoid double counting.
+  const cycleRows = useMemo(
+    () => (cycleId ? budget.budgetRows.filter((row) => row.appraisal_cycle_id === cycleId) : budget.budgetRows),
+    [budget.budgetRows, cycleId],
+  );
+
+  const cycleTotals = useMemo(
+    () =>
+      cycleRows.reduce(
+        (sum, row) => ({
+          base: sum.base + row.budget_amount,
+          additional: sum.additional + row.additional_budget,
+          updated: sum.updated + row.updated_budget,
+          utilized: sum.utilized + row.budget_utilized,
+          remaining: sum.remaining + row.budget_remaining,
+        }),
+        { base: 0, additional: 0, updated: 0, utilized: 0, remaining: 0 },
+      ),
+    [cycleRows],
+  );
 
   const selected = useMemo(
-    () => budget.budgetRows.find((row) => row.id === selectedId) || budget.budgetRows[0] || null,
-    [budget.budgetRows, selectedId],
+    () => cycleRows.find((row) => row.id === selectedId) || cycleRows[0] || null,
+    [cycleRows, selectedId],
   );
 
   const loadAudit = useCallback(async () => {
@@ -358,15 +412,35 @@ export function BudgetAllocationPage() {
     return <div className="em-tab-content"><div className="em-empty">No Budget Master record is available for this user/cycle.</div></div>;
   }
 
-  const rows = budget.budgetRows;
-  const t = budget.totals;
+  const rows = cycleRows;
+  const t = cycleTotals;
   const utilization = t.updated ? (t.utilized / t.updated) * 100 : 0;
   const selectedCount = selected ? (budget.employeeCounts[selected.tech_ed_id] || 0) : 0;
 
   return (
     <div className="em-tab-content">
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[#d4dbe5] bg-white px-4 py-2.5 text-[12.5px]" style={{ borderLeft: `4px solid ${TEAL}` }}>
-        <span>Appraisal cycle <b>{selected?.appraisal_cycle_id || "—"}</b></span>
+        {cycleOptions.length > 1 ? (
+          <label>
+            Appraisal cycle{" "}
+            <select
+              value={cycleId}
+              onChange={(e) => {
+                setSelectedCycleId(e.target.value);
+                setSelectedId(null);
+              }}
+              className="ml-1 h-7 rounded-md border border-[#cbd5e1] px-2 text-[12px] font-bold outline-none focus:border-[#14a3a3]"
+            >
+              {cycleOptions.map((cycle) => (
+                <option key={cycle.id} value={cycle.id}>
+                  {cycle.name}{cycle.status ? ` (${cycle.status})` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : (
+          <span>Appraisal cycle <b>{cycleRecord?.name || cycleId || "—"}</b></span>
+        )}
         <span className="h-4 w-px bg-[#d7dce3]" />
         <span><b>HR</b></span>
         <span className="h-4 w-px bg-[#d7dce3]" />

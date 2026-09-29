@@ -51,6 +51,8 @@ export function AppraisalCycleMasterPage() {
   const [audit, setAudit] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  // A failed refresh after a successful save keeps the existing table.
+  const [refreshError, setRefreshError] = useState("");
   const [saving, setSaving] = useState(false);
   const [banner, setBanner] = useState(null);
 
@@ -91,6 +93,7 @@ export function AppraisalCycleMasterPage() {
       remarks: entry.remarks,
     })));
     setLoadError("");
+    setRefreshError("");
   }, []);
 
   useEffect(() => {
@@ -142,12 +145,24 @@ export function AppraisalCycleMasterPage() {
     try {
       await loadData();
     } catch (error) {
-      setLoadError(`The change was saved, but the latest data could not be refreshed: ${error.message}`);
+      setRefreshError(`The change was saved, but the latest data could not be refreshed: ${error.message}`);
     }
     setSaving(false);
     showBanner(successTitle, successMessage);
     return true;
   };
+
+  // Client-side overlap check (inclusive dates). The backend should enforce
+  // this as well.
+  const findOverlappingCycle = (start, end, excludeId) =>
+    cycles.find(
+      (cycle) =>
+        cycle.id !== excludeId &&
+        cycle.start &&
+        cycle.end &&
+        start <= cycle.end &&
+        end >= cycle.start,
+    );
 
   const handleStatusChange = async (cycleId, nextStatus) => {
     const cycle = cycles.find((item) => item.id === cycleId);
@@ -183,6 +198,16 @@ export function AppraisalCycleMasterPage() {
       showBanner(
         "Validation failed",
         "End date must be after start date.",
+        true,
+      );
+      return;
+    }
+
+    const editOverlap = findOverlappingCycle(editForm.start, editForm.end, editCycle.id);
+    if (editOverlap) {
+      showBanner(
+        "Validation failed",
+        `These dates overlap "${editOverlap.name}" (${formatDate(editOverlap.start)} – ${formatDate(editOverlap.end)}). Cycles cannot overlap.`,
         true,
       );
       return;
@@ -253,6 +278,16 @@ export function AppraisalCycleMasterPage() {
       showBanner(
         "Validation failed",
         "End date must be after start date.",
+        true,
+      );
+      return;
+    }
+
+    const newOverlap = findOverlappingCycle(newForm.start, newForm.end, null);
+    if (newOverlap) {
+      showBanner(
+        "Validation failed",
+        `These dates overlap "${newOverlap.name}" (${formatDate(newOverlap.start)} – ${formatDate(newOverlap.end)}). Cycles cannot overlap.`,
         true,
       );
       return;
@@ -687,6 +722,26 @@ export function AppraisalCycleMasterPage() {
           </button>
         </div>
       )}
+      {!loading && !loadError && refreshError && (
+        <div className="acm-banner error" role="alert">
+          <AlertCircle size={17} />
+          <div>
+            <strong>Data may be out of date</strong>
+            <span>{refreshError}</span>
+          </div>
+          <button
+            type="button"
+            className="acm-btn"
+            onClick={() => {
+              loadData().catch((error) =>
+                setRefreshError(`The latest data could not be refreshed: ${error.message}`),
+              );
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
       {!canManageCycles && !loading && !loadError && (
         <div className="acm-banner">
           <div>
@@ -803,7 +858,10 @@ export function AppraisalCycleMasterPage() {
                           Edit Cycle
                         </DropdownMenuItem>
 
-                        <DropdownMenuItem disabled={saving} onSelect={() => openRemarks(cycle)}>
+                        <DropdownMenuItem
+                          disabled={saving || cycle.archived}
+                          onSelect={() => openRemarks(cycle)}
+                        >
                           <Clock3 />
                           Edit Remarks
                         </DropdownMenuItem>
@@ -817,7 +875,7 @@ export function AppraisalCycleMasterPage() {
                         </DropdownMenuItem>
 
                         <DropdownMenuItem
-                          disabled={saving}
+                          disabled={saving || cycle.archived}
                           className="text-red-600 focus:text-red-600"
                           onSelect={() => handleDelete(cycle)}
                         >

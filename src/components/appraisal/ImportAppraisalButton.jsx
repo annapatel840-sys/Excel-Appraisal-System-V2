@@ -158,6 +158,7 @@ export function useAppraisalImport({ onDone } = {}) {
       const found = [];
       const unmatchedList = [];
       let invalid = 0;
+      const skippedTitles = [];
 
       sheetRows.forEach((sheetRow) => {
         const mapped = {};
@@ -183,6 +184,20 @@ export function useAppraisalImport({ onDone } = {}) {
           return;
         }
 
+        // Resolve promotion eligibility first (file value if valid, else the
+        // current row) so the New Title rule doesn't depend on column order.
+        const promotionColumn = EDITABLE_COLUMNS.find(
+          (column) => column.key === "eligibleForPromotion",
+        );
+        const fileEligibility =
+          promotionColumn && "eligibleForPromotion" in mapped
+            ? cellToValue(promotionColumn, mapped.eligibleForPromotion)
+            : undefined;
+        const eligibility =
+          fileEligibility !== undefined
+            ? fileEligibility
+            : row.eligibleForPromotion;
+
         EDITABLE_COLUMNS.forEach((column) => {
           if (!(column.key in mapped)) {
             return;
@@ -192,6 +207,16 @@ export function useAppraisalImport({ onDone } = {}) {
 
           if (nextValue === undefined) {
             invalid += 1;
+            return;
+          }
+
+          // New Title only applies to employees eligible for promotion.
+          if (
+            column.key === "newTitle" &&
+            nextValue !== "" &&
+            eligibility !== "Yes"
+          ) {
+            skippedTitles.push(row.empId || row.name);
             return;
           }
 
@@ -231,6 +256,14 @@ export function useAppraisalImport({ onDone } = {}) {
 
       if (invalid) {
         notes.push(`${invalid} cell(s) skipped (invalid value)`);
+      }
+
+      if (skippedTitles.length) {
+        notes.push(
+          `${skippedTitles.length} New Title value(s) skipped because Eligible for Promotion is not "Yes" (e.g. ${skippedTitles
+            .slice(0, 5)
+            .join(", ")})`,
+        );
       }
 
       if (unrecognizedHeaders.length) {

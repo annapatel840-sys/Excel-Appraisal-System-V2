@@ -3,10 +3,12 @@ import { CheckCircle2, AlertCircle, X, History } from "lucide-react";
 
 import { AppShell } from "@/components/appraisal/AppShell";
 import { useCatalystUser } from "@/lib/catalyst-auth";
+import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
 import {
   FIELD_DEFS,
   fetchEmployeeMasterEmployees,
+  fetchAllEmployeeMasterEmployees,
   fetchEligibilityEmployees,
   updateEmployeeMasterEmployee,
   updateEmployeeEligibility,
@@ -47,11 +49,13 @@ const ROSTER_FIELD_TO_CATALYST = {
   name: "name",
   designation: "designation",
   organization: "department",
-  doj: "Joining_date",
+  doj: "joining_date",
+  orgExp: "wissen_experience",
   totalExp: "total_experience",
   reportingManager: "reporting_manager",
   compManager: "comp_manager",
-  superManager: "appraiser_tech_ed",
+  // Only the Appraiser / Tech-ED column feeds appraiser_tech_ed. The
+  // "Super Manager" name column has no backend field and is not imported.
   appraiser: "appraiser_tech_ed",
   managerMail: "manager_email_id",
   superManagerMail: "super_man_email_id",
@@ -110,6 +114,138 @@ function getImportedEmpId(row) {
   }
 
   return "";
+}
+
+/*
+ * Normalise a date value to "yyyy-mm-dd" so it can be compared with the
+ * <input type="date"> cutoff. Accepts ISO strings, dd-mm-yyyy / dd/mm/yyyy
+ * and anything Date can parse. Returns "" when the value is not a date.
+ */
+function toIsoDate(value) {
+  const text = String(value ?? "").trim();
+
+  if (!text) {
+    return "";
+  }
+
+  const pad = (number) => String(number).padStart(2, "0");
+
+  const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+
+  if (iso) {
+    return `${iso[1]}-${pad(iso[2])}-${pad(iso[3])}`;
+  }
+
+  const dmy = text.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
+
+  if (dmy) {
+    return `${dmy[3]}-${pad(dmy[2])}-${pad(dmy[1])}`;
+  }
+
+  const date = new Date(text);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(
+    date.getDate(),
+  )}`;
+}
+
+/* Canonical appraiser format, e.g. "EMP0051 - Ashok Kumar". */
+function isCanonicalPersonValue(value) {
+  return /^\s*[A-Za-z]*\d+\s+-\s+\S/.test(String(value || ""));
+}
+
+/* ============================================================
+   AUDIT PERSISTENCE (shared Appraisal_Audit table)
+   ============================================================ */
+
+const AUDIT_API_URL = catalystFunctionUrl("appraisalauditapi");
+
+const AUDIT_SOURCE_STATUS = "Employee Master - Status";
+const AUDIT_SOURCE_ELIGIBILITY = "Employee Master - Eligibility";
+
+function formatAuditTime(value) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value || "");
+  }
+
+  return date.toLocaleString("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "medium",
+  });
+}
+
+async function postAuditEntries(entries) {
+  if (!entries.length) {
+    return;
+  }
+
+  const response = await catalystFetch(AUDIT_API_URL, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(
+      entries.map((entry) => ({
+        emp_id: entry.empId,
+        employee_name: entry.employeeName,
+        field_name: entry.fieldName,
+        old_value: entry.oldValue,
+        new_value: entry.newValue,
+        changed_by: entry.changedBy,
+        changed_at: entry.changedAtIso,
+        source: entry.source,
+      })),
+    ),
+  });
+
+  const result = await response.json().catch(() => null);
+
+  if (!response.ok || !result?.success) {
+    throw new Error(
+      result?.message || `Audit API failed with status ${response.status}`,
+    );
+  }
+}
+
+async function fetchAuditEntries(source) {
+  const url = new URL(AUDIT_API_URL);
+
+  url.searchParams.set("limit", "500");
+  url.searchParams.set("_ts", String(Date.now()));
+
+  const response = await catalystFetch(url.toString(), {
+    method: "GET",
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  });
+
+  const result = await response.json().catch(() => null);
+
+  if (!response.ok || !result?.success) {
+    throw new Error(
+      result?.message || `Audit API failed with status ${response.status}`,
+    );
+  }
+
+  return (Array.isArray(result.data) ? result.data : [])
+    .map((record) => record?.Appraisal_Audit || record || {})
+    .filter((row) => String(row.source || "") === source)
+    .map((row, index) => ({
+      id: String(row.ROWID || row.id || `audit-${index}`),
+      empId: String(row.emp_id || ""),
+      employeeName: String(row.employee_name || ""),
+      fieldName: String(row.field_name || ""),
+      oldValue: String(row.old_value || ""),
+      newValue: String(row.new_value || ""),
+      changedAt: formatAuditTime(row.changed_at || row.CREATEDTIME),
+    }));
 }
 
 /* ============================================================
@@ -437,6 +573,13 @@ export function EmployeeMaster() {
   const catalystUser = useCatalystUser();
   const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
+  // UI gating only (the backend enforces authorization). Roster/status and
+  // eligibility writes are for HR and App Administrator; others read only.
+  const canEditEmployees = role === "hr" || role === "appadministrator";
+  // Mirrors payrollcycleapi: payroll upload is allowed for HR and Comp. Manager.
+  const canUploadPayroll = role === "hr" || role === "compmanager";
+  // Mirrors payrollcycleapi canAccessPayroll (HR, Comp. Manager, Tech-Ed).
+  const canViewPayroll = canUploadPayroll || isTechEd;
   const [allEmployees, setAllEmployees] = useState([]);
 
   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
@@ -470,6 +613,16 @@ export function EmployeeMaster() {
   const [previewChanges, setPreviewChanges] = useState([]);
 
   const [pendingImportType, setPendingImportType] = useState(null);
+
+  const [previewWarnings, setPreviewWarnings] = useState([]);
+
+  const [importPreparing, setImportPreparing] = useState(false);
+
+  const [importSubmitting, setImportSubmitting] = useState(false);
+
+  const importSubmittingRef = useRef(false);
+
+  const [eligibilityReloadKey, setEligibilityReloadKey] = useState(0);
 
   const fileInputRef = useRef(null);
 
@@ -508,6 +661,55 @@ export function EmployeeMaster() {
      AUDIT HELPERS
      ============================================================ */
 
+  /*
+   * Entries are shown immediately and also saved to the shared
+   * Appraisal_Audit table (appraisalauditapi) so they survive a reload.
+   * Entries whose save failed stay visible for this session only and are
+   * flagged "(not saved)".
+   */
+  const [remoteEmployeeMasterAudit, setRemoteEmployeeMasterAudit] =
+    useState(null);
+
+  const [remoteEligibilityAudit, setRemoteEligibilityAudit] = useState(null);
+
+  const [auditLoadError, setAuditLoadError] = useState("");
+
+  const auditUserName = String(
+    catalystUser?.name || catalystUser?.email || "Unknown user",
+  );
+
+  const recordAudit = (setLocal, source, entry) => {
+    const now = new Date();
+
+    const fullEntry = {
+      id: `${now.getTime()}-${Math.random().toString(36).slice(2)}`,
+      ...entry,
+      changedBy: auditUserName,
+      changedAtIso: now.toISOString(),
+      changedAt: formatAuditTime(now),
+      source,
+      saved: true,
+    };
+
+    setLocal((current) => [fullEntry, ...current]);
+
+    postAuditEntries([fullEntry]).catch((error) => {
+      console.error("Audit save failed:", error);
+
+      setLocal((current) =>
+        current.map((item) =>
+          item.id === fullEntry.id
+            ? {
+                ...item,
+                saved: false,
+                newValue: `${item.newValue} (not saved)`,
+              }
+            : item,
+        ),
+      );
+    });
+  };
+
   const addEmployeeMasterAudit = ({
     empId,
     employeeName,
@@ -521,21 +723,13 @@ export function EmployeeMaster() {
       return;
     }
 
-    setEmployeeMasterAudit((current) => [
-      {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        empId: String(empId || "").trim(),
-        employeeName: String(employeeName || "").trim(),
-        fieldName: "Status",
-        oldValue: oldText,
-        newValue: newText,
-        changedAt: new Date().toLocaleString("en-IN", {
-          dateStyle: "medium",
-          timeStyle: "medium",
-        }),
-      },
-      ...current,
-    ]);
+    recordAudit(setEmployeeMasterAudit, AUDIT_SOURCE_STATUS, {
+      empId: String(empId || "").trim(),
+      employeeName: String(employeeName || "").trim(),
+      fieldName: "Status",
+      oldValue: oldText,
+      newValue: newText,
+    });
   };
 
   const addEligibilityAudit = ({ empId, employeeName, oldValue, newValue }) => {
@@ -546,32 +740,60 @@ export function EmployeeMaster() {
       return;
     }
 
-    setEligibilityAudit((current) => [
-      {
-        id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        empId: String(empId || "").trim(),
-        employeeName: String(employeeName || "").trim(),
-        fieldName: "Eligibility",
-        oldValue:
-          oldText === "Yes"
-            ? "Eligible"
-            : oldText === "No"
-              ? "Not Eligible"
-              : oldText,
-        newValue:
-          newText === "Yes"
-            ? "Eligible"
-            : newText === "No"
-              ? "Not Eligible"
-              : newText,
-        changedAt: new Date().toLocaleString("en-IN", {
-          dateStyle: "medium",
-          timeStyle: "medium",
-        }),
-      },
-      ...current,
-    ]);
+    recordAudit(setEligibilityAudit, AUDIT_SOURCE_ELIGIBILITY, {
+      empId: String(empId || "").trim(),
+      employeeName: String(employeeName || "").trim(),
+      fieldName: "Eligibility",
+      oldValue:
+        oldText === "Yes"
+          ? "Eligible"
+          : oldText === "No"
+            ? "Not Eligible"
+            : oldText,
+      newValue:
+        newText === "Yes"
+          ? "Eligible"
+          : newText === "No"
+            ? "Not Eligible"
+            : newText,
+    });
   };
+
+  const openAuditHistory = async (kind) => {
+    const isStatus = kind === "status";
+
+    if (isStatus) {
+      setEmployeeMasterAuditOpen(true);
+    } else {
+      setEligibilityAuditOpen(true);
+    }
+
+    setAuditLoadError("");
+
+    try {
+      const entries = await fetchAuditEntries(
+        isStatus ? AUDIT_SOURCE_STATUS : AUDIT_SOURCE_ELIGIBILITY,
+      );
+
+      if (isStatus) {
+        setRemoteEmployeeMasterAudit(entries);
+      } else {
+        setRemoteEligibilityAudit(entries);
+      }
+    } catch (error) {
+      setAuditLoadError(
+        `Saved history could not be loaded (${
+          error?.message || "unknown error"
+        }). Showing this session's changes only.`,
+      );
+    }
+  };
+
+  // Saved history from the server plus any local entries that failed to save.
+  const mergeAuditEntries = (remote, local) =>
+    remote === null
+      ? local
+      : [...local.filter((entry) => entry.saved === false), ...remote];
 
   const showBanner = (title, body, error = false) => {
     setBanner({ title, body, error });
@@ -755,6 +977,7 @@ export function EmployeeMaster() {
     eligibilityLoadedKeyRef.current = "loaded";
 
     let cancelled = false;
+    let finished = false;
 
     const loadEligibilityEmployees = async () => {
       try {
@@ -788,6 +1011,8 @@ export function EmployeeMaster() {
           return;
         }
 
+        finished = true;
+
         setEligibilityEmployees(all);
       } catch (error) {
         if (cancelled) {
@@ -815,8 +1040,18 @@ export function EmployeeMaster() {
 
     return () => {
       cancelled = true;
+      // Allow a retry if this load was interrupted before it finished.
+      if (!finished && eligibilityLoadedKeyRef.current === "loaded") {
+        eligibilityLoadedKeyRef.current = null;
+      }
     };
-  }, [activeTab]);
+  }, [activeTab, eligibilityReloadKey]);
+
+  // Force the Eligibility List to reload from Catalyst on its next view.
+  const invalidateEligibilityList = () => {
+    eligibilityLoadedKeyRef.current = null;
+    setEligibilityReloadKey((value) => value + 1);
+  };
 
   /* ============================================================
      FILE READING
@@ -859,12 +1094,43 @@ export function EmployeeMaster() {
      ROSTER IMPORT CHANGES
      ============================================================ */
 
-  const buildRosterImportChanges = (rows) => {
+  /*
+   * existingEmployees must be the COMPLETE employee list (not the current
+   * roster page), otherwise existing employees are treated as new.
+   * Returns { changes, warnings }. Each change carries a readable
+   * field-level diff list for the preview.
+   */
+  const buildRosterImportChanges = (rows, existingEmployees) => {
     const changes = [];
+    const warnings = [];
 
     if (!Array.isArray(rows) || rows.length === 0) {
-      return changes;
+      return { changes, warnings };
     }
+
+    const existingById = new Map(
+      existingEmployees.map((employee) => [
+        normalizeEmpId(employee.empId),
+        employee,
+      ]),
+    );
+
+    const employeesByName = new Map();
+
+    existingEmployees.forEach((employee) => {
+      const key = String(employee.name || "").trim().toLowerCase();
+
+      if (!key) {
+        return;
+      }
+
+      employeesByName.set(key, [...(employeesByName.get(key) || []), employee]);
+    });
+
+    /* De-duplicate by normalized emp_id; the last row in the file wins. */
+    const mappedById = new Map();
+    const duplicateIds = new Set();
+    let missingIdCount = 0;
 
     rows.forEach((row) => {
       if (!row || typeof row !== "object") {
@@ -877,7 +1143,7 @@ export function EmployeeMaster() {
         const field = findFieldForHeader(header);
 
         if (field) {
-          mapped[field.key] = String(value || "").trim();
+          mapped[field.key] = String(value ?? "").trim();
         }
       });
 
@@ -888,19 +1154,67 @@ export function EmployeeMaster() {
       }
 
       if (!mapped.empId) {
+        if (Object.values(mapped).some((value) => value !== "")) {
+          missingIdCount += 1;
+        }
+
         return;
       }
 
-      const normalizedImportedId = normalizeEmpId(mapped.empId);
+      const key = normalizeEmpId(mapped.empId);
 
-      const existing = allEmployees.find(
-        (employee) => normalizeEmpId(employee.empId) === normalizedImportedId,
+      if (mappedById.has(key)) {
+        duplicateIds.add(mapped.empId);
+      }
+
+      mappedById.set(key, mapped);
+    });
+
+    if (duplicateIds.size > 0) {
+      warnings.push(
+        `Duplicate Emp IDs in file (last row used): ${[...duplicateIds].join(
+          ", ",
+        )}`,
       );
+    }
+
+    if (missingIdCount > 0) {
+      warnings.push(`${missingIdCount} row(s) without an Emp ID were skipped.`);
+    }
+
+    const unresolvedAppraisers = [];
+
+    mappedById.forEach((mapped, key) => {
+      const existing = existingById.get(key);
+
+      /* Bare appraiser names are resolved to "EMPxxxx - Name". */
+      if (mapped.appraiser && !isCanonicalPersonValue(mapped.appraiser)) {
+        const matches =
+          employeesByName.get(mapped.appraiser.toLowerCase()) || [];
+
+        if (matches.length === 1) {
+          mapped.appraiser = `${matches[0].empId} - ${matches[0].name}`;
+        } else {
+          unresolvedAppraisers.push(
+            `${mapped.empId} ("${mapped.appraiser}"${
+              matches.length > 1 ? `, ${matches.length} matches` : ", no match"
+            })`,
+          );
+
+          delete mapped.appraiser;
+        }
+      }
 
       const fields = {};
+      const diffs = [];
 
       FIELD_DEFS.forEach((field) => {
         if (field.key === "empId") {
+          return;
+        }
+
+        /* Only fields the backend can store are imported / previewed. */
+        if (!ROSTER_FIELD_TO_CATALYST[field.key]) {
           return;
         }
 
@@ -908,16 +1222,30 @@ export function EmployeeMaster() {
           return;
         }
 
-        const importedValue = String(mapped[field.key] || "").trim();
+        let importedValue = String(mapped[field.key] || "").trim();
 
         if (importedValue === "") {
           return;
         }
 
-        const existingValue = String(existing?.[field.key] || "").trim();
+        if (field.key === "status") {
+          const lower = importedValue.toLowerCase();
+
+          if (lower === "active" || lower === "inactive") {
+            importedValue = lower === "active" ? "Active" : "Inactive";
+          }
+        }
+
+        const existingValue = String(existing?.[field.key] ?? "").trim();
 
         if (!existing || existingValue !== importedValue) {
           fields[field.key] = importedValue;
+
+          diffs.push({
+            field: field.label,
+            from: existing ? existingValue : "",
+            to: importedValue,
+          });
         }
       });
 
@@ -926,6 +1254,7 @@ export function EmployeeMaster() {
           empId: mapped.empId,
           name: mapped.name || "",
           fields,
+          diffs,
           isNew: true,
         });
 
@@ -937,12 +1266,22 @@ export function EmployeeMaster() {
           empId: existing.empId,
           name: mapped.name || existing.name || "",
           fields,
+          diffs,
           isNew: false,
+          previousStatus: existing.status,
         });
       }
     });
 
-    return changes;
+    if (unresolvedAppraisers.length > 0) {
+      warnings.push(
+        `Appraiser / Tech-ED not updated (name must match exactly one employee, or use "EMPxxxx - Name"): ${unresolvedAppraisers.join(
+          "; ",
+        )}`,
+      );
+    }
+
+    return { changes, warnings };
   };
 
   /* ============================================================
@@ -1011,10 +1350,12 @@ export function EmployeeMaster() {
 
       const nextReason = reason !== "" ? reason : employee.eligibleReason || "";
 
-      if (
-        employee.eligible !== eligible ||
-        employee.eligibleReason !== nextReason
-      ) {
+      // Only eligible_status is stored in Catalyst; a reason-only
+      // difference is not a change that can be saved.
+      if (employee.eligible !== eligible) {
+        const label = (value) =>
+          value === "Yes" ? "Eligible" : "Not Eligible";
+
         changes.push({
           empId: employee.empId,
           name: employee.name,
@@ -1022,6 +1363,13 @@ export function EmployeeMaster() {
             Eligible: eligible,
             Reason: nextReason,
           },
+          diffs: [
+            {
+              field: "Eligibility",
+              from: label(employee.eligible),
+              to: label(eligible),
+            },
+          ],
         });
       }
     });
@@ -1034,13 +1382,26 @@ export function EmployeeMaster() {
      ============================================================ */
 
   const handleRosterFile = async (file) => {
+    if (!canEditEmployees || importPreparing) {
+      return;
+    }
+
     try {
+      setImportPreparing(true);
+
       const rows = await readFile(file);
 
-      const changes = buildRosterImportChanges(rows);
+      // Compare against the complete employee list, not the current page.
+      const fullEmployees = await fetchAllEmployeeMasterEmployees();
+
+      const { changes, warnings } = buildRosterImportChanges(
+        rows,
+        fullEmployees,
+      );
 
       setPendingImportType("roster");
       setPreviewChanges(changes);
+      setPreviewWarnings(warnings);
       setPreviewOpen(true);
     } catch (error) {
       showBanner(
@@ -1048,10 +1409,16 @@ export function EmployeeMaster() {
         error?.message || "Unable to read the file.",
         true,
       );
+    } finally {
+      setImportPreparing(false);
     }
   };
 
   const handleEligibilityFile = async (file) => {
+    if (!canEditEmployees) {
+      return;
+    }
+
     try {
       let sourceEmployees = eligibilityEmployees;
 
@@ -1091,6 +1458,9 @@ export function EmployeeMaster() {
 
       setPendingImportType("eligibility");
       setPreviewChanges(changes);
+      setPreviewWarnings([
+        "Eligibility reasons are shown for reference only and are not saved (no backend column).",
+      ]);
       setPreviewOpen(true);
     } catch (error) {
       setEligibilityLoading(false);
@@ -1176,6 +1546,8 @@ export function EmployeeMaster() {
         inactive: current.inactive - activeDelta,
       };
     });
+
+    invalidateEligibilityList();
   };
 
   /* ============================================================
@@ -1183,7 +1555,7 @@ export function EmployeeMaster() {
      ============================================================ */
 
   const toggleEmployeeStatus = async (employee) => {
-    if (!employee?.empId) {
+    if (!canEditEmployees || !employee?.empId) {
       return;
     }
 
@@ -1230,6 +1602,10 @@ export function EmployeeMaster() {
      ============================================================ */
 
   const bulkUpdateEmployeeStatus = async (nextStatus, selectedEmployees) => {
+    if (!canEditEmployees) {
+      return;
+    }
+
     if (!Array.isArray(selectedEmployees) || selectedEmployees.length === 0) {
       showBanner(
         "No employees selected",
@@ -1334,7 +1710,15 @@ export function EmployeeMaster() {
      LOCAL ELIGIBILITY UPDATE
      ============================================================ */
 
-  const applyLocalEligibilityChanges = (successfulChanges) => {
+  /*
+   * manual = true only for genuine manual edits (modal / file import).
+   * Criteria-driven changes must not set manualOverride, otherwise the
+   * next Apply Criteria skips those rows.
+   */
+  const applyLocalEligibilityChanges = (
+    successfulChanges,
+    { manual = false } = {},
+  ) => {
     const changeMap = new Map(
       successfulChanges.map((change) => [normalizeEmpId(change.empId), change]),
     );
@@ -1352,8 +1736,10 @@ export function EmployeeMaster() {
         ...employee,
         eligible: nextEligible,
         eligibleStatus: nextEligible === "Yes" ? "Eligible" : "Not Eligible",
-        eligibleReason: change.fields?.Reason || employee.eligibleReason || "",
-        manualOverride: true,
+        eligibleReason: manual
+          ? change.fields?.Reason || employee.eligibleReason || ""
+          : change.fields?.Reason || "",
+        manualOverride: manual ? true : Boolean(employee.manualOverride),
         status: employee.status,
       };
     };
@@ -1388,11 +1774,33 @@ export function EmployeeMaster() {
      CONFIRM IMPORT
      ============================================================ */
 
+  const closePreview = () => {
+    setPreviewOpen(false);
+    setPreviewChanges([]);
+    setPreviewWarnings([]);
+    setPendingImportType(null);
+  };
+
+  /* In-flight guard: prevents double POSTs from repeated clicks. */
   const confirmImport = async () => {
+    if (importSubmittingRef.current || !canEditEmployees) {
+      return;
+    }
+
+    importSubmittingRef.current = true;
+    setImportSubmitting(true);
+
+    try {
+      await runConfirmImport();
+    } finally {
+      importSubmittingRef.current = false;
+      setImportSubmitting(false);
+    }
+  };
+
+  const runConfirmImport = async () => {
     if (previewChanges.length === 0) {
-      setPreviewOpen(false);
-      setPreviewChanges([]);
-      setPendingImportType(null);
+      closePreview();
 
       showBanner("Nothing to import", "No changes were found in the file.");
 
@@ -1440,12 +1848,10 @@ export function EmployeeMaster() {
         });
 
         if (successfulChanges.length > 0) {
-          applyLocalEligibilityChanges(successfulChanges);
+          applyLocalEligibilityChanges(successfulChanges, { manual: true });
         }
 
-        setPreviewOpen(false);
-        setPreviewChanges([]);
-        setPendingImportType(null);
+        closePreview();
 
         if (failedCount > 0) {
           showBanner(
@@ -1488,9 +1894,8 @@ export function EmployeeMaster() {
           }
         });
 
-        if (change.isNew && !payload.status) {
-          payload.status = "Active";
-        }
+        // Status is sent only when the file has a Status value. New rows
+        // default to Active on the backend; existing rows keep their status.
 
         return payload;
       });
@@ -1510,28 +1915,23 @@ export function EmployeeMaster() {
           return;
         }
 
-        const existing = allEmployees.find(
-          (employee) =>
-            normalizeEmpId(employee.empId) === normalizeEmpId(change.empId),
-        );
-
-        if (!existing || existing.status === importedStatus) {
+        if (!change.previousStatus || change.previousStatus === importedStatus) {
           return;
         }
 
         addEmployeeMasterAudit({
-          empId: existing.empId,
-          employeeName: existing.name,
-          oldValue: existing.status,
+          empId: change.empId,
+          employeeName: change.name,
+          oldValue: change.previousStatus,
           newValue: importedStatus,
         });
       });
 
-      setPreviewOpen(false);
-      setPreviewChanges([]);
-      setPendingImportType(null);
+      closePreview();
 
       setRefreshKey((value) => value + 1);
+
+      invalidateEligibilityList();
 
       const created = result?.data?.created || 0;
       const updated = result?.data?.updated || 0;
@@ -1562,12 +1962,25 @@ export function EmployeeMaster() {
     excludedEmployees: excluded,
     cutoffDate,
   }) => {
+    if (!canEditEmployees) {
+      return;
+    }
+
     let evaluated = 0;
 
     const changes = [];
 
+    const reasonOnlyChanges = [];
+
+    const cutoffIso = toIsoDate(cutoffDate);
+
     eligibilityEmployees.forEach((employee) => {
       if (employee.manualOverride) {
+        return;
+      }
+
+      // Inactive employees are left untouched by criteria.
+      if (employee.status === "Inactive") {
         return;
       }
 
@@ -1587,29 +2000,48 @@ export function EmployeeMaster() {
         reasons.push("Employee excluded");
       }
 
-      if (cutoffDate && employee.doj > cutoffDate) {
-        reasons.push("Joined after cutoff date");
+      if (cutoffIso) {
+        const dojIso = toIsoDate(employee.doj);
+
+        // The cutoff rule needs a DOJ; without one eligibility can't be shown.
+        if (!dojIso) {
+          reasons.push("Missing DOJ");
+        } else if (dojIso > cutoffIso) {
+          reasons.push("Joined after cutoff date");
+        }
       }
 
       const nextEligible = reasons.length > 0 ? "No" : "Yes";
 
       const nextReason = reasons.join(", ");
 
-      if (
-        employee.eligible !== nextEligible ||
-        employee.eligibleReason !== nextReason
-      ) {
-        changes.push({
-          empId: employee.empId,
-          name: employee.name,
-          oldEligible: employee.eligible,
-          fields: {
-            Eligible: nextEligible,
-            Reason: nextReason,
-          },
-        });
+      // Only eligible_status is persisted; a differing (derived) reason is
+      // refreshed locally without a PATCH.
+      if (employee.eligible === nextEligible) {
+        if (employee.eligibleReason !== nextReason) {
+          reasonOnlyChanges.push({
+            empId: employee.empId,
+            fields: { Eligible: nextEligible, Reason: nextReason },
+          });
+        }
+
+        return;
       }
+
+      changes.push({
+        empId: employee.empId,
+        name: employee.name,
+        oldEligible: employee.eligible,
+        fields: {
+          Eligible: nextEligible,
+          Reason: nextReason,
+        },
+      });
     });
+
+    if (reasonOnlyChanges.length > 0) {
+      applyLocalEligibilityChanges(reasonOnlyChanges);
+    }
 
     if (changes.length === 0) {
       showBanner(
@@ -1675,6 +2107,10 @@ export function EmployeeMaster() {
      ============================================================ */
 
   const saveEligibility = async ({ empId, eligible, eligibleReason }) => {
+    if (!canEditEmployees) {
+      return;
+    }
+
     try {
       const normalizedEligible = eligible === "Yes" ? "Yes" : "No";
 
@@ -1705,7 +2141,7 @@ export function EmployeeMaster() {
             Reason: eligibleReason || "",
           },
         },
-      ]);
+      ], { manual: true });
 
       setEligibilityEmployee(null);
 
@@ -1777,15 +2213,15 @@ export function EmployeeMaster() {
             Appraisal Cycle Master
           </button>}
 
-          <button
+          {canViewPayroll && <button
             type="button"
             className={activeTab === "payroll-data" ? "active" : ""}
             onClick={() => setActiveTab("payroll-data")}
           >
             Payroll Data
-          </button>
+          </button>}
 
-          {!isTechEd && <button
+          {canUploadPayroll && <button
             type="button"
             className={activeTab === "payroll-upload" ? "active" : ""}
             onClick={() => setActiveTab("payroll-upload")}
@@ -1846,10 +2282,20 @@ export function EmployeeMaster() {
               statusFilter={statusFilter}
               setStatusFilter={setStatusFilter}
               onDownloadTemplate={downloadRosterTemplate}
-              onUpload={() => fileInputRef.current?.click()}
+              onUpload={
+                canEditEmployees && !importPreparing
+                  ? () => fileInputRef.current?.click()
+                  : undefined
+              }
               onDownloadData={() => downloadRosterData(filteredRosterEmployees)}
-              onAuditHistory={() => setEmployeeMasterAuditOpen(true)}
+              onAuditHistory={() => openAuditHistory("status")}
             />
+
+            {importPreparing && (
+              <div className="em-empty">
+                Reading file and loading all employees for comparison...
+              </div>
+            )}
 
             <input
               ref={fileInputRef}
@@ -1881,6 +2327,7 @@ export function EmployeeMaster() {
                 onToggleStatus={toggleEmployeeStatus}
                 onBulkStatusChange={bulkUpdateEmployeeStatus}
                 bulkStatusUpdating={statusActionLoading}
+                canEdit={canEditEmployees}
               />
             )}
 
@@ -1898,13 +2345,22 @@ export function EmployeeMaster() {
                 Loading all employees for Eligibility List...
               </div>
             ) : (
-              <div className="em-eligibility-layout">
-                <EligibilityCriteria
-                  employees={eligibilityEmployees}
-                  excludedEmployees={excludedEmployees}
-                  setExcludedEmployees={setExcludedEmployees}
-                  onApply={applyEligibilityCriteria}
-                />
+              <div
+                className="em-eligibility-layout"
+                style={
+                  canEditEmployees
+                    ? undefined
+                    : { gridTemplateColumns: "minmax(0, 1fr)" }
+                }
+              >
+                {canEditEmployees && (
+                  <EligibilityCriteria
+                    employees={eligibilityEmployees}
+                    excludedEmployees={excludedEmployees}
+                    setExcludedEmployees={setExcludedEmployees}
+                    onApply={applyEligibilityCriteria}
+                  />
+                )}
 
                 <EligibilityList
                   employees={eligibilityEmployees}
@@ -1912,11 +2368,13 @@ export function EmployeeMaster() {
                   setSearch={setEligibilitySearch}
                   filters={eligibilityFilters}
                   setFilters={setEligibilityFilters}
-                  onChangeEligibility={setEligibilityEmployee}
+                  onChangeEligibility={
+                    canEditEmployees ? setEligibilityEmployee : undefined
+                  }
                   onDownloadTemplate={downloadEligibilityTemplate}
-                  onImport={handleEligibilityFile}
+                  onImport={canEditEmployees ? handleEligibilityFile : undefined}
                   onExport={exportEligibilityData}
-                  onAuditHistory={() => setEligibilityAuditOpen(true)}
+                  onAuditHistory={() => openAuditHistory("eligibility")}
                 />
               </div>
             )}
@@ -1938,7 +2396,7 @@ export function EmployeeMaster() {
             PAYROLL DATA
             ====================================================== */}
 
-        {activeTab === "payroll-data" && (
+        {canViewPayroll && activeTab === "payroll-data" && (
           <div className="em-tab-content">
             <PayrollDataPage />
           </div>
@@ -1948,7 +2406,7 @@ export function EmployeeMaster() {
             PAYROLL UPLOAD
             ====================================================== */}
 
-        {!isTechEd && activeTab === "payroll-upload" && (
+        {canUploadPayroll && activeTab === "payroll-upload" && (
           <div
             className="em-tab-content"
             style={{
@@ -1985,11 +2443,9 @@ export function EmployeeMaster() {
               : "Employee Import Preview"
           }
           changes={previewChanges}
-          onCancel={() => {
-            setPreviewOpen(false);
-            setPreviewChanges([]);
-            setPendingImportType(null);
-          }}
+          warnings={previewWarnings}
+          submitting={importSubmitting}
+          onCancel={closePreview}
           onConfirm={confirmImport}
         />
 
@@ -2000,8 +2456,14 @@ export function EmployeeMaster() {
         <AuditHistoryPanel
           open={employeeMasterAuditOpen}
           title="Employee Master Audit History"
-          description="Active / Inactive status changes only."
-          entries={employeeMasterAudit}
+          description={
+            auditLoadError ||
+            "Active / Inactive status changes only (saved to the Appraisal audit log)."
+          }
+          entries={mergeAuditEntries(
+            remoteEmployeeMasterAudit,
+            employeeMasterAudit,
+          )}
           onClose={() => setEmployeeMasterAuditOpen(false)}
         />
 
@@ -2012,8 +2474,11 @@ export function EmployeeMaster() {
         <AuditHistoryPanel
           open={eligibilityAuditOpen}
           title="Eligibility Audit History"
-          description="Eligible / Not Eligible changes only."
-          entries={eligibilityAudit}
+          description={
+            auditLoadError ||
+            "Eligible / Not Eligible changes only (saved to the Appraisal audit log)."
+          }
+          entries={mergeAuditEntries(remoteEligibilityAudit, eligibilityAudit)}
           onClose={() => setEligibilityAuditOpen(false)}
         />
       </div>

@@ -67,6 +67,25 @@ function fmt(v, field) {
   if (typeof v === "number") return "₹" + v.toLocaleString("en-IN");
   return v;
 }
+const MONTH_FIELDS = new Set(["rbMonth", "pbMonth"]);
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Date-formatted month cells arrive as Excel serials (e.g. 46143); send them
+// as "Mon-YY" instead of the raw number.
+function normalizeCell(field, value) {
+  if (!MONTH_FIELDS.has(field)) return value;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return `${MONTH_NAMES[value.getMonth()]}-${String(value.getFullYear()).slice(-2)}`;
+  }
+  if (typeof value === "number" && value > 0 && value < 2958466) {
+    const parsed = XLSX.SSF.parse_date_code(value);
+    if (parsed && parsed.m >= 1 && parsed.m <= 12) {
+      return `${MONTH_NAMES[parsed.m - 1]}-${String(parsed.y).slice(-2)}`;
+    }
+  }
+  return value;
+}
+
 function nextBatchId() {
   return `BATCH-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${crypto.randomUUID().slice(0, 8)}`;
 }
@@ -116,6 +135,7 @@ export function PayrollUploadPage() {
   const [rowStatus, setRowStatus] = useState({}); // row -> "pending" | "locked" | "uploaded"
   const [outcome, setOutcome] = useState(null);
   const [committing, setCommitting] = useState(false);
+  const [validating, setValidating] = useState(false);
   const [history, setHistory] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [undoingBatch, setUndoingBatch] = useState("");
@@ -181,6 +201,7 @@ export function PayrollUploadPage() {
       const headers = (rows.shift() || []).map((value) => String(value || "").trim());
       if (!headers.length || !headers.some(Boolean)) throw new Error("The worksheet is missing its header row.");
       const columns = headers.map((name, index) => ({
+        index,
         name: name || `Column ${index + 1}`,
         guess: FILE_COLUMNS.find((column) => column.name.toLowerCase() === name.toLowerCase())?.guess ||
           SYSTEM_FIELDS.find((field) =>
@@ -197,7 +218,8 @@ export function PayrollUploadPage() {
       setFileColumns(columns);
       setSourceRows(dataRows);
       setCurrentRows([]);
-      setMapping(Object.fromEntries(columns.map((column) => [column.name, column.guess])));
+      // Mappings are keyed by column index so duplicate headers stay distinct.
+      setMapping(Object.fromEntries(columns.map((column) => [column.index, column.guess])));
       setStep(2);
     } catch (parseError) {
       setError(parseError.message || "Unable to read the selected payroll file.");
@@ -210,20 +232,31 @@ export function PayrollUploadPage() {
   const duplicateMappings = Object.values(mapping).filter(Boolean).filter(
     (field, index, mapped) => mapped.indexOf(field) !== index,
   );
+  const duplicateHeaders = [
+    ...new Set(
+      fileColumns
+        .map((column) => column.name.toLowerCase())
+        .filter((name, index, names) => names.indexOf(name) !== index),
+    ),
+  ];
 
-  const goToValidate = async () => {
-    if (!sourceRows.length || !selectedCycle) return;
-    const id = nextBatchId();
-    setBatchId(id);
-    setError("");
-    const records = sourceRows.map(({ row, cells }) => {
+  const buildRecords = () =>
+    sourceRows.map(({ row, cells }) => {
       const record = { row };
-      fileColumns.forEach((column, index) => {
-        const field = mapping[column.name];
-        if (field) record[field] = cells[index];
+      fileColumns.forEach((column) => {
+        const field = mapping[column.index];
+        if (field) record[field] = normalizeCell(field, cells[column.index]);
       });
       return record;
     });
+
+  const goToValidate = async () => {
+    if (!sourceRows.length || !selectedCycle || validating) return;
+    const id = nextBatchId();
+    setBatchId(id);
+    setError("");
+    setValidating(true);
+    const records = buildRecords();
     try {
       const result = await payrollCycleRequest("validate", {
         method: "POST",
@@ -238,6 +271,8 @@ export function PayrollUploadPage() {
       setStep(3);
     } catch (validationError) {
       setError(validationError.message);
+    } finally {
+      setValidating(false);
     }
   };
 
@@ -248,19 +283,23 @@ export function PayrollUploadPage() {
     setCommitting(true);
     setError("");
     try {
-      const records = sourceRows.map(({ row, cells }) => {
-        const record = { row };
-        fileColumns.forEach((column, index) => {
-          const field = mapping[column.name];
-          if (field) record[field] = cells[index];
-        });
-        return record;
-      });
+      const records = buildRecords();
       const result = await payrollCycleRequest("commit", {
         method: "POST",
         body: { cycleId: selectedCycle, batchId, fileName, records },
       });
-      setRowStatus(Object.fromEntries(result.rows.map((row) => [row.row, row.ok ? "uploaded" : "locked"])));
+      // Commit re-validates: merge its per-row result so rows that failed at
+      // commit show their reason and appear in the failure report.
+      const commitByRow = new Map(result.rows.map((row) => [row.row, row]));
+      setCurrentRows((rows) =>
+        rows.map((row) => {
+          const committed = commitByRow.get(row.row);
+          return committed
+            ? { ...row, ok: committed.ok, reason: committed.reason || "", badFields: committed.badFields || row.badFields }
+            : row;
+        }),
+      );
+      setRowStatus(Object.fromEntries(result.rows.map((row) => [row.row, row.ok ? "uploaded" : "failed"])));
       setOutcome(result);
       try {
         setHistory(await payrollCycleRequest("history"));
@@ -462,7 +501,7 @@ export function PayrollUploadPage() {
                       Uniqueness key: <b>Employee ID + Cycle</b>
                     </span>
                     <span>
-                      Uploaded by: <b>HR — N. Subramanian</b>
+                      Uploaded by: <b>{currentUser?.name || currentUser?.email || "—"}</b>
                     </span>
                   </div>
                 </div>
@@ -479,6 +518,14 @@ export function PayrollUploadPage() {
                       {fileName} · {fileColumns.length} columns detected
                     </div>
                   </div>
+                  {duplicateHeaders.length > 0 && (
+                    <span
+                      className="pu-link-btn"
+                      style={{ color: "var(--pu-warn)", cursor: "default" }}
+                    >
+                      Duplicate column headers: {duplicateHeaders.join(", ")} — map only the one you want.
+                    </span>
+                  )}
                   {(missingRequired.length > 0 || duplicateMappings.length > 0) && (
                     <span
                       className="pu-link-btn"
@@ -522,16 +569,16 @@ export function PayrollUploadPage() {
                       </thead>
                       <tbody>
                         {fileColumns.map((col) => (
-                          <tr key={col.name}>
+                          <tr key={col.index}>
                             <td className="pu-fromcol">{col.name}</td>
                             <td>
                               <select
-                                className={`pu-mapsel ${mapping[col.name] ? "" : "unmapped"}`}
-                                value={mapping[col.name] || ""}
+                                className={`pu-mapsel ${mapping[col.index] ? "" : "unmapped"}`}
+                                value={mapping[col.index] || ""}
                                 onChange={(e) =>
                                   setMapping((prev) => ({
                                     ...prev,
-                                    [col.name]: e.target.value,
+                                    [col.index]: e.target.value,
                                   }))
                                 }
                               >
@@ -571,10 +618,10 @@ export function PayrollUploadPage() {
                     </button>
                     <button
                       className="pu-btn pu-btn-primary"
-                      disabled={missingRequired.length > 0 || duplicateMappings.length > 0 || loading}
+                      disabled={missingRequired.length > 0 || duplicateMappings.length > 0 || loading || validating}
                       onClick={goToValidate}
                     >
-                      Continue to validation
+                      {validating ? "Validating…" : "Continue to validation"}
                     </button>
                   </div>
                 </div>
@@ -589,7 +636,7 @@ export function PayrollUploadPage() {
                     <h2>Validate & upload</h2>
                     <div className="pu-meta">
                       <span className="pu-batch-tag">{batchId}</span>{" "}
-                      &nbsp;·&nbsp; payroll_upload_q3.xlsx
+                      &nbsp;·&nbsp; {fileName}
                     </div>
                   </div>
                 </div>
@@ -657,7 +704,7 @@ export function PayrollUploadPage() {
                               {r.ok === false ? (
                                 <span className="pu-status-chip pu-status-invalid">
                                   <span className="pu-dot" />
-                                  Will fail
+                                  {status === "failed" ? "Failed" : "Will fail"}
                                 </span>
                               ) : status === "uploaded" ? (
                                 <span className="pu-status-chip pu-status-valid">
@@ -676,7 +723,7 @@ export function PayrollUploadPage() {
                                 </span>
                               )}
                             </td>
-                            <td>{selectedCycle}</td>
+                            <td>{selectedCycleRecord?.name || selectedCycle}</td>
                             {SYSTEM_FIELDS.map((f) => {
                               const isBad =
                                 r.badFields && r.badFields.includes(f.key);

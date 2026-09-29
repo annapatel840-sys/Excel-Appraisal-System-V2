@@ -1,8 +1,70 @@
 import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
-export const EXPERIENCE_REF_DATE = new Date(2026, 0, 1);
+// Experience is reported "as on 1 Jan" of the current appraisal year.
+export const EXPERIENCE_REF_DATE = new Date(new Date().getFullYear(), 0, 1);
 export const APPRAISAL_YEAR = "Apr-26";
+
+/*
+ * Parse a DOJ / date value into a LOCAL Date (no UTC shift).
+ * Accepts: Date objects, Excel serial numbers, ISO YYYY-MM-DD
+ * (optionally with a time part), and day-first DD/MM/YYYY,
+ * DD-MM-YYYY, DD.MM.YYYY. Returns null when not a valid date.
+ */
+export function parseDateValue(value) {
+  if (value === null || value === undefined || value === "") {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? null
+      : new Date(value.getFullYear(), value.getMonth(), value.getDate());
+  }
+
+  const text = String(value).trim();
+
+  if (!text) {
+    return null;
+  }
+
+  const build = (year, month, day) => {
+    const date = new Date(year, month - 1, day);
+
+    return date.getFullYear() === year &&
+      date.getMonth() === month - 1 &&
+      date.getDate() === day
+      ? date
+      : null;
+  };
+
+  // Excel serial number (days since 1899-12-30).
+  if (/^\d+(\.\d+)?$/.test(text)) {
+    const serial = Math.floor(Number(text));
+
+    if (serial < 1 || serial > 2958465) {
+      return null;
+    }
+
+    const date = new Date(1899, 11, 30 + serial);
+
+    return build(date.getFullYear(), date.getMonth() + 1, date.getDate());
+  }
+
+  let match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/);
+
+  if (match) {
+    return build(Number(match[1]), Number(match[2]), Number(match[3]));
+  }
+
+  match = text.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+
+  if (match) {
+    return build(Number(match[3]), Number(match[2]), Number(match[1]));
+  }
+
+  return null;
+}
 
 export const FIELD_DEFS = [
   {
@@ -33,7 +95,12 @@ export const FIELD_DEFS = [
   {
     key: "orgExp",
     label: "Organization Experience",
-    uploadHeaders: ["Organization Experience", "Org Exp", "wissen_experience"],
+    uploadHeaders: [
+      "Organization Experience",
+      "Org Exp",
+      "Org. Exp (as on 1 Jan)",
+      "wissen_experience",
+    ],
   },
   {
     key: "totalExp",
@@ -110,37 +177,6 @@ function normalizeEligibility(value) {
   }
 
   return "";
-}
-
-function calculateOrganizationExperience(joiningDate) {
-  if (!joiningDate) {
-    return "";
-  }
-
-  const joining = new Date(joiningDate);
-
-  if (Number.isNaN(joining.getTime())) {
-    return "";
-  }
-
-  const referenceDate = EXPERIENCE_REF_DATE;
-
-  let years = referenceDate.getFullYear() - joining.getFullYear();
-  let months = referenceDate.getMonth() - joining.getMonth();
-  const days = referenceDate.getDate() - joining.getDate();
-
-  if (days < 0) {
-    months--;
-  }
-
-  if (months < 0) {
-    years--;
-    months += 12;
-  }
-
-  const totalMonths = Math.max(0, years * 12 + months);
-
-  return Number((totalMonths / 12).toFixed(1));
 }
 
 function unwrapEmployee(employee) {
@@ -268,7 +304,8 @@ export function mapEmployeeFromApi(employee) {
       row.total_experience !== null &&
       row.total_experience !== ""
         ? Number(row.total_experience)
-        : calculateOrganizationExperience(joiningDate),
+        : // Org tenure from DOJ is not total experience; leave blank.
+          "",
 
     reportingManager: String(reportingManager).trim(),
 

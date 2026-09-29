@@ -72,7 +72,7 @@ export function EmployeeMasterToolbar({
 
   const handleUpload = () => {
     setMenuOpen(false);
-    onUpload();
+    onUpload?.();
   };
 
   const handleDownloadData = () => {
@@ -151,11 +151,13 @@ export function EmployeeMasterToolbar({
               <span>Download Template</span>
             </button>
 
-            {/* Upload Employee Data */}
-            <button type="button" role="menuitem" onClick={handleUpload}>
-              <Upload size={14} />
-              <span>Upload Employee Data</span>
-            </button>
+            {/* Upload Employee Data (only when the user may write) */}
+            {onUpload && (
+              <button type="button" role="menuitem" onClick={handleUpload}>
+                <Upload size={14} />
+                <span>Upload Employee Data</span>
+              </button>
+            )}
 
             {/* Download Visible Data */}
             <button type="button" role="menuitem" onClick={handleDownloadData}>

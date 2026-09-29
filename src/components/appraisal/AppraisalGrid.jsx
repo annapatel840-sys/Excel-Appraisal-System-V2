@@ -179,6 +179,11 @@ const isNumericType = (type) =>
   type === "decimal" ||
   type === "percent";
 
+// Columns worth grouping into sections when sorted (limited distinct
+// values). Numeric, date and free-text columns get a plain sort.
+const isCategoricalColumn = (column) =>
+  !column.computed && (column.type === "enum" || column.type === "text");
+
 const getWidth = (column) =>
   Math.min(
     MAX_WIDTH,
@@ -811,25 +816,47 @@ export function AppraisalGrid({
     [getGroupValue],
   );
 
-  const groupedRows = useMemo(() => {
-    if (!groupBy.length) {
-      return null;
-    }
-
-    const groupColumns = groupBy
+  // Sort specs split into categorical columns (grouped into sections)
+  // and continuous ones (numeric / date / free text: plain sort only,
+  // pagination kept). Categorical keys sort first so sections stay
+  // contiguous.
+  const sortSpecs = useMemo(() => {
+    const specs = groupBy
       .map((group) => {
         const column = GRID_COLUMNS.find((item) => item.key === group.key);
 
-        if (!column) {
-          return null;
-        }
-
-        return {
-          ...group,
-          column,
-        };
+        return column ? { ...group, column } : null;
       })
       .filter(Boolean);
+
+    const groupColumns = specs.filter((spec) => isCategoricalColumn(spec.column));
+    const sortColumns = specs.filter((spec) => !isCategoricalColumn(spec.column));
+
+    return { groupColumns, ordered: [...groupColumns, ...sortColumns] };
+  }, [groupBy]);
+
+  const sortedRows = useMemo(() => {
+    const { ordered } = sortSpecs;
+
+    if (!ordered.length) {
+      return rows;
+    }
+
+    return [...rows].sort((rowA, rowB) => {
+      for (const spec of ordered) {
+        const result = compareGroupValues(rowA, rowB, spec.column);
+
+        if (result !== 0) {
+          return spec.dir === "desc" ? -result : result;
+        }
+      }
+
+      return 0;
+    });
+  }, [rows, sortSpecs, compareGroupValues]);
+
+  const groupedRows = useMemo(() => {
+    const { groupColumns } = sortSpecs;
 
     if (!groupColumns.length) {
       return null;
@@ -837,7 +864,7 @@ export function AppraisalGrid({
 
     const sortRows = (sourceRows) => {
       return [...sourceRows].sort((rowA, rowB) => {
-        for (const group of groupColumns) {
+        for (const group of sortSpecs.ordered) {
           const result = compareGroupValues(rowA, rowB, group.column);
 
           if (result !== 0) {
@@ -851,7 +878,7 @@ export function AppraisalGrid({
 
     const buildLevel = (sourceRows, level) => {
       const group = groupColumns[level];
-      const sortedRows = sortRows(sourceRows);
+      const levelRows = sortRows(sourceRows);
 
       const sections = [];
       let currentKey;
@@ -890,10 +917,17 @@ export function AppraisalGrid({
         });
       };
 
-      sortedRows.forEach((row) => {
+      let previousRow = null;
+
+      levelRows.forEach((row) => {
         const value = getGroupValue(row, group.column);
 
-        if (!hasCurrent || value !== currentKey) {
+        // Split with the same equality the sort uses, so ""/null blanks
+        // land in one section.
+        if (
+          !hasCurrent ||
+          compareGroupValues(previousRow, row, group.column) !== 0
+        ) {
           pushSection();
 
           currentKey = value;
@@ -902,6 +936,8 @@ export function AppraisalGrid({
         } else {
           currentRows.push(row);
         }
+
+        previousRow = row;
       });
 
       pushSection();
@@ -910,7 +946,7 @@ export function AppraisalGrid({
     };
 
     return buildLevel(rows, 0);
-  }, [rows, groupBy, compareGroupValues, getGroupValue]);
+  }, [rows, sortSpecs, compareGroupValues, getGroupValue]);
 
   const flattenGroupedSections = useCallback((sections) => {
     const result = [];
@@ -1309,8 +1345,8 @@ export function AppraisalGrid({
   const pageRows = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE;
 
-    return rows.slice(start, start + PAGE_SIZE);
-  }, [rows, currentPage]);
+    return sortedRows.slice(start, start + PAGE_SIZE);
+  }, [sortedRows, currentPage]);
 
   const pageStart = rows.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
 
@@ -1542,42 +1578,28 @@ export function AppraisalGrid({
   );
 
   // ============================================================
-  // LIVE COMMIT WHILE TYPING
-  // (grid, history panel and toast stay in sync on every keystroke)
+  // COMMIT ON BLUR / ENTER
+  // Text, number and date cells keep a local draft while typing and
+  // save once on blur (Enter moves focus, which blurs). Escape
+  // discards the draft. A draft still open when the grid unmounts
+  // (e.g. navigating away) is committed so nothing is lost.
   // ============================================================
 
-  const liveTimersRef = useRef({});
+  const cancelledCellsRef = useRef(new Set());
+  const pendingDraftRef = useRef(null);
+  const commitRef = useRef(commit);
 
-  const cancelLiveCommit = useCallback((cellKey) => {
-    const timer = liveTimersRef.current[cellKey];
-
-    if (timer) {
-      clearTimeout(timer);
-      delete liveTimersRef.current[cellKey];
-    }
-  }, []);
-
-  const scheduleLiveCommit = useCallback(
-    (row, col, raw, anchor) => {
-      const cellKey = `${row.id}:${col.key}`;
-
-      cancelLiveCommit(cellKey);
-
-      liveTimersRef.current[cellKey] = setTimeout(() => {
-        delete liveTimersRef.current[cellKey];
-        commit(row, col, raw, anchor);
-      }, 600);
-    },
-    [commit, cancelLiveCommit],
-  );
+  commitRef.current = commit;
 
   useEffect(() => {
     return () => {
-      Object.values(liveTimersRef.current).forEach((timer) =>
-        clearTimeout(timer),
-      );
+      const pending = pendingDraftRef.current;
 
-      liveTimersRef.current = {};
+      pendingDraftRef.current = null;
+
+      if (pending) {
+        commitRef.current(pending.row, pending.col, pending.raw, null);
+      }
     };
   }, []);
 
@@ -1603,14 +1625,45 @@ export function AppraisalGrid({
         return;
       }
 
+      // Enum columns only accept one of their defined options.
+      if (
+        col.type === "enum" &&
+        Array.isArray(col.options) &&
+        !col.options.includes(rawValue)
+      ) {
+        return;
+      }
+
       const value = isNumericType(col.type) ? numericValue(rawValue) : rawValue;
 
-      bulkUpdate(
-        rows.map((row) => row.id),
-        col.key,
-        "set",
-        value,
-      );
+      // Same promotion rules as inline edits: New Title only on rows
+      // eligible for promotion; setting "No" clears New Title.
+      if (col.key === "newTitle") {
+        const eligibleIds = rows
+          .filter((row) => row.eligibleForPromotion === "Yes")
+          .map((row) => row.id);
+        const skipped = rows.length - eligibleIds.length;
+
+        if (eligibleIds.length) {
+          bulkUpdate(eligibleIds, col.key, "set", value);
+        }
+
+        if (skipped) {
+          window.alert(
+            `New Title was applied to ${eligibleIds.length} employee(s). ${skipped} skipped because they are not eligible for promotion.`,
+          );
+        }
+
+        return;
+      }
+
+      const ids = rows.map((row) => row.id);
+
+      bulkUpdate(ids, col.key, "set", value);
+
+      if (col.key === "eligibleForPromotion" && value === "No") {
+        bulkUpdate(ids, "newTitle", "set", null);
+      }
     },
     [rows, bulkUpdate, updateHikePct, updateHikeAmount],
   );
@@ -1711,6 +1764,9 @@ export function AppraisalGrid({
         nextRowIndex += direction;
       }
 
+      // No next editable cell: still commit this one.
+      target.blur();
+
       return;
     }
 
@@ -1772,6 +1828,15 @@ export function AppraisalGrid({
     }
 
     if (event.key === "Escape") {
+      // Cancel the in-progress edit: the blur handler sees this and
+      // drops the draft instead of committing it.
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement
+      ) {
+        cancelledCellsRef.current.add(`${currentRow.id}:${columnKey}`);
+      }
+
       target.blur();
     }
   };
@@ -1780,9 +1845,24 @@ export function AppraisalGrid({
   // ROW OPEN / SELECT
   // ============================================================
 
-  const openRow = useCallback((row) => {
-    setHistoryRow(row);
-  }, []);
+  const openRow = useCallback(
+    (row) => {
+      setHistoryRow(row);
+
+      // Re-selecting after a failed fetch retries it (a failed request is
+      // dropped from the cache; a cached success is simply reused).
+      if (showHistory && row?.empId) {
+        loadHistory(row.empId).catch(() => {});
+      }
+    },
+    [showHistory, loadHistory],
+  );
+
+  const retryHistory = useCallback(() => {
+    if (historyRow?.empId) {
+      loadHistory(historyRow.empId).catch(() => {});
+    }
+  }, [historyRow, loadHistory]);
 
   // Focusing any editable cell also selects that employee's row.
   const selectRowForEdit = useCallback((row) => {
@@ -2237,11 +2317,15 @@ export function AppraisalGrid({
             onChange={(event) => {
               setEditingValue(cellKey, event.target.value);
 
+              pendingDraftRef.current = { row, col, raw: event.target.value };
+
               event.target.style.height = "auto";
               event.target.style.height = `${event.target.scrollHeight}px`;
             }}
             onBlur={(event) => {
               setActive(null);
+
+              pendingDraftRef.current = null;
 
               const raw =
                 editingValues[cellKey] !== undefined
@@ -2250,9 +2334,14 @@ export function AppraisalGrid({
 
               clearEditingValue(cellKey);
 
-              commit(row, col, raw, event.currentTarget);
-
               event.target.style.height = "";
+
+              // Escape pressed: discard the draft instead of saving it.
+              if (cancelledCellsRef.current.delete(cellKey)) {
+                return;
+              }
+
+              commit(row, col, raw, event.currentTarget);
             }}
             onKeyDown={(event) => onKeyDown(event, rowIndex, col.key)}
             onDoubleClick={(event) =>
@@ -2320,12 +2409,12 @@ export function AppraisalGrid({
           onChange={(event) => {
             setEditingValue(cellKey, event.target.value);
 
-            scheduleLiveCommit(row, col, event.target.value, event.target);
+            pendingDraftRef.current = { row, col, raw: event.target.value };
           }}
           onBlur={(event) => {
             setActive(null);
 
-            cancelLiveCommit(cellKey);
+            pendingDraftRef.current = null;
 
             const raw =
               editingValues[cellKey] !== undefined
@@ -2333,6 +2422,11 @@ export function AppraisalGrid({
                 : event.target.value;
 
             clearEditingValue(cellKey);
+
+            // Escape pressed: discard the draft instead of saving it.
+            if (cancelledCellsRef.current.delete(cellKey)) {
+              return;
+            }
 
             commit(row, col, raw, event.currentTarget);
           }}
@@ -2528,8 +2622,20 @@ export function AppraisalGrid({
   // SELECT ALL
   // ============================================================
 
+  // Header checkbox acts on the rows currently shown (this page, or all
+  // rows when grouped) and leaves other pages' selections alone.
+  const visibleSelectedCount = displayRows.filter(
+    (row) => selected[row.id],
+  ).length;
+
   const allSelected =
-    pageRows.length > 0 && pageRows.every((row) => selected[row.id]);
+    displayRows.length > 0 && visibleSelectedCount === displayRows.length;
+
+  const headerChecked = allSelected
+    ? true
+    : visibleSelectedCount > 0
+      ? "indeterminate"
+      : false;
 
   // ============================================================
   // PAGE BUTTONS
@@ -2673,8 +2779,13 @@ export function AppraisalGrid({
                   style={{ height: HEADER_HEIGHT }}
                 >
                   <Checkbox
-                    checked={allSelected}
-                    onCheckedChange={(value) => toggleAll(!!value)}
+                    checked={headerChecked}
+                    onCheckedChange={() =>
+                      toggleAll(
+                        !allSelected,
+                        displayRows.map((row) => row.id),
+                      )
+                    }
                     aria-label="Select all"
                     className="size-3.5"
                   />
@@ -2816,18 +2927,20 @@ export function AppraisalGrid({
         style={{ fontFamily: APPRAISAL_FONT }}
       >
         <div className="text-[11px] text-slate-500">
-          {groupBy.length
+          {groupedRows
             ? `Grouped by ${groupByColumnLabel} — showing all ${rows.length} employees`
             : rows.length === 0
               ? "0 employees"
-              : `Showing ${pageStart}-${pageEnd} of ${rows.length} employees`}
+              : `Showing ${pageStart}-${pageEnd} of ${rows.length} employees${
+                  groupBy.length ? ` · Sorted by ${groupByColumnLabel}` : ""
+                }`}
 
           <span className="ml-3 text-slate-400">
             Modified cells save automatically.
           </span>
         </div>
 
-        {groupBy.length ? (
+        {groupedRows ? (
           <button
             type="button"
             onClick={clearAllGroups}
@@ -2837,6 +2950,16 @@ export function AppraisalGrid({
           </button>
         ) : (
           <div className="flex items-center gap-1">
+            {groupBy.length > 0 && (
+              <button
+                type="button"
+                onClick={clearAllGroups}
+                className="mr-2 flex h-6 items-center justify-center rounded border border-[#cbd5e1] bg-white px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+              >
+                Clear sort
+              </button>
+            )}
+
             <button
               type="button"
               disabled={currentPage === 1}
@@ -2931,6 +3054,14 @@ export function AppraisalGrid({
                 <span className="text-[11px] text-slate-400">
                   {historyError}
                 </span>
+
+                <button
+                  type="button"
+                  onClick={retryHistory}
+                  className="mt-1 flex h-6 items-center justify-center rounded border border-[#cbd5e1] bg-white px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+                >
+                  Retry
+                </button>
               </div>
             ) : (
               <table

@@ -22,18 +22,42 @@ import {
 import { COLUMNS } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
 const editable = COLUMNS.filter((c) => c.editable);
+const NUMERIC_TYPES = new Set(["currency", "number", "decimal", "percent"]);
 export function BulkEditDialog({ open, onOpenChange, ids, onDone }) {
-  const { bulkUpdate } = useAppraisal();
+  const { bulkUpdate, rows } = useAppraisal();
   const [field, setField] = useState(editable[0]?.key ?? "");
   const [mode, setMode] = useState("increasePercent");
   const [value, setValue] = useState("");
   const col = editable.find((c) => c.key === field);
   const isEnum = col?.type === "enum";
+  // Arithmetic operations only make sense for numeric columns; text,
+  // textarea and date columns can only be "set".
+  const isNumeric = NUMERIC_TYPES.has(col?.type);
+  const effectiveMode = isNumeric ? mode : "set";
   const apply = () => {
     if (!col || value === "") return;
-    const count = bulkUpdate(ids, field, isEnum ? "set" : mode, value);
+    let targetIds = ids;
+    let skipped = 0;
+    // Same promotion rule as inline edits: New Title only for rows
+    // eligible for promotion.
+    if (field === "newTitle") {
+      const eligible = new Set(
+        rows.filter((r) => r.eligibleForPromotion === "Yes").map((r) => r.id),
+      );
+      targetIds = ids.filter((id) => eligible.has(id));
+      skipped = ids.length - targetIds.length;
+    }
+    const count = targetIds.length
+      ? bulkUpdate(targetIds, field, effectiveMode, value)
+      : 0;
+    // Setting promotion to "No" clears New Title, as inline edit does.
+    if (field === "eligibleForPromotion" && value === "No") {
+      bulkUpdate(ids, "newTitle", "set", null);
+    }
     toast.success(`Bulk edit applied`, {
-      description: `${col.label} updated on ${count} of ${ids.length} selected employees. Logged to audit trail.`,
+      description: `${col.label} updated on ${count} of ${ids.length} selected employees.${
+        skipped ? ` ${skipped} skipped (not eligible for promotion).` : ""
+      } Logged to audit trail.`,
     });
     setValue("");
     onOpenChange(false);
@@ -84,7 +108,7 @@ export function BulkEditDialog({ open, onOpenChange, ids, onDone }) {
                 }),
               ],
             }),
-            !isEnum &&
+            isNumeric &&
               _jsxs("div", {
                 className: "space-y-1.5",
                 children: [
@@ -135,14 +159,21 @@ export function BulkEditDialog({ open, onOpenChange, ids, onDone }) {
                         }),
                       ],
                     })
-                  : _jsx(Input, {
-                      className: "num",
-                      type: "number",
-                      value: value,
-                      placeholder:
-                        mode === "increasePercent" ? "e.g. 8" : "e.g. 25000",
-                      onChange: (e) => setValue(e.target.value),
-                    }),
+                  : isNumeric
+                    ? _jsx(Input, {
+                        className: "num",
+                        type: "number",
+                        value: value,
+                        placeholder:
+                          mode === "increasePercent" ? "e.g. 8" : "e.g. 25000",
+                        onChange: (e) => setValue(e.target.value),
+                      })
+                    : _jsx(Input, {
+                        type: col?.type === "date" ? "date" : "text",
+                        value: value,
+                        placeholder: "New value",
+                        onChange: (e) => setValue(e.target.value),
+                      }),
               ],
             }),
           ],

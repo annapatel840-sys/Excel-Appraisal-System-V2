@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { AppShell } from "@/components/appraisal/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAppraisal } from "@/lib/appraisal-store";
+import { useBudget } from "@/lib/budget-store";
 import { cn } from "@/lib/utils";
 import {
   budgetTotals,
@@ -66,7 +67,21 @@ export function Dashboard() {
     hike: ["h_rating", "h_desig", "h_mgr", "h_promo"],
   });
 
-  const budget = useMemo(() => budgetTotals(rows), [rows]);
+  const {
+    totals: budgetMasterTotals,
+    loading: budgetLoading,
+    error: budgetError,
+  } = useBudget();
+
+  // Real Budget Master total when loaded; budgetTotals falls back to the
+  // placeholder estimate otherwise.
+  const realAllocated =
+    !budgetLoading && !budgetError ? budgetMasterTotals?.updated : 0;
+
+  const budget = useMemo(
+    () => budgetTotals(rows, realAllocated),
+    [rows, realAllocated],
+  );
   const mgrStats = useMemo(() => byManager(rows), [rows]);
   const desigStats = useMemo(() => byDesignation(rows), [rows]);
   const ratingStats = useMemo(() => ratingDistribution(rows), [rows]);
@@ -119,7 +134,9 @@ export function Dashboard() {
       {
         label: "Budget allocated",
         value: fmtCr(budget.allocated),
-        sub: "Placeholder — no budget store yet",
+        sub: budget.allocatedIsEstimate
+          ? "Estimate — Budget Master unavailable"
+          : "From Budget Master",
       },
       {
         label: "Consumed vs allocated",

@@ -12,7 +12,6 @@ import {
 } from "@/lib/appraisal-data";
 import { useBudget } from "@/lib/budget-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
-import { currentTeamOf } from "@/lib/budget-engine";
 
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
@@ -63,6 +62,17 @@ const HISTORY_COLUMNS = [
 
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
 
+const isBlank = (v) => v === "" || v === null || v === undefined;
+
+// Blank stays blank (like the grid's numeric cells); otherwise format.
+const fmtOrBlank = (n) => (isBlank(n) ? "" : fmt(n));
+
+// Parse a formatted amount; an empty input stays "" instead of 0.
+const parseAmount = (raw) => {
+  const cleaned = String(raw ?? "").replace(/[^0-9.]/g, "");
+  return cleaned === "" ? "" : Number(cleaned) || 0;
+};
+
 const normalizeYearKey = (y) =>
   String(y ?? "")
     .trim()
@@ -100,19 +110,15 @@ const isBlankRecord = (h) =>
 
 export function DetailScreenPage() {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
-  const { currentUser, isHR, hierarchy } = useBudget();
+  const { currentUser, isHR } = useBudget();
   const catalystUser = useCatalystUser();
-  const allRows = liveRows || [];
   const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
 
-  const teamMatch = useMemo(() => {
-    if (isHR || isTechEd) return null;
-    return currentTeamOf(allRows, hierarchy, currentUser.name);
-  }, [allRows, isHR, isTechEd, hierarchy, currentUser]);
-
-  const rows = isHR || isTechEd ? allRows : teamMatch || [];
-  const isScopedToTeam = isTechEd || !!(teamMatch && teamMatch.length > 0);
+  // The backend already scopes rows to what this login may see, so no
+  // extra client-side narrowing by comp manager name here.
+  const rows = liveRows || [];
+  const isScopedToTeam = isTechEd || rows.length > 0;
 
   const [index, setIndex] = useState(0);
   const [search, setSearch] = useState("");
@@ -252,6 +258,8 @@ export function DetailScreenPage() {
   };
 
   const commit = (field, value) => {
+    const current = isBlank(employee[field]) ? "" : String(employee[field]);
+    if (current === (isBlank(value) ? "" : String(value))) return;
     updateCell(employee.id, field, value, "Detail screen edit");
   };
 
@@ -260,7 +268,18 @@ export function DetailScreenPage() {
   };
 
   const handleNewBasePayChange = (raw) => {
-    const value = Number(String(raw).replace(/[^0-9.]/g, "")) || 0;
+    const value = parseAmount(raw);
+
+    // Cleared input clears the hike (same as the grid's blank hike cells).
+    if (value === "") {
+      if (!isBlank(employee.hikeAmount) || !isBlank(employee.hikePct)) {
+        commitLinked({ hikeAmount: "", hikePct: "" });
+      }
+      return;
+    }
+
+    if (value === derived.newBase) return;
+
     const hike = value - (Number(employee.currentAnnualBasePay) || 0);
     const pct = employee.currentAnnualBasePay
       ? Number(((hike / employee.currentAnnualBasePay) * 100).toFixed(1))
@@ -272,11 +291,15 @@ export function DetailScreenPage() {
   const handleNewTitleChange = (value) => {
     const changed = value !== employee.designation;
 
-    commitLinked({
-      newTitle: value,
-      eligibleForPromotion: changed ? "Yes" : "No",
-    });
+    // Same rule as the grid: promotion "No" clears New Title.
+    commitLinked(
+      changed
+        ? { newTitle: value, eligibleForPromotion: "Yes" }
+        : { eligibleForPromotion: "No", newTitle: null },
+    );
   };
+
+  const hikeValue = Number(employee?.hikeAmount) || 0;
 
   const scopeLabel = isHR
     ? "All employees"
@@ -497,10 +520,11 @@ export function DetailScreenPage() {
                     <CompRow
                       label="Base Pay"
                       current={inr(employee.currentAnnualBasePay)}
-                      diff={`+${fmt(employee.hikeAmount)} / ${(Number(employee.hikePct) || 0).toFixed(1)}%`}
-                      diffPositive
+                      diff={`${hikeValue > 0 ? "+" : ""}${fmt(hikeValue)} / ${(Number(employee.hikePct) || 0).toFixed(1)}%`}
+                      diffPositive={hikeValue > 0}
                     >
                       <EditInput
+                        key={`${employee.id}-newBase`}
                         defaultValue={fmt(derived.newBase)}
                         onCommit={handleNewBasePayChange}
                       />
@@ -530,17 +554,20 @@ export function DetailScreenPage() {
                     >
                       <div className="flex w-full items-center gap-1.5">
                         <EditInput
+                          key={`${employee.id}-allocatedPBAmount`}
                           className="flex-1"
-                          defaultValue={fmt(employee.allocatedPBAmount)}
+                          defaultValue={fmtOrBlank(employee.allocatedPBAmount)}
                           onCommit={(v) =>
-                            commit(
-                              "allocatedPBAmount",
-                              Number(String(v).replace(/[^0-9.]/g, "")) || 0,
-                            )
+                            commit("allocatedPBAmount", parseAmount(v))
                           }
                         />
                         <select
-                          defaultValue={employee.pbInstallment}
+                          key={`${employee.id}-pbInstallment`}
+                          value={
+                            isBlank(employee.pbInstallment)
+                              ? ""
+                              : String(employee.pbInstallment)
+                          }
                           onChange={(e) =>
                             commit("pbInstallment", e.target.value)
                           }
@@ -551,6 +578,7 @@ export function DetailScreenPage() {
                             color: "#0b2a4d",
                           }}
                         >
+                          <option value="">—</option>
                           {INSTALLMENT_OPTIONS.map((o) => (
                             <option key={o}>{o}</option>
                           ))}
@@ -564,12 +592,10 @@ export function DetailScreenPage() {
                       diffText="next yr"
                     >
                       <EditInput
-                        defaultValue={fmt(employee.targetPBNextYear)}
+                        key={`${employee.id}-targetPBNextYear`}
+                        defaultValue={fmtOrBlank(employee.targetPBNextYear)}
                         onCommit={(v) =>
-                          commit(
-                            "targetPBNextYear",
-                            Number(String(v).replace(/[^0-9.]/g, "")) || 0,
-                          )
+                          commit("targetPBNextYear", parseAmount(v))
                         }
                       />
                     </CompRow>
@@ -604,6 +630,7 @@ export function DetailScreenPage() {
                         }}
                       />
                       <EditTextarea
+                        key={`${employee.id}-targetPBCriteria`}
                         defaultValue={
                           employee.newTargetPBCriteria ||
                           employee.targetPBCriteria ||
@@ -639,8 +666,8 @@ export function DetailScreenPage() {
                       </div>
                       <div className="p-1.5" style={{ background: "#fff" }}>
                         <select
-                          key={employee.id}
-                          defaultValue={employee.newTitle}
+                          key={`${employee.id}-newTitle`}
+                          value={employee.newTitle || employee.designation || ""}
                           onChange={(e) => handleNewTitleChange(e.target.value)}
                           className="w-full rounded border px-1.5 py-1.5 text-[11.5px] outline-none"
                           style={{
@@ -698,7 +725,7 @@ export function DetailScreenPage() {
                         {employee.prevRemarks || "No remarks last cycle"}
                       </div>
                       <EditTextarea
-                        key={employee.id}
+                        key={`${employee.id}-atRisk`}
                         defaultValue={employee.atRisk || ""}
                         placeholder="Add remarks"
                         onCommit={(v) => commit("atRisk", v)}
