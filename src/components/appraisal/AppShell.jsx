@@ -82,7 +82,8 @@ export function AppShell({ children, headerActions }) {
                     onClick={(event) => navigate(event, item.to)}
                     className={cn(
                       "flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors",
-                      pathname.startsWith(item.to)
+                      // "/" is a prefix of every path, so match it exactly.
+                      (item.to === "/" ? pathname === "/" : pathname.startsWith(item.to))
                         ? "bg-white/15 text-white"
                         : "text-white/75 hover:bg-white/10 hover:text-white",
                     )}
