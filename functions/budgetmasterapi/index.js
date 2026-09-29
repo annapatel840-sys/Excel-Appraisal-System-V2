@@ -123,17 +123,8 @@ function matchesUser(techEdId, user) {
 }
 
 async function getCurrentUser(app) {
-  try {
-    var user = await app.userManagement().getCurrentUser();
-
-    if (user && user.user_id) return user;
-  } catch (error) {
-    console.warn(
-      "Budget Master current-user lookup failed:",
-      error && error.message ? error.message : String(error),
-    );
-  }
-
+  var user = await app.userManagement().getCurrentUser();
+  if (user && user.user_id) return user;
   return null;
 }
 
@@ -162,14 +153,7 @@ module.exports = async function (req, res) {
     var app = catalyst.initialize(req);
 
     if (method === "GET") {
-      var user = await Promise.race([
-      getCurrentUser(app),
-      new Promise(function (_, reject) {
-        setTimeout(function () {
-          reject(new Error("Budget Master current-user request timed out."));
-        }, 10000);
-      }),
-    ]);
+      var user = await getCurrentUser(app);
 
       if (!user) {
         return sendJson(res, 401, {
@@ -179,14 +163,7 @@ module.exports = async function (req, res) {
       }
 
       var table = app.datastore().table(TABLE_ID);
-      var result = await Promise.race([
-        table.getAllRows(),
-        new Promise(function (_, reject) {
-          setTimeout(function () {
-            reject(new Error("Budget Master Data Store request timed out."));
-          }, 10000);
-        }),
-      ]);
+      var result = await table.getAllRows();
       var allRows = Array.isArray(result) ? result : [];
 
       var activeRows = allRows.filter(function (row) {
@@ -194,11 +171,13 @@ module.exports = async function (req, res) {
         return !status || status === "active";
       });
 
-      var rows = isHR(user)
-        ? activeRows
-        : activeRows.filter(function (row) {
-            return matchesUser(value(row, "tech_ed_id"), user);
-          });
+      var rows = activeRows;
+
+      if (!isHR(user)) {
+        rows = activeRows.filter(function (row) {
+          return matchesUser(value(row, "tech_ed_id"), user);
+        });
+      }
 
       return sendJson(res, 200, {
         success: true,
@@ -206,8 +185,7 @@ module.exports = async function (req, res) {
         current_user: {
           id: String(getUserField(user, "user_id")),
           name: getCurrentUserName(user),
-          email:
-            getUserField(user, "email") || getUserField(user, "email_id"),
+          email: getUserField(user, "email") || getUserField(user, "email_id"),
           role: getUserRole(user),
         },
       });
