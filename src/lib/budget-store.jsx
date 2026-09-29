@@ -58,9 +58,16 @@ export function BudgetProvider({ children }) {
         catalystFetch(catalystFunctionUrl("employeesapi") + "?page=1&limit=500&status=active&eligible=eligible"),
       ]);
 
-      const budgetJson = await budgetResponse.json();
-      if (!budgetResponse.ok) throw new Error(budgetJson?.message || "Failed to load Budget Master.");
-      const employeeJson = employeeResponse.ok ? await employeeResponse.json() : { data: [] };
+      let budgetJson = {};
+      try { budgetJson = await budgetResponse.json(); } catch (_) { budgetJson = {}; }
+      if (!budgetResponse.ok) {
+        const statusText = budgetResponse.status === 404
+          ? "Budget Master API is not deployed in the current Catalyst environment."
+          : (budgetJson?.message || `Failed to load Budget Master (${budgetResponse.status}).`);
+        throw new Error(statusText);
+      }
+      let employeeJson = {};
+      try { employeeJson = employeeResponse.ok ? await employeeResponse.json() : {}; } catch (_) { employeeJson = {}; }
 
       setBudgetRows((Array.isArray(budgetJson?.data) ? budgetJson.data : []).map(normalizeRow));
       setEmployeeRows(Array.isArray(employeeJson?.data) ? employeeJson.data : []);
