@@ -22,7 +22,15 @@
           "idx": 1,
           "id": "60088966704",
           "name": "Development",
-          "type": 3
+          "type": 3,
+          "env_status": "Active",
+          "project_details": {
+            "project_name": "AppraisalPerformanceHike",
+            "id": "71873000000013053",
+            "project_type": "Live"
+          },
+          "is_default": true,
+          "action_required": false
         }
       ]
     }

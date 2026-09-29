@@ -54,7 +54,11 @@ module.exports = async (req, res) => {
         data: (result.data || []).map(mapRow),
         current_user: {
           id: String(user.user_id || ""),
-          name: String(user.first_name ? `${user.first_name} ${user.last_name || ""}`.trim() : user.email || ""),
+          name: String(
+            user.first_name
+              ? `${user.first_name} ${user.last_name || ""}`.trim()
+              : user.email || "",
+          ),
           email: String(user.email || ""),
         },
       });
@@ -63,16 +67,30 @@ module.exports = async (req, res) => {
     if (req.method === "PUT") {
       const body = req.body || {};
       const id = String(body.id || "").trim();
-      if (!id) return send(res, 400, { success: false, message: "Budget Master row id is required." });
+      if (!id)
+        return send(res, 400, {
+          success: false,
+          message: "Budget Master row id is required.",
+        });
 
-      const allowed = ["budget_percentage", "budget_amount", "additional_budget", "budget_utilized", "status"];
+      const allowed = [
+        "budget_percentage",
+        "budget_amount",
+        "additional_budget",
+        "budget_utilized",
+        "status",
+      ];
       const update = { ROWID: id };
       allowed.forEach((key) => {
-        if (Object.prototype.hasOwnProperty.call(body, key)) update[key] = body[key];
+        if (Object.prototype.hasOwnProperty.call(body, key))
+          update[key] = body[key];
       });
 
       if (Object.keys(update).length === 1) {
-        return send(res, 400, { success: false, message: "No Budget Master fields were provided." });
+        return send(res, 400, {
+          success: false,
+          message: "No Budget Master fields were provided.",
+        });
       }
 
       const updated = await table.updateRow(update);
@@ -86,9 +104,13 @@ module.exports = async (req, res) => {
     return send(res, 405, { success: false, message: "Method not allowed" });
   } catch (error) {
     console.error("budgetmasterapi:", error);
-    return send(res, error.message === "Authentication is required." ? 401 : 500, {
-      success: false,
-      message: error.message || "Budget Master API failed.",
-    });
+    return send(
+      res,
+      error.message === "Authentication is required." ? 401 : 500,
+      {
+        success: false,
+        message: error.message || "Budget Master API failed.",
+      },
+    );
   }
 };
