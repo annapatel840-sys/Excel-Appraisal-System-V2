@@ -1996,7 +1996,18 @@ export function EmployeeMaster() {
           </div>
         )}
         {!isTechEd && activeTab === "team-changes" && <TeamChangesPage />}
-        {!isTechEd && activeTab === "budget-allocation" && <BudgetAllocationPage />}
+        {!isTechEd && activeTab === "budget-allocation" && (
+          <div
+            className="em-tab-content"
+            style={{
+              height: "calc(100vh - 180px)",
+              overflowY: "auto",
+              overflowX: "hidden",
+            }}
+          >
+            <BudgetAllocationPage />
+          </div>
+        )}
 
         {/* ======================================================
             ELIGIBILITY MODAL
