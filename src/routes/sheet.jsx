@@ -358,7 +358,13 @@ export function SheetPage() {
                       role="menuitem"
                       className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
                       onClick={() => {
-                        exportToExcel(filtered);
+                        exportToExcel(filtered).catch((error) => {
+                          console.error("Excel export failed:", error);
+                          window.alert(
+                            "Excel export failed: " +
+                              (error?.message || "unknown error"),
+                          );
+                        });
                         setMenuOpen(false);
                       }}
                     >
