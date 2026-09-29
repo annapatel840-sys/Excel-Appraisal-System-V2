@@ -42,7 +42,8 @@ export function BudgetProvider({ children }) {
     [authenticatedUser],
   );
 
-  const isHR = String(currentUser.role || "").trim().toLowerCase() === "hr";
+  const roleText = String(currentUser.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const isHR = roleText === "hr" || roleText.includes("hr");
   const [budgetRows, setBudgetRows] = useState([]);
   const [employeeRows, setEmployeeRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -84,7 +85,7 @@ export function BudgetProvider({ children }) {
     const email = currentUser.email.trim().toLowerCase();
     return active.filter((row) => {
       const owner = row.tech_ed_id.trim().toLowerCase();
-      return owner === key || owner === email || owner.includes(key) || (email && owner.includes(email));
+      return owner === key || owner === email || owner.includes(key) || key.includes(owner) || (email && (owner.includes(email) || email.includes(owner)));
     });
   }, [budgetRows, currentUser, isHR]);
 
@@ -122,6 +123,19 @@ export function BudgetProvider({ children }) {
     [rows],
   );
 
+  const hierarchy = useMemo(() => {
+    const next = {};
+    rows.forEach((row) => {
+      const owner = String(row.tech_ed_id || "").trim();
+      if (owner) next[owner] = { level: 1, parent: null };
+    });
+    return next;
+  }, [rows]);
+
+  const allocationSnapshot = useMemo(() => ({ date: "", teams: {} }), []);
+  const eligibilityEvents = useMemo(() => [], []);
+  const gridSupervisorChanges = useMemo(() => [], []);
+
   const updateBudget = useCallback(async (id, changes) => {
     const response = await catalystFetch(catalystFunctionUrl("budgetmasterapi"), {
       method: "PUT",
@@ -146,6 +160,10 @@ export function BudgetProvider({ children }) {
         error,
         reload: load,
         updateBudget,
+        hierarchy,
+        eligibilityEvents,
+        gridSupervisorChanges,
+        allocationSnapshot,
       }}
     >
       {children}
