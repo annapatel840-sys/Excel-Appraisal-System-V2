@@ -11,8 +11,7 @@ import {
 import { useBudget } from "@/lib/budget-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
-/* Load Manrope once in index.html:
-   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"> */
+/* index.html: <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"> */
 const HISTORY_URL = catalystFunctionUrl("appraisalhistoryapi");
 const CYCLE = "Apr-26";
 
@@ -20,7 +19,9 @@ const n = (v) => Number(v) || 0;
 const blank = (v) => v === "" || v == null;
 const fmt = (v) => Math.round(n(v)).toLocaleString("en-IN");
 const fmtB = (v) => (blank(v) ? "" : fmt(v));
+const lakhs = (v) => `${(n(v) / 1e5).toFixed(2)} L`;
 const dash = (v) => (blank(v) ? "—" : v);
+const f1 = (v) => (Math.round(v * 10) / 10).toFixed(1);
 const signed = (v) => (v > 0 ? "+" : v < 0 ? "−" : "") + fmt(Math.abs(v));
 const amount = (raw) => {
   const c = String(raw ?? "").replace(/[^0-9.]/g, "");
@@ -35,6 +36,22 @@ const isCurrentYear = (y) =>
   String(y ?? "")
     .toLowerCase()
     .includes("2026");
+const ordinal = (v) => {
+  const s = ["th", "st", "nd", "rd"],
+    r = v % 100;
+  return v + (s[(r - 20) % 10] || s[r] || s[0]);
+};
+const median = (a) => {
+  if (!a.length) return 0;
+  const s = [...a].sort((x, y) => x - y),
+    m = Math.floor(s.length / 2);
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+};
+const tone = (p) => (p > 100 ? "danger" : p > 90 ? "warn" : "ok");
+const goBudget = () => {
+  window.history.pushState({}, "", "/budget-allocation");
+  window.dispatchEvent(new PopStateEvent("popstate"));
+};
 
 const normalize = (r) => {
   const basePay = n(r?.base_pay),
@@ -64,7 +81,20 @@ const emptyRecord = (h) =>
   !h.newCTC &&
   !h.hikeAmount;
 
-/* PB / RB "to be paid" come from the appraisal sheet columns pbToBePaid, pbMonth, rbToBePaid, rbMonth */
+/* Adapter for useBudget(): change key names here if your store differs. null = no budget for this login. */
+function readBudget(store) {
+  const b = store?.myBudget ?? store?.budget ?? store?.summary ?? null;
+  const allocated = Number(b?.updated ?? b?.updatedBudget ?? b?.allocated);
+  if (!b || !Number.isFinite(allocated)) return null;
+  const initial = Number(b.initial ?? b.original ?? b.originalBudget);
+  return {
+    allocated,
+    initial: Number.isFinite(initial) ? initial : null,
+    changes: store?.teamChanges ?? b.teamChanges ?? [],
+    since: b.allocatedOn ?? store?.allocatedOn ?? "",
+  };
+}
+/* PB / RB to be paid: appraisal sheet columns pbToBePaid, pbMonth, rbToBePaid, rbMonth */
 const toBePaid = (e) => ({
   pb: n(e.pbToBePaid),
   pbMonth: e.pbMonth,
@@ -89,16 +119,36 @@ const EDIT_FIELDS = [
   "newTargetPBCriteria",
   "atRisk",
 ];
+const HIST_COLS = [
+  ["base", "Curr Base Pay"],
+  ["jb", "Joining Bonus"],
+  ["pb", "Perf. Bonus"],
+  ["rb", "Retention Bonus"],
+  ["tb", "Total Bonus"],
+  ["hike", "Hike Amount"],
+  ["ctc", "Total CTC"],
+  ["tpb", "Target PB"],
+  ["nb", "New Base Pay"],
+];
 
 const CSS = `
-.ds{min-height:100vh;background:#F4F7F7;color:#1F2F3D;font-family:"Manrope","Segoe UI",system-ui,Arial,sans-serif;font-size:13px;font-variant-numeric:tabular-nums;padding:14px 16px 24px}
+.ds{min-height:100vh;background:#F4F7F7;color:#1F2F3D;font-family:"Manrope","Segoe UI",system-ui,Arial,sans-serif;font-size:13px;font-variant-numeric:tabular-nums;padding:14px 16px 24px;-webkit-font-smoothing:antialiased}
 .ds *,.ds *::before,.ds *::after{box-sizing:border-box}
 .ds button,.ds input,.ds select,.ds textarea{font-family:inherit}
 .ds :focus-visible{outline:2px solid #0B7A75;outline-offset:2px}
-.ds .wrap{max-width:1500px;margin:0 auto;display:flex;flex-direction:column;gap:12px}
-.ds .ws{display:grid;grid-template-columns:minmax(540px,660px) minmax(0,1fr);gap:14px;align-items:start}
-@media(max-width:1100px){.ds .ws{grid-template-columns:1fr}}
-.ds .card{background:#fff;border:1px solid #E3E9EC;border-radius:10px;overflow:hidden}
+.ds .wrap{max-width:none;margin:0 auto;display:flex;flex-direction:column;gap:12px}
+.ds .kpis{display:flex;gap:22px;justify-content:flex-end;flex-wrap:wrap}
+.ds .kpi{text-align:right;line-height:1.15}.ds .kpi span{display:block;font-size:10.5px;font-weight:700;color:#5F7482}.ds .kpi b{font-size:17px;color:#102A43}
+.ds .ok{color:#0B7A75!important}.ds .warn{color:#B7791F!important}.ds .danger{color:#C0392B!important}
+.ds .alert{display:flex;align-items:center;gap:12px;height:38px;padding:0 14px;background:#FAFAFB;border:1px solid #E5E7EB;border-radius:10px;font-size:12.5px}
+.ds .alert .tag{font-weight:700;color:#111827}.ds .alert .tag i{color:#D0473F;font-style:normal;margin-right:4px}
+.ds .alert .vp{flex:1;min-width:0;overflow:hidden}.ds .alert .mq{display:inline-block;white-space:nowrap;animation:dsmq 22s linear infinite}
+@keyframes dsmq{from{transform:translateX(100%)}to{transform:translateX(-100%)}}
+@media(prefers-reduced-motion:reduce){.ds .alert .mq{animation:none}}
+.ds .sbtn{height:28px;padding:0 12px;border-radius:6px;border:1px solid #CBD5E1;background:#fff;color:#111827;font-size:12px;font-weight:700;cursor:pointer}
+.ds .sbtn.g{background:#EEF0F3;border-color:#E2E5EA}
+.ds .ws{display:grid;gap:14px;align-items:stretch}
+.ds .card{background:#fff;border:1px solid #E3E9EC;border-radius:10px;box-shadow:0 1px 2px rgba(16,42,67,.04)}
 .ds .cis-t{display:flex;align-items:center;justify-content:space-between;height:38px;padding:0 14px;border-bottom:1px solid #E5E7EB;font-size:15px;font-weight:700;color:#102A43}
 .ds .edleg{font-size:11.5px;font-weight:600;color:#6B7280;display:inline-flex;align-items:center;gap:6px}
 .ds .edleg i{width:11px;height:11px;border-radius:3px;background:#E3F4EF;border:1px solid #4FA38F}
@@ -121,7 +171,7 @@ const CSS = `
 .ds .gi,.ds .gs{width:100%;height:26px;border:1px solid #D1D5DB;background:#fff;border-radius:4px;padding:0 8px;font-size:12px;color:#1F2937}
 .ds .pair .gs{flex:0 0 56px;width:56px;padding:0 6px}
 .ds .ed{background:#E3F4EF!important;border-color:#4FA38F!important;font-weight:700;color:#0B4F46!important}
-.ds .ta{width:100%;height:34px;border-radius:4px;padding:5px 7px;font-size:11.5px;line-height:1.35;resize:vertical}
+.ds .ta{width:100%;height:30px;border-radius:4px;padding:5px 7px;font-size:11.5px;line-height:1.35;resize:vertical}
 .ds .ta.cur{background:#F1F3F6;border:1px solid #C9D1DA;color:#374151;resize:none}.ds .ta.new{background:#fff;border:1px solid #D1D5DB}
 .ds .note{font-size:10px;color:#9A3412;font-weight:700;margin-top:1px}.ds .pre{font-size:10px;color:#0B5F5B;margin-top:1px}
 .ds .leg{display:flex;flex-wrap:wrap;gap:14px;padding:6px 12px;font-size:11px;color:#5F7482}
@@ -131,15 +181,28 @@ const CSS = `
 .ds .btn{height:34px;padding:0 16px;border-radius:7px;border:1px solid #102A43;background:#102A43;color:#fff;font-size:13px;font-weight:700;cursor:pointer}
 .ds .btn.ghost{background:#fff;color:#102A43;border-color:#CBD5DA}.ds .btn:disabled{opacity:.45;cursor:not-allowed}
 .ds .empty{padding:36px;color:#5F7482}
-.ds .rp{background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;color:#111827}
-.ds .rp-head{padding:10px 16px;border-bottom:1px solid #E5E7EB;font-size:12px;color:#374151;line-height:1.4}.ds .rp-head b{color:#102A43;font-size:13px}
+/* metrics strip */
+.ds .mfold{border:1px solid #E5E7EB;background:#fff;border-radius:12px;cursor:pointer;display:flex;justify-content:center;padding:14px 0 0}
+.ds .mfold:hover{background:#F6F7F9}
+.ds .mfold span{writing-mode:vertical-rl;transform:rotate(180deg);font-weight:700;color:#102A43;font-size:12.5px;letter-spacing:.02em}
+.ds .ph20{position:relative;border:2px dashed #CBD2E0;background:#FAFBFD;border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:#6B7280;gap:6px;padding:16px;font-size:12.5px;min-width:0}
+.ds .ph20 b{color:#102A43;font-size:14px}
+.ds .ph20 button{position:absolute;top:8px;right:8px;border:1px solid #D1D5DB;background:#fff;border-radius:6px;font-size:12px;padding:3px 8px;cursor:pointer;color:#374151}
+/* right panel */
+.ds .rpw{position:relative;min-height:600px}
+.ds .rp{position:absolute;inset:0;display:flex;flex-direction:column;background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;font-size:12.5px;color:#111827}
+.ds .rp-head{display:flex;align-items:center;gap:8px;padding:8px 10px 8px 16px;border-bottom:1px solid #E5E7EB}
+.ds .rp-who{flex:1;min-width:0;font-size:12px;color:#374151;line-height:1.35}.ds .rp-who b{color:#102A43;font-size:13px}
+.ds .rp-ic{border:1px solid #D1D5DB;background:#fff;border-radius:6px;height:26px;min-width:26px;padding:0 6px;font-size:13px;color:#374151;cursor:pointer}
 .ds .rp-tabs{display:flex;border-bottom:1px solid #E5E7EB;background:#FAFAFB}
 .ds .rp-tabs button{flex:1;background:none;border:0;border-bottom:2px solid transparent;padding:9px 0;font-size:13px;font-weight:600;color:#6B7280;cursor:pointer}
 .ds .rp-tabs button[aria-selected=true]{color:#111827;border-bottom-color:#102A43;font-weight:800}
-.ds .rp-subs{display:flex;gap:6px;padding:10px 16px 4px}
+.ds .rp-subs{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px 4px 16px}
 .ds .rp-subs button{border:1px solid #D1D5DB;background:#fff;border-radius:14px;padding:3px 10px;font-size:11.5px;color:#374151;cursor:pointer}
 .ds .rp-subs button[aria-pressed=true]{background:#EEF0F3;border-color:#CBD2DA;color:#111827;font-weight:700}
-.ds .rp-body{padding:6px 16px 14px;max-height:560px;overflow:auto}
+.ds .rp-body{flex:1;min-height:0;overflow:auto;padding:6px 14px 14px 16px}
+.ds .rclosed{border:1px solid #E5E7EB;background:#fff;border-radius:12px;cursor:pointer;display:flex;justify-content:center;padding:14px 8px 0;height:100%}
+.ds .rclosed span{writing-mode:vertical-rl;transform:rotate(180deg);font-weight:700;color:#102A43;font-size:12.5px}
 .ds .rtl{list-style:none;margin:4px 0 0;padding:0 0 0 18px;position:relative}
 .ds .rtl::before{content:"";position:absolute;left:5px;top:8px;bottom:8px;width:1px;background:#E0E4EA}
 .ds .rtl li{position:relative;padding:6px 0 10px}
@@ -149,9 +212,19 @@ const CSS = `
 .ds .chip{display:inline-block;border:1px solid #E5E7EB;background:#F7F8FA;border-radius:4px;padding:1px 6px;font-size:11px;margin:3px 4px 0 0}
 .ds .chip.good{background:#ECFDF3;border-color:#B7E4C7;color:#166534;font-weight:700}.ds .chip.now{background:#EEF0F3;font-weight:700}
 .ds .rtxt{margin-top:4px;line-height:1.45}
-.ds .rtbl{width:100%;border-collapse:collapse;font-size:12px}.ds .rtbl th{text-align:left;font-size:10.5px;color:#6B7280;padding:4px;border-bottom:1px solid #E5E7EB}
-.ds .rtbl td{padding:4px;border-bottom:1px solid #F1F3F5}.ds .rn{text-align:right!important}
+.ds .rc{border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;margin-top:8px}
+.ds .rc h4{margin:0 0 6px;font-size:10.5px;font-weight:800;letter-spacing:.04em;color:#6B7280;text-transform:uppercase}
+.ds .rrow{display:flex;justify-content:space-between;gap:8px;padding:3px 0}.ds .rrow+.rrow{border-top:1px dashed #EEF0F3}
+.ds .rbig{font-size:20px;font-weight:800}
+.ds .rbar{height:7px;border-radius:4px;background:#EEF1F4;overflow:hidden;margin:6px 0 4px}.ds .rbar i{display:block;height:100%;background:#15803D}
+.ds .rbar i.warn{background:#B7791F}.ds .rbar i.danger{background:#C0392B}
+.ds .rok{color:#15803D}.ds .rwarn{color:#B7791F}.ds .rbad{color:#C0392B}
 .ds .rinfo{border:1px solid #E5E7EB;background:#F7F8FA;border-radius:8px;padding:6px 10px;margin-top:8px}
+.ds .rlist{margin:0;padding-left:16px}.ds .rlist li{margin:2px 0}
+.ds .rtbl{width:100%;border-collapse:collapse;font-size:12px}.ds .rtbl th{text-align:left;font-size:10.5px;color:#6B7280;padding:4px;border-bottom:1px solid #E5E7EB}
+.ds .rtbl td{padding:4px;border-bottom:1px solid #F1F3F5}.ds .rn{text-align:right!important}.ds .rtbl tr.me td{background:#EEF0F3;font-weight:700}
+.ds .rlink{background:none;border:0;padding:0;font:inherit;color:#102A43;font-weight:700;cursor:pointer;text-decoration:underline}
+.ds .rnote{font-size:10.5px;color:#6B7280}
 .ds .fold{text-align:center;font-size:11px;color:#7B8F9B}
 .ds .yh{background:#fff;border:1px solid #E3E9EC;border-radius:10px;overflow:hidden}
 .ds .yh-h{background:#102A43;color:#fff;padding:6px 14px;font-size:12.5px;font-weight:700}
@@ -165,30 +238,45 @@ const CSS = `
 .ds .yh-l{display:flex;gap:14px;flex-wrap:wrap;padding:5px 14px;font-size:10.5px;color:#5F7482;border-top:1px solid #EEF1F5}
 .ds .yh-l i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:4px;vertical-align:-1px}
 .ds .yh-e{padding:10px 14px;font-size:12px;color:#5F7482}
+@media(max-width:1200px){.ds .ws{grid-template-columns:1fr!important}.ds .ph20{display:none}.ds .rpw{width:100%!important}}
 `;
 
-const HIST_COLS = [
-  ["base", "Curr Base Pay"],
-  ["jb", "Joining Bonus"],
-  ["pb", "Perf. Bonus"],
-  ["rb", "Retention Bonus"],
-  ["tb", "Total Bonus"],
-  ["hike", "Hike Amount"],
-  ["ctc", "Total CTC"],
-  ["tpb", "Target PB"],
-  ["nb", "New Base Pay"],
-];
+const Card = ({ title, children }) => (
+  <div className="rc">
+    <h4>{title}</h4>
+    {children}
+  </div>
+);
+const Bar = ({ p }) => (
+  <div className="rbar">
+    <i
+      className={tone(p) === "ok" ? "" : tone(p)}
+      style={{ width: `${Math.min(100, p)}%` }}
+    />
+  </div>
+);
+const rc = (p) =>
+  tone(p) === "ok" ? "rok" : tone(p) === "warn" ? "rwarn" : "rbad";
 
 export function DetailScreenPage() {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
-  const { currentUser, isHR } = useBudget();
+  const budgetStore = useBudget();
+  const { currentUser, isHR } = budgetStore;
   const rows = liveRows || [];
+  const bud = useMemo(() => readBudget(budgetStore), [budgetStore]);
 
   const [index, setIndex] = useState(0);
   const [search, setSearch] = useState("");
   const [historyByEmpId, setHistoryByEmpId] = useState({});
   const [notes, setNotes] = useState({});
-  const [tab, setTab] = useState("manager");
+  const [hideAlert, setHideAlert] = useState(false);
+  const [metricsOpen, setMetricsOpen] = useState(false);
+  const [panel, setPanel] = useState({
+    open: true,
+    wide: false,
+    tab: "feedback",
+    sub: { feedback: "manager", budget: "budget" },
+  });
   const historyPromiseRef = useRef(new Map());
   const origRef = useRef({});
 
@@ -198,7 +286,6 @@ export function DetailScreenPage() {
   }, [currentUser?.name]);
   const employee = rows[Math.min(index, rows.length - 1)] || rows[0];
 
-  /* ---------- history (unchanged API) ---------- */
   const loadHistory = useCallback((empId) => {
     const key = String(empId || "").trim();
     if (!key) return Promise.resolve([]);
@@ -265,12 +352,11 @@ export function DetailScreenPage() {
       EDIT_FIELDS.map((f) => [f, employee[f]]),
     );
   const orig = origRef.current[empKey] || {};
-  const isEd = (f) =>
-    employee &&
-    String(orig[f === "newBase" ? "hikeAmount" : f] ?? "") !==
-      String(employee[f === "newBase" ? "hikeAmount" : f] ?? "");
+  const isEd = (f) => {
+    const k = f === "newBase" ? "hikeAmount" : f;
+    return employee && String(orig[k] ?? "") !== String(employee[k] ?? "");
+  };
 
-  /* ---------- edits (same store calls as before) ---------- */
   const commit = (field, value) => {
     if (
       String(blank(employee[field]) ? "" : employee[field]) ===
@@ -367,6 +453,11 @@ export function DetailScreenPage() {
     : [employee.designation, ...NEW_TITLES];
   const last = index === rows.length - 1;
 
+  const used = rows.reduce((s, r) => s + n(r.hikeAmount), 0);
+  const tpb = rows.reduce((s, r) => s + n(r.targetPBNextYear), 0);
+  const uCur = bud?.allocated ? (used / bud.allocated) * 100 : 0;
+  const uTpb = bud?.allocated ? ((used + tpb) / bud.allocated) * 100 : 0;
+
   const cro = (v, c = "") => <div className={`ro ${c}`}>{v}</div>;
   const amt = (f, value, onCommit, label) => (
     <input
@@ -455,7 +546,26 @@ export function DetailScreenPage() {
     );
   };
 
-  /* ---------- right panel: feedback ---------- */
+  /* ---------- right panel ---------- */
+  const setTab = (tab) => setPanel((p) => ({ ...p, tab }));
+  const setSub = (s) =>
+    setPanel((p) => ({ ...p, sub: { ...p.sub, [p.tab]: s } }));
+  const SUBS = {
+    feedback: [
+      ["manager", "Manager"],
+      ["client", "Client"],
+      ["other", "Other"],
+    ],
+    budget: [
+      ["budget", "Budget"],
+      ["team", "Team metrics"],
+      ["pct", "Hike percentile"],
+      ["nohike", "No hike"],
+      ["pb", "PB paid vs target"],
+      ["changes", "Team changes"],
+    ],
+  };
+  const sub = panel.sub[panel.tab];
   const whoParts = [
     employee.empId,
     employee.designation,
@@ -464,73 +574,80 @@ export function DetailScreenPage() {
       ? `${String(employee.totalExperience).replace(/\s*yrs?$/i, "")} yrs${!blank(employee.wissenExperience) ? ` (${String(employee.wissenExperience).replace(/\s*yrs?$/i, "")} here)` : ""}`
       : "",
   ].filter(Boolean);
-  const cycles = [
-    {
-      y: CYCLE,
-      cur: true,
-      d: employee.designation,
-      r: employee.managerRating,
-      el: employee.eligibleForPromotion,
-      tx: employee.feedback,
-      cr: employee.clientRating,
-      rr: employee.rrPercent,
-      ic: employee.interviewCount,
-    },
-  ].concat(
-    prior.map((h, i) => ({
-      y: h.year,
-      d: h.designation,
-      r: h.rating,
-      tx: h.feedback,
-      promo:
-        prior[i + 1]?.designation &&
-        prior[i + 1].designation !== h.designation &&
-        h.designation !== "—",
-    })),
-  );
+  const hikeOf = (r) =>
+    n(r.currentAnnualBasePay)
+      ? (n(r.hikeAmount) / n(r.currentAnnualBasePay)) * 100
+      : 0;
+  const rewardHike = (r) =>
+    n(r.currentAnnualBasePay)
+      ? ((n(r.hikeAmount) + n(r.newPB) + n(r.newRB)) /
+          n(r.currentAnnualBasePay)) *
+        100
+      : 0;
 
-  let body;
-  if (tab === "manager") {
-    body = (
-      <ul className="rtl">
-        {cycles.map((c) => (
-          <li key={c.y} className={c.cur ? "cur" : ""}>
-            <span className="ry">{c.y}</span>
-            {c.cur && <span className="chip now">This cycle</span>}
-            <div className="rmut">{dash(c.d)}</div>
-            <span className="chip">
-              Manager rating <b>{dash(c.r)}</b>
-            </span>
-            {c.el ? (
-              <span className={`chip${c.el === "Yes" ? " good" : ""}`}>
-                Eligible for promotion: {c.el}
+  function feedbackBody() {
+    if (sub === "manager") {
+      const items = [
+        {
+          y: CYCLE,
+          cur: true,
+          d: employee.designation,
+          r: employee.managerRating,
+          el: employee.eligibleForPromotion,
+          tx: employee.feedback,
+        },
+      ].concat(
+        prior.map((h, i) => ({
+          y: h.year,
+          d: h.designation,
+          r: h.rating,
+          tx: h.feedback,
+          promo:
+            prior[i + 1]?.designation &&
+            prior[i + 1].designation !== h.designation &&
+            h.designation !== "—",
+        })),
+      );
+      return (
+        <ul className="rtl">
+          {items.map((c) => (
+            <li key={c.y} className={c.cur ? "cur" : ""}>
+              <span className="ry">{c.y}</span>
+              {c.cur && <span className="chip now">This cycle</span>}
+              <div className="rmut">{dash(c.d)}</div>
+              <span className="chip">
+                Manager rating <b>{dash(c.r)}</b>
               </span>
-            ) : null}
-            {c.promo ? <span className="chip good">Promoted</span> : null}
-            {!blank(c.tx) && c.tx !== "—" ? (
-              <div className="rtxt">{c.tx}</div>
-            ) : null}
+              {c.el ? (
+                <span className={`chip${c.el === "Yes" ? " good" : ""}`}>
+                  Eligible for promotion: {c.el}
+                </span>
+              ) : null}
+              {c.promo ? <span className="chip good">Promoted</span> : null}
+              {!blank(c.tx) && c.tx !== "—" ? (
+                <div className="rtxt">{c.tx}</div>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    if (sub === "client")
+      return blank(employee.clientRating) ? (
+        <div className="rinfo">No client feedback recorded.</div>
+      ) : (
+        <ul className="rtl">
+          <li className="cur">
+            <span className="ry">{CYCLE}</span>
+            <div>
+              <span className="chip">
+                Client rating <b>{employee.clientRating}</b>
+              </span>
+            </div>
           </li>
-        ))}
-      </ul>
-    );
-  } else if (tab === "client") {
-    body = blank(employee.clientRating) ? (
-      <div className="rinfo">No client feedback recorded.</div>
-    ) : (
-      <ul className="rtl">
-        <li className="cur">
-          <span className="ry">{CYCLE}</span>
-          <div>
-            <span className="chip">
-              Client rating <b>{employee.clientRating}</b>
-            </span>
-          </div>
-        </li>
-      </ul>
-    );
-  } else {
-    body = (
+        </ul>
+      );
+    return (
       <table className="rtbl">
         <thead>
           <tr>
@@ -550,12 +667,235 @@ export function DetailScreenPage() {
     );
   }
 
+  function budgetBody() {
+    if (sub === "budget") {
+      if (!bud)
+        return (
+          <div className="rinfo">No budget is allotted to this login.</div>
+        );
+      const left = bud.allocated - used;
+      return (
+        <>
+          <Card title="Current consumption">
+            <div className="rrow">
+              <span>Used</span>
+              <span className={`rbig ${rc(uCur)}`}>{f1(uCur)}%</span>
+            </div>
+            <Bar p={uCur} />
+            <div className="rmut">
+              {lakhs(used)} used ·{" "}
+              {left >= 0 ? `${lakhs(left)} left` : `${lakhs(-left)} over`} of{" "}
+              {lakhs(bud.allocated)}
+            </div>
+          </Card>
+          <Card title="Including Target PB">
+            <div className="rrow">
+              <span>Used + Target PB</span>
+              <span className={`rbig ${rc(uTpb)}`}>{f1(uTpb)}%</span>
+            </div>
+            <Bar p={uTpb} />
+            <div className="rmut">+{lakhs(tpb)} Target PB</div>
+          </Card>
+          <div style={{ marginTop: 10 }}>
+            <button type="button" className="rlink" onClick={goBudget}>
+              View budget ›
+            </button>
+          </div>
+        </>
+      );
+    }
+    if (sub === "team") {
+      const hk = rows.filter((r) => n(r.hikeAmount) > 0).map(hikeOf),
+        rt = rows.map((r) => n(r.rating ?? r.managerRating)).filter(Boolean);
+      const promo = rows.filter(
+        (r) => r.newTitle && r.newTitle !== r.designation,
+      ).length;
+      return (
+        <Card title={`Team · ${rows.length} people`}>
+          <div className="rrow">
+            <span>Promotions</span>
+            <b>{promo}</b>
+          </div>
+          <div className="rrow">
+            <span>Average hike % (where given)</span>
+            <b>
+              {hk.length
+                ? `${f1(hk.reduce((a, x) => a + x, 0) / hk.length)}%`
+                : "—"}
+            </b>
+          </div>
+          <div className="rrow">
+            <span>Median hike %</span>
+            <b>{hk.length ? `${f1(median(hk))}%` : "—"}</b>
+          </div>
+          <div className="rrow">
+            <span>Average rating</span>
+            <b>
+              {rt.length
+                ? (rt.reduce((a, x) => a + x, 0) / rt.length).toFixed(1)
+                : "—"}
+            </b>
+          </div>
+        </Card>
+      );
+    }
+    if (sub === "pct") {
+      const tr = rows
+          .map((r) => ({ r, v: rewardHike(r) }))
+          .sort((a, b) => b.v - a.v),
+        i = tr.findIndex((x) => x.r.empId === employee.empId);
+      return (
+        <Card title="Total Reward hike % in team">
+          <table className="rtbl">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Employee</th>
+                <th className="rn">Reward hike %</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tr.map((x, k) => (
+                <tr
+                  key={x.r.empId}
+                  className={x.r.empId === employee.empId ? "me" : ""}
+                >
+                  <td>{k + 1}</td>
+                  <td>{x.r.name}</td>
+                  <td className="rn">{f1(x.v)}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {tr.length > 1 && i > -1 ? (
+            <div className="rnote" style={{ marginTop: 6 }}>
+              {employee.name} is{" "}
+              {ordinal(
+                Math.round(((tr.length - 1 - i) / (tr.length - 1)) * 100),
+              )}{" "}
+              percentile
+            </div>
+          ) : null}
+        </Card>
+      );
+    }
+    if (sub === "nohike") {
+      const nh = rows.filter((r) => !(n(r.hikeAmount) > 0));
+      return (
+        <Card title={`No hike this cycle · ${nh.length} of ${rows.length}`}>
+          {nh.length ? (
+            <ul className="rlist">
+              {nh.map((r) => (
+                <li key={r.empId}>
+                  {r.name} <span className="rmut">· {r.designation}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="rmut">Everyone has a hike.</div>
+          )}
+        </Card>
+      );
+    }
+    if (sub === "pb") {
+      const paid = rows.reduce((s, r) => s + n(r.allocatedPBAmount), 0),
+        tgt = rows.reduce((s, r) => s + n(r.targetPBAllocatedForMay), 0),
+        p = tgt ? (paid / tgt) * 100 : 0;
+      return (
+        <Card title="PB paid vs target">
+          <div className="rrow">
+            <span>Paid</span>
+            <span className="rbig">{tgt ? `${f1(p)}%` : "—"}</span>
+          </div>
+          <div className="rbar">
+            <i style={{ width: `${Math.min(100, p)}%` }} />
+          </div>
+          <div className="rmut">
+            {lakhs(paid)} paid of {lakhs(tgt)} target
+          </div>
+        </Card>
+      );
+    }
+    const ch = bud?.changes || [];
+    return (
+      <Card title={`Team changes · ${ch.length}`}>
+        {ch.length ? (
+          <ul className="rlist">
+            {ch.map((c, k) => (
+              <li key={k}>
+                {c.name || c.empName || c.empId}{" "}
+                <span className="rmut">
+                  · {c.type}
+                  {c.date ? ` · ${c.date}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="rmut">No changes since allocation.</div>
+        )}
+      </Card>
+    );
+  }
+
+  const cols = metricsOpen
+    ? `minmax(520px,611px) minmax(0,1fr) ${panel.open ? "auto" : "34px"}`
+    : `minmax(520px,1fr) 34px ${panel.open ? "auto" : "34px"}`;
+  const panelW = panel.wide ? 640 : 360;
+
   return (
     <div className="ds">
       <style>{CSS}</style>
       <div className="wrap">
-        <div className="ws">
-          {/* ---------- Compensation input ---------- */}
+        {bud?.allocated ? (
+          <div className="kpis">
+            <div className="kpi">
+              <span>Budget Allocated</span>
+              <b>₹ {lakhs(bud.allocated)}</b>
+            </div>
+            <div className="kpi">
+              <span>Utilisation</span>
+              <b className={tone(uCur)}>{uCur.toFixed(1)}%</b>
+            </div>
+            <div className="kpi">
+              <span>Incl. Target PB</span>
+              <b className={tone(uTpb)}>{uTpb.toFixed(1)}%</b>
+            </div>
+          </div>
+        ) : null}
+
+        {bud &&
+        bud.initial != null &&
+        Math.round(bud.initial) !== Math.round(bud.allocated) &&
+        !hideAlert ? (
+          <div className="alert" role="status">
+            <span className="tag">
+              <i>▲</i>Budget changed
+            </span>
+            <div className="vp">
+              <span className="mq">
+                Be aware: your team budget has changed from ₹{" "}
+                {lakhs(bud.initial)} to ₹ {lakhs(bud.allocated)} —{" "}
+                {bud.changes.length} team change
+                {bud.changes.length === 1 ? "" : "s"}
+                {bud.since ? ` since allocation on ${bud.since}` : ""}.
+              </span>
+            </div>
+            <button type="button" className="sbtn" onClick={goBudget}>
+              View budget
+            </button>
+            <button
+              type="button"
+              className="sbtn g"
+              onClick={() => setHideAlert(true)}
+            >
+              Got it
+            </button>
+          </div>
+        ) : null}
+
+        <div className="ws" style={{ gridTemplateColumns: cols }}>
+          {/* ---------- 1. Compensation input ---------- */}
           <section className="card" aria-label="Compensation input">
             <div className="cis-t">
               <span>Compensation input</span>
@@ -806,38 +1146,105 @@ export function DetailScreenPage() {
             </div>
           </section>
 
-          {/* ---------- Right panel ---------- */}
-          <aside className="rp" aria-label="Employee panel">
-            <div className="rp-head">
-              <b>{employee.name}</b> · {whoParts.join(" · ")}
-            </div>
-            <div className="rp-tabs" role="tablist">
-              <button type="button" role="tab" aria-selected="true">
-                Feedback
+          {/* ---------- 2. Metrics strip ---------- */}
+          {metricsOpen ? (
+            <section className="ph20" aria-label="Metrics">
+              <button
+                type="button"
+                onClick={() => setMetricsOpen(false)}
+                title="Fold metrics"
+              >
+                ‹ Fold
               </button>
+              <b>Metrics</b>
+              <div>Placeholder</div>
+              <div>Team and org metrics open as separate screens.</div>
+            </section>
+          ) : (
+            <button
+              type="button"
+              className="mfold"
+              onClick={() => setMetricsOpen(true)}
+              aria-expanded="false"
+              title="Open metrics"
+            >
+              <span>Metrics ›</span>
+            </button>
+          )}
+
+          {/* ---------- 3. Right panel ---------- */}
+          {panel.open ? (
+            <div className="rpw" style={{ width: panelW }}>
+              <aside className="rp" aria-label="Employee panel">
+                <div className="rp-head">
+                  <div className="rp-who" title={whoParts.join(" · ")}>
+                    <b>{employee.name}</b> · {whoParts.join(" · ")}
+                  </div>
+                  <button
+                    type="button"
+                    className="rp-ic"
+                    aria-pressed={panel.wide}
+                    title={panel.wide ? "Normal width" : "Expand"}
+                    onClick={() => setPanel((p) => ({ ...p, wide: !p.wide }))}
+                  >
+                    {panel.wide ? "⤡" : "⤢"}
+                  </button>
+                  <button
+                    type="button"
+                    className="rp-ic"
+                    aria-label="Close panel"
+                    onClick={() => setPanel((p) => ({ ...p, open: false }))}
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="rp-tabs" role="tablist">
+                  {[
+                    ["feedback", "Feedback"],
+                    ["budget", "Budget"],
+                  ].map(([k, l]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      role="tab"
+                      aria-selected={panel.tab === k}
+                      onClick={() => setTab(k)}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                <div className="rp-subs">
+                  {SUBS[panel.tab].map(([k, l]) => (
+                    <button
+                      key={k}
+                      type="button"
+                      aria-pressed={sub === k}
+                      onClick={() => setSub(k)}
+                    >
+                      {l}
+                    </button>
+                  ))}
+                </div>
+                <div className="rp-body">
+                  {panel.tab === "feedback" ? feedbackBody() : budgetBody()}
+                </div>
+              </aside>
             </div>
-            <div className="rp-subs">
-              {[
-                ["manager", "Manager"],
-                ["client", "Client"],
-                ["other", "Other"],
-              ].map(([k, l]) => (
-                <button
-                  key={k}
-                  type="button"
-                  aria-pressed={tab === k}
-                  onClick={() => setTab(k)}
-                >
-                  {l}
-                </button>
-              ))}
-            </div>
-            <div className="rp-body">{body}</div>
-          </aside>
+          ) : (
+            <button
+              type="button"
+              className="rclosed"
+              onClick={() => setPanel((p) => ({ ...p, open: true }))}
+              aria-label="Open panel"
+            >
+              <span>Details ›</span>
+            </button>
+          )}
         </div>
 
         {/* ---------- Employee history ---------- */}
-        <div className="fold">▾ Employee History</div>
+        <div className="fold">▾ Scroll down for Employee History</div>
         <section className="yh" aria-label="Employee history">
           <div className="yh-h">
             Employee History — {employee.name} · {pastRows.length + 1} cycle
