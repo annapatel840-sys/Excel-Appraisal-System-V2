@@ -7,6 +7,7 @@ import { SheetPage } from "@/routes/sheet";
 import { EmployeeMaster } from "@/pages/EmployeeMaster";
 import { DetailScreenPage } from "@/components/appraisal/DetailScreenPage";
 import { TechEdBudgetAllocationPage } from "@/components/employee-master/TechEdBudgetAllocationPage";
+import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
 import { AppShell } from "./components/appraisal/AppShell";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 
@@ -16,6 +17,8 @@ const TECH_ED_PATHS = [
   "/detail-screen",
   "/budget-allocation",
 ];
+
+const HR_ONLY_PATHS = ["/budget-distribution"];
 
 class ScreenErrorBoundary extends Component {
   constructor(props) {
@@ -72,8 +75,13 @@ function AppRoutes() {
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
+  const isHR = role === "hr" || role === "humanresources" || role === "hroperation";
   const effectivePath =
-    isTechEd && !TECH_ED_PATHS.includes(path) ? "/employee-master" : path;
+    isTechEd && !TECH_ED_PATHS.includes(path)
+      ? "/employee-master"
+      : HR_ONLY_PATHS.includes(path) && !isHR
+        ? "/"
+        : path;
 
   useEffect(() => {
     const onPopState = () => setPath(window.location.pathname);
@@ -104,6 +112,12 @@ function AppRoutes() {
     page = (
       <AppShell>
         <TechEdBudgetAllocationPage />
+      </AppShell>
+    );
+  } else if (effectivePath === "/budget-distribution" && isHR) {
+    page = (
+      <AppShell>
+        <BudgetDistributionPage />
       </AppShell>
     );
   } else {
