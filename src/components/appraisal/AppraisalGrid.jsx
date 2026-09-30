@@ -3313,7 +3313,6 @@
 //     </div>
 //   );
 // }
-
 import {
   Fragment,
   useCallback,
@@ -3356,11 +3355,19 @@ const SELECT_WIDTH = 34;
 const MIN_WIDTH = 60;
 const MAX_WIDTH = 260;
 
+// Right panel sizes
+const PANEL_WIDTH = 360;
+const PANEL_WIDE_WIDTH = 640;
+const PANEL_MIN_WIDTH = 300;
+const PANEL_MAX_WIDTH = 720;
+
 const WIDTHS = {
   empId: 84,
-  name: 165,
+  // "name" is now the combined Employee column (name + emp id below it)
+  name: 190,
 
-  designation: 120,
+  // Sticky second column (designation + Promote button)
+  designation: 150,
   reportingManager: 125,
   compManager: 125,
   appraiserTechED: 130,
@@ -3409,14 +3416,27 @@ const WIDTHS = {
   atRisk: 140,
 };
 
+// Used for lookups (sorting, grouping, bulk edit ...) — still has every column.
 const GRID_COLUMNS = COLUMNS;
+
+// Columns actually drawn in the table. empId is merged into the "name"
+// column (name on top, id below), so it is not drawn separately.
+const FROZEN_KEYS = new Set(["name", "designation"]);
+
+const DEFAULT_COLUMN_ORDER = [
+  "name",
+  "designation",
+  ...COLUMNS.map((column) => column.key).filter(
+    (key) => key !== "empId" && !FROZEN_KEYS.has(key),
+  ),
+];
 
 // Columns that should NOT show the filter / group menu in the header
 const NO_FILTER_COLUMNS = new Set();
 
 // ============================================================
 // LOCAL STYLES (blink animation for the last edited cell + the
-// history table used inside the right panel)
+// history table used inside the old right panel)
 // ============================================================
 
 const GRID_STYLES = `
@@ -3541,7 +3561,7 @@ const computeHistoryChange = (currentValue, previousValue) => {
   };
 };
 
-// Date of joining shown in the right panel header.
+// Date of joining (kept for the old panel, which is disabled below).
 const formatDoj = (value) => {
   if (!value) {
     return "—";
@@ -3558,6 +3578,92 @@ const formatDoj = (value) => {
     month: "short",
     year: "numeric",
   });
+};
+
+// ============================================================
+// RIGHT PANEL HELPERS (budget / team metrics maths)
+// ============================================================
+
+const num = (value) => {
+  const n = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+
+  return Number.isFinite(n) ? n : 0;
+};
+
+const toLakhs = (value) => `${(num(value) / 100000).toFixed(2)} L`;
+
+const f1 = (value) => (Math.round(value * 10) / 10).toFixed(1);
+
+const ratioPct = (a, b) => (num(b) ? (num(a) / num(b)) * 100 : 0);
+
+const medianOf = (list) => {
+  if (!list.length) {
+    return 0;
+  }
+
+  const sorted = [...list].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+const ordinal = (n) => {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+};
+
+const levelTone = (p) => (p > 100 ? "bad" : p > 90 ? "warn" : "ok");
+
+const TONE_TEXT = {
+  ok: "text-[#15803d]",
+  warn: "text-[#b7791f]",
+  bad: "text-[#c0392b]",
+};
+
+const TONE_BG = {
+  ok: "bg-[#15803d]",
+  warn: "bg-[#b7791f]",
+  bad: "bg-[#c0392b]",
+};
+
+// hike + performance bonus (allocated + new) + retention bonus
+const rewardTotal = (row) =>
+  num(row.hikeAmount) +
+  num(row.allocatedPBAmount) +
+  num(row.newPBToBeOffered) +
+  num(row.newRB);
+
+const rowHikePct = (row) => ratioPct(row.hikeAmount, row.currentAnnualBasePay);
+
+const rowRewardHikePct = (row) =>
+  ratioPct(rewardTotal(row), row.currentAnnualBasePay);
+
+const hasHike = (row) => num(row.hikeAmount) > 0;
+
+const isPromotedRow = (row) => row.eligibleForPromotion === "Yes";
+
+const PANEL_TABS = [
+  ["feedback", "Feedback"],
+  ["budget", "Budget"],
+  // Agent tab intentionally skipped for now.
+];
+
+const PANEL_SUBS = {
+  feedback: [
+    ["manager", "Manager"],
+    ["client", "Client"],
+    ["other", "Other"],
+  ],
+  budget: [
+    ["budget", "Budget"],
+    ["team", "Team metrics"],
+    ["pct", "Hike percentile"],
+    ["nohike", "No hike"],
+    ["pb", "PB paid vs target"],
+    ["changes", "Team changes"],
+  ],
 };
 
 // ============================================================
@@ -3825,6 +3931,776 @@ const buildHistoryView = (records, row) => {
 const sortHistoryDesc = (a, b) => String(b.year).localeCompare(String(a.year));
 
 // ============================================================
+// SMALL PANEL UI PIECES
+// ============================================================
+
+function PanelCard({ title, children }) {
+  return (
+    <div className="mt-2 rounded-[10px] border border-[#e5e7eb] px-3 py-2.5">
+      {title && (
+        <h4 className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-[.04em] text-[#6b7280]">
+          {title}
+        </h4>
+      )}
+      {children}
+    </div>
+  );
+}
+
+function PanelRow({ label, children }) {
+  return (
+    <div className="flex justify-between gap-2 border-t border-dashed border-[#eef0f3] py-[3px] first:border-t-0">
+      <span>{label}</span>
+      <span>{children}</span>
+    </div>
+  );
+}
+
+function PanelChip({ tone, children }) {
+  return (
+    <span
+      className={cn(
+        "mr-1 mt-[3px] inline-block rounded border px-1.5 py-px text-[11px]",
+        tone === "good"
+          ? "border-[#b7e4c7] bg-[#ecfdf3] font-bold text-[#166534]"
+          : tone === "now"
+            ? "border-[#d1d5db] bg-[#eef0f3] font-bold text-[#111827]"
+            : "border-[#e5e7eb] bg-[#f7f8fa]",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function PanelBar({ value, tone }) {
+  return (
+    <div className="my-1.5 h-[7px] overflow-hidden rounded bg-[#eef1f4]">
+      <div
+        className={cn("h-full", TONE_BG[tone])}
+        style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+      />
+    </div>
+  );
+}
+
+function PanelInfo({ children }) {
+  return (
+    <div className="mt-2 rounded-lg border border-[#e5e7eb] bg-[#f7f8fa] px-2.5 py-1.5 text-[12px]">
+      {children}
+    </div>
+  );
+}
+
+// ============================================================
+// EMPLOYEE RIGHT PANEL  (opens when an employee name is clicked)
+// Tabs: Feedback (Manager / Client / Other) and Budget (6 subs).
+// The Agent tab is intentionally left out for now.
+// ============================================================
+
+function EmployeePanel({
+  employee,
+  team,
+  modified,
+  history,
+  budget,
+  onViewBudget,
+  onClose,
+}) {
+  const [tab, setTab] = useState("feedback");
+  const [subs, setSubs] = useState({ feedback: "manager", budget: "budget" });
+  const [wide, setWide] = useState(false);
+  const [width, setWidth] = useState(PANEL_WIDTH);
+  const [dragging, setDragging] = useState(false);
+
+  const panelWidth = wide ? PANEL_WIDE_WIDTH : width;
+  const sub = subs[tab];
+
+  // ---------- drag the left edge to resize ----------
+  const startResize = useCallback(
+    (event) => {
+      event.preventDefault();
+
+      const startX = event.clientX;
+      const startWidth = panelWidth;
+
+      setDragging(true);
+
+      const handleMove = (moveEvent) => {
+        const next = Math.max(
+          PANEL_MIN_WIDTH,
+          Math.min(PANEL_MAX_WIDTH, startWidth + (startX - moveEvent.clientX)),
+        );
+
+        setWide(false);
+        setWidth(next);
+      };
+
+      const handleUp = () => {
+        setDragging(false);
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleUp);
+      };
+
+      window.addEventListener("pointermove", handleMove);
+      window.addEventListener("pointerup", handleUp);
+    },
+    [panelWidth],
+  );
+
+  // ---------- budget numbers ----------
+  const util = useMemo(() => {
+    const alloc = num(budget?.allocated);
+
+    let used = 0;
+    let tpb = 0;
+
+    team.forEach((row) => {
+      used += rewardTotal(row);
+      tpb += num(row.targetPBNextYear);
+    });
+
+    if (budget?.used !== undefined && budget?.used !== null) {
+      used = num(budget.used);
+    }
+
+    if (budget?.targetPB !== undefined && budget?.targetPB !== null) {
+      tpb = num(budget.targetPB);
+    }
+
+    return {
+      alloc,
+      used,
+      tpb,
+      cur: ratioPct(used, alloc),
+      incl: ratioPct(used + tpb, alloc),
+    };
+  }, [team, budget]);
+
+  const hasAlloc = util.alloc > 0;
+
+  // ---------- header line ----------
+  const headerParts = [
+    employee.empId,
+    employee.designation,
+    employee.band,
+    employee.totalExperience !== undefined &&
+    employee.totalExperience !== null &&
+    employee.totalExperience !== ""
+      ? `${employee.totalExperience} yrs${
+          employee.wissenExperience !== undefined &&
+          employee.wissenExperience !== null &&
+          employee.wissenExperience !== ""
+            ? ` (${employee.wissenExperience} here)`
+            : ""
+        }`
+      : "",
+  ].filter(Boolean);
+
+  // ---------- FEEDBACK ----------
+  const renderHistoryState = () => {
+    if (history.loading) {
+      return <PanelInfo>Loading appraisal history...</PanelInfo>;
+    }
+
+    if (history.error) {
+      return (
+        <div className="mt-2 rounded-lg border border-[#fecaca] bg-[#fef2f2] px-2.5 py-2 text-[12px] text-[#b91c1c]">
+          {history.error}
+          <button
+            type="button"
+            onClick={history.onRetry}
+            className="ml-2 font-bold underline"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const renderFeedback = () => {
+    const stateNode = renderHistoryState();
+
+    if (sub === "manager") {
+      if (stateNode) {
+        return stateNode;
+      }
+
+      if (!history.rows.length) {
+        return <PanelInfo>No manager feedback recorded.</PanelInfo>;
+      }
+
+      return (
+        <ul className="relative m-0 mt-1 list-none p-0 pl-[18px]">
+          <span className="absolute bottom-2 left-[5px] top-2 w-px bg-[#e0e4ea]" />
+
+          {history.rows.map((item, index) => {
+            const hasRating =
+              item.rating &&
+              String(item.rating).trim() !== "" &&
+              item.rating !== "—";
+
+            const hasPromotion = item.promotion && item.promotion !== "—";
+
+            const hasText = item.feedback && item.feedback !== "—";
+
+            return (
+              <li
+                key={`${item.year}-${index}`}
+                className="relative pb-2.5 pt-1.5"
+              >
+                <span
+                  className={cn(
+                    "absolute -left-[17px] top-[11px] size-[9px] rounded-full border-2",
+                    index === 0
+                      ? "border-[#102a43] bg-[#102a43]"
+                      : "border-[#c7cdd6] bg-white",
+                  )}
+                />
+
+                <span className="font-extrabold text-[#102a43]">
+                  {item.year}
+                </span>
+
+                {index === 0 && <PanelChip tone="now">This cycle</PanelChip>}
+
+                <div className="text-[#6b7280]">
+                  {item.designation !== "—" ? item.designation : ""}
+                </div>
+
+                {hasRating && (
+                  <PanelChip>
+                    Manager rating <b>{item.rating} / 5</b>
+                  </PanelChip>
+                )}
+
+                {hasPromotion && (
+                  <PanelChip
+                    tone={/^y/i.test(item.promotion) ? "good" : undefined}
+                  >
+                    {/^y/i.test(item.promotion)
+                      ? "Promoted"
+                      : `Promotion: ${item.promotion}`}
+                  </PanelChip>
+                )}
+
+                {hasText && (
+                  <div className="mt-1 leading-[1.45] text-[#1f2937]">
+                    {item.feedback}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      );
+    }
+
+    if (sub === "client") {
+      // Expects row.clientFeedback = [{ year, client, rating, text }] if you add it later.
+      const clientFeedback = Array.isArray(employee.clientFeedback)
+        ? employee.clientFeedback
+        : [];
+
+      if (!clientFeedback.length) {
+        return <PanelInfo>No client feedback recorded.</PanelInfo>;
+      }
+
+      return (
+        <ul className="relative m-0 mt-1 list-none p-0 pl-[18px]">
+          <span className="absolute bottom-2 left-[5px] top-2 w-px bg-[#e0e4ea]" />
+
+          {clientFeedback.map((item, index) => (
+            <li
+              key={`${item.year}-${index}`}
+              className="relative pb-2.5 pt-1.5"
+            >
+              <span
+                className={cn(
+                  "absolute -left-[17px] top-[11px] size-[9px] rounded-full border-2",
+                  index === 0
+                    ? "border-[#102a43] bg-[#102a43]"
+                    : "border-[#c7cdd6] bg-white",
+                )}
+              />
+
+              <span className="font-extrabold text-[#102a43]">{item.year}</span>
+
+              {item.client && (
+                <span className="text-[#6b7280]"> · {item.client}</span>
+              )}
+
+              {item.rating !== undefined && item.rating !== null && (
+                <div>
+                  <PanelChip>
+                    Client rating <b>{item.rating}</b>
+                  </PanelChip>
+                </div>
+              )}
+
+              {item.text && (
+                <div className="mt-1 leading-[1.45] text-[#1f2937]">
+                  {item.text}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+
+    // other
+    return (
+      <table className="w-full border-collapse text-[12px]">
+        <thead>
+          <tr>
+            <th className="border-b border-[#e5e7eb] px-1 py-1 text-left text-[10.5px] font-bold text-[#6b7280]">
+              Cycle
+            </th>
+            <th className="border-b border-[#e5e7eb] px-1 py-1 text-right text-[10.5px] font-bold text-[#6b7280]">
+              RR %
+            </th>
+            <th className="border-b border-[#e5e7eb] px-1 py-1 text-right text-[10.5px] font-bold text-[#6b7280]">
+              IC
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="border-b border-[#f1f3f5] p-1">
+              {CURRENT_APPRAISAL_YEAR}
+            </td>
+            <td className="border-b border-[#f1f3f5] p-1 text-right">
+              {employee.rrPercent !== undefined &&
+              employee.rrPercent !== null &&
+              employee.rrPercent !== ""
+                ? employee.rrPercent
+                : "—"}
+            </td>
+            <td className="border-b border-[#f1f3f5] p-1 text-right">
+              {employee.interviewCount !== undefined &&
+              employee.interviewCount !== null &&
+              employee.interviewCount !== ""
+                ? employee.interviewCount
+                : "—"}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    );
+  };
+
+  // ---------- BUDGET ----------
+  const renderBudget = () => {
+    const tone = levelTone(util.cur);
+    const toneIncl = levelTone(util.incl);
+
+    const alert = budget?.changedUnseen ? (
+      <div className="mt-2 rounded-lg border border-[#fed7aa] bg-[#fff7ed] px-2.5 py-1.5 text-[12px] text-[#9a3412]">
+        ● Budget changed since you last looked
+        {budget.changedFrom !== undefined && budget.changedFrom !== null
+          ? `: ${toLakhs(budget.changedFrom)} → ${toLakhs(util.alloc)}`
+          : ""}
+      </div>
+    ) : null;
+
+    if (sub === "budget") {
+      if (!hasAlloc) {
+        return (
+          <>
+            {alert}
+            <PanelInfo>
+              Budget allocation not connected yet. Pass the <b>budget</b> prop
+              (allocated amount) to show consumption here.
+            </PanelInfo>
+            <PanelCard title="Used so far (hike + PB + RB)">
+              <span className="text-[20px] font-extrabold">
+                {toLakhs(util.used)}
+              </span>
+            </PanelCard>
+          </>
+        );
+      }
+
+      const left = util.alloc - util.used;
+      const leftIncl = util.alloc - util.used - util.tpb;
+
+      return (
+        <>
+          {alert}
+
+          <PanelCard title="Current consumption">
+            <div className="flex items-center justify-between gap-2">
+              <span>Used</span>
+              <span
+                className={cn("text-[20px] font-extrabold", TONE_TEXT[tone])}
+              >
+                {f1(util.cur)}%
+              </span>
+            </div>
+
+            <PanelBar value={util.cur} tone={tone} />
+
+            <div className="text-[#6b7280]">
+              {toLakhs(util.used)} used ·{" "}
+              {left >= 0 ? `${toLakhs(left)} left` : `${toLakhs(-left)} over`}{" "}
+              of {toLakhs(util.alloc)}
+            </div>
+          </PanelCard>
+
+          <PanelCard title="Including Target PB">
+            <div className="flex items-center justify-between gap-2">
+              <span>Used + Target PB</span>
+              <span
+                className={cn(
+                  "text-[20px] font-extrabold",
+                  TONE_TEXT[toneIncl],
+                )}
+              >
+                {f1(util.incl)}%
+              </span>
+            </div>
+
+            <PanelBar value={util.incl} tone={toneIncl} />
+
+            <div className="text-[#6b7280]">
+              +{toLakhs(util.tpb)} Target PB ·{" "}
+              {leftIncl >= 0
+                ? `${toLakhs(leftIncl)} left`
+                : `${toLakhs(-leftIncl)} over`}
+            </div>
+          </PanelCard>
+
+          {typeof onViewBudget === "function" && (
+            <div className="mt-2.5">
+              <button
+                type="button"
+                onClick={onViewBudget}
+                className="font-bold text-[#102a43] underline"
+              >
+                View budget ›
+              </button>
+            </div>
+          )}
+        </>
+      );
+    }
+
+    if (sub === "team") {
+      const editedIds = new Set();
+
+      Object.keys(modified || {}).forEach((key) => {
+        if (modified[key]) {
+          editedIds.add(key.slice(0, key.lastIndexOf(":")));
+        }
+      });
+
+      const edited = team.filter((row) => editedIds.has(String(row.id))).length;
+      const promotions = team.filter(isPromotedRow).length;
+      const hikes = team.filter(hasHike).map(rowHikePct);
+      const ratings = team
+        .map((row) => parseFloat(row.managerRating))
+        .filter((value) => Number.isFinite(value) && value > 0);
+
+      return (
+        <>
+          {alert}
+
+          <PanelCard title={`Team · ${team.length} people`}>
+            <PanelRow label="Edited this cycle">
+              <b>
+                {edited} of {team.length}
+              </b>
+            </PanelRow>
+            <PanelRow label="Promotions">
+              <b>{promotions}</b>
+            </PanelRow>
+            <PanelRow label="Average hike % (where given)">
+              <b>
+                {hikes.length
+                  ? `${f1(hikes.reduce((a, b) => a + b, 0) / hikes.length)}%`
+                  : "—"}
+              </b>
+            </PanelRow>
+            <PanelRow label="Median hike %">
+              <b>{hikes.length ? `${f1(medianOf(hikes))}%` : "—"}</b>
+            </PanelRow>
+            <PanelRow label="Average rating">
+              <b>
+                {ratings.length
+                  ? (
+                      ratings.reduce((a, b) => a + b, 0) / ratings.length
+                    ).toFixed(1)
+                  : "—"}
+              </b>
+            </PanelRow>
+          </PanelCard>
+        </>
+      );
+    }
+
+    if (sub === "pct") {
+      const ranked = team
+        .map((row) => ({ row, value: rowRewardHikePct(row) }))
+        .sort((a, b) => b.value - a.value);
+
+      const myIndex = ranked.findIndex((item) => item.row.id === employee.id);
+
+      const percentile =
+        ranked.length > 1 && myIndex >= 0
+          ? Math.round(
+              ((ranked.length - 1 - myIndex) / (ranked.length - 1)) * 100,
+            )
+          : 100;
+
+      return (
+        <>
+          {alert}
+
+          <PanelCard title="Total Reward hike % in team">
+            <table className="w-full border-collapse text-[12px]">
+              <thead>
+                <tr>
+                  <th className="border-b border-[#e5e7eb] px-1 py-1 text-left text-[10.5px] font-bold text-[#6b7280]">
+                    #
+                  </th>
+                  <th className="border-b border-[#e5e7eb] px-1 py-1 text-left text-[10.5px] font-bold text-[#6b7280]">
+                    Employee
+                  </th>
+                  <th className="border-b border-[#e5e7eb] px-1 py-1 text-right text-[10.5px] font-bold text-[#6b7280]">
+                    Reward hike %
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {ranked.map((item, index) => (
+                  <tr
+                    key={item.row.id}
+                    className={cn(
+                      item.row.id === employee.id && "bg-[#eef0f3] font-bold",
+                    )}
+                  >
+                    <td className="border-b border-[#f1f3f5] p-1">
+                      {index + 1}
+                    </td>
+                    <td className="border-b border-[#f1f3f5] p-1">
+                      {item.row.name}
+                    </td>
+                    <td className="border-b border-[#f1f3f5] p-1 text-right">
+                      {f1(item.value)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {myIndex >= 0 && (
+              <div className="mt-1.5 text-[10.5px] text-[#6b7280]">
+                {employee.name} is {ordinal(percentile)} percentile
+              </div>
+            )}
+          </PanelCard>
+        </>
+      );
+    }
+
+    if (sub === "nohike") {
+      const noHike = team.filter((row) => !hasHike(row));
+
+      return (
+        <>
+          {alert}
+
+          <PanelCard
+            title={`No hike this cycle · ${noHike.length} of ${team.length}`}
+          >
+            {noHike.length ? (
+              <ul className="m-0 list-disc pl-4">
+                {noHike.map((row) => (
+                  <li key={row.id} className="my-0.5">
+                    {row.name}{" "}
+                    <span className="text-[#6b7280]">
+                      · {row.designation || ""}
+                      {row.managerRating
+                        ? ` · rating ${row.managerRating}`
+                        : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-[#6b7280]">Everyone has a hike.</div>
+            )}
+          </PanelCard>
+        </>
+      );
+    }
+
+    if (sub === "pb") {
+      const paid = team.reduce((sum, row) => sum + num(row.pbToBePaid), 0);
+      const target = team.reduce(
+        (sum, row) => sum + num(row.targetPBAllocatedForMay),
+        0,
+      );
+      const p = ratioPct(paid, target);
+
+      return (
+        <>
+          {alert}
+
+          <PanelCard title="PB paid vs target">
+            <div className="flex items-center justify-between gap-2">
+              <span>Paid</span>
+              <span className="text-[20px] font-extrabold">{f1(p)}%</span>
+            </div>
+
+            <PanelBar value={p} tone="ok" />
+
+            <div className="text-[#6b7280]">
+              {toLakhs(paid)} paid of {toLakhs(target)} target
+            </div>
+          </PanelCard>
+        </>
+      );
+    }
+
+    // changes
+    const changes = Array.isArray(budget?.teamChanges)
+      ? budget.teamChanges
+      : [];
+
+    return (
+      <>
+        {alert}
+
+        <PanelCard title={`Team changes · ${changes.length}`}>
+          {changes.length ? (
+            <ul className="m-0 list-disc pl-4">
+              {changes.map((change, index) => (
+                <li key={`${change.name}-${index}`} className="my-0.5">
+                  {change.name}{" "}
+                  <span className="text-[#6b7280]">
+                    · {change.type}
+                    {change.date ? ` · ${change.date}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="text-[#6b7280]">No changes since allocation.</div>
+          )}
+        </PanelCard>
+      </>
+    );
+  };
+
+  return (
+    <aside
+      className="relative flex shrink-0 flex-col border-l border-[#d5dce5] bg-white text-[12.5px] text-[#111827]"
+      style={{ width: panelWidth, fontFamily: APPRAISAL_FONT }}
+    >
+      {/* drag grip (left edge) */}
+      <div
+        onPointerDown={startResize}
+        title="Drag to resize"
+        className="group absolute bottom-0 left-0 top-0 z-[2] w-2 cursor-ew-resize"
+      >
+        <span
+          className={cn(
+            "absolute left-[2px] top-1/2 -mt-[18px] h-9 w-1 rounded",
+            dragging ? "bg-[#102a43]" : "bg-[#d1d5db] group-hover:bg-[#102a43]",
+          )}
+        />
+      </div>
+
+      {/* header */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-[#e5e7eb] py-2 pl-4 pr-2.5">
+        <div
+          className="min-w-0 flex-1 text-[12px] leading-[1.35] text-[#374151]"
+          title={`${employee.name} · ${headerParts.join(" · ")}`}
+        >
+          <b className="text-[13px] text-[#102a43]">{employee.name}</b>
+          {headerParts.length > 0 && <> · {headerParts.join(" · ")}</>}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setWide((previous) => !previous)}
+          title={wide ? "Normal width" : "Expand"}
+          aria-pressed={wide}
+          className="h-[26px] min-w-[26px] shrink-0 rounded-md border border-[#d1d5db] bg-white px-1.5 text-[13px] text-[#374151] hover:border-[#102a43] hover:text-[#102a43]"
+        >
+          {wide ? "⤡" : "⤢"}
+        </button>
+
+        <button
+          type="button"
+          onClick={onClose}
+          title="Close"
+          aria-label="Close panel"
+          className="flex h-[26px] min-w-[26px] shrink-0 items-center justify-center rounded-md border border-[#d1d5db] bg-white px-1.5 text-[#374151] hover:border-[#102a43] hover:text-[#102a43]"
+        >
+          <X className="size-3.5" />
+        </button>
+      </div>
+
+      {/* tabs */}
+      <div
+        className="flex shrink-0 border-b border-[#e5e7eb] bg-[#fafafb]"
+        role="tablist"
+      >
+        {PANEL_TABS.map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => setTab(key)}
+            className={cn(
+              "flex-1 border-b-2 py-[9px] text-[13px]",
+              tab === key
+                ? "border-[#102a43] font-extrabold text-[#111827]"
+                : "border-transparent font-semibold text-[#6b7280]",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* sub buttons */}
+      <div className="flex shrink-0 flex-wrap gap-1.5 pb-1 pl-4 pr-3.5 pt-2.5">
+        {PANEL_SUBS[tab].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={sub === key}
+            onClick={() => setSubs((previous) => ({ ...previous, [tab]: key }))}
+            className={cn(
+              "rounded-[14px] border px-2.5 py-[3px] text-[11.5px]",
+              sub === key
+                ? "border-[#cbd2da] bg-[#eef0f3] font-bold text-[#111827]"
+                : "border-[#d1d5db] bg-white text-[#374151] hover:border-[#9ca3af]",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* body */}
+      <div className="min-h-0 flex-1 overflow-auto pb-3.5 pl-4 pr-3.5 pt-1.5">
+        {tab === "feedback" ? renderFeedback() : renderBudget()}
+      </div>
+    </aside>
+  );
+}
+
+// ============================================================
 // COMPONENT
 // ============================================================
 
@@ -3839,6 +4715,19 @@ export function AppraisalGrid({
 
   showHistory,
   setShowHistory,
+
+  // Optional — right panel "Budget" tab.
+  // budget = {
+  //   allocated,         // updated budget amount (rupees)
+  //   changedUnseen,     // true -> shows the "Budget changed" alert
+  //   changedFrom,       // original budget amount
+  //   used,              // optional override for consumed amount
+  //   targetPB,          // optional override for total target PB
+  //   teamChanges: [{ name, type, date }],
+  // }
+  budget,
+  // Optional — shows the "View budget ›" link in the Budget tab.
+  onViewBudget,
 }) {
   const { updateCell, updateLinkedCells, bulkUpdate, modified } =
     useAppraisal();
@@ -3891,13 +4780,17 @@ export function AppraisalGrid({
 
   const resizeRef = useRef(null);
 
-  const [columnOrder, setColumnOrder] = useState(() =>
-    GRID_COLUMNS.map((column) => column.key),
-  );
+  // name + designation always first (sticky), empId is merged into name
+  const [columnOrder, setColumnOrder] = useState(DEFAULT_COLUMN_ORDER);
 
   const draggedColumnRef = useRef(null);
 
   const handleColumnDragStart = useCallback((event, column) => {
+    if (FROZEN_KEYS.has(column.key)) {
+      event.preventDefault();
+      return;
+    }
+
     draggedColumnRef.current = column.key;
 
     event.dataTransfer.effectAllowed = "move";
@@ -3915,7 +4808,13 @@ export function AppraisalGrid({
     const draggedKey =
       draggedColumnRef.current || event.dataTransfer.getData("text/plain");
 
-    if (!draggedKey || draggedKey === targetColumn.key) {
+    // Frozen columns can neither be moved nor be replaced
+    if (
+      !draggedKey ||
+      draggedKey === targetColumn.key ||
+      FROZEN_KEYS.has(draggedKey) ||
+      FROZEN_KEYS.has(targetColumn.key)
+    ) {
       draggedColumnRef.current = null;
       return;
     }
@@ -4012,12 +4911,20 @@ export function AppraisalGrid({
   }, []);
 
   // ============================================================
-  // STICKY COLUMN WIDTHS
+  // STICKY COLUMN OFFSETS
+  //   [checkbox] [Employee (name + id)] [Designation + Promote]
   // ============================================================
 
-  const empIdColumn = GRID_COLUMNS.find((column) => column.key === "empId");
+  const nameColumn = GRID_COLUMNS.find((column) => column.key === "name");
 
-  const empIdWidth = empIdColumn ? widthOf(empIdColumn) : MIN_WIDTH;
+  const nameWidth = nameColumn ? widthOf(nameColumn) : WIDTHS.name;
+
+  const frozenLeftOf = (key) =>
+    key === "name"
+      ? SELECT_WIDTH
+      : key === "designation"
+        ? SELECT_WIDTH + nameWidth
+        : undefined;
 
   // ============================================================
   // STATES
@@ -4296,7 +5203,17 @@ export function AppraisalGrid({
   }, []);
 
   // ============================================================
-  // SELECTED EMPLOYEE (drives the history panel)
+  // RIGHT PANEL OPEN STATE
+  // The panel always shows the currently selected employee
+  // (historyRow), so clicking / editing another row while the
+  // panel is open switches it to that employee.
+  // ============================================================
+
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [metricsOpen, setMetricsOpen] = useState(false);
+
+  // ============================================================
+  // SELECTED EMPLOYEE (drives the history panel + right panel)
   // ============================================================
 
   const [historyRow, setHistoryRow] = useState(null);
@@ -4386,14 +5303,14 @@ export function AppraisalGrid({
     return promise;
   }, []);
 
-  // Load history for the selected employee while the panel is open.
+  // Load history for the selected employee while a panel that needs it is open.
   useEffect(() => {
-    if (!showHistory || !historyRow?.empId) {
+    if ((!showHistory && !detailOpen) || !historyRow?.empId) {
       return;
     }
 
     loadHistory(historyRow.empId).catch(() => {});
-  }, [showHistory, historyRow?.empId, loadHistory]);
+  }, [showHistory, detailOpen, historyRow?.empId, loadHistory]);
 
   // Live version of the selected row (the snapshot in state goes stale on edit).
   const liveHistoryRow = useMemo(() => {
@@ -4529,11 +5446,11 @@ export function AppraisalGrid({
   );
 
   // ============================================================
-  // RIGHT PANEL (opens when an employee name is clicked —
-  // replaces the old floating popup)
+  // OLD RIGHT PANEL STATE — DISABLED (kept for future use)
+  // Replaced by <EmployeePanel /> which follows the selected row.
   // ============================================================
 
-  const [detailOpen, setDetailOpen] = useState(false);
+  /*
   const [detailEmployee, setDetailEmployee] = useState(null);
 
   const detailEmpKey = detailEmployee
@@ -4568,6 +5485,15 @@ export function AppraisalGrid({
     },
     [loadHistory],
   );
+
+  const closeDetailPanel = useCallback(() => {
+    setDetailOpen(false);
+  }, []);
+  */
+
+  const openDetailPanel = useCallback(() => {
+    setDetailOpen(true);
+  }, []);
 
   const closeDetailPanel = useCallback(() => {
     setDetailOpen(false);
@@ -5252,11 +6178,11 @@ export function AppraisalGrid({
 
       // Re-selecting after a failed fetch retries it (a failed request is
       // dropped from the cache; a cached success is simply reused).
-      if (showHistory && row?.empId) {
+      if ((showHistory || detailOpen) && row?.empId) {
         loadHistory(row.empId).catch(() => {});
       }
     },
-    [showHistory, loadHistory],
+    [showHistory, detailOpen, loadHistory],
   );
 
   const retryHistory = useCallback(() => {
@@ -5348,8 +6274,35 @@ export function AppraisalGrid({
     }
 
     // ------------------------------------------------------------
-    // DESIGNATION CELL — shows the designation plus a small
-    // "★ Promote" button (or "★ Change" once promotion is Yes).
+    // EMPLOYEE CELL (sticky column 1) — name on top, emp id below.
+    // Clicking the name opens the right panel.
+    // ------------------------------------------------------------
+    if (col.key === "name") {
+      return (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            openRow(row);
+            openDetailPanel();
+          }}
+          className="flex min-h-[38px] h-auto w-full flex-col items-start justify-center px-2 py-1 text-left"
+          title={row.name}
+        >
+          <span className="break-words text-[12.5px] font-bold leading-tight text-[#1559a6] hover:underline">
+            {row.name}
+          </span>
+
+          <span className="mt-px text-[10.5px] font-normal leading-tight text-slate-500">
+            {row.empId}
+          </span>
+        </button>
+      );
+    }
+
+    // ------------------------------------------------------------
+    // DESIGNATION CELL (sticky column 2) — shows the designation plus
+    // a small "★ Promote" button (or "★ Change" once promotion is Yes).
     // ------------------------------------------------------------
     if (col.key === "designation") {
       const hasNewTitle =
@@ -5407,10 +6360,6 @@ export function AppraisalGrid({
           onClick={(event) => {
             event.stopPropagation();
             openRow(row);
-
-            if (col.key === "name") {
-              openDetailPanel(row);
-            }
           }}
           className={cn(
             "flex min-h-[38px] h-auto w-full",
@@ -5421,11 +6370,8 @@ export function AppraisalGrid({
             "whitespace-normal break-words",
             "leading-tight",
             isMoney ? "justify-end text-right tabular-nums" : "text-left",
-            col.key === "name" &&
-              "font-semibold text-[#1559a6] hover:underline",
-            col.key === "empId" && "text-[11px] text-slate-500",
           )}
-          title={col.key === "name" ? undefined : text}
+          title={text}
         >
           {text}
         </button>
@@ -5766,15 +6712,11 @@ export function AppraisalGrid({
         </td>
 
         {orderedColumns.map((col) => {
-          const isEmpId = col.key === "empId";
           const isName = col.key === "name";
-          const isFrozen = isEmpId || isName;
+          const isDesignation = col.key === "designation";
+          const isFrozen = isName || isDesignation;
 
-          const left = isEmpId
-            ? SELECT_WIDTH
-            : isName
-              ? SELECT_WIDTH + empIdWidth
-              : undefined;
+          const left = frozenLeftOf(col.key);
 
           const width = widthOf(col);
           const isComputed = col.computed;
@@ -5803,21 +6745,16 @@ export function AppraisalGrid({
                 minHeight: CELL_MIN_HEIGHT,
                 boxSizing: "border-box",
                 zIndex: isFrozen ? 30 : 1,
-                boxShadow:
-                  isFrozen && isName
-                    ? "2px 0 4px -2px rgba(71,85,105,.35)"
+                boxShadow: isDesignation
+                  ? "2px 0 4px -2px rgba(71,85,105,.35)"
+                  : isName && isSelectedRow
+                    ? "inset 3px 0 0 #102a43"
                     : "none",
               }}
               onClick={() => handleCellClick(row, isEditable)}
             >
               <div className="relative min-h-[38px] h-auto w-full">
-                {isName ? (
-                  <div className="min-h-[38px] h-auto w-full">
-                    {renderCellContent(row, col, rowIndex)}
-                  </div>
-                ) : (
-                  renderCellContent(row, col, rowIndex)
-                )}
+                {renderCellContent(row, col, rowIndex)}
               </div>
             </td>
           );
@@ -5839,7 +6776,7 @@ export function AppraisalGrid({
           <Fragment key={section.key}>
             <tr className="bg-[#dbe6f3]">
               <td
-                colSpan={GRID_COLUMNS.length + 1}
+                colSpan={orderedColumns.length + 1}
                 className="border-b border-[#b9cbe0] p-0"
               >
                 <div
@@ -5884,7 +6821,7 @@ export function AppraisalGrid({
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [renderDataRow, flattenedGroupOrder],
+    [renderDataRow, flattenedGroupOrder, orderedColumns.length],
   );
 
   // ============================================================
@@ -6065,24 +7002,22 @@ export function AppraisalGrid({
                 </th>
 
                 {orderedColumns.map((col) => {
-                  const isEmpId = col.key === "empId";
                   const isName = col.key === "name";
-                  const isFrozen = isEmpId || isName;
+                  const isDesignation = col.key === "designation";
+                  const isFrozen = isName || isDesignation;
 
-                  const left = isEmpId
-                    ? SELECT_WIDTH
-                    : isName
-                      ? SELECT_WIDTH + empIdWidth
-                      : undefined;
+                  const left = frozenLeftOf(col.key);
 
                   const width = widthOf(col);
 
                   const showFilter = !NO_FILTER_COLUMNS.has(col.key);
 
+                  const headerLabel = isName ? "Employee" : col.label;
+
                   return (
                     <th
                       key={col.key}
-                      draggable
+                      draggable={!isFrozen}
                       onDragStart={(event) => handleColumnDragStart(event, col)}
                       onDragOver={handleColumnDragOver}
                       onDrop={(event) => handleColumnDrop(event, col)}
@@ -6099,10 +7034,9 @@ export function AppraisalGrid({
                         boxSizing: "border-box",
                         zIndex: isFrozen ? 90 : 60,
                         background: isFrozen ? "#dfe8f3" : "#e9eef5",
-                        boxShadow:
-                          isFrozen && isName
-                            ? "2px 0 4px -2px rgba(71,85,105,.45)"
-                            : undefined,
+                        boxShadow: isDesignation
+                          ? "2px 0 4px -2px rgba(71,85,105,.45)"
+                          : undefined,
                         fontFamily: APPRAISAL_FONT,
                       }}
                     >
@@ -6112,9 +7046,9 @@ export function AppraisalGrid({
                       >
                         <span
                           className="min-w-0 flex-1 overflow-hidden break-words text-left text-[11px] font-bold leading-[13px] text-[#24364d]"
-                          title={col.label}
+                          title={headerLabel}
                         >
-                          {col.label}
+                          {headerLabel}
                         </span>
 
                         {showFilter && (
@@ -6147,7 +7081,7 @@ export function AppraisalGrid({
 
                       <div
                         role="separator"
-                        aria-label={`Resize ${col.label} column`}
+                        aria-label={`Resize ${headerLabel} column`}
                         title="Drag to resize column"
                         onPointerDown={(event) => startColumnResize(event, col)}
                         className="absolute top-0 right-[-2px] z-[100] h-full w-[5px] cursor-col-resize touch-none hover:bg-[#17365d]/30"
@@ -6163,7 +7097,7 @@ export function AppraisalGrid({
                 groupedRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={GRID_COLUMNS.length + 1}
+                      colSpan={orderedColumns.length + 1}
                       className="px-3 py-8 text-center text-[12px] text-slate-500"
                     >
                       No employees match the current filters.
@@ -6181,7 +7115,7 @@ export function AppraisalGrid({
                   {pageRows.length === 0 && (
                     <tr>
                       <td
-                        colSpan={GRID_COLUMNS.length + 1}
+                        colSpan={orderedColumns.length + 1}
                         className="px-3 py-8 text-center text-[12px] text-slate-500"
                       >
                         No employees match the current filters.
@@ -6439,8 +7373,86 @@ export function AppraisalGrid({
         )}
       </div>
 
-      {/* RIGHT PANEL — opens when an employee name is clicked */}
+      {/* METRICS STRIP (fold / unfold) — placeholder, sits left of the panel */}
 
+      {detailOpen && liveHistoryRow && (
+        <div
+          className={cn(
+            "relative shrink-0 border-l border-[#d5dce5] bg-white",
+            metricsOpen
+              ? "w-[300px]"
+              : "w-[34px] cursor-pointer hover:bg-[#f6f7f9]",
+          )}
+          style={{ fontFamily: APPRAISAL_FONT }}
+          onClick={() => {
+            if (!metricsOpen) {
+              setMetricsOpen(true);
+            }
+          }}
+          title={metricsOpen ? undefined : "Open metrics"}
+        >
+          {metricsOpen ? (
+            <div className="flex h-full flex-col items-center justify-center gap-1.5 bg-[#fafbfd] p-4 text-center text-[12.5px] text-[#6b7280]">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setMetricsOpen(false);
+                }}
+                className="absolute right-2 top-2 rounded-md border border-[#d1d5db] bg-white px-2 py-[3px] text-[12px] text-[#374151]"
+                title="Fold metrics"
+              >
+                ‹ Fold
+              </button>
+
+              <b className="text-[14px] text-[#102a43]">Metrics</b>
+              <div>Placeholder</div>
+              <div>Team and org metrics open as separate screens.</div>
+            </div>
+          ) : (
+            <span
+              className="absolute left-2 top-3.5 text-[12.5px] font-bold text-[#102a43]"
+              style={{
+                writingMode: "vertical-rl",
+                transform: "rotate(180deg)",
+              }}
+            >
+              Metrics ›
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* RIGHT PANEL — opens when an employee name is clicked.
+          Follows whichever row is selected while it is open.
+          Feedback (Manager / Client / Other) + Budget (6 sub buttons).
+          Agent tab intentionally skipped. */}
+
+      {detailOpen && liveHistoryRow && (
+        <EmployeePanel
+          employee={liveHistoryRow}
+          team={rows}
+          modified={modified}
+          budget={budget}
+          onViewBudget={onViewBudget}
+          onClose={closeDetailPanel}
+          history={{
+            loading: historyLoading,
+            error: historyError,
+            rows: historyData,
+            onRetry: retryHistory,
+          }}
+        />
+      )}
+
+      {/* ------------------------------------------------------------
+          OLD RIGHT PANEL (name click) — DISABLED, kept for future use.
+          Needs the commented state block above
+          (detailEmployee / liveDetailEmployee / detailHistoryRows)
+          to be restored before it can be enabled again.
+      ------------------------------------------------------------ */}
+
+      {/*
       {detailOpen && liveDetailEmployee && (
         <aside
           className="flex w-[340px] shrink-0 flex-col border-l border-[#d5dce5] bg-white"
@@ -6539,6 +7551,7 @@ export function AppraisalGrid({
           </div>
         </aside>
       )}
+      */}
 
       {/* CHANGE TOAST */}
 
