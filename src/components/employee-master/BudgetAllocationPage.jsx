@@ -48,8 +48,8 @@ function Panel({ title, count, open, onToggle, children }) {
 
 function AuditTable({ rows, showOwner = true }) {
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-[12px]">
+    <div className="w-full overflow-x-auto">
+      <table className="w-full min-w-[850px] border-collapse text-[12px]">
         <thead>
           <tr>
             {["Date", ...(showOwner ? ["Owner"] : []), "Old %", "New %", "Budget before", "Budget after", "Changed by", "Reason"].map((h) => (
@@ -125,7 +125,8 @@ function HRApplyBudget() {
 
   function resetRow(name) {
     const value = orgPct;
-    if (Number(value) === rows.find((r) => r.name === name)?.pct) {
+    const row = rows.find((r) => r.name === name);
+    if (Number(value) === row?.pct) {
       setPending((p) => { const n = { ...p }; delete n[name]; return n; });
       setOverrides((o) => { const n = { ...o }; delete n[name]; return n; });
     } else {
@@ -133,19 +134,25 @@ function HRApplyBudget() {
     }
   }
 
+  function discard() {
+    setPending({});
+    setReason("");
+    setError("");
+  }
+
   function apply() {
     const org = Number(orgPct);
-    if (!(org >= 0)) {
-      setError("Enter a valid org %.");
+    if (!(org >= 0 && org <= 100)) {
+      setError("Enter a valid org % between 0 and 100.");
       return;
     }
 
     const invalid = rows.find((r) => {
       const value = previewPct(r);
-      return !(value >= 0);
+      return !(value >= 0 && value <= 100);
     });
     if (invalid) {
-      setError("Not applied. " + invalid.name + ": enter a valid %.");
+      setError("Not applied. " + invalid.name + ": enter a valid % between 0 and 100.");
       return;
     }
 
@@ -153,20 +160,29 @@ function HRApplyBudget() {
     const changedRows = rows.filter((r) => Number(previewPct(r)) !== r.pct);
     const next = rows.map((r) => {
       const to = Number(previewPct(r));
-      if (to === r.pct) return r;
-      return { ...r, pct: to, updated: r.base * to / 100, lastChanged: dateText(now) };
+      return to === r.pct ? r : { ...r, pct: to, updated: r.base * to / 100, lastChanged: dateText(now) };
     });
 
     const newAudit = changedRows.map((r) => ({
-      date: now, owner: r.name, from: r.pct, to: Number(previewPct(r)),
-      before: r.updated, after: previewBudget(r), by: "HR",
+      date: now,
+      owner: r.name,
+      from: r.pct,
+      to: Number(previewPct(r)),
+      before: r.updated,
+      after: previewBudget(r),
+      by: "HR",
       reason: reason.trim() || (Number(previewPct(r)) === org ? "Reset to org %" : "Override"),
     }));
 
     if (orgPending) {
       setOrgAudit((a) => [{
-        date: now, from: 8, to: org, before: total.updated, after: previewTotal,
-        by: "HR", reason: reason.trim() || "Org budget percentage change",
+        date: now,
+        from: 8,
+        to: org,
+        before: total.updated,
+        after: previewTotal,
+        by: "HR",
+        reason: reason.trim() || "Org budget percentage change",
       }, ...a]);
     }
 
@@ -191,22 +207,23 @@ function HRApplyBudget() {
 
       {error ? (
         <div className="flex justify-between gap-2 rounded-md border border-[#e3e8ef] border-l-4 border-l-[#c2410c] bg-white px-3 py-2 text-[12px] text-[#7c2d12]">
-          <span>{error}</span><button type="button" className="font-bold" onClick={() => setError("")}>Dismiss</button>
+          <span>{error}</span>
+          <button type="button" className="font-bold" onClick={() => setError("")}>Dismiss</button>
         </div>
       ) : null}
 
       <section className={"overflow-hidden rounded-[10px] border bg-white " + (orgPending ? "bg-[#fdf8e7]" : "")} style={{ borderColor: BORDER }}>
         <div className="px-3 py-1.5 text-left text-[12.5px] font-semibold text-white" style={{ background: NAVY }}>Org Budget %</div>
-        <div className="flex flex-wrap items-stretch">
-          <div className="border-r border-[#d7dce3] px-[18px] py-3">
+        <div className="grid grid-cols-[minmax(190px,1.25fr)_minmax(160px,1fr)_minmax(160px,1fr)_minmax(160px,1fr)_minmax(130px,.8fr)]">
+          <div className="min-w-0 border-r border-[#d7dce3] px-[18px] py-3">
             <div className="text-[11px] font-medium text-[#5b6b80]">Org % (default for all Tech EDs)</div>
-            <input type="number" min="0" step="0.1" value={orgPct} onChange={(e) => setOrgPct(e.target.value)} className="mt-1 h-[38px] w-[110px] rounded border border-[#14a3a3] px-2 text-right text-[18px] font-bold text-[#12304f] outline-none" />
+            <input type="number" min="0" max="100" step="0.1" value={orgPct} onChange={(e) => setOrgPct(e.target.value)} className="mt-1 h-[38px] w-[110px] rounded border border-[#14a3a3] px-2 text-right text-[18px] font-bold text-[#12304f] outline-none" />
             {orgPending ? <div className="text-[11px] text-slate-500">was 8%</div> : null}
           </div>
-          <div className="border-r border-[#d7dce3] px-[18px] py-3"><div className="text-[11px] text-[#5b6b80]">Org budget base</div><div className="mt-1 text-[18px] font-semibold text-[#12304f]">{money(total.base)}</div></div>
-          <div className="border-r border-[#d7dce3] px-[18px] py-3"><div className="text-[11px] text-[#5b6b80]">Original budget</div><div className="mt-1 text-[18px] font-semibold text-[#12304f]">{money(total.original)}</div></div>
-          <div className="border-r border-[#d7dce3] px-[18px] py-3"><div className="text-[11px] text-[#5b6b80]">Updated budget</div><div className="mt-1 text-[18px] font-semibold text-[#12304f]">{money(orgPending || changes.length ? previewTotal : total.updated)}</div></div>
-          <div className="px-[18px] py-3"><div className="text-[11px] text-[#5b6b80]">Team count</div><div className="mt-1 text-[18px] font-semibold text-[#12304f]">{total.team0} → {total.team}</div></div>
+          <div className="min-w-0 border-r border-[#d7dce3] px-[18px] py-3"><div className="text-[11px] text-[#5b6b80]">Org budget base</div><div className="mt-1 text-[18px] font-semibold text-[#12304f]">{money(total.base)}</div></div>
+          <div className="min-w-0 border-r border-[#d7dce3] px-[18px] py-3"><div className="text-[11px] text-[#5b6b80]">Original budget</div><div className="mt-1 text-[18px] font-semibold text-[#12304f]">{money(total.original)}</div></div>
+          <div className="min-w-0 border-r border-[#d7dce3] px-[18px] py-3"><div className="text-[11px] text-[#5b6b80]">Updated budget</div><div className="mt-1 text-[18px] font-semibold text-[#12304f]">{money(orgPending || changes.length ? previewTotal : total.updated)}</div></div>
+          <div className="min-w-0 px-[18px] py-3"><div className="text-[11px] text-[#5b6b80]">Team count</div><div className="mt-1 text-[18px] font-semibold text-[#12304f]">{total.team0} → {total.team}</div></div>
         </div>
         <div className="px-4 pb-3 text-[11.5px] text-slate-500">Changing the org % updates every Tech ED on the org default. Tech EDs with an override keep their own %.</div>
       </section>
@@ -214,7 +231,19 @@ function HRApplyBudget() {
       <section className="overflow-hidden rounded-[10px] border bg-white shadow-[0_1px_2px_rgba(18,48,79,.06)]" style={{ borderColor: BORDER }}>
         <div className="px-3 py-1.5 text-left text-[12.5px] font-semibold text-white" style={{ background: NAVY }}>Tech EDs — {rows.length}</div>
         <div className="max-h-[58vh] overflow-auto">
-          <table className="w-full min-w-[980px] border-collapse text-[12.5px]">
+          <table className="w-full min-w-[1050px] table-fixed border-collapse text-[12.5px]">
+            <colgroup>
+              <col className="w-[18%]" />
+              <col className="w-[10%]" />
+              <col className="w-[9%]" />
+              <col className="w-[14%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[7%]" />
+              <col className="w-[7%]" />
+              <col className="w-[10%]" />
+            </colgroup>
             <thead>
               <tr>
                 {["Tech ED","Budget base","% applied","Source","Budget","Original Budget","Updated Budget","Original Count","Current Count","Last Changed"].map((h, i) => (
@@ -228,45 +257,44 @@ function HRApplyBudget() {
                 const changing = Number(p) !== r.pct;
                 const open = !!history[r.name];
                 return (
-                  <tbody key={r.name}>
-                    <tr className={changing ? "bg-[#fdf8e7]" : ""}>
-                      <td className="border-b border-[#e1e5eb] px-2.5 py-2 font-bold">{r.name}</td>
-                      <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(r.base)}</td>
-                      <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">
-                        <input type="number" min="0" step="0.1" value={p} onChange={(e) => setRowPct(r.name, e.target.value)} className="h-8 w-[84px] rounded border border-[#14a3a3] bg-white px-2 text-right text-[14px] font-bold text-[#12304f]" />
-                        {changing ? <div className="text-[11px] text-slate-500">was {r.pct}%</div> : null}
-                      </td>
-                      <td className="border-b border-[#e1e5eb] px-2.5 py-2">
-                        {overrides[r.name] || (Object.prototype.hasOwnProperty.call(pending, r.name) && Number(p) !== Number(orgPct))
-                          ? <><span className="rounded-full bg-[#fff4d6] px-2 py-0.5 text-[11px] font-bold text-[#8a5a00]">Override</span> <button type="button" className="ml-1 text-[11.5px] font-bold text-[#1859a8]" onClick={() => resetRow(r.name)}>Reset to org %</button></>
-                          : <span className="rounded-full bg-[#e6f4f4] px-2 py-0.5 text-[11px] font-bold text-[#0f6d6d]">Org default</span>}
-                      </td>
-                      <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right font-bold text-[#17365d]">{money(r.base * p / 100)}</td>
-                      <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(r.original)}</td>
-                      <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(r.updated)}</td>
-                      <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{r.team0}</td>
-                      <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{r.team}</td>
-                      <td className="border-b border-[#e1e5eb] px-2.5 py-2">
-                        {open || r.lastChanged !== "01-Sep-26" ? <button type="button" className="rounded border border-[#c5d0dd] bg-white px-2 py-1 text-[12px] font-bold text-[#17365d]" onClick={() => setHistory((x) => ({ ...x, [r.name]: !x[r.name] }))}>{r.lastChanged} {open ? "▴" : "▾"}</button> : <span className="text-[#94a3b8]">—</span>}
-                      </td>
-                    </tr>
-                    {open ? (
-                      <tr>
-                        <td colSpan="10" className="bg-[#f7f9fc] px-10 py-3">
-                          <AuditTable rows={audit.filter((a) => a.owner === r.name)} />
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
+                  <tr key={r.name} className={changing ? "bg-[#fdf8e7]" : ""}>
+                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 font-bold">{r.name}</td>
+                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(r.base)}</td>
+                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right align-top">
+                      <input type="number" min="0" max="100" step="0.1" value={p} onChange={(e) => setRowPct(r.name, e.target.value)} className="h-8 w-[84px] rounded border border-[#14a3a3] bg-white px-2 text-right text-[14px] font-bold text-[#12304f]" />
+                      {changing ? <div className="whitespace-nowrap text-[11px] text-slate-500">was {r.pct}%</div> : null}
+                    </td>
+                    <td className="border-b border-[#e1e5eb] px-2.5 py-2">
+                      {overrides[r.name] || (Object.prototype.hasOwnProperty.call(pending, r.name) && Number(p) !== Number(orgPct))
+                        ? <><span className="whitespace-nowrap rounded-full bg-[#fff4d6] px-2 py-0.5 text-[11px] font-bold text-[#8a5a00]">Override</span> <button type="button" className="ml-1 whitespace-nowrap text-[11.5px] font-bold text-[#1859a8]" onClick={() => resetRow(r.name)}>Reset to org %</button></>
+                        : <span className="whitespace-nowrap rounded-full bg-[#e6f4f4] px-2 py-0.5 text-[11px] font-bold text-[#0f6d6d]">Org default</span>}
+                    </td>
+                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right font-bold text-[#17365d]">{money(r.base * p / 100)}</td>
+                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(r.original)}</td>
+                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(r.updated)}</td>
+                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{r.team0}</td>
+                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{r.team}</td>
+                    <td className="border-b border-[#e1e5eb] px-2.5 py-2">
+                      {open || r.lastChanged !== "01-Sep-26" ? <button type="button" className="whitespace-nowrap rounded border border-[#c5d0dd] bg-white px-2 py-1 text-[12px] font-bold text-[#17365d]" onClick={() => setHistory((x) => ({ ...x, [r.name]: !x[r.name] }))}>{r.lastChanged} {open ? "▴" : "▾"}</button> : <span className="text-[#94a3b8]">—</span>}
+                    </td>
+                  </tr>
                 );
               })}
             </tbody>
           </table>
+          {Object.entries(history).some(([, open]) => open) ? (
+            <div className="hidden" aria-hidden="true" />
+          ) : null}
         </div>
+        {Object.entries(history).map(([name, open]) => open ? (
+          <div key={name} className="border-t border-[#d7dce3] bg-[#f7f9fc] px-10 py-3">
+            <AuditTable rows={audit.filter((a) => a.owner === name)} />
+          </div>
+        ) : null)}
         <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t border-[#d4dbe5] bg-white px-3.5 py-2.5">
           <span className={pendingCount ? "font-bold text-[#c2410c]" : "text-slate-500"}>{pendingCount ? pendingCount + " change" + (pendingCount === 1 ? "" : "s") + " pending" : "No pending changes"}</span>
           <input value={reason} onChange={(e) => setReason(e.target.value)} disabled={!pendingCount} placeholder="Reason (saved in the audit trail)" className="h-[30px] min-w-[200px] max-w-[460px] flex-1 rounded border border-[#cbd3df] px-2 text-[12.5px]" />
-          <button type="button" disabled={!pendingCount} onClick={() => { setPending({}); setReason(""); setError(""); }} className="rounded-md border border-[#c5d0dd] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#12304f] disabled:opacity-40">Discard</button>
+          <button type="button" disabled={!pendingCount} onClick={discard} className="rounded-md border border-[#c5d0dd] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#12304f] disabled:opacity-40">Discard</button>
           <button type="button" disabled={!pendingCount} onClick={apply} className="rounded-md px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40" style={{ background: TEAL }}>Apply</button>
         </div>
       </section>
@@ -278,8 +306,8 @@ function HRAuditTrail() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [filter, setFilter] = useState("all");
-  const [audit, setAudit] = useState(INITIAL_AUDIT);
-  const [orgAudit, setOrgAudit] = useState(INITIAL_ORG_AUDIT);
+  const [audit] = useState(INITIAL_AUDIT);
+  const [orgAudit] = useState(INITIAL_ORG_AUDIT);
 
   const orgRows = orgAudit.filter((r) => (!from || r.date >= from) && (!to || r.date <= to));
   const tedRows = audit.filter((r) => (!from || r.date >= from) && (!to || r.date <= to) && (filter === "all" || r.owner === filter));
@@ -339,7 +367,8 @@ export function TechEdBudgetAllocationPage() {
   const rawName = String(user?.name || user?.email || "Tech ED").trim();
   const data = TECH_ED_DATA.find((r) => rawName.includes(r.name)) || TECH_ED_DATA[0];
 
-  const [pctValue, setPctValue] = useState(data.pct);
+  const [pctValue, setPctValue] = useState(String(data.pct));
+  const [savedPct, setSavedPct] = useState(data.pct);
   const [reason, setReason] = useState("");
   const [mineOpen, setMineOpen] = useState(true);
   const [allocOpen, setAllocOpen] = useState(true);
@@ -349,15 +378,23 @@ export function TechEdBudgetAllocationPage() {
 
   const updatedBudget = data.base * Number(pctValue || 0) / 100;
   const buffer = updatedBudget - data.allotted;
+  const isChanged = Number(pctValue) !== savedPct;
 
   function savePct() {
-    if (!(Number(pctValue) >= 0) || Number(pctValue) === data.pct) return;
+    const next = Number(pctValue);
+    if (!(next >= 0 && next <= 100) || next === savedPct) return;
     const now = new Date().toISOString().slice(0, 10);
     setAudit((a) => [{
-      date: now, owner: data.name, from: data.pct, to: Number(pctValue),
-      before: data.updated, after: updatedBudget, by: data.parent,
+      date: now,
+      owner: data.name,
+      from: savedPct,
+      to: next,
+      before: data.base * savedPct / 100,
+      after: updatedBudget,
+      by: data.parent,
       reason: reason.trim() || "Budget percentage change",
     }, ...a]);
+    setSavedPct(next);
     setReason("");
   }
 
@@ -368,17 +405,25 @@ export function TechEdBudgetAllocationPage() {
         <span>Allocated <b>01-Sep-26</b> by <b>HR</b></span><span className="h-5 w-px bg-[#d7dce3]" />
         <span><b>Tech ED</b></span><span className="h-5 w-px bg-[#d7dce3]" />
         <span className="font-semibold text-[#12304f]">Budget applied by HR: <b>{percent(pctValue)}</b> = <b>{money(updatedBudget)}</b> updated · original {money(data.original)}</span>
-        <button type="button" onClick={() => setHistoryOpen((v) => !v)} className="rounded border border-[#c5d0dd] bg-white px-2 py-1 text-[11px] font-bold text-[#12304f]">% history {historyOpen ? "▴" : "▾"}</button>
+        <button type="button" onClick={() => setHistoryOpen((v) => !v)} className="whitespace-nowrap rounded border border-[#c5d0dd] bg-white px-2 py-1 text-[11px] font-bold text-[#12304f]">% history {historyOpen ? "▴" : "▾"}</button>
       </div>
 
       {historyOpen ? <div className="rounded-[10px] border bg-[#f7f9fc] p-2" style={{ borderColor: BORDER }}><AuditTable rows={audit} showOwner={false} /></div> : null}
 
       <Panel title="My Budget" open={mineOpen} onToggle={() => setMineOpen((v) => !v)}>
-        <div className="grid grid-cols-2 divide-x divide-[#d7dce3] sm:grid-cols-3">
-          {[["Original allotted", money(data.original)], ["Updated budget", money(updatedBudget)], ["Team size", data.team]].map(([label, value]) => (
-            <div key={label} className="px-4 py-3"><div className="text-[11px] font-medium text-[#5b6b80]">{label}</div><div className="mt-1 text-[18px] font-semibold text-[#12304f]">{value}</div></div>
+        <div className="grid grid-cols-2 divide-x divide-[#d7dce3] sm:grid-cols-4">
+          {[
+            ["Original allotted", money(data.original)],
+            ["Updated budget", money(updatedBudget)],
+            ["Team size", data.team],
+            ["Utilised", money(0)],
+          ].map(([label, value]) => (
+            <div key={label} className="px-4 py-3">
+              <div className="text-[11px] font-medium text-[#5b6b80]">{label}</div>
+              <div className="mt-1 text-[18px] font-semibold text-[#12304f]">{value}</div>
+              {label === "Utilised" ? <div className="mt-1 h-2 overflow-hidden rounded bg-[#e6ebf2]"><span className="block h-full w-0" style={{ background: "linear-gradient(90deg,#14a3a3,#1b6fb5)" }} /></div> : null}
+            </div>
           ))}
-          <div className="px-4 py-3"><div className="text-[11px] font-medium text-[#5b6b80]">Utilised</div><div className="mt-1 text-[18px] font-semibold text-[#12304f]">{money(0)}</div><div className="mt-1 h-2 overflow-hidden rounded bg-[#e6ebf2]"><span className="block h-full" style={{ width: "0%", background: "linear-gradient(90deg,#14a3a3,#1b6fb5)" }} /></div></div>
         </div>
       </Panel>
 
@@ -388,10 +433,13 @@ export function TechEdBudgetAllocationPage() {
           <input id="techReason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Optional — saved in the audit trail" className="h-7 w-full max-w-[420px] rounded border border-[#cbd3df] px-2 text-[12.5px]" />
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] border-collapse text-[12.5px]">
-            <thead><tr>{["Level","Owner","Original Budget","Updated Budget","Change","Original Count","Current Count","Last Changed","Allot %"].map((h,i)=><th key={h} className={"border-b-2 border-[#9fb3cf] bg-[#e8eef5] px-2.5 py-2 text-[12px] font-semibold text-[#12304f] " + (i > 1 && i < 8 || i === 8 ? "text-right" : "text-left")}>{h}</th>)}</tr></thead>
+          <table className="w-full min-w-[900px] table-fixed border-collapse text-[12.5px]">
+            <colgroup>
+              <col className="w-[10%]" /><col className="w-[17%]" /><col className="w-[13%]" /><col className="w-[13%]" /><col className="w-[11%]" /><col className="w-[9%]" /><col className="w-[9%]" /><col className="w-[9%]" /><col className="w-[9%]" />
+            </colgroup>
+            <thead><tr>{["Level","Owner","Original Budget","Updated Budget","Change","Original Count","Current Count","Last Changed","Allot %"].map((h,i)=><th key={h} className={"border-b-2 border-[#9fb3cf] bg-[#e8eef5] px-2.5 py-2 text-[12px] font-semibold text-[#12304f] " + (i >= 2 ? "text-right" : "text-left")}>{h}</th>)}</tr></thead>
             <tbody>
-              <tr className={Number(pctValue) !== data.pct ? "bg-[#fdf8e7]" : ""}>
+              <tr className={isChanged ? "bg-[#fdf8e7]" : ""}>
                 <td className="border-b border-[#e1e5eb] px-2.5 py-2 font-bold">Tech ED</td>
                 <td className="border-b border-[#e1e5eb] px-2.5 py-2 font-bold">{data.name}</td>
                 <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(data.original)}</td>
@@ -399,8 +447,10 @@ export function TechEdBudgetAllocationPage() {
                 <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(updatedBudget - data.original)}</td>
                 <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{data.team0}</td>
                 <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{data.team}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2">{Number(pctValue) !== data.pct ? "Today" : "01-Sep-26"}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right"><input type="number" min="0" step="0.1" value={pctValue} onChange={(e)=>setPctValue(e.target.value)} onBlur={savePct} className="h-[32px] w-[84px] rounded border border-[#14a3a3] px-2 text-right text-[14px] font-bold text-[#12304f]" /></td>
+                <td className="border-b border-[#e1e5eb] px-2.5 py-2 whitespace-nowrap">{isChanged ? "Today" : "01-Sep-26"}</td>
+                <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">
+                  <input type="number" min="0" max="100" step="0.1" value={pctValue} onChange={(e) => setPctValue(e.target.value)} onBlur={savePct} className="h-[32px] w-[84px] rounded border border-[#14a3a3] px-2 text-right text-[14px] font-bold text-[#12304f]" />
+                </td>
               </tr>
             </tbody>
           </table>
