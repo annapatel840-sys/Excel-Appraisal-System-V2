@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
-import { TechEdBudgetAllocationPage } from "./TechEdBudgetScreen";
+import { TechEdBudgetAllocationPage } from "./TechEdBudgetAllocationPage";
 
 const NAVY = "#12304f";
 const TEAL = "#14a3a3";
