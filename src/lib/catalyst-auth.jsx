@@ -42,14 +42,19 @@ export function CatalystAuthGate({ children }) {
 
     const checkSession = async () => {
       const deadline = Date.now() + 5000;
-      while (!window.catalyst?.auth?.isUserAuthenticated && Date.now() < deadline) {
+      while (
+        !window.catalyst?.auth?.isUserAuthenticated &&
+        Date.now() < deadline
+      ) {
         await new Promise((resolve) => window.setTimeout(resolve, 100));
       }
 
       if (!mounted) return;
       const auth = window.catalyst?.auth;
       if (!auth?.isUserAuthenticated || !auth?.signIn) {
-        setMessage("Catalyst authentication did not initialize. Reload the Slate app or run it with catalyst serve.");
+        setMessage(
+          "Catalyst authentication did not initialize. Reload the Slate app or run it with catalyst serve.",
+        );
         setState("error");
         return;
       }
@@ -103,7 +108,9 @@ export function CatalystAuthGate({ children }) {
     const onSessionExpired = async () => {
       let signedIn = false;
       try {
-        signedIn = isSignedInResult(await window.catalyst?.auth?.isUserAuthenticated?.());
+        signedIn = isSignedInResult(
+          await window.catalyst?.auth?.isUserAuthenticated?.(),
+        );
       } catch {
         signedIn = false;
       }
@@ -115,7 +122,10 @@ export function CatalystAuthGate({ children }) {
     window.addEventListener(CATALYST_SESSION_EXPIRED_EVENT, onSessionExpired);
     return () => {
       active = false;
-      window.removeEventListener(CATALYST_SESSION_EXPIRED_EVENT, onSessionExpired);
+      window.removeEventListener(
+        CATALYST_SESSION_EXPIRED_EVENT,
+        onSessionExpired,
+      );
     };
   }, [state]);
 
@@ -148,7 +158,9 @@ export function CatalystAuthGate({ children }) {
   const signOut = () => {
     const auth = window.catalyst?.auth;
     if (!auth?.signOut) {
-      setMessage("Catalyst sign out is unavailable. Reload the Slate app and try again.");
+      setMessage(
+        "Catalyst sign out is unavailable. Reload the Slate app and try again.",
+      );
       setState("error");
       return;
     }
@@ -183,7 +195,8 @@ export function CatalystAuthGate({ children }) {
                 Employee Appraisal Management
               </h1>
               <p className="mt-5 max-w-sm text-sm leading-6 text-slate-300">
-                Secure access to appraisal, employee and compensation management.
+                Secure access to appraisal, employee and compensation
+                management.
               </p>
             </div>
             <p className="text-xs text-slate-400">
@@ -209,9 +222,6 @@ export function CatalystAuthGate({ children }) {
                 </>
               ) : state === "signed-out" ? (
                 <>
-                  <h2 className="text-2xl font-semibold tracking-tight text-slate-900">
-                    Welcome back
-                  </h2>
                   <p className="mt-2 text-sm leading-6 text-slate-500">
                     Sign in with your Catalyst account to continue.
                   </p>
@@ -237,7 +247,9 @@ export function CatalystAuthGate({ children }) {
                   <h2 className="text-2xl font-semibold text-slate-900">
                     Authentication error
                   </h2>
-                  <p className="mt-3 text-sm leading-6 text-red-700">{message}</p>
+                  <p className="mt-3 text-sm leading-6 text-red-700">
+                    {message}
+                  </p>
                   <button
                     className="mt-5 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
                     onClick={() => window.location.reload()}
