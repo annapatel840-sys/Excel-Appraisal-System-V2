@@ -19,6 +19,7 @@ const TECH_ED_PATHS = [
 ];
 
 const HR_ONLY_PATHS = ["/budget-distribution"];
+const BUDGET_DISTRIBUTION_PATH = "/budget-distribution";
 
 class ScreenErrorBoundary extends Component {
   constructor(props) {
@@ -114,7 +115,7 @@ function AppRoutes() {
         <TechEdBudgetAllocationPage />
       </AppShell>
     );
-  } else if (effectivePath === "/budget-distribution" && isHR) {
+  } else if (effectivePath === BUDGET_DISTRIBUTION_PATH && isHR) {
     page = (
       <AppShell>
         <BudgetDistributionPage />
