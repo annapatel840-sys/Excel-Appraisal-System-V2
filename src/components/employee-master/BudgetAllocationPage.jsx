@@ -793,7 +793,7 @@ export function BudgetAllocationPage() {
                   : "bg-white text-[#334155]")
               }
             >
-              2 · Apply Budget
+              1 · Apply Budget
             </button>
             <button
               type="button"
@@ -805,7 +805,7 @@ export function BudgetAllocationPage() {
                   : "bg-white text-[#334155]")
               }
             >
-              3 · Audit Trail
+              2 · Audit Trail
             </button>
           </div>
           {tab === "apply" ? <HRApplyBudget /> : <HRAuditTrail />}
