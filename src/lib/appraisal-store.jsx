@@ -271,6 +271,8 @@ const mapCatalystEmployee = (employee, index) => {
 
     status: String(employee.status || "Active"),
 
+    eligibility: String(employee.eligible_status || ""),
+
     creatorId: employee.CREATORID || null,
     createdTime: employee.CREATEDTIME || null,
     modifiedTime: employee.MODIFIEDTIME || null,

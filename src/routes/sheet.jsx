@@ -122,9 +122,13 @@ export function SheetPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    const eligibleRows = rows.filter((row) => row.eligibility !== "No");
+    const appraisalRows = rows.filter(
+      (row) =>
+        String(row.status || "").trim().toLowerCase() === "active" &&
+        String(row.eligibility || "").trim().toLowerCase() === "eligible",
+    );
 
-    return applyFilters(eligibleRows, filters, search);
+    return applyFilters(appraisalRows, filters, search);
   }, [rows, filters, search]);
 
   const setFilter = (key, f) =>
@@ -155,7 +159,11 @@ export function SheetPage() {
   const budgetConsumed = useMemo(
     () =>
       rows
-        .filter((row) => row.eligibility !== "No")
+        .filter(
+        (row) =>
+          String(row.status || "").trim().toLowerCase() === "active" &&
+          String(row.eligibility || "").trim().toLowerCase() === "eligible",
+      )
         .reduce(
           (sum, row) =>
             sum +

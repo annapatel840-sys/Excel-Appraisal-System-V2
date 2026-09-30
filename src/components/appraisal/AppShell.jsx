@@ -28,7 +28,7 @@ export function AppShell({ children, headerActions }) {
     .replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
   const isHR =
-    role === "hr" || role === "humanresources" || role === "hroperation";
+    role === "hr" || role === "humanresources" || role === "hroperation" || role === "hroperations";
 
   const allNav = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -127,19 +127,20 @@ export function AppShell({ children, headerActions }) {
                     >
                       <div className="overflow-hidden rounded-md border border-[#d8e0ea] bg-white py-1 shadow-xl">
                         {[
-                          ["Employee Master", "roster"],
-                          ["Eligibility List", "eligibility"],
-                          ["Appraisal Cycle Master", "appraisal-cycle"],
-                          ["Payroll Data", "payroll-data"],
-                          ["Payroll Upload", "payroll-upload"],
-                          ["Team Changes", "team-changes"],
-                          ["Budget Allocation", "budget-allocation"],
-                        ].map(([label, tab]) => (
+                          ["Employee Master", "roster", "/employee-master?tab=roster"],
+                          ["Eligibility List", "eligibility", "/employee-master?tab=eligibility"],
+                          ["Appraisal Cycle Master", "appraisal-cycle", "/employee-master?tab=appraisal-cycle"],
+                          ["Payroll Data", "payroll-data", "/employee-master?tab=payroll-data"],
+                          ["Payroll Upload", "payroll-upload", "/employee-master?tab=payroll-upload"],
+                          ["Team Changes", "team-changes", "/employee-master?tab=team-changes"],
+                          ["Budget Allocation", "budget-allocation", "/employee-master?tab=budget-allocation"],
+                          ["Budget Distribution", "budget-distribution", "/employee-master?tab=budget-distribution"],
+                        ].map(([label, tab, to]) => (
                           <a
                             key={tab}
-                            href={`/employee-master?tab=${tab}`}
+                            href={to}
                             onClick={(event) =>
-                              navigate(event, `/employee-master?tab=${tab}`)
+                              navigate(event, to)
                             }
                             className="block whitespace-nowrap px-3 py-2 text-[11px] font-medium text-[#334155] hover:bg-[#eef5f5] hover:text-[#0B6A66]"
                             role="menuitem"

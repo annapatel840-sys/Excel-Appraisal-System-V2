@@ -154,17 +154,18 @@ function AuditTable({
       r,
     ],
   );
-  const td = "border-b border-[#edf0f4] px-2 py-1.5 ";
+  const td = "border-b border-[#edf0f4] px-4 py-2 align-middle ";
   return (
     <div className="w-full overflow-x-auto">
-      <table className="w-full min-w-[850px] border-collapse text-[12px] tabular-nums">
+      <table className="w-full min-w-[980px] table-fixed border-collapse text-[12px] tabular-nums">
+        <colgroup>{cols.map(([h]) => <col key={h} />)}</colgroup>
         <thead>
           <tr>
             {cols.map(([h, right]) => (
               <th
                 key={h}
                 className={
-                  "border-b border-[#d7dce3] px-2 py-1.5 text-[11px] font-bold text-[#1e3a5f] " +
+                  "border-b border-[#d7dce3] px-4 py-2 text-[11px] font-bold text-[#1e3a5f] " +
                   (right ? "text-right" : "text-left")
                 }
               >
@@ -205,21 +206,6 @@ function AuditTable({
           )}
         </tbody>
       </table>
-    </div>
-  );
-}
-
-function CycleBar() {
-  return (
-    <div
-      className="flex flex-wrap items-center gap-4 rounded-[10px] border border-l-4 bg-white px-3.5 py-2 text-[12.5px] text-[#334155]"
-      style={{ borderColor: BORDER, borderLeftColor: TEAL }}
-    >
-      <span>
-        Appraisal cycle <b>Apr-26</b>
-      </span>
-      <span className="h-5 w-px self-stretch bg-[#d7dce3]" />
-      <span>Allocated 01-Sep by HR Admin</span>
     </div>
   );
 }
@@ -384,12 +370,13 @@ function HRApplyBudget() {
     setError("");
   }
 
-  const orgCell = "shrink-0 border-r border-[#d7dce3] px-[18px] py-3";
+  const orgCell = "shrink-0 min-w-[170px] border-r border-[#d7dce3] px-[22px] py-4";
+
+  const appraisalCycles = ["Apr-26"];
+  const [selectedCycle, setSelectedCycle] = useState(appraisalCycles[0]);
 
   return (
     <div className="flex flex-col gap-2">
-      <CycleBar />
-
       {error ? (
         <div className="flex justify-between gap-2 rounded-md border border-[#e3e8ef] border-l-4 border-l-[#c2410c] bg-white px-3 py-2 text-[12px] text-[#7c2d12]">
           <span>{error}</span>
@@ -417,7 +404,23 @@ function HRApplyBudget() {
           Org Budget %
         </div>
         <div className="overflow-x-auto">
-          <div className="flex items-stretch">
+          <div className="flex items-stretch gap-3 px-3 py-1">
+            <div className={orgCell}>
+              <div className="text-[11px] font-medium text-[#5b6b80]">
+                Appraisal Cycle
+              </div>
+              <select
+                value={selectedCycle}
+                onChange={(e) => setSelectedCycle(e.target.value)}
+                className="mt-1 h-[38px] min-w-[140px] rounded border border-[#14a3a3] bg-white px-2 text-[13px] font-bold text-[#12304f] outline-none"
+              >
+                {appraisalCycles.map((cycle) => (
+                  <option key={cycle} value={cycle}>
+                    {cycle}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className={orgCell}>
               <div className="text-[11px] font-medium text-[#5b6b80]">
                 Org % (default for all Tech EDs)
@@ -455,7 +458,7 @@ function HRApplyBudget() {
                 )}
               </div>
             </div>
-            <div className="shrink-0 px-[18px] py-3">
+            <div className="shrink-0 min-w-[150px] rounded-md border border-[#d7dce3] bg-[#f8fafc] px-[22px] py-4">
               <div className="text-[11px] text-[#5b6b80]">Team count</div>
               <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
                 {total.team0} → {total.team}

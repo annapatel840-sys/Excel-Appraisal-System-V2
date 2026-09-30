@@ -40,6 +40,7 @@ import { PayrollDataPage } from "@/components/employee-master/PayrollDataPage";
 import { PayrollUploadPage } from "@/components/employee-master/PayrollUploadPage";
 import { TeamChangesPage } from "@/components/employee-master/TeamChangesPage";
 import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
+import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
 
 import "@/styles/employee-master.css";
 
@@ -599,6 +600,7 @@ export function EmployeeMaster() {
     "payroll-upload",
     "team-changes",
     "budget-allocation",
+    "budget-distribution",
   ]);
   const [activeTab, setActiveTab] = useState(
     isTechEd
@@ -2270,13 +2272,22 @@ export function EmployeeMaster() {
           >
             Team Changes
           </button>}
-          {!isTechEd && <button
-            type="button"
-            className={activeTab === "budget-allocation" ? "active" : ""}
-            onClick={() => setActiveTab("budget-allocation")}
-          >
-            Budget Allocation
-          </button>}
+          {!isTechEd && <>
+            <button
+              type="button"
+              className={activeTab === "budget-allocation" ? "active" : ""}
+              onClick={() => setActiveTab("budget-allocation")}
+            >
+              Budget Allocation
+            </button>
+            <button
+              type="button"
+              className={activeTab === "budget-distribution" ? "active" : ""}
+              onClick={() => setActiveTab("budget-distribution")}
+            >
+              Budget Distribution
+            </button>
+          </>}
         </div>
 
         {/* ======================================================
@@ -2464,6 +2475,19 @@ export function EmployeeMaster() {
             }}
           >
             <BudgetAllocationPage />
+          </div>
+        )}
+
+        {!isTechEd && activeTab === "budget-distribution" && (
+          <div
+            className="em-tab-content"
+            style={{
+              height: "calc(100vh - 180px)",
+              overflowY: "auto",
+              overflowX: "hidden",
+            }}
+          >
+            <BudgetDistributionPage />
           </div>
         )}
 
