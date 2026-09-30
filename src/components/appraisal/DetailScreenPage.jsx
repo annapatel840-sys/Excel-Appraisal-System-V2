@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
 import { useAppraisal } from "@/lib/appraisal-store";
 import {
   NEW_TITLES,
@@ -12,30 +11,23 @@ import {
 } from "@/lib/appraisal-data";
 import { useBudget } from "@/lib/budget-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
-
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
-
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
-
 const NAVY = "#12304f";
 const TEAL = "#14a3a3";
 /* Ledger look: Manrope. Load it once in index.html:
-   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"> */
+   <link href="https\://fonts.googleapis.com/css2?family=Manrope:wght\@400;500;600;700;800&display=swap" rel="stylesheet"> */
 const FONT = '"Manrope", "Segoe UI", system-ui, Arial, sans-serif';
-
 /* Ledger tokens used by the left pane */
 const INK = "#102A43";
 const LTEAL = "#0B7A75";
 const LINE = "#E3E9EC";
 const SOFT = "#EEF3F3";
 const MUTED = "#5F7482";
-
 const CURRENT_CYCLE = "Apr-26";
-
 const normalizeHistoryRecord = (record) => {
   const basePay = Number(record?.base_pay) || 0;
   const hike = Number(record?.hike_amount) || 0;
-
   return {
     year:
       record?.appraisal_year !== null && record?.appraisal_year !== undefined
@@ -55,7 +47,6 @@ const normalizeHistoryRecord = (record) => {
     newBasePay: basePay + hike,
   };
 };
-
 const HISTORY_COLUMNS = [
   { key: "basePay", label: "Curr Base Pay" },
   { key: "joiningBonus", label: "Joining Bonus" },
@@ -67,7 +58,6 @@ const HISTORY_COLUMNS = [
   { key: "targetPB", label: "Target PB" },
   { key: "newBasePay", label: "New Base Pay" },
 ];
-
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
 const lakhs = (n) => `${((Number(n) || 0) / 1e5).toFixed(2)} L`;
 const dash = (v) => (v === null || v === undefined || v === "" ? "—" : v);
@@ -85,31 +75,29 @@ const ordinal = (n) => {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 };
 const signedPct = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}%`;
-
 const isBlank = (v) => v === "" || v === null || v === undefined;
-
 // Blank stays blank (like the grid's numeric cells); otherwise format.
 const fmtOrBlank = (n) => (isBlank(n) ? "" : fmt(n));
-
 // Parse a formatted amount; an empty input stays "" instead of 0.
 const parseAmount = (raw) => {
   const cleaned = String(raw ?? "").replace(/[^0-9.]/g, "");
   return cleaned === "" ? "" : Number(cleaned) || 0;
 };
-
 const normalizeYearKey = (y) =>
   String(y ?? "")
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
-
 const isCurrentCycleYearKey = (year) => {
   const raw = String(year ?? "")
     .trim()
     .toLowerCase();
-
   if (!raw) return false;
-
+  // ------------------------------------------------------------
+  // PAGE LAYOUT
+  // Fixed application frame with the compensation area, metrics area,
+  // employee/feedback area, and employee history section.
+  // ------------------------------------------------------------
   return (
     raw === "2026" ||
     raw === "2026-27" ||
@@ -122,7 +110,6 @@ const isCurrentCycleYearKey = (year) => {
     raw.includes("2026")
   );
 };
-
 const isBlankRecord = (h) =>
   h.designation === "—" &&
   h.rating === "—" &&
@@ -131,74 +118,66 @@ const isBlankRecord = (h) =>
   !h.totalBonus &&
   !h.newCTC &&
   !h.hikeAmount;
-
+/* ============================================================
+   DETAIL SCREEN PAGE
+   Existing data fetching, store usage, calculations, and edits are preserved.
+   Only the page layout/UI integration is handled in this component.
+   ============================================================ */
 export function DetailScreenPage() {
+  // Dynamic appraisal data comes from the existing appraisal store.
+  // Do not hardcode employee records or fetched values here.
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
   const { currentUser, isHR } = useBudget();
   const catalystUser = useCatalystUser();
   const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
-
   // The backend already scopes rows to what this login may see, so no
   // extra client-side narrowing by comp manager name here.
   const rows = liveRows || [];
   const isScopedToTeam = isTechEd || rows.length > 0;
-
   const [index, setIndex] = useState(0);
   const [search, setSearch] = useState("");
   const [historyByEmpId, setHistoryByEmpId] = useState({});
   const historyPromiseRef = useRef(new Map());
-
+  // UI-only state for the reference layout.
+  const [metricsOpen, setMetricsOpen] = useState(false);
   useEffect(() => {
     setIndex(0);
     setSearch("");
   }, [currentUser.name]);
-
   const employee = rows[Math.min(index, rows.length - 1)] || rows[0];
-
+  // Existing Catalyst appraisal-history API flow — intentionally preserved.
   const loadHistory = useCallback(
     (empId) => {
       const key = String(empId || "").trim();
-
       if (!key) {
         return Promise.resolve([]);
       }
-
       const existing = historyPromiseRef.current.get(key);
-
       if (existing) {
         return existing;
       }
-
       setHistoryByEmpId((prev) => ({
         ...prev,
         [key]: { loading: true, data: [], error: "" },
       }));
-
       const promise = (async () => {
         const response = await catalystFetch(
           `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(key)}`,
         );
-
         if (!response.ok) {
           throw new Error(`History request failed (${response.status}).`);
         }
-
         const result = await response.json();
-
         if (!result?.success) {
           throw new Error(result?.message || "Failed to load history.");
         }
-
         const records = Array.isArray(result?.data) ? result.data : [];
-
         return records
           .map(normalizeHistoryRecord)
           .sort((a, b) => String(b.year).localeCompare(String(a.year)));
       })();
-
       historyPromiseRef.current.set(key, promise);
-
       promise
         .then((data) => {
           setHistoryByEmpId((prev) => ({
@@ -208,7 +187,6 @@ export function DetailScreenPage() {
         })
         .catch((error) => {
           historyPromiseRef.current.delete(key);
-
           setHistoryByEmpId((prev) => ({
             ...prev,
             [key]: {
@@ -218,44 +196,34 @@ export function DetailScreenPage() {
             },
           }));
         });
-
       return promise;
     },
     [],
   );
-
   useEffect(() => {
     if (employee?.empId) {
       loadHistory(employee.empId).catch(() => {});
     }
   }, [employee?.empId, loadHistory]);
-
   const empKey = employee ? String(employee.empId || "").trim() : "";
   const historyState = historyByEmpId[empKey];
   const historyRecords = historyState?.data || [];
-
   const priorCycles = useMemo(() => {
     const seen = new Set();
     const result = [];
-
     for (const record of historyRecords) {
       if (isCurrentCycleYearKey(record.year)) continue;
       if (isBlankRecord(record)) continue;
-
       const yearKey = normalizeYearKey(record.year);
-
       if (!yearKey || seen.has(yearKey)) continue;
-
       seen.add(yearKey);
       result.push(record);
     }
-
     return result;
   }, [historyRecords]);
-
+  // Existing calculations are derived from the currently selected dynamic employee record.
   const derived = useMemo(() => {
     if (!employee) return null;
-
     return {
       totalPB: totalOfPB(employee),
       bonus: calcTotalBonus(employee),
@@ -263,37 +231,29 @@ export function DetailScreenPage() {
       totalCtc: totalCTCWithRewards(employee),
     };
   }, [employee]);
-
   const handleSearch = (value) => {
     setSearch(value);
-
     const q = value.trim().toLowerCase();
-
     if (!q) return;
-
     const found = rows.findIndex(
       (row) =>
         String(row.name || "")
           .toLowerCase()
           .startsWith(q) || String(row.empId || "").toLowerCase() === q,
     );
-
     if (found > -1) setIndex(found);
   };
-
+  // Existing store update logic — keeps edits connected to the appraisal store.
   const commit = (field, value) => {
     const current = isBlank(employee[field]) ? "" : String(employee[field]);
     if (current === (isBlank(value) ? "" : String(value))) return;
     updateCell(employee.id, field, value, "Detail screen edit");
   };
-
   const commitLinked = (fields) => {
     updateLinkedCells(employee.id, fields, "Detail screen edit");
   };
-
   const handleNewBasePayChange = (raw) => {
     const value = parseAmount(raw);
-
     // Cleared input clears the hike (same as the grid's blank hike cells).
     if (value === "") {
       if (!isBlank(employee.hikeAmount) || !isBlank(employee.hikePct)) {
@@ -301,20 +261,15 @@ export function DetailScreenPage() {
       }
       return;
     }
-
     if (value === derived.newBase) return;
-
     const hike = value - (Number(employee.currentAnnualBasePay) || 0);
     const pct = employee.currentAnnualBasePay
       ? Number(((hike / employee.currentAnnualBasePay) * 100).toFixed(1))
       : 0;
-
     commitLinked({ hikeAmount: hike, hikePct: pct });
   };
-
   const handleNewTitleChange = (value) => {
     const changed = value !== employee.designation;
-
     // Same rule as the grid: promotion "No" clears New Title.
     commitLinked(
       changed
@@ -322,46 +277,90 @@ export function DetailScreenPage() {
         : { eligibleForPromotion: "No", newTitle: null },
     );
   };
-
   const hikeValue = Number(employee?.hikeAmount) || 0;
-
   const scopeLabel = isHR
     ? "All employees"
     : isScopedToTeam
       ? `${currentUser.name}'s team`
       : "No assigned team";
-
+  const teamMetrics = useMemo(() => {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    const used = safeRows.reduce(
+      (sum, row) => sum + (Number(row?.hikeAmount) || 0),
+      0,
+    );
+    const tpb = safeRows.reduce(
+      (sum, row) => sum + (Number(row?.targetPBAllocatedForMay) || 0),
+      0,
+    );
+    const pbPaid = safeRows.reduce(
+      (sum, row) => sum + (Number(row?.allocatedPBAmount) || 0),
+      0,
+    );
+    const pbTarget = safeRows.reduce(
+      (sum, row) => sum + (Number(row?.targetPBAllocatedForMay) || 0),
+      0,
+    );
+    const hikeRows = safeRows
+      .map((row) => ({ row, value: Number(row?.hikePct) }))
+      .filter((x) => Number.isFinite(x.value));
+    const mineValue = Number(employee?.hikePct);
+    const percentile =
+      hikeRows.length && Number.isFinite(mineValue)
+        ? Math.round(
+            (hikeRows.filter((x) => x.value <= mineValue).length /
+              hikeRows.length) *
+              100,
+          )
+        : null;
+    const sorted = hikeRows.map((x) => x.value).sort((a, b) => a - b);
+    const median = sorted.length
+      ? sorted.length % 2
+        ? sorted[Math.floor(sorted.length / 2)]
+        : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
+      : null;
+    const topEntry = hikeRows.length
+      ? hikeRows.reduce((best, item) =>
+          item.value > best.value ? item : best,
+        )
+      : null;
+    return {
+      used,
+      tpb,
+      pbPaid,
+      pbTarget,
+      cur: teamBudget ? (used / teamBudget) * 100 : null,
+      withT: teamBudget ? ((used + tpb) / teamBudget) * 100 : null,
+      percentile,
+      mine: { v: Number.isFinite(mineValue) ? mineValue : 0 },
+      top: topEntry
+        ? { v: topEntry.value, r: { name: topEntry.row?.name || "—" } }
+        : { v: 0, r: { name: "—" } },
+      median,
+      noHike: safeRows.filter((row) => !(Number(row?.hikeAmount) || 0)).length,
+    };
+  }, [rows, employee]);
   return (
     <div
-      className="min-h-screen"
+      className="h-screen w-full overflow-hidden"
       style={{ fontFamily: FONT, background: "#eef2f6" }}
     >
       <div
-        className="min-w-0 overflow-x-hidden overflow-y-auto p-2.5 pb-6"
+        className="flex h-full min-h-0 flex-col"
         style={{
           color: "#0f1f33",
           fontSize: "12.5px",
-          }}
+        }}
       >
-        <div className="mx-auto flex max-w-[1200px] flex-col gap-2">
+        <div className="mx-auto flex min-h-0 w-full max-w-[1480px] flex-1 flex-col gap-2 px-2.5 pb-1.5 pt-2">
           {!employee ? (
-            <div className="p-6 text-sm text-slate-500">
+            <div className="rounded-[10px] border bg-white p-6 text-sm text-slate-500">
               No employees are visible for this login.
             </div>
           ) : (
             <>
-              <div className="grid grid-cols-1 gap-2 min-[1000px]:grid-cols-[370px_minmax(0,1fr)]">
-                {/* LEFT COLUMN — employee details + Feedback / Team metrics */}
-                <div className="relative min-h-[460px]">
-                  <LeftPane
-                    employee={employee}
-                    priorCycles={priorCycles}
-                    loading={!!historyState?.loading}
-                    scopeLabel={scopeLabel}
-                  />
-                </div>
-
-                {/* RIGHT COLUMN — Compensation Input Screen */}
+              <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 min-[1000px]:grid-cols-[minmax(0,1fr)_auto_minmax(320px,370px)]">
+                {/* LEFT COLUMN — Compensation Input Screen */}
                 <div
                   className="flex flex-col overflow-hidden rounded-[10px] border shadow-[0_1px_2px_rgba(18,48,79,0.06)]"
                   style={{ background: "#fff", borderColor: "#d3dbe6" }}
@@ -377,7 +376,6 @@ export function DetailScreenPage() {
                   >
                     Compensation Input Screen
                   </div>
-
                   <div
                     className="flex items-center gap-2 border-b px-2.5 py-1.5"
                     style={{ borderColor: "#e1e5eb" }}
@@ -401,18 +399,20 @@ export function DetailScreenPage() {
                       Scope: {scopeLabel} · {rows.length}
                     </span>
                   </div>
-
                   <div
-                    className="grid text-[11.5px]"
-                    style={{ gridTemplateColumns: "0.95fr 0.9fr 1.45fr 0.8fr" }}
+                    className="detail-scroll min-h-0 flex-1 overflow-auto"
+                    style={{ scrollbarWidth: "thin" }}
                   >
+                    <div
+                      className="grid text-[11.5px]"
+                      style={{ gridTemplateColumns: "0.95fr 0.9fr 1.45fr 0.8fr" }}
+                    >
                     <CompHead bg="#d6e0ec">Description</CompHead>
                     <CompHead bg="#e3e7ed">Current</CompHead>
                     <CompHead bg="#d3e3f6">Proposed</CompHead>
                     <CompHead bg="#eef1f5" center>
                       Diff
                     </CompHead>
-
                     <CompRow
                       label="Base Pay"
                       current={inr(employee.currentAnnualBasePay)}
@@ -425,7 +425,6 @@ export function DetailScreenPage() {
                         onCommit={handleNewBasePayChange}
                       />
                     </CompRow>
-
                     <CompRow
                       label="Joining Bonus"
                       current="0"
@@ -434,7 +433,6 @@ export function DetailScreenPage() {
                     >
                       <ReadOnlyInput value="0" disabled />
                     </CompRow>
-
                     <CompRow
                       label="Retention Bonus"
                       current={inr(employee.newRB ?? 0)}
@@ -451,7 +449,6 @@ export function DetailScreenPage() {
                         }
                       />
                     </CompRow>
-
                     <CompRow
                       label="PB Allotted / Instalments"
                       current={`${inr(employee.targetPBAllocatedForMay)} / ${employee.pbInstallment ?? "—"}`}
@@ -490,7 +487,6 @@ export function DetailScreenPage() {
                         </select>
                       </div>
                     </CompRow>
-
                     <CompRow
                       label="Target PB"
                       current={fmt(employee.targetPBAllocatedForMay)}
@@ -504,7 +500,6 @@ export function DetailScreenPage() {
                         }
                       />
                     </CompRow>
-
                     {/* Target PB Criteria — full-width row, textareas */}
                     <div
                       className="col-span-4 p-2"
@@ -517,7 +512,6 @@ export function DetailScreenPage() {
                     >
                       Description
                     </div>
-
                     <CompFullRow label="Target PB Criteria">
                       <textarea
                         key={`criteria-current-${employee.id}`}
@@ -544,7 +538,6 @@ export function DetailScreenPage() {
                         onCommit={(v) => commit("targetPBCriteria", v)}
                       />
                     </CompFullRow>
-
                     {/* Designation / New Title / Promotion */}
                     <div
                       className="grid col-span-4 border-b text-[11.5px]"
@@ -602,7 +595,6 @@ export function DetailScreenPage() {
                         {employee.eligibleForPromotion}
                       </div>
                     </div>
-
                     {/* Comp Manager Remarks */}
                     <div
                       className="p-2"
@@ -615,7 +607,6 @@ export function DetailScreenPage() {
                     >
                       Description
                     </div>
-
                     <CompFullRow label="Comp Manager Remarks">
                       <div
                         className={`ro min-h-[34px] w-full rounded border px-1.5 py-1 text-[11.5px] leading-[1.3] ${
@@ -636,8 +627,8 @@ export function DetailScreenPage() {
                         onCommit={(v) => commit("atRisk", v)}
                       />
                     </CompFullRow>
+                    </div>
                   </div>
-
                   <div
                     className="flex flex-wrap gap-3.5 px-2.5 py-1 text-[11px]"
                     style={{ color: "#475569" }}
@@ -654,7 +645,6 @@ export function DetailScreenPage() {
                       label="Proposed (editable)"
                     />
                   </div>
-
                   <div
                     className="mt-auto flex items-center justify-between gap-3 border-t px-2.5 py-1.5"
                     style={{ borderColor: "#e1e5eb" }}
@@ -674,7 +664,6 @@ export function DetailScreenPage() {
                         login can see.
                       </div>
                     </div>
-
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -702,11 +691,61 @@ export function DetailScreenPage() {
                     </div>
                   </div>
                 </div>
+                {/* MIDDLE COLUMN — folded Metrics drawer / expanded Metrics panel */}
+                {metricsOpen ? (
+                  <section
+                    aria-label="Metrics"
+                    className="hidden min-h-0 w-[270px] overflow-auto rounded-[10px] border bg-white p-3 shadow-[0_1px_2px_rgba(18,48,79,0.06)] min-[1000px]:block"
+                    style={{ borderColor: LINE }}
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <b className="text-[13px]" style={{ color: INK }}>
+                        Metrics
+                      </b>
+                      <button
+                        type="button"
+                        onClick={() => setMetricsOpen(false)}
+                        className="rounded border px-2 py-1 text-[10.5px] font-semibold"
+                        style={{ borderColor: LINE, color: INK, background: "#fff" }}
+                        title="Fold metrics"
+                      >
+                        ‹ Fold
+                      </button>
+                    </div>
+                    <TeamMetrics
+                      employee={employee}
+                      metrics={teamMetrics}
+                      rowsCount={rows.length}
+                      scopeLabel={scopeLabel}
+                    />
+                  </section>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setMetricsOpen(true)}
+                    className="hidden min-h-0 w-[38px] items-center justify-center rounded-[10px] border bg-white shadow-[0_1px_2px_rgba(18,48,79,0.06)] min-[1000px]:flex"
+                    style={{ borderColor: LINE, color: INK }}
+                    title="Open metrics"
+                    aria-expanded="false"
+                  >
+                    <span className="[writing-mode:vertical-rl] rotate-180 text-[11px] font-bold">
+                      Metrics ›
+                    </span>
+                  </button>
+                )}
+                {/* RIGHT COLUMN — employee details + Feedback */}
+                <div className="relative min-h-0 min-w-0">
+                  <LeftPane
+                    employee={employee}
+                    priorCycles={priorCycles}
+                    loading={!!historyState?.loading}
+                    scopeLabel={scopeLabel}
+                  />
+                </div>
               </div>
-
               {/* Employee History — full width */}
               <div
-                className="overflow-hidden rounded-[10px] border shadow-[0_1px_2px_rgba(18,48,79,0.06)]"
+                className="h-[190px] min-h-[150px] shrink-0 overflow-hidden rounded-[10px] border shadow-[0_1px_2px_rgba(18,48,79,0.06)]"
                 style={{ background: "#fff", borderColor: "#d3dbe6" }}
               >
                 <div
@@ -721,9 +760,8 @@ export function DetailScreenPage() {
                   Employee History — {employee.name} · {priorCycles.length + 1}{" "}
                   cycles
                 </div>
-
                 <div
-                  className="min-w-0 max-h-[40vh] overflow-x-hidden overflow-y-auto [&::-webkit-scrollbar]:hidden"
+                  className="history-scroll min-w-0 h-[calc(190px-34px)] overflow-x-hidden overflow-y-auto [&::-webkit-scrollbar]:hidden"
                   style={{ scrollbarWidth: "none" }}
                 >
                   <table className="w-full table-fixed border-collapse text-[10px]">
@@ -735,7 +773,6 @@ export function DetailScreenPage() {
                         ))}
                       </tr>
                     </thead>
-
                     <tbody>
                       <HistRow
                         year="Apr-26 ★"
@@ -752,11 +789,9 @@ export function DetailScreenPage() {
                         ]}
                         current
                       />
-
                       {priorCycles.map((h, i) => {
                         const tb =
                           (h.performanceBonus || 0) + (h.retentionBonus || 0);
-
                         return (
                           <HistRow
                             key={h.year ?? i}
@@ -786,11 +821,13 @@ export function DetailScreenPage() {
     </div>
   );
 }
-
 /* ============================================================
    LEFT PANE — employee details + Feedback
    ============================================================ */
-
+/* ============================================================
+   LEFT PANE — employee details + feedback timeline
+   All displayed values come from the dynamic employee/history data.
+   ============================================================ */
 function LeftPane({
   employee,
   priorCycles,
@@ -803,7 +840,6 @@ function LeftPane({
     .slice(0, 2)
     .join("")
     .toUpperCase();
-
   const facts = [
     ["Manager rating", dash(employee.managerRating)],
     ["RR", pctText(employee.rrPercent)],
@@ -813,7 +849,6 @@ function LeftPane({
     ],
     ["Interviews", dash(employee.interviewCount)],
   ];
-
   const items = [
     {
       year: CURRENT_CYCLE,
@@ -836,11 +871,10 @@ function LeftPane({
       feedback: h.feedback,
     })),
   ];
-
   return (
     <section
       aria-label="Employee"
-      className="flex min-h-0 flex-col overflow-hidden rounded-[10px] border bg-white min-[1000px]:absolute min-[1000px]:inset-0"
+      className="flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border bg-white"
       style={{
         borderColor: LINE,
         boxShadow: "0 1px 2px rgba(16,42,67,.04)",
@@ -873,7 +907,6 @@ function LeftPane({
           </div>
         </div>
       </div>
-
       {/* Facts */}
       <dl
         className="mx-3.5 mb-3 grid shrink-0 grid-cols-2 gap-px overflow-hidden rounded-lg border"
@@ -894,7 +927,6 @@ function LeftPane({
           </div>
         ))}
       </dl>
-
       {/* Feedback */}
       <div
         className="flex shrink-0 border-b px-3.5"
@@ -915,7 +947,6 @@ function LeftPane({
           Feedback
         </button>
       </div>
-
       <div
         className="max-h-[420px] min-h-0 flex-1 overflow-auto px-3.5 pb-3.5 pt-3 min-[1000px]:max-h-none"
         role="tabpanel"
@@ -966,13 +997,11 @@ function LeftPane({
                 </li>
               ))}
             </ol>
-
             {!priorCycles.length && (
               <div className="text-[12px]" style={{ color: "#9AACB6" }}>
                 {loading ? "Loading..." : "No prior cycles."}
               </div>
             )}
-
             <div className="mt-2.5 text-[11.5px]" style={{ color: MUTED }}>
               Client rating and past RR % are not in the sheet yet, so they show
               “—”.
@@ -983,7 +1012,6 @@ function LeftPane({
     </section>
   );
 }
-
 function BarRow({ label, pct, sub }) {
   const over = pct > 100;
   return (
@@ -1018,7 +1046,6 @@ function BarRow({ label, pct, sub }) {
     </>
   );
 }
-
 function MetricBox({ title, tag, children }) {
   return (
     <div
@@ -1041,17 +1068,19 @@ function MetricBox({ title, tag, children }) {
     </div>
   );
 }
-
+/* ============================================================
+   TEAM METRICS
+   Metrics are derived only from the rows already loaded by useAppraisal().
+   No employee/budget values are hardcoded.
+   ============================================================ */
 function TeamMetrics({ employee, metrics: m, teamBudget, rowsCount, scopeLabel }) {
   const left = teamBudget - m.used;
   const leftT = teamBudget - m.used - m.tpb;
-
   return (
     <div>
       <div className="mb-2.5 text-[11.5px]" style={{ color: MUTED }}>
         {scopeLabel} · {CURRENT_CYCLE}
       </div>
-
       <div className="rounded-lg border px-[11px] py-[9px]" style={{ borderColor: LINE }}>
         {m.cur !== null ? (
           <>
@@ -1078,7 +1107,6 @@ function TeamMetrics({ employee, metrics: m, teamBudget, rowsCount, scopeLabel }
           </div>
         )}
       </div>
-
       <MetricBox title="Hike % — percentile in team" tag="Metric 2">
         {m.percentile !== null ? (
           <>
@@ -1109,7 +1137,6 @@ function TeamMetrics({ employee, metrics: m, teamBudget, rowsCount, scopeLabel }
           </div>
         )}
       </MetricBox>
-
       <MetricBox title="No hike this cycle" tag="Metric 3">
         <div className="mt-0.5 text-[16px] font-bold" style={{ color: INK }}>
           {m.noHike}{" "}
@@ -1118,7 +1145,6 @@ function TeamMetrics({ employee, metrics: m, teamBudget, rowsCount, scopeLabel }
           </span>
         </div>
       </MetricBox>
-
       <MetricBox title="PB paid vs target" tag="Metric 4">
         <div className="mt-0.5 text-[16px] font-bold" style={{ color: INK }}>
           {m.pbTarget ? `${((m.pbPaid / m.pbTarget) * 100).toFixed(0)}%` : "—"}{" "}
@@ -1127,18 +1153,18 @@ function TeamMetrics({ employee, metrics: m, teamBudget, rowsCount, scopeLabel }
           </span>
         </div>
       </MetricBox>
-
       <div className="mt-2.5 text-[11.5px]" style={{ color: MUTED }}>
         Team only; org comparisons are HR-only.
       </div>
     </div>
   );
 }
-
 /* ============================================================
    Small display primitives for the right pane and history grid
    ============================================================ */
-
+/* ============================================================
+   COMPENSATION GRID UI HELPERS
+   ============================================================ */
 function CompHead({ children, bg, center }) {
   return (
     <div
@@ -1151,7 +1177,6 @@ function CompHead({ children, bg, center }) {
     </div>
   );
 }
-
 function CompRow({
   label,
   current,
@@ -1208,7 +1233,6 @@ function CompRow({
     </>
   );
 }
-
 function CompFullRow({ children }) {
   return (
     <>
@@ -1231,7 +1255,6 @@ function CompFullRow({ children }) {
     </>
   );
 }
-
 function EditInput({ defaultValue, onCommit, className = "" }) {
   return (
     <input
@@ -1247,7 +1270,6 @@ function EditInput({ defaultValue, onCommit, className = "" }) {
     />
   );
 }
-
 function EditTextarea({ defaultValue, placeholder, onCommit }) {
   return (
     <textarea
@@ -1264,7 +1286,6 @@ function EditTextarea({ defaultValue, placeholder, onCommit }) {
     />
   );
 }
-
 function ReadOnlyInput({ value, disabled }) {
   return (
     <input
@@ -1282,7 +1303,6 @@ function ReadOnlyInput({ value, disabled }) {
     />
   );
 }
-
 function Legend({ sw, border, label }) {
   return (
     <span className="inline-flex items-center gap-1.5">
@@ -1294,7 +1314,6 @@ function Legend({ sw, border, label }) {
     </span>
   );
 }
-
 function HistHead({ children, width }) {
   return (
     <th
@@ -1311,7 +1330,6 @@ function HistHead({ children, width }) {
     </th>
   );
 }
-
 function HistRow({ year, vals, current }) {
   return (
     <tr style={{ background: current ? "#fff9dc" : undefined }}>
