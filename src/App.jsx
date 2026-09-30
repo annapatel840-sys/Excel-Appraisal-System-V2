@@ -12,7 +12,7 @@ import { AppShell } from "./components/appraisal/AppShell";
 import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 
-const TECH_ED_PATHS = ["/", "/employee-master", "/detail-screen", "/budget-allocation" ];
+const TECH_ED_PATHS = ["/", "/sheet", "/employee-master", "/detail-screen", "/budget-allocation" ];
 
 // A crash in one screen shows a message instead of blanking the whole app.
 // It is keyed by path, so navigating to another screen clears the error.
