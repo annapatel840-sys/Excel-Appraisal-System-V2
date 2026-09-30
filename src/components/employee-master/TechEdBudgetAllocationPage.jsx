@@ -141,7 +141,17 @@ function AuditTable({ rows, showOwner = true }) {
     );
   return (
     <div className="bscroll">
-      <table className="trail">
+      <table className="trail trail-audit">
+        <colgroup>
+          <col className="c-date" />
+          {showOwner ? <col className="c-owner" /> : null}
+          <col className="c-num" />
+          <col className="c-num" />
+          <col className="c-money" />
+          <col className="c-money" />
+          <col className="c-by" />
+          <col className="c-reason" />
+        </colgroup>
         <thead>
           <tr>
             {heads.map(([h, n]) => (
@@ -237,22 +247,31 @@ const CSS = `
 .te-root .berr{margin:10px 16px 0;background:#fff;border:1px solid #e3e8ef;border-left:4px solid #c2410c;color:#7c2d12;border-radius:6px;padding:7px 10px;font-size:12px;display:flex;justify-content:space-between;gap:10px}
 .te-root .link{background:none;border:0;padding:0;color:#1859a8;font-size:11.5px;font-weight:700;cursor:pointer}
 .te-root .bscroll{overflow-x:auto}
-.te-root .bal{display:grid;min-width:1174px;font-size:12.5px}
-.te-root .bal>div{padding:5px 10px;min-height:40px;display:flex;align-items:center;gap:6px;border-right:1px solid #eef1f5;border-bottom:1px solid #e1e5eb;min-width:0}
+.te-root .bal{display:grid;min-width:1380px;font-size:12.5px}
+.te-root .bal>div{padding:8px 14px;min-height:46px;display:flex;align-items:center;gap:6px;border-right:1px solid #eef1f5;border-bottom:1px solid #e1e5eb;min-width:0}
 .te-root .bal>div.last{border-right:0}
-.te-root .bal .h{min-height:36px;white-space:nowrap;background:#e8eef5;color:#12304f;font-weight:600;font-size:12px;border-bottom:2px solid #9fb3cf}
+.te-root .bal .h{min-height:42px;padding:9px 14px;white-space:nowrap;background:#e8eef5;color:#12304f;font-weight:600;font-size:12px;border-bottom:2px solid #9fb3cf}
 .te-root .bal .r{justify-content:flex-end;text-align:right}
 .te-root .bal .self{background:#e9f4f4;font-weight:700}
 .te-root .bal .self.first{box-shadow:inset 4px 0 0 #14a3a3}
 .te-root .bal .grp{border-top:2px solid #9fb3cf}
 .te-root .bal .tr{grid-column:1/-1;display:block;background:#f7f9fc;border-top:1px solid #d7dce3;padding:8px 12px 12px 40px}
 .te-root .pct-in{width:58px;height:26px;border:1px solid #9fb3cf;border-radius:4px;text-align:right;padding:0 6px;font-size:12.5px;background:#fffef5}
-.te-root .trail{width:100%;border-collapse:collapse;font-size:12px}
-.te-root .trail th{text-align:left;font-weight:700;color:#1e3a5f;font-size:11px;padding:4px 8px;border-bottom:1px solid #d7dce3}
-.te-root .trail td{padding:4px 8px;border-bottom:1px solid #edf0f4}
+.te-root .trail{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}
+.te-root .trail th{text-align:left;font-weight:700;color:#1e3a5f;font-size:11px;padding:7px 12px;border-bottom:1px solid #d7dce3;white-space:nowrap}
+.te-root .trail td{padding:7px 12px;border-bottom:1px solid #edf0f4;vertical-align:middle}
 .te-root .trail .n{text-align:right}
-.te-root .audit-wrap{padding:8px 14px 12px}
-.te-root .audit-wrap .trail td,.te-root .audit-wrap .trail th{padding:6px 8px}
+.te-root .trail-audit{min-width:900px}
+.te-root .trail-audit .c-date{width:105px}
+.te-root .trail-audit .c-owner{width:190px}
+.te-root .trail-audit .c-num{width:82px}
+.te-root .trail-audit .c-money{width:135px}
+.te-root .trail-audit .c-by{width:105px}
+.te-root .trail-audit .c-reason{width:190px}
+.te-root .trail-history{table-layout:fixed}
+.te-root .trail-history th,.te-root .trail-history td{padding:7px 12px}
+.te-root .audit-wrap{padding:10px 14px 14px}
+.te-root .audit-wrap .trail td,.te-root .audit-wrap .trail th{padding:7px 12px}
 `;
 
 const COLS = "150px minmax(180px,1fr) 124px 124px 170px 112px 108px 116px 90px";
