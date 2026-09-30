@@ -209,21 +209,6 @@ function AuditTable({
   );
 }
 
-function CycleBar() {
-  return (
-    <div
-      className="flex flex-wrap items-center gap-4 rounded-[10px] border border-l-4 bg-white px-3.5 py-2 text-[12.5px] text-[#334155]"
-      style={{ borderColor: BORDER, borderLeftColor: TEAL }}
-    >
-      <span>
-        Appraisal cycle <b>Apr-26</b>
-      </span>
-      <span className="h-5 w-px self-stretch bg-[#d7dce3]" />
-      <span>Allocated 01-Sep by HR Admin</span>
-    </div>
-  );
-}
-
 /* =====================================================================
    HR LOGIN
    ===================================================================== */
@@ -386,10 +371,11 @@ function HRApplyBudget() {
 
   const orgCell = "shrink-0 border-r border-[#d7dce3] px-[18px] py-3";
 
+  const appraisalCycles = ["Apr-26"];
+  const [selectedCycle, setSelectedCycle] = useState(appraisalCycles[0]);
+
   return (
     <div className="flex flex-col gap-2">
-      <CycleBar />
-
       {error ? (
         <div className="flex justify-between gap-2 rounded-md border border-[#e3e8ef] border-l-4 border-l-[#c2410c] bg-white px-3 py-2 text-[12px] text-[#7c2d12]">
           <span>{error}</span>
@@ -418,6 +404,22 @@ function HRApplyBudget() {
         </div>
         <div className="overflow-x-auto">
           <div className="flex items-stretch">
+            <div className={orgCell}>
+              <div className="text-[11px] font-medium text-[#5b6b80]">
+                Appraisal Cycle
+              </div>
+              <select
+                value={selectedCycle}
+                onChange={(e) => setSelectedCycle(e.target.value)}
+                className="mt-1 h-[38px] min-w-[140px] rounded border border-[#14a3a3] bg-white px-2 text-[13px] font-bold text-[#12304f] outline-none"
+              >
+                {appraisalCycles.map((cycle) => (
+                  <option key={cycle} value={cycle}>
+                    {cycle}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className={orgCell}>
               <div className="text-[11px] font-medium text-[#5b6b80]">
                 Org % (default for all Tech EDs)
