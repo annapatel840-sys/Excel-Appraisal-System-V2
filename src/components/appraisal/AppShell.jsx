@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 const TECH_ED_PATHS = [
   "/",
   "/employee-master",
+  "/sheet",
   "/detail-screen",
   "/budget-allocation",
 ];
