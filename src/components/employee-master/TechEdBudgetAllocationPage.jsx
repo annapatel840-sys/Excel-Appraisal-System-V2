@@ -2,9 +2,9 @@ import { useMemo, useState } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 
-const NAVY = "#17365d";
-const BORDER = "#d8e0ea";
-const TEAL = "#0b7a75";
+const NAVY = "#12304f";
+const BORDER = "#d3dbe6";
+const TEAL = "#14a3a3";
 
 const TECH_ED_DEFAULTS = {
   "Prabhu Prasad Parida": {
