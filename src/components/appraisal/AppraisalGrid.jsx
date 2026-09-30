@@ -829,12 +829,8 @@
 //       })
 //       .filter(Boolean);
 
-//     const groupColumns = specs.filter((spec) =>
-//       isCategoricalColumn(spec.column),
-//     );
-//     const sortColumns = specs.filter(
-//       (spec) => !isCategoricalColumn(spec.column),
-//     );
+//     const groupColumns = specs.filter((spec) => isCategoricalColumn(spec.column));
+//     const sortColumns = specs.filter((spec) => !isCategoricalColumn(spec.column));
 
 //     return { groupColumns, ordered: [...groupColumns, ...sortColumns] };
 //   }, [groupBy]);
@@ -3317,6 +3313,7 @@
 //     </div>
 //   );
 // }
+
 import {
   Fragment,
   useCallback,
