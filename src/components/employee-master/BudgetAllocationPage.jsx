@@ -142,7 +142,6 @@ function HRApplyBudget() {
   const [error, setError] = useState("");
   const [history, setHistory] = useState({});
   const [audit, setAudit] = useState(INITIAL_AUDIT);
-  const [openHistory, setOpenHistory] = useState(true);
 
   const total = useMemo(() => rows.reduce((s, r) => ({
     base: s.base + r.base,
@@ -239,7 +238,7 @@ function HRApplyBudget() {
       ) : null}
 
       <Panel title="Tech EDs" count={String(rows.length)} open={true} onToggle={() => {}}>
-        <div className="overflow-x-auto">
+        <div className="max-h-[58vh] overflow-auto">
           <table className="w-full min-w-[1050px] border-collapse text-[12.5px]">
             <thead>
               <tr>
@@ -298,9 +297,6 @@ function HRApplyBudget() {
         </div>
       </Panel>
 
-      <Panel title="% Applied — Audit Trail" count="" open={openHistory} onToggle={() => setOpenHistory((v) => !v)}>
-        <div className="p-3.5"><AuditTable rows={audit} /></div>
-      </Panel>
     </div>
   );
 }
