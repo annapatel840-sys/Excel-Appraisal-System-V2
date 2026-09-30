@@ -5,16 +5,13 @@ import { BudgetProvider } from "@/lib/budget-store";
 import { Dashboard } from "@/routes/index";
 import { SheetPage } from "@/routes/sheet";
 import { EmployeeMaster } from "@/pages/EmployeeMaster";
-
-//this might be remove later (detailscreen)
 import { DetailScreenPage } from "@/components/appraisal/DetailScreenPage";
+import { TechEdBudgetAllocationPage } from "@/components/employee-master/TechEdBudgetAllocationPage";
 import { AppShell } from "./components/appraisal/AppShell";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 
-const TECH_ED_PATHS = ["/", "/employee-master", "/detail-screen"];
+const TECH_ED_PATHS = ["/", "/employee-master", "/detail-screen", "/budget-allocation"];
 
-// A crash in one screen shows a message instead of blanking the whole app.
-// It is keyed by path, so navigating to another screen clears the error.
 class ScreenErrorBoundary extends Component {
   constructor(props) {
     super(props);
@@ -30,9 +27,7 @@ class ScreenErrorBoundary extends Component {
   }
 
   render() {
-    if (!this.state.error) {
-      return this.props.children;
-    }
+    if (!this.state.error) return this.props.children;
 
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-6">
@@ -42,11 +37,7 @@ class ScreenErrorBoundary extends Component {
             {String(this.state.error?.message || this.state.error)}
           </p>
           <div className="mt-4 flex gap-2">
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              className="rounded-md bg-[#173b63] px-3 py-1.5 text-xs font-medium text-white"
-            >
+            <button type="button" onClick={() => window.location.reload()} className="rounded-md bg-[#173b63] px-3 py-1.5 text-xs font-medium text-white">
               Reload
             </button>
             <a href="/" className="rounded-md border px-3 py-1.5 text-xs font-medium">
@@ -59,7 +50,6 @@ class ScreenErrorBoundary extends Component {
   }
 }
 
-// Rendered inside <CatalystAuthGate> so useCatalystUser() sees the signed-in user.
 function AppRoutes() {
   const [path, setPath] = useState(window.location.pathname);
   const user = useCatalystUser();
@@ -68,18 +58,11 @@ function AppRoutes() {
   const effectivePath = isTechEd && !TECH_ED_PATHS.includes(path) ? "/employee-master" : path;
 
   useEffect(() => {
-    const onPopState = () => {
-      setPath(window.location.pathname);
-    };
-
+    const onPopState = () => setPath(window.location.pathname);
     window.addEventListener("popstate", onPopState);
-
-    return () => {
-      window.removeEventListener("popstate", onPopState);
-    };
+    return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
-  // Keep the URL (and nav highlighting) in sync when a Tech-ED is redirected.
   useEffect(() => {
     if (effectivePath !== path) {
       window.history.replaceState({}, "", effectivePath);
@@ -94,11 +77,9 @@ function AppRoutes() {
   } else if (effectivePath === "/employee-master") {
     page = <EmployeeMaster />;
   } else if (effectivePath === "/detail-screen") {
-    page = (
-      <AppShell>
-        <DetailScreenPage />
-      </AppShell>
-    );
+    page = <AppShell><DetailScreenPage /></AppShell>;
+  } else if (effectivePath === "/budget-allocation" && isTechEd) {
+    page = <AppShell><TechEdBudgetAllocationPage /></AppShell>;
   } else {
     page = <Dashboard />;
   }
