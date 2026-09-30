@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 
 /* Add once in index.html <head> so the font matches the reference:
@@ -247,18 +247,21 @@ const CSS = `
 .te-root .berr{margin:10px 16px 0;background:#fff;border:1px solid #e3e8ef;border-left:4px solid #c2410c;color:#7c2d12;border-radius:6px;padding:7px 10px;font-size:12px;display:flex;justify-content:space-between;gap:10px}
 .te-root .link{background:none;border:0;padding:0;color:#1859a8;font-size:11.5px;font-weight:700;cursor:pointer}
 .te-root .bscroll{overflow-x:auto}
-.te-root .bal{display:grid;width:100%;min-width:1320px;font-size:12.5px;align-items:stretch}
-.te-root .bal>div{height:52px;padding:8px 14px;display:flex;align-items:center;gap:8px;border-right:1px solid #eef1f5;border-bottom:1px solid #e1e5eb;min-width:0;overflow:hidden}
+
+/* ---- allocation grid ---- */
+.te-root .bal{display:grid;width:100%;min-width:1080px;font-size:12.5px;align-items:stretch}
+.te-root .bal>div{height:52px;padding:8px 16px;display:flex;align-items:center;gap:8px;border-right:1px solid #eef1f5;border-bottom:1px solid #e1e5eb;min-width:0;overflow:hidden}
 .te-root .bal>div.last{border-right:0}
-.te-root .bal .h{height:46px;padding:9px 14px;white-space:nowrap;background:#e8eef5;color:#12304f;font-weight:600;font-size:12px;border-bottom:2px solid #9fb3cf}
+.te-root .bal .h{height:46px;padding:9px 16px;white-space:nowrap;background:#e8eef5;color:#12304f;font-weight:600;font-size:12px;border-bottom:2px solid #9fb3cf}
 .te-root .bal .r{justify-content:flex-end;text-align:right;white-space:nowrap}
-.te-root .bal>div:nth-child(9n+2){white-space:nowrap}
-.te-root .bal .pct-in{margin-left:auto}
+.te-root .bal .ctr{justify-content:center;text-align:center;white-space:nowrap}
 .te-root .bal .self{background:#e9f4f4;font-weight:700}
 .te-root .bal .self.first{box-shadow:inset 4px 0 0 #14a3a3}
 .te-root .bal .grp{border-top:2px solid #9fb3cf}
-.te-root .bal .tr{grid-column:1/-1;display:block;background:#f7f9fc;border-top:1px solid #d7dce3;padding:8px 12px 12px 40px}
-.te-root .pct-in{width:58px;height:26px;border:1px solid #9fb3cf;border-radius:4px;text-align:right;padding:0 6px;font-size:12.5px;background:#fffef5}
+.te-root .bal .tr{grid-column:1/-1;display:block;height:auto;overflow-x:auto;background:#f7f9fc;border-top:1px solid #d7dce3;padding:8px 12px 12px 40px}
+.te-root .bal .pct-in{margin:0}
+.te-root .pct-in{width:64px;height:30px;border:1px solid #9fb3cf;border-radius:6px;text-align:center;padding:0 6px;font-size:12.5px;background:#fffef5}
+
 .te-root .trail{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}
 .te-root .trail th{text-align:left;font-weight:700;color:#1e3a5f;font-size:11px;padding:7px 12px;border-bottom:1px solid #d7dce3;white-space:nowrap}
 .te-root .trail td{padding:7px 12px;border-bottom:1px solid #edf0f4;vertical-align:middle}
@@ -276,7 +279,9 @@ const CSS = `
 .te-root .audit-wrap .trail td,.te-root .audit-wrap .trail th{padding:7px 12px}
 `;
 
-const COLS = "150px minmax(180px,1fr) 124px 124px 170px 112px 108px 116px 90px";
+/* fluid columns: extra viewport width is shared proportionally */
+const COLS =
+  "130px minmax(200px,1.6fr) repeat(2,minmax(120px,1fr)) minmax(150px,1.1fr) repeat(2,minmax(100px,.9fr)) minmax(120px,.9fr) minmax(100px,.8fr)";
 const HEADS = [
   "Level",
   "Owner",
@@ -438,13 +443,15 @@ export function TechEdBudgetAllocationPage() {
       [self && "self", grp && "grp", extra].filter(Boolean).join(" ");
     const shown = !!open[o.name];
     return (
-      <div key={o.name} style={{ display: "contents" }}>
+      <Fragment key={o.name}>
         <div className={k("first")}>
           <span style={{ width: self ? 0 : 18, flexShrink: 0 }} />
           {self ? "Tech ED" : "Comp Manager"}
         </div>
         <div className={k()}>
-          <span style={{ fontWeight: 700 }}>{o.name}</span>
+          <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>
+            {o.name}
+          </span>
           {self ? (
             <span className="muted-small" style={{ fontWeight: 400 }}>
               {" "}
@@ -459,7 +466,7 @@ export function TechEdBudgetAllocationPage() {
         </div>
         <div className={k("r")}>{self ? me.team0 : o.team0}</div>
         <div className={k("r")}>{self ? me.team : o.team}</div>
-        <div className={k()}>
+        <div className={k("ctr")}>
           {changed ? (
             <button
               type="button"
@@ -473,7 +480,7 @@ export function TechEdBudgetAllocationPage() {
             <span style={{ color: "#94a3b8", fontWeight: 400 }}>—</span>
           )}
         </div>
-        <div className={k("r last")}>
+        <div className={k("ctr last")}>
           {self ? (
             <span style={{ color: "#94a3b8" }}>{me.pct}%</span>
           ) : (
@@ -497,7 +504,7 @@ export function TechEdBudgetAllocationPage() {
             <Trail rows={h} roll={self} />
           </div>
         ) : null}
-      </div>
+      </Fragment>
     );
   }
 
@@ -630,7 +637,8 @@ export function TechEdBudgetAllocationPage() {
                     key={x}
                     className={
                       "h" +
-                      ((i > 1 && i < 7) || i === 8 ? " r" : "") +
+                      (i > 1 && i < 7 ? " r" : "") +
+                      (i >= 7 ? " ctr" : "") +
                       (i === 8 ? " last" : "")
                     }
                   >
