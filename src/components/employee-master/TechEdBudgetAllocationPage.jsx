@@ -247,11 +247,13 @@ const CSS = `
 .te-root .berr{margin:10px 16px 0;background:#fff;border:1px solid #e3e8ef;border-left:4px solid #c2410c;color:#7c2d12;border-radius:6px;padding:7px 10px;font-size:12px;display:flex;justify-content:space-between;gap:10px}
 .te-root .link{background:none;border:0;padding:0;color:#1859a8;font-size:11.5px;font-weight:700;cursor:pointer}
 .te-root .bscroll{overflow-x:auto}
-.te-root .bal{display:grid;min-width:1380px;font-size:12.5px}
-.te-root .bal>div{padding:8px 14px;min-height:46px;display:flex;align-items:center;gap:6px;border-right:1px solid #eef1f5;border-bottom:1px solid #e1e5eb;min-width:0}
+.te-root .bal{display:grid;width:100%;min-width:1320px;font-size:12.5px;align-items:stretch}
+.te-root .bal>div{height:52px;padding:8px 14px;display:flex;align-items:center;gap:8px;border-right:1px solid #eef1f5;border-bottom:1px solid #e1e5eb;min-width:0;overflow:hidden}
 .te-root .bal>div.last{border-right:0}
-.te-root .bal .h{min-height:42px;padding:9px 14px;white-space:nowrap;background:#e8eef5;color:#12304f;font-weight:600;font-size:12px;border-bottom:2px solid #9fb3cf}
-.te-root .bal .r{justify-content:flex-end;text-align:right}
+.te-root .bal .h{height:46px;padding:9px 14px;white-space:nowrap;background:#e8eef5;color:#12304f;font-weight:600;font-size:12px;border-bottom:2px solid #9fb3cf}
+.te-root .bal .r{justify-content:flex-end;text-align:right;white-space:nowrap}
+.te-root .bal>div:nth-child(9n+2){white-space:nowrap}
+.te-root .bal .pct-in{margin-left:auto}
 .te-root .bal .self{background:#e9f4f4;font-weight:700}
 .te-root .bal .self.first{box-shadow:inset 4px 0 0 #14a3a3}
 .te-root .bal .grp{border-top:2px solid #9fb3cf}
