@@ -83,7 +83,7 @@ export function BudgetProvider({ children }) {
   );
 
   const roleText = String(currentUser.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
-  const isHR = roleText === "hr";
+  const isHR = roleText === "hr" || roleText === "humanresources" || roleText === "hroperation";
   const [budgetRows, setBudgetRows] = useState([]);
   const [employeeRows, setEmployeeRows] = useState([]);
   const [loading, setLoading] = useState(true);
