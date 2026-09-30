@@ -154,17 +154,18 @@ function AuditTable({
       r,
     ],
   );
-  const td = "border-b border-[#edf0f4] px-2 py-1.5 ";
+  const td = "border-b border-[#edf0f4] px-4 py-2 align-middle ";
   return (
     <div className="w-full overflow-x-auto">
-      <table className="w-full min-w-[850px] border-collapse text-[12px] tabular-nums">
+      <table className="w-full min-w-[980px] table-fixed border-collapse text-[12px] tabular-nums">
+        <colgroup>{cols.map(([h]) => <col key={h} />)}</colgroup>
         <thead>
           <tr>
             {cols.map(([h, right]) => (
               <th
                 key={h}
                 className={
-                  "border-b border-[#d7dce3] px-2 py-1.5 text-[11px] font-bold text-[#1e3a5f] " +
+                  "border-b border-[#d7dce3] px-4 py-2 text-[11px] font-bold text-[#1e3a5f] " +
                   (right ? "text-right" : "text-left")
                 }
               >
