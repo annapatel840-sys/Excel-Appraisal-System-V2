@@ -214,7 +214,8 @@ function HRApplyBudget() {
 
       <section className={"overflow-hidden rounded-[10px] border bg-white " + (orgPending ? "bg-[#fdf8e7]" : "")} style={{ borderColor: BORDER }}>
         <div className="px-3 py-1.5 text-left text-[12.5px] font-semibold text-white" style={{ background: NAVY }}>Org Budget %</div>
-        <div className="grid grid-cols-[minmax(190px,1.25fr)_minmax(160px,1fr)_minmax(160px,1fr)_minmax(160px,1fr)_minmax(130px,.8fr)]">
+        <div className="overflow-x-auto">
+          <div className="grid min-w-[900px] grid-cols-[minmax(210px,1.25fr)_minmax(170px,1fr)_minmax(170px,1fr)_minmax(170px,1fr)_minmax(140px,.8fr)]">
           <div className="min-w-0 border-r border-[#d7dce3] px-[18px] py-3">
             <div className="text-[11px] font-medium text-[#5b6b80]">Org % (default for all Tech EDs)</div>
             <input type="number" min="0" max="100" step="0.1" value={orgPct} onChange={(e) => setOrgPct(e.target.value)} className="mt-1 h-[38px] w-[110px] rounded border border-[#14a3a3] px-2 text-right text-[18px] font-bold text-[#12304f] outline-none" />
@@ -224,6 +225,7 @@ function HRApplyBudget() {
           <div className="min-w-0 border-r border-[#d7dce3] px-[18px] py-3"><div className="text-[11px] text-[#5b6b80]">Original budget</div><div className="mt-1 text-[18px] font-semibold text-[#12304f]">{money(total.original)}</div></div>
           <div className="min-w-0 border-r border-[#d7dce3] px-[18px] py-3"><div className="text-[11px] text-[#5b6b80]">Updated budget</div><div className="mt-1 text-[18px] font-semibold text-[#12304f]">{money(orgPending || changes.length ? previewTotal : total.updated)}</div></div>
           <div className="min-w-0 px-[18px] py-3"><div className="text-[11px] text-[#5b6b80]">Team count</div><div className="mt-1 text-[18px] font-semibold text-[#12304f]">{total.team0} → {total.team}</div></div>
+          </div>
         </div>
         <div className="px-4 pb-3 text-[11.5px] text-slate-500">Changing the org % updates every Tech ED on the org default. Tech EDs with an override keep their own %.</div>
       </section>
@@ -231,66 +233,30 @@ function HRApplyBudget() {
       <section className="overflow-hidden rounded-[10px] border bg-white shadow-[0_1px_2px_rgba(18,48,79,.06)]" style={{ borderColor: BORDER }}>
         <div className="px-3 py-1.5 text-left text-[12.5px] font-semibold text-white" style={{ background: NAVY }}>Tech EDs — {rows.length}</div>
         <div className="max-h-[58vh] overflow-auto">
-          <table className="w-full min-w-[1050px] table-fixed border-collapse text-[12.5px]">
-            <colgroup>
-              <col className="w-[18%]" />
-              <col className="w-[10%]" />
-              <col className="w-[9%]" />
-              <col className="w-[14%]" />
-              <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[7%]" />
-              <col className="w-[7%]" />
-              <col className="w-[10%]" />
-            </colgroup>
-            <thead>
-              <tr>
-                {["Tech ED","Budget base","% applied","Source","Budget","Original Budget","Updated Budget","Original Count","Current Count","Last Changed"].map((h, i) => (
-                  <th key={h} className={"border-b-2 border-[#9fb3cf] bg-[#e8eef5] px-2.5 py-2 text-[12px] font-semibold text-[#12304f] " + (i >= 1 && i < 9 ? "text-right" : "text-left")}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => {
-                const p = previewPct(r);
-                const changing = Number(p) !== r.pct;
-                const open = !!history[r.name];
-                return (
-                  <tr key={r.name} className={changing ? "bg-[#fdf8e7]" : ""}>
-                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 font-bold">{r.name}</td>
-                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(r.base)}</td>
-                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right align-top">
-                      <input type="number" min="0" max="100" step="0.1" value={p} onChange={(e) => setRowPct(r.name, e.target.value)} className="h-8 w-[84px] rounded border border-[#14a3a3] bg-white px-2 text-right text-[14px] font-bold text-[#12304f]" />
-                      {changing ? <div className="whitespace-nowrap text-[11px] text-slate-500">was {r.pct}%</div> : null}
-                    </td>
-                    <td className="border-b border-[#e1e5eb] px-2.5 py-2">
-                      {overrides[r.name] || (Object.prototype.hasOwnProperty.call(pending, r.name) && Number(p) !== Number(orgPct))
-                        ? <><span className="whitespace-nowrap rounded-full bg-[#fff4d6] px-2 py-0.5 text-[11px] font-bold text-[#8a5a00]">Override</span> <button type="button" className="ml-1 whitespace-nowrap text-[11.5px] font-bold text-[#1859a8]" onClick={() => resetRow(r.name)}>Reset to org %</button></>
-                        : <span className="whitespace-nowrap rounded-full bg-[#e6f4f4] px-2 py-0.5 text-[11px] font-bold text-[#0f6d6d]">Org default</span>}
-                    </td>
-                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right font-bold text-[#17365d]">{money(r.base * p / 100)}</td>
-                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(r.original)}</td>
-                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(r.updated)}</td>
-                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{r.team0}</td>
-                    <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{r.team}</td>
-                    <td className="border-b border-[#e1e5eb] px-2.5 py-2">
-                      {open || r.lastChanged !== "01-Sep-26" ? <button type="button" className="whitespace-nowrap rounded border border-[#c5d0dd] bg-white px-2 py-1 text-[12px] font-bold text-[#17365d]" onClick={() => setHistory((x) => ({ ...x, [r.name]: !x[r.name] }))}>{r.lastChanged} {open ? "▴" : "▾"}</button> : <span className="text-[#94a3b8]">—</span>}
-                    </td>
-                  </tr>
-                );
+          <div className="min-w-[1180px]">
+            <div className="grid grid-cols-[minmax(190px,1.35fr)_minmax(120px,.9fr)_minmax(110px,.8fr)_minmax(190px,1.25fr)_minmax(125px,.9fr)_minmax(135px,.95fr)_minmax(135px,.95fr)_minmax(105px,.75fr)_minmax(105px,.75fr)_minmax(125px,.9fr)] text-[12.5px]">
+              {["Tech ED","Budget base","% applied","Source","Budget","Original Budget","Updated Budget","Original Count","Current Count","Last Changed"].map((h,i)=><div key={h} className={"border-b-2 border-[#9fb3cf] bg-[#e8eef5] px-2.5 py-2 text-[12px] font-semibold text-[#12304f] "+(i>=1&&i<9?"text-right":"text-left")}>{h}</div>)}
+              {rows.map((r)=>{
+                const p=previewPct(r), changing=Number(p)!==r.pct, open=!!history[r.name];
+                const sourceOverride=overrides[r.name]||(Object.prototype.hasOwnProperty.call(pending,r.name)&&Number(p)!==Number(orgPct));
+                const cell="border-b border-[#e1e5eb] px-2.5 py-2 "+(changing?"bg-[#fdf8e7]":"bg-white");
+                return <div key={r.name} className="contents">
+                  <div className={cell+" font-bold"}>{r.name}</div>
+                  <div className={cell+" text-right"}>{money(r.base)}</div>
+                  <div className={cell+" text-right align-top"}><input type="number" min="0" max="100" step="0.1" value={p} onChange={(e)=>setRowPct(r.name,e.target.value)} className="h-8 w-[84px] rounded border border-[#14a3a3] bg-white px-2 text-right text-[14px] font-bold text-[#12304f]" />{changing?<div className="whitespace-nowrap text-[11px] text-slate-500">was {r.pct}%</div>:null}</div>
+                  <div className={cell}>{sourceOverride?<div className="flex flex-wrap items-center gap-1"><span className="whitespace-nowrap rounded-full bg-[#fff4d6] px-2 py-0.5 text-[11px] font-bold text-[#8a5a00]">Override</span><button type="button" className="whitespace-nowrap text-[11.5px] font-bold text-[#1859a8]" onClick={()=>resetRow(r.name)}>Reset to org %</button></div>:<span className="whitespace-nowrap rounded-full bg-[#e6f4f4] px-2 py-0.5 text-[11px] font-bold text-[#0f6d6d]">Org default</span>}</div>
+                  <div className={cell+" text-right font-bold text-[#17365d]"}>{money(r.base*p/100)}</div>
+                  <div className={cell+" text-right"}>{money(r.original)}</div>
+                  <div className={cell+" text-right"}>{money(r.updated)}</div>
+                  <div className={cell+" text-right"}>{r.team0}</div>
+                  <div className={cell+" text-right"}>{r.team}</div>
+                  <div className={cell}>{open||r.lastChanged!=="01-Sep-26"?<button type="button" className="whitespace-nowrap rounded border border-[#c5d0dd] bg-white px-2 py-1 text-[12px] font-bold text-[#17365d]" onClick={()=>setHistory((x)=>({...x,[r.name]:!x[r.name]}))}>{r.lastChanged} {open?"▴":"▾"}</button>:<span className="text-[#94a3b8]">—</span>}</div>
+                  {open?<div className="col-span-10 border-b border-[#d7dce3] bg-[#f7f9fc] px-10 py-3"><AuditTable rows={audit.filter((a)=>a.owner===r.name)} /></div>:null}
+                </div>;
               })}
-            </tbody>
-          </table>
-          {Object.entries(history).some(([, open]) => open) ? (
-            <div className="hidden" aria-hidden="true" />
-          ) : null}
-        </div>
-        {Object.entries(history).map(([name, open]) => open ? (
-          <div key={name} className="border-t border-[#d7dce3] bg-[#f7f9fc] px-10 py-3">
-            <AuditTable rows={audit.filter((a) => a.owner === name)} />
+            </div>
           </div>
-        ) : null)}
+        </div>
         <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t border-[#d4dbe5] bg-white px-3.5 py-2.5">
           <span className={pendingCount ? "font-bold text-[#c2410c]" : "text-slate-500"}>{pendingCount ? pendingCount + " change" + (pendingCount === 1 ? "" : "s") + " pending" : "No pending changes"}</span>
           <input value={reason} onChange={(e) => setReason(e.target.value)} disabled={!pendingCount} placeholder="Reason (saved in the audit trail)" className="h-[30px] min-w-[200px] max-w-[460px] flex-1 rounded border border-[#cbd3df] px-2 text-[12.5px]" />
@@ -398,70 +364,61 @@ export function TechEdBudgetAllocationPage() {
     setReason("");
   }
 
+  const utilisation=0;
+  const utilisationPct=updatedBudget?(utilisation/updatedBudget)*100:0;
+  const remaining=Math.max(updatedBudget-utilisation,0);
+  const change=updatedBudget-data.original;
+
   return (
     <div className="mx-auto flex w-full max-w-[1320px] flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-4 rounded-[10px] border border-l-4 bg-white px-3.5 py-2 text-[12.5px] text-[#334155]" style={{ borderColor: BORDER, borderLeftColor: TEAL }}>
-        <span>Appraisal cycle <b>Apr-26</b></span><span className="h-5 w-px bg-[#d7dce3]" />
-        <span>Allocated <b>01-Sep-26</b> by <b>HR</b></span><span className="h-5 w-px bg-[#d7dce3]" />
-        <span><b>Tech ED</b></span><span className="h-5 w-px bg-[#d7dce3]" />
-        <span className="font-semibold text-[#12304f]">Budget applied by HR: <b>{percent(pctValue)}</b> = <b>{money(updatedBudget)}</b> updated · original {money(data.original)}</span>
-        <button type="button" onClick={() => setHistoryOpen((v) => !v)} className="whitespace-nowrap rounded border border-[#c5d0dd] bg-white px-2 py-1 text-[11px] font-bold text-[#12304f]">% history {historyOpen ? "▴" : "▾"}</button>
+      <div className="flex flex-wrap items-center gap-4 rounded-[10px] border border-l-4 bg-white px-3.5 py-2 text-[12.5px] text-[#334155]" style={{borderColor:BORDER,borderLeftColor:TEAL}}>
+        <span>Appraisal cycle <b>Apr-26</b></span><span className="h-5 w-px bg-[#d7dce3]"/>
+        <span>Allocated <b>01-Sep-26</b> by <b>HR</b></span><span className="h-5 w-px bg-[#d7dce3]"/>
+        <span><b>Tech ED</b></span><span className="h-5 w-px bg-[#d7dce3]"/>
+        <span className="font-semibold text-[#12304f]">Budget applied by HR: <b>{percent(pctValue)}</b> = <b>{money(updatedBudget)}</b> updated · original {money(data.original)}
+          <button type="button" onClick={()=>setHistoryOpen(v=>!v)} className="ml-2 whitespace-nowrap rounded border border-[#c5d0dd] bg-white px-2 py-1 text-[11px] font-bold text-[#12304f]">% history {historyOpen?"▴":"▾"}</button>
+        </span>
       </div>
+      {historyOpen?<div className="rounded-[10px] border bg-[#f7f9fc] p-2" style={{borderColor:BORDER}}><AuditTable rows={audit} showOwner={false}/></div>:null}
 
-      {historyOpen ? <div className="rounded-[10px] border bg-[#f7f9fc] p-2" style={{ borderColor: BORDER }}><AuditTable rows={audit} showOwner={false} /></div> : null}
-
-      <Panel title="My Budget" open={mineOpen} onToggle={() => setMineOpen((v) => !v)}>
-        <div className="grid grid-cols-2 divide-x divide-[#d7dce3] sm:grid-cols-4">
-          {[
-            ["Original allotted", money(data.original)],
-            ["Updated budget", money(updatedBudget)],
-            ["Team size", data.team],
-            ["Utilised", money(0)],
-          ].map(([label, value]) => (
-            <div key={label} className="px-4 py-3">
-              <div className="text-[11px] font-medium text-[#5b6b80]">{label}</div>
-              <div className="mt-1 text-[18px] font-semibold text-[#12304f]">{value}</div>
-              {label === "Utilised" ? <div className="mt-1 h-2 overflow-hidden rounded bg-[#e6ebf2]"><span className="block h-full w-0" style={{ background: "linear-gradient(90deg,#14a3a3,#1b6fb5)" }} /></div> : null}
-            </div>
-          ))}
+      <Panel title="My Budget" open={mineOpen} onToggle={()=>setMineOpen(v=>!v)}>
+        <div className="grid grid-cols-2 divide-x divide-[#d7dce3] sm:grid-cols-5">
+          {[["Original allotted",money(data.original)],["Updated budget",money(updatedBudget)],["Team size",data.team],["Allotted to reports",money(data.allotted)],["Buffer",money(buffer)]].map(([label,value])=>
+            <div key={label} className="px-4 py-3"><div className="text-[11px] font-medium text-[#5b6b80]">{label}</div><div className="mt-1 text-[18px] font-semibold text-[#12304f]">{value}</div></div>
+          )}
+        </div>
+        <div className="border-t border-[#d7dce3] px-4 py-3">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div><div className="text-[11px] font-medium text-[#5b6b80]">Utilised</div><div className="mt-1 text-[18px] font-semibold text-[#12304f]">{money(utilisation)} <span className="text-[12px] font-normal text-slate-500">({utilisationPct.toFixed(1)}%)</span></div><div className="mt-1 h-2 w-full min-w-[220px] overflow-hidden rounded bg-[#e6ebf2]"><span className="block h-full" style={{width:Math.min(utilisationPct,100)+"%",background:"linear-gradient(90deg,#14a3a3,#1b6fb5)"}}/></div></div>
+            <div className="text-[12px] text-slate-500">Utilised = Hike Amount · Remaining {money(remaining)}</div>
+          </div>
         </div>
       </Panel>
 
-      <Panel title="Allocation" count="1 Tech ED" open={allocOpen} onToggle={() => setAllocOpen((v) => !v)}>
-        <div className="flex items-center gap-2 border-b border-[#e1e5eb] px-3.5 py-2 text-[12px] text-slate-600">
-          <label htmlFor="techReason">Reason for next % change</label>
-          <input id="techReason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Optional — saved in the audit trail" className="h-7 w-full max-w-[420px] rounded border border-[#cbd3df] px-2 text-[12.5px]" />
-        </div>
+      <Panel title="Allocation" count={data.team+" employees"} open={allocOpen} onToggle={()=>setAllocOpen(v=>!v)}>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] table-fixed border-collapse text-[12.5px]">
-            <colgroup>
-              <col className="w-[10%]" /><col className="w-[17%]" /><col className="w-[13%]" /><col className="w-[13%]" /><col className="w-[11%]" /><col className="w-[9%]" /><col className="w-[9%]" /><col className="w-[9%]" /><col className="w-[9%]" />
-            </colgroup>
-            <thead><tr>{["Level","Owner","Original Budget","Updated Budget","Change","Original Count","Current Count","Last Changed","Allot %"].map((h,i)=><th key={h} className={"border-b-2 border-[#9fb3cf] bg-[#e8eef5] px-2.5 py-2 text-[12px] font-semibold text-[#12304f] " + (i >= 2 ? "text-right" : "text-left")}>{h}</th>)}</tr></thead>
-            <tbody>
-              <tr className={isChanged ? "bg-[#fdf8e7]" : ""}>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 font-bold">Tech ED</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 font-bold">{data.name}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(data.original)}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right font-bold text-[#12304f]">{money(updatedBudget)}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{money(updatedBudget - data.original)}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{data.team0}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">{data.team}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 whitespace-nowrap">{isChanged ? "Today" : "01-Sep-26"}</td>
-                <td className="border-b border-[#e1e5eb] px-2.5 py-2 text-right">
-                  <input type="number" min="0" max="100" step="0.1" value={pctValue} onChange={(e) => setPctValue(e.target.value)} onBlur={savePct} className="h-[32px] w-[84px] rounded border border-[#14a3a3] px-2 text-right text-[14px] font-bold text-[#12304f]" />
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="min-w-[980px]">
+            <div className="grid grid-cols-[minmax(85px,.65fr)_minmax(190px,1.35fr)_minmax(135px,1fr)_minmax(135px,1fr)_minmax(120px,.9fr)_minmax(100px,.75fr)_minmax(100px,.75fr)_minmax(120px,.85fr)_minmax(105px,.75fr)] text-[12.5px]">
+              {["Level","Owner","Original Budget","Updated Budget","Change","Original Count","Current Count","Last Changed","Allot %"].map((h,i)=><div key={h} className={"border-b-2 border-[#9fb3cf] bg-[#e8eef5] px-2.5 py-2 text-[12px] font-semibold text-[#12304f] "+(i>=2?"text-right":"text-left")}>{h}</div>)}
+              {[
+                ["Tech ED",data.name,money(data.original),money(updatedBudget),money(change),data.team0,data.team,isChanged?"Today":"01-Sep-26",null]
+              ].map((row)=><div key={row[1]} className="contents">
+                <div className="border-b border-[#e1e5eb] bg-white px-2.5 py-2 font-bold">{row[0]}</div>
+                <div className="border-b border-[#e1e5eb] bg-white px-2.5 py-2 font-bold">{row[1]}</div>
+                <div className="border-b border-[#e1e5eb] bg-white px-2.5 py-2 text-right">{row[2]}</div>
+                <div className="border-b border-[#e1e5eb] bg-white px-2.5 py-2 text-right font-bold text-[#12304f]">{row[3]}</div>
+                <div className="border-b border-[#e1e5eb] bg-white px-2.5 py-2 text-right">{row[4]}</div>
+                <div className="border-b border-[#e1e5eb] bg-white px-2.5 py-2 text-right">{row[5]}</div>
+                <div className="border-b border-[#e1e5eb] bg-white px-2.5 py-2 text-right">{row[6]}</div>
+                <div className="border-b border-[#e1e5eb] bg-white px-2.5 py-2 whitespace-nowrap">{row[7]}</div>
+                <div className="border-b border-[#e1e5eb] bg-white px-2.5 py-2 text-right"><input type="number" min="0" max="100" step="0.1" value={pctValue} onChange={e=>setPctValue(e.target.value)} onBlur={savePct} className="h-[32px] w-[84px] rounded border border-[#14a3a3] bg-white px-2 text-right text-[14px] font-bold text-[#12304f]"/></div>
+              </div>)}
+            </div>
+          </div>
         </div>
       </Panel>
 
-      {auditOpen ? (
-        <Panel title="% Applied — Audit Trail" open={auditOpen} onToggle={() => setAuditOpen((v) => !v)}>
-          <div className="p-3.5"><AuditTable rows={audit} /></div>
-        </Panel>
-      ) : null}
+      {auditOpen?<Panel title="% Applied — Audit Trail" open={auditOpen} onToggle={()=>setAuditOpen(v=>!v)}><div className="p-3.5"><AuditTable rows={audit}/></div></Panel>:null}
     </div>
   );
 }
