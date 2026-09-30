@@ -28,7 +28,7 @@ export function AppShell({ children, headerActions }) {
     .replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
   const isHR =
-    role === "hr" || role === "humanresources" || role === "hroperation";
+    role === "hr" || role === "humanresources" || role === "hroperation" || role === "hroperations";
 
   const allNav = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
