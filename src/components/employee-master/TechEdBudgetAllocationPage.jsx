@@ -68,9 +68,7 @@ const COMP_MANAGERS = [
   },
 ];
 
-/* ---------- helpers ---------- */
 const money = (v) => "₹ " + ((Number(v) || 0) / 100000).toFixed(2) + " L";
-const pctText = (v) => Number(v || 0).toFixed(1) + "%";
 function dateText(iso) {
   const p = String(iso || "").split("-");
   const M = [
@@ -89,6 +87,7 @@ function dateText(iso) {
   ];
   return p.length === 3 ? p[2] + "-" + M[Number(p[1]) - 1] : "—";
 }
+
 const asOf = (hist, d) => hist.filter((x) => x.date <= d).pop() || hist[0];
 
 /* one line per date: allocated, updated, team size */
@@ -232,19 +231,16 @@ const CSS = `
 .te-root .f-label{font-size:11px;font-weight:500;color:#5b6b80}
 .te-root .bsum .v{font-size:18px;font-weight:600;color:#12304f;margin-top:2px}
 .te-root .bsum .d{font-size:11px;margin-top:2px}
-.te-root .ubar{height:8px;background:#e6ebf2;border-radius:4px;overflow:hidden;margin:0 16px 14px}
-.te-root .ubar>span{display:block;height:100%;background:linear-gradient(90deg,#14a3a3,#1b6fb5)}
-.te-root .ubar.over>span{background:#d9480f}
 .te-root .reason{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid #e1e5eb;font-size:12px;color:#475569}
 .te-root .reason input{flex:1;max-width:420px;height:28px;border:1px solid #cbd3df;border-radius:4px;padding:0 8px;font-size:12.5px}
-.te-root .reason select{height:26px;border:1px solid #767676;border-radius:3px;background:#fff;font-size:13px}
+.te-root .reason select{height:28px;border:1px solid #cbd3df;border-radius:4px;background:#fff;padding:0 8px;font-size:12.5px}
 .te-root .berr{margin:10px 16px 0;background:#fff;border:1px solid #e3e8ef;border-left:4px solid #c2410c;color:#7c2d12;border-radius:6px;padding:7px 10px;font-size:12px;display:flex;justify-content:space-between;gap:10px}
 .te-root .link{background:none;border:0;padding:0;color:#1859a8;font-size:11.5px;font-weight:700;cursor:pointer}
 .te-root .bscroll{overflow-x:auto}
-.te-root .bal{display:grid;min-width:900px;font-size:12.5px}
-.te-root .bal>div{padding:7px 10px;display:flex;align-items:center;gap:6px;border-right:1px solid #eef1f5;border-bottom:1px solid #e1e5eb;min-width:0}
+.te-root .bal{display:grid;min-width:1174px;font-size:12.5px}
+.te-root .bal>div{padding:5px 10px;min-height:40px;display:flex;align-items:center;gap:6px;border-right:1px solid #eef1f5;border-bottom:1px solid #e1e5eb;min-width:0}
 .te-root .bal>div.last{border-right:0}
-.te-root .bal .h{background:#e8eef5;color:#12304f;font-weight:600;font-size:12px;border-bottom:2px solid #9fb3cf}
+.te-root .bal .h{min-height:36px;white-space:nowrap;background:#e8eef5;color:#12304f;font-weight:600;font-size:12px;border-bottom:2px solid #9fb3cf}
 .te-root .bal .r{justify-content:flex-end;text-align:right}
 .te-root .bal .self{background:#e9f4f4;font-weight:700}
 .te-root .bal .self.first{box-shadow:inset 4px 0 0 #14a3a3}
@@ -259,8 +255,7 @@ const CSS = `
 .te-root .audit-wrap .trail td,.te-root .audit-wrap .trail th{padding:6px 8px}
 `;
 
-const COLS =
-  "minmax(150px,1fr) minmax(150px,1.2fr) 120px 120px 150px 96px 96px 110px 80px";
+const COLS = "150px minmax(180px,1fr) 124px 124px 170px 112px 108px 116px 90px";
 const HEADS = [
   "Level",
   "Owner",
@@ -424,7 +419,7 @@ export function TechEdBudgetAllocationPage() {
     return (
       <div key={o.name} style={{ display: "contents" }}>
         <div className={k("first")}>
-          <span style={{ width: (self ? 0 : 18) + 16, flexShrink: 0 }} />
+          <span style={{ width: self ? 0 : 18, flexShrink: 0 }} />
           {self ? "Tech ED" : "Comp Manager"}
         </div>
         <div className={k()}>
@@ -572,9 +567,6 @@ export function TechEdBudgetAllocationPage() {
                   )}
                 </div>
               </div>
-            </div>
-            <div className={"ubar" + (over ? " over" : "")}>
-              <span style={{ width: Math.min(usedPct, 100) + "%" }} />
             </div>
           </>
         ) : null}
