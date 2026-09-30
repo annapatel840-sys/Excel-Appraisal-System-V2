@@ -1278,30 +1278,11 @@ export function BudgetAllocationPage() {
 }
 
 /* =====================================================================
-   TECH ED LOGIN — mirrors the HTML reference (manager budget view)
+   TECH ED LOGIN — same look as the HTML reference (scoped CSS, class prefix .te-root)
    ===================================================================== */
-function Chg({ d, base }) {
-  if (Math.abs(d) < 1) return <span className="text-slate-500">—</span>;
-  const up = d > 0;
-  const p = base ? (d / base) * 100 : null;
-  return (
-    <span className={up ? "text-[#15803d]" : "text-[#c2410c]"}>
-      {up ? "▲ " : "▼ "}
-      {money(Math.abs(d))}
-      {p !== null ? " (" + (up ? "+" : "") + p.toFixed(1) + "%)" : ""}
-    </span>
-  );
-}
+const asOf = (hist, d) => hist.filter((x) => x.date <= d).pop() || hist[0];
 
-function asOf(hist, date) {
-  let r = null;
-  hist.forEach((x) => {
-    if (x.date <= date) r = x;
-  });
-  return r || hist[0];
-}
-
-/* One line per date for an owner: allocated, updated, team size. */
+/* one line per date: allocated, updated, team size */
 function ownHistory(owner, original, team, audit) {
   const out = [
     { date: ALLOC_DATE, allocated: original, updated: original, team },
@@ -1319,40 +1300,97 @@ function ownHistory(owner, original, team, audit) {
   return out;
 }
 
-function Trail({ rows, roll, ownerLabel }) {
-  const th =
-    "border-b border-[#d7dce3] px-2 py-1 text-[11px] font-bold text-[#1e3a5f] ";
-  const td = "border-b border-[#edf0f4] px-2 py-1 ";
+function Chg({ d, base }) {
+  if (Math.abs(d) < 1) return <span className="muted">—</span>;
+  const up = d > 0;
   return (
-    <table
-      className="border-collapse text-[12px] tabular-nums"
-      style={{ width: "100%", maxWidth: roll ? 820 : 560 }}
-    >
+    <span className={up ? "up" : "down"}>
+      {up ? "▲ " : "▼ "}
+      {money(Math.abs(d))}
+      {base
+        ? "  (" + (up ? "+" : "") + ((d / base) * 100).toFixed(1) + "%)"
+        : ""}
+    </span>
+  );
+}
+
+function TeAuditTable({ rows, showOwner = true }) {
+  const heads = [
+    ["Date"],
+    ["Owner"],
+    ["Old %", 1],
+    ["New %", 1],
+    ["Budget before", 1],
+    ["Budget after", 1],
+    ["Changed by"],
+    ["Reason"],
+  ].filter(([h]) => showOwner || h !== "Owner");
+  if (!rows.length)
+    return (
+      <div className="muted-small" style={{ padding: "6px 0" }}>
+        No % changes yet.
+      </div>
+    );
+  return (
+    <div className="bscroll">
+      <table className="trail">
+        <thead>
+          <tr>
+            {heads.map(([h, n]) => (
+              <th key={h} className={n ? "n" : ""}>
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((x, i) => (
+            <tr key={i}>
+              <td>
+                {dateText(x.date)}
+                {x.time ? " " + x.time : ""}
+              </td>
+              {showOwner ? (
+                <td style={{ fontWeight: 700 }}>{x.owner}</td>
+              ) : null}
+              <td className="n">{x.from == null ? "—" : x.from + "%"}</td>
+              <td className="n" style={{ fontWeight: 700 }}>
+                {x.to}%
+              </td>
+              <td className="n">{x.before == null ? "—" : money(x.before)}</td>
+              <td className="n">{money(x.after)}</td>
+              <td>{x.by}</td>
+              <td>{x.reason || "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function Trail({ rows, roll }) {
+  return (
+    <table className="trail" style={{ maxWidth: roll ? 820 : 560 }}>
       <thead>
         <tr>
-          <th className={th + "text-left"}>Date</th>
-          <th className={th + "text-right"}>Allocated</th>
-          <th className={th + "text-right"}>Updated</th>
-          <th className={th + "text-right"}>Team size</th>
-          {roll ? (
-            <th className={th + "text-right"}>Allotted to {ownerLabel}s</th>
-          ) : null}
-          {roll ? <th className={th + "text-right"}>Buffer</th> : null}
+          <th>Date</th>
+          <th className="n">Allocated</th>
+          <th className="n">Updated</th>
+          <th className="n">Team size</th>
+          {roll ? <th className="n">Allotted to Comp Managers</th> : null}
+          {roll ? <th className="n">Buffer</th> : null}
         </tr>
       </thead>
       <tbody>
         {rows.map((x) => (
           <tr key={x.date}>
-            <td className={td}>{dateText(x.date)}</td>
-            <td className={td + "text-right"}>{money(x.allocated)}</td>
-            <td className={td + "text-right"}>{money(x.updated)}</td>
-            <td className={td + "text-right"}>{x.team}</td>
-            {roll ? (
-              <td className={td + "text-right"}>{money(x.allotted)}</td>
-            ) : null}
-            {roll ? (
-              <td className={td + "text-right"}>{money(x.buffer)}</td>
-            ) : null}
+            <td>{dateText(x.date)}</td>
+            <td className="n">{money(x.allocated)}</td>
+            <td className="n">{money(x.updated)}</td>
+            <td className="n">{x.team}</td>
+            {roll ? <td className="n">{money(x.allotted)}</td> : null}
+            {roll ? <td className="n">{money(x.buffer)}</td> : null}
           </tr>
         ))}
       </tbody>
@@ -1360,31 +1398,92 @@ function Trail({ rows, roll, ownerLabel }) {
   );
 }
 
-const ALLOC_COLS = [
-  ["Level", false],
-  ["Owner", false],
-  ["Original Budget", true],
-  ["Updated Budget", true],
-  ["Change", true],
-  ["Original Count", true],
-  ["Current Count", true],
-  ["Last Changed", false],
-  ["Allot %", true],
+const CSS = `
+.te-root{max-width:1320px;margin:0 auto;width:100%;display:flex;flex-direction:column;gap:8px;font-family:"IBM Plex Sans","Segoe UI",Arial,Helvetica,sans-serif;font-size:12.5px;color:#0f1f33;font-variant-numeric:tabular-nums}
+.te-root *,.te-root *::before,.te-root *::after{box-sizing:border-box}
+.te-root button,.te-root input,.te-root select{font-family:inherit}
+.te-root :focus-visible{outline:2px solid #14a3a3;outline-offset:1px}
+.te-root .muted{color:#64748b}.te-root .muted-small{font-size:11px;color:#475569}
+.te-root .up{color:#15803d}.te-root .down{color:#c2410c}.te-root .over{color:#c2410c;font-weight:700}
+.te-root .btop{background:#fff;border:1px solid #d3dbe6;border-left:4px solid #14a3a3;border-radius:10px;box-shadow:0 1px 2px rgba(18,48,79,.06);display:flex;gap:16px;align-items:center;flex-wrap:wrap;padding:8px 14px;color:#334155}
+.te-root .sep{width:1px;align-self:stretch;background:#d7dce3}
+.te-root .applied{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+.te-root .applied b{color:#12304f;font-size:13.5px}
+.te-root .dd{border:1px solid #c5d0dd;background:#fff;color:#12304f;border-radius:4px;padding:3px 8px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+.te-root .dd[aria-expanded="true"]{background:#12304f;border-color:#12304f;color:#fff}
+.te-root .apdrop{background:#f7f9fc;border:1px solid #d4dbe5;border-radius:8px;padding:8px 14px}
+.te-root .card{background:#fff;border:1px solid #d3dbe6;border-radius:10px;box-shadow:0 1px 2px rgba(18,48,79,.06);overflow:hidden}
+.te-root .pane-head{width:100%;display:flex;align-items:center;justify-content:space-between;background:#12304f;color:#fff;border:0;padding:10px 16px;font-size:13.5px;font-weight:600;letter-spacing:.15px;cursor:pointer;text-align:left}
+.te-root .pane-head .cnt{font-weight:400;color:#d6e4f5;margin-left:8px}
+.te-root .pane-head .chev{font-size:12px}
+.te-root .bsum{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.te-root .bsum>div{padding:12px 16px;border-right:1px solid #d7dce3;border-top:3px solid transparent}
+.te-root .bsum>div:nth-child(2){border-top-color:#14a3a3}
+.te-root .bsum>div:last-child{border-right:0}
+.te-root .f-label{font-size:11px;font-weight:500;color:#5b6b80}
+.te-root .bsum .v{font-size:18px;font-weight:600;color:#12304f;margin-top:2px}
+.te-root .bsum .d{font-size:11px;margin-top:2px}
+.te-root .ubar{height:8px;background:#e6ebf2;border-radius:4px;overflow:hidden;margin:0 16px 14px}
+.te-root .ubar>span{display:block;height:100%;background:linear-gradient(90deg,#14a3a3,#1b6fb5)}
+.te-root .ubar.over>span{background:#d9480f}
+.te-root .reason{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid #e1e5eb;font-size:12px;color:#475569}
+.te-root .reason input{flex:1;max-width:420px;height:28px;border:1px solid #cbd3df;border-radius:4px;padding:0 8px;font-size:12.5px}
+.te-root .reason select{height:26px;border:1px solid #767676;border-radius:3px;background:#fff;font-size:13px}
+.te-root .berr{margin:10px 16px 0;background:#fff;border:1px solid #e3e8ef;border-left:4px solid #c2410c;color:#7c2d12;border-radius:6px;padding:7px 10px;font-size:12px;display:flex;justify-content:space-between;gap:10px}
+.te-root .link{background:none;border:0;padding:0;color:#1859a8;font-size:11.5px;font-weight:700;cursor:pointer}
+.te-root .bscroll{overflow-x:auto}
+.te-root .bal{display:grid;min-width:900px;font-size:12.5px}
+.te-root .bal>div{padding:7px 10px;display:flex;align-items:center;gap:6px;border-right:1px solid #eef1f5;border-bottom:1px solid #e1e5eb;min-width:0}
+.te-root .bal>div.last{border-right:0}
+.te-root .bal .h{background:#e8eef5;color:#12304f;font-weight:600;font-size:12px;border-bottom:2px solid #9fb3cf}
+.te-root .bal .r{justify-content:flex-end;text-align:right}
+.te-root .bal .self{background:#e9f4f4;font-weight:700}
+.te-root .bal .self.first{box-shadow:inset 4px 0 0 #14a3a3}
+.te-root .bal .grp{border-top:2px solid #9fb3cf}
+.te-root .bal .tr{grid-column:1/-1;display:block;background:#f7f9fc;border-top:1px solid #d7dce3;padding:8px 12px 12px 40px}
+.te-root .pct-in{width:58px;height:26px;border:1px solid #9fb3cf;border-radius:4px;text-align:right;padding:0 6px;font-size:12.5px;background:#fffef5}
+.te-root .trail{width:100%;border-collapse:collapse;font-size:12px}
+.te-root .trail th{text-align:left;font-weight:700;color:#1e3a5f;font-size:11px;padding:4px 8px;border-bottom:1px solid #d7dce3}
+.te-root .trail td{padding:4px 8px;border-bottom:1px solid #edf0f4}
+.te-root .trail .n{text-align:right}
+.te-root .audit-wrap{padding:8px 14px 12px}
+.te-root .audit-wrap .trail td,.te-root .audit-wrap .trail th{padding:6px 8px}
+`;
+
+const COLS =
+  "minmax(150px,1fr) minmax(150px,1.2fr) 120px 120px 150px 96px 96px 110px 80px";
+const HEADS = [
+  "Level",
+  "Owner",
+  "Original Budget",
+  "Updated Budget",
+  "Change",
+  "Original Count",
+  "Current Count",
+  "Last Changed",
+  "Allot %",
 ];
 
 export function TechEdBudgetAllocationPage() {
   const user = useCatalystUser();
-  const rawName = String(user?.name || user?.email || "Tech ED").trim();
+  const rawName = String(user?.name || user?.email || "").trim();
   const me =
     TECH_ED_DATA.find((r) => rawName.includes(r.name)) || TECH_ED_DATA[0];
   const kids0 = COMP_MANAGERS.filter((c) => c.parent === me.name);
 
   const [reports, setReports] = useState(kids0);
   const [audit, setAudit] = useState(() => [
-    ...INITIAL_AUDIT.filter((a) => a.owner === me.name).map((a) => ({
-      ...a,
+    {
+      date: ALLOC_DATE,
+      owner: me.name,
+      from: null,
+      to: me.pct,
+      before: null,
+      after: me.original,
+      by: "HR Admin",
+      reason: "Initial allocation",
       initial: true,
-    })),
+    },
     ...kids0.map((c) => ({
       date: ALLOC_DATE,
       owner: c.name,
@@ -1401,8 +1500,8 @@ export function TechEdBudgetAllocationPage() {
   const [error, setError] = useState("");
   const [nonce, setNonce] = useState(0);
   const [pane, setPane] = useState({ mine: true, alloc: true, audit: true });
-  const [appliedOpen, setAppliedOpen] = useState(false);
-  const [trail, setTrail] = useState({});
+  const [applied, setApplied] = useState(false);
+  const [open, setOpen] = useState({});
   const [filter, setFilter] = useState("all");
 
   const kids = reports.map((r) => ({
@@ -1411,25 +1510,16 @@ export function TechEdBudgetAllocationPage() {
     updated: (r.base * r.pct) / 100,
   }));
   const allotted = kids.reduce((s, r) => s + r.updated, 0);
-  const buffer = me.updated - allotted;
   const used = kids.reduce((s, r) => s + r.utilised, 0);
   const usedPct = me.updated ? (used / me.updated) * 100 : 0;
   const over = usedPct > 100;
 
-  const sorted = [...audit].sort((a, b) =>
-    (b.date + (b.time || "")).localeCompare(a.date + (a.time || "")),
-  );
   const kidHist = Object.fromEntries(
     kids.map((k) => [k.name, ownHistory(k.name, k.original, k.team0, audit)]),
   );
   const ownH = ownHistory(me.name, me.original, me.team, audit);
   const dates = [
-    ...new Set([
-      ...ownH.map((x) => x.date),
-      ...Object.values(kidHist)
-        .flat()
-        .map((x) => x.date),
-    ]),
+    ...new Set([...ownH, ...Object.values(kidHist).flat()].map((x) => x.date)),
   ].sort();
   const selfHist = dates.map((d) => {
     const o = asOf(ownH, d);
@@ -1443,6 +1533,14 @@ export function TechEdBudgetAllocationPage() {
       buffer: o.updated - al,
     };
   });
+
+  const sorted = [...audit].sort((a, b) =>
+    (b.date + (b.time || "")).localeCompare(a.date + (a.time || "")),
+  );
+  const names = [me.name, ...kids.map((k) => k.name)];
+  const auditRows = sorted.filter((a) =>
+    filter === "all" ? names.includes(a.owner) : a.owner === filter,
+  );
 
   function setPct(name, raw) {
     const row = kids.find((k) => k.name === name);
@@ -1492,348 +1590,270 @@ export function TechEdBudgetAllocationPage() {
     setError("");
   }
 
-  const togglePane = (k) => setPane((p) => ({ ...p, [k]: !p[k] }));
-  const td = (self) =>
-    "border-b border-[#e1e5eb] px-2.5 py-2 align-middle " +
-    (self ? "bg-[#e9f4f4] " : "bg-white ");
+  const toggle = (k) => setPane((p) => ({ ...p, [k]: !p[k] }));
+  const head = (k, title, cnt) => (
+    <button
+      type="button"
+      className="pane-head"
+      aria-expanded={pane[k]}
+      onClick={() => toggle(k)}
+    >
+      <span>
+        {title}
+        {cnt ? <span className="cnt">{cnt}</span> : null}
+      </span>
+      <span className="chev">{pane[k] ? "▾" : "▸"}</span>
+    </button>
+  );
 
-  function LastChanged({ name, hist }) {
-    if (hist.length < 2) return <span className="text-[#94a3b8]">—</span>;
-    const open = !!trail[name];
+  function row(o, self, grp) {
+    const h = self ? selfHist : kidHist[o.name];
+    const changed = h.length > 1;
+    const d = o.updated - o.original;
+    const k = (extra) =>
+      [self && "self", grp && "grp", extra].filter(Boolean).join(" ");
+    const shown = !!open[o.name];
     return (
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setTrail((t) => ({ ...t, [name]: !t[name] }))}
-        className={
-          "whitespace-nowrap rounded border px-2 py-1 text-[12px] font-bold " +
-          (open
-            ? "border-[#12304f] bg-[#12304f] text-white"
-            : "border-[#c5d0dd] bg-white text-[#12304f]")
-        }
-      >
-        {dateText(hist[hist.length - 1].date)} {open ? "▴" : "▾"}
-      </button>
+      <div key={o.name} style={{ display: "contents" }}>
+        <div className={k("first")}>
+          <span style={{ width: (self ? 0 : 18) + 16, flexShrink: 0 }} />
+          {self ? "Tech ED" : "Comp Manager"}
+        </div>
+        <div className={k()}>
+          <span style={{ fontWeight: 700 }}>{o.name}</span>
+          {self ? (
+            <span className="muted-small" style={{ fontWeight: 400 }}>
+              {" "}
+              (you)
+            </span>
+          ) : null}
+        </div>
+        <div className={k("r")}>{money(o.original)}</div>
+        <div className={k("r")}>{money(o.updated)}</div>
+        <div className={k("r")}>
+          <Chg d={d} base={o.original} />
+        </div>
+        <div className={k("r")}>{self ? me.team0 : o.team0}</div>
+        <div className={k("r")}>{self ? me.team : o.team}</div>
+        <div className={k()}>
+          {changed ? (
+            <button
+              type="button"
+              className="dd"
+              aria-expanded={shown}
+              onClick={() => setOpen((x) => ({ ...x, [o.name]: !x[o.name] }))}
+            >
+              {dateText(h[h.length - 1].date)} {shown ? "▴" : "▾"}
+            </button>
+          ) : (
+            <span style={{ color: "#94a3b8", fontWeight: 400 }}>—</span>
+          )}
+        </div>
+        <div className={k("r last")}>
+          {self ? (
+            <span style={{ color: "#94a3b8" }}>{me.pct}%</span>
+          ) : (
+            <input
+              key={o.name + o.pct + nonce}
+              className="pct-in"
+              type="number"
+              min="0"
+              step="0.1"
+              defaultValue={o.pct}
+              aria-label={"Allot % for " + o.name}
+              onBlur={(e) => setPct(o.name, e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") e.currentTarget.blur();
+              }}
+            />
+          )}
+        </div>
+        {shown && changed ? (
+          <div className="tr last">
+            <Trail rows={h} roll={self} />
+          </div>
+        ) : null}
+      </div>
     );
   }
 
-  const summary = [
+  const cells = [
     [
       "Original allotted",
       money(me.original),
-      <span className="text-slate-500">Fixed at allocation</span>,
+      <span className="muted">Fixed at allocation</span>,
     ],
     ["Updated budget", money(me.updated), <Chg d={me.updated - me.original} />],
     [
       "Team size",
       me.team0 + " → " + me.team,
-      <span className="text-slate-500">At allocation → now</span>,
+      <span className="muted">At allocation → now</span>,
     ],
     ["Allotted to reports", money(allotted), null],
     [
       "Buffer",
-      money(buffer),
-      <span className="text-slate-500">Not passed down</span>,
+      money(me.updated - allotted),
+      <span className="muted">Not passed down</span>,
     ],
   ];
 
-  const names = [me.name, ...kids.map((k) => k.name)];
-  const auditRows =
-    filter === "all"
-      ? sorted.filter((a) => names.includes(a.owner))
-      : sorted.filter((a) => a.owner === filter);
-
   return (
-    <div className="mx-auto flex w-full max-w-[1320px] flex-col gap-2">
-      {/* top bar */}
-      <div
-        className="flex flex-wrap items-center gap-4 rounded-[10px] border border-l-4 bg-white px-3.5 py-2 text-[12.5px] text-[#334155]"
-        style={{ borderColor: BORDER, borderLeftColor: TEAL }}
-      >
+    <div className="te-root">
+      <style>{CSS}</style>
+
+      <div className="btop">
         <span>
           Appraisal cycle <b>Apr-26</b>
         </span>
-        <span className="h-5 w-px self-stretch bg-[#d7dce3]" />
-        <span>Allocated {dateText(ALLOC_DATE)} by HR</span>
-        <span className="h-5 w-px self-stretch bg-[#d7dce3]" />
+        <span className="sep" />
+        <span>Allocated {dateText(ALLOC_DATE)} by HR Admin</span>
+        <span className="sep" />
         <span>
           <b>Tech ED</b>
         </span>
-        <span className="h-5 w-px self-stretch bg-[#d7dce3]" />
-        <span className="inline-flex flex-wrap items-center gap-2">
-          Budget applied by HR:{" "}
-          <b className="text-[13.5px] text-[#12304f]">{me.pct}%</b>{" "}
-          <span className="text-[11px] text-slate-500">(org default)</span> ={" "}
-          <b className="text-[13.5px] text-[#12304f]">{money(me.updated)}</b>{" "}
-          updated · original {money(me.original)}
+        <span className="sep" />
+        <span className="applied">
+          Budget applied by HR: <b>{me.pct}%</b>{" "}
+          <span className="muted-small">(org default)</span> ={" "}
+          <b>{money(me.updated)}</b> updated · original {money(me.original)}
           <button
             type="button"
-            aria-expanded={appliedOpen}
-            onClick={() => setAppliedOpen((v) => !v)}
-            className={
-              "whitespace-nowrap rounded border px-2 py-[3px] text-[12px] font-bold " +
-              (appliedOpen
-                ? "border-[#12304f] bg-[#12304f] text-white"
-                : "border-[#c5d0dd] bg-white text-[#12304f]")
-            }
+            className="dd"
+            aria-expanded={applied}
+            onClick={() => setApplied((v) => !v)}
           >
-            % history {appliedOpen ? "▴" : "▾"}
+            % history {applied ? "▴" : "▾"}
           </button>
         </span>
       </div>
-      {appliedOpen ? (
-        <div
-          className="rounded-[10px] border bg-[#f7f9fc] px-3.5 py-2"
-          style={{ borderColor: BORDER }}
-        >
-          <AuditTable
+      {applied ? (
+        <div className="apdrop">
+          <TeAuditTable
             rows={sorted.filter((a) => a.owner === me.name)}
             showOwner={false}
           />
         </div>
       ) : null}
 
-      {/* My Budget */}
-      <Panel
-        title="My Budget"
-        open={pane.mine}
-        onToggle={() => togglePane("mine")}
-      >
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-          {summary.map(([label, value, note], i) => (
-            <div
-              key={label}
-              className={
-                "border-r border-t-[3px] border-r-[#d7dce3] px-4 py-3 " +
-                (i === 1 ? "border-t-[#14a3a3]" : "border-t-transparent")
-              }
-            >
-              <div className="text-[11px] font-medium text-[#5b6b80]">
-                {label}
+      <section className="card">
+        {head("mine", "My Budget")}
+        {pane.mine ? (
+          <>
+            <div className="bsum">
+              {cells.map(([l, v, n]) => (
+                <div key={l}>
+                  <div className="f-label">{l}</div>
+                  <div className="v">{v}</div>
+                  {n ? <div className="d">{n}</div> : null}
+                </div>
+              ))}
+              <div>
+                <div className="f-label">Utilised</div>
+                <div className={"v" + (over ? " over" : "")}>
+                  {money(used)} ({usedPct.toFixed(0)}%)
+                </div>
+                <div className="d">
+                  {over ? (
+                    <span className="over">
+                      ▲ {money(used - me.updated)} over
+                    </span>
+                  ) : (
+                    <span className="muted">
+                      Remaining {money(me.updated - used)}
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="mt-0.5 text-[18px] font-semibold text-[#12304f]">
-                {value}
-              </div>
-              {note ? <div className="mt-0.5 text-[11px]">{note}</div> : null}
             </div>
-          ))}
-          <div className="border-t-[3px] border-t-transparent px-4 py-3">
-            <div className="text-[11px] font-medium text-[#5b6b80]">
-              Utilised
+            <div className={"ubar" + (over ? " over" : "")}>
+              <span style={{ width: Math.min(usedPct, 100) + "%" }} />
             </div>
-            <div
-              className={
-                "mt-0.5 text-[18px] font-semibold " +
-                (over ? "text-[#c2410c]" : "text-[#12304f]")
-              }
-            >
-              {money(used)} ({usedPct.toFixed(0)}%)
-            </div>
-            <div className="mt-0.5 text-[11px]">
-              {over ? (
-                <span className="font-bold text-[#c2410c]">
-                  ▲ {money(used - me.updated)} over
-                </span>
-              ) : (
-                <span className="text-slate-500">
-                  Remaining {money(me.updated - used)}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="mx-4 mb-3.5 h-2 overflow-hidden rounded bg-[#e6ebf2]">
-          <span
-            className="block h-full"
-            style={{
-              width: Math.min(usedPct, 100) + "%",
-              background: over
-                ? "#d9480f"
-                : "linear-gradient(90deg,#14a3a3,#1b6fb5)",
-            }}
-          />
-        </div>
-      </Panel>
-
-      {/* Allocation */}
-      <Panel
-        title="Allocation"
-        count={kids.length + " Comp Manager" + (kids.length === 1 ? "" : "s")}
-        open={pane.alloc}
-        onToggle={() => togglePane("alloc")}
-      >
-        <div className="flex items-center gap-2 border-b border-[#e1e5eb] px-3.5 py-2 text-[12px] text-[#475569]">
-          <label htmlFor="bReason">Reason for next % change</label>
-          <input
-            id="bReason"
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="Optional — saved in the audit trail"
-            className="h-7 max-w-[420px] flex-1 rounded border border-[#cbd3df] px-2 text-[12.5px]"
-          />
-        </div>
-        {error ? (
-          <div
-            role="alert"
-            className="mx-4 mt-2.5 flex justify-between gap-2.5 rounded-md border border-[#e3e8ef] border-l-4 border-l-[#c2410c] bg-white px-2.5 py-[7px] text-[12px] text-[#7c2d12]"
-          >
-            <span>{error}</span>
-            <button
-              type="button"
-              className="text-[11.5px] font-bold text-[#1859a8]"
-              onClick={() => setError("")}
-            >
-              Dismiss
-            </button>
-          </div>
+          </>
         ) : null}
-        <div className={"overflow-x-auto " + (error ? "mt-2.5" : "")}>
-          <table className="w-full min-w-[980px] border-collapse text-[12.5px] tabular-nums">
-            <thead>
-              <tr>
-                {ALLOC_COLS.map(([h, right]) => (
-                  <th
-                    key={h}
+      </section>
+
+      <section className="card">
+        {head(
+          "alloc",
+          "Allocation",
+          kids.length + " Comp Manager" + (kids.length === 1 ? "" : "s"),
+        )}
+        {pane.alloc ? (
+          <>
+            <div className="reason">
+              <label htmlFor="te-reason">Reason for next % change</label>
+              <input
+                id="te-reason"
+                type="text"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Optional — saved in the audit trail"
+              />
+            </div>
+            {error ? (
+              <div className="berr" role="alert">
+                <span>{error}</span>
+                <button
+                  type="button"
+                  className="link"
+                  onClick={() => setError("")}
+                >
+                  Dismiss
+                </button>
+              </div>
+            ) : null}
+            <div className="bscroll" style={{ marginTop: error ? 10 : 0 }}>
+              <div className="bal" style={{ gridTemplateColumns: COLS }}>
+                {HEADS.map((x, i) => (
+                  <div
+                    key={x}
                     className={
-                      "whitespace-nowrap border-b-2 border-[#9fb3cf] bg-[#e8eef5] px-2.5 py-2 text-[12px] font-semibold text-[#12304f] " +
-                      (right ? "text-right" : "text-left")
+                      "h" +
+                      ((i > 1 && i < 7) || i === 8 ? " r" : "") +
+                      (i === 8 ? " last" : "")
                     }
                   >
-                    {h}
-                  </th>
+                    {x}
+                  </div>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {/* self row */}
-              <tr>
-                <td
-                  className={
-                    td(true) + "font-medium shadow-[inset_4px_0_0_#14a3a3]"
-                  }
+                {row(
+                  { name: me.name, original: me.original, updated: me.updated },
+                  true,
+                  false,
+                )}
+                {kids.map((k, i) => row(k, false, i > 0))}
+              </div>
+            </div>
+          </>
+        ) : null}
+      </section>
+
+      <section className="card">
+        {head("audit", "% Applied — audit trail (you and your Comp Managers)")}
+        {pane.audit ? (
+          <>
+            <div className="reason">
+              <label>
+                Owner{" "}
+                <select
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
                 >
-                  Tech ED
-                </td>
-                <td className={td(true) + "font-bold"}>
-                  {me.name}{" "}
-                  <span className="text-[11px] font-normal text-slate-500">
-                    (you)
-                  </span>
-                </td>
-                <td className={td(true) + "text-right"}>
-                  {money(me.original)}
-                </td>
-                <td className={td(true) + "text-right font-bold"}>
-                  {money(me.updated)}
-                </td>
-                <td className={td(true) + "whitespace-nowrap text-right"}>
-                  <Chg d={me.updated - me.original} base={me.original} />
-                </td>
-                <td className={td(true) + "text-right"}>{me.team0}</td>
-                <td className={td(true) + "text-right"}>{me.team}</td>
-                <td className={td(true)}>
-                  <LastChanged name={me.name} hist={selfHist} />
-                </td>
-                <td className={td(true) + "text-right text-[#94a3b8]"}>
-                  {me.pct}%
-                </td>
-              </tr>
-              {trail[me.name] && selfHist.length > 1 ? (
-                <tr>
-                  <td
-                    colSpan={ALLOC_COLS.length}
-                    className="border-y border-[#d7dce3] bg-[#f7f9fc] py-2 pl-10 pr-3"
-                  >
-                    <Trail rows={selfHist} roll ownerLabel="Comp Manager" />
-                  </td>
-                </tr>
-              ) : null}
-
-              {/* reports */}
-              {kids.map((k) => {
-                const h = kidHist[k.name];
-                return (
-                  <FragmentRow key={k.name}>
-                    <tr>
-                      <td className={td(false)}>Comp Manager</td>
-                      <td className={td(false) + "font-bold"}>{k.name}</td>
-                      <td className={td(false) + "text-right"}>
-                        {money(k.original)}
-                      </td>
-                      <td className={td(false) + "text-right font-bold"}>
-                        {money(k.updated)}
-                      </td>
-                      <td
-                        className={td(false) + "whitespace-nowrap text-right"}
-                      >
-                        <Chg d={k.updated - k.original} base={k.original} />
-                      </td>
-                      <td className={td(false) + "text-right"}>{k.team0}</td>
-                      <td className={td(false) + "text-right"}>{k.team}</td>
-                      <td className={td(false)}>
-                        <LastChanged name={k.name} hist={h} />
-                      </td>
-                      <td className={td(false) + "text-right"}>
-                        <input
-                          key={k.name + k.pct + nonce}
-                          type="number"
-                          min="0"
-                          step="0.1"
-                          defaultValue={k.pct}
-                          aria-label={"Allot % for " + k.name}
-                          onBlur={(e) => setPct(k.name, e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") e.currentTarget.blur();
-                          }}
-                          className="h-[26px] w-[64px] rounded border border-[#9fb3cf] bg-[#fffef5] px-1.5 text-right text-[12.5px] focus:outline focus:outline-2 focus:outline-[#14a3a3]"
-                        />
-                      </td>
-                    </tr>
-                    {trail[k.name] && h.length > 1 ? (
-                      <tr>
-                        <td
-                          colSpan={ALLOC_COLS.length}
-                          className="border-y border-[#d7dce3] bg-[#f7f9fc] py-2 pl-10 pr-3"
-                        >
-                          <Trail rows={h} />
-                        </td>
-                      </tr>
-                    ) : null}
-                  </FragmentRow>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </Panel>
-
-      {/* Audit */}
-      <Panel
-        title="% Applied — audit trail (you and your Comp Managers)"
-        open={pane.audit}
-        onToggle={() => togglePane("audit")}
-      >
-        <div className="flex items-center gap-2 border-b border-[#e1e5eb] px-3.5 py-2 text-[12px] text-[#475569]">
-          <label>
-            Owner
-            <select
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="ml-2 h-7 rounded border border-[#cbd3df] px-2"
-            >
-              <option value="all">All</option>
-              {names.map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <div className="px-3.5 pb-3 pt-2">
-          <AuditTable rows={auditRows} />
-        </div>
-      </Panel>
+                  <option value="all">All</option>
+                  {names.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="audit-wrap">
+              <TeAuditTable rows={auditRows} />
+            </div>
+          </>
+        ) : null}
+      </section>
     </div>
   );
 }
