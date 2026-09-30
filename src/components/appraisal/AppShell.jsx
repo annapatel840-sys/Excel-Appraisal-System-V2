@@ -134,7 +134,7 @@ export function AppShell({ children, headerActions }) {
                           ["Payroll Upload", "payroll-upload", "/employee-master?tab=payroll-upload"],
                           ["Team Changes", "team-changes", "/employee-master?tab=team-changes"],
                           ["Budget Allocation", "budget-allocation", "/employee-master?tab=budget-allocation"],
-                          ["Budget Distribution", "budget-distribution", "/budget-distribution"],
+                          ["Budget Distribution", "budget-distribution", "/employee-master?tab=budget-distribution"],
                         ].map(([label, tab, to]) => (
                           <a
                             key={tab}
