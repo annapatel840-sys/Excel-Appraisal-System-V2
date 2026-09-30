@@ -60,6 +60,17 @@ const REPORTS = {
 export function Dashboard() {
   const { rows } = useAppraisal();
 
+  // Dashboard reporting scope: only Active + Eligible employees.
+  const appraisalRows = useMemo(
+    () =>
+      rows.filter(
+        (row) =>
+          String(row.status || "").trim().toLowerCase() === "active" &&
+          String(row.eligibility || "").trim().toLowerCase() === "eligible",
+      ),
+    [rows],
+  );
+
   const [tab, setTab] = useState("budget");
   const [selected, setSelected] = useState({
     budget: ["b_mgr", "b_desig", "b_util"],
@@ -79,13 +90,13 @@ export function Dashboard() {
     !budgetLoading && !budgetError ? budgetMasterTotals?.updated : 0;
 
   const budget = useMemo(
-    () => budgetTotals(rows, realAllocated),
+    () => budgetTotals(appraisalRows, realAllocated),
     [rows, realAllocated],
   );
-  const mgrStats = useMemo(() => byManager(rows), [rows]);
-  const desigStats = useMemo(() => byDesignation(rows), [rows]);
-  const ratingStats = useMemo(() => ratingDistribution(rows), [rows]);
-  const payoutDist = useMemo(() => payoutDistribution(rows), [rows]);
+  const mgrStats = useMemo(() => byManager(appraisalRows), [rows]);
+  const desigStats = useMemo(() => byDesignation(appraisalRows), [rows]);
+  const ratingStats = useMemo(() => ratingDistribution(appraisalRows), [rows]);
+  const payoutDist = useMemo(() => payoutDistribution(appraisalRows), [rows]);
 
   const tgt = useMemo(
     () => desigStats.reduce((s, d) => s + d.targetPB, 0),
@@ -101,8 +112,8 @@ export function Dashboard() {
   );
   const avgHike = useMemo(
     () =>
-      rows.length
-        ? rows.reduce((s, r) => s + (Number(r.hikePct) || 0), 0) / rows.length
+      appraisalRows.length
+        ? appraisalRows.reduce((s, r) => s + (Number(r.hikePct) || 0), 0) / appraisalRows.length
         : 0,
     [rows],
   );
@@ -149,7 +160,7 @@ export function Dashboard() {
       },
       {
         label: "Headcount",
-        value: String(rows.length),
+        value: String(appraisalRows.length),
         sub: "Current appraisal cycle",
       },
     ],
@@ -185,11 +196,11 @@ export function Dashboard() {
       {
         label: "Promotions",
         value: String(promos),
-        sub: `${rows.length ? ((promos / rows.length) * 100).toFixed(0) : 0}% of headcount`,
+        sub: `${appraisalRows.length ? ((promos / appraisalRows.length) * 100).toFixed(0) : 0}% of headcount`,
       },
       {
         label: "Headcount",
-        value: String(rows.length),
+        value: String(appraisalRows.length),
         sub: "Current appraisal cycle",
       },
     ],
@@ -204,7 +215,7 @@ export function Dashboard() {
               Appraisal Dashboard
             </h2>
             <p className="text-sm text-muted-foreground">
-              {rows.length} employees in the current cycle
+              {appraisalRows.length} employees in the current cycle
             </p>
           </div>
         </div>
