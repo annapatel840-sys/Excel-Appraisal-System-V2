@@ -369,7 +369,7 @@ function HRApplyBudget() {
     setError("");
   }
 
-  const orgCell = "shrink-0 border-r border-[#d7dce3] px-[18px] py-3";
+  const orgCell = "shrink-0 min-w-[170px] border-r border-[#d7dce3] px-[22px] py-4";
 
   const appraisalCycles = ["Apr-26"];
   const [selectedCycle, setSelectedCycle] = useState(appraisalCycles[0]);
@@ -403,7 +403,7 @@ function HRApplyBudget() {
           Org Budget %
         </div>
         <div className="overflow-x-auto">
-          <div className="flex items-stretch">
+          <div className="flex items-stretch gap-3 px-3 py-1">
             <div className={orgCell}>
               <div className="text-[11px] font-medium text-[#5b6b80]">
                 Appraisal Cycle
@@ -457,7 +457,7 @@ function HRApplyBudget() {
                 )}
               </div>
             </div>
-            <div className="shrink-0 px-[18px] py-3">
+            <div className="shrink-0 min-w-[150px] rounded-md border border-[#d7dce3] bg-[#f8fafc] px-[22px] py-4">
               <div className="text-[11px] text-[#5b6b80]">Team count</div>
               <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
                 {total.team0} → {total.team}
