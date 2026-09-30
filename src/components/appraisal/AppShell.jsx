@@ -1,10 +1,9 @@
-import { LayoutDashboard, Table2, Users, BookOpen, LogOut, ChevronDown } from "lucide-react";
+import { LayoutDashboard, Table2, Users, BookOpen, LogOut, ChevronDown, WalletCards } from "lucide-react";
 
 import { useCatalystSignOut, useCatalystUser } from "@/lib/catalyst-auth";
 import { cn } from "@/lib/utils";
 
-// Must match the Tech-ED allow-list in src/App.jsx.
-const TECH_ED_PATHS = ["/", "/employee-master", "/detail-screen"];
+const TECH_ED_PATHS = ["/", "/employee-master", "/detail-screen", "/budget-allocation"];
 
 export function AppShell({ children, headerActions }) {
   const pathname = window.location.pathname;
@@ -18,19 +17,16 @@ export function AppShell({ children, headerActions }) {
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
     { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
     ...(isTechEd
-      ? []
+      ? [{ to: "/budget-allocation", label: "Budget Allocation", icon: WalletCards }]
       : [{ to: "/employee-master", label: "HR Operations", icon: Users, dropdown: isHR }]),
     { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
   ];
 
-  // Tech-ED users are redirected away from every other route (see App.jsx),
-  // so only show the links they can actually open.
   const nav = isTechEd
     ? allNav.filter((item) => TECH_ED_PATHS.includes(item.to))
     : allNav;
 
   const navigate = (event, to) => {
-    // Let the browser handle modified / non-left clicks (open in new tab etc.).
     if (
       event.defaultPrevented ||
       event.button !== 0 ||
@@ -38,9 +34,7 @@ export function AppShell({ children, headerActions }) {
       event.ctrlKey ||
       event.shiftKey ||
       event.altKey
-    ) {
-      return;
-    }
+    ) return;
 
     event.preventDefault();
     window.history.pushState({}, "", to);
@@ -55,12 +49,10 @@ export function AppShell({ children, headerActions }) {
             <span className="flex size-7 items-center justify-center rounded-md bg-primary text-[10px] font-bold text-primary-foreground">
               EA
             </span>
-
             <div className="hidden xl:block">
               <h1 className="text-xs font-semibold leading-tight text-white">
                 Employee Appraisal Management
               </h1>
-
               <p className="text-[9px] text-white/70">
                 FY 2025-26 · Compensation Review
               </p>
@@ -73,16 +65,12 @@ export function AppShell({ children, headerActions }) {
               const isHrMenu = item.dropdown;
 
               return (
-                <div
-                  key={item.to}
-                  className={cn("relative", isHrMenu && "group")}
-                >
+                <div key={item.to} className={cn("relative", isHrMenu && "group")}>
                   <a
                     href={item.to}
                     onClick={(event) => navigate(event, item.to)}
                     className={cn(
                       "flex h-7 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium transition-colors",
-                      // "/" is a prefix of every path, so match it exactly.
                       (item.to === "/" ? pathname === "/" : pathname.startsWith(item.to))
                         ? "bg-white/15 text-white"
                         : "text-white/75 hover:bg-white/10 hover:text-white",
@@ -95,10 +83,7 @@ export function AppShell({ children, headerActions }) {
                   </a>
 
                   {isHrMenu && (
-                    <div
-                      className="invisible absolute left-0 top-full z-[100] min-w-[190px] pt-1 opacity-0 transition-opacity group-hover:visible group-hover:opacity-100"
-                      role="menu"
-                    >
+                    <div className="invisible absolute left-0 top-full z-[100] min-w-[190px] pt-1 opacity-0 transition-opacity group-hover:visible group-hover:opacity-100" role="menu">
                       <div className="overflow-hidden rounded-md border border-[#d8e0ea] bg-white py-1 shadow-xl">
                         {[
                           ["Employee Master", "roster"],
@@ -112,9 +97,7 @@ export function AppShell({ children, headerActions }) {
                           <a
                             key={tab}
                             href={`/employee-master?tab=${tab}`}
-                            onClick={(event) =>
-                              navigate(event, `/employee-master?tab=${tab}`)
-                            }
+                            onClick={(event) => navigate(event, `/employee-master?tab=${tab}`)}
                             className="block whitespace-nowrap px-3 py-2 text-[11px] font-medium text-[#334155] hover:bg-[#eef5f5] hover:text-[#0B6A66]"
                             role="menuitem"
                           >
