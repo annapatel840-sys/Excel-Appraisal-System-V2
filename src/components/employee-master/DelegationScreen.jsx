@@ -118,7 +118,13 @@ export default function DelegationScreen({
 }) {
   const [user, setUser] = useState(USERS[0]);
   const [rows, setRows] = useState(() => initialRows || seedRows());
-  const [reqs, setReqs] = useState(() => {\n    try { return JSON.parse(localStorage.getItem("appraisal-delegation-requests") || "[]"); } catch { return []; }\n  });
+  const [reqs, setReqs] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("appraisal-delegation-requests") || "[]");
+    } catch {
+      return [];
+    }
+  });
   const [audit, setAudit] = useState([]);
   const [locked, setLocked] = useState(false);
   const [filter, setFilter] = useState({ q: "", te: "", comp: "", status: "" });
