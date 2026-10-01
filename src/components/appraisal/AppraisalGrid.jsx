@@ -4473,6 +4473,9 @@ export function AppraisalGrid({
   budget,
   // Optional — shows the "View budget ›" link in the Budget tab.
   onViewBudget,
+  onRequest,
+  isTechEd = false,
+  isHR = false,
 }) {
   const { updateCell, updateLinkedCells, bulkUpdate, modified } =
     useAppraisal();
