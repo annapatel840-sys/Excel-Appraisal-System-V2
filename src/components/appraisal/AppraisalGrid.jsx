@@ -1,3 +1,3318 @@
+// import {
+//   Fragment,
+//   useCallback,
+//   useEffect,
+//   useMemo,
+//   useRef,
+//   useState,
+// } from "react";
+// import { Check, ChevronLeft, ChevronRight, History, X } from "lucide-react";
+
+// import { Checkbox } from "@/components/ui/checkbox";
+// import { cn } from "@/lib/utils";
+// import { ColumnFilter } from "./ColumnFilter";
+// import { COLUMNS, formatValue } from "@/lib/appraisal-data";
+// import { useAppraisal } from "@/lib/appraisal-store";
+// import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+
+// // ============================================================
+// // API
+// // ============================================================
+
+// const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
+// const CURRENT_APPRAISAL_YEAR = "Apr-26";
+
+// // ============================================================
+// // FONT
+// // ============================================================
+
+// const APPRAISAL_FONT = "Arial, Helvetica, sans-serif";
+
+// // ============================================================
+// // GRID SETTINGS
+// // ============================================================
+
+// const PAGE_SIZE = 20;
+// const CELL_MIN_HEIGHT = 40;
+// const HEADER_HEIGHT = 46;
+// const SELECT_WIDTH = 34;
+
+// const MIN_WIDTH = 60;
+// const MAX_WIDTH = 260;
+
+// const WIDTHS = {
+//   empId: 84,
+//   name: 165,
+
+//   designation: 120,
+//   reportingManager: 125,
+//   compManager: 125,
+//   appraiserTechED: 130,
+
+//   wissenExperience: 100,
+//   totalExperience: 96,
+//   lastAppraisalDate: 140,
+
+//   managerRating: 140,
+//   interviewCount: 86,
+//   rrPercent: 76,
+//   grossMargin: 90,
+
+//   rbToBePaid: 108,
+//   monthRB: 78,
+//   pbToBePaid: 108,
+//   monthPB: 78,
+
+//   currentAnnualBasePay: 132,
+//   targetPBAllocatedForMay: 140,
+//   allocatedPBAmount: 128,
+//   pbInstallment: 84,
+//   newPBToBeOffered: 128,
+//   newPBInstallment: 84,
+
+//   totalOfPB: 110,
+//   newRB: 108,
+//   totalBonus: 110,
+
+//   hikeAmount: 118,
+//   hikePct: 84,
+
+//   totalCTCWithRewards: 132,
+
+//   totalBonusHikeAmount: 138,
+//   totalBonusHikePct: 104,
+
+//   totalRewardsHikeAmount: 144,
+//   totalRewardsHikePct: 108,
+
+//   newBaseSalary: 132,
+//   targetPBNextYear: 136,
+
+//   eligibleForPromotion: 110,
+//   newTitle: 150,
+//   atRisk: 140,
+// };
+
+// const GRID_COLUMNS = COLUMNS;
+
+// // Columns that should NOT show the filter / group menu in the header
+// const NO_FILTER_COLUMNS = new Set();
+
+// // ============================================================
+// // LOCAL STYLES (blink animation for the last edited cell)
+// // ============================================================
+
+// const GRID_STYLES = `
+// @keyframes appraisalCellBlink {
+//   0%, 100% { box-shadow: 0 0 0 0 rgba(201,164,0,0); }
+//   50% { box-shadow: 0 0 0 3px rgba(201,164,0,.55); }
+// }
+// .appraisal-cell-blink { animation: appraisalCellBlink .5s ease-in-out 3; }
+
+// .detail-panel {
+//   position: fixed;
+//   z-index: 9999;
+//   background: white;
+//   border: 1px solid #c7d0dc;
+//   border-radius: 8px;
+//   box-shadow: 0 10px 28px rgba(20,30,50,.22);
+//   overflow: auto;
+//   min-width: 360px;
+//   min-height: 160px;
+// }
+// .panel-head {
+//   background: #17365d;
+//   color: white;
+//   padding: 9px 14px;
+//   display: flex;
+//   align-items: center;
+//   justify-content: space-between;
+//   cursor: move;
+//   user-select: none;
+// }
+// .panel-head-left.hp-header {
+//   font-size: 11px;
+//   color: #cdd8e8;
+//   line-height: 1.4;
+// }
+// .hp-header b { color: #fff; font-size: 14px; font-weight: 600; }
+// .hp-header .hp-sep { color: #5c7396; margin: 0 6px; }
+// .hp-header .hp-field-label { color: #9db1cc; }
+// .panel-controls { display: flex; align-items: center; gap: 6px; }
+// .panel-btn {
+//   width: 24px; height: 24px; border: none; border-radius: 4px;
+//   background: rgba(255,255,255,.15); color: white; cursor: pointer;
+//   font-size: 13px; line-height: 1; display: flex; align-items: center; justify-content: center;
+// }
+// .panel-btn:hover { background: rgba(255,255,255,.28); }
+// .hp-cycle-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+// .hp-cycle-table th {
+//   font-size: 9.5px; text-transform: uppercase; letter-spacing: .03em; color: #8592a6; font-weight: 700;
+//   text-align: left; padding: 7px 10px; border-bottom: 1px solid #e1e5eb; background: #fafbfd;
+// }
+// .hp-cycle-table td {
+//   font-size: 11px; color: #1f2937; text-align: left; padding: 8px 10px; vertical-align: top;
+//   border-bottom: 1px solid #eef1f5; line-height: 1.4;
+// }
+// .hp-cycle-table tr:last-child td { border-bottom: none; }
+// .hp-cycle-table tr.current td { background: #fff9dc; }
+// .hp-cycle-table td.hp-year { color: #1559a6; font-weight: 700; white-space: nowrap; }
+// .hp-cycle-table td.hp-feedback { white-space: normal; word-break: normal; }
+// .resize-handle { position: absolute; z-index: 5; }
+// .rh-n { top: -3px; left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
+// .rh-s { bottom: -3px; left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
+// .rh-e { right: -3px; top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
+// .rh-w { left: -3px; top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
+// .rh-ne { top: -3px; right: -3px; width: 12px; height: 12px; cursor: nesw-resize; }
+// .rh-nw { top: -3px; left: -3px; width: 12px; height: 12px; cursor: nwse-resize; }
+// .rh-se { bottom: -3px; right: -3px; width: 12px; height: 12px; cursor: nwse-resize; }
+// .rh-sw { bottom: -3px; left: -3px; width: 12px; height: 12px; cursor: nesw-resize; }
+// `;
+
+// // ============================================================
+// // HELPERS
+// // ============================================================
+
+// const isNumericType = (type) =>
+//   type === "currency" ||
+//   type === "number" ||
+//   type === "decimal" ||
+//   type === "percent";
+
+// // Columns worth grouping into sections when sorted (limited distinct
+// // values). Numeric, date and free-text columns get a plain sort.
+// const isCategoricalColumn = (column) =>
+//   !column.computed && (column.type === "enum" || column.type === "text");
+
+// const getWidth = (column) =>
+//   Math.min(
+//     MAX_WIDTH,
+//     Math.max(
+//       MIN_WIDTH,
+//       WIDTHS[column.key] !== undefined
+//         ? WIDTHS[column.key]
+//         : column.width !== undefined
+//           ? column.width
+//           : 100,
+//     ),
+//   );
+
+// const numericValue = (value) => {
+//   if (value === "" || value === null || value === undefined) {
+//     return "";
+//   }
+
+//   const n = Number(value);
+
+//   return Number.isFinite(n) ? n : 0;
+// };
+
+// // Cell background:  input = yellow tint, calculated = blue tint,
+// // master (read-only) = banded rows. Hover / selected override all.
+// const cellBackground = ({ kind, rowIndex, selected }) => {
+//   if (selected) {
+//     return "bg-[#dcebff] group-hover:bg-[#dcebff]";
+//   }
+
+//   const base =
+//     kind === "input"
+//       ? "bg-[#fff9dc]"
+//       : kind === "calc"
+//         ? "bg-[#eaf5ff]"
+//         : rowIndex % 2 === 0
+//           ? "bg-[#fbfcfe]"
+//           : "bg-[#f2f5f9]";
+
+//   return `${base} group-hover:bg-[#eaf2ff]`;
+// };
+
+// // ============================================================
+// // HISTORY HELPERS
+// // ============================================================
+
+// const formatHistoryNumber = (value) => {
+//   if (value === null || value === undefined || value === "") {
+//     return "0";
+//   }
+
+//   const n = Number(value);
+
+//   if (!Number.isFinite(n)) {
+//     return "0";
+//   }
+
+//   return Math.round(n).toLocaleString("en-IN");
+// };
+
+// const computeHistoryChange = (currentValue, previousValue) => {
+//   if (previousValue === undefined) {
+//     return { label: "new", tone: "neutral" };
+//   }
+
+//   const current = Number(currentValue) || 0;
+//   const previous = Number(previousValue) || 0;
+
+//   if (previous === 0) {
+//     if (current === 0) {
+//       return { label: "0.00%", tone: "neutral" };
+//     }
+
+//     return { label: "new", tone: "neutral" };
+//   }
+
+//   const change = ((current - previous) / previous) * 100;
+//   const sign = change > 0 ? "+" : "";
+
+//   return {
+//     label: `${sign}${change.toFixed(2)}%`,
+//     tone: change > 0 ? "up" : change < 0 ? "down" : "neutral",
+//   };
+// };
+
+// // Date of joining shown in the hover card header.
+// const formatDoj = (value) => {
+//   if (!value) {
+//     return "—";
+//   }
+
+//   const date = new Date(value);
+
+//   if (Number.isNaN(date.getTime())) {
+//     return String(value);
+//   }
+
+//   return date.toLocaleDateString("en-GB", {
+//     day: "2-digit",
+//     month: "short",
+//     year: "numeric",
+//   });
+// };
+
+// // ============================================================
+// // FIELD -> HISTORY COLUMN KEYS TO FLASH ON EDIT
+// // ============================================================
+
+// const HISTORY_FLASH_FIELDS = {
+//   currentAnnualBasePay: ["basePay", "newBasePay", "newCTC"],
+//   targetPBAllocatedForMay: ["performanceBonus", "totalBonus", "newCTC"],
+//   eligibleForPromotion: ["newCTC"],
+//   allocatedPBAmount: ["performanceBonus", "totalBonus", "newCTC"],
+//   newPBToBeOffered: ["performanceBonus", "totalBonus", "newCTC"],
+//   newRB: ["retentionBonus", "totalBonus", "newCTC"],
+//   hikeAmount: ["hikeAmount", "newCTC", "newBasePay"],
+//   hikePct: ["hikeAmount", "newCTC", "newBasePay"],
+//   targetPBNextYear: ["targetPB"],
+// };
+
+// // ============================================================
+// // FIELD -> YEAR-OVER-YEAR TOAST CONFIG
+// // current(row)   = this cycle's value after the edit
+// // prior(record)  = last cycle's value from appraisal history
+// // ============================================================
+
+// const YOY_FIELDS = {
+//   hikeAmount: {
+//     label: "Hike Amount",
+//     current: (row) => Number(row.hikeAmount) || 0,
+//     prior: (record) => record.hikeAmount,
+//   },
+//   hikePct: {
+//     label: "Hike Amount",
+//     current: (row) => Number(row.hikeAmount) || 0,
+//     prior: (record) => record.hikeAmount,
+//   },
+//   newRB: {
+//     label: "Retention Bonus",
+//     current: (row) => Number(row.newRB) || 0,
+//     prior: (record) => record.retentionBonus,
+//   },
+//   allocatedPBAmount: {
+//     label: "Perf. Bonus",
+//     current: (row) =>
+//       (Number(row.allocatedPBAmount) || 0) +
+//       (Number(row.newPBToBeOffered) || 0),
+//     prior: (record) => record.performanceBonus,
+//   },
+//   newPBToBeOffered: {
+//     label: "Perf. Bonus",
+//     current: (row) =>
+//       (Number(row.allocatedPBAmount) || 0) +
+//       (Number(row.newPBToBeOffered) || 0),
+//     prior: (record) => record.performanceBonus,
+//   },
+//   targetPBNextYear: {
+//     label: "Target PB",
+//     current: (row) => Number(row.targetPBNextYear) || 0,
+//     prior: (record) => record.targetPB,
+//   },
+// };
+
+// // ============================================================
+// // BOTTOM HISTORY PANEL METRIC COLUMNS
+// // ============================================================
+
+// const HISTORY_METRIC_COLUMNS = [
+//   { key: "basePay", label: "Curr Base Pay" },
+//   { key: "joiningBonus", label: "Joining Bonus" },
+//   { key: "performanceBonus", label: "Perf. Bonus" },
+//   { key: "retentionBonus", label: "Retention Bonus" },
+//   { key: "totalBonus", label: "Total Bonus" },
+//   { key: "hikeAmount", label: "Hike Amount" },
+//   { key: "newCTC", label: "Total CTC" },
+//   { key: "targetPB", label: "Target PB" },
+//   { key: "newBasePay", label: "New Base Pay" },
+// ];
+
+// // ============================================================
+// // HISTORY RECORD NORMALIZER
+// // ============================================================
+
+// const normalizeHistoryRecord = (record) => {
+//   const basePay = Number(record?.base_pay) || 0;
+//   const hikeAmount = Number(record?.hike_amount) || 0;
+
+//   return {
+//     year:
+//       record?.appraisal_year !== null &&
+//       record?.appraisal_year !== undefined &&
+//       String(record.appraisal_year).trim() !== ""
+//         ? String(record.appraisal_year)
+//         : "—",
+
+//     basePay,
+
+//     joiningBonus: Number(record?.joining_bonus) || 0,
+
+//     allocatedPB: Number(record?.allocated_pb) || 0,
+
+//     performanceBonus: Number(record?.performance_bonus) || 0,
+
+//     retentionBonus: Number(record?.retention_bonus) || 0,
+
+//     totalPB: Number(record?.total_pb) || 0,
+
+//     totalBonus: Number(record?.total_bonus) || 0,
+
+//     hikeAmount,
+
+//     hikePct: Number(record?.hike_pct) || 0,
+
+//     promotion:
+//       record?.promotion !== null &&
+//       record?.promotion !== undefined &&
+//       String(record.promotion).trim() !== ""
+//         ? String(record.promotion)
+//         : "—",
+
+//     title:
+//       record?.title !== null &&
+//       record?.title !== undefined &&
+//       String(record.title).trim() !== ""
+//         ? String(record.title)
+//         : "—",
+//     designation:
+//       record?.designation !== null &&
+//       record?.designation !== undefined &&
+//       String(record.designation).trim() !== ""
+//         ? String(record.designation)
+//         : "—",
+
+//     rating:
+//       record?.rating !== null &&
+//       record?.rating !== undefined &&
+//       String(record.rating).trim() !== ""
+//         ? String(record.rating)
+//         : "—",
+
+//     feedback:
+//       record?.manager_rating !== null &&
+//       record?.manager_rating !== undefined &&
+//       String(record.manager_rating).trim() !== ""
+//         ? String(record.manager_rating)
+//         : "—",
+
+//     targetPB: Number(record?.target_performance_bonus) || 0,
+
+//     newCTC: Number(record?.new_ctc) || 0,
+
+//     newBasePay: basePay + hikeAmount,
+//   };
+// };
+
+// const emptyHistoryRecord = (year) => ({
+//   year,
+//   basePay: 0,
+//   joiningBonus: 0,
+//   allocatedPB: 0,
+//   performanceBonus: 0,
+//   retentionBonus: 0,
+//   totalPB: 0,
+//   totalBonus: 0,
+//   hikeAmount: 0,
+//   hikePct: 0,
+//   promotion: "—",
+//   title: "—",
+//   designation: "—",
+//   rating: "—",
+//   feedback: "—",
+//   targetPB: 0,
+//   newCTC: 0,
+//   newBasePay: 0,
+// });
+
+// const CURRENT_APPRAISAL_YEAR_NUMERIC = (() => {
+//   const match = CURRENT_APPRAISAL_YEAR.match(/(\d{2,4})$/);
+
+//   if (!match) {
+//     return null;
+//   }
+
+//   return match[1].length === 2 ? `20${match[1]}` : match[1];
+// })();
+
+// const isCurrentYearRecord = (record) => {
+//   const year = String(record?.year ?? "").trim();
+
+//   return (
+//     year === CURRENT_APPRAISAL_YEAR ||
+//     (CURRENT_APPRAISAL_YEAR_NUMERIC && year === CURRENT_APPRAISAL_YEAR_NUMERIC)
+//   );
+// };
+
+// // ============================================================
+// // APPLY LIVE SHEET VALUES TO CURRENT-YEAR HISTORY
+// // ============================================================
+
+// const applyCurrentYearSheetValues = (historyRecord, row) => {
+//   if (!row) {
+//     return historyRecord;
+//   }
+
+//   if (!isCurrentYearRecord(historyRecord)) {
+//     return historyRecord;
+//   }
+
+//   const allocatedPBAmount = Number(row.allocatedPBAmount) || 0;
+//   const newPBToBeOffered = Number(row.newPBToBeOffered) || 0;
+//   const newRB = Number(row.newRB) || 0;
+//   const currentAnnualBasePay = Number(row.currentAnnualBasePay) || 0;
+//   const hikeAmount = Number(row.hikeAmount) || 0;
+//   const targetPBNextYear = Number(row.targetPBNextYear) || 0;
+
+//   const totalPB = allocatedPBAmount + newPBToBeOffered;
+//   const totalBonus = totalPB + newRB;
+
+//   const newBaseSalary = currentAnnualBasePay + hikeAmount;
+//   const newCTC = newBaseSalary + totalBonus;
+
+//   return {
+//     ...historyRecord,
+//     basePay: currentAnnualBasePay,
+//     allocatedPB: allocatedPBAmount,
+//     performanceBonus: totalPB,
+//     retentionBonus: newRB,
+//     totalPB,
+//     totalBonus,
+//     hikeAmount,
+//     hikePct: Number(row.hikePct) || 0,
+//     promotion:
+//       row.eligibleForPromotion !== null &&
+//       row.eligibleForPromotion !== undefined &&
+//       String(row.eligibleForPromotion).trim() !== ""
+//         ? String(row.eligibleForPromotion)
+//         : "—",
+//     title:
+//       row.newTitle !== null &&
+//       row.newTitle !== undefined &&
+//       String(row.newTitle).trim() !== ""
+//         ? String(row.newTitle)
+//         : "—",
+//     designation: row.designation ? String(row.designation) : "—",
+
+//     targetPB: targetPBNextYear,
+//     newCTC,
+//     newBasePay: newBaseSalary,
+//   };
+// };
+
+// // Current cycle row (always first, always live) + older cycles from the API.
+// const buildHistoryView = (records, row) => {
+//   if (!row) {
+//     return [];
+//   }
+
+//   const currentRecord =
+//     records.find(isCurrentYearRecord) ||
+//     emptyHistoryRecord(CURRENT_APPRAISAL_YEAR);
+
+//   const olderRecords = records.filter((record) => !isCurrentYearRecord(record));
+
+//   return [applyCurrentYearSheetValues(currentRecord, row), ...olderRecords];
+// };
+
+// const sortHistoryDesc = (a, b) => String(b.year).localeCompare(String(a.year));
+
+// // ============================================================
+// // COMPONENT
+// // ============================================================
+
+// export function AppraisalGrid({
+//   rows,
+//   filters,
+//   setFilter,
+//   optionsFor,
+//   selected,
+//   toggleSelected,
+//   toggleAll,
+
+//   showHistory,
+//   setShowHistory,
+// }) {
+//   const { updateCell, updateLinkedCells, bulkUpdate, modified } =
+//     useAppraisal();
+
+//   const cellRefs = useRef({});
+//   const clickTimerRef = useRef(null);
+
+//   // ============================================================
+//   // LOCAL EDIT DRAFTS
+//   // ============================================================
+
+//   const [editingValues, setEditingValues] = useState({});
+
+//   const setEditingValue = useCallback((cellKey, value) => {
+//     setEditingValues((previous) => ({
+//       ...previous,
+//       [cellKey]: value,
+//     }));
+//   }, []);
+
+//   const clearEditingValue = useCallback((cellKey) => {
+//     setEditingValues((previous) => {
+//       if (!(cellKey in previous)) {
+//         return previous;
+//       }
+
+//       const next = { ...previous };
+
+//       delete next[cellKey];
+
+//       return next;
+//     });
+//   }, []);
+
+//   // ============================================================
+//   // GRID VIEWPORT REF
+//   // ============================================================
+
+//   const gridViewportRef = useRef(null);
+
+//   const DOCKED_LEFT = 18;
+
+//   const getDockedTop = () => {
+//     const viewport = gridViewportRef.current;
+//     const viewportRect = viewport ? viewport.getBoundingClientRect() : null;
+
+//     // Anchor just below the grid's own header row, never under the page header.
+//     return viewportRect ? viewportRect.top + 8 : 130;
+//   };
+//   // ============================================================
+//   // COLUMN RESIZE
+//   // ============================================================
+
+//   const [columnWidths, setColumnWidths] = useState(() =>
+//     Object.fromEntries(
+//       GRID_COLUMNS.map((column) => [column.key, getWidth(column)]),
+//     ),
+//   );
+
+//   const resizeRef = useRef(null);
+
+//   const [columnOrder, setColumnOrder] = useState(() =>
+//     GRID_COLUMNS.map((column) => column.key),
+//   );
+
+//   const draggedColumnRef = useRef(null);
+
+//   const handleColumnDragStart = useCallback((event, column) => {
+//     draggedColumnRef.current = column.key;
+
+//     event.dataTransfer.effectAllowed = "move";
+//     event.dataTransfer.setData("text/plain", column.key);
+//   }, []);
+
+//   const handleColumnDragOver = useCallback((event) => {
+//     event.preventDefault();
+//     event.dataTransfer.dropEffect = "move";
+//   }, []);
+
+//   const handleColumnDrop = useCallback((event, targetColumn) => {
+//     event.preventDefault();
+
+//     const draggedKey =
+//       draggedColumnRef.current || event.dataTransfer.getData("text/plain");
+
+//     if (!draggedKey || draggedKey === targetColumn.key) {
+//       draggedColumnRef.current = null;
+//       return;
+//     }
+
+//     setColumnOrder((previous) => {
+//       const next = [...previous];
+
+//       const draggedIndex = next.indexOf(draggedKey);
+//       const targetIndex = next.indexOf(targetColumn.key);
+
+//       if (draggedIndex === -1 || targetIndex === -1) {
+//         return previous;
+//       }
+
+//       [next[draggedIndex], next[targetIndex]] = [
+//         next[targetIndex],
+//         next[draggedIndex],
+//       ];
+
+//       return next;
+//     });
+
+//     draggedColumnRef.current = null;
+//   }, []);
+
+//   const handleColumnDragEnd = useCallback(() => {
+//     draggedColumnRef.current = null;
+//   }, []);
+
+//   const orderedColumns = useMemo(
+//     () =>
+//       columnOrder
+//         .map((key) => GRID_COLUMNS.find((column) => column.key === key))
+//         .filter(Boolean),
+//     [columnOrder],
+//   );
+
+//   const widthOf = useCallback(
+//     (column) =>
+//       columnWidths[column.key] !== undefined
+//         ? columnWidths[column.key]
+//         : getWidth(column),
+//     [columnWidths],
+//   );
+
+//   const startColumnResize = useCallback(
+//     (event, column) => {
+//       event.preventDefault();
+//       event.stopPropagation();
+
+//       resizeRef.current = {
+//         key: column.key,
+//         startX: event.clientX,
+//         startWidth: widthOf(column),
+//       };
+
+//       document.body.style.cursor = "col-resize";
+//       document.body.style.userSelect = "none";
+//     },
+//     [widthOf],
+//   );
+
+//   useEffect(() => {
+//     const handlePointerMove = (event) => {
+//       if (!resizeRef.current) {
+//         return;
+//       }
+
+//       const { key, startX, startWidth } = resizeRef.current;
+
+//       const nextWidth = Math.min(
+//         MAX_WIDTH,
+//         Math.max(MIN_WIDTH, startWidth + event.clientX - startX),
+//       );
+
+//       setColumnWidths((previous) => ({ ...previous, [key]: nextWidth }));
+//     };
+
+//     const handlePointerUp = () => {
+//       resizeRef.current = null;
+//       document.body.style.cursor = "";
+//       document.body.style.userSelect = "";
+//     };
+
+//     window.addEventListener("pointermove", handlePointerMove);
+//     window.addEventListener("pointerup", handlePointerUp);
+
+//     return () => {
+//       window.removeEventListener("pointermove", handlePointerMove);
+//       window.removeEventListener("pointerup", handlePointerUp);
+//       document.body.style.cursor = "";
+//       document.body.style.userSelect = "";
+//     };
+//   }, []);
+
+//   // ============================================================
+//   // STICKY COLUMN WIDTHS
+//   // ============================================================
+
+//   const empIdColumn = GRID_COLUMNS.find((column) => column.key === "empId");
+
+//   const empIdWidth = empIdColumn ? widthOf(empIdColumn) : MIN_WIDTH;
+
+//   // ============================================================
+//   // STATES
+//   // ============================================================
+
+//   const [, setActive] = useState(null);
+//   const [saving, setSaving] = useState({});
+//   const [currentPage, setCurrentPage] = useState(1);
+
+//   // ============================================================
+//   // GROUP BY / SORT
+//   // ============================================================
+
+//   const [groupBy, setGroupBy] = useState([]);
+
+//   const addGroup = useCallback((key, dir, label) => {
+//     setGroupBy((previous) => {
+//       const existingIndex = previous.findIndex((item) => item.key === key);
+
+//       if (existingIndex >= 0) {
+//         return previous.map((item, index) =>
+//           index === existingIndex ? { ...item, dir, label } : item,
+//         );
+//       }
+
+//       return [...previous, { key, dir, label }];
+//     });
+//   }, []);
+
+//   const removeGroup = useCallback((key) => {
+//     setGroupBy((previous) => previous.filter((item) => item.key !== key));
+//   }, []);
+
+//   const clearAllGroups = useCallback(() => {
+//     setGroupBy([]);
+//   }, []);
+
+//   const getGroupValue = useCallback((row, col) => {
+//     if (col.computed && typeof col.fn === "function") {
+//       return col.fn(row);
+//     }
+
+//     return row[col.key];
+//   }, []);
+
+//   const compareGroupValues = useCallback(
+//     (rowA, rowB, col) => {
+//       const a = getGroupValue(rowA, col);
+//       const b = getGroupValue(rowB, col);
+
+//       if (isNumericType(col.type)) {
+//         return (Number(a) || 0) - (Number(b) || 0);
+//       }
+
+//       return String(a !== null && a !== undefined ? a : "").localeCompare(
+//         String(b !== null && b !== undefined ? b : ""),
+//       );
+//     },
+//     [getGroupValue],
+//   );
+
+//   // Sort specs split into categorical columns (grouped into sections)
+//   // and continuous ones (numeric / date / free text: plain sort only,
+//   // pagination kept). Categorical keys sort first so sections stay
+//   // contiguous.
+//   const sortSpecs = useMemo(() => {
+//     const specs = groupBy
+//       .map((group) => {
+//         const column = GRID_COLUMNS.find((item) => item.key === group.key);
+
+//         return column ? { ...group, column } : null;
+//       })
+//       .filter(Boolean);
+
+//     const groupColumns = specs.filter((spec) => isCategoricalColumn(spec.column));
+//     const sortColumns = specs.filter((spec) => !isCategoricalColumn(spec.column));
+
+//     return { groupColumns, ordered: [...groupColumns, ...sortColumns] };
+//   }, [groupBy]);
+
+//   const sortedRows = useMemo(() => {
+//     const { ordered } = sortSpecs;
+
+//     if (!ordered.length) {
+//       return rows;
+//     }
+
+//     return [...rows].sort((rowA, rowB) => {
+//       for (const spec of ordered) {
+//         const result = compareGroupValues(rowA, rowB, spec.column);
+
+//         if (result !== 0) {
+//           return spec.dir === "desc" ? -result : result;
+//         }
+//       }
+
+//       return 0;
+//     });
+//   }, [rows, sortSpecs, compareGroupValues]);
+
+//   const groupedRows = useMemo(() => {
+//     const { groupColumns } = sortSpecs;
+
+//     if (!groupColumns.length) {
+//       return null;
+//     }
+
+//     const sortRows = (sourceRows) => {
+//       return [...sourceRows].sort((rowA, rowB) => {
+//         for (const group of sortSpecs.ordered) {
+//           const result = compareGroupValues(rowA, rowB, group.column);
+
+//           if (result !== 0) {
+//             return group.dir === "desc" ? -result : result;
+//           }
+//         }
+
+//         return 0;
+//       });
+//     };
+
+//     const buildLevel = (sourceRows, level) => {
+//       const group = groupColumns[level];
+//       const levelRows = sortRows(sourceRows);
+
+//       const sections = [];
+//       let currentKey;
+//       let currentRows = [];
+//       let hasCurrent = false;
+
+//       const pushSection = () => {
+//         if (!hasCurrent) {
+//           return;
+//         }
+
+//         const rawValue = currentKey;
+//         const sampleRow = currentRows[0];
+
+//         const displayValue = sampleRow
+//           ? formatValue(sampleRow, group.column)
+//           : "";
+
+//         const label =
+//           displayValue === "" ||
+//           displayValue === null ||
+//           displayValue === undefined
+//             ? "(blank)"
+//             : displayValue;
+
+//         sections.push({
+//           key: `${group.key}:${String(rawValue)}:${level}:${sections.length}`,
+//           level,
+//           groupKey: group.key,
+//           label,
+//           rows: currentRows,
+//           children:
+//             level < groupColumns.length - 1
+//               ? buildLevel(currentRows, level + 1)
+//               : null,
+//         });
+//       };
+
+//       let previousRow = null;
+
+//       levelRows.forEach((row) => {
+//         const value = getGroupValue(row, group.column);
+
+//         // Split with the same equality the sort uses, so ""/null blanks
+//         // land in one section.
+//         if (
+//           !hasCurrent ||
+//           compareGroupValues(previousRow, row, group.column) !== 0
+//         ) {
+//           pushSection();
+
+//           currentKey = value;
+//           currentRows = [row];
+//           hasCurrent = true;
+//         } else {
+//           currentRows.push(row);
+//         }
+
+//         previousRow = row;
+//       });
+
+//       pushSection();
+
+//       return sections;
+//     };
+
+//     return buildLevel(rows, 0);
+//   }, [rows, sortSpecs, compareGroupValues, getGroupValue]);
+
+//   const flattenGroupedSections = useCallback((sections) => {
+//     const result = [];
+
+//     const walk = (items) => {
+//       items.forEach((section) => {
+//         if (section.children) {
+//           walk(section.children);
+//         } else {
+//           section.rows.forEach((row) => {
+//             result.push(row);
+//           });
+//         }
+//       });
+//     };
+
+//     walk(sections);
+
+//     return result;
+//   }, []);
+
+//   // ============================================================
+//   // HISTORY FLASH (bottom panel cells affected by the last edit)
+//   // ============================================================
+
+//   const [historyFlashKeys, setHistoryFlashKeys] = useState(new Set());
+//   const historyFlashTimerRef = useRef(null);
+
+//   const flashHistoryFields = useCallback((field) => {
+//     const keys = HISTORY_FLASH_FIELDS[field];
+
+//     if (!keys || !keys.length) {
+//       return;
+//     }
+
+//     if (historyFlashTimerRef.current) {
+//       clearTimeout(historyFlashTimerRef.current);
+//     }
+
+//     setHistoryFlashKeys(new Set(keys));
+
+//     historyFlashTimerRef.current = setTimeout(() => {
+//       setHistoryFlashKeys(new Set());
+//     }, 1600);
+//   }, []);
+
+//   useEffect(() => {
+//     return () => {
+//       if (historyFlashTimerRef.current) {
+//         clearTimeout(historyFlashTimerRef.current);
+//       }
+//     };
+//   }, []);
+
+//   // ============================================================
+//   // BLINK ON THE LAST EDITED CELL
+//   // ============================================================
+
+//   const [lastEditedKey, setLastEditedKey] = useState(null);
+//   const blinkTimerRef = useRef(null);
+
+//   const markEdited = useCallback((cellKey) => {
+//     if (blinkTimerRef.current) {
+//       clearTimeout(blinkTimerRef.current);
+//     }
+
+//     setLastEditedKey(cellKey);
+
+//     blinkTimerRef.current = setTimeout(() => {
+//       setLastEditedKey(null);
+//     }, 1600);
+//   }, []);
+
+//   useEffect(() => {
+//     return () => {
+//       if (blinkTimerRef.current) {
+//         clearTimeout(blinkTimerRef.current);
+//       }
+//     };
+//   }, []);
+
+//   // ============================================================
+//   // SELECTED EMPLOYEE (drives the history panel)
+//   // ============================================================
+
+//   const [historyRow, setHistoryRow] = useState(null);
+
+//   // Select the first employee by default so the panel is never empty.
+//   useEffect(() => {
+//     if (!historyRow && rows.length > 0) {
+//       setHistoryRow(rows[0]);
+//     }
+//   }, [rows, historyRow]);
+
+//   // ============================================================
+//   // HISTORY LOADER (one request per employee, shared by the
+//   // bottom panel, the hover popup and the YoY toast)
+//   // ============================================================
+
+//   const historyPromiseRef = useRef(new Map());
+
+//   const [historyByEmpId, setHistoryByEmpId] = useState({});
+
+//   const loadHistory = useCallback((empId) => {
+//     const key = String(empId || "").trim();
+
+//     if (!key) {
+//       return Promise.resolve([]);
+//     }
+
+//     const existing = historyPromiseRef.current.get(key);
+
+//     if (existing) {
+//       return existing;
+//     }
+
+//     setHistoryByEmpId((previous) => ({
+//       ...previous,
+//       [key]: { loading: true, data: [], error: "" },
+//     }));
+
+//     const promise = (async () => {
+//       const url = `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(
+//         key,
+//       )}`;
+
+//       const response = await catalystFetch(url);
+
+//       if (!response.ok) {
+//         throw new Error(
+//           `Failed to load appraisal history (${response.status}).`,
+//         );
+//       }
+
+//       const result = await response.json();
+
+//       if (!result?.success) {
+//         throw new Error(result?.message || "Failed to load appraisal history.");
+//       }
+
+//       const records = Array.isArray(result?.data) ? result.data : [];
+
+//       return records.map(normalizeHistoryRecord).sort(sortHistoryDesc);
+//     })();
+
+//     historyPromiseRef.current.set(key, promise);
+
+//     promise
+//       .then((data) => {
+//         setHistoryByEmpId((previous) => ({
+//           ...previous,
+//           [key]: { loading: false, data, error: "" },
+//         }));
+//       })
+//       .catch((error) => {
+//         console.error("Appraisal history fetch error:", error);
+
+//         historyPromiseRef.current.delete(key);
+
+//         setHistoryByEmpId((previous) => ({
+//           ...previous,
+//           [key]: {
+//             loading: false,
+//             data: [],
+//             error: error?.message || "Unable to load appraisal history.",
+//           },
+//         }));
+//       });
+
+//     return promise;
+//   }, []);
+
+//   // Load history for the selected employee while the panel is open.
+//   useEffect(() => {
+//     if (!showHistory || !historyRow?.empId) {
+//       return;
+//     }
+
+//     loadHistory(historyRow.empId).catch(() => {});
+//   }, [showHistory, historyRow?.empId, loadHistory]);
+
+//   // Live version of the selected row (the snapshot in state goes stale on edit).
+//   const liveHistoryRow = useMemo(() => {
+//     if (!historyRow) {
+//       return null;
+//     }
+
+//     return rows.find((row) => row.id === historyRow.id) || historyRow;
+//   }, [rows, historyRow]);
+
+//   const historyEmpKey = historyRow ? String(historyRow.empId || "").trim() : "";
+
+//   const historyState = historyByEmpId[historyEmpKey];
+
+//   const historyLoading = !historyState || historyState.loading;
+//   const historyError = historyState?.error || "";
+
+//   const historyData = useMemo(
+//     () => buildHistoryView(historyState?.data || [], liveHistoryRow),
+//     [historyState, liveHistoryRow],
+//   );
+
+//   // ============================================================
+//   // YEAR-OVER-YEAR TOAST
+//   // ============================================================
+
+//   const [cellToast, setCellToast] = useState(null);
+//   const cellToastTimerRef = useRef(null);
+
+//   useEffect(() => {
+//     return () => {
+//       if (cellToastTimerRef.current) {
+//         clearTimeout(cellToastTimerRef.current);
+//       }
+//     };
+//   }, []);
+
+//   const showYoyToast = useCallback(
+//     (anchor, key, projectedRow) => {
+//       const config = YOY_FIELDS[key];
+
+//       if (!config || !anchor || !projectedRow?.empId) {
+//         return;
+//       }
+
+//       const rect = anchor.getBoundingClientRect();
+//       const currentValue = config.current(projectedRow);
+
+//       loadHistory(projectedRow.empId)
+//         .then((records) => {
+//           const priorRecord = records.find(
+//             (record) => !isCurrentYearRecord(record),
+//           );
+
+//           const priorValue = priorRecord ? config.prior(priorRecord) : 0;
+
+//           const toastWidth = 280;
+
+//           const left = Math.max(
+//             8,
+//             Math.min(rect.left, window.innerWidth - toastWidth - 8),
+//           );
+
+//           let top = rect.bottom + 6;
+
+//           if (top + 70 > window.innerHeight) {
+//             top = Math.max(8, rect.top - 76);
+//           }
+
+//           setCellToast({
+//             label: config.label,
+//             currentValue,
+//             priorValue,
+//             left,
+//             top,
+//             mode: "yoy",
+//             isText: false,
+//           });
+
+//           if (cellToastTimerRef.current) {
+//             clearTimeout(cellToastTimerRef.current);
+//           }
+
+//           cellToastTimerRef.current = setTimeout(() => {
+//             setCellToast(null);
+//           }, 3500);
+//         })
+//         .catch(() => {});
+//     },
+//     [loadHistory],
+//   );
+
+//   // Toast for any editable field that has no year-over-year mapping.
+//   const showChangeToast = useCallback(
+//     (anchor, label, priorValue, currentValue, isText) => {
+//       if (!anchor) {
+//         return;
+//       }
+
+//       const rect = anchor.getBoundingClientRect();
+//       const toastWidth = 280;
+
+//       const left = Math.max(
+//         8,
+//         Math.min(rect.left, window.innerWidth - toastWidth - 8),
+//       );
+
+//       let top = rect.bottom + 6;
+
+//       if (top + 70 > window.innerHeight) {
+//         top = Math.max(8, rect.top - 76);
+//       }
+
+//       setCellToast({
+//         label,
+//         currentValue,
+//         priorValue,
+//         left,
+//         top,
+//         mode: "prev",
+//         isText: !!isText,
+//       });
+
+//       if (cellToastTimerRef.current) {
+//         clearTimeout(cellToastTimerRef.current);
+//       }
+
+//       cellToastTimerRef.current = setTimeout(() => {
+//         setCellToast(null);
+//       }, 3500);
+//     },
+//     [],
+//   );
+
+//   // ============================================================
+//   // HOVER
+//   // ============================================================
+
+//   // ============================================================
+//   // DETAIL PANEL (click-triggered, draggable, resizable, dockable —
+//   // replaces the old hover popup)
+//   // ============================================================
+
+//   const [detailOpen, setDetailOpen] = useState(false);
+//   const [detailEmployee, setDetailEmployee] = useState(null);
+//   const [detailFloating, setDetailFloating] = useState(false);
+//   const [detailPos, setDetailPos] = useState({ left: DOCKED_LEFT, top: 130 });
+//   const [detailSize, setDetailSize] = useState({ width: 560, height: null });
+
+//   const detailPanelRef = useRef(null);
+//   const detailDragRef = useRef(null);
+//   const detailResizeRef = useRef(null);
+
+//   const detailEmpKey = detailEmployee
+//     ? String(detailEmployee.empId || "").trim()
+//     : "";
+
+//   const detailHistoryState = historyByEmpId[detailEmpKey];
+
+//   const liveDetailEmployee = useMemo(() => {
+//     if (!detailEmployee) {
+//       return null;
+//     }
+
+//     return rows.find((row) => row.id === detailEmployee.id) || detailEmployee;
+//   }, [rows, detailEmployee]);
+
+//   const detailHistoryRows = useMemo(() => {
+//     if (!detailHistoryState?.data) {
+//       return [];
+//     }
+
+//     return detailHistoryState.data.map((record) =>
+//       applyCurrentYearSheetValues(record, liveDetailEmployee),
+//     );
+//   }, [detailHistoryState, liveDetailEmployee]);
+
+//   // ============================================================
+//   // HISTORY AUTO SCROLL
+//   // ============================================================
+
+//   useEffect(() => {
+//     if (showHistory) {
+//       requestAnimationFrame(() => {
+//         const historyPanel = document.getElementById("history-panel");
+
+//         if (historyPanel) {
+//           historyPanel.scrollIntoView({ behavior: "smooth", block: "end" });
+//         }
+//       });
+//     }
+//   }, [showHistory]);
+
+//   // ============================================================
+//   // CLEANUP
+//   // ============================================================
+
+//   useEffect(() => {
+//     return () => {
+//       if (clickTimerRef.current) {
+//         clearTimeout(clickTimerRef.current);
+//       }
+//     };
+//   }, []);
+
+//   // ============================================================
+//   // PAGINATION
+//   // ============================================================
+
+//   const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+
+//   useEffect(() => {
+//     setCurrentPage((page) => Math.min(Math.max(page, 1), totalPages));
+//   }, [totalPages]);
+
+//   const pageRows = useMemo(() => {
+//     const start = (currentPage - 1) * PAGE_SIZE;
+
+//     return sortedRows.slice(start, start + PAGE_SIZE);
+//   }, [sortedRows, currentPage]);
+
+//   const pageStart = rows.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
+
+//   const pageEnd = Math.min(currentPage * PAGE_SIZE, rows.length);
+
+//   // Unified display order — matches whichever mode is active.
+//   const displayRows = useMemo(() => {
+//     if (groupedRows) {
+//       return flattenGroupedSections(groupedRows);
+//     }
+
+//     return pageRows;
+//   }, [groupedRows, flattenGroupedSections, pageRows]);
+
+//   const flattenedGroupOrder = useMemo(() => {
+//     const order = new Map();
+
+//     displayRows.forEach((row, index) => {
+//       order.set(row.id, index);
+//     });
+
+//     return order;
+//   }, [displayRows]);
+
+//   // ============================================================
+//   // FOCUS
+//   // ============================================================
+
+//   const focusCell = useCallback((rowIndex, columnKey) => {
+//     const element = cellRefs.current[`${rowIndex}:${columnKey}`];
+
+//     if (!element) {
+//       return;
+//     }
+
+//     element.focus();
+
+//     if (
+//       element instanceof HTMLInputElement ||
+//       element instanceof HTMLTextAreaElement
+//     ) {
+//       element.select();
+//     }
+//   }, []);
+
+//   // ============================================================
+//   // SAVE FLASH
+//   // ============================================================
+
+//   const flashSaved = useCallback((key) => {
+//     setSaving((previous) => ({ ...previous, [key]: Date.now() }));
+
+//     setTimeout(() => {
+//       setSaving((previous) => {
+//         const next = { ...previous };
+
+//         delete next[key];
+
+//         return next;
+//       });
+//     }, 1200);
+//   }, []);
+
+//   // ============================================================
+//   // HIKE %
+//   // ============================================================
+
+//   const updateHikePct = useCallback(
+//     (row, raw) => {
+//       if (raw === "") {
+//         const changed =
+//           (Number(row.hikePct) || 0) !== 0 ||
+//           (Number(row.hikeAmount) || 0) !== 0;
+
+//         updateLinkedCells(row.id, { hikePct: "", hikeAmount: "" });
+
+//         if (changed) {
+//           flashSaved(`${row.id}:hikePct`);
+//           flashSaved(`${row.id}:hikeAmount`);
+//         }
+
+//         return { changed, hikeAmount: 0 };
+//       }
+
+//       const basePay = Number(row.currentAnnualBasePay || 0);
+//       const pct = Number(raw) || 0;
+//       const amount = Math.round(basePay * (pct / 100));
+
+//       const changed =
+//         (Number(row.hikePct) || 0) !== pct ||
+//         (Number(row.hikeAmount) || 0) !== amount;
+
+//       updateLinkedCells(row.id, { hikePct: pct, hikeAmount: amount });
+
+//       if (changed) {
+//         flashSaved(`${row.id}:hikePct`);
+//         flashSaved(`${row.id}:hikeAmount`);
+//       }
+
+//       return { changed, hikeAmount: amount };
+//     },
+//     [updateLinkedCells, flashSaved],
+//   );
+
+//   // ============================================================
+//   // HIKE AMOUNT
+//   // ============================================================
+
+//   const updateHikeAmount = useCallback(
+//     (row, raw) => {
+//       if (raw === "") {
+//         const changed =
+//           (Number(row.hikePct) || 0) !== 0 ||
+//           (Number(row.hikeAmount) || 0) !== 0;
+
+//         updateLinkedCells(row.id, { hikeAmount: "", hikePct: "" });
+
+//         if (changed) {
+//           flashSaved(`${row.id}:hikeAmount`);
+//           flashSaved(`${row.id}:hikePct`);
+//         }
+
+//         return { changed, hikeAmount: 0 };
+//       }
+
+//       const basePay = Number(row.currentAnnualBasePay || 0);
+//       const amount = Number(raw) || 0;
+
+//       const pct = basePay ? Number(((amount / basePay) * 100).toFixed(1)) : 0;
+
+//       const changed =
+//         (Number(row.hikeAmount) || 0) !== amount ||
+//         (Number(row.hikePct) || 0) !== pct;
+
+//       updateLinkedCells(row.id, { hikeAmount: amount, hikePct: pct });
+
+//       if (changed) {
+//         flashSaved(`${row.id}:hikeAmount`);
+//         flashSaved(`${row.id}:hikePct`);
+//       }
+
+//       return { changed, hikeAmount: amount };
+//     },
+//     [updateLinkedCells, flashSaved],
+//   );
+
+//   // ============================================================
+//   // COMMIT
+//   // ============================================================
+
+//   const commit = useCallback(
+//     (row, col, raw, anchor) => {
+//       if (col.key === "hikePct" || col.key === "hikeAmount") {
+//         const outcome =
+//           col.key === "hikePct"
+//             ? updateHikePct(row, raw)
+//             : updateHikeAmount(row, raw);
+
+//         if (outcome.changed) {
+//           markEdited(`${row.id}:${col.key}`);
+
+//           if (row.id === historyRow?.id) {
+//             flashHistoryFields(col.key);
+//           }
+
+//           if (raw !== "") {
+//             showYoyToast(anchor, col.key, {
+//               ...row,
+//               hikeAmount: outcome.hikeAmount,
+//             });
+//           }
+//         }
+
+//         return;
+//       }
+
+//       let value = raw;
+
+//       if (isNumericType(col.type)) {
+//         value = numericValue(raw);
+//       }
+
+//       const oldValue =
+//         row[col.key] === null || row[col.key] === undefined
+//           ? ""
+//           : String(row[col.key]);
+
+//       const newValue =
+//         value === null || value === undefined ? "" : String(value);
+
+//       if (oldValue === newValue) {
+//         return;
+//       }
+
+//       updateCell(row.id, col.key, value);
+
+//       flashSaved(`${row.id}:${col.key}`);
+//       markEdited(`${row.id}:${col.key}`);
+
+//       if (row.id === historyRow?.id) {
+//         flashHistoryFields(col.key);
+//       }
+
+//       if (YOY_FIELDS[col.key]) {
+//         showYoyToast(anchor, col.key, { ...row, [col.key]: value });
+//       } else if (isNumericType(col.type)) {
+//         showChangeToast(
+//           anchor,
+//           col.label,
+//           Number(row[col.key]) || 0,
+//           Number(value) || 0,
+//           false,
+//         );
+//       } else {
+//         showChangeToast(anchor, col.label, oldValue, newValue, true);
+//       }
+//     },
+//     [
+//       updateCell,
+//       flashSaved,
+//       markEdited,
+//       updateHikePct,
+//       updateHikeAmount,
+//       historyRow,
+//       flashHistoryFields,
+//       showYoyToast,
+//       showChangeToast,
+//     ],
+//   );
+
+//   // ============================================================
+//   // COMMIT ON BLUR / ENTER
+//   // Text, number and date cells keep a local draft while typing and
+//   // save once on blur (Enter moves focus, which blurs). Escape
+//   // discards the draft. A draft still open when the grid unmounts
+//   // (e.g. navigating away) is committed so nothing is lost.
+//   // ============================================================
+
+//   const cancelledCellsRef = useRef(new Set());
+//   const pendingDraftRef = useRef(null);
+//   const commitRef = useRef(commit);
+
+//   commitRef.current = commit;
+
+//   useEffect(() => {
+//     return () => {
+//       const pending = pendingDraftRef.current;
+
+//       pendingDraftRef.current = null;
+
+//       if (pending) {
+//         commitRef.current(pending.row, pending.col, pending.raw, null);
+//       }
+//     };
+//   }, []);
+
+//   // ============================================================
+//   // BULK EDIT ONE COLUMN (from the column filter popover)
+//   // ============================================================
+
+//   const applyColumnBulkEdit = useCallback(
+//     (col, rawValue) => {
+//       if (!rows.length) {
+//         return;
+//       }
+
+//       if (col.key === "hikePct" || col.key === "hikeAmount") {
+//         rows.forEach((row) => {
+//           if (col.key === "hikePct") {
+//             updateHikePct(row, String(rawValue));
+//           } else {
+//             updateHikeAmount(row, String(rawValue));
+//           }
+//         });
+
+//         return;
+//       }
+
+//       // Enum columns only accept one of their defined options.
+//       if (
+//         col.type === "enum" &&
+//         Array.isArray(col.options) &&
+//         !col.options.includes(rawValue)
+//       ) {
+//         return;
+//       }
+
+//       const value = isNumericType(col.type) ? numericValue(rawValue) : rawValue;
+
+//       // Same promotion rules as inline edits: New Title only on rows
+//       // eligible for promotion; setting "No" clears New Title.
+//       if (col.key === "newTitle") {
+//         const eligibleIds = rows
+//           .filter((row) => row.eligibleForPromotion === "Yes")
+//           .map((row) => row.id);
+//         const skipped = rows.length - eligibleIds.length;
+
+//         if (eligibleIds.length) {
+//           bulkUpdate(eligibleIds, col.key, "set", value);
+//         }
+
+//         if (skipped) {
+//           window.alert(
+//             `New Title was applied to ${eligibleIds.length} employee(s). ${skipped} skipped because they are not eligible for promotion.`,
+//           );
+//         }
+
+//         return;
+//       }
+
+//       const ids = rows.map((row) => row.id);
+
+//       bulkUpdate(ids, col.key, "set", value);
+
+//       if (col.key === "eligibleForPromotion" && value === "No") {
+//         bulkUpdate(ids, "newTitle", "set", null);
+//       }
+//     },
+//     [rows, bulkUpdate, updateHikePct, updateHikeAmount],
+//   );
+
+//   // ============================================================
+//   // EDITABLE COLUMNS
+//   // ============================================================
+
+//   const editableColumns = useMemo(
+//     () => COLUMNS.filter((column) => column.editable),
+//     [],
+//   );
+
+//   const editableIndex = useMemo(
+//     () => new Map(editableColumns.map((column, index) => [column.key, index])),
+//     [editableColumns],
+//   );
+
+//   // ============================================================
+//   // ROW-SPECIFIC EDITABILITY
+//   // ============================================================
+
+//   const isColumnEditable = useCallback((row, column) => {
+//     if (!column.editable) {
+//       return false;
+//     }
+
+//     if (column.key === "newTitle") {
+//       return row.eligibleForPromotion === "Yes";
+//     }
+
+//     return true;
+//   }, []);
+
+//   const getEditableColumnsForRow = useCallback(
+//     (row) => editableColumns.filter((column) => isColumnEditable(row, column)),
+//     [editableColumns, isColumnEditable],
+//   );
+
+//   // ============================================================
+//   // KEYBOARD NAVIGATION
+//   // ============================================================
+
+//   const onKeyDown = (event, rowIndex, columnKey) => {
+//     const currentRow = displayRows[rowIndex];
+
+//     if (!currentRow) {
+//       return;
+//     }
+
+//     const editableColumnIndex = editableIndex.get(columnKey);
+
+//     if (editableColumnIndex === undefined) {
+//       return;
+//     }
+
+//     const rowEditableColumns = getEditableColumnsForRow(currentRow);
+
+//     const currentRowColumnIndex = rowEditableColumns.findIndex(
+//       (column) => column.key === columnKey,
+//     );
+
+//     const maxRow = displayRows.length - 1;
+//     const target = event.target;
+
+//     const atStart =
+//       !("selectionStart" in target) || target.selectionStart === 0;
+
+//     const atEnd =
+//       !("selectionEnd" in target) ||
+//       target.selectionEnd ===
+//         (target.value !== undefined ? target.value.length : 0);
+
+//     if (event.key === "Enter") {
+//       if (target instanceof HTMLTextAreaElement && !event.shiftKey) {
+//         return;
+//       }
+
+//       event.preventDefault();
+
+//       const direction = event.shiftKey ? -1 : 1;
+//       let nextRowIndex = rowIndex + direction;
+
+//       while (nextRowIndex >= 0 && nextRowIndex <= maxRow) {
+//         const nextRow = displayRows[nextRowIndex];
+
+//         if (
+//           nextRow &&
+//           isColumnEditable(nextRow, {
+//             ...COLUMNS.find((column) => column.key === columnKey),
+//             key: columnKey,
+//           })
+//         ) {
+//           focusCell(nextRowIndex, columnKey);
+//           return;
+//         }
+
+//         nextRowIndex += direction;
+//       }
+
+//       // No next editable cell: still commit this one.
+//       target.blur();
+
+//       return;
+//     }
+
+//     if (event.key === "ArrowDown") {
+//       event.preventDefault();
+
+//       const nextRowIndex = Math.min(maxRow, rowIndex + 1);
+//       const nextRow = displayRows[nextRowIndex];
+
+//       const column = COLUMNS.find((item) => item.key === columnKey) || {
+//         key: columnKey,
+//         editable: false,
+//       };
+
+//       if (nextRow && isColumnEditable(nextRow, column)) {
+//         focusCell(nextRowIndex, columnKey);
+//       }
+
+//       return;
+//     }
+
+//     if (event.key === "ArrowUp") {
+//       event.preventDefault();
+
+//       const nextRowIndex = Math.max(0, rowIndex - 1);
+//       const nextRow = displayRows[nextRowIndex];
+
+//       const column = COLUMNS.find((item) => item.key === columnKey) || {
+//         key: columnKey,
+//         editable: false,
+//       };
+
+//       if (nextRow && isColumnEditable(nextRow, column)) {
+//         focusCell(nextRowIndex, columnKey);
+//       }
+
+//       return;
+//     }
+
+//     if (
+//       event.key === "ArrowRight" &&
+//       atEnd &&
+//       currentRowColumnIndex >= 0 &&
+//       currentRowColumnIndex < rowEditableColumns.length - 1
+//     ) {
+//       event.preventDefault();
+
+//       focusCell(rowIndex, rowEditableColumns[currentRowColumnIndex + 1].key);
+
+//       return;
+//     }
+
+//     if (event.key === "ArrowLeft" && atStart && currentRowColumnIndex > 0) {
+//       event.preventDefault();
+
+//       focusCell(rowIndex, rowEditableColumns[currentRowColumnIndex - 1].key);
+
+//       return;
+//     }
+
+//     if (event.key === "Escape") {
+//       // Cancel the in-progress edit: the blur handler sees this and
+//       // drops the draft instead of committing it.
+//       if (
+//         target instanceof HTMLInputElement ||
+//         target instanceof HTMLTextAreaElement
+//       ) {
+//         cancelledCellsRef.current.add(`${currentRow.id}:${columnKey}`);
+//       }
+
+//       target.blur();
+//     }
+//   };
+
+//   // ============================================================
+//   // ROW OPEN / SELECT
+//   // ============================================================
+
+//   const openRow = useCallback(
+//     (row) => {
+//       setHistoryRow(row);
+
+//       // Re-selecting after a failed fetch retries it (a failed request is
+//       // dropped from the cache; a cached success is simply reused).
+//       if (showHistory && row?.empId) {
+//         loadHistory(row.empId).catch(() => {});
+//       }
+//     },
+//     [showHistory, loadHistory],
+//   );
+
+//   const retryHistory = useCallback(() => {
+//     if (historyRow?.empId) {
+//       loadHistory(historyRow.empId).catch(() => {});
+//     }
+//   }, [historyRow, loadHistory]);
+
+//   // Focusing any editable cell also selects that employee's row.
+//   const selectRowForEdit = useCallback((row) => {
+//     setHistoryRow((previous) => (previous?.id === row.id ? previous : row));
+//   }, []);
+
+//   // ============================================================
+//   // CELL CLICK
+//   // ============================================================
+
+//   const handleCellClick = useCallback(
+//     (row, editable) => {
+//       if (!editable) {
+//         openRow(row);
+//         return;
+//       }
+
+//       if (clickTimerRef.current) {
+//         clearTimeout(clickTimerRef.current);
+//       }
+
+//       clickTimerRef.current = setTimeout(() => {
+//         openRow(row);
+//         clickTimerRef.current = null;
+//       }, 220);
+//     },
+//     [openRow],
+//   );
+
+//   // ============================================================
+//   // DOUBLE CLICK
+//   // ============================================================
+
+//   const handleEditableDoubleClick = useCallback(
+//     (event, rowIndex, columnKey) => {
+//       event.stopPropagation();
+
+//       if (clickTimerRef.current) {
+//         clearTimeout(clickTimerRef.current);
+//         clickTimerRef.current = null;
+//       }
+
+//       focusCell(rowIndex, columnKey);
+//     },
+//     [focusCell],
+//   );
+
+//   // ============================================================
+//   // HOVER POPUP
+//   // ============================================================
+
+//   // ============================================================
+//   // DETAIL PANEL — open / close / dock
+//   // ============================================================
+
+//   const openDetailPanel = useCallback(
+//     (row) => {
+//       // Only ever updates content — never touches position or
+//       // docked-vs-floating state, so clicking another employee
+//       // just refreshes what's inside the same panel. The docked
+//       // top position IS recalculated here (not on every render)
+//       // so the very first open lands below the app header instead
+//       // of at the raw viewport top.
+//       setDetailFloating((floating) => {
+//         if (!floating) {
+//           setDetailPos({ left: DOCKED_LEFT, top: getDockedTop() });
+//         }
+
+//         return floating;
+//       });
+
+//       setDetailEmployee(row);
+//       setDetailOpen(true);
+//       loadHistory(row.empId).catch(() => {});
+//     },
+//     [loadHistory],
+//   );
+
+//   const closeDetailPanel = useCallback(() => {
+//     setDetailOpen(false);
+//   }, []);
+
+//   const dockDetailPanel = useCallback(() => {
+//     setDetailFloating(false);
+//     setDetailPos({ left: DOCKED_LEFT, top: getDockedTop() });
+//     setDetailSize({ width: 560, height: null });
+//   }, []);
+
+//   // ============================================================
+//   // DETAIL PANEL — drag (from the header)
+//   // ============================================================
+
+//   const handleDetailHeaderMouseDown = useCallback(
+//     (event) => {
+//       if (event.target.closest("button")) {
+//         return; // don't start a drag from the control buttons
+//       }
+
+//       const panel = detailPanelRef.current;
+
+//       if (!panel) {
+//         return;
+//       }
+
+//       const rect = panel.getBoundingClientRect();
+
+//       if (!detailFloating) {
+//         setDetailFloating(true);
+//         setDetailPos({ left: rect.left, top: rect.top });
+//         setDetailSize({ width: rect.width, height: rect.height });
+//       }
+
+//       detailDragRef.current = {
+//         offsetX: event.clientX - rect.left,
+//         offsetY: event.clientY - rect.top,
+//       };
+//     },
+//     [detailFloating],
+//   );
+
+//   useEffect(() => {
+//     const handleMouseMove = (event) => {
+//       if (!detailDragRef.current) {
+//         return;
+//       }
+
+//       setDetailPos({
+//         left: event.clientX - detailDragRef.current.offsetX,
+//         top: event.clientY - detailDragRef.current.offsetY,
+//       });
+//     };
+
+//     const handleMouseUp = () => {
+//       detailDragRef.current = null;
+//     };
+
+//     window.addEventListener("mousemove", handleMouseMove);
+//     window.addEventListener("mouseup", handleMouseUp);
+
+//     return () => {
+//       window.removeEventListener("mousemove", handleMouseMove);
+//       window.removeEventListener("mouseup", handleMouseUp);
+//     };
+//   }, []);
+
+//   // ============================================================
+//   // DETAIL PANEL — resize (all 4 edges + 4 corners)
+//   // ============================================================
+
+//   const startDetailResize = useCallback((event, dir) => {
+//     event.preventDefault();
+//     event.stopPropagation();
+
+//     const panel = detailPanelRef.current;
+
+//     if (!panel) {
+//       return;
+//     }
+
+//     const rect = panel.getBoundingClientRect();
+
+//     detailResizeRef.current = {
+//       dir,
+//       startX: event.clientX,
+//       startY: event.clientY,
+//       startW: rect.width,
+//       startH: rect.height,
+//       startLeft: rect.left,
+//       startTop: rect.top,
+//     };
+//   }, []);
+
+//   useEffect(() => {
+//     const handleMove = (event) => {
+//       const r = detailResizeRef.current;
+
+//       if (!r) {
+//         return;
+//       }
+
+//       const dx = event.clientX - r.startX;
+//       const dy = event.clientY - r.startY;
+
+//       let newW = r.startW;
+//       let newH = r.startH;
+
+//       if (r.dir.includes("e")) newW = Math.max(360, r.startW + dx);
+//       if (r.dir.includes("w")) newW = Math.max(360, r.startW - dx);
+//       if (r.dir.includes("s")) newH = Math.max(160, r.startH + dy);
+//       if (r.dir.includes("n")) newH = Math.max(160, r.startH - dy);
+
+//       setDetailSize({ width: newW, height: newH });
+
+//       // Only floating panels need left/top adjusted on a west/north
+//       // drag so the opposite edge stays put — a docked panel is
+//       // anchored by CSS, matching the HTML prototype's behaviour.
+//       setDetailFloating((floating) => {
+//         if (floating) {
+//           setDetailPos((pos) => ({
+//             left: r.dir.includes("w")
+//               ? r.startLeft + (r.startW - newW)
+//               : pos.left,
+//             top: r.dir.includes("n") ? r.startTop + (r.startH - newH) : pos.top,
+//           }));
+//         }
+
+//         return floating;
+//       });
+//     };
+
+//     const handleUp = () => {
+//       detailResizeRef.current = null;
+//     };
+
+//     window.addEventListener("mousemove", handleMove);
+//     window.addEventListener("mouseup", handleUp);
+
+//     return () => {
+//       window.removeEventListener("mousemove", handleMove);
+//       window.removeEventListener("mouseup", handleUp);
+//     };
+//   }, []);
+
+//   // ============================================================
+//   // RENDER CELL
+//   // ============================================================
+
+//   const renderCellContent = (row, col, rowIndex) => {
+//     const cellKey = `${row.id}:${col.key}`;
+
+//     const isEditable = isColumnEditable(row, col);
+
+//     const displayValue = formatValue(row, col);
+
+//     const isBlinking = lastEditedKey === cellKey;
+
+//     if (col.computed) {
+//       return (
+//         <div
+//           className={cn(
+//             "flex min-h-[38px] h-auto w-full items-center justify-end",
+//             "px-2 py-1",
+//             "whitespace-normal break-words",
+//             "leading-tight",
+//             "text-right",
+//             "text-[12px]",
+//             "font-semibold",
+//             "tabular-nums",
+//             modified[cellKey] ? "text-slate-900" : "text-[#14527d]",
+//           )}
+//           title="Calculated automatically"
+//         >
+//           {col.type === "currency"
+//             ? displayValue.replace(/^₹\s?/, "")
+//             : displayValue}
+//         </div>
+//       );
+//     }
+
+//     if (!isEditable) {
+//       const rawText =
+//         row[col.key] !== null && row[col.key] !== undefined
+//           ? String(row[col.key])
+//           : "";
+
+//       const isMoney = col.type === "currency";
+
+//       const text = isMoney ? displayValue.replace(/^₹\s?/, "") : rawText;
+
+//       return (
+//         <button
+//           type="button"
+//           onClick={(event) => {
+//             event.stopPropagation();
+//             openRow(row);
+
+//             if (col.key === "name") {
+//               openDetailPanel(row);
+//             }
+//           }}
+//           className={cn(
+//             "flex min-h-[38px] h-auto w-full",
+//             "items-center",
+//             "px-2 py-1",
+//             "text-[12px]",
+//             "font-normal text-[#4b5563]",
+//             "whitespace-normal break-words",
+//             "leading-tight",
+//             isMoney ? "justify-end text-right tabular-nums" : "text-left",
+//             col.key === "name" &&
+//               "font-semibold text-[#1559a6] hover:underline",
+//             col.key === "empId" && "text-[11px] text-slate-500",
+//           )}
+//           title={col.key === "name" ? undefined : text}
+//         >
+//           {text}
+//         </button>
+//       );
+//     }
+
+//     if (col.type === "enum") {
+//       return (
+//         <div className="flex min-h-[38px] w-full items-center px-1.5 py-1">
+//           <select
+//             ref={(element) => {
+//               cellRefs.current[`${rowIndex}:${col.key}`] = element;
+//             }}
+//             value={String(
+//               row[col.key] !== null && row[col.key] !== undefined
+//                 ? row[col.key]
+//                 : "",
+//             )}
+//             onFocus={() => {
+//               setActive(`${rowIndex}:${col.key}`);
+//               selectRowForEdit(row);
+//             }}
+//             onBlur={() => setActive(null)}
+//             onKeyDown={(event) => onKeyDown(event, rowIndex, col.key)}
+//             onDoubleClick={(event) =>
+//               handleEditableDoubleClick(event, rowIndex, col.key)
+//             }
+//             onChange={(event) => {
+//               const value = event.target.value;
+//               const anchor = event.currentTarget;
+
+//               if (col.key === "eligibleForPromotion" && value === "No") {
+//                 updateLinkedCells(
+//                   row.id,
+//                   {
+//                     eligibleForPromotion: "No",
+//                     newTitle: null,
+//                   },
+//                   "Cell edit",
+//                 );
+
+//                 flashSaved(cellKey);
+//                 markEdited(cellKey);
+
+//                 const newTitleCellKey = `${row.id}:newTitle`;
+//                 flashSaved(newTitleCellKey);
+//                 markEdited(newTitleCellKey);
+
+//                 if (row.id === historyRow?.id) {
+//                   flashHistoryFields("eligibleForPromotion");
+//                   flashHistoryFields("newTitle");
+//                 }
+
+//                 showChangeToast(
+//                   anchor,
+//                   col.label,
+//                   String(row[col.key] || ""),
+//                   "No",
+//                   true,
+//                 );
+
+//                 return;
+//               }
+//               /* NEW: remind to set New Title the moment Promotion flips to Yes */
+//               if (col.key === "eligibleForPromotion" && value === "Yes") {
+//                 updateCell(row.id, col.key, value);
+//                 flashSaved(cellKey);
+//                 markEdited(cellKey);
+//                 if (row.id === historyRow?.id) flashHistoryFields(col.key);
+//                 showChangeToast(
+//                   anchor,
+//                   col.label,
+//                   String(row[col.key] || ""),
+//                   "Yes",
+//                   true,
+//                 );
+
+//                 if (!row.newTitle) {
+//                   window.alert(
+//                     `${row.name || "This employee"} is now marked eligible for promotion. Please set the New Title — it is mandatory.`,
+//                   );
+//                 }
+//                 return;
+//               }
+
+//               updateCell(row.id, col.key, value);
+
+//               flashSaved(cellKey);
+//               markEdited(cellKey);
+
+//               if (row.id === historyRow?.id) {
+//                 flashHistoryFields(col.key);
+//               }
+
+//               showChangeToast(
+//                 anchor,
+//                 col.label,
+//                 String(row[col.key] || ""),
+//                 value,
+//                 true,
+//               );
+//             }}
+//             className={cn(
+//               "h-[30px] w-full cursor-pointer rounded-[4px] border px-1 text-[12px] outline-none",
+//               modified[cellKey]
+//                 ? "border-[#c9a400] bg-[#ffe066] font-semibold text-[#1e293b]"
+//                 : "border-[#d7c96b] bg-[#fffef3] text-[#1e293b]",
+//               "focus:border-[#2563eb] focus:bg-white focus:ring-1 focus:ring-[#2563eb]",
+//               isBlinking && "appraisal-cell-blink",
+//             )}
+//           >
+//             <option value="">Select...</option>
+
+//             {(col.options || []).map((option) => (
+//               <option key={option} value={option}>
+//                 {option}
+//               </option>
+//             ))}
+//           </select>
+//         </div>
+//       );
+//     }
+
+//     if (col.type === "textarea") {
+//       const textareaDraft =
+//         editingValues[cellKey] !== undefined
+//           ? editingValues[cellKey]
+//           : String(
+//               row[col.key] !== null && row[col.key] !== undefined
+//                 ? row[col.key]
+//                 : "",
+//             );
+
+//       return (
+//         <div className="flex min-h-[38px] w-full items-center px-1.5 py-1">
+//           <textarea
+//             ref={(element) => {
+//               cellRefs.current[`${rowIndex}:${col.key}`] = element;
+//             }}
+//             rows={1}
+//             value={textareaDraft}
+//             onFocus={(event) => {
+//               setActive(`${rowIndex}:${col.key}`);
+//               selectRowForEdit(row);
+
+//               setEditingValues((previous) => ({
+//                 ...previous,
+//                 [cellKey]: String(
+//                   row[col.key] !== null && row[col.key] !== undefined
+//                     ? row[col.key]
+//                     : "",
+//                 ),
+//               }));
+
+//               event.currentTarget.style.height = "auto";
+//               event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+//             }}
+//             onChange={(event) => {
+//               setEditingValue(cellKey, event.target.value);
+
+//               pendingDraftRef.current = { row, col, raw: event.target.value };
+
+//               event.target.style.height = "auto";
+//               event.target.style.height = `${event.target.scrollHeight}px`;
+//             }}
+//             onBlur={(event) => {
+//               setActive(null);
+
+//               pendingDraftRef.current = null;
+
+//               const raw =
+//                 editingValues[cellKey] !== undefined
+//                   ? editingValues[cellKey]
+//                   : event.target.value;
+
+//               clearEditingValue(cellKey);
+
+//               event.target.style.height = "";
+
+//               // Escape pressed: discard the draft instead of saving it.
+//               if (cancelledCellsRef.current.delete(cellKey)) {
+//                 return;
+//               }
+
+//               commit(row, col, raw, event.currentTarget);
+//             }}
+//             onKeyDown={(event) => onKeyDown(event, rowIndex, col.key)}
+//             onDoubleClick={(event) =>
+//               handleEditableDoubleClick(event, rowIndex, col.key)
+//             }
+//             className={cn(
+//               "min-h-[30px] w-full resize-none overflow-hidden rounded-[4px] border px-1.5 py-[5px] text-[12px] leading-tight outline-none",
+//               modified[cellKey]
+//                 ? "border-[#c9a400] bg-[#ffe066] font-semibold text-[#1e293b]"
+//                 : "border-[#d7c96b] bg-[#fffef3] text-[#1e293b]",
+//               "focus:border-[#2563eb] focus:bg-white focus:ring-1 focus:ring-[#2563eb]",
+//               isBlinking && "appraisal-cell-blink",
+//             )}
+//           />
+//         </div>
+//       );
+//     }
+
+//     const draftValue =
+//       editingValues[cellKey] !== undefined
+//         ? editingValues[cellKey]
+//         : String(
+//             row[col.key] !== null && row[col.key] !== undefined
+//               ? row[col.key]
+//               : "",
+//           );
+
+//     const isMonthColumn = col.key === "monthRB" || col.key === "monthPB";
+
+//     return (
+//       <div className="relative flex min-h-[38px] w-full items-center px-1.5 py-1">
+//         <input
+//           ref={(element) => {
+//             cellRefs.current[`${rowIndex}:${col.key}`] = element;
+//           }}
+//           type={
+//             col.type === "date"
+//               ? "date"
+//               : isNumericType(col.type)
+//                 ? "number"
+//                 : "text"
+//           }
+//           value={draftValue}
+//           onFocus={(event) => {
+//             setActive(`${rowIndex}:${col.key}`);
+//             selectRowForEdit(row);
+
+//             setEditingValues((previous) => ({
+//               ...previous,
+//               [cellKey]: String(
+//                 row[col.key] !== null && row[col.key] !== undefined
+//                   ? row[col.key]
+//                   : "",
+//               ),
+//             }));
+
+//             if (col.type !== "date") {
+//               requestAnimationFrame(() => {
+//                 if (document.activeElement === event.currentTarget) {
+//                   event.currentTarget.select();
+//                 }
+//               });
+//             }
+//           }}
+//           onChange={(event) => {
+//             setEditingValue(cellKey, event.target.value);
+
+//             pendingDraftRef.current = { row, col, raw: event.target.value };
+//           }}
+//           onBlur={(event) => {
+//             setActive(null);
+
+//             pendingDraftRef.current = null;
+
+//             const raw =
+//               editingValues[cellKey] !== undefined
+//                 ? editingValues[cellKey]
+//                 : event.target.value;
+
+//             clearEditingValue(cellKey);
+
+//             // Escape pressed: discard the draft instead of saving it.
+//             if (cancelledCellsRef.current.delete(cellKey)) {
+//               return;
+//             }
+
+//             commit(row, col, raw, event.currentTarget);
+//           }}
+//           onKeyDown={(event) => onKeyDown(event, rowIndex, col.key)}
+//           onDoubleClick={(event) =>
+//             handleEditableDoubleClick(event, rowIndex, col.key)
+//           }
+//           className={cn(
+//             "h-[30px] w-full rounded-[4px] border px-1.5 text-[12px] outline-none",
+//             modified[cellKey]
+//               ? "border-[#c9a400] bg-[#ffe066] font-semibold text-[#1e293b]"
+//               : "border-[#d7c96b] bg-[#fffef3] text-[#1e293b]",
+//             "focus:border-[#2563eb] focus:bg-white focus:ring-1 focus:ring-[#2563eb]",
+//             isNumericType(col.type) && "text-right font-medium tabular-nums",
+//             isMonthColumn && "text-center",
+//             isBlinking && "appraisal-cell-blink",
+//           )}
+//         />
+
+//         {saving[cellKey] !== undefined && (
+//           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#16803c]">
+//             <Check className="size-3" />
+//           </span>
+//         )}
+//       </div>
+//     );
+//   };
+
+//   // ============================================================
+//   // RENDER ONE DATA ROW
+//   // ============================================================
+
+//   const renderDataRow = (row, rowIndex) => {
+//     const isSelectedRow = historyRow?.id === row.id;
+
+//     return (
+//       <tr key={row.id} className="group" style={{ minHeight: CELL_MIN_HEIGHT }}>
+//         <td
+//           className={cn(
+//             "sticky left-0 border-r border-b border-[#e0e5ec] p-0 align-middle",
+//             cellBackground({
+//               kind: "master",
+//               rowIndex,
+//               selected: isSelectedRow,
+//             }),
+//           )}
+//           style={{
+//             position: "sticky",
+//             left: 0,
+//             width: SELECT_WIDTH,
+//             minWidth: SELECT_WIDTH,
+//             maxWidth: SELECT_WIDTH,
+//             minHeight: CELL_MIN_HEIGHT,
+//             zIndex: 20,
+//             boxShadow: "1px 0 0 rgba(148,163,184,.35)",
+//           }}
+//           onClick={() => openRow(row)}
+//         >
+//           <div className="flex min-h-[38px] h-full items-center justify-center">
+//             <Checkbox
+//               checked={!!selected[row.id]}
+//               onCheckedChange={(value) => toggleSelected(row.id, !!value)}
+//               aria-label={`Select ${row.name}`}
+//               onClick={(event) => event.stopPropagation()}
+//               className="size-3.5"
+//             />
+//           </div>
+//         </td>
+
+//         {orderedColumns.map((col) => {
+//           const isEmpId = col.key === "empId";
+//           const isName = col.key === "name";
+//           const isFrozen = isEmpId || isName;
+
+//           const left = isEmpId
+//             ? SELECT_WIDTH
+//             : isName
+//               ? SELECT_WIDTH + empIdWidth
+//               : undefined;
+
+//           const width = widthOf(col);
+//           const isComputed = col.computed;
+//           const isEditable = isColumnEditable(row, col);
+
+//           const kind = isComputed ? "calc" : isEditable ? "input" : "master";
+
+//           return (
+//             <td
+//               key={col.key}
+//               className={cn(
+//                 isFrozen && "sticky",
+//                 "border-r border-b border-[#e0e5ec] p-0 align-middle",
+//                 cellBackground({
+//                   kind: isFrozen ? "master" : kind,
+//                   rowIndex,
+//                   selected: isSelectedRow,
+//                 }),
+//               )}
+//               style={{
+//                 position: isFrozen ? "sticky" : "relative",
+//                 ...(isFrozen ? { left } : {}),
+//                 width,
+//                 minWidth: width,
+//                 maxWidth: width,
+//                 minHeight: CELL_MIN_HEIGHT,
+//                 boxSizing: "border-box",
+//                 zIndex: isFrozen ? 30 : 1,
+//                 boxShadow:
+//                   isFrozen && isName
+//                     ? "2px 0 4px -2px rgba(71,85,105,.35)"
+//                     : "none",
+//               }}
+//               onClick={() => handleCellClick(row, isEditable)}
+//             >
+//               <div className="relative min-h-[38px] h-auto w-full">
+//                 {isName ? (
+//                   <div className="min-h-[38px] h-auto w-full">
+//                     {renderCellContent(row, col, rowIndex)}
+//                   </div>
+//                 ) : (
+//                   renderCellContent(row, col, rowIndex)
+//                 )}
+//               </div>
+//             </td>
+//           );
+//         })}
+//       </tr>
+//     );
+//   };
+
+//   // ============================================================
+//   // RENDER GROUPED SECTIONS
+//   // ============================================================
+
+//   const renderGroupedSections = useCallback(
+//     (sections) => {
+//       return sections.map((section) => {
+//         const childSections = section.children;
+
+//         return (
+//           <Fragment key={section.key}>
+//             <tr className="bg-[#dbe6f3]">
+//               <td
+//                 colSpan={GRID_COLUMNS.length + 1}
+//                 className="border-b border-[#b9cbe0] p-0"
+//               >
+//                 <div
+//                   className={cn(
+//                     "sticky left-0 inline-flex min-h-[28px] max-w-max",
+//                     "items-center whitespace-nowrap",
+//                     "px-2.5 py-1.5",
+//                     "text-left text-[12px] font-bold text-[#173b63]",
+//                     section.level > 0 && "pl-5",
+//                   )}
+//                 >
+//                   <span>
+//                     {section.groupKey
+//                       ? `${
+//                           GRID_COLUMNS.find(
+//                             (column) => column.key === section.groupKey,
+//                           )?.label || ""
+//                         }: ${section.label}`
+//                       : section.label}
+//                   </span>
+
+//                   <span className="ml-2 font-normal text-slate-500">
+//                     ({section.rows.length} employee
+//                     {section.rows.length === 1 ? "" : "s"})
+//                   </span>
+//                 </div>
+//               </td>
+//             </tr>
+
+//             {childSections
+//               ? renderGroupedSections(childSections)
+//               : section.rows.map((row) =>
+//                   renderDataRow(
+//                     row,
+//                     flattenedGroupOrder.get(row.id) !== undefined
+//                       ? flattenedGroupOrder.get(row.id)
+//                       : 0,
+//                   ),
+//                 )}
+//           </Fragment>
+//         );
+//       });
+//     },
+//     // eslint-disable-next-line react-hooks/exhaustive-deps
+//     [renderDataRow, flattenedGroupOrder],
+//   );
+
+//   // ============================================================
+//   // SELECT ALL
+//   // ============================================================
+
+//   // Header checkbox acts on the rows currently shown (this page, or all
+//   // rows when grouped) and leaves other pages' selections alone.
+//   const visibleSelectedCount = displayRows.filter(
+//     (row) => selected[row.id],
+//   ).length;
+
+//   const allSelected =
+//     displayRows.length > 0 && visibleSelectedCount === displayRows.length;
+
+//   const headerChecked = allSelected
+//     ? true
+//     : visibleSelectedCount > 0
+//       ? "indeterminate"
+//       : false;
+
+//   // ============================================================
+//   // PAGE BUTTONS
+//   // ============================================================
+
+//   const pageButtons = Array.from(
+//     { length: Math.min(totalPages, 7) },
+//     (_, index) => {
+//       let page = index + 1;
+
+//       if (totalPages > 7) {
+//         if (currentPage <= 4) {
+//           page = index + 1;
+//         } else if (currentPage >= totalPages - 3) {
+//           page = totalPages - 6 + index;
+//         } else {
+//           page = currentPage - 3 + index;
+//         }
+//       }
+
+//       return page;
+//     },
+//   );
+
+//   // ============================================================
+//   // GROUP LABEL
+//   // ============================================================
+
+//   const groupByColumnLabel = groupBy.length
+//     ? groupBy
+//         .map((group) => {
+//           const column = GRID_COLUMNS.find((item) => item.key === group.key);
+
+//           if (!column) {
+//             return "";
+//           }
+
+//           return `${column.label} ${group.dir === "desc" ? "↓" : "↑"}`;
+//         })
+//         .filter(Boolean)
+//         .join(" → ")
+//     : "";
+
+//   // ============================================================
+//   // TOAST TEXT
+//   // ============================================================
+
+//   const toastParts = cellToast
+//     ? (() => {
+//         const diff = cellToast.currentValue - cellToast.priorValue;
+//         const change = computeHistoryChange(
+//           cellToast.currentValue,
+//           cellToast.priorValue,
+//         );
+
+//         const hasPrior = !!cellToast.priorValue;
+
+//         const suffix = cellToast.mode === "prev" ? "vs previous" : "YoY";
+
+//         if (cellToast.isText) {
+//           return {
+//             valueText: `"${cellToast.currentValue || "—"}"`,
+//             text: cellToast.priorValue
+//               ? `was "${cellToast.priorValue}"`
+//               : "set for this cycle",
+//             down: false,
+//           };
+//         }
+
+//         return {
+//           valueText: formatHistoryNumber(cellToast.currentValue),
+//           text: hasPrior
+//             ? `${diff >= 0 ? "+" : ""}${formatHistoryNumber(diff)} (${change.label} ${suffix})`
+//             : "new this cycle",
+//           down: hasPrior && change.tone === "down",
+//         };
+//       })()
+//     : null;
+
+//   // ============================================================
+//   // MAIN UI
+//   // ============================================================
+
+//   return (
+//     <div
+//       className={cn(
+//         "relative flex min-h-0 w-full",
+//         "flex-col overflow-hidden",
+//         "rounded-md border border-[#d5dce5]",
+//         "bg-white",
+//       )}
+//       style={{
+//         height: "calc(100vh - 126px)",
+//         isolation: "isolate",
+//         fontFamily: APPRAISAL_FONT,
+//       }}
+//     >
+//       <style>{GRID_STYLES}</style>
+
+//       {/* GRID AREA */}
+
+//       <div
+//         ref={gridViewportRef}
+//         className={cn("min-h-0 flex-1", "overflow-auto")}
+//       >
+//         <table
+//           className="border-separate border-spacing-0"
+//           style={{
+//             tableLayout: "fixed",
+//             width: "max-content",
+//             minWidth: "100%",
+//             fontFamily: APPRAISAL_FONT,
+//           }}
+//         >
+//           <colgroup>
+//             <col style={{ width: SELECT_WIDTH }} />
+
+//             {orderedColumns.map((col) => (
+//               <col key={col.key} style={{ width: widthOf(col) }} />
+//             ))}
+//           </colgroup>
+
+//           <thead>
+//             <tr style={{ height: HEADER_HEIGHT }}>
+//               <th
+//                 className="sticky left-0 top-0 border-r border-b border-[#cbd5e1] p-0"
+//                 style={{
+//                   position: "sticky",
+//                   left: 0,
+//                   top: 0,
+//                   width: SELECT_WIDTH,
+//                   minWidth: SELECT_WIDTH,
+//                   maxWidth: SELECT_WIDTH,
+//                   height: HEADER_HEIGHT,
+//                   background: "#dfe8f3",
+//                   zIndex: 80,
+//                 }}
+//               >
+//                 <div
+//                   className="flex items-center justify-center"
+//                   style={{ height: HEADER_HEIGHT }}
+//                 >
+//                   <Checkbox
+//                     checked={headerChecked}
+//                     onCheckedChange={() =>
+//                       toggleAll(
+//                         !allSelected,
+//                         displayRows.map((row) => row.id),
+//                       )
+//                     }
+//                     aria-label="Select all"
+//                     className="size-3.5"
+//                   />
+//                 </div>
+//               </th>
+
+//               {orderedColumns.map((col) => {
+//                 const isEmpId = col.key === "empId";
+//                 const isName = col.key === "name";
+//                 const isFrozen = isEmpId || isName;
+
+//                 const left = isEmpId
+//                   ? SELECT_WIDTH
+//                   : isName
+//                     ? SELECT_WIDTH + empIdWidth
+//                     : undefined;
+
+//                 const width = widthOf(col);
+
+//                 const showFilter = !NO_FILTER_COLUMNS.has(col.key);
+
+//                 return (
+//                   <th
+//                     key={col.key}
+//                     draggable
+//                     onDragStart={(event) => handleColumnDragStart(event, col)}
+//                     onDragOver={handleColumnDragOver}
+//                     onDrop={(event) => handleColumnDrop(event, col)}
+//                     onDragEnd={handleColumnDragEnd}
+//                     className="sticky border-r border-b border-[#cbd5e1] p-0"
+//                     style={{
+//                       position: "sticky",
+//                       top: 0,
+//                       ...(isFrozen ? { left } : {}),
+//                       width,
+//                       minWidth: width,
+//                       maxWidth: width,
+//                       height: HEADER_HEIGHT,
+//                       boxSizing: "border-box",
+//                       zIndex: isFrozen ? 90 : 60,
+//                       background: isFrozen ? "#dfe8f3" : "#e9eef5",
+//                       boxShadow:
+//                         isFrozen && isName
+//                           ? "2px 0 4px -2px rgba(71,85,105,.45)"
+//                           : undefined,
+//                       fontFamily: APPRAISAL_FONT,
+//                     }}
+//                   >
+//                     <div
+//                       className="flex h-auto w-full items-center gap-1 px-2"
+//                       style={{ minHeight: HEADER_HEIGHT }}
+//                     >
+//                       <span
+//                         className="min-w-0 flex-1 overflow-hidden break-words text-left text-[11px] font-bold leading-[13px] text-[#24364d]"
+//                         title={col.label}
+//                       >
+//                         {col.label}
+//                       </span>
+
+//                       {showFilter && (
+//                         <div className="shrink-0">
+//                           <ColumnFilter
+//                             columnKey={col.key}
+//                             filter={filters[col.key]}
+//                             options={optionsFor(col.key)}
+//                             onChange={(filter) => setFilter(col.key, filter)}
+//                             sortDirection={
+//                               groupBy.find((item) => item.key === col.key)
+//                                 ?.dir || null
+//                             }
+//                             onSortAsc={() =>
+//                               addGroup(col.key, "asc", col.label)
+//                             }
+//                             onSortDesc={() =>
+//                               addGroup(col.key, "desc", col.label)
+//                             }
+//                             onClearSort={() => removeGroup(col.key)}
+//                             bulkEditable={!!col.editable && !col.computed}
+//                             bulkRowCount={rows.length}
+//                             onBulkApply={(value) =>
+//                               applyColumnBulkEdit(col, value)
+//                             }
+//                           />
+//                         </div>
+//                       )}
+//                     </div>
+
+//                     <div
+//                       role="separator"
+//                       aria-label={`Resize ${col.label} column`}
+//                       title="Drag to resize column"
+//                       onPointerDown={(event) => startColumnResize(event, col)}
+//                       className="absolute top-0 right-[-2px] z-[100] h-full w-[5px] cursor-col-resize touch-none hover:bg-[#17365d]/30"
+//                     />
+//                   </th>
+//                 );
+//               })}
+//             </tr>
+//           </thead>
+
+//           <tbody>
+//             {groupedRows ? (
+//               groupedRows.length === 0 ? (
+//                 <tr>
+//                   <td
+//                     colSpan={GRID_COLUMNS.length + 1}
+//                     className="px-3 py-8 text-center text-[12px] text-slate-500"
+//                   >
+//                     No employees match the current filters.
+//                   </td>
+//                 </tr>
+//               ) : (
+//                 renderGroupedSections(groupedRows)
+//               )
+//             ) : (
+//               <>
+//                 {pageRows.map((row, rowIndex) => renderDataRow(row, rowIndex))}
+
+//                 {pageRows.length === 0 && (
+//                   <tr>
+//                     <td
+//                       colSpan={GRID_COLUMNS.length + 1}
+//                       className="px-3 py-8 text-center text-[12px] text-slate-500"
+//                     >
+//                       No employees match the current filters.
+//                     </td>
+//                   </tr>
+//                 )}
+//               </>
+//             )}
+//           </tbody>
+//         </table>
+//       </div>
+
+//       {/* PAGINATION / GROUP STATUS BAR */}
+
+//       <div
+//         className="flex h-9 shrink-0 items-center justify-between border-t border-[#d5dce5] bg-[#f8fafc] px-3"
+//         style={{ fontFamily: APPRAISAL_FONT }}
+//       >
+//         <div className="text-[11px] text-slate-500">
+//           {groupedRows
+//             ? `Grouped by ${groupByColumnLabel} — showing all ${rows.length} employees`
+//             : rows.length === 0
+//               ? "0 employees"
+//               : `Showing ${pageStart}-${pageEnd} of ${rows.length} employees${
+//                   groupBy.length ? ` · Sorted by ${groupByColumnLabel}` : ""
+//                 }`}
+
+//           <span className="ml-3 text-slate-400">
+//             Modified cells save automatically.
+//           </span>
+//         </div>
+
+//         {groupedRows ? (
+//           <button
+//             type="button"
+//             onClick={clearAllGroups}
+//             className="flex h-6 items-center justify-center rounded border border-[#cbd5e1] bg-white px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+//           >
+//             Clear grouping
+//           </button>
+//         ) : (
+//           <div className="flex items-center gap-1">
+//             {groupBy.length > 0 && (
+//               <button
+//                 type="button"
+//                 onClick={clearAllGroups}
+//                 className="mr-2 flex h-6 items-center justify-center rounded border border-[#cbd5e1] bg-white px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+//               >
+//                 Clear sort
+//               </button>
+//             )}
+
+//             <button
+//               type="button"
+//               disabled={currentPage === 1}
+//               onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+//               className="flex size-6 items-center justify-center rounded border border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40"
+//             >
+//               <ChevronLeft className="size-3.5" />
+//             </button>
+
+//             {pageButtons.map((page) => (
+//               <button
+//                 key={page}
+//                 type="button"
+//                 onClick={() => setCurrentPage(page)}
+//                 className={cn(
+//                   "flex size-6 items-center justify-center rounded border text-[11px] font-medium",
+//                   page === currentPage
+//                     ? "border-[#173b63] bg-[#173b63] text-white"
+//                     : "border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100",
+//                 )}
+//               >
+//                 {page}
+//               </button>
+//             ))}
+
+//             <button
+//               type="button"
+//               disabled={currentPage >= totalPages}
+//               onClick={() =>
+//                 setCurrentPage((page) => Math.min(totalPages, page + 1))
+//               }
+//               className="flex size-6 items-center justify-center rounded border border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40"
+//             >
+//               <ChevronRight className="size-3.5" />
+//             </button>
+//           </div>
+//         )}
+//       </div>
+
+//       {/* HISTORY DETAILS PANEL */}
+
+//       {showHistory && (
+//         <div
+//           id="history-panel"
+//           className="shrink-0 border-t border-[#173b63] bg-white"
+//           style={{
+//             fontFamily: APPRAISAL_FONT,
+//             height: "min(300px, 36vh)",
+//             minHeight: 210,
+//           }}
+//         >
+//           <div className="flex h-9 items-center justify-between bg-[#173b63] px-3 text-white">
+//             <div className="flex items-center gap-2">
+//               <History className="size-3.5" />
+
+//               <span className="text-[13px] font-bold">
+//                 History
+//                 {historyRow ? ` - ${historyRow.name}` : ""}
+//               </span>
+
+//               {historyRow && !historyLoading && (
+//                 <span className="text-[11px] opacity-75">
+//                   {historyData.length} cycle
+//                   {historyData.length === 1 ? "" : "s"}
+//                 </span>
+//               )}
+//             </div>
+
+//             <button
+//               type="button"
+//               onClick={() => setShowHistory(false)}
+//               className="flex size-6 items-center justify-center rounded text-white hover:bg-white/10"
+//               aria-label="Close history"
+//             >
+//               <X className="size-3.5" />
+//             </button>
+//           </div>
+
+//           <div className="h-[calc(100%-60px)] overflow-auto">
+//             {!historyRow ? (
+//               <div className="flex h-full items-center justify-center px-3 text-center text-[12px] text-slate-500">
+//                 Select an employee to view previous-year appraisal history.
+//               </div>
+//             ) : historyLoading ? (
+//               <div className="flex h-full items-center justify-center px-3 text-center text-[12px] text-slate-500">
+//                 Loading appraisal history...
+//               </div>
+//             ) : historyError ? (
+//               <div className="flex h-full flex-col items-center justify-center gap-1 px-3 text-center text-[12px] text-red-500">
+//                 <span>Unable to load appraisal history.</span>
+
+//                 <span className="text-[11px] text-slate-400">
+//                   {historyError}
+//                 </span>
+
+//                 <button
+//                   type="button"
+//                   onClick={retryHistory}
+//                   className="mt-1 flex h-6 items-center justify-center rounded border border-[#cbd5e1] bg-white px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+//                 >
+//                   Retry
+//                 </button>
+//               </div>
+//             ) : (
+//               <table
+//                 className="w-full border-collapse"
+//                 style={{ tableLayout: "fixed", minWidth: 1100 }}
+//               >
+//                 <colgroup>
+//                   <col style={{ width: 90 }} />
+
+//                   {HISTORY_METRIC_COLUMNS.map((col) => (
+//                     <col key={col.key} style={{ width: 120 }} />
+//                   ))}
+//                 </colgroup>
+
+//                 <thead>
+//                   <tr className="bg-[#eef2f7]">
+//                     <th className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-2 py-1.5 text-center align-bottom text-[11px] font-bold text-[#24364d]">
+//                       Year
+//                     </th>
+
+//                     {HISTORY_METRIC_COLUMNS.map((col) => (
+//                       <th
+//                         key={col.key}
+//                         className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-2 py-1.5 text-center align-bottom text-[11px] font-bold text-[#24364d]"
+//                       >
+//                         <div>{col.label}</div>
+
+//                         <div className="text-[9px] font-normal text-slate-400">
+//                           % change below
+//                         </div>
+//                       </th>
+//                     ))}
+//                   </tr>
+//                 </thead>
+
+//                 <tbody>
+//                   {historyData.map((item, index) => {
+//                     const previous = historyData[index + 1];
+
+//                     const isLatest = index === 0;
+
+//                     return (
+//                       <tr
+//                         key={`${item.year}-${index}`}
+//                         className={cn(
+//                           "h-[46px]",
+//                           isLatest ? "bg-[#fff9dc]" : "bg-white",
+//                         )}
+//                       >
+//                         <td className="border-r border-b border-[#e0e5ec] px-2 py-1 text-center text-[12px] font-bold text-[#1859a8]">
+//                           {item.year}
+//                           {isLatest ? " ★" : ""}
+//                         </td>
+
+//                         {HISTORY_METRIC_COLUMNS.map((col) => {
+//                           const change = computeHistoryChange(
+//                             item[col.key],
+//                             previous ? previous[col.key] : undefined,
+//                           );
+
+//                           const shouldFlash =
+//                             isLatest && historyFlashKeys.has(col.key);
+
+//                           return (
+//                             <td
+//                               key={col.key}
+//                               className={cn(
+//                                 "border-r border-b border-[#e0e5ec] px-2 py-1 text-right text-[12px] tabular-nums transition-colors duration-500",
+//                                 shouldFlash && "bg-[#ffd54f]",
+//                               )}
+//                             >
+//                               <div>{formatHistoryNumber(item[col.key])}</div>
+
+//                               <div
+//                                 className={cn(
+//                                   "text-[10px]",
+//                                   change.tone === "up" && "text-[#13804a]",
+//                                   change.tone === "down" && "text-[#a5432f]",
+//                                   change.tone === "neutral" && "text-[#d97706]",
+//                                 )}
+//                               >
+//                                 {change.label}
+//                               </div>
+//                             </td>
+//                           );
+//                         })}
+//                       </tr>
+//                     );
+//                   })}
+//                 </tbody>
+//               </table>
+//             )}
+//           </div>
+
+//           <div className="flex h-6 items-center border-t border-[#e2e8f0] bg-[#f8fafc] px-3 text-[10px] text-slate-500">
+//             The starred row reflects the employee currently selected in the grid
+//             above, live. Older cycles are reference data.
+//           </div>
+//         </div>
+//       )}
+
+//       {/* CHANGE TOAST */}
+
+//       {cellToast && toastParts && (
+//         <div
+//           className="pointer-events-none fixed z-[10000] max-w-[280px] rounded-md bg-[#17365d] px-3 py-2 text-[12px] leading-snug text-white shadow-[0_6px_18px_rgba(20,30,50,.28)]"
+//           style={{
+//             left: cellToast.left,
+//             top: cellToast.top,
+//             fontFamily: APPRAISAL_FONT,
+//           }}
+//         >
+//           <b className="text-[#ffd54f]">{cellToast.label}</b> is now{" "}
+//           {toastParts.valueText} —{" "}
+//           <span
+//             className={toastParts.down ? "text-[#ff9a8a]" : "text-[#8ee6ad]"}
+//           >
+//             {toastParts.text}
+//           </span>
+//         </div>
+//       )}
+
+//       {/* EMPLOYEE HOVER POPUP */}
+
+//       {/* DETAIL PANEL — click-triggered, draggable, resizable, dockable */}
+
+//       {detailOpen && liveDetailEmployee && (
+//         <div
+//           ref={detailPanelRef}
+//           className="detail-panel"
+//           style={{
+//             left: detailPos.left,
+//             top: detailPos.top,
+//             width: detailSize.width,
+//             height: detailSize.height || undefined,
+//             fontFamily: APPRAISAL_FONT,
+//           }}
+//         >
+//           <div className="panel-head" onMouseDown={handleDetailHeaderMouseDown}>
+//             <div className="panel-head-left hp-header">
+//               <b>{liveDetailEmployee.name}</b>
+//               <span className="hp-sep">·</span>
+//               <span className="hp-field-label">DOJ:</span>{" "}
+//               {formatDoj(liveDetailEmployee.doj)}
+//               <span className="hp-sep">·</span>
+//               <span className="hp-field-label">Org Exp:</span>{" "}
+//               {liveDetailEmployee.wissenExperience || 0} yrs
+//               <span className="hp-sep">·</span>
+//               <span className="hp-field-label">Overall Exp:</span>{" "}
+//               {liveDetailEmployee.totalExperience || 0} yrs
+//             </div>
+
+//             <div className="panel-controls">
+//               {detailFloating && (
+//                 <button
+//                   type="button"
+//                   className="panel-btn"
+//                   onClick={dockDetailPanel}
+//                   title="Return to top-left"
+//                 >
+//                   &#8681;
+//                 </button>
+//               )}
+
+//               <button
+//                 type="button"
+//                 className="panel-btn"
+//                 onClick={closeDetailPanel}
+//                 title="Close"
+//               >
+//                 &#10005;
+//               </button>
+//             </div>
+//           </div>
+
+//           <table className="hp-cycle-table">
+//             <colgroup>
+//               <col />
+//               <col />
+//               <col />
+//               <col />
+//             </colgroup>
+
+//             <thead>
+//               <tr>
+//                 <th>Year</th>
+//                 <th>Designation</th>
+//                 <th>Rating</th>
+//                 <th>Feedback</th>
+//               </tr>
+//             </thead>
+
+//             <tbody>
+//               {!detailHistoryState || detailHistoryState.loading ? (
+//                 <tr>
+//                   <td colSpan={4} style={{ padding: "12px", color: "#8592a6" }}>
+//                     Loading history...
+//                   </td>
+//                 </tr>
+//               ) : detailHistoryState.error ? (
+//                 <tr>
+//                   <td colSpan={4} style={{ padding: "12px", color: "#dc2626" }}>
+//                     {detailHistoryState.error}
+//                   </td>
+//                 </tr>
+//               ) : !detailHistoryRows.length ? (
+//                 <tr>
+//                   <td colSpan={4} style={{ padding: "12px", color: "#8592a6" }}>
+//                     No appraisal history yet.
+//                   </td>
+//                 </tr>
+//               ) : (
+//                 detailHistoryRows.map((item, index) => (
+//                   <tr
+//                     key={`${item.year}-${index}`}
+//                     className={index === 0 ? "current" : ""}
+//                   >
+//                     <td className="hp-year">
+//                       {item.year}
+//                       {index === 0 ? " ★" : ""}
+//                     </td>
+
+//                     <td>{item.designation}</td>
+
+//                     <td>
+//                       {item.rating &&
+//                       String(item.rating).trim() !== "" &&
+//                       item.rating !== "—"
+//                         ? `${item.rating} / 5`
+//                         : "—"}
+//                     </td>
+
+//                     <td className="hp-feedback">{item.feedback || "—"}</td>
+//                   </tr>
+//                 ))
+//               )}
+//             </tbody>
+//           </table>
+
+//           {["n", "s", "e", "w", "ne", "nw", "se", "sw"].map((dir) => (
+//             <div
+//               key={dir}
+//               className={`resize-handle rh-${dir}`}
+//               onMouseDown={(event) => startDetailResize(event, dir)}
+//             />
+//           ))}
+//         </div>
+//       )}
+//     </div>
+//   );
+// }
 import {
   Fragment,
   useCallback,
@@ -40,11 +3355,19 @@ const SELECT_WIDTH = 34;
 const MIN_WIDTH = 60;
 const MAX_WIDTH = 260;
 
+// Right panel sizes
+const PANEL_WIDTH = 360;
+const PANEL_WIDE_WIDTH = 640;
+const PANEL_MIN_WIDTH = 300;
+const PANEL_MAX_WIDTH = 720;
+
 const WIDTHS = {
   empId: 84,
-  name: 165,
+  // "name" is now the combined Employee column (name + emp id below it)
+  name: 190,
 
-  designation: 120,
+  // Sticky second column (designation + Promote button)
+  designation: 150,
   reportingManager: 125,
   compManager: 125,
   appraiserTechED: 130,
@@ -93,13 +3416,27 @@ const WIDTHS = {
   atRisk: 140,
 };
 
+// Used for lookups (sorting, grouping, bulk edit ...) — still has every column.
 const GRID_COLUMNS = COLUMNS;
+
+// Columns actually drawn in the table. empId is merged into the "name"
+// column (name on top, id below), so it is not drawn separately.
+const FROZEN_KEYS = new Set(["name", "designation"]);
+
+const DEFAULT_COLUMN_ORDER = [
+  "name",
+  "designation",
+  ...COLUMNS.map((column) => column.key).filter(
+    (key) => key !== "empId" && !FROZEN_KEYS.has(key),
+  ),
+];
 
 // Columns that should NOT show the filter / group menu in the header
 const NO_FILTER_COLUMNS = new Set();
 
 // ============================================================
-// LOCAL STYLES (blink animation for the last edited cell)
+// LOCAL STYLES (blink animation for the last edited cell + the
+// history table used inside the old right panel)
 // ============================================================
 
 const GRID_STYLES = `
@@ -109,42 +3446,6 @@ const GRID_STYLES = `
 }
 .appraisal-cell-blink { animation: appraisalCellBlink .5s ease-in-out 3; }
 
-.detail-panel {
-  position: fixed;
-  z-index: 9999;
-  background: white;
-  border: 1px solid #c7d0dc;
-  border-radius: 8px;
-  box-shadow: 0 10px 28px rgba(20,30,50,.22);
-  overflow: auto;
-  min-width: 360px;
-  min-height: 160px;
-}
-.panel-head {
-  background: #17365d;
-  color: white;
-  padding: 9px 14px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  cursor: move;
-  user-select: none;
-}
-.panel-head-left.hp-header {
-  font-size: 11px;
-  color: #cdd8e8;
-  line-height: 1.4;
-}
-.hp-header b { color: #fff; font-size: 14px; font-weight: 600; }
-.hp-header .hp-sep { color: #5c7396; margin: 0 6px; }
-.hp-header .hp-field-label { color: #9db1cc; }
-.panel-controls { display: flex; align-items: center; gap: 6px; }
-.panel-btn {
-  width: 24px; height: 24px; border: none; border-radius: 4px;
-  background: rgba(255,255,255,.15); color: white; cursor: pointer;
-  font-size: 13px; line-height: 1; display: flex; align-items: center; justify-content: center;
-}
-.panel-btn:hover { background: rgba(255,255,255,.28); }
 .hp-cycle-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
 .hp-cycle-table th {
   font-size: 9.5px; text-transform: uppercase; letter-spacing: .03em; color: #8592a6; font-weight: 700;
@@ -158,15 +3459,6 @@ const GRID_STYLES = `
 .hp-cycle-table tr.current td { background: #fff9dc; }
 .hp-cycle-table td.hp-year { color: #1559a6; font-weight: 700; white-space: nowrap; }
 .hp-cycle-table td.hp-feedback { white-space: normal; word-break: normal; }
-.resize-handle { position: absolute; z-index: 5; }
-.rh-n { top: -3px; left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
-.rh-s { bottom: -3px; left: 8px; right: 8px; height: 6px; cursor: ns-resize; }
-.rh-e { right: -3px; top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
-.rh-w { left: -3px; top: 8px; bottom: 8px; width: 6px; cursor: ew-resize; }
-.rh-ne { top: -3px; right: -3px; width: 12px; height: 12px; cursor: nesw-resize; }
-.rh-nw { top: -3px; left: -3px; width: 12px; height: 12px; cursor: nwse-resize; }
-.rh-se { bottom: -3px; right: -3px; width: 12px; height: 12px; cursor: nwse-resize; }
-.rh-sw { bottom: -3px; left: -3px; width: 12px; height: 12px; cursor: nesw-resize; }
 `;
 
 // ============================================================
@@ -269,7 +3561,7 @@ const computeHistoryChange = (currentValue, previousValue) => {
   };
 };
 
-// Date of joining shown in the hover card header.
+// Date of joining (kept for the old panel, which is disabled below).
 const formatDoj = (value) => {
   if (!value) {
     return "—";
@@ -286,6 +3578,92 @@ const formatDoj = (value) => {
     month: "short",
     year: "numeric",
   });
+};
+
+// ============================================================
+// RIGHT PANEL HELPERS (budget / team metrics maths)
+// ============================================================
+
+const num = (value) => {
+  const n = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+
+  return Number.isFinite(n) ? n : 0;
+};
+
+const toLakhs = (value) => `${(num(value) / 100000).toFixed(2)} L`;
+
+const f1 = (value) => (Math.round(value * 10) / 10).toFixed(1);
+
+const ratioPct = (a, b) => (num(b) ? (num(a) / num(b)) * 100 : 0);
+
+const medianOf = (list) => {
+  if (!list.length) {
+    return 0;
+  }
+
+  const sorted = [...list].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+const ordinal = (n) => {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+
+  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
+};
+
+const levelTone = (p) => (p > 100 ? "bad" : p > 90 ? "warn" : "ok");
+
+const TONE_TEXT = {
+  ok: "text-[#15803d]",
+  warn: "text-[#b7791f]",
+  bad: "text-[#c0392b]",
+};
+
+const TONE_BG = {
+  ok: "bg-[#15803d]",
+  warn: "bg-[#b7791f]",
+  bad: "bg-[#c0392b]",
+};
+
+// hike + performance bonus (allocated + new) + retention bonus
+const rewardTotal = (row) =>
+  num(row.hikeAmount) +
+  num(row.allocatedPBAmount) +
+  num(row.newPBToBeOffered) +
+  num(row.newRB);
+
+const rowHikePct = (row) => ratioPct(row.hikeAmount, row.currentAnnualBasePay);
+
+const rowRewardHikePct = (row) =>
+  ratioPct(rewardTotal(row), row.currentAnnualBasePay);
+
+const hasHike = (row) => num(row.hikeAmount) > 0;
+
+const isPromotedRow = (row) => row.eligibleForPromotion === "Yes";
+
+const PANEL_TABS = [
+  ["feedback", "Feedback"],
+  ["budget", "Budget"],
+  // Agent tab intentionally skipped for now.
+];
+
+const PANEL_SUBS = {
+  feedback: [
+    ["manager", "Manager"],
+    ["client", "Client"],
+    ["other", "Other"],
+  ],
+  budget: [
+    ["budget", "Budget"],
+    ["team", "Team metrics"],
+    ["pct", "Hike percentile"],
+    ["nohike", "No hike"],
+    ["pb", "PB paid vs target"],
+    ["changes", "Team changes"],
+  ],
 };
 
 // ============================================================
@@ -553,6 +3931,776 @@ const buildHistoryView = (records, row) => {
 const sortHistoryDesc = (a, b) => String(b.year).localeCompare(String(a.year));
 
 // ============================================================
+// SMALL PANEL UI PIECES
+// ============================================================
+
+function PanelCard({ title, children }) {
+  return (
+    <div className="mt-2 rounded-[10px] border border-[#e5e7eb] px-3 py-2.5">
+      {title && (
+        <h4 className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-[.04em] text-[#6b7280]">
+          {title}
+        </h4>
+      )}
+      {children}
+    </div>
+  );
+}
+
+function PanelRow({ label, children }) {
+  return (
+    <div className="flex justify-between gap-2 border-t border-dashed border-[#eef0f3] py-[3px] first:border-t-0">
+      <span>{label}</span>
+      <span>{children}</span>
+    </div>
+  );
+}
+
+function PanelChip({ tone, children }) {
+  return (
+    <span
+      className={cn(
+        "mr-1 mt-[3px] inline-block rounded border px-1.5 py-px text-[11px]",
+        tone === "good"
+          ? "border-[#b7e4c7] bg-[#ecfdf3] font-bold text-[#166534]"
+          : tone === "now"
+            ? "border-[#d1d5db] bg-[#eef0f3] font-bold text-[#111827]"
+            : "border-[#e5e7eb] bg-[#f7f8fa]",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+function PanelBar({ value, tone }) {
+  return (
+    <div className="my-1.5 h-[7px] overflow-hidden rounded bg-[#eef1f4]">
+      <div
+        className={cn("h-full", TONE_BG[tone])}
+        style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+      />
+    </div>
+  );
+}
+
+function PanelInfo({ children }) {
+  return (
+    <div className="mt-2 rounded-lg border border-[#e5e7eb] bg-[#f7f8fa] px-2.5 py-1.5 text-[12px]">
+      {children}
+    </div>
+  );
+}
+
+// ============================================================
+// EMPLOYEE RIGHT PANEL  (opens when an employee name is clicked)
+// Tabs: Feedback (Manager / Client / Other) and Budget (6 subs).
+// The Agent tab is intentionally left out for now.
+// ============================================================
+
+function EmployeePanel({
+  employee,
+  team,
+  modified,
+  history,
+  budget,
+  onViewBudget,
+  onClose,
+}) {
+  const [tab, setTab] = useState("feedback");
+  const [subs, setSubs] = useState({ feedback: "manager", budget: "budget" });
+  const [wide, setWide] = useState(false);
+  const [width, setWidth] = useState(PANEL_WIDTH);
+  const [dragging, setDragging] = useState(false);
+
+  const panelWidth = wide ? PANEL_WIDE_WIDTH : width;
+  const sub = subs[tab];
+
+  // ---------- drag the left edge to resize ----------
+  const startResize = useCallback(
+    (event) => {
+      event.preventDefault();
+
+      const startX = event.clientX;
+      const startWidth = panelWidth;
+
+      setDragging(true);
+
+      const handleMove = (moveEvent) => {
+        const next = Math.max(
+          PANEL_MIN_WIDTH,
+          Math.min(PANEL_MAX_WIDTH, startWidth + (startX - moveEvent.clientX)),
+        );
+
+        setWide(false);
+        setWidth(next);
+      };
+
+      const handleUp = () => {
+        setDragging(false);
+        window.removeEventListener("pointermove", handleMove);
+        window.removeEventListener("pointerup", handleUp);
+      };
+
+      window.addEventListener("pointermove", handleMove);
+      window.addEventListener("pointerup", handleUp);
+    },
+    [panelWidth],
+  );
+
+  // ---------- budget numbers ----------
+  const util = useMemo(() => {
+    const alloc = num(budget?.allocated);
+
+    let used = 0;
+    let tpb = 0;
+
+    team.forEach((row) => {
+      used += rewardTotal(row);
+      tpb += num(row.targetPBNextYear);
+    });
+
+    if (budget?.used !== undefined && budget?.used !== null) {
+      used = num(budget.used);
+    }
+
+    if (budget?.targetPB !== undefined && budget?.targetPB !== null) {
+      tpb = num(budget.targetPB);
+    }
+
+    return {
+      alloc,
+      used,
+      tpb,
+      cur: ratioPct(used, alloc),
+      incl: ratioPct(used + tpb, alloc),
+    };
+  }, [team, budget]);
+
+  const hasAlloc = util.alloc > 0;
+
+  // ---------- header line ----------
+  const headerParts = [
+    employee.empId,
+    employee.designation,
+    employee.band,
+    employee.totalExperience !== undefined &&
+    employee.totalExperience !== null &&
+    employee.totalExperience !== ""
+      ? `${employee.totalExperience} yrs${
+          employee.wissenExperience !== undefined &&
+          employee.wissenExperience !== null &&
+          employee.wissenExperience !== ""
+            ? ` (${employee.wissenExperience} here)`
+            : ""
+        }`
+      : "",
+  ].filter(Boolean);
+
+  // ---------- FEEDBACK ----------
+  const renderHistoryState = () => {
+    if (history.loading) {
+      return <PanelInfo>Loading appraisal history...</PanelInfo>;
+    }
+
+    if (history.error) {
+      return (
+        <div className="mt-2 rounded-lg border border-[#fecaca] bg-[#fef2f2] px-2.5 py-2 text-[12px] text-[#b91c1c]">
+          {history.error}
+          <button
+            type="button"
+            onClick={history.onRetry}
+            className="ml-2 font-bold underline"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  const renderFeedback = () => {
+    const stateNode = renderHistoryState();
+
+    if (sub === "manager") {
+      if (stateNode) {
+        return stateNode;
+      }
+
+      if (!history.rows.length) {
+        return <PanelInfo>No manager feedback recorded.</PanelInfo>;
+      }
+
+      return (
+        <ul className="relative m-0 mt-1 list-none p-0 pl-[18px]">
+          <span className="absolute bottom-2 left-[5px] top-2 w-px bg-[#e0e4ea]" />
+
+          {history.rows.map((item, index) => {
+            const hasRating =
+              item.rating &&
+              String(item.rating).trim() !== "" &&
+              item.rating !== "—";
+
+            const hasPromotion = item.promotion && item.promotion !== "—";
+
+            const hasText = item.feedback && item.feedback !== "—";
+
+            return (
+              <li
+                key={`${item.year}-${index}`}
+                className="relative pb-2.5 pt-1.5"
+              >
+                <span
+                  className={cn(
+                    "absolute -left-[17px] top-[11px] size-[9px] rounded-full border-2",
+                    index === 0
+                      ? "border-[#102a43] bg-[#102a43]"
+                      : "border-[#c7cdd6] bg-white",
+                  )}
+                />
+
+                <span className="font-extrabold text-[#102a43]">
+                  {item.year}
+                </span>
+
+                {index === 0 && <PanelChip tone="now">This cycle</PanelChip>}
+
+                <div className="text-[#6b7280]">
+                  {item.designation !== "—" ? item.designation : ""}
+                </div>
+
+                {hasRating && (
+                  <PanelChip>
+                    Manager rating <b>{item.rating} / 5</b>
+                  </PanelChip>
+                )}
+
+                {hasPromotion && (
+                  <PanelChip
+                    tone={/^y/i.test(item.promotion) ? "good" : undefined}
+                  >
+                    {/^y/i.test(item.promotion)
+                      ? "Promoted"
+                      : `Promotion: ${item.promotion}`}
+                  </PanelChip>
+                )}
+
+                {hasText && (
+                  <div className="mt-1 leading-[1.45] text-[#1f2937]">
+                    {item.feedback}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      );
+    }
+
+    if (sub === "client") {
+      // Expects row.clientFeedback = [{ year, client, rating, text }] if you add it later.
+      const clientFeedback = Array.isArray(employee.clientFeedback)
+        ? employee.clientFeedback
+        : [];
+
+      if (!clientFeedback.length) {
+        return <PanelInfo>No client feedback recorded.</PanelInfo>;
+      }
+
+      return (
+        <ul className="relative m-0 mt-1 list-none p-0 pl-[18px]">
+          <span className="absolute bottom-2 left-[5px] top-2 w-px bg-[#e0e4ea]" />
+
+          {clientFeedback.map((item, index) => (
+            <li
+              key={`${item.year}-${index}`}
+              className="relative pb-2.5 pt-1.5"
+            >
+              <span
+                className={cn(
+                  "absolute -left-[17px] top-[11px] size-[9px] rounded-full border-2",
+                  index === 0
+                    ? "border-[#102a43] bg-[#102a43]"
+                    : "border-[#c7cdd6] bg-white",
+                )}
+              />
+
+              <span className="font-extrabold text-[#102a43]">{item.year}</span>
+
+              {item.client && (
+                <span className="text-[#6b7280]"> · {item.client}</span>
+              )}
+
+              {item.rating !== undefined && item.rating !== null && (
+                <div>
+                  <PanelChip>
+                    Client rating <b>{item.rating}</b>
+                  </PanelChip>
+                </div>
+              )}
+
+              {item.text && (
+                <div className="mt-1 leading-[1.45] text-[#1f2937]">
+                  {item.text}
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      );
+    }
+
+    // other
+    return (
+      <table className="w-full border-collapse text-[12px]">
+        <thead>
+          <tr>
+            <th className="border-b border-[#e5e7eb] px-1 py-1 text-left text-[10.5px] font-bold text-[#6b7280]">
+              Cycle
+            </th>
+            <th className="border-b border-[#e5e7eb] px-1 py-1 text-right text-[10.5px] font-bold text-[#6b7280]">
+              RR %
+            </th>
+            <th className="border-b border-[#e5e7eb] px-1 py-1 text-right text-[10.5px] font-bold text-[#6b7280]">
+              IC
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td className="border-b border-[#f1f3f5] p-1">
+              {CURRENT_APPRAISAL_YEAR}
+            </td>
+            <td className="border-b border-[#f1f3f5] p-1 text-right">
+              {employee.rrPercent !== undefined &&
+              employee.rrPercent !== null &&
+              employee.rrPercent !== ""
+                ? employee.rrPercent
+                : "—"}
+            </td>
+            <td className="border-b border-[#f1f3f5] p-1 text-right">
+              {employee.interviewCount !== undefined &&
+              employee.interviewCount !== null &&
+              employee.interviewCount !== ""
+                ? employee.interviewCount
+                : "—"}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    );
+  };
+
+  // ---------- BUDGET ----------
+  const renderBudget = () => {
+    const tone = levelTone(util.cur);
+    const toneIncl = levelTone(util.incl);
+
+    const alert = budget?.changedUnseen ? (
+      <div className="mt-2 rounded-lg border border-[#fed7aa] bg-[#fff7ed] px-2.5 py-1.5 text-[12px] text-[#9a3412]">
+        ● Budget changed since you last looked
+        {budget.changedFrom !== undefined && budget.changedFrom !== null
+          ? `: ${toLakhs(budget.changedFrom)} → ${toLakhs(util.alloc)}`
+          : ""}
+      </div>
+    ) : null;
+
+    if (sub === "budget") {
+      if (!hasAlloc) {
+        return (
+          <>
+            {alert}
+            <PanelInfo>
+              Budget allocation not connected yet. Pass the <b>budget</b> prop
+              (allocated amount) to show consumption here.
+            </PanelInfo>
+            <PanelCard title="Used so far (hike + PB + RB)">
+              <span className="text-[20px] font-extrabold">
+                {toLakhs(util.used)}
+              </span>
+            </PanelCard>
+          </>
+        );
+      }
+
+      const left = util.alloc - util.used;
+      const leftIncl = util.alloc - util.used - util.tpb;
+
+      return (
+        <>
+          {alert}
+
+          <PanelCard title="Current consumption">
+            <div className="flex items-center justify-between gap-2">
+              <span>Used</span>
+              <span
+                className={cn("text-[20px] font-extrabold", TONE_TEXT[tone])}
+              >
+                {f1(util.cur)}%
+              </span>
+            </div>
+
+            <PanelBar value={util.cur} tone={tone} />
+
+            <div className="text-[#6b7280]">
+              {toLakhs(util.used)} used ·{" "}
+              {left >= 0 ? `${toLakhs(left)} left` : `${toLakhs(-left)} over`}{" "}
+              of {toLakhs(util.alloc)}
+            </div>
+          </PanelCard>
+
+          <PanelCard title="Including Target PB">
+            <div className="flex items-center justify-between gap-2">
+              <span>Used + Target PB</span>
+              <span
+                className={cn(
+                  "text-[20px] font-extrabold",
+                  TONE_TEXT[toneIncl],
+                )}
+              >
+                {f1(util.incl)}%
+              </span>
+            </div>
+
+            <PanelBar value={util.incl} tone={toneIncl} />
+
+            <div className="text-[#6b7280]">
+              +{toLakhs(util.tpb)} Target PB ·{" "}
+              {leftIncl >= 0
+                ? `${toLakhs(leftIncl)} left`
+                : `${toLakhs(-leftIncl)} over`}
+            </div>
+          </PanelCard>
+
+          {typeof onViewBudget === "function" && (
+            <div className="mt-2.5">
+              <button
+                type="button"
+                onClick={onViewBudget}
+                className="font-bold text-[#102a43] underline"
+              >
+                View budget ›
+              </button>
+            </div>
+          )}
+        </>
+      );
+    }
+
+    if (sub === "team") {
+      const editedIds = new Set();
+
+      Object.keys(modified || {}).forEach((key) => {
+        if (modified[key]) {
+          editedIds.add(key.slice(0, key.lastIndexOf(":")));
+        }
+      });
+
+      const edited = team.filter((row) => editedIds.has(String(row.id))).length;
+      const promotions = team.filter(isPromotedRow).length;
+      const hikes = team.filter(hasHike).map(rowHikePct);
+      const ratings = team
+        .map((row) => parseFloat(row.managerRating))
+        .filter((value) => Number.isFinite(value) && value > 0);
+
+      return (
+        <>
+          {alert}
+
+          <PanelCard title={`Team · ${team.length} people`}>
+            <PanelRow label="Edited this cycle">
+              <b>
+                {edited} of {team.length}
+              </b>
+            </PanelRow>
+            <PanelRow label="Promotions">
+              <b>{promotions}</b>
+            </PanelRow>
+            <PanelRow label="Average hike % (where given)">
+              <b>
+                {hikes.length
+                  ? `${f1(hikes.reduce((a, b) => a + b, 0) / hikes.length)}%`
+                  : "—"}
+              </b>
+            </PanelRow>
+            <PanelRow label="Median hike %">
+              <b>{hikes.length ? `${f1(medianOf(hikes))}%` : "—"}</b>
+            </PanelRow>
+            <PanelRow label="Average rating">
+              <b>
+                {ratings.length
+                  ? (
+                      ratings.reduce((a, b) => a + b, 0) / ratings.length
+                    ).toFixed(1)
+                  : "—"}
+              </b>
+            </PanelRow>
+          </PanelCard>
+        </>
+      );
+    }
+
+    if (sub === "pct") {
+      const ranked = team
+        .map((row) => ({ row, value: rowRewardHikePct(row) }))
+        .sort((a, b) => b.value - a.value);
+
+      const myIndex = ranked.findIndex((item) => item.row.id === employee.id);
+
+      const percentile =
+        ranked.length > 1 && myIndex >= 0
+          ? Math.round(
+              ((ranked.length - 1 - myIndex) / (ranked.length - 1)) * 100,
+            )
+          : 100;
+
+      return (
+        <>
+          {alert}
+
+          <PanelCard title="Total Reward hike % in team">
+            <table className="w-full border-collapse text-[12px]">
+              <thead>
+                <tr>
+                  <th className="border-b border-[#e5e7eb] px-1 py-1 text-left text-[10.5px] font-bold text-[#6b7280]">
+                    #
+                  </th>
+                  <th className="border-b border-[#e5e7eb] px-1 py-1 text-left text-[10.5px] font-bold text-[#6b7280]">
+                    Employee
+                  </th>
+                  <th className="border-b border-[#e5e7eb] px-1 py-1 text-right text-[10.5px] font-bold text-[#6b7280]">
+                    Reward hike %
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {ranked.map((item, index) => (
+                  <tr
+                    key={item.row.id}
+                    className={cn(
+                      item.row.id === employee.id && "bg-[#eef0f3] font-bold",
+                    )}
+                  >
+                    <td className="border-b border-[#f1f3f5] p-1">
+                      {index + 1}
+                    </td>
+                    <td className="border-b border-[#f1f3f5] p-1">
+                      {item.row.name}
+                    </td>
+                    <td className="border-b border-[#f1f3f5] p-1 text-right">
+                      {f1(item.value)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {myIndex >= 0 && (
+              <div className="mt-1.5 text-[10.5px] text-[#6b7280]">
+                {employee.name} is {ordinal(percentile)} percentile
+              </div>
+            )}
+          </PanelCard>
+        </>
+      );
+    }
+
+    if (sub === "nohike") {
+      const noHike = team.filter((row) => !hasHike(row));
+
+      return (
+        <>
+          {alert}
+
+          <PanelCard
+            title={`No hike this cycle · ${noHike.length} of ${team.length}`}
+          >
+            {noHike.length ? (
+              <ul className="m-0 list-disc pl-4">
+                {noHike.map((row) => (
+                  <li key={row.id} className="my-0.5">
+                    {row.name}{" "}
+                    <span className="text-[#6b7280]">
+                      · {row.designation || ""}
+                      {row.managerRating
+                        ? ` · rating ${row.managerRating}`
+                        : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <div className="text-[#6b7280]">Everyone has a hike.</div>
+            )}
+          </PanelCard>
+        </>
+      );
+    }
+
+    if (sub === "pb") {
+      const paid = team.reduce((sum, row) => sum + num(row.pbToBePaid), 0);
+      const target = team.reduce(
+        (sum, row) => sum + num(row.targetPBAllocatedForMay),
+        0,
+      );
+      const p = ratioPct(paid, target);
+
+      return (
+        <>
+          {alert}
+
+          <PanelCard title="PB paid vs target">
+            <div className="flex items-center justify-between gap-2">
+              <span>Paid</span>
+              <span className="text-[20px] font-extrabold">{f1(p)}%</span>
+            </div>
+
+            <PanelBar value={p} tone="ok" />
+
+            <div className="text-[#6b7280]">
+              {toLakhs(paid)} paid of {toLakhs(target)} target
+            </div>
+          </PanelCard>
+        </>
+      );
+    }
+
+    // changes
+    const changes = Array.isArray(budget?.teamChanges)
+      ? budget.teamChanges
+      : [];
+
+    return (
+      <>
+        {alert}
+
+        <PanelCard title={`Team changes · ${changes.length}`}>
+          {changes.length ? (
+            <ul className="m-0 list-disc pl-4">
+              {changes.map((change, index) => (
+                <li key={`${change.name}-${index}`} className="my-0.5">
+                  {change.name}{" "}
+                  <span className="text-[#6b7280]">
+                    · {change.type}
+                    {change.date ? ` · ${change.date}` : ""}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="text-[#6b7280]">No changes since allocation.</div>
+          )}
+        </PanelCard>
+      </>
+    );
+  };
+
+  return (
+    <aside
+      className="relative flex shrink-0 flex-col border-l border-[#d5dce5] bg-white text-[12.5px] text-[#111827]"
+      style={{ width: panelWidth, fontFamily: APPRAISAL_FONT }}
+    >
+      {/* drag grip (left edge) */}
+      <div
+        onPointerDown={startResize}
+        title="Drag to resize"
+        className="group absolute bottom-0 left-0 top-0 z-[2] w-2 cursor-ew-resize"
+      >
+        <span
+          className={cn(
+            "absolute left-[2px] top-1/2 -mt-[18px] h-9 w-1 rounded",
+            dragging ? "bg-[#102a43]" : "bg-[#d1d5db] group-hover:bg-[#102a43]",
+          )}
+        />
+      </div>
+
+      {/* header */}
+      <div className="flex shrink-0 items-center gap-2 border-b border-[#e5e7eb] py-2 pl-4 pr-2.5">
+        <div
+          className="min-w-0 flex-1 text-[12px] leading-[1.35] text-[#374151]"
+          title={`${employee.name} · ${headerParts.join(" · ")}`}
+        >
+          <b className="text-[13px] text-[#102a43]">{employee.name}</b>
+          {headerParts.length > 0 && <> · {headerParts.join(" · ")}</>}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setWide((previous) => !previous)}
+          title={wide ? "Normal width" : "Expand"}
+          aria-pressed={wide}
+          className="h-[26px] min-w-[26px] shrink-0 rounded-md border border-[#d1d5db] bg-white px-1.5 text-[13px] text-[#374151] hover:border-[#102a43] hover:text-[#102a43]"
+        >
+          {wide ? "⤡" : "⤢"}
+        </button>
+
+        <button
+          type="button"
+          onClick={onClose}
+          title="Close"
+          aria-label="Close panel"
+          className="flex h-[26px] min-w-[26px] shrink-0 items-center justify-center rounded-md border border-[#d1d5db] bg-white px-1.5 text-[#374151] hover:border-[#102a43] hover:text-[#102a43]"
+        >
+          <X className="size-3.5" />
+        </button>
+      </div>
+
+      {/* tabs */}
+      <div
+        className="flex shrink-0 border-b border-[#e5e7eb] bg-[#fafafb]"
+        role="tablist"
+      >
+        {PANEL_TABS.map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            onClick={() => setTab(key)}
+            className={cn(
+              "flex-1 border-b-2 py-[9px] text-[13px]",
+              tab === key
+                ? "border-[#102a43] font-extrabold text-[#111827]"
+                : "border-transparent font-semibold text-[#6b7280]",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* sub buttons */}
+      <div className="flex shrink-0 flex-wrap gap-1.5 pb-1 pl-4 pr-3.5 pt-2.5">
+        {PANEL_SUBS[tab].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={sub === key}
+            onClick={() => setSubs((previous) => ({ ...previous, [tab]: key }))}
+            className={cn(
+              "rounded-[14px] border px-2.5 py-[3px] text-[11.5px]",
+              sub === key
+                ? "border-[#cbd2da] bg-[#eef0f3] font-bold text-[#111827]"
+                : "border-[#d1d5db] bg-white text-[#374151] hover:border-[#9ca3af]",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* body */}
+      <div className="min-h-0 flex-1 overflow-auto pb-3.5 pl-4 pr-3.5 pt-1.5">
+        {tab === "feedback" ? renderFeedback() : renderBudget()}
+      </div>
+    </aside>
+  );
+}
+
+// ============================================================
 // COMPONENT
 // ============================================================
 
@@ -567,6 +4715,19 @@ export function AppraisalGrid({
 
   showHistory,
   setShowHistory,
+
+  // Optional — right panel "Budget" tab.
+  // budget = {
+  //   allocated,         // updated budget amount (rupees)
+  //   changedUnseen,     // true -> shows the "Budget changed" alert
+  //   changedFrom,       // original budget amount
+  //   used,              // optional override for consumed amount
+  //   targetPB,          // optional override for total target PB
+  //   teamChanges: [{ name, type, date }],
+  // }
+  budget,
+  // Optional — shows the "View budget ›" link in the Budget tab.
+  onViewBudget,
 }) {
   const { updateCell, updateLinkedCells, bulkUpdate, modified } =
     useAppraisal();
@@ -607,15 +4768,6 @@ export function AppraisalGrid({
 
   const gridViewportRef = useRef(null);
 
-  const DOCKED_LEFT = 18;
-
-  const getDockedTop = () => {
-    const viewport = gridViewportRef.current;
-    const viewportRect = viewport ? viewport.getBoundingClientRect() : null;
-
-    // Anchor just below the grid's own header row, never under the page header.
-    return viewportRect ? viewportRect.top + 8 : 130;
-  };
   // ============================================================
   // COLUMN RESIZE
   // ============================================================
@@ -628,13 +4780,17 @@ export function AppraisalGrid({
 
   const resizeRef = useRef(null);
 
-  const [columnOrder, setColumnOrder] = useState(() =>
-    GRID_COLUMNS.map((column) => column.key),
-  );
+  // name + designation always first (sticky), empId is merged into name
+  const [columnOrder, setColumnOrder] = useState(DEFAULT_COLUMN_ORDER);
 
   const draggedColumnRef = useRef(null);
 
   const handleColumnDragStart = useCallback((event, column) => {
+    if (FROZEN_KEYS.has(column.key)) {
+      event.preventDefault();
+      return;
+    }
+
     draggedColumnRef.current = column.key;
 
     event.dataTransfer.effectAllowed = "move";
@@ -652,7 +4808,13 @@ export function AppraisalGrid({
     const draggedKey =
       draggedColumnRef.current || event.dataTransfer.getData("text/plain");
 
-    if (!draggedKey || draggedKey === targetColumn.key) {
+    // Frozen columns can neither be moved nor be replaced
+    if (
+      !draggedKey ||
+      draggedKey === targetColumn.key ||
+      FROZEN_KEYS.has(draggedKey) ||
+      FROZEN_KEYS.has(targetColumn.key)
+    ) {
       draggedColumnRef.current = null;
       return;
     }
@@ -749,12 +4911,20 @@ export function AppraisalGrid({
   }, []);
 
   // ============================================================
-  // STICKY COLUMN WIDTHS
+  // STICKY COLUMN OFFSETS
+  //   [checkbox] [Employee (name + id)] [Designation + Promote]
   // ============================================================
 
-  const empIdColumn = GRID_COLUMNS.find((column) => column.key === "empId");
+  const nameColumn = GRID_COLUMNS.find((column) => column.key === "name");
 
-  const empIdWidth = empIdColumn ? widthOf(empIdColumn) : MIN_WIDTH;
+  const nameWidth = nameColumn ? widthOf(nameColumn) : WIDTHS.name;
+
+  const frozenLeftOf = (key) =>
+    key === "name"
+      ? SELECT_WIDTH
+      : key === "designation"
+        ? SELECT_WIDTH + nameWidth
+        : undefined;
 
   // ============================================================
   // STATES
@@ -829,8 +4999,12 @@ export function AppraisalGrid({
       })
       .filter(Boolean);
 
-    const groupColumns = specs.filter((spec) => isCategoricalColumn(spec.column));
-    const sortColumns = specs.filter((spec) => !isCategoricalColumn(spec.column));
+    const groupColumns = specs.filter((spec) =>
+      isCategoricalColumn(spec.column),
+    );
+    const sortColumns = specs.filter(
+      (spec) => !isCategoricalColumn(spec.column),
+    );
 
     return { groupColumns, ordered: [...groupColumns, ...sortColumns] };
   }, [groupBy]);
@@ -1029,7 +5203,17 @@ export function AppraisalGrid({
   }, []);
 
   // ============================================================
-  // SELECTED EMPLOYEE (drives the history panel)
+  // RIGHT PANEL OPEN STATE
+  // The panel always shows the currently selected employee
+  // (historyRow), so clicking / editing another row while the
+  // panel is open switches it to that employee.
+  // ============================================================
+
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [metricsOpen, setMetricsOpen] = useState(false);
+
+  // ============================================================
+  // SELECTED EMPLOYEE (drives the history panel + right panel)
   // ============================================================
 
   const [historyRow, setHistoryRow] = useState(null);
@@ -1043,7 +5227,7 @@ export function AppraisalGrid({
 
   // ============================================================
   // HISTORY LOADER (one request per employee, shared by the
-  // bottom panel, the hover popup and the YoY toast)
+  // bottom panel, the right panel and the YoY toast)
   // ============================================================
 
   const historyPromiseRef = useRef(new Map());
@@ -1119,14 +5303,14 @@ export function AppraisalGrid({
     return promise;
   }, []);
 
-  // Load history for the selected employee while the panel is open.
+  // Load history for the selected employee while a panel that needs it is open.
   useEffect(() => {
-    if (!showHistory || !historyRow?.empId) {
+    if ((!showHistory && !detailOpen) || !historyRow?.empId) {
       return;
     }
 
     loadHistory(historyRow.empId).catch(() => {});
-  }, [showHistory, historyRow?.empId, loadHistory]);
+  }, [showHistory, detailOpen, historyRow?.empId, loadHistory]);
 
   // Live version of the selected row (the snapshot in state goes stale on edit).
   const liveHistoryRow = useMemo(() => {
@@ -1262,23 +5446,12 @@ export function AppraisalGrid({
   );
 
   // ============================================================
-  // HOVER
+  // OLD RIGHT PANEL STATE — DISABLED (kept for future use)
+  // Replaced by <EmployeePanel /> which follows the selected row.
   // ============================================================
 
-  // ============================================================
-  // DETAIL PANEL (click-triggered, draggable, resizable, dockable —
-  // replaces the old hover popup)
-  // ============================================================
-
-  const [detailOpen, setDetailOpen] = useState(false);
+  /*
   const [detailEmployee, setDetailEmployee] = useState(null);
-  const [detailFloating, setDetailFloating] = useState(false);
-  const [detailPos, setDetailPos] = useState({ left: DOCKED_LEFT, top: 130 });
-  const [detailSize, setDetailSize] = useState({ width: 560, height: null });
-
-  const detailPanelRef = useRef(null);
-  const detailDragRef = useRef(null);
-  const detailResizeRef = useRef(null);
 
   const detailEmpKey = detailEmployee
     ? String(detailEmployee.empId || "").trim()
@@ -1303,6 +5476,160 @@ export function AppraisalGrid({
       applyCurrentYearSheetValues(record, liveDetailEmployee),
     );
   }, [detailHistoryState, liveDetailEmployee]);
+
+  const openDetailPanel = useCallback(
+    (row) => {
+      setDetailEmployee(row);
+      setDetailOpen(true);
+      loadHistory(row.empId).catch(() => {});
+    },
+    [loadHistory],
+  );
+
+  const closeDetailPanel = useCallback(() => {
+    setDetailOpen(false);
+  }, []);
+  */
+
+  const openDetailPanel = useCallback(() => {
+    setDetailOpen(true);
+  }, []);
+
+  const closeDetailPanel = useCallback(() => {
+    setDetailOpen(false);
+  }, []);
+
+  // ============================================================
+  // PROMOTE (from the Designation cell)
+  // ============================================================
+
+  const [promoteState, setPromoteState] = useState(null); // { rowId, left, top, anchor }
+  const [promoteQuery, setPromoteQuery] = useState("");
+
+  const newTitleColumn = useMemo(
+    () => COLUMNS.find((column) => column.key === "newTitle"),
+    [],
+  );
+
+  // Use the New Title column's own options if it has them; otherwise fall
+  // back to the designations / titles present in the sheet (free typing allowed).
+  const columnTitleOptions = Array.isArray(newTitleColumn?.options)
+    ? newTitleColumn.options
+    : null;
+
+  const promoteOptions = useMemo(() => {
+    if (columnTitleOptions && columnTitleOptions.length) {
+      return columnTitleOptions;
+    }
+
+    const set = new Set();
+
+    rows.forEach((row) => {
+      if (row.designation) set.add(String(row.designation));
+      if (row.newTitle) set.add(String(row.newTitle));
+    });
+
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [columnTitleOptions, rows]);
+
+  const promoteRow = promoteState
+    ? rows.find((row) => row.id === promoteState.rowId) || null
+    : null;
+
+  const promoteFiltered = useMemo(() => {
+    if (!promoteRow) return [];
+
+    const q = promoteQuery.trim().toLowerCase();
+
+    return promoteOptions.filter(
+      (title) =>
+        title !== promoteRow.designation &&
+        (!q || String(title).toLowerCase().includes(q)),
+    );
+  }, [promoteOptions, promoteRow, promoteQuery]);
+
+  const openPromote = useCallback((event, row) => {
+    event.stopPropagation();
+
+    const anchor = event.currentTarget;
+    const rect = anchor.getBoundingClientRect();
+    const width = 280;
+
+    const left = Math.max(
+      8,
+      Math.min(rect.left, window.innerWidth - width - 8),
+    );
+    let top = rect.bottom + 4;
+
+    if (top + 320 > window.innerHeight) {
+      top = Math.max(8, rect.top - 324);
+    }
+
+    setPromoteQuery("");
+    setPromoteState({ rowId: row.id, left, top, anchor });
+  }, []);
+
+  const closePromote = useCallback(() => setPromoteState(null), []);
+
+  const applyPromotion = useCallback(
+    (row, title) => {
+      const newTitle = String(title || "").trim();
+
+      if (!newTitle) return;
+
+      if (newTitle === String(row.designation || "").trim()) {
+        window.alert("New title is the same as the current designation.");
+        return;
+      }
+
+      const anchor =
+        promoteState?.anchor && promoteState.anchor.isConnected
+          ? promoteState.anchor
+          : null;
+      const oldTitle = String(row.newTitle || "");
+      const promoKey = `${row.id}:eligibleForPromotion`;
+      const titleKey = `${row.id}:newTitle`;
+
+      if (row.eligibleForPromotion !== "Yes") {
+        // Promotion was "No" (or blank): make it Yes and set the title together.
+        updateLinkedCells(
+          row.id,
+          { eligibleForPromotion: "Yes", newTitle },
+          "Cell edit",
+        );
+
+        flashSaved(promoKey);
+        markEdited(promoKey);
+
+        if (row.id === historyRow?.id) {
+          flashHistoryFields("eligibleForPromotion");
+        }
+      } else {
+        // Already "Yes": only the new title changes.
+        updateCell(row.id, "newTitle", newTitle);
+      }
+
+      flashSaved(titleKey);
+      markEdited(titleKey);
+
+      if (row.id === historyRow?.id) {
+        flashHistoryFields("newTitle");
+      }
+
+      showChangeToast(anchor, "New Title", oldTitle, newTitle, true);
+      setPromoteState(null);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      promoteState,
+      updateLinkedCells,
+      updateCell,
+      markEdited,
+      flashHistoryFields,
+      historyRow,
+      showChangeToast,
+    ],
+  );
 
   // ============================================================
   // HISTORY AUTO SCROLL
@@ -1851,11 +6178,11 @@ export function AppraisalGrid({
 
       // Re-selecting after a failed fetch retries it (a failed request is
       // dropped from the cache; a cached success is simply reused).
-      if (showHistory && row?.empId) {
+      if ((showHistory || detailOpen) && row?.empId) {
         loadHistory(row.empId).catch(() => {});
       }
     },
-    [showHistory, loadHistory],
+    [showHistory, detailOpen, loadHistory],
   );
 
   const retryHistory = useCallback(() => {
@@ -1911,182 +6238,6 @@ export function AppraisalGrid({
   );
 
   // ============================================================
-  // HOVER POPUP
-  // ============================================================
-
-  // ============================================================
-  // DETAIL PANEL — open / close / dock
-  // ============================================================
-
-  const openDetailPanel = useCallback(
-    (row) => {
-      // Only ever updates content — never touches position or
-      // docked-vs-floating state, so clicking another employee
-      // just refreshes what's inside the same panel. The docked
-      // top position IS recalculated here (not on every render)
-      // so the very first open lands below the app header instead
-      // of at the raw viewport top.
-      setDetailFloating((floating) => {
-        if (!floating) {
-          setDetailPos({ left: DOCKED_LEFT, top: getDockedTop() });
-        }
-
-        return floating;
-      });
-
-      setDetailEmployee(row);
-      setDetailOpen(true);
-      loadHistory(row.empId).catch(() => {});
-    },
-    [loadHistory],
-  );
-
-  const closeDetailPanel = useCallback(() => {
-    setDetailOpen(false);
-  }, []);
-
-  const dockDetailPanel = useCallback(() => {
-    setDetailFloating(false);
-    setDetailPos({ left: DOCKED_LEFT, top: getDockedTop() });
-    setDetailSize({ width: 560, height: null });
-  }, []);
-
-  // ============================================================
-  // DETAIL PANEL — drag (from the header)
-  // ============================================================
-
-  const handleDetailHeaderMouseDown = useCallback(
-    (event) => {
-      if (event.target.closest("button")) {
-        return; // don't start a drag from the control buttons
-      }
-
-      const panel = detailPanelRef.current;
-
-      if (!panel) {
-        return;
-      }
-
-      const rect = panel.getBoundingClientRect();
-
-      if (!detailFloating) {
-        setDetailFloating(true);
-        setDetailPos({ left: rect.left, top: rect.top });
-        setDetailSize({ width: rect.width, height: rect.height });
-      }
-
-      detailDragRef.current = {
-        offsetX: event.clientX - rect.left,
-        offsetY: event.clientY - rect.top,
-      };
-    },
-    [detailFloating],
-  );
-
-  useEffect(() => {
-    const handleMouseMove = (event) => {
-      if (!detailDragRef.current) {
-        return;
-      }
-
-      setDetailPos({
-        left: event.clientX - detailDragRef.current.offsetX,
-        top: event.clientY - detailDragRef.current.offsetY,
-      });
-    };
-
-    const handleMouseUp = () => {
-      detailDragRef.current = null;
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-
-    return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-  }, []);
-
-  // ============================================================
-  // DETAIL PANEL — resize (all 4 edges + 4 corners)
-  // ============================================================
-
-  const startDetailResize = useCallback((event, dir) => {
-    event.preventDefault();
-    event.stopPropagation();
-
-    const panel = detailPanelRef.current;
-
-    if (!panel) {
-      return;
-    }
-
-    const rect = panel.getBoundingClientRect();
-
-    detailResizeRef.current = {
-      dir,
-      startX: event.clientX,
-      startY: event.clientY,
-      startW: rect.width,
-      startH: rect.height,
-      startLeft: rect.left,
-      startTop: rect.top,
-    };
-  }, []);
-
-  useEffect(() => {
-    const handleMove = (event) => {
-      const r = detailResizeRef.current;
-
-      if (!r) {
-        return;
-      }
-
-      const dx = event.clientX - r.startX;
-      const dy = event.clientY - r.startY;
-
-      let newW = r.startW;
-      let newH = r.startH;
-
-      if (r.dir.includes("e")) newW = Math.max(360, r.startW + dx);
-      if (r.dir.includes("w")) newW = Math.max(360, r.startW - dx);
-      if (r.dir.includes("s")) newH = Math.max(160, r.startH + dy);
-      if (r.dir.includes("n")) newH = Math.max(160, r.startH - dy);
-
-      setDetailSize({ width: newW, height: newH });
-
-      // Only floating panels need left/top adjusted on a west/north
-      // drag so the opposite edge stays put — a docked panel is
-      // anchored by CSS, matching the HTML prototype's behaviour.
-      setDetailFloating((floating) => {
-        if (floating) {
-          setDetailPos((pos) => ({
-            left: r.dir.includes("w")
-              ? r.startLeft + (r.startW - newW)
-              : pos.left,
-            top: r.dir.includes("n") ? r.startTop + (r.startH - newH) : pos.top,
-          }));
-        }
-
-        return floating;
-      });
-    };
-
-    const handleUp = () => {
-      detailResizeRef.current = null;
-    };
-
-    window.addEventListener("mousemove", handleMove);
-    window.addEventListener("mouseup", handleUp);
-
-    return () => {
-      window.removeEventListener("mousemove", handleMove);
-      window.removeEventListener("mouseup", handleUp);
-    };
-  }, []);
-
-  // ============================================================
   // RENDER CELL
   // ============================================================
 
@@ -2122,6 +6273,77 @@ export function AppraisalGrid({
       );
     }
 
+    // ------------------------------------------------------------
+    // EMPLOYEE CELL (sticky column 1) — name on top, emp id below.
+    // Clicking the name opens the right panel.
+    // ------------------------------------------------------------
+    if (col.key === "name") {
+      return (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            openRow(row);
+            openDetailPanel();
+          }}
+          className="flex min-h-[38px] h-auto w-full flex-col items-start justify-center px-2 py-1 text-left"
+          title={row.name}
+        >
+          <span className="break-words text-[12.5px] font-bold leading-tight text-[#1559a6] hover:underline">
+            {row.name}
+          </span>
+
+          <span className="mt-px text-[10.5px] font-normal leading-tight text-slate-500">
+            {row.empId}
+          </span>
+        </button>
+      );
+    }
+
+    // ------------------------------------------------------------
+    // DESIGNATION CELL (sticky column 2) — shows the designation plus
+    // a small "★ Promote" button (or "★ Change" once promotion is Yes).
+    // ------------------------------------------------------------
+    if (col.key === "designation") {
+      const hasNewTitle =
+        row.eligibleForPromotion === "Yes" &&
+        row.newTitle &&
+        String(row.newTitle).trim() !== "" &&
+        String(row.newTitle).trim() !== String(row.designation || "").trim();
+
+      return (
+        <div className="flex min-h-[38px] h-auto w-full flex-col items-start justify-center px-2 py-1">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              openRow(row);
+            }}
+            className="break-words text-left text-[12px] leading-tight text-[#4b5563]"
+            title={row.designation}
+          >
+            {row.designation}
+            {hasNewTitle && <span className="text-slate-400"> →</span>}
+          </button>
+
+          {hasNewTitle && (
+            <span className="rounded border border-[#4fa38f] bg-[#e3f4ef] px-1.5 text-[11px] font-bold leading-[17px] text-[#0b4f46]">
+              {row.newTitle} ★
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={(event) => openPromote(event, row)}
+            className="mt-0.5 rounded-full border border-[#d1d5db] bg-white px-2 text-[10.5px] font-bold leading-[17px] text-[#5f7482] hover:border-[#102a43] hover:text-[#102a43]"
+            title="Set the new title (marks Promotion = Yes if it is No)"
+          >
+            {row.eligibleForPromotion === "Yes" ? "★ Change" : "★ Promote"}
+          </button>
+        </div>
+      );
+    }
+
     if (!isEditable) {
       const rawText =
         row[col.key] !== null && row[col.key] !== undefined
@@ -2138,10 +6360,6 @@ export function AppraisalGrid({
           onClick={(event) => {
             event.stopPropagation();
             openRow(row);
-
-            if (col.key === "name") {
-              openDetailPanel(row);
-            }
           }}
           className={cn(
             "flex min-h-[38px] h-auto w-full",
@@ -2152,11 +6370,8 @@ export function AppraisalGrid({
             "whitespace-normal break-words",
             "leading-tight",
             isMoney ? "justify-end text-right tabular-nums" : "text-left",
-            col.key === "name" &&
-              "font-semibold text-[#1559a6] hover:underline",
-            col.key === "empId" && "text-[11px] text-slate-500",
           )}
-          title={col.key === "name" ? undefined : text}
+          title={text}
         >
           {text}
         </button>
@@ -2497,15 +6712,11 @@ export function AppraisalGrid({
         </td>
 
         {orderedColumns.map((col) => {
-          const isEmpId = col.key === "empId";
           const isName = col.key === "name";
-          const isFrozen = isEmpId || isName;
+          const isDesignation = col.key === "designation";
+          const isFrozen = isName || isDesignation;
 
-          const left = isEmpId
-            ? SELECT_WIDTH
-            : isName
-              ? SELECT_WIDTH + empIdWidth
-              : undefined;
+          const left = frozenLeftOf(col.key);
 
           const width = widthOf(col);
           const isComputed = col.computed;
@@ -2534,21 +6745,16 @@ export function AppraisalGrid({
                 minHeight: CELL_MIN_HEIGHT,
                 boxSizing: "border-box",
                 zIndex: isFrozen ? 30 : 1,
-                boxShadow:
-                  isFrozen && isName
-                    ? "2px 0 4px -2px rgba(71,85,105,.35)"
+                boxShadow: isDesignation
+                  ? "2px 0 4px -2px rgba(71,85,105,.35)"
+                  : isName && isSelectedRow
+                    ? "inset 3px 0 0 #102a43"
                     : "none",
               }}
               onClick={() => handleCellClick(row, isEditable)}
             >
               <div className="relative min-h-[38px] h-auto w-full">
-                {isName ? (
-                  <div className="min-h-[38px] h-auto w-full">
-                    {renderCellContent(row, col, rowIndex)}
-                  </div>
-                ) : (
-                  renderCellContent(row, col, rowIndex)
-                )}
+                {renderCellContent(row, col, rowIndex)}
               </div>
             </td>
           );
@@ -2570,7 +6776,7 @@ export function AppraisalGrid({
           <Fragment key={section.key}>
             <tr className="bg-[#dbe6f3]">
               <td
-                colSpan={GRID_COLUMNS.length + 1}
+                colSpan={orderedColumns.length + 1}
                 className="border-b border-[#b9cbe0] p-0"
               >
                 <div
@@ -2615,7 +6821,7 @@ export function AppraisalGrid({
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [renderDataRow, flattenedGroupOrder],
+    [renderDataRow, flattenedGroupOrder, orderedColumns.length],
   );
 
   // ============================================================
@@ -2723,7 +6929,7 @@ export function AppraisalGrid({
     <div
       className={cn(
         "relative flex min-h-0 w-full",
-        "flex-col overflow-hidden",
+        "flex-row overflow-hidden",
         "rounded-md border border-[#d5dce5]",
         "bg-white",
       )}
@@ -2735,433 +6941,617 @@ export function AppraisalGrid({
     >
       <style>{GRID_STYLES}</style>
 
-      {/* GRID AREA */}
+      {/* LEFT SIDE: GRID + PAGINATION + HISTORY */}
 
-      <div
-        ref={gridViewportRef}
-        className={cn("min-h-0 flex-1", "overflow-auto")}
-      >
-        <table
-          className="border-separate border-spacing-0"
-          style={{
-            tableLayout: "fixed",
-            width: "max-content",
-            minWidth: "100%",
-            fontFamily: APPRAISAL_FONT,
-          }}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* GRID AREA */}
+
+        <div
+          ref={gridViewportRef}
+          className={cn("min-h-0 flex-1", "overflow-auto")}
         >
-          <colgroup>
-            <col style={{ width: SELECT_WIDTH }} />
+          <table
+            className="border-separate border-spacing-0"
+            style={{
+              tableLayout: "fixed",
+              width: "max-content",
+              minWidth: "100%",
+              fontFamily: APPRAISAL_FONT,
+            }}
+          >
+            <colgroup>
+              <col style={{ width: SELECT_WIDTH }} />
 
-            {orderedColumns.map((col) => (
-              <col key={col.key} style={{ width: widthOf(col) }} />
-            ))}
-          </colgroup>
+              {orderedColumns.map((col) => (
+                <col key={col.key} style={{ width: widthOf(col) }} />
+              ))}
+            </colgroup>
 
-          <thead>
-            <tr style={{ height: HEADER_HEIGHT }}>
-              <th
-                className="sticky left-0 top-0 border-r border-b border-[#cbd5e1] p-0"
-                style={{
-                  position: "sticky",
-                  left: 0,
-                  top: 0,
-                  width: SELECT_WIDTH,
-                  minWidth: SELECT_WIDTH,
-                  maxWidth: SELECT_WIDTH,
-                  height: HEADER_HEIGHT,
-                  background: "#dfe8f3",
-                  zIndex: 80,
-                }}
-              >
-                <div
-                  className="flex items-center justify-center"
-                  style={{ height: HEADER_HEIGHT }}
+            <thead>
+              <tr style={{ height: HEADER_HEIGHT }}>
+                <th
+                  className="sticky left-0 top-0 border-r border-b border-[#cbd5e1] p-0"
+                  style={{
+                    position: "sticky",
+                    left: 0,
+                    top: 0,
+                    width: SELECT_WIDTH,
+                    minWidth: SELECT_WIDTH,
+                    maxWidth: SELECT_WIDTH,
+                    height: HEADER_HEIGHT,
+                    background: "#dfe8f3",
+                    zIndex: 80,
+                  }}
                 >
-                  <Checkbox
-                    checked={headerChecked}
-                    onCheckedChange={() =>
-                      toggleAll(
-                        !allSelected,
-                        displayRows.map((row) => row.id),
-                      )
-                    }
-                    aria-label="Select all"
-                    className="size-3.5"
-                  />
-                </div>
-              </th>
+                  <div
+                    className="flex items-center justify-center"
+                    style={{ height: HEADER_HEIGHT }}
+                  >
+                    <Checkbox
+                      checked={headerChecked}
+                      onCheckedChange={() =>
+                        toggleAll(
+                          !allSelected,
+                          displayRows.map((row) => row.id),
+                        )
+                      }
+                      aria-label="Select all"
+                      className="size-3.5"
+                    />
+                  </div>
+                </th>
 
-              {orderedColumns.map((col) => {
-                const isEmpId = col.key === "empId";
-                const isName = col.key === "name";
-                const isFrozen = isEmpId || isName;
+                {orderedColumns.map((col) => {
+                  const isName = col.key === "name";
+                  const isDesignation = col.key === "designation";
+                  const isFrozen = isName || isDesignation;
 
-                const left = isEmpId
-                  ? SELECT_WIDTH
-                  : isName
-                    ? SELECT_WIDTH + empIdWidth
-                    : undefined;
+                  const left = frozenLeftOf(col.key);
 
-                const width = widthOf(col);
+                  const width = widthOf(col);
 
-                const showFilter = !NO_FILTER_COLUMNS.has(col.key);
+                  const showFilter = !NO_FILTER_COLUMNS.has(col.key);
 
-                return (
-                  <th
-                    key={col.key}
-                    draggable
-                    onDragStart={(event) => handleColumnDragStart(event, col)}
-                    onDragOver={handleColumnDragOver}
-                    onDrop={(event) => handleColumnDrop(event, col)}
-                    onDragEnd={handleColumnDragEnd}
-                    className="sticky border-r border-b border-[#cbd5e1] p-0"
-                    style={{
-                      position: "sticky",
-                      top: 0,
-                      ...(isFrozen ? { left } : {}),
-                      width,
-                      minWidth: width,
-                      maxWidth: width,
-                      height: HEADER_HEIGHT,
-                      boxSizing: "border-box",
-                      zIndex: isFrozen ? 90 : 60,
-                      background: isFrozen ? "#dfe8f3" : "#e9eef5",
-                      boxShadow:
-                        isFrozen && isName
+                  const headerLabel = isName ? "Employee" : col.label;
+
+                  return (
+                    <th
+                      key={col.key}
+                      draggable={!isFrozen}
+                      onDragStart={(event) => handleColumnDragStart(event, col)}
+                      onDragOver={handleColumnDragOver}
+                      onDrop={(event) => handleColumnDrop(event, col)}
+                      onDragEnd={handleColumnDragEnd}
+                      className="sticky border-r border-b border-[#cbd5e1] p-0"
+                      style={{
+                        position: "sticky",
+                        top: 0,
+                        ...(isFrozen ? { left } : {}),
+                        width,
+                        minWidth: width,
+                        maxWidth: width,
+                        height: HEADER_HEIGHT,
+                        boxSizing: "border-box",
+                        zIndex: isFrozen ? 90 : 60,
+                        background: isFrozen ? "#dfe8f3" : "#e9eef5",
+                        boxShadow: isDesignation
                           ? "2px 0 4px -2px rgba(71,85,105,.45)"
                           : undefined,
-                      fontFamily: APPRAISAL_FONT,
-                    }}
-                  >
-                    <div
-                      className="flex h-auto w-full items-center gap-1 px-2"
-                      style={{ minHeight: HEADER_HEIGHT }}
+                        fontFamily: APPRAISAL_FONT,
+                      }}
                     >
-                      <span
-                        className="min-w-0 flex-1 overflow-hidden break-words text-left text-[11px] font-bold leading-[13px] text-[#24364d]"
-                        title={col.label}
+                      <div
+                        className="flex h-auto w-full items-center gap-1 px-2"
+                        style={{ minHeight: HEADER_HEIGHT }}
                       >
-                        {col.label}
-                      </span>
+                        <span
+                          className="min-w-0 flex-1 overflow-hidden break-words text-left text-[11px] font-bold leading-[13px] text-[#24364d]"
+                          title={headerLabel}
+                        >
+                          {headerLabel}
+                        </span>
 
-                      {showFilter && (
-                        <div className="shrink-0">
-                          <ColumnFilter
-                            columnKey={col.key}
-                            filter={filters[col.key]}
-                            options={optionsFor(col.key)}
-                            onChange={(filter) => setFilter(col.key, filter)}
-                            sortDirection={
-                              groupBy.find((item) => item.key === col.key)
-                                ?.dir || null
-                            }
-                            onSortAsc={() =>
-                              addGroup(col.key, "asc", col.label)
-                            }
-                            onSortDesc={() =>
-                              addGroup(col.key, "desc", col.label)
-                            }
-                            onClearSort={() => removeGroup(col.key)}
-                            bulkEditable={!!col.editable && !col.computed}
-                            bulkRowCount={rows.length}
-                            onBulkApply={(value) =>
-                              applyColumnBulkEdit(col, value)
-                            }
-                          />
-                        </div>
-                      )}
-                    </div>
+                        {showFilter && (
+                          <div className="shrink-0">
+                            <ColumnFilter
+                              columnKey={col.key}
+                              filter={filters[col.key]}
+                              options={optionsFor(col.key)}
+                              onChange={(filter) => setFilter(col.key, filter)}
+                              sortDirection={
+                                groupBy.find((item) => item.key === col.key)
+                                  ?.dir || null
+                              }
+                              onSortAsc={() =>
+                                addGroup(col.key, "asc", col.label)
+                              }
+                              onSortDesc={() =>
+                                addGroup(col.key, "desc", col.label)
+                              }
+                              onClearSort={() => removeGroup(col.key)}
+                              bulkEditable={!!col.editable && !col.computed}
+                              bulkRowCount={rows.length}
+                              onBulkApply={(value) =>
+                                applyColumnBulkEdit(col, value)
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
 
-                    <div
-                      role="separator"
-                      aria-label={`Resize ${col.label} column`}
-                      title="Drag to resize column"
-                      onPointerDown={(event) => startColumnResize(event, col)}
-                      className="absolute top-0 right-[-2px] z-[100] h-full w-[5px] cursor-col-resize touch-none hover:bg-[#17365d]/30"
-                    />
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
+                      <div
+                        role="separator"
+                        aria-label={`Resize ${headerLabel} column`}
+                        title="Drag to resize column"
+                        onPointerDown={(event) => startColumnResize(event, col)}
+                        className="absolute top-0 right-[-2px] z-[100] h-full w-[5px] cursor-col-resize touch-none hover:bg-[#17365d]/30"
+                      />
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
 
-          <tbody>
-            {groupedRows ? (
-              groupedRows.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={GRID_COLUMNS.length + 1}
-                    className="px-3 py-8 text-center text-[12px] text-slate-500"
-                  >
-                    No employees match the current filters.
-                  </td>
-                </tr>
-              ) : (
-                renderGroupedSections(groupedRows)
-              )
-            ) : (
-              <>
-                {pageRows.map((row, rowIndex) => renderDataRow(row, rowIndex))}
-
-                {pageRows.length === 0 && (
+            <tbody>
+              {groupedRows ? (
+                groupedRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={GRID_COLUMNS.length + 1}
+                      colSpan={orderedColumns.length + 1}
                       className="px-3 py-8 text-center text-[12px] text-slate-500"
                     >
                       No employees match the current filters.
                     </td>
                   </tr>
-                )}
-              </>
-            )}
-          </tbody>
-        </table>
-      </div>
+                ) : (
+                  renderGroupedSections(groupedRows)
+                )
+              ) : (
+                <>
+                  {pageRows.map((row, rowIndex) =>
+                    renderDataRow(row, rowIndex),
+                  )}
 
-      {/* PAGINATION / GROUP STATUS BAR */}
-
-      <div
-        className="flex h-9 shrink-0 items-center justify-between border-t border-[#d5dce5] bg-[#f8fafc] px-3"
-        style={{ fontFamily: APPRAISAL_FONT }}
-      >
-        <div className="text-[11px] text-slate-500">
-          {groupedRows
-            ? `Grouped by ${groupByColumnLabel} — showing all ${rows.length} employees`
-            : rows.length === 0
-              ? "0 employees"
-              : `Showing ${pageStart}-${pageEnd} of ${rows.length} employees${
-                  groupBy.length ? ` · Sorted by ${groupByColumnLabel}` : ""
-                }`}
-
-          <span className="ml-3 text-slate-400">
-            Modified cells save automatically.
-          </span>
+                  {pageRows.length === 0 && (
+                    <tr>
+                      <td
+                        colSpan={orderedColumns.length + 1}
+                        className="px-3 py-8 text-center text-[12px] text-slate-500"
+                      >
+                        No employees match the current filters.
+                      </td>
+                    </tr>
+                  )}
+                </>
+              )}
+            </tbody>
+          </table>
         </div>
 
-        {groupedRows ? (
-          <button
-            type="button"
-            onClick={clearAllGroups}
-            className="flex h-6 items-center justify-center rounded border border-[#cbd5e1] bg-white px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+        {/* PAGINATION / GROUP STATUS BAR */}
+
+        <div
+          className="flex h-9 shrink-0 items-center justify-between border-t border-[#d5dce5] bg-[#f8fafc] px-3"
+          style={{ fontFamily: APPRAISAL_FONT }}
+        >
+          <div className="text-[11px] text-slate-500">
+            {groupedRows
+              ? `Grouped by ${groupByColumnLabel} — showing all ${rows.length} employees`
+              : rows.length === 0
+                ? "0 employees"
+                : `Showing ${pageStart}-${pageEnd} of ${rows.length} employees${
+                    groupBy.length ? ` · Sorted by ${groupByColumnLabel}` : ""
+                  }`}
+
+            <span className="ml-3 text-slate-400">
+              Modified cells save automatically.
+            </span>
+          </div>
+
+          {groupedRows ? (
+            <button
+              type="button"
+              onClick={clearAllGroups}
+              className="flex h-6 items-center justify-center rounded border border-[#cbd5e1] bg-white px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+            >
+              Clear grouping
+            </button>
+          ) : (
+            <div className="flex items-center gap-1">
+              {groupBy.length > 0 && (
+                <button
+                  type="button"
+                  onClick={clearAllGroups}
+                  className="mr-2 flex h-6 items-center justify-center rounded border border-[#cbd5e1] bg-white px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+                >
+                  Clear sort
+                </button>
+              )}
+
+              <button
+                type="button"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                className="flex size-6 items-center justify-center rounded border border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40"
+              >
+                <ChevronLeft className="size-3.5" />
+              </button>
+
+              {pageButtons.map((page) => (
+                <button
+                  key={page}
+                  type="button"
+                  onClick={() => setCurrentPage(page)}
+                  className={cn(
+                    "flex size-6 items-center justify-center rounded border text-[11px] font-medium",
+                    page === currentPage
+                      ? "border-[#173b63] bg-[#173b63] text-white"
+                      : "border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100",
+                  )}
+                >
+                  {page}
+                </button>
+              ))}
+
+              <button
+                type="button"
+                disabled={currentPage >= totalPages}
+                onClick={() =>
+                  setCurrentPage((page) => Math.min(totalPages, page + 1))
+                }
+                className="flex size-6 items-center justify-center rounded border border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40"
+              >
+                <ChevronRight className="size-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* HISTORY DETAILS PANEL */}
+
+        {showHistory && (
+          <div
+            id="history-panel"
+            className="shrink-0 border-t border-[#173b63] bg-white"
+            style={{
+              fontFamily: APPRAISAL_FONT,
+              height: "min(300px, 36vh)",
+              minHeight: 210,
+            }}
           >
-            Clear grouping
-          </button>
-        ) : (
-          <div className="flex items-center gap-1">
-            {groupBy.length > 0 && (
-              <button
-                type="button"
-                onClick={clearAllGroups}
-                className="mr-2 flex h-6 items-center justify-center rounded border border-[#cbd5e1] bg-white px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
-              >
-                Clear sort
-              </button>
-            )}
+            <div className="flex h-9 items-center justify-between bg-[#173b63] px-3 text-white">
+              <div className="flex items-center gap-2">
+                <History className="size-3.5" />
 
-            <button
-              type="button"
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-              className="flex size-6 items-center justify-center rounded border border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40"
-            >
-              <ChevronLeft className="size-3.5" />
-            </button>
+                <span className="text-[13px] font-bold">
+                  History
+                  {historyRow ? ` - ${historyRow.name}` : ""}
+                </span>
 
-            {pageButtons.map((page) => (
-              <button
-                key={page}
-                type="button"
-                onClick={() => setCurrentPage(page)}
-                className={cn(
-                  "flex size-6 items-center justify-center rounded border text-[11px] font-medium",
-                  page === currentPage
-                    ? "border-[#173b63] bg-[#173b63] text-white"
-                    : "border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100",
+                {historyRow && !historyLoading && (
+                  <span className="text-[11px] opacity-75">
+                    {historyData.length} cycle
+                    {historyData.length === 1 ? "" : "s"}
+                  </span>
                 )}
-              >
-                {page}
-              </button>
-            ))}
+              </div>
 
-            <button
-              type="button"
-              disabled={currentPage >= totalPages}
-              onClick={() =>
-                setCurrentPage((page) => Math.min(totalPages, page + 1))
-              }
-              className="flex size-6 items-center justify-center rounded border border-[#cbd5e1] bg-white text-slate-500 hover:bg-slate-100 disabled:pointer-events-none disabled:opacity-40"
-            >
-              <ChevronRight className="size-3.5" />
-            </button>
+              <button
+                type="button"
+                onClick={() => setShowHistory(false)}
+                className="flex size-6 items-center justify-center rounded text-white hover:bg-white/10"
+                aria-label="Close history"
+              >
+                <X className="size-3.5" />
+              </button>
+            </div>
+
+            <div className="h-[calc(100%-60px)] overflow-auto">
+              {!historyRow ? (
+                <div className="flex h-full items-center justify-center px-3 text-center text-[12px] text-slate-500">
+                  Select an employee to view previous-year appraisal history.
+                </div>
+              ) : historyLoading ? (
+                <div className="flex h-full items-center justify-center px-3 text-center text-[12px] text-slate-500">
+                  Loading appraisal history...
+                </div>
+              ) : historyError ? (
+                <div className="flex h-full flex-col items-center justify-center gap-1 px-3 text-center text-[12px] text-red-500">
+                  <span>Unable to load appraisal history.</span>
+
+                  <span className="text-[11px] text-slate-400">
+                    {historyError}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={retryHistory}
+                    className="mt-1 flex h-6 items-center justify-center rounded border border-[#cbd5e1] bg-white px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : (
+                <table
+                  className="w-full border-collapse"
+                  style={{ tableLayout: "fixed", minWidth: 1100 }}
+                >
+                  <colgroup>
+                    <col style={{ width: 90 }} />
+
+                    {HISTORY_METRIC_COLUMNS.map((col) => (
+                      <col key={col.key} style={{ width: 120 }} />
+                    ))}
+                  </colgroup>
+
+                  <thead>
+                    <tr className="bg-[#eef2f7]">
+                      <th className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-2 py-1.5 text-center align-bottom text-[11px] font-bold text-[#24364d]">
+                        Year
+                      </th>
+
+                      {HISTORY_METRIC_COLUMNS.map((col) => (
+                        <th
+                          key={col.key}
+                          className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-2 py-1.5 text-center align-bottom text-[11px] font-bold text-[#24364d]"
+                        >
+                          <div>{col.label}</div>
+
+                          <div className="text-[9px] font-normal text-slate-400">
+                            % change below
+                          </div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {historyData.map((item, index) => {
+                      const previous = historyData[index + 1];
+
+                      const isLatest = index === 0;
+
+                      return (
+                        <tr
+                          key={`${item.year}-${index}`}
+                          className={cn(
+                            "h-[46px]",
+                            isLatest ? "bg-[#fff9dc]" : "bg-white",
+                          )}
+                        >
+                          <td className="border-r border-b border-[#e0e5ec] px-2 py-1 text-center text-[12px] font-bold text-[#1859a8]">
+                            {item.year}
+                            {isLatest ? " ★" : ""}
+                          </td>
+
+                          {HISTORY_METRIC_COLUMNS.map((col) => {
+                            const change = computeHistoryChange(
+                              item[col.key],
+                              previous ? previous[col.key] : undefined,
+                            );
+
+                            const shouldFlash =
+                              isLatest && historyFlashKeys.has(col.key);
+
+                            return (
+                              <td
+                                key={col.key}
+                                className={cn(
+                                  "border-r border-b border-[#e0e5ec] px-2 py-1 text-right text-[12px] tabular-nums transition-colors duration-500",
+                                  shouldFlash && "bg-[#ffd54f]",
+                                )}
+                              >
+                                <div>{formatHistoryNumber(item[col.key])}</div>
+
+                                <div
+                                  className={cn(
+                                    "text-[10px]",
+                                    change.tone === "up" && "text-[#13804a]",
+                                    change.tone === "down" && "text-[#a5432f]",
+                                    change.tone === "neutral" &&
+                                      "text-[#d97706]",
+                                  )}
+                                >
+                                  {change.label}
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="flex h-6 items-center border-t border-[#e2e8f0] bg-[#f8fafc] px-3 text-[10px] text-slate-500">
+              The starred row reflects the employee currently selected in the
+              grid above, live. Older cycles are reference data.
+            </div>
           </div>
         )}
       </div>
 
-      {/* HISTORY DETAILS PANEL */}
+      {/* METRICS STRIP (fold / unfold) — placeholder, sits left of the panel */}
 
-      {showHistory && (
+      {detailOpen && liveHistoryRow && (
         <div
-          id="history-panel"
-          className="shrink-0 border-t border-[#173b63] bg-white"
-          style={{
-            fontFamily: APPRAISAL_FONT,
-            height: "min(300px, 36vh)",
-            minHeight: 210,
+          className={cn(
+            "relative shrink-0 border-l border-[#d5dce5] bg-white",
+            metricsOpen
+              ? "w-[300px]"
+              : "w-[34px] cursor-pointer hover:bg-[#f6f7f9]",
+          )}
+          style={{ fontFamily: APPRAISAL_FONT }}
+          onClick={() => {
+            if (!metricsOpen) {
+              setMetricsOpen(true);
+            }
           }}
+          title={metricsOpen ? undefined : "Open metrics"}
         >
-          <div className="flex h-9 items-center justify-between bg-[#173b63] px-3 text-white">
-            <div className="flex items-center gap-2">
-              <History className="size-3.5" />
+          {metricsOpen ? (
+            <div className="flex h-full flex-col items-center justify-center gap-1.5 bg-[#fafbfd] p-4 text-center text-[12.5px] text-[#6b7280]">
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setMetricsOpen(false);
+                }}
+                className="absolute right-2 top-2 rounded-md border border-[#d1d5db] bg-white px-2 py-[3px] text-[12px] text-[#374151]"
+                title="Fold metrics"
+              >
+                ‹ Fold
+              </button>
 
-              <span className="text-[13px] font-bold">
-                History
-                {historyRow ? ` - ${historyRow.name}` : ""}
-              </span>
+              <b className="text-[14px] text-[#102a43]">Metrics</b>
+              <div>Placeholder</div>
+              <div>Team and org metrics open as separate screens.</div>
+            </div>
+          ) : (
+            <span
+              className="absolute left-2 top-3.5 text-[12.5px] font-bold text-[#102a43]"
+              style={{
+                writingMode: "vertical-rl",
+                transform: "rotate(180deg)",
+              }}
+            >
+              Metrics ›
+            </span>
+          )}
+        </div>
+      )}
 
-              {historyRow && !historyLoading && (
-                <span className="text-[11px] opacity-75">
-                  {historyData.length} cycle
-                  {historyData.length === 1 ? "" : "s"}
-                </span>
-              )}
+      {/* RIGHT PANEL — opens when an employee name is clicked.
+          Follows whichever row is selected while it is open.
+          Feedback (Manager / Client / Other) + Budget (6 sub buttons).
+          Agent tab intentionally skipped. */}
+
+      {detailOpen && liveHistoryRow && (
+        <EmployeePanel
+          employee={liveHistoryRow}
+          team={rows}
+          modified={modified}
+          budget={budget}
+          onViewBudget={onViewBudget}
+          onClose={closeDetailPanel}
+          history={{
+            loading: historyLoading,
+            error: historyError,
+            rows: historyData,
+            onRetry: retryHistory,
+          }}
+        />
+      )}
+
+      {/* ------------------------------------------------------------
+          OLD RIGHT PANEL (name click) — DISABLED, kept for future use.
+          Needs the commented state block above
+          (detailEmployee / liveDetailEmployee / detailHistoryRows)
+          to be restored before it can be enabled again.
+      ------------------------------------------------------------ */}
+
+      {/*
+      {detailOpen && liveDetailEmployee && (
+        <aside
+          className="flex w-[340px] shrink-0 flex-col border-l border-[#d5dce5] bg-white"
+          style={{ fontFamily: APPRAISAL_FONT }}
+        >
+          <div className="flex items-start justify-between gap-2 border-b border-[#e5e7eb] px-3 py-2">
+            <div className="min-w-0 text-[12px] leading-snug text-slate-600">
+              <div className="text-[14px] font-bold text-[#102a43]">
+                {liveDetailEmployee.name}
+              </div>
+              <div>
+                {liveDetailEmployee.empId} · {liveDetailEmployee.designation}
+              </div>
+              <div className="text-[11px] text-slate-500">
+                DOJ: {formatDoj(liveDetailEmployee.doj)} · Org Exp:{" "}
+                {liveDetailEmployee.wissenExperience || 0} yrs · Overall Exp:{" "}
+                {liveDetailEmployee.totalExperience || 0} yrs
+              </div>
             </div>
 
             <button
               type="button"
-              onClick={() => setShowHistory(false)}
-              className="flex size-6 items-center justify-center rounded text-white hover:bg-white/10"
-              aria-label="Close history"
+              onClick={closeDetailPanel}
+              className="flex size-6 shrink-0 items-center justify-center rounded border border-[#d1d5db] text-slate-600 hover:bg-slate-100"
+              aria-label="Close panel"
+              title="Close"
             >
               <X className="size-3.5" />
             </button>
           </div>
 
-          <div className="h-[calc(100%-60px)] overflow-auto">
-            {!historyRow ? (
-              <div className="flex h-full items-center justify-center px-3 text-center text-[12px] text-slate-500">
-                Select an employee to view previous-year appraisal history.
-              </div>
-            ) : historyLoading ? (
-              <div className="flex h-full items-center justify-center px-3 text-center text-[12px] text-slate-500">
-                Loading appraisal history...
-              </div>
-            ) : historyError ? (
-              <div className="flex h-full flex-col items-center justify-center gap-1 px-3 text-center text-[12px] text-red-500">
-                <span>Unable to load appraisal history.</span>
+          <div className="min-h-0 flex-1 overflow-auto">
+            <table className="hp-cycle-table">
+              <colgroup>
+                <col style={{ width: 62 }} />
+                <col style={{ width: 92 }} />
+                <col style={{ width: 52 }} />
+                <col />
+              </colgroup>
 
-                <span className="text-[11px] text-slate-400">
-                  {historyError}
-                </span>
+              <thead>
+                <tr>
+                  <th>Year</th>
+                  <th>Designation</th>
+                  <th>Rating</th>
+                  <th>Feedback</th>
+                </tr>
+              </thead>
 
-                <button
-                  type="button"
-                  onClick={retryHistory}
-                  className="mt-1 flex h-6 items-center justify-center rounded border border-[#cbd5e1] bg-white px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
-                >
-                  Retry
-                </button>
-              </div>
-            ) : (
-              <table
-                className="w-full border-collapse"
-                style={{ tableLayout: "fixed", minWidth: 1100 }}
-              >
-                <colgroup>
-                  <col style={{ width: 90 }} />
-
-                  {HISTORY_METRIC_COLUMNS.map((col) => (
-                    <col key={col.key} style={{ width: 120 }} />
-                  ))}
-                </colgroup>
-
-                <thead>
-                  <tr className="bg-[#eef2f7]">
-                    <th className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-2 py-1.5 text-center align-bottom text-[11px] font-bold text-[#24364d]">
-                      Year
-                    </th>
-
-                    {HISTORY_METRIC_COLUMNS.map((col) => (
-                      <th
-                        key={col.key}
-                        className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-2 py-1.5 text-center align-bottom text-[11px] font-bold text-[#24364d]"
-                      >
-                        <div>{col.label}</div>
-
-                        <div className="text-[9px] font-normal text-slate-400">
-                          % change below
-                        </div>
-                      </th>
-                    ))}
+              <tbody>
+                {!detailHistoryState || detailHistoryState.loading ? (
+                  <tr>
+                    <td colSpan={4} style={{ padding: 12, color: "#8592a6" }}>
+                      Loading history...
+                    </td>
                   </tr>
-                </thead>
+                ) : detailHistoryState.error ? (
+                  <tr>
+                    <td colSpan={4} style={{ padding: 12, color: "#dc2626" }}>
+                      {detailHistoryState.error}
+                    </td>
+                  </tr>
+                ) : !detailHistoryRows.length ? (
+                  <tr>
+                    <td colSpan={4} style={{ padding: 12, color: "#8592a6" }}>
+                      No appraisal history yet.
+                    </td>
+                  </tr>
+                ) : (
+                  detailHistoryRows.map((item, index) => (
+                    <tr
+                      key={`${item.year}-${index}`}
+                      className={index === 0 ? "current" : ""}
+                    >
+                      <td className="hp-year">
+                        {item.year}
+                        {index === 0 ? " ★" : ""}
+                      </td>
 
-                <tbody>
-                  {historyData.map((item, index) => {
-                    const previous = historyData[index + 1];
+                      <td>{item.designation}</td>
 
-                    const isLatest = index === 0;
+                      <td>
+                        {item.rating &&
+                        String(item.rating).trim() !== "" &&
+                        item.rating !== "—"
+                          ? `${item.rating} / 5`
+                          : "—"}
+                      </td>
 
-                    return (
-                      <tr
-                        key={`${item.year}-${index}`}
-                        className={cn(
-                          "h-[46px]",
-                          isLatest ? "bg-[#fff9dc]" : "bg-white",
-                        )}
-                      >
-                        <td className="border-r border-b border-[#e0e5ec] px-2 py-1 text-center text-[12px] font-bold text-[#1859a8]">
-                          {item.year}
-                          {isLatest ? " ★" : ""}
-                        </td>
-
-                        {HISTORY_METRIC_COLUMNS.map((col) => {
-                          const change = computeHistoryChange(
-                            item[col.key],
-                            previous ? previous[col.key] : undefined,
-                          );
-
-                          const shouldFlash =
-                            isLatest && historyFlashKeys.has(col.key);
-
-                          return (
-                            <td
-                              key={col.key}
-                              className={cn(
-                                "border-r border-b border-[#e0e5ec] px-2 py-1 text-right text-[12px] tabular-nums transition-colors duration-500",
-                                shouldFlash && "bg-[#ffd54f]",
-                              )}
-                            >
-                              <div>{formatHistoryNumber(item[col.key])}</div>
-
-                              <div
-                                className={cn(
-                                  "text-[10px]",
-                                  change.tone === "up" && "text-[#13804a]",
-                                  change.tone === "down" && "text-[#a5432f]",
-                                  change.tone === "neutral" && "text-[#d97706]",
-                                )}
-                              >
-                                {change.label}
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
+                      <td className="hp-feedback">{item.feedback || "—"}</td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
           </div>
-
-          <div className="flex h-6 items-center border-t border-[#e2e8f0] bg-[#f8fafc] px-3 text-[10px] text-slate-500">
-            The starred row reflects the employee currently selected in the grid
-            above, live. Older cycles are reference data.
-          </div>
-        </div>
+        </aside>
       )}
+      */}
 
       {/* CHANGE TOAST */}
 
@@ -3184,131 +7574,87 @@ export function AppraisalGrid({
         </div>
       )}
 
-      {/* EMPLOYEE HOVER POPUP */}
+      {/* PROMOTE POPOVER (opened from the Designation cell) */}
 
-      {/* DETAIL PANEL — click-triggered, draggable, resizable, dockable */}
+      {promoteState && promoteRow && (
+        <>
+          <div className="fixed inset-0 z-[10000]" onClick={closePromote} />
 
-      {detailOpen && liveDetailEmployee && (
-        <div
-          ref={detailPanelRef}
-          className="detail-panel"
-          style={{
-            left: detailPos.left,
-            top: detailPos.top,
-            width: detailSize.width,
-            height: detailSize.height || undefined,
-            fontFamily: APPRAISAL_FONT,
-          }}
-        >
-          <div className="panel-head" onMouseDown={handleDetailHeaderMouseDown}>
-            <div className="panel-head-left hp-header">
-              <b>{liveDetailEmployee.name}</b>
-              <span className="hp-sep">·</span>
-              <span className="hp-field-label">DOJ:</span>{" "}
-              {formatDoj(liveDetailEmployee.doj)}
-              <span className="hp-sep">·</span>
-              <span className="hp-field-label">Org Exp:</span>{" "}
-              {liveDetailEmployee.wissenExperience || 0} yrs
-              <span className="hp-sep">·</span>
-              <span className="hp-field-label">Overall Exp:</span>{" "}
-              {liveDetailEmployee.totalExperience || 0} yrs
+          <div
+            className="fixed z-[10001] w-[280px] rounded-lg border border-[#cbd2da] bg-white py-1 shadow-[0_8px_20px_rgba(16,42,67,.18)]"
+            style={{
+              left: promoteState.left,
+              top: promoteState.top,
+              fontFamily: APPRAISAL_FONT,
+            }}
+          >
+            <div className="px-3 py-1 text-[10.5px] font-bold uppercase text-slate-500">
+              Promote {promoteRow.name} to
             </div>
 
-            <div className="panel-controls">
-              {detailFloating && (
-                <button
-                  type="button"
-                  className="panel-btn"
-                  onClick={dockDetailPanel}
-                  title="Return to top-left"
-                >
-                  &#8681;
-                </button>
-              )}
+            <div className="px-2 pb-1.5">
+              <input
+                autoFocus
+                type="search"
+                value={promoteQuery}
+                placeholder={`Search ${promoteOptions.length} designations`}
+                onChange={(event) => setPromoteQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    closePromote();
+                  } else if (event.key === "Enter") {
+                    event.preventDefault();
 
-              <button
-                type="button"
-                className="panel-btn"
-                onClick={closeDetailPanel}
-                title="Close"
-              >
-                &#10005;
-              </button>
+                    if (promoteFiltered.length) {
+                      applyPromotion(promoteRow, promoteFiltered[0]);
+                    } else if (!columnTitleOptions && promoteQuery.trim()) {
+                      applyPromotion(promoteRow, promoteQuery);
+                    }
+                  }
+                }}
+                className="h-[30px] w-full rounded-md border border-[#cbd2da] px-2 text-[12.5px] outline-none focus:border-[#102a43]"
+              />
+            </div>
+
+            <div className="max-h-[230px] overflow-auto">
+              {promoteFiltered.slice(0, 60).map((title) => (
+                <button
+                  key={title}
+                  type="button"
+                  onClick={() => applyPromotion(promoteRow, title)}
+                  className={cn(
+                    "block w-full px-3 py-1.5 text-left text-[12.5px] text-[#111827] hover:bg-[#eef0f3]",
+                    title === promoteRow.newTitle && "bg-[#eef0f3] font-bold",
+                  )}
+                >
+                  {title}
+                </button>
+              ))}
+
+              {!columnTitleOptions &&
+                promoteQuery.trim() &&
+                !promoteFiltered.some(
+                  (title) =>
+                    title.toLowerCase() === promoteQuery.trim().toLowerCase(),
+                ) && (
+                  <button
+                    type="button"
+                    onClick={() => applyPromotion(promoteRow, promoteQuery)}
+                    className="block w-full px-3 py-1.5 text-left text-[12.5px] font-semibold text-[#102a43] hover:bg-[#eef0f3]"
+                  >
+                    Use "{promoteQuery.trim()}"
+                  </button>
+                )}
+
+              {!promoteFiltered.length &&
+                (columnTitleOptions || !promoteQuery.trim()) && (
+                  <div className="px-3 py-1.5 text-[12px] text-slate-500">
+                    No designation matches
+                  </div>
+                )}
             </div>
           </div>
-
-          <table className="hp-cycle-table">
-            <colgroup>
-              <col />
-              <col />
-              <col />
-              <col />
-            </colgroup>
-
-            <thead>
-              <tr>
-                <th>Year</th>
-                <th>Designation</th>
-                <th>Rating</th>
-                <th>Feedback</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {!detailHistoryState || detailHistoryState.loading ? (
-                <tr>
-                  <td colSpan={4} style={{ padding: "12px", color: "#8592a6" }}>
-                    Loading history...
-                  </td>
-                </tr>
-              ) : detailHistoryState.error ? (
-                <tr>
-                  <td colSpan={4} style={{ padding: "12px", color: "#dc2626" }}>
-                    {detailHistoryState.error}
-                  </td>
-                </tr>
-              ) : !detailHistoryRows.length ? (
-                <tr>
-                  <td colSpan={4} style={{ padding: "12px", color: "#8592a6" }}>
-                    No appraisal history yet.
-                  </td>
-                </tr>
-              ) : (
-                detailHistoryRows.map((item, index) => (
-                  <tr
-                    key={`${item.year}-${index}`}
-                    className={index === 0 ? "current" : ""}
-                  >
-                    <td className="hp-year">
-                      {item.year}
-                      {index === 0 ? " ★" : ""}
-                    </td>
-
-                    <td>{item.designation}</td>
-
-                    <td>
-                      {item.rating &&
-                      String(item.rating).trim() !== "" &&
-                      item.rating !== "—"
-                        ? `${item.rating} / 5`
-                        : "—"}
-                    </td>
-
-                    <td className="hp-feedback">{item.feedback || "—"}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-
-          {["n", "s", "e", "w", "ne", "nw", "se", "sw"].map((dir) => (
-            <div
-              key={dir}
-              className={`resize-handle rh-${dir}`}
-              onMouseDown={(event) => startDetailResize(event, dir)}
-            />
-          ))}
-        </div>
+        </>
       )}
     </div>
   );
