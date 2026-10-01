@@ -3646,8 +3646,7 @@ const isPromotedRow = (row) => row.eligibleForPromotion === "Yes";
 
 const PANEL_TABS = [
   ["feedback", "Feedback"],
-  ["budget", "Budget"],
-  // Agent tab intentionally skipped for now.
+  ["request", "Request"],
 ];
 
 const PANEL_SUBS = {
@@ -3656,13 +3655,9 @@ const PANEL_SUBS = {
     ["client", "Client"],
     ["other", "Other"],
   ],
-  budget: [
-    ["budget", "Budget"],
-    ["team", "Team metrics"],
-    ["pct", "Hike percentile"],
-    ["nohike", "No hike"],
-    ["pb", "PB paid vs target"],
-    ["changes", "Team changes"],
+  request: [
+    ["delegation", "Delegation Request"],
+    ["screen", "Screen Request"],
   ],
 };
 
@@ -4005,16 +4000,22 @@ function EmployeePanel({
   history,
   budget,
   onViewBudget,
+  onRequest,
+  isTechEd,
+  isHR,
   onClose,
 }) {
   const [tab, setTab] = useState("feedback");
-  const [subs, setSubs] = useState({ feedback: "manager", budget: "budget" });
+  const [subs, setSubs] = useState({ feedback: "manager", request: "delegation" });
+  const [requestField, setRequestField] = useState("app");
+  const [requestPerson, setRequestPerson] = useState("");
   const [wide, setWide] = useState(false);
   const [width, setWidth] = useState(PANEL_WIDTH);
   const [dragging, setDragging] = useState(false);
 
   const panelWidth = wide ? PANEL_WIDE_WIDTH : width;
   const sub = subs[tab];
+  const panelTabs = isTechEd ? PANEL_TABS : [[ "feedback", "Feedback" ]];
 
   // ---------- drag the left edge to resize ----------
   const startResize = useCallback(
@@ -4293,310 +4294,52 @@ function EmployeePanel({
     );
   };
 
-  // ---------- BUDGET ----------
-  const renderBudget = () => {
-    const tone = levelTone(util.cur);
-    const toneIncl = levelTone(util.incl);
+  // ---------- REQUEST ----------
+  const requestPeople = useMemo(() => {
+    const values = team
+      .map((row) => requestField === "comp" ? row.compManager || row.comp : row.appraiserTechED || row.app)
+      .filter(Boolean)
+      .map((value) => String(value).trim());
+    return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+  }, [team, requestField]);
 
-    const alert = budget?.changedUnseen ? (
-      <div className="mt-2 rounded-lg border border-[#fed7aa] bg-[#fff7ed] px-2.5 py-1.5 text-[12px] text-[#9a3412]">
-        ● Budget changed since you last looked
-        {budget.changedFrom !== undefined && budget.changedFrom !== null
-          ? `: ${toLakhs(budget.changedFrom)} → ${toLakhs(util.alloc)}`
-          : ""}
-      </div>
-    ) : null;
-
-    if (sub === "budget") {
-      if (!hasAlloc) {
-        return (
-          <>
-            {alert}
-            <PanelInfo>
-              Budget allocation not connected yet. Pass the <b>budget</b> prop
-              (allocated amount) to show consumption here.
-            </PanelInfo>
-            <PanelCard title="Used so far (hike + PB + RB)">
-              <span className="text-[20px] font-extrabold">
-                {toLakhs(util.used)}
-              </span>
-            </PanelCard>
-          </>
-        );
-      }
-
-      const left = util.alloc - util.used;
-      const leftIncl = util.alloc - util.used - util.tpb;
-
-      return (
-        <>
-          {alert}
-
-          <PanelCard title="Current consumption">
-            <div className="flex items-center justify-between gap-2">
-              <span>Used</span>
-              <span
-                className={cn("text-[20px] font-extrabold", TONE_TEXT[tone])}
-              >
-                {f1(util.cur)}%
-              </span>
-            </div>
-
-            <PanelBar value={util.cur} tone={tone} />
-
-            <div className="text-[#6b7280]">
-              {toLakhs(util.used)} used ·{" "}
-              {left >= 0 ? `${toLakhs(left)} left` : `${toLakhs(-left)} over`}{" "}
-              of {toLakhs(util.alloc)}
-            </div>
-          </PanelCard>
-
-          <PanelCard title="Including Target PB">
-            <div className="flex items-center justify-between gap-2">
-              <span>Used + Target PB</span>
-              <span
-                className={cn(
-                  "text-[20px] font-extrabold",
-                  TONE_TEXT[toneIncl],
-                )}
-              >
-                {f1(util.incl)}%
-              </span>
-            </div>
-
-            <PanelBar value={util.incl} tone={toneIncl} />
-
-            <div className="text-[#6b7280]">
-              +{toLakhs(util.tpb)} Target PB ·{" "}
-              {leftIncl >= 0
-                ? `${toLakhs(leftIncl)} left`
-                : `${toLakhs(-leftIncl)} over`}
-            </div>
-          </PanelCard>
-
-          {typeof onViewBudget === "function" && (
-            <div className="mt-2.5">
-              <button
-                type="button"
-                onClick={onViewBudget}
-                className="font-bold text-[#102a43] underline"
-              >
-                View budget ›
-              </button>
-            </div>
-          )}
-        </>
-      );
-    }
-
-    if (sub === "team") {
-      const editedIds = new Set();
-
-      Object.keys(modified || {}).forEach((key) => {
-        if (modified[key]) {
-          editedIds.add(key.slice(0, key.lastIndexOf(":")));
-        }
-      });
-
-      const edited = team.filter((row) => editedIds.has(String(row.id))).length;
-      const promotions = team.filter(isPromotedRow).length;
-      const hikes = team.filter(hasHike).map(rowHikePct);
-      const ratings = team
-        .map((row) => parseFloat(row.managerRating))
-        .filter((value) => Number.isFinite(value) && value > 0);
-
-      return (
-        <>
-          {alert}
-
-          <PanelCard title={`Team · ${team.length} people`}>
-            <PanelRow label="Edited this cycle">
-              <b>
-                {edited} of {team.length}
-              </b>
-            </PanelRow>
-            <PanelRow label="Promotions">
-              <b>{promotions}</b>
-            </PanelRow>
-            <PanelRow label="Average hike % (where given)">
-              <b>
-                {hikes.length
-                  ? `${f1(hikes.reduce((a, b) => a + b, 0) / hikes.length)}%`
-                  : "—"}
-              </b>
-            </PanelRow>
-            <PanelRow label="Median hike %">
-              <b>{hikes.length ? `${f1(medianOf(hikes))}%` : "—"}</b>
-            </PanelRow>
-            <PanelRow label="Average rating">
-              <b>
-                {ratings.length
-                  ? (
-                      ratings.reduce((a, b) => a + b, 0) / ratings.length
-                    ).toFixed(1)
-                  : "—"}
-              </b>
-            </PanelRow>
-          </PanelCard>
-        </>
-      );
-    }
-
-    if (sub === "pct") {
-      const ranked = team
-        .map((row) => ({ row, value: rowRewardHikePct(row) }))
-        .sort((a, b) => b.value - a.value);
-
-      const myIndex = ranked.findIndex((item) => item.row.id === employee.id);
-
-      const percentile =
-        ranked.length > 1 && myIndex >= 0
-          ? Math.round(
-              ((ranked.length - 1 - myIndex) / (ranked.length - 1)) * 100,
-            )
-          : 100;
-
-      return (
-        <>
-          {alert}
-
-          <PanelCard title="Total Reward hike % in team">
-            <table className="w-full border-collapse text-[12px]">
-              <thead>
-                <tr>
-                  <th className="border-b border-[#e5e7eb] px-1 py-1 text-left text-[10.5px] font-bold text-[#6b7280]">
-                    #
-                  </th>
-                  <th className="border-b border-[#e5e7eb] px-1 py-1 text-left text-[10.5px] font-bold text-[#6b7280]">
-                    Employee
-                  </th>
-                  <th className="border-b border-[#e5e7eb] px-1 py-1 text-right text-[10.5px] font-bold text-[#6b7280]">
-                    Reward hike %
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {ranked.map((item, index) => (
-                  <tr
-                    key={item.row.id}
-                    className={cn(
-                      item.row.id === employee.id && "bg-[#eef0f3] font-bold",
-                    )}
-                  >
-                    <td className="border-b border-[#f1f3f5] p-1">
-                      {index + 1}
-                    </td>
-                    <td className="border-b border-[#f1f3f5] p-1">
-                      {item.row.name}
-                    </td>
-                    <td className="border-b border-[#f1f3f5] p-1 text-right">
-                      {f1(item.value)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {myIndex >= 0 && (
-              <div className="mt-1.5 text-[10.5px] text-[#6b7280]">
-                {employee.name} is {ordinal(percentile)} percentile
-              </div>
-            )}
-          </PanelCard>
-        </>
-      );
-    }
-
-    if (sub === "nohike") {
-      const noHike = team.filter((row) => !hasHike(row));
-
-      return (
-        <>
-          {alert}
-
-          <PanelCard
-            title={`No hike this cycle · ${noHike.length} of ${team.length}`}
-          >
-            {noHike.length ? (
-              <ul className="m-0 list-disc pl-4">
-                {noHike.map((row) => (
-                  <li key={row.id} className="my-0.5">
-                    {row.name}{" "}
-                    <span className="text-[#6b7280]">
-                      · {row.designation || ""}
-                      {row.managerRating
-                        ? ` · rating ${row.managerRating}`
-                        : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="text-[#6b7280]">Everyone has a hike.</div>
-            )}
-          </PanelCard>
-        </>
-      );
-    }
-
-    if (sub === "pb") {
-      const paid = team.reduce((sum, row) => sum + num(row.pbToBePaid), 0);
-      const target = team.reduce(
-        (sum, row) => sum + num(row.targetPBAllocatedForMay),
-        0,
-      );
-      const p = ratioPct(paid, target);
-
-      return (
-        <>
-          {alert}
-
-          <PanelCard title="PB paid vs target">
-            <div className="flex items-center justify-between gap-2">
-              <span>Paid</span>
-              <span className="text-[20px] font-extrabold">{f1(p)}%</span>
-            </div>
-
-            <PanelBar value={p} tone="ok" />
-
-            <div className="text-[#6b7280]">
-              {toLakhs(paid)} paid of {toLakhs(target)} target
-            </div>
-          </PanelCard>
-        </>
-      );
-    }
-
-    // changes
-    const changes = Array.isArray(budget?.teamChanges)
-      ? budget.teamChanges
-      : [];
-
-    return (
-      <>
-        {alert}
-
-        <PanelCard title={`Team changes · ${changes.length}`}>
-          {changes.length ? (
-            <ul className="m-0 list-disc pl-4">
-              {changes.map((change, index) => (
-                <li key={`${change.name}-${index}`} className="my-0.5">
-                  {change.name}{" "}
-                  <span className="text-[#6b7280]">
-                    · {change.type}
-                    {change.date ? ` · ${change.date}` : ""}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="text-[#6b7280]">No changes since allocation.</div>
-          )}
+  const renderRequest = () => (
+    <div className="space-y-2.5">
+      {sub === "delegation" ? (
+        <PanelCard title="Delegation Request">
+          <div className="space-y-2.5">
+            <div className="text-[11.5px] text-[#6b7280]">Request a change to the delegation assignment for this employee.</div>
+            <div className="text-[12px] text-[#374151]">Employee: <b>{employee.name}</b> · {employee.empId}</div>
+            <select value={requestField} onChange={(event) => { setRequestField(event.target.value); setRequestPerson(""); }} className="h-8 w-full rounded-md border border-[#cbd5e1] px-2 text-[11.5px]">
+              <option value="app">Appraiser Tech Ed</option>
+              <option value="comp">Comp Manager</option>
+            </select>
+            <select value={requestPerson} onChange={(event) => setRequestPerson(event.target.value)} className="h-8 w-full rounded-md border border-[#cbd5e1] px-2 text-[11.5px]">
+              <option value="">Select new assignee...</option>
+              {requestPeople.map((person) => <option key={person} value={person}>{person}</option>)}
+            </select>
+            <button
+              type="button"
+              disabled={!requestPerson || requestPerson === String(requestField === "comp" ? employee.compManager || employee.comp : employee.appraiserTechED || employee.app)}
+              onClick={() => onRequest?.({ type: "delegation", employee, field: requestField, oldId: requestField === "comp" ? employee.compManager || employee.comp : employee.appraiserTechED || employee.app, newId: requestPerson })}
+              className="rounded-md bg-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Send Delegation Request
+            </button>
+          </div>
         </PanelCard>
-      </>
-    );
-  };
+      ) : (
+        <PanelCard title="Screen Request">
+          <div className="space-y-2">
+            <div className="text-[11.5px] text-[#6b7280]">Request a change to the appraisal screen for this employee.</div>
+            <div className="text-[12px] text-[#374151]">Employee: <b>{employee.name}</b> · {employee.empId}</div>
+            <button type="button" onClick={() => onRequest?.({ type: "screen", employee })} className="rounded-md bg-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-white">Send Screen Request</button>
+          </div>
+        </PanelCard>
+      )}
+    </div>
+  );
+
 
   return (
     <aside
@@ -4653,7 +4396,7 @@ function EmployeePanel({
         className="flex shrink-0 border-b border-[#e5e7eb] bg-[#fafafb]"
         role="tablist"
       >
-        {PANEL_TABS.map(([key, label]) => (
+        {panelTabs.map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -4694,7 +4437,7 @@ function EmployeePanel({
 
       {/* body */}
       <div className="min-h-0 flex-1 overflow-auto pb-3.5 pl-4 pr-3.5 pt-1.5">
-        {tab === "feedback" ? renderFeedback() : renderBudget()}
+        {tab === "feedback" ? renderFeedback() : renderRequest()}
       </div>
     </aside>
   );
@@ -4715,8 +4458,10 @@ export function AppraisalGrid({
 
   showHistory,
   setShowHistory,
+  focusEmployeeId,
+  onFocusEmployeeHandled,
 
-  // Optional — right panel "Budget" tab.
+  // Optional — right panel "Request" tab.
   // budget = {
   //   allocated,         // updated budget amount (rupees)
   //   changedUnseen,     // true -> shows the "Budget changed" alert
@@ -5218,6 +4963,19 @@ export function AppraisalGrid({
 
   const [historyRow, setHistoryRow] = useState(null);
 
+  useEffect(() => {
+    const target = String(focusEmployeeId || "").trim();
+    if (!target) return;
+    const targetRow = rows.find((row) => String(row.empId || "").trim() === target);
+    if (!targetRow) return;
+    const sortedIndex = sortedRows.findIndex((row) => row.id === targetRow.id);
+    setCurrentPage(sortedIndex >= 0 ? Math.floor(sortedIndex / PAGE_SIZE) + 1 : 1);
+    setHistoryRow(targetRow);
+    setDetailOpen(true);
+    loadHistory(targetRow.empId).catch(() => {});
+    onFocusEmployeeHandled?.();
+  }, [focusEmployeeId]);
+
   // Select the first employee by default so the panel is never empty.
   useEffect(() => {
     if (!historyRow && rows.length > 0) {
@@ -5570,6 +5328,37 @@ export function AppraisalGrid({
   }, []);
 
   const closePromote = useCallback(() => setPromoteState(null), []);
+
+  const clearPromotion = useCallback(
+    (row) => {
+      const anchor =
+        promoteState?.anchor && promoteState.anchor.isConnected
+          ? promoteState.anchor
+          : null;
+
+      updateLinkedCells(
+        row.id,
+        { eligibleForPromotion: "No", newTitle: null },
+        "Clear promotion",
+      );
+
+      const promoKey = row.id + ":eligibleForPromotion";
+      const titleKey = row.id + ":newTitle";
+      flashSaved(promoKey);
+      flashSaved(titleKey);
+      markEdited(promoKey);
+      markEdited(titleKey);
+
+      if (row.id === historyRow?.id) {
+        flashHistoryFields("eligibleForPromotion");
+        flashHistoryFields("newTitle");
+      }
+
+      showChangeToast(anchor, "Promotion", "Yes", "No", true);
+      setPromoteState(null);
+    },
+    [promoteState, updateLinkedCells, flashSaved, markEdited, historyRow, flashHistoryFields, showChangeToast],
+  );
 
   const applyPromotion = useCallback(
     (row, title) => {
@@ -7435,6 +7224,9 @@ export function AppraisalGrid({
           modified={modified}
           budget={budget}
           onViewBudget={onViewBudget}
+          onRequest={onRequest}
+          isTechEd={isTechEd}
+          isHR={isHR}
           onClose={closeDetailPanel}
           history={{
             loading: historyLoading,
@@ -7615,6 +7407,16 @@ export function AppraisalGrid({
                 className="h-[30px] w-full rounded-md border border-[#cbd2da] px-2 text-[12.5px] outline-none focus:border-[#102a43]"
               />
             </div>
+
+            {promoteRow.eligibleForPromotion === "Yes" && (
+              <button
+                type="button"
+                onClick={() => clearPromotion(promoteRow)}
+                className="mx-2 mb-1 mt-0.5 block w-[calc(100%-1rem)] rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-left text-[12px] font-semibold text-red-600 hover:bg-red-100"
+              >
+                Clear promotion
+              </button>
+            )}
 
             <div className="max-h-[230px] overflow-auto">
               {promoteFiltered.slice(0, 60).map((title) => (

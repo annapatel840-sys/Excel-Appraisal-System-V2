@@ -29,6 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
+import { useCatalystUser } from "@/lib/catalyst-auth";
 
 import {
   applyFilters,
@@ -95,6 +96,10 @@ export function SheetPage() {
     error: budgetError,
   } = useBudget();
   const { openImportPicker, importUi } = useAppraisalImport();
+  const catalystUser = useCatalystUser();
+  const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const isTechEd = role.includes("teched");
+  const isHR = role.includes("hr");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({});
   const [selected, setSelected] = useState({});
@@ -106,6 +111,7 @@ export function SheetPage() {
   const menuRef = useRef(null);
 
   const [auditOpen, setAuditOpen] = useState(false);
+  const [lastEditedTarget, setLastEditedTarget] = useState("");
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -153,8 +159,17 @@ export function SheetPage() {
   const editedEmployeeIds = useMemo(() => new Set(audit.map((entry) => String(entry.empId || '').trim()).filter(Boolean)), [audit]);
   const editedCount = [...editedEmployeeIds].filter((id) => rows.some((row) => String(row.empId) === id)).length;
   const promotionCount = useMemo(() => rows.filter((row) => String(row.eligibleForPromotion || '').trim().toLowerCase() === 'yes').length, [rows]);
-  const lastEditedEntry = audit[0] || null;
-  const lastEditedRow = lastEditedEntry ? rows.find((row) => String(row.empId) === String(lastEditedEntry.empId)) : null;
+  const lastEditedEntry =
+    audit.find(
+      (entry) =>
+        String(entry.appraisalYear || "Apr-26") === "Apr-26" &&
+        String(entry.empId || "").trim(),
+    ) || null;
+  const lastEditedRow = lastEditedEntry
+    ? rows.find(
+        (row) => String(row.empId).trim() === String(lastEditedEntry.empId).trim(),
+      )
+    : null;
 
   // ============================================================
   // BUDGET NUMBERS
@@ -313,10 +328,24 @@ export function SheetPage() {
               <button type="button" onClick={() => { setFilters((previous) => ({ ...previous, eligibleForPromotion: { kind: "enum", values: ["Yes"] } })); setSearch(""); }} className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]" title="Show employees marked for promotion">
                 <span>★ {promotionCount}</span><span className="text-slate-500">promotion</span>
               </button>
-              <button type="button" onClick={() => { if (!lastEditedRow) { setAuditOpen(true); return; } setSearch(lastEditedRow.empId); setFilters({}); setShowHistory(true); }} className="flex h-9 min-w-0 max-w-[220px] shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]" title={lastEditedRow ? `Last edited: ${lastEditedRow.name}` : "No edits recorded"}>
-                <span>↪ Last edited:</span><span className="truncate">{lastEditedRow?.name || "—"}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!lastEditedRow) {
+                    setAuditOpen(true);
+                    return;
+                  }
+                  setFilters({});
+                  setSearch("");
+                  setShowHistory(true);
+                  setLastEditedTarget(String(lastEditedRow.empId).trim());
+                }}
+                className="flex h-9 min-w-0 max-w-[220px] shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]"
+                title={lastEditedRow ? "Last edited: " + lastEditedRow.name : "No edits recorded"}
+              >
+                <span>↪ Last edited:</span>
+                <span className="truncate">{lastEditedRow?.name || "—"}</span>
               </button>
-
               <div ref={menuRef} className="relative">
                 <button
                   type="button"
@@ -455,6 +484,33 @@ export function SheetPage() {
             }
             showHistory={showHistory}
             setShowHistory={setShowHistory}
+            focusEmployeeId={lastEditedTarget}
+            onFocusEmployeeHandled={() => setLastEditedTarget("")}
+            isTechEd={isTechEd}
+            isHR={isHR}
+            onRequest={(request) => {
+              const key = request.type === "delegation" ? "appraisal-delegation-requests" : "appraisal-screen-requests";
+              const current = JSON.parse(localStorage.getItem(key) || "[]");
+              current.unshift({
+                id: request.type.toUpperCase() + "-" + Date.now(),
+                rowId: request.employee?.id || request.employee?.empId || "",
+                empId: request.employee?.empId || "",
+                empName: request.employee?.name || "",
+                field: request.field || request.type,
+                oldId: request.oldId || "",
+                newId: request.newId || "",
+                reason: "Requested from appraisal detail panel",
+                byId: catalystUser?.name || catalystUser?.email || catalystUser?.user_id || "",
+                byName: catalystUser?.name || catalystUser?.email || "Tech Ed",
+                on: new Date().toISOString(),
+                status: "Pending",
+                decidedBy: "",
+                decidedOn: "",
+                remarks: "",
+              });
+              localStorage.setItem(key, JSON.stringify(current));
+              window.alert(request.type === "delegation" ? "Delegation request sent to HR." : "Screen request sent.");
+            }}
           />
         </div>
       </AppShell>

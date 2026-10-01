@@ -1,123 +1,32 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { useCatalystUser } from "@/lib/catalyst-auth";
 
 /* ------------------------------------------------------------------ data */
-const PEOPLE = [
-  { id: "MGR001", name: "Anita Sharma", roles: ["Tech Ed", "Comp Manager"] },
-  { id: "MGR002", name: "Raj Mehta", roles: ["Tech Ed", "Comp Manager"] },
-  { id: "MGR003", name: "Suresh Iyer", roles: ["Tech Ed", "Comp Manager"] },
-  { id: "MGR004", name: "Kavita Nair", roles: ["Tech Ed", "Comp Manager"] },
-  { id: "MGR005", name: "Vikram Singh", roles: ["Tech Ed", "Comp Manager"] },
-  { id: "EMP00125", name: "Rohan Kapoor", roles: ["Comp Manager"] },
-];
-const USERS = [
-  { id: "HR001", name: "HR Admin", role: "HR Admin" },
-  ...PEOPLE.filter((p) => p.id.startsWith("MGR")).map((p) => ({
-    id: p.id,
-    name: p.name,
-    role: "Tech Ed",
-  })),
-];
+const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
 const FIELDS = { comp: "Comp Manager", app: "Appraiser Tech Ed" };
-const ST = {
-  CF: "Carried forward",
-  NEW: "New – Tech Ed default",
-  HR: "Changed – HR",
-  TE: "Changed – Tech Ed (approved)",
-  PD: "Pending HR approval",
-};
-const TAG = {
-  [ST.CF]: "cf",
-  [ST.NEW]: "nw",
-  [ST.HR]: "hr",
-  [ST.TE]: "te",
-  [ST.PD]: "pd",
-};
+const ST = { CF: "Carried forward", NEW: "New – Tech Ed default", HR: "Changed – HR", TE: "Changed – Tech Ed (approved)", PD: "Pending HR approval" };
+const TAG = { [ST.CF]: "cf", [ST.NEW]: "nw", [ST.HR]: "hr", [ST.TE]: "te", [ST.PD]: "pd" };
 const PAGE = 50;
-
-const NAMES = [
-  "Rohan Kapoor",
-  "Anita Rao",
-  "Aarav Iyer",
-  "Vivaan Mehta",
-  "Aditya Singh",
-  "Vihaan Malhotra",
-  "Arjun Pillai",
-  "Sai Gupta",
-  "Reyansh Reddy",
-  "Ayaan Menon",
-  "Krishna Shah",
-  "Ishaan Kumar",
-  "Ananya Bhatt",
-  "Diya Sharma",
-  "Saanvi Kapoor",
-  "Aadhya Nair",
-  "Kiara Joshi",
-  "Myra Patel",
-  "Anika Chawla",
-  "Navya Desai",
-  "Riya Verma",
-  "Ira Rao",
-  "Rahul Iyer",
-  "Karan Mehta",
-  "Nikhil Singh",
-];
-const byName = (n) => PEOPLE.find((p) => p.name === n);
-
-/** Replace with your API data. Shape: see seedRows(). */
-function seedRows() {
-  const ids = ["MGR001", "MGR002", "MGR003", "MGR004", "MGR005"];
-  return Array.from({ length: 91 }, (_, i) => {
-    const te = PEOPLE.find((p) => p.id === ids[i % 5]);
-    const rm = PEOPLE[(i + 2) % 5];
-    const isNew = i % 22 === 0;
-    const prevApp = i % 9 === 4 ? PEOPLE[(i + 1) % 5] : te;
-    return {
-      id: i === 0 ? "EMP00125" : `EMP${200 + i}`,
-      name: NAMES[i % NAMES.length],
-      rm: rm.name,
-      teId: te.id,
-      te: te.name,
-      comp: isNew ? te.id : rm.id,
-      app: te.id,
-      prevComp: isNew ? "" : rm.id,
-      prevApp: isNew ? "" : prevApp.id,
-      base: isNew ? ST.NEW : ST.CF,
-      lastRole: "",
-    };
-  });
-}
-
-/* ----------------------------------------------------------------- utils */
-const nameOf = (id) => PEOPLE.find((p) => p.id === id)?.name || String(id || "");
+const nameOf = (value) => String(value || "").trim();
 const now = () => new Date().toISOString().replace("T", " ").slice(0, 19);
-const fmt = (s) => {
-  const d = new Date(String(s).replace(" ", "T"));
-  return isNaN(d)
-    ? s
-    : d.toLocaleDateString("en-GB", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      });
-};
-const csvCell = (v) =>
-  /[",\n]/.test(String(v ?? ""))
-    ? `"${String(v).replace(/"/g, '""')}"`
-    : String(v ?? "");
+const fmt = (s) => { const d = new Date(String(s).replace(" ", "T")); return isNaN(d) ? s : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); };
+const csvCell = (v) => /[",\n]/.test(String(v ?? "")) ? "\"" + String(v).replace(/"/g, '""') + "\"" : String(v ?? "");
 let seq = 1;
-const refNo = (p) =>
-  `${p}-${now().replace(/\D/g, "").slice(2, 12)}-${String(seq++).padStart(4, "0")}`;
-
+const refNo = (p) => p + "-" + now().replace(/\D/g, "").slice(2, 12) + "-" + String(seq++).padStart(4, "0");
 /* -------------------------------------------------------------- component */
 export default function DelegationScreen({
   initialRows,
   cycleName = "Apr-26",
-  showRoleSwitch = true, // preview only: remove when wired to real auth
+  showRoleSwitch = false,
   onRefresh, // optional: () => void
   onUpload, // optional: () => void
 }) {
-  const [user, setUser] = useState(USERS[0]);
-  const [rows, setRows] = useState(() => initialRows || seedRows());
+  const catalystUser = useCatalystUser();
+  const loggedInName = String(catalystUser?.name || catalystUser?.email || "").trim();
+  const isHRUser = String(catalystUser?.role || "").toLowerCase().replace(/[^a-z0-9]/g, "").includes("hr");
+  const [user, setUser] = useState({ id: loggedInName, name: loggedInName, role: isHRUser ? "HR Admin" : "Tech Ed" });
+  const [rows, setRows] = useState(() => initialRows || []);
   const [reqs, setReqs] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("appraisal-delegation-requests") || "[]");
@@ -151,6 +60,31 @@ export default function DelegationScreen({
   }, [reqs]);
 
   const isHR = user.role === "HR Admin";
+
+  useEffect(() => {
+    if (initialRows || rows.length) return;
+    let cancelled = false;
+    const loadRoster = async () => {
+      try {
+        const firstResponse = await catalystFetch(EMPLOYEE_API_URL + "?page=1&limit=100", { method: "GET", cache: "no-store" });
+        const first = await firstResponse.json();
+        if (!firstResponse.ok || !first?.success) throw new Error(first?.message || "Unable to load appraisal employees.");
+        const all = Array.isArray(first.data) ? [...first.data] : [];
+        const totalPages = Math.max(1, Number(first.pagination?.totalPages || 1));
+        for (let pageNo = 2; pageNo <= totalPages; pageNo += 1) {
+          const response = await catalystFetch(EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=100", { method: "GET", cache: "no-store" });
+          const payload = await response.json();
+          if (response.ok && Array.isArray(payload.data)) all.push(...payload.data);
+        }
+        if (cancelled) return;
+        setRows(all.map((item) => ({ id: String(item.emp_id || item.ROWID || "").trim(), name: String(item.name || item.emp_id || "").trim(), rm: String(item.reporting_manager || "").trim(), teId: String(item.appraiser_tech_ed || "").trim(), te: String(item.appraiser_tech_ed || "").trim(), comp: String(item.comp_manager || "").trim(), app: String(item.appraiser_tech_ed || "").trim(), prevComp: "", prevApp: "", base: "", lastRole: "" })).filter((row) => row.id));
+      } catch (error) {
+        if (!cancelled) say(error?.message || "Unable to load appraisal employees.", true);
+      }
+    };
+    loadRoster();
+    return () => { cancelled = true; };
+  }, [initialRows]);
   const say = (msg, err) => {
     setToast({ msg, err });
     setTimeout(() => setToast(null), err ? 6000 : 3500);
@@ -173,10 +107,16 @@ export default function DelegationScreen({
           ? ST.TE
           : r.base;
   const scoped = useMemo(
-    () => rows.filter((r) => isHR || r.teId === user.id),
+    () => rows.filter((r) => {
+      if (isHR) return true;
+      const assigned = String(r.te || r.teId || "").trim().toLowerCase();
+      const loggedIn = String(user.name || user.id || "").trim().toLowerCase();
+      return assigned === loggedIn || assigned.includes(loggedIn);
+    }),
     [rows, user, isHR],
   );
-  const myReqs = reqs.filter((q) => isHR || q.byId === user.id);
+  const myReqs = reqs.filter((q) => FIELDS[q.field] && (isHR || q.byId === user.id));
+  const people = useMemo(() => [...new Set([...rows.map((r) => r.comp), ...rows.map((r) => r.app)].filter(Boolean).map((v) => String(v).trim()))].sort((a, b) => a.localeCompare(b)).map((value) => ({ id: value, name: value, roles: [] })), [rows]);
   const pending = myReqs.filter((q) => q.status === "Pending");
   const list = useMemo(() => {
     const q = filter.q.toLowerCase();
@@ -345,21 +285,27 @@ export default function DelegationScreen({
     });
   };
 
-  const decide = (q, approve, rm = remarks[q.id] || "") => {
+  const persistDelegationChange = async (q) => {
+    const field = q.field === "comp" ? "comp_manager" : "appraiser_tech_ed";
+    const response = await catalystFetch(EMPLOYEE_API_URL, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ emp_id: String(q.empId || q.rowId), [field]: String(q.newId || "") }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.success) throw new Error(payload?.message || "Delegation update failed.");
+  };
+  const decide = async (q, approve, rm = remarks[q.id] || "") => {
     if (!approve && !rm.trim())
       return say("HR remarks are mandatory when rejecting.", true);
-    if (approve)
-      setRows((rs) =>
-        applyTo(
-          rs,
-          q.rowId,
-          q.field,
-          q.newId,
-          "Tech Ed",
-          q.reason,
-          `${q.byName} (approved by ${user.name})`,
-        ),
-      );
+    if (approve) {
+      try {
+        await persistDelegationChange(q);
+      } catch (error) {
+        return say(error?.message || "Unable to apply delegation change.", true);
+      }
+      setRows((rs) => applyTo(rs, q.rowId, q.field, q.newId, "HR Admin", q.reason, q.byName + " (approved by " + user.name + ")"));
+    }
     setReqs((qs) =>
       qs.map((x) =>
         x.id === q.id
@@ -381,7 +327,7 @@ export default function DelegationScreen({
       action: approve ? "Approved" : "Rejected",
       why: rm,
     });
-    say(`Request ${q.no} ${approve ? "approved" : "rejected"}.`);
+    say("Request " + q.no + (approve ? " approved and saved." : " rejected."));
   };
   const withdraw = (q) =>
     setModal({
@@ -402,20 +348,15 @@ export default function DelegationScreen({
       type: "confirm",
       title: "Approve all",
       body: `Approve all ${pending.length} pending request(s)?`,
-      ok: () => {
+      ok: async () => {
+        try {
+          for (const q of pending) await persistDelegationChange(q);
+        } catch (error) {
+          say(error?.message || "Unable to approve all delegation requests.", true);
+          return;
+        }
         let rs = rows;
-        pending.forEach(
-          (q) =>
-            (rs = applyTo(
-              rs,
-              q.rowId,
-              q.field,
-              q.newId,
-              "Tech Ed",
-              q.reason,
-              `${q.byName} (approved by ${user.name})`,
-            )),
-        );
+        pending.forEach((q) => (rs = applyTo(rs, q.rowId, q.field, q.newId, "HR Admin", q.reason, q.byName + " (approved by " + user.name + ")")));
         setRows(rs);
         const ids = new Set(pending.map((q) => q.id));
         setReqs((qs) =>
@@ -766,13 +707,13 @@ export default function DelegationScreen({
                                     type: "reason",
                                     row: r,
                                     field: f,
-                                    person: PEOPLE.find(
+                                    person: people.find(
                                       (p) => p.id === e.target.value,
                                     ),
                                   });
                                 }}
                               >
-                                {PEOPLE.map((p) => (
+                                {people.map((p) => (
                                   <option key={p.id} value={p.id}>
                                     {p.name}
                                   </option>
@@ -884,7 +825,7 @@ export default function DelegationScreen({
                 onChange={(e) => setBulk({ ...bulk, person: e.target.value })}
               >
                 <option value="">— choose —</option>
-                {PEOPLE.map((p) => (
+                {people.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} · {p.roles.join(", ")}
                   </option>
