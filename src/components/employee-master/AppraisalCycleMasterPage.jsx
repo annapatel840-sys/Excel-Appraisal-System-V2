@@ -71,6 +71,8 @@ export function AppraisalCycleMasterPage() {
 
   const [newForm, setNewForm] = useState({
     type: "Annual",
+    from: "",
+    to: "",
     start: "",
     end: "",
     remarks: "",
@@ -292,10 +294,19 @@ export function AppraisalCycleMasterPage() {
   };
 
   const createCycle = async () => {
-    const name = generateCycleName(newForm.type, newForm.start, newForm.end);
+    const name = generateCycleName(newForm.type, newForm.from, newForm.to);
 
-    if (!newForm.type || !name || name.length > 100 || !newForm.start || !newForm.end) {
+    if (!newForm.type || !name || name.length > 100 || !newForm.from || !newForm.to || !newForm.start || !newForm.end) {
       showBanner("Validation failed", "Cycle name (up to 100 characters), start date and end date are required.", true);
+      return;
+    }
+
+    if (newForm.to <= newForm.from) {
+      showBanner(
+        "Validation failed",
+        "To date must be after From date.",
+        true,
+      );
       return;
     }
 
@@ -330,7 +341,7 @@ export function AppraisalCycleMasterPage() {
     );
     if (saved) {
       setNewCycleOpen(false);
-      setNewForm({ type: "Annual", start: "", end: "", remarks: "" });
+      setNewForm({ type: "Annual", from: "", to: "", start: "", end: "", remarks: "" });
     }
   };
 
@@ -1191,13 +1202,45 @@ export function AppraisalCycleMasterPage() {
                   <label>Cycle Name</label>
                   <input
                     disabled
-                    value={generateCycleName(newForm.type, newForm.start, newForm.end)}
-                    placeholder="Generated from type and dates"
+                    value={generateCycleName(newForm.type, newForm.from, newForm.to)}
+                    placeholder="Generated from From and To"
                   />
                 </div>
 
                 <div className="acm-field">
                   <label>From</label>
+
+                  <input
+                    type="date"
+                    disabled={saving}
+                    value={newForm.from}
+                    onChange={(event) =>
+                      setNewForm((current) => ({
+                        ...current,
+                        from: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="acm-field">
+                  <label>To</label>
+
+                  <input
+                    type="date"
+                    disabled={saving}
+                    value={newForm.to}
+                    onChange={(event) =>
+                      setNewForm((current) => ({
+                        ...current,
+                        to: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="acm-field">
+                  <label>Start Date</label>
 
                   <input
                     type="date"
@@ -1213,7 +1256,7 @@ export function AppraisalCycleMasterPage() {
                 </div>
 
                 <div className="acm-field">
-                  <label>To</label>
+                  <label>End Date</label>
 
                   <input
                     type="date"
