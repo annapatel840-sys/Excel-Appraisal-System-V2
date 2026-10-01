@@ -19,7 +19,7 @@ const nameOf = (value) => String(value || "").trim();
 export default function DelegationScreen({
   initialRows,
   cycleName = "Apr-26",
-  showRoleSwitch = true, // preview only: remove when wired to real auth
+  showRoleSwitch = false,
   onRefresh, // optional: () => void
   onUpload, // optional: () => void
 }) {
@@ -120,7 +120,13 @@ export default function DelegationScreen({
           ? ST.TE
           : r.base;
   const scoped = useMemo(
-    () => rows.filter((r) => isHR || r.teId === user.id),
+    () =>
+      rows.filter((r) => {
+        if (isHR) return true;
+        const assigned = String(r.te || r.teId || "").trim().toLowerCase();
+        const loggedIn = String(user.name || user.id || "").trim().toLowerCase();
+        return assigned === loggedIn || assigned.includes(loggedIn);
+      }),
     [rows, user, isHR],
   );
   const myReqs = reqs.filter((q) => isHR || q.byId === user.id);
