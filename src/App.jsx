@@ -10,9 +10,10 @@ import { EmployeeMaster } from "@/pages/EmployeeMaster";
 import { DetailScreenPage } from "@/components/appraisal/DetailScreenPage";
 import { AppShell } from "./components/appraisal/AppShell";
 import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
+import DelegationScreen from "@/components/employee-master/DelegationScreen";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 
-const TECH_ED_PATHS = ["/", "/sheet", "/employee-master", "/detail-screen", "/budget-allocation" ];
+const TECH_ED_PATHS = ["/", "/sheet", "/employee-master", "/detail-screen", "/request" ];
 
 // A crash in one screen shows a message instead of blanking the whole app.
 // It is keyed by path, so navigating to another screen clears the error.
@@ -98,6 +99,24 @@ function AppRoutes() {
   page = (
     <AppShell>
       <DetailScreenPage />
+    </AppShell>
+  );
+} else if (effectivePath === "/request") {
+  page = (
+    <AppShell>
+      <div className="rounded-md border border-[#d5dce5] bg-white p-4">
+        <h2 className="text-sm font-semibold text-[#173b63]">Request</h2>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <button type="button" className="rounded-md border p-4 text-left" onClick={() => { window.history.pushState({}, "", "/employee-master?tab=delegation"); window.dispatchEvent(new PopStateEvent("popstate")); }}>
+            <div className="text-sm font-semibold">Delegation Request</div>
+            <div className="mt-1 text-[11px] text-slate-500">Request assignment changes for HR approval.</div>
+          </button>
+          <button type="button" className="rounded-md border p-4 text-left">
+            <div className="text-sm font-semibold">Screen Request</div>
+            <div className="mt-1 text-[11px] text-slate-500">Request an appraisal screen change.</div>
+          </button>
+        </div>
+      </div>
     </AppShell>
   );
 } else if (effectivePath === "/budget-allocation") {
