@@ -500,7 +500,7 @@ export function SheetPage() {
                 oldId: request.oldId || "",
                 newId: request.newId || "",
                 reason: "Requested from appraisal detail panel",
-                byId: catalystUser?.user_id || catalystUser?.id || "",
+                byId: catalystUser?.name || catalystUser?.email || catalystUser?.user_id || "",
                 byName: catalystUser?.name || catalystUser?.email || "Tech Ed",
                 on: new Date().toISOString(),
                 status: "Pending",
