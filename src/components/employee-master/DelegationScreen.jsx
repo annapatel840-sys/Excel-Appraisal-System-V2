@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 
 /* ------------------------------------------------------------------ data */
 const PEOPLE = [
@@ -88,7 +88,7 @@ function seedRows() {
 }
 
 /* ----------------------------------------------------------------- utils */
-const nameOf = (id) => PEOPLE.find((p) => p.id === id)?.name || "";
+const nameOf = (id) => PEOPLE.find((p) => p.id === id)?.name || String(id || "");
 const now = () => new Date().toISOString().replace("T", " ").slice(0, 19);
 const fmt = (s) => {
   const d = new Date(String(s).replace(" ", "T"));
@@ -118,7 +118,7 @@ export default function DelegationScreen({
 }) {
   const [user, setUser] = useState(USERS[0]);
   const [rows, setRows] = useState(() => initialRows || seedRows());
-  const [reqs, setReqs] = useState([]);
+  const [reqs, setReqs] = useState(() => {\n    try { return JSON.parse(localStorage.getItem("appraisal-delegation-requests") || "[]"); } catch { return []; }\n  });
   const [audit, setAudit] = useState([]);
   const [locked, setLocked] = useState(false);
   const [filter, setFilter] = useState({ q: "", te: "", comp: "", status: "" });
@@ -135,6 +135,14 @@ export default function DelegationScreen({
   const [modal, setModal] = useState(null); // {type, ...}
   const [reason, setReason] = useState("");
   const [toast, setToast] = useState(null);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("appraisal-delegation-requests", JSON.stringify(reqs));
+    } catch {
+      // Local persistence is a temporary bridge until the delegation Data Store/API is connected.
+    }
+  }, [reqs]);
 
   const isHR = user.role === "HR Admin";
   const say = (msg, err) => {
