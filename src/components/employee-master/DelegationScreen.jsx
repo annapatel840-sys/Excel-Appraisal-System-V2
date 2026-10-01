@@ -9,6 +9,11 @@ const ST = { CF: "Carried forward", NEW: "New – Tech Ed default", HR: "Changed
 const TAG = { [ST.CF]: "cf", [ST.NEW]: "nw", [ST.HR]: "hr", [ST.TE]: "te", [ST.PD]: "pd" };
 const PAGE = 50;
 const nameOf = (value) => String(value || "").trim();
+const now = () => new Date().toISOString().replace("T", " ").slice(0, 19);
+const fmt = (s) => { const d = new Date(String(s).replace(" ", "T")); return isNaN(d) ? s : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); };
+const csvCell = (v) => /[",\n]/.test(String(v ?? "")) ? "\"" + String(v).replace(/"/g, '""') + "\"" : String(v ?? "");
+let seq = 1;
+const refNo = (p) => p + "-" + now().replace(/\D/g, "").slice(2, 12) + "-" + String(seq++).padStart(4, "0");
 /* -------------------------------------------------------------- component */
 export default function DelegationScreen({
   initialRows,
