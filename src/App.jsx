@@ -9,7 +9,6 @@ import { EmployeeMaster } from "@/pages/EmployeeMaster";
 //this might be remove later (detailscreen)
 import { DetailScreenPage } from "@/components/appraisal/DetailScreenPage";
 import { AppShell } from "./components/appraisal/AppShell";
-import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
 import { RequestPage } from "@/components/employee-master/RequestPage";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 
@@ -107,12 +106,7 @@ function AppRoutes() {
       <RequestPage />
     </AppShell>
   );
-} else if (effectivePath === "/budget-allocation") {
-  page = (
-    <AppShell>
-      <BudgetAllocationPage />
-    </AppShell>
-  );
+
 } else {
   page = <Dashboard />;
 }
