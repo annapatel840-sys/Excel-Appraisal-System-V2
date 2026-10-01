@@ -5607,6 +5607,7 @@ export function AppraisalGrid({
 
   const cancelledCellsRef = useRef(new Set());
   const pendingDraftRef = useRef(null);
+  const liveToastCellsRef = useRef(new Set());
   const commitRef = useRef(commit);
 
   commitRef.current = commit;
@@ -6163,9 +6164,28 @@ export function AppraisalGrid({
               event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
             }}
             onChange={(event) => {
-              setEditingValue(cellKey, event.target.value);
+              const value = event.target.value;
+              setEditingValue(cellKey, value);
 
-              pendingDraftRef.current = { row, col, raw: event.target.value };
+              pendingDraftRef.current = { row, col, raw: value };
+
+              if (
+                !liveToastCellsRef.current.has(cellKey) &&
+                String(storedValue) !== String(value)
+              ) {
+                liveToastCellsRef.current.add(cellKey);
+                if (YOY_FIELDS[col.key]) {
+                  showYoyToast(event.currentTarget, col.key, { ...row, [col.key]: value });
+                } else {
+                  showChangeToast(
+                    event.currentTarget,
+                    col.label,
+                    String(storedValue),
+                    String(value),
+                    true,
+                  );
+                }
+              }
 
               event.target.style.height = "auto";
               event.target.style.height = `${event.target.scrollHeight}px`;
@@ -6181,6 +6201,7 @@ export function AppraisalGrid({
                   : event.target.value;
 
               clearEditingValue(cellKey);
+              liveToastCellsRef.current.delete(cellKey);
 
               event.target.style.height = "";
 
@@ -6243,9 +6264,36 @@ export function AppraisalGrid({
             }
           }}
           onChange={(event) => {
-            setEditingValue(cellKey, event.target.value);
+            const value = event.target.value;
+            setEditingValue(cellKey, value);
 
-            pendingDraftRef.current = { row, col, raw: event.target.value };
+            pendingDraftRef.current = { row, col, raw: value };
+
+            if (
+              !liveToastCellsRef.current.has(cellKey) &&
+              String(storedValue) !== String(value)
+            ) {
+              liveToastCellsRef.current.add(cellKey);
+              if (YOY_FIELDS[col.key]) {
+                showYoyToast(event.currentTarget, col.key, { ...row, [col.key]: value });
+              } else if (isNumericType(col.type)) {
+                showChangeToast(
+                  event.currentTarget,
+                  col.label,
+                  Number(storedValue) || 0,
+                  Number(value) || 0,
+                  false,
+                );
+              } else {
+                showChangeToast(
+                  event.currentTarget,
+                  col.label,
+                  String(storedValue),
+                  String(value),
+                  true,
+                );
+              }
+            }
           }}
           onBlur={(event) => {
             setActive(null);
@@ -6258,6 +6306,7 @@ export function AppraisalGrid({
                 : event.target.value;
 
             clearEditingValue(cellKey);
+            liveToastCellsRef.current.delete(cellKey);
 
             // Escape pressed: discard the draft instead of saving it.
             if (cancelledCellsRef.current.delete(cellKey)) {
