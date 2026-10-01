@@ -4007,6 +4007,8 @@ function EmployeePanel({
 }) {
   const [tab, setTab] = useState("feedback");
   const [subs, setSubs] = useState({ feedback: "manager", request: "delegation" });
+  const [requestField, setRequestField] = useState("app");
+  const [requestPerson, setRequestPerson] = useState("");
   const [wide, setWide] = useState(false);
   const [width, setWidth] = useState(PANEL_WIDTH);
   const [dragging, setDragging] = useState(false);
@@ -4293,27 +4295,48 @@ function EmployeePanel({
   };
 
   // ---------- REQUEST ----------
+  const requestPeople = useMemo(() => {
+    const values = team
+      .map((row) => requestField === "comp" ? row.compManager || row.comp : row.appraiserTechED || row.app)
+      .filter(Boolean)
+      .map((value) => String(value).trim());
+    return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+  }, [team, requestField]);
+
   const renderRequest = () => (
     <div className="space-y-2.5">
-      <PanelCard title={sub === "delegation" ? "Delegation Request" : "Screen Request"}>
-        <div className="space-y-2">
-          <div className="text-[11.5px] text-[#6b7280]">
-            {sub === "delegation"
-              ? "Request a delegation change for this employee. The request is tied to the current appraisal row."
-              : "Request a change to the appraisal screen for this employee."}
+      {sub === "delegation" ? (
+        <PanelCard title="Delegation Request">
+          <div className="space-y-2.5">
+            <div className="text-[11.5px] text-[#6b7280]">Request a change to the delegation assignment for this employee.</div>
+            <div className="text-[12px] text-[#374151]">Employee: <b>{employee.name}</b> · {employee.empId}</div>
+            <select value={requestField} onChange={(event) => { setRequestField(event.target.value); setRequestPerson(""); }} className="h-8 w-full rounded-md border border-[#cbd5e1] px-2 text-[11.5px]">
+              <option value="app">Appraiser Tech Ed</option>
+              <option value="comp">Comp Manager</option>
+            </select>
+            <select value={requestPerson} onChange={(event) => setRequestPerson(event.target.value)} className="h-8 w-full rounded-md border border-[#cbd5e1] px-2 text-[11.5px]">
+              <option value="">Select new assignee...</option>
+              {requestPeople.map((person) => <option key={person} value={person}>{person}</option>)}
+            </select>
+            <button
+              type="button"
+              disabled={!requestPerson || requestPerson === String(requestField === "comp" ? employee.compManager || employee.comp : employee.appraiserTechED || employee.app)}
+              onClick={() => onRequest?.({ type: "delegation", employee, field: requestField, oldId: requestField === "comp" ? employee.compManager || employee.comp : employee.appraiserTechED || employee.app, newId: requestPerson })}
+              className="rounded-md bg-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Send Delegation Request
+            </button>
           </div>
-          <div className="text-[12px] text-[#374151]">
-            Employee: <b>{employee.name}</b> · {employee.empId}
+        </PanelCard>
+      ) : (
+        <PanelCard title="Screen Request">
+          <div className="space-y-2">
+            <div className="text-[11.5px] text-[#6b7280]">Request a change to the appraisal screen for this employee.</div>
+            <div className="text-[12px] text-[#374151]">Employee: <b>{employee.name}</b> · {employee.empId}</div>
+            <button type="button" onClick={() => onRequest?.({ type: "screen", employee })} className="rounded-md bg-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-white">Send Screen Request</button>
           </div>
-          <button
-            type="button"
-            onClick={() => onRequest?.({ type: sub, employee })}
-            className="rounded-md bg-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-white"
-          >
-            Send {sub === "delegation" ? "Delegation" : "Screen"} Request
-          </button>
-        </div>
-      </PanelCard>
+        </PanelCard>
+      )}
     </div>
   );
 
