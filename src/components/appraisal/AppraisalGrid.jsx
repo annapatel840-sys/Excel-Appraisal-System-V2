@@ -4004,6 +4004,9 @@ function EmployeePanel({
   history,
   budget,
   onViewBudget,
+  isTechEd = false,
+  isHR = false,
+  onRequest,
   onClose,
 }) {
   const [tab, setTab] = useState("feedback");
