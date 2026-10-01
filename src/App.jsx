@@ -67,7 +67,7 @@ function AppRoutes() {
   const user = useCatalystUser();
   const role = String(user?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
-  const effectivePath = isTechEd && !TECH_ED_PATHS.includes(path) ? "/employee-master" : path;
+  const effectivePath = isTechEd ? (TECH_ED_PATHS.includes(path) ? path : "/employee-master") : (path === "/request" ? "/employee-master" : path);
 
   useEffect(() => {
     const onPopState = () => {
