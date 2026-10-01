@@ -115,7 +115,7 @@ export default function DelegationScreen({
     }),
     [rows, user, isHR],
   );
-  const myReqs = reqs.filter((q) => isHR || q.byId === user.id);
+  const myReqs = reqs.filter((q) => FIELDS[q.field] && (isHR || q.byId === user.id));
   const people = useMemo(() => [...new Set([...rows.map((r) => r.comp), ...rows.map((r) => r.app)].filter(Boolean).map((v) => String(v).trim()))].sort((a, b) => a.localeCompare(b)).map((value) => ({ id: value, name: value, roles: [] })), [rows]);
   const pending = myReqs.filter((q) => q.status === "Pending");
   const list = useMemo(() => {
