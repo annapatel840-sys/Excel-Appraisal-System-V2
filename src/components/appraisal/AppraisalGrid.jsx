@@ -4047,6 +4047,9 @@ function EmployeePanel({
           <button type="button" disabled={!requestPerson} onClick={() => onRequest?.({ type: "delegation", employee, field: requestField, oldId: String(employee?.[requestField] || ""), newId: requestPerson })} className="rounded-md bg-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
             Send Delegation Request
           </button>
+          <button type="button" onClick={() => onRequest?.({ type: "screen", employee })} className="rounded-md border border-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-[#173b63] hover:bg-slate-50">
+            Send Screen Request
+          </button>
         </div>
       </PanelCard>
     </div>
