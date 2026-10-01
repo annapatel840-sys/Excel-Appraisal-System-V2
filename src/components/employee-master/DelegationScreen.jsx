@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
-
+ 
 /* ------------------------------------------------------------------ data */
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
 const FIELDS = { comp: "Comp Manager", app: "Appraiser Tech Ed" };
@@ -46,11 +46,12 @@ export default function DelegationScreen({
     person: "",
     reason: "",
   });
+  const [bulkOpen, setBulkOpen] = useState(false); // ADDED: Bulk assign starts folded
   const [remarks, setRemarks] = useState({});
   const [modal, setModal] = useState(null); // {type, ...}
   const [reason, setReason] = useState("");
   const [toast, setToast] = useState(null);
-
+ 
   useEffect(() => {
     try {
       localStorage.setItem("appraisal-delegation-requests", JSON.stringify(reqs));
@@ -58,9 +59,9 @@ export default function DelegationScreen({
       // Local persistence is a temporary bridge until the delegation Data Store/API is connected.
     }
   }, [reqs]);
-
+ 
   const isHR = user.role === "HR Admin";
-
+ 
   useEffect(() => {
     if (initialRows || rows.length) return;
     let cancelled = false;
@@ -94,7 +95,7 @@ export default function DelegationScreen({
       { on: now(), by: user.name, role: user.role, ...a },
       ...l,
     ]);
-
+ 
   /* derived */
   const pendingFor = (rid, reqList = reqs) =>
     reqList.some((q) => q.rowId === rid && q.status === "Pending");
@@ -138,7 +139,7 @@ export default function DelegationScreen({
   const selIds = Object.keys(sel).filter((k) => sel[k]);
   const count = (s) => scoped.filter((r) => statusOf(r) === s).length;
   const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort();
-
+ 
   /* mutations */
   const applyTo = (rows0, rid, field, pid, role, why, by) =>
     rows0.map((r) =>
@@ -153,7 +154,7 @@ export default function DelegationScreen({
           }
         : r,
     );
-
+ 
   const raise = (reqList, r, field, pid, why, batch) => {
     const out = reqList.map((q) =>
       q.rowId === r.id && q.field === field && q.status === "Pending"
@@ -181,7 +182,7 @@ export default function DelegationScreen({
     });
     return out;
   };
-
+ 
   const saveChange = () => {
     const { row, field, person } = modal;
     if (!reason.trim()) return say("Reason is mandatory.", true);
@@ -228,7 +229,7 @@ export default function DelegationScreen({
     }
     setModal(null);
   };
-
+ 
   const doBulk = () => {
     const { field, scope, person, reason: why } = bulk;
     if (!person) return say("Choose who to assign.", true);
@@ -284,7 +285,7 @@ export default function DelegationScreen({
       },
     });
   };
-
+ 
   const persistDelegationChange = async (q) => {
     const field = q.field === "comp" ? "comp_manager" : "appraiser_tech_ed";
     const response = await catalystFetch(EMPLOYEE_API_URL, {
@@ -388,7 +389,7 @@ export default function DelegationScreen({
         say(`Delegation for ${cycleName} locked.`);
       },
     });
-
+ 
   const exportCsv = () => {
     const head = [
       "Employee ID",
@@ -427,7 +428,7 @@ export default function DelegationScreen({
     }).click();
     URL.revokeObjectURL(url);
   };
-
+ 
   const switchUser = (id) => {
     setUser(USERS.find((u) => u.id === id));
     setSel({});
@@ -435,7 +436,7 @@ export default function DelegationScreen({
     setReqTab("Pending");
     setFilter({ q: "", te: "", comp: "", status: "" });
   };
-
+ 
   const shownReqs = myReqs
     .filter((q) =>
       reqTab === "Pending" ? q.status === "Pending" : q.status !== "Pending",
@@ -453,11 +454,11 @@ export default function DelegationScreen({
       ? [{ id: user.id, label: `All my employees (${scoped.length})` }]
       : [];
   const allSel = slice.length > 0 && slice.every((r) => sel[r.id]);
-
+ 
   return (
     <div className="dg">
       <style>{CSS}</style>
-
+ 
       {showRoleSwitch && (
         <div className="dg-pv">
           <span>Preview data. Logged in as</span>
@@ -485,7 +486,7 @@ export default function DelegationScreen({
             : `${pending.length} of your request(s) awaiting HR approval.`}
         </div>
       )}
-
+ 
       <div className="dg-body">
         {/* ------------------------------ main */}
         <div className="dg-card dg-main">
@@ -510,7 +511,7 @@ export default function DelegationScreen({
               </div>
             ))}
           </div>
-
+ 
           <div className="dg-tb">
             <input
               className="srch"
@@ -623,7 +624,7 @@ export default function DelegationScreen({
               </button>
             )}
           </div>
-
+ 
           <div className="dg-tw">
             {!scoped.length ? (
               <div className="empty">
@@ -737,7 +738,7 @@ export default function DelegationScreen({
               <div className="empty">No employees match the filters.</div>
             )}
           </div>
-
+ 
           <div className="dg-foot">
             <span>
               <b style={{ color: "#e0914f" }}>■</b> Orange = differs from
@@ -776,90 +777,114 @@ export default function DelegationScreen({
               : 'You see employees whose Tech Ed is you. Any change you make is sent to HR for approval; the current value stays until HR approves. You can withdraw a pending request from "My requests".'}
           </div>
         </div>
-
+ 
         {/* ------------------------------ side */}
         <div className="dg-side">
-          <div className="dg-card" id="dg-bulk">
-            <div className="sh">
-              <span className="ic">⇄</span>
-              <div>
-                <div className="tt">Bulk assign</div>
-                <div className="ss">
-                  {selIds.length} employee{selIds.length === 1 ? "" : "s"}{" "}
-                  selected
+          {/* ADDED: Bulk assign is folded on load; click the bar to open, "‹ Fold" to close */}
+          {bulkOpen ? (
+            <div className="dg-card" id="dg-bulk">
+              <div className="sh">
+                <span className="ic">⇄</span>
+                <div>
+                  <div className="tt">Bulk assign</div>
+                  <div className="ss">
+                    {selIds.length} employee{selIds.length === 1 ? "" : "s"}{" "}
+                    selected
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn sm"
+                  style={{ marginLeft: "auto" }}
+                  onClick={() => setBulkOpen(false)}
+                  title="Fold bulk assign"
+                >
+                  ‹ Fold
+                </button>
+              </div>
+              <div className="sb">
+                <div className="lb">Field to change</div>
+                <select
+                  className="fld"
+                  disabled={locked}
+                  value={bulk.field}
+                  onChange={(e) => setBulk({ ...bulk, field: e.target.value })}
+                >
+                  <option value="comp">Comp Manager</option>
+                  <option value="app">Appraiser Tech Ed</option>
+                </select>
+                <div className="lb">Apply to</div>
+                <select
+                  className="fld"
+                  disabled={locked}
+                  value={bulk.scope}
+                  onChange={(e) => setBulk({ ...bulk, scope: e.target.value })}
+                >
+                  <option value="sel">
+                    Selected employees ({selIds.length})
+                  </option>
+                  {teScopes.map((s) => (
+                    <option key={s.id} value={`te:${s.id}`}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="lb">Assign to</div>
+                <select
+                  className="fld"
+                  disabled={locked}
+                  value={bulk.person}
+                  onChange={(e) => setBulk({ ...bulk, person: e.target.value })}
+                >
+                  <option value="">— choose —</option>
+                  {people.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} · {p.roles.join(", ")}
+                    </option>
+                  ))}
+                </select>
+                <div className="lb">Reason (mandatory)</div>
+                <input
+                  className="fld"
+                  disabled={locked}
+                  maxLength={2000}
+                  value={bulk.reason}
+                  onChange={(e) => setBulk({ ...bulk, reason: e.target.value })}
+                />
+                <button className="btn p sm" disabled={locked} onClick={doBulk}>
+                  Apply
+                </button>{" "}
+                <button
+                  className="btn sm"
+                  disabled={locked}
+                  onClick={() => {
+                    setSel({});
+                    setBulk({ ...bulk, person: "", reason: "" });
+                  }}
+                >
+                  Clear
+                </button>
+                <div className="note">
+                  {isHR
+                    ? "HR Admin: applied immediately."
+                    : "Tech Ed: one request per employee is sent to HR for approval."}
                 </div>
               </div>
             </div>
-            <div className="sb">
-              <div className="lb">Field to change</div>
-              <select
-                className="fld"
-                disabled={locked}
-                value={bulk.field}
-                onChange={(e) => setBulk({ ...bulk, field: e.target.value })}
-              >
-                <option value="comp">Comp Manager</option>
-                <option value="app">Appraiser Tech Ed</option>
-              </select>
-              <div className="lb">Apply to</div>
-              <select
-                className="fld"
-                disabled={locked}
-                value={bulk.scope}
-                onChange={(e) => setBulk({ ...bulk, scope: e.target.value })}
-              >
-                <option value="sel">
-                  Selected employees ({selIds.length})
-                </option>
-                {teScopes.map((s) => (
-                  <option key={s.id} value={`te:${s.id}`}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-              <div className="lb">Assign to</div>
-              <select
-                className="fld"
-                disabled={locked}
-                value={bulk.person}
-                onChange={(e) => setBulk({ ...bulk, person: e.target.value })}
-              >
-                <option value="">— choose —</option>
-                {people.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} · {p.roles.join(", ")}
-                  </option>
-                ))}
-              </select>
-              <div className="lb">Reason (mandatory)</div>
-              <input
-                className="fld"
-                disabled={locked}
-                maxLength={2000}
-                value={bulk.reason}
-                onChange={(e) => setBulk({ ...bulk, reason: e.target.value })}
-              />
-              <button className="btn p sm" disabled={locked} onClick={doBulk}>
-                Apply
-              </button>{" "}
-              <button
-                className="btn sm"
-                disabled={locked}
-                onClick={() => {
-                  setSel({});
-                  setBulk({ ...bulk, person: "", reason: "" });
-                }}
-              >
-                Clear
-              </button>
-              <div className="note">
-                {isHR
-                  ? "HR Admin: applied immediately."
-                  : "Tech Ed: one request per employee is sent to HR for approval."}
-              </div>
-            </div>
-          </div>
-
+          ) : (
+            <button
+              type="button"
+              id="dg-bulk"
+              className="dg-fold"
+              onClick={() => setBulkOpen(true)}
+              title="Open bulk assign"
+              aria-expanded="false"
+            >
+              <span>Bulk assign ({selIds.length})</span>
+              <span>›</span>
+            </button>
+          )}
+ 
           <div className="dg-card">
             <div className="sh">
               <span className="ic o">✓</span>
@@ -992,7 +1017,7 @@ export default function DelegationScreen({
           </div>
         </div>
       </div>
-
+ 
       {/* ------------------------------ modals */}
       {modal?.type === "reason" && (
         <Modal
@@ -1120,7 +1145,7 @@ export default function DelegationScreen({
     </div>
   );
 }
-
+ 
 function Modal({ title, children, foot, onClose, wide }) {
   return (
     <div
@@ -1135,7 +1160,7 @@ function Modal({ title, children, foot, onClose, wide }) {
     </div>
   );
 }
-
+ 
 /* ---------------------------------------------------------------- styles */
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
@@ -1212,5 +1237,7 @@ const CSS = `
 .dg .chg{background:#f6f8fa;border-radius:6px;padding:9px;margin-bottom:10px;line-height:1.6}
 .dg .aud td{white-space:normal;font-size:11.5px;vertical-align:top}
 .dg .aud th{position:static}
+.dg .dg-fold{display:flex;align-items:center;justify-content:space-between;width:100%;padding:11px 13px;background:#fff;border:1px solid #dfe4ea;border-radius:10px;cursor:pointer;color:#15365a;font-weight:800;font-size:14.5px}
+.dg .dg-fold:hover{background:#f1f4f8}
 @media(max-width:1100px){.dg-body{flex-direction:column}.dg-side{width:100%;flex:none}.dg-stats{grid-template-columns:repeat(2,1fr)}}
 `;

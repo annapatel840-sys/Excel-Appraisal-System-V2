@@ -30,7 +30,7 @@ const CURRENT_CYCLE = "Apr-26";
    ------------------------------------------------------------------ */
 // Where "View budget" goes when no onViewBudget prop is passed.
 // Prefer passing onViewBudget={() => navigate("/your-route")}.
-const BUDGET_PATH = "https://excel-appraisal-syst-iqjipxdl.onslate.in/employee-master?tab=budget-allocation";
+const BUDGET_PATH = "https://excel-appraisal-syst-iqjipxdl.onslate.in/employee-master?tab=budget-distribution";
 // Placeholder text for the "Budget changed" banner until real budget
 // figures are wired in. Pass budgetNotice={{ from, to, changes, since }}
 // to override, or budgetNotice={null} to hide the banner message.
@@ -365,8 +365,10 @@ export function DetailScreenPage({
       ? `${currentUser.name}'s team`
       : "No assigned team";
   const handleViewBudget = () => {
+    if (!isTechEd) return;
     if (typeof onViewBudget === "function") onViewBudget();
-    else window.location.assign(BUDGET_PATH);
+    else window.history.pushState({}, "", "/request");
+    window.dispatchEvent(new PopStateEvent("popstate"));
   };
   const cols = [
     "minmax(0,1.7fr)",
@@ -385,9 +387,10 @@ export function DetailScreenPage({
     >
       <style>{DS_CSS}</style>
       <BudgetBanner
-        notice={noticeOpen ? budgetNotice : null}
+        notice={isTechEd && noticeOpen ? budgetNotice : null}
         onGotIt={() => setNoticeOpen(false)}
         onViewBudget={handleViewBudget}
+        isTechEd={isTechEd}
       />
       {!employee ? (
         <div className="p-6 text-sm text-slate-500">
@@ -829,8 +832,7 @@ export function DetailScreenPage({
 /* ============================================================
    BUDGET BANNER — scrolls right to left, pauses on hover
    ============================================================ */
-function BudgetBanner({ notice, onGotIt, onViewBudget }) {
-   
+function BudgetBanner({ notice, onGotIt, onViewBudget, isTechEd }) {
   return (
     <div
       role="status"
@@ -857,14 +859,16 @@ function BudgetBanner({ notice, onGotIt, onViewBudget }) {
       ) : (
         <div className="flex-1" />
       )}
-      <button
-        type="button"
-        onClick={onViewBudget}
-        className="h-[28px] shrink-0 rounded-[6px] border px-3 text-[12px] font-bold"
-        style={{ borderColor: "#CBD5E1", background: "#fff", color: INK }}
-      >
-        View budget
-      </button>
+      {isTechEd && (
+        <button
+          type="button"
+          onClick={onViewBudget}
+          className="h-[28px] shrink-0 rounded-[6px] border px-3 text-[12px] font-bold"
+          style={{ borderColor: "#CBD5E1", background: "#fff", color: INK }}
+        >
+          Request
+        </button>
+      )}
       {notice && (
         <button
           type="button"
