@@ -343,20 +343,15 @@ export default function DelegationScreen({
       type: "confirm",
       title: "Approve all",
       body: `Approve all ${pending.length} pending request(s)?`,
-      ok: () => {
+      ok: async () => {
+        try {
+          for (const q of pending) await persistDelegationChange(q);
+        } catch (error) {
+          say(error?.message || "Unable to approve all delegation requests.", true);
+          return;
+        }
         let rs = rows;
-        pending.forEach(
-          (q) =>
-            (rs = applyTo(
-              rs,
-              q.rowId,
-              q.field,
-              q.newId,
-              "Tech Ed",
-              q.reason,
-              `${q.byName} (approved by ${user.name})`,
-            )),
-        );
+        pending.forEach((q) => (rs = applyTo(rs, q.rowId, q.field, q.newId, "HR Admin", q.reason, q.byName + " (approved by " + user.name + ")")));
         setRows(rs);
         const ids = new Set(pending.map((q) => q.id));
         setReqs((qs) =>
