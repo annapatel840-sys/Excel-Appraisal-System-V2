@@ -6,7 +6,8 @@
       "appraisalauditapi",
       "employeemasterapi",
       "payrollcycleapi",
-      "budgetmasterapi"
+      "budgetmasterapi",
+      "delegationapi"
     ],
     "ignore": [],
     "source": "functions"
