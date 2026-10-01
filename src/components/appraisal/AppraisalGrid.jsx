@@ -5586,6 +5586,37 @@ export function AppraisalGrid({
 
   const closePromote = useCallback(() => setPromoteState(null), []);
 
+  const clearPromotion = useCallback(
+    (row) => {
+      const anchor =
+        promoteState?.anchor && promoteState.anchor.isConnected
+          ? promoteState.anchor
+          : null;
+
+      updateLinkedCells(
+        row.id,
+        { eligibleForPromotion: "No", newTitle: null },
+        "Clear promotion",
+      );
+
+      const promoKey = row.id + ":eligibleForPromotion";
+      const titleKey = row.id + ":newTitle";
+      flashSaved(promoKey);
+      flashSaved(titleKey);
+      markEdited(promoKey);
+      markEdited(titleKey);
+
+      if (row.id === historyRow?.id) {
+        flashHistoryFields("eligibleForPromotion");
+        flashHistoryFields("newTitle");
+      }
+
+      showChangeToast(anchor, "Promotion", "Yes", "No", true);
+      setPromoteState(null);
+    },
+    [promoteState, updateLinkedCells, flashSaved, markEdited, historyRow, flashHistoryFields, showChangeToast],
+  );
+
   const applyPromotion = useCallback(
     (row, title) => {
       const newTitle = String(title || "").trim();
@@ -7630,6 +7661,16 @@ export function AppraisalGrid({
                 className="h-[30px] w-full rounded-md border border-[#cbd2da] px-2 text-[12.5px] outline-none focus:border-[#102a43]"
               />
             </div>
+
+            {promoteRow.eligibleForPromotion === "Yes" && (
+              <button
+                type="button"
+                onClick={() => clearPromotion(promoteRow)}
+                className="mx-2 mb-1 mt-0.5 block w-[calc(100%-1rem)] rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-left text-[12px] font-semibold text-red-600 hover:bg-red-100"
+              >
+                Clear promotion
+              </button>
+            )}
 
             <div className="max-h-[230px] overflow-auto">
               {promoteFiltered.slice(0, 60).map((title) => (
