@@ -5,7 +5,7 @@ import {
   BookOpen,
   LogOut,
   ChevronDown,
-  Send,
+  WalletCards,
 } from "lucide-react";
 
 import { useCatalystSignOut, useCatalystUser } from "@/lib/catalyst-auth";
@@ -16,7 +16,7 @@ const TECH_ED_PATHS = [
   "/employee-master",
   "/sheet",
   "/detail-screen",
-  "/request",
+  "/budget-allocation",
 ];
 
 export function AppShell({ children, headerActions }) {
@@ -37,9 +37,9 @@ export function AppShell({ children, headerActions }) {
     ...(isTechEd
       ? [
           {
-            to: "/request",
-            label: "Request",
-            icon: Send,
+            to: "/budget-allocation",
+            label: "Budget Allocation",
+            icon: WalletCards,
           },
         ]
       : [
@@ -134,7 +134,8 @@ export function AppShell({ children, headerActions }) {
                           ["Payroll Data", "payroll-data", "/employee-master?tab=payroll-data"],
                           ["Payroll Upload", "payroll-upload", "/employee-master?tab=payroll-upload"],
                           ["Team Changes", "team-changes", "/employee-master?tab=team-changes"],
-                          ["Delegation", "delegation", "/employee-master?tab=delegation"],
+                          ["Budget Allocation", "budget-allocation", "/employee-master?tab=budget-allocation"],
+                          ["Budget Distribution", "budget-distribution", "/employee-master?tab=budget-distribution"],
                         ].map(([label, tab, to]) => (
                           <a
                             key={tab}
