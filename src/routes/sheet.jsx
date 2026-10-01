@@ -106,6 +106,7 @@ export function SheetPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
 
   const [showHistory, setShowHistory] = useState(true);
+  const [showEditedOnly, setShowEditedOnly] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -127,15 +128,39 @@ export function SheetPage() {
     };
   }, []);
 
-  const filtered = useMemo(() => {
-    const appraisalRows = rows.filter(
-      (row) =>
-        String(row.status || "").trim().toLowerCase() === "active" &&
-        String(row.eligibility || "").trim().toLowerCase() === "eligible",
-    );
+  const appraisalRows = useMemo(
+    () =>
+      rows.filter(
+        (row) =>
+          String(row.status || "").trim().toLowerCase() === "active" &&
+          String(row.eligibility || "").trim().toLowerCase() === "eligible",
+      ),
+    [rows],
+  );
 
-    return applyFilters(appraisalRows, filters, search);
-  }, [rows, filters, search]);
+  const editedEmployeeIds = useMemo(
+    () =>
+      new Set(
+        audit
+          .filter(
+            (entry) =>
+              String(entry.appraisalYear || "Apr-26") === "Apr-26",
+          )
+          .map((entry) => String(entry.empId || "").trim())
+          .filter(Boolean),
+      ),
+    [audit],
+  );
+
+  const filtered = useMemo(() => {
+    const baseRows = showEditedOnly
+      ? appraisalRows.filter((row) =>
+          editedEmployeeIds.has(String(row.empId || "").trim()),
+        )
+      : appraisalRows;
+
+    return applyFilters(baseRows, filters, search);
+  }, [appraisalRows, editedEmployeeIds, filters, search, showEditedOnly]);
 
   const setFilter = (key, f) =>
     setFilters((prev) => {
@@ -156,9 +181,24 @@ export function SheetPage() {
     ([, filter]) => !isEmptyFilter(filter),
   );
 
-  const editedEmployeeIds = useMemo(() => new Set(audit.map((entry) => String(entry.empId || '').trim()).filter(Boolean)), [audit]);
-  const editedCount = [...editedEmployeeIds].filter((id) => rows.some((row) => String(row.empId) === id)).length;
-  const promotionCount = useMemo(() => rows.filter((row) => String(row.eligibleForPromotion || '').trim().toLowerCase() === 'yes').length, [rows]);
+  const editedCount = useMemo(
+    () =>
+      appraisalRows.filter((row) =>
+        editedEmployeeIds.has(String(row.empId || "").trim()),
+      ).length,
+    [appraisalRows, editedEmployeeIds],
+  );
+
+  const promotionCount = useMemo(
+    () =>
+      appraisalRows.filter(
+        (row) =>
+          String(row.eligibleForPromotion || "")
+            .trim()
+            .toLowerCase() === "yes",
+      ).length,
+    [appraisalRows],
+  );
   const lastEditedEntry =
     audit.find(
       (entry) =>
@@ -221,32 +261,6 @@ export function SheetPage() {
 
   const headerActions = (
     <div className="flex min-w-0 items-center gap-4">
-      <button
-        type="button"
-        onClick={() => setShowHistory((previous) => !previous)}
-        aria-pressed={showHistory}
-        aria-label="Show History"
-        className="flex shrink-0 items-center gap-2 border-0 bg-transparent p-0 pr-1 outline-none"
-      >
-        <span className="whitespace-nowrap text-[12px] font-medium text-white/90">
-          Show History
-        </span>
-
-        <span
-          className={`relative block h-[22px] w-[42px] rounded-full transition-colors duration-200 ${
-            showHistory ? "bg-[#3fae6a]" : "bg-[#5c7396]"
-          }`}
-        >
-          <span
-            className="absolute top-[3px] left-[3px] h-[16px] w-[16px] rounded-full bg-white shadow-sm transition-transform duration-200"
-            style={{
-              transform: showHistory ? "translateX(20px)" : "translateX(0)",
-            }}
-          />
-        </span>
-      </button>
-
-
       <BudgetCounter
         label={budgetIsEstimate ? "Budget Allocated (est.)" : "Budget Allocated"}
         title={
@@ -308,6 +322,58 @@ export function SheetPage() {
             </div>
 
             <div className="ml-auto flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowHistory((previous) => !previous)}
+                aria-pressed={showHistory}
+                aria-label="Show History"
+                className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]"
+              >
+                <History className="size-3.5" />
+                <span>Show History</span>
+                <span
+                  className={cn(
+                    "relative block h-[16px] w-[30px] rounded-full transition-colors duration-200",
+                    showHistory ? "bg-[#3fae6a]" : "bg-[#5c7396]",
+                  )}
+                >
+                  <span
+                    className="absolute top-[2px] left-[2px] h-[12px] w-[12px] rounded-full bg-white shadow-sm transition-transform duration-200"
+                    style={{
+                      transform: showHistory
+                        ? "translateX(14px)"
+                        : "translateX(0)",
+                    }}
+                  />
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditedOnly((previous) => !previous);
+                  setSearch("");
+                }}
+                aria-pressed={showEditedOnly}
+                className={cn(
+                  "flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium",
+                  showEditedOnly
+                    ? "border-[#17365d] bg-[#17365d] text-white"
+                    : "border-[#17365d] bg-white text-[#17365d] hover:bg-[#f1f5f9]",
+                )}
+                title="Filter to employees edited in this appraisal cycle"
+              >
+                <span>✎ Edited</span>
+                <strong>{editedCount}</strong>
+                <span
+                  className={
+                    showEditedOnly ? "text-white/70" : "text-slate-400"
+                  }
+                >
+                  of {appraisalRows.length}
+                </span>
+              </button>
+
               <Button
                 variant="outline"
                 size="sm"
@@ -315,8 +381,11 @@ export function SheetPage() {
                 onClick={() => {
                   setFilters({});
                   setSearch("");
+                  setShowEditedOnly(false);
                 }}
-                disabled={activeFilters.length === 0 && !search}
+                disabled={
+                  activeFilters.length === 0 && !search && !showEditedOnly
+                }
               >
                 <RotateCcw className="size-3.5" />
                 Reset
@@ -325,14 +394,20 @@ export function SheetPage() {
               <button type="button" onClick={() => setAuditOpen(true)} className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]" title="Open the audit trail">
                 <span>✎ Edited</span><strong>{editedCount}</strong><span className="text-slate-400">of {rows.length}</span>
               </button>
-              <button type="button" onClick={() => { setFilters((previous) => ({ ...previous, eligibleForPromotion: { kind: "enum", values: ["Yes"] } })); setSearch(""); }} className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]" title="Show employees marked for promotion">
+              <button type="button" onClick={() => {
+                  setShowEditedOnly(false);
+                  setFilters((previous) => ({
+                    ...previous,
+                    eligibleForPromotion: { kind: "enum", values: ["Yes"] },
+                  }));
+                  setSearch("");
+                }} className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]" title="Show employees marked for promotion">
                 <span>★ {promotionCount}</span><span className="text-slate-500">promotion</span>
               </button>
               <button
                 type="button"
                 onClick={() => {
                   if (!lastEditedRow) {
-                    setAuditOpen(true);
                     return;
                   }
                   setFilters({});
@@ -443,6 +518,19 @@ export function SheetPage() {
                   <X className="size-3" />
                 </button>
               ))}
+            </div>
+          )}
+
+          {showEditedOnly && (
+            <div className="flex flex-wrap items-center gap-1.5 px-0.5">
+              <button
+                type="button"
+                onClick={() => setShowEditedOnly(false)}
+                className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/20"
+              >
+                Edited employees: {editedCount}
+                <X className="size-3" />
+              </button>
             </div>
           )}
 
