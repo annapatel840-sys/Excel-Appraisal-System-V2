@@ -14,7 +14,6 @@
 // import { COLUMNS, formatValue } from "@/lib/appraisal-data";
 // import { useAppraisal } from "@/lib/appraisal-store";
 // import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
-import { useCatalystUser } from "@/lib/catalyst-auth";
 
 // // ============================================================
 // // API
@@ -2319,6 +2318,7 @@ import { useCatalystUser } from "@/lib/catalyst-auth";
 //               setEditingValue(cellKey, event.target.value);
 
 //               pendingDraftRef.current = { row, col, raw: event.target.value };
+              scheduleLiveCommit(row, col, event.target.value, event.currentTarget, cellKey);
 
 //               event.target.style.height = "auto";
 //               event.target.style.height = `${event.target.scrollHeight}px`;
@@ -4751,6 +4751,8 @@ export function AppraisalGrid({
 
   showHistory,
   setShowHistory,
+  focusEmployeeId,
+  onFocusEmployeeHandled,
 
   budget,
   onViewBudget,
@@ -5253,6 +5255,18 @@ export function AppraisalGrid({
       setHistoryRow(rows[0]);
     }
   }, [rows, historyRow]);
+
+  useEffect(() => {
+    const target = String(focusEmployeeId || "").trim();
+    if (!target) return;
+    const targetRow = rows.find((row) => String(row.empId || "").trim() === target);
+    if (!targetRow) return;
+    const index = sortedRows.findIndex((row) => row.id === targetRow.id);
+    if (index >= 0) setCurrentPage(Math.floor(index / PAGE_SIZE) + 1);
+    setHistoryRow(targetRow);
+    if (showHistory || detailOpen) loadHistory(targetRow.empId).catch(() => {});
+    onFocusEmployeeHandled?.();
+  }, [focusEmployeeId]);
 
   // ============================================================
   // HISTORY LOADER (one request per employee, shared by the
@@ -5964,6 +5978,25 @@ export function AppraisalGrid({
   const commitRef = useRef(commit);
 
   commitRef.current = commit;
+
+  const liveCommitTimersRef = useRef(new Map());
+
+  const scheduleLiveCommit = useCallback((row, col, raw, anchor, cellKey) => {
+    const timers = liveCommitTimersRef.current;
+    const existing = timers.get(cellKey);
+    if (existing) clearTimeout(existing);
+    const timer = setTimeout(() => {
+      timers.delete(cellKey);
+      commitRef.current(row, col, raw, anchor);
+    }, 350);
+    timers.set(cellKey, timer);
+  }, []);
+
+  const cancelLiveCommit = useCallback((cellKey) => {
+    const timer = liveCommitTimersRef.current.get(cellKey);
+    if (timer) clearTimeout(timer);
+    liveCommitTimersRef.current.delete(cellKey);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -6677,6 +6710,7 @@ export function AppraisalGrid({
             setActive(null);
 
             pendingDraftRef.current = null;
+            cancelLiveCommit(cellKey);
 
             const raw =
               editingValues[cellKey] !== undefined
