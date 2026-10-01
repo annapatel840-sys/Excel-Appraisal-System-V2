@@ -830,6 +830,7 @@ export function DetailScreenPage({
    BUDGET BANNER — scrolls right to left, pauses on hover
    ============================================================ */
 function BudgetBanner({ notice, onGotIt, onViewBudget }) {
+   if (!notice) return null;
   return (
     <div
       role="status"
