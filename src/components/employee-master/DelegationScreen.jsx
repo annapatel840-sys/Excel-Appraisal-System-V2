@@ -307,6 +307,17 @@ export default function DelegationScreen({
     });
   };
 
+  const persistDelegationChange = async (q) => {
+    const field = q.field === "comp" ? "comp_manager" : "appraiser_tech_ed";
+    const response = await catalystFetch(EMPLOYEE_API_URL, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ emp_id: String(q.empId || q.rowId), [field]: String(q.newId || "") }),
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok || !payload?.success) throw new Error(payload?.message || "Delegation update failed.");
+    return payload.data;
+  };
   const decide = (q, approve, rm = remarks[q.id] || "") => {
     if (!approve && !rm.trim())
       return say("HR remarks are mandatory when rejecting.", true);
