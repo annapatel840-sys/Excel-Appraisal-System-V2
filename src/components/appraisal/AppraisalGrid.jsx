@@ -5256,17 +5256,6 @@ export function AppraisalGrid({
     }
   }, [rows, historyRow]);
 
-  useEffect(() => {
-    const target = String(focusEmployeeId || "").trim();
-    if (!target) return;
-    const targetRow = rows.find((row) => String(row.empId || "").trim() === target);
-    if (!targetRow) return;
-    const index = sortedRows.findIndex((row) => row.id === targetRow.id);
-    if (index >= 0) setCurrentPage(Math.floor(index / PAGE_SIZE) + 1);
-    setHistoryRow(targetRow);
-    if (showHistory || detailOpen) loadHistory(targetRow.empId).catch(() => {});
-    onFocusEmployeeHandled?.();
-  }, [focusEmployeeId]);
 
   // ============================================================
   // HISTORY LOADER (one request per employee, shared by the
@@ -5735,6 +5724,17 @@ export function AppraisalGrid({
 
     return sortedRows.slice(start, start + PAGE_SIZE);
   }, [sortedRows, currentPage]);
+  useEffect(() => {
+    const target = String(focusEmployeeId || "").trim();
+    if (!target) return;
+    const targetRow = rows.find((row) => String(row.empId || "").trim() === target);
+    if (!targetRow) return;
+    const index = sortedRows.findIndex((row) => row.id === targetRow.id);
+    if (index >= 0) setCurrentPage(Math.floor(index / PAGE_SIZE) + 1);
+    setHistoryRow(targetRow);
+    if (showHistory || detailOpen) loadHistory(targetRow.empId).catch(() => {});
+    onFocusEmployeeHandled?.();
+  }, [focusEmployeeId]);
 
   const pageStart = rows.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
 
