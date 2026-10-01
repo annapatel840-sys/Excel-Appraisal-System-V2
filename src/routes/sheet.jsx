@@ -391,23 +391,6 @@ export function SheetPage() {
                 </span>
               </button>
 
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 shrink-0 px-3 text-[12px]"
-                onClick={() => {
-                  setFilters({});
-                  setSearch("");
-                  setShowEditedOnly(false);
-                }}
-                disabled={
-                  activeFilters.length === 0 && !search && !showEditedOnly
-                }
-              >
-                <RotateCcw className="size-3.5" />
-                Reset
-              </Button>
-
               <button type="button" onClick={() => {
                   setShowEditedOnly(false);
                   setFilters((previous) => ({
