@@ -163,7 +163,7 @@ export function AppShell({ children, headerActions }) {
             <button
               type="button"
               onClick={signOut}
-              className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-white/85 transition-colors hover:bg-white/10 hover:text-white"
+              className="ml-2 flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-white/85 transition-colors hover:bg-white/10 hover:text-white"
               aria-label="Sign out"
             >
               <LogOut className="size-3.5" />
