@@ -1,22 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { useCatalystUser } from "@/lib/catalyst-auth";
 
 /* ------------------------------------------------------------------ data */
-const PEOPLE = [
-  { id: "MGR001", name: "Anita Sharma", roles: ["Tech Ed", "Comp Manager"] },
-  { id: "MGR002", name: "Raj Mehta", roles: ["Tech Ed", "Comp Manager"] },
-  { id: "MGR003", name: "Suresh Iyer", roles: ["Tech Ed", "Comp Manager"] },
-  { id: "MGR004", name: "Kavita Nair", roles: ["Tech Ed", "Comp Manager"] },
-  { id: "MGR005", name: "Vikram Singh", roles: ["Tech Ed", "Comp Manager"] },
-  { id: "EMP00125", name: "Rohan Kapoor", roles: ["Comp Manager"] },
-];
-const USERS = [
-  { id: "HR001", name: "HR Admin", role: "HR Admin" },
-  ...PEOPLE.filter((p) => p.id.startsWith("MGR")).map((p) => ({
-    id: p.id,
-    name: p.name,
-    role: "Tech Ed",
-  })),
-];
+const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
 const FIELDS = { comp: "Comp Manager", app: "Appraiser Tech Ed" };
 const ST = {
   CF: "Carried forward",
@@ -25,89 +12,9 @@ const ST = {
   TE: "Changed – Tech Ed (approved)",
   PD: "Pending HR approval",
 };
-const TAG = {
-  [ST.CF]: "cf",
-  [ST.NEW]: "nw",
-  [ST.HR]: "hr",
-  [ST.TE]: "te",
-  [ST.PD]: "pd",
-};
+const TAG = { [ST.CF]: "cf", [ST.NEW]: "nw", [ST.HR]: "hr", [ST.TE]: "te", [ST.PD]: "pd" };
 const PAGE = 50;
-
-const NAMES = [
-  "Rohan Kapoor",
-  "Anita Rao",
-  "Aarav Iyer",
-  "Vivaan Mehta",
-  "Aditya Singh",
-  "Vihaan Malhotra",
-  "Arjun Pillai",
-  "Sai Gupta",
-  "Reyansh Reddy",
-  "Ayaan Menon",
-  "Krishna Shah",
-  "Ishaan Kumar",
-  "Ananya Bhatt",
-  "Diya Sharma",
-  "Saanvi Kapoor",
-  "Aadhya Nair",
-  "Kiara Joshi",
-  "Myra Patel",
-  "Anika Chawla",
-  "Navya Desai",
-  "Riya Verma",
-  "Ira Rao",
-  "Rahul Iyer",
-  "Karan Mehta",
-  "Nikhil Singh",
-];
-const byName = (n) => PEOPLE.find((p) => p.name === n);
-
-/** Replace with your API data. Shape: see seedRows(). */
-function seedRows() {
-  const ids = ["MGR001", "MGR002", "MGR003", "MGR004", "MGR005"];
-  return Array.from({ length: 91 }, (_, i) => {
-    const te = PEOPLE.find((p) => p.id === ids[i % 5]);
-    const rm = PEOPLE[(i + 2) % 5];
-    const isNew = i % 22 === 0;
-    const prevApp = i % 9 === 4 ? PEOPLE[(i + 1) % 5] : te;
-    return {
-      id: i === 0 ? "EMP00125" : `EMP${200 + i}`,
-      name: NAMES[i % NAMES.length],
-      rm: rm.name,
-      teId: te.id,
-      te: te.name,
-      comp: isNew ? te.id : rm.id,
-      app: te.id,
-      prevComp: isNew ? "" : rm.id,
-      prevApp: isNew ? "" : prevApp.id,
-      base: isNew ? ST.NEW : ST.CF,
-      lastRole: "",
-    };
-  });
-}
-
-/* ----------------------------------------------------------------- utils */
-const nameOf = (id) => PEOPLE.find((p) => p.id === id)?.name || String(id || "");
-const now = () => new Date().toISOString().replace("T", " ").slice(0, 19);
-const fmt = (s) => {
-  const d = new Date(String(s).replace(" ", "T"));
-  return isNaN(d)
-    ? s
-    : d.toLocaleDateString("en-GB", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      });
-};
-const csvCell = (v) =>
-  /[",\n]/.test(String(v ?? ""))
-    ? `"${String(v).replace(/"/g, '""')}"`
-    : String(v ?? "");
-let seq = 1;
-const refNo = (p) =>
-  `${p}-${now().replace(/\D/g, "").slice(2, 12)}-${String(seq++).padStart(4, "0")}`;
-
+const nameOf = (value) => String(value || "").trim();
 /* -------------------------------------------------------------- component */
 export default function DelegationScreen({
   initialRows,
@@ -116,8 +23,11 @@ export default function DelegationScreen({
   onRefresh, // optional: () => void
   onUpload, // optional: () => void
 }) {
-  const [user, setUser] = useState(USERS[0]);
-  const [rows, setRows] = useState(() => initialRows || seedRows());
+  const catalystUser = useCatalystUser();
+  const loggedInName = String(catalystUser?.name || catalystUser?.email || "").trim();
+  const isHRUser = String(catalystUser?.role || "").toLowerCase().replace(/[^a-z0-9]/g, "").includes("hr");
+  const [user, setUser] = useState({ id: loggedInName, name: loggedInName, role: isHRUser ? "HR Admin" : "Tech Ed" });
+  const [rows, setRows] = useState(() => initialRows || []);
   const [reqs, setReqs] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("appraisal-delegation-requests") || "[]");
