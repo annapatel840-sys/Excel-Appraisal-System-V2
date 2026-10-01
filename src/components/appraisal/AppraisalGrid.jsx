@@ -5258,6 +5258,17 @@ export function AppraisalGrid({
     setCurrentPage((page) => Math.min(Math.max(page, 1), totalPages));
   }, [totalPages]);
 
+  // When the parent filter changes the result set, start from page 1.
+  // This prevents a filtered result from opening on an old page number.
+  const previousRowsLengthRef = useRef(rows.length);
+
+  useEffect(() => {
+    if (previousRowsLengthRef.current !== rows.length) {
+      previousRowsLengthRef.current = rows.length;
+      setCurrentPage(1);
+    }
+  }, [rows.length]);
+
   const pageRows = useMemo(() => {
     const start = (currentPage - 1) * PAGE_SIZE;
 
