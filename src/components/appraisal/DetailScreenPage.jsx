@@ -28,10 +28,6 @@ const CURRENT_CYCLE = "Apr-26";
 /* ------------------------------------------------------------------
    FRONTEND-ONLY SETTINGS (layout / banner). None of these touch data.
    ------------------------------------------------------------------ */
-// Height (px) of the app's top bar + nav that sits above this page.
-// The page fills the rest of the window and never scrolls; every
-// panel scrolls inside itself. Adjust if your header height differs.
-const HEADER_H = 64;
 // Where "View budget" goes when no onViewBudget prop is passed.
 // Prefer passing onViewBudget={() => navigate("/your-route")}.
 const BUDGET_PATH = "https://excel-appraisal-syst-iqjipxdl.onslate.in/employee-master";
@@ -57,15 +53,12 @@ const EDIT_FIELDS = [
 ];
 const DS_CSS = `
 .ds-root{display:flex;flex-direction:column;min-height:100%}
-@media (min-width:1000px){
-  .ds-root{height:calc(100vh - var(--ds-header));height:calc(100dvh - var(--ds-header));overflow:hidden}
-}
-.ds-main{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;padding:10px 12px 0;flex:1 1 auto;min-height:0}
-.ds-main>*{min-height:0}
+.ds-main{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;padding:10px 12px 0;align-items:stretch}
 @media (min-width:1000px){.ds-main{grid-template-columns:var(--ds-cols)}}
-@media (max-width:999px){.ds-main>*{min-height:360px;max-height:80vh}}
+.ds-side{position:relative;min-height:360px}
+.ds-side>.ds-card{position:absolute;top:0;right:0;bottom:0;left:0}
 .ds-card{display:flex;flex-direction:column;background:#fff;border:1px solid #E3E9EC;border-radius:10px;box-shadow:0 1px 2px rgba(16,42,67,.04);overflow:hidden;min-width:0}
-.ds-hist{flex:0 0 auto;margin:10px 12px 12px;height:clamp(150px,24vh,230px)}
+.ds-hist{flex:0 0 auto;margin:10px 12px 12px;max-height:60vh}
 .ds-scroll{scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}
 .ds-mq{flex:1;min-width:0;overflow:hidden}
 .ds-track{display:inline-block;white-space:nowrap;animation:ds-slide 22s linear infinite}
@@ -213,7 +206,7 @@ export function DetailScreenPage({
   const historyPromiseRef = useRef(new Map());
   // Layout-only state (no effect on data)
   const [noticeOpen, setNoticeOpen] = useState(true);
-  const [metricsOpen, setMetricsOpen] = useState(true);
+  const [metricsOpen, setMetricsOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(true);
   const [cardWide, setCardWide] = useState(false);
   const [fbTab, setFbTab] = useState("manager");
@@ -388,7 +381,6 @@ export function DetailScreenPage({
         background: "#F4F7F7",
         color: "#1F2F3D",
         fontSize: "13px",
-        "--ds-header": `${HEADER_H}px`,
       }}
     >
       <style>{DS_CSS}</style>
@@ -466,7 +458,7 @@ export function DetailScreenPage({
                   {rows.length}
                 </span>
               </div>
-              <div className="ds-scroll min-h-0 flex-1 overflow-auto">
+              <div className="min-h-0 flex-1">
                 <div
                   className="grid text-[12.5px]"
                   style={{ gridTemplateColumns: COMP_COLS }}
@@ -726,16 +718,18 @@ export function DetailScreenPage({
             )}
             {/* RIGHT — Employee card + feedback */}
             {cardOpen ? (
-              <EmployeeCard
-                employee={employee}
-                priorCycles={priorCycles}
-                loading={!!historyState?.loading}
-                tab={fbTab}
-                onTab={setFbTab}
-                wide={cardWide}
-                onToggleWide={() => setCardWide((w) => !w)}
-                onClose={() => setCardOpen(false)}
-              />
+              <div className="ds-side">
+                <EmployeeCard
+                  employee={employee}
+                  priorCycles={priorCycles}
+                  loading={!!historyState?.loading}
+                  tab={fbTab}
+                  onTab={setFbTab}
+                  wide={cardWide}
+                  onToggleWide={() => setCardWide((w) => !w)}
+                  onClose={() => setCardOpen(false)}
+                />
+              </div>
             ) : (
               <button
                 type="button"
@@ -928,63 +922,45 @@ function EmployeeCard({
   ];
   return (
     <section className="ds-card" aria-label="Employee">
-      {/* Who */}
+      {/* Header: just "Feedback" and the expand / close buttons */}
       <div
-        className="flex shrink-0 items-start gap-2 border-b px-3.5 py-2.5"
-        style={{ borderColor: "rgba(255,255,255,.18)", background: NAVY }}
+        className="grid shrink-0 items-center gap-2 px-3.5 py-2"
+        style={{ background: NAVY, gridTemplateColumns: "1fr auto 1fr" }}
       >
-        <div className="min-w-0 flex-1 text-[12.5px] leading-snug" style={{ color: "#fff" }}>
-          <div className="truncate">
-            <b className="text-[14px]" style={{ color: "#fff" }}>
-              {employee.name}
-            </b>{" "}
-            ·{" "}
-            <span className="font-bold" style={{ color: "#7CE0C3" }}>
-              {employee.empId ?? "—"}
-            </span>{" "}
-            · {dash(employee.designation)}
-            {employee.band ? ` · ${employee.band}` : ""}
-          </div>
-          <div className="truncate" style={{ color: "#BCCCDC" }}>
-            {yrs(employee.totalExperience)} · {yrs(employee.wissenExperience)}{" "}
-            here · Reports to {dash(employee.reportingManager)}
-          </div>
+        <span />
+        <span className="text-[13.5px] font-extrabold" style={{ color: "#fff" }}>
+          Feedback
+        </span>
+        <div className="flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onToggleWide}
+            title={wide ? "Normal width" : "Expand"}
+            aria-pressed={wide}
+            className="h-[28px] w-[28px] shrink-0 rounded-md border text-[13px]"
+          style={{
+            borderColor: "rgba(255,255,255,.35)",
+            background: "rgba(255,255,255,.12)",
+            color: "#fff",
+          }}
+          >
+            {wide ? "⤡" : "⤢"}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            title="Close"
+            aria-label="Close employee card"
+            className="h-[28px] w-[28px] shrink-0 rounded-md border text-[13px]"
+          style={{
+            borderColor: "rgba(255,255,255,.35)",
+            background: "rgba(255,255,255,.12)",
+            color: "#fff",
+          }}
+          >
+            ✕
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={onToggleWide}
-          title={wide ? "Normal width" : "Expand"}
-          aria-pressed={wide}
-          className="h-[28px] w-[28px] shrink-0 rounded-md border text-[13px]"
-          style={{
-            borderColor: "rgba(255,255,255,.35)",
-            background: "rgba(255,255,255,.12)",
-            color: "#fff",
-          }}
-        >
-          {wide ? "⤡" : "⤢"}
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          title="Close"
-          aria-label="Close employee card"
-          className="h-[28px] w-[28px] shrink-0 rounded-md border text-[13px]"
-          style={{
-            borderColor: "rgba(255,255,255,.35)",
-            background: "rgba(255,255,255,.12)",
-            color: "#fff",
-          }}
-        >
-          ✕
-        </button>
-      </div>
-      {/* Feedback */}
-      <div
-        className="shrink-0 border-b-2 py-2 text-center text-[13.5px] font-extrabold"
-        style={{ color: "#fff", background: NAVY, borderColor: NAVY }}
-      >
-        Feedback
       </div>
       <div className="flex shrink-0 flex-wrap gap-1.5 px-3.5 pb-1 pt-2.5" role="tablist">
         {tabs.map(([key, label]) => (
@@ -1286,14 +1262,14 @@ function TeamMetrics({ employee, metrics: m, teamBudget, rowsCount, scopeLabel }
 function CompHead({ children, right }) {
   return (
     <div
-      className={`sticky top-0 z-[1] flex items-center border-b border-r px-2.5 py-1.5 text-[10.5px] font-bold uppercase ${
+      className={`flex items-center border-b border-r px-2.5 py-1.5 text-[10.5px] font-bold ${
         right ? "justify-end" : ""
       }`}
       style={{
-        borderColor: "#E3E9EC",
-        background: "#F4F6F9",
-        color: "#6B7A89",
-        letterSpacing: ".02em",
+        borderColor: "#d7dce3",
+        background: "#eef2f7",
+        color: "#1e3a5f",
+        lineHeight: 1.2,
       }}
     >
       {children}
