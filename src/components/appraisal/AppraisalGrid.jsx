@@ -3337,10 +3337,6 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const CURRENT_APPRAISAL_YEAR = "Apr-26";
 
-// ============================================================
-// FONT
-// ============================================================
-
 const APPRAISAL_FONT = "Arial, Helvetica, sans-serif";
 
 // ============================================================
@@ -3363,54 +3359,40 @@ const PANEL_MAX_WIDTH = 720;
 
 const WIDTHS = {
   empId: 84,
-  // "name" is now the combined Employee column (name + emp id below it)
-  name: 190,
-
-  // Sticky second column (designation + Promote button)
-  designation: 150,
+  name: 190, // combined Employee column (name + emp id below it)
+  designation: 150, // sticky second column (designation + Promote button)
   reportingManager: 125,
   compManager: 125,
   appraiserTechED: 130,
-
   wissenExperience: 100,
   totalExperience: 96,
   lastAppraisalDate: 140,
-
   managerRating: 140,
   interviewCount: 86,
   rrPercent: 76,
   grossMargin: 90,
-
   rbToBePaid: 108,
   monthRB: 78,
   pbToBePaid: 108,
   monthPB: 78,
-
   currentAnnualBasePay: 132,
   targetPBAllocatedForMay: 140,
   allocatedPBAmount: 128,
   pbInstallment: 84,
   newPBToBeOffered: 128,
   newPBInstallment: 84,
-
   totalOfPB: 110,
   newRB: 108,
   totalBonus: 110,
-
   hikeAmount: 118,
   hikePct: 84,
-
   totalCTCWithRewards: 132,
-
   totalBonusHikeAmount: 138,
   totalBonusHikePct: 104,
-
   totalRewardsHikeAmount: 144,
   totalRewardsHikePct: 108,
-
   newBaseSalary: 132,
   targetPBNextYear: 136,
-
   eligibleForPromotion: 110,
   newTitle: 150,
   atRisk: 140,
@@ -3419,8 +3401,8 @@ const WIDTHS = {
 // Used for lookups (sorting, grouping, bulk edit ...) — still has every column.
 const GRID_COLUMNS = COLUMNS;
 
-// Columns actually drawn in the table. empId is merged into the "name"
-// column (name on top, id below), so it is not drawn separately.
+// empId is merged into the "name" column (name on top, id below),
+// so it is not drawn separately.
 const FROZEN_KEYS = new Set(["name", "designation"]);
 
 const DEFAULT_COLUMN_ORDER = [
@@ -3434,31 +3416,12 @@ const DEFAULT_COLUMN_ORDER = [
 // Columns that should NOT show the filter / group menu in the header
 const NO_FILTER_COLUMNS = new Set();
 
-// ============================================================
-// LOCAL STYLES (blink animation for the last edited cell + the
-// history table used inside the old right panel)
-// ============================================================
-
 const GRID_STYLES = `
 @keyframes appraisalCellBlink {
   0%, 100% { box-shadow: 0 0 0 0 rgba(201,164,0,0); }
   50% { box-shadow: 0 0 0 3px rgba(201,164,0,.55); }
 }
 .appraisal-cell-blink { animation: appraisalCellBlink .5s ease-in-out 3; }
-
-.hp-cycle-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-.hp-cycle-table th {
-  font-size: 9.5px; text-transform: uppercase; letter-spacing: .03em; color: #8592a6; font-weight: 700;
-  text-align: left; padding: 7px 10px; border-bottom: 1px solid #e1e5eb; background: #fafbfd;
-}
-.hp-cycle-table td {
-  font-size: 11px; color: #1f2937; text-align: left; padding: 8px 10px; vertical-align: top;
-  border-bottom: 1px solid #eef1f5; line-height: 1.4;
-}
-.hp-cycle-table tr:last-child td { border-bottom: none; }
-.hp-cycle-table tr.current td { background: #fff9dc; }
-.hp-cycle-table td.hp-year { color: #1559a6; font-weight: 700; white-space: nowrap; }
-.hp-cycle-table td.hp-feedback { white-space: normal; word-break: normal; }
 `;
 
 // ============================================================
@@ -3471,8 +3434,7 @@ const isNumericType = (type) =>
   type === "decimal" ||
   type === "percent";
 
-// Columns worth grouping into sections when sorted (limited distinct
-// values). Numeric, date and free-text columns get a plain sort.
+// Columns worth grouping into sections when sorted (limited distinct values).
 const isCategoricalColumn = (column) =>
   !column.computed && (column.type === "enum" || column.type === "text");
 
@@ -3499,8 +3461,7 @@ const numericValue = (value) => {
   return Number.isFinite(n) ? n : 0;
 };
 
-// Cell background:  input = yellow tint, calculated = blue tint,
-// master (read-only) = banded rows. Hover / selected override all.
+// input = yellow tint, calculated = blue tint, master = banded rows.
 const cellBackground = ({ kind, rowIndex, selected }) => {
   if (selected) {
     return "bg-[#dcebff] group-hover:bg-[#dcebff]";
@@ -3545,11 +3506,9 @@ const computeHistoryChange = (currentValue, previousValue) => {
   const previous = Number(previousValue) || 0;
 
   if (previous === 0) {
-    if (current === 0) {
-      return { label: "0.00%", tone: "neutral" };
-    }
-
-    return { label: "new", tone: "neutral" };
+    return current === 0
+      ? { label: "0.00%", tone: "neutral" }
+      : { label: "new", tone: "neutral" };
   }
 
   const change = ((current - previous) / previous) * 100;
@@ -3561,88 +3520,11 @@ const computeHistoryChange = (currentValue, previousValue) => {
   };
 };
 
-// Date of joining (kept for the old panel, which is disabled below).
-const formatDoj = (value) => {
-  if (!value) {
-    return "—";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
-  }
-
-  return date.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-};
-
 // ============================================================
-// RIGHT PANEL HELPERS (budget / team metrics maths)
+// RIGHT PANEL CONFIG
+// HR login      -> Feedback only
+// Tech Ed login -> Feedback + Request
 // ============================================================
-
-const num = (value) => {
-  const n = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
-
-  return Number.isFinite(n) ? n : 0;
-};
-
-const toLakhs = (value) => `${(num(value) / 100000).toFixed(2)} L`;
-
-const f1 = (value) => (Math.round(value * 10) / 10).toFixed(1);
-
-const ratioPct = (a, b) => (num(b) ? (num(a) / num(b)) * 100 : 0);
-
-const medianOf = (list) => {
-  if (!list.length) {
-    return 0;
-  }
-
-  const sorted = [...list].sort((a, b) => a - b);
-  const mid = Math.floor(sorted.length / 2);
-
-  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
-};
-
-const ordinal = (n) => {
-  const s = ["th", "st", "nd", "rd"];
-  const v = n % 100;
-
-  return `${n}${s[(v - 20) % 10] || s[v] || s[0]}`;
-};
-
-const levelTone = (p) => (p > 100 ? "bad" : p > 90 ? "warn" : "ok");
-
-const TONE_TEXT = {
-  ok: "text-[#15803d]",
-  warn: "text-[#b7791f]",
-  bad: "text-[#c0392b]",
-};
-
-const TONE_BG = {
-  ok: "bg-[#15803d]",
-  warn: "bg-[#b7791f]",
-  bad: "bg-[#c0392b]",
-};
-
-// hike + performance bonus (allocated + new) + retention bonus
-const rewardTotal = (row) =>
-  num(row.hikeAmount) +
-  num(row.allocatedPBAmount) +
-  num(row.newPBToBeOffered) +
-  num(row.newRB);
-
-const rowHikePct = (row) => ratioPct(row.hikeAmount, row.currentAnnualBasePay);
-
-const rowRewardHikePct = (row) =>
-  ratioPct(rewardTotal(row), row.currentAnnualBasePay);
-
-const hasHike = (row) => num(row.hikeAmount) > 0;
-
-const isPromotedRow = (row) => row.eligibleForPromotion === "Yes";
 
 const PANEL_TABS = [
   ["feedback", "Feedback"],
@@ -3655,15 +3537,12 @@ const PANEL_SUBS = {
     ["client", "Client"],
     ["other", "Other"],
   ],
-  budget: [
-    ["budget", "Budget"],
-    ["team", "Team metrics"],
-    ["pct", "Hike percentile"],
-    ["nohike", "No hike"],
-    ["pb", "PB paid vs target"],
-    ["changes", "Team changes"],
-  ],
 };
+
+const REQUEST_FIELDS = [
+  ["appraiserTechED", "Appraiser Tech Ed"],
+  ["compManager", "Comp Manager"],
+];
 
 // ============================================================
 // FIELD -> HISTORY COLUMN KEYS TO FLASH ON EDIT
@@ -3683,8 +3562,6 @@ const HISTORY_FLASH_FIELDS = {
 
 // ============================================================
 // FIELD -> YEAR-OVER-YEAR TOAST CONFIG
-// current(row)   = this cycle's value after the edit
-// prior(record)  = last cycle's value from appraisal history
 // ============================================================
 
 const YOY_FIELDS = {
@@ -3744,74 +3621,33 @@ const HISTORY_METRIC_COLUMNS = [
 // HISTORY RECORD NORMALIZER
 // ============================================================
 
+const textOrDash = (value) =>
+  value !== null && value !== undefined && String(value).trim() !== ""
+    ? String(value)
+    : "—";
+
 const normalizeHistoryRecord = (record) => {
   const basePay = Number(record?.base_pay) || 0;
   const hikeAmount = Number(record?.hike_amount) || 0;
 
   return {
-    year:
-      record?.appraisal_year !== null &&
-      record?.appraisal_year !== undefined &&
-      String(record.appraisal_year).trim() !== ""
-        ? String(record.appraisal_year)
-        : "—",
-
+    year: textOrDash(record?.appraisal_year),
     basePay,
-
     joiningBonus: Number(record?.joining_bonus) || 0,
-
     allocatedPB: Number(record?.allocated_pb) || 0,
-
     performanceBonus: Number(record?.performance_bonus) || 0,
-
     retentionBonus: Number(record?.retention_bonus) || 0,
-
     totalPB: Number(record?.total_pb) || 0,
-
     totalBonus: Number(record?.total_bonus) || 0,
-
     hikeAmount,
-
     hikePct: Number(record?.hike_pct) || 0,
-
-    promotion:
-      record?.promotion !== null &&
-      record?.promotion !== undefined &&
-      String(record.promotion).trim() !== ""
-        ? String(record.promotion)
-        : "—",
-
-    title:
-      record?.title !== null &&
-      record?.title !== undefined &&
-      String(record.title).trim() !== ""
-        ? String(record.title)
-        : "—",
-    designation:
-      record?.designation !== null &&
-      record?.designation !== undefined &&
-      String(record.designation).trim() !== ""
-        ? String(record.designation)
-        : "—",
-
-    rating:
-      record?.rating !== null &&
-      record?.rating !== undefined &&
-      String(record.rating).trim() !== ""
-        ? String(record.rating)
-        : "—",
-
-    feedback:
-      record?.manager_rating !== null &&
-      record?.manager_rating !== undefined &&
-      String(record.manager_rating).trim() !== ""
-        ? String(record.manager_rating)
-        : "—",
-
+    promotion: textOrDash(record?.promotion),
+    title: textOrDash(record?.title),
+    designation: textOrDash(record?.designation),
+    rating: textOrDash(record?.rating),
+    feedback: textOrDash(record?.manager_rating),
     targetPB: Number(record?.target_performance_bonus) || 0,
-
     newCTC: Number(record?.new_ctc) || 0,
-
     newBasePay: basePay + hikeAmount,
   };
 };
@@ -3861,11 +3697,7 @@ const isCurrentYearRecord = (record) => {
 // ============================================================
 
 const applyCurrentYearSheetValues = (historyRecord, row) => {
-  if (!row) {
-    return historyRecord;
-  }
-
-  if (!isCurrentYearRecord(historyRecord)) {
+  if (!row || !isCurrentYearRecord(historyRecord)) {
     return historyRecord;
   }
 
@@ -3878,9 +3710,7 @@ const applyCurrentYearSheetValues = (historyRecord, row) => {
 
   const totalPB = allocatedPBAmount + newPBToBeOffered;
   const totalBonus = totalPB + newRB;
-
   const newBaseSalary = currentAnnualBasePay + hikeAmount;
-  const newCTC = newBaseSalary + totalBonus;
 
   return {
     ...historyRecord,
@@ -3892,22 +3722,11 @@ const applyCurrentYearSheetValues = (historyRecord, row) => {
     totalBonus,
     hikeAmount,
     hikePct: Number(row.hikePct) || 0,
-    promotion:
-      row.eligibleForPromotion !== null &&
-      row.eligibleForPromotion !== undefined &&
-      String(row.eligibleForPromotion).trim() !== ""
-        ? String(row.eligibleForPromotion)
-        : "—",
-    title:
-      row.newTitle !== null &&
-      row.newTitle !== undefined &&
-      String(row.newTitle).trim() !== ""
-        ? String(row.newTitle)
-        : "—",
+    promotion: textOrDash(row.eligibleForPromotion),
+    title: textOrDash(row.newTitle),
     designation: row.designation ? String(row.designation) : "—",
-
     targetPB: targetPBNextYear,
-    newCTC,
+    newCTC: newBaseSalary + totalBonus,
     newBasePay: newBaseSalary,
   };
 };
@@ -3946,15 +3765,6 @@ function PanelCard({ title, children }) {
   );
 }
 
-function PanelRow({ label, children }) {
-  return (
-    <div className="flex justify-between gap-2 border-t border-dashed border-[#eef0f3] py-[3px] first:border-t-0">
-      <span>{label}</span>
-      <span>{children}</span>
-    </div>
-  );
-}
-
 function PanelChip({ tone, children }) {
   return (
     <span
@@ -3972,90 +3782,117 @@ function PanelChip({ tone, children }) {
   );
 }
 
-function PanelBar({ value, tone }) {
+function PanelInfo({ children, tone }) {
   return (
-    <div className="my-1.5 h-[7px] overflow-hidden rounded bg-[#eef1f4]">
-      <div
-        className={cn("h-full", TONE_BG[tone])}
-        style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
-      />
-    </div>
-  );
-}
-
-function PanelInfo({ children }) {
-  return (
-    <div className="mt-2 rounded-lg border border-[#e5e7eb] bg-[#f7f8fa] px-2.5 py-1.5 text-[12px]">
+    <div
+      className={cn(
+        "mt-2 rounded-lg border px-2.5 py-1.5 text-[12px]",
+        tone === "good"
+          ? "border-[#b7e4c7] bg-[#ecfdf3] text-[#166534]"
+          : "border-[#e5e7eb] bg-[#f7f8fa]",
+      )}
+    >
       {children}
     </div>
   );
 }
 
 // ============================================================
-// EMPLOYEE RIGHT PANEL  (opens when an employee name is clicked)
-// Tabs: Feedback (Manager / Client / Other) and Budget (6 subs).
-// The Agent tab is intentionally left out for now.
+// EMPLOYEE RIGHT PANEL (opens when an employee name is clicked)
+//   HR login      -> Feedback only
+//   Tech Ed login -> Feedback + Request
 // ============================================================
+
+const FIELD_CLASS =
+  "h-8 w-full rounded-md border border-[#cbd5e1] bg-white px-2 text-[11.5px] outline-none focus:border-[#102a43]";
 
 function EmployeePanel({
   employee,
   team,
-  modified,
   history,
-  budget,
-  onViewBudget,
-  isTechEd = false,
-  isHR = false,
+  showRequest,
   onRequest,
   onClose,
 }) {
   const [tab, setTab] = useState("feedback");
-  const [subs, setSubs] = useState({ feedback: "manager", request: "delegation" });
-  const panelTabs = isTechEd ? PANEL_TABS : [["feedback", "Feedback"]];
+  const [subs, setSubs] = useState({ feedback: "manager" });
   const [wide, setWide] = useState(false);
   const [width, setWidth] = useState(PANEL_WIDTH);
   const [dragging, setDragging] = useState(false);
 
+  // request form
+  const [reqField, setReqField] = useState("appraiserTechED");
+  const [reqPerson, setReqPerson] = useState("");
+  const [reqReason, setReqReason] = useState("");
+  const [screenNote, setScreenNote] = useState("");
+  const [reqSent, setReqSent] = useState("");
+
+  // new employee selected -> clear the form
+  useEffect(() => {
+    setReqPerson("");
+    setReqReason("");
+    setScreenNote("");
+    setReqSent("");
+  }, [employee.id]);
+
+  const activeTab = showRequest ? tab : "feedback";
+  const panelTabs = showRequest ? PANEL_TABS : [PANEL_TABS[0]];
+  const subList = PANEL_SUBS[activeTab] || [];
+  const sub = subs[activeTab];
+
   const panelWidth = wide ? PANEL_WIDE_WIDTH : width;
-  const sub = subs[tab];
+
+  const currentAssignee = String(employee?.[reqField] ?? "").trim();
 
   const requestPeople = useMemo(() => {
-    const values = team
-      .map((row) => row.appraiserTechED || row.compManager || row.app || row.comp)
-      .filter(Boolean)
-      .map((value) => String(value).trim());
-    return [...new Set(values)].sort((a, b) => a.localeCompare(b));
-  }, [team]);
+    const values = new Set();
 
-  const [requestField, setRequestField] = useState("appraiserTechED");
-  const [requestPerson, setRequestPerson] = useState("");
+    team.forEach((row) => {
+      [row.appraiserTechED, row.compManager].forEach((value) => {
+        if (value && String(value).trim()) {
+          values.add(String(value).trim());
+        }
+      });
+    });
 
-  const renderRequest = () => (
-    <div className="space-y-2.5">
-      <PanelCard title="Delegation Request">
-        <div className="space-y-2.5">
-          <div className="text-[11.5px] text-[#6b7280]">
-            Request a delegation change. HR will approve or reject it from the Delegation screen.
-          </div>
-          <div className="text-[12px] text-[#374151]">Employee: <b>{employee.name}</b> · {employee.empId}</div>
-          <select value={requestField} onChange={(event) => { setRequestField(event.target.value); setRequestPerson(""); }} className="h-8 w-full rounded-md border border-[#cbd5e1] px-2 text-[11.5px]">
-            <option value="appraiserTechED">Appraiser Tech Ed</option>
-            <option value="compManager">Comp Manager</option>
-          </select>
-          <select value={requestPerson} onChange={(event) => setRequestPerson(event.target.value)} className="h-8 w-full rounded-md border border-[#cbd5e1] px-2 text-[11.5px]">
-            <option value="">Select new assignee...</option>
-            {requestPeople.map((person) => <option key={person} value={person}>{person}</option>)}
-          </select>
-          <button type="button" disabled={!requestPerson} onClick={() => onRequest?.({ type: "delegation", employee, field: requestField, oldId: String(employee?.[requestField] || ""), newId: requestPerson })} className="rounded-md bg-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
-            Send Delegation Request
-          </button>
-          <button type="button" onClick={() => onRequest?.({ type: "screen", employee })} className="rounded-md border border-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-[#173b63] hover:bg-slate-50">
-            Send Screen Request
-          </button>
-        </div>
-      </PanelCard>
-    </div>
-  );
+    return [...values]
+      .filter((person) => person !== currentAssignee)
+      .sort((a, b) => a.localeCompare(b));
+  }, [team, currentAssignee]);
+
+  const sendDelegation = () => {
+    if (!reqPerson || !reqReason.trim()) {
+      return;
+    }
+
+    const label = REQUEST_FIELDS.find(([key]) => key === reqField)?.[1];
+
+    onRequest?.({
+      type: "delegation",
+      employee,
+      field: reqField,
+      oldId: currentAssignee,
+      newId: reqPerson,
+      reason: reqReason.trim(),
+      at: Date.now(),
+    });
+
+    setReqSent(`${label} change to ${reqPerson} sent to HR for approval.`);
+    setReqPerson("");
+    setReqReason("");
+  };
+
+  const sendScreen = () => {
+    onRequest?.({
+      type: "screen",
+      employee,
+      reason: screenNote.trim(),
+      at: Date.now(),
+    });
+
+    setReqSent("Screen request sent.");
+    setScreenNote("");
+  };
 
   // ---------- drag the left edge to resize ----------
   const startResize = useCallback(
@@ -4088,37 +3925,6 @@ function EmployeePanel({
     },
     [panelWidth],
   );
-
-  // ---------- budget numbers ----------
-  const util = useMemo(() => {
-    const alloc = num(budget?.allocated);
-
-    let used = 0;
-    let tpb = 0;
-
-    team.forEach((row) => {
-      used += rewardTotal(row);
-      tpb += num(row.targetPBNextYear);
-    });
-
-    if (budget?.used !== undefined && budget?.used !== null) {
-      used = num(budget.used);
-    }
-
-    if (budget?.targetPB !== undefined && budget?.targetPB !== null) {
-      tpb = num(budget.targetPB);
-    }
-
-    return {
-      alloc,
-      used,
-      tpb,
-      cur: ratioPct(used, alloc),
-      incl: ratioPct(used + tpb, alloc),
-    };
-  }, [team, budget]);
-
-  const hasAlloc = util.alloc > 0;
 
   // ---------- header line ----------
   const headerParts = [
@@ -4162,6 +3968,17 @@ function EmployeePanel({
     return null;
   };
 
+  const renderTimelineDot = (index) => (
+    <span
+      className={cn(
+        "absolute -left-[17px] top-[11px] size-[9px] rounded-full border-2",
+        index === 0
+          ? "border-[#102a43] bg-[#102a43]"
+          : "border-[#c7cdd6] bg-white",
+      )}
+    />
+  );
+
   const renderFeedback = () => {
     const stateNode = renderHistoryState();
 
@@ -4183,9 +4000,7 @@ function EmployeePanel({
               item.rating &&
               String(item.rating).trim() !== "" &&
               item.rating !== "—";
-
             const hasPromotion = item.promotion && item.promotion !== "—";
-
             const hasText = item.feedback && item.feedback !== "—";
 
             return (
@@ -4193,14 +4008,7 @@ function EmployeePanel({
                 key={`${item.year}-${index}`}
                 className="relative pb-2.5 pt-1.5"
               >
-                <span
-                  className={cn(
-                    "absolute -left-[17px] top-[11px] size-[9px] rounded-full border-2",
-                    index === 0
-                      ? "border-[#102a43] bg-[#102a43]"
-                      : "border-[#c7cdd6] bg-white",
-                  )}
-                />
+                {renderTimelineDot(index)}
 
                 <span className="font-extrabold text-[#102a43]">
                   {item.year}
@@ -4259,14 +4067,7 @@ function EmployeePanel({
               key={`${item.year}-${index}`}
               className="relative pb-2.5 pt-1.5"
             >
-              <span
-                className={cn(
-                  "absolute -left-[17px] top-[11px] size-[9px] rounded-full border-2",
-                  index === 0
-                    ? "border-[#102a43] bg-[#102a43]"
-                    : "border-[#c7cdd6] bg-white",
-                )}
-              />
+              {renderTimelineDot(index)}
 
               <span className="font-extrabold text-[#102a43]">{item.year}</span>
 
@@ -4294,6 +4095,9 @@ function EmployeePanel({
     }
 
     // other
+    const dash = (value) =>
+      value !== undefined && value !== null && value !== "" ? value : "—";
+
     return (
       <table className="w-full border-collapse text-[12px]">
         <thead>
@@ -4315,18 +4119,10 @@ function EmployeePanel({
               {CURRENT_APPRAISAL_YEAR}
             </td>
             <td className="border-b border-[#f1f3f5] p-1 text-right">
-              {employee.rrPercent !== undefined &&
-              employee.rrPercent !== null &&
-              employee.rrPercent !== ""
-                ? employee.rrPercent
-                : "—"}
+              {dash(employee.rrPercent)}
             </td>
             <td className="border-b border-[#f1f3f5] p-1 text-right">
-              {employee.interviewCount !== undefined &&
-              employee.interviewCount !== null &&
-              employee.interviewCount !== ""
-                ? employee.interviewCount
-                : "—"}
+              {dash(employee.interviewCount)}
             </td>
           </tr>
         </tbody>
@@ -4334,310 +4130,101 @@ function EmployeePanel({
     );
   };
 
-  // ---------- BUDGET ----------
-  const renderBudget = () => {
-    const tone = levelTone(util.cur);
-    const toneIncl = levelTone(util.incl);
+  // ---------- REQUEST (Tech Ed login only) ----------
+  const renderRequest = () => (
+    <div>
+      {reqSent && <PanelInfo tone="good">✓ {reqSent}</PanelInfo>}
 
-    const alert = budget?.changedUnseen ? (
-      <div className="mt-2 rounded-lg border border-[#fed7aa] bg-[#fff7ed] px-2.5 py-1.5 text-[12px] text-[#9a3412]">
-        ● Budget changed since you last looked
-        {budget.changedFrom !== undefined && budget.changedFrom !== null
-          ? `: ${toLakhs(budget.changedFrom)} → ${toLakhs(util.alloc)}`
-          : ""}
-      </div>
-    ) : null;
+      <PanelCard title="Delegation request">
+        <div className="space-y-2">
+          <div className="text-[11.5px] text-[#6b7280]">
+            HR approves or rejects it from the Delegation screen. The current
+            value stays until HR approves.
+          </div>
 
-    if (sub === "budget") {
-      if (!hasAlloc) {
-        return (
-          <>
-            {alert}
-            <PanelInfo>
-              Budget allocation not connected yet. Pass the <b>budget</b> prop
-              (allocated amount) to show consumption here.
-            </PanelInfo>
-            <PanelCard title="Used so far (hike + PB + RB)">
-              <span className="text-[20px] font-extrabold">
-                {toLakhs(util.used)}
-              </span>
-            </PanelCard>
-          </>
-        );
-      }
+          <div className="text-[12px] text-[#374151]">
+            <b>{employee.name}</b> · {employee.empId}
+          </div>
 
-      const left = util.alloc - util.used;
-      const leftIncl = util.alloc - util.used - util.tpb;
-
-      return (
-        <>
-          {alert}
-
-          <PanelCard title="Current consumption">
-            <div className="flex items-center justify-between gap-2">
-              <span>Used</span>
-              <span
-                className={cn("text-[20px] font-extrabold", TONE_TEXT[tone])}
-              >
-                {f1(util.cur)}%
-              </span>
-            </div>
-
-            <PanelBar value={util.cur} tone={tone} />
-
-            <div className="text-[#6b7280]">
-              {toLakhs(util.used)} used ·{" "}
-              {left >= 0 ? `${toLakhs(left)} left` : `${toLakhs(-left)} over`}{" "}
-              of {toLakhs(util.alloc)}
-            </div>
-          </PanelCard>
-
-          <PanelCard title="Including Target PB">
-            <div className="flex items-center justify-between gap-2">
-              <span>Used + Target PB</span>
-              <span
-                className={cn(
-                  "text-[20px] font-extrabold",
-                  TONE_TEXT[toneIncl],
-                )}
-              >
-                {f1(util.incl)}%
-              </span>
-            </div>
-
-            <PanelBar value={util.incl} tone={toneIncl} />
-
-            <div className="text-[#6b7280]">
-              +{toLakhs(util.tpb)} Target PB ·{" "}
-              {leftIncl >= 0
-                ? `${toLakhs(leftIncl)} left`
-                : `${toLakhs(-leftIncl)} over`}
-            </div>
-          </PanelCard>
-
-          {typeof onViewBudget === "function" && (
-            <div className="mt-2.5">
-              <button
-                type="button"
-                onClick={onViewBudget}
-                className="font-bold text-[#102a43] underline"
-              >
-                View budget ›
-              </button>
-            </div>
-          )}
-        </>
-      );
-    }
-
-    if (sub === "team") {
-      const editedIds = new Set();
-
-      Object.keys(modified || {}).forEach((key) => {
-        if (modified[key]) {
-          editedIds.add(key.slice(0, key.lastIndexOf(":")));
-        }
-      });
-
-      const edited = team.filter((row) => editedIds.has(String(row.id))).length;
-      const promotions = team.filter(isPromotedRow).length;
-      const hikes = team.filter(hasHike).map(rowHikePct);
-      const ratings = team
-        .map((row) => parseFloat(row.managerRating))
-        .filter((value) => Number.isFinite(value) && value > 0);
-
-      return (
-        <>
-          {alert}
-
-          <PanelCard title={`Team · ${team.length} people`}>
-            <PanelRow label="Edited this cycle">
-              <b>
-                {edited} of {team.length}
-              </b>
-            </PanelRow>
-            <PanelRow label="Promotions">
-              <b>{promotions}</b>
-            </PanelRow>
-            <PanelRow label="Average hike % (where given)">
-              <b>
-                {hikes.length
-                  ? `${f1(hikes.reduce((a, b) => a + b, 0) / hikes.length)}%`
-                  : "—"}
-              </b>
-            </PanelRow>
-            <PanelRow label="Median hike %">
-              <b>{hikes.length ? `${f1(medianOf(hikes))}%` : "—"}</b>
-            </PanelRow>
-            <PanelRow label="Average rating">
-              <b>
-                {ratings.length
-                  ? (
-                      ratings.reduce((a, b) => a + b, 0) / ratings.length
-                    ).toFixed(1)
-                  : "—"}
-              </b>
-            </PanelRow>
-          </PanelCard>
-        </>
-      );
-    }
-
-    if (sub === "pct") {
-      const ranked = team
-        .map((row) => ({ row, value: rowRewardHikePct(row) }))
-        .sort((a, b) => b.value - a.value);
-
-      const myIndex = ranked.findIndex((item) => item.row.id === employee.id);
-
-      const percentile =
-        ranked.length > 1 && myIndex >= 0
-          ? Math.round(
-              ((ranked.length - 1 - myIndex) / (ranked.length - 1)) * 100,
-            )
-          : 100;
-
-      return (
-        <>
-          {alert}
-
-          <PanelCard title="Total Reward hike % in team">
-            <table className="w-full border-collapse text-[12px]">
-              <thead>
-                <tr>
-                  <th className="border-b border-[#e5e7eb] px-1 py-1 text-left text-[10.5px] font-bold text-[#6b7280]">
-                    #
-                  </th>
-                  <th className="border-b border-[#e5e7eb] px-1 py-1 text-left text-[10.5px] font-bold text-[#6b7280]">
-                    Employee
-                  </th>
-                  <th className="border-b border-[#e5e7eb] px-1 py-1 text-right text-[10.5px] font-bold text-[#6b7280]">
-                    Reward hike %
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {ranked.map((item, index) => (
-                  <tr
-                    key={item.row.id}
-                    className={cn(
-                      item.row.id === employee.id && "bg-[#eef0f3] font-bold",
-                    )}
-                  >
-                    <td className="border-b border-[#f1f3f5] p-1">
-                      {index + 1}
-                    </td>
-                    <td className="border-b border-[#f1f3f5] p-1">
-                      {item.row.name}
-                    </td>
-                    <td className="border-b border-[#f1f3f5] p-1 text-right">
-                      {f1(item.value)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {myIndex >= 0 && (
-              <div className="mt-1.5 text-[10.5px] text-[#6b7280]">
-                {employee.name} is {ordinal(percentile)} percentile
-              </div>
-            )}
-          </PanelCard>
-        </>
-      );
-    }
-
-    if (sub === "nohike") {
-      const noHike = team.filter((row) => !hasHike(row));
-
-      return (
-        <>
-          {alert}
-
-          <PanelCard
-            title={`No hike this cycle · ${noHike.length} of ${team.length}`}
+          <select
+            value={reqField}
+            onChange={(event) => {
+              setReqField(event.target.value);
+              setReqPerson("");
+            }}
+            className={FIELD_CLASS}
           >
-            {noHike.length ? (
-              <ul className="m-0 list-disc pl-4">
-                {noHike.map((row) => (
-                  <li key={row.id} className="my-0.5">
-                    {row.name}{" "}
-                    <span className="text-[#6b7280]">
-                      · {row.designation || ""}
-                      {row.managerRating
-                        ? ` · rating ${row.managerRating}`
-                        : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="text-[#6b7280]">Everyone has a hike.</div>
-            )}
-          </PanelCard>
-        </>
-      );
-    }
+            {REQUEST_FIELDS.map(([key, label]) => (
+              <option key={key} value={key}>
+                {label}
+              </option>
+            ))}
+          </select>
 
-    if (sub === "pb") {
-      const paid = team.reduce((sum, row) => sum + num(row.pbToBePaid), 0);
-      const target = team.reduce(
-        (sum, row) => sum + num(row.targetPBAllocatedForMay),
-        0,
-      );
-      const p = ratioPct(paid, target);
+          <div className="text-[11.5px] text-[#6b7280]">
+            Current:{" "}
+            <b className="text-[#111827]">{currentAssignee || "— not set —"}</b>
+          </div>
 
-      return (
-        <>
-          {alert}
+          <select
+            value={reqPerson}
+            onChange={(event) => setReqPerson(event.target.value)}
+            className={FIELD_CLASS}
+          >
+            <option value="">Select new assignee...</option>
+            {requestPeople.map((person) => (
+              <option key={person} value={person}>
+                {person}
+              </option>
+            ))}
+          </select>
 
-          <PanelCard title="PB paid vs target">
-            <div className="flex items-center justify-between gap-2">
-              <span>Paid</span>
-              <span className="text-[20px] font-extrabold">{f1(p)}%</span>
-            </div>
+          <textarea
+            value={reqReason}
+            onChange={(event) => setReqReason(event.target.value)}
+            placeholder="Reason (mandatory)"
+            maxLength={2000}
+            rows={2}
+            className="w-full resize-y rounded-md border border-[#cbd5e1] bg-white px-2 py-1.5 text-[11.5px] outline-none focus:border-[#102a43]"
+          />
 
-            <PanelBar value={p} tone="ok" />
+          <button
+            type="button"
+            disabled={!reqPerson || !reqReason.trim()}
+            onClick={sendDelegation}
+            className="rounded-md bg-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Send delegation request
+          </button>
+        </div>
+      </PanelCard>
 
-            <div className="text-[#6b7280]">
-              {toLakhs(paid)} paid of {toLakhs(target)} target
-            </div>
-          </PanelCard>
-        </>
-      );
-    }
+      <PanelCard title="Screen request">
+        <div className="space-y-2">
+          <div className="text-[11.5px] text-[#6b7280]">
+            Ask HR for a change to this employee's screen.
+          </div>
 
-    // changes
-    const changes = Array.isArray(budget?.teamChanges)
-      ? budget.teamChanges
-      : [];
+          <textarea
+            value={screenNote}
+            onChange={(event) => setScreenNote(event.target.value)}
+            placeholder="Note (optional)"
+            maxLength={2000}
+            rows={2}
+            className="w-full resize-y rounded-md border border-[#cbd5e1] bg-white px-2 py-1.5 text-[11.5px] outline-none focus:border-[#102a43]"
+          />
 
-    return (
-      <>
-        {alert}
-
-        <PanelCard title={`Team changes · ${changes.length}`}>
-          {changes.length ? (
-            <ul className="m-0 list-disc pl-4">
-              {changes.map((change, index) => (
-                <li key={`${change.name}-${index}`} className="my-0.5">
-                  {change.name}{" "}
-                  <span className="text-[#6b7280]">
-                    · {change.type}
-                    {change.date ? ` · ${change.date}` : ""}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="text-[#6b7280]">No changes since allocation.</div>
-          )}
-        </PanelCard>
-      </>
-    );
-  };
+          <button
+            type="button"
+            onClick={sendScreen}
+            className="rounded-md border border-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-[#173b63] hover:bg-slate-50"
+          >
+            Send screen request
+          </button>
+        </div>
+      </PanelCard>
+    </div>
+  );
 
   return (
     <aside
@@ -4699,11 +4286,11 @@ function EmployeePanel({
             key={key}
             type="button"
             role="tab"
-            aria-selected={tab === key}
+            aria-selected={activeTab === key}
             onClick={() => setTab(key)}
             className={cn(
               "flex-1 border-b-2 py-[9px] text-[13px]",
-              tab === key
+              activeTab === key
                 ? "border-[#102a43] font-extrabold text-[#111827]"
                 : "border-transparent font-semibold text-[#6b7280]",
             )}
@@ -4713,29 +4300,33 @@ function EmployeePanel({
         ))}
       </div>
 
-      {/* sub buttons */}
-      <div className="flex shrink-0 flex-wrap gap-1.5 pb-1 pl-4 pr-3.5 pt-2.5">
-        {PANEL_SUBS[tab].map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            aria-pressed={sub === key}
-            onClick={() => setSubs((previous) => ({ ...previous, [tab]: key }))}
-            className={cn(
-              "rounded-[14px] border px-2.5 py-[3px] text-[11.5px]",
-              sub === key
-                ? "border-[#cbd2da] bg-[#eef0f3] font-bold text-[#111827]"
-                : "border-[#d1d5db] bg-white text-[#374151] hover:border-[#9ca3af]",
-            )}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* sub buttons (Feedback only) */}
+      {subList.length > 0 && (
+        <div className="flex shrink-0 flex-wrap gap-1.5 pb-1 pl-4 pr-3.5 pt-2.5">
+          {subList.map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              aria-pressed={sub === key}
+              onClick={() =>
+                setSubs((previous) => ({ ...previous, [activeTab]: key }))
+              }
+              className={cn(
+                "rounded-[14px] border px-2.5 py-[3px] text-[11.5px]",
+                sub === key
+                  ? "border-[#cbd2da] bg-[#eef0f3] font-bold text-[#111827]"
+                  : "border-[#d1d5db] bg-white text-[#374151] hover:border-[#9ca3af]",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* body */}
       <div className="min-h-0 flex-1 overflow-auto pb-3.5 pl-4 pr-3.5 pt-1.5">
-        {tab === "feedback" ? renderFeedback() : renderRequest()}
+        {activeTab === "feedback" ? renderFeedback() : renderRequest()}
       </div>
     </aside>
   );
@@ -4759,14 +4350,17 @@ export function AppraisalGrid({
   focusEmployeeId,
   onFocusEmployeeHandled,
 
-  budget,
-  onViewBudget,
+  // budget / onViewBudget are no longer used by the panel (Budget tab became Request)
+  // but are still accepted so existing parents do not break.
   isTechEd = false,
   isHR = false,
   onRequest,
 }) {
   const { updateCell, updateLinkedCells, bulkUpdate, modified } =
     useAppraisal();
+
+  // Request tab: Tech Ed login only. HR sees Feedback only.
+  const showRequestTab = isTechEd && !isHR;
 
   const cellRefs = useRef({});
   const clickTimerRef = useRef(null);
@@ -4778,10 +4372,7 @@ export function AppraisalGrid({
   const [editingValues, setEditingValues] = useState({});
 
   const setEditingValue = useCallback((cellKey, value) => {
-    setEditingValues((previous) => ({
-      ...previous,
-      [cellKey]: value,
-    }));
+    setEditingValues((previous) => ({ ...previous, [cellKey]: value }));
   }, []);
 
   const clearEditingValue = useCallback((cellKey) => {
@@ -4798,14 +4389,10 @@ export function AppraisalGrid({
     });
   }, []);
 
-  // ============================================================
-  // GRID VIEWPORT REF
-  // ============================================================
-
   const gridViewportRef = useRef(null);
 
   // ============================================================
-  // COLUMN RESIZE
+  // COLUMN RESIZE / ORDER
   // ============================================================
 
   const [columnWidths, setColumnWidths] = useState(() =>
@@ -4816,7 +4403,6 @@ export function AppraisalGrid({
 
   const resizeRef = useRef(null);
 
-  // name + designation always first (sticky), empId is merged into name
   const [columnOrder, setColumnOrder] = useState(DEFAULT_COLUMN_ORDER);
 
   const draggedColumnRef = useRef(null);
@@ -4844,7 +4430,6 @@ export function AppraisalGrid({
     const draggedKey =
       draggedColumnRef.current || event.dataTransfer.getData("text/plain");
 
-    // Frozen columns can neither be moved nor be replaced
     if (
       !draggedKey ||
       draggedKey === targetColumn.key ||
@@ -4947,12 +4532,10 @@ export function AppraisalGrid({
   }, []);
 
   // ============================================================
-  // STICKY COLUMN OFFSETS
-  //   [checkbox] [Employee (name + id)] [Designation + Promote]
+  // STICKY COLUMN OFFSETS  [checkbox] [Employee] [Designation + Promote]
   // ============================================================
 
   const nameColumn = GRID_COLUMNS.find((column) => column.key === "name");
-
   const nameWidth = nameColumn ? widthOf(nameColumn) : WIDTHS.name;
 
   const frozenLeftOf = (key) =>
@@ -4994,9 +4577,7 @@ export function AppraisalGrid({
     setGroupBy((previous) => previous.filter((item) => item.key !== key));
   }, []);
 
-  const clearAllGroups = useCallback(() => {
-    setGroupBy([]);
-  }, []);
+  const clearAllGroups = useCallback(() => setGroupBy([]), []);
 
   const getGroupValue = useCallback((row, col) => {
     if (col.computed && typeof col.fn === "function") {
@@ -5022,10 +4603,7 @@ export function AppraisalGrid({
     [getGroupValue],
   );
 
-  // Sort specs split into categorical columns (grouped into sections)
-  // and continuous ones (numeric / date / free text: plain sort only,
-  // pagination kept). Categorical keys sort first so sections stay
-  // contiguous.
+  // Categorical keys sort first so sections stay contiguous.
   const sortSpecs = useMemo(() => {
     const specs = groupBy
       .map((group) => {
@@ -5072,8 +4650,8 @@ export function AppraisalGrid({
       return null;
     }
 
-    const sortRows = (sourceRows) => {
-      return [...sourceRows].sort((rowA, rowB) => {
+    const sortRows = (sourceRows) =>
+      [...sourceRows].sort((rowA, rowB) => {
         for (const group of sortSpecs.ordered) {
           const result = compareGroupValues(rowA, rowB, group.column);
 
@@ -5084,7 +4662,6 @@ export function AppraisalGrid({
 
         return 0;
       });
-    };
 
     const buildLevel = (sourceRows, level) => {
       const group = groupColumns[level];
@@ -5100,9 +4677,7 @@ export function AppraisalGrid({
           return;
         }
 
-        const rawValue = currentKey;
         const sampleRow = currentRows[0];
-
         const displayValue = sampleRow
           ? formatValue(sampleRow, group.column)
           : "";
@@ -5115,7 +4690,7 @@ export function AppraisalGrid({
             : displayValue;
 
         sections.push({
-          key: `${group.key}:${String(rawValue)}:${level}:${sections.length}`,
+          key: `${group.key}:${String(currentKey)}:${level}:${sections.length}`,
           level,
           groupKey: group.key,
           label,
@@ -5132,8 +4707,6 @@ export function AppraisalGrid({
       levelRows.forEach((row) => {
         const value = getGroupValue(row, group.column);
 
-        // Split with the same equality the sort uses, so ""/null blanks
-        // land in one section.
         if (
           !hasCurrent ||
           compareGroupValues(previousRow, row, group.column) !== 0
@@ -5166,9 +4739,7 @@ export function AppraisalGrid({
         if (section.children) {
           walk(section.children);
         } else {
-          section.rows.forEach((row) => {
-            result.push(row);
-          });
+          section.rows.forEach((row) => result.push(row));
         }
       });
     };
@@ -5203,13 +4774,14 @@ export function AppraisalGrid({
     }, 1600);
   }, []);
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       if (historyFlashTimerRef.current) {
         clearTimeout(historyFlashTimerRef.current);
       }
-    };
-  }, []);
+    },
+    [],
+  );
 
   // ============================================================
   // BLINK ON THE LAST EDITED CELL
@@ -5225,24 +4797,41 @@ export function AppraisalGrid({
 
     setLastEditedKey(cellKey);
 
-    blinkTimerRef.current = setTimeout(() => {
-      setLastEditedKey(null);
-    }, 1600);
+    blinkTimerRef.current = setTimeout(() => setLastEditedKey(null), 1600);
   }, []);
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       if (blinkTimerRef.current) {
         clearTimeout(blinkTimerRef.current);
       }
-    };
+    },
+    [],
+  );
+
+  // ============================================================
+  // SAVE FLASH
+  // FIX: this used to be declared AFTER clearPromotion, whose dependency
+  // array reads it during render -> "Cannot access 'yt' before initialization".
+  // It must be declared before anything that references it.
+  // ============================================================
+
+  const flashSaved = useCallback((key) => {
+    setSaving((previous) => ({ ...previous, [key]: Date.now() }));
+
+    setTimeout(() => {
+      setSaving((previous) => {
+        const next = { ...previous };
+
+        delete next[key];
+
+        return next;
+      });
+    }, 1200);
   }, []);
 
   // ============================================================
   // RIGHT PANEL OPEN STATE
-  // The panel always shows the currently selected employee
-  // (historyRow), so clicking / editing another row while the
-  // panel is open switches it to that employee.
   // ============================================================
 
   const [detailOpen, setDetailOpen] = useState(false);
@@ -5260,7 +4849,6 @@ export function AppraisalGrid({
       setHistoryRow(rows[0]);
     }
   }, [rows, historyRow]);
-
 
   // ============================================================
   // HISTORY LOADER (one request per employee, shared by the
@@ -5290,9 +4878,7 @@ export function AppraisalGrid({
     }));
 
     const promise = (async () => {
-      const url = `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(
-        key,
-      )}`;
+      const url = `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(key)}`;
 
       const response = await catalystFetch(url);
 
@@ -5359,9 +4945,7 @@ export function AppraisalGrid({
   }, [rows, historyRow]);
 
   const historyEmpKey = historyRow ? String(historyRow.empId || "").trim() : "";
-
   const historyState = historyByEmpId[historyEmpKey];
-
   const historyLoading = !historyState || historyState.loading;
   const historyError = historyState?.error || "";
 
@@ -5371,18 +4955,47 @@ export function AppraisalGrid({
   );
 
   // ============================================================
-  // YEAR-OVER-YEAR TOAST
+  // CHANGE TOASTS
   // ============================================================
 
   const [cellToast, setCellToast] = useState(null);
   const cellToastTimerRef = useRef(null);
 
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       if (cellToastTimerRef.current) {
         clearTimeout(cellToastTimerRef.current);
       }
-    };
+    },
+    [],
+  );
+
+  const toastPosition = (anchor) => {
+    const rect = anchor.getBoundingClientRect();
+    const toastWidth = 280;
+
+    const left = Math.max(
+      8,
+      Math.min(rect.left, window.innerWidth - toastWidth - 8),
+    );
+
+    let top = rect.bottom + 6;
+
+    if (top + 70 > window.innerHeight) {
+      top = Math.max(8, rect.top - 76);
+    }
+
+    return { left, top };
+  };
+
+  const showToast = useCallback((toast) => {
+    setCellToast(toast);
+
+    if (cellToastTimerRef.current) {
+      clearTimeout(cellToastTimerRef.current);
+    }
+
+    cellToastTimerRef.current = setTimeout(() => setCellToast(null), 3500);
   }, []);
 
   const showYoyToast = useCallback(
@@ -5393,7 +5006,7 @@ export function AppraisalGrid({
         return;
       }
 
-      const rect = anchor.getBoundingClientRect();
+      const position = toastPosition(anchor);
       const currentValue = config.current(projectedRow);
 
       loadHistory(projectedRow.empId)
@@ -5401,43 +5014,20 @@ export function AppraisalGrid({
           const priorRecord = records.find(
             (record) => !isCurrentYearRecord(record),
           );
-
           const priorValue = priorRecord ? config.prior(priorRecord) : 0;
 
-          const toastWidth = 280;
-
-          const left = Math.max(
-            8,
-            Math.min(rect.left, window.innerWidth - toastWidth - 8),
-          );
-
-          let top = rect.bottom + 6;
-
-          if (top + 70 > window.innerHeight) {
-            top = Math.max(8, rect.top - 76);
-          }
-
-          setCellToast({
+          showToast({
             label: config.label,
             currentValue,
             priorValue,
-            left,
-            top,
+            ...position,
             mode: "yoy",
             isText: false,
           });
-
-          if (cellToastTimerRef.current) {
-            clearTimeout(cellToastTimerRef.current);
-          }
-
-          cellToastTimerRef.current = setTimeout(() => {
-            setCellToast(null);
-          }, 3500);
         })
         .catch(() => {});
     },
-    [loadHistory],
+    [loadHistory, showToast],
   );
 
   // Toast for any editable field that has no year-over-year mapping.
@@ -5447,94 +5037,20 @@ export function AppraisalGrid({
         return;
       }
 
-      const rect = anchor.getBoundingClientRect();
-      const toastWidth = 280;
-
-      const left = Math.max(
-        8,
-        Math.min(rect.left, window.innerWidth - toastWidth - 8),
-      );
-
-      let top = rect.bottom + 6;
-
-      if (top + 70 > window.innerHeight) {
-        top = Math.max(8, rect.top - 76);
-      }
-
-      setCellToast({
+      showToast({
         label,
         currentValue,
         priorValue,
-        left,
-        top,
+        ...toastPosition(anchor),
         mode: "prev",
         isText: !!isText,
       });
-
-      if (cellToastTimerRef.current) {
-        clearTimeout(cellToastTimerRef.current);
-      }
-
-      cellToastTimerRef.current = setTimeout(() => {
-        setCellToast(null);
-      }, 3500);
     },
-    [],
+    [showToast],
   );
 
-  // ============================================================
-  // OLD RIGHT PANEL STATE — DISABLED (kept for future use)
-  // Replaced by <EmployeePanel /> which follows the selected row.
-  // ============================================================
-
-  /*
-  const [detailEmployee, setDetailEmployee] = useState(null);
-
-  const detailEmpKey = detailEmployee
-    ? String(detailEmployee.empId || "").trim()
-    : "";
-
-  const detailHistoryState = historyByEmpId[detailEmpKey];
-
-  const liveDetailEmployee = useMemo(() => {
-    if (!detailEmployee) {
-      return null;
-    }
-
-    return rows.find((row) => row.id === detailEmployee.id) || detailEmployee;
-  }, [rows, detailEmployee]);
-
-  const detailHistoryRows = useMemo(() => {
-    if (!detailHistoryState?.data) {
-      return [];
-    }
-
-    return detailHistoryState.data.map((record) =>
-      applyCurrentYearSheetValues(record, liveDetailEmployee),
-    );
-  }, [detailHistoryState, liveDetailEmployee]);
-
-  const openDetailPanel = useCallback(
-    (row) => {
-      setDetailEmployee(row);
-      setDetailOpen(true);
-      loadHistory(row.empId).catch(() => {});
-    },
-    [loadHistory],
-  );
-
-  const closeDetailPanel = useCallback(() => {
-    setDetailOpen(false);
-  }, []);
-  */
-
-  const openDetailPanel = useCallback(() => {
-    setDetailOpen(true);
-  }, []);
-
-  const closeDetailPanel = useCallback(() => {
-    setDetailOpen(false);
-  }, []);
+  const openDetailPanel = useCallback(() => setDetailOpen(true), []);
+  const closeDetailPanel = useCallback(() => setDetailOpen(false), []);
 
   // ============================================================
   // PROMOTE (from the Designation cell)
@@ -5596,6 +5112,7 @@ export function AppraisalGrid({
       8,
       Math.min(rect.left, window.innerWidth - width - 8),
     );
+
     let top = rect.bottom + 4;
 
     if (top + 320 > window.innerHeight) {
@@ -5608,22 +5125,42 @@ export function AppraisalGrid({
 
   const closePromote = useCallback(() => setPromoteState(null), []);
 
+  // Clear promotion: Promotion Yes -> No and New Title is emptied.
   const clearPromotion = useCallback(
     (row) => {
-      const anchor = promoteState?.anchor && promoteState.anchor.isConnected ? promoteState.anchor : null;
-      updateLinkedCells(row.id, { eligibleForPromotion: "No", newTitle: null }, "Clear promotion");
-      flashSaved(row.id + ":eligibleForPromotion");
-      flashSaved(row.id + ":newTitle");
-      markEdited(row.id + ":eligibleForPromotion");
-      markEdited(row.id + ":newTitle");
+      const anchor =
+        promoteState?.anchor && promoteState.anchor.isConnected
+          ? promoteState.anchor
+          : null;
+
+      updateLinkedCells(
+        row.id,
+        { eligibleForPromotion: "No", newTitle: null },
+        "Cell edit",
+      );
+
+      flashSaved(`${row.id}:eligibleForPromotion`);
+      flashSaved(`${row.id}:newTitle`);
+      markEdited(`${row.id}:eligibleForPromotion`);
+      markEdited(`${row.id}:newTitle`);
+
       if (row.id === historyRow?.id) {
         flashHistoryFields("eligibleForPromotion");
         flashHistoryFields("newTitle");
       }
+
       showChangeToast(anchor, "Promotion", "Yes", "No", true);
       setPromoteState(null);
     },
-    [promoteState, updateLinkedCells, flashSaved, markEdited, historyRow, flashHistoryFields, showChangeToast],
+    [
+      promoteState,
+      updateLinkedCells,
+      flashSaved,
+      markEdited,
+      historyRow,
+      flashHistoryFields,
+      showChangeToast,
+    ],
   );
 
   const applyPromotion = useCallback(
@@ -5674,11 +5211,11 @@ export function AppraisalGrid({
       showChangeToast(anchor, "New Title", oldTitle, newTitle, true);
       setPromoteState(null);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       promoteState,
       updateLinkedCells,
       updateCell,
+      flashSaved,
       markEdited,
       flashHistoryFields,
       historyRow,
@@ -5702,17 +5239,14 @@ export function AppraisalGrid({
     }
   }, [showHistory]);
 
-  // ============================================================
-  // CLEANUP
-  // ============================================================
-
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       if (clickTimerRef.current) {
         clearTimeout(clickTimerRef.current);
       }
-    };
-  }, []);
+    },
+    [],
+  );
 
   // ============================================================
   // PAGINATION
@@ -5729,40 +5263,153 @@ export function AppraisalGrid({
 
     return sortedRows.slice(start, start + PAGE_SIZE);
   }, [sortedRows, currentPage]);
-  useEffect(() => {
-    const target = String(focusEmployeeId || "").trim();
-    if (!target) return;
-    const targetRow = rows.find((row) => String(row.empId || "").trim() === target);
-    if (!targetRow) return;
-    const index = sortedRows.findIndex((row) => row.id === targetRow.id);
-    if (index >= 0) setCurrentPage(Math.floor(index / PAGE_SIZE) + 1);
-    setHistoryRow(targetRow);
-    if (showHistory || detailOpen) loadHistory(targetRow.empId).catch(() => {});
-    onFocusEmployeeHandled?.();
-  }, [focusEmployeeId]);
 
   const pageStart = rows.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
-
   const pageEnd = Math.min(currentPage * PAGE_SIZE, rows.length);
 
   // Unified display order — matches whichever mode is active.
-  const displayRows = useMemo(() => {
-    if (groupedRows) {
-      return flattenGroupedSections(groupedRows);
-    }
-
-    return pageRows;
-  }, [groupedRows, flattenGroupedSections, pageRows]);
+  const displayRows = useMemo(
+    () => (groupedRows ? flattenGroupedSections(groupedRows) : pageRows),
+    [groupedRows, flattenGroupedSections, pageRows],
+  );
 
   const flattenedGroupOrder = useMemo(() => {
     const order = new Map();
 
-    displayRows.forEach((row, index) => {
-      order.set(row.id, index);
-    });
+    displayRows.forEach((row, index) => order.set(row.id, index));
 
     return order;
   }, [displayRows]);
+
+  // ============================================================
+  // "LAST EDITED" -> JUMP TO THAT EMPLOYEE
+  // The old effect only ran when focusEmployeeId changed, so it silently
+  // did nothing if the rows were not loaded yet (common for HR, who has the
+  // big list), and it never scrolled the table, so on HR the row was
+  // selected but off-screen. Now: it retries when rows arrive, it matches on
+  // empId / row id / "rowId:field" keys, it switches page, and it scrolls
+  // the row into view.
+  // ============================================================
+
+  const handledFocusRef = useRef("");
+  const [scrollTargetId, setScrollTargetId] = useState(null);
+  const [focusNotice, setFocusNotice] = useState("");
+  const focusNoticeTimerRef = useRef(null);
+
+  useEffect(() => {
+    const target = String(focusEmployeeId || "").trim();
+
+    if (!target) {
+      handledFocusRef.current = "";
+      return;
+    }
+
+    if (handledFocusRef.current === target || !rows.length) {
+      return; // already handled, or rows not loaded yet (effect re-runs when they are)
+    }
+
+    const wanted = [target];
+
+    if (target.includes(":")) {
+      wanted.push(target.slice(0, target.lastIndexOf(":")));
+    }
+
+    const wantedLower = wanted.map((value) => value.toLowerCase());
+
+    const targetRow = rows.find(
+      (row) =>
+        wantedLower.includes(
+          String(row.empId || "")
+            .trim()
+            .toLowerCase(),
+        ) || wantedLower.includes(String(row.id).toLowerCase()),
+    );
+
+    handledFocusRef.current = target;
+
+    if (!targetRow) {
+      setFocusNotice("That employee is hidden by the current filters.");
+
+      if (focusNoticeTimerRef.current) {
+        clearTimeout(focusNoticeTimerRef.current);
+      }
+
+      focusNoticeTimerRef.current = setTimeout(() => setFocusNotice(""), 3500);
+
+      onFocusEmployeeHandled?.();
+      return;
+    }
+
+    if (!groupedRows) {
+      const index = sortedRows.findIndex((row) => row.id === targetRow.id);
+
+      if (index >= 0) {
+        setCurrentPage(Math.floor(index / PAGE_SIZE) + 1);
+      }
+    }
+
+    setHistoryRow(targetRow);
+    setScrollTargetId(targetRow.id);
+
+    if ((showHistory || detailOpen) && targetRow.empId) {
+      loadHistory(targetRow.empId).catch(() => {});
+    }
+
+    onFocusEmployeeHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusEmployeeId, rows, sortedRows, groupedRows]);
+
+  useEffect(
+    () => () => {
+      if (focusNoticeTimerRef.current) {
+        clearTimeout(focusNoticeTimerRef.current);
+      }
+    },
+    [],
+  );
+
+  // Scroll the table so the target row sits in the middle of the viewport.
+  useEffect(() => {
+    if (!scrollTargetId) {
+      return undefined;
+    }
+
+    const container = gridViewportRef.current;
+
+    if (!container) {
+      return undefined;
+    }
+
+    const frame = requestAnimationFrame(() => {
+      const element = container.querySelector(
+        `tr[data-row-id="${String(scrollTargetId).replace(/"/g, '\\"')}"]`,
+      );
+
+      if (!element) {
+        return; // page not rendered yet; effect runs again when displayRows change
+      }
+
+      const containerRect = container.getBoundingClientRect();
+      const rowRect = element.getBoundingClientRect();
+      const visibleHeight = container.clientHeight - HEADER_HEIGHT;
+
+      container.scrollTop +=
+        rowRect.top -
+        containerRect.top -
+        HEADER_HEIGHT -
+        (visibleHeight - rowRect.height) / 2;
+
+      setScrollTargetId(null);
+    });
+
+    // give up after 2s so a stale target never scrolls the table later
+    const giveUp = setTimeout(() => setScrollTargetId(null), 2000);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(giveUp);
+    };
+  }, [scrollTargetId, currentPage, displayRows]);
 
   // ============================================================
   // FOCUS
@@ -5783,24 +5430,6 @@ export function AppraisalGrid({
     ) {
       element.select();
     }
-  }, []);
-
-  // ============================================================
-  // SAVE FLASH
-  // ============================================================
-
-  const flashSaved = useCallback((key) => {
-    setSaving((previous) => ({ ...previous, [key]: Date.now() }));
-
-    setTimeout(() => {
-      setSaving((previous) => {
-        const next = { ...previous };
-
-        delete next[key];
-
-        return next;
-      });
-    }, 1200);
   }, []);
 
   // ============================================================
@@ -5867,7 +5496,6 @@ export function AppraisalGrid({
 
       const basePay = Number(row.currentAnnualBasePay || 0);
       const amount = Number(raw) || 0;
-
       const pct = basePay ? Number(((amount / basePay) * 100).toFixed(1)) : 0;
 
       const changed =
@@ -5973,9 +5601,8 @@ export function AppraisalGrid({
   // ============================================================
   // COMMIT ON BLUR / ENTER
   // Text, number and date cells keep a local draft while typing and
-  // save once on blur (Enter moves focus, which blurs). Escape
-  // discards the draft. A draft still open when the grid unmounts
-  // (e.g. navigating away) is committed so nothing is lost.
+  // save once on blur. Escape discards the draft. A draft still open when
+  // the grid unmounts is committed so nothing is lost.
   // ============================================================
 
   const cancelledCellsRef = useRef(new Set());
@@ -5984,9 +5611,8 @@ export function AppraisalGrid({
 
   commitRef.current = commit;
 
-
-  useEffect(() => {
-    return () => {
+  useEffect(
+    () => () => {
       const pending = pendingDraftRef.current;
 
       pendingDraftRef.current = null;
@@ -5994,8 +5620,9 @@ export function AppraisalGrid({
       if (pending) {
         commitRef.current(pending.row, pending.col, pending.raw, null);
       }
-    };
-  }, []);
+    },
+    [],
+  );
 
   // ============================================================
   // BULK EDIT ONE COLUMN (from the column filter popover)
@@ -6030,8 +5657,7 @@ export function AppraisalGrid({
 
       const value = isNumericType(col.type) ? numericValue(rawValue) : rawValue;
 
-      // Same promotion rules as inline edits: New Title only on rows
-      // eligible for promotion; setting "No" clears New Title.
+      // New Title only on rows eligible for promotion.
       if (col.key === "newTitle") {
         const eligibleIds = rows
           .filter((row) => row.eligibleForPromotion === "Yes")
@@ -6076,10 +5702,6 @@ export function AppraisalGrid({
     [editableColumns],
   );
 
-  // ============================================================
-  // ROW-SPECIFIC EDITABILITY
-  // ============================================================
-
   const isColumnEditable = useCallback((row, column) => {
     if (!column.editable) {
       return false;
@@ -6108,9 +5730,7 @@ export function AppraisalGrid({
       return;
     }
 
-    const editableColumnIndex = editableIndex.get(columnKey);
-
-    if (editableColumnIndex === undefined) {
+    if (editableIndex.get(columnKey) === undefined) {
       return;
     }
 
@@ -6119,6 +5739,11 @@ export function AppraisalGrid({
     const currentRowColumnIndex = rowEditableColumns.findIndex(
       (column) => column.key === columnKey,
     );
+
+    const columnDef = COLUMNS.find((item) => item.key === columnKey) || {
+      key: columnKey,
+      editable: false,
+    };
 
     const maxRow = displayRows.length - 1;
     const target = event.target;
@@ -6144,13 +5769,7 @@ export function AppraisalGrid({
       while (nextRowIndex >= 0 && nextRowIndex <= maxRow) {
         const nextRow = displayRows[nextRowIndex];
 
-        if (
-          nextRow &&
-          isColumnEditable(nextRow, {
-            ...COLUMNS.find((column) => column.key === columnKey),
-            key: columnKey,
-          })
-        ) {
+        if (nextRow && isColumnEditable(nextRow, columnDef)) {
           focusCell(nextRowIndex, columnKey);
           return;
         }
@@ -6164,36 +5783,16 @@ export function AppraisalGrid({
       return;
     }
 
-    if (event.key === "ArrowDown") {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
 
-      const nextRowIndex = Math.min(maxRow, rowIndex + 1);
+      const nextRowIndex =
+        event.key === "ArrowDown"
+          ? Math.min(maxRow, rowIndex + 1)
+          : Math.max(0, rowIndex - 1);
       const nextRow = displayRows[nextRowIndex];
 
-      const column = COLUMNS.find((item) => item.key === columnKey) || {
-        key: columnKey,
-        editable: false,
-      };
-
-      if (nextRow && isColumnEditable(nextRow, column)) {
-        focusCell(nextRowIndex, columnKey);
-      }
-
-      return;
-    }
-
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-
-      const nextRowIndex = Math.max(0, rowIndex - 1);
-      const nextRow = displayRows[nextRowIndex];
-
-      const column = COLUMNS.find((item) => item.key === columnKey) || {
-        key: columnKey,
-        editable: false,
-      };
-
-      if (nextRow && isColumnEditable(nextRow, column)) {
+      if (nextRow && isColumnEditable(nextRow, columnDef)) {
         focusCell(nextRowIndex, columnKey);
       }
 
@@ -6207,23 +5806,18 @@ export function AppraisalGrid({
       currentRowColumnIndex < rowEditableColumns.length - 1
     ) {
       event.preventDefault();
-
       focusCell(rowIndex, rowEditableColumns[currentRowColumnIndex + 1].key);
-
       return;
     }
 
     if (event.key === "ArrowLeft" && atStart && currentRowColumnIndex > 0) {
       event.preventDefault();
-
       focusCell(rowIndex, rowEditableColumns[currentRowColumnIndex - 1].key);
-
       return;
     }
 
     if (event.key === "Escape") {
-      // Cancel the in-progress edit: the blur handler sees this and
-      // drops the draft instead of committing it.
+      // Cancel the in-progress edit: the blur handler drops the draft.
       if (
         target instanceof HTMLInputElement ||
         target instanceof HTMLTextAreaElement
@@ -6243,8 +5837,7 @@ export function AppraisalGrid({
     (row) => {
       setHistoryRow(row);
 
-      // Re-selecting after a failed fetch retries it (a failed request is
-      // dropped from the cache; a cached success is simply reused).
+      // Re-selecting after a failed fetch retries it.
       if ((showHistory || detailOpen) && row?.empId) {
         loadHistory(row.empId).catch(() => {});
       }
@@ -6262,10 +5855,6 @@ export function AppraisalGrid({
   const selectRowForEdit = useCallback((row) => {
     setHistoryRow((previous) => (previous?.id === row.id ? previous : row));
   }, []);
-
-  // ============================================================
-  // CELL CLICK
-  // ============================================================
 
   const handleCellClick = useCallback(
     (row, editable) => {
@@ -6286,10 +5875,6 @@ export function AppraisalGrid({
     [openRow],
   );
 
-  // ============================================================
-  // DOUBLE CLICK
-  // ============================================================
-
   const handleEditableDoubleClick = useCallback(
     (event, rowIndex, columnKey) => {
       event.stopPropagation();
@@ -6308,13 +5893,19 @@ export function AppraisalGrid({
   // RENDER CELL
   // ============================================================
 
+  const draftClass = (cellKey, isBlinking) =>
+    cn(
+      modified[cellKey]
+        ? "border-[#c9a400] bg-[#ffe066] font-semibold text-[#1e293b]"
+        : "border-[#d7c96b] bg-[#fffef3] text-[#1e293b]",
+      "focus:border-[#2563eb] focus:bg-white focus:ring-1 focus:ring-[#2563eb]",
+      isBlinking && "appraisal-cell-blink",
+    );
+
   const renderCellContent = (row, col, rowIndex) => {
     const cellKey = `${row.id}:${col.key}`;
-
     const isEditable = isColumnEditable(row, col);
-
     const displayValue = formatValue(row, col);
-
     const isBlinking = lastEditedKey === cellKey;
 
     if (col.computed) {
@@ -6322,13 +5913,8 @@ export function AppraisalGrid({
         <div
           className={cn(
             "flex min-h-[38px] h-auto w-full items-center justify-end",
-            "px-2 py-1",
-            "whitespace-normal break-words",
-            "leading-tight",
-            "text-right",
-            "text-[12px]",
-            "font-semibold",
-            "tabular-nums",
+            "px-2 py-1 whitespace-normal break-words leading-tight text-right",
+            "text-[12px] font-semibold tabular-nums",
             modified[cellKey] ? "text-slate-900" : "text-[#14527d]",
           )}
           title="Calculated automatically"
@@ -6340,10 +5926,7 @@ export function AppraisalGrid({
       );
     }
 
-    // ------------------------------------------------------------
     // EMPLOYEE CELL (sticky column 1) — name on top, emp id below.
-    // Clicking the name opens the right panel.
-    // ------------------------------------------------------------
     if (col.key === "name") {
       return (
         <button
@@ -6367,10 +5950,7 @@ export function AppraisalGrid({
       );
     }
 
-    // ------------------------------------------------------------
-    // DESIGNATION CELL (sticky column 2) — shows the designation plus
-    // a small "★ Promote" button (or "★ Change" once promotion is Yes).
-    // ------------------------------------------------------------
+    // DESIGNATION CELL (sticky column 2) — designation + "★ Promote" / "★ Change".
     if (col.key === "designation") {
       const hasNewTitle =
         row.eligibleForPromotion === "Yes" &&
@@ -6418,7 +5998,6 @@ export function AppraisalGrid({
           : "";
 
       const isMoney = col.type === "currency";
-
       const text = isMoney ? displayValue.replace(/^₹\s?/, "") : rawText;
 
       return (
@@ -6429,13 +6008,8 @@ export function AppraisalGrid({
             openRow(row);
           }}
           className={cn(
-            "flex min-h-[38px] h-auto w-full",
-            "items-center",
-            "px-2 py-1",
-            "text-[12px]",
-            "font-normal text-[#4b5563]",
-            "whitespace-normal break-words",
-            "leading-tight",
+            "flex min-h-[38px] h-auto w-full items-center px-2 py-1",
+            "text-[12px] font-normal text-[#4b5563] whitespace-normal break-words leading-tight",
             isMoney ? "justify-end text-right tabular-nums" : "text-left",
           )}
           title={text}
@@ -6473,19 +6047,15 @@ export function AppraisalGrid({
               if (col.key === "eligibleForPromotion" && value === "No") {
                 updateLinkedCells(
                   row.id,
-                  {
-                    eligibleForPromotion: "No",
-                    newTitle: null,
-                  },
+                  { eligibleForPromotion: "No", newTitle: null },
                   "Cell edit",
                 );
 
                 flashSaved(cellKey);
                 markEdited(cellKey);
 
-                const newTitleCellKey = `${row.id}:newTitle`;
-                flashSaved(newTitleCellKey);
-                markEdited(newTitleCellKey);
+                flashSaved(`${row.id}:newTitle`);
+                markEdited(`${row.id}:newTitle`);
 
                 if (row.id === historyRow?.id) {
                   flashHistoryFields("eligibleForPromotion");
@@ -6502,12 +6072,15 @@ export function AppraisalGrid({
 
                 return;
               }
-              /* NEW: remind to set New Title the moment Promotion flips to Yes */
+
+              // Remind to set New Title the moment Promotion flips to Yes.
               if (col.key === "eligibleForPromotion" && value === "Yes") {
                 updateCell(row.id, col.key, value);
                 flashSaved(cellKey);
                 markEdited(cellKey);
+
                 if (row.id === historyRow?.id) flashHistoryFields(col.key);
+
                 showChangeToast(
                   anchor,
                   col.label,
@@ -6521,6 +6094,7 @@ export function AppraisalGrid({
                     `${row.name || "This employee"} is now marked eligible for promotion. Please set the New Title — it is mandatory.`,
                   );
                 }
+
                 return;
               }
 
@@ -6543,11 +6117,7 @@ export function AppraisalGrid({
             }}
             className={cn(
               "h-[30px] w-full cursor-pointer rounded-[4px] border px-1 text-[12px] outline-none",
-              modified[cellKey]
-                ? "border-[#c9a400] bg-[#ffe066] font-semibold text-[#1e293b]"
-                : "border-[#d7c96b] bg-[#fffef3] text-[#1e293b]",
-              "focus:border-[#2563eb] focus:bg-white focus:ring-1 focus:ring-[#2563eb]",
-              isBlinking && "appraisal-cell-blink",
+              draftClass(cellKey, isBlinking),
             )}
           >
             <option value="">Select...</option>
@@ -6562,15 +6132,15 @@ export function AppraisalGrid({
       );
     }
 
+    const storedValue = String(
+      row[col.key] !== null && row[col.key] !== undefined ? row[col.key] : "",
+    );
+
     if (col.type === "textarea") {
       const textareaDraft =
         editingValues[cellKey] !== undefined
           ? editingValues[cellKey]
-          : String(
-              row[col.key] !== null && row[col.key] !== undefined
-                ? row[col.key]
-                : "",
-            );
+          : storedValue;
 
       return (
         <div className="flex min-h-[38px] w-full items-center px-1.5 py-1">
@@ -6586,11 +6156,7 @@ export function AppraisalGrid({
 
               setEditingValues((previous) => ({
                 ...previous,
-                [cellKey]: String(
-                  row[col.key] !== null && row[col.key] !== undefined
-                    ? row[col.key]
-                    : "",
-                ),
+                [cellKey]: storedValue,
               }));
 
               event.currentTarget.style.height = "auto";
@@ -6631,11 +6197,7 @@ export function AppraisalGrid({
             }
             className={cn(
               "min-h-[30px] w-full resize-none overflow-hidden rounded-[4px] border px-1.5 py-[5px] text-[12px] leading-tight outline-none",
-              modified[cellKey]
-                ? "border-[#c9a400] bg-[#ffe066] font-semibold text-[#1e293b]"
-                : "border-[#d7c96b] bg-[#fffef3] text-[#1e293b]",
-              "focus:border-[#2563eb] focus:bg-white focus:ring-1 focus:ring-[#2563eb]",
-              isBlinking && "appraisal-cell-blink",
+              draftClass(cellKey, isBlinking),
             )}
           />
         </div>
@@ -6645,11 +6207,7 @@ export function AppraisalGrid({
     const draftValue =
       editingValues[cellKey] !== undefined
         ? editingValues[cellKey]
-        : String(
-            row[col.key] !== null && row[col.key] !== undefined
-              ? row[col.key]
-              : "",
-          );
+        : storedValue;
 
     const isMonthColumn = col.key === "monthRB" || col.key === "monthPB";
 
@@ -6673,11 +6231,7 @@ export function AppraisalGrid({
 
             setEditingValues((previous) => ({
               ...previous,
-              [cellKey]: String(
-                row[col.key] !== null && row[col.key] !== undefined
-                  ? row[col.key]
-                  : "",
-              ),
+              [cellKey]: storedValue,
             }));
 
             if (col.type !== "date") {
@@ -6718,13 +6272,9 @@ export function AppraisalGrid({
           }
           className={cn(
             "h-[30px] w-full rounded-[4px] border px-1.5 text-[12px] outline-none",
-            modified[cellKey]
-              ? "border-[#c9a400] bg-[#ffe066] font-semibold text-[#1e293b]"
-              : "border-[#d7c96b] bg-[#fffef3] text-[#1e293b]",
-            "focus:border-[#2563eb] focus:bg-white focus:ring-1 focus:ring-[#2563eb]",
+            draftClass(cellKey, isBlinking),
             isNumericType(col.type) && "text-right font-medium tabular-nums",
             isMonthColumn && "text-center",
-            isBlinking && "appraisal-cell-blink",
           )}
         />
 
@@ -6745,7 +6295,12 @@ export function AppraisalGrid({
     const isSelectedRow = historyRow?.id === row.id;
 
     return (
-      <tr key={row.id} className="group" style={{ minHeight: CELL_MIN_HEIGHT }}>
+      <tr
+        key={row.id}
+        data-row-id={row.id}
+        className="group"
+        style={{ minHeight: CELL_MIN_HEIGHT }}
+      >
         <td
           className={cn(
             "sticky left-0 border-r border-b border-[#e0e5ec] p-0 align-middle",
@@ -6783,13 +6338,9 @@ export function AppraisalGrid({
           const isDesignation = col.key === "designation";
           const isFrozen = isName || isDesignation;
 
-          const left = frozenLeftOf(col.key);
-
           const width = widthOf(col);
-          const isComputed = col.computed;
           const isEditable = isColumnEditable(row, col);
-
-          const kind = isComputed ? "calc" : isEditable ? "input" : "master";
+          const kind = col.computed ? "calc" : isEditable ? "input" : "master";
 
           return (
             <td
@@ -6805,7 +6356,7 @@ export function AppraisalGrid({
               )}
               style={{
                 position: isFrozen ? "sticky" : "relative",
-                ...(isFrozen ? { left } : {}),
+                ...(isFrozen ? { left: frozenLeftOf(col.key) } : {}),
                 width,
                 minWidth: width,
                 maxWidth: width,
@@ -6835,68 +6386,58 @@ export function AppraisalGrid({
   // ============================================================
 
   const renderGroupedSections = useCallback(
-    (sections) => {
-      return sections.map((section) => {
-        const childSections = section.children;
-
-        return (
-          <Fragment key={section.key}>
-            <tr className="bg-[#dbe6f3]">
-              <td
-                colSpan={orderedColumns.length + 1}
-                className="border-b border-[#b9cbe0] p-0"
-              >
-                <div
-                  className={cn(
-                    "sticky left-0 inline-flex min-h-[28px] max-w-max",
-                    "items-center whitespace-nowrap",
-                    "px-2.5 py-1.5",
-                    "text-left text-[12px] font-bold text-[#173b63]",
-                    section.level > 0 && "pl-5",
-                  )}
-                >
-                  <span>
-                    {section.groupKey
-                      ? `${
-                          GRID_COLUMNS.find(
-                            (column) => column.key === section.groupKey,
-                          )?.label || ""
-                        }: ${section.label}`
-                      : section.label}
-                  </span>
-
-                  <span className="ml-2 font-normal text-slate-500">
-                    ({section.rows.length} employee
-                    {section.rows.length === 1 ? "" : "s"})
-                  </span>
-                </div>
-              </td>
-            </tr>
-
-            {childSections
-              ? renderGroupedSections(childSections)
-              : section.rows.map((row) =>
-                  renderDataRow(
-                    row,
-                    flattenedGroupOrder.get(row.id) !== undefined
-                      ? flattenedGroupOrder.get(row.id)
-                      : 0,
-                  ),
+    (sections) =>
+      sections.map((section) => (
+        <Fragment key={section.key}>
+          <tr className="bg-[#dbe6f3]">
+            <td
+              colSpan={orderedColumns.length + 1}
+              className="border-b border-[#b9cbe0] p-0"
+            >
+              <div
+                className={cn(
+                  "sticky left-0 inline-flex min-h-[28px] max-w-max items-center whitespace-nowrap px-2.5 py-1.5 text-left text-[12px] font-bold text-[#173b63]",
+                  section.level > 0 && "pl-5",
                 )}
-          </Fragment>
-        );
-      });
-    },
+              >
+                <span>
+                  {section.groupKey
+                    ? `${
+                        GRID_COLUMNS.find(
+                          (column) => column.key === section.groupKey,
+                        )?.label || ""
+                      }: ${section.label}`
+                    : section.label}
+                </span>
+
+                <span className="ml-2 font-normal text-slate-500">
+                  ({section.rows.length} employee
+                  {section.rows.length === 1 ? "" : "s"})
+                </span>
+              </div>
+            </td>
+          </tr>
+
+          {section.children
+            ? renderGroupedSections(section.children)
+            : section.rows.map((row) =>
+                renderDataRow(
+                  row,
+                  flattenedGroupOrder.get(row.id) !== undefined
+                    ? flattenedGroupOrder.get(row.id)
+                    : 0,
+                ),
+              )}
+        </Fragment>
+      )),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [renderDataRow, flattenedGroupOrder, orderedColumns.length],
   );
 
   // ============================================================
-  // SELECT ALL
+  // SELECT ALL (acts on the rows currently shown)
   // ============================================================
 
-  // Header checkbox acts on the rows currently shown (this page, or all
-  // rows when grouped) and leaves other pages' selections alone.
   const visibleSelectedCount = displayRows.filter(
     (row) => selected[row.id],
   ).length;
@@ -6933,20 +6474,14 @@ export function AppraisalGrid({
     },
   );
 
-  // ============================================================
-  // GROUP LABEL
-  // ============================================================
-
   const groupByColumnLabel = groupBy.length
     ? groupBy
         .map((group) => {
           const column = GRID_COLUMNS.find((item) => item.key === group.key);
 
-          if (!column) {
-            return "";
-          }
-
-          return `${column.label} ${group.dir === "desc" ? "↓" : "↑"}`;
+          return column
+            ? `${column.label} ${group.dir === "desc" ? "↓" : "↑"}`
+            : "";
         })
         .filter(Boolean)
         .join(" → ")
@@ -6963,9 +6498,7 @@ export function AppraisalGrid({
           cellToast.currentValue,
           cellToast.priorValue,
         );
-
         const hasPrior = !!cellToast.priorValue;
-
         const suffix = cellToast.mode === "prev" ? "vs previous" : "YoY";
 
         if (cellToast.isText) {
@@ -6994,12 +6527,7 @@ export function AppraisalGrid({
 
   return (
     <div
-      className={cn(
-        "relative flex min-h-0 w-full",
-        "flex-row overflow-hidden",
-        "rounded-md border border-[#d5dce5]",
-        "bg-white",
-      )}
+      className="relative flex min-h-0 w-full flex-row overflow-hidden rounded-md border border-[#d5dce5] bg-white"
       style={{
         height: "calc(100vh - 126px)",
         isolation: "isolate",
@@ -7011,12 +6539,7 @@ export function AppraisalGrid({
       {/* LEFT SIDE: GRID + PAGINATION + HISTORY */}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {/* GRID AREA */}
-
-        <div
-          ref={gridViewportRef}
-          className={cn("min-h-0 flex-1", "overflow-auto")}
-        >
+        <div ref={gridViewportRef} className="min-h-0 flex-1 overflow-auto">
           <table
             className="border-separate border-spacing-0"
             style={{
@@ -7072,13 +6595,8 @@ export function AppraisalGrid({
                   const isName = col.key === "name";
                   const isDesignation = col.key === "designation";
                   const isFrozen = isName || isDesignation;
-
-                  const left = frozenLeftOf(col.key);
-
                   const width = widthOf(col);
-
                   const showFilter = !NO_FILTER_COLUMNS.has(col.key);
-
                   const headerLabel = isName ? "Employee" : col.label;
 
                   return (
@@ -7093,7 +6611,7 @@ export function AppraisalGrid({
                       style={{
                         position: "sticky",
                         top: 0,
-                        ...(isFrozen ? { left } : {}),
+                        ...(isFrozen ? { left: frozenLeftOf(col.key) } : {}),
                         width,
                         minWidth: width,
                         maxWidth: width,
@@ -7375,7 +6893,6 @@ export function AppraisalGrid({
                   <tbody>
                     {historyData.map((item, index) => {
                       const previous = historyData[index + 1];
-
                       const isLatest = index === 0;
 
                       return (
@@ -7490,20 +7007,14 @@ export function AppraisalGrid({
         </div>
       )}
 
-      {/* RIGHT PANEL — opens when an employee name is clicked.
-          Follows whichever row is selected while it is open.
-          Feedback (Manager / Client / Other) + Budget (6 sub buttons).
-          Agent tab intentionally skipped. */}
+      {/* RIGHT PANEL — opens when an employee name is clicked and follows the
+          selected row. HR: Feedback only. Tech Ed: Feedback + Request. */}
 
       {detailOpen && liveHistoryRow && (
         <EmployeePanel
           employee={liveHistoryRow}
           team={rows}
-          modified={modified}
-          budget={budget}
-          onViewBudget={onViewBudget}
-          isTechEd={isTechEd}
-          isHR={isHR}
+          showRequest={showRequestTab}
           onRequest={onRequest}
           onClose={closeDetailPanel}
           history={{
@@ -7514,114 +7025,6 @@ export function AppraisalGrid({
           }}
         />
       )}
-
-      {/* ------------------------------------------------------------
-          OLD RIGHT PANEL (name click) — DISABLED, kept for future use.
-          Needs the commented state block above
-          (detailEmployee / liveDetailEmployee / detailHistoryRows)
-          to be restored before it can be enabled again.
-      ------------------------------------------------------------ */}
-
-      {/*
-      {detailOpen && liveDetailEmployee && (
-        <aside
-          className="flex w-[340px] shrink-0 flex-col border-l border-[#d5dce5] bg-white"
-          style={{ fontFamily: APPRAISAL_FONT }}
-        >
-          <div className="flex items-start justify-between gap-2 border-b border-[#e5e7eb] px-3 py-2">
-            <div className="min-w-0 text-[12px] leading-snug text-slate-600">
-              <div className="text-[14px] font-bold text-[#102a43]">
-                {liveDetailEmployee.name}
-              </div>
-              <div>
-                {liveDetailEmployee.empId} · {liveDetailEmployee.designation}
-              </div>
-              <div className="text-[11px] text-slate-500">
-                DOJ: {formatDoj(liveDetailEmployee.doj)} · Org Exp:{" "}
-                {liveDetailEmployee.wissenExperience || 0} yrs · Overall Exp:{" "}
-                {liveDetailEmployee.totalExperience || 0} yrs
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={closeDetailPanel}
-              className="flex size-6 shrink-0 items-center justify-center rounded border border-[#d1d5db] text-slate-600 hover:bg-slate-100"
-              aria-label="Close panel"
-              title="Close"
-            >
-              <X className="size-3.5" />
-            </button>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-auto">
-            <table className="hp-cycle-table">
-              <colgroup>
-                <col style={{ width: 62 }} />
-                <col style={{ width: 92 }} />
-                <col style={{ width: 52 }} />
-                <col />
-              </colgroup>
-
-              <thead>
-                <tr>
-                  <th>Year</th>
-                  <th>Designation</th>
-                  <th>Rating</th>
-                  <th>Feedback</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {!detailHistoryState || detailHistoryState.loading ? (
-                  <tr>
-                    <td colSpan={4} style={{ padding: 12, color: "#8592a6" }}>
-                      Loading history...
-                    </td>
-                  </tr>
-                ) : detailHistoryState.error ? (
-                  <tr>
-                    <td colSpan={4} style={{ padding: 12, color: "#dc2626" }}>
-                      {detailHistoryState.error}
-                    </td>
-                  </tr>
-                ) : !detailHistoryRows.length ? (
-                  <tr>
-                    <td colSpan={4} style={{ padding: 12, color: "#8592a6" }}>
-                      No appraisal history yet.
-                    </td>
-                  </tr>
-                ) : (
-                  detailHistoryRows.map((item, index) => (
-                    <tr
-                      key={`${item.year}-${index}`}
-                      className={index === 0 ? "current" : ""}
-                    >
-                      <td className="hp-year">
-                        {item.year}
-                        {index === 0 ? " ★" : ""}
-                      </td>
-
-                      <td>{item.designation}</td>
-
-                      <td>
-                        {item.rating &&
-                        String(item.rating).trim() !== "" &&
-                        item.rating !== "—"
-                          ? `${item.rating} / 5`
-                          : "—"}
-                      </td>
-
-                      <td className="hp-feedback">{item.feedback || "—"}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </aside>
-      )}
-      */}
 
       {/* CHANGE TOAST */}
 
@@ -7641,6 +7044,17 @@ export function AppraisalGrid({
           >
             {toastParts.text}
           </span>
+        </div>
+      )}
+
+      {/* "last edited" notice */}
+
+      {focusNotice && (
+        <div
+          className="pointer-events-none fixed bottom-4 left-1/2 z-[10000] -translate-x-1/2 rounded-md bg-[#17365d] px-3 py-2 text-[12px] text-white shadow-lg"
+          style={{ fontFamily: APPRAISAL_FONT }}
+        >
+          {focusNotice}
         </div>
       )}
 
@@ -7686,8 +7100,13 @@ export function AppraisalGrid({
               />
             </div>
 
+            {/* Clear promotion: only when promotion is currently Yes */}
             {promoteRow.eligibleForPromotion === "Yes" && (
-              <button type="button" onClick={() => clearPromotion(promoteRow)} className="mx-2 mb-1 mt-0.5 block w-[calc(100%-1rem)] rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-left text-[12px] font-semibold text-red-600 hover:bg-red-100">
+              <button
+                type="button"
+                onClick={() => clearPromotion(promoteRow)}
+                className="mx-2 mb-1 mt-0.5 block w-[calc(100%-1rem)] rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-left text-[12px] font-semibold text-red-600 hover:bg-red-100"
+              >
                 Clear promotion
               </button>
             )}
