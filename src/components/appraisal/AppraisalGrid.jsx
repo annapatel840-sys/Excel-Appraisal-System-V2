@@ -4000,6 +4000,9 @@ function EmployeePanel({
   history,
   budget,
   onViewBudget,
+  onRequest,
+  isTechEd,
+  isHR,
   onClose,
 }) {
   const [tab, setTab] = useState("feedback");
@@ -4010,6 +4013,7 @@ function EmployeePanel({
 
   const panelWidth = wide ? PANEL_WIDE_WIDTH : width;
   const sub = subs[tab];
+  const panelTabs = isTechEd ? PANEL_TABS : [[ "feedback", "Feedback" ]];
 
   // ---------- drag the left edge to resize ----------
   const startResize = useCallback(
@@ -4303,7 +4307,7 @@ function EmployeePanel({
           </div>
           <button
             type="button"
-            onClick={() => onViewBudget?.({ type: sub, employee })}
+            onClick={() => onRequest?.({ type: sub, employee })}
             className="rounded-md bg-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-white"
           >
             Send {sub === "delegation" ? "Delegation" : "Screen"} Request
@@ -4369,7 +4373,7 @@ function EmployeePanel({
         className="flex shrink-0 border-b border-[#e5e7eb] bg-[#fafafb]"
         role="tablist"
       >
-        {PANEL_TABS.map(([key, label]) => (
+        {panelTabs.map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -7197,6 +7201,9 @@ export function AppraisalGrid({
           modified={modified}
           budget={budget}
           onViewBudget={onViewBudget}
+          onRequest={onRequest}
+          isTechEd={isTechEd}
+          isHR={isHR}
           onClose={closeDetailPanel}
           history={{
             loading: historyLoading,
