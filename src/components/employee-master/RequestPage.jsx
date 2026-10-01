@@ -29,14 +29,47 @@ export function RequestPage() {
   };
 
   if (view === "delegation") {
+    const submitDelegationRequest = () => {
+      const reason = details.trim();
+      if (!employeeId.trim() || !reason) { setMessage("Employee ID and reason are required."); return; }
+      const current = JSON.parse(localStorage.getItem("appraisal-delegation-requests") || "[]");
+      current.unshift({
+        id: `DR-${Date.now()}`,
+        no: `DR-${Date.now()}`,
+        rowId: employeeId.trim(),
+        empId: employeeId.trim(),
+        empName: employeeId.trim(),
+        field: "comp",
+        oldId: "",
+        newId: "Requested change",
+        reason,
+        byId: user?.id || user?.email || "teched",
+        byName: user?.name || user?.email || "Tech Ed",
+        on: new Date().toISOString(),
+        status: "Pending",
+        decidedBy: "",
+        decidedOn: "",
+        remarks: "",
+      });
+      localStorage.setItem("appraisal-delegation-requests", JSON.stringify(current));
+      setEmployeeId("");
+      setDetails("");
+      setMessage("Delegation request sent to HR.");
+    };
     return (
-      <div className="space-y-2">
+      <div className="rounded-md border border-[#d5dce5] bg-white p-4">
         <button type="button" onClick={() => setView("menu")} className="text-xs font-medium text-[#173b63] hover:underline">← Back to Request</button>
-        <DelegationScreen showRoleSwitch={false} />
+        <h2 className="mt-3 text-sm font-semibold text-[#173b63]">Delegation Request</h2>
+        <p className="mt-1 text-[11px] text-slate-500">Raise a delegation change for HR approval.</p>
+        <div className="mt-4 grid max-w-xl gap-3">
+          <input value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} placeholder="Employee ID" className="h-9 rounded-md border px-3 text-xs outline-none focus:border-[#173b63]" />
+          <textarea value={details} onChange={(e) => setDetails(e.target.value)} placeholder="Reason / requested delegation change" rows={5} className="rounded-md border px-3 py-2 text-xs outline-none focus:border-[#173b63]" />
+          <button type="button" onClick={submitDelegationRequest} className="w-fit rounded-md bg-[#173b63] px-4 py-2 text-xs font-semibold text-white">Send Delegation Request</button>
+          {message && <div className="text-xs text-slate-600">{message}</div>}
+        </div>
       </div>
     );
   }
-
   if (view === "screen") {
     return (
       <div className="rounded-md border border-[#d5dce5] bg-white p-4">
