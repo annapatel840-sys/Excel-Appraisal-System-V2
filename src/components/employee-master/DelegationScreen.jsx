@@ -130,6 +130,15 @@ export default function DelegationScreen({
     [rows, user, isHR],
   );
   const myReqs = reqs.filter((q) => isHR || q.byId === user.id);
+  const people = useMemo(() => {
+    const values = [
+      ...rows.map((r) => r.comp),
+      ...rows.map((r) => r.app),
+    ].filter(Boolean);
+    return [...new Set(values.map((value) => String(value).trim()))]
+      .sort((a, b) => a.localeCompare(b))
+      .map((value) => ({ id: value, name: value, roles: [] }));
+  }, [rows]);
   const pending = myReqs.filter((q) => q.status === "Pending");
   const list = useMemo(() => {
     const q = filter.q.toLowerCase();
@@ -719,13 +728,13 @@ export default function DelegationScreen({
                                     type: "reason",
                                     row: r,
                                     field: f,
-                                    person: PEOPLE.find(
+                                    person: people.find(
                                       (p) => p.id === e.target.value,
                                     ),
                                   });
                                 }}
                               >
-                                {PEOPLE.map((p) => (
+                                {people.map((p) => (
                                   <option key={p.id} value={p.id}>
                                     {p.name}
                                   </option>
@@ -837,7 +846,7 @@ export default function DelegationScreen({
                 onChange={(e) => setBulk({ ...bulk, person: e.target.value })}
               >
                 <option value="">— choose —</option>
-                {PEOPLE.map((p) => (
+                {people.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.name} · {p.roles.join(", ")}
                   </option>
