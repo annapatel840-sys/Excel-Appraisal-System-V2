@@ -2318,7 +2318,6 @@
 //               setEditingValue(cellKey, event.target.value);
 
 //               pendingDraftRef.current = { row, col, raw: event.target.value };
-              scheduleLiveCommit(row, col, event.target.value, event.currentTarget, cellKey);
 
 //               event.target.style.height = "auto";
 //               event.target.style.height = `${event.target.scrollHeight}px`;
@@ -5982,24 +5981,6 @@ export function AppraisalGrid({
 
   commitRef.current = commit;
 
-  const liveCommitTimersRef = useRef(new Map());
-
-  const scheduleLiveCommit = useCallback((row, col, raw, anchor, cellKey) => {
-    const timers = liveCommitTimersRef.current;
-    const existing = timers.get(cellKey);
-    if (existing) clearTimeout(existing);
-    const timer = setTimeout(() => {
-      timers.delete(cellKey);
-      commitRef.current(row, col, raw, anchor);
-    }, 350);
-    timers.set(cellKey, timer);
-  }, []);
-
-  const cancelLiveCommit = useCallback((cellKey) => {
-    const timer = liveCommitTimersRef.current.get(cellKey);
-    if (timer) clearTimeout(timer);
-    liveCommitTimersRef.current.delete(cellKey);
-  }, []);
 
   useEffect(() => {
     return () => {
@@ -6713,7 +6694,6 @@ export function AppraisalGrid({
             setActive(null);
 
             pendingDraftRef.current = null;
-            cancelLiveCommit(cellKey);
 
             const raw =
               editingValues[cellKey] !== undefined
