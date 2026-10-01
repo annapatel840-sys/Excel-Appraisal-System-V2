@@ -9,10 +9,10 @@ import { EmployeeMaster } from "@/pages/EmployeeMaster";
 //this might be remove later (detailscreen)
 import { DetailScreenPage } from "@/components/appraisal/DetailScreenPage";
 import { AppShell } from "./components/appraisal/AppShell";
-import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
+import { RequestPage } from "@/components/employee-master/RequestPage";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 
-const TECH_ED_PATHS = ["/", "/sheet", "/employee-master", "/detail-screen", "/budget-allocation" ];
+const TECH_ED_PATHS = ["/", "/sheet", "/employee-master", "/detail-screen", "/request" ];
 
 // A crash in one screen shows a message instead of blanking the whole app.
 // It is keyed by path, so navigating to another screen clears the error.
@@ -66,7 +66,7 @@ function AppRoutes() {
   const user = useCatalystUser();
   const role = String(user?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
-  const effectivePath = isTechEd && !TECH_ED_PATHS.includes(path) ? "/employee-master" : path;
+  const effectivePath = isTechEd ? (TECH_ED_PATHS.includes(path) ? path : "/employee-master") : (path === "/request" ? "/employee-master" : path);
 
   useEffect(() => {
     const onPopState = () => {
@@ -100,12 +100,13 @@ function AppRoutes() {
       <DetailScreenPage />
     </AppShell>
   );
-} else if (effectivePath === "/budget-allocation") {
+} else if (effectivePath === "/request") {
   page = (
     <AppShell>
-      <BudgetAllocationPage />
+      <RequestPage />
     </AppShell>
   );
+
 } else {
   page = <Dashboard />;
 }

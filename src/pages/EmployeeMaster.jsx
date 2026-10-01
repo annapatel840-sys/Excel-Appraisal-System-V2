@@ -39,8 +39,7 @@ import { AppraisalCycleMasterPage } from "@/components/employee-master/Appraisal
 import { PayrollDataPage } from "@/components/employee-master/PayrollDataPage";
 import { PayrollUploadPage } from "@/components/employee-master/PayrollUploadPage";
 import { TeamChangesPage } from "@/components/employee-master/TeamChangesPage";
-import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
-import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
+import DelegationScreen from "@/components/employee-master/DelegationScreen";
 
 import "@/styles/employee-master.css";
 
@@ -599,8 +598,7 @@ export function EmployeeMaster() {
     "payroll-data",
     "payroll-upload",
     "team-changes",
-    "budget-allocation",
-    "budget-distribution",
+    "delegation",
   ]);
   const [activeTab, setActiveTab] = useState(
     isTechEd
@@ -2272,22 +2270,15 @@ export function EmployeeMaster() {
           >
             Team Changes
           </button>}
-          {!isTechEd && <>
+          {!isTechEd && (
             <button
               type="button"
-              className={activeTab === "budget-allocation" ? "active" : ""}
-              onClick={() => setActiveTab("budget-allocation")}
+              className={activeTab === "delegation" ? "active" : ""}
+              onClick={() => setActiveTab("delegation")}
             >
-              Budget Allocation
+              Delegation
             </button>
-            <button
-              type="button"
-              className={activeTab === "budget-distribution" ? "active" : ""}
-              onClick={() => setActiveTab("budget-distribution")}
-            >
-              Budget Distribution
-            </button>
-          </>}
+          )}
         </div>
 
         {/* ======================================================
@@ -2478,7 +2469,7 @@ export function EmployeeMaster() {
           </div>
         )}
 
-        {!isTechEd && activeTab === "budget-distribution" && (
+        {!isTechEd && activeTab === "delegation" && (
           <div
             className="em-tab-content"
             style={{
@@ -2487,7 +2478,7 @@ export function EmployeeMaster() {
               overflowX: "hidden",
             }}
           >
-            <BudgetDistributionPage />
+            <DelegationScreen showRoleSwitch={false} />
           </div>
         )}
 

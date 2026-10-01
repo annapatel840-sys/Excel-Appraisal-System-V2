@@ -150,6 +150,12 @@ export function SheetPage() {
     ([, filter]) => !isEmptyFilter(filter),
   );
 
+  const editedEmployeeIds = useMemo(() => new Set(audit.map((entry) => String(entry.empId || '').trim()).filter(Boolean)), [audit]);
+  const editedCount = [...editedEmployeeIds].filter((id) => rows.some((row) => String(row.empId) === id)).length;
+  const promotionCount = useMemo(() => rows.filter((row) => String(row.eligibleForPromotion || '').trim().toLowerCase() === 'yes').length, [rows]);
+  const lastEditedEntry = audit[0] || null;
+  const lastEditedRow = lastEditedEntry ? rows.find((row) => String(row.empId) === String(lastEditedEntry.empId)) : null;
+
   // ============================================================
   // BUDGET NUMBERS
   // Consumed = Hike Amount + Total Bonus (Allocated PB + New PB + New RB)
@@ -225,6 +231,7 @@ export function SheetPage() {
         </span>
       </button>
 
+
       <BudgetCounter
         label={budgetIsEstimate ? "Budget Allocated (est.)" : "Budget Allocated"}
         title={
@@ -299,6 +306,16 @@ export function SheetPage() {
                 <RotateCcw className="size-3.5" />
                 Reset
               </Button>
+
+              <button type="button" onClick={() => setAuditOpen(true)} className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]" title="Open the audit trail">
+                <span>✎ Edited</span><strong>{editedCount}</strong><span className="text-slate-400">of {rows.length}</span>
+              </button>
+              <button type="button" onClick={() => { setFilters((previous) => ({ ...previous, eligibleForPromotion: { kind: "enum", values: ["Yes"] } })); setSearch(""); }} className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]" title="Show employees marked for promotion">
+                <span>★ {promotionCount}</span><span className="text-slate-500">promotion</span>
+              </button>
+              <button type="button" onClick={() => { if (!lastEditedRow) { setAuditOpen(true); return; } setSearch(lastEditedRow.empId); setFilters({}); setShowHistory(true); }} className="flex h-9 min-w-0 max-w-[220px] shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]" title={lastEditedRow ? `Last edited: ${lastEditedRow.name}` : "No edits recorded"}>
+                <span>↪ Last edited:</span><span className="truncate">{lastEditedRow?.name || "—"}</span>
+              </button>
 
               <div ref={menuRef} className="relative">
                 <button
