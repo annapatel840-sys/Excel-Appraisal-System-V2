@@ -189,7 +189,7 @@ export const COLUMNS = [
     label: "EMP Name",
     type: "text",
     editable: false,
-    width: 190,
+    width: 100,
   },
   {
     key: "designation",
