@@ -3646,8 +3646,7 @@ const isPromotedRow = (row) => row.eligibleForPromotion === "Yes";
 
 const PANEL_TABS = [
   ["feedback", "Feedback"],
-  ["budget", "Budget"],
-  // Agent tab intentionally skipped for now.
+  ["request", "Request"],
 ];
 
 const PANEL_SUBS = {
@@ -3656,13 +3655,9 @@ const PANEL_SUBS = {
     ["client", "Client"],
     ["other", "Other"],
   ],
-  budget: [
-    ["budget", "Budget"],
-    ["team", "Team metrics"],
-    ["pct", "Hike percentile"],
-    ["nohike", "No hike"],
-    ["pb", "PB paid vs target"],
-    ["changes", "Team changes"],
+  request: [
+    ["delegation", "Delegation Request"],
+    ["screen", "Screen Request"],
   ],
 };
 
@@ -4008,7 +4003,7 @@ function EmployeePanel({
   onClose,
 }) {
   const [tab, setTab] = useState("feedback");
-  const [subs, setSubs] = useState({ feedback: "manager", budget: "budget" });
+  const [subs, setSubs] = useState({ feedback: "manager", request: "delegation" });
   const [wide, setWide] = useState(false);
   const [width, setWidth] = useState(PANEL_WIDTH);
   const [dragging, setDragging] = useState(false);
@@ -4293,310 +4288,31 @@ function EmployeePanel({
     );
   };
 
-  // ---------- BUDGET ----------
-  const renderBudget = () => {
-    const tone = levelTone(util.cur);
-    const toneIncl = levelTone(util.incl);
-
-    const alert = budget?.changedUnseen ? (
-      <div className="mt-2 rounded-lg border border-[#fed7aa] bg-[#fff7ed] px-2.5 py-1.5 text-[12px] text-[#9a3412]">
-        ● Budget changed since you last looked
-        {budget.changedFrom !== undefined && budget.changedFrom !== null
-          ? `: ${toLakhs(budget.changedFrom)} → ${toLakhs(util.alloc)}`
-          : ""}
-      </div>
-    ) : null;
-
-    if (sub === "budget") {
-      if (!hasAlloc) {
-        return (
-          <>
-            {alert}
-            <PanelInfo>
-              Budget allocation not connected yet. Pass the <b>budget</b> prop
-              (allocated amount) to show consumption here.
-            </PanelInfo>
-            <PanelCard title="Used so far (hike + PB + RB)">
-              <span className="text-[20px] font-extrabold">
-                {toLakhs(util.used)}
-              </span>
-            </PanelCard>
-          </>
-        );
-      }
-
-      const left = util.alloc - util.used;
-      const leftIncl = util.alloc - util.used - util.tpb;
-
-      return (
-        <>
-          {alert}
-
-          <PanelCard title="Current consumption">
-            <div className="flex items-center justify-between gap-2">
-              <span>Used</span>
-              <span
-                className={cn("text-[20px] font-extrabold", TONE_TEXT[tone])}
-              >
-                {f1(util.cur)}%
-              </span>
-            </div>
-
-            <PanelBar value={util.cur} tone={tone} />
-
-            <div className="text-[#6b7280]">
-              {toLakhs(util.used)} used ·{" "}
-              {left >= 0 ? `${toLakhs(left)} left` : `${toLakhs(-left)} over`}{" "}
-              of {toLakhs(util.alloc)}
-            </div>
-          </PanelCard>
-
-          <PanelCard title="Including Target PB">
-            <div className="flex items-center justify-between gap-2">
-              <span>Used + Target PB</span>
-              <span
-                className={cn(
-                  "text-[20px] font-extrabold",
-                  TONE_TEXT[toneIncl],
-                )}
-              >
-                {f1(util.incl)}%
-              </span>
-            </div>
-
-            <PanelBar value={util.incl} tone={toneIncl} />
-
-            <div className="text-[#6b7280]">
-              +{toLakhs(util.tpb)} Target PB ·{" "}
-              {leftIncl >= 0
-                ? `${toLakhs(leftIncl)} left`
-                : `${toLakhs(-leftIncl)} over`}
-            </div>
-          </PanelCard>
-
-          {typeof onViewBudget === "function" && (
-            <div className="mt-2.5">
-              <button
-                type="button"
-                onClick={onViewBudget}
-                className="font-bold text-[#102a43] underline"
-              >
-                View budget ›
-              </button>
-            </div>
-          )}
-        </>
-      );
-    }
-
-    if (sub === "team") {
-      const editedIds = new Set();
-
-      Object.keys(modified || {}).forEach((key) => {
-        if (modified[key]) {
-          editedIds.add(key.slice(0, key.lastIndexOf(":")));
-        }
-      });
-
-      const edited = team.filter((row) => editedIds.has(String(row.id))).length;
-      const promotions = team.filter(isPromotedRow).length;
-      const hikes = team.filter(hasHike).map(rowHikePct);
-      const ratings = team
-        .map((row) => parseFloat(row.managerRating))
-        .filter((value) => Number.isFinite(value) && value > 0);
-
-      return (
-        <>
-          {alert}
-
-          <PanelCard title={`Team · ${team.length} people`}>
-            <PanelRow label="Edited this cycle">
-              <b>
-                {edited} of {team.length}
-              </b>
-            </PanelRow>
-            <PanelRow label="Promotions">
-              <b>{promotions}</b>
-            </PanelRow>
-            <PanelRow label="Average hike % (where given)">
-              <b>
-                {hikes.length
-                  ? `${f1(hikes.reduce((a, b) => a + b, 0) / hikes.length)}%`
-                  : "—"}
-              </b>
-            </PanelRow>
-            <PanelRow label="Median hike %">
-              <b>{hikes.length ? `${f1(medianOf(hikes))}%` : "—"}</b>
-            </PanelRow>
-            <PanelRow label="Average rating">
-              <b>
-                {ratings.length
-                  ? (
-                      ratings.reduce((a, b) => a + b, 0) / ratings.length
-                    ).toFixed(1)
-                  : "—"}
-              </b>
-            </PanelRow>
-          </PanelCard>
-        </>
-      );
-    }
-
-    if (sub === "pct") {
-      const ranked = team
-        .map((row) => ({ row, value: rowRewardHikePct(row) }))
-        .sort((a, b) => b.value - a.value);
-
-      const myIndex = ranked.findIndex((item) => item.row.id === employee.id);
-
-      const percentile =
-        ranked.length > 1 && myIndex >= 0
-          ? Math.round(
-              ((ranked.length - 1 - myIndex) / (ranked.length - 1)) * 100,
-            )
-          : 100;
-
-      return (
-        <>
-          {alert}
-
-          <PanelCard title="Total Reward hike % in team">
-            <table className="w-full border-collapse text-[12px]">
-              <thead>
-                <tr>
-                  <th className="border-b border-[#e5e7eb] px-1 py-1 text-left text-[10.5px] font-bold text-[#6b7280]">
-                    #
-                  </th>
-                  <th className="border-b border-[#e5e7eb] px-1 py-1 text-left text-[10.5px] font-bold text-[#6b7280]">
-                    Employee
-                  </th>
-                  <th className="border-b border-[#e5e7eb] px-1 py-1 text-right text-[10.5px] font-bold text-[#6b7280]">
-                    Reward hike %
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {ranked.map((item, index) => (
-                  <tr
-                    key={item.row.id}
-                    className={cn(
-                      item.row.id === employee.id && "bg-[#eef0f3] font-bold",
-                    )}
-                  >
-                    <td className="border-b border-[#f1f3f5] p-1">
-                      {index + 1}
-                    </td>
-                    <td className="border-b border-[#f1f3f5] p-1">
-                      {item.row.name}
-                    </td>
-                    <td className="border-b border-[#f1f3f5] p-1 text-right">
-                      {f1(item.value)}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-
-            {myIndex >= 0 && (
-              <div className="mt-1.5 text-[10.5px] text-[#6b7280]">
-                {employee.name} is {ordinal(percentile)} percentile
-              </div>
-            )}
-          </PanelCard>
-        </>
-      );
-    }
-
-    if (sub === "nohike") {
-      const noHike = team.filter((row) => !hasHike(row));
-
-      return (
-        <>
-          {alert}
-
-          <PanelCard
-            title={`No hike this cycle · ${noHike.length} of ${team.length}`}
+  // ---------- REQUEST ----------
+  const renderRequest = () => (
+    <div className="space-y-2.5">
+      <PanelCard title={sub === "delegation" ? "Delegation Request" : "Screen Request"}>
+        <div className="space-y-2">
+          <div className="text-[11.5px] text-[#6b7280]">
+            {sub === "delegation"
+              ? "Request a delegation change for this employee. The request is tied to the current appraisal row."
+              : "Request a change to the appraisal screen for this employee."}
+          </div>
+          <div className="text-[12px] text-[#374151]">
+            Employee: <b>{employee.name}</b> · {employee.empId}
+          </div>
+          <button
+            type="button"
+            onClick={() => onViewBudget?.({ type: sub, employee })}
+            className="rounded-md bg-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-white"
           >
-            {noHike.length ? (
-              <ul className="m-0 list-disc pl-4">
-                {noHike.map((row) => (
-                  <li key={row.id} className="my-0.5">
-                    {row.name}{" "}
-                    <span className="text-[#6b7280]">
-                      · {row.designation || ""}
-                      {row.managerRating
-                        ? ` · rating ${row.managerRating}`
-                        : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <div className="text-[#6b7280]">Everyone has a hike.</div>
-            )}
-          </PanelCard>
-        </>
-      );
-    }
+            Send {sub === "delegation" ? "Delegation" : "Screen"} Request
+          </button>
+        </div>
+      </PanelCard>
+    </div>
+  );
 
-    if (sub === "pb") {
-      const paid = team.reduce((sum, row) => sum + num(row.pbToBePaid), 0);
-      const target = team.reduce(
-        (sum, row) => sum + num(row.targetPBAllocatedForMay),
-        0,
-      );
-      const p = ratioPct(paid, target);
-
-      return (
-        <>
-          {alert}
-
-          <PanelCard title="PB paid vs target">
-            <div className="flex items-center justify-between gap-2">
-              <span>Paid</span>
-              <span className="text-[20px] font-extrabold">{f1(p)}%</span>
-            </div>
-
-            <PanelBar value={p} tone="ok" />
-
-            <div className="text-[#6b7280]">
-              {toLakhs(paid)} paid of {toLakhs(target)} target
-            </div>
-          </PanelCard>
-        </>
-      );
-    }
-
-    // changes
-    const changes = Array.isArray(budget?.teamChanges)
-      ? budget.teamChanges
-      : [];
-
-    return (
-      <>
-        {alert}
-
-        <PanelCard title={`Team changes · ${changes.length}`}>
-          {changes.length ? (
-            <ul className="m-0 list-disc pl-4">
-              {changes.map((change, index) => (
-                <li key={`${change.name}-${index}`} className="my-0.5">
-                  {change.name}{" "}
-                  <span className="text-[#6b7280]">
-                    · {change.type}
-                    {change.date ? ` · ${change.date}` : ""}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <div className="text-[#6b7280]">No changes since allocation.</div>
-          )}
-        </PanelCard>
-      </>
-    );
-  };
 
   return (
     <aside
@@ -4694,7 +4410,7 @@ function EmployeePanel({
 
       {/* body */}
       <div className="min-h-0 flex-1 overflow-auto pb-3.5 pl-4 pr-3.5 pt-1.5">
-        {tab === "feedback" ? renderFeedback() : renderBudget()}
+        {tab === "feedback" ? renderFeedback() : renderRequest()}
       </div>
     </aside>
   );
