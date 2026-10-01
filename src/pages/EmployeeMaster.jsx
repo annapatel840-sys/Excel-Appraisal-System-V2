@@ -41,6 +41,7 @@ import { PayrollUploadPage } from "@/components/employee-master/PayrollUploadPag
 import { TeamChangesPage } from "@/components/employee-master/TeamChangesPage";
 import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
 import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
+import DelegationScreen from "@/components/employee-master/DelegationScreen";
 
 import "@/styles/employee-master.css";
 
@@ -601,6 +602,7 @@ export function EmployeeMaster() {
     "team-changes",
     "budget-allocation",
     "budget-distribution",
+    "delegation",
   ]);
   const [activeTab, setActiveTab] = useState(
     isTechEd
@@ -2288,6 +2290,15 @@ export function EmployeeMaster() {
               Budget Distribution
             </button>
           </>}
+          {!isTechEd && (
+            <button
+              type="button"
+              className={activeTab === "delegation" ? "active" : ""}
+              onClick={() => setActiveTab("delegation")}
+            >
+              Delegation
+            </button>
+          )}
         </div>
 
         {/* ======================================================
@@ -2488,6 +2499,18 @@ export function EmployeeMaster() {
             }}
           >
             <BudgetDistributionPage />
+          </div>
+        )}
+        {!isTechEd && activeTab === "delegation" && (
+          <div
+            className="em-tab-content"
+            style={{
+              height: "calc(100vh - 180px)",
+              overflowY: "auto",
+              overflowX: "hidden",
+            }}
+          >
+            <DelegationScreen showRoleSwitch={false} />
           </div>
         )}
 
