@@ -47,6 +47,7 @@ export default function DelegationScreen({
     reason: "",
   });
   const [bulkOpen, setBulkOpen] = useState(false); // ADDED: Bulk assign starts folded
+  const [reqOpen, setReqOpen] = useState(false); // ADDED: Pending approvals starts folded
   const [remarks, setRemarks] = useState({});
   const [modal, setModal] = useState(null); // {type, ...}
   const [reason, setReason] = useState("");
@@ -780,9 +781,10 @@ export default function DelegationScreen({
  
         {/* ------------------------------ side */}
         <div className="dg-side">
-          {/* ADDED: Bulk assign is folded on load; click the bar to open, "‹ Fold" to close */}
+          {/* ADDED: Bulk assign folds left to right; folded on load */}
+          <div className={"dg-col" + (bulkOpen ? " open" : "")} id="dg-bulk">
           {bulkOpen ? (
-            <div className="dg-card" id="dg-bulk">
+            <div className="dg-card">
               <div className="sh">
                 <span className="ic">⇄</span>
                 <div>
@@ -874,17 +876,19 @@ export default function DelegationScreen({
           ) : (
             <button
               type="button"
-              id="dg-bulk"
               className="dg-fold"
               onClick={() => setBulkOpen(true)}
               title="Open bulk assign"
               aria-expanded="false"
             >
-              <span>Bulk assign ({selIds.length})</span>
-              <span>›</span>
+              <span className="dg-vbtn">Bulk assign ({selIds.length}) ›</span>
             </button>
           )}
+          </div>
  
+          {/* ADDED: Pending approvals folds left to right; folded on load */}
+          <div className={"dg-col" + (reqOpen ? " open" : "")}>
+          {reqOpen ? (
           <div className="dg-card">
             <div className="sh">
               <span className="ic o">✓</span>
@@ -898,6 +902,15 @@ export default function DelegationScreen({
                     : "Changes you sent to HR"}
                 </div>
               </div>
+              <button
+                type="button"
+                className="btn sm"
+                style={{ marginLeft: "auto" }}
+                onClick={() => setReqOpen(false)}
+                title="Fold pending approvals"
+              >
+                ‹ Fold
+              </button>
             </div>
             <div className="sb">
               <div className="rtabs">
@@ -1014,6 +1027,20 @@ export default function DelegationScreen({
                 ))}
               </div>
             </div>
+          </div>
+          ) : (
+            <button
+              type="button"
+              className="dg-fold"
+              onClick={() => setReqOpen(true)}
+              title="Open pending approvals"
+              aria-expanded="false"
+            >
+              <span className="dg-vbtn">
+                {isHR ? "Pending approvals" : "My requests"} ({pending.length}) ›
+              </span>
+            </button>
+          )}
           </div>
         </div>
       </div>
@@ -1207,7 +1234,9 @@ const CSS = `
 .dg-help{padding:9px 12px 12px;font-size:11.5px;color:#6b7685;line-height:1.6;border-top:1px solid #eef1f4;background:#fbfcfd}
 .dg-help b{color:#374151}
 .dg .empty{padding:40px;text-align:center;color:#6b7685}
-.dg-side{width:380px;flex:0 0 380px;display:flex;flex-direction:column;gap:14px}
+.dg-side{flex:0 0 auto;display:flex;flex-direction:row;gap:14px;align-self:stretch}
+.dg-col{flex:0 0 34px;width:34px;min-width:0;display:flex;flex-direction:column}
+.dg-col.open{flex:0 0 330px;width:330px;align-self:flex-start}
 .dg .sh{padding:11px 13px;border-bottom:1px solid #e6eaef;display:flex;gap:9px;align-items:center}
 .dg .ic{background:#1a8a74;color:#fff;border-radius:6px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 28px}
 .dg .ic.o{background:#e0662f}
@@ -1237,7 +1266,8 @@ const CSS = `
 .dg .chg{background:#f6f8fa;border-radius:6px;padding:9px;margin-bottom:10px;line-height:1.6}
 .dg .aud td{white-space:normal;font-size:11.5px;vertical-align:top}
 .dg .aud th{position:static}
-.dg .dg-fold{display:flex;align-items:center;justify-content:space-between;width:100%;padding:11px 13px;background:#fff;border:1px solid #dfe4ea;border-radius:10px;cursor:pointer;color:#15365a;font-weight:800;font-size:14.5px}
+.dg .dg-fold{flex:1;min-height:160px;display:flex;justify-content:center;padding-top:14px;background:#fff;border:1px solid #dfe4ea;border-radius:10px;cursor:pointer;color:#15365a;font-weight:800}
 .dg .dg-fold:hover{background:#f1f4f8}
-@media(max-width:1100px){.dg-body{flex-direction:column}.dg-side{width:100%;flex:none}.dg-stats{grid-template-columns:repeat(2,1fr)}}
+.dg .dg-vbtn{writing-mode:vertical-rl;transform:rotate(180deg);font-size:12.5px;letter-spacing:.02em}
+@media(max-width:1100px){.dg-body{flex-direction:column}.dg-side{width:100%;flex:none;flex-direction:column}.dg-stats{grid-template-columns:repeat(2,1fr)}.dg-col,.dg-col.open{width:100%;flex:none}.dg .dg-fold{min-height:0;padding:10px;align-items:center}.dg .dg-vbtn{writing-mode:horizontal-tb;transform:none}}
 `;
