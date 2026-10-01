@@ -61,6 +61,43 @@ export default function DelegationScreen({
   }, [reqs]);
 
   const isHR = user.role === "HR Admin";
+
+  useEffect(() => {
+    if (initialRows || rows.length) return;
+    let cancelled = false;
+    const loadRoster = async () => {
+      try {
+        const firstResponse = await catalystFetch(EMPLOYEE_API_URL + "?page=1&limit=100", { method: "GET", cache: "no-store" });
+        const first = await firstResponse.json();
+        if (!firstResponse.ok || !first?.success) throw new Error(first?.message || "Unable to load appraisal employees.");
+        const all = Array.isArray(first.data) ? [...first.data] : [];
+        const totalPages = Math.max(1, Number(first.pagination?.totalPages || 1));
+        for (let pageNo = 2; pageNo <= totalPages; pageNo += 1) {
+          const response = await catalystFetch(EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=100", { method: "GET", cache: "no-store" });
+          const payload = await response.json();
+          if (response.ok && Array.isArray(payload.data)) all.push(...payload.data);
+        }
+        if (cancelled) return;
+        setRows(all.map((item) => ({
+          id: String(item.emp_id || item.ROWID || "").trim(),
+          name: String(item.name || item.emp_id || "").trim(),
+          rm: String(item.reporting_manager || "").trim(),
+          teId: String(item.appraiser_tech_ed || "").trim(),
+          te: String(item.appraiser_tech_ed || "").trim(),
+          comp: String(item.comp_manager || "").trim(),
+          app: String(item.appraiser_tech_ed || "").trim(),
+          prevComp: "",
+          prevApp: "",
+          base: "",
+          lastRole: "",
+        })).filter((row) => row.id));
+      } catch (error) {
+        if (!cancelled) say(error?.message || "Unable to load appraisal employees.", true);
+      }
+    };
+    loadRoster();
+    return () => { cancelled = true; };
+  }, [initialRows]);
   const say = (msg, err) => {
     setToast({ msg, err });
     setTimeout(() => setToast(null), err ? 6000 : 3500);
