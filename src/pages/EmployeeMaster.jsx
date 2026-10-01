@@ -39,8 +39,6 @@ import { AppraisalCycleMasterPage } from "@/components/employee-master/Appraisal
 import { PayrollDataPage } from "@/components/employee-master/PayrollDataPage";
 import { PayrollUploadPage } from "@/components/employee-master/PayrollUploadPage";
 import { TeamChangesPage } from "@/components/employee-master/TeamChangesPage";
-import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
-import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
 import DelegationScreen from "@/components/employee-master/DelegationScreen";
 
 import "@/styles/employee-master.css";
