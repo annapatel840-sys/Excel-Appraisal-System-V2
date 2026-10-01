@@ -4715,8 +4715,10 @@ export function AppraisalGrid({
 
   showHistory,
   setShowHistory,
+  focusEmployeeId,
+  onFocusEmployeeHandled,
 
-  // Optional — right panel "Budget" tab.
+  // Optional — right panel "Request" tab.
   // budget = {
   //   allocated,         // updated budget amount (rupees)
   //   changedUnseen,     // true -> shows the "Budget changed" alert
@@ -5217,6 +5219,19 @@ export function AppraisalGrid({
   // ============================================================
 
   const [historyRow, setHistoryRow] = useState(null);
+
+  useEffect(() => {
+    const target = String(focusEmployeeId || "").trim();
+    if (!target) return;
+    const targetRow = rows.find((row) => String(row.empId || "").trim() === target);
+    if (!targetRow) return;
+    const sortedIndex = sortedRows.findIndex((row) => row.id === targetRow.id);
+    setCurrentPage(sortedIndex >= 0 ? Math.floor(sortedIndex / PAGE_SIZE) + 1 : 1);
+    setHistoryRow(targetRow);
+    setDetailOpen(true);
+    loadHistory(targetRow.empId).catch(() => {});
+    onFocusEmployeeHandled?.();
+  }, [focusEmployeeId]);
 
   // Select the first employee by default so the panel is never empty.
   useEffect(() => {
