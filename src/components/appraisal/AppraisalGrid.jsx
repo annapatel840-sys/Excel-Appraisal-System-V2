@@ -14,6 +14,7 @@
 // import { COLUMNS, formatValue } from "@/lib/appraisal-data";
 // import { useAppraisal } from "@/lib/appraisal-store";
 // import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { useCatalystUser } from "@/lib/catalyst-auth";
 
 // // ============================================================
 // // API
@@ -3646,8 +3647,7 @@ const isPromotedRow = (row) => row.eligibleForPromotion === "Yes";
 
 const PANEL_TABS = [
   ["feedback", "Feedback"],
-  ["budget", "Budget"],
-  // Agent tab intentionally skipped for now.
+  ["request", "Request"],
 ];
 
 const PANEL_SUBS = {
@@ -4008,13 +4008,49 @@ function EmployeePanel({
   onClose,
 }) {
   const [tab, setTab] = useState("feedback");
-  const [subs, setSubs] = useState({ feedback: "manager", budget: "budget" });
+  const [subs, setSubs] = useState({ feedback: "manager", request: "delegation" });
+  const panelTabs = isTechEd ? PANEL_TABS : [["feedback", "Feedback"]];
   const [wide, setWide] = useState(false);
   const [width, setWidth] = useState(PANEL_WIDTH);
   const [dragging, setDragging] = useState(false);
 
   const panelWidth = wide ? PANEL_WIDE_WIDTH : width;
   const sub = subs[tab];
+
+  const requestPeople = useMemo(() => {
+    const values = team
+      .map((row) => row.appraiserTechED || row.compManager || row.app || row.comp)
+      .filter(Boolean)
+      .map((value) => String(value).trim());
+    return [...new Set(values)].sort((a, b) => a.localeCompare(b));
+  }, [team]);
+
+  const [requestField, setRequestField] = useState("appraiserTechED");
+  const [requestPerson, setRequestPerson] = useState("");
+
+  const renderRequest = () => (
+    <div className="space-y-2.5">
+      <PanelCard title="Delegation Request">
+        <div className="space-y-2.5">
+          <div className="text-[11.5px] text-[#6b7280]">
+            Request a delegation change. HR will approve or reject it from the Delegation screen.
+          </div>
+          <div className="text-[12px] text-[#374151]">Employee: <b>{employee.name}</b> · {employee.empId}</div>
+          <select value={requestField} onChange={(event) => { setRequestField(event.target.value); setRequestPerson(""); }} className="h-8 w-full rounded-md border border-[#cbd5e1] px-2 text-[11.5px]">
+            <option value="appraiserTechED">Appraiser Tech Ed</option>
+            <option value="compManager">Comp Manager</option>
+          </select>
+          <select value={requestPerson} onChange={(event) => setRequestPerson(event.target.value)} className="h-8 w-full rounded-md border border-[#cbd5e1] px-2 text-[11.5px]">
+            <option value="">Select new assignee...</option>
+            {requestPeople.map((person) => <option key={person} value={person}>{person}</option>)}
+          </select>
+          <button type="button" disabled={!requestPerson} onClick={() => onRequest?.({ type: "delegation", employee, field: requestField, oldId: String(employee?.[requestField] || ""), newId: requestPerson })} className="rounded-md bg-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+            Send Delegation Request
+          </button>
+        </div>
+      </PanelCard>
+    </div>
+  );
 
   // ---------- drag the left edge to resize ----------
   const startResize = useCallback(
@@ -4653,7 +4689,7 @@ function EmployeePanel({
         className="flex shrink-0 border-b border-[#e5e7eb] bg-[#fafafb]"
         role="tablist"
       >
-        {PANEL_TABS.map(([key, label]) => (
+        {panelTabs.map(([key, label]) => (
           <button
             key={key}
             type="button"
@@ -4694,7 +4730,7 @@ function EmployeePanel({
 
       {/* body */}
       <div className="min-h-0 flex-1 overflow-auto pb-3.5 pl-4 pr-3.5 pt-1.5">
-        {tab === "feedback" ? renderFeedback() : renderBudget()}
+        {tab === "feedback" ? renderFeedback() : renderRequest()}
       </div>
     </aside>
   );
@@ -4716,18 +4752,11 @@ export function AppraisalGrid({
   showHistory,
   setShowHistory,
 
-  // Optional — right panel "Budget" tab.
-  // budget = {
-  //   allocated,         // updated budget amount (rupees)
-  //   changedUnseen,     // true -> shows the "Budget changed" alert
-  //   changedFrom,       // original budget amount
-  //   used,              // optional override for consumed amount
-  //   targetPB,          // optional override for total target PB
-  //   teamChanges: [{ name, type, date }],
-  // }
   budget,
-  // Optional — shows the "View budget ›" link in the Budget tab.
   onViewBudget,
+  isTechEd = false,
+  isHR = false,
+  onRequest,
 }) {
   const { updateCell, updateLinkedCells, bulkUpdate, modified } =
     useAppraisal();
@@ -5570,6 +5599,24 @@ export function AppraisalGrid({
   }, []);
 
   const closePromote = useCallback(() => setPromoteState(null), []);
+
+  const clearPromotion = useCallback(
+    (row) => {
+      const anchor = promoteState?.anchor && promoteState.anchor.isConnected ? promoteState.anchor : null;
+      updateLinkedCells(row.id, { eligibleForPromotion: "No", newTitle: null }, "Clear promotion");
+      flashSaved(row.id + ":eligibleForPromotion");
+      flashSaved(row.id + ":newTitle");
+      markEdited(row.id + ":eligibleForPromotion");
+      markEdited(row.id + ":newTitle");
+      if (row.id === historyRow?.id) {
+        flashHistoryFields("eligibleForPromotion");
+        flashHistoryFields("newTitle");
+      }
+      showChangeToast(anchor, "Promotion", "Yes", "No", true);
+      setPromoteState(null);
+    },
+    [promoteState, updateLinkedCells, flashSaved, markEdited, historyRow, flashHistoryFields, showChangeToast],
+  );
 
   const applyPromotion = useCallback(
     (row, title) => {
@@ -7435,6 +7482,9 @@ export function AppraisalGrid({
           modified={modified}
           budget={budget}
           onViewBudget={onViewBudget}
+          isTechEd={isTechEd}
+          isHR={isHR}
+          onRequest={onRequest}
           onClose={closeDetailPanel}
           history={{
             loading: historyLoading,
@@ -7615,6 +7665,12 @@ export function AppraisalGrid({
                 className="h-[30px] w-full rounded-md border border-[#cbd2da] px-2 text-[12.5px] outline-none focus:border-[#102a43]"
               />
             </div>
+
+            {promoteRow.eligibleForPromotion === "Yes" && (
+              <button type="button" onClick={() => clearPromotion(promoteRow)} className="mx-2 mb-1 mt-0.5 block w-[calc(100%-1rem)] rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-left text-[12px] font-semibold text-red-600 hover:bg-red-100">
+                Clear promotion
+              </button>
+            )}
 
             <div className="max-h-[230px] overflow-auto">
               {promoteFiltered.slice(0, 60).map((title) => (
