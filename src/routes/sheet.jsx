@@ -322,6 +322,23 @@ export function SheetPage() {
             </div>
 
             <div className="ml-auto flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 shrink-0 px-3 text-[12px]"
+                onClick={() => {
+                  setFilters({});
+                  setSearch("");
+                  setShowEditedOnly(false);
+                }}
+                disabled={
+                  activeFilters.length === 0 && !search && !showEditedOnly
+                }
+              >
+                <RotateCcw className="size-3.5" />
+                Reset
+              </Button>
+
               <button
                 type="button"
                 onClick={() => setShowHistory((previous) => !previous)}
@@ -391,9 +408,6 @@ export function SheetPage() {
                 Reset
               </Button>
 
-              <button type="button" onClick={() => setAuditOpen(true)} className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]" title="Open the audit trail">
-                <span>✎ Edited</span><strong>{editedCount}</strong><span className="text-slate-400">of {rows.length}</span>
-              </button>
               <button type="button" onClick={() => {
                   setShowEditedOnly(false);
                   setFilters((previous) => ({
