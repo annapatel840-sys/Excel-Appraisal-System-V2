@@ -29,6 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
+import { useCatalystUser } from "@/lib/catalyst-auth";
 
 import {
   applyFilters,
@@ -95,6 +96,10 @@ export function SheetPage() {
     error: budgetError,
   } = useBudget();
   const { openImportPicker, importUi } = useAppraisalImport();
+  const catalystUser = useCatalystUser();
+  const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const isTechEd = role.includes("teched");
+  const isHR = role.includes("hr");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({});
   const [selected, setSelected] = useState({});
@@ -481,6 +486,31 @@ export function SheetPage() {
             setShowHistory={setShowHistory}
             focusEmployeeId={lastEditedTarget}
             onFocusEmployeeHandled={() => setLastEditedTarget("")}
+            isTechEd={isTechEd}
+            isHR={isHR}
+            onRequest={(request) => {
+              const key = request.type === "delegation" ? "appraisal-delegation-requests" : "appraisal-screen-requests";
+              const current = JSON.parse(localStorage.getItem(key) || "[]");
+              current.unshift({
+                id: request.type.toUpperCase() + "-" + Date.now(),
+                rowId: request.employee?.id || request.employee?.empId || "",
+                empId: request.employee?.empId || "",
+                empName: request.employee?.name || "",
+                field: request.type,
+                oldId: "",
+                newId: "",
+                reason: "Requested from appraisal detail panel",
+                byId: catalystUser?.user_id || catalystUser?.id || "",
+                byName: catalystUser?.name || catalystUser?.email || "Tech Ed",
+                on: new Date().toISOString(),
+                status: "Pending",
+                decidedBy: "",
+                decidedOn: "",
+                remarks: "",
+              });
+              localStorage.setItem(key, JSON.stringify(current));
+              window.alert(request.type === "delegation" ? "Delegation request sent to HR." : "Screen request sent.");
+            }}
           />
         </div>
       </AppShell>
