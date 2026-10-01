@@ -773,35 +773,35 @@ export async function createEmployeeMasterEmployees(records) {
     throw new Error("No employee records to import.");
   }
 
-  const response = await catalystFetch(EMPLOYEE_API_URL, {
-    method: "POST",
+  // Catalyst Data Store imports are sent in bounded batches so a large
+  // Employee Master sheet is never truncated by one request.
+  const BATCH_SIZE = 100;
+  const totals = { created: 0, updated: 0, skipped: 0, skippedRecords: [], insertedRows: [], updatedRows: [], statusSyncResults: [] };
 
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
+  for (let start = 0; start < records.length; start += BATCH_SIZE) {
+    const batch = records.slice(start, start + BATCH_SIZE);
+    const response = await catalystFetch(EMPLOYEE_API_URL, {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ employees: batch }),
+    });
 
-    body: JSON.stringify({
-      employees: records,
-    }),
-  });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result || !result.success) {
+      throw new Error((result && result.message) || `Employee import failed with status ${response.status}`);
+    }
 
-  const result = await response.json().catch(() => null);
-
-  if (!response.ok) {
-    throw new Error(
-      (result && result.message) ||
-        `Employee import failed with status ${response.status}`,
-    );
+    const data = result.data || {};
+    totals.created += Number(data.created || 0);
+    totals.updated += Number(data.updated || 0);
+    totals.skipped += Number(data.skipped || 0);
+    totals.skippedRecords.push(...(Array.isArray(data.skippedRecords) ? data.skippedRecords : []));
+    totals.insertedRows.push(...(Array.isArray(data.insertedRows) ? data.insertedRows : []));
+    totals.updatedRows.push(...(Array.isArray(data.updatedRows) ? data.updatedRows : []));
+    totals.statusSyncResults.push(...(Array.isArray(data.statusSyncResults) ? data.statusSyncResults : []));
   }
 
-  if (!result || !result.success) {
-    throw new Error(
-      (result && result.message) || "Failed to import employees.",
-    );
-  }
-
-  return result;
+  return { success: true, message: "Roster import completed.", data: totals };
 }
 
 /* ============================================================
