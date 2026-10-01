@@ -70,11 +70,36 @@ export function AppraisalCycleMasterPage() {
   const [remarksText, setRemarksText] = useState("");
 
   const [newForm, setNewForm] = useState({
-    name: "",
+    type: "Annual",
     start: "",
     end: "",
     remarks: "",
   });
+
+  const generateCycleName = (type, start, end) => {
+    if (!type || !start || !end) return "";
+
+    const startDate = new Date(start + "T00:00:00");
+    const endDate = new Date(end + "T00:00:00");
+
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) {
+      return "";
+    }
+
+    // FY runs from April to March: Apr-26 to Mar-27 => FY26-27.
+    const fiscalStartYear =
+      startDate.getMonth() >= 3
+        ? startDate.getFullYear()
+        : startDate.getFullYear() - 1;
+    const fiscalEndYear = fiscalStartYear + 1;
+    const fy =
+      "FY" +
+      String(fiscalStartYear).slice(-2) +
+      "-" +
+      String(fiscalEndYear).slice(-2);
+
+    return type + " Appraisal " + fy;
+  };
 
   const loadData = useCallback(async () => {
     const [cycleRows, auditRows] = await Promise.all([
@@ -267,9 +292,9 @@ export function AppraisalCycleMasterPage() {
   };
 
   const createCycle = async () => {
-    const name = newForm.name.trim();
+    const name = generateCycleName(newForm.type, newForm.start, newForm.end);
 
-    if (!name || name.length > 100 || !newForm.start || !newForm.end) {
+    if (!newForm.type || !name || name.length > 100 || !newForm.start || !newForm.end) {
       showBanner("Validation failed", "Cycle name (up to 100 characters), start date and end date are required.", true);
       return;
     }
@@ -305,7 +330,7 @@ export function AppraisalCycleMasterPage() {
     );
     if (saved) {
       setNewCycleOpen(false);
-      setNewForm({ name: "", start: "", end: "", remarks: "" });
+      setNewForm({ type: "Annual", start: "", end: "", remarks: "" });
     }
   };
 
@@ -1135,24 +1160,44 @@ export function AppraisalCycleMasterPage() {
 
             <div className="acm-modal-body">
               <div className="acm-form-grid">
-                <div className="acm-field full">
-                  <label>Cycle Name</label>
+                <div className="acm-field">
+                  <label>Cycle Type</label>
 
-                  <input
+                  <select
                     disabled={saving}
-                    value={newForm.name}
+                    value={newForm.type}
                     onChange={(event) =>
                       setNewForm((current) => ({
                         ...current,
-                        name: event.target.value,
+                        type: event.target.value,
                       }))
                     }
-                    placeholder="e.g. Annual Appraisal FY27-28"
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      border: "1px solid #d8dee9",
+                      borderRadius: "7px",
+                      padding: "9px 10px",
+                      fontSize: "12px",
+                      background: "#fff",
+                    }}
+                  >
+                    <option value="Annual">Annual</option>
+                    <option value="Exceptional">Exceptional</option>
+                  </select>
+                </div>
+
+                <div className="acm-field">
+                  <label>Cycle Name</label>
+                  <input
+                    disabled
+                    value={generateCycleName(newForm.type, newForm.start, newForm.end)}
+                    placeholder="Generated from type and dates"
                   />
                 </div>
 
                 <div className="acm-field">
-                  <label>Start Date</label>
+                  <label>From</label>
 
                   <input
                     type="date"
@@ -1168,7 +1213,7 @@ export function AppraisalCycleMasterPage() {
                 </div>
 
                 <div className="acm-field">
-                  <label>End Date</label>
+                  <label>To</label>
 
                   <input
                     type="date"
