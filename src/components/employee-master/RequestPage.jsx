@@ -1,9 +1,11 @@
 import { useMemo, useState } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
+import { useAccess } from "@/lib/access-store";
 import DelegationScreen from "./DelegationScreen";
 
 export function RequestPage() {
   const user = useCatalystUser();
+  const canDelegate = useAccess().canAction("delegateRequest");
   const [view, setView] = useState("menu");
   const [employeeId, setEmployeeId] = useState("");
   const [details, setDetails] = useState("");
@@ -28,7 +30,7 @@ export function RequestPage() {
     setMessage("Screen request saved as Pending.");
   };
 
-  if (view === "delegation") {
+  if (view === "delegation" && canDelegate) {
     const submitDelegationRequest = () => {
       const reason = details.trim();
       if (!employeeId.trim() || !reason) { setMessage("Employee ID and reason are required."); return; }
@@ -93,10 +95,12 @@ export function RequestPage() {
         <p className="mt-1 text-[11px] text-slate-500">Choose the type of request you want to raise.</p>
       </div>
       <div className="grid gap-3 p-4 sm:grid-cols-2">
-        <button type="button" onClick={() => setView("delegation")} className="rounded-md border border-[#cbd5e1] bg-white p-4 text-left hover:bg-slate-50">
-          <div className="text-sm font-semibold text-[#173b63]">Delegation Request</div>
-          <div className="mt-1 text-[11px] text-slate-500">Request Comp Manager or Appraiser Tech Ed delegation changes for HR approval.</div>
-        </button>
+        {canDelegate && (
+          <button type="button" onClick={() => setView("delegation")} className="rounded-md border border-[#cbd5e1] bg-white p-4 text-left hover:bg-slate-50">
+            <div className="text-sm font-semibold text-[#173b63]">Delegation Request</div>
+            <div className="mt-1 text-[11px] text-slate-500">Request Comp Manager or Appraiser Tech Ed delegation changes for HR approval.</div>
+          </button>
+        )}
         <button type="button" onClick={() => setView("screen")} className="rounded-md border border-[#cbd5e1] bg-white p-4 text-left hover:bg-slate-50">
           <div className="text-sm font-semibold text-[#173b63]">Screen Request</div>
           <div className="mt-1 text-[11px] text-slate-500">Raise a request for a change to the appraisal/detail screen.</div>

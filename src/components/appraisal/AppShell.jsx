@@ -9,6 +9,7 @@ import {
   Settings,
 } from "lucide-react";
 
+import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
 import { useCatalystSignOut, useCatalystUser } from "@/lib/catalyst-auth";
 import { useSettings } from "@/lib/settings-store";
 import { cn } from "@/lib/utils";
@@ -21,10 +22,24 @@ const TECH_ED_PATHS = [
   "/budget-allocation",
 ];
 
+const HR_MENU_ITEMS = [
+  ["Employee Master", "roster", "/employee-master?tab=roster"],
+  ["Eligibility List", "eligibility", "/employee-master?tab=eligibility"],
+  ["Appraisal Cycle Master", "appraisal-cycle", "/employee-master?tab=appraisal-cycle"],
+  ["Payroll Data", "payroll-data", "/employee-master?tab=payroll-data"],
+  ["Payroll Upload", "payroll-upload", "/employee-master?tab=payroll-upload"],
+  ["Team Changes", "team-changes", "/employee-master?tab=team-changes"],
+  ["Budget Allocation", "budget-allocation", "/employee-master?tab=budget-allocation"],
+  ["Budget Distribution", "budget-distribution", "/employee-master?tab=budget-distribution"],
+  ["Delegation", "delegation", "/employee-master?tab=delegation"],
+  ["Access", "access", "/employee-master?tab=access"],
+];
+
 export function AppShell({ children, headerActions }) {
   const pathname = window.location.pathname;
   const signOut = useCatalystSignOut();
   const user = useCatalystUser();
+  const access = useAccess();
   const { settings } = useSettings();
 
   const role = String(user?.role || "")
@@ -60,9 +75,34 @@ export function AppShell({ children, headerActions }) {
     { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
   ];
 
-  const nav = isTechEd
+  const fallbackNav = isTechEd
     ? allNav.filter((item) => TECH_ED_PATHS.includes(item.to))
     : allNav;
+
+  // With access rules (/me ok) the menu follows the user's screens; otherwise
+  // the role-based menu above is used unchanged.
+  const hrMenuItems = HR_MENU_ITEMS.filter(([, tab]) =>
+    access.ok ? access.canScreen(HR_TAB_SCREENS[tab]) : tab !== "access" || isHR,
+  );
+  const nav = access.ok
+    ? [
+        access.canScreen("dashboard") && { to: "/", label: "Dashboard", icon: LayoutDashboard },
+        access.canScreen("appraisalSheet") && { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
+        access.canScreen("budgetAllocation") &&
+          access.role !== "hr" && {
+            to: "/budget-allocation",
+            label: "Budget Allocation",
+            icon: WalletCards,
+          },
+        hrMenuItems.length > 0 && {
+          to: "/employee-master",
+          label: "HR Operations",
+          icon: Users,
+          dropdown: true,
+        },
+        access.canScreen("detailScreen") && { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
+      ].filter(Boolean)
+    : fallbackNav;
 
   const navigate = (event, to) => {
     if (
@@ -188,17 +228,7 @@ export function AppShell({ children, headerActions }) {
                       role="menu"
                     >
                       <div className="overflow-hidden rounded-md border border-[#d8e0ea] bg-white py-1 shadow-xl">
-                        {[
-                          ["Employee Master", "roster", "/employee-master?tab=roster"],
-                          ["Eligibility List", "eligibility", "/employee-master?tab=eligibility"],
-                          ["Appraisal Cycle Master", "appraisal-cycle", "/employee-master?tab=appraisal-cycle"],
-                          ["Payroll Data", "payroll-data", "/employee-master?tab=payroll-data"],
-                          ["Payroll Upload", "payroll-upload", "/employee-master?tab=payroll-upload"],
-                          ["Team Changes", "team-changes", "/employee-master?tab=team-changes"],
-                          ["Budget Allocation", "budget-allocation", "/employee-master?tab=budget-allocation"],
-                          ["Budget Distribution", "budget-distribution", "/employee-master?tab=budget-distribution"],
-                          ["Delegation", "delegation", "/employee-master?tab=delegation"],
-                        ].map(([label, tab, to]) => (
+                        {hrMenuItems.map(([label, tab, to]) => (
                           <a
                             key={tab}
                             href={to}
@@ -228,7 +258,7 @@ export function AppShell({ children, headerActions }) {
           >
             {!isVertical && headerActions}
             {isVertical && headerActions}
-            {settingsButton}
+            {access.canScreen("settings") && settingsButton}
             <button
               type="button"
               onClick={signOut}

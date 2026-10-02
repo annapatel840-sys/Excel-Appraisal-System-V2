@@ -1,0 +1,12 @@
+{
+	"deployment": {
+		"name": "accessapi",
+		"stack": "node24",
+		"type": "advancedio",
+		"memory": 256,
+		"env_variables": {}
+	},
+	"execution": {
+		"main": "index.js"
+	}
+}
