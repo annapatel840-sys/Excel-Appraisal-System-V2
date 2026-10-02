@@ -317,7 +317,7 @@ export function SheetPage() {
   return (
     <>
       <AppShell headerActions={headerActions}>
-        <div className={cn("space-y-2", budgetVertical && "min-h-[calc(100vh-180px)] pl-2 pr-1 pt-1")}>
+        <div className={cn("flex min-h-0 flex-1 flex-col gap-2", budgetVertical && "pl-1 pr-0 pt-0")}>
           {(saveError || loadError) && (
             <div
               role="alert"
@@ -576,6 +576,7 @@ export function SheetPage() {
           )}
 
           <AppraisalGrid
+            verticalLayout={budgetVertical}
             rows={filtered}
             filters={filters}
             setFilter={setFilter}
