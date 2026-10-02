@@ -780,7 +780,7 @@ export default function DelegationScreen({
         </div>
  
         {/* ------------------------------ side */}
-        <div className="dg-side">
+        <div className={"dg-side" + (bulkOpen && reqOpen ? " both" : "")}>
           {/* ADDED: Bulk assign folds left to right; folded on load */}
           <div className={"dg-col" + (bulkOpen ? " open" : "")} id="dg-bulk">
           {bulkOpen ? (
@@ -1237,6 +1237,8 @@ const CSS = `
 .dg-side{flex:0 0 auto;display:flex;flex-direction:row;gap:14px;align-self:stretch}
 .dg-col{flex:0 0 34px;width:34px;min-width:0;display:flex;flex-direction:column}
 .dg-col.open{flex:0 0 330px;width:330px;align-self:flex-start}
+.dg-side.both{flex-direction:column;flex:0 0 330px;width:330px}
+.dg-side.both .dg-col.open{flex:none;width:100%;align-self:stretch}
 .dg .sh{padding:11px 13px;border-bottom:1px solid #e6eaef;display:flex;gap:9px;align-items:center}
 .dg .ic{background:#1a8a74;color:#fff;border-radius:6px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 28px}
 .dg .ic.o{background:#e0662f}
@@ -1269,5 +1271,5 @@ const CSS = `
 .dg .dg-fold{flex:1;min-height:160px;display:flex;justify-content:center;padding-top:14px;background:#fff;border:1px solid #dfe4ea;border-radius:10px;cursor:pointer;color:#15365a;font-weight:800}
 .dg .dg-fold:hover{background:#f1f4f8}
 .dg .dg-vbtn{writing-mode:vertical-rl;transform:rotate(180deg);font-size:12.5px;letter-spacing:.02em}
-@media(max-width:1100px){.dg-body{flex-direction:column}.dg-side{width:100%;flex:none;flex-direction:column}.dg-stats{grid-template-columns:repeat(2,1fr)}.dg-col,.dg-col.open{width:100%;flex:none}.dg .dg-fold{min-height:0;padding:10px;align-items:center}.dg .dg-vbtn{writing-mode:horizontal-tb;transform:none}}
+@media(max-width:1100px){.dg-body{flex-direction:column}.dg-side{width:100%;flex:none;flex-direction:column}.dg-side.both{width:100%;flex:none}.dg-stats{grid-template-columns:repeat(2,1fr)}.dg-col,.dg-col.open{width:100%;flex:none}.dg .dg-fold{min-height:0;padding:10px;align-items:center}.dg .dg-vbtn{writing-mode:horizontal-tb;transform:none}}
 `;

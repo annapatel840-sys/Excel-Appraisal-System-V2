@@ -79,7 +79,7 @@ export function AppShell({ children, headerActions }) {
         <div className="mx-auto flex h-12 max-w-[1600px] items-center gap-3 px-3">
           <div className="flex shrink-0 items-center gap-2">
             <span className="flex size-7 items-center justify-center rounded-md bg-primary text-[10px] font-bold text-primary-foreground">
-              EA
+              R2C
             </span>
             <div className="hidden xl:block">
               <h1 className="text-xs font-semibold leading-tight text-white">

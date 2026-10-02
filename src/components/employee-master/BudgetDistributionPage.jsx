@@ -1,26 +1,26 @@
 import { useMemo, useState } from "react";
 import { WalletCards, RefreshCw } from "lucide-react";
-
+ 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
-
+ 
 const money = (value) =>
   "₹ " + ((Number(value) || 0) / 100000).toFixed(2) + " L";
-
+ 
 const pct = (value) => (Number(value) || 0).toFixed(1) + "%";
-
+ 
 const normalize = (value) =>
   String(value || "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
-
+ 
 function ownerName(value) {
   const text = String(value || "").trim();
   const match = text.match(/^\S+\s*-\s*(.+)$/);
   return match ? match[1].trim() : text;
 }
-
+ 
 function dateText(value) {
   if (!value) return "—";
   const date = new Date(value);
@@ -31,7 +31,7 @@ function dateText(value) {
     year: "numeric",
   });
 }
-
+ 
 const CSS = `
 .bd-root {
   max-width: 1320px;
@@ -101,6 +101,7 @@ const CSS = `
   color: #fff;
   border: 0;
   padding: 10px 16px;
+  font-family: inherit;
   font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
@@ -226,7 +227,7 @@ const CSS = `
   padding: 8px 10px;
 }
 `;
-
+ 
 export function BudgetDistributionPage() {
   const user = useCatalystUser();
   const {
@@ -238,9 +239,11 @@ export function BudgetDistributionPage() {
     reload,
     isHR,
   } = useBudget();
-
+ 
   const [open, setOpen] = useState({});
-
+  const [summaryOpen, setSummaryOpen] = useState(true);
+  const [tableOpen, setTableOpen] = useState(true);
+ 
   const rows = useMemo(
     () =>
       [...budgetRows].sort((a, b) =>
@@ -248,21 +251,21 @@ export function BudgetDistributionPage() {
       ),
     [budgetRows],
   );
-
+ 
   const totalPercentage = useMemo(
     () => rows.reduce((sum, row) => sum + Number(row.budget_percentage || 0), 0),
     [rows],
   );
-
+ 
   const role = normalize(user?.role);
   const canView = isHR || role === "hr" || role === "human resources";
-
+ 
   if (!canView) return null;
-
+ 
   return (
     <div className="bd-root">
       <style>{CSS}</style>
-
+ 
       <div className="top">
         <span className="title">
           <span className="title-icon">
@@ -289,177 +292,192 @@ export function BudgetDistributionPage() {
           Refresh
         </button>
       </div>
-
+ 
       <section className="card">
-        <div className="pane-head">
+        <button
+          type="button"
+          className="pane-head"
+          onClick={() => setSummaryOpen((current) => !current)}
+          aria-expanded={summaryOpen}
+        >
           <span>Distribution Summary</span>
           <span className="muted-small" style={{ color: "#d6e4f5" }}>
             All Tech-Ed budgets
+            <span style={{ marginLeft: 10 }}>{summaryOpen ? "▾" : "▸"}</span>
           </span>
-        </div>
-
-        <div className="summary">
-          <div>
-            <div className="label">Tech-Ed count</div>
-            <div className="value">{rows.length}</div>
-            <div className="sub muted">Active budget records</div>
-          </div>
-          <div>
-            <div className="label">Total original budget</div>
-            <div className="value">{money(totals.base)}</div>
-            <div className="sub muted">Before additional budget</div>
-          </div>
-          <div>
-            <div className="label">Additional budget</div>
-            <div className="value">{money(totals.additional)}</div>
-            <div className="sub muted">Added to original</div>
-          </div>
-          <div>
-            <div className="label">Total updated budget</div>
-            <div className="value">{money(totals.updated)}</div>
-            <div className="sub muted">Current allocation</div>
-          </div>
-          <div>
-            <div className="label">Total utilised</div>
-            <div className="value">{money(totals.utilized)}</div>
-            <div className="sub muted">
-              {totals.updated
-                ? ((totals.utilized / totals.updated) * 100).toFixed(0) + "% utilised"
-                : "—"}
+        </button>
+ 
+        {summaryOpen && (
+          <div className="summary">
+            <div>
+              <div className="label">Tech-Ed count</div>
+              <div className="value">{rows.length}</div>
+              <div className="sub muted">Active budget records</div>
+            </div>
+            <div>
+              <div className="label">Total original budget</div>
+              <div className="value">{money(totals.base)}</div>
+              <div className="sub muted">Before additional budget</div>
+            </div>
+            <div>
+              <div className="label">Additional budget</div>
+              <div className="value">{money(totals.additional)}</div>
+              <div className="sub muted">Added to original</div>
+            </div>
+            <div>
+              <div className="label">Total updated budget</div>
+              <div className="value">{money(totals.updated)}</div>
+              <div className="sub muted">Current allocation</div>
+            </div>
+            <div>
+              <div className="label">Total utilised</div>
+              <div className="value">{money(totals.utilized)}</div>
+              <div className="sub muted">
+                {totals.updated
+                  ? ((totals.utilized / totals.updated) * 100).toFixed(0) + "% utilised"
+                  : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="label">Total remaining</div>
+              <div className="value">{money(totals.remaining)}</div>
+              <div className="sub muted">Updated budget − utilised</div>
             </div>
           </div>
-          <div>
-            <div className="label">Total remaining</div>
-            <div className="value">{money(totals.remaining)}</div>
-            <div className="sub muted">Updated budget − utilised</div>
-          </div>
-        </div>
+        )}
       </section>
-
+ 
       <section className="card">
-        <div className="pane-head">
+        <button
+          type="button"
+          className="pane-head"
+          onClick={() => setTableOpen((current) => !current)}
+          aria-expanded={tableOpen}
+        >
           <span>
             Tech-Ed Budget Distribution
             <span className="cnt">{rows.length} records</span>
           </span>
           <span className="muted-small" style={{ color: "#d6e4f5" }}>
             Total %: {pct(totalPercentage)}
+            <span style={{ marginLeft: 10 }}>{tableOpen ? "▾" : "▸"}</span>
           </span>
-        </div>
-
-        {loading ? (
-          <div className="empty">Loading Tech-Ed budget distribution…</div>
-        ) : error ? (
-          <div className="error">{error}</div>
-        ) : rows.length === 0 ? (
-          <div className="empty">No active Tech-Ed budget records found.</div>
-        ) : (
-          <div className="scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Level</th>
-                  <th>Tech-Ed</th>
-                  <th className="num">Budget %</th>
-                  <th className="num">Original Budget</th>
-                  <th className="num">Additional Budget</th>
-                  <th className="num">Updated Budget</th>
-                  <th className="num">Utilised</th>
-                  <th className="num">Remaining</th>
-                  <th className="num">Utilisation %</th>
-                  <th>Team Count</th>
-                  <th>Status</th>
-                  <th>Access</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const owner = ownerName(row.tech_ed_id);
-                  const key = row.id || row.tech_ed_id;
-                  const expanded = Boolean(open[key]);
-
-                  return (
-                    <tr key={key} className="tech">
-                      <td>
-                        <b>Tech-Ed</b>
-                      </td>
-                      <td>
-                        <div className="owner">{owner || row.tech_ed_id || "—"}</div>
-                        {owner && owner !== row.tech_ed_id ? (
-                          <div className="muted-small">{row.tech_ed_id}</div>
-                        ) : null}
-                      </td>
-                      <td className="num">{pct(row.budget_percentage)}</td>
-                      <td className="num">{money(row.budget_amount)}</td>
-                      <td className="num">{money(row.additional_budget)}</td>
-                      <td className="num">{money(row.updated_budget)}</td>
-                      <td className="num">{money(row.budget_utilized)}</td>
-                      <td className="num">{money(row.budget_remaining)}</td>
-                      <td className="num">{pct(row.utilization_percentage)}</td>
-                      <td>{employeeCounts[row.tech_ed_id] ?? "—"}</td>
-                      <td>
-                        <span className="status">
-                          {row.status || "Active"}
-                        </span>
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="readonly"
-                          onClick={() =>
-                            setOpen((current) => ({
-                              ...current,
-                              [key]: !expanded,
-                            }))
-                          }
-                          aria-expanded={expanded}
-                        >
-                          {expanded ? "Hide details" : "View details"}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            {rows.map((row) => {
-              const key = row.id || row.tech_ed_id;
-              if (!open[key]) return null;
-              const owner = ownerName(row.tech_ed_id);
-              return (
-                <div className="detail" key={"detail-" + key}>
-                  <div className="detail-grid">
-                    <div className="detail-item">
-                      <div className="label">Tech-Ed</div>
-                      <b>{owner || row.tech_ed_id || "—"}</b>
-                    </div>
-                    <div className="detail-item">
-                      <div className="label">Budget percentage</div>
-                      <b>{pct(row.budget_percentage)}</b>
-                    </div>
-                    <div className="detail-item">
-                      <div className="label">Updated budget</div>
-                      <b>{money(row.updated_budget)}</b>
-                    </div>
-                    <div className="detail-item">
-                      <div className="label">Utilised</div>
-                      <b>{money(row.budget_utilized)}</b>
-                    </div>
-                    <div className="detail-item">
-                      <div className="label">Remaining</div>
-                      <b>{money(row.budget_remaining)}</b>
-                    </div>
-                    <div className="detail-item">
-                      <div className="label">Last updated</div>
-                      <b>{dateText(row.updated_at || row.modified_at)}</b>
+        </button>
+ 
+        {tableOpen &&
+          (loading ? (
+            <div className="empty">Loading Tech-Ed budget distribution…</div>
+          ) : error ? (
+            <div className="error">{error}</div>
+          ) : rows.length === 0 ? (
+            <div className="empty">No active Tech-Ed budget records found.</div>
+          ) : (
+            <div className="scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Level</th>
+                    <th>Tech-Ed</th>
+                    <th className="num">Budget %</th>
+                    <th className="num">Original Budget</th>
+                    <th className="num">Additional Budget</th>
+                    <th className="num">Updated Budget</th>
+                    <th className="num">Utilised</th>
+                    <th className="num">Remaining</th>
+                    <th className="num">Utilisation %</th>
+                    <th>Team Count</th>
+                    <th>Status</th>
+                    <th>Access</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => {
+                    const owner = ownerName(row.tech_ed_id);
+                    const key = row.id || row.tech_ed_id;
+                    const expanded = Boolean(open[key]);
+ 
+                    return (
+                      <tr key={key} className="tech">
+                        <td>
+                          <b>Tech-Ed</b>
+                        </td>
+                        <td>
+                          <div className="owner">{owner || row.tech_ed_id || "—"}</div>
+                          {owner && owner !== row.tech_ed_id ? (
+                            <div className="muted-small">{row.tech_ed_id}</div>
+                          ) : null}
+                        </td>
+                        <td className="num">{pct(row.budget_percentage)}</td>
+                        <td className="num">{money(row.budget_amount)}</td>
+                        <td className="num">{money(row.additional_budget)}</td>
+                        <td className="num">{money(row.updated_budget)}</td>
+                        <td className="num">{money(row.budget_utilized)}</td>
+                        <td className="num">{money(row.budget_remaining)}</td>
+                        <td className="num">{pct(row.utilization_percentage)}</td>
+                        <td>{employeeCounts[row.tech_ed_id] ?? "—"}</td>
+                        <td>
+                          <span className="status">
+                            {row.status || "Active"}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="readonly"
+                            onClick={() =>
+                              setOpen((current) => ({
+                                ...current,
+                                [key]: !expanded,
+                              }))
+                            }
+                            aria-expanded={expanded}
+                          >
+                            {expanded ? "Hide details" : "View details"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+ 
+              {rows.map((row) => {
+                const key = row.id || row.tech_ed_id;
+                if (!open[key]) return null;
+                const owner = ownerName(row.tech_ed_id);
+                return (
+                  <div className="detail" key={"detail-" + key}>
+                    <div className="detail-grid">
+                      <div className="detail-item">
+                        <div className="label">Tech-Ed</div>
+                        <b>{owner || row.tech_ed_id || "—"}</b>
+                      </div>
+                      <div className="detail-item">
+                        <div className="label">Budget percentage</div>
+                        <b>{pct(row.budget_percentage)}</b>
+                      </div>
+                      <div className="detail-item">
+                        <div className="label">Updated budget</div>
+                        <b>{money(row.updated_budget)}</b>
+                      </div>
+                      <div className="detail-item">
+                        <div className="label">Utilised</div>
+                        <b>{money(row.budget_utilized)}</b>
+                      </div>
+                      <div className="detail-item">
+                        <div className="label">Remaining</div>
+                        <b>{money(row.budget_remaining)}</b>
+                      </div>
+                      <div className="detail-item">
+                        <div className="label">Last updated</div>
+                        <b>{dateText(row.updated_at || row.modified_at)}</b>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          ))}
       </section>
     </div>
   );
