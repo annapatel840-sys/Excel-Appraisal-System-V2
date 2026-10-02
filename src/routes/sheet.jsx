@@ -276,7 +276,7 @@ export function SheetPage() {
   const budgetCollapsed = budgetVertical && settings.menuCollapsed;
 
   const headerActions = budgetCollapsed ? (
-    <div className="flex items-center gap-1">
+    <div className="flex flex-col items-center gap-1">
       <span title={`Budget Allocated: ${formatCrore(budgetAllocated)}`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
         <WalletCards className="size-4" />
       </span>
@@ -317,7 +317,7 @@ export function SheetPage() {
   return (
     <>
       <AppShell headerActions={headerActions}>
-        <div className="space-y-2">
+        <div className={cn("space-y-2", budgetVertical && "min-h-[calc(100vh-180px)] pl-2 pr-1 pt-1")}>
           {(saveError || loadError) && (
             <div
               role="alert"
