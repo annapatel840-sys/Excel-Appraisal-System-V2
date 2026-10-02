@@ -112,7 +112,6 @@ const START_CATALOG = [
   act('allotNextLevel', 'Allot budget to next level', 'Budget', '', [0, 1, 1]),
   act('changeBudgetConfig', 'Change budget config', 'Budget', 'HR only', [1, 0, 0]),
   act('viewAudit', 'View audit trails', 'Access', '', [1, 1, 0]),
-  act('previewAs', 'Preview as another role', 'Access', 'HR only', [1, 0, 0]),
 
   fld('name', 'EMP Name', 'master'),
   fld('designation', 'Designation', 'master'),

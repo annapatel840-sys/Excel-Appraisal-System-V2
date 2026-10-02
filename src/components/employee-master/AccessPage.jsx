@@ -79,6 +79,9 @@ function buildModel(data, pending, today, cycleName) {
   const matrix = data?.matrix || { screens: {}, actions: {}, fields: {} };
   const people = data?.people || [];
   const deleg = { techEd: data?.deleg?.techEd || {}, compMgr: data?.deleg?.compMgr || {} };
+  // People-tab cycle (may not be the Active one); effective access uses deleg only.
+  const listDeleg = { techEd: data?.listDeleg?.techEd || deleg.techEd, compMgr: data?.listDeleg?.compMgr || deleg.compMgr };
+  const listActive = data?.listCycleActive !== false;
   const overrides = data?.overrides || [];
   const log = data?.log || [];
   const pendList = Object.values(pending);
@@ -134,7 +137,7 @@ function buildModel(data, pending, today, cycleName) {
     }
     if (deleg.techEd[p.empId] != null) return { role: "techEd", from: delegFrom };
     if (deleg.compMgr[p.empId] != null) return { role: "compMgr", from: delegFrom };
-    return { role: "", from: "No role" };
+    return { role: "", from: p.catalystRole ? "Catalyst role " + p.catalystRole + " (not an access role)" : "No role" };
   }
   const effCache = {};
   function effRole(p) {
@@ -215,7 +218,10 @@ function buildModel(data, pending, today, cycleName) {
     if (!p.inEM) f.push(["Not in Employee Master", ""]);
     else if (!p.email) f.push(["No email", ""]);
     if (p.inEM && !p.active) f.push(["Inactive in Employee Master", "a"]);
-    if (canLogIn(p) && !effRole(p).role) f.push(["No role", "a"]);
+    if (canLogIn(p) && !effRole(p).role) {
+      const inSel = listDeleg.techEd[p.empId] != null ? "Tech ED" : listDeleg.compMgr[p.empId] != null ? "Comp Manager" : "";
+      f.push([inSel && !listActive ? inSel + " in this cycle — cycle not Active" : "No role", "a"]);
+    }
     return f;
   }
   function pendFor(t) {
@@ -619,8 +625,7 @@ function NameList({ title, names }) {
   );
 }
 
-function DelegationHelper({ cyc, onFilled, noteEnforced }) {
-  const [pick, setPick] = useState("");
+function DelegationHelper({ cyc, onFilled, noteEnforced, pick, setPick }) {
   const [count, setCount] = useState(null);
   const [countErr, setCountErr] = useState("");
   const [tick, setTick] = useState(0);
@@ -749,7 +754,7 @@ function DelegationHelper({ cyc, onFilled, noteEnforced }) {
 }
 
 /* =====================================================================
-   Modals: + Override / + Extra team, + Add role, Preview
+   Modals: + Override / + Extra team, + Add role
    ===================================================================== */
 function OverrideModal({ M, empId, teamOnly, today, onSave, onClose }) {
   const persons = M.people.filter(M.canLogIn);
@@ -875,56 +880,6 @@ function RoleModal({ M, onSave, onClose }) {
   );
 }
 
-function PreviewBody({ scr, act, ed, hid, team }) {
-  const ul = (a) => (a.length ? <ul>{a}</ul> : <div className="derived">None</div>);
-  return (
-    <>
-      <div className="mgrid">
-        <div><h4>Screens ({scr.length})</h4>{ul(scr)}</div>
-        <div><h4>Actions allowed ({act.length})</h4>{ul(act)}</div>
-        <div>
-          <h4>Can edit ({ed.length})</h4>{ul(ed)}
-          <h4 style={{ marginTop: 10 }}>Can’t see ({hid.length})</h4>{ul(hid)}
-        </div>
-      </div>
-      <div className="mnote">{team} · Preview shows saved settings plus pending changes. Nothing is saved from here.</div>
-    </>
-  );
-}
-
-function PreviewRoleModal({ M, roleKey, onClose }) {
-  const r = M.roleOf(roleKey) || { label: roleKey };
-  const lim = M.limitsFor(roleKey, []);
-  const scr = M.SCREENS.filter((s) => (M.cur("screen", roleKey, s.key) || "none") !== "none").map((s) => {
-    const v = M.cur("screen", roleKey, s.key);
-    return <li key={s.key}>{s.label}<span className={"pill " + (v === "edit" ? "e" : "v")}>{LEVEL_LABEL[v]}</span></li>;
-  });
-  const act = M.ACTIONS.filter((a) => M.cur("action", roleKey, a.key)).map((a) => <li key={a.key}>{a.label}</li>);
-  const ed = M.FIELDS.filter((f) => lim[f.key] === "edit").map((f) => <li key={f.key}>{f.label}</li>);
-  const hid = M.FIELDS.filter((f) => lim[f.key] === "hidden").map((f) => <li key={f.key}>{f.label}</li>);
-  const team = r.seesAll ? "Sees all employees" : roleKey === "techEd" || roleKey === "compMgr" ? "Sees own team from Delegation" : "No team unless extra scope";
-  return <Modal title={"Preview as " + r.label} onClose={onClose}><PreviewBody scr={scr} act={act} ed={ed} hid={hid} team={team} /></Modal>;
-}
-
-function PreviewPersonModal({ M, empId, onClose }) {
-  const p = M.personByEmp(empId);
-  if (!p) return null;
-  const r = M.effRole(p).role, lim = M.limitsFor(r, M.ovFor(empId));
-  const ok = M.canLogIn(p) && !!r;
-  const scr = M.SCREENS.map((s) => [s, M.effScreen(p, s.key)]).filter(([, e]) => e.v !== "none").map(([s, e]) => (
-    <li key={s.key}>{s.label}<span className={"pill " + (e.v === "edit" ? "e" : "v")}>{LEVEL_LABEL[e.v]}</span>{e.src === "override" && <span className="ovsrc">override</span>}</li>
-  ));
-  const act = M.ACTIONS.map((a) => [a, M.effAction(p, a.key)]).filter(([, e]) => e.v).map(([a, e]) => (
-    <li key={a.key}>{a.label}{e.src === "override" && <span className="ovsrc">override</span>}</li>
-  ));
-  const ed = ok ? M.FIELDS.filter((f) => lim[f.key] === "edit").map((f) => <li key={f.key}>{f.label}</li>) : [];
-  const hid = ok ? M.FIELDS.filter((f) => lim[f.key] === "hidden").map((f) => <li key={f.key}>{f.label}</li>) : [];
-  return (
-    <Modal title={"Preview as " + p.name + (r ? " (" + M.roleLabel(r) + ")" : "")} onClose={onClose}>
-      <PreviewBody scr={scr} act={act} ed={ed} hid={hid} team={M.canLogIn(p) ? M.teamOf(p).txt : "Can’t log in"} />
-    </Modal>
-  );
-}
 
 /* =====================================================================
    Quick check (no AI — looks up the access data on this screen)
@@ -1082,7 +1037,7 @@ function QuickCheck({ M, qc, setQc, sel, shown, setShown }) {
 /* =====================================================================
    Right side panel
    ===================================================================== */
-function SidePanel({ M, sel, onPick, onNewOv, onPreviewPerson, onToggleRemove, onTab, qcProps }) {
+function SidePanel({ M, sel, onPick, onNewOv, onToggleRemove, onTab, qcProps }) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const boxRef = useRef(null);
@@ -1127,7 +1082,6 @@ function SidePanel({ M, sel, onPick, onNewOv, onPreviewPerson, onToggleRemove, o
         ))}
         <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
           <button type="button" className="btn sm" onClick={() => onNewOv(false, p.empId)}>+ Override</button>
-          <button type="button" className="btn sm" onClick={() => onPreviewPerson(p.empId)}>Preview as {String(p.name).split(" ")[0]}</button>
         </div>
       </div>
     );
@@ -1195,22 +1149,27 @@ export default function AccessPage() {
   const noteEnforced = useCallback((v) => { if (typeof v === "boolean") setEnforced(v); }, []);
 
   /* load only when changed: keep a copy for this browser session, download again only if the version changed */
+  // Cycle whose Delegation the People tab lists ("" = the Active cycle).
+  const [listCycle, setListCycle] = useState("");
+  const listCycleRef = useRef("");
+
   const loadData = useCallback(async (force) => {
     const cache = readCache();
     try {
       const v = await getVersion();
       noteEnforced(v.enforced);
-      if (!force && cache && cache.data && cache.version === v.version) {
+      if (!force && !listCycleRef.current && cache && cache.data && cache.version === v.version) {
         setData(cache.data);
         setDataVer({ version: v.version, from: "from copy, nothing downloaded" });
         return;
       }
-      const d = await getAdminState();
+      const d = await getAdminState(listCycleRef.current);
       noteEnforced(d.enforced);
       const snap = {
         catalog: d.catalog || { screens: [], actions: [], fields: [] },
         roles: d.roles || [], matrix: d.matrix || { screens: {}, actions: {}, fields: {} },
         people: d.people || [], deleg: d.deleg || EMPTY_DELEG, overrides: d.overrides || [], log: d.log || [],
+        listDeleg: d.listDeleg || d.deleg || EMPTY_DELEG, listCycleId: d.listCycleId || "", listCycleActive: d.listCycleActive !== false,
       };
       writeCache(d.version, snap);
       setData(snap);
@@ -1240,6 +1199,14 @@ export default function AccessPage() {
     loadData(false);
     loadCycles();
   }, [loadData, loadCycles]);
+
+  // With no Active cycle, list people for the cycle the Delegation bar shows (the first one).
+  useEffect(() => {
+    if (!cyc.loaded || cyc.activeId || listCycleRef.current || !cyc.list.length) return;
+    listCycleRef.current = cyc.list[0].id;
+    setListCycle(cyc.list[0].id);
+    loadData(true);
+  }, [cyc, loadData]);
 
   const cycleName = (cyc.list.find((c) => c.id === cyc.activeId) || {}).name || "";
   const M = useMemo(() => buildModel(data, pending, today, cycleName), [data, pending, today, cycleName]);
@@ -1344,7 +1311,15 @@ export default function AccessPage() {
     body = (
       <PeopleTab
         M={M} filt={filt} setFilt={setFilt} onPick={onPick} onExport={exportPeople}
-        delegationHelper={<DelegationHelper cyc={cyc} noteEnforced={noteEnforced} onFilled={() => { loadData(true); loadCycles(); }} />}
+        delegationHelper={
+          <DelegationHelper
+            cyc={cyc}
+            noteEnforced={noteEnforced}
+            pick={listCycle}
+            setPick={(id) => { listCycleRef.current = id; setListCycle(id); loadData(true); }}
+            onFilled={() => { loadData(true); loadCycles(); }}
+          />
+        }
       />
     );
   } else if (tab === "overrides" || tab === "scope") {
@@ -1362,10 +1337,6 @@ export default function AccessPage() {
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span className="d" title="Access data is downloaded only when it has changed">{dataVer.version ? "Data v" + dataVer.version + " · " + dataVer.from + " · " : ""}</span>
           <span className="d">{lastLog ? "Last change " + fmtD(String(lastLog.at).slice(0, 10)) + " by " + lastLog.by : ""}</span>
-          <select className="btn" title="See the tool as a role" value="" onChange={(e) => { if (e.target.value) setModal({ type: "previewRole", key: e.target.value }); }}>
-            <option value="">Preview as…</option>
-            {M.roles().map((r) => <option key={r.key} value={r.key}>{r.label}</option>)}
-          </select>
         </div>
       </div>
 
@@ -1397,15 +1368,12 @@ export default function AccessPage() {
         <SidePanel
           M={M} sel={sel} onPick={onPick} onTab={onTab} onToggleRemove={onToggleRemove}
           onNewOv={(team, empId) => setModal({ type: "ov", teamOnly: team, empId: empId || sel })}
-          onPreviewPerson={(empId) => setModal({ type: "previewPerson", empId })}
           qcProps={{ qc, setQc, shown: qcShown, setShown: setQcShown }}
         />
       </div>
 
       {modal?.type === "ov" && <OverrideModal M={M} empId={modal.empId} teamOnly={modal.teamOnly} today={today} onSave={saveOv} onClose={() => setModal(null)} />}
       {modal?.type === "role" && <RoleModal M={M} onSave={saveRole} onClose={() => setModal(null)} />}
-      {modal?.type === "previewRole" && <PreviewRoleModal M={M} roleKey={modal.key} onClose={() => setModal(null)} />}
-      {modal?.type === "previewPerson" && <PreviewPersonModal M={M} empId={modal.empId} onClose={() => setModal(null)} />}
     </div>
   );
 }

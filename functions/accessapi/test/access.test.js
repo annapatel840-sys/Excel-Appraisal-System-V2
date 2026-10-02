@@ -180,9 +180,9 @@ const version = () => Number((tbl('AccessVersion')[0] || {}).version || 0);
     const r = await call('POST', '/seed', U.admin);
     assert.strictEqual(r.ok, true, JSON.stringify(r));
     assert.strictEqual(r.enforced, false);
-    assert.strictEqual(count('AccessCatalog'), 12 + 10 + 37);
+    assert.strictEqual(count('AccessCatalog'), 12 + 9 + 37);
     assert.strictEqual(count('RoleScreen'), 7 * 3);
-    assert.strictEqual(count('RoleAction'), 7 * 3);     // 3 fixed actions have no rows
+    assert.strictEqual(count('RoleAction'), 7 * 3);     // 2 fixed actions have no rows
     assert.strictEqual(version(), 1);
     const again = await call('POST', '/seed', U.admin);
     assert.strictEqual(again.rowsWritten, 0);
@@ -192,7 +192,7 @@ const version = () => Number((tbl('AccessVersion')[0] || {}).version || 0);
     const C = await A.loadCatalog(makeApp().zcql());
     assert.deepStrictEqual(C.screens.map((s) => s.key), ['dashboard', 'appraisalSheet', 'detailScreen', 'budgetAllocation', 'budgetDistribution', 'teamChanges', 'delegation', 'employeeMaster', 'cycleMaster', 'payroll', 'settings', 'access']);
     assert.deepStrictEqual(C.screens.filter((s) => s.hrOnly).map((s) => s.key), ['employeeMaster', 'cycleMaster', 'payroll', 'settings', 'access']);
-    assert.deepStrictEqual(C.actions.filter((a) => a.fixed).map((a) => a.key), ['delegateApprove', 'changeBudgetConfig', 'previewAs']);
+    assert.deepStrictEqual(C.actions.filter((a) => a.fixed).map((a) => a.key), ['delegateApprove', 'changeBudgetConfig']);
     assert.strictEqual(C.fieldBy.hikePct.pairOf, 'hikeAmount');
     assert.deepStrictEqual(C.fieldBy.totalBonusHikePct.deps, ['totalBonus', 'rbToBePaid', 'pbToBePaid']);
     assert.strictEqual(C.fieldBy.rbToBePaid.kind, 'upload');
@@ -354,7 +354,7 @@ const version = () => Number((tbl('AccessVersion')[0] || {}).version || 0);
     assert.throws(() => A.requireEditColumns(a, ['new_rb', 'name']), /name/);
     assert.throws(() => A.requireScreen(a, 'access', 'view'), A.HttpError);
     A.requireScreen(a, 'appraisalSheet', 'edit'); A.requireAction(a, 'bulkEdit');
-    assert.throws(() => A.requireAction(a, 'previewAs'), A.HttpError);
+    assert.throws(() => A.requireAction(a, 'delegateApprove'), A.HttpError);
   });
 
   await test('/catalog adds a screen (HR edit, others none); version bumps', async () => {
