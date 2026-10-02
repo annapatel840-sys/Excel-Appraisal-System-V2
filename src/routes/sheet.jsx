@@ -3,6 +3,9 @@ import {
   ChevronDown,
   Download,
   History,
+  WalletCards,
+  CircleDollarSign,
+  Percent,
   Layers,
   RotateCcw,
   Search,
@@ -40,6 +43,7 @@ import {
 
 import { exportToExcel } from "@/lib/export-excel";
 import { useAccess } from "@/lib/access-store";
+import { useSettings } from "@/lib/settings-store";
 
 // ============================================================
 // BUDGET
@@ -103,6 +107,7 @@ export function SheetPage() {
   const isHR = role.includes("hr");
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
+  const { settings } = useSettings();
   const sheetEditable = access.canScreen("appraisalSheet", "edit");
   const canBulkEdit = sheetEditable && access.canAction("bulkEdit");
   const canImport = sheetEditable && access.canAction("importAppraisal");
@@ -267,8 +272,26 @@ export function SheetPage() {
   // HEADER: Show History + budget counters
   // ============================================================
 
-  const headerActions = (
-    <div className="flex min-w-0 items-center gap-4">
+  const budgetVertical = settings.menuPosition === "left";
+  const budgetCollapsed = budgetVertical && settings.menuCollapsed;
+
+  const headerActions = budgetCollapsed ? (
+    <div className="flex items-center gap-1">
+      <span title={`Budget Allocated: ${formatCrore(budgetAllocated)}`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
+        <WalletCards className="size-4" />
+      </span>
+      <span title={`Consumed (Hikes + Bonuses): ${formatCrore(budgetConsumed)}`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
+        <CircleDollarSign className="size-4" />
+      </span>
+      <span title={`Utilisation: ${budgetUtilisation.toFixed(1)}%`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
+        <Percent className="size-4" />
+      </span>
+    </div>
+  ) : (
+    <div className={cn(
+      "flex min-w-0",
+      budgetVertical ? "w-full flex-col gap-2" : "items-center gap-4",
+    )}>
       <BudgetCounter
         label={budgetIsEstimate ? "Budget Allocated (est.)" : "Budget Allocated"}
         title={
@@ -278,13 +301,11 @@ export function SheetPage() {
         }
         value={formatCrore(budgetAllocated)}
       />
-
       <BudgetCounter
         label="Consumed (Hikes + Bonuses)"
         title="Hike Amount + Total Bonus, this cycle"
         value={formatCrore(budgetConsumed)}
       />
-
       <BudgetCounter
         label="Utilisation"
         value={`${budgetUtilisation.toFixed(1)}%`}
