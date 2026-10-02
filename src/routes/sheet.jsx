@@ -39,6 +39,7 @@ import {
 } from "@/lib/appraisal-filters";
 
 import { exportToExcel } from "@/lib/export-excel";
+import { useAccess } from "@/lib/access-store";
 
 // ============================================================
 // BUDGET
@@ -100,6 +101,13 @@ export function SheetPage() {
   const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
   const isHR = role.includes("hr");
+  // Access rules (permissive when accessapi is unavailable).
+  const access = useAccess();
+  const sheetEditable = access.canScreen("appraisalSheet", "edit");
+  const canBulkEdit = sheetEditable && access.canAction("bulkEdit");
+  const canImport = sheetEditable && access.canAction("importAppraisal");
+  const canExport = access.canAction("exportGrid");
+  const canViewAudit = access.canAction("viewAudit");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({});
   const [selected, setSelected] = useState({});
@@ -440,63 +448,78 @@ export function SheetPage() {
                     className="absolute top-full right-0 z-50 mt-1.5 w-[200px] overflow-hidden rounded-md border border-[#cbd5e1] bg-white shadow-lg"
                     role="menu"
                   >
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9] disabled:cursor-not-allowed disabled:opacity-50"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setBulkOpen(true);
-                      }}
-                      disabled={selectedIds.length === 0}
-                    >
-                      <Layers className="size-4" />
-                      <span>Bulk Edit ({selectedIds.length})</span>
-                    </button>
+                    {canBulkEdit && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9] disabled:cursor-not-allowed disabled:opacity-50"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setBulkOpen(true);
+                        }}
+                        disabled={selectedIds.length === 0}
+                      >
+                        <Layers className="size-4" />
+                        <span>Bulk Edit ({selectedIds.length})</span>
+                      </button>
+                    )}
 
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setAuditOpen(true);
-                      }}
-                    >
-                      <History className="size-4" />
-                      <span>Audit ({audit.length})</span>
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        openImportPicker();
-                      }}
-                    >
-                      <Upload className="size-4" />
-                      <span>Import</span>
-                    </button>
+                    {canViewAudit && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setAuditOpen(true);
+                        }}
+                      >
+                        <History className="size-4" />
+                        <span>Audit ({audit.length})</span>
+                      </button>
+                    )}
+                    {canImport && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          openImportPicker();
+                        }}
+                      >
+                        <Upload className="size-4" />
+                        <span>Import</span>
+                      </button>
+                    )}
 
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
-                      onClick={() => {
-                        exportToExcel(filtered).catch((error) => {
-                          console.error("Excel export failed:", error);
-                          window.alert(
-                            "Excel export failed: " +
-                              (error?.message || "unknown error"),
-                          );
-                        });
-                        setMenuOpen(false);
-                      }}
-                    >
-                      <Download className="size-4" />
-                      <span>Export</span>
-                    </button>
+                    {canExport && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
+                        onClick={() => {
+                          exportToExcel(filtered, undefined, {
+                            isHidden: access.isHidden,
+                          }).catch((error) => {
+                            console.error("Excel export failed:", error);
+                            window.alert(
+                              "Excel export failed: " +
+                                (error?.message || "unknown error"),
+                            );
+                          });
+                          setMenuOpen(false);
+                        }}
+                      >
+                        <Download className="size-4" />
+                        <span>Export</span>
+                      </button>
+                    )}
+                    {!canBulkEdit && !canViewAudit && !canImport && !canExport && (
+                      <div className="px-3 py-2.5 text-[12px] text-slate-400">
+                        No actions available
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -600,7 +623,7 @@ export function SheetPage() {
         </div>
       </AppShell>
 
-      <Dialog open={auditOpen} onOpenChange={setAuditOpen}>
+      <Dialog open={auditOpen && canViewAudit} onOpenChange={setAuditOpen}>
         <DialogContent
           className="flex max-h-[80vh] w-[90vw] max-w-3xl flex-col gap-0 overflow-hidden p-0"
           onPointerDownOutside={(event) => event.preventDefault()}
@@ -622,7 +645,7 @@ export function SheetPage() {
       </Dialog>
 
       <BulkEditDialog
-        open={bulkOpen}
+        open={bulkOpen && canBulkEdit}
         onOpenChange={setBulkOpen}
         ids={selectedIds}
         onDone={() => setSelected({})}

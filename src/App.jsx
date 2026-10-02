@@ -13,6 +13,7 @@ import { AppShell } from "./components/appraisal/AppShell";
 import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 import { SettingsProvider } from "@/lib/settings-store";
+import { AccessProvider, HR_TAB_SCREENS, NoAccessPage, PATH_SCREENS, useAccess } from "@/lib/access-store";
 
 const TECH_ED_PATHS = ["/", "/sheet", "/employee-master", "/detail-screen", "/budget-allocation", "/settings" ];
 
@@ -62,13 +63,41 @@ class ScreenErrorBoundary extends Component {
   }
 }
 
+const FIRST_SCREEN_PATHS = [
+  ["dashboard", "/"],
+  ["appraisalSheet", "/sheet"],
+  ["detailScreen", "/detail-screen"],
+  ["budgetAllocation", "/budget-allocation"],
+];
+
+// With access rules (/me ok): the path to show, or null when nothing is allowed.
+function accessAllowedPath(path, access) {
+  const hrTabs = Object.keys(HR_TAB_SCREENS).filter((tab) => access.canScreen(HR_TAB_SCREENS[tab]));
+  const allowed =
+    path === "/employee-master"
+      ? hrTabs.length > 0
+      : access.canScreen(PATH_SCREENS[path] || "dashboard");
+  if (allowed) return path;
+  const first = FIRST_SCREEN_PATHS.find(([key]) => access.canScreen(key));
+  if (first) return first[1];
+  if (hrTabs.length) return `/employee-master?tab=${hrTabs[0]}`;
+  return null;
+}
+
 // Rendered inside <CatalystAuthGate> so useCatalystUser() sees the signed-in user.
 function AppRoutes() {
   const [path, setPath] = useState(window.location.pathname);
   const user = useCatalystUser();
+  const access = useAccess();
   const role = String(user?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
-  const effectivePath = isTechEd && !TECH_ED_PATHS.includes(path) ? "/employee-master" : path;
+  // Access rules replace the hard-coded Tech-ED restriction only when /me answered.
+  const targetPath = access.ok
+    ? accessAllowedPath(path, access)
+    : isTechEd && !TECH_ED_PATHS.includes(path)
+      ? "/employee-master"
+      : path;
+  const effectivePath = targetPath === null ? path : targetPath.split("?")[0];
 
   useEffect(() => {
     const onPopState = () => {
@@ -83,11 +112,30 @@ function AppRoutes() {
   }, []);
 
   useEffect(() => {
+    if (access.loading || targetPath === null) return;
     if (effectivePath !== path) {
-      window.history.replaceState({}, "", effectivePath);
+      window.history.replaceState({}, "", targetPath);
       setPath(effectivePath);
     }
-  }, [effectivePath, path]);
+  }, [access.loading, targetPath, effectivePath, path]);
+
+  if (access.loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+        Loading…
+      </div>
+    );
+  }
+
+  if (access.denied) {
+    return <NoAccessPage message={access.error} />;
+  }
+
+  if (access.ok && targetPath === null) {
+    return (
+      <NoAccessPage message="You do not have access to any screen. Contact HR if you think this is wrong." />
+    );
+  }
 
   let page;
 
@@ -127,7 +175,9 @@ function AppRoutes() {
 export default function App() {
   return (
     <CatalystAuthGate>
-      <AppRoutes />
+      <AccessProvider>
+        <AppRoutes />
+      </AccessProvider>
     </CatalystAuthGate>
   );
 }

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { useAccess } from "@/lib/access-store";
 
 const COLS = [
   { key: "empId", label: "Employee ID", type: "text", frozen: true },
@@ -390,6 +391,7 @@ function ColumnFilterPopover({
    ============================================================ */
 
 export function PayrollDataPage() {
+  const canAudit = useAccess().canAction("viewAudit");
   const [stored, setStored] = useState([]);
   const [audit, setAudit] = useState([]);
   const [cycles, setCycles] = useState([]);
@@ -613,16 +615,18 @@ export function PayrollDataPage() {
               >
                 <span className="pd-menu-icon">↧</span>Export to CSV
               </button>
-              <button
-                className="pd-menu-item"
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setAuditOpen(true);
-                }}
-              >
-                <span className="pd-menu-icon">⏱</span>Audit Trail
-              </button>
+              {canAudit && (
+                <button
+                  className="pd-menu-item"
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setAuditOpen(true);
+                  }}
+                >
+                  <span className="pd-menu-icon">⏱</span>Audit Trail
+                </button>
+              )}
             </div>
           )}
         </div>

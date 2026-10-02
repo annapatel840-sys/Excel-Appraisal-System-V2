@@ -209,10 +209,19 @@ const columnKind = (column) => {
    EXPORT TO EXCEL
    ============================================================ */
 
+// options.isHidden(key): columns the user may not see are left out of the
+// file. Formulas use fixed column letters, so when any column is left out the
+// calculated columns are written as values instead.
 export async function exportToExcel(
   rows,
   filename = "appraisal-fy2025-26.xlsx",
+  { isHidden } = {},
 ) {
+  const exportColumns =
+    typeof isHidden === "function"
+      ? COLUMNS.filter((column) => !isHidden(column.key))
+      : COLUMNS;
+  const useFormulas = exportColumns.length === COLUMNS.length;
   // Loaded on demand so the export library does not slow page load.
   const { default: ExcelJS } = await import("exceljs");
 
@@ -223,7 +232,7 @@ export async function exportToExcel(
     views: [{ state: "frozen", xSplit: 2, ySplit: 1 }],
   });
 
-  worksheet.columns = COLUMNS.map((column) => {
+  worksheet.columns = exportColumns.map((column) => {
     const labelLength = String(column.label ?? "").length;
 
     return {
@@ -237,12 +246,12 @@ export async function exportToExcel(
      Labels stay identical to the grid so the file re-imports.
      ========================================================== */
 
-  const headerRow = worksheet.addRow(COLUMNS.map((column) => column.label));
+  const headerRow = worksheet.addRow(exportColumns.map((column) => column.label));
 
   headerRow.height = 32;
 
   headerRow.eachCell((cell, columnNumber) => {
-    const kind = columnKind(COLUMNS[columnNumber - 1]);
+    const kind = columnKind(exportColumns[columnNumber - 1]);
 
     cell.fill = solidFill(
       kind === "calculated"
@@ -270,10 +279,16 @@ export async function exportToExcel(
   rows.forEach((row, index) => {
     const excelRowNumber = index + 2;
 
-    const values = COLUMNS.map((column) => {
-      const formula = column.computed
+    const values = exportColumns.map((column) => {
+      const formula = column.computed && useFormulas
         ? formulaFor(excelRowNumber, column)
         : null;
+
+      if (column.computed && !useFormulas) {
+        const result = column.fn ? Number(column.fn(row)) : undefined;
+
+        return Number.isFinite(result) ? result : null;
+      }
 
       if (formula) {
         // Cached result keeps values visible in viewers that do not
@@ -294,7 +309,7 @@ export async function exportToExcel(
     const excelRow = worksheet.addRow(values);
 
     excelRow.eachCell({ includeEmpty: true }, (cell, columnNumber) => {
-      const column = COLUMNS[columnNumber - 1];
+      const column = exportColumns[columnNumber - 1];
 
       if (!column) {
         return;
@@ -319,7 +334,7 @@ export async function exportToExcel(
 
   worksheet.autoFilter = {
     from: { row: 1, column: 1 },
-    to: { row: 1, column: COLUMNS.length },
+    to: { row: 1, column: exportColumns.length },
   };
 
   /* ==========================================================

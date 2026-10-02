@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
+import { useAccess } from "@/lib/access-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import {
   DropdownMenu,
@@ -46,7 +47,12 @@ const STATUS_CLASS = {
 
 export function AppraisalCycleMasterPage() {
   const user = useCatalystUser();
-  const canManageCycles = String(user?.role || "").trim().toLowerCase() === "hr";
+  // Access rules (permissive when accessapi is unavailable) can only narrow this.
+  const access = useAccess();
+  const canManageCycles =
+    String(user?.role || "").trim().toLowerCase() === "hr" &&
+    access.canScreen("cycleMaster", "edit");
+  const canAudit = access.canAction("viewAudit");
   const [cycles, setCycles] = useState([]);
   const [audit, setAudit] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -712,15 +718,17 @@ export function AppraisalCycleMasterPage() {
         </div>
 
         <div className="acm-actions">
-          <button
-            type="button"
-            className="acm-btn"
-            disabled={loading}
-            onClick={() => setAuditOpen(true)}
-          >
-            <History size={14} />
-            Audit Trail
-          </button>
+          {canAudit && (
+            <button
+              type="button"
+              className="acm-btn"
+              disabled={loading}
+              onClick={() => setAuditOpen(true)}
+            >
+              <History size={14} />
+              Audit Trail
+            </button>
+          )}
 
           {canManageCycles && (
             <button

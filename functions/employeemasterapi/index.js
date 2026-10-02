@@ -1,6 +1,12 @@
 "use strict";
 
+/* ACCESS CONTROL: ./accessCore.js is a byte-for-byte copy of
+   functions/accessapi/accessCore.js and MUST stay identical to it
+   (every Catalyst function deploys separately). Edit the accessapi copy,
+   then copy it here. See docs/ACCESS_SPEC.md. */
+
 const catalyst = require("zcatalyst-sdk-node");
+const access = require("./accessCore");
 
 // ============================================================
 // TABLE IDs
@@ -40,6 +46,42 @@ function sendJson(res, statusCode, payload) {
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify(payload));
+}
+
+// ============================================================
+// ACCESS CONTROL (docs/ACCESS_SPEC.md)
+//
+// Employee_Master is HR master data: GET = view, writes = edit on the
+// HR-only screen 'employeeMaster'. No non-HR screen in src/ calls this
+// function (the roster / eligibility pages read through employeesapi).
+// Dry run (ACCESS_ENFORCE != 'true'): legacy behaviour, refusals only logged.
+// Every write raises the access version (Employee_Master drives identity).
+// ============================================================
+
+async function checkAccess(req) {
+  const userApp = catalyst.initialize(req);
+  const adminApp = catalyst.initialize(req, { scope: "admin" });
+
+  try {
+    return await access.check(userApp, adminApp);
+  } catch (error) {
+    if (access.isEnforced()) throw error;
+    // Dry run must never change legacy behaviour, even if access data is unreadable.
+    console.log("ACCESS dry-run: access check failed:", error && error.message);
+    return { dryRun: true, enforced: false, denied: error };
+  }
+}
+
+async function bumpAccessVersion(req, a, why) {
+  try {
+    await access.bumpVersion(
+      catalyst.initialize(req, { scope: "admin" }),
+      (a && a.user && a.user.email) || "",
+      why,
+    );
+  } catch (error) {
+    console.error("ACCESS bumpVersion failed:", error && error.message);
+  }
 }
 
 // ============================================================
@@ -500,7 +542,7 @@ async function getRoster(req, res, appInstance) {
 // CREATE / IMPORT EMPLOYEE MASTER
 // ============================================================
 
-async function createRoster(req, res, table, employeesTable) {
+async function createRoster(req, res, table, employeesTable, afterWrite) {
   const body = await readRequestBody(req);
 
   const incoming = Array.isArray(body.employees)
@@ -686,6 +728,10 @@ async function createRoster(req, res, table, employeesTable) {
     statusSyncResults.push(result);
   }
 
+  if (afterWrite && (rowsToInsert.length || rowsToUpdate.length)) {
+    await afterWrite("Employee_Master import");
+  }
+
   sendJson(res, 200, {
     success: true,
 
@@ -712,7 +758,7 @@ async function createRoster(req, res, table, employeesTable) {
 // UPDATE EMPLOYEE MASTER EMPLOYEE
 // ============================================================
 
-async function updateRosterEmployee(req, res, table, employeesTable) {
+async function updateRosterEmployee(req, res, table, employeesTable, afterWrite) {
   const body = await readRequestBody(req);
 
   const empId = String(body.emp_id || "").trim();
@@ -794,6 +840,8 @@ async function updateRosterEmployee(req, res, table, employeesTable) {
       masterRowId,
     );
 
+    if (afterWrite) await afterWrite("Employee_Master status changed: " + empId);
+
     return sendJson(res, 200, {
       success: true,
 
@@ -833,6 +881,8 @@ async function updateRosterEmployee(req, res, table, employeesTable) {
     emp_master_row_id: masterRowId,
   });
 
+  if (afterWrite) await afterWrite("Employee_Master updated: " + empId);
+
   sendJson(res, 200, {
     success: true,
     message: "Employee updated successfully.",
@@ -863,6 +913,18 @@ module.exports = async function (req, res) {
   }
 
   try {
+    // Access first: enforced → 401/403 here; dry run → never refuses.
+    const a = await checkAccess(req);
+    const isRead = req.method === "GET";
+
+    access.guard(a, function () {
+      access.requireScreen(a, "employeeMaster", isRead ? "view" : "edit");
+    });
+
+    const afterWrite = function (why) {
+      return bumpAccessVersion(req, a, why);
+    };
+
     const appInstance = catalyst.initialize(req);
 
     const datastore = appInstance.datastore();
@@ -879,13 +941,13 @@ module.exports = async function (req, res) {
 
     // POST imports Employee_Master records.
     if (req.method === "POST") {
-      await createRoster(req, res, table, employeesTable);
+      await createRoster(req, res, table, employeesTable, afterWrite);
       return;
     }
 
     // PUT / PATCH updates Employee_Master.
     if (req.method === "PUT" || req.method === "PATCH") {
-      await updateRosterEmployee(req, res, table, employeesTable);
+      await updateRosterEmployee(req, res, table, employeesTable, afterWrite);
       return;
     }
 
@@ -894,6 +956,15 @@ module.exports = async function (req, res) {
       message: "Method " + req.method + " not allowed.",
     });
   } catch (error) {
+    if (error instanceof access.HttpError) {
+      sendJson(res, error.status || 403, {
+        success: false,
+        message: error.message,
+        enforced: true,
+      });
+      return;
+    }
+
     console.error("employee-master-api ERROR:", error);
 
     sendJson(res, 500, {

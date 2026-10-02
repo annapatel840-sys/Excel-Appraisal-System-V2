@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
+import { useAccess } from "@/lib/access-store";
  
 /* ------------------------------------------------------------------ data */
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
@@ -62,6 +63,15 @@ export default function DelegationScreen({
   }, [reqs]);
  
   const isHR = user.role === "HR Admin";
+  // Access rules (permissive when accessapi is unavailable).
+  const access = useAccess();
+  const canApprove = access.canAction("delegateApprove");
+  const canAudit = access.canAction("viewAudit");
+  // View-only screen, or a Tech Ed without the delegateRequest action: no edits.
+  const editLocked =
+    locked ||
+    !access.canScreen("delegation", "edit") ||
+    (!isHR && !access.canAction("delegateRequest"));
  
   useEffect(() => {
     if (initialRows || rows.length) return;
@@ -430,8 +440,11 @@ export default function DelegationScreen({
     URL.revokeObjectURL(url);
   };
  
+  // The demo role switcher had a USERS list that was never defined; only the signed-in user remains.
+  const USERS = [user];
+
   const switchUser = (id) => {
-    setUser(USERS.find((u) => u.id === id));
+    setUser(USERS.find((u) => u.id === id) || user);
     setSel({});
     setPage(1);
     setReqTab("Pending");
@@ -566,7 +579,7 @@ export default function DelegationScreen({
             {isHR && (
               <button
                 className="btn"
-                disabled={locked}
+                disabled={editLocked}
                 onClick={() =>
                   onRefresh
                     ? onRefresh()
@@ -579,7 +592,7 @@ export default function DelegationScreen({
             {isHR && (
               <button
                 className="btn"
-                disabled={locked}
+                disabled={editLocked}
                 onClick={() =>
                   onUpload
                     ? onUpload()
@@ -602,7 +615,7 @@ export default function DelegationScreen({
             <button className="btn" onClick={exportCsv}>
               Export
             </button>
-            {isHR && (
+            {isHR && canAudit && (
               <button
                 className="btn"
                 onClick={() => setModal({ type: "audit" })}
@@ -613,7 +626,7 @@ export default function DelegationScreen({
             {isHR && (
               <button
                 className="btn p"
-                disabled={locked || pending.length > 0 || !rows.length}
+                disabled={editLocked || pending.length > 0 || !rows.length}
                 title={
                   pending.length
                     ? "Approve or reject pending requests first"
@@ -651,7 +664,7 @@ export default function DelegationScreen({
                       <input
                         type="checkbox"
                         checked={allSel}
-                        disabled={locked}
+                        disabled={editLocked}
                         onChange={(e) => {
                           const n = { ...sel };
                           slice.forEach((r) => (n[r.id] = e.target.checked));
@@ -683,7 +696,7 @@ export default function DelegationScreen({
                           <input
                             type="checkbox"
                             checked={!!sel[r.id]}
-                            disabled={locked}
+                            disabled={editLocked}
                             onChange={(e) =>
                               setSel({ ...sel, [r.id]: e.target.checked })
                             }
@@ -701,7 +714,7 @@ export default function DelegationScreen({
                                 className={
                                   "in" + (prev && r[f] !== prev ? " c" : "")
                                 }
-                                disabled={locked}
+                                disabled={editLocked}
                                 value={r[f]}
                                 onChange={(e) => {
                                   setReason("");
@@ -808,7 +821,7 @@ export default function DelegationScreen({
                 <div className="lb">Field to change</div>
                 <select
                   className="fld"
-                  disabled={locked}
+                  disabled={editLocked}
                   value={bulk.field}
                   onChange={(e) => setBulk({ ...bulk, field: e.target.value })}
                 >
@@ -818,7 +831,7 @@ export default function DelegationScreen({
                 <div className="lb">Apply to</div>
                 <select
                   className="fld"
-                  disabled={locked}
+                  disabled={editLocked}
                   value={bulk.scope}
                   onChange={(e) => setBulk({ ...bulk, scope: e.target.value })}
                 >
@@ -834,7 +847,7 @@ export default function DelegationScreen({
                 <div className="lb">Assign to</div>
                 <select
                   className="fld"
-                  disabled={locked}
+                  disabled={editLocked}
                   value={bulk.person}
                   onChange={(e) => setBulk({ ...bulk, person: e.target.value })}
                 >
@@ -848,17 +861,17 @@ export default function DelegationScreen({
                 <div className="lb">Reason (mandatory)</div>
                 <input
                   className="fld"
-                  disabled={locked}
+                  disabled={editLocked}
                   maxLength={2000}
                   value={bulk.reason}
                   onChange={(e) => setBulk({ ...bulk, reason: e.target.value })}
                 />
-                <button className="btn p sm" disabled={locked} onClick={doBulk}>
+                <button className="btn p sm" disabled={editLocked} onClick={doBulk}>
                   Apply
                 </button>{" "}
                 <button
                   className="btn sm"
-                  disabled={locked}
+                  disabled={editLocked}
                   onClick={() => {
                     setSel({});
                     setBulk({ ...bulk, person: "", reason: "" });
@@ -924,6 +937,7 @@ export default function DelegationScreen({
                   </button>
                 ))}
                 {isHR &&
+                  canApprove &&
                   reqTab === "Pending" &&
                   pending.length > 1 &&
                   !locked && (
@@ -991,6 +1005,7 @@ export default function DelegationScreen({
                     </div>
                     {q.status === "Pending" &&
                       !locked &&
+                      (!isHR || canApprove) &&
                       (isHR ? (
                         <>
                           <input

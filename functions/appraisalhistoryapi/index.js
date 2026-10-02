@@ -1,6 +1,12 @@
 "use strict";
 
+/* ACCESS CONTROL: ./accessCore.js is a byte-for-byte copy of
+   functions/accessapi/accessCore.js and MUST stay identical to it
+   (every Catalyst function deploys separately). Edit the accessapi copy,
+   then copy it here. See docs/ACCESS_SPEC.md. */
+
 const catalyst = require("zcatalyst-sdk-node");
+const access = require("./accessCore");
 
 const PAYROLL_DATA_TABLE_ID = "71873000000020833";
 
@@ -89,6 +95,164 @@ const ALLOWED_FIELDS = [
   "manager_rating",
   "rating",
 ];
+
+/* ============================================================
+ACCESS CONTROL (docs/ACCESS_SPEC.md)
+
+GET   ?emp_id → view on appraisalSheet / detailScreen / dashboard, emp_id
+               in scope; enforced: history columns of hidden fields removed.
+PATCH        → edit on appraisalSheet / detailScreen, emp_id in scope and
+               every changed history column editable (see HISTORY_FIELDS).
+Dry run (ACCESS_ENFORCE != 'true'): legacy behaviour, refusals only logged.
+============================================================ */
+
+const READ_SCREENS = ["appraisalSheet", "detailScreen", "dashboard"];
+const EDIT_SCREENS = ["appraisalSheet", "detailScreen"];
+
+/*
+ * Payroll_Data (history) column → Appraisal grid field whose access limit
+ * applies. Same mapping the frontend uses to write history
+ * (src/lib/appraisal-store.jsx REACT_TO_HISTORY_FIELD, and DetailScreen's
+ * HISTORY_FIELD for new_ctc). Columns not listed (e.g. rating) only need
+ * appraisalSheet edit.
+ */
+const HISTORY_FIELDS = {
+  base_pay: "currentAnnualBasePay",
+  allocated_pb: "targetPBAllocatedForMay",
+  allocated_pb_installment: "pbInstallment",
+  performance_bonus: "pbToBePaid",
+  performance_bonus_installment: "newPBInstallment",
+  retention_bonus: "newRB",
+  total_pb: "totalOfPB",
+  total_bonus: "totalBonus",
+  hike_amount: "hikeAmount",
+  hike_pct: "hikePct",
+  promotion: "eligibleForPromotion",
+  title: "newTitle",
+  target_performance_bonus: "targetPBNextYear",
+  new_ctc: "totalCTCWithRewards",
+  manager_rating: "managerRating",
+};
+
+const FIELD_KIND = Object.fromEntries(
+  access.START_CATALOG.filter((c) => c.type === "field").map((c) => [
+    c.key,
+    c.kind,
+  ]),
+);
+
+async function checkAccess(req) {
+  const userApp = catalyst.initialize(req);
+  const adminApp = catalyst.initialize(req, { scope: "admin" });
+
+  try {
+    return await access.check(userApp, adminApp);
+  } catch (error) {
+    if (access.isEnforced()) throw error;
+    // Dry run must never change legacy behaviour, even if access data is unreadable.
+    console.log("ACCESS dry-run: access check failed:", error && error.message);
+    return { dryRun: true, enforced: false, denied: error };
+  }
+}
+
+function requireAnyScreen(a, keys, level) {
+  const ok = keys.some((key) => {
+    try {
+      access.requireScreen(a, key, level);
+      return true;
+    } catch (error) {
+      if (error instanceof access.HttpError) return false;
+      throw error;
+    }
+  });
+
+  if (!ok) {
+    throw new access.HttpError(403, "You do not have access to this screen.");
+  }
+}
+
+function requireInScope(a, empId) {
+  if (!access.inScope(a, empId)) {
+    throw new access.HttpError(
+      403,
+      "You do not have access to employee " + empId + ".",
+    );
+  }
+}
+
+/*
+ * input / pair field → must be 'edit';
+ * calc field (derived totals written with their inputs) → not hidden;
+ * master / upload field → HR master data (employeeMaster edit);
+ * unmapped column → appraisalSheet edit.
+ */
+function requireEditableHistoryColumns(a, columns) {
+  const bad = [];
+  let needsMaster = false;
+  let needsSheet = false;
+
+  columns.forEach((column) => {
+    const key = HISTORY_FIELDS[column];
+
+    if (!key) {
+      needsSheet = true;
+      return;
+    }
+
+    const kind = FIELD_KIND[key];
+    const limit = a.fields && a.fields[key];
+
+    if (kind === "calc") {
+      if (limit === "hidden") bad.push(column);
+      return;
+    }
+
+    if (kind === "master" || kind === "upload") {
+      needsMaster = true;
+      if (limit === "hidden") bad.push(column);
+      return;
+    }
+
+    if (limit !== "edit") bad.push(column);
+  });
+
+  if (bad.length) {
+    throw new access.HttpError(403, "You cannot edit: " + bad.join(", ") + ".");
+  }
+
+  if (needsSheet) access.requireScreen(a, "appraisalSheet", "edit");
+
+  if (needsMaster) {
+    try {
+      access.requireScreen(a, "employeeMaster", "edit");
+    } catch (error) {
+      if (!(error instanceof access.HttpError)) throw error;
+      throw new access.HttpError(
+        403,
+        "Only HR (Employee Master edit) can change: " +
+          columns
+            .filter((c) => {
+              const kind = FIELD_KIND[HISTORY_FIELDS[c]];
+              return kind === "master" || kind === "upload";
+            })
+            .join(", ") +
+          ".",
+      );
+    }
+  }
+}
+
+function shapeHistoryRow(a, row) {
+  const out = {};
+
+  Object.keys(row).forEach((column) => {
+    const key = HISTORY_FIELDS[column];
+    if (key && a.fields && a.fields[key] === "hidden") return;
+    out[column] = row[column];
+  });
+
+  return out;
+}
 
 /* ============================================================
 GET ALL PREVIOUS APPRAISAL RECORDS
@@ -259,6 +423,12 @@ module.exports = async (req, res) => {
 
   try {
     /* --------------------------------------------------------
+    ACCESS (enforced → 401/403; dry run → never refuses)
+    -------------------------------------------------------- */
+
+    const a = await checkAccess(req);
+
+    /* --------------------------------------------------------
     INITIALIZE CATALYST
     -------------------------------------------------------- */
 
@@ -282,6 +452,8 @@ module.exports = async (req, res) => {
 
       console.log("GET emp_id:", empId);
 
+      access.guard(a, () => requireAnyScreen(a, READ_SCREENS, "view"));
+
       if (!empId) {
         sendJson(res, 400, {
           success: false,
@@ -290,13 +462,19 @@ module.exports = async (req, res) => {
         return;
       }
 
+      access.guard(a, () => requireInScope(a, empId));
+
       const history = await getHistory(table, empId);
+
+      const data = a.enforced
+        ? history.map((row) => shapeHistoryRow(a, row))
+        : history;
 
       sendJson(res, 200, {
         success: true,
         emp_id: empId,
-        count: history.length,
-        data: history,
+        count: data.length,
+        data: data,
       });
 
       return;
@@ -307,6 +485,8 @@ module.exports = async (req, res) => {
     ======================================================== */
 
     if (req.method === "PATCH") {
+      access.guard(a, () => requireAnyScreen(a, EDIT_SCREENS, "edit"));
+
       const body = await readRequestBody(req);
 
       console.log("PATCH BODY:", JSON.stringify(body));
@@ -369,6 +549,11 @@ module.exports = async (req, res) => {
         });
         return;
       }
+
+      access.guard(a, () => {
+        requireInScope(a, empId);
+        requireEditableHistoryColumns(a, Object.keys(updateData));
+      });
 
       /* ------------------------------------------------------
       FIND EXISTING RECORD
@@ -446,6 +631,15 @@ module.exports = async (req, res) => {
       message: "Only GET, PATCH and OPTIONS methods are allowed.",
     });
   } catch (error) {
+    if (error instanceof access.HttpError) {
+      sendJson(res, error.status || 403, {
+        success: false,
+        message: error.message,
+        enforced: true,
+      });
+      return;
+    }
+
     console.error("================================================");
 
     console.error("APPRAISAL HISTORY API ERROR");

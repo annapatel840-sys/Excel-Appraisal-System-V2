@@ -168,10 +168,12 @@ export function EmployeeMasterToolbar({
             {/* ==================================================
                 AUDIT HISTORY
                 ================================================== */}
-            <button type="button" role="menuitem" onClick={handleAuditHistory}>
-              <History size={14} />
-              <span>Audit History</span>
-            </button>
+            {onAuditHistory && (
+              <button type="button" role="menuitem" onClick={handleAuditHistory}>
+                <History size={14} />
+                <span>Audit History</span>
+              </button>
+            )}
           </div>
         )}
       </div>

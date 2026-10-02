@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
+import { useAccess } from "@/lib/access-store";
 import { TechEdBudgetAllocationPage } from "./TechEdBudgetAllocationPage";
 
 const NAVY = "#12304f";
@@ -227,6 +228,12 @@ const HR_COLS = [
 ];
 
 function HRApplyBudget() {
+  // Access rules (permissive when accessapi is unavailable).
+  const access = useAccess();
+  const canConfig =
+    access.canScreen("budgetAllocation", "edit") &&
+    access.canAction("changeBudgetConfig");
+  const canAudit = access.canAction("viewAudit");
   const [rows, setRows] = useState(TECH_ED_DATA);
   const [orgPct, setOrgPct] = useState("8");
   const [pending, setPending] = useState({});
@@ -431,6 +438,7 @@ function HRApplyBudget() {
                 max="100"
                 step="0.1"
                 value={orgPct}
+                disabled={!canConfig}
                 onChange={(e) => setOrgPct(e.target.value)}
                 className="mt-1 h-[38px] w-[110px] rounded border border-[#14a3a3] px-2 text-right text-[18px] font-bold text-[#12304f] outline-none"
               />
@@ -530,6 +538,7 @@ function HRApplyBudget() {
                             max="100"
                             step="0.1"
                             value={p}
+                            disabled={!canConfig}
                             onChange={(e) => setRowPct(r.name, e.target.value)}
                             className="h-8 w-[84px] rounded border border-[#14a3a3] bg-white px-2 text-right text-[14px] font-bold text-[#12304f]"
                           />
@@ -577,7 +586,7 @@ function HRApplyBudget() {
                       <td className={td + "text-right"}>{r.team0}</td>
                       <td className={td + "text-right"}>{r.team}</td>
                       <td className={td + "text-left"}>
-                        {open || r.lastChanged !== "01-Sep-26" ? (
+                        {canAudit && (open || r.lastChanged !== "01-Sep-26") ? (
                           <button
                             type="button"
                             className="whitespace-nowrap rounded border border-[#c5d0dd] bg-white px-2 py-1 text-[12px] font-bold text-[#17365d]"
@@ -595,7 +604,7 @@ function HRApplyBudget() {
                         )}
                       </td>
                     </tr>
-                    {open ? (
+                    {open && canAudit ? (
                       <tr>
                         <td
                           colSpan={HR_COLS.length}
@@ -626,30 +635,34 @@ function HRApplyBudget() {
                 " pending"
               : "No pending changes"}
           </span>
-          <input
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            disabled={!pendingCount}
-            placeholder="Reason (saved in the audit trail)"
-            className="h-[30px] min-w-[200px] max-w-[460px] flex-1 rounded border border-[#cbd3df] px-2 text-[12.5px]"
-          />
-          <button
-            type="button"
-            disabled={!pendingCount}
-            onClick={discard}
-            className="rounded-md border border-[#c5d0dd] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#12304f] disabled:opacity-40"
-          >
-            Discard
-          </button>
-          <button
-            type="button"
-            disabled={!pendingCount}
-            onClick={apply}
-            className="rounded-md px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
-            style={{ background: TEAL }}
-          >
-            Apply
-          </button>
+          {canConfig && (
+            <>
+              <input
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                disabled={!pendingCount}
+                placeholder="Reason (saved in the audit trail)"
+                className="h-[30px] min-w-[200px] max-w-[460px] flex-1 rounded border border-[#cbd3df] px-2 text-[12.5px]"
+              />
+              <button
+                type="button"
+                disabled={!pendingCount}
+                onClick={discard}
+                className="rounded-md border border-[#c5d0dd] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#12304f] disabled:opacity-40"
+              >
+                Discard
+              </button>
+              <button
+                type="button"
+                disabled={!pendingCount}
+                onClick={apply}
+                className="rounded-md px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
+                style={{ background: TEAL }}
+              >
+                Apply
+              </button>
+            </>
+          )}
         </div>
       </section>
     </div>
@@ -772,6 +785,7 @@ export function BudgetAllocationPage() {
     .replace(/[^a-z0-9]/g, "");
   const isHR =
     role === "hr" || role === "humanresources" || role === "hroperation";
+  const canAudit = useAccess().canAction("viewAudit");
   const [tab, setTab] = useState("apply");
 
   return (
@@ -798,7 +812,7 @@ export function BudgetAllocationPage() {
             >
                Apply Budget
             </button>
-            <button
+            {canAudit && <button
               type="button"
               onClick={() => setTab("audit")}
               className={
@@ -809,9 +823,9 @@ export function BudgetAllocationPage() {
               }
             >
                Audit Trail
-            </button>
+            </button>}
           </div>
-          {tab === "apply" ? <HRApplyBudget /> : <HRAuditTrail />}
+          {tab === "apply" || !canAudit ? <HRApplyBudget /> : <HRAuditTrail />}
         </>
       ) : (
         <TechEdBudgetAllocationPage />
