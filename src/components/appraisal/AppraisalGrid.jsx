@@ -2728,7 +2728,7 @@
 //         "bg-white",
 //       )}
 //       style={{
-//         height: "calc(100vh - 126px)",
+//         height: verticalLayout ? "calc(100vh - 92px)" : "calc(100vh - 126px)",
 //         isolation: "isolate",
 //         fontFamily: APPRAISAL_FONT,
 //       }}
@@ -4352,6 +4352,7 @@ function EmployeePanel({
 
 export function AppraisalGrid({
   rows,
+  verticalLayout = false,
   filters,
   setFilter,
   optionsFor,
