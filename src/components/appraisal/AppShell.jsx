@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 
 import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
-import { useCatalystSignOut, useCatalystUser } from "@/lib/catalyst-auth";
+import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useSettings } from "@/lib/settings-store";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +20,7 @@ const TECH_ED_PATHS = [
   "/sheet",
   "/detail-screen",
   "/budget-allocation",
+  "/settings",
 ];
 
 const HR_MENU_ITEMS = [
@@ -37,7 +38,6 @@ const HR_MENU_ITEMS = [
 
 export function AppShell({ children, headerActions }) {
   const pathname = window.location.pathname;
-  const signOut = useCatalystSignOut();
   const user = useCatalystUser();
   const access = useAccess();
   const { settings } = useSettings();
@@ -88,8 +88,7 @@ export function AppShell({ children, headerActions }) {
     ? [
         access.canScreen("dashboard") && { to: "/", label: "Dashboard", icon: LayoutDashboard },
         access.canScreen("appraisalSheet") && { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
-        access.canScreen("budgetAllocation") &&
-          access.role !== "hr" && {
+        (isTechEd || access.canScreen("budgetAllocation")) && {
             to: "/budget-allocation",
             label: "Budget Allocation",
             icon: WalletCards,
@@ -121,7 +120,7 @@ export function AppShell({ children, headerActions }) {
   };
 
   const projectHeading = (
-    <div className={cn("flex shrink-0 items-center gap-2", isVertical && "px-1")}>
+    <div className={cn("flex shrink-0 items-center justify-center gap-2 text-center", isVertical && "px-1")}>
       <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-[10px] font-bold text-primary-foreground">
         R2C
       </span>
@@ -152,19 +151,19 @@ export function AppShell({ children, headerActions }) {
   );
 
   return (
-    <div className={cn("min-h-screen bg-background", isVertical && "lg:pl-56", isCollapsed && "lg:pl-[72px]")}>
+    <div className={cn("min-h-screen bg-background", isVertical && "lg:pl-60", isCollapsed && "lg:pl-16")}>
       <header
         className={cn(
           "z-50 border-border bg-[var(--app-brand)]",
           isVertical
             ? "fixed inset-y-0 left-0 hidden w-56 border-r lg:flex"
             : "sticky top-0 border-b",
-          isCollapsed && "lg:w-[72px]",
+          isCollapsed && "lg:w-16",
         )}
       >
         <div
           className={cn(
-            "mx-auto flex max-w-[1600px]",
+            "mx-auto flex w-full max-w-[1600px] min-w-0",
             isVertical
               ? "h-full w-full flex-col items-stretch gap-3 px-3 py-3"
               : "h-12 w-full items-center gap-3 px-3",
@@ -258,7 +257,7 @@ export function AppShell({ children, headerActions }) {
           >
             {!isVertical && headerActions}
             {isVertical && headerActions}
-            {access.canScreen("settings") && settingsButton}
+            {(isTechEd || access.canScreen("settings")) && settingsButton}
             <button
               type="button"
               onClick={signOut}
@@ -282,8 +281,8 @@ export function AppShell({ children, headerActions }) {
 
       <main
         className={cn(
-          "mx-auto max-w-[1600px] px-3 py-3",
-          isVertical && "lg:mx-0 lg:max-w-none",
+          "mx-auto w-full max-w-[1600px] min-w-0 overflow-x-hidden px-3 py-3",
+          isVertical && "lg:mx-0 lg:max-w-none lg:px-4",
         )}
       >
         {children}
