@@ -5,14 +5,16 @@ import { BudgetProvider } from "@/lib/budget-store";
 import { Dashboard } from "@/routes/index";
 import { SheetPage } from "@/routes/sheet";
 import { EmployeeMaster } from "@/pages/EmployeeMaster";
+import { SettingsPage } from "@/pages/SettingsPage";
 
 //this might be remove later (detailscreen)
 import { DetailScreenPage } from "@/components/appraisal/DetailScreenPage";
 import { AppShell } from "./components/appraisal/AppShell";
 import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
+import { SettingsProvider } from "@/lib/settings-store";
 
-const TECH_ED_PATHS = ["/", "/sheet", "/employee-master", "/detail-screen", "/budget-allocation" ];
+const TECH_ED_PATHS = ["/", "/sheet", "/employee-master", "/detail-screen", "/budget-allocation", "/settings" ];
 
 // A crash in one screen shows a message instead of blanking the whole app.
 // It is keyed by path, so navigating to another screen clears the error.
@@ -80,7 +82,6 @@ function AppRoutes() {
     };
   }, []);
 
-  // Keep the URL (and nav highlighting) in sync when a Tech-ED is redirected.
   useEffect(() => {
     if (effectivePath !== path) {
       window.history.replaceState({}, "", effectivePath);
@@ -95,29 +96,31 @@ function AppRoutes() {
   } else if (effectivePath === "/employee-master") {
     page = <EmployeeMaster />;
   } else if (effectivePath === "/detail-screen") {
-  page = (
-    <AppShell>
-      <DetailScreenPage />
-    </AppShell>
-  );
-} else if (effectivePath === "/budget-allocation") {
-  page = (
-    <AppShell>
-      <BudgetAllocationPage />
-    </AppShell>
-  );
-} else {
-  page = <Dashboard />;
-}
-
-
+    page = (
+      <AppShell>
+        <DetailScreenPage />
+      </AppShell>
+    );
+  } else if (effectivePath === "/budget-allocation") {
+    page = (
+      <AppShell>
+        <BudgetAllocationPage />
+      </AppShell>
+    );
+  } else if (effectivePath === "/settings") {
+    page = <SettingsPage />;
+  } else {
+    page = <Dashboard />;
+  }
 
   return (
-    <AppraisalProvider>
-      <BudgetProvider>
-        <ScreenErrorBoundary key={effectivePath}>{page}</ScreenErrorBoundary>
-      </BudgetProvider>
-    </AppraisalProvider>
+    <SettingsProvider>
+      <AppraisalProvider>
+        <BudgetProvider>
+          <ScreenErrorBoundary key={effectivePath}>{page}</ScreenErrorBoundary>
+        </BudgetProvider>
+      </AppraisalProvider>
+    </SettingsProvider>
   );
 }
 
