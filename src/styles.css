@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
 @source "../src";
 @import "tw-animate-css";
@@ -52,7 +53,7 @@
   --color-status-progress: var(--status-progress);
   --color-status-completed: var(--status-completed);
   --color-status-submitted: var(--status-submitted);
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, system-ui, sans-serif;
 }
 
@@ -218,7 +219,7 @@
 
 @layer base {
   body {
-    font-family: var(--font-sans);
+    font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   .num {
