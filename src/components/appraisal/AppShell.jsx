@@ -150,14 +150,14 @@ export function AppShell({ children, headerActions }) {
   );
 
   return (
-    <div className={cn("min-h-screen bg-background", isVertical && "lg:pl-60", isCollapsed && "lg:pl-16")}>
+    <div className={cn("min-h-screen bg-background", isVertical && "lg:pl-44", isCollapsed && "lg:pl-16")}>
       <header
         className={cn(
           "z-50 border-border bg-[var(--app-brand)]",
           isVertical
             ? "fixed inset-y-0 left-0 hidden w-56 border-r lg:flex"
             : "sticky top-0 border-b",
-          isCollapsed && "lg:w-16",
+          isCollapsed && "lg:w-14",
         )}
       >
         <div
