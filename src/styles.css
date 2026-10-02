@@ -239,3 +239,10 @@
   min-height: 420px;
   border: 0;
 }
+
+
+@layer base {
+  body, button, input, textarea, select, option, label, table, th, td, a {
+    font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  }
+}
