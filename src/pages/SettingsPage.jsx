@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { Check, RotateCcw, Save, Settings2 } from "lucide-react";
+import { Check, LogOut, RotateCcw, Save, Settings2 } from "lucide-react";
 import { AppShell } from "@/components/appraisal/AppShell";
 import { Button } from "@/components/ui/button";
 import { useSettings, DEFAULT_SETTINGS } from "@/lib/settings-store";
+import { useCatalystSignOut } from "@/lib/catalyst-auth";
 
 const THEMES = [
   { id: "navy", label: "Navy Blue", description: "Current project theme", swatch: "#173b63" },
@@ -12,6 +13,7 @@ const THEMES = [
 
 export function SettingsPage() {
   const { settings, saveSettings, resetSettings } = useSettings();
+  const signOut = useCatalystSignOut();
   const [draft, setDraft] = useState(settings);
   useEffect(() => setDraft(settings), [settings]);
   const update = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
@@ -71,8 +73,9 @@ export function SettingsPage() {
             </label>
           )}
         </section>
-        <div className="flex items-center justify-between rounded-lg border border-border bg-card p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card p-3">
           <button type="button" onClick={reset} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted"><RotateCcw className="size-3.5" />Reset to Default</button>
+          <button type="button" onClick={signOut} className="inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-50"><LogOut className="size-3.5" />Sign Out</button>
           <Button type="button" onClick={save} className="gap-2"><Save className="size-3.5" />Save Changes</Button>
         </div>
       </div>
