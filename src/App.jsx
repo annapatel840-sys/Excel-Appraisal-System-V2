@@ -71,8 +71,9 @@ const FIRST_SCREEN_PATHS = [
 ];
 
 // With access rules (/me ok): the path to show, or null when nothing is allowed.
-function accessAllowedPath(path, access) {
+function accessAllowedPath(path, access, isTechEd = false) {
   const hrTabs = Object.keys(HR_TAB_SCREENS).filter((tab) => access.canScreen(HR_TAB_SCREENS[tab]));
+  if (isTechEd && TECH_ED_PATHS.includes(path)) return path;
   const allowed =
     path === "/employee-master"
       ? hrTabs.length > 0
@@ -93,7 +94,7 @@ function AppRoutes() {
   const isTechEd = role.includes("teched");
   // Access rules replace the hard-coded Tech-ED restriction only when /me answered.
   const targetPath = access.ok
-    ? accessAllowedPath(path, access)
+    ? accessAllowedPath(path, access, isTechEd)
     : isTechEd && !TECH_ED_PATHS.includes(path)
       ? "/employee-master"
       : path;
