@@ -3,7 +3,6 @@ import {
   Table2,
   Users,
   BookOpen,
-  LogOut,
   ChevronDown,
   WalletCards,
   Settings,
@@ -258,19 +257,7 @@ export function AppShell({ children, headerActions }) {
             {!isVertical && headerActions}
             {isVertical && headerActions}
             {(isTechEd || access.canScreen("settings")) && settingsButton}
-            <button
-              type="button"
-              onClick={signOut}
-              className={cn(
-                "flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-white/85 transition-colors hover:bg-white/10 hover:text-white",
-                isCollapsed && "justify-center px-0",
-              )}
-              aria-label="Sign out"
-              title={isCollapsed ? "Sign out" : undefined}
-            >
-              <LogOut className="size-3.5" />
-              {!isCollapsed && <span>Sign out</span>}
-            </button>
+
           </div>
 
           {!isVertical && headerActions && (
