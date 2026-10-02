@@ -30,7 +30,6 @@ export const actions = [
   A("allotNextLevel", "Allot budget to next level", "Budget", [0, 1, 1]),
   A("changeBudgetConfig", "Change budget config", "Budget", [1, 0, 0], { fixed: "HR only" }),
   A("viewAudit", "View audit trails", "Access", [1, 1, 0]),
-  A("previewAs", "Preview as another role", "Access", [1, 0, 0], { fixed: "HR only" }),
 ];
 export const fields = [
   F("name", "Employee", "master"), F("designation", "Designation", "master"), F("compManager", "Comp. Manager", "master"),

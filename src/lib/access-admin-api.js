@@ -63,8 +63,9 @@ export function getVersion() {
 }
 
 /** GET /admin/state -> { ok, version, me, catalog, roles, matrix, people, deleg, overrides, log, enforced } */
-export function getAdminState() {
-  return request("admin/state");
+export function getAdminState(cycleId) {
+  // cycleId: list people for this cycle's Delegation (default: the Active cycle)
+  return request(cycleId ? "admin/state?cycle=" + encodeURIComponent(cycleId) : "admin/state");
 }
 
 /** POST /apply { reason, changes } -> { ok, applied, batch, version, enforced } */

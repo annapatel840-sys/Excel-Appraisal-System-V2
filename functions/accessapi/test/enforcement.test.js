@@ -172,13 +172,15 @@ insert('Budget_Master', { tech_ed_id: 'EMP00510 - Ashok Kumar', budget_amount: 3
 
 /* ------------------------------------------------------------------ */
 /* Functions (new + legacy from git HEAD)                              */
+// Legacy = main just before the access work was merged (3a88bc5).
+const LEGACY_REF = process.env.LEGACY_REF || '3a88bc5';
 /* ------------------------------------------------------------------ */
 const CORES = FUNCS.map((f) => require(path.join(FN_ROOT, f, 'accessCore.js')));
 const resetCaches = () => CORES.forEach((c) => c.resetCache());
 const NEW = {}, LEGACY = {};
 let legacyError = null;
 function loadLegacy(fn) {
-  const src = childProcess.execFileSync('git', ['-C', REPO, 'show', 'HEAD:functions/' + fn + '/index.js'], { encoding: 'utf8' });
+  const src = childProcess.execFileSync('git', ['-C', REPO, 'show', LEGACY_REF + ':functions/' + fn + '/index.js'], { encoding: 'utf8' });
   const dir = path.join(os.tmpdir(), 'access-legacy-' + process.pid, fn);
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, 'index.js'), src);

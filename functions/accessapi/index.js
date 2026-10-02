@@ -126,7 +126,12 @@ app.get('/admin/state', asyncRoute(async (req, res) => {
     A.loadCatalog(zcql), A.loadRoles(zcql), A.activeCycleId(zcql), selectAll(zcql, SETTINGS.employeeMaster.table), catalystUsers(ap.admin)
   ]);
   await syncCatalystRoles(ap.admin, roles, users, me.user.email);
-  const [deleg, m, v, overrides, log] = await Promise.all([A.loadDelegation(zcql, cycleId), A.loadMatrix(zcql, C, roles), A.getVersion(zcql), selectAll(zcql, T.override), selectAll(zcql, T.log)]);
+  // People are listed for the cycle chosen on the screen (?cycle=), else the Active one.
+  // Effective access still uses the Active cycle only (deleg).
+  const askedCycle = String((req.query && req.query.cycle) || "").trim();
+  const listCycleId = askedCycle && ID_RE.test(askedCycle) ? askedCycle : cycleId;
+  const [deleg, listDeleg, m, v, overrides, log] = await Promise.all([A.loadDelegation(zcql, cycleId), listCycleId === cycleId ? null : A.loadDelegation(zcql, listCycleId), A.loadMatrix(zcql, C, roles), A.getVersion(zcql), selectAll(zcql, T.override), selectAll(zcql, T.log)]);
+  const shown = listDeleg || deleg;
   delete m.rowids;
 
   // People = Delegation (Tech ED / Comp Manager) + Catalyst role holders + anyone with an override
@@ -138,15 +143,17 @@ app.get('/admin/state', asyncRoute(async (req, res) => {
     const k = norm(empId);
     if (!people[k]) people[k] = em[k] ? Object.assign({}, em[k]) : { empId: String(empId), name: String(empId), email: '', active: true, inEM: false };
     const p = people[k];
-    p.techEdTeam = deleg.techEd[k] || 0; p.compMgrTeam = deleg.compMgr[k] || 0;
+    p.techEdTeam = shown.techEd[k] || 0; p.compMgrTeam = shown.compMgr[k] || 0;
     return p;
   }
-  Object.keys(deleg.techEd).concat(Object.keys(deleg.compMgr)).forEach(add);
+  Object.keys(shown.techEd).concat(Object.keys(shown.compMgr)).forEach(add);
+  // Every Catalyst app user is listed, with their Catalyst role (tracked or not).
   (users || []).forEach((u) => {
-    if (!tracked.has(u.role)) return;
     const p = emByEmail[u.email];
     const row = p ? add(p.empId) : (people[norm(u.email)] = people[norm(u.email)] || { empId: u.email, name: u.name || u.email, email: u.email, active: true, inEM: false });
-    row.catalystRole = u.role;
+    row.catalystRole = u.role || "";
+    row.catalystUser = true;
+    if (!row.name || row.name === row.empId) row.name = u.name || row.name;
   });
   const ovs = overrides.filter((o) => !bool(o.removed));
   ovs.forEach((o) => add(o.emp_id));
@@ -158,6 +165,8 @@ app.get('/admin/state', asyncRoute(async (req, res) => {
     matrix: m,
     people: Object.values(people),
     deleg: { techEd: deleg.techEd, compMgr: deleg.compMgr },
+    listCycleId, listCycleActive: !!cycleId && listCycleId === cycleId,
+    listDeleg: { techEd: shown.techEd, compMgr: shown.compMgr },
     overrides: ovs.map((o) => ({ id: String(o.ROWID), empId: o.emp_id, type: o.ov_type, key: o.target_key || '', value: o.ov_type === 'action' ? bool(o.value) : o.value, to: o.end_date ? String(o.end_date).slice(0, 10) : '', reason: o.reason || '', by: o.set_by || '', at: String(o.set_at || '').slice(0, 10) })),
     log: log.slice(-500).reverse().map((l) => ({ at: l.changed_at, by: l.changed_by, kind: l.kind, target: l.target, role: l.role, from: l.old_value, to: l.new_value, reason: l.reason })),
     catalystCheck: users ? 'ok' : 'skipped'
