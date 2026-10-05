@@ -404,19 +404,20 @@ async function seed(req, res) {
 
 module.exports = async function demoSeed(req, res) {
   try {
-    const path = String(req.url || "").split("?")[0];
     if (req.method === "GET") {
       return send(res, 200, {
         success: true,
-        message: "Demo seed function is ready. POST to /seed while signed in as HR.",
+        message: "Demo seed function is ready. POST to /server/demo_seed/ while signed in as HR.",
         targetEmployees: 30,
         targetBudgetOwners: TECH_ED,
         cycle: "Apr-26",
       });
     }
-    if (req.method !== "POST" || (path !== "/seed" && !path.endsWith("/seed"))) {
-      return send(res, 405, { success: false, message: "POST /seed is required." });
+
+    if (req.method !== "POST") {
+      return send(res, 405, { success: false, message: "POST /server/demo_seed/ is required." });
     }
+
     return await seed(req, res);
   } catch (error) {
     console.error("demo_seed:", error);
