@@ -1,6 +1,7 @@
 "use strict";
 
 const catalyst = require("zcatalyst-sdk-node");
+const accessCore = require("./accessCore");
 
 const TABLES = {
   audit: "74008000000034940",       // Catalyst Console → Data Store → Appraisal_AuditTable → Table ID
@@ -278,13 +279,17 @@ async function seed(req, res) {
     return send(res, 401, { success: false, message: "Please sign in as HR before running demo seed." });
   }
 
-  const role = String(user?.role_details?.role_name || user?.role_name || "").trim().toLowerCase();
-  if (role !== "hr" && role !== "hr admin") {
-    return send(res, 403, { success: false, message: "Demo seed is restricted to HR." });
-  }
-
   const app = catalyst.initialize(req, { scope: "admin" });
   const ds = app.datastore();
+  let access;
+  try {
+    access = await accessCore.get(userApp, { admin: app });
+  } catch (error) {
+    return send(res, 403, { success: false, message: error?.message || "Demo seed is restricted to HR." });
+  }
+  if (access?.role !== "hr") {
+    return send(res, 403, { success: false, message: "Demo seed is restricted to HR." });
+  }
 
   const tables = {
     audit: ds.table(TABLES.audit),
