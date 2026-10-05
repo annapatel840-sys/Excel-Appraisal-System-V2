@@ -313,6 +313,35 @@ export function DetailScreenPage({
       totalCtc: totalCTCWithRewards(employee),
     };
   }, [employee]);
+  /* ---- v27: PB / RB "to be paid" floors + the payment month shown
+     beside them. pbFloor reuses targetPBAllocatedForMay (already in
+     your data — this was the old row's "Current" value, so it's not
+     a guess). rbToBePaid / pbMonth / rbMonth don't exist in your data
+     model yet; they default to 0 / "—" until wired in. */
+  const payFloors = useMemo(() => {
+    if (!employee) return null;
+    const pbFloor = Number(employee.targetPBAllocatedForMay) || 0;
+    const rbFloor = Number(employee.rbToBePaid) || 0; // TODO: wire the real "RB to be paid" source
+    return {
+      pbFloor,
+      pbMonth: employee.pbMonth ?? "", // TODO: wire the real PB payment month
+      rbFloor,
+      rbMonth: employee.rbMonth ?? "", // TODO: wire the real RB payment month
+      pbDiff: (Number(employee.allocatedPBAmount) || 0) - pbFloor,
+      rbDiff: (Number(employee.newRB) || 0) - rbFloor,
+    };
+  }, [employee]);
+  /* ---- v27: Total CTC with Rewards vs last cycle's CTC. Uses the
+     same prior-cycle figures already loaded for the history grid. */
+  const ctcCompare = useMemo(() => {
+    if (!employee || !derived) return null;
+    const lastCycle = priorCycles[0];
+    const lastCtc = lastCycle
+      ? lastCycle.newBasePay + lastCycle.performanceBonus + lastCycle.retentionBonus
+      : 0;
+    const pct = lastCtc ? ((derived.totalCtc - lastCtc) / lastCtc) * 100 : 0;
+    return { lastCtc, pct };
+  }, [employee, derived, priorCycles]);
   const handleSearch = (value) => {
     setSearch(value);
     const q = value.trim().toLowerCase();
@@ -348,6 +377,23 @@ export function DetailScreenPage({
       ? Number(((hike / employee.currentAnnualBasePay) * 100).toFixed(1))
       : 0;
     commitLinked({ hikeAmount: hike, hikePct: pct });
+  };
+  /* ---- v27: Base Pay's Diff column is now two linked inputs — Hike
+     Amount and Hike% — instead of static text. Editing either one
+     recalculates the other off currentAnnualBasePay. */
+  const handleHikeAmountChange = (raw) => {
+    const hike = parseAmount(raw);
+    if (hike === "") return;
+    const base = Number(employee.currentAnnualBasePay) || 0;
+    const pct = base ? Number(((hike / base) * 100).toFixed(2)) : 0;
+    commitLinked({ hikeAmount: hike, hikePct: pct });
+  };
+  const handleHikePctChange = (raw) => {
+    const pctRaw = parseAmount(raw);
+    if (pctRaw === "") return;
+    const base = Number(employee.currentAnnualBasePay) || 0;
+    const hike = Math.round((base * Number(pctRaw)) / 100);
+    commitLinked({ hikeAmount: hike, hikePct: Number(Number(pctRaw).toFixed(2)) });
   };
   const handleNewTitleChange = (value) => {
     const changed = value !== employee.designation;
@@ -470,8 +516,15 @@ export function DetailScreenPage({
                   <CompRow
                     label="Base Pay"
                     current={inr(employee.currentAnnualBasePay)}
-                    diff={`${hikeValue > 0 ? "+" : ""}${fmt(hikeValue)} / ${(Number(employee.hikePct) || 0).toFixed(1)}%`}
-                    diffPositive={hikeValue > 0}
+                    diffNode={
+                      <HikeDiffInputs
+                        key={`${employee.id}-hike`}
+                        employee={employee}
+                        edited={isEdited("hikeAmount")}
+                        onHikeAmount={handleHikeAmountChange}
+                        onHikePct={handleHikePctChange}
+                      />
+                    }
                   >
                     <EditInput
                       key={`${employee.id}-newBase`}
@@ -488,38 +541,13 @@ export function DetailScreenPage({
                   >
                     <ReadOnlyInput value="0" disabled />
                   </CompRow>
-                  <CompRow
-                    label="Retention Bonus"
-                    current={inr(employee.newRB ?? 0)}
-                    diffText="—"
-                  >
-                    <EditInput
-                      key={`${employee.id}-newRB`}
-                      defaultValue={fmt(employee.newRB ?? 0)}
-                      edited={isEdited("newRB")}
-                      onCommit={(v) =>
-                        commit(
-                          "newRB",
-                          Number(String(v).replace(/[^0-9.]/g, "")) || 0,
-                        )
-                      }
-                    />
-                  </CompRow>
-                  <CompRow
-                    label="PB Allotted / Instalments"
-                    current={`${inr(employee.targetPBAllocatedForMay)} / ${employee.pbInstallment ?? "—"}`}
-                    diffText="—"
-                  >
-                    <div className="flex w-full items-center gap-1.5">
-                      <EditInput
-                        key={`${employee.id}-allocatedPBAmount`}
-                        className="flex-1"
-                        defaultValue={fmtOrBlank(employee.allocatedPBAmount)}
-                        edited={isEdited("allocatedPBAmount")}
-                        onCommit={(v) =>
-                          commit("allocatedPBAmount", parseAmount(v))
-                        }
-                      />
+                  <PayRow
+                    label="Performance Bonus (PB) / Instalment"
+                    floorAmount={payFloors.pbFloor}
+                    month={payFloors.pbMonth}
+                    floorCaptionPrefix="PB"
+                    diffValue={payFloors.pbDiff}
+                    instalmentSelect={
                       <select
                         key={`${employee.id}-pbInstallment`}
                         value={
@@ -538,10 +566,71 @@ export function DetailScreenPage({
                           <option key={o}>{o}</option>
                         ))}
                       </select>
+                    }
+                  >
+                    <EditInput
+                      key={`${employee.id}-allocatedPBAmount`}
+                      className="flex-1"
+                      defaultValue={fmtOrBlank(employee.allocatedPBAmount)}
+                      edited={isEdited("allocatedPBAmount")}
+                      onCommit={(v) =>
+                        commit("allocatedPBAmount", parseAmount(v))
+                      }
+                    />
+                  </PayRow>
+                  <PayRow
+                    label="Retention Bonus (RB)"
+                    floorAmount={payFloors.rbFloor}
+                    month={payFloors.rbMonth}
+                    floorCaptionPrefix="RB"
+                    diffValue={payFloors.rbDiff}
+                  >
+                    <EditInput
+                      key={`${employee.id}-newRB`}
+                      className="flex-1"
+                      defaultValue={fmt(employee.newRB ?? 0)}
+                      edited={isEdited("newRB")}
+                      onCommit={(v) =>
+                        commit(
+                          "newRB",
+                          Number(String(v).replace(/[^0-9.]/g, "")) || 0,
+                        )
+                      }
+                    />
+                  </PayRow>
+                  <CompRow
+                    label="Total CTC with Rewards"
+                    current={inr(ctcCompare.lastCtc)}
+                    diffNode={
+                      ctcCompare.lastCtc ? (
+                        <span
+                          style={{
+                            color: ctcCompare.pct < 0 ? "#C0392B" : "#1E7A4A",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {(ctcCompare.pct < 0 ? "−" : "") +
+                            Math.abs(ctcCompare.pct).toFixed(1) +
+                            "%"}
+                        </span>
+                      ) : (
+                        <span style={{ color: "#9AA7B4" }}>—</span>
+                      )
+                    }
+                  >
+                    <div
+                      className="flex h-[28px] w-full items-center rounded border px-2 text-[12px] font-bold"
+                      style={{
+                        borderColor: "#D1D5DB",
+                        background: "#fff",
+                        color: INK,
+                      }}
+                    >
+                      {inr(derived.totalCtc)}
                     </div>
                   </CompRow>
                   <CompRow
-                    label="Target PB"
+                    label="Target PB for Next Year"
                     current={fmt(employee.targetPBAllocatedForMay)}
                     diffText="next yr"
                   >
@@ -1298,6 +1387,7 @@ function CompRow({
   diffText,
   diffPositive,
   muted,
+  diffNode,
   children,
 }) {
   return (
@@ -1333,7 +1423,8 @@ function CompRow({
           fontWeight: diffPositive ? 700 : 400,
         }}
       >
-        {diff ??
+        {diffNode ??
+          diff ??
           (muted ? (
             <span className="text-[11px] text-slate-400">{diffText}</span>
           ) : (
@@ -1383,6 +1474,125 @@ function CompFullRow({ label, children, last }) {
         }}
       />
     </>
+  );
+}
+/* ============================================================
+   v27 — Performance Bonus (PB) and Retention Bonus (RB) rows.
+   Current = [amount to be paid][payment month] + captions.
+   Proposed = editable amount (+ instalment select for PB only)
+   + a "Preloaded" caption showing the floor.
+   Diff = (proposed − floor), captioned "vs to be paid" / "= to
+   be paid".
+   ============================================================ */
+function PayRow({
+  label,
+  floorAmount,
+  month,
+  floorCaptionPrefix,
+  diffValue,
+  instalmentSelect,
+  children,
+}) {
+  return (
+    <>
+      <div
+        className="flex items-center border-b border-r px-2.5 py-1.5 font-bold"
+        style={{
+          borderColor: "#E3E9EC",
+          background: "#F8FAFB",
+          color: INK,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        className="flex flex-col gap-1 border-b border-r px-2.5 py-1.5"
+        style={{ borderColor: "#E3E9EC" }}
+      >
+        <div className="flex items-center gap-1.5">
+          <ReadBox>{inr(floorAmount)}</ReadBox>
+          <div className="w-14 shrink-0">
+            <ReadBox>{dash(month)}</ReadBox>
+          </div>
+        </div>
+        <div className="flex gap-2 text-[10px]" style={{ color: MUTED }}>
+          <span className="flex-1">{floorCaptionPrefix} to be Paid</span>
+          <span className="w-14 shrink-0">Month ({floorCaptionPrefix})</span>
+        </div>
+      </div>
+      <div
+        className="flex flex-col gap-1 border-b border-r px-2.5 py-1.5"
+        style={{ borderColor: "#E3E9EC", background: "#fff" }}
+      >
+        <div className="flex items-center gap-1.5">
+          {children}
+          {instalmentSelect}
+        </div>
+        <div className="text-[10px]" style={{ color: "#0B5F5B" }}>
+          Preloaded · less than this → {fmt(floorAmount)} paid
+        </div>
+      </div>
+      <div
+        className="flex items-center justify-end border-b px-2.5 py-1.5 text-right"
+        style={{ borderColor: "#E3E9EC", background: "#fff" }}
+      >
+        <PaidDiff value={diffValue} />
+      </div>
+    </>
+  );
+}
+function PaidDiff({ value }) {
+  if (!value) {
+    return (
+      <div>
+        <div style={{ color: "#9AA7B4" }}>—</div>
+        <div className="text-[10px]" style={{ color: MUTED }}>
+          = to be paid
+        </div>
+      </div>
+    );
+  }
+  const positive = value > 0;
+  return (
+    <div>
+      <div style={{ color: positive ? "#1E7A4A" : "#C0392B", fontWeight: 700 }}>
+        {positive ? "+" : "−"}
+        {fmt(Math.abs(value))}
+      </div>
+      <div className="text-[10px]" style={{ color: MUTED }}>
+        vs to be paid
+      </div>
+    </div>
+  );
+}
+/* ============================================================
+   v27 — Base Pay's Diff column: two linked inputs (Hike Amount
+   and Hike%). Editing one recalculates the other.
+   ============================================================ */
+function HikeDiffInputs({ employee, edited, onHikeAmount, onHikePct }) {
+  return (
+    <div className="flex w-full flex-col gap-1">
+      <label className="block text-[9.5px] font-semibold" style={{ color: MUTED }}>
+        Hike Amount
+        <input
+          type="text"
+          defaultValue={fmt(employee.hikeAmount)}
+          onBlur={(e) => onHikeAmount(e.target.value)}
+          className="mt-0.5 h-[22px] w-full rounded border px-1.5 text-[11.5px] outline-none focus:border-[#0B7A75]"
+          style={fieldStyle(edited)}
+        />
+      </label>
+      <label className="block text-[9.5px] font-semibold" style={{ color: MUTED }}>
+        Hike%
+        <input
+          type="text"
+          defaultValue={(Number(employee.hikePct) || 0).toFixed(2)}
+          onBlur={(e) => onHikePct(e.target.value)}
+          className="mt-0.5 h-[22px] w-full rounded border px-1.5 text-[11.5px] outline-none focus:border-[#0B7A75]"
+          style={fieldStyle(edited)}
+        />
+      </label>
+    </div>
   );
 }
 function EditInput({ defaultValue, onCommit, className = "", edited }) {
@@ -1499,4 +1709,3 @@ function HistRow({ year, vals, prev, current }) {
     </tr>
   );
 }
- 
