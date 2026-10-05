@@ -19,7 +19,7 @@ export const HR_TAB_SCREENS = {
   "payroll-data": "payroll",
   "payroll-upload": "payroll",
   "team-changes": "teamChanges",
-  "budget-allocation": "budgetAllocation",
+  "budget-master": "budgetAllocation",
   "budget-distribution": "budgetDistribution",
   delegation: "delegation",
   access: "access",
@@ -30,7 +30,7 @@ export const PATH_SCREENS = {
   "/": "dashboard",
   "/sheet": "appraisalSheet",
   "/detail-screen": "detailScreen",
-  "/budget-allocation": "budgetAllocation",
+  "/budget-master": "budgetAllocation",
   "/budget-distribution": "budgetDistribution",
   "/settings": "settings",
 };
