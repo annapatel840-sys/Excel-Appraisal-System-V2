@@ -43,7 +43,7 @@ Existing tables read: `Employee_Master` (emp_id, emp_name, email_id, emp_status 
 | dashboard | Dashboard | Compensation | | view,view,view | route `/` |
 | appraisalSheet | Appraisal Sheet | Compensation | | edit,edit,edit | route `/sheet` |
 | detailScreen | Detailed Screen | Compensation | | edit,edit,edit | route `/detail-screen` |
-| budgetAllocation | Budget Allocation | Compensation | | edit,edit,edit | route `/budget-allocation` and HR Ops tab `budget-allocation` |
+| budgetAllocation | Budget Master | Compensation | | edit,edit,edit | route `/budget-allocation` and HR Ops tab `budget-allocation` |
 | budgetDistribution | Budget Distribution | Compensation | | edit,edit,edit | HR Ops tab `budget-distribution` |
 | teamChanges | Team Changes | Compensation | | view,view,view | HR Ops tab `team-changes` |
 | delegation | Delegation | Compensation | | edit,edit,none | HR Ops tab `delegation` |
