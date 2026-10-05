@@ -30,7 +30,6 @@ const HR_MENU_ITEMS = [
   ["Payroll Upload", "payroll-upload", "/employee-master?tab=payroll-upload"],
   ["Team Changes", "team-changes", "/employee-master?tab=team-changes"],
   ["Budget Master", "budget-master", "/employee-master?tab=budget-master"],
-  ["Budget Distribution", "budget-distribution", "/employee-master?tab=budget-distribution"],
   ["Delegation", "delegation", "/employee-master?tab=delegation"],
   ["Access", "access", "/employee-master?tab=access"],
 ];
@@ -131,11 +130,10 @@ export function AppShell({ children, headerActions }) {
       href="/settings"
       onClick={(event) => navigate(event, "/settings")}
       className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-white/85 transition-colors hover:bg-white/10 hover:text-white"
-      title={isCollapsed ? "Settings" : undefined}
+      title="Settings"
       aria-label="Settings"
     >
       <Settings className="size-3.5" />
-      {!isCollapsed && <span>Settings</span>}
     </a>
   );
 
