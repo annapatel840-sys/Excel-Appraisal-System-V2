@@ -12,7 +12,6 @@ import {
 import { useBudget } from "@/lib/budget-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
-import { useAccess } from "@/lib/access-store";
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#12304f";
 const TEAL = "#14a3a3";
@@ -102,26 +101,6 @@ const HISTORY_COLUMNS = [
   { key: "newCTC", label: "Total CTC" },
   { key: "targetPB", label: "Target PB" },
   { key: "newBasePay", label: "New Base Pay" },
-];
-// History column -> Appraisal grid field whose access limit applies to it.
-const HISTORY_FIELD = {
-  basePay: "currentAnnualBasePay",
-  performanceBonus: "totalOfPB",
-  retentionBonus: "newRB",
-  totalBonus: "totalBonus",
-  hikeAmount: "hikeAmount",
-  newCTC: "totalCTCWithRewards",
-  targetPB: "targetPBNextYear",
-  newBasePay: "newBaseSalary",
-};
-// Card fields that map to Appraisal grid fields (hidden ones show "—").
-const CARD_FIELDS = [
-  "designation",
-  "rrPercent",
-  "interviewCount",
-  "managerRating",
-  "eligibleForPromotion",
-  "atRisk",
 ];
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
 const lakhs = (n) => `${((Number(n) || 0) / 1e5).toFixed(2)} L`;
@@ -217,17 +196,6 @@ export function DetailScreenPage({
   const catalystUser = useCatalystUser();
   const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
-  // Access rules (permissive when accessapi is unavailable): 'view' screen
-  // level or a 'read' field makes inputs read-only; 'hidden' shows "—".
-  const access = useAccess();
-  const screenEditable = access.canScreen("detailScreen", "edit");
-  const canEdit = (field) => screenEditable && access.canEditField(field);
-  const hidden = (field) => access.isHidden(field);
-  const shown = (field, text) => (hidden(field) ? "—" : text);
-  const histKeep = HISTORY_COLUMNS.map((c, i) => i).filter(
-    (i) => !hidden(HISTORY_FIELD[HISTORY_COLUMNS[i].key]),
-  );
-  const pickHist = (vals) => vals && histKeep.map((i) => vals[i]);
   // The backend already scopes rows to what this login may see, so no
   // extra client-side narrowing by comp manager name here.
   const rows = liveRows || [];
@@ -499,9 +467,9 @@ export function DetailScreenPage({
                     {employee.band ? ` · ${employee.band}` : ""}
                   </div>
                   <div className="truncate" style={{ color: "#BCCCDC" }}>
-                    {shown("totalExperience", yrs(employee.totalExperience))} ·{" "}
-                    {shown("wissenExperience", yrs(employee.wissenExperience))} here · Reports to{" "}
-                    {shown("reportingManager", dash(employee.reportingManager))}
+                    {yrs(employee.totalExperience)} ·{" "}
+                    {yrs(employee.wissenExperience)} here · Reports to{" "}
+                    {dash(employee.reportingManager)}
                   </div>
                 </div>
                 <span
@@ -547,7 +515,6 @@ export function DetailScreenPage({
                   <CompHead right>Diff</CompHead>
                   <CompRow
                     label="Base Pay"
-<<<<<<< HEAD
                     current={inr(employee.currentAnnualBasePay)}
                     diffNode={
                       <HikeDiffInputs
@@ -558,26 +525,13 @@ export function DetailScreenPage({
                         onHikePct={handleHikePctChange}
                       />
                     }
-=======
-                    current={shown("currentAnnualBasePay", inr(employee.currentAnnualBasePay))}
-                    diff={shown(
-                      "hikeAmount",
-                      `${hikeValue > 0 ? "+" : ""}${fmt(hikeValue)} / ${(Number(employee.hikePct) || 0).toFixed(1)}%`,
-                    )}
-                    diffPositive={hikeValue > 0 && !hidden("hikeAmount")}
->>>>>>> df1aae677de4801a7eaf7949689bc2ae7f59da3b
                   >
-                    {hidden("newBaseSalary") || hidden("hikeAmount") ? (
-                      <ReadOnlyInput value="—" disabled />
-                    ) : (
-                      <EditInput
-                        key={`${employee.id}-newBase`}
-                        defaultValue={fmt(derived.newBase)}
-                        edited={isEdited("hikeAmount")}
-                        onCommit={handleNewBasePayChange}
-                        readOnly={!canEdit("hikeAmount")}
-                      />
-                    )}
+                    <EditInput
+                      key={`${employee.id}-newBase`}
+                      defaultValue={fmt(derived.newBase)}
+                      edited={isEdited("hikeAmount")}
+                      onCommit={handleNewBasePayChange}
+                    />
                   </CompRow>
                   <CompRow
                     label="Joining Bonus"
@@ -587,7 +541,6 @@ export function DetailScreenPage({
                   >
                     <ReadOnlyInput value="0" disabled />
                   </CompRow>
-<<<<<<< HEAD
                   <PayRow
                     label="Performance Bonus (PB) / Instalment"
                     floorAmount={payFloors.pbFloor}
@@ -595,51 +548,6 @@ export function DetailScreenPage({
                     floorCaptionPrefix="PB"
                     diffValue={payFloors.pbDiff}
                     instalmentSelect={
-=======
-                  <CompRow
-                    label="Retention Bonus"
-                    current={shown("newRB", inr(employee.newRB ?? 0))}
-                    diffText="—"
-                  >
-                    {hidden("newRB") ? (
-                      <ReadOnlyInput value="—" disabled />
-                    ) : (
-                    <EditInput
-                      key={`${employee.id}-newRB`}
-                      defaultValue={fmt(employee.newRB ?? 0)}
-                      edited={isEdited("newRB")}
-                      readOnly={!canEdit("newRB")}
-                      onCommit={(v) =>
-                        commit(
-                          "newRB",
-                          Number(String(v).replace(/[^0-9.]/g, "")) || 0,
-                        )
-                      }
-                    />
-                    )}
-                  </CompRow>
-                  <CompRow
-                    label="PB Allotted / Instalments"
-                    current={`${shown("targetPBAllocatedForMay", inr(employee.targetPBAllocatedForMay))} / ${shown("pbInstallment", employee.pbInstallment ?? "—")}`}
-                    diffText="—"
-                  >
-                    <div className="flex w-full items-center gap-1.5">
-                      {hidden("allocatedPBAmount") ? (
-                        <ReadOnlyInput value="—" disabled />
-                      ) : (
-                      <EditInput
-                        key={`${employee.id}-allocatedPBAmount`}
-                        className="flex-1"
-                        defaultValue={fmtOrBlank(employee.allocatedPBAmount)}
-                        edited={isEdited("allocatedPBAmount")}
-                        readOnly={!canEdit("allocatedPBAmount")}
-                        onCommit={(v) =>
-                          commit("allocatedPBAmount", parseAmount(v))
-                        }
-                      />
-                      )}
-                      {!hidden("pbInstallment") && (
->>>>>>> df1aae677de4801a7eaf7949689bc2ae7f59da3b
                       <select
                         key={`${employee.id}-pbInstallment`}
                         value={
@@ -647,7 +555,6 @@ export function DetailScreenPage({
                             ? ""
                             : String(employee.pbInstallment)
                         }
-                        disabled={!canEdit("pbInstallment")}
                         onChange={(e) =>
                           commit("pbInstallment", e.target.value)
                         }
@@ -659,7 +566,6 @@ export function DetailScreenPage({
                           <option key={o}>{o}</option>
                         ))}
                       </select>
-<<<<<<< HEAD
                     }
                   >
                     <EditInput
@@ -726,29 +632,16 @@ export function DetailScreenPage({
                   <CompRow
                     label="Target PB for Next Year"
                     current={fmt(employee.targetPBAllocatedForMay)}
-=======
-                      )}
-                    </div>
-                  </CompRow>
-                  <CompRow
-                    label="Target PB"
-                    current={shown("targetPBAllocatedForMay", fmt(employee.targetPBAllocatedForMay))}
->>>>>>> df1aae677de4801a7eaf7949689bc2ae7f59da3b
                     diffText="next yr"
                   >
-                    {hidden("targetPBNextYear") ? (
-                      <ReadOnlyInput value="—" disabled />
-                    ) : (
                     <EditInput
                       key={`${employee.id}-targetPBNextYear`}
                       defaultValue={fmtOrBlank(employee.targetPBNextYear)}
                       edited={isEdited("targetPBNextYear")}
-                      readOnly={!canEdit("targetPBNextYear")}
                       onCommit={(v) =>
                         commit("targetPBNextYear", parseAmount(v))
                       }
                     />
-                    )}
                   </CompRow>
                   <CompFullRow label="Target PB Criteria">
                     <textarea
@@ -775,20 +668,18 @@ export function DetailScreenPage({
                         ""
                       }
                       edited={isEdited("targetPBCriteria")}
-                      readOnly={!screenEditable}
                       onCommit={(v) => commit("targetPBCriteria", v)}
                     />
                   </CompFullRow>
                   <CompRow
                     label="Designation"
                     current={dash(employee.designation)}
-                    diff={shown("eligibleForPromotion", employee.eligibleForPromotion)}
-                    diffPositive={employee.eligibleForPromotion === "Yes" && !hidden("eligibleForPromotion")}
+                    diff={employee.eligibleForPromotion}
+                    diffPositive={employee.eligibleForPromotion === "Yes"}
                   >
                     <select
                       key={`${employee.id}-newTitle`}
-                      value={hidden("newTitle") ? employee.designation || "" : employee.newTitle || employee.designation || ""}
-                      disabled={!canEdit("newTitle") || !canEdit("eligibleForPromotion")}
+                      value={employee.newTitle || employee.designation || ""}
                       onChange={(e) => handleNewTitleChange(e.target.value)}
                       className="h-[28px] w-full rounded border px-1.5 text-[12px] outline-none focus:border-[#0B7A75]"
                       style={fieldStyle(isEdited("newTitle"))}
@@ -812,18 +703,13 @@ export function DetailScreenPage({
                     >
                       {employee.prevRemarks || "No remarks last cycle"}
                     </div>
-                    {hidden("atRisk") ? (
-                      <ReadOnlyInput value="—" disabled />
-                    ) : (
-                      <EditTextarea
-                        key={`${employee.id}-atRisk`}
-                        defaultValue={employee.atRisk || ""}
-                        placeholder="Add remarks"
-                        edited={isEdited("atRisk")}
-                        readOnly={!canEdit("atRisk")}
-                        onCommit={(v) => commit("atRisk", v)}
-                      />
-                    )}
+                    <EditTextarea
+                      key={`${employee.id}-atRisk`}
+                      defaultValue={employee.atRisk || ""}
+                      placeholder="Add remarks"
+                      edited={isEdited("atRisk")}
+                      onCommit={(v) => commit("atRisk", v)}
+                    />
                   </CompFullRow>
                 </div>
               </div>
@@ -867,11 +753,7 @@ export function DetailScreenPage({
                     className="h-[34px] rounded-[7px] px-4 text-[13px] font-bold"
                     style={{ background: INK, color: "#fff" }}
                   >
-                    {!screenEditable
-                      ? "Next ›"
-                      : index === rows.length - 1
-                        ? "Save"
-                        : "Save & next ›"}
+                    {index === rows.length - 1 ? "Save" : "Save & next ›"}
                   </button>
                 </div>
               </div>
@@ -927,7 +809,7 @@ export function DetailScreenPage({
             {cardOpen ? (
               <div className="ds-side">
                 <EmployeeCard
-                  employee={maskHidden(employee, hidden)}
+                  employee={employee}
                   priorCycles={priorCycles}
                   loading={!!historyState?.loading}
                   tab={fbTab}
@@ -982,7 +864,7 @@ export function DetailScreenPage({
                 <thead>
                   <tr>
                     <HistHead width="86px">Year</HistHead>
-                    {pickHist(HISTORY_COLUMNS).map((c) => (
+                    {HISTORY_COLUMNS.map((c) => (
                       <HistHead key={c.key}>{c.label}</HistHead>
                     ))}
                   </tr>
@@ -990,7 +872,7 @@ export function DetailScreenPage({
                 <tbody>
                   <HistRow
                     year="Apr-26 ★"
-                    vals={pickHist([
+                    vals={[
                       employee.currentAnnualBasePay,
                       0,
                       derived.totalPB,
@@ -1000,18 +882,18 @@ export function DetailScreenPage({
                       derived.totalCtc,
                       employee.targetPBNextYear,
                       derived.newBase,
-                    ])}
-                    prev={priorCycles[0] ? pickHist(priorVals(priorCycles[0])) : undefined}
+                    ]}
+                    prev={priorCycles[0] ? priorVals(priorCycles[0]) : undefined}
                     current
                   />
                   {priorCycles.map((h, i) => (
                     <HistRow
                       key={h.year ?? i}
                       year={h.year}
-                      vals={pickHist(priorVals(h))}
+                      vals={priorVals(h)}
                       prev={
                         priorCycles[i + 1]
-                          ? pickHist(priorVals(priorCycles[i + 1]))
+                          ? priorVals(priorCycles[i + 1])
                           : undefined
                       }
                     />
@@ -1088,14 +970,6 @@ function BudgetBanner({ notice, onGotIt, onViewBudget }) {
 /* ============================================================
    EMPLOYEE CARD (right) — who they are + Feedback
    ============================================================ */
-// Copy of the employee with fields the user may not see blanked (shown as "—").
-function maskHidden(employee, hidden) {
-  const masked = { ...employee };
-  CARD_FIELDS.forEach((field) => {
-    if (hidden(field)) masked[field] = undefined;
-  });
-  return masked;
-}
 function EmployeeCard({
   employee,
   priorCycles,
@@ -1602,7 +1476,6 @@ function CompFullRow({ label, children, last }) {
     </>
   );
 }
-<<<<<<< HEAD
 /* ============================================================
    v27 — Performance Bonus (PB) and Retention Bonus (RB) rows.
    Current = [amount to be paid][payment month] + captions.
@@ -1723,36 +1596,25 @@ function HikeDiffInputs({ employee, edited, onHikeAmount, onHikePct }) {
   );
 }
 function EditInput({ defaultValue, onCommit, className = "", edited }) {
-=======
-// readOnly (access rules): shown greyed and never commits.
-const readOnlyFieldStyle = { borderColor: "#C9D1DA", background: "#F1F3F6", color: "#374151" };
-function EditInput({ defaultValue, onCommit, className = "", edited, readOnly = false }) {
->>>>>>> df1aae677de4801a7eaf7949689bc2ae7f59da3b
   return (
     <input
       type="text"
       defaultValue={defaultValue}
-      readOnly={readOnly}
-      onBlur={(e) => {
-        if (!readOnly) onCommit(e.target.value);
-      }}
+      onBlur={(e) => onCommit(e.target.value)}
       className={`h-[28px] w-full min-w-0 rounded border px-2 text-[12.5px] outline-none focus:border-[#0B7A75] ${className}`}
-      style={readOnly ? readOnlyFieldStyle : fieldStyle(edited)}
+      style={fieldStyle(edited)}
     />
   );
 }
-function EditTextarea({ defaultValue, placeholder, onCommit, edited, readOnly = false }) {
+function EditTextarea({ defaultValue, placeholder, onCommit, edited }) {
   return (
     <textarea
       defaultValue={defaultValue}
       placeholder={placeholder}
       rows={2}
-      readOnly={readOnly}
-      onBlur={(e) => {
-        if (!readOnly) onCommit(e.target.value);
-      }}
+      onBlur={(e) => onCommit(e.target.value)}
       className="h-[46px] w-full resize-y rounded border px-2 py-1.5 text-[12px] leading-[1.3] outline-none focus:border-[#0B7A75]"
-      style={readOnly ? readOnlyFieldStyle : fieldStyle(edited)}
+      style={fieldStyle(edited)}
     />
   );
 }
