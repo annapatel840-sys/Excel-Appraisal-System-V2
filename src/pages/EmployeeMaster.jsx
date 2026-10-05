@@ -618,7 +618,7 @@ export function EmployeeMaster() {
     "payroll-data",
     "payroll-upload",
     "team-changes",
-    "budget-allocation",
+    "budget-master",
     "budget-distribution",
     "delegation",
     "access",
@@ -971,7 +971,7 @@ export function EmployeeMaster() {
   useEffect(() => {
     const tab = new URLSearchParams(window.location.search).get("tab");
     if (tab === "teamChanges" && isTabVisible("team-changes")) setActiveTab("team-changes");
-    if (tab === "budgetAllocation" && isTabVisible("budget-allocation")) setActiveTab("budget-allocation");
+    if (tab === "budget-master" && isTabVisible("budget-master")) setActiveTab("budget-master");
   }, []);
 
   /* ============================================================
@@ -2294,12 +2294,12 @@ export function EmployeeMaster() {
           >
             Team Changes
           </button>}
-          {isTabVisible("budget-allocation") && <button
+          {isTabVisible("budget-master") && <button
               type="button"
-              className={activeTab === "budget-allocation" ? "active" : ""}
-              onClick={() => setActiveTab("budget-allocation")}
+              className={activeTab === "budget-master" ? "active" : ""}
+              onClick={() => setActiveTab("budget-master")}
             >
-              Budget Allocation
+              Budget Master
             </button>}
           {isTabVisible("budget-distribution") && <button
               type="button"
@@ -2509,7 +2509,7 @@ export function EmployeeMaster() {
           </div>
         )}
         {isTabVisible("team-changes") && activeTab === "team-changes" && <TeamChangesPage />}
-        {isTabVisible("budget-allocation") && activeTab === "budget-allocation" && (
+        {isTabVisible("budget-master") && activeTab === "budget-master" && (
           <div
             className="em-tab-content"
             style={{
