@@ -1,5 +1,6 @@
 import { useState, Fragment } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
+import { useAccess } from "@/lib/access-store";
 
 /* Add once in index.html <head> so the font matches the reference:
    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"> */
@@ -296,6 +297,12 @@ const HEADS = [
 
 export function TechEdBudgetAllocationPage() {
   const user = useCatalystUser();
+  // Access rules (permissive when accessapi is unavailable).
+  const access = useAccess();
+  const canAllot =
+    access.canScreen("budgetAllocation", "edit") &&
+    access.canAction("allotNextLevel");
+  const canAudit = access.canAction("viewAudit");
   const rawName = String(user?.name || user?.email || "").trim();
   const me = TECH_EDS.find((r) => rawName.includes(r.name)) || TECH_EDS[0];
   const kids0 = COMP_MANAGERS.filter((c) => c.parent === me.name);
@@ -467,7 +474,7 @@ export function TechEdBudgetAllocationPage() {
         <div className={k("r")}>{self ? me.team0 : o.team0}</div>
         <div className={k("r")}>{self ? me.team : o.team}</div>
         <div className={k("ctr")}>
-          {changed ? (
+          {changed && canAudit ? (
             <button
               type="button"
               className="dd"
@@ -483,6 +490,8 @@ export function TechEdBudgetAllocationPage() {
         <div className={k("ctr last")}>
           {self ? (
             <span style={{ color: "#94a3b8" }}>{me.pct}%</span>
+          ) : !canAllot ? (
+            <span>{o.pct}%</span>
           ) : (
             <input
               key={o.name + o.pct + nonce}
@@ -499,7 +508,7 @@ export function TechEdBudgetAllocationPage() {
             />
           )}
         </div>
-        {shown && changed ? (
+        {shown && changed && canAudit ? (
           <div className="tr last">
             <Trail rows={h} roll={self} />
           </div>
@@ -547,17 +556,19 @@ export function TechEdBudgetAllocationPage() {
           Budget applied by HR: <b>{me.pct}%</b>{" "}
           <span className="muted-small">(org default)</span> ={" "}
           <b>{money(me.updated)}</b> updated · original {money(me.original)}
-          <button
-            type="button"
-            className="dd"
-            aria-expanded={applied}
-            onClick={() => setApplied((v) => !v)}
-          >
-            % history {applied ? "▴" : "▾"}
-          </button>
+          {canAudit && (
+            <button
+              type="button"
+              className="dd"
+              aria-expanded={applied}
+              onClick={() => setApplied((v) => !v)}
+            >
+              % history {applied ? "▴" : "▾"}
+            </button>
+          )}
         </span>
       </div>
-      {applied ? (
+      {applied && canAudit ? (
         <div className="apdrop">
           <AuditTable
             rows={sorted.filter((a) => a.owner === me.name)}
@@ -608,16 +619,18 @@ export function TechEdBudgetAllocationPage() {
         )}
         {pane.alloc ? (
           <>
-            <div className="reason">
-              <label htmlFor="te-reason">Reason for next % change</label>
-              <input
-                id="te-reason"
-                type="text"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="Optional — saved in the audit trail"
-              />
-            </div>
+            {canAllot && (
+              <div className="reason">
+                <label htmlFor="te-reason">Reason for next % change</label>
+                <input
+                  id="te-reason"
+                  type="text"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="Optional — saved in the audit trail"
+                />
+              </div>
+            )}
             {error ? (
               <div className="berr" role="alert">
                 <span>{error}</span>
@@ -657,7 +670,7 @@ export function TechEdBudgetAllocationPage() {
         ) : null}
       </section>
 
-      <section className="card">
+      {canAudit && <section className="card">
         {head("audit", "% Applied — audit trail (you and your Comp Managers)")}
         {pane.audit ? (
           <>
@@ -682,7 +695,7 @@ export function TechEdBudgetAllocationPage() {
             </div>
           </>
         ) : null}
-      </section>
+      </section>}
     </div>
   );
 }

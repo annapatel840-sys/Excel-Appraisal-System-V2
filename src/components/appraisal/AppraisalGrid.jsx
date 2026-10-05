@@ -2728,7 +2728,7 @@
 //         "bg-white",
 //       )}
 //       style={{
-//         height: "calc(100vh - 126px)",
+//         height: verticalLayout ? "calc(100vh - 92px)" : "calc(100vh - 126px)",
 //         isolation: "isolate",
 //         fontFamily: APPRAISAL_FONT,
 //       }}
@@ -3328,6 +3328,7 @@ import { cn } from "@/lib/utils";
 import { ColumnFilter } from "./ColumnFilter";
 import { COLUMNS, formatValue } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
+import { useAccess } from "@/lib/access-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
 // ============================================================
@@ -3617,6 +3618,18 @@ const HISTORY_METRIC_COLUMNS = [
   { key: "newBasePay", label: "New Base Pay" },
 ];
 
+// History metric -> Appraisal grid field whose access limit applies to it.
+const HISTORY_METRIC_FIELD = {
+  basePay: "currentAnnualBasePay",
+  performanceBonus: "allocatedPBAmount",
+  retentionBonus: "newRB",
+  totalBonus: "totalBonus",
+  hikeAmount: "hikeAmount",
+  newCTC: "totalCTCWithRewards",
+  targetPB: "targetPBNextYear",
+  newBasePay: "newBaseSalary",
+};
+
 // ============================================================
 // HISTORY RECORD NORMALIZER
 // ============================================================
@@ -3811,6 +3824,7 @@ function EmployeePanel({
   team,
   history,
   showRequest,
+  canDelegate = true,
   onRequest,
   onClose,
 }) {
@@ -4135,7 +4149,7 @@ function EmployeePanel({
     <div>
       {reqSent && <PanelInfo tone="good">✓ {reqSent}</PanelInfo>}
 
-      <PanelCard title="Delegation request">
+      {canDelegate && <PanelCard title="Delegation request">
         <div className="space-y-2">
           <div className="text-[11.5px] text-[#6b7280]">
             HR approves or rejects it from the Delegation screen. The current
@@ -4197,7 +4211,7 @@ function EmployeePanel({
             Send delegation request
           </button>
         </div>
-      </PanelCard>
+      </PanelCard>}
 
       <PanelCard title="Screen request">
         <div className="space-y-2">
@@ -4338,6 +4352,7 @@ function EmployeePanel({
 
 export function AppraisalGrid({
   rows,
+  verticalLayout = false,
   filters,
   setFilter,
   optionsFor,
@@ -4359,8 +4374,19 @@ export function AppraisalGrid({
   const { updateCell, updateLinkedCells, bulkUpdate, modified } =
     useAppraisal();
 
+  // Access rules (permissive when accessapi is unavailable).
+  const access = useAccess();
+  const sheetEditable = access.canScreen("appraisalSheet", "edit");
+  const canPromote = sheetEditable && access.canAction("promote");
+  const canColumnBulkEdit = sheetEditable && access.canAction("bulkEdit");
+  const canDelegate = access.canAction("delegateRequest");
+  const historyMetricColumns = HISTORY_METRIC_COLUMNS.filter(
+    (col) => !access.isHidden(HISTORY_METRIC_FIELD[col.key]),
+  );
+
   // Request tab: Tech Ed login only. HR sees Feedback only.
-  const showRequestTab = isTechEd && !isHR;
+  // With access rules it follows the delegateRequest action.
+  const showRequestTab = access.ok ? canDelegate : isTechEd && !isHR;
 
   const cellRefs = useRef({});
   const clickTimerRef = useRef(null);
@@ -4469,8 +4495,8 @@ export function AppraisalGrid({
     () =>
       columnOrder
         .map((key) => GRID_COLUMNS.find((column) => column.key === key))
-        .filter(Boolean),
-    [columnOrder],
+        .filter((column) => column && !access.isHidden(column.key)),
+    [columnOrder, access],
   );
 
   const widthOf = useCallback(
@@ -4536,7 +4562,11 @@ export function AppraisalGrid({
   // ============================================================
 
   const nameColumn = GRID_COLUMNS.find((column) => column.key === "name");
-  const nameWidth = nameColumn ? widthOf(nameColumn) : WIDTHS.name;
+  const nameWidth = access.isHidden("name")
+    ? 0
+    : nameColumn
+      ? widthOf(nameColumn)
+      : WIDTHS.name;
 
   const frozenLeftOf = (key) =>
     key === "name"
@@ -5719,12 +5749,16 @@ export function AppraisalGrid({
       return false;
     }
 
+    if (!sheetEditable || !access.canEditField(column.key)) {
+      return false;
+    }
+
     if (column.key === "newTitle") {
       return row.eligibleForPromotion === "Yes";
     }
 
     return true;
-  }, []);
+  }, [sheetEditable, access]);
 
   const getEditableColumnsForRow = useCallback(
     (row) => editableColumns.filter((column) => isColumnEditable(row, column)),
@@ -5991,14 +6025,16 @@ export function AppraisalGrid({
             </span>
           )}
 
-          <button
-            type="button"
-            onClick={(event) => openPromote(event, row)}
-            className="mt-0.5 rounded-full border border-[#d1d5db] bg-white px-2 text-[10.5px] font-bold leading-[17px] text-[#5f7482] hover:border-[#102a43] hover:text-[#102a43]"
-            title="Set the new title (marks Promotion = Yes if it is No)"
-          >
-            {row.eligibleForPromotion === "Yes" ? "★ Change" : "★ Promote"}
-          </button>
+          {canPromote && (
+            <button
+              type="button"
+              onClick={(event) => openPromote(event, row)}
+              className="mt-0.5 rounded-full border border-[#d1d5db] bg-white px-2 text-[10.5px] font-bold leading-[17px] text-[#5f7482] hover:border-[#102a43] hover:text-[#102a43]"
+              title="Set the new title (marks Promotion = Yes if it is No)"
+            >
+              {row.eligibleForPromotion === "Yes" ? "★ Change" : "★ Promote"}
+            </button>
+          )}
         </div>
       );
     }
@@ -6714,7 +6750,12 @@ export function AppraisalGrid({
                                 addGroup(col.key, "desc", col.label)
                               }
                               onClearSort={() => removeGroup(col.key)}
-                              bulkEditable={!!col.editable && !col.computed}
+                              bulkEditable={
+                                !!col.editable &&
+                                !col.computed &&
+                                canColumnBulkEdit &&
+                                access.canEditField(col.key)
+                              }
                               bulkRowCount={rows.length}
                               onBulkApply={(value) =>
                                 applyColumnBulkEdit(col, value)
@@ -6924,7 +6965,7 @@ export function AppraisalGrid({
                   <colgroup>
                     <col style={{ width: 90 }} />
 
-                    {HISTORY_METRIC_COLUMNS.map((col) => (
+                    {historyMetricColumns.map((col) => (
                       <col key={col.key} style={{ width: 120 }} />
                     ))}
                   </colgroup>
@@ -6935,7 +6976,7 @@ export function AppraisalGrid({
                         Year
                       </th>
 
-                      {HISTORY_METRIC_COLUMNS.map((col) => (
+                      {historyMetricColumns.map((col) => (
                         <th
                           key={col.key}
                           className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-2 py-1.5 text-center align-bottom text-[11px] font-bold text-[#24364d]"
@@ -6968,7 +7009,7 @@ export function AppraisalGrid({
                             {isLatest ? " ★" : ""}
                           </td>
 
-                          {HISTORY_METRIC_COLUMNS.map((col) => {
+                          {historyMetricColumns.map((col) => {
                             const change = computeHistoryChange(
                               item[col.key],
                               previous ? previous[col.key] : undefined,
@@ -7075,6 +7116,7 @@ export function AppraisalGrid({
           employee={liveHistoryRow}
           team={rows}
           showRequest={showRequestTab}
+          canDelegate={canDelegate}
           onRequest={onRequest}
           onClose={closeDetailPanel}
           history={{

@@ -1,6 +1,12 @@
 "use strict";
 
+/* ACCESS CONTROL: ./accessCore.js is a byte-for-byte copy of
+   functions/accessapi/accessCore.js and MUST stay identical to it
+   (every Catalyst function deploys separately). Edit the accessapi copy,
+   then copy it here. See docs/ACCESS_SPEC.md. */
+
 const catalyst = require("zcatalyst-sdk-node");
+const access = require("./accessCore");
 
 const AUDIT_TABLE_ID = "71873000000021235";
 
@@ -21,6 +27,59 @@ function sendJson(res, statusCode, body) {
   });
 
   res.end(JSON.stringify(body));
+}
+
+/* ============================================================
+   ACCESS CONTROL (docs/ACCESS_SPEC.md)
+
+   GET  → action viewAudit; enforced: only rows of employees in scope
+          (system rows such as emp_id 'CYCLE' only for HR Admin).
+   POST → every emp_id in scope (system rows only HR Admin); enforced:
+          changed_by is the signed-in user, not the client value.
+   Dry run (ACCESS_ENFORCE != 'true'): legacy behaviour, refusals logged.
+   ============================================================ */
+
+// Audit rows that are not about one employee (written by payrollcycleapi etc.).
+const SYSTEM_EMP_IDS = new Set(["", "CYCLE", "SYSTEM", "ALL"]);
+
+function isSystemEmpId(empId) {
+  return SYSTEM_EMP_IDS.has(String(empId || "").trim().toUpperCase());
+}
+
+function isHrAdmin(a) {
+  return Boolean(a && a.role === "hr");
+}
+
+function canSeeAuditEmp(a, empId) {
+  if (isSystemEmpId(empId)) return isHrAdmin(a);
+  return access.inScope(a, empId);
+}
+
+async function checkAccess(req) {
+  const userApp = catalyst.initialize(req);
+  const adminApp = catalyst.initialize(req, { scope: "admin" });
+
+  try {
+    return await access.check(userApp, adminApp);
+  } catch (error) {
+    if (access.isEnforced()) throw error;
+    // Dry run must never change legacy behaviour, even if access data is unreadable.
+    console.log("ACCESS dry-run: access check failed:", error && error.message);
+    return { dryRun: true, enforced: false, denied: error };
+  }
+}
+
+function requireAuditEmpIds(a, empIds) {
+  const refused = empIds.filter((empId) => !canSeeAuditEmp(a, empId));
+
+  if (refused.length) {
+    throw new access.HttpError(
+      403,
+      "You do not have access to audit records of: " +
+        Array.from(new Set(refused.map((v) => v || "(blank)"))).join(", ") +
+        ".",
+    );
+  }
 }
 
 /* ============================================================
@@ -244,7 +303,7 @@ function normalizeAuditPayload(item) {
    GET AUDIT HISTORY
    ============================================================ */
 
-async function getAuditHistory(req, res) {
+async function getAuditHistory(req, res, a) {
   const appInstance = catalyst.initialize(req);
 
   const datastore = appInstance.datastore();
@@ -254,6 +313,11 @@ async function getAuditHistory(req, res) {
   const params = getQueryParams(req);
 
   const empId = String(params.emp_id || params.empId || "").trim();
+
+  access.guard(a, () => {
+    access.requireAction(a, "viewAudit");
+    if (empId) requireAuditEmpIds(a, [empId]);
+  });
 
   const appraisalYear = String(
     params.appraisal_year || params.appraisalYear || "",
@@ -315,6 +379,11 @@ async function getAuditHistory(req, res) {
      ========================================================== */
 
   let filteredRows = allRows.filter(function (row) {
+    // Enforced: only audit rows the user may see (counted after this filter).
+    if (a && a.enforced && !canSeeAuditEmp(a, row.emp_id)) {
+      return false;
+    }
+
     if (empId) {
       const rowEmpId = String(row.emp_id || "").trim();
 
@@ -372,7 +441,7 @@ async function getAuditHistory(req, res) {
    CREATE AUDIT RECORDS
    ============================================================ */
 
-async function createAuditRecords(req, res) {
+async function createAuditRecords(req, res, a) {
   const appInstance = catalyst.initialize(req);
 
   const datastore = appInstance.datastore();
@@ -475,6 +544,25 @@ async function createAuditRecords(req, res) {
     return;
   }
 
+  /* ==========================================================
+     ACCESS: every employee in scope (system rows: HR Admin only);
+     enforced → changed_by = signed-in user.
+     ========================================================== */
+
+  access.guard(a, () =>
+    requireAuditEmpIds(
+      a,
+      rowsToInsert.map((row) => row.emp_id),
+    ),
+  );
+
+  if (a && a.enforced) {
+    const actor = (a.user && (a.user.email || a.user.name)) || "";
+    rowsToInsert.forEach((row) => {
+      row.changed_by = actor;
+    });
+  }
+
   console.log("AUDIT VALID ROW COUNT:", rowsToInsert.length);
 
   console.log("AUDIT INSERT PAYLOAD:", JSON.stringify(rowsToInsert));
@@ -547,14 +635,17 @@ module.exports = async function (req, res) {
       return;
     }
 
+    // Enforced → 401/403 here; dry run → never refuses.
+    const a = await checkAccess(req);
+
     if (method === "GET") {
-      await getAuditHistory(req, res);
+      await getAuditHistory(req, res, a);
 
       return;
     }
 
     if (method === "POST") {
-      await createAuditRecords(req, res);
+      await createAuditRecords(req, res, a);
 
       return;
     }
@@ -565,6 +656,16 @@ module.exports = async function (req, res) {
       message: "Method " + method + " not allowed.",
     });
   } catch (error) {
+    if (error instanceof access.HttpError) {
+      sendJson(res, error.status || 403, {
+        success: false,
+        message: error.message,
+        enforced: true,
+      });
+
+      return;
+    }
+
     console.error("APPRAISAL AUDIT API ERROR:", error);
 
     sendJson(res, 500, {

@@ -348,17 +348,19 @@ export function EligibilityList({
                 </button>
 
                 {/* Audit History */}
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onAuditHistory?.();
-                  }}
-                >
-                  <History size={14} />
-                  Audit History
-                </button>
+                {onAuditHistory && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onAuditHistory?.();
+                    }}
+                  >
+                    <History size={14} />
+                    Audit History
+                  </button>
+                )}
               </div>
             )}
 

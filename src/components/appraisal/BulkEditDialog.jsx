@@ -21,10 +21,14 @@ import {
 } from "@/components/ui/select";
 import { COLUMNS } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
-const editable = COLUMNS.filter((c) => c.editable);
+import { useAccess } from "@/lib/access-store";
+const EDITABLE_COLUMNS = COLUMNS.filter((c) => c.editable);
 const NUMERIC_TYPES = new Set(["currency", "number", "decimal", "percent"]);
 export function BulkEditDialog({ open, onOpenChange, ids, onDone }) {
   const { bulkUpdate, rows } = useAppraisal();
+  const { canEditField } = useAccess();
+  // Only fields the user may edit (all of them when access rules are off).
+  const editable = EDITABLE_COLUMNS.filter((c) => canEditField(c.key));
   const [field, setField] = useState(editable[0]?.key ?? "");
   const [mode, setMode] = useState("increasePercent");
   const [value, setValue] = useState("");

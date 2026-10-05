@@ -1,6 +1,12 @@
 "use strict";
 
+/* ACCESS CONTROL: ./accessCore.js is a byte-for-byte copy of
+   functions/accessapi/accessCore.js and MUST stay identical to it
+   (every Catalyst function deploys separately). Edit the accessapi copy,
+   then copy it here. See docs/ACCESS_SPEC.md. */
+
 const catalyst = require("zcatalyst-sdk-node");
+const access = require("./accessCore");
 
 const TABLES = {
   employees: "71873000000020001",
@@ -77,6 +83,61 @@ const MAX_TEXT_LENGTH = {
 function sendJson(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
+}
+
+/* ============================================================
+   ACCESS CONTROL (docs/ACCESS_SPEC.md)
+
+   session, cycles (GET)                      → any signed-in user with a role
+   payroll / audit / history (GET)            → view on 'payroll'  (HR only)
+   validate / commit / undo (POST)            → edit on 'payroll'  (HR only)
+   cycles/<action>/<id> (POST)                → edit on 'cycleMaster' (HR only)
+   Dry run (ACCESS_ENFORCE != 'true'): legacy role checks (isHR /
+   canAccessPayroll / Tech-Ed read-only) apply; refusals only logged.
+   Enforced: the access object replaces those legacy checks.
+   ============================================================ */
+
+async function checkAccess(req) {
+  const userApp = catalyst.initialize(req);
+  const adminApp = catalyst.initialize(req, { scope: "admin" });
+
+  try {
+    return await access.check(userApp, adminApp);
+  } catch (error) {
+    if (access.isEnforced()) throw error;
+    // Dry run must never change legacy behaviour, even if access data is unreadable.
+    console.log("ACCESS dry-run: access check failed:", error && error.message);
+    return { dryRun: true, enforced: false, denied: error };
+  }
+}
+
+function requirePayrollAccess(a, resource, method) {
+  if (resource === "session") return;
+  if (resource === "cycles" && method === "GET") return;
+  if (resource.startsWith("cycles/")) {
+    access.requireScreen(a, "cycleMaster", "edit");
+    return;
+  }
+  if (["payroll", "audit", "history"].includes(resource) && method === "GET") {
+    access.requireScreen(a, "payroll", "view");
+    return;
+  }
+  if (["validate", "commit", "undo"].includes(resource) && method === "POST") {
+    access.requireScreen(a, "payroll", "edit");
+  }
+}
+
+// The Active cycle decides everyone's Delegation-based access.
+async function bumpAccessVersion(req, a, why) {
+  try {
+    await access.bumpVersion(
+      catalyst.initialize(req, { scope: "admin" }),
+      (a && a.user && a.user.email) || "",
+      why,
+    );
+  } catch (error) {
+    console.error("ACCESS bumpVersion failed:", error && error.message);
+  }
 }
 
 function getQuery(req) {
@@ -432,17 +493,21 @@ async function validateUpload(tables, body) {
   return { cycle, rows: validated };
 }
 
-async function routeRequest(req, res, identity, resource) {
+async function routeRequest(req, res, identity, resource, a) {
+  const enforced = Boolean(a && a.enforced);
+  access.guard(a, () => requirePayrollAccess(a, resource, req.method));
+
   const isCycleWrite = resource.startsWith("cycles/") && req.method !== "GET";
-  if (isCycleWrite && !isHR(identity.user)) {
+  if (!enforced && isCycleWrite && !isHR(identity.user)) {
     return sendJson(res, 403, { success: false, message: "HR role is required to administer appraisal cycles." });
   }
   if (resource === "session") {
     return sendJson(res, 200, { success: true, data: { id: identity.id, name: identity.name, email: identity.email, role: identity.role } });
   }
-  const techEdUser = isTechEd(identity.user);
+  const techEdUser = !enforced && isTechEd(identity.user);
 
   if (
+    !enforced &&
     !canAccessPayroll(identity.user) &&
     !resource.startsWith("cycles")
   ) {
@@ -539,9 +604,11 @@ async function routeRequest(req, res, identity, resource) {
         )
       : null;
 
-    const visibleRows = assignedEmpIds
-      ? rows.filter((row) => assignedEmpIds.has(String(row.emp_id || "").trim().toLowerCase()))
-      : rows;
+    const visibleRows = enforced
+      ? rows.filter((row) => access.inScope(a, row))
+      : assignedEmpIds
+        ? rows.filter((row) => assignedEmpIds.has(String(row.emp_id || "").trim().toLowerCase()))
+        : rows;
 
     return sendJson(res, 200, {
       success: true,
@@ -665,7 +732,7 @@ async function routeRequest(req, res, identity, resource) {
   }
 
   if (resource.startsWith("cycles/") && req.method === "POST") {
-    if (!isHR(identity.user)) {
+    if (!enforced && !isHR(identity.user)) {
       return sendJson(res, 403, { success: false, message: "HR role is required to administer appraisal cycles." });
     }
     const [, action, id] = resource.split("/");
@@ -745,6 +812,7 @@ async function routeRequest(req, res, identity, resource) {
         return sendJson(res, 409, { success: false, message: `Archive "${otherActive.name}" before activating another cycle.` });
       }
       await tables.cycles.updateRow({ ROWID: id, status, changed_by: actor, changed_at: now });
+      if (status !== existing.status) await bumpAccessVersion(req, a, "Cycle status changed: " + existing.name);
       const updated = { ...existing, status, changedBy: actor, changedAt: now };
       await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Status changed", details: { kind: "cycle", action: "Status changed", message: `Cycle status changed from ${existing.status} to ${status}.`, cycleName: updated.name } });
       return sendJson(res, 200, { success: true, data: updated });
@@ -770,6 +838,7 @@ async function routeRequest(req, res, identity, resource) {
       const relatedPayroll = (await getAllRows(tables.payroll)).some((row) => String(row.appraisal_cycle_id || "") === id);
       if (relatedPayroll) return sendJson(res, 409, { success: false, message: "Cycles with payroll records cannot be deleted." });
       await tables.cycles.deleteRow(id);
+      if (existing.status === "Active") await bumpAccessVersion(req, a, "Active cycle deleted: " + existing.name);
       await writeAudit(tables.audit, { actor, source: "cycle", cycle: existing, action: "Cycle deleted", details: { kind: "cycle", action: "Cycle deleted", message: "Cycle deleted before its start date.", cycleName: existing.name } });
       return sendJson(res, 200, { success: true, data: { id } });
     }
@@ -780,21 +849,29 @@ async function routeRequest(req, res, identity, resource) {
 
 module.exports = async function payrollCycleApi(req, res) {
   try {
+    // Access first: enforced → 401/403 (via catch); dry run → never refuses.
+    const a = await checkAccess(req);
+
     const identity = await requireIdentity(req);
     if (!identity) return sendJson(res, 401, { success: false, message: "Sign in with a Catalyst app user account to continue." });
 
+    // `return await` so errors thrown inside routeRequest reach the catch below
+    // (a bare `return routeRequest(...)` left them as unhandled rejections).
     const resource = String(getQuery(req).resource || "");
-    if (resource === "session") return routeRequest(req, res, identity, resource);
-    if (resource === "cycles" && req.method === "GET") return routeRequest(req, res, identity, resource);
-    if (resource === "audit" && req.method === "GET") return routeRequest(req, res, identity, resource);
-    if (resource === "history" && req.method === "GET") return routeRequest(req, res, identity, resource);
-    if (resource === "payroll" && req.method === "GET") return routeRequest(req, res, identity, resource);
-    if (resource === "validate" && req.method === "POST") return routeRequest(req, res, identity, resource);
-    if (resource === "commit" && req.method === "POST") return routeRequest(req, res, identity, resource);
-    if (resource === "undo" && req.method === "POST") return routeRequest(req, res, identity, resource);
-    if (resource.startsWith("cycles/") && req.method === "POST") return routeRequest(req, res, identity, resource);
+    if (resource === "session") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "cycles" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "audit" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "history" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "payroll" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "validate" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "commit" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "undo" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
+    if (resource.startsWith("cycles/") && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
     return sendJson(res, 404, { success: false, message: "The requested operation was not found." });
   } catch (error) {
+    if (error instanceof access.HttpError) {
+      return sendJson(res, error.status || 403, { success: false, message: error.message, enforced: true });
+    }
     console.error(JSON.stringify({
       function: "payrollcycleapi",
       error: error.message,
