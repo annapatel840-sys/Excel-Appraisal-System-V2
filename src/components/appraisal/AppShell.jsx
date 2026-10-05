@@ -5,6 +5,7 @@ import {
   BookOpen,
   ChevronDown,
   Settings,
+  WalletCards,
 } from "lucide-react";
 
 import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
@@ -17,6 +18,7 @@ const TECH_ED_PATHS = [
   "/employee-master",
   "/sheet",
   "/detail-screen",
+  "/budget-distribution",
   "/settings",
 ];
 
@@ -77,6 +79,7 @@ export function AppShell({ children, headerActions }) {
     ? [
         access.canScreen("dashboard") && { to: "/", label: "Dashboard", icon: LayoutDashboard },
         access.canScreen("appraisalSheet") && { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
+        isTechEd && { to: "/budget-distribution", label: "Budget Distribution", icon: WalletCards },
         hrMenuItems.length > 0 && {
           to: "/employee-master",
           label: "HR Operations",
