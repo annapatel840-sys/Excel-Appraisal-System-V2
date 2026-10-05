@@ -30,7 +30,8 @@ const CURRENT_CYCLE = "Apr-26";
    ------------------------------------------------------------------ */
 // Where "View budget" goes when no onViewBudget prop is passed.
 // Prefer passing onViewBudget={() => navigate("/your-route")}.
-const BUDGET_PATH = "https://excel-appraisal-syst-iqjipxdl.onslate.in/employee-master?tab=budget-allocation";
+const BUDGET_PATH =
+  "https://excel-appraisal-syst-iqjipxdl.onslate.in/employee-master?tab=budget-allocation";
 // Placeholder text for the "Budget changed" banner until real budget
 // figures are wired in. Pass budgetNotice={{ from, to, changes, since }}
 // to override, or budgetNotice={null} to hide the banner message.
@@ -190,7 +191,8 @@ const editedStyle = {
   fontWeight: 700,
 };
 const fieldStyle = (edited) => (edited ? editedStyle : editableStyle);
-const COMP_COLS = "minmax(120px,0.9fr) minmax(0,1fr) minmax(0,1.05fr) minmax(92px,0.6fr)";
+const COMP_COLS =
+  "minmax(120px,0.9fr) minmax(0,1fr) minmax(0,1.05fr) minmax(92px,0.6fr)";
 // NEW: typed text -> number for the live (while typing) calculations; empty = 0.
 const draftNum = (s) => {
   const v = parseAmount(s);
@@ -203,7 +205,10 @@ export function DetailScreenPage({
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
   const { currentUser, isHR } = useBudget();
   const catalystUser = useCatalystUser();
-  const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const role = String(catalystUser?.role || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
   // The backend already scopes rows to what this login may see, so no
   // extra client-side narrowing by comp manager name here.
@@ -244,59 +249,56 @@ export function DetailScreenPage({
     if (!base) return false;
     return blankStr(base[field]) !== blankStr(employee[field]);
   };
-  const loadHistory = useCallback(
-    (empId) => {
-      const key = String(empId || "").trim();
-      if (!key) {
-        return Promise.resolve([]);
+  const loadHistory = useCallback((empId) => {
+    const key = String(empId || "").trim();
+    if (!key) {
+      return Promise.resolve([]);
+    }
+    const existing = historyPromiseRef.current.get(key);
+    if (existing) {
+      return existing;
+    }
+    setHistoryByEmpId((prev) => ({
+      ...prev,
+      [key]: { loading: true, data: [], error: "" },
+    }));
+    const promise = (async () => {
+      const response = await catalystFetch(
+        `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(key)}`,
+      );
+      if (!response.ok) {
+        throw new Error(`History request failed (${response.status}).`);
       }
-      const existing = historyPromiseRef.current.get(key);
-      if (existing) {
-        return existing;
+      const result = await response.json();
+      if (!result?.success) {
+        throw new Error(result?.message || "Failed to load history.");
       }
-      setHistoryByEmpId((prev) => ({
-        ...prev,
-        [key]: { loading: true, data: [], error: "" },
-      }));
-      const promise = (async () => {
-        const response = await catalystFetch(
-          `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(key)}`,
-        );
-        if (!response.ok) {
-          throw new Error(`History request failed (${response.status}).`);
-        }
-        const result = await response.json();
-        if (!result?.success) {
-          throw new Error(result?.message || "Failed to load history.");
-        }
-        const records = Array.isArray(result?.data) ? result.data : [];
-        return records
-          .map(normalizeHistoryRecord)
-          .sort((a, b) => String(b.year).localeCompare(String(a.year)));
-      })();
-      historyPromiseRef.current.set(key, promise);
-      promise
-        .then((data) => {
-          setHistoryByEmpId((prev) => ({
-            ...prev,
-            [key]: { loading: false, data, error: "" },
-          }));
-        })
-        .catch((error) => {
-          historyPromiseRef.current.delete(key);
-          setHistoryByEmpId((prev) => ({
-            ...prev,
-            [key]: {
-              loading: false,
-              data: [],
-              error: error?.message || "Unable to load history.",
-            },
-          }));
-        });
-      return promise;
-    },
-    [],
-  );
+      const records = Array.isArray(result?.data) ? result.data : [];
+      return records
+        .map(normalizeHistoryRecord)
+        .sort((a, b) => String(b.year).localeCompare(String(a.year)));
+    })();
+    historyPromiseRef.current.set(key, promise);
+    promise
+      .then((data) => {
+        setHistoryByEmpId((prev) => ({
+          ...prev,
+          [key]: { loading: false, data, error: "" },
+        }));
+      })
+      .catch((error) => {
+        historyPromiseRef.current.delete(key);
+        setHistoryByEmpId((prev) => ({
+          ...prev,
+          [key]: {
+            loading: false,
+            data: [],
+            error: error?.message || "Unable to load history.",
+          },
+        }));
+      });
+    return promise;
+  }, []);
   useEffect(() => {
     if (employee?.empId) {
       loadHistory(employee.empId).catch(() => {});
@@ -402,7 +404,9 @@ export function DetailScreenPage({
     if (!employee || !derived) return null;
     const lastCycle = priorCycles[0];
     const lastCtc = lastCycle
-      ? lastCycle.newBasePay + lastCycle.performanceBonus + lastCycle.retentionBonus
+      ? lastCycle.newBasePay +
+        lastCycle.performanceBonus +
+        lastCycle.retentionBonus
       : 0;
     const pct = lastCtc ? ((liveCtc - lastCtc) / lastCtc) * 100 : 0;
     return { lastCtc, pct };
@@ -458,14 +462,21 @@ export function DetailScreenPage({
     if (pctRaw === "") return;
     const base = Number(employee.currentAnnualBasePay) || 0;
     const hike = Math.round((base * Number(pctRaw)) / 100);
-    commitLinked({ hikeAmount: hike, hikePct: Number(Number(pctRaw).toFixed(2)) });
+    commitLinked({
+      hikeAmount: hike,
+      hikePct: Number(Number(pctRaw).toFixed(2)),
+    });
   };
   /* ---- NEW: live linking while typing (display only) ---- */
   const HIKE_DRAFT_KEYS = ["baseStr", "hikeStr", "pctStr"];
   const liveHikeAmount = (raw) => {
     const hike = draftNum(raw);
     const pct = baseNow ? (hike / baseNow) * 100 : 0;
-    setDraft({ hikeStr: raw, pctStr: pct.toFixed(2), baseStr: fmt(baseNow + hike) });
+    setDraft({
+      hikeStr: raw,
+      pctStr: pct.toFixed(2),
+      baseStr: fmt(baseNow + hike),
+    });
   };
   const liveHikePct = (raw) => {
     const pct = draftNum(raw);
@@ -605,7 +616,8 @@ export function DetailScreenPage({
                         edited={isEdited("hikeAmount")}
                         amountValue={draft.hikeStr ?? fmt(employee.hikeAmount)}
                         pctValue={
-                          draft.pctStr ?? (Number(employee.hikePct) || 0).toFixed(2)
+                          draft.pctStr ??
+                          (Number(employee.hikePct) || 0).toFixed(2)
                         }
                         onLiveAmount={liveHikeAmount}
                         onLivePct={liveHikePct}
@@ -819,9 +831,21 @@ export function DetailScreenPage({
                 className="flex shrink-0 flex-wrap gap-3.5 border-t px-3.5 py-1.5 text-[11px]"
                 style={{ color: MUTED, borderColor: LINE }}
               >
-                <Legend sw="#F1F3F6" border="#C9D1DA" label="Current (read-only)" />
-                <Legend sw="#fff" border="#D1D5DB" label="Proposed (editable)" />
-                <Legend sw="#E3F4EF" border="#4FA38F" label="Edited this cycle" />
+                <Legend
+                  sw="#F1F3F6"
+                  border="#C9D1DA"
+                  label="Current (read-only)"
+                />
+                <Legend
+                  sw="#fff"
+                  border="#D1D5DB"
+                  label="Proposed (editable)"
+                />
+                <Legend
+                  sw="#E3F4EF"
+                  border="#4FA38F"
+                  label="Edited this cycle"
+                />
               </div>
               <div
                 className="flex shrink-0 items-center justify-between gap-3 border-t px-3.5 py-2.5"
@@ -985,7 +1009,9 @@ export function DetailScreenPage({
                       employee.targetPBNextYear,
                       derived.newBase,
                     ]}
-                    prev={priorCycles[0] ? priorVals(priorCycles[0]) : undefined}
+                    prev={
+                      priorCycles[0] ? priorVals(priorCycles[0]) : undefined
+                    }
                     current
                   />
                   {priorCycles.map((h, i) => (
@@ -1007,8 +1033,16 @@ export function DetailScreenPage({
               className="flex shrink-0 flex-wrap gap-3.5 border-t px-3.5 py-1 text-[10.5px]"
               style={{ color: MUTED, borderColor: "#EEF1F5" }}
             >
-              <Legend sw="#fff9dc" border="#E8D89A" label="This cycle (not yet final)" />
-              <Legend sw="#1F8A3B" border="#1F8A3B" label="Increase vs previous cycle" />
+              <Legend
+                sw="#fff9dc"
+                border="#E8D89A"
+                label="This cycle (not yet final)"
+              />
+              <Legend
+                sw="#1F8A3B"
+                border="#1F8A3B"
+                label="Increase vs previous cycle"
+              />
               <Legend sw="#C0392B" border="#C0392B" label="Decrease" />
             </div>
           </section>
@@ -1021,7 +1055,6 @@ export function DetailScreenPage({
    BUDGET BANNER — scrolls right to left, pauses on hover
    ============================================================ */
 function BudgetBanner({ notice, onGotIt, onViewBudget }) {
-   
   return (
     <div
       role="status"
@@ -1120,7 +1153,10 @@ function EmployeeCard({
         style={{ background: NAVY, gridTemplateColumns: "1fr auto 1fr" }}
       >
         <span />
-        <span className="text-[13.5px] font-extrabold" style={{ color: "#fff" }}>
+        <span
+          className="text-[13.5px] font-extrabold"
+          style={{ color: "#fff" }}
+        >
           Feedback
         </span>
         <div className="flex justify-end gap-2">
@@ -1130,11 +1166,11 @@ function EmployeeCard({
             title={wide ? "Normal width" : "Expand"}
             aria-pressed={wide}
             className="h-[28px] w-[28px] shrink-0 rounded-md border text-[13px]"
-          style={{
-            borderColor: "rgba(255,255,255,.35)",
-            background: "rgba(255,255,255,.12)",
-            color: "#fff",
-          }}
+            style={{
+              borderColor: "rgba(255,255,255,.35)",
+              background: "rgba(255,255,255,.12)",
+              color: "#fff",
+            }}
           >
             {wide ? "⤡" : "⤢"}
           </button>
@@ -1144,17 +1180,20 @@ function EmployeeCard({
             title="Close"
             aria-label="Close employee card"
             className="h-[28px] w-[28px] shrink-0 rounded-md border text-[13px]"
-          style={{
-            borderColor: "rgba(255,255,255,.35)",
-            background: "rgba(255,255,255,.12)",
-            color: "#fff",
-          }}
+            style={{
+              borderColor: "rgba(255,255,255,.35)",
+              background: "rgba(255,255,255,.12)",
+              color: "#fff",
+            }}
           >
             ✕
           </button>
         </div>
       </div>
-      <div className="flex shrink-0 flex-wrap gap-1.5 px-3.5 pb-1 pt-2.5" role="tablist">
+      <div
+        className="flex shrink-0 flex-wrap gap-1.5 px-3.5 pb-1 pt-2.5"
+        role="tablist"
+      >
         {tabs.map(([key, label]) => (
           <button
             key={key}
@@ -1206,10 +1245,16 @@ function EmployeeCard({
                     {x.year}
                     {x.current ? " ★" : ""}
                   </td>
-                  <td className="border-b px-1.5 py-1.5" style={{ borderColor: SOFT }}>
+                  <td
+                    className="border-b px-1.5 py-1.5"
+                    style={{ borderColor: SOFT }}
+                  >
                     {pctText(x.rr)}
                   </td>
-                  <td className="border-b px-1.5 py-1.5" style={{ borderColor: SOFT }}>
+                  <td
+                    className="border-b px-1.5 py-1.5"
+                    style={{ borderColor: SOFT }}
+                  >
                     {dash(x.ic)}
                   </td>
                 </tr>
@@ -1239,7 +1284,11 @@ function EmployeeCard({
                   {x.current && (
                     <span
                       className="rounded-md border px-[7px] py-px text-[11px] font-bold"
-                      style={{ background: "#F3F4F6", borderColor: "#E2E5EA", color: INK }}
+                      style={{
+                        background: "#F3F4F6",
+                        borderColor: "#E2E5EA",
+                        color: INK,
+                      }}
                     >
                       This cycle
                     </span>
@@ -1315,10 +1364,7 @@ function BarRow({ label, pct, sub }) {
         style={{ color: "#334E5C" }}
       >
         <span>{label}</span>
-        <b
-          className="text-[15px]"
-          style={{ color: over ? "#C0392B" : LTEAL }}
-        >
+        <b className="text-[15px]" style={{ color: over ? "#C0392B" : LTEAL }}>
           {pct.toFixed(0)}%
         </b>
       </div>
@@ -1362,7 +1408,13 @@ function MetricBox({ title, tag, children }) {
     </div>
   );
 }
-function TeamMetrics({ employee, metrics: m, teamBudget, rowsCount, scopeLabel }) {
+function TeamMetrics({
+  employee,
+  metrics: m,
+  teamBudget,
+  rowsCount,
+  scopeLabel,
+}) {
   const left = teamBudget - m.used;
   const leftT = teamBudget - m.used - m.tpb;
   return (
@@ -1370,7 +1422,10 @@ function TeamMetrics({ employee, metrics: m, teamBudget, rowsCount, scopeLabel }
       <div className="mb-2.5 text-[11.5px]" style={{ color: MUTED }}>
         {scopeLabel} · {CURRENT_CYCLE}
       </div>
-      <div className="rounded-lg border px-[11px] py-[9px]" style={{ borderColor: LINE }}>
+      <div
+        className="rounded-lg border px-[11px] py-[9px]"
+        style={{ borderColor: LINE }}
+      >
         {m.cur !== null ? (
           <>
             <BarRow
@@ -1399,9 +1454,15 @@ function TeamMetrics({ employee, metrics: m, teamBudget, rowsCount, scopeLabel }
       <MetricBox title="Hike % — percentile in team" tag="Metric 2">
         {m.percentile !== null ? (
           <>
-            <div className="mt-0.5 text-[16px] font-bold" style={{ color: INK }}>
+            <div
+              className="mt-0.5 text-[16px] font-bold"
+              style={{ color: INK }}
+            >
               {ordinal(m.percentile)}{" "}
-              <span className="text-[12px] font-normal" style={{ color: MUTED }}>
+              <span
+                className="text-[12px] font-normal"
+                style={{ color: MUTED }}
+              >
                 percentile · {String(employee.name).split(" ")[0]}{" "}
                 {signedPct(m.mine.v)}
               </span>
@@ -1685,7 +1746,10 @@ function HikeDiffInputs({
 }) {
   return (
     <div className="flex w-full flex-col gap-1">
-      <label className="block text-[9.5px] font-semibold" style={{ color: MUTED }}>
+      <label
+        className="block text-[9.5px] font-semibold"
+        style={{ color: MUTED }}
+      >
         Hike Amount
         <input
           type="text"
@@ -1696,7 +1760,10 @@ function HikeDiffInputs({
           style={fieldStyle(edited)}
         />
       </label>
-      <label className="block text-[9.5px] font-semibold" style={{ color: MUTED }}>
+      <label
+        className="block text-[9.5px] font-semibold"
+        style={{ color: MUTED }}
+      >
         Hike%
         <input
           type="text"
@@ -1712,7 +1779,14 @@ function HikeDiffInputs({
 }
 /* CHANGED: EditInput can now be controlled (value) and/or report every
    keystroke (onLive). Without those props it behaves exactly as before. */
-function EditInput({ defaultValue, value, onLive, onCommit, className = "", edited }) {
+function EditInput({
+  defaultValue,
+  value,
+  onLive,
+  onCommit,
+  className = "",
+  edited,
+}) {
   const valueProps = value !== undefined ? { value } : { defaultValue };
   return (
     <input
@@ -1807,7 +1881,11 @@ function HistRow({ year, vals, prev, current }) {
     <tr style={{ background: current ? "#fff9dc" : undefined }}>
       <td
         className="border-b px-1.5 py-1 text-center font-bold"
-        style={{ borderColor: "#eef1f5", color: "#1859a8", whiteSpace: "nowrap" }}
+        style={{
+          borderColor: "#eef1f5",
+          color: "#1859a8",
+          whiteSpace: "nowrap",
+        }}
       >
         {year}
       </td>
@@ -1822,7 +1900,10 @@ function HistRow({ year, vals, prev, current }) {
           }}
         >
           {fmt(v)}
-          <Delta v={Number(v) || 0} prev={prev ? Number(prev[i]) || 0 : undefined} />
+          <Delta
+            v={Number(v) || 0}
+            prev={prev ? Number(prev[i]) || 0 : undefined}
+          />
         </td>
       ))}
     </tr>
