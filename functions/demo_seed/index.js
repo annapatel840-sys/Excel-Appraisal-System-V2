@@ -190,35 +190,34 @@ function buildAppraisalRows(employees) {
 }
 
 function buildPayrollRows(employees) {
-  const years = [
-    { year: "Apr-24", factor: 0.88, hikeBase: 3 },
-    { year: "Apr-25", factor: 0.94, hikeBase: 4 },
-    { year: "Apr-26", factor: 1.00, hikeBase: 5 },
-  ];
+  return employees.flatMap(function (e, index) {
+    const currentSalary = Number(e.current_salary || 500000);
+    const joiningBonusYear = index % 3 === 0 ? "Apr-24" : index % 3 === 1 ? "Apr-25" : "Apr-26";
 
-  return years.flatMap(function ({ year, factor, hikeBase }) {
-    return employees.map((e, index) => {
-      const currentSalary = Number(e.current_salary || 500000);
-      const salary = Math.round((currentSalary * factor) / 1000) * 1000;
-      const hikePct = Number((hikeBase + (index % 6)).toFixed(1));
-      const hikeAmount = Math.round(salary * hikePct / 100);
+    let basePay = Math.round((currentSalary * 0.90) / 1000) * 1000;
+    const rows = [];
 
-      const allocatedPb = Math.round(salary * (0.07 + (index % 3) * 0.01));
-      const performanceBonus = Math.round(salary * (0.03 + (index % 4) * 0.005));
-      const retentionBonus = Math.round(salary * 0.015);
-      const joiningBonus = index % 12 === 0 ? 25000 : 0;
-      const targetPerformanceBonus = Math.round(salary * (0.09 + (index % 3) * 0.01));
+    ["Apr-24", "Apr-25", "Apr-26"].forEach(function (year, yearIndex) {
+      const hikePct = Number((5 + ((index + yearIndex) % 4)).toFixed(1));
+      const hikeAmount = Math.round(basePay * hikePct / 100);
+
+      const allocatedPb = Math.round(basePay * 0.08);
+      const performanceBonus = Math.round(basePay * 0.04);
+      const retentionBonus = Math.round(basePay * 0.02);
+      const joiningBonus = year === joiningBonusYear ? 25000 : 0;
+      const targetPerformanceBonus = Math.round(basePay * 0.11);
       const totalPb = allocatedPb + performanceBonus;
       const totalBonus = totalPb + retentionBonus + joiningBonus;
-      const promotion = (index + years.findIndex((item) => item.year === year)) % 7 === 0 ? "Yes" : "No";
+
+      const promotion = (index + yearIndex) % 8 === 0 ? "Yes" : "No";
       const title = promotion === "Yes"
         ? DESIGNATIONS[Math.min(DESIGNATIONS.length - 1, (index % 6) + 1)]
         : e.designation;
 
-      return {
+      rows.push({
         emp_id: e.emp_id,
         appraisal_year: year,
-        base_pay: salary,
+        base_pay: basePay,
         allocated_pb: allocatedPb,
         allocated_pb_installment: (index % 2) + 1,
         performance_bonus: performanceBonus,
@@ -232,13 +231,18 @@ function buildPayrollRows(employees) {
         promotion,
         title,
         target_performance_bonus: targetPerformanceBonus,
-        new_ctc: salary + hikeAmount + totalBonus,
-        manager_rating: String((3.0 + (index % 10) * 0.2).toFixed(1)) + " / 5",
-        rating: Number((3.0 + (index % 10) * 0.2).toFixed(1)),
-      };
+        new_ctc: basePay + hikeAmount,
+        manager_rating: String((3.2 + ((index + yearIndex) % 8) * 0.2).toFixed(1)) + " / 5",
+        rating: Number((3.2 + ((index + yearIndex) % 8) * 0.2).toFixed(1)),
+      });
+
+      basePay += hikeAmount;
     });
+
+    return rows;
   });
 }
+
 
 function buildAuditRows(employees) {
   return employees.slice(0, 20).map((e, index) => ({
