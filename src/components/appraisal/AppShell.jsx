@@ -62,7 +62,8 @@ export function AppShell({ children, headerActions }) {
             icon: Users,
             dropdown: isHR,
           },
-        ]),
+        ]
+      : []),
     { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
   ];
 
