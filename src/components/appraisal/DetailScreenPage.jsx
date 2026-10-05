@@ -51,8 +51,12 @@ const EDIT_FIELDS = [
   "newTitle",
   "atRisk",
 ];
+/* CHANGED: .ds-root now keeps itself inside the visible window and scrolls
+   internally on short screens, so Previous / Save & next can never be
+   clipped. If your app header is taller/shorter than 72px, change
+   --ds-offset below. */
 const DS_CSS = `
-.ds-root{display:flex;flex-direction:column;min-height:100%}
+.ds-root{--ds-offset:72px;display:flex;flex-direction:column;min-height:100%;height:100%;max-height:calc(100vh - var(--ds-offset));max-height:calc(100dvh - var(--ds-offset));overflow-y:auto;scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}
 .ds-main{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;padding:10px 12px 0;align-items:stretch}
 @media (min-width:1000px){.ds-main{grid-template-columns:var(--ds-cols)}}
 .ds-side{position:relative;min-height:360px}
@@ -187,6 +191,11 @@ const editedStyle = {
 };
 const fieldStyle = (edited) => (edited ? editedStyle : editableStyle);
 const COMP_COLS = "minmax(120px,0.9fr) minmax(0,1fr) minmax(0,1.05fr) minmax(92px,0.6fr)";
+// NEW: typed text -> number for the live (while typing) calculations; empty = 0.
+const draftNum = (s) => {
+  const v = parseAmount(s);
+  return v === "" ? 0 : v;
+};
 export function DetailScreenPage({
   onViewBudget,
   budgetNotice = BUDGET_NOTICE_PLACEHOLDER,
@@ -211,6 +220,11 @@ export function DetailScreenPage({
   const [cardWide, setCardWide] = useState(false);
   const [fbTab, setFbTab] = useState("manager");
   const baselineRef = useRef({});
+  // NEW: what the user is typing right now (per employee), used only to show
+  // live values. Saving still happens on blur exactly as before.
+  const [draftState, setDraftState] = useState({ id: null });
+  // NEW: whatever the CTC formula adds beyond Base + PB + RB, frozen per employee.
+  const ctcOffsetRef = useRef({});
   useEffect(() => {
     setIndex(0);
     setSearch("");
@@ -313,6 +327,56 @@ export function DetailScreenPage({
       totalCtc: totalCTCWithRewards(employee),
     };
   }, [employee]);
+  /* ---- NEW: live (while typing) values -------------------------------
+     draft holds the text being typed for the current employee only.
+     Total CTC with Rewards = New Base Pay + PB + RB (+ whatever extra the
+     existing formula already adds, captured once per employee so today's
+     number does not change). Everything below only affects what is shown;
+     saving is untouched. */
+  if (employee && derived && ctcOffsetRef.current[employee.id] === undefined) {
+    ctcOffsetRef.current[employee.id] =
+      derived.totalCtc -
+      derived.newBase -
+      (Number(employee.allocatedPBAmount) || 0) -
+      (Number(employee.newRB) || 0);
+  }
+  const draft = employee && draftState.id === employee.id ? draftState : {};
+  const setDraft = (patch) =>
+    setDraftState((prev) => ({
+      ...(prev.id === employee.id ? prev : {}),
+      ...patch,
+      id: employee.id,
+    }));
+  const clearDraft = (keys) =>
+    setDraftState((prev) => {
+      if (prev.id !== employee.id) return prev;
+      const next = { ...prev };
+      keys.forEach((k) => {
+        delete next[k];
+      });
+      return next;
+    });
+  const baseNow = Number(employee?.currentAnnualBasePay) || 0;
+  const livePB = !employee
+    ? 0
+    : draft.pbStr !== undefined
+      ? draftNum(draft.pbStr)
+      : Number(employee.allocatedPBAmount) || 0;
+  const liveRB = !employee
+    ? 0
+    : draft.rbStr !== undefined
+      ? draftNum(draft.rbStr)
+      : Number(employee.newRB) || 0;
+  const liveBase =
+    !employee || !derived
+      ? 0
+      : draft.baseStr !== undefined
+        ? draftNum(draft.baseStr)
+        : derived.newBase;
+  const liveCtc =
+    employee && derived
+      ? liveBase + livePB + liveRB + (ctcOffsetRef.current[employee.id] || 0)
+      : 0;
   /* ---- v27: PB / RB "to be paid" floors + the payment month shown
      beside them. pbFloor reuses targetPBAllocatedForMay (already in
      your data — this was the old row's "Current" value, so it's not
@@ -332,16 +396,17 @@ export function DetailScreenPage({
     };
   }, [employee]);
   /* ---- v27: Total CTC with Rewards vs last cycle's CTC. Uses the
-     same prior-cycle figures already loaded for the history grid. */
+     same prior-cycle figures already loaded for the history grid.
+     CHANGED: compares against liveCtc so the % moves while typing. */
   const ctcCompare = useMemo(() => {
     if (!employee || !derived) return null;
     const lastCycle = priorCycles[0];
     const lastCtc = lastCycle
       ? lastCycle.newBasePay + lastCycle.performanceBonus + lastCycle.retentionBonus
       : 0;
-    const pct = lastCtc ? ((derived.totalCtc - lastCtc) / lastCtc) * 100 : 0;
+    const pct = lastCtc ? ((liveCtc - lastCtc) / lastCtc) * 100 : 0;
     return { lastCtc, pct };
-  }, [employee, derived, priorCycles]);
+  }, [employee, derived, priorCycles, liveCtc]);
   const handleSearch = (value) => {
     setSearch(value);
     const q = value.trim().toLowerCase();
@@ -394,6 +459,23 @@ export function DetailScreenPage({
     const base = Number(employee.currentAnnualBasePay) || 0;
     const hike = Math.round((base * Number(pctRaw)) / 100);
     commitLinked({ hikeAmount: hike, hikePct: Number(Number(pctRaw).toFixed(2)) });
+  };
+  /* ---- NEW: live linking while typing (display only) ---- */
+  const HIKE_DRAFT_KEYS = ["baseStr", "hikeStr", "pctStr"];
+  const liveHikeAmount = (raw) => {
+    const hike = draftNum(raw);
+    const pct = baseNow ? (hike / baseNow) * 100 : 0;
+    setDraft({ hikeStr: raw, pctStr: pct.toFixed(2), baseStr: fmt(baseNow + hike) });
+  };
+  const liveHikePct = (raw) => {
+    const pct = draftNum(raw);
+    const hike = Math.round((baseNow * pct) / 100);
+    setDraft({ pctStr: raw, hikeStr: fmt(hike), baseStr: fmt(baseNow + hike) });
+  };
+  const liveNewBasePay = (raw) => {
+    const hike = draftNum(raw) - baseNow;
+    const pct = baseNow ? (hike / baseNow) * 100 : 0;
+    setDraft({ baseStr: raw, hikeStr: fmt(hike), pctStr: pct.toFixed(2) });
   };
   const handleNewTitleChange = (value) => {
     const changed = value !== employee.designation;
@@ -521,16 +603,32 @@ export function DetailScreenPage({
                         key={`${employee.id}-hike`}
                         employee={employee}
                         edited={isEdited("hikeAmount")}
-                        onHikeAmount={handleHikeAmountChange}
-                        onHikePct={handleHikePctChange}
+                        amountValue={draft.hikeStr ?? fmt(employee.hikeAmount)}
+                        pctValue={
+                          draft.pctStr ?? (Number(employee.hikePct) || 0).toFixed(2)
+                        }
+                        onLiveAmount={liveHikeAmount}
+                        onLivePct={liveHikePct}
+                        onHikeAmount={(v) => {
+                          handleHikeAmountChange(v);
+                          clearDraft(HIKE_DRAFT_KEYS);
+                        }}
+                        onHikePct={(v) => {
+                          handleHikePctChange(v);
+                          clearDraft(HIKE_DRAFT_KEYS);
+                        }}
                       />
                     }
                   >
                     <EditInput
                       key={`${employee.id}-newBase`}
-                      defaultValue={fmt(derived.newBase)}
+                      value={draft.baseStr ?? fmt(derived.newBase)}
+                      onLive={liveNewBasePay}
                       edited={isEdited("hikeAmount")}
-                      onCommit={handleNewBasePayChange}
+                      onCommit={(v) => {
+                        handleNewBasePayChange(v);
+                        clearDraft(HIKE_DRAFT_KEYS);
+                      }}
                     />
                   </CompRow>
                   <CompRow
@@ -546,7 +644,7 @@ export function DetailScreenPage({
                     floorAmount={payFloors.pbFloor}
                     month={payFloors.pbMonth}
                     floorCaptionPrefix="PB"
-                    diffValue={payFloors.pbDiff}
+                    diffValue={livePB - payFloors.pbFloor}
                     instalmentSelect={
                       <select
                         key={`${employee.id}-pbInstallment`}
@@ -573,9 +671,11 @@ export function DetailScreenPage({
                       className="flex-1"
                       defaultValue={fmtOrBlank(employee.allocatedPBAmount)}
                       edited={isEdited("allocatedPBAmount")}
-                      onCommit={(v) =>
-                        commit("allocatedPBAmount", parseAmount(v))
-                      }
+                      onLive={(v) => setDraft({ pbStr: v })}
+                      onCommit={(v) => {
+                        commit("allocatedPBAmount", parseAmount(v));
+                        clearDraft(["pbStr"]);
+                      }}
                     />
                   </PayRow>
                   <PayRow
@@ -583,19 +683,21 @@ export function DetailScreenPage({
                     floorAmount={payFloors.rbFloor}
                     month={payFloors.rbMonth}
                     floorCaptionPrefix="RB"
-                    diffValue={payFloors.rbDiff}
+                    diffValue={liveRB - payFloors.rbFloor}
                   >
                     <EditInput
                       key={`${employee.id}-newRB`}
                       className="flex-1"
                       defaultValue={fmt(employee.newRB ?? 0)}
                       edited={isEdited("newRB")}
-                      onCommit={(v) =>
+                      onLive={(v) => setDraft({ rbStr: v })}
+                      onCommit={(v) => {
                         commit(
                           "newRB",
                           Number(String(v).replace(/[^0-9.]/g, "")) || 0,
-                        )
-                      }
+                        );
+                        clearDraft(["rbStr"]);
+                      }}
                     />
                   </PayRow>
                   <CompRow
@@ -626,7 +728,7 @@ export function DetailScreenPage({
                         color: INK,
                       }}
                     >
-                      {inr(derived.totalCtc)}
+                      {inr(liveCtc)}
                     </div>
                   </CompRow>
                   <CompRow
@@ -1568,15 +1670,27 @@ function PaidDiff({ value }) {
 /* ============================================================
    v27 — Base Pay's Diff column: two linked inputs (Hike Amount
    and Hike%). Editing one recalculates the other.
+   CHANGED: both inputs are now controlled by the live values passed
+   in (amountValue / pctValue) so they update while typing.
    ============================================================ */
-function HikeDiffInputs({ employee, edited, onHikeAmount, onHikePct }) {
+function HikeDiffInputs({
+  employee,
+  edited,
+  amountValue,
+  pctValue,
+  onLiveAmount,
+  onLivePct,
+  onHikeAmount,
+  onHikePct,
+}) {
   return (
     <div className="flex w-full flex-col gap-1">
       <label className="block text-[9.5px] font-semibold" style={{ color: MUTED }}>
         Hike Amount
         <input
           type="text"
-          defaultValue={fmt(employee.hikeAmount)}
+          value={amountValue}
+          onChange={(e) => onLiveAmount(e.target.value)}
           onBlur={(e) => onHikeAmount(e.target.value)}
           className="mt-0.5 h-[22px] w-full rounded border px-1.5 text-[11.5px] outline-none focus:border-[#0B7A75]"
           style={fieldStyle(edited)}
@@ -1586,7 +1700,8 @@ function HikeDiffInputs({ employee, edited, onHikeAmount, onHikePct }) {
         Hike%
         <input
           type="text"
-          defaultValue={(Number(employee.hikePct) || 0).toFixed(2)}
+          value={pctValue}
+          onChange={(e) => onLivePct(e.target.value)}
           onBlur={(e) => onHikePct(e.target.value)}
           className="mt-0.5 h-[22px] w-full rounded border px-1.5 text-[11.5px] outline-none focus:border-[#0B7A75]"
           style={fieldStyle(edited)}
@@ -1595,11 +1710,15 @@ function HikeDiffInputs({ employee, edited, onHikeAmount, onHikePct }) {
     </div>
   );
 }
-function EditInput({ defaultValue, onCommit, className = "", edited }) {
+/* CHANGED: EditInput can now be controlled (value) and/or report every
+   keystroke (onLive). Without those props it behaves exactly as before. */
+function EditInput({ defaultValue, value, onLive, onCommit, className = "", edited }) {
+  const valueProps = value !== undefined ? { value } : { defaultValue };
   return (
     <input
       type="text"
-      defaultValue={defaultValue}
+      {...valueProps}
+      onChange={onLive ? (e) => onLive(e.target.value) : undefined}
       onBlur={(e) => onCommit(e.target.value)}
       className={`h-[28px] w-full min-w-0 rounded border px-2 text-[12.5px] outline-none focus:border-[#0B7A75] ${className}`}
       style={fieldStyle(edited)}
