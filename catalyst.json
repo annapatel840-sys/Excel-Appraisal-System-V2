@@ -8,7 +8,8 @@
       "payrollcycleapi",
       "budgetmasterapi",
       "delegationapi",
-      "accessapi"
+      "accessapi",
+      "demo_seed"
     ],
     "ignore": [],
     "source": "functions"
