@@ -190,44 +190,53 @@ function buildAppraisalRows(employees) {
 }
 
 function buildPayrollRows(employees) {
-  return employees.map((e, index) => {
-    const salary = Number(e.current_salary || 500000);
-    const hikePct = Number((5 + (index % 6)).toFixed(1));
-    const hikeAmount = Math.round(salary * hikePct / 100);
+  const years = [
+    { year: "Apr-24", factor: 0.88, hikeBase: 3 },
+    { year: "Apr-25", factor: 0.94, hikeBase: 4 },
+    { year: "Apr-26", factor: 1.00, hikeBase: 5 },
+  ];
 
-    const allocatedPb = Math.round(salary * 0.08);
-    const performanceBonus = Math.round(salary * 0.04);
-    const retentionBonus = Math.round(salary * 0.02);
-    const joiningBonus = index % 12 === 0 ? 25000 : 0;
-    const targetPerformanceBonus = Math.round(salary * 0.11);
-    const totalPb = allocatedPb + performanceBonus;
-    const totalBonus = totalPb + retentionBonus + joiningBonus;
-    const promotion = index % 7 === 0 ? "Yes" : "No";
-    const title = promotion === "Yes"
-      ? DESIGNATIONS[Math.min(DESIGNATIONS.length - 1, (index % 6) + 1)]
-      : e.designation;
+  return years.flatMap(function ({ year, factor, hikeBase }) {
+    return employees.map((e, index) => {
+      const currentSalary = Number(e.current_salary || 500000);
+      const salary = Math.round((currentSalary * factor) / 1000) * 1000;
+      const hikePct = Number((hikeBase + (index % 6)).toFixed(1));
+      const hikeAmount = Math.round(salary * hikePct / 100);
 
-    return {
-      emp_id: e.emp_id,
-      appraisal_year: "Apr-26",
-      base_pay: salary,
-      allocated_pb: allocatedPb,
-      allocated_pb_installment: (index % 2) + 1,
-      performance_bonus: performanceBonus,
-      performance_bonus_installment: (index % 2) + 1,
-      retention_bonus: retentionBonus,
-      total_pb: totalPb,
-      joining_bonus: joiningBonus,
-      total_bonus: totalBonus,
-      hike_amount: hikeAmount,
-      hike_pct: hikePct,
-      promotion,
-      title,
-      target_performance_bonus: targetPerformanceBonus,
-      new_ctc: salary + hikeAmount + totalBonus,
-      manager_rating: String((3.2 + (index % 9) * 0.2).toFixed(1)) + " / 5",
-      rating: Number((3.2 + (index % 9) * 0.2).toFixed(1)),
-    };
+      const allocatedPb = Math.round(salary * (0.07 + (index % 3) * 0.01));
+      const performanceBonus = Math.round(salary * (0.03 + (index % 4) * 0.005));
+      const retentionBonus = Math.round(salary * 0.015);
+      const joiningBonus = index % 12 === 0 ? 25000 : 0;
+      const targetPerformanceBonus = Math.round(salary * (0.09 + (index % 3) * 0.01));
+      const totalPb = allocatedPb + performanceBonus;
+      const totalBonus = totalPb + retentionBonus + joiningBonus;
+      const promotion = (index + years.findIndex((item) => item.year === year)) % 7 === 0 ? "Yes" : "No";
+      const title = promotion === "Yes"
+        ? DESIGNATIONS[Math.min(DESIGNATIONS.length - 1, (index % 6) + 1)]
+        : e.designation;
+
+      return {
+        emp_id: e.emp_id,
+        appraisal_year: year,
+        base_pay: salary,
+        allocated_pb: allocatedPb,
+        allocated_pb_installment: (index % 2) + 1,
+        performance_bonus: performanceBonus,
+        performance_bonus_installment: (index % 2) + 1,
+        retention_bonus: retentionBonus,
+        total_pb: totalPb,
+        joining_bonus: joiningBonus,
+        total_bonus: totalBonus,
+        hike_amount: hikeAmount,
+        hike_pct: hikePct,
+        promotion,
+        title,
+        target_performance_bonus: targetPerformanceBonus,
+        new_ctc: salary + hikeAmount + totalBonus,
+        manager_rating: String((3.0 + (index % 10) * 0.2).toFixed(1)) + " / 5",
+        rating: Number((3.0 + (index % 10) * 0.2).toFixed(1)),
+      };
+    });
   });
 }
 
