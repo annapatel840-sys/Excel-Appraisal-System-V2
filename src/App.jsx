@@ -151,7 +151,7 @@ function AppRoutes() {
         <DetailScreenPage />
       </AppShell>
     );
-  } else if (effectivePath === "/budget-allocation") {
+  } else if (effectivePath === "/budget-master") {
     page = (
       <AppShell>
         <BudgetAllocationPage />
