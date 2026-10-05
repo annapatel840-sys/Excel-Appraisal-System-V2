@@ -149,50 +149,42 @@ function buildEmployees() {
 
 function buildAppraisalRows(employees) {
   return employees.map((e, index) => {
-    const tech = e.emp_id === "EMP002" || e.emp_id === "EMP003"
-      ? ""
-      : (Number(e.emp_id.slice(3)) % 2 === 0 ? TECH_ED[0] : TECH_ED[1]);
-
     const salary = Number(e.current_salary || 500000);
     const hikePct = Number((5 + (index % 6)).toFixed(1));
     const hikeAmount = Math.round(salary * hikePct / 100);
-    const eligible = index % 10 === 0 ? "Not Eligible" : "Eligible";
-    const promo = index % 7 === 0 ? "Yes" : "No";
+
+    const allocatedPb = Math.round(salary * 0.08);
+    const performanceBonus = Math.round(salary * 0.04);
+    const retentionBonus = Math.round(salary * 0.02);
+    const joiningBonus = index % 12 === 0 ? 25000 : 0;
+    const targetPerformanceBonus = Math.round(salary * 0.11);
+    const totalPb = allocatedPb + performanceBonus;
+    const totalBonus = totalPb + retentionBonus + joiningBonus;
+    const promotion = index % 7 === 0 ? "Yes" : "No";
+    const title = promotion === "Yes"
+      ? DESIGNATIONS[Math.min(DESIGNATIONS.length - 1, (index % 6) + 1)]
+      : e.designation;
 
     return {
       emp_id: e.emp_id,
-      name: e.emp_name,
-      designation: e.designation,
-      reporting_manager: e.repo_manager || HR,
-      comp_manager: HR,
-      appraiser_tech_ed: tech,
-      department: e.department,
-      wissen_experience: e.wissen_experience || 2,
-      total_experience: e.total_experience || 3,
-      last_appraisal_date: "2025-04-15",
-      manager_rating: String((3.2 + (index % 9) * 0.2).toFixed(1)) + " / 5",
-      interview_count: 2 + (index % 9),
-      rr_percent: 70 + (index % 26),
-      gross_margin: 18 + (index % 15),
-      rb_to_be_paid: Math.round(salary * 0.02),
-      month_rb: "Apr",
-      pb_to_be_paid: Math.round(salary * 0.04),
-      month_pb: "Apr",
-      current_annual_base_pay: salary,
-      target_pb_allocated_for_may: Math.round(salary * 0.10),
-      allocated_pb_amount: Math.round(salary * 0.08),
-      pb_installment: String((index % 2) + 1),
-      new_pb_to_be_offered: Math.round(salary * 0.09),
-      new_pb_installment: String((index % 2) + 1),
-      new_rb: Math.round(salary * 0.02),
+      appraisal_year: "Apr-26",
+      base_pay: salary,
+      allocated_pb: allocatedPb,
+      allocated_pb_installment: (index % 2) + 1,
+      performance_bonus: performanceBonus,
+      performance_bonus_installment: (index % 2) + 1,
+      retention_bonus: retentionBonus,
+      total_pb: totalPb,
+      joining_bonus: joiningBonus,
+      total_bonus: totalBonus,
       hike_amount: hikeAmount,
       hike_pct: hikePct,
-      target_pb_next_year: Math.round(salary * 0.11),
-      eligible_for_promotion: promo,
-      new_title: promo === "Yes" ? DESIGNATIONS[Math.min(DESIGNATIONS.length - 1, (index % 6) + 1)] : e.designation,
-      at_risk: index % 11 === 0 ? "Yes" : "No",
-      status: index % 8 === 0 ? "Submitted" : "Draft",
-      eligible_status: eligible,
+      promotion,
+      title,
+      target_performance_bonus: targetPerformanceBonus,
+      new_ctc: salary + hikeAmount + totalBonus,
+      manager_rating: String((3.2 + (index % 9) * 0.2).toFixed(1)) + " / 5",
+      rating: Number((3.2 + (index % 9) * 0.2).toFixed(1)),
     };
   });
 }
