@@ -331,38 +331,45 @@ async function loadDelegation(zcql, cycleId) {
     if (c) { out.compMgr[c] = (out.compMgr[c] || 0) + 1; (out.teamCompMgr[c] = out.teamCompMgr[c] || []).push(emp); }
   });
 
-  // Backward-compatible fallback: older/new-project data can keep manager assignments
-  // directly in Employee_Master instead of the cycle-specific Delegation table.
-  // Only use it when Delegation has no rows, so a configured Delegation table remains authoritative.
-  if (!rows.length) {
-    const e = SETTINGS.employeeMaster;
-    const masterRows = await selectAll(z, e.table);
-    const people = masterRows.map((r) => ({
-      empId: String(r[e.empId] || '').trim(),
-      name: String(r[e.name] || '').trim(),
-    })).filter((p) => p.empId);
+  // Compatibility fallback: Employee_Master may contain manager assignments while
+  // Delegation is still empty or only partially configured. Delegation remains authoritative
+  // for rows it already defines; Employee_Master fills only missing manager/team mappings.
+  const e = SETTINGS.employeeMaster;
+  const masterRows = await selectAll(z, e.table);
+  const people = masterRows.map((r) => ({
+    empId: String(r[e.empId] || '').trim(),
+    name: String(r[e.name] || '').trim(),
+  })).filter((p) => p.empId);
 
-    const resolveManager = (value) => {
-      const raw = String(value || '').trim().toLowerCase();
-      if (!raw) return '';
-      const person = people.find((p) =>
-        raw === p.empId.toLowerCase() ||
-        raw.includes(p.empId.toLowerCase()) ||
-        (p.name && raw.includes(p.name.toLowerCase()))
-      );
-      return person ? norm(person.empId) : norm(value);
-    };
+  const resolveManager = (value) => {
+    const raw = String(value || '').trim().toLowerCase();
+    if (!raw) return '';
+    const person = people.find((p) =>
+      raw === p.empId.toLowerCase() ||
+      raw.includes(p.empId.toLowerCase()) ||
+      (p.name && raw.includes(p.name.toLowerCase()))
+    );
+    return person ? norm(person.empId) : norm(value);
+  };
 
-    masterRows.forEach((r) => {
-      const emp = String(r[e.empId] || '').trim();
-      if (!emp) return;
-      const t = resolveManager(r.appraiser_tech_ed);
-      const c = resolveManager(r.comp_manager);
-      out.byEmp[norm(emp)] = { empId: emp, techEd: t, compMgr: c };
-      if (t) { out.techEd[t] = (out.techEd[t] || 0) + 1; (out.teamTechEd[t] = out.teamTechEd[t] || []).push(emp); }
-      if (c) { out.compMgr[c] = (out.compMgr[c] || 0) + 1; (out.teamCompMgr[c] = out.teamCompMgr[c] || []).push(emp); }
-    });
-  }
+  masterRows.forEach((r) => {
+    const emp = String(r[e.empId] || '').trim();
+    if (!emp) return;
+    const existing = out.byEmp[norm(emp)] || { empId: emp, techEd: '', compMgr: '' };
+    const t = existing.techEd || resolveManager(r.appraiser_tech_ed);
+    const c = existing.compMgr || resolveManager(r.comp_manager);
+    out.byEmp[norm(emp)] = { empId: emp, techEd: t, compMgr: c };
+    if (t && !(out.teamTechEd[t] || []).some((id) => norm(id) === norm(emp))) {
+      out.teamTechEd[t] = out.teamTechEd[t] || [];
+      out.teamTechEd[t].push(emp);
+      out.techEd[t] = (out.techEd[t] || 0) + 1;
+    }
+    if (c && !(out.teamCompMgr[c] || []).some((id) => norm(id) === norm(emp))) {
+      out.teamCompMgr[c] = out.teamCompMgr[c] || [];
+      out.teamCompMgr[c].push(emp);
+      out.compMgr[c] = (out.compMgr[c] || 0) + 1;
+    }
+  });
 
   return out;
 }
