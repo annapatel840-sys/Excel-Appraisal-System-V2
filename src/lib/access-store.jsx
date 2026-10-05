@@ -31,6 +31,7 @@ export const PATH_SCREENS = {
   "/sheet": "appraisalSheet",
   "/detail-screen": "detailScreen",
   "/budget-allocation": "budgetAllocation",
+  "/budget-distribution": "budgetDistribution",
   "/settings": "settings",
 };
 
