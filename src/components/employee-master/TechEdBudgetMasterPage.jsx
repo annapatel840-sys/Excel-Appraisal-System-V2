@@ -295,7 +295,7 @@ const HEADS = [
   "Allot %",
 ];
 
-export function TechEdBudgetAllocationPage() {
+export function TechEdBudgetMasterPage() {
   const user = useCatalystUser();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();

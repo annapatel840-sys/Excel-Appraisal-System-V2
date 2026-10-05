@@ -10,12 +10,13 @@ import { SettingsPage } from "@/pages/SettingsPage";
 //this might be remove later (detailscreen)
 import { DetailScreenPage } from "@/components/appraisal/DetailScreenPage";
 import { AppShell } from "./components/appraisal/AppShell";
-import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
+import { BudgetMasterPage } from "@/components/employee-master/BudgetMasterPage";
+import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 import { SettingsProvider } from "@/lib/settings-store";
 import { AccessProvider, HR_TAB_SCREENS, NoAccessPage, PATH_SCREENS, useAccess } from "@/lib/access-store";
 
-const TECH_ED_PATHS = ["/", "/sheet", "/employee-master", "/detail-screen", "/budget-allocation", "/settings" ];
+const TECH_ED_PATHS = ["/", "/sheet", "/employee-master", "/detail-screen", "/budget-distribution", "/settings" ];
 
 // A crash in one screen shows a message instead of blanking the whole app.
 // It is keyed by path, so navigating to another screen clears the error.
@@ -67,7 +68,7 @@ const FIRST_SCREEN_PATHS = [
   ["dashboard", "/"],
   ["appraisalSheet", "/sheet"],
   ["detailScreen", "/detail-screen"],
-  ["budgetAllocation", "/budget-allocation"],
+  ["budgetDistribution", "/budget-distribution"],
 ];
 
 // With access rules (/me ok): the path to show, or null when nothing is allowed.
@@ -150,10 +151,16 @@ function AppRoutes() {
         <DetailScreenPage />
       </AppShell>
     );
-  } else if (effectivePath === "/budget-allocation") {
+  } else if (effectivePath === "/budget-master") {
     page = (
       <AppShell>
-        <BudgetAllocationPage />
+        <BudgetMasterPage />
+      </AppShell>
+    );
+  } else if (effectivePath === "/budget-distribution") {
+    page = (
+      <AppShell>
+        <BudgetDistributionPage />
       </AppShell>
     );
   } else if (effectivePath === "/settings") {

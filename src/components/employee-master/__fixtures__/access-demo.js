@@ -10,7 +10,7 @@ export const screens = [
   S("dashboard", "Dashboard", "Compensation", ["view", "view", "view"]),
   S("appraisalSheet", "Appraisal Sheet", "Compensation", ["edit", "edit", "edit"]),
   S("detailScreen", "Detailed Screen", "Compensation", ["edit", "edit", "edit"]),
-  S("budgetAllocation", "Budget Allocation", "Compensation", ["edit", "edit", "edit"]),
+  S("budgetAllocation", "Budget Master", "Compensation", ["edit", "edit", "edit"]),
   S("budgetDistribution", "Budget Distribution", "Compensation", ["edit", "edit", "edit"]),
   S("teamChanges", "Team Changes", "Compensation", ["view", "view", "view"]),
   S("delegation", "Delegation", "Compensation", ["edit", "edit", "none"]),

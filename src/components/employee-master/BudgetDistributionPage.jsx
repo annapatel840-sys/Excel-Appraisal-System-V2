@@ -258,7 +258,7 @@ export function BudgetDistributionPage() {
   );
  
   const role = normalize(user?.role);
-  const canView = isHR || role === "hr" || role === "human resources";
+  const canView = isHR || role === "hr" || role === "human resources" || role.includes("teched");
  
   if (!canView) return null;
  

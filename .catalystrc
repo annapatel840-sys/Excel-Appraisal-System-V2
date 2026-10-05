@@ -10,27 +10,19 @@
   "projects": [
     {
       "idx": 1,
-      "id": "71873000000013053",
-      "name": "AppraisalPerformanceHike",
+      "id": "74008000000027005",
+      "name": "ExcelAppraisalManagement",
       "domain": {
-        "id": "50046173173",
-        "name": "appraisalperformancehike-60088966704.development"
+        "id": "50046508184",
+        "name": "excelappraisalmanagement-60090194508.development"
       },
       "timezone": "Asia/Kolkata",
       "env": [
         {
           "idx": 1,
-          "id": "60088966704",
+          "id": "60090194508",
           "name": "Development",
-          "type": 3,
-          "env_status": "Active",
-          "project_details": {
-            "project_name": "AppraisalPerformanceHike",
-            "id": "71873000000013053",
-            "project_type": "Live"
-          },
-          "is_default": true,
-          "action_required": false
+          "type": 3
         }
       ]
     }

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
-import { TechEdBudgetAllocationPage } from "./TechEdBudgetAllocationPage";
+import { TechEdBudgetMasterPage } from "./TechEdBudgetMasterPage";
 
 const NAVY = "#12304f";
 const TEAL = "#14a3a3";
@@ -777,7 +777,7 @@ function HRAuditTrail() {
 /* =====================================================================
    PAGE SWITCH
    ===================================================================== */
-export function BudgetAllocationPage() {
+export function BudgetMasterPage() {
   const user = useCatalystUser();
   const role = String(user?.role || "")
     .trim()
@@ -828,10 +828,10 @@ export function BudgetAllocationPage() {
           {tab === "apply" || !canAudit ? <HRApplyBudget /> : <HRAuditTrail />}
         </>
       ) : (
-        <TechEdBudgetAllocationPage />
+        <TechEdBudgetMasterPage />
       )}
     </div>
   );
 }
 
-export { TechEdBudgetAllocationPage };
+export { TechEdBudgetMasterPage };

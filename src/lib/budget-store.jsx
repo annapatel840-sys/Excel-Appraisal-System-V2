@@ -130,16 +130,10 @@ export function BudgetProvider({ children }) {
     load();
   }, [load]);
 
-  const rows = useMemo(() => {
-    const active = budgetRows.filter((row) => !row.status || row.status.toLowerCase() === "active");
-    if (isHR) return active;
-    const identities = [
-      authenticatedUser && authenticatedUser.id,
-      authenticatedUser && authenticatedUser.name,
-      authenticatedUser && authenticatedUser.email,
-    ].map(normalizeOwner).filter(Boolean);
-    return active.filter((row) => ownerMatches(row.tech_ed_id, identities));
-  }, [budgetRows, authenticatedUser, isHR]);
+  const rows = useMemo(
+    () => budgetRows.filter((row) => !row.status || row.status.toLowerCase() === "active"),
+    [budgetRows],
+  );
 
   const employeeCounts = useMemo(() => {
     const getOwner = (employee) =>

@@ -12,8 +12,8 @@ const access = require("./accessCore");
 // TABLE IDs
 // ============================================================
 
-const EMPLOYEE_MASTER_TABLE_ID = "71873000000020438";
-const EMPLOYEES_TABLE_ID = "71873000000020001";
+const EMPLOYEE_MASTER_TABLE_ID = "74008000000035727";
+const EMPLOYEES_TABLE_ID = "74008000000039094";
 // ============================================================
 // TABLE NAME
 // ============================================================
