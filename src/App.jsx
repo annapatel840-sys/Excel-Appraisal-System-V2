@@ -10,7 +10,7 @@ import { SettingsPage } from "@/pages/SettingsPage";
 //this might be remove later (detailscreen)
 import { DetailScreenPage } from "@/components/appraisal/DetailScreenPage";
 import { AppShell } from "./components/appraisal/AppShell";
-import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
+import { BudgetMasterPage } from "@/components/employee-master/BudgetMasterPage";
 import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 import { SettingsProvider } from "@/lib/settings-store";
@@ -154,7 +154,7 @@ function AppRoutes() {
   } else if (effectivePath === "/budget-master") {
     page = (
       <AppShell>
-        <BudgetAllocationPage />
+        <BudgetMasterPage />
       </AppShell>
     );
   } else if (effectivePath === "/budget-distribution") {
