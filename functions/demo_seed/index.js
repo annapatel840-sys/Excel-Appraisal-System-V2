@@ -189,37 +189,44 @@ function buildAppraisalRows(employees) {
   });
 }
 
-function buildPayrollRows(employees, cycleId) {
+function buildPayrollRows(employees) {
   return employees.map((e, index) => {
     const salary = Number(e.current_salary || 500000);
-    const hike = Math.round(salary * (5 + (index % 6)) / 100);
+    const hikePct = Number((5 + (index % 6)).toFixed(1));
+    const hikeAmount = Math.round(salary * hikePct / 100);
+
+    const allocatedPb = Math.round(salary * 0.08);
+    const performanceBonus = Math.round(salary * 0.04);
+    const retentionBonus = Math.round(salary * 0.02);
+    const joiningBonus = index % 12 === 0 ? 25000 : 0;
+    const targetPerformanceBonus = Math.round(salary * 0.11);
+    const totalPb = allocatedPb + performanceBonus;
+    const totalBonus = totalPb + retentionBonus + joiningBonus;
+    const promotion = index % 7 === 0 ? "Yes" : "No";
+    const title = promotion === "Yes"
+      ? DESIGNATIONS[Math.min(DESIGNATIONS.length - 1, (index % 6) + 1)]
+      : e.designation;
+
     return {
       emp_id: e.emp_id,
-      emp_name: e.emp_name,
-      designation: e.designation,
-      comp_manager: HR,
-      super_manager: HR,
-      manager_mail: "prabhuprasad.parida@demo.local",
-      super_manager_mail: "prabhuprasad.parida@demo.local",
-      appraiser: e.emp_id === "EMP002" || e.emp_id === "EMP003" ? "" : (Number(e.emp_id.slice(3)) % 2 === 0 ? TECH_ED[0] : TECH_ED[1]),
+      appraisal_year: "Apr-26",
       base_pay: salary,
-      target_pb: Math.round(salary * 0.10),
-      rb_paid: Math.round(salary * 0.02),
-      joining_bonus: index % 12 === 0 ? 25000 : 0,
-      rb_month: "Apr",
-      pb_paid: Math.round(salary * 0.04),
-      pb_month: "Apr",
-      alloc_pb: Math.round(salary * 0.08),
-      alloc_inst: String((index % 2) + 1),
-      new_pb: Math.round(salary * 0.09),
-      new_pb_inst: String((index % 2) + 1),
-      new_rb: Math.round(salary * 0.02),
-      hike_amt: hike,
-      target_pb_next_year: Math.round(salary * 0.11),
-      promo: index % 7 === 0 ? "Yes" : "No",
-      new_title: e.designation,
-      remarks: "Demo payroll data for Apr-26",
-      appraisal_cycle_id: cycleId,
+      allocated_pb: allocatedPb,
+      allocated_pb_installment: (index % 2) + 1,
+      performance_bonus: performanceBonus,
+      performance_bonus_installment: (index % 2) + 1,
+      retention_bonus: retentionBonus,
+      total_pb: totalPb,
+      joining_bonus: joiningBonus,
+      total_bonus: totalBonus,
+      hike_amount: hikeAmount,
+      hike_pct: hikePct,
+      promotion,
+      title,
+      target_performance_bonus: targetPerformanceBonus,
+      new_ctc: salary + hikeAmount + totalBonus,
+      manager_rating: String((3.2 + (index % 9) * 0.2).toFixed(1)) + " / 5",
+      rating: Number((3.2 + (index % 9) * 0.2).toFixed(1)),
     };
   });
 }
@@ -315,11 +322,11 @@ async function seed(req, res) {
   );
 
   const existingPayroll = await allRows(tables.payroll);
-  const payrollRows = buildPayrollRows(employees, cycleId);
+  const payrollRows = buildPayrollRows(employees);
   const payrollAdded = await insertMissing(
     tables.payroll,
     payrollRows,
-    (r) => String(r.emp_id || "").trim().toUpperCase() + "|" + String(r.appraisal_cycle_id || ""),
+    (r) => String(r.emp_id || "").trim().toUpperCase() + "|" + String(r.appraisal_year || ""),
     existingPayroll,
   );
 
