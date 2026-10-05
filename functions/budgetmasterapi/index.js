@@ -8,7 +8,7 @@
 const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
 
-const TABLE_ID = "71873000000030413";
+const TABLE_ID = "74008000000034565";
 
 function sendJson(res, status, body) {
   res.writeHead(status, {
