@@ -29,6 +29,7 @@ const HR_MENU_ITEMS = [
   ["Payroll Data", "payroll-data", "/employee-master?tab=payroll-data"],
   ["Payroll Upload", "payroll-upload", "/employee-master?tab=payroll-upload"],
   ["Team Changes", "team-changes", "/employee-master?tab=team-changes"],
+  ["Budget Master", "budget-master", "/employee-master?tab=budget-master"],
   ["Budget Distribution", "budget-distribution", "/employee-master?tab=budget-distribution"],
   ["Delegation", "delegation", "/employee-master?tab=delegation"],
   ["Access", "access", "/employee-master?tab=access"],
