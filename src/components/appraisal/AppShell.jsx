@@ -4,7 +4,6 @@ import {
   Users,
   BookOpen,
   ChevronDown,
-  WalletCards,
   Settings,
 } from "lucide-react";
 
@@ -18,7 +17,6 @@ const TECH_ED_PATHS = [
   "/employee-master",
   "/sheet",
   "/detail-screen",
-  "/budget-allocation",
   "/settings",
 ];
 
@@ -29,7 +27,6 @@ const HR_MENU_ITEMS = [
   ["Payroll Data", "payroll-data", "/employee-master?tab=payroll-data"],
   ["Payroll Upload", "payroll-upload", "/employee-master?tab=payroll-upload"],
   ["Team Changes", "team-changes", "/employee-master?tab=team-changes"],
-  ["Budget Allocation", "budget-allocation", "/employee-master?tab=budget-allocation"],
   ["Budget Distribution", "budget-distribution", "/employee-master?tab=budget-distribution"],
   ["Delegation", "delegation", "/employee-master?tab=delegation"],
   ["Access", "access", "/employee-master?tab=access"],
@@ -55,15 +52,8 @@ export function AppShell({ children, headerActions }) {
   const allNav = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
     { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
-    ...(isTechEd
+    ...(!isTechEd
       ? [
-          {
-            to: "/budget-allocation",
-            label: "Budget Allocation",
-            icon: WalletCards,
-          },
-        ]
-      : [
           {
             to: "/employee-master",
             label: "HR Operations",
@@ -87,11 +77,6 @@ export function AppShell({ children, headerActions }) {
     ? [
         access.canScreen("dashboard") && { to: "/", label: "Dashboard", icon: LayoutDashboard },
         access.canScreen("appraisalSheet") && { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
-        (isTechEd || access.canScreen("budgetAllocation")) && {
-            to: "/budget-allocation",
-            label: "Budget Allocation",
-            icon: WalletCards,
-          },
         hrMenuItems.length > 0 && {
           to: "/employee-master",
           label: "HR Operations",
