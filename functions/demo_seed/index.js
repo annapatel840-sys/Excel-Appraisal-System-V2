@@ -4,13 +4,13 @@ const catalyst = require("zcatalyst-sdk-node");
 const accessCore = require("./accessCore");
 
 const TABLES = {
-  audit: "74008000000034940",       // Catalyst Console → Data Store → Appraisal_AuditTable → Table ID
-  cycle: "74008000000034190",       // Catalyst Console → Data Store → Appraisal_Cycle_MasterTable → Table ID
-  budget: "74008000000034565",      // Catalyst Console → Data Store → Budget_MasterTable → Table ID
-  employeeMaster: "74008000000035727", // Catalyst Console → Data Store → Employee_MasterTable → Table ID
-  appraisal: "74008000000039094",   // Catalyst Console → Data Store → Appraisal_SheetTable → Table ID
-  payroll: "74008000000035326",     // Catalyst Console → Data Store → Payroll_DataTable → Table ID
-  delegation: "74008000000036124",  // Catalyst Console → Data Store → DelegationTable → Table ID
+  audit: "74008000000034940",
+  cycle: "74008000000034190",
+  budget: "74008000000034565",
+  employeeMaster: "74008000000035727",
+  appraisal: "74008000000039094",
+  payroll: "74008000000035326",
+  delegation: "74008000000036124",
 };
 
 const HR = "EMP001 - Prabhuprasad Parida";
@@ -147,52 +147,11 @@ function buildEmployees() {
   return base.concat(demos);
 }
 
-function buildAppraisalRows(employees) {
-  return employees.map((e, index) => {
-    const salary = Number(e.current_salary || 500000);
-    const hikePct = Number((5 + (index % 6)).toFixed(1));
-    const hikeAmount = Math.round(salary * hikePct / 100);
-
-    const allocatedPb = Math.round(salary * 0.08);
-    const performanceBonus = Math.round(salary * 0.04);
-    const retentionBonus = Math.round(salary * 0.02);
-    const joiningBonus = index % 12 === 0 ? 25000 : 0;
-    const targetPerformanceBonus = Math.round(salary * 0.11);
-    const totalPb = allocatedPb + performanceBonus;
-    const totalBonus = totalPb + retentionBonus + joiningBonus;
-    const promotion = index % 7 === 0 ? "Yes" : "No";
-    const title = promotion === "Yes"
-      ? DESIGNATIONS[Math.min(DESIGNATIONS.length - 1, (index % 6) + 1)]
-      : e.designation;
-
-    return {
-      emp_id: e.emp_id,
-      appraisal_year: "Apr-26",
-      base_pay: salary,
-      allocated_pb: allocatedPb,
-      allocated_pb_installment: (index % 2) + 1,
-      performance_bonus: performanceBonus,
-      performance_bonus_installment: (index % 2) + 1,
-      retention_bonus: retentionBonus,
-      total_pb: totalPb,
-      joining_bonus: joiningBonus,
-      total_bonus: totalBonus,
-      hike_amount: hikeAmount,
-      hike_pct: hikePct,
-      promotion,
-      title,
-      target_performance_bonus: targetPerformanceBonus,
-      new_ctc: salary + hikeAmount + totalBonus,
-      manager_rating: String((3.2 + (index % 9) * 0.2).toFixed(1)) + " / 5",
-      rating: Number((3.2 + (index % 9) * 0.2).toFixed(1)),
-    };
-  });
-}
-
-function buildPayrollRows(employees) {
+function buildHistoryRows(employees) {
   return employees.flatMap(function (e, index) {
     const currentSalary = Number(e.current_salary || 500000);
-    const joiningBonusYear = index % 3 === 0 ? "Apr-24" : index % 3 === 1 ? "Apr-25" : "Apr-26";
+    const joiningBonusYear =
+      index % 3 === 0 ? "Apr-24" : index % 3 === 1 ? "Apr-25" : "Apr-26";
 
     let basePay = Math.round((currentSalary * 0.90) / 1000) * 1000;
     const rows = [];
@@ -200,7 +159,6 @@ function buildPayrollRows(employees) {
     ["Apr-24", "Apr-25", "Apr-26"].forEach(function (year, yearIndex) {
       const hikePct = Number((5 + ((index + yearIndex) % 4)).toFixed(1));
       const hikeAmount = Math.round(basePay * hikePct / 100);
-
       const allocatedPb = Math.round(basePay * 0.08);
       const performanceBonus = Math.round(basePay * 0.04);
       const retentionBonus = Math.round(basePay * 0.02);
@@ -208,7 +166,6 @@ function buildPayrollRows(employees) {
       const targetPerformanceBonus = Math.round(basePay * 0.11);
       const totalPb = allocatedPb + performanceBonus;
       const totalBonus = totalPb + retentionBonus + joiningBonus;
-
       const promotion = (index + yearIndex) % 8 === 0 ? "Yes" : "No";
       const title = promotion === "Yes"
         ? DESIGNATIONS[Math.min(DESIGNATIONS.length - 1, (index % 6) + 1)]
@@ -243,6 +200,61 @@ function buildPayrollRows(employees) {
   });
 }
 
+function buildAppraisalRows(employees) {
+  const historyRows = buildHistoryRows(employees);
+  const currentRows = historyRows.filter((r) => r.appraisal_year === "Apr-26");
+
+  return currentRows.map((h, index) => {
+    const e = employees.find((employee) => employee.emp_id === h.emp_id) || {};
+    const promotion = h.promotion === "Yes" ? "Yes" : "No";
+
+    return {
+      emp_id: e.emp_id,
+      name: e.emp_name,
+      designation: e.designation,
+      reporting_manager: e.repo_manager || "",
+      comp_manager: e.director || "",
+      appraiser_tech_ed: e.appraiser_tech_ed || "",
+      department: e.department || "",
+      manager: e.repo_manager || "",
+      status: e.emp_status || "Active",
+      wissen_experience: Number(e.wissen_experience || 0),
+      total_experience: Number(e.total_experience || 0),
+      last_appraisal_date: "2026-04-01",
+      manager_rating: h.manager_rating,
+      interview_count: (index % 4) + 1,
+      rr_percent: 70 + (index % 6) * 3,
+      gross_margin: 20 + (index % 5) * 4,
+      rb_to_be_paid: h.retention_bonus,
+      month_rb: "Apr-26",
+      pb_to_be_paid: h.performance_bonus,
+      month_pb: "Apr-26",
+      current_annual_base_pay: h.base_pay,
+      target_pb_allocated_for_may: h.allocated_pb,
+      allocated_pb_amount: h.allocated_pb,
+      pb_installment: h.allocated_pb_installment,
+      new_pb_to_be_offered: h.performance_bonus,
+      new_pb_installment: h.performance_bonus_installment,
+      new_rb: h.retention_bonus,
+      hike_amount: h.hike_amount,
+      hike_pct: h.hike_pct,
+      target_pb_next_year: h.target_performance_bonus,
+      eligible_for_promotion: promotion,
+      new_title: promotion === "Yes" ? h.title : "",
+      at_risk: index % 9 === 0 ? "Yes" : "No",
+      joining_date: e.date_of_join || null,
+      manager_email_id: "manager@demo.local",
+      super_man_email_id: "director@demo.local",
+      rating: h.rating,
+      eligible_status: "eligible",
+      joining_bonus: h.joining_bonus,
+    };
+  });
+}
+
+function buildPayrollRows(employees) {
+  return buildHistoryRows(employees);
+}
 
 function buildAuditRows(employees) {
   return employees.slice(0, 20).map((e, index) => ({
@@ -293,12 +305,14 @@ async function seed(req, res) {
 
   const app = catalyst.initialize(req, { scope: "admin" });
   const ds = app.datastore();
+
   let access;
   try {
     access = await accessCore.get(userApp, { admin: app });
   } catch (error) {
     return send(res, 403, { success: false, message: error?.message || "Demo seed is restricted to HR." });
   }
+
   if (access?.role !== "hr") {
     return send(res, 403, { success: false, message: "Demo seed is restricted to HR." });
   }
@@ -352,6 +366,7 @@ async function seed(req, res) {
       comp_manager_id: "EMP001",
       appraiser_tech_ed_id: Number(e.emp_id.slice(3)) % 2 === 0 ? "EMP002" : "EMP003",
     }));
+
   const delegationAdded = await insertMissing(
     tables.delegation,
     delegationRows,
@@ -382,6 +397,7 @@ async function seed(req, res) {
       status: "Active",
     },
   ];
+
   const budgetAdded = await insertMissing(
     tables.budget,
     budgetRows,
