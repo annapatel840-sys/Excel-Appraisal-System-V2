@@ -93,7 +93,7 @@ const START_CATALOG = [
   scr('dashboard', 'Dashboard', CMP, false, ['view', 'view', 'view']),
   scr('appraisalSheet', 'Appraisal Sheet', CMP, false, ['edit', 'edit', 'edit']),
   scr('detailScreen', 'Detailed Screen', CMP, false, ['edit', 'edit', 'edit']),
-  scr('budgetAllocation', 'Budget Allocation', CMP, false, ['edit', 'edit', 'edit']),
+  scr('budgetAllocation', 'Budget Master', CMP, false, ['edit', 'edit', 'edit']),
   scr('budgetDistribution', 'Budget Distribution', CMP, false, ['edit', 'edit', 'edit']),
   scr('teamChanges', 'Team Changes', CMP, false, ['view', 'view', 'view']),
   scr('delegation', 'Delegation', CMP, false, ['edit', 'edit', 'none']),
