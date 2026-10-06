@@ -255,6 +255,7 @@ const mapCatalystEmployee = (employee, index) => {
     newPBInstallment: String(employee.new_pb_installment || ""),
 
     newRB: Number(employee.new_rb || 0),
+    joiningBonus: Number(employee.joining_bonus || 0),
 
     hikeAmount: Number(employee.hike_amount || 0),
     hikePct: Number(employee.hike_pct || 0),
