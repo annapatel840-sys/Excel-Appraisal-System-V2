@@ -60,14 +60,14 @@ const EDIT_FIELDS = [
    so the three panels fit the visible screen and the footer stays in view.
    The 52px accounts for the banner (~38px) plus the top padding. */
 const DS_CSS = `
-.ds-root{--ds-offset:72px;display:grid;grid-template-rows:auto minmax(0,1fr) 120px;height:calc(100dvh - var(--ds-offset));min-height:0;overflow:hidden}
-.ds-main{display:grid;grid-template-columns:var(--ds-cols);grid-template-rows:minmax(0,1fr);gap:0;padding:3px 12px 0;align-items:stretch;min-width:0;min-height:0;overflow:visible}
+.ds-root{--ds-offset:72px;display:grid;grid-template-rows:auto minmax(0,1fr) 82px;height:calc(100dvh - var(--ds-offset));min-height:0;overflow:hidden}
+.ds-main{display:grid;grid-template-columns:var(--ds-cols);grid-template-rows:minmax(0,1fr);gap:0;padding:2px 12px 0;align-items:stretch;min-width:0;min-height:0;overflow:hidden}
 .ds-main>*{min-width:0;min-height:0}
-.ds-side{position:relative;min-width:0;min-height:0;overflow:visible}
+.ds-side{position:relative;min-width:0;min-height:0;overflow:hidden}
 .ds-side>.ds-card{position:relative;width:100%;height:100%}
 .ds-card{display:flex;flex-direction:column;background:#fff;border:1px solid #E3E9EC;border-radius:10px;box-shadow:0 1px 2px rgba(16,42,67,.04);overflow:hidden;min-width:0;min-height:0}
-.ds-panel-scroll{flex:1 1 auto;min-width:0;min-height:0;overflow:visible !important}
-.ds-hist{height:100%;min-height:0;margin:4px 12px 6px;overflow:hidden}
+.ds-panel-scroll{flex:1 1 auto;min-width:0;min-height:0;overflow:hidden !important}
+.ds-hist{height:100%;min-height:0;margin:3px 12px 4px;overflow:hidden}
 .ds-scroll{min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}
 .ds-mq{flex:1;min-width:0;overflow:hidden}
 .ds-track{display:inline-block;white-space:nowrap;animation:ds-slide 22s linear infinite}
@@ -77,10 +77,16 @@ const DS_CSS = `
 .ds-vbtn{writing-mode:vertical-rl;transform:rotate(180deg)}
 .ds-root button{cursor:pointer}
 .ds-root button:disabled{cursor:not-allowed}
+@media (min-width:1000px) and (max-height:850px){
+.ds-main{zoom:.82}
+}
+@media (min-width:1000px) and (min-height:851px) and (max-height:980px){
+.ds-main{zoom:.9}
+}
 @media (max-width:999px){
-.ds-root{grid-template-rows:auto minmax(0,1fr) 110px;height:calc(100dvh - var(--ds-offset));min-height:0}
-.ds-main{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);overflow:visible}
-.ds-hist{margin:3px 8px 5px}
+.ds-root{grid-template-rows:auto minmax(0,1fr) 78px;height:calc(100dvh - var(--ds-offset));min-height:0}
+.ds-main{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);overflow:hidden;zoom:.82}
+.ds-hist{margin:2px 8px 3px}
 }
 `;
 const normalizeHistoryRecord = (record) => {
@@ -567,7 +573,7 @@ export function DetailScreenPage({
             {/* LEFT — Compensation input */}
             <section className="ds-card" aria-label="Compensation input">
               <div
-                className="flex shrink-0 items-center justify-between gap-3 border-b px-3 py-1.5"
+                className="flex shrink-0 items-center justify-between gap-2 border-b px-2.5 py-1"
                 style={{ borderColor: NAVY, background: NAVY }}
               >
                 <div
@@ -576,7 +582,7 @@ export function DetailScreenPage({
                 >
                   <div className="truncate">
                     <b
-                      className="text-[15px]"
+                      className="text-[13px]"
                       style={{ color: "#fff", letterSpacing: "-.01em" }}
                     >
                       {employee.name}
@@ -606,7 +612,7 @@ export function DetailScreenPage({
                 </span>
               </div>
               <div
-                className="flex shrink-0 items-center gap-2 border-b px-3 py-1.5"
+                className="flex shrink-0 items-center gap-1.5 border-b px-2.5 py-1"
                 style={{ borderColor: LINE }}
               >
                 <input
@@ -615,12 +621,12 @@ export function DetailScreenPage({
                   onChange={(e) => handleSearch(e.target.value)}
                   placeholder="Search your team by name or employee ID"
                   aria-label="Search your team"
-                  className="h-[30px] flex-1 rounded border px-2.5 text-[12.5px] outline-none focus:border-[#0B7A75]"
+                  className="h-[25px] flex-1 rounded border px-2 text-[11px] outline-none focus:border-[#0B7A75]"
                   style={{ borderColor: "#9AA7B4" }}
                 />
                 <span
                   title={`Scope: ${scopeLabel}`}
-                  className="whitespace-nowrap rounded px-2.5 py-1 text-[11.5px] font-semibold"
+                  className="whitespace-nowrap rounded px-2 py-0.5 text-[10.5px] font-semibold"
                   style={{ background: "#E6F3F2", color: "#0B5F5B" }}
                 >
                   {rows.length}
@@ -1360,7 +1366,7 @@ function BarRow({ label, pct, sub }) {
       >
         <span>{label}</span>
         <b
-          className="text-[15px]"
+          className="text-[13px]"
           style={{ color: over ? "#C0392B" : LTEAL }}
         >
           {pct.toFixed(0)}%
@@ -1788,7 +1794,7 @@ function ReadOnlyInput({ value, disabled }) {
       value={value}
       disabled={disabled}
       readOnly
-      className="h-[28px] w-full rounded border border-dashed px-2 text-[12.5px] outline-none"
+      className="h-[21px] w-full rounded border border-dashed px-1.5 text-[10.5px] outline-none"
       style={{
         borderColor: "#D1D5DB",
         background: "#fff",
