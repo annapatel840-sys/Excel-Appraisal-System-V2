@@ -6,7 +6,6 @@ import {
   WalletCards,
   CircleDollarSign,
   Percent,
-  Layers,
   RotateCcw,
   Search,
   Upload,
@@ -16,7 +15,6 @@ import {
 import { AppShell } from "@/components/appraisal/AppShell";
 import { AppraisalGrid } from "@/components/appraisal/AppraisalGrid";
 import { AuditPanel } from "@/components/appraisal/AuditTrail";
-import { BulkEditDialog } from "@/components/appraisal/BulkEditDialog";
 import { useAppraisalImport } from "@/components/appraisal/ImportAppraisalButton"; // <-- update path if your file is named differently
 
 import { Button } from "@/components/ui/button";
@@ -109,14 +107,12 @@ export function SheetPage() {
   const access = useAccess();
   const { settings } = useSettings();
   const sheetEditable = access.canScreen("appraisalSheet", "edit");
-  const canBulkEdit = sheetEditable && access.canAction("bulkEdit");
   const canImport = sheetEditable && access.canAction("importAppraisal");
   const canExport = access.canAction("exportGrid");
   const canViewAudit = access.canAction("viewAudit");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({});
   const [selected, setSelected] = useState({});
-  const [bulkOpen, setBulkOpen] = useState(false);
 
   const [showHistory, setShowHistory] = useState(true);
   const [showEditedOnly, setShowEditedOnly] = useState(false);
@@ -188,7 +184,6 @@ export function SheetPage() {
       return next;
     });
 
-  const selectedIds = filtered.filter((r) => selected[r.id]).map((r) => r.id);
 
   const activeFilters = Object.entries(filters).filter(
     ([, filter]) => !isEmptyFilter(filter),
@@ -202,16 +197,6 @@ export function SheetPage() {
     [appraisalRows, editedEmployeeIds],
   );
 
-  const promotionCount = useMemo(
-    () =>
-      appraisalRows.filter(
-        (row) =>
-          String(row.eligibleForPromotion || "")
-            .trim()
-            .toLowerCase() === "yes",
-      ).length,
-    [appraisalRows],
-  );
   const lastEditedEntry =
     audit.find(
       (entry) =>
@@ -419,17 +404,6 @@ export function SheetPage() {
                   of {appraisalRows.length}
                 </span>
               </button>
-
-              <button type="button" onClick={() => {
-                  setShowEditedOnly(false);
-                  setFilters((previous) => ({
-                    ...previous,
-                    eligibleForPromotion: { kind: "enum", values: ["Yes"] },
-                  }));
-                  setSearch("");
-                }} className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]" title="Show employees marked for promotion">
-                <span>★ {promotionCount}</span><span className="text-slate-500">promotion</span>
-              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -469,22 +443,6 @@ export function SheetPage() {
                     className="absolute top-full right-0 z-50 mt-1.5 w-[200px] overflow-hidden rounded-md border border-[#cbd5e1] bg-white shadow-lg"
                     role="menu"
                   >
-                    {canBulkEdit && (
-                      <button
-                        type="button"
-                        role="menuitem"
-                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9] disabled:cursor-not-allowed disabled:opacity-50"
-                        onClick={() => {
-                          setMenuOpen(false);
-                          setBulkOpen(true);
-                        }}
-                        disabled={selectedIds.length === 0}
-                      >
-                        <Layers className="size-4" />
-                        <span>Bulk Edit ({selectedIds.length})</span>
-                      </button>
-                    )}
-
                     {canViewAudit && (
                       <button
                         type="button"
@@ -665,13 +623,6 @@ export function SheetPage() {
           </div>
         </DialogContent>
       </Dialog>
-
-      <BulkEditDialog
-        open={bulkOpen && canBulkEdit}
-        onOpenChange={setBulkOpen}
-        ids={selectedIds}
-        onDone={() => setSelected({})}
-      />
 
       {importUi}
     </>
