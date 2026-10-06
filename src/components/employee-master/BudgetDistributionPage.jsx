@@ -3,6 +3,7 @@ import { WalletCards, RefreshCw } from "lucide-react";
  
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
+import { TechEdBudgetDistribution } from "./TechEdBudgetDistribution";
  
 const money = (value) =>
   "₹ " + ((Number(value) || 0) / 100000).toFixed(2) + " L";
@@ -268,6 +269,8 @@ export function BudgetDistributionPage() {
     roleCompact === "teched";
  
   if (!canView) return null;
+  // Tech-EDs get their own budget view: their budget, their Comp Managers and Allot %.
+  if (roleCompact === "teched" && !isHR) return <TechEdBudgetDistribution />;
  
   return (
     <div className="bd-root">
