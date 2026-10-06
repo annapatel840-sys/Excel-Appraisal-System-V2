@@ -312,7 +312,7 @@ export const COLUMNS = [
   },
   {
     key: "allocatedPBAmount",
-    label: "Allocated PB Amount",
+    label: "New PB",
     type: "currency",
     editable: true,
     width: 140,
