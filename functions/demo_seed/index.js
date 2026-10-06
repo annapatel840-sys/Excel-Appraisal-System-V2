@@ -97,7 +97,10 @@ function safeDate(value, fallback) {
 
 function buildHistoryRows(employees) {
   return employees.flatMap(function (e, index) {
-    const currentBase = Math.max(1, Math.round(Number(e.current_salary || 500000)));
+    const currentBase = Math.max(
+      600000,
+      Math.round(Number(e.current_salary || 0) / 10000) * 10000 || (600000 + (index % 10) * 50000),
+    );
 
     // Employee_Master.current_salary is the Apr-26 base before the Apr-26 appraisal.
     // Reverse-calculate Apr-25 and Apr-24 so every year's base/hike chain remains exact.
@@ -114,12 +117,10 @@ function buildHistoryRows(employees) {
     const bases = { "Apr-24": base24, "Apr-25": base25, "Apr-26": currentBase };
     const hikes = { "Apr-24": hike24, "Apr-25": hike25, "Apr-26": hike26 };
 
-    const joinDate = safeDate(e.date_of_join, "2021-01-15");
-    const joinYear = joinDate.slice(0, 4);
-    let joiningBonusYear = null;
-    if (joinYear === "2024") joiningBonusYear = "Apr-24";
-    else if (joinYear === "2025") joiningBonusYear = "Apr-25";
-    else if (joinYear === "2026") joiningBonusYear = "Apr-26";
+    // Demo history starts at Apr-24. Treat Joining Bonus as a one-time
+    // historical payment recorded in the first available cycle only.
+    // It must therefore be 25,000 in Apr-24 and 0 in Apr-25/Apr-26.
+    const joiningBonusYear = "Apr-24";
 
     return ["Apr-24", "Apr-25", "Apr-26"].map(function (year, yearIndex) {
       const basePay = bases[year];
@@ -131,7 +132,8 @@ function buildHistoryRows(employees) {
       const totalPB = allocatedPB + newPB;
       const retentionBonus = Math.round(basePay * 0.015);
       const joiningBonus = year === joiningBonusYear ? 25000 : 0;
-      const totalBonus = totalPB + retentionBonus + joiningBonus;
+      // Total Bonus excludes Joining Bonus because Joining Bonus is a separate one-time component.
+      const totalBonus = totalPB + retentionBonus;
       const targetPerformanceBonus = Math.round(basePay * 0.10);
 
       const promotion = year === "Apr-26" && index % 7 === 0 ? "Yes" : "No";
