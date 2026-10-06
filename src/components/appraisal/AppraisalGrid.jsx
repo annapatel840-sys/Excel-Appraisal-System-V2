@@ -2489,7 +2489,7 @@ export function AppraisalGrid({
       );
     }
 
-    // EMPLOYEE CELL (single sticky column) — name, ID, separator, designation.
+    // EMPLOYEE CELL (single sticky column) — name - designation, ID below.
     if (col.key === "name") {
       return (
         <button
@@ -2504,13 +2504,13 @@ export function AppraisalGrid({
         >
           <span className="break-words text-[12.5px] font-bold leading-tight text-[#1559a6] hover:underline">
             {row.name}
+            {" - "}
+            <span className="font-medium text-[#4b5563]">
+              {row.designation || "—"}
+            </span>
           </span>
           <span className="mt-px text-[10.5px] font-normal leading-tight text-slate-500">
             {row.empId}
-          </span>
-          <span className="my-1 h-px w-full bg-slate-300" aria-hidden="true" />
-          <span className="break-words text-[11.5px] font-medium leading-tight text-[#4b5563]">
-            {row.designation || "—"}
           </span>
         </button>
       );
