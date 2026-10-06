@@ -494,7 +494,7 @@ export function SheetPage() {
                         <span>Export</span>
                       </button>
                     )}
-                    {!canBulkEdit && !canViewAudit && !canImport && !canExport && (
+                    {!canViewAudit && !canImport && !canExport && (
                       <div className="px-3 py-2.5 text-[12px] text-slate-400">
                         No actions available
                       </div>
