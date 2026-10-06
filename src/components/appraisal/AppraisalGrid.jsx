@@ -1,6 +1,7 @@
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { COLUMNS } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
+import { useAccess } from "@/lib/access-store";
 
 // ============================================================
 // API
