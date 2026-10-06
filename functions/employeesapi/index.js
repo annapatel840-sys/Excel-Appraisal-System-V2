@@ -588,21 +588,25 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
         String(row.eligible_status || "").trim() ||
         (active === "Active" ? "eligible" : "not eligible"),
 
-      current_annual_base_pay: Number(row.base_pay || 0),
-      target_pb_allocated_for_may: Number(row.allocated_pb || 0),
-      allocated_pb_amount: Number(row.allocated_pb || 0),
-      pb_installment: String(row.allocated_pb_installment ?? ""),
-      pb_to_be_paid: Number(row.performance_bonus || 0),
-      new_pb_to_be_offered: Number(row.performance_bonus || 0),
-      new_pb_installment: String(row.performance_bonus_installment ?? ""),
-      new_rb: Number(row.retention_bonus || 0),
-      target_pb_next_year: Number(row.target_performance_bonus || 0),
+      // Appraisal_Sheet is the source of truth for the current Apr-26 grid.
+      // Do NOT map these fields from Payroll_Data aliases such as base_pay.
+      current_annual_base_pay: Number(row.current_annual_base_pay || 0),
+      target_pb_allocated_for_may: Number(row.target_pb_allocated_for_may || 0),
+      allocated_pb_amount: Number(row.allocated_pb_amount || 0),
+      pb_installment: String(row.pb_installment ?? ""),
+      pb_to_be_paid: Number(row.pb_to_be_paid || 0),
+      new_pb_to_be_offered: Number(row.new_pb_to_be_offered || 0),
+      new_pb_installment: String(row.new_pb_installment ?? ""),
+      new_rb: Number(row.new_rb || 0),
       hike_amount: Number(row.hike_amount || 0),
       hike_pct: Number(row.hike_pct || 0),
-      eligible_for_promotion: String(row.promotion || "No"),
-      new_title: String(row.title || ""),
+      target_pb_next_year: Number(row.target_pb_next_year || 0),
+      eligible_for_promotion: String(row.eligible_for_promotion || "No"),
+      new_title: String(row.new_title || ""),
+      at_risk: String(row.at_risk || ""),
       manager_rating: String(row.manager_rating || ""),
       rating: Number(row.rating || 0),
+      joining_bonus: Number(row.joining_bonus || 0),
     };
   });
 }
