@@ -60,23 +60,15 @@ const EDIT_FIELDS = [
    so the three panels fit the visible screen and the footer stays in view.
    The 52px accounts for the banner (~38px) plus the top padding. */
 const DS_CSS = `
-.ds-root{--ds-offset:72px;display:grid;grid-template-rows:auto minmax(0,1fr) clamp(145px,19dvh,185px);height:calc(100dvh - var(--ds-offset));min-height:0;overflow:hidden}
-.ds-main{display:grid;grid-template-columns:var(--ds-cols);grid-template-rows:minmax(0,1fr);gap:0;padding:4px 12px 0;align-items:stretch;min-width:0;min-height:0;overflow:visible}
-.ds-main>*{min-width:0}
-.ds-panel-scroll{min-width:0}
-.ds-side{position:relative;min-height:0;overflow:visible}
+.ds-root{--ds-offset:72px;display:grid;grid-template-rows:auto minmax(0,1fr) 120px;height:calc(100dvh - var(--ds-offset));min-height:0;overflow:hidden}
+.ds-main{display:grid;grid-template-columns:var(--ds-cols);grid-template-rows:minmax(0,1fr);gap:0;padding:3px 12px 0;align-items:stretch;min-width:0;min-height:0;overflow:visible}
+.ds-main>*{min-width:0;min-height:0}
+.ds-side{position:relative;min-width:0;min-height:0;overflow:visible}
 .ds-side>.ds-card{position:relative;width:100%;height:100%}
 .ds-card{display:flex;flex-direction:column;background:#fff;border:1px solid #E3E9EC;border-radius:10px;box-shadow:0 1px 2px rgba(16,42,67,.04);overflow:hidden;min-width:0;min-height:0}
-.ds-hist{height:100%;min-height:0;margin:5px 12px 7px;overflow:hidden}
-.ds-scroll{scrollbar-width:thin;scrollbar-color:#C4CED6 transparent;min-height:0;overflow:auto}
-.ds-panel-scroll{flex:1 1 auto;min-height:0;overflow:hidden !important}
-@media (max-width:999px){
-.ds-root{grid-template-rows:auto auto 185px;height:auto;min-height:100dvh;overflow:visible}
-.ds-main{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;overflow:visible}
-.ds-main>.ds-card,.ds-main>.ds-side,.ds-main>button{height:auto;min-height:0}
-.ds-panel-scroll{overflow:visible !important}
-.ds-hist{height:185px}
-}
+.ds-panel-scroll{flex:1 1 auto;min-width:0;min-height:0;overflow:visible !important}
+.ds-hist{height:100%;min-height:0;margin:4px 12px 6px;overflow:hidden}
+.ds-scroll{min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}
 .ds-mq{flex:1;min-width:0;overflow:hidden}
 .ds-track{display:inline-block;white-space:nowrap;animation:ds-slide 22s linear infinite}
 .ds-mq:hover .ds-track{animation-play-state:paused}
@@ -85,6 +77,11 @@ const DS_CSS = `
 .ds-vbtn{writing-mode:vertical-rl;transform:rotate(180deg)}
 .ds-root button{cursor:pointer}
 .ds-root button:disabled{cursor:not-allowed}
+@media (max-width:999px){
+.ds-root{grid-template-rows:auto minmax(0,1fr) 110px;height:calc(100dvh - var(--ds-offset));min-height:0}
+.ds-main{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);overflow:visible}
+.ds-hist{margin:3px 8px 5px}
+}
 `;
 const normalizeHistoryRecord = (record) => {
   const basePay = Number(record?.base_pay) || 0;
@@ -701,7 +698,7 @@ export function DetailScreenPage({
                         onChange={(e) =>
                           commit("pbInstallment", e.target.value)
                         }
-                        className="h-[28px] w-[54px] shrink-0 rounded border px-1.5 text-[12px] outline-none focus:border-[#0B7A75]"
+                        className="h-[22px] w-[48px] shrink-0 rounded border px-1 text-[10.5px] outline-none focus:border-[#0B7A75]"
                         style={fieldStyle(isEdited("pbInstallment"))}
                       >
                         <option value="">—</option>
@@ -802,7 +799,7 @@ export function DetailScreenPage({
                       rows={2}
                       readOnly
                       aria-label="Current target PB criteria"
-                      className="h-[38px] w-full resize-none rounded border px-1.5 py-1 text-[11px] leading-[1.2] outline-none"
+                      className="h-[30px] w-full resize-none rounded border px-1 py-0.5 text-[10.5px] leading-[1.15] outline-none"
                       style={{
                         borderColor: "#C9D1DA",
                         background: "#F1F3F6",
@@ -830,7 +827,7 @@ export function DetailScreenPage({
                       key={`${employee.id}-newTitle`}
                       value={employee.newTitle || employee.designation || ""}
                       onChange={(e) => handleNewTitleChange(e.target.value)}
-                      className="h-[28px] w-full rounded border px-1.5 text-[12px] outline-none focus:border-[#0B7A75]"
+                      className="h-[22px] w-full rounded border px-1 text-[10.5px] outline-none focus:border-[#0B7A75]"
                       style={fieldStyle(isEdited("newTitle"))}
                     >
                       {NEW_TITLES.includes(employee.designation) ? null : (
@@ -843,7 +840,7 @@ export function DetailScreenPage({
                   </CompRow>
                   <CompFullRow label="Comp Manager Remarks" last>
                     <div
-                      className="h-[38px] w-full overflow-auto rounded border px-1.5 py-1 text-[11px] leading-[1.2]"
+                      className="h-[30px] w-full overflow-auto rounded border px-1 py-0.5 text-[10.5px] leading-[1.15]"
                       style={{
                         borderColor: "#C9D1DA",
                         background: "#F1F3F6",
@@ -871,7 +868,7 @@ export function DetailScreenPage({
                 <Legend sw="#E3F4EF" border="#4FA38F" label="Edited this cycle" />
               </div>
               <div
-                className="flex shrink-0 items-center justify-between gap-3 border-t px-3 py-1.5"
+                className="flex shrink-0 items-center justify-between gap-2 border-t px-2 py-1"
                 style={{ borderColor: LINE }}
               >
                 <div className="text-[12.5px]" style={{ color: "#334155" }}>
@@ -1518,7 +1515,7 @@ function CompHead({ children, right }) {
 function ReadBox({ children }) {
   return (
     <div
-      className="flex h-[25px] w-full items-center truncate rounded border px-1.5 text-[11.5px]"
+      className="flex h-[22px] w-full items-center truncate rounded border px-1 text-[10.5px]"
       style={{
         borderColor: "#C9D1DA",
         background: "#F1F3F6",
@@ -1542,7 +1539,7 @@ function CompRow({
   return (
     <>
       <div
-        className="flex items-center border-b border-r px-2 py-1 font-bold"
+        className="flex items-center border-b border-r px-1.5 py-0.5 font-bold text-[11px]"
         style={{
           borderColor: "#E3E9EC",
           background: "#F8FAFB",
@@ -1552,19 +1549,19 @@ function CompRow({
         {label}
       </div>
       <div
-        className="flex items-center border-b border-r px-2 py-1"
+        className="flex items-center border-b border-r px-1.5 py-0.5"
         style={{ borderColor: "#E3E9EC" }}
       >
         <ReadBox>{current}</ReadBox>
       </div>
       <div
-        className="flex items-center border-b border-r px-2 py-1"
+        className="flex items-center border-b border-r px-1.5 py-0.5"
         style={{ borderColor: "#E3E9EC", background: "#fff" }}
       >
         {children}
       </div>
       <div
-        className="flex items-center justify-end border-b px-2 py-1 text-right"
+        className="flex items-center justify-end border-b px-1.5 py-0.5 text-right text-[10.5px]"
         style={{
           borderColor: "#E3E9EC",
           background: "#fff",
@@ -1598,7 +1595,7 @@ function CompFullRow({ label, children, last }) {
         {label}
       </div>
       <div
-        className="flex items-stretch border-r px-2 py-1"
+        className="flex items-stretch border-r px-1.5 py-0.5"
         style={{
           borderColor: "#E3E9EC",
           borderBottom: last ? "0" : "1px solid #E3E9EC",
@@ -1607,7 +1604,7 @@ function CompFullRow({ label, children, last }) {
         {children[0]}
       </div>
       <div
-        className="flex items-stretch border-r px-2 py-1"
+        className="flex items-stretch border-r px-1.5 py-0.5"
         style={{
           borderColor: "#E3E9EC",
           borderBottom: last ? "0" : "1px solid #E3E9EC",
@@ -1645,7 +1642,7 @@ function PayRow({
   return (
     <>
       <div
-        className="flex items-center border-b border-r px-2 py-1 font-bold"
+        className="flex items-center border-b border-r px-1.5 py-0.5 font-bold text-[11px]"
         style={{
           borderColor: "#E3E9EC",
           background: "#F8FAFB",
@@ -1682,7 +1679,7 @@ function PayRow({
         </div>
       </div>
       <div
-        className="flex items-center justify-end border-b px-2 py-1 text-right"
+        className="flex items-center justify-end border-b px-1.5 py-0.5 text-right text-[10.5px]"
         style={{ borderColor: "#E3E9EC", background: "#fff" }}
       >
         <PaidDiff value={diffValue} />
