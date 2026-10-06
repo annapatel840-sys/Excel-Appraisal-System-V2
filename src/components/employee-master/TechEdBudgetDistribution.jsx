@@ -1,32 +1,68 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
-import { useAccess } from "@/lib/access-store";
-import { useAppraisal } from "@/lib/appraisal-store";
-import { useBudget } from "@/lib/budget-store";
-import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 /* Budget Distribution as a Tech ED sees it (design: Budget Allocation view of
    the "Detail Screen & Budget" prototype).
-   - Tech ED budget: the Budget_Master row of the signed-in Tech ED.
-   - Comp Managers: the comp_manager values of the Tech ED's team.
-   - Budget base per Comp Manager = Current Annual Base Pay + Allocated PB
-     Amount of their team; utilised = Hike Amount.
-   - The Allot % a Tech ED sets for each Comp Manager, and its audit trail,
-     are kept in this browser until the budget API stores them. */
+
+   UI REVIEW BUILD: this screen uses the sample data below and makes no
+   backend calls. Allot % changes stay on screen until the page is reloaded.
+   To go live, replace DEMO with the Tech ED's Budget_Master row, their team
+   from the Appraisal Sheet and the allocation history. */
 
 const LEVELS = ["Tech ED", "Comp Manager"];
-const BASE_COLUMNS = ["currentAnnualBasePay", "allocatedPBAmount"];
-const UTILISED_COLUMNS = [{ key: "hikeAmount", label: "Hike Amount" }];
-const NO_CM = "No Comp Manager";
+const UTILISED_LABEL = "Hike Amount";
+
+const DEMO = {
+  cycle: "Apr-26",
+  allocation: { date: "2026-09-01", by: "HR Admin" },
+  techEdPct: 8,
+  // Employees in the Tech ED's teams now and at allocation.
+  // base = Current Annual Base Pay + Allocated PB Amount; hike = Hike Amount.
+  employees: {
+    EMP00125: { name: "Rohan Kapoor", base: 2500000 + 300000, hike: 250000 },
+    EMP200: { name: "Aarav Iyer", base: 800000 + 86400, hike: 48000 },
+    EMP205: { name: "Sai Gupta", base: 1550000 + 167400, hike: 170500 },
+    EMP210: { name: "Ananya Bhatt", base: 2300000 + 248400, hike: 138000 },
+    EMP220: { name: "Rahul Iyer", base: 3800000 + 410400, hike: 228000 },
+    EMP225: { name: "Varun Gupta", base: 800000 + 86400, hike: 88000 },
+    EMP201: { name: "Vivaan Mehta", base: 950000 + 102600, hike: 66500 },
+    EMP206: { name: "Reyansh Reddy", base: 1700000 + 183600, hike: 204000 },
+    EMP202: { name: "Aditya Singh", base: 1100000 + 118800, hike: 88000 },
+    EMP290: { name: "Kiran Das", base: 1200000 + 130000, hike: 0 },
+    EMP211: { name: "Diya Sharma", base: 2450000 + 264600, hike: 0 },
+    EMP215: { name: "Myra Patel", base: 3050000 + 329400, hike: 0 },
+  },
+  compManagers: [
+    {
+      name: "Anita Sharma",
+      pct0: 7.5,
+      team0: ["EMP00125", "EMP200", "EMP205", "EMP210", "EMP215", "EMP290", "EMP202"],
+      team: ["EMP00125", "EMP200", "EMP205", "EMP210", "EMP220", "EMP225"],
+    },
+    {
+      name: "Raj Mehta",
+      pct0: 6,
+      team0: ["EMP201", "EMP206", "EMP211", "EMP220"],
+      team: ["EMP201", "EMP206"],
+    },
+  ],
+  // Team changes since allocation (eligibility list + appraisal grid).
+  events: [
+    { date: "2026-09-12", cm: "Anita Sharma", emp: "EMP290", sign: -1, text: "Resigned: Kiran Das" },
+    { date: "2026-09-15", cm: "Anita Sharma", emp: "EMP225", sign: 1, text: "Added: Varun Gupta" },
+    { date: "2026-09-18", cm: "Anita Sharma", emp: "EMP220", sign: 1, text: "Transferred in: Rahul Iyer (from Raj Mehta)" },
+    { date: "2026-09-18", cm: "Raj Mehta", emp: "EMP220", sign: -1, text: "Transferred out: Rahul Iyer (to Anita Sharma)" },
+    { date: "2026-09-20", cm: "Anita Sharma", emp: "EMP202", sign: -1, text: "Transferred out: Aditya Singh (to Suresh Iyer)" },
+    { date: "2026-09-21", cm: "Raj Mehta", emp: "EMP211", sign: -1, text: "Resigned: Diya Sharma" },
+    { date: "2026-09-22", cm: "Anita Sharma", emp: "EMP215", sign: -1, text: "Resigned: Myra Patel" },
+  ],
+  // % changes the Tech ED made after allocation.
+  pctLog: [{ name: "Raj Mehta", from: 6, to: 6.5, date: "2026-09-24", time: "11:20", reason: "Rahul Iyer moved out; keep Raj's budget steady" }],
+};
 
 const num = (v) => Number(v) || 0;
 const lakh = (n) => "₹ " + (num(n) / 1e5).toFixed(2) + " L";
-const norm = (v) => String(v || "").trim().toLowerCase().replace(/\s+/g, " ");
-const ownerName = (v) => {
-  const m = String(v || "").trim().match(/^\S+\s*-\s*(.+)$/);
-  return m ? m[1].trim() : String(v || "").trim();
-};
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function dateText(iso) {
   const p = String(iso || "").slice(0, 10).split("-");
@@ -35,44 +71,70 @@ function dateText(iso) {
 function nowParts() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, "0");
+  return { date: d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()), time: pad(d.getHours()) + ":" + pad(d.getMinutes()) };
+}
+const baseOf = (ids) => ids.reduce((s, id) => s + num(DEMO.employees[id]?.base), 0);
+const hikeOf = (ids) => ids.reduce((s, id) => s + num(DEMO.employees[id]?.hike), 0);
+const empBase = (id) => num(DEMO.employees[id]?.base);
+const byDate = (a, b) => String(a.date + (a.time || "")).localeCompare(String(b.date + (b.time || "")));
+
+/* One Comp Manager: budget at allocation, now, and a dated history. */
+function cmNode(cm, log) {
+  const changes = log.filter((l) => l.name === cm.name).sort(byDate);
+  const pct = changes.length ? changes[changes.length - 1].to : cm.pct0;
+  const base0 = baseOf(cm.team0);
+  const base = baseOf(cm.team);
+  const original = (base0 * cm.pct0) / 100;
+  const items = [{ date: DEMO.allocation.date, amount: original, team: cm.team0.length, pct: cm.pct0 }];
+  let amount = original;
+  let team = cm.team0.length;
+  let p = cm.pct0;
+  let b = base0;
+  const steps = [
+    ...DEMO.events.filter((e) => e.cm === cm.name).map((e) => ({ ...e, kind: "team" })),
+    ...changes.map((c) => ({ ...c, kind: "pct" })),
+  ].sort(byDate);
+  steps.forEach((s) => {
+    if (s.kind === "team") {
+      b += s.sign * empBase(s.emp);
+      team += s.sign;
+    } else {
+      p = s.to;
+    }
+    amount = (b * p) / 100;
+    const row = { date: s.date, amount, team, pct: p };
+    const last = items[items.length - 1];
+    if (last.date === s.date) items[items.length - 1] = row;
+    else items.push(row);
+  });
   return {
-    date: d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()),
-    time: pad(d.getHours()) + ":" + pad(d.getMinutes()),
+    name: cm.name,
+    pct,
+    pct0: cm.pct0,
+    base,
+    team0: cm.team0.length,
+    team: cm.team.length,
+    original,
+    updated: (base * pct) / 100,
+    history: items,
+    lastChanged: steps.length ? steps[steps.length - 1].date : "",
   };
 }
-
-// "EMP0051 - Ashok Kumar" matches the id, the name or the whole value.
-function matchesMe(value, ids) {
-  const v = norm(value);
-  if (!v) return false;
-  const m = v.match(/^(\S+)\s*-\s*(.+)$/);
-  const candidates = m ? [v, m[1], m[2]] : [v];
-  return ids.some((id) => id && candidates.includes(id));
-}
-
-const empBase = (e) => BASE_COLUMNS.reduce((s, k) => s + num(e[k]), 0);
-const utilisedOf = (list) =>
-  list.reduce((s, e) => s + UTILISED_COLUMNS.reduce((t, c) => t + num(e[c.key]), 0), 0);
-
-function readStore(key) {
-  try {
-    const v = JSON.parse(window.localStorage.getItem(key) || "null");
-    return v && typeof v === "object" ? v : null;
-  } catch {
-    return null;
-  }
-}
-function writeStore(key, value) {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* storage unavailable: changes last for this visit only */
-  }
-}
+const asOf = (hist, date) => hist.reduce((r, x) => (x.date <= date ? x : r), hist[0]);
 
 function Chg({ d }) {
   if (Math.abs(d) < 1) return <span className="mut">No change</span>;
   return <span className={d > 0 ? "up" : "down"}>{(d > 0 ? "▲ " : "▼ ") + lakh(Math.abs(d))}</span>;
+}
+function ChangeCell({ from, to }) {
+  const d = to - from;
+  if (Math.abs(d) < 1) return <span className="mut">—</span>;
+  const p = from ? (d / from) * 100 : 0;
+  return (
+    <>
+      <Chg d={d} /> <span className={d > 0 ? "up" : "down"}>({(d > 0 ? "+" : "") + p.toFixed(1)}%)</span>
+    </>
+  );
 }
 
 function AuditTable({ list, showName }) {
@@ -113,11 +175,8 @@ function AuditTable({ list, showName }) {
 
 export function TechEdBudgetDistribution() {
   const user = useCatalystUser();
-  const access = useAccess();
-  const { rows: appraisalRows = [], loading: rowsLoading } = useAppraisal();
-  const { budgetRows, loading: budgetLoading, error: budgetError } = useBudget();
+  const myName = user?.name || "Vikram Rao";
 
-  const [cycle, setCycle] = useState({ id: "", name: "", loaded: false });
   const [pane, setPane] = useState({ mine: true, alloc: true, audit: true });
   const [appliedOpen, setAppliedOpen] = useState(false);
   const [trailOpen, setTrailOpen] = useState({});
@@ -125,148 +184,71 @@ export function TechEdBudgetDistribution() {
   const [err, setErr] = useState("");
   const [auditFilter, setAuditFilter] = useState("all");
   const [drafts, setDrafts] = useState({});
-
-  useEffect(() => {
-    let alive = true;
-    // The cycle name is only a label: stop waiting for it after 8 s.
-    const timer = window.setTimeout(() => {
-      if (alive) setCycle((c) => (c.loaded ? c : { ...c, loaded: true }));
-    }, 8000);
-    payrollCycleRequest("cycles")
-      .then((list) => {
-        const active = (list || []).find((c) => String(c.status).toLowerCase() === "active" && !c.archived);
-        if (alive) setCycle({ id: active ? active.id : "", name: active ? active.name : "", loaded: true });
-      })
-      .catch(() => {
-        if (alive) setCycle({ id: "", name: "", loaded: true });
-      });
-    return () => {
-      alive = false;
-      window.clearTimeout(timer);
-    };
-  }, []);
-
-  const meUser = access.user || {};
-  const myName = meUser.name || user?.name || user?.email || "You";
-  const ids = useMemo(
-    () => [meUser.empId, meUser.name, meUser.email, user?.name, user?.email].map(norm).filter(Boolean),
-    [meUser.empId, meUser.name, meUser.email, user?.name, user?.email],
+  // Demo % log: sample entries plus whatever is changed during the review.
+  const [log, setLog] = useState(() =>
+    DEMO.pctLog.map((l) => {
+      const cm = DEMO.compManagers.find((c) => c.name === l.name);
+      const base = cm ? baseOf(cm.team) : 0;
+      return { ...l, by: myName, before: (base * l.from) / 100, after: (base * l.to) / 100 };
+    }),
   );
 
-  const budget = useMemo(
-    () =>
-      budgetRows.find(
-        (r) => matchesMe(r.tech_ed_id, ids) && (!cycle.id || !r.appraisal_cycle_id || String(r.appraisal_cycle_id) === String(cycle.id)),
-      ) || budgetRows.find((r) => matchesMe(r.tech_ed_id, ids)) || null,
-    [budgetRows, ids, cycle.id],
-  );
+  const cmNodes = useMemo(() => DEMO.compManagers.map((cm) => cmNode(cm, log)), [log]);
 
-  // The API already limits a Tech ED to their team; keep only rows that name
-  // this Tech ED when the column is filled in.
-  const team = useMemo(() => {
-    const named = appraisalRows.filter((e) => matchesMe(e.appraiserTechED, ids));
-    return named.length ? named : appraisalRows;
-  }, [appraisalRows, ids]);
-
-  const groups = useMemo(() => {
-    const map = new Map();
-    team.forEach((e) => {
-      const cm = ownerName(e.compManager) || NO_CM;
-      if (!map.has(cm)) map.set(cm, []);
-      map.get(cm).push(e);
-    });
-    return [...map.entries()]
-      .sort((a, b) => (a[0] === NO_CM) - (b[0] === NO_CM) || a[0].localeCompare(b[0]))
-      .map(([name, list]) => ({ name, list, base: list.reduce((s, e) => s + empBase(e), 0), utilised: utilisedOf(list) }));
-  }, [team]);
-
-  const myPct = num(budget?.budget_percentage);
-  const myOriginal = num(budget?.budget_amount);
-  const myUpdated = budget ? num(budget.updated_budget) : 0;
-  const allocDate = String(budget?.created_time || budget?.CREATEDTIME || budget?.updated_at || "").slice(0, 10);
-
-  // Allot % per Comp Manager for this cycle, kept per Tech ED.
-  const storeKey = "techEdBudget:v1:" + (cycle.id || "cycle") + ":" + (ids[0] || "me");
-  // saved.key records which cycle/Tech ED the values belong to.
-  const [saved, setSaved] = useState({ key: null, cms: {}, log: [], team0: null });
-  useEffect(() => {
-    if (!cycle.loaded) return;
-    setSaved({ cms: {}, log: [], team0: null, ...(readStore(storeKey) || {}), key: storeKey });
-  }, [storeKey, cycle.loaded]);
-  const persist = (next) => {
-    setSaved(next);
-    const { key, ...data } = next;
-    if (key) writeStore(key, data);
-  };
-
-  // First time a Comp Manager appears: allocate at the Tech ED's own %.
-  useEffect(() => {
-    if (rowsLoading || budgetLoading || !budget || saved.key !== storeKey) return;
-    let changed = false;
-    const next = { ...saved, cms: { ...saved.cms }, log: saved.log || [] };
-    const today = nowParts().date;
-    groups.forEach((g) => {
-      if (g.name === NO_CM || next.cms[g.name]) return;
-      next.cms[g.name] = { pct0: myPct, pct: myPct, base0: g.base, team0: g.list.length, date0: today };
-      changed = true;
-    });
-    if (next.team0 === null) {
-      next.team0 = team.length;
-      changed = true;
-    }
-    if (changed) persist(next);
-  }, [groups, team.length, budget, myPct, rowsLoading, budgetLoading, saved, storeKey]);
-
-  const cmNodes = groups
-    .filter((g) => g.name !== NO_CM)
-    .map((g) => {
-      const s = saved.cms[g.name] || { pct0: myPct, pct: myPct, base0: g.base, team0: g.list.length, date0: "" };
-      return {
-        name: g.name,
-        pct: num(s.pct),
-        pct0: num(s.pct0),
-        base: g.base,
-        team0: num(s.team0),
-        team: g.list.length,
-        original: (num(s.base0) * num(s.pct0)) / 100,
-        updated: (g.base * num(s.pct)) / 100,
-        utilised: g.utilised,
-        date0: s.date0,
-      };
-    });
-  const unassigned = groups.find((g) => g.name === NO_CM);
+  const allTeam0 = DEMO.compManagers.flatMap((c) => c.team0);
+  const allTeam = DEMO.compManagers.flatMap((c) => c.team);
+  const myPct = DEMO.techEdPct;
+  const myOriginal = (baseOf([...new Set(allTeam0)]) * myPct) / 100;
+  const myUpdated = (baseOf(allTeam) * myPct) / 100;
+  const team0 = new Set(allTeam0).size;
   const allotted = cmNodes.reduce((s, n) => s + n.updated, 0);
-  const used = utilisedOf(team);
-  const team0 = saved.team0 === null ? team.length : saved.team0;
-  const canAllot = access.canAction("allotNextLevel");
+  const used = hikeOf(allTeam);
+  const usedPct = myUpdated ? (used / myUpdated) * 100 : 0;
+  const over = usedPct > 100;
+
+  // Tech ED history: own budget per date, rolled up with the Comp Managers.
+  const myHistory = useMemo(() => {
+    const dates = [...new Set([DEMO.allocation.date, ...cmNodes.flatMap((n) => n.history.map((h) => h.date))])].sort();
+    let base = baseOf([...new Set(allTeam0)]);
+    let team = team0;
+    // Moves between this Tech ED's own Comp Managers don't change their total.
+    const own = DEMO.events.filter((e) => !(e.sign > 0 && e.text.startsWith("Transferred in")) && !(e.sign < 0 && /\(to (Anita Sharma|Raj Mehta)\)/.test(e.text)));
+    return dates.map((d) => {
+      own.filter((e) => e.date === d).forEach((e) => {
+        base += e.sign * empBase(e.emp);
+        team += e.sign;
+      });
+      const allot = cmNodes.reduce((s, n) => s + asOf(n.history, d).amount, 0);
+      const updated = (base * myPct) / 100;
+      return { date: d, allocated: myOriginal, updated, team, allotted: allot, buffer: updated - allot };
+    });
+  }, [cmNodes, myOriginal, myPct, team0]);
 
   const auditFor = (names) => {
     const out = [];
     names.forEach((n) => {
       if (n === myName) {
-        out.push({ date: allocDate, time: "", name: n, from: null, to: myPct, before: null, after: myOriginal, by: "HR", reason: "Initial allocation" });
+        out.push({ date: DEMO.allocation.date, time: "", name: n, from: null, to: myPct, before: null, after: myOriginal, by: DEMO.allocation.by, reason: "Initial allocation" });
         return;
       }
       const c = cmNodes.find((x) => x.name === n);
-      if (c) out.push({ date: c.date0, time: "", name: n, from: null, to: c.pct0, before: null, after: c.original, by: myName, reason: "Initial allocation" });
+      if (c) out.push({ date: DEMO.allocation.date, time: "", name: n, from: null, to: c.pct0, before: null, after: c.original, by: myName, reason: "Initial allocation" });
     });
-    (saved.log || []).forEach((l) => {
+    log.forEach((l) => {
       if (names.includes(l.name)) out.push(l);
     });
-    return out.sort((a, b) => String(b.date + b.time).localeCompare(String(a.date + a.time)));
+    return out.sort((a, b) => byDate(b, a));
   };
-
-  const historyOf = (n) => (saved.log || []).filter((l) => l.name === n);
 
   function setPct(name, raw) {
     const node = cmNodes.find((x) => x.name === name);
-    if (!node) return;
-    const to = Math.round(Number(raw) * 10) / 10;
     setDrafts((d) => {
       const next = { ...d };
       delete next[name];
       return next;
     });
+    if (!node) return;
+    const to = Math.round(Number(raw) * 10) / 10;
     if (!(to >= 0) || to === node.pct) return;
     const newUpd = (node.base * to) / 100;
     const sum = allotted - node.updated + newUpd;
@@ -278,13 +260,7 @@ export function TechEdBudgetDistribution() {
       return;
     }
     const t = nowParts();
-    const entry = { name, from: node.pct, to, by: myName, date: t.date, time: t.time, before: node.updated, after: newUpd, reason: reason.trim() };
-    const next = {
-      ...saved,
-      cms: { ...saved.cms, [name]: { ...(saved.cms[name] || {}), pct: to } },
-      log: [...(saved.log || []), entry],
-    };
-    persist(next);
+    setLog((l) => [...l, { name, from: node.pct, to, by: myName, date: t.date, time: t.time, before: node.updated, after: newUpd, reason: reason.trim() }]);
     setReason("");
     setErr("");
   }
@@ -299,320 +275,299 @@ export function TechEdBudgetDistribution() {
     </button>
   );
 
-  const pending = [budgetLoading && "budget", rowsLoading && "team", !cycle.loaded && "cycle"].filter(Boolean);
-  const over = myUpdated ? used / myUpdated > 1 : false;
-  const usedPct = myUpdated ? (used / myUpdated) * 100 : 0;
   const cmLabel = LEVELS[1] + (cmNodes.length === 1 ? "" : "s");
   const auditNames = [myName, ...cmNodes.map((c) => c.name)];
   let auditList = auditFor(auditNames);
   if (auditFilter !== "all") auditList = auditList.filter((x) => x.name === auditFilter);
+  const selfOpen = !!trailOpen[myName];
 
   return (
     <div className="tbd-root">
       <style>{CSS}</style>
 
-      {budgetLoading ? (
-        <div className="card empty">Loading your budget… ({pending.join(", ")})</div>
-      ) : !budget ? (
-        <div className="card empty">
-          {budgetError ||
-            "No budget has been allotted to you" + (cycle.name ? " for " + cycle.name : "") + " yet." +
-              (ids.length ? "" : " (Your login could not be matched to an employee.)")}
+      <div className="demo-banner">Sample data for UI review — budgets, teams and changes on this screen are not from the Data Store.</div>
+
+      <div className="btop">
+        <span>
+          Appraisal cycle <b>{DEMO.cycle}</b>
+        </span>
+        <span className="sep" />
+        <span>
+          Allocated {dateText(DEMO.allocation.date)} by {DEMO.allocation.by}
+        </span>
+        <span className="sep" />
+        <span>
+          <b>{LEVELS[0]}</b>
+        </span>
+        <span className="sep" />
+        <span className="applied">
+          Budget applied by HR: <b>{myPct}%</b> <span className="muted-small">(org default)</span> = <b>{lakh(myUpdated)}</b> updated · original{" "}
+          {lakh(myOriginal)}
+          <button type="button" className="dd" aria-expanded={appliedOpen} onClick={() => setAppliedOpen((v) => !v)}>
+            % history {appliedOpen ? "▴" : "▾"}
+          </button>
+        </span>
+      </div>
+      {appliedOpen && (
+        <div className="apdrop">
+          <AuditTable list={auditFor([myName])} showName={false} />
         </div>
-      ) : (
-        <>
-          <div className="btop">
-            <span>
-              Appraisal cycle <b>{cycle.name || "—"}</b>
-            </span>
-            <span className="sep" />
-            <span>{allocDate ? "Allocated " + dateText(allocDate) + " by HR" : "Allocated by HR"}</span>
-            <span className="sep" />
-            <span>
-              <b>{LEVELS[0]}</b>
-            </span>
-            <span className="sep" />
-            <span className="applied">
-              Budget applied by HR: <b>{myPct}%</b> = <b>{lakh(myUpdated)}</b> updated · original {lakh(myOriginal)}
-              <button type="button" className="dd" aria-expanded={appliedOpen} onClick={() => setAppliedOpen((v) => !v)}>
-                % history {appliedOpen ? "▴" : "▾"}
-              </button>
-            </span>
-          </div>
-          {appliedOpen && (
-            <div className="apdrop">
-              <AuditTable list={auditFor([myName])} showName={false} />
+      )}
+
+      <div className="card">
+        {paneHead("mine", "My Budget")}
+        {pane.mine && (
+          <>
+            <div className="bsum flat">
+              <div>
+                <div className="f-label">Original allotted</div>
+                <div className="v">{lakh(myOriginal)}</div>
+                <div className="d mut">Fixed at allocation</div>
+              </div>
+              <div>
+                <div className="f-label">Updated budget</div>
+                <div className="v">{lakh(myUpdated)}</div>
+                <div className="d">
+                  <Chg d={myUpdated - myOriginal} />
+                </div>
+              </div>
+              <div>
+                <div className="f-label">Team size</div>
+                <div className="v">
+                  {team0} → {allTeam.length}
+                </div>
+                <div className="d mut">At allocation → now</div>
+              </div>
+              <div>
+                <div className="f-label">Allotted to reports</div>
+                <div className="v">{lakh(allotted)}</div>
+              </div>
+              <div>
+                <div className="f-label">Buffer</div>
+                <div className="v">{lakh(myUpdated - allotted)}</div>
+                <div className="d mut">Not passed down</div>
+              </div>
+              <div>
+                <div className="f-label">Utilised</div>
+                <div className={"v" + (over ? " over" : "")}>
+                  {lakh(used)} ({usedPct.toFixed(0)}%)
+                </div>
+                <div className="d">
+                  {over ? <span className="over">▲ {lakh(used - myUpdated)} over</span> : <span className="mut">Remaining {lakh(myUpdated - used)}</span>}
+                </div>
+              </div>
             </div>
-          )}
+            <div className="ubar-wide">
+              <div className={"ubar" + (over ? " over" : "")}>
+                <span style={{ width: Math.min(usedPct, 100) + "%" }} />
+              </div>
+            </div>
+          </>
+        )}
+      </div>
 
-          <div className="card">
-            {paneHead("mine", "My Budget")}
-            {pane.mine && (
-              <>
-                <div className="bsum flat">
-                  <div>
-                    <div className="f-label">Original allotted</div>
-                    <div className="v">{lakh(myOriginal)}</div>
-                    <div className="d mut">Fixed at allocation</div>
-                  </div>
-                  <div>
-                    <div className="f-label">Updated budget</div>
-                    <div className="v">{lakh(myUpdated)}</div>
-                    <div className="d">
-                      <Chg d={myUpdated - myOriginal} />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="f-label">Team size</div>
-                    <div className="v">{rowsLoading ? "…" : team0 + " → " + team.length}</div>
-                    <div className="d mut">At allocation → now</div>
-                  </div>
-                  {cmNodes.length > 0 && (
-                    <>
-                      <div>
-                        <div className="f-label">Allotted to reports</div>
-                        <div className="v">{lakh(allotted)}</div>
-                      </div>
-                      <div>
-                        <div className="f-label">Buffer</div>
-                        <div className="v">{lakh(myUpdated - allotted)}</div>
-                        <div className="d mut">Not passed down</div>
-                      </div>
-                    </>
-                  )}
-                  <div>
-                    <div className="f-label">Utilised</div>
-                    <div className={"v" + (over ? " over" : "")}>
-                      {lakh(used)} ({usedPct.toFixed(0)}%)
-                    </div>
-                    <div className="d">
-                      {over ? (
-                        <span className="over">▲ {lakh(used - myUpdated)} over</span>
-                      ) : (
-                        <span className="mut">Remaining {lakh(myUpdated - used)}</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <div className="ubar-wide">
-                  <div className={"ubar" + (over ? " over" : "")}>
-                    <span style={{ width: Math.min(usedPct, 100) + "%" }} />
-                  </div>
-                </div>
-              </>
+      <div className="card">
+        {paneHead("alloc", "Allocation", cmNodes.length + " " + cmLabel)}
+        {pane.alloc && (
+          <>
+            <div className="reason">
+              <label htmlFor="tbdReason">Reason for next % change</label>
+              <input id="tbdReason" type="text" value={reason} placeholder="Optional — saved in the audit trail" onChange={(e) => setReason(e.target.value)} />
+            </div>
+            {err && (
+              <div className="berr" role="alert">
+                <span>{err}</span>
+                <button type="button" className="link" onClick={() => setErr("")}>
+                  Dismiss
+                </button>
+              </div>
             )}
-          </div>
-
-          <div className="card">
-            {paneHead("alloc", "Allocation", cmNodes.length ? cmNodes.length + " " + cmLabel : "")}
-            {pane.alloc && (
-              <>
-                {cmNodes.length > 0 && canAllot && (
-                  <div className="reason">
-                    <label htmlFor="tbdReason">Reason for next % change</label>
-                    <input
-                      id="tbdReason"
-                      type="text"
-                      value={reason}
-                      placeholder="Optional — saved in the audit trail"
-                      onChange={(e) => setReason(e.target.value)}
-                    />
-                  </div>
-                )}
-                {rowsLoading && <div className="note">Loading your team…</div>}
-                {err && (
-                  <div className="berr" role="alert">
-                    <span>{err}</span>
-                    <button type="button" className="link" onClick={() => setErr("")}>
-                      Dismiss
-                    </button>
-                  </div>
-                )}
-                <div className="bscroll">
-                  <table className="bal">
-                    <thead>
-                      <tr>
-                        <th>Level</th>
-                        <th>Owner</th>
-                        <th className="r">Original Budget</th>
-                        <th className="r">Updated Budget</th>
-                        <th className="r">Change</th>
-                        <th className="r">Original Count</th>
-                        <th className="r">Current Count</th>
-                        <th>Last Changed</th>
-                        <th className="r">Allot %</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr className="self">
-                        <td className="first">{LEVELS[0]}</td>
-                        <td>
-                          <b>{myName}</b> <span className="muted-small">(you)</span>
-                        </td>
-                        <td className="r">{lakh(myOriginal)}</td>
-                        <td className="r">{lakh(myUpdated)}</td>
-                        <td className="r">
-                          <ChangeCell from={myOriginal} to={myUpdated} />
-                        </td>
-                        <td className="r">{team0}</td>
-                        <td className="r">{team.length}</td>
-                        <td>
-                          <span className="mut">—</span>
-                        </td>
-                        <td className="r">
-                          <span className="mut">{myPct}%</span>
-                        </td>
-                      </tr>
-                      {cmNodes.map((n, i) => {
-                        const hist = historyOf(n.name);
-                        const open = !!trailOpen[n.name];
-                        return (
-                          <Fragment key={n.name}>
-                            <tr className={i > 0 ? "grp" : ""}>
-                              <td>
-                                <span style={{ display: "inline-block", width: 18 }} />
-                                {LEVELS[1]}
-                              </td>
-                              <td>
-                                <b>{n.name}</b>
-                              </td>
-                              <td className="r">{lakh(n.original)}</td>
-                              <td className="r">{lakh(n.updated)}</td>
-                              <td className="r">
-                                <ChangeCell from={n.original} to={n.updated} />
-                              </td>
-                              <td className="r">{n.team0}</td>
-                              <td className="r">{n.team}</td>
-                              <td>
-                                {hist.length ? (
-                                  <button
-                                    type="button"
-                                    className="dd"
-                                    aria-expanded={open}
-                                    title={(open ? "Hide" : "Show") + " budget history"}
-                                    onClick={() => setTrailOpen((t) => ({ ...t, [n.name]: !t[n.name] }))}
-                                  >
-                                    {dateText(hist[hist.length - 1].date)} {open ? "▴" : "▾"}
-                                  </button>
-                                ) : (
-                                  <span className="mut">—</span>
-                                )}
-                              </td>
-                              <td className="r">
-                                {canAllot ? (
-                                  <input
-                                    className="pct-in"
-                                    type="number"
-                                    min="0"
-                                    step="0.1"
-                                    aria-label={"Allot % for " + n.name}
-                                    value={drafts[n.name] ?? n.pct}
-                                    onChange={(e) => setDrafts((d) => ({ ...d, [n.name]: e.target.value }))}
-                                    onBlur={(e) => setPct(n.name, e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") e.currentTarget.blur();
-                                    }}
-                                  />
-                                ) : (
-                                  <span className="mut">{n.pct}%</span>
-                                )}
-                              </td>
+            <div className="bscroll">
+              <table className="bal">
+                <thead>
+                  <tr>
+                    <th>Level</th>
+                    <th>Owner</th>
+                    <th className="r">Original Budget</th>
+                    <th className="r">Updated Budget</th>
+                    <th className="r">Change</th>
+                    <th className="r">Original Count</th>
+                    <th className="r">Current Count</th>
+                    <th>Last Changed</th>
+                    <th className="r">Allot %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="self">
+                    <td className="first">{LEVELS[0]}</td>
+                    <td>
+                      <b>{myName}</b> <span className="muted-small">(you)</span>
+                    </td>
+                    <td className="r">{lakh(myOriginal)}</td>
+                    <td className="r">{lakh(myUpdated)}</td>
+                    <td className="r">
+                      <ChangeCell from={myOriginal} to={myUpdated} />
+                    </td>
+                    <td className="r">{team0}</td>
+                    <td className="r">{allTeam.length}</td>
+                    <td>
+                      <button
+                        type="button"
+                        className="dd"
+                        aria-expanded={selfOpen}
+                        title={(selfOpen ? "Hide" : "Show") + " budget history"}
+                        onClick={() => setTrailOpen((t) => ({ ...t, [myName]: !t[myName] }))}
+                      >
+                        {dateText(myHistory[myHistory.length - 1].date)} {selfOpen ? "▴" : "▾"}
+                      </button>
+                    </td>
+                    <td className="r">
+                      <span className="mut">{myPct}%</span>
+                    </td>
+                  </tr>
+                  {selfOpen && (
+                    <tr className="tr">
+                      <td colSpan={9}>
+                        <table className="trail" style={{ maxWidth: 820 }}>
+                          <thead>
+                            <tr>
+                              <th>Date</th>
+                              <th className="n">Allocated</th>
+                              <th className="n">Updated</th>
+                              <th className="n">Team size</th>
+                              <th className="n">Allotted to {LEVELS[1]}s</th>
+                              <th className="n">Buffer</th>
                             </tr>
-                            {open && hist.length > 0 && (
-                              <tr className="tr">
-                                <td colSpan={9}>
-                                  <table className="trail" style={{ maxWidth: 640 }}>
-                                    <thead>
-                                      <tr>
-                                        <th>Date</th>
-                                        <th className="n">Old %</th>
-                                        <th className="n">New %</th>
-                                        <th className="n">Budget before</th>
-                                        <th className="n">Budget after</th>
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {hist.map((x, k) => (
-                                        <tr key={k}>
-                                          <td>{dateText(x.date) + " " + x.time}</td>
-                                          <td className="n">{x.from}%</td>
-                                          <td className="n">{x.to}%</td>
-                                          <td className="n">{lakh(x.before)}</td>
-                                          <td className="n">{lakh(x.after)}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
-                                  </table>
-                                </td>
+                          </thead>
+                          <tbody>
+                            {myHistory.map((x) => (
+                              <tr key={x.date}>
+                                <td>{dateText(x.date)}</td>
+                                <td className="n">{lakh(x.allocated)}</td>
+                                <td className="n">{lakh(x.updated)}</td>
+                                <td className="n">{x.team}</td>
+                                <td className="n">{lakh(x.allotted)}</td>
+                                <td className="n">{lakh(x.buffer)}</td>
                               </tr>
-                            )}
-                          </Fragment>
-                        );
-                      })}
-                      {unassigned && (
-                        <tr className="grp">
+                            ))}
+                          </tbody>
+                        </table>
+                      </td>
+                    </tr>
+                  )}
+                  {cmNodes.map((n, i) => {
+                    const open = !!trailOpen[n.name];
+                    return (
+                      <Fragment key={n.name}>
+                        <tr className={i > 0 ? "grp" : ""}>
                           <td>
                             <span style={{ display: "inline-block", width: 18 }} />
                             {LEVELS[1]}
                           </td>
-                          <td className="mut">
-                            {NO_CM} · {unassigned.list.length} employee{unassigned.list.length === 1 ? "" : "s"}
+                          <td>
+                            <b>{n.name}</b>
                           </td>
-                          <td className="r mut" colSpan={7}>
-                            Set a Comp. Manager on the Appraisal Sheet to allot budget for them
+                          <td className="r">{lakh(n.original)}</td>
+                          <td className="r">{lakh(n.updated)}</td>
+                          <td className="r">
+                            <ChangeCell from={n.original} to={n.updated} />
+                          </td>
+                          <td className="r">{n.team0}</td>
+                          <td className="r">{n.team}</td>
+                          <td>
+                            {n.history.length > 1 ? (
+                              <button
+                                type="button"
+                                className="dd"
+                                aria-expanded={open}
+                                title={(open ? "Hide" : "Show") + " budget history"}
+                                onClick={() => setTrailOpen((t) => ({ ...t, [n.name]: !t[n.name] }))}
+                              >
+                                {dateText(n.lastChanged)} {open ? "▴" : "▾"}
+                              </button>
+                            ) : (
+                              <span className="mut">—</span>
+                            )}
+                          </td>
+                          <td className="r">
+                            <input
+                              className="pct-in"
+                              type="number"
+                              min="0"
+                              step="0.1"
+                              aria-label={"Allot % for " + n.name}
+                              value={drafts[n.name] ?? n.pct}
+                              onChange={(e) => setDrafts((d) => ({ ...d, [n.name]: e.target.value }))}
+                              onBlur={(e) => setPct(n.name, e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") e.currentTarget.blur();
+                              }}
+                            />
                           </td>
                         </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-                {cmNodes.length > 0 && (
-                  <div className="note">
-                    Budget base = Current Annual Base Pay + Allocated PB Amount of each Comp Manager's team · Utilised ={" "}
-                    {UTILISED_COLUMNS.map((c) => c.label).join(" + ")}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-
-          {cmNodes.length > 0 && (
-            <div className="card">
-              {paneHead("audit", "% Applied — audit trail (you and your " + cmLabel + ")")}
-              {pane.audit && (
-                <>
-                  <div className="reason">
-                    <label>
-                      Owner{" "}
-                      <select value={auditFilter} onChange={(e) => setAuditFilter(e.target.value)}>
-                        <option value="all">All</option>
-                        {auditNames.map((n) => (
-                          <option key={n}>{n}</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                  <div className="audit-wrap">
-                    <AuditTable list={auditList} showName />
-                  </div>
-                </>
-              )}
+                        {open && (
+                          <tr className="tr">
+                            <td colSpan={9}>
+                              <table className="trail" style={{ maxWidth: 560 }}>
+                                <thead>
+                                  <tr>
+                                    <th>Date</th>
+                                    <th className="n">Allocated</th>
+                                    <th className="n">Updated</th>
+                                    <th className="n">Team size</th>
+                                    <th className="n">Allot %</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {n.history.map((x) => (
+                                    <tr key={x.date}>
+                                      <td>{dateText(x.date)}</td>
+                                      <td className="n">{lakh(n.original)}</td>
+                                      <td className="n">{lakh(x.amount)}</td>
+                                      <td className="n">{x.team}</td>
+                                      <td className="n">{x.pct}%</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-}
+            <div className="note">
+              Budget base = Current Annual Base Pay + Allocated PB Amount of each {LEVELS[1]}'s team · Utilised = {UTILISED_LABEL}
+            </div>
+          </>
+        )}
+      </div>
 
-function ChangeCell({ from, to }) {
-  const d = to - from;
-  if (Math.abs(d) < 1) return <span className="mut">—</span>;
-  const p = from ? (d / from) * 100 : 0;
-  return (
-    <>
-      <Chg d={d} /> <span className={d > 0 ? "up" : "down"}>({(d > 0 ? "+" : "") + p.toFixed(1)}%)</span>
-    </>
+      <div className="card">
+        {paneHead("audit", "% Applied — audit trail (you and your " + cmLabel + ")")}
+        {pane.audit && (
+          <>
+            <div className="reason">
+              <label>
+                Owner{" "}
+                <select value={auditFilter} onChange={(e) => setAuditFilter(e.target.value)}>
+                  <option value="all">All</option>
+                  {auditNames.map((n) => (
+                    <option key={n}>{n}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div className="audit-wrap">
+              <AuditTable list={auditList} showName />
+            </div>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -620,6 +575,7 @@ const CSS = `
 .tbd-root { max-width: 1320px; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 8px;
   font-family: "IBM Plex Sans", "Segoe UI", Arial, Helvetica, sans-serif; font-size: 12.5px; color: #0f1f33; font-variant-numeric: tabular-nums; }
 .tbd-root * { box-sizing: border-box; }
+.tbd-root .demo-banner { border: 1px solid #fcd34d; background: #fffbeb; color: #92400e; border-radius: 6px; padding: 5px 10px; font-size: 11.5px; }
 .tbd-root .mut { color: #64748b; }
 .tbd-root .muted-small { font-size: 11px; color: #475569; }
 .tbd-root .up { color: #15803d; } .tbd-root .down { color: #c2410c; } .tbd-root .over { color: #c2410c; font-weight: 700; }
