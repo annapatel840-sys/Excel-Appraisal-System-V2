@@ -65,122 +65,95 @@ async function insertMissing(table, rows, keyFn, existingRows) {
   return missing.length;
 }
 
-function buildEmployees() {
-  const base = [
-    {
-      emp_id: "EMP001",
-      emp_name: "Prabhuprasad Parida",
-      designation: "HR Manager",
-      department: "HR",
-      repo_manager: "Management",
-      director: "Management",
-      appraiser_tech_ed: "",
-      email_id: "prabhuprasad.parida@demo.local",
-      emp_status: "Active",
-      emp_type: "Full Time",
-      location: "Bhubaneswar",
-      cost_center: "HR-001",
-      current_salary: 900000,
-      wissen_experience: 3.5,
-      total_experience: 4.5,
-    },
-    {
-      emp_id: "EMP002",
-      emp_name: "Ashok Kumar",
-      designation: "Tech-Ed",
-      department: "Technology",
-      repo_manager: HR,
-      director: HR,
-      appraiser_tech_ed: "",
-      email_id: "ashok.kumar@demo.local",
-      emp_status: "Active",
-      emp_type: "Full Time",
-      location: "Bhubaneswar",
-      cost_center: "TECH-001",
-      current_salary: 1100000,
-      wissen_experience: 4.2,
-      total_experience: 5.5,
-    },
-    {
-      emp_id: "EMP003",
-      emp_name: "Sarmistha Acharya",
-      designation: "Tech-Ed",
-      department: "Technology",
-      repo_manager: HR,
-      director: HR,
-      appraiser_tech_ed: "",
-      email_id: "sarmistha.acharya@demo.local",
-      emp_status: "Active",
-      emp_type: "Full Time",
-      location: "Bhubaneswar",
-      cost_center: "TECH-002",
-      current_salary: 1050000,
-      wissen_experience: 3.8,
-      total_experience: 5.0,
-    },
-  ];
 
-  const demos = DEMO_NAMES.map((name, index) => {
-    const n = index + 4;
-    const tech = n % 2 === 0 ? TECH_ED[0] : TECH_ED[1];
-    return {
-      emp_id: "EMP" + String(n).padStart(3, "0"),
-      emp_name: name,
-      designation: DESIGNATIONS[index % DESIGNATIONS.length],
-      department: DEPARTMENTS[index % DEPARTMENTS.length],
-      repo_manager: tech,
-      director: HR,
-      appraiser_tech_ed: tech,
-      email_id: name.toLowerCase().replace(/[^a-z]+/g, ".") + "@demo.local",
-      date_of_join: "2021-" + String((index % 9) + 1).padStart(2, "0") + "-15",
-      emp_status: "Active",
-      emp_type: index % 9 === 0 ? "Contract" : "Full Time",
-      wissen_experience: Number((2.0 + (index % 7) * 0.6).toFixed(1)),
-      total_experience: Number((3.0 + (index % 8) * 0.8).toFixed(1)),
-      cost_center: "CC-" + String((index % 5) + 1).padStart(3, "0"),
-      current_salary: 450000 + index * 25000,
-      location: index % 3 === 0 ? "Bhubaneswar" : index % 3 === 1 ? "Pune" : "Bengaluru",
-      last_appraisal_month_year: "Apr-25",
-    };
-  });
+function normalizeEmpId(value) {
+  return String(value || "").trim().toUpperCase();
+}
 
-  return base.concat(demos);
+function resolveMasterPerson(employees, value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return null;
+  return employees.find((e) => {
+    const id = String(e.emp_id || "").trim().toLowerCase();
+    const name = String(e.emp_name || "").trim().toLowerCase();
+    return raw === id || raw === name || raw.includes(id) || (name && raw.includes(name));
+  }) || null;
+}
+
+function resolveManagerId(employees, value) {
+  const person = resolveMasterPerson(employees, value);
+  return person ? String(person.emp_id).trim() : String(value || "").trim();
+}
+
+function resolveManagerName(employees, value) {
+  const person = resolveMasterPerson(employees, value);
+  return person ? String(person.emp_name || "").trim() : String(value || "").trim();
+}
+
+function safeDate(value, fallback) {
+  const s = String(value || "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : fallback;
 }
 
 function buildHistoryRows(employees) {
   return employees.flatMap(function (e, index) {
-    const currentSalary = Number(e.current_salary || 500000);
-    const joiningBonusYear =
-      index % 3 === 0 ? "Apr-24" : index % 3 === 1 ? "Apr-25" : "Apr-26";
+    const currentBase = Math.max(1, Math.round(Number(e.current_salary || 500000)));
 
-    let basePay = Math.round((currentSalary * 0.90) / 1000) * 1000;
-    const rows = [];
+    // Employee_Master.current_salary is the Apr-26 base before the Apr-26 appraisal.
+    // Reverse-calculate Apr-25 and Apr-24 so every year's base/hike chain remains exact.
+    const pct25Target = 6 + (index % 4);       // 6%..9%
+    const pct24Target = 5 + ((index + 1) % 4); // 5%..8%
+    const pct26Target = 7 + ((index + 2) % 4); // 7%..10%
 
-    ["Apr-24", "Apr-25", "Apr-26"].forEach(function (year, yearIndex) {
-      const hikePct = Number((5 + ((index + yearIndex) % 4)).toFixed(1));
-      const hikeAmount = Math.round(basePay * hikePct / 100);
-      const allocatedPb = Math.round(basePay * 0.08);
-      const performanceBonus = Math.round(basePay * 0.04);
-      const retentionBonus = Math.round(basePay * 0.02);
+    const base25 = Math.round(currentBase / (1 + pct25Target / 100));
+    const hike25 = currentBase - base25;
+    const base24 = Math.round(base25 / (1 + pct24Target / 100));
+    const hike24 = base25 - base24;
+    const hike26 = Math.round(currentBase * pct26Target / 100);
+
+    const bases = { "Apr-24": base24, "Apr-25": base25, "Apr-26": currentBase };
+    const hikes = { "Apr-24": hike24, "Apr-25": hike25, "Apr-26": hike26 };
+
+    const joinDate = safeDate(e.date_of_join, "2021-01-15");
+    const joinYear = joinDate.slice(0, 4);
+    let joiningBonusYear = null;
+    if (joinYear === "2024") joiningBonusYear = "Apr-24";
+    else if (joinYear === "2025") joiningBonusYear = "Apr-25";
+    else if (joinYear === "2026") joiningBonusYear = "Apr-26";
+
+    return ["Apr-24", "Apr-25", "Apr-26"].map(function (year, yearIndex) {
+      const basePay = bases[year];
+      const hikeAmount = hikes[year];
+      const hikePct = basePay ? Number((hikeAmount / basePay * 100).toFixed(2)) : 0;
+
+      const allocatedPB = Math.round(basePay * (0.06 + (index % 3) * 0.01));
+      const newPB = Math.round(basePay * (0.025 + (yearIndex % 2) * 0.005));
+      const totalPB = allocatedPB + newPB;
+      const retentionBonus = Math.round(basePay * 0.015);
       const joiningBonus = year === joiningBonusYear ? 25000 : 0;
-      const targetPerformanceBonus = Math.round(basePay * 0.11);
-      const totalPb = allocatedPb + performanceBonus;
-      const totalBonus = totalPb + retentionBonus + joiningBonus;
-      const promotion = (index + yearIndex) % 8 === 0 ? "Yes" : "No";
-      const title = promotion === "Yes"
-        ? DESIGNATIONS[Math.min(DESIGNATIONS.length - 1, (index % 6) + 1)]
-        : e.designation;
+      const totalBonus = totalPB + retentionBonus + joiningBonus;
+      const targetPerformanceBonus = Math.round(basePay * 0.10);
 
-      rows.push({
-        emp_id: e.emp_id,
+      const promotion = year === "Apr-26" && index % 7 === 0 ? "Yes" : "No";
+      const title = promotion === "Yes"
+        ? (String(e.designation || "Consultant").toLowerCase().includes("manager")
+          ? String(e.designation)
+          : "Senior " + String(e.designation || "Consultant"))
+        : String(e.designation || "Consultant");
+
+      const rating = Number((3.2 + ((index + yearIndex) % 8) * 0.2).toFixed(1));
+
+      return {
+        emp_id: String(e.emp_id || "").trim(),
         appraisal_year: year,
         base_pay: basePay,
-        allocated_pb: allocatedPb,
-        allocated_pb_installment: (index % 2) + 1,
-        performance_bonus: performanceBonus,
-        performance_bonus_installment: (index % 2) + 1,
+        allocated_pb: allocatedPB,
+        allocated_pb_installment: year === "Apr-24" ? 1 : 2,
+        // The frontend history panel treats performance_bonus as the employee's total PB.
+        performance_bonus: totalPB,
+        performance_bonus_installment: year === "Apr-24" ? 1 : 2,
         retention_bonus: retentionBonus,
-        total_pb: totalPb,
+        total_pb: totalPB,
         joining_bonus: joiningBonus,
         total_bonus: totalBonus,
         hike_amount: hikeAmount,
@@ -188,15 +161,11 @@ function buildHistoryRows(employees) {
         promotion,
         title,
         target_performance_bonus: targetPerformanceBonus,
-        new_ctc: basePay + hikeAmount,
-        manager_rating: String((3.2 + ((index + yearIndex) % 8) * 0.2).toFixed(1)) + " / 5",
-        rating: Number((3.2 + ((index + yearIndex) % 8) * 0.2).toFixed(1)),
-      });
-
-      basePay += hikeAmount;
+        new_ctc: basePay + hikeAmount + totalBonus,
+        manager_rating: String(rating) + " / 5",
+        rating,
+      };
     });
-
-    return rows;
   });
 }
 
@@ -205,49 +174,56 @@ function buildAppraisalRows(employees) {
   const currentRows = historyRows.filter((r) => r.appraisal_year === "Apr-26");
 
   return currentRows.map((h, index) => {
-    const e = employees.find((employee) => employee.emp_id === h.emp_id) || {};
-    const promotion = h.promotion === "Yes" ? "Yes" : "No";
+    const e = employees.find((employee) => normalizeEmpId(employee.emp_id) === normalizeEmpId(h.emp_id)) || {};
+    const reportingManager = resolveMasterPerson(employees, e.repo_manager);
+    const compManager = resolveMasterPerson(employees, e.director);
+    const techEd = resolveMasterPerson(employees, e.appraiser_tech_ed);
+    const promotion = h.promotion === "Yes";
+
+    const currentRewardsPB = Math.round(Number(h.base_pay || 0) * 0.04);
+    const currentRewardsRB = Math.round(Number(h.base_pay || 0) * 0.02);
 
     return {
-      emp_id: e.emp_id,
-      name: e.emp_name,
-      designation: e.designation,
-      reporting_manager: e.repo_manager || "",
-      comp_manager: e.director || "",
-      appraiser_tech_ed: e.appraiser_tech_ed || "",
-      department: e.department || "",
-      manager: e.repo_manager || "",
-      status: e.emp_status || "Active",
+      emp_id: String(e.emp_id || "").trim(),
+      name: String(e.emp_name || "").trim(),
+      designation: String(e.designation || "Consultant").trim(),
+      reporting_manager: reportingManager ? String(reportingManager.emp_name || "").trim() : String(e.repo_manager || "").trim(),
+      comp_manager: compManager ? String(compManager.emp_name || "").trim() : String(e.director || "").trim(),
+      appraiser_tech_ed: techEd ? String(techEd.emp_name || "").trim() : String(e.appraiser_tech_ed || "").trim(),
+      department: String(e.department || "").trim(),
+      manager: reportingManager ? String(reportingManager.emp_name || "").trim() : String(e.repo_manager || "").trim(),
+      status: String(e.emp_status || "Active").trim(),
       wissen_experience: Number(e.wissen_experience || 0),
       total_experience: Number(e.total_experience || 0),
       last_appraisal_date: "2026-04-01",
       manager_rating: h.manager_rating,
       interview_count: (index % 4) + 1,
-      rr_percent: 70 + (index % 6) * 3,
-      gross_margin: 20 + (index % 5) * 4,
-      rb_to_be_paid: h.retention_bonus,
+      rr_percent: Number((72 + (index % 6) * 2.5).toFixed(2)),
+      gross_margin: Math.round(22 + (index % 5) * 3),
+      rb_to_be_paid: currentRewardsRB,
       month_rb: "Apr-26",
-      pb_to_be_paid: h.performance_bonus,
+      pb_to_be_paid: currentRewardsPB,
       month_pb: "Apr-26",
       current_annual_base_pay: h.base_pay,
-      target_pb_allocated_for_may: h.allocated_pb,
+      target_pb_allocated_for_may: h.target_performance_bonus,
       allocated_pb_amount: h.allocated_pb,
       pb_installment: h.allocated_pb_installment,
-      new_pb_to_be_offered: h.performance_bonus,
+      new_pb_to_be_offered: h.performance_bonus - h.allocated_pb,
       new_pb_installment: h.performance_bonus_installment,
       new_rb: h.retention_bonus,
       hike_amount: h.hike_amount,
       hike_pct: h.hike_pct,
       target_pb_next_year: h.target_performance_bonus,
-      eligible_for_promotion: promotion,
-      new_title: promotion === "Yes" ? h.title : "",
-      at_risk: index % 9 === 0 ? "Yes" : "No",
-      joining_date: e.date_of_join || null,
-      manager_email_id: "manager@demo.local",
-      super_man_email_id: "director@demo.local",
+      eligible_for_promotion: promotion ? "Yes" : "No",
+      new_title: promotion ? h.title : "",
+      at_risk: index % 9 === 0 ? "Review required" : "",
+      joining_date: safeDate(e.date_of_join, "2021-01-15"),
+      manager_email_id: reportingManager ? String(reportingManager.email_id || "").trim() : "",
+      super_man_email_id: compManager ? String(compManager.email_id || "").trim() : "",
       rating: h.rating,
-      eligible_status: "eligible",
+      eligible_status: String(e.emp_status || "").toLowerCase() === "active" ? "eligible" : "not eligible",
       joining_bonus: h.joining_bonus,
+      emp_master_row_id: e.ROWID,
     };
   });
 }
@@ -327,17 +303,21 @@ async function seed(req, res) {
     delegation: ds.table(TABLES.delegation),
   };
 
-  const employees = buildEmployees();
+  const existingMaster = await allRows(tables.employeeMaster);
+  const employees = existingMaster
+    .filter((e) => String(e.emp_id || "").trim())
+    .sort((a, b) => normalizeEmpId(a.emp_id).localeCompare(normalizeEmpId(b.emp_id)))
+    .slice(0, 30);
+
+  if (employees.length !== 30) {
+    return send(res, 400, {
+      success: false,
+      message: "Expected 30 Employee Master records, but found " + employees.length + ". Seed stopped without changing Appraisal Sheet or Payroll Data.",
+    });
+  }
+
   const cycle = await ensureCycle(tables.cycle);
   const cycleId = String(cycle.ROWID);
-
-  const existingMaster = await allRows(tables.employeeMaster);
-  const masterAdded = await insertMissing(
-    tables.employeeMaster,
-    employees,
-    (r) => String(r.emp_id || "").trim().toUpperCase(),
-    existingMaster,
-  );
 
   const existingAppraisal = await allRows(tables.appraisal);
   const appraisalRows = buildAppraisalRows(employees);
@@ -358,13 +338,21 @@ async function seed(req, res) {
   );
 
   const existingDelegation = await allRows(tables.delegation);
+  const hrPerson = employees.find((e) => normalizeEmpId(e.emp_id) === "EMP001") || employees[0];
+  const techPeople = employees.filter((e) =>
+    String(e.designation || "").toLowerCase().includes("tech") ||
+    String(e.emp_id || "").toUpperCase() === "EMP002" ||
+    String(e.emp_id || "").toUpperCase() === "EMP003"
+  );
+  const techEdPeople = techPeople.length >= 2 ? techPeople.slice(0, 2) : employees.slice(1, 3);
+
   const delegationRows = employees
-    .filter((e) => !["EMP001", "EMP002", "EMP003"].includes(e.emp_id))
-    .map((e) => ({
+    .filter((e) => !["EMP001", "EMP002", "EMP003"].includes(normalizeEmpId(e.emp_id)))
+    .map((e, index) => ({
       cycle_id: cycleId,
-      emp_id: e.emp_id,
-      comp_manager_id: "EMP001",
-      appraiser_tech_ed_id: Number(e.emp_id.slice(3)) % 2 === 0 ? "EMP002" : "EMP003",
+      emp_id: String(e.emp_id).trim(),
+      comp_manager_id: String(hrPerson.emp_id).trim(),
+      appraiser_tech_ed_id: String(techEdPeople[index % techEdPeople.length].emp_id).trim(),
     }));
 
   const delegationAdded = await insertMissing(
@@ -378,7 +366,7 @@ async function seed(req, res) {
   const budgetRows = [
     {
       appraisal_cycle_id: cycleId,
-      tech_ed_id: TECH_ED[0],
+      tech_ed_id: String(techEdPeople[0].emp_id).trim(),
       budget_percentage: 50,
       budget_amount: 1000000,
       additional_budget: 50000,
@@ -388,7 +376,7 @@ async function seed(req, res) {
     },
     {
       appraisal_cycle_id: cycleId,
-      tech_ed_id: TECH_ED[1],
+      tech_ed_id: String(techEdPeople[1].emp_id).trim(),
       budget_percentage: 50,
       budget_amount: 1000000,
       additional_budget: 50000,
@@ -419,7 +407,7 @@ async function seed(req, res) {
     message: "Demo data seed completed.",
     cycle: { id: cycleId, name: cycle.cycle_name, status: cycle.status },
     added: {
-      employeeMaster: masterAdded,
+      employeeMaster: 0,
       appraisalSheet: appraisalAdded,
       payrollData: payrollAdded,
       delegation: delegationAdded,
@@ -428,8 +416,8 @@ async function seed(req, res) {
     },
     businessData: {
       totalEmployeesTarget: employees.length,
-      techEdOwners: TECH_ED,
-      hrOwner: HR,
+      techEdOwners: techEdPeople.map((e) => String(e.emp_id).trim()),
+      hrOwner: String(hrPerson.emp_id).trim(),
       appraisalCycle: "Apr-26",
     },
   });
