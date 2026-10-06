@@ -189,14 +189,13 @@ export function CatalystAuthGate({ children }) {
                 EA
               </div>
               <p className="text-sm font-medium uppercase tracking-[0.2em] text-blue-300">
-                R2C Technologies
+                Wissen Technologies
               </p>
               <h1 className="mt-4 text-4xl font-semibold leading-tight">
-                Employee Appraisal Management
+                Compensation Tool Management
               </h1>
               <p className="mt-5 max-w-sm text-sm leading-6 text-slate-300">
-                Secure access to appraisal, employee and compensation
-                management.
+                Secure access to Compensation Management
               </p>
             </div>
             <p className="text-xs text-slate-400">

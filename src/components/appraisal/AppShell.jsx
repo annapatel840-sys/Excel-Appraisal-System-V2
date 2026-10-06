@@ -25,7 +25,11 @@ const TECH_ED_PATHS = [
 const HR_MENU_ITEMS = [
   ["Employee Master", "roster", "/employee-master?tab=roster"],
   ["Eligibility List", "eligibility", "/employee-master?tab=eligibility"],
-  ["Appraisal Cycle Master", "appraisal-cycle", "/employee-master?tab=appraisal-cycle"],
+  [
+    "Appraisal Cycle Master",
+    "appraisal-cycle",
+    "/employee-master?tab=appraisal-cycle",
+  ],
   ["Payroll Data", "payroll-data", "/employee-master?tab=payroll-data"],
   ["Payroll Upload", "payroll-upload", "/employee-master?tab=payroll-upload"],
   ["Team Changes", "team-changes", "/employee-master?tab=team-changes"],
@@ -46,7 +50,10 @@ export function AppShell({ children, headerActions }) {
     .replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
   const isHR =
-    role === "hr" || role === "humanresources" || role === "hroperation" || role === "hroperations";
+    role === "hr" ||
+    role === "humanresources" ||
+    role === "hroperation" ||
+    role === "hroperations";
 
   const isVertical = settings.menuPosition === "left";
   const isCollapsed = isVertical && settings.menuCollapsed;
@@ -74,20 +81,38 @@ export function AppShell({ children, headerActions }) {
   // With access rules (/me ok) the menu follows the user's screens; otherwise
   // the role-based menu above is used unchanged.
   const hrMenuItems = HR_MENU_ITEMS.filter(([, tab]) =>
-    access.ok ? access.canScreen(HR_TAB_SCREENS[tab]) : tab !== "access" || isHR,
+    access.ok
+      ? access.canScreen(HR_TAB_SCREENS[tab])
+      : tab !== "access" || isHR,
   );
   const nav = access.ok
     ? [
-        access.canScreen("dashboard") && { to: "/", label: "Dashboard", icon: LayoutDashboard },
-        access.canScreen("appraisalSheet") && { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
-        isTechEd && { to: "/budget-distribution", label: "Budget Distribution", icon: WalletCards },
+        access.canScreen("dashboard") && {
+          to: "/",
+          label: "Dashboard",
+          icon: LayoutDashboard,
+        },
+        access.canScreen("appraisalSheet") && {
+          to: "/sheet",
+          label: "Appraisal Sheet",
+          icon: Table2,
+        },
+        isTechEd && {
+          to: "/budget-distribution",
+          label: "Budget Distribution",
+          icon: WalletCards,
+        },
         hrMenuItems.length > 0 && {
           to: "/employee-master",
           label: "HR Operations",
           icon: Users,
           dropdown: true,
         },
-        access.canScreen("detailScreen") && { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
+        access.canScreen("detailScreen") && {
+          to: "/detail-screen",
+          label: "Detailed Screen",
+          icon: BookOpen,
+        },
       ].filter(Boolean)
     : fallbackNav;
 
@@ -108,9 +133,14 @@ export function AppShell({ children, headerActions }) {
   };
 
   const projectHeading = (
-    <div className={cn("flex shrink-0 items-center justify-center gap-2 text-center", isVertical && "px-1")}>
+    <div
+      className={cn(
+        "flex shrink-0 items-center justify-center gap-2 text-center",
+        isVertical && "px-1",
+      )}
+    >
       <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-[10px] font-bold text-primary-foreground">
-        R2C
+        Wissen
       </span>
       {!isCollapsed && (
         <div className={cn(!isVertical && "hidden xl:block")}>
@@ -138,7 +168,13 @@ export function AppShell({ children, headerActions }) {
   );
 
   return (
-    <div className={cn("min-h-screen bg-background", isVertical && "lg:pl-44", isCollapsed && "lg:pl-16")}>
+    <div
+      className={cn(
+        "min-h-screen bg-background",
+        isVertical && "lg:pl-44",
+        isCollapsed && "lg:pl-16",
+      )}
+    >
       <header
         className={cn(
           "z-50 border-border bg-[var(--app-brand)]",
@@ -173,10 +209,7 @@ export function AppShell({ children, headerActions }) {
               return (
                 <div
                   key={item.to}
-                  className={cn(
-                    "relative",
-                    isHrMenu && "group",
-                  )}
+                  className={cn("relative", isHrMenu && "group")}
                 >
                   <a
                     href={item.to}
@@ -198,9 +231,16 @@ export function AppShell({ children, headerActions }) {
                     aria-haspopup={isHrMenu ? "menu" : undefined}
                     title={isCollapsed ? item.label : undefined}
                   >
-                    <Icon className={cn(isVertical ? "size-4" : "size-3.5", "shrink-0")} />
+                    <Icon
+                      className={cn(
+                        isVertical ? "size-4" : "size-3.5",
+                        "shrink-0",
+                      )}
+                    />
                     {!isCollapsed && <span>{item.label}</span>}
-                    {isHrMenu && !isCollapsed && <ChevronDown className="size-3" />}
+                    {isHrMenu && !isCollapsed && (
+                      <ChevronDown className="size-3" />
+                    )}
                   </a>
 
                   {isHrMenu && (
@@ -236,16 +276,13 @@ export function AppShell({ children, headerActions }) {
           <div
             className={cn(
               "flex gap-1.5",
-              isVertical
-                ? "mt-auto flex-col"
-                : "ml-auto min-w-0 items-center",
+              isVertical ? "mt-auto flex-col" : "ml-auto min-w-0 items-center",
               isCollapsed && "items-center",
             )}
           >
             {!isVertical && headerActions}
             {isVertical && headerActions}
             {(isTechEd || access.canScreen("settings")) && settingsButton}
-
           </div>
 
           {!isVertical && headerActions && (
