@@ -61,7 +61,9 @@ const EDIT_FIELDS = [
    The 52px accounts for the banner (~38px) plus the top padding. */
 const DS_CSS = `
 .ds-root{--ds-offset:72px;display:grid;grid-template-rows:auto minmax(0,1fr) clamp(145px,19dvh,185px);height:calc(100dvh - var(--ds-offset));min-height:0;overflow:hidden}
-.ds-main{display:grid;grid-template-columns:var(--ds-cols);grid-template-rows:minmax(0,1fr);gap:0;padding:4px 12px 0;align-items:stretch;min-height:0;overflow:visible}
+.ds-main{display:grid;grid-template-columns:var(--ds-cols);grid-template-rows:minmax(0,1fr);gap:0;padding:4px 12px 0;align-items:stretch;min-width:0;min-height:0;overflow:visible}
+.ds-main>*{min-width:0}
+.ds-panel-scroll{min-width:0}
 .ds-side{position:relative;min-height:0;overflow:visible}
 .ds-side>.ds-card{position:relative;width:100%;height:100%}
 .ds-card{display:flex;flex-direction:column;background:#fff;border:1px solid #E3E9EC;border-radius:10px;box-shadow:0 1px 2px rgba(16,42,67,.04);overflow:hidden;min-width:0;min-height:0}
@@ -69,10 +71,11 @@ const DS_CSS = `
 .ds-scroll{scrollbar-width:thin;scrollbar-color:#C4CED6 transparent;min-height:0;overflow:auto}
 .ds-panel-scroll{flex:1 1 auto;min-height:0;overflow:hidden !important}
 @media (max-width:999px){
-.ds-root{grid-template-rows:auto minmax(0,1fr) 185px;height:calc(100dvh - var(--ds-offset));min-height:0;overflow:hidden}
-.ds-main{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);overflow:hidden}
-.ds-main>.ds-card,.ds-main>.ds-side,.ds-main>button{height:100%;min-height:0}
-.ds-hist{height:100%}
+.ds-root{grid-template-rows:auto auto 185px;height:auto;min-height:100dvh;overflow:visible}
+.ds-main{grid-template-columns:minmax(0,1fr);grid-template-rows:auto auto auto;overflow:visible}
+.ds-main>.ds-card,.ds-main>.ds-side,.ds-main>button{height:auto;min-height:0}
+.ds-panel-scroll{overflow:visible !important}
+.ds-hist{height:185px}
 }
 .ds-mq{flex:1;min-width:0;overflow:hidden}
 .ds-track{display:inline-block;white-space:nowrap;animation:ds-slide 22s linear infinite}
@@ -200,7 +203,7 @@ const editedStyle = {
   fontWeight: 700,
 };
 const fieldStyle = (edited) => (edited ? editedStyle : editableStyle);
-const COMP_COLS = "minmax(120px,0.9fr) minmax(0,1fr) minmax(0,1.05fr) minmax(92px,0.6fr)";
+const COMP_COLS = "minmax(150px,0.95fr) minmax(150px,0.95fr) minmax(190px,1.25fr) minmax(125px,0.75fr)";
 // NEW: typed text -> number for the live (while typing) calculations; empty = 0.
 const draftNum = (s) => {
   const v = parseAmount(s);
@@ -535,9 +538,11 @@ export function DetailScreenPage({
   // CHANGED: Feedback column widths reduced by 25%
   // (1.12 -> 0.84 expanded, 0.735 -> 0.55 normal).
   const cols = [
-    "minmax(0,1.7fr)",
-    metricsOpen ? "minmax(0,1fr)" : "34px",
-    cardOpen ? (cardWide ? "minmax(0,0.84fr)" : "minmax(0,0.55fr)") : "34px",
+    "minmax(760px,2.25fr)",
+    metricsOpen ? "minmax(150px,0.6fr)" : "34px",
+    cardOpen
+      ? (cardWide ? "minmax(300px,0.95fr)" : "minmax(260px,0.8fr)")
+      : "34px",
   ].join(" ");
   return (
     <div
