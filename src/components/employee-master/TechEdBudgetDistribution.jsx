@@ -128,6 +128,10 @@ export function TechEdBudgetDistribution() {
 
   useEffect(() => {
     let alive = true;
+    // The cycle name is only a label: stop waiting for it after 8 s.
+    const timer = window.setTimeout(() => {
+      if (alive) setCycle((c) => (c.loaded ? c : { ...c, loaded: true }));
+    }, 8000);
     payrollCycleRequest("cycles")
       .then((list) => {
         const active = (list || []).find((c) => String(c.status).toLowerCase() === "active" && !c.archived);
@@ -138,6 +142,7 @@ export function TechEdBudgetDistribution() {
       });
     return () => {
       alive = false;
+      window.clearTimeout(timer);
     };
   }, []);
 
@@ -294,7 +299,7 @@ export function TechEdBudgetDistribution() {
     </button>
   );
 
-  const loading = rowsLoading || budgetLoading || !cycle.loaded;
+  const pending = [budgetLoading && "budget", rowsLoading && "team", !cycle.loaded && "cycle"].filter(Boolean);
   const over = myUpdated ? used / myUpdated > 1 : false;
   const usedPct = myUpdated ? (used / myUpdated) * 100 : 0;
   const cmLabel = LEVELS[1] + (cmNodes.length === 1 ? "" : "s");
@@ -306,11 +311,13 @@ export function TechEdBudgetDistribution() {
     <div className="tbd-root">
       <style>{CSS}</style>
 
-      {loading ? (
-        <div className="card empty">Loading your budget…</div>
+      {budgetLoading ? (
+        <div className="card empty">Loading your budget… ({pending.join(", ")})</div>
       ) : !budget ? (
         <div className="card empty">
-          {budgetError || "No budget has been allotted to you for " + (cycle.name || "this cycle") + " yet."}
+          {budgetError ||
+            "No budget has been allotted to you" + (cycle.name ? " for " + cycle.name : "") + " yet." +
+              (ids.length ? "" : " (Your login could not be matched to an employee.)")}
         </div>
       ) : (
         <>
@@ -357,9 +364,7 @@ export function TechEdBudgetDistribution() {
                   </div>
                   <div>
                     <div className="f-label">Team size</div>
-                    <div className="v">
-                      {team0} → {team.length}
-                    </div>
+                    <div className="v">{rowsLoading ? "…" : team0 + " → " + team.length}</div>
                     <div className="d mut">At allocation → now</div>
                   </div>
                   {cmNodes.length > 0 && (
@@ -414,6 +419,7 @@ export function TechEdBudgetDistribution() {
                     />
                   </div>
                 )}
+                {rowsLoading && <div className="note">Loading your team…</div>}
                 {err && (
                   <div className="berr" role="alert">
                     <span>{err}</span>
