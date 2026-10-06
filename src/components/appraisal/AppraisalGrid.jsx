@@ -39,7 +39,7 @@
 //   designation: 120,
 // //   compManager: 125,
 //   appraiserTechED: 130,
-  techEd: 105,
+//   techEd: 105,
 
 //   wissenExperience: 100,
 //   totalExperience: 96,
