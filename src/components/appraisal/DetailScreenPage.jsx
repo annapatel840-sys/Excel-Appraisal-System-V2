@@ -60,19 +60,19 @@ const EDIT_FIELDS = [
    so the three panels fit the visible screen and the footer stays in view.
    The 52px accounts for the banner (~38px) plus the top padding. */
 const DS_CSS = `
-.ds-root{--ds-offset:72px;display:flex;flex-direction:column;height:calc(100dvh - var(--ds-offset));min-height:0;overflow:hidden}
-.ds-main{display:grid;grid-template-columns:var(--ds-cols);grid-template-rows:minmax(0,1fr);gap:0;padding:6px 12px 0;align-items:stretch;flex:1;min-height:0;overflow:visible}
+.ds-root{--ds-offset:72px;display:grid;grid-template-rows:auto minmax(0,1fr) clamp(145px,19dvh,185px);height:calc(100dvh - var(--ds-offset));min-height:0;overflow:hidden}
+.ds-main{display:grid;grid-template-columns:var(--ds-cols);grid-template-rows:minmax(0,1fr);gap:0;padding:4px 12px 0;align-items:stretch;min-height:0;overflow:visible}
 .ds-side{position:relative;min-height:0;overflow:visible}
 .ds-side>.ds-card{position:relative;width:100%;height:100%}
 .ds-card{display:flex;flex-direction:column;background:#fff;border:1px solid #E3E9EC;border-radius:10px;box-shadow:0 1px 2px rgba(16,42,67,.04);overflow:hidden;min-width:0;min-height:0}
-.ds-hist{flex:0 0 clamp(140px,20dvh,190px);height:clamp(140px,20dvh,190px);margin:6px 12px 8px;min-height:0}
+.ds-hist{height:100%;min-height:0;margin:5px 12px 7px;overflow:hidden}
 .ds-scroll{scrollbar-width:thin;scrollbar-color:#C4CED6 transparent;min-height:0;overflow:auto}
-.ds-panel-scroll{flex:1 1 auto;min-height:0;overflow:visible !important}
+.ds-panel-scroll{flex:1 1 auto;min-height:0;overflow:hidden !important}
 @media (max-width:999px){
-  .ds-root{height:auto;min-height:100dvh;overflow:visible}
-  .ds-main{grid-template-columns:minmax(0,1fr);grid-template-rows:auto;flex:none;overflow:visible}
-  .ds-main>.ds-card,.ds-main>.ds-side,.ds-main>button{height:auto;min-height:0}
-  .ds-hist{flex-basis:220px;height:220px}
+.ds-root{grid-template-rows:auto minmax(0,1fr) 185px;height:calc(100dvh - var(--ds-offset));min-height:0;overflow:hidden}
+.ds-main{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr);overflow:hidden}
+.ds-main>.ds-card,.ds-main>.ds-side,.ds-main>button{height:100%;min-height:0}
+.ds-hist{height:100%}
 }
 .ds-mq{flex:1;min-width:0;overflow:hidden}
 .ds-track{display:inline-block;white-space:nowrap;animation:ds-slide 22s linear infinite}
@@ -565,7 +565,7 @@ export function DetailScreenPage({
             {/* LEFT — Compensation input */}
             <section className="ds-card" aria-label="Compensation input">
               <div
-                className="flex shrink-0 items-center justify-between gap-3 border-b px-3.5 py-2.5"
+                className="flex shrink-0 items-center justify-between gap-3 border-b px-3 py-1.5"
                 style={{ borderColor: NAVY, background: NAVY }}
               >
                 <div
@@ -604,7 +604,7 @@ export function DetailScreenPage({
                 </span>
               </div>
               <div
-                className="flex shrink-0 items-center gap-2 border-b px-3.5 py-2"
+                className="flex shrink-0 items-center gap-2 border-b px-3 py-1.5"
                 style={{ borderColor: LINE }}
               >
                 <input
@@ -628,7 +628,7 @@ export function DetailScreenPage({
                   legend and Previous / Save & next bar stay pinned below it. */}
               <div className="ds-panel-scroll">
                 <div
-                  className="grid text-[12.5px]"
+                  className="grid text-[12px]"
                   style={{ gridTemplateColumns: COMP_COLS }}
                 >
                   <CompHead>Description</CompHead>
@@ -797,7 +797,7 @@ export function DetailScreenPage({
                       rows={2}
                       readOnly
                       aria-label="Current target PB criteria"
-                      className="h-[46px] w-full resize-none rounded border px-2 py-1.5 text-[12px] leading-[1.3] outline-none"
+                      className="h-[38px] w-full resize-none rounded border px-1.5 py-1 text-[11px] leading-[1.2] outline-none"
                       style={{
                         borderColor: "#C9D1DA",
                         background: "#F1F3F6",
@@ -838,7 +838,7 @@ export function DetailScreenPage({
                   </CompRow>
                   <CompFullRow label="Comp Manager Remarks" last>
                     <div
-                      className="h-[46px] w-full overflow-auto rounded border px-2 py-1.5 text-[12px] leading-[1.3]"
+                      className="h-[38px] w-full overflow-auto rounded border px-1.5 py-1 text-[11px] leading-[1.2]"
                       style={{
                         borderColor: "#C9D1DA",
                         background: "#F1F3F6",
@@ -866,7 +866,7 @@ export function DetailScreenPage({
                 <Legend sw="#E3F4EF" border="#4FA38F" label="Edited this cycle" />
               </div>
               <div
-                className="flex shrink-0 items-center justify-between gap-3 border-t px-3.5 py-2.5"
+                className="flex shrink-0 items-center justify-between gap-3 border-t px-3 py-1.5"
                 style={{ borderColor: LINE }}
               >
                 <div className="text-[12.5px]" style={{ color: "#334155" }}>
@@ -1158,7 +1158,7 @@ function EmployeeCard({
     <section className="ds-card" aria-label="Employee">
       {/* Header: just "Feedback" and the expand / close buttons */}
       <div
-        className="grid shrink-0 items-center gap-2 px-3.5 py-2"
+        className="grid shrink-0 items-center gap-2 px-3 py-1.5"
         style={{ background: NAVY, gridTemplateColumns: "1fr auto 1fr" }}
       >
         <span />
@@ -1496,7 +1496,7 @@ function TeamMetrics({ employee, metrics: m, teamBudget, rowsCount, scopeLabel }
 function CompHead({ children, right }) {
   return (
     <div
-      className={`flex items-center border-b border-r px-2.5 py-1.5 text-[10.5px] font-bold ${
+      className={`flex items-center border-b border-r px-2 py-1 text-[10.5px] font-bold ${
         right ? "justify-end" : ""
       }`}
       style={{
@@ -1513,7 +1513,7 @@ function CompHead({ children, right }) {
 function ReadBox({ children }) {
   return (
     <div
-      className="flex h-[28px] w-full items-center truncate rounded border px-2 text-[12px]"
+      className="flex h-[25px] w-full items-center truncate rounded border px-1.5 text-[11.5px]"
       style={{
         borderColor: "#C9D1DA",
         background: "#F1F3F6",
@@ -1537,7 +1537,7 @@ function CompRow({
   return (
     <>
       <div
-        className="flex items-center border-b border-r px-2.5 py-1.5 font-bold"
+        className="flex items-center border-b border-r px-2 py-1 font-bold"
         style={{
           borderColor: "#E3E9EC",
           background: "#F8FAFB",
@@ -1547,19 +1547,19 @@ function CompRow({
         {label}
       </div>
       <div
-        className="flex items-center border-b border-r px-2.5 py-1.5"
+        className="flex items-center border-b border-r px-2 py-1"
         style={{ borderColor: "#E3E9EC" }}
       >
         <ReadBox>{current}</ReadBox>
       </div>
       <div
-        className="flex items-center border-b border-r px-2.5 py-1.5"
+        className="flex items-center border-b border-r px-2 py-1"
         style={{ borderColor: "#E3E9EC", background: "#fff" }}
       >
         {children}
       </div>
       <div
-        className="flex items-center justify-end border-b px-2.5 py-1.5 text-right"
+        className="flex items-center justify-end border-b px-2 py-1 text-right"
         style={{
           borderColor: "#E3E9EC",
           background: "#fff",
@@ -1582,7 +1582,7 @@ function CompFullRow({ label, children, last }) {
   return (
     <>
       <div
-        className="flex items-center border-r px-2.5 py-1.5 font-bold"
+        className="flex items-center border-r px-2 py-1 font-bold"
         style={{
           borderColor: "#E3E9EC",
           borderBottom: last ? "0" : "1px solid #E3E9EC",
@@ -1593,7 +1593,7 @@ function CompFullRow({ label, children, last }) {
         {label}
       </div>
       <div
-        className="flex items-stretch border-r px-2.5 py-1.5"
+        className="flex items-stretch border-r px-2 py-1"
         style={{
           borderColor: "#E3E9EC",
           borderBottom: last ? "0" : "1px solid #E3E9EC",
@@ -1602,7 +1602,7 @@ function CompFullRow({ label, children, last }) {
         {children[0]}
       </div>
       <div
-        className="flex items-stretch border-r px-2.5 py-1.5"
+        className="flex items-stretch border-r px-2 py-1"
         style={{
           borderColor: "#E3E9EC",
           borderBottom: last ? "0" : "1px solid #E3E9EC",
@@ -1640,7 +1640,7 @@ function PayRow({
   return (
     <>
       <div
-        className="flex items-center border-b border-r px-2.5 py-1.5 font-bold"
+        className="flex items-center border-b border-r px-2 py-1 font-bold"
         style={{
           borderColor: "#E3E9EC",
           background: "#F8FAFB",
@@ -1650,7 +1650,7 @@ function PayRow({
         {label}
       </div>
       <div
-        className="flex flex-col gap-1 border-b border-r px-2.5 py-1.5"
+        className="flex flex-col gap-1 border-b border-r px-2 py-1"
         style={{ borderColor: "#E3E9EC" }}
       >
         <div className="flex items-center gap-1.5">
@@ -1665,7 +1665,7 @@ function PayRow({
         </div>
       </div>
       <div
-        className="flex flex-col gap-1 border-b border-r px-2.5 py-1.5"
+        className="flex flex-col gap-1 border-b border-r px-2 py-1"
         style={{ borderColor: "#E3E9EC", background: "#fff" }}
       >
         <div className="flex items-center gap-1.5">
@@ -1677,7 +1677,7 @@ function PayRow({
         </div>
       </div>
       <div
-        className="flex items-center justify-end border-b px-2.5 py-1.5 text-right"
+        className="flex items-center justify-end border-b px-2 py-1 text-right"
         style={{ borderColor: "#E3E9EC", background: "#fff" }}
       >
         <PaidDiff value={diffValue} />
