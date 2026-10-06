@@ -3717,6 +3717,7 @@ const applyCurrentYearSheetValues = (historyRecord, row) => {
   const allocatedPBAmount = Number(row.allocatedPBAmount) || 0;
   const newPBToBeOffered = Number(row.newPBToBeOffered) || 0;
   const newRB = Number(row.newRB) || 0;
+  const joiningBonus = Number(row.joiningBonus) || 0;
   const currentAnnualBasePay = Number(row.currentAnnualBasePay) || 0;
   const hikeAmount = Number(row.hikeAmount) || 0;
   const targetPBNextYear = Number(row.targetPBNextYear) || 0;
@@ -3731,6 +3732,7 @@ const applyCurrentYearSheetValues = (historyRecord, row) => {
     allocatedPB: allocatedPBAmount,
     performanceBonus: totalPB,
     retentionBonus: newRB,
+    joiningBonus,
     totalPB,
     totalBonus,
     hikeAmount,
