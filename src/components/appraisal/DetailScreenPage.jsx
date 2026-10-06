@@ -61,8 +61,8 @@ const EDIT_FIELDS = [
    The 52px accounts for the banner (~38px) plus the top padding. */
 const DS_CSS = `
 .ds-root{--ds-offset:72px;display:flex;flex-direction:column;height:calc(100dvh - var(--ds-offset));min-height:0;overflow:hidden;scrollbar-width:none;scrollbar-color:transparent transparent}
-.ds-main{display:grid;grid-template-columns:minmax(0,1fr);gap:0;padding:10px 12px 0;align-items:stretch;flex:1;min-height:0;overflow:hidden}
-@media (min-width:1000px){.ds-main{grid-template-columns:var(--ds-cols);grid-template-rows:minmax(0,1fr);min-height:0;height:auto}.ds-main>.ds-card,.ds-main>.ds-side,.ds-main>button{min-height:0;height:100%}}
+.ds-main{display:grid;grid-template-columns:var(--ds-cols);grid-template-rows:minmax(0,1fr);gap:0;padding:10px 12px 0;align-items:stretch;flex:1;min-height:0;overflow:hidden}
+.ds-main>.ds-card,.ds-main>.ds-side,.ds-main>button{min-height:0;height:100%}
 .ds-side{position:relative;min-height:0;overflow:visible}
 .ds-side>.ds-card{position:relative;width:100%;height:100%}
 .ds-card{display:flex;flex-direction:column;background:#fff;border:1px solid #E3E9EC;border-radius:10px;box-shadow:0 1px 2px rgba(16,42,67,.04);overflow:hidden;min-width:0;min-height:0}
