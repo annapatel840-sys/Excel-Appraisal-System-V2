@@ -92,6 +92,15 @@ const LAST = [
 
 // ============================================================
 // CALCULATIONS
+//
+//   Total of PB            = Allocated PB + New PB
+//   Total Bonus            = Total of PB + New RB          (joining bonus is one-time, not here)
+//   New Base Salary        = Current Base + Hike Amount    (next year's base, also Total CTC)
+//   Total Rewards          = New Base Salary + Total Bonus (column "Total Rewards")
+//   Current Rewards        = RB to be paid + PB to be paid (what is being paid now)
+//   Total Bonus Hike       = Total Bonus - Current Rewards
+//   Total Rewards Hike     = Hike Amount + Total Bonus Hike
+//   Total Rewards Hike %   = Total Rewards Hike / (Current Base + Current Rewards)
 // ============================================================
 
 export const totalOfPB = (r) =>
@@ -138,8 +147,10 @@ export const totalBonusHikePct = (r) => {
 export const totalRewardsHikeAmount = (r) =>
   hikeAmount(r) + totalBonusHikeAmount(r);
 
+// FIX: the percentage is measured against the CURRENT total rewards
+// (base pay + rewards being paid now), not against base pay alone.
 export const totalRewardsHikePct = (r) => {
-  const current = Number(r.currentAnnualBasePay || 0);
+  const current = Number(r.currentAnnualBasePay || 0) + currentRewards(r);
 
   return current ? (totalRewardsHikeAmount(r) / current) * 100 : 0;
 };
@@ -412,7 +423,7 @@ export const COLUMNS = [
 
   {
     key: "totalCTCWithRewards",
-    label: "Total CTC with Rewards",
+    label: "Total Rewards",
     type: "currency",
     editable: false,
     computed: true,

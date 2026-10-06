@@ -206,7 +206,7 @@ export function CatalystAuthGate({ children }) {
           <div className="p-6 sm:p-10">
             <div className="mx-auto w-full max-w-md">
               <div className="lg:hidden mb-6 flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">
-                EA
+                CT
               </div>
 
               {state === "loading" ? (

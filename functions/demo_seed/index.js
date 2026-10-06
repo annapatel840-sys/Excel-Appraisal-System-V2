@@ -17,15 +17,102 @@ const HR = "EMP001 - Prabhuprasad Parida";
 const TECH_ED = ["EMP002 - Ashok Kumar", "EMP003 - Sarmistha Acharya"];
 
 const YEARS = ["Apr-24", "Apr-25", "Apr-26"];
-const JOINING_BONUS_YEAR = "Apr-24"; // one-time, first cycle only
-const JOINING_BONUS_AMOUNT = 25000;
+const CURRENT_YEAR = "Apr-26";
+const PREVIOUS_YEAR = "Apr-25";
 
-// If your PB Installment dropdown options are not "1"/"2" (e.g. "1st"/"2nd"),
-// change ONLY this function. Check COLUMNS -> pbInstallment.options.
+// Joining bonus is a ONE-TIME payment, recorded only in the first cycle (Apr-24).
+const JOINING_BONUS_YEAR = "Apr-24";
+const JOINING_BONUS_DEFAULT = 25000; // used only when no value is stored yet
+
+// PB Installment dropdown options in the app are "1", "2", "4".
 const installmentLabel = (n) => String(n);
 
-// Appraisal fields that are always corrected, even without ?force=true
-const APPRAISAL_ALWAYS_SYNC = new Set(["joining_bonus"]);
+// Read-only sheet columns: always corrected by the seed (your manual edits are never touched,
+// because editable columns are only filled when blank/0, unless ?force=true).
+const APPRAISAL_ALWAYS_SYNC = new Set([
+  "joining_bonus",
+  "rb_to_be_paid",
+  "pb_to_be_paid",
+  "manager_rating",
+  "current_annual_base_pay",
+  "target_pb_allocated_for_may",
+  "last_appraisal_date",
+]);
+
+// ============================================================
+// COMPENSATION MODEL (how a company runs an appraisal cycle)
+//
+//  1. Manager rating decides everything:
+//       Exceeds Expectation          -> merit hike 12-15%, PB payout 120% of target
+//       Meets Expectation            -> merit hike  8-11%, PB payout 100% of target
+//       Sometimes Meets Expectation  -> merit hike  4-7%,  PB payout  70% of target
+//     A promotion adds +3 points to the hike (promotion increment).
+//
+//  2. Fixed pay
+//       Hike Amount   = Base Pay x Hike %
+//       New Base Pay  = Base Pay + Hike Amount         (next year's base)
+//       Total CTC     = Base Pay + Hike Amount         (fixed pay)
+//
+//  3. Variable pay
+//       Target PB (cycle)  = 10% of Base Pay
+//       Total PB           = Target PB x payout factor
+//       Allocated PB       = 60% of Target PB (already allocated)
+//       New PB to offer    = Total PB - Allocated PB
+//       Retention Bonus    = 1.5% of Base Pay
+//       Total Bonus        = Total PB + Retention Bonus      (joining bonus excluded)
+//       Target PB next yr  = 10% of New Base Pay
+//
+//  4. Total Rewards = Total CTC + Total Bonus + Joining Bonus
+//
+//  5. Chain between years (exact):
+//       Apr-24 base + Apr-24 hike = Apr-25 base
+//       Apr-25 base + Apr-25 hike = Apr-26 base (= Employee_Master.current_salary)
+//     "RB / PB to be paid" in the Apr-26 sheet = the Apr-25 Retention Bonus / Total PB,
+//     so Bonus Hike % and Total Rewards Hike % in the sheet equal the % change in History.
+// ============================================================
+
+const ratingLabel = (r) =>
+  r >= 4.4
+    ? "Exceeds Expectation"
+    : r >= 3.6
+      ? "Meets Expectation"
+      : "Sometimes Meets Expectation";
+
+const PAYOUT_FACTOR = {
+  "Exceeds Expectation": 1.2,
+  "Meets Expectation": 1.0,
+  "Sometimes Meets Expectation": 0.7,
+};
+
+const meritPct = (label, index, promoted) => {
+  const spread = index % 4;
+  const base =
+    label === "Exceeds Expectation"
+      ? 12 + spread
+      : label === "Meets Expectation"
+        ? 8 + spread
+        : 4 + spread;
+  return base + (promoted ? 3 : 0);
+};
+
+// Titles must exist in the app's NEW_TITLES dropdown:
+// Associate, Senior Associate, Senior Analyst, Team Lead, Manager,
+// Senior Manager, Program Executive, Specialist
+const promotionTitle = (designation) => {
+  const d = String(designation || "").toLowerCase();
+  let title = "Senior Associate";
+  if (d.includes("senior manager")) title = "Senior Manager";
+  else if (d.includes("manager")) title = "Senior Manager";
+  else if (d.includes("lead")) title = "Manager";
+  else if (d.includes("senior")) title = "Team Lead";
+  else if (d.includes("analyst")) title = "Senior Analyst";
+  else if (d.includes("associate")) title = "Senior Associate";
+  return title;
+};
+
+// ============================================================
+// generic helpers
+// ============================================================
 
 function send(res, code, body) {
   res.writeHead(code, { "Content-Type": "application/json" });
@@ -71,8 +158,6 @@ async function insertMissing(table, rows, keyFn, existingRows, dry) {
   return missing.length;
 }
 
-// ---------- compare / patch helpers ----------
-
 const isBlank = (v) => v === null || v === undefined || String(v).trim() === "";
 
 function same(a, b) {
@@ -90,7 +175,7 @@ function same(a, b) {
   return String(a ?? "").trim() === String(b ?? "").trim();
 }
 
-// A stored value is "missing" if blank, or 0 while the target is a non-zero number.
+// "missing" = blank, or 0 while the target is a non-zero number
 function isMissing(current, target) {
   if (isBlank(current)) return true;
   return typeof target === "number" && target !== 0 && Number(current) === 0;
@@ -139,8 +224,6 @@ async function syncTable(table, targetRows, keyFn, existingRows, opts) {
   return { updated: updates.length, inserted: inserts.length };
 }
 
-// ---------- master helpers ----------
-
 function normalizeEmpId(value) {
   return String(value || "")
     .trim()
@@ -176,68 +259,79 @@ function safeDate(value, fallback) {
 }
 
 // ============================================================
-// HISTORY / PAYROLL CALCULATION  (single source of truth)
-//
-//  Apr-26 base      = Employee_Master.current_salary (rounded to 10k, min 6,00,000)
-//  Apr-25 base      = Apr-26 base / (1 + hike25%)      hike25 = Apr-26 base - Apr-25 base
-//  Apr-24 base      = Apr-25 base / (1 + hike24%)      hike24 = Apr-25 base - Apr-24 base
-//  Apr-26 hike      = base * hike26%                   (proposed this cycle)
-//  New base         = base + hike
-//  Total PB         = allocated PB + new PB
-//  Total Bonus      = Total PB + Retention Bonus       (Joining Bonus excluded)
-//  Total CTC        = New base + Total Bonus
-//  Joining Bonus    = only in Apr-24, 0 in every other year
+// PAYROLL / HISTORY ROWS (3 cycles per employee)
 // ============================================================
 
-function buildHistoryRows(employees) {
+function buildHistoryRows(employees, existingPayroll = []) {
+  // keep any Apr-24 joining bonus already stored in the table
+  const existingJoining = new Map();
+  existingPayroll.forEach((r) => {
+    if (String(r.appraisal_year || "").trim() === JOINING_BONUS_YEAR) {
+      const v = Number(r.joining_bonus) || 0;
+      if (v > 0) existingJoining.set(normalizeEmpId(r.emp_id), v);
+    }
+  });
+
   return employees.flatMap((e, index) => {
+    // Apr-26 base = Employee_Master.current_salary
     const currentBase = Math.max(
       600000,
       Math.round(Number(e.current_salary || 0) / 10000) * 10000 ||
         600000 + (index % 10) * 50000,
     );
 
-    const pct25 = 6 + (index % 4);
-    const pct24 = 5 + ((index + 1) % 4);
-    const pct26 = 7 + ((index + 2) % 4);
+    // rating per cycle (3.2 .. 4.6)
+    const ratings = YEARS.map((_, yearIndex) =>
+      Number((3.2 + ((index + yearIndex) % 8) * 0.2).toFixed(1)),
+    );
+    const labels = ratings.map(ratingLabel);
 
-    const base25 = Math.round(currentBase / (1 + pct25 / 100));
-    const base24 = Math.round(base25 / (1 + pct24 / 100));
+    const promoted = index % 7 === 0; // promotion recommended in the current cycle
+    const designation = String(e.designation || "Consultant").trim();
+    const newTitle = promoted ? promotionTitle(designation) : designation;
+
+    const pct = [
+      meritPct(labels[0], index, false), // Apr-24
+      meritPct(labels[1], index, false), // Apr-25
+      meritPct(labels[2], index, promoted), // Apr-26
+    ];
+
+    // base / hike chain (exact): base24 + hike24 = base25, base25 + hike25 = base26
+    const base25 = Math.round(currentBase / (1 + pct[1] / 100));
+    const base24 = Math.round(base25 / (1 + pct[0] / 100));
 
     const bases = { "Apr-24": base24, "Apr-25": base25, "Apr-26": currentBase };
     const hikes = {
       "Apr-24": base25 - base24,
       "Apr-25": currentBase - base25,
-      "Apr-26": Math.round((currentBase * pct26) / 100),
+      "Apr-26": Math.round((currentBase * pct[2]) / 100),
     };
 
     return YEARS.map((year, yearIndex) => {
       const basePay = bases[year];
       const hikeAmount = hikes[year];
       const hikePct =
-        year === "Apr-26"
-          ? pct26
+        year === CURRENT_YEAR
+          ? pct[2]
           : Number(((hikeAmount / basePay) * 100).toFixed(2));
+      const label = labels[yearIndex];
 
-      const allocatedPB = Math.round(basePay * (0.06 + (index % 3) * 0.01));
-      const newPB = Math.round(basePay * (0.025 + (yearIndex % 2) * 0.005));
-      const totalPB = allocatedPB + newPB;
+      // variable pay
+      const targetPB = Math.round(basePay * 0.1);
+      const totalPB = Math.round(targetPB * PAYOUT_FACTOR[label]);
+      const allocatedPB = Math.round(targetPB * 0.6);
       const retentionBonus = Math.round(basePay * 0.015);
       const joiningBonus =
-        year === JOINING_BONUS_YEAR ? JOINING_BONUS_AMOUNT : 0;
-      const totalBonus = totalPB + retentionBonus;
-      const targetPB = Math.round(basePay * 0.1);
+        year === JOINING_BONUS_YEAR
+          ? existingJoining.get(normalizeEmpId(e.emp_id)) ||
+            JOINING_BONUS_DEFAULT
+          : 0;
 
-      const promotion = year === "Apr-26" && index % 7 === 0 ? "Yes" : "No";
-      const designation = String(e.designation || "Consultant");
-      const title =
-        promotion === "Yes"
-          ? designation.toLowerCase().includes("manager")
-            ? designation
-            : "Senior " + designation
-          : designation;
+      const totalBonus = totalPB + retentionBonus; // joining bonus excluded
+      const newBasePay = basePay + hikeAmount;
+      const targetPBNextYear = Math.round(newBasePay * 0.1);
 
-      const rating = Number((3.2 + ((index + yearIndex) % 8) * 0.2).toFixed(1));
+      const isPromo = year === CURRENT_YEAR && promoted;
 
       return {
         emp_id: String(e.emp_id || "").trim(),
@@ -253,55 +347,76 @@ function buildHistoryRows(employees) {
         total_bonus: totalBonus,
         hike_amount: hikeAmount,
         hike_pct: hikePct,
-        promotion,
-        title,
-        target_performance_bonus: targetPB,
-        new_ctc: basePay + hikeAmount + totalBonus,
-        manager_rating: String(rating) + " / 5",
-        rating,
+        promotion: isPromo ? "Yes" : "No",
+        title: isPromo ? newTitle : designation,
+        target_performance_bonus: targetPBNextYear,
+        new_ctc: newBasePay, // Total CTC = Base + Hike (rewards are added in the UI)
+        manager_rating: label,
+        rating: ratings[yearIndex],
       };
     });
   });
 }
 
+// ============================================================
+// APPRAISAL SHEET ROWS (current cycle, Apr-26)
+// ============================================================
+
 function buildAppraisalRows(employees, historyRows) {
-  const currentRows = historyRows.filter((r) => r.appraisal_year === "Apr-26");
+  const byKey = new Map(
+    historyRows.map((r) => [
+      normalizeEmpId(r.emp_id) + "|" + r.appraisal_year,
+      r,
+    ]),
+  );
+  const currentRows = historyRows.filter(
+    (r) => r.appraisal_year === CURRENT_YEAR,
+  );
 
   return currentRows.map((h, index) => {
     const e =
       employees.find(
         (emp) => normalizeEmpId(emp.emp_id) === normalizeEmpId(h.emp_id),
       ) || {};
+    const p = byKey.get(normalizeEmpId(h.emp_id) + "|" + PREVIOUS_YEAR) || {};
+
     const reportingManager = resolveMasterPerson(employees, e.repo_manager);
     const compManager = resolveMasterPerson(employees, e.director);
     const techEd = resolveMasterPerson(employees, e.appraiser_tech_ed);
     const promotion = h.promotion === "Yes";
-    const name = (p, fallback) =>
-      p ? String(p.emp_name || "").trim() : String(fallback || "").trim();
+    const nameOf = (person, fallback) =>
+      person
+        ? String(person.emp_name || "").trim()
+        : String(fallback || "").trim();
 
     return {
       emp_id: String(e.emp_id || "").trim(),
       name: String(e.emp_name || "").trim(),
       designation: String(e.designation || "Consultant").trim(),
-      reporting_manager: name(reportingManager, e.repo_manager),
-      comp_manager: name(compManager, e.director),
-      appraiser_tech_ed: name(techEd, e.appraiser_tech_ed),
+      reporting_manager: nameOf(reportingManager, e.repo_manager),
+      comp_manager: nameOf(compManager, e.director),
+      appraiser_tech_ed: nameOf(techEd, e.appraiser_tech_ed),
       department: String(e.department || "").trim(),
-      manager: name(reportingManager, e.repo_manager),
+      manager: nameOf(reportingManager, e.repo_manager),
       status: String(e.emp_status || "Active").trim(),
       wissen_experience: Number(e.wissen_experience || 0),
       total_experience: Number(e.total_experience || 0),
-      last_appraisal_date: "2026-04-01",
+      last_appraisal_date: "2025-04-01", // previous completed cycle
       manager_rating: h.manager_rating,
       interview_count: (index % 4) + 1,
       rr_percent: Number((72 + (index % 6) * 2.5).toFixed(2)),
       gross_margin: Math.round(22 + (index % 5) * 3),
-      rb_to_be_paid: Math.round(h.base_pay * 0.02),
+
+      // rewards being paid now = what was awarded in the previous cycle
+      rb_to_be_paid: Number(p.retention_bonus) || 0,
       month_rb: "Apr-26",
-      pb_to_be_paid: Math.round(h.base_pay * 0.04),
+      pb_to_be_paid: Number(p.performance_bonus) || 0,
       month_pb: "Apr-26",
+
       current_annual_base_pay: h.base_pay,
-      target_pb_allocated_for_may: h.target_performance_bonus,
+      // this cycle's PB target = last cycle's "target PB next year"
+      target_pb_allocated_for_may:
+        Number(p.target_performance_bonus) || Math.round(h.base_pay * 0.1),
       allocated_pb_amount: h.allocated_pb,
       pb_installment: installmentLabel(h.allocated_pb_installment),
       new_pb_to_be_offered: h.performance_bonus - h.allocated_pb,
@@ -312,7 +427,10 @@ function buildAppraisalRows(employees, historyRows) {
       target_pb_next_year: h.target_performance_bonus,
       eligible_for_promotion: promotion ? "Yes" : "No",
       new_title: promotion ? h.title : "",
-      at_risk: index % 9 === 0 ? "Review required" : "",
+      at_risk:
+        h.manager_rating === "Sometimes Meets Expectation"
+          ? "Performance improvement plan under review."
+          : "",
       joining_date: safeDate(e.date_of_join, "2021-01-15"),
       manager_email_id: reportingManager
         ? String(reportingManager.email_id || "").trim()
@@ -325,7 +443,7 @@ function buildAppraisalRows(employees, historyRows) {
         String(e.emp_status || "").toLowerCase() === "active"
           ? "eligible"
           : "not eligible",
-      joining_bonus: 0, // joining bonus is a one-time Apr-24 payment, never in Apr-26
+      joining_bonus: 0, // one-time Apr-24 payment, never in the current cycle
       emp_master_row_id: e.ROWID,
     };
   });
@@ -343,14 +461,14 @@ function buildAuditRows(employees) {
       "2026-04-" + String((index % 20) + 1).padStart(2, "0") + " 10:30:00",
     source: "demo_seed",
     batch_id: "DEMO-APR26",
-    appraisal_year: "Apr-26",
+    appraisal_year: CURRENT_YEAR,
   }));
 }
 
 async function ensureCycle(cycleTable, dry) {
   const cycles = await allRows(cycleTable);
-  let cycle = cycles.find(
-    (r) => String(r.cycle_name || "").trim() === "Apr-26",
+  const cycle = cycles.find(
+    (r) => String(r.cycle_name || "").trim() === CURRENT_YEAR,
   );
   if (cycle) return cycle;
 
@@ -358,7 +476,7 @@ async function ensureCycle(cycleTable, dry) {
     (r) => String(r.status || "").toLowerCase() === "active",
   );
   const row = {
-    cycle_name: "Apr-26",
+    cycle_name: CURRENT_YEAR,
     start_date: "2026-04-01",
     end_date: "2027-03-31",
     status: activeExists ? "Upcoming" : "Active",
@@ -372,8 +490,8 @@ async function ensureCycle(cycleTable, dry) {
 }
 
 // ============================================================
-// SYNC  (PUT)   ?force=true  overwrite all seeded fields in Appraisal Sheet
-//               ?dry=true    show counts only, write nothing
+// SYNC (PUT)    ?dry=true    counts only, writes nothing
+//               ?force=true  also overwrite EDITABLE sheet columns
 // ============================================================
 
 async function sync(req, res) {
@@ -441,19 +559,20 @@ async function sync(req, res) {
   const cycle = await ensureCycle(tables.cycle, dry);
   const cycleId = String(cycle.ROWID);
 
-  const historyRows = buildHistoryRows(employees);
+  const existingPayroll = await allRows(tables.payroll);
+  const historyRows = buildHistoryRows(employees, existingPayroll);
 
-  // Payroll (history): always fully synced, it is reference data and keeps the base/hike chain exact.
+  // Payroll Data (history): always fully synced, it is reference data.
   const payroll = await syncTable(
     tables.payroll,
     historyRows,
     (r) =>
       normalizeEmpId(r.emp_id) + "|" + String(r.appraisal_year || "").trim(),
-    await allRows(tables.payroll),
+    existingPayroll,
     { force: true, dry },
   );
 
-  // Appraisal sheet: fill blanks/zeros (keeps your manual edits); joining_bonus always corrected.
+  // Appraisal Sheet: read-only columns always corrected, editable ones only when blank/0 (or force).
   const appraisal = await syncTable(
     tables.appraisal,
     buildAppraisalRows(employees, historyRows),
@@ -562,7 +681,7 @@ module.exports = async function demoSeed(req, res) {
           "Demo seed is ready. Send PUT /server/demo_seed/ as HR. Options: ?dry=true, ?force=true",
         targetEmployees: 30,
         targetBudgetOwners: TECH_ED,
-        cycle: "Apr-26",
+        cycle: CURRENT_YEAR,
       });
     }
     if (req.method !== "PUT") {
