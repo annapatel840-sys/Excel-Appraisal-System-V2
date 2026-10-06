@@ -3717,7 +3717,6 @@ const applyCurrentYearSheetValues = (historyRecord, row) => {
   const allocatedPBAmount = Number(row.allocatedPBAmount) || 0;
   const newPBToBeOffered = Number(row.newPBToBeOffered) || 0;
   const newRB = Number(row.newRB) || 0;
-  const joiningBonus = Number(row.joiningBonus) || 0;
   const currentAnnualBasePay = Number(row.currentAnnualBasePay) || 0;
   const hikeAmount = Number(row.hikeAmount) || 0;
   const targetPBNextYear = Number(row.targetPBNextYear) || 0;
@@ -3732,7 +3731,7 @@ const applyCurrentYearSheetValues = (historyRecord, row) => {
     allocatedPB: allocatedPBAmount,
     performanceBonus: totalPB,
     retentionBonus: newRB,
-    joiningBonus,
+    joiningBonus: historyRecord.joiningBonus || 0,
     totalPB,
     totalBonus,
     hikeAmount,
@@ -4151,69 +4150,73 @@ function EmployeePanel({
     <div>
       {reqSent && <PanelInfo tone="good">✓ {reqSent}</PanelInfo>}
 
-      {canDelegate && <PanelCard title="Delegation request">
-        <div className="space-y-2">
-          <div className="text-[11.5px] text-[#6b7280]">
-            HR approves or rejects it from the Delegation screen. The current
-            value stays until HR approves.
+      {canDelegate && (
+        <PanelCard title="Delegation request">
+          <div className="space-y-2">
+            <div className="text-[11.5px] text-[#6b7280]">
+              HR approves or rejects it from the Delegation screen. The current
+              value stays until HR approves.
+            </div>
+
+            <div className="text-[12px] text-[#374151]">
+              <b>{employee.name}</b> · {employee.empId}
+            </div>
+
+            <select
+              value={reqField}
+              onChange={(event) => {
+                setReqField(event.target.value);
+                setReqPerson("");
+              }}
+              className={FIELD_CLASS}
+            >
+              {REQUEST_FIELDS.map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </select>
+
+            <div className="text-[11.5px] text-[#6b7280]">
+              Current:{" "}
+              <b className="text-[#111827]">
+                {currentAssignee || "— not set —"}
+              </b>
+            </div>
+
+            <select
+              value={reqPerson}
+              onChange={(event) => setReqPerson(event.target.value)}
+              className={FIELD_CLASS}
+            >
+              <option value="">Select new assignee...</option>
+              {requestPeople.map((person) => (
+                <option key={person} value={person}>
+                  {person}
+                </option>
+              ))}
+            </select>
+
+            <textarea
+              value={reqReason}
+              onChange={(event) => setReqReason(event.target.value)}
+              placeholder="Reason (mandatory)"
+              maxLength={2000}
+              rows={2}
+              className="w-full resize-y rounded-md border border-[#cbd5e1] bg-white px-2 py-1.5 text-[11.5px] outline-none focus:border-[#102a43]"
+            />
+
+            <button
+              type="button"
+              disabled={!reqPerson || !reqReason.trim()}
+              onClick={sendDelegation}
+              className="rounded-md bg-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Send delegation request
+            </button>
           </div>
-
-          <div className="text-[12px] text-[#374151]">
-            <b>{employee.name}</b> · {employee.empId}
-          </div>
-
-          <select
-            value={reqField}
-            onChange={(event) => {
-              setReqField(event.target.value);
-              setReqPerson("");
-            }}
-            className={FIELD_CLASS}
-          >
-            {REQUEST_FIELDS.map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
-
-          <div className="text-[11.5px] text-[#6b7280]">
-            Current:{" "}
-            <b className="text-[#111827]">{currentAssignee || "— not set —"}</b>
-          </div>
-
-          <select
-            value={reqPerson}
-            onChange={(event) => setReqPerson(event.target.value)}
-            className={FIELD_CLASS}
-          >
-            <option value="">Select new assignee...</option>
-            {requestPeople.map((person) => (
-              <option key={person} value={person}>
-                {person}
-              </option>
-            ))}
-          </select>
-
-          <textarea
-            value={reqReason}
-            onChange={(event) => setReqReason(event.target.value)}
-            placeholder="Reason (mandatory)"
-            maxLength={2000}
-            rows={2}
-            className="w-full resize-y rounded-md border border-[#cbd5e1] bg-white px-2 py-1.5 text-[11.5px] outline-none focus:border-[#102a43]"
-          />
-
-          <button
-            type="button"
-            disabled={!reqPerson || !reqReason.trim()}
-            onClick={sendDelegation}
-            className="rounded-md bg-[#173b63] px-3 py-1.5 text-[11.5px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Send delegation request
-          </button>
-        </div>
-      </PanelCard>}
+        </PanelCard>
+      )}
 
       <PanelCard title="Screen request">
         <div className="space-y-2">
@@ -5746,21 +5749,24 @@ export function AppraisalGrid({
     [editableColumns],
   );
 
-  const isColumnEditable = useCallback((row, column) => {
-    if (!column.editable) {
-      return false;
-    }
+  const isColumnEditable = useCallback(
+    (row, column) => {
+      if (!column.editable) {
+        return false;
+      }
 
-    if (!sheetEditable || !access.canEditField(column.key)) {
-      return false;
-    }
+      if (!sheetEditable || !access.canEditField(column.key)) {
+        return false;
+      }
 
-    if (column.key === "newTitle") {
-      return row.eligibleForPromotion === "Yes";
-    }
+      if (column.key === "newTitle") {
+        return row.eligibleForPromotion === "Yes";
+      }
 
-    return true;
-  }, [sheetEditable, access]);
+      return true;
+    },
+    [sheetEditable, access],
+  );
 
   const getEditableColumnsForRow = useCallback(
     (row) => editableColumns.filter((column) => isColumnEditable(row, column)),
@@ -6224,7 +6230,10 @@ export function AppraisalGrid({
               ) {
                 liveToastCellsRef.current.add(cellKey);
                 if (YOY_FIELDS[col.key]) {
-                  showYoyToast(event.currentTarget, col.key, { ...row, [col.key]: value });
+                  showYoyToast(event.currentTarget, col.key, {
+                    ...row,
+                    [col.key]: value,
+                  });
                 } else {
                   showChangeToast(
                     event.currentTarget,
@@ -6324,7 +6333,10 @@ export function AppraisalGrid({
             ) {
               liveToastCellsRef.current.add(cellKey);
               if (YOY_FIELDS[col.key]) {
-                showYoyToast(event.currentTarget, col.key, { ...row, [col.key]: value });
+                showYoyToast(event.currentTarget, col.key, {
+                  ...row,
+                  [col.key]: value,
+                });
               } else if (isNumericType(col.type)) {
                 showChangeToast(
                   event.currentTarget,
