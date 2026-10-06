@@ -258,7 +258,14 @@ export function BudgetDistributionPage() {
   );
  
   const role = normalize(user?.role);
-  const canView = isHR || role === "hr" || role === "human resources" || role.includes("teched");
+  // Tech-Ed may be returned as "Tech Ed", "Tech-Ed", or "teched".
+  // Budget Distribution is read-only for Tech-Ed, but it must remain visible.
+  const roleCompact = role.replace(/[^a-z0-9]/g, "");
+  const canView =
+    isHR ||
+    role === "hr" ||
+    role === "human resources" ||
+    roleCompact === "teched";
  
   if (!canView) return null;
  
