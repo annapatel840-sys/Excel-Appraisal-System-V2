@@ -60,15 +60,20 @@ const EDIT_FIELDS = [
    so the three panels fit the visible screen and the footer stays in view.
    The 52px accounts for the banner (~38px) plus the top padding. */
 const DS_CSS = `
-.ds-root{--ds-offset:72px;display:flex;flex-direction:column;min-height:100%;height:auto;overflow:visible;scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}
-.ds-main{display:grid;grid-template-columns:minmax(0,1fr);gap:0;padding:10px 12px 0;align-items:stretch}
-@media (min-width:1000px){.ds-main{grid-template-columns:var(--ds-cols);grid-template-rows:auto;min-height:calc(100vh - var(--ds-offset) - 52px);min-height:calc(100dvh - var(--ds-offset) - 52px)}}
+.ds-root{--ds-offset:72px;display:flex;flex-direction:column;height:calc(100dvh - var(--ds-offset));min-height:0;overflow:hidden}
+.ds-main{display:grid;grid-template-columns:var(--ds-cols);grid-template-rows:minmax(0,1fr);gap:0;padding:6px 12px 0;align-items:stretch;flex:1;min-height:0;overflow:visible}
 .ds-side{position:relative;min-height:0;overflow:visible}
 .ds-side>.ds-card{position:relative;width:100%;height:100%}
-.ds-card{display:flex;flex-direction:column;background:#fff;border:1px solid #E3E9EC;border-radius:10px;box-shadow:0 1px 2px rgba(16,42,67,.04);overflow:hidden;min-width:0}
-.ds-hist{flex:0 0 auto;margin:10px 12px 12px}
-.ds-scroll{scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}
-.ds-panel-scroll{overflow:visible !important}
+.ds-card{display:flex;flex-direction:column;background:#fff;border:1px solid #E3E9EC;border-radius:10px;box-shadow:0 1px 2px rgba(16,42,67,.04);overflow:hidden;min-width:0;min-height:0}
+.ds-hist{flex:0 0 clamp(140px,20dvh,190px);height:clamp(140px,20dvh,190px);margin:6px 12px 8px;min-height:0}
+.ds-scroll{scrollbar-width:thin;scrollbar-color:#C4CED6 transparent;min-height:0;overflow:auto}
+.ds-panel-scroll{flex:1 1 auto;min-height:0;overflow:visible !important}
+@media (max-width:999px){
+  .ds-root{height:auto;min-height:100dvh;overflow:visible}
+  .ds-main{grid-template-columns:minmax(0,1fr);grid-template-rows:auto;flex:none;overflow:visible}
+  .ds-main>.ds-card,.ds-main>.ds-side,.ds-main>button{height:auto;min-height:0}
+  .ds-hist{flex-basis:220px;height:220px}
+}
 .ds-mq{flex:1;min-width:0;overflow:hidden}
 .ds-track{display:inline-block;white-space:nowrap;animation:ds-slide 22s linear infinite}
 .ds-mq:hover .ds-track{animation-play-state:paused}
