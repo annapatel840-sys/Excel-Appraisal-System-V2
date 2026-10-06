@@ -567,6 +567,7 @@ export function AppraisalGrid({
 
   showHistory,
   setShowHistory,
+  verticalLayout = false,
 }) {
   const { updateCell, updateLinkedCells, bulkUpdate, modified } =
     useAppraisal();
