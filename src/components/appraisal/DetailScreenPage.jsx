@@ -60,16 +60,15 @@ const EDIT_FIELDS = [
    so the three panels fit the visible screen and the footer stays in view.
    The 52px accounts for the banner (~38px) plus the top padding. */
 const DS_CSS = `
-.ds-root{--ds-offset:72px;display:flex;flex-direction:column;min-height:100%;height:auto;max-height:calc(100vh - var(--ds-offset));max-height:calc(100dvh - var(--ds-offset));overflow-y:auto;scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}
+.ds-root{--ds-offset:72px;display:flex;flex-direction:column;min-height:100%;height:auto;overflow:visible;scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}
 .ds-main{display:grid;grid-template-columns:minmax(0,1fr);gap:0;padding:10px 12px 0;align-items:stretch}
-@media (min-width:1000px){.ds-main{grid-template-columns:var(--ds-cols);grid-template-rows:minmax(0,1fr);height:calc(100vh - var(--ds-offset) - 52px);height:calc(100dvh - var(--ds-offset) - 52px);min-height:0}}
-.ds-side{position:relative;min-height:0;overflow:hidden}
-.ds-side>.ds-card{position:absolute;top:0;right:0;bottom:0;left:0}
+@media (min-width:1000px){.ds-main{grid-template-columns:var(--ds-cols);grid-template-rows:auto;min-height:calc(100vh - var(--ds-offset) - 52px);min-height:calc(100dvh - var(--ds-offset) - 52px)}}
+.ds-side{position:relative;min-height:0;overflow:visible}
+.ds-side>.ds-card{position:relative;width:100%;height:100%}
 .ds-card{display:flex;flex-direction:column;background:#fff;border:1px solid #E3E9EC;border-radius:10px;box-shadow:0 1px 2px rgba(16,42,67,.04);overflow:hidden;min-width:0}
-.ds-hist{flex:0 0 auto;margin:10px 12px 12px;max-height:none}
+.ds-hist{flex:0 0 auto;margin:10px 12px 12px}
 .ds-scroll{scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}
-.ds-panel-scroll{overflow:hidden !important;scrollbar-width:none}
-.ds-panel-scroll::-webkit-scrollbar{display:none}
+.ds-panel-scroll{overflow:visible !important}
 .ds-mq{flex:1;min-width:0;overflow:hidden}
 .ds-track{display:inline-block;white-space:nowrap;animation:ds-slide 22s linear infinite}
 .ds-mq:hover .ds-track{animation-play-state:paused}
@@ -622,7 +621,7 @@ export function DetailScreenPage({
               </div>
               {/* CHANGED: this wrapper now scrolls inside the left panel so the
                   legend and Previous / Save & next bar stay pinned below it. */}
-              <div className="ds-panel-scroll min-h-0 flex-1">
+              <div className="ds-panel-scroll">
                 <div
                   className="grid text-[12.5px]"
                   style={{ gridTemplateColumns: COMP_COLS }}
@@ -1213,7 +1212,7 @@ function EmployeeCard({
         ))}
       </div>
       <div
-        className="ds-panel-scroll min-h-0 flex-1 overflow-hidden px-3.5 pb-3.5 pt-2"
+        className="ds-panel-scroll px-3.5 pb-3.5 pt-2"
         role="tabpanel"
       >
         {tab === "other" ? (
