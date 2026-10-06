@@ -91,8 +91,6 @@
 //   eligibleForPromotion: 110,
 //   newTitle: 150,
 //   atRisk: 140,
-  retentionBonus: 145,
-  performanceBonus: 155,
 // };
 
 // const GRID_COLUMNS = COLUMNS;
