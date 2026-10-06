@@ -305,7 +305,7 @@ export const COLUMNS = [
   },
   {
     key: "tbCriteria",
-    label: "TB criteria",
+    label: "TB Criteria",
     type: "text",
     editable: false,
     width: 130,
@@ -427,7 +427,7 @@ export const COLUMNS = [
   },
   {
     key: "tbCriteriaInput",
-    label: "TB criteria",
+    label: "TB Criteria",
     type: "text",
     editable: true,
     width: 190,
