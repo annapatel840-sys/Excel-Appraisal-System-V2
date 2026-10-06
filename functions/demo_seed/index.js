@@ -117,13 +117,10 @@ function buildHistoryRows(employees) {
     const bases = { "Apr-24": base24, "Apr-25": base25, "Apr-26": currentBase };
     const hikes = { "Apr-24": hike24, "Apr-25": hike25, "Apr-26": hike26 };
 
-    const joinDate = safeDate(e.date_of_join, "2021-01-15");
-    // Joining bonus is a one-time benefit. Put it in the first appraisal
-    // cycle on/after the employee's joining date, and never repeat it.
-    let joiningBonusYear = null;
-    if (joinDate <= "2024-04-30") joiningBonusYear = "Apr-24";
-    else if (joinDate <= "2025-04-30") joiningBonusYear = "Apr-25";
-    else if (joinDate <= "2026-04-30") joiningBonusYear = "Apr-26";
+    // Demo history starts at Apr-24. Treat Joining Bonus as a one-time
+    // historical payment recorded in the first available cycle only.
+    // It must therefore be 25,000 in Apr-24 and 0 in Apr-25/Apr-26.
+    const joiningBonusYear = "Apr-24";
 
     return ["Apr-24", "Apr-25", "Apr-26"].map(function (year, yearIndex) {
       const basePay = bases[year];
