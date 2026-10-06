@@ -1,4 +1,5 @@
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { COLUMNS } from "@/lib/appraisal-data";
 
 // ============================================================
 // API
