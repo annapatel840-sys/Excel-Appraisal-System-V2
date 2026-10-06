@@ -45,9 +45,9 @@
 //   name: 165,
 
 //   designation: 120,
-//   reportingManager: 125,
-//   compManager: 125,
+// //   compManager: 125,
 //   appraiserTechED: 130,
+  techEd: 105,
 
 //   wissenExperience: 100,
 //   totalExperience: 96,
@@ -91,6 +91,8 @@
 //   eligibleForPromotion: 110,
 //   newTitle: 150,
 //   atRisk: 140,
+  retentionBonus: 145,
+  performanceBonus: 155,
 // };
 
 // const GRID_COLUMNS = COLUMNS;
@@ -2936,7 +2938,7 @@
 //                 }`}
 
 //           <span className="ml-3 text-slate-400">
-//             Modified cells save automatically.
+//             
 //           </span>
 //         </div>
 
@@ -3404,7 +3406,7 @@ const GRID_COLUMNS = COLUMNS;
 
 // empId is merged into the "name" column (name on top, id below),
 // so it is not drawn separately.
-const FROZEN_KEYS = new Set(["name", "designation"]);
+const FROZEN_KEYS = new Set(["name"]);
 
 const DEFAULT_COLUMN_ORDER = [
   "name",
@@ -4382,7 +4384,6 @@ export function AppraisalGrid({
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const sheetEditable = access.canScreen("appraisalSheet", "edit");
-  const canPromote = sheetEditable && access.canAction("promote");
   const canColumnBulkEdit = sheetEditable && access.canAction("bulkEdit");
   const canDelegate = access.canAction("delegateRequest");
   const historyMetricColumns = HISTORY_METRIC_COLUMNS.filter(
@@ -4563,7 +4564,7 @@ export function AppraisalGrid({
   }, []);
 
   // ============================================================
-  // STICKY COLUMN OFFSETS  [checkbox] [Employee] [Designation + Promote]
+  // STICKY COLUMN OFFSETS  [checkbox] [Employee]
   // ============================================================
 
   const nameColumn = GRID_COLUMNS.find((column) => column.key === "name");
@@ -4574,11 +4575,7 @@ export function AppraisalGrid({
       : WIDTHS.name;
 
   const frozenLeftOf = (key) =>
-    key === "name"
-      ? SELECT_WIDTH
-      : key === "designation"
-        ? SELECT_WIDTH + nameWidth
-        : undefined;
+    key === "name" ? SELECT_WIDTH : undefined;
 
   // ============================================================
   // STATES
@@ -5086,177 +5083,6 @@ export function AppraisalGrid({
 
   const openDetailPanel = useCallback(() => setDetailOpen(true), []);
   const closeDetailPanel = useCallback(() => setDetailOpen(false), []);
-
-  // ============================================================
-  // PROMOTE (from the Designation cell)
-  // ============================================================
-
-  const [promoteState, setPromoteState] = useState(null); // { rowId, left, top, anchor }
-  const [promoteQuery, setPromoteQuery] = useState("");
-
-  const newTitleColumn = useMemo(
-    () => COLUMNS.find((column) => column.key === "newTitle"),
-    [],
-  );
-
-  // Use the New Title column's own options if it has them; otherwise fall
-  // back to the designations / titles present in the sheet (free typing allowed).
-  const columnTitleOptions = Array.isArray(newTitleColumn?.options)
-    ? newTitleColumn.options
-    : null;
-
-  const promoteOptions = useMemo(() => {
-    if (columnTitleOptions && columnTitleOptions.length) {
-      return columnTitleOptions;
-    }
-
-    const set = new Set();
-
-    rows.forEach((row) => {
-      if (row.designation) set.add(String(row.designation));
-      if (row.newTitle) set.add(String(row.newTitle));
-    });
-
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [columnTitleOptions, rows]);
-
-  const promoteRow = promoteState
-    ? rows.find((row) => row.id === promoteState.rowId) || null
-    : null;
-
-  const promoteFiltered = useMemo(() => {
-    if (!promoteRow) return [];
-
-    const q = promoteQuery.trim().toLowerCase();
-
-    return promoteOptions.filter(
-      (title) =>
-        title !== promoteRow.designation &&
-        (!q || String(title).toLowerCase().includes(q)),
-    );
-  }, [promoteOptions, promoteRow, promoteQuery]);
-
-  const openPromote = useCallback((event, row) => {
-    event.stopPropagation();
-
-    const anchor = event.currentTarget;
-    const rect = anchor.getBoundingClientRect();
-    const width = 280;
-
-    const left = Math.max(
-      8,
-      Math.min(rect.left, window.innerWidth - width - 8),
-    );
-
-    let top = rect.bottom + 4;
-
-    if (top + 320 > window.innerHeight) {
-      top = Math.max(8, rect.top - 324);
-    }
-
-    setPromoteQuery("");
-    setPromoteState({ rowId: row.id, left, top, anchor });
-  }, []);
-
-  const closePromote = useCallback(() => setPromoteState(null), []);
-
-  // Clear promotion: Promotion Yes -> No and New Title is emptied.
-  const clearPromotion = useCallback(
-    (row) => {
-      const anchor =
-        promoteState?.anchor && promoteState.anchor.isConnected
-          ? promoteState.anchor
-          : null;
-
-      updateLinkedCells(
-        row.id,
-        { eligibleForPromotion: "No", newTitle: null },
-        "Cell edit",
-      );
-
-      flashSaved(`${row.id}:eligibleForPromotion`);
-      flashSaved(`${row.id}:newTitle`);
-      markEdited(`${row.id}:eligibleForPromotion`);
-      markEdited(`${row.id}:newTitle`);
-
-      if (row.id === historyRow?.id) {
-        flashHistoryFields("eligibleForPromotion");
-        flashHistoryFields("newTitle");
-      }
-
-      showChangeToast(anchor, "Promotion", "Yes", "No", true);
-      setPromoteState(null);
-    },
-    [
-      promoteState,
-      updateLinkedCells,
-      flashSaved,
-      markEdited,
-      historyRow,
-      flashHistoryFields,
-      showChangeToast,
-    ],
-  );
-
-  const applyPromotion = useCallback(
-    (row, title) => {
-      const newTitle = String(title || "").trim();
-
-      if (!newTitle) return;
-
-      if (newTitle === String(row.designation || "").trim()) {
-        window.alert("New title is the same as the current designation.");
-        return;
-      }
-
-      const anchor =
-        promoteState?.anchor && promoteState.anchor.isConnected
-          ? promoteState.anchor
-          : null;
-      const oldTitle = String(row.newTitle || "");
-      const promoKey = `${row.id}:eligibleForPromotion`;
-      const titleKey = `${row.id}:newTitle`;
-
-      if (row.eligibleForPromotion !== "Yes") {
-        // Promotion was "No" (or blank): make it Yes and set the title together.
-        updateLinkedCells(
-          row.id,
-          { eligibleForPromotion: "Yes", newTitle },
-          "Cell edit",
-        );
-
-        flashSaved(promoKey);
-        markEdited(promoKey);
-
-        if (row.id === historyRow?.id) {
-          flashHistoryFields("eligibleForPromotion");
-        }
-      } else {
-        // Already "Yes": only the new title changes.
-        updateCell(row.id, "newTitle", newTitle);
-      }
-
-      flashSaved(titleKey);
-      markEdited(titleKey);
-
-      if (row.id === historyRow?.id) {
-        flashHistoryFields("newTitle");
-      }
-
-      showChangeToast(anchor, "New Title", oldTitle, newTitle, true);
-      setPromoteState(null);
-    },
-    [
-      promoteState,
-      updateLinkedCells,
-      updateCell,
-      flashSaved,
-      markEdited,
-      flashHistoryFields,
-      historyRow,
-      showChangeToast,
-    ],
-  );
 
   // ============================================================
   // HISTORY AUTO SCROLL
@@ -5980,7 +5806,7 @@ export function AppraisalGrid({
       );
     }
 
-    // EMPLOYEE CELL (sticky column 1) — name on top, emp id below.
+    // EMPLOYEE CELL (single sticky column) — name, ID, separator, designation.
     if (col.key === "name") {
       return (
         <button
@@ -5996,54 +5822,14 @@ export function AppraisalGrid({
           <span className="break-words text-[12.5px] font-bold leading-tight text-[#1559a6] hover:underline">
             {row.name}
           </span>
-
           <span className="mt-px text-[10.5px] font-normal leading-tight text-slate-500">
             {row.empId}
           </span>
+          <span className="my-1 h-px w-full bg-slate-300" aria-hidden="true" />
+          <span className="break-words text-[11.5px] font-medium leading-tight text-[#4b5563]">
+            {row.designation || "—"}
+          </span>
         </button>
-      );
-    }
-
-    // DESIGNATION CELL (sticky column 2) — designation + "★ Promote" / "★ Change".
-    if (col.key === "designation") {
-      const hasNewTitle =
-        row.eligibleForPromotion === "Yes" &&
-        row.newTitle &&
-        String(row.newTitle).trim() !== "" &&
-        String(row.newTitle).trim() !== String(row.designation || "").trim();
-
-      return (
-        <div className="flex min-h-[38px] h-auto w-full flex-col items-start justify-center px-2 py-1">
-          <button
-            type="button"
-            onClick={(event) => {
-              event.stopPropagation();
-              openRow(row);
-            }}
-            className="break-words text-left text-[12px] leading-tight text-[#4b5563]"
-            title={row.designation}
-          >
-            {row.designation}
-            {hasNewTitle && <span className="text-slate-400"> →</span>}
-          </button>
-
-          {hasNewTitle && (
-            <span className="rounded border border-[#4fa38f] bg-[#e3f4ef] px-1.5 text-[11px] font-bold leading-[17px] text-[#0b4f46]">
-              {row.newTitle} ★
-            </span>
-          )}
-
-          {canPromote && (
-            <button
-              type="button"
-              onClick={(event) => openPromote(event, row)}
-              className="mt-0.5 rounded-full border border-[#d1d5db] bg-white px-2 text-[10.5px] font-bold leading-[17px] text-[#5f7482] hover:border-[#102a43] hover:text-[#102a43]"
-              title="Set the new title (marks Promotion = Yes if it is No)"
-            >
-              {row.eligibleForPromotion === "Yes" ? "★ Change" : "★ Promote"}
-            </button>
-          )}
-        </div>
       );
     }
 
@@ -6445,8 +6231,7 @@ export function AppraisalGrid({
 
         {orderedColumns.map((col) => {
           const isName = col.key === "name";
-          const isDesignation = col.key === "designation";
-          const isFrozen = isName || isDesignation;
+          const isFrozen = isName;
 
           const width = widthOf(col);
           const isEditable = isColumnEditable(row, col);
@@ -6473,11 +6258,9 @@ export function AppraisalGrid({
                 minHeight: CELL_MIN_HEIGHT,
                 boxSizing: "border-box",
                 zIndex: isFrozen ? 30 : 1,
-                boxShadow: isDesignation
-                  ? "2px 0 4px -2px rgba(71,85,105,.35)"
-                  : isName && isSelectedRow
-                    ? "inset 3px 0 0 #102a43"
-                    : "none",
+                boxShadow: isName && isSelectedRow
+                  ? "inset 3px 0 0 #102a43"
+                  : "none",
               }}
               onClick={() => handleCellClick(row, isEditable)}
             >
@@ -6703,8 +6486,7 @@ export function AppraisalGrid({
 
                 {orderedColumns.map((col) => {
                   const isName = col.key === "name";
-                  const isDesignation = col.key === "designation";
-                  const isFrozen = isName || isDesignation;
+                  const isFrozen = isName;
                   const width = widthOf(col);
                   const showFilter = !NO_FILTER_COLUMNS.has(col.key);
                   const headerLabel = isName ? "Employee" : col.label;
@@ -6729,9 +6511,6 @@ export function AppraisalGrid({
                         boxSizing: "border-box",
                         zIndex: isFrozen ? 90 : 60,
                         background: isFrozen ? "#dfe8f3" : "#e9eef5",
-                        boxShadow: isDesignation
-                          ? "2px 0 4px -2px rgba(71,85,105,.45)"
-                          : undefined,
                         fontFamily: APPRAISAL_FONT,
                       }}
                     >
@@ -6843,9 +6622,7 @@ export function AppraisalGrid({
                     groupBy.length ? ` · Sorted by ${groupByColumnLabel}` : ""
                   }`}
 
-            <span className="ml-3 text-slate-400">
-              Modified cells save automatically.
-            </span>
+
           </div>
 
           {groupedRows ? (
@@ -7174,99 +6951,6 @@ export function AppraisalGrid({
         </div>
       )}
 
-      {/* PROMOTE POPOVER (opened from the Designation cell) */}
-
-      {promoteState && promoteRow && (
-        <>
-          <div className="fixed inset-0 z-[10000]" onClick={closePromote} />
-
-          <div
-            className="fixed z-[10001] w-[280px] rounded-lg border border-[#cbd2da] bg-white py-1 shadow-[0_8px_20px_rgba(16,42,67,.18)]"
-            style={{
-              left: promoteState.left,
-              top: promoteState.top,
-              fontFamily: APPRAISAL_FONT,
-            }}
-          >
-            <div className="px-3 py-1 text-[10.5px] font-bold uppercase text-slate-500">
-              Promote {promoteRow.name} to
-            </div>
-
-            <div className="px-2 pb-1.5">
-              <input
-                autoFocus
-                type="search"
-                value={promoteQuery}
-                placeholder={`Search ${promoteOptions.length} designations`}
-                onChange={(event) => setPromoteQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    closePromote();
-                  } else if (event.key === "Enter") {
-                    event.preventDefault();
-
-                    if (promoteFiltered.length) {
-                      applyPromotion(promoteRow, promoteFiltered[0]);
-                    } else if (!columnTitleOptions && promoteQuery.trim()) {
-                      applyPromotion(promoteRow, promoteQuery);
-                    }
-                  }
-                }}
-                className="h-[30px] w-full rounded-md border border-[#cbd2da] px-2 text-[12.5px] outline-none focus:border-[#102a43]"
-              />
-            </div>
-
-            {/* Clear promotion: only when promotion is currently Yes */}
-            {promoteRow.eligibleForPromotion === "Yes" && (
-              <button
-                type="button"
-                onClick={() => clearPromotion(promoteRow)}
-                className="mx-2 mb-1 mt-0.5 block w-[calc(100%-1rem)] rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-left text-[12px] font-semibold text-red-600 hover:bg-red-100"
-              >
-                Clear promotion
-              </button>
-            )}
-
-            <div className="max-h-[230px] overflow-auto">
-              {promoteFiltered.slice(0, 60).map((title) => (
-                <button
-                  key={title}
-                  type="button"
-                  onClick={() => applyPromotion(promoteRow, title)}
-                  className={cn(
-                    "block w-full px-3 py-1.5 text-left text-[12.5px] text-[#111827] hover:bg-[#eef0f3]",
-                    title === promoteRow.newTitle && "bg-[#eef0f3] font-bold",
-                  )}
-                >
-                  {title}
-                </button>
-              ))}
-
-              {!columnTitleOptions &&
-                promoteQuery.trim() &&
-                !promoteFiltered.some(
-                  (title) =>
-                    title.toLowerCase() === promoteQuery.trim().toLowerCase(),
-                ) && (
-                  <button
-                    type="button"
-                    onClick={() => applyPromotion(promoteRow, promoteQuery)}
-                    className="block w-full px-3 py-1.5 text-left text-[12.5px] font-semibold text-[#102a43] hover:bg-[#eef0f3]"
-                  >
-                    Use "{promoteQuery.trim()}"
-                  </button>
-                )}
-
-              {!promoteFiltered.length &&
-                (columnTitleOptions || !promoteQuery.trim()) && (
-                  <div className="px-3 py-1.5 text-[12px] text-slate-500">
-                    No designation matches
-                  </div>
-                )}
-            </div>
           </div>
-        </>
-      )}
-    </div>
   );
 }
