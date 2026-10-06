@@ -97,7 +97,10 @@ function safeDate(value, fallback) {
 
 function buildHistoryRows(employees) {
   return employees.flatMap(function (e, index) {
-    const currentBase = Math.max(1, Math.round(Number(e.current_salary || 500000)));
+    const currentBase = Math.max(
+      600000,
+      Math.round(Number(e.current_salary || 0) / 10000) * 10000 || (600000 + (index % 10) * 50000),
+    );
 
     // Employee_Master.current_salary is the Apr-26 base before the Apr-26 appraisal.
     // Reverse-calculate Apr-25 and Apr-24 so every year's base/hike chain remains exact.
@@ -115,11 +118,12 @@ function buildHistoryRows(employees) {
     const hikes = { "Apr-24": hike24, "Apr-25": hike25, "Apr-26": hike26 };
 
     const joinDate = safeDate(e.date_of_join, "2021-01-15");
-    const joinYear = joinDate.slice(0, 4);
+    // Joining bonus is a one-time benefit. Put it in the first appraisal
+    // cycle on/after the employee's joining date, and never repeat it.
     let joiningBonusYear = null;
-    if (joinYear === "2024") joiningBonusYear = "Apr-24";
-    else if (joinYear === "2025") joiningBonusYear = "Apr-25";
-    else if (joinYear === "2026") joiningBonusYear = "Apr-26";
+    if (joinDate <= "2024-04-30") joiningBonusYear = "Apr-24";
+    else if (joinDate <= "2025-04-30") joiningBonusYear = "Apr-25";
+    else if (joinDate <= "2026-04-30") joiningBonusYear = "Apr-26";
 
     return ["Apr-24", "Apr-25", "Apr-26"].map(function (year, yearIndex) {
       const basePay = bases[year];
@@ -131,7 +135,8 @@ function buildHistoryRows(employees) {
       const totalPB = allocatedPB + newPB;
       const retentionBonus = Math.round(basePay * 0.015);
       const joiningBonus = year === joiningBonusYear ? 25000 : 0;
-      const totalBonus = totalPB + retentionBonus + joiningBonus;
+      // Total Bonus excludes Joining Bonus because Joining Bonus is a separate one-time component.
+      const totalBonus = totalPB + retentionBonus;
       const targetPerformanceBonus = Math.round(basePay * 0.10);
 
       const promotion = year === "Apr-26" && index % 7 === 0 ? "Yes" : "No";
