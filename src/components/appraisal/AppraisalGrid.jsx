@@ -1,7 +1,19 @@
-import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
-import { COLUMNS } from "@/lib/appraisal-data";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Check, ChevronLeft, ChevronRight, History, X } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
+import { ColumnFilter } from "./ColumnFilter";
+import { COLUMNS, formatValue } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useAccess } from "@/lib/access-store";
+import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
 // ============================================================
 // API
