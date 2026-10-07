@@ -3092,15 +3092,17 @@ export function AppraisalGrid({
                 return;
               }
 
-              // Do not allow a Promotion=Yes row to leave the required
-              // designation field empty. This is field-level validation, not
-              // an error alert/toast.
+              // Promotion=Yes requires a designation. Keep this as a
+              // dedicated field validation alert, separate from normal edit toasts.
               if (
                 col.key === "newTitle" &&
                 row.eligibleForPromotion === "Yes" &&
                 String(value).trim() === ""
               ) {
                 setActive(cellKey);
+                window.alert(
+                  "Designation is required when Promotion is Yes. Please select a designation before continuing.",
+                );
                 return;
               }
 
