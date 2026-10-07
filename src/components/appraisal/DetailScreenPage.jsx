@@ -513,8 +513,8 @@ function CompHead({ children }) {
         background: SOFT,
         color: INK,
         fontWeight: 700,
-        fontSize: "13px",
-        padding: "5px 10px",
+        fontSize: "13.5px",
+        padding: "4px 10px",
         borderBottom: `1px solid ${LINE}`,
         borderRight: `1px solid ${LINE}`,
       }}
@@ -533,8 +533,8 @@ function Cell({ children, strong, align }) {
         justifyContent: "center",
         alignItems: align === "right" ? "flex-end" : "stretch",
         gap: 2,
-        padding: strong ? "5px 10px" : "4px 8px",
-        fontSize: "12.5px",
+        padding: strong ? "4px 10px" : "3px 8px",
+        fontSize: "13px",
         borderBottom: `1px solid ${LINE}`,
         borderRight: `1px solid ${LINE}`,
         minWidth: 0,
@@ -584,7 +584,7 @@ function EditInput({ value, defaultValue, onLive, onCommit, edited, className = 
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
       }}
-      className={`h-[23px] w-full min-w-0 rounded border px-2 text-[12px] outline-none focus:border-[#0B7A75] ${className}`}
+      className={`h-[22px] w-full min-w-0 rounded border px-2 text-[12.5px] outline-none focus:border-[#0B7A75] ${className}`}
       style={fieldStyle(edited)}
     />
   );
@@ -1327,7 +1327,7 @@ export function DetailScreenPage({
                               : String(employee.pbInstallment)
                           }
                           onChange={(e) => commit("pbInstallment", e.target.value)}
-                          className="h-[23px] w-[48px] shrink-0 rounded border px-1 text-[11px] outline-none focus:border-[#0B7A75]"
+                          className="h-[22px] w-[48px] shrink-0 rounded border px-1 text-[11.5px] outline-none focus:border-[#0B7A75]"
                           style={fieldStyle(isEdited("pbInstallment"))}
                         >
                           <option value="">—</option>
