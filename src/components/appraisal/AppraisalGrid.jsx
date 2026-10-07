@@ -32,6 +32,7 @@ const APPRAISAL_FONT = "Arial, Helvetica, sans-serif";
 const PAGE_SIZE = 20;
 const CELL_MIN_HEIGHT = 40;
 const HEADER_HEIGHT = 46;
+const FOOTER_HEIGHT = 36;
 const SELECT_WIDTH = 34;
 
 const MIN_WIDTH = 60;
@@ -45,8 +46,8 @@ const PANEL_MAX_WIDTH = 720;
 
 const WIDTHS = {
   empId: 84,
-  name: 190, // combined Employee column (name + emp id below it)
-  designation: 150, // sticky second column (designation + Promote button)
+  name: 190, // combined Employee column (id - name on top, designation below)
+  designation: 150,
   reportingManager: 125,
   compManager: 125,
   appraiserTechED: 130,
@@ -87,8 +88,7 @@ const WIDTHS = {
 // Used for lookups (sorting, grouping, bulk edit ...) — still has every column.
 const GRID_COLUMNS = COLUMNS;
 
-// empId is merged into the "name" column (name on top, id below),
-// so it is not drawn separately.
+// empId is merged into the "name" column, so it is not drawn separately.
 const FROZEN_KEYS = new Set(["name"]);
 
 const DEFAULT_COLUMN_ORDER = [
@@ -102,13 +102,65 @@ const DEFAULT_COLUMN_ORDER = [
 // Columns that should NOT show the filter / group menu in the header
 const NO_FILTER_COLUMNS = new Set();
 
+// Columns that get a sum in the sticky Total row
+const SUM_COLUMN_KEYS = new Set([
+  "rbToBePaid",
+  "pbToBePaid",
+  "currentAnnualBasePay",
+  "newBaseSalary",
+  "hikeAmount",
+  "newRB",
+  "targetPBAllocatedForMay",
+  "allocatedPBAmount",
+  "newPBToBeOffered",
+  "totalOfPB",
+  "totalBonus",
+  "totalBonusHikeAmount",
+  "targetPBNextYear",
+  "totalCTCWithRewards",
+  "totalRewardsHikeAmount",
+]);
+
 const GRID_STYLES = `
 @keyframes appraisalCellBlink {
   0%, 100% { box-shadow: 0 0 0 0 rgba(201,164,0,0); }
   50% { box-shadow: 0 0 0 3px rgba(201,164,0,.55); }
 }
 .appraisal-cell-blink { animation: appraisalCellBlink .5s ease-in-out 3; }
+
+/* Row density (More tab -> Compact) */
+.appraisal-compact td { height: 30px; }
+.appraisal-compact [class*="min-h-[38px]"] { min-height: 28px !important; }
+.appraisal-compact input:not([type="checkbox"]),
+.appraisal-compact select { height: 24px !important; }
+.appraisal-compact textarea { min-height: 24px !important; }
 `;
+
+// ============================================================
+// LOCAL STORAGE HELPERS (My notes + My view)
+// ============================================================
+
+const VIEW_KEY = "appraisal.gridView";
+const NOTES_KEY = "appraisal.myNotes";
+const NOTE_DRAFT_KEY = "appraisal.noteDraft";
+
+const readStore = (key, fallback) => {
+  try {
+    const raw = window.localStorage.getItem(key);
+
+    return raw === null ? fallback : JSON.parse(raw);
+  } catch (error) {
+    return fallback;
+  }
+};
+
+const writeStore = (key, value) => {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    // storage unavailable — ignore
+  }
+};
 
 // ============================================================
 // HELPERS
@@ -208,13 +260,14 @@ const computeHistoryChange = (currentValue, previousValue) => {
 
 // ============================================================
 // RIGHT PANEL CONFIG
-// HR login      -> Feedback only
-// Tech Ed login -> Feedback + Request
+// HR login      -> Feedback + More
+// Tech Ed login -> Feedback + Request + More
 // ============================================================
 
 const PANEL_TABS = [
   ["feedback", "Feedback"],
   ["request", "Request"],
+  ["more", "+ More"],
 ];
 
 const PANEL_SUBS = {
@@ -497,9 +550,165 @@ function PanelInfo({ children, tone }) {
 }
 
 // ============================================================
+// MY NOTES POPOVER (saved in this browser only)
+// ============================================================
+
+const formatNoteTime = () => {
+  const d = new Date();
+
+  return (
+    d.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }) +
+    " " +
+    `0${d.getHours()}`.slice(-2) +
+    ":" +
+    `0${d.getMinutes()}`.slice(-2)
+  );
+};
+
+function NotesPopover({ contextLabel }) {
+  const [notes, setNotes] = useState(() => readStore(NOTES_KEY, []));
+  const [text, setText] = useState(() => readStore(NOTE_DRAFT_KEY, ""));
+  const [tie, setTie] = useState(true);
+
+  const onTextChange = (value) => {
+    setText(value);
+    writeStore(NOTE_DRAFT_KEY, value);
+  };
+
+  const saveNote = () => {
+    const trimmed = text.trim();
+
+    if (!trimmed) {
+      return;
+    }
+
+    const next = [
+      ...notes,
+      {
+        id: String(Date.now()),
+        at: formatNoteTime(),
+        text: trimmed,
+        ctx: tie ? contextLabel : "",
+      },
+    ];
+
+    setNotes(next);
+    writeStore(NOTES_KEY, next);
+    setText("");
+    writeStore(NOTE_DRAFT_KEY, "");
+  };
+
+  const clearDraft = () => {
+    setText("");
+    writeStore(NOTE_DRAFT_KEY, "");
+  };
+
+  const deleteNote = (id) => {
+    const next = notes.filter((note) => note.id !== id);
+
+    setNotes(next);
+    writeStore(NOTES_KEY, next);
+  };
+
+  return (
+    <div
+      className="absolute right-0 top-full z-[300] mt-1.5 w-[380px] rounded-xl border border-[#e5e7eb] bg-white px-3.5 py-3 text-[12.5px] text-[#111827] shadow-[0_8px_24px_rgba(17,24,39,.14)]"
+      style={{ fontFamily: APPRAISAL_FONT }}
+    >
+      <h4 className="mb-1.5 flex items-center justify-between text-[13px] font-extrabold text-[#102a43]">
+        My notes
+        <span className="text-[11px] font-semibold text-[#6b7280]">
+          Saved in this browser only · not shared
+        </span>
+      </h4>
+
+      <textarea
+        value={text}
+        onChange={(event) => onTextChange(event.target.value)}
+        placeholder="Write a note…"
+        className="min-h-[90px] w-full resize-y rounded-md border border-[#d1d5db] p-2 text-[12.5px] outline-none focus:border-[#102a43]"
+      />
+
+      <div className="mt-2 flex items-center gap-1.5">
+        <label className="flex items-center gap-1.5 text-[11.5px] font-semibold text-[#374151]">
+          <input
+            type="checkbox"
+            checked={tie}
+            onChange={(event) => setTie(event.target.checked)}
+            className="accent-[#102a43]"
+          />
+          Mention the employee on screen
+        </label>
+
+        <span className="flex-1" />
+
+        {text && (
+          <span className="text-[11px] text-[#6b7280]">Draft kept</span>
+        )}
+
+        <button
+          type="button"
+          onClick={clearDraft}
+          className="rounded-md border border-[#d1d5db] bg-white px-3 py-1 text-[12px] font-bold"
+        >
+          Clear
+        </button>
+
+        <button
+          type="button"
+          onClick={saveNote}
+          className="rounded-md border border-[#102a43] bg-[#102a43] px-3 py-1 text-[12px] font-bold text-white"
+        >
+          Save note
+        </button>
+      </div>
+
+      <div className="mt-2 max-h-[260px] overflow-auto">
+        {notes.length === 0 ? (
+          <div className="py-2 text-[12px] text-[#6b7280]">
+            No saved notes yet.
+          </div>
+        ) : (
+          [...notes].reverse().map((note) => (
+            <div
+              key={note.id}
+              className="border-b border-[#f0f1f3] py-2 text-[12px] last:border-b-0"
+            >
+              <button
+                type="button"
+                onClick={() => deleteNote(note.id)}
+                className="float-right rounded-md border border-[#d1d5db] bg-white px-1.5 text-[11px]"
+              >
+                Delete
+              </button>
+
+              <b className="text-[#1559a6]">{note.at}</b>
+
+              {note.ctx && (
+                <span className="mt-px block text-[11px] text-[#6b7280]">
+                  About: <b>{note.ctx}</b>
+                </span>
+              )}
+
+              <p className="mt-0.5 whitespace-pre-wrap text-[#374151]">
+                {note.text}
+              </p>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // EMPLOYEE RIGHT PANEL (opens when an employee name is clicked)
-//   HR login      -> Feedback only
-//   Tech Ed login -> Feedback + Request
+//   HR login      -> Feedback + More
+//   Tech Ed login -> Feedback + Request + More
 // ============================================================
 
 const FIELD_CLASS =
@@ -513,6 +722,7 @@ function EmployeePanel({
   canDelegate = true,
   onRequest,
   onClose,
+  view,
 }) {
   const [tab, setTab] = useState("feedback");
   const [subs, setSubs] = useState({ feedback: "manager" });
@@ -535,8 +745,12 @@ function EmployeePanel({
     setReqSent("");
   }, [employee.id]);
 
-  const activeTab = showRequest ? tab : "feedback";
-  const panelTabs = showRequest ? PANEL_TABS : [PANEL_TABS[0]];
+  const activeTab = tab === "request" && !showRequest ? "feedback" : tab;
+
+  const panelTabs = PANEL_TABS.filter(
+    ([key]) => key !== "request" || showRequest,
+  );
+
   const subList = PANEL_SUBS[activeTab] || [];
   const sub = subs[activeTab];
 
@@ -930,6 +1144,118 @@ function EmployeePanel({
     </div>
   );
 
+  // ---------- MORE (My view: density, columns show / wrap) ----------
+  const renderMore = () => (
+    <div className="pt-1">
+      <h5 className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-[.06em] text-[#6b7280]">
+        Row density
+      </h5>
+
+      <div className="inline-flex gap-1.5">
+        {[
+          ["compact", "Compact"],
+          ["comfortable", "Comfortable"],
+        ].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            aria-pressed={view.density === key}
+            onClick={() => view.onDensity(key)}
+            className={cn(
+              "rounded-[14px] border px-3 py-[3px] text-[11.5px]",
+              view.density === key
+                ? "border-[#27548a] bg-[#27548a] font-bold text-white"
+                : "border-[#d1d5db] bg-white text-[#111827]",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <hr className="my-3 border-[#e5e7eb]" />
+
+      <h5 className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-[.06em] text-[#6b7280]">
+        Saved with your view
+      </h5>
+
+      <div className="text-[11.5px] leading-[1.45] text-[#6b7280]">
+        Column widths: {view.widthsSet} set (drag a column edge — kept
+        automatically)
+        <br />
+        Filters: {view.filterCount} column{view.filterCount === 1 ? "" : "s"} ·
+        Sort: {view.sortLabel || "none"}
+      </div>
+
+      <hr className="my-3 border-[#e5e7eb]" />
+
+      <h5 className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-[.06em] text-[#6b7280]">
+        Columns
+      </h5>
+
+      <table className="w-full border-collapse text-[12px]">
+        <thead>
+          <tr>
+            <th className="border-b border-[#e5e7eb] px-1 py-1 text-left text-[10.5px] font-bold text-[#6b7280]">
+              Column
+            </th>
+            <th className="w-12 border-b border-[#e5e7eb] px-1 py-1 text-center text-[10.5px] font-bold text-[#6b7280]">
+              Show
+            </th>
+            <th className="w-12 border-b border-[#e5e7eb] px-1 py-1 text-center text-[10.5px] font-bold text-[#6b7280]">
+              Wrap
+            </th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {view.columns.map((col) => {
+            const fixed = FROZEN_KEYS.has(col.key);
+            const label = fixed ? "Employee" : col.label;
+
+            return (
+              <tr key={col.key}>
+                <td className="border-b border-[#f0f1f3] px-1 py-[5px]">
+                  {label}
+                  {fixed && (
+                    <span className="ml-1 text-[11px] text-[#6b7280]">
+                      (fixed)
+                    </span>
+                  )}
+                </td>
+
+                <td className="border-b border-[#f0f1f3] px-1 py-[5px] text-center">
+                  <input
+                    type="checkbox"
+                    checked={fixed ? true : !view.hidden[col.key]}
+                    disabled={fixed}
+                    onChange={() => view.onToggleShow(col.key)}
+                    aria-label={`Show ${label}`}
+                    className="accent-[#102a43]"
+                  />
+                </td>
+
+                <td className="border-b border-[#f0f1f3] px-1 py-[5px] text-center">
+                  <input
+                    type="checkbox"
+                    checked={view.wrapOf(col.key)}
+                    onChange={() => view.onToggleWrap(col.key)}
+                    aria-label={`Wrap ${label}`}
+                    className="accent-[#102a43]"
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <div className="mt-3 text-[11px] text-[#6b7280]">
+        Saved in this browser.
+      </div>
+    </div>
+  );
+
   return (
     <aside
       className="relative flex shrink-0 flex-col border-l border-[#d5dce5] bg-white text-[12.5px] text-[#111827]"
@@ -1030,7 +1356,11 @@ function EmployeePanel({
 
       {/* body */}
       <div className="min-h-0 flex-1 overflow-auto pb-3.5 pl-4 pr-3.5 pt-1.5">
-        {activeTab === "feedback" ? renderFeedback() : renderRequest()}
+        {activeTab === "feedback"
+          ? renderFeedback()
+          : activeTab === "request"
+            ? renderRequest()
+            : renderMore()}
       </div>
     </aside>
   );
@@ -1055,8 +1385,6 @@ export function AppraisalGrid({
   focusEmployeeId,
   onFocusEmployeeHandled,
 
-  // budget / onViewBudget are no longer used by the panel (Budget tab became Request)
-  // but are still accepted so existing parents do not break.
   isTechEd = false,
   isHR = false,
   onRequest,
@@ -1073,12 +1401,101 @@ export function AppraisalGrid({
     (col) => !access.isHidden(HISTORY_METRIC_FIELD[col.key]),
   );
 
-  // Request tab: Tech Ed login only. HR sees Feedback only.
-  // With access rules it follows the delegateRequest action.
+  // Request tab: Tech Ed login only. HR sees Feedback + More.
   const showRequestTab = access.ok ? canDelegate : isTechEd && !isHR;
 
   const cellRefs = useRef({});
   const clickTimerRef = useRef(null);
+
+  // ============================================================
+  // MY VIEW (More tab): hidden columns, wrap, density
+  // ============================================================
+
+  const [viewPrefs, setViewPrefs] = useState(() => {
+    const saved = readStore(VIEW_KEY, {});
+
+    return {
+      hidden: saved.hidden || {},
+      wrap: saved.wrap || {},
+      density: saved.density === "compact" ? "compact" : "comfortable",
+    };
+  });
+
+  useEffect(() => {
+    writeStore(VIEW_KEY, viewPrefs);
+  }, [viewPrefs]);
+
+  const wrapOf = useCallback(
+    (key) => (key in viewPrefs.wrap ? !!viewPrefs.wrap[key] : true),
+    [viewPrefs.wrap],
+  );
+
+  const toggleShow = useCallback((key) => {
+    if (FROZEN_KEYS.has(key)) {
+      return;
+    }
+
+    setViewPrefs((previous) => {
+      const hidden = { ...previous.hidden };
+
+      if (hidden[key]) {
+        delete hidden[key];
+      } else {
+        hidden[key] = true;
+      }
+
+      return { ...previous, hidden };
+    });
+  }, []);
+
+  const toggleWrap = useCallback((key) => {
+    setViewPrefs((previous) => {
+      const current = key in previous.wrap ? !!previous.wrap[key] : true;
+
+      return { ...previous, wrap: { ...previous.wrap, [key]: !current } };
+    });
+  }, []);
+
+  const setDensity = useCallback((density) => {
+    setViewPrefs((previous) => ({ ...previous, density }));
+  }, []);
+
+  // ============================================================
+  // MY NOTES
+  // ============================================================
+
+  const [notesOpen, setNotesOpen] = useState(false);
+  const notesWrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!notesOpen) {
+      return undefined;
+    }
+
+    const handleOutside = (event) => {
+      if (
+        notesWrapRef.current &&
+        !notesWrapRef.current.contains(event.target)
+      ) {
+        setNotesOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleOutside);
+
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [notesOpen]);
+
+  const [notesCount, setNotesCount] = useState(
+    () => readStore(NOTES_KEY, []).length,
+  );
+
+  // refresh the little counter whenever the popover is closed
+  useEffect(() => {
+    if (!notesOpen) {
+      setNotesCount(readStore(NOTES_KEY, []).length);
+    }
+  }, [notesOpen]);
 
   // ============================================================
   // LOCAL EDIT DRAFTS
@@ -1180,12 +1597,22 @@ export function AppraisalGrid({
     draggedColumnRef.current = null;
   }, []);
 
-  const orderedColumns = useMemo(
+  // every column this login may see (before the user's own Show / hide)
+  const allColumns = useMemo(
     () =>
       columnOrder
         .map((key) => GRID_COLUMNS.find((column) => column.key === key))
         .filter((column) => column && !access.isHidden(column.key)),
     [columnOrder, access],
+  );
+
+  // columns actually drawn
+  const orderedColumns = useMemo(
+    () =>
+      allColumns.filter(
+        (column) => FROZEN_KEYS.has(column.key) || !viewPrefs.hidden[column.key],
+      ),
+    [allColumns, viewPrefs.hidden],
   );
 
   const widthOf = useCallback(
@@ -1250,15 +1677,7 @@ export function AppraisalGrid({
   // STICKY COLUMN OFFSETS  [checkbox] [Employee]
   // ============================================================
 
-  const nameColumn = GRID_COLUMNS.find((column) => column.key === "name");
-  const nameWidth = access.isHidden("name")
-    ? 0
-    : nameColumn
-      ? widthOf(nameColumn)
-      : WIDTHS.name;
-
-  const frozenLeftOf = (key) =>
-    key === "name" ? SELECT_WIDTH : undefined;
+  const frozenLeftOf = (key) => (key === "name" ? SELECT_WIDTH : undefined);
 
   // ============================================================
   // STATES
@@ -1465,6 +1884,34 @@ export function AppraisalGrid({
   }, []);
 
   // ============================================================
+  // TOTALS (sticky bottom row) — over every row the filters let through
+  // ============================================================
+
+  const totals = useMemo(() => {
+    const sums = {};
+
+    orderedColumns.forEach((col) => {
+      if (SUM_COLUMN_KEYS.has(col.key)) {
+        sums[col.key] = rows.reduce(
+          (total, row) => total + (Number(getGroupValue(row, col)) || 0),
+          0,
+        );
+      }
+    });
+
+    const base = rows.reduce(
+      (total, row) => total + (Number(row.currentAnnualBasePay) || 0),
+      0,
+    );
+    const hike = rows.reduce(
+      (total, row) => total + (Number(row.hikeAmount) || 0),
+      0,
+    );
+
+    return { sums, hikePct: base ? (hike / base) * 100 : null };
+  }, [rows, orderedColumns, getGroupValue]);
+
+  // ============================================================
   // HISTORY FLASH (bottom panel cells affected by the last edit)
   // ============================================================
 
@@ -1525,10 +1972,7 @@ export function AppraisalGrid({
   );
 
   // ============================================================
-  // SAVE FLASH
-  // FIX: this used to be declared AFTER clearPromotion, whose dependency
-  // array reads it during render -> "Cannot access 'yt' before initialization".
-  // It must be declared before anything that references it.
+  // SAVE FLASH (must be declared before anything that reads it)
   // ============================================================
 
   const flashSaved = useCallback((key) => {
@@ -1803,7 +2247,6 @@ export function AppraisalGrid({
   }, [totalPages]);
 
   // When the parent filter changes the result set, start from page 1.
-  // This prevents a filtered result from opening on an old page number.
   const previousRowsLengthRef = useRef(rows.length);
 
   useEffect(() => {
@@ -1838,12 +2281,6 @@ export function AppraisalGrid({
 
   // ============================================================
   // "LAST EDITED" -> JUMP TO THAT EMPLOYEE
-  // The old effect only ran when focusEmployeeId changed, so it silently
-  // did nothing if the rows were not loaded yet (common for HR, who has the
-  // big list), and it never scrolled the table, so on HR the row was
-  // selected but off-screen. Now: it retries when rows arrive, it matches on
-  // empId / row id / "rowId:field" keys, it switches page, and it scrolls
-  // the row into view.
   // ============================================================
 
   const handledFocusRef = useRef("");
@@ -1946,7 +2383,8 @@ export function AppraisalGrid({
 
       const containerRect = container.getBoundingClientRect();
       const rowRect = element.getBoundingClientRect();
-      const visibleHeight = container.clientHeight - HEADER_HEIGHT;
+      const visibleHeight =
+        container.clientHeight - HEADER_HEIGHT - FOOTER_HEIGHT;
 
       container.scrollTop +=
         rowRect.top -
@@ -2155,9 +2593,6 @@ export function AppraisalGrid({
 
   // ============================================================
   // COMMIT ON BLUR / ENTER
-  // Text, number and date cells keep a local draft while typing and
-  // save once on blur. Escape discards the draft. A draft still open when
-  // the grid unmounts is committed so nothing is lost.
   // ============================================================
 
   const cancelledCellsRef = useRef(new Set());
@@ -2278,8 +2713,12 @@ export function AppraisalGrid({
   );
 
   const getEditableColumnsForRow = useCallback(
-    (row) => editableColumns.filter((column) => isColumnEditable(row, column)),
-    [editableColumns, isColumnEditable],
+    (row) =>
+      editableColumns.filter(
+        (column) =>
+          isColumnEditable(row, column) && !viewPrefs.hidden[column.key],
+      ),
+    [editableColumns, isColumnEditable, viewPrefs.hidden],
   );
 
   // ============================================================
@@ -2470,26 +2909,29 @@ export function AppraisalGrid({
     const isEditable = isColumnEditable(row, col);
     const displayValue = formatValue(row, col);
     const isBlinking = lastEditedKey === cellKey;
+    const wraps = wrapOf(col.key);
 
     if (col.computed) {
       return (
         <div
           className={cn(
-            "flex min-h-[38px] h-auto w-full items-center justify-end",
-            "px-2 py-1 whitespace-normal break-words leading-tight text-right",
+            "flex min-h-[38px] h-auto w-full items-center justify-end overflow-hidden",
+            "px-2 py-1 leading-tight text-right",
             "text-[12px] font-semibold tabular-nums",
             modified[cellKey] ? "text-slate-900" : "text-[#14527d]",
           )}
           title="Calculated automatically"
         >
-          {col.type === "currency"
-            ? displayValue.replace(/^₹\s?/, "")
-            : displayValue}
+          <span className={wraps ? "break-words" : "block truncate"}>
+            {col.type === "currency"
+              ? displayValue.replace(/^₹\s?/, "")
+              : displayValue}
+          </span>
         </div>
       );
     }
 
-    // EMPLOYEE CELL (single sticky column) — name - designation, ID below.
+    // EMPLOYEE CELL (single sticky column) — "id - name" on top, designation below.
     if (col.key === "name") {
       return (
         <button
@@ -2499,18 +2941,25 @@ export function AppraisalGrid({
             openRow(row);
             openDetailPanel();
           }}
-          className="flex min-h-[38px] h-auto w-full flex-col items-start justify-center px-2 py-1 text-left"
-          title={row.name}
+          className="flex min-h-[38px] h-auto w-full min-w-0 flex-col items-start justify-center overflow-hidden px-2 py-1 text-left"
+          title={`${row.empId} - ${row.name}${row.designation ? ` · ${row.designation}` : ""}`}
         >
-          <span className="break-words text-[12.5px] font-bold leading-tight text-[#1559a6] hover:underline">
-            {row.name}
-            {" - "}
-            <span className="font-medium text-[#4b5563]">
-              {row.designation || "—"}
-            </span>
+          <span
+            className={cn(
+              "block max-w-full text-[12.5px] font-bold leading-tight text-[#1559a6] hover:underline",
+              wraps ? "break-words" : "truncate",
+            )}
+          >
+            {row.empId} - {row.name}
           </span>
-          <span className="mt-px text-[10.5px] font-normal leading-tight text-slate-500">
-            {row.empId}
+
+          <span
+            className={cn(
+              "mt-px block max-w-full text-[10.5px] font-normal leading-tight text-slate-500",
+              wraps ? "break-words" : "truncate",
+            )}
+          >
+            {row.designation || "—"}
           </span>
         </button>
       );
@@ -2533,13 +2982,15 @@ export function AppraisalGrid({
             openRow(row);
           }}
           className={cn(
-            "flex min-h-[38px] h-auto w-full items-center px-2 py-1",
-            "text-[12px] font-normal text-[#4b5563] whitespace-normal break-words leading-tight",
+            "flex min-h-[38px] h-auto w-full min-w-0 items-center overflow-hidden px-2 py-1",
+            "text-[12px] font-normal text-[#4b5563] leading-tight",
             isMoney ? "justify-end text-right tabular-nums" : "text-left",
           )}
           title={text}
         >
-          {text}
+          <span className={wraps ? "break-words" : "block truncate"}>
+            {text}
+          </span>
         </button>
       );
     }
@@ -2674,6 +3125,7 @@ export function AppraisalGrid({
               cellRefs.current[`${rowIndex}:${col.key}`] = element;
             }}
             rows={1}
+            wrap={wraps ? "soft" : "off"}
             value={textareaDraft}
             onFocus={(event) => {
               setActive(`${rowIndex}:${col.key}`);
@@ -2684,8 +3136,10 @@ export function AppraisalGrid({
                 [cellKey]: storedValue,
               }));
 
-              event.currentTarget.style.height = "auto";
-              event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+              if (wraps) {
+                event.currentTarget.style.height = "auto";
+                event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+              }
             }}
             onChange={(event) => {
               const value = event.target.value;
@@ -2714,8 +3168,10 @@ export function AppraisalGrid({
                 }
               }
 
-              event.target.style.height = "auto";
-              event.target.style.height = `${event.target.scrollHeight}px`;
+              if (wraps) {
+                event.target.style.height = "auto";
+                event.target.style.height = `${event.target.scrollHeight}px`;
+              }
             }}
             onBlur={(event) => {
               setActive(null);
@@ -2745,6 +3201,7 @@ export function AppraisalGrid({
             }
             className={cn(
               "min-h-[30px] w-full resize-none overflow-hidden rounded-[4px] border px-1.5 py-[5px] text-[12px] leading-tight outline-none",
+              !wraps && "whitespace-nowrap",
               draftClass(cellKey, isBlinking),
             )}
           />
@@ -2941,9 +3398,8 @@ export function AppraisalGrid({
                 minHeight: CELL_MIN_HEIGHT,
                 boxSizing: "border-box",
                 zIndex: isFrozen ? 30 : 1,
-                boxShadow: isName && isSelectedRow
-                  ? "inset 3px 0 0 #102a43"
-                  : "none",
+                boxShadow:
+                  isName && isSelectedRow ? "inset 3px 0 0 #102a43" : "none",
               }}
               onClick={() => handleCellClick(row, isEditable)}
             >
@@ -3064,6 +3520,27 @@ export function AppraisalGrid({
     : "";
 
   // ============================================================
+  // MY VIEW OBJECT PASSED TO THE "MORE" TAB
+  // ============================================================
+
+  const viewForPanel = {
+    columns: allColumns,
+    hidden: viewPrefs.hidden,
+    density: viewPrefs.density,
+    wrapOf,
+    onToggleShow: toggleShow,
+    onToggleWrap: toggleWrap,
+    onDensity: setDensity,
+    widthsSet: GRID_COLUMNS.filter(
+      (column) =>
+        columnWidths[column.key] !== undefined &&
+        columnWidths[column.key] !== getWidth(column),
+    ).length,
+    filterCount: Object.values(filters || {}).filter(Boolean).length,
+    sortLabel: groupByColumnLabel,
+  };
+
+  // ============================================================
   // TOAST TEXT
   // ============================================================
 
@@ -3097,13 +3574,20 @@ export function AppraisalGrid({
       })()
     : null;
 
+  const notesContext = liveHistoryRow
+    ? `${liveHistoryRow.name} (${liveHistoryRow.empId}) · ${CURRENT_APPRAISAL_YEAR}`
+    : `Appraisal Sheet · ${CURRENT_APPRAISAL_YEAR}`;
+
   // ============================================================
   // MAIN UI
   // ============================================================
 
   return (
     <div
-      className="relative flex min-h-0 w-full flex-row overflow-hidden rounded-md border border-[#d5dce5] bg-white"
+      className={cn(
+        "relative flex min-h-0 w-full flex-row overflow-hidden rounded-md border border-[#d5dce5] bg-white",
+        viewPrefs.density === "compact" && "appraisal-compact",
+      )}
       style={{
         height: "calc(100vh - 126px)",
         isolation: "isolate",
@@ -3112,9 +3596,30 @@ export function AppraisalGrid({
     >
       <style>{GRID_STYLES}</style>
 
-      {/* LEFT SIDE: GRID + PAGINATION + HISTORY */}
+      {/* LEFT SIDE: NOTES BAR + GRID + PAGINATION + HISTORY */}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {/* MY NOTES BAR */}
+
+        <div className="flex h-9 shrink-0 items-center justify-end border-b border-[#e5e7eb] bg-white px-3">
+          <div ref={notesWrapRef} className="relative">
+            <button
+              type="button"
+              onClick={() => setNotesOpen((previous) => !previous)}
+              className="inline-flex h-[30px] items-center whitespace-nowrap rounded-md border border-[#d1d5db] bg-white px-2.5 text-[12px] font-bold text-[#111827] hover:border-[#102a43]"
+            >
+              ✎ My notes
+              {notesCount > 0 && (
+                <span className="ml-1.5 rounded-[9px] bg-[#102a43] px-1.5 text-[10.5px] font-extrabold text-white">
+                  {notesCount}
+                </span>
+              )}
+            </button>
+
+            {notesOpen && <NotesPopover contextLabel={notesContext} />}
+          </div>
+        </div>
+
         <div ref={gridViewportRef} className="min-h-0 flex-1 overflow-auto">
           <table
             className="border-separate border-spacing-0"
@@ -3173,6 +3678,7 @@ export function AppraisalGrid({
                   const width = widthOf(col);
                   const showFilter = !NO_FILTER_COLUMNS.has(col.key);
                   const headerLabel = isName ? "Employee" : col.label;
+                  const headerWraps = wrapOf(col.key);
 
                   return (
                     <th
@@ -3202,7 +3708,10 @@ export function AppraisalGrid({
                         style={{ minHeight: HEADER_HEIGHT }}
                       >
                         <span
-                          className="min-w-0 flex-1 overflow-hidden break-words text-left text-[11px] font-bold leading-[13px] text-[#24364d]"
+                          className={cn(
+                            "min-w-0 flex-1 overflow-hidden text-left text-[11px] font-bold leading-[13px] text-[#24364d]",
+                            headerWraps ? "break-words" : "truncate",
+                          )}
                           title={headerLabel}
                         >
                           {headerLabel}
@@ -3287,6 +3796,67 @@ export function AppraisalGrid({
                 </>
               )}
             </tbody>
+
+            {/* TOTAL ROW — sticky at the bottom (and left for the first columns) */}
+
+            <tfoot>
+              <tr style={{ height: FOOTER_HEIGHT }}>
+                <td
+                  className="border-r border-t-2 border-[#c9d8ec]"
+                  style={{
+                    position: "sticky",
+                    left: 0,
+                    bottom: 0,
+                    width: SELECT_WIDTH,
+                    minWidth: SELECT_WIDTH,
+                    maxWidth: SELECT_WIDTH,
+                    height: FOOTER_HEIGHT,
+                    background: "#e6eef8",
+                    zIndex: 70,
+                  }}
+                />
+
+                {orderedColumns.map((col) => {
+                  const isName = col.key === "name";
+                  const width = widthOf(col);
+
+                  let text = "";
+
+                  if (isName) {
+                    text = `Total · ${rows.length} row${rows.length === 1 ? "" : "s"}`;
+                  } else if (col.key in totals.sums) {
+                    text = formatHistoryNumber(totals.sums[col.key]);
+                  } else if (col.key === "hikePct" && totals.hikePct !== null) {
+                    text = `${totals.hikePct.toFixed(1)}%`;
+                  }
+
+                  return (
+                    <td
+                      key={col.key}
+                      className={cn(
+                        "overflow-hidden whitespace-nowrap border-r border-t-2 border-[#c9d8ec] px-2 text-[12px] font-extrabold text-[#102a43]",
+                        isName ? "text-left" : "text-right tabular-nums",
+                      )}
+                      style={{
+                        position: "sticky",
+                        bottom: 0,
+                        ...(isName ? { left: frozenLeftOf(col.key) } : {}),
+                        width,
+                        minWidth: width,
+                        maxWidth: width,
+                        height: FOOTER_HEIGHT,
+                        boxSizing: "border-box",
+                        background: "#e6eef8",
+                        zIndex: isName ? 75 : 50,
+                      }}
+                      title={text}
+                    >
+                      {text}
+                    </td>
+                  );
+                })}
+              </tr>
+            </tfoot>
           </table>
         </div>
 
@@ -3304,8 +3874,6 @@ export function AppraisalGrid({
                 : `Showing ${pageStart}-${pageEnd} of ${rows.length} employees${
                     groupBy.length ? ` · Sorted by ${groupByColumnLabel}` : ""
                   }`}
-
-
           </div>
 
           {groupedRows ? (
@@ -3583,7 +4151,7 @@ export function AppraisalGrid({
       )}
 
       {/* RIGHT PANEL — opens when an employee name is clicked and follows the
-          selected row. HR: Feedback only. Tech Ed: Feedback + Request. */}
+          selected row. Tabs: Feedback, Request (Tech Ed only), + More. */}
 
       {detailOpen && liveHistoryRow && (
         <EmployeePanel
@@ -3593,6 +4161,7 @@ export function AppraisalGrid({
           canDelegate={canDelegate}
           onRequest={onRequest}
           onClose={closeDetailPanel}
+          view={viewForPanel}
           history={{
             loading: historyLoading,
             error: historyError,
@@ -3633,7 +4202,6 @@ export function AppraisalGrid({
           {focusNotice}
         </div>
       )}
-
-          </div>
+    </div>
   );
 }
