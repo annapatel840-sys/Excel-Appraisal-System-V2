@@ -987,17 +987,6 @@ export function HrConfigPage({ renderCycleScreen, canEdit = true }) {
 
       {tab === "cyc" && renderCycleScreen && (
         <section className="hrc-cycle-section">
-          <div className="hrc-cycle-head">
-            <div>
-              <span className="hrc-cycle-kicker">APPRAISAL CYCLE MASTER</span>
-              <h2>Appraisal Cycle</h2>
-              <p>
-                Set up and manage appraisal cycles separately from the HR
-                configuration controls above.
-              </p>
-            </div>
-            <span className="hrc-cycle-badge">Cycle workspace</span>
-          </div>
           <div className="hrc-cycle-body">
             {renderCycleScreen(defaultProcess)}
           </div>
@@ -1072,7 +1061,7 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .hrc .panel .ptabs{display:flex;gap:20px;padding:12px 16px 0;border-bottom:1px solid var(--line)}
 .hrc .panel .ptabs a{padding-bottom:9px;color:var(--muted);cursor:pointer;font-weight:600}
 .hrc .panel .ptabs a.on{color:var(--ink);font-weight:800;border-bottom:2px solid var(--navy)}
-.hrc .pbody{padding:14px 16px;min-height:420px}
+.hrc .pbody{padding:14px 16px;min-height:420px;flex:1}
 .hrc .co{border:1px solid var(--info-border);background:var(--info-strip);border-radius:8px;padding:10px 12px;margin-bottom:10px;color:var(--navy)}
 .hrc .cc{border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:10px;background:#fff}
 .hrc .cc b{display:block;margin-bottom:3px;color:var(--navy)}.hrc .m{color:var(--muted);font-size:12px}
@@ -1081,12 +1070,11 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .hrc .foldtab{position:fixed;right:0;top:50%;transform:translateY(-50%);background:var(--navy);color:#fff;border-radius:8px 0 0 8px;padding:10px 6px;writing-mode:vertical-rl;font-weight:800;cursor:pointer;z-index:20}
 .hrc .toast{position:fixed;top:16px;right:16px;background:var(--ok);color:#fff;padding:10px 16px;border-radius:8px;z-index:1100;font-weight:700}
 .hrc .hrc-cycle-section{margin-top:18px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 4px 14px rgba(16,42,67,.06)}
-.hrc .hrc-cycle-head{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 20px;background:linear-gradient(135deg,#102A43,#173B63);color:#fff}
-.hrc .hrc-cycle-kicker{display:block;font-size:9.5px;font-weight:800;letter-spacing:.12em;opacity:.72;margin-bottom:3px}
-.hrc .hrc-cycle-head h2{margin:0;font-size:17px;font-weight:800}
-.hrc .hrc-cycle-head p{margin:4px 0 0;color:rgba(255,255,255,.72);font-size:11.5px}
-.hrc .hrc-cycle-badge{white-space:nowrap;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.09);border-radius:20px;padding:6px 11px;font-size:10.5px;font-weight:700}
 .hrc .hrc-cycle-body{padding:16px 18px}
+.hrc .hrc .panel{height:100%;min-height:480px}
+.hrc .wrap>.card{height:100%}
+.hrc .wrap{align-items:stretch}
+.hrc .wrap>.card,.hrc .wrap>.panel{min-height:100%}
 .hrc .hrc-cycle-foot{padding:10px 18px;border-top:1px solid var(--line);background:#F7FAFE;color:var(--muted);font-size:11.5px}
 @media(max-width:1100px){.hrc .wrap{grid-template-columns:1fr}}
 @media(max-width:700px){.hrc .hrc-cycle-head{align-items:flex-start;flex-direction:column}.hrc .hrc-cycle-badge{display:none}}
