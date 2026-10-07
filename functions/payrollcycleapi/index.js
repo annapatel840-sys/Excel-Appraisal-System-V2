@@ -622,9 +622,13 @@ async function importRows(tables, body) {
   if (!["fb", "sheet"].includes(screen)) throw new ApiError("Unsupported upload type.");
   const cycleId = String(body.cycleId || "").trim();
   const cycleRows = await getAllRows(tables.cycles);
-  const cycle = cycleRows.map(normalizeCycle).find((item) => item.id === cycleId);
-  if (!cycle) throw new ApiError("The selected appraisal cycle no longer exists.", 404);
-  if (cycle.archived) throw new ApiError("The selected cycle is archived.", 409);
+  const cycle = cycleId
+    ? cycleRows.map(normalizeCycle).find((item) => item.id === cycleId)
+    : null;
+  if (screen === "sheet" && !cycle) {
+    throw new ApiError("The selected appraisal cycle no longer exists.", 404);
+  }
+  if (cycle?.archived) throw new ApiError("The selected cycle is archived.", 409);
 
   const targetTable = screen === "fb" ? tables.employees : tables.payroll;
   const columns = await getImportColumnSet(targetTable);
