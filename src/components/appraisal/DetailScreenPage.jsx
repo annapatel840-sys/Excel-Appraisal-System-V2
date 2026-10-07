@@ -310,14 +310,14 @@ function BudgetBanner({ notice, onGotIt, onViewBudget }) {
         ctx: "Detailed Screen",
       },
     ];
-    setNotes(next);
+    setDetailNotes(next);
     window.localStorage.setItem(DETAIL_NOTES_KEY, JSON.stringify(next));
     setDetailNotesText("");
   };
 
   const deleteDetailNote = (id) => {
     const next = detailNotes.filter((note) => note.id !== id);
-    setNotes(next);
+    setDetailNotes(next);
     window.localStorage.setItem(DETAIL_NOTES_KEY, JSON.stringify(next));
   };
 
@@ -359,7 +359,7 @@ function BudgetBanner({ notice, onGotIt, onViewBudget }) {
               className="rounded border px-3 py-1 font-semibold"
               style={{ borderColor: "#C4CED6", background: "#fff", color: INK }}
             >
-              ✎ My detailNotes{detailNotes.length > 0 ? ` (${detailNotes.length})` : ""}
+              ✎ My notes{detailNotes.length > 0 ? ` (${detailNotes.length})` : ""}
             </button>
             {detailNotesOpen && (
               <div
@@ -367,7 +367,7 @@ function BudgetBanner({ notice, onGotIt, onViewBudget }) {
                 style={{ borderColor: LINE, color: INK }}
               >
                 <div className="mb-2 flex items-center justify-between">
-                  <b>My detailNotes</b>
+                  <b>My notes</b>
                   <span className="text-[10.5px]" style={{ color: MUTED }}>
                     Saved in this browser only
                   </span>
