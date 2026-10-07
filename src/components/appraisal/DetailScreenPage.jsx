@@ -40,18 +40,27 @@ const BUDGET_NOTICE_PLACEHOLDER = {
   since: "01-Sep-26",
 };
 
-const DETAIL_NOTES_KEY = "appraisal.myNotes";
+const NOTES_KEY = "appraisal.myNotes";
+const NOTE_DRAFT_KEY = "appraisal.noteDraft";
 
-const readDetailNotes = () => {
+const readStore = (key, fallback) => {
   try {
-    const raw = window.localStorage.getItem(DETAIL_NOTES_KEY);
-    return raw === null ? [] : JSON.parse(raw);
+    const raw = window.localStorage.getItem(key);
+    return raw === null ? fallback : JSON.parse(raw);
   } catch {
-    return [];
+    return fallback;
   }
 };
 
-const formatDetailNoteTime = () => {
+const writeStore = (key, value) => {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // storage unavailable — ignore
+  }
+};
+
+const formatNoteTime = () => {
   const d = new Date();
   return (
     d.toLocaleDateString("en-GB", {
@@ -60,11 +69,133 @@ const formatDetailNoteTime = () => {
       year: "numeric",
     }) +
     " " +
-    String(d.getHours()).padStart(2, "0") +
+    `0${d.getHours()}`.slice(-2) +
     ":" +
-    String(d.getMinutes()).padStart(2, "0")
+    `0${d.getMinutes()}`.slice(-2)
   );
 };
+
+function NotesPopover({ contextLabel }) {
+  const [notes, setNotes] = useState(() => readStore(NOTES_KEY, []));
+  const [text, setText] = useState(() => readStore(NOTE_DRAFT_KEY, ""));
+  const [tie, setTie] = useState(true);
+
+  const onTextChange = (value) => {
+    setText(value);
+    writeStore(NOTE_DRAFT_KEY, value);
+  };
+
+  const saveNote = () => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    const next = [
+      ...notes,
+      {
+        id: String(Date.now()),
+        at: formatNoteTime(),
+        text: trimmed,
+        ctx: tie ? contextLabel : "",
+      },
+    ];
+
+    setNotes(next);
+    writeStore(NOTES_KEY, next);
+    setText("");
+    writeStore(NOTE_DRAFT_KEY, "");
+  };
+
+  const clearDraft = () => {
+    setText("");
+    writeStore(NOTE_DRAFT_KEY, "");
+  };
+
+  const deleteNote = (id) => {
+    const next = notes.filter((note) => note.id !== id);
+    setNotes(next);
+    writeStore(NOTES_KEY, next);
+  };
+
+  return (
+    <div
+      className="absolute right-0 top-full z-[300] mt-1.5 w-[380px] rounded-xl border bg-white px-3.5 py-3 text-[12.5px] text-[#111827] shadow-[0_8px_24px_rgba(17,24,39,.14)]"
+      style={{ fontFamily: FONT }}
+    >
+      <h4 className="mb-1.5 flex items-center justify-between text-[13px] font-extrabold" style={{ color: NAVY }}>
+        My notes
+        <span className="text-[11px] font-semibold" style={{ color: MUTED }}>
+          Saved in this browser only · not shared
+        </span>
+      </h4>
+
+      <textarea
+        value={text}
+        onChange={(event) => onTextChange(event.target.value)}
+        placeholder="Write a note…"
+        className="min-h-[90px] w-full resize-y rounded-md border p-2 text-[12.5px] outline-none"
+        style={{ borderColor: "#d1d5db" }}
+      />
+
+      <div className="mt-2 flex items-center gap-1.5">
+        <label className="flex items-center gap-1.5 text-[11.5px] font-semibold" style={{ color: "#374151" }}>
+          <input
+            type="checkbox"
+            checked={tie}
+            onChange={(event) => setTie(event.target.checked)}
+            className="accent-[#102a43]"
+          />
+          Mention the employee on screen
+        </label>
+
+        <span className="flex-1" />
+        {text && <span className="text-[11px]" style={{ color: MUTED }}>Draft kept</span>}
+
+        <button
+          type="button"
+          onClick={clearDraft}
+          className="rounded-md border bg-white px-3 py-1 text-[12px] font-bold"
+          style={{ borderColor: "#d1d5db" }}
+        >
+          Clear
+        </button>
+
+        <button
+          type="button"
+          onClick={saveNote}
+          className="rounded-md border px-3 py-1 text-[12px] font-bold text-white"
+          style={{ borderColor: NAVY, background: NAVY }}
+        >
+          Save note
+        </button>
+      </div>
+
+      <div className="mt-2 max-h-[260px] overflow-auto">
+        {notes.length === 0 ? (
+          <div className="py-2 text-[12px]" style={{ color: MUTED }}>
+            No saved notes yet.
+          </div>
+        ) : (
+          notes.map((note) => (
+            <div key={note.id} className="mb-1.5 rounded-md border p-2" style={{ borderColor: LINE }}>
+              <div className="text-[10.5px]" style={{ color: MUTED }}>
+                {note.at}{note.ctx ? ` · ${note.ctx}` : ""}
+              </div>
+              <div className="mt-0.5 whitespace-pre-wrap text-[12px]">{note.text}</div>
+              <button
+                type="button"
+                onClick={() => deleteNote(note.id)}
+                className="mt-1 text-[10.5px] font-semibold"
+                style={{ color: RED }}
+              >
+                Delete
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
 
 // Fields the screen can edit; used only to paint the "Edited this cycle" green.
 const EDIT_FIELDS = [
@@ -294,33 +425,6 @@ function useFitScale(depKey) {
    SMALL PRESENTATIONAL COMPONENTS
    ------------------------------------------------------------------ */
 function BudgetBanner({ notice, onGotIt, onViewBudget }) {
-  const [detailNotesOpen, setDetailNotesOpen] = useState(false);
-  const [detailNotesText, setDetailNotesText] = useState("");
-  const [detailNotes, setNotes] = useState(() => readDetailNotes());
-
-  const saveDetailNote = () => {
-    const trimmed = detailNotesText.trim();
-    if (!trimmed) return;
-    const next = [
-      ...detailNotes,
-      {
-        id: String(Date.now()),
-        at: formatDetailNoteTime(),
-        text: trimmed,
-        ctx: "Detailed Screen",
-      },
-    ];
-    setDetailNotes(next);
-    window.localStorage.setItem(DETAIL_NOTES_KEY, JSON.stringify(next));
-    setDetailNotesText("");
-  };
-
-  const deleteDetailNote = (id) => {
-    const next = detailNotes.filter((note) => note.id !== id);
-    setDetailNotes(next);
-    window.localStorage.setItem(DETAIL_NOTES_KEY, JSON.stringify(next));
-  };
-
   // Always renders a wrapper so the grid row structure never shifts.
   return (
     <div style={{ minWidth: 0 }}>
@@ -352,74 +456,23 @@ function BudgetBanner({ notice, onGotIt, onViewBudget }) {
               View budget
             </button>
           </div>
-          <div className="relative">
+          <div className="relative" data-detail-notes>
             <button
               type="button"
-              onClick={() => setDetailNotesOpen((previous) => !previous)}
+              onClick={() => setNotesOpen((previous) => !previous)}
               className="rounded border px-3 py-1 font-semibold"
               style={{ borderColor: "#C4CED6", background: "#fff", color: INK }}
             >
-              ✎ My notes{detailNotes.length > 0 ? ` (${detailNotes.length})` : ""}
+              ✎ My notes
             </button>
-            {detailNotesOpen && (
-              <div
-                className="absolute right-0 top-full z-[300] mt-1.5 w-[380px] rounded-xl border bg-white p-3 text-left shadow-lg"
-                style={{ borderColor: LINE, color: INK }}
-              >
-                <div className="mb-2 flex items-center justify-between">
-                  <b>My notes</b>
-                  <span className="text-[10.5px]" style={{ color: MUTED }}>
-                    Saved in this browser only
-                  </span>
-                </div>
-                <textarea
-                  value={detailNotesText}
-                  onChange={(event) => setDetailNotesText(event.target.value)}
-                  placeholder="Write a note…"
-                  className="min-h-[80px] w-full resize-y rounded border p-2 text-[12px] outline-none"
-                  style={{ borderColor: "#D1D5DB" }}
-                />
-                <div className="mt-2 flex justify-end gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setDetailNotesText("")}
-                    className="rounded border px-2.5 py-1 text-[11.5px] font-semibold"
-                    style={{ borderColor: "#D1D5DB" }}
-                  >
-                    Clear
-                  </button>
-                  <button
-                    type="button"
-                    onClick={saveDetailNote}
-                    className="rounded px-2.5 py-1 text-[11.5px] font-semibold text-white"
-                    style={{ background: NAVY }}
-                  >
-                    Save note
-                  </button>
-                </div>
-                {detailNotes.length > 0 && (
-                  <div className="mt-2 max-h-[180px] space-y-1.5 overflow-auto">
-                    {detailNotes.map((note) => (
-                      <div key={note.id} className="rounded border p-2" style={{ borderColor: LINE }}>
-                        <div className="text-[10px]" style={{ color: MUTED }}>
-                          {note.at} · {note.ctx}
-                        </div>
-                        <div className="mt-0.5 whitespace-pre-wrap text-[11.5px]">
-                          {note.text}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => deleteDetailNote(note.id)}
-                          className="mt-1 text-[10.5px] font-semibold"
-                          style={{ color: RED }}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+            {notesOpen && (
+              <NotesPopover
+                contextLabel={
+                  employee
+                    ? `${employee.name} (${employee.empId}) · ${CURRENT_CYCLE}`
+                    : `Detailed Screen · ${CURRENT_CYCLE}`
+                }
+              />
             )}
           </div>
           <button
@@ -664,8 +717,18 @@ export function DetailScreenPage({
   // Layout-only state (no effect on data)
   const [noticeOpen, setNoticeOpen] = useState(true);
   const [metricsOpen, setMetricsOpen] = useState(false);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(true);
   const [feedbackWidth, setFeedbackWidth] = useState(320);
+  useEffect(() => {
+    if (!notesOpen) return undefined;
+    const handleOutside = (event) => {
+      const target = event.target;
+      if (!target?.closest?.("[data-detail-notes]")) setNotesOpen(false);
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [notesOpen]);
   const [fbTab, setFbTab] = useState("manager");
   const baselineRef = useRef({});
 
