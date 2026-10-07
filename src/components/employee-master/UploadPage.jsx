@@ -739,7 +739,6 @@ export function UploadPage({ handlers = {} }) {
           failed: r.failed ?? failedRows.size,
         };
       }
-      }
 
       setOutcome(out);
       if (screen !== "pay") {
