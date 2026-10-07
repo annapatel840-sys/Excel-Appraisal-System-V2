@@ -69,7 +69,7 @@ function priorRecordFor(rec, priorMap) {
   return priorMap?.get(rec) || null;
 }
 function fmtMoney(v) {
-  return v == null ? "—" : "₹" + Math.round(v).toLocaleString("en-IN");
+  return v == null ? "—" : Math.round(v).toLocaleString("en-IN");
 }
 function yoyPctFor(r, baseKey, priorMap) {
   const prior = priorRecordFor(r, priorMap);
