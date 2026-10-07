@@ -97,6 +97,11 @@ const PAYROLL_FIELDS = {
   newRB: "new_rb",
   hikeAmt: "hike_amt",
   tpbNext: "target_pb_next_year",
+  totalPB: "total_pb",
+  totalBonus: "total_bonus",
+  hikePct: "hike_pct",
+  newBasePay: "new_base_pay",
+  totalCtc: "total_ctc",
   promo: "promo",
   newTitle: "new_title",
   remarks: "remarks",
@@ -114,6 +119,11 @@ const NUMERIC_FIELDS = new Set([
   "newRB",
   "hikeAmt",
   "tpbNext",
+  "totalPB",
+  "totalBonus",
+  "hikePct",
+  "newBasePay",
+  "totalCtc",
 ]);
 const MAX_TEXT_LENGTH = {
   empName: 100,
@@ -367,11 +377,18 @@ function toPayrollRow(input, cycleId, batchId, fileName) {
     }
   });
 
-  row.total_pb = row.alloc_pb + row.new_pb;
-  row.total_bonus = row.total_pb + row.new_rb;
-  row.hike_pct = row.base_pay > 0 ? Number(((row.hike_amt / row.base_pay) * 100).toFixed(4)) : 0;
-  row.new_base_pay = row.base_pay + row.hike_amt;
-  row.total_ctc = row.new_base_pay + row.total_bonus;
+  // Calculated values are accepted from corrected historical files when
+  // supplied. Blank calculated cells are derived from the entry values.
+  if (input.totalPB === undefined || input.totalPB === null || String(input.totalPB).trim() === "")
+    row.total_pb = row.alloc_pb + row.new_pb;
+  if (input.totalBonus === undefined || input.totalBonus === null || String(input.totalBonus).trim() === "")
+    row.total_bonus = row.total_pb + row.new_rb;
+  if (input.hikePct === undefined || input.hikePct === null || String(input.hikePct).trim() === "")
+    row.hike_pct = row.base_pay > 0 ? Number(((row.hike_amt / row.base_pay) * 100).toFixed(4)) : 0;
+  if (input.newBasePay === undefined || input.newBasePay === null || String(input.newBasePay).trim() === "")
+    row.new_base_pay = row.base_pay + row.hike_amt;
+  if (input.totalCtc === undefined || input.totalCtc === null || String(input.totalCtc).trim() === "")
+    row.total_ctc = row.new_base_pay + row.total_bonus;
   return row;
 }
 
