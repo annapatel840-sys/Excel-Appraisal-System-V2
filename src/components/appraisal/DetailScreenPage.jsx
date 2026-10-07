@@ -294,15 +294,15 @@ function useFitScale(depKey) {
    SMALL PRESENTATIONAL COMPONENTS
    ------------------------------------------------------------------ */
 function BudgetBanner({ notice, onGotIt, onViewBudget }) {
-  const [notesOpen, setNotesOpen] = useState(false);
-  const [notesText, setNotesText] = useState("");
-  const [notes, setNotes] = useState(() => readDetailNotes());
+  const [detailNotesOpen, setDetailNotesOpen] = useState(false);
+  const [detailNotesText, setDetailNotesText] = useState("");
+  const [detailNotes, setNotes] = useState(() => readDetailNotes());
 
   const saveDetailNote = () => {
-    const trimmed = notesText.trim();
+    const trimmed = detailNotesText.trim();
     if (!trimmed) return;
     const next = [
-      ...notes,
+      ...detailNotes,
       {
         id: String(Date.now()),
         at: formatDetailNoteTime(),
@@ -312,11 +312,11 @@ function BudgetBanner({ notice, onGotIt, onViewBudget }) {
     ];
     setNotes(next);
     window.localStorage.setItem(DETAIL_NOTES_KEY, JSON.stringify(next));
-    setNotesText("");
+    setDetailNotesText("");
   };
 
   const deleteDetailNote = (id) => {
-    const next = notes.filter((note) => note.id !== id);
+    const next = detailNotes.filter((note) => note.id !== id);
     setNotes(next);
     window.localStorage.setItem(DETAIL_NOTES_KEY, JSON.stringify(next));
   };
@@ -355,26 +355,26 @@ function BudgetBanner({ notice, onGotIt, onViewBudget }) {
           <div className="relative">
             <button
               type="button"
-              onClick={() => setNotesOpen((previous) => !previous)}
+              onClick={() => setDetailNotesOpen((previous) => !previous)}
               className="rounded border px-3 py-1 font-semibold"
               style={{ borderColor: "#C4CED6", background: "#fff", color: INK }}
             >
-              ✎ My notes{notes.length > 0 ? ` (${notes.length})` : ""}
+              ✎ My detailNotes{detailNotes.length > 0 ? ` (${detailNotes.length})` : ""}
             </button>
-            {notesOpen && (
+            {detailNotesOpen && (
               <div
                 className="absolute right-0 top-full z-[300] mt-1.5 w-[380px] rounded-xl border bg-white p-3 text-left shadow-lg"
                 style={{ borderColor: LINE, color: INK }}
               >
                 <div className="mb-2 flex items-center justify-between">
-                  <b>My notes</b>
+                  <b>My detailNotes</b>
                   <span className="text-[10.5px]" style={{ color: MUTED }}>
                     Saved in this browser only
                   </span>
                 </div>
                 <textarea
-                  value={notesText}
-                  onChange={(event) => setNotesText(event.target.value)}
+                  value={detailNotesText}
+                  onChange={(event) => setDetailNotesText(event.target.value)}
                   placeholder="Write a note…"
                   className="min-h-[80px] w-full resize-y rounded border p-2 text-[12px] outline-none"
                   style={{ borderColor: "#D1D5DB" }}
@@ -382,7 +382,7 @@ function BudgetBanner({ notice, onGotIt, onViewBudget }) {
                 <div className="mt-2 flex justify-end gap-1.5">
                   <button
                     type="button"
-                    onClick={() => setNotesText("")}
+                    onClick={() => setDetailNotesText("")}
                     className="rounded border px-2.5 py-1 text-[11.5px] font-semibold"
                     style={{ borderColor: "#D1D5DB" }}
                   >
@@ -397,9 +397,9 @@ function BudgetBanner({ notice, onGotIt, onViewBudget }) {
                     Save note
                   </button>
                 </div>
-                {notes.length > 0 && (
+                {detailNotes.length > 0 && (
                   <div className="mt-2 max-h-[180px] space-y-1.5 overflow-auto">
-                    {notes.map((note) => (
+                    {detailNotes.map((note) => (
                       <div key={note.id} className="rounded border p-2" style={{ borderColor: LINE }}>
                         <div className="text-[10px]" style={{ color: MUTED }}>
                           {note.at} · {note.ctx}
