@@ -6,7 +6,7 @@ import { useBudget } from "@/lib/budget-store";
 import { TechEdBudgetDistribution } from "./TechEdBudgetDistribution";
  
 const money = (value) =>
-  "₹ " + ((Number(value) || 0) / 100000).toFixed(2) + " L";
+  ((Number(value) || 0) / 100000).toFixed(2) + " L";
  
 const pct = (value) => (Number(value) || 0).toFixed(1) + "%";
  
