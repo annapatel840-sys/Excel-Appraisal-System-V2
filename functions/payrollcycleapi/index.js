@@ -405,7 +405,10 @@ function mapPayroll(row, cycleById) {
     id: rowId(row),
     empId: row.emp_id || "",
     cycleId,
-    cycle: cycle?.name || "",
+    // Payroll table stores the cycle label in appraisal_year.
+    // Keep the frontend "cycle" field mapped directly to that backend column
+    // so Payroll Data and CSV export show Apr-24 / Apr-25 / Apr-26 correctly.
+    cycle: row.appraisal_year || cycle?.name || "",
     batch: row.source_batch || "",
     empName: row.emp_name || "",
     designation: row.designation || "",
