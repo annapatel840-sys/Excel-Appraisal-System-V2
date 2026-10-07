@@ -418,7 +418,7 @@ export function buildEmployees(count = 250) {
 // ============================================================
 
 export const inr = (n) =>
-  "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN");
+  Math.round(Number(n) || 0).toLocaleString("en-IN");
 
 export const pct = (n) => `${Number(n || 0).toFixed(1)}%`;
 
