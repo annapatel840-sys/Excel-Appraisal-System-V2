@@ -40,6 +40,32 @@ const BUDGET_NOTICE_PLACEHOLDER = {
   since: "01-Sep-26",
 };
 
+const DETAIL_NOTES_KEY = "appraisal.myNotes";
+
+const readDetailNotes = () => {
+  try {
+    const raw = window.localStorage.getItem(DETAIL_NOTES_KEY);
+    return raw === null ? [] : JSON.parse(raw);
+  } catch {
+    return [];
+  }
+};
+
+const formatDetailNoteTime = () => {
+  const d = new Date();
+  return (
+    d.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }) +
+    " " +
+    String(d.getHours()).padStart(2, "0") +
+    ":" +
+    String(d.getMinutes()).padStart(2, "0")
+  );
+};
+
 // Fields the screen can edit; used only to paint the "Edited this cycle" green.
 const EDIT_FIELDS = [
   "hikeAmount",
@@ -49,7 +75,7 @@ const EDIT_FIELDS = [
   "targetPBNextYear",
   "targetPBCriteria",
   "newTitle",
-  "atRisk",
+  "compManagerRemarks",
 ];
 
 /* ------------------------------------------------------------------
@@ -289,14 +315,86 @@ function BudgetBanner({ notice, onGotIt, onViewBudget }) {
             Be aware: your team budget has changed from {notice.from} to {notice.to} —{" "}
             {notice.changes} team changes since allocation on {notice.since}.
           </span>
-          <button
-            type="button"
-            onClick={onViewBudget}
-            className="rounded border px-3 py-1 font-semibold"
-            style={{ borderColor: "#C4CED6", background: "#fff", color: INK }}
-          >
-            View budget
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={onViewBudget}
+              className="rounded border px-3 py-1 font-semibold"
+              style={{ borderColor: "#C4CED6", background: "#fff", color: INK }}
+            >
+              View budget
+            </button>
+          </div>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setNotesOpen((previous) => !previous)}
+              className="rounded border px-3 py-1 font-semibold"
+              style={{ borderColor: "#C4CED6", background: "#fff", color: INK }}
+            >
+              ✎ My notes{notes.length > 0 ? ` (${notes.length})` : ""}
+            </button>
+            {notesOpen && (
+              <div
+                className="absolute right-0 top-full z-[300] mt-1.5 w-[380px] rounded-xl border bg-white p-3 text-left shadow-lg"
+                style={{ borderColor: LINE, color: INK }}
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <b>My notes</b>
+                  <span className="text-[10.5px]" style={{ color: MUTED }}>
+                    Saved in this browser only
+                  </span>
+                </div>
+                <textarea
+                  value={notesText}
+                  onChange={(event) => setNotesText(event.target.value)}
+                  placeholder="Write a note…"
+                  className="min-h-[80px] w-full resize-y rounded border p-2 text-[12px] outline-none"
+                  style={{ borderColor: "#D1D5DB" }}
+                />
+                <div className="mt-2 flex justify-end gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setNotesText("")}
+                    className="rounded border px-2.5 py-1 text-[11.5px] font-semibold"
+                    style={{ borderColor: "#D1D5DB" }}
+                  >
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveDetailNote}
+                    className="rounded px-2.5 py-1 text-[11.5px] font-semibold text-white"
+                    style={{ background: NAVY }}
+                  >
+                    Save note
+                  </button>
+                </div>
+                {notes.length > 0 && (
+                  <div className="mt-2 max-h-[180px] space-y-1.5 overflow-auto">
+                    {notes.map((note) => (
+                      <div key={note.id} className="rounded border p-2" style={{ borderColor: LINE }}>
+                        <div className="text-[10px]" style={{ color: MUTED }}>
+                          {note.at} · {note.ctx}
+                        </div>
+                        <div className="mt-0.5 whitespace-pre-wrap text-[11.5px]">
+                          {note.text}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => deleteDetailNote(note.id)}
+                          className="mt-1 text-[10.5px] font-semibold"
+                          style={{ color: RED }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <button
             type="button"
             onClick={onGotIt}
@@ -540,7 +638,10 @@ export function DetailScreenPage({
   const [noticeOpen, setNoticeOpen] = useState(true);
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(true);
-  const [cardWide, setCardWide] = useState(false);
+  const [feedbackWidth, setFeedbackWidth] = useState(320);
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesText, setNotesText] = useState("");
+  const [notes, setNotes] = useState(() => readDetailNotes());
   const [fbTab, setFbTab] = useState("manager");
   const baselineRef = useRef({});
 
@@ -851,6 +952,31 @@ export function DetailScreenPage({
     else window.location.assign(BUDGET_PATH);
   };
 
+  const saveDetailNote = () => {
+    const trimmed = notesText.trim();
+    if (!trimmed) return;
+    const next = [
+      ...notes,
+      {
+        id: String(Date.now()),
+        at: formatDetailNoteTime(),
+        text: trimmed,
+        ctx: employee
+          ? `${employee.name} (${employee.empId}) · ${CURRENT_CYCLE}`
+          : `Detailed Screen · ${CURRENT_CYCLE}`,
+      },
+    ];
+    setNotes(next);
+    window.localStorage.setItem(DETAIL_NOTES_KEY, JSON.stringify(next));
+    setNotesText("");
+  };
+
+  const deleteDetailNote = (id) => {
+    const next = notes.filter((note) => note.id !== id);
+    setNotes(next);
+    window.localStorage.setItem(DETAIL_NOTES_KEY, JSON.stringify(next));
+  };
+
   // Blur first so the field being edited commits, then move.
   const goTo = (next) => {
     if (document.activeElement && document.activeElement.blur) {
@@ -866,7 +992,7 @@ export function DetailScreenPage({
   const cols = [
     "minmax(0,2.25fr)",
     metricsOpen ? "minmax(150px,0.6fr)" : "34px",
-    cardOpen ? (cardWide ? "minmax(280px,0.95fr)" : "minmax(240px,0.8fr)") : "34px",
+    cardOpen ? `minmax(240px, ${feedbackWidth}px)` : "34px",
   ].join(" ");
 
   // Title options: always include the current designation.
@@ -1227,24 +1353,21 @@ export function DetailScreenPage({
                       </select>
                     </CompRow>
 
-                    {/* At Risk */}
+                    {/* Comp Manager Remarks */}
                     <CompRow
-                      label="At Risk"
-                      current={dash(baselineRef.current[employee.id]?.atRisk)}
+                      label="Comp Manager Remarks"
+                      current={dash(baselineRef.current[employee.id]?.compManagerRemarks)}
                       diffText=""
                       muted
                     >
-                      <select
-                        key={`${employee.id}-atRisk`}
-                        value={blankStr(employee.atRisk)}
-                        onChange={(e) => commit("atRisk", e.target.value)}
-                        className="h-[24px] w-full min-w-0 rounded border px-1 text-[11.5px] outline-none focus:border-[#0B7A75]"
-                        style={fieldStyle(isEdited("atRisk"))}
-                      >
-                        <option value="">—</option>
-                        <option value="Yes">Yes</option>
-                        <option value="No">No</option>
-                      </select>
+                      <textarea
+                        key={`${employee.id}-compManagerRemarks`}
+                        defaultValue={blankStr(employee.compManagerRemarks)}
+                        onBlur={(e) => commit("compManagerRemarks", e.target.value)}
+                        rows={2}
+                        className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[11.5px] outline-none focus:border-[#0B7A75]"
+                        style={fieldStyle(isEdited("compManagerRemarks"))}
+                      />
                     </CompRow>
                   </div>
                 </div>
@@ -1363,15 +1486,26 @@ export function DetailScreenPage({
                       <span className="flex-1 text-center text-[14px] font-extrabold">
                         Feedback
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => setCardWide((w) => !w)}
-                        aria-label="Expand feedback"
-                        className="h-[28px] w-[34px] rounded border"
-                        style={{ borderColor: "#4A6580", color: "#fff", background: "transparent" }}
-                      >
-                        ⤢
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => setFeedbackWidth((w) => Math.max(240, w - 40))}
+                          aria-label="Decrease feedback panel width"
+                          className="h-[28px] w-[28px] rounded border font-bold"
+                          style={{ borderColor: "#4A6580", color: "#fff", background: "transparent" }}
+                        >
+                          −
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setFeedbackWidth((w) => Math.min(620, w + 40))}
+                          aria-label="Increase feedback panel width"
+                          className="h-[28px] w-[28px] rounded border font-bold"
+                          style={{ borderColor: "#4A6580", color: "#fff", background: "transparent" }}
+                        >
+                          +
+                        </button>
+                      </div>
                       <button
                         type="button"
                         onClick={() => setCardOpen(false)}
