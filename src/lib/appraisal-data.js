@@ -290,7 +290,7 @@ export const COLUMNS = [
   },
   {
     key: "currentAnnualBasePay",
-    label: "Base pay",
+    label: "Current Annual Base Pay",
     type: "currency",
     editable: false,
     width: 125,
@@ -342,7 +342,7 @@ export const COLUMNS = [
   },
   {
     key: "targetPBAllocatedForMay",
-    label: "Target PB allocated",
+    label: "Target PB Allocated",
     type: "currency",
     editable: false,
     width: 145,
