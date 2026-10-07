@@ -38,7 +38,7 @@ import { EligibilityModal } from "@/components/employee-master/EligibilityModal"
 import { ImportPreviewModal } from "@/components/employee-master/ImportPreviewModal";
 import { AppraisalCycleMasterPage } from "@/components/employee-master/AppraisalCycleMasterPage";
 import { PayrollDataPage } from "@/components/employee-master/PayrollDataPage";
-import { PayrollUploadPage } from "@/components/employee-master/PayrollUploadPage";
+import { UploadPage } from "@/components/employee-master/UploadPage";
 import { TeamChangesPage } from "@/components/employee-master/TeamChangesPage";
 import { BudgetMasterPage } from "@/components/employee-master/BudgetMasterPage";
 import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
@@ -2323,7 +2323,7 @@ export function EmployeeMaster() {
               className={activeTab === "payroll-upload" ? "active" : ""}
               onClick={() => setActiveTab("payroll-upload")}
             >
-              Payroll Upload
+              Upload
             </button>
           )}
           {isTabVisible("team-changes") && (
@@ -2570,7 +2570,7 @@ export function EmployeeMaster() {
               overflowX: "hidden",
             }}
           >
-            <PayrollUploadPage />
+            <UploadPage />
           </div>
         )}
         {isTabVisible("team-changes") && activeTab === "team-changes" && (
