@@ -364,13 +364,13 @@ const YOY_FIELDS = {
 // ============================================================
 
 const HISTORY_METRIC_COLUMNS = [
-  { key: "basePay", label: "Curr Base Pay" },
+  { key: "basePay", label: "Current Base Pay" },
   { key: "joiningBonus", label: "Joining Bonus" },
-  { key: "performanceBonus", label: "Perf. Bonus" },
+  { key: "performanceBonus", label: "Performance Bonus" },
   { key: "retentionBonus", label: "Retention Bonus" },
   { key: "totalBonus", label: "Total Bonus" },
   { key: "hikeAmount", label: "Hike Amount" },
-  { key: "newCTC", label: "Total CTC" },
+  { key: "newCTC", label: "Total CTC with Rewards" },
   { key: "targetPB", label: "Target PB" },
   { key: "newBasePay", label: "New Base Pay" },
 ];
