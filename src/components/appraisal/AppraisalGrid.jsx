@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { Check, ChevronLeft, ChevronRight, History, X } from "lucide-react";
+import { createPortal } from "react-dom";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
