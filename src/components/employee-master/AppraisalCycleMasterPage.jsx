@@ -11,18 +11,23 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 /* ============================================================
-   CONFIG
+   CONFIG  (Appraisal_Cycle_v15 reference)
    ============================================================ */
 
 const TYPES = ["Annual", "Mid-Year", "Exceptional", "New Joiner"];
-// Default process per cycle type (HR Config in the reference). UI only.
+// HR Config: default process per cycle type. HR can change it at set up.
 const DEFAULT_PROCESS = {
   Annual: "Annual",
   "Mid-Year": "Annual",
   Exceptional: "Exceptional",
   "New Joiner": "None",
 };
-// Reference rule: no new Annual-process cycle until the previous one is archived.
+const PROCESSES = [
+  ["Annual", "Annual"],
+  ["Exceptional", "Exceptional"],
+  ["None", "No process"],
+];
+// No new Annual-process cycle until the previous one is archived.
 const ENFORCE_ONE_OPEN_ANNUAL = true;
 
 const MON = [
@@ -72,11 +77,13 @@ const EDESC = {
 };
 const BDESC = {
   activate:
-    "Starts the cycle and triggers the Eligibility List. From now on Employee Master changes go to the Change list.",
+    "Starts the cycle and triggers the Eligibility List. Needs the Employee Master updated and payroll differences resolved or ignored. From now on Employee Master changes go to the Change list.",
   close:
     "Closes the cycle (Active → Closed). A window shows what is still pending; you choose Close anyway or Don't close yet.",
   archive:
-    "The cycle becomes read-only. A window shows what is still pending first.",
+    "Final values go to Compensation History and the Appraisal Sheet and Detail are cleared. The cycle becomes read-only and cannot be reopened. A window shows what is still pending first.",
+  generate:
+    "One row per eligible employee; feeds the Detail screen. Comp Manager defaults to the Tech ED of each employee; Delegation can change it later. Runs once; after it, any change goes to the Change list. Nothing blocks this step.",
 };
 const BTN = {
   Upcoming: { k: "activate", name: "Activate", to: "Active" },
@@ -84,7 +91,7 @@ const BTN = {
   Closed: { k: "archive", name: "Archive", to: "Archived" },
 };
 
-// Step buttons -> Employee Master page tab (via onNavigate)
+// Step / pending buttons -> tab key passed to onNavigate (EmployeeMaster decides what exists).
 const NAV_TAB = {
   "go-em": "roster",
   "go-up-em": "roster",
@@ -92,23 +99,82 @@ const NAV_TAB = {
   "go-up-pay": "payroll-upload",
   "go-el": "eligibility",
   "go-dl": "delegation",
+  "go-cl": "change-list",
+  "go-mm": "change-list",
+  "go-ap": "appraisal-sheet",
+  "go-lt": "letters",
+  "go-up-fr": "feedback-upload",
+};
+const PEND_NAV = {
+  rt: "go-ap",
+  lt: "go-lt",
+  co: "go-ap",
+  cl: "go-cl",
+  mm: "go-mm",
+  el: "go-el",
 };
 
-const nextBtn = (c) =>
-  !c || c.archived || c.process === "None" ? null : BTN[c.status] || null;
+/* ============================================================
+   PURE HELPERS
+   ============================================================ */
 
-const rule = (label, ok, txt, kind) => ({
+const statusOf = (c) => (c.archived ? "Archived" : c.status);
+const isOpenCycle = (c) =>
+  ["Upcoming", "Active", "Closed", "Open"].includes(statusOf(c));
+const isHidden = (c) => c.status === "Cancelled" || c.status === "Deleted";
+const nextBtn = (c) =>
+  !c || c.archived || c.process === "None" || isHidden(c)
+    ? null
+    : BTN[c.status] || null;
+
+const rule = (label, ok, txt, act = "") => ({
   label,
   ok,
   txt,
-  kind: kind || (ok ? "ok" : "no"),
+  kind: ok ? "ok" : "no",
+  act,
 });
+const allOk = (rs) => rs.every((x) => x.ok);
+const missingPay = (w) =>
+  Math.max(0, (w.emCount || 0) - (w.payHave || 0) - (w.payIgnored || 0));
+
+function Modal({ title, onClose, children, footer, error, wideModal }) {
+  return (
+    <div className="acx-ov">
+      <div className="acx-md" style={wideModal ? { width: 560 } : undefined}>
+        <div className="mh">
+          <b>{title}</b>
+          <button type="button" className="x" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </div>
+        <div className="mb">{children}</div>
+        {error && <div className="acx-err">{error}</div>}
+        <div className="mf">{footer}</div>
+      </div>
+    </div>
+  );
+}
 
 /* ============================================================
    COMPONENT
+
+   Optional props (all safe to omit):
+   - onNavigate(tabKey)       open another screen / tab
+   - pendingItems             [{k,label,n,sub}] for the selected cycle
+   - cycleStats               { [cycleId]: { emUpdated, emCount, emNew, emChanged,
+                                payHave, payIgnored, notIncluded, eligible,
+                                sheetGenerated, sheetRows,
+                                letters:{gen,toSend,sent,dropped} } }
+   - onGenerateSheet(cycle)   async; called by "Generate Appraisal Sheet"
    ============================================================ */
 
-export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
+export function AppraisalCycleMasterPage({
+  onNavigate,
+  pendingItems = [],
+  cycleStats = null,
+  onGenerateSheet,
+}) {
   const user = useCatalystUser();
   const access = useAccess();
   const canManageCycles =
@@ -129,7 +195,7 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
   const [sel, setSel] = useState(null);
   const [type, setType] = useState("Annual");
   const [q, setQ] = useState("");
-  const [showArchived, setShowArchived] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
   const [page, setPage] = useState(1);
   const [size, setSize] = useState(5);
 
@@ -163,18 +229,28 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
 
   // modals
   const [editCycle, setEditCycle] = useState(null);
-  const [editForm, setEditForm] = useState({ name: "", start: "", end: "" });
+  const [editForm, setEditForm] = useState({
+    process: "Annual",
+    effective: "",
+    start: "",
+    end: "",
+  });
   const [remarksCycle, setRemarksCycle] = useState(null);
   const [remarksText, setRemarksText] = useState("");
+  const [cancelCycle, setCancelCycle] = useState(null);
+  const [cancelText, setCancelText] = useState("");
   const [newCycleOpen, setNewCycleOpen] = useState(false);
-  const [newForm, setNewForm] = useState({
+  const thisYear = new Date().getFullYear();
+  const blankNew = {
     type: "Annual",
-    from: "",
-    to: "",
+    year: thisYear,
+    process: "Annual",
+    effective: "",
     start: "",
     end: "",
     remarks: "",
-  });
+  };
+  const [newForm, setNewForm] = useState(blankNew);
   const [confirm, setConfirm] = useState(null); // { kind, cycle }
   const [confirmRemark, setConfirmRemark] = useState("");
   const [modalError, setModalError] = useState("");
@@ -216,12 +292,18 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
     };
   }, [loadData]);
 
-  // add the reference-screen fields that the backend does not store
+  // Use backend values when present, otherwise derive them from the name.
   const cycles = useMemo(
     () =>
       rawCycles.map((c) => {
-        const t = typeOf(c.name);
-        return { ...c, type: t, process: DEFAULT_PROCESS[t] };
+        const t = c.type || typeOf(c.name);
+        return {
+          ...c,
+          type: t,
+          process: c.process || DEFAULT_PROCESS[t],
+          effective: c.effective || c.start || "",
+          cancelReason: c.cancelReason || "",
+        };
       }),
     [rawCycles],
   );
@@ -230,33 +312,34 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
     () => cycles.find((c) => c.id === sel) || null,
     [cycles, sel],
   );
+  const statsFor = (c) => (c && cycleStats && cycleStats[c.id]) || null;
 
   const gridRows = useMemo(() => {
     const s = q.toLowerCase();
     return cycles
       .filter((c) => c.type === type)
-      .filter((c) => showArchived || !c.archived)
+      .filter((c) => showHidden || !isHidden(c))
       .filter(
         (c) =>
           !s ||
-          `${c.name} ${c.id} ${c.process} ${c.status}`
+          `${c.name} ${c.id} ${c.process} ${statusOf(c)}`
             .toLowerCase()
             .includes(s),
       )
       .sort(
         (a, b) =>
-          (a.archived ? 1 : 0) - (b.archived ? 1 : 0) ||
+          (isOpenCycle(a) ? 0 : 1) - (isOpenCycle(b) ? 0 : 1) ||
           String(b.start || "").localeCompare(String(a.start || "")),
       );
-  }, [cycles, type, showArchived, q]);
+  }, [cycles, type, showHidden, q]);
 
   // keep a valid selection
   useEffect(() => {
     if (!cycles.length) return;
     if (!current || current.type !== type) {
       const first =
-        cycles.filter((c) => c.type === type && !c.archived)[0] ||
-        cycles.find((c) => c.type === type);
+        cycles.find((c) => c.type === type && isOpenCycle(c)) ||
+        cycles.find((c) => c.type === type && !isHidden(c));
       if (first) setSel(first.id);
     }
   }, [cycles, type, current]);
@@ -266,8 +349,8 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
   const pageRows = gridRows.slice((safePage - 1) * size, safePage * size);
 
   const typeCount = (t) => {
-    const a = cycles.filter((c) => c.type === t);
-    return { open: a.filter((c) => !c.archived).length, total: a.length };
+    const a = cycles.filter((c) => c.type === t && c.status !== "Deleted");
+    return { open: a.filter(isOpenCycle).length, total: a.length };
   };
 
   const remarksHistory = useMemo(
@@ -289,26 +372,49 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
 
   /* ---------------- rules ---------------- */
 
-  const findOverlappingCycle = (start, end, excludeId) =>
-    cycles.find(
-      (c) =>
-        c.id !== excludeId &&
-        c.start &&
-        c.end &&
-        start <= c.end &&
-        end >= c.start,
+  const otherAnnualRunning = (c) =>
+    cycles.some(
+      (x) =>
+        x.id !== c.id &&
+        x.process === "Annual" &&
+        x.status === "Active" &&
+        !x.archived,
     );
 
+  // Activate: Employee Master updated + payroll resolved (Annual process, when
+  // data is supplied) + no other Annual cycle running + dates set.
   const activateRules = (c) => {
     const r = [];
+    const w = statsFor(c);
     if (c.process === "Annual") {
-      const other = cycles.some(
-        (x) =>
-          x.id !== c.id &&
-          x.process === "Annual" &&
-          x.status === "Active" &&
-          !x.archived,
-      );
+      if (w) {
+        const m = missingPay(w);
+        r.push(
+          rule(
+            "Employee Master updated for this cycle",
+            !!w.emUpdated,
+            w.emUpdated
+              ? `${w.emCount} employees · ${w.emNew} new · ${w.emChanged} changed`
+              : "Not met: update the Employee Master for this cycle",
+            w.emUpdated ? "" : "go-em",
+          ),
+        );
+        r.push(
+          rule(
+            "Payroll differences resolved or ignored",
+            !!w.emUpdated && m === 0,
+            !w.emUpdated
+              ? "Not met: update the Employee Master first"
+              : m === 0
+                ? w.payIgnored
+                  ? `All clear · ${w.payIgnored} ignored in Change list & Mismatch`
+                  : `All ${w.emCount} employees have payroll data`
+                : `Not met: ${m} employees have no payroll data — resolve or ignore them in Change list & Mismatch`,
+            w.emUpdated && m > 0 ? "go-mm" : "",
+          ),
+        );
+      }
+      const other = otherAnnualRunning(c);
       r.push(
         rule(
           "No other cycle on the Annual process running",
@@ -319,19 +425,18 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
         ),
       );
     }
-    const dOk = !!(c.start && c.end && c.end > c.start);
+    const dOk = !!(c.effective && c.start && c.end && c.end > c.start);
     r.push(
       rule(
         "Dates set",
         dOk,
         dOk
-          ? `Start ${formatDate(c.start)} · Close ${formatDate(c.end)}`
-          : "Start and close dates are required; close must be after start",
+          ? `Effective ${formatDate(c.effective)} · Start ${formatDate(c.start)} · Close ${formatDate(c.end)}`
+          : "Effective, start and close dates are required; close must be after start",
       ),
     );
     return r;
   };
-  const allOk = (rs) => rs.every((x) => x.ok);
 
   /* ---------------- mutations (existing API) ---------------- */
 
@@ -364,7 +469,9 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
     return true;
   };
 
-  const runStep = async (c, kind, remark) => {
+  const snapshot = (items) => items.map((x) => `${x.label} ${x.n}`).join(", ");
+
+  const runStep = async (c, kind, remark, pendingSnap) => {
     let ok = false;
     if (kind === "activate")
       ok = await mutateCycle(
@@ -394,13 +501,6 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
         "Cycle archived",
         `${c.name} was archived.`,
       );
-    else if (kind === "unarchive")
-      ok = await mutateCycle(
-        `cycles/archive/${c.id}`,
-        { archived: false },
-        "Cycle unarchived",
-        `${c.name} was unarchived.`,
-      );
     else if (kind === "delete")
       ok = await mutateCycle(
         `cycles/delete/${c.id}`,
@@ -408,23 +508,26 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
         "Cycle deleted",
         `${c.name} was deleted.`,
       );
-    if (ok && remark) {
-      const label = {
-        activate: "Activate",
-        close: "Close",
-        archive: "Archive",
-        reopen: "Reopen",
-      }[kind];
-      if (label) {
-        await mutateCycle(
-          `cycles/remarks/${c.id}`,
-          {
-            remarks: `${c.remarks ? c.remarks + " | " : ""}${label}: ${remark}`,
-          },
-          "Remark saved",
-          `Your remark was added to ${c.name}.`,
-        );
-      }
+
+    const label = {
+      activate: "Activate",
+      close: "Close",
+      archive: "Archive",
+      reopen: "Reopen",
+    }[kind];
+    const text = [
+      pendingSnap ? `Pending at that time: ${pendingSnap}` : "",
+      remark ? `Remark: ${remark}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    if (ok && label && text) {
+      await mutateCycle(
+        `cycles/remarks/${c.id}`,
+        { remarks: `${c.remarks ? c.remarks + " | " : ""}${label}: ${text}` },
+        "Remark saved",
+        `Your remark was added to ${c.name}.`,
+      );
     }
     return ok;
   };
@@ -441,7 +544,36 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
       setModalError("These checks are not met.");
       return;
     }
-    const ok = await runStep(cycle, kind, confirmRemark.trim());
+    if (kind === "generate") {
+      if (!onGenerateSheet) {
+        setModalError("Generate Appraisal Sheet is not connected yet.");
+        return;
+      }
+      setSaving(true);
+      try {
+        await onGenerateSheet(cycle);
+        showBanner(
+          "Appraisal Sheet generated",
+          `${cycle.name}: sheet created.`,
+        );
+        setConfirm(null);
+      } catch (error) {
+        setModalError(error?.message || "Unable to generate the sheet.");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+    const items =
+      (kind === "close" || kind === "archive") && cycle.process === "Annual"
+        ? pendingItems.filter((x) => x.n > 0)
+        : [];
+    const ok = await runStep(
+      cycle,
+      kind,
+      confirmRemark.trim(),
+      snapshot(items),
+    );
     if (ok) setConfirm(null);
   };
 
@@ -453,27 +585,55 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
   const openEditCycle = (c) => {
     setModalError("");
     setEditCycle(c);
-    setEditForm({ name: c.name, start: c.start, end: c.end });
+    setEditForm({
+      process: c.process,
+      effective: c.effective || "",
+      start: c.start || "",
+      end: c.end || "",
+    });
   };
 
   const saveEditCycle = async () => {
-    const name = editForm.name.trim();
-    if (!name || name.length > 100 || !editForm.start || !editForm.end)
-      return setModalError(
-        "Cycle name (up to 100 characters), start date and end date are required.",
+    const f = editForm;
+    if (f.process !== "None") {
+      if (!f.effective || !f.start || !f.end)
+        return setModalError("All three dates are required.");
+      if (f.end <= f.start)
+        return setModalError("The close date must be after the start date.");
+    } else if (!f.effective) {
+      return setModalError("The effective date is required.");
+    }
+    if (
+      f.process === editCycle.process &&
+      f.effective === editCycle.effective &&
+      f.start === editCycle.start &&
+      f.end === editCycle.end
+    )
+      return setModalError("Nothing changed.");
+    if (f.process !== editCycle.process && f.process === "Annual") {
+      const o = cycles.find(
+        (x) =>
+          x.id !== editCycle.id &&
+          x.process === "Annual" &&
+          !x.archived &&
+          !isHidden(x),
       );
-    if (editForm.end <= editForm.start)
-      return setModalError("End date must be after start date.");
-    const ov = findOverlappingCycle(editForm.start, editForm.end, editCycle.id);
-    if (ov)
-      return setModalError(
-        `These dates overlap "${ov.name}" (${formatDate(ov.start)} – ${formatDate(ov.end)}). Cycles cannot overlap.`,
-      );
+      if (o)
+        return setModalError(
+          `${o.name} is already on the Annual process and not archived.`,
+        );
+    }
     const saved = await mutateCycle(
       `cycles/update/${editCycle.id}`,
-      { name, start: editForm.start, end: editForm.end },
+      {
+        name: editCycle.name,
+        process: f.process,
+        effective: f.effective,
+        start: f.start,
+        end: f.end,
+      },
       "Cycle updated",
-      `${name} was updated successfully.`,
+      `${editCycle.name} was updated successfully.`,
     );
     if (saved) setEditCycle(null);
   };
@@ -498,69 +658,111 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
     if (saved) setRemarksCycle(null);
   };
 
-  const generateCycleName = (t, start, end) => {
-    if (!t || !start || !end) return "";
-    const s = new Date(start + "T00:00:00");
-    const e = new Date(end + "T00:00:00");
-    if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return "";
-    const fy0 = s.getMonth() >= 3 ? s.getFullYear() : s.getFullYear() - 1;
-    return `${t} Appraisal FY${String(fy0).slice(-2)}-${String(fy0 + 1).slice(-2)}`;
+  const openCancel = (c) => {
+    setModalError("");
+    setCancelText("");
+    setCancelCycle(c);
+  };
+
+  const saveCancel = async () => {
+    const reason = cancelText.trim();
+    if (!reason) return setModalError("A reason is required.");
+    const saved = await mutateCycle(
+      `cycles/cancel/${cancelCycle.id}`,
+      { reason },
+      "Cycle cancelled",
+      `${cancelCycle.name} was cancelled.`,
+    );
+    if (saved) setCancelCycle(null);
+  };
+
+  const newName = (f) => {
+    const base = `${f.type} ${f.year}`;
+    const same = cycles.filter(
+      (x) =>
+        (x.name === base || x.name.startsWith(`${base} (`)) &&
+        x.status !== "Cancelled" &&
+        x.status !== "Deleted",
+    );
+    if (f.type === "Exceptional" && same.length)
+      return `${base} (${same.length + 1})`;
+    return base;
   };
 
   const createCycle = async () => {
-    const name = generateCycleName(newForm.type, newForm.from, newForm.to);
-    if (!name || name.length > 100 || !newForm.start || !newForm.end)
-      return setModalError(
-        "Cycle type, From/To, start date and end date are required.",
+    const f = newForm;
+    const name = newName(f);
+    if (f.process !== "None") {
+      if (!f.effective || !f.start || !f.end)
+        return setModalError(
+          "Effective, start and close dates are all required.",
+        );
+      if (f.end <= f.start)
+        return setModalError("The close date must be after the start date.");
+    } else if (!f.effective) {
+      return setModalError("The effective date is required.");
+    }
+    if (f.remarks.length > 10000)
+      return setModalError("Remarks cannot exceed 10,000 characters.");
+    if (f.type !== "Exceptional") {
+      const dup = cycles.find(
+        (x) =>
+          x.name === name && x.status !== "Cancelled" && x.status !== "Deleted",
       );
-    if (newForm.to <= newForm.from)
-      return setModalError("To date must be after From date.");
-    if (newForm.end <= newForm.start)
-      return setModalError("End date must be after start date.");
-    if (ENFORCE_ONE_OPEN_ANNUAL && DEFAULT_PROCESS[newForm.type] === "Annual") {
-      const prev = cycles.find((c) => c.process === "Annual" && !c.archived);
+      if (dup) return setModalError(`${name} already exists (ID ${dup.id}).`);
+    }
+    if (ENFORCE_ONE_OPEN_ANNUAL && f.process === "Annual") {
+      const prev = cycles.find(
+        (c) => c.process === "Annual" && !c.archived && !isHidden(c),
+      );
       if (prev)
         return setModalError(
           `Archive ${prev.name} first. No new cycle on the Annual process can be set up until the previous one is archived.`,
         );
     }
-    const ov = findOverlappingCycle(newForm.start, newForm.end, null);
-    if (ov)
-      return setModalError(
-        `These dates overlap "${ov.name}" (${formatDate(ov.start)} – ${formatDate(ov.end)}). Cycles cannot overlap.`,
-      );
-    if (newForm.remarks.length > 10000)
-      return setModalError("Remarks cannot exceed 10,000 characters.");
     const saved = await mutateCycle(
       "cycles/create",
       {
         name,
-        start: newForm.start,
-        end: newForm.end,
-        remarks: newForm.remarks.trim(),
+        type: f.type,
+        process: f.process,
+        effective: f.effective,
+        start: f.start,
+        end: f.end,
+        remarks: f.remarks.trim(),
       },
       "Cycle created",
-      `${name} was created as Upcoming.`,
+      `${name} was set up (${procLabel(f.process)}).`,
     );
     if (saved) {
-      setType(newForm.type);
+      setType(f.type);
       setNewCycleOpen(false);
-      setNewForm({
-        type: "Annual",
-        from: "",
-        to: "",
-        start: "",
-        end: "",
-        remarks: "",
-      });
+      setNewForm(blankNew);
     }
+  };
+
+  /* ---------------- navigation ---------------- */
+
+  const navTo = (id) => {
+    const tabKey = NAV_TAB[id];
+    if (tabKey && onNavigate) return onNavigate(tabKey);
+    showBanner("Not connected", "This step is not linked to a screen yet.");
+  };
+
+  const checkAct = (id, c) => {
+    if (id === "gen") return openConfirm("generate", c);
+    navTo(id);
   };
 
   /* ---------------- steps ---------------- */
 
   const stepRows = (c) => {
+    const w = statsFor(c);
     const act = c.status === "Active" || c.status === "Closed" || c.archived;
     const closed = c.status === "Closed" || c.archived;
+    const gen = !!w?.sheetGenerated;
+    const m = w ? missingPay(w) : 0;
+    const L = w?.letters || { gen: false, toSend: 0, sent: 0, dropped: 0 };
     const row = (g, id, title, sub, state, acts = []) => ({
       g,
       id,
@@ -569,22 +771,34 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
       state,
       acts,
     });
+
+    const emSub = w
+      ? w.emUpdated
+        ? `${w.emCount} employees · ${w.emNew} new · ${w.emChanged} changed`
+        : "Not updated for this cycle"
+      : "Update the Employee Master for this cycle";
+    const paySub = w
+      ? w.emUpdated
+        ? `${(w.payHave || 0) + (w.payIgnored || 0)} of ${w.emCount} employees${m ? ` · ${m} without payroll data` : ""}${w.payIgnored ? ` · ${w.payIgnored} ignored` : ""}`
+        : "Update the Employee Master first"
+      : "Upload payroll data and resolve differences";
+
     return [
       row(
         "Upcoming",
         "su",
         "Set up cycle",
-        `${c.name} · start ${formatDate(c.start)} · close ${formatDate(c.end)}`,
+        `${c.name} · effective ${formatDate(c.effective)} · start ${formatDate(c.start)} · close ${formatDate(c.end)}`,
         "ok",
       ),
       row(
         "Upcoming",
         "em",
         "Employee Master",
-        "Update the Employee Master for this cycle",
-        "pd",
+        emSub,
+        w ? (w.emUpdated ? "ok" : "wn") : "pd",
         [
-          { l: "Open ›", id: "go-em" },
+          { l: "Open differences ›", id: "go-cl" },
           { l: "Upload ›", id: "go-up-em" },
         ],
       ),
@@ -592,10 +806,10 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
         "Upcoming",
         "pay",
         "Payroll",
-        "Upload payroll data and resolve differences",
-        "pd",
+        paySub,
+        w ? (!w.emUpdated || m ? "wn" : "ok") : "pd",
         [
-          { l: "Open ›", id: "go-pay", link: true },
+          { l: "Open Mismatch ›", id: "go-mm", link: true },
           { l: "Upload ›", id: "go-up-pay" },
         ],
       ),
@@ -604,7 +818,9 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
         "el",
         "Eligibility",
         act
-          ? "Eligibility List runs when the cycle is activated"
+          ? w?.eligible != null
+            ? `${w.eligible} eligible of ${w.emCount} · New and Changed flagged`
+            : "Eligibility List runs when the cycle is activated"
           : "Runs when the cycle is activated",
         act ? "ok" : "lk",
         act ? [{ l: "Open ›", id: "go-el" }] : [],
@@ -624,7 +840,7 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
         "fr",
         "Feedback and Rating",
         act
-          ? "Upload as the data comes in · repeat any time"
+          ? "Upload as the data comes in · repeat any time · not required for any other step"
           : "Available after Activate",
         act ? "pd" : "lk",
         act ? [{ l: "Upload ›", id: "go-up-fr" }] : [],
@@ -633,24 +849,33 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
         "Active",
         "gn",
         "Generate Appraisal Sheet",
-        act ? "One row per eligible employee" : "Available after Activate",
-        act ? "pd" : "lk",
+        gen
+          ? `${w.sheetRows ?? ""} rows generated`
+          : act
+            ? "Not generated · nothing blocks this step"
+            : "Available after Activate",
+        gen ? "ok" : act ? "wn" : "lk",
+        act && !gen ? [{ l: "Generate", id: "gen" }] : [],
       ),
       row(
         "Active",
         "ap",
         "Appraisal",
-        act ? "Appraisal Sheet · Detail screen" : "Available after Generate",
-        act ? "pd" : "lk",
-        act ? [{ l: "Open ›", id: "go-ap" }] : [],
+        gen ? "Appraisal Sheet · Detail screen" : "Available after Generate",
+        gen ? "pd" : "lk",
+        gen ? [{ l: "Open ›", id: "go-ap" }] : [],
       ),
       row(
         "Active",
         "lt",
         "Letters",
-        act ? "Annual letters" : "Available after Generate",
-        act ? "pd" : "lk",
-        act ? [{ l: "Open ›", id: "go-lt" }] : [],
+        !gen
+          ? "Available after Generate"
+          : !L.gen
+            ? "Annual letters not generated yet"
+            : `${L.toSend} To send · ${L.sent} Sent · ${L.dropped} Dropped`,
+        !gen ? "lk" : L.gen && L.toSend === 0 ? "ok" : "wn",
+        gen ? [{ l: "Open ›", id: "go-lt" }] : [],
       ),
       row(
         "Closed",
@@ -660,16 +885,11 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
           ? "Open until the cutoff date set in HR Config · reason required · audited"
           : "Available after Close",
         closed ? "pd" : "lk",
+        closed ? [{ l: "Open ›", id: "go-ap" }] : [],
       ),
     ];
   };
   const ICON = { ok: "✓", wn: "!", lk: "🔒", pd: "●" };
-
-  const checkAct = (id) => {
-    const tabKey = NAV_TAB[id];
-    if (tabKey && onNavigate) return onNavigate(tabKey);
-    showBanner("Not connected", "This step is not linked to a screen yet.");
-  };
 
   /* ---------------- panel helpers ---------------- */
 
@@ -723,35 +943,114 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
     [audit, sel],
   );
   const isStep = (a) =>
-    /(activ|clos|archiv|reopen|status)/i.test(a.action || "");
+    /(activ|clos|archiv|reopen|status|generat)/i.test(a.action || "");
 
   /* ---------------- render pieces ---------------- */
 
   const stTagClass = (c) =>
-    c.archived
-      ? "v"
-      : { Active: "g1", Upcoming: "i", Closed: "a" }[c.status] || "gr";
-  const stText = (c) => (c.archived ? "Archived" : c.status);
+    ({ Active: "g1", Upcoming: "i", Open: "i", Closed: "a", Archived: "v" })[
+      statusOf(c)
+    ] || "gr";
+
+  const ruleRows = (rs) =>
+    rs.map((x, i) => (
+      <div key={i} className={`acx-vr ${x.kind}`}>
+        <span className="lb">{x.label}</span>
+        <span className="rs">
+          {x.kind === "ok" ? "✓ " : "✗ "}
+          {x.txt}
+        </span>
+        {x.act && !x.ok && (
+          <button
+            type="button"
+            className="acx-btn link"
+            onClick={() => navTo(x.act)}
+          >
+            Open ›
+          </button>
+        )}
+      </div>
+    ));
+
+  const renderMenu = (c) => {
+    const st = statusOf(c);
+    const w = statsFor(c);
+    const editable = ["Upcoming", "Active", "Closed", "Open"].includes(st);
+    const canCancel =
+      ["Upcoming", "Active", "Open"].includes(st) && !w?.letters?.gen;
+    const canDel =
+      ["Upcoming", "Open"].includes(st) &&
+      !(w && (w.emUpdated || (w.payHave || 0) > 0));
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="acx-btn sm"
+            disabled={saving}
+            onClick={() => setSel(c.id)}
+          >
+            Actions ▾
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="min-w-[200px]">
+          <DropdownMenuItem
+            disabled={saving || !editable}
+            onSelect={() => openEditCycle(c)}
+          >
+            Edit dates
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={saving || st === "Deleted"}
+            onSelect={() => openRemarks(c)}
+          >
+            Remarks
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={saving || !canCancel}
+            onSelect={() => openCancel(c)}
+          >
+            Cancel cycle
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={saving || !canDel}
+            className="text-red-600 focus:text-red-600"
+            onSelect={() => openConfirm("delete", c)}
+          >
+            Delete cycle
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={saving || st !== "Closed"}
+            onSelect={() => openConfirm("reopen", c)}
+          >
+            Reopen (Closed → Active)
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={saving || st !== "Closed"}
+            onSelect={() => openConfirm("archive", c)}
+          >
+            Archive
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  };
 
   const renderGrid = () => (
     <>
       <div className="acx-gwrap">
         <table className="acx-g">
           <colgroup>
-            <col style={{ width: 80 }} />
-            <col style={{ width: 190 }} />
-            <col style={{ width: 100 }} />
-            <col style={{ width: 110 }} />
-            <col style={{ width: 110 }} />
-            <col style={{ width: 100 }} />
-            <col style={{ width: 100 }} />
-            <col style={{ width: 110 }} />
+            {[70, 150, 100, 120, 120, 120, 100, 110, 110].map((w, i) => (
+              <col key={i} style={{ width: w }} />
+            ))}
           </colgroup>
           <thead>
             <tr>
               <th>ID</th>
               <th>Cycle</th>
               <th>Process</th>
+              <th>Effective date</th>
               <th>Start date</th>
               <th>Close date</th>
               <th>Status</th>
@@ -762,7 +1061,7 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
           <tbody>
             {pageRows.length === 0 && (
               <tr>
-                <td colSpan={8}>
+                <td colSpan={9}>
                   <div className="acx-empty">No {type} cycles match.</div>
                 </td>
               </tr>
@@ -772,7 +1071,7 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
               return (
                 <tr
                   key={c.id}
-                  className={c.id === sel ? "cur" : ""}
+                  className={`${c.id === sel ? "cur " : ""}${isHidden(c) ? "dim" : ""}`}
                   onClick={() => setSel(c.id)}
                 >
                   <td className="rl" title={String(c.id)}>
@@ -782,11 +1081,12 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
                   <td>
                     <span className="acx-tag pr">{procLabel(c.process)}</span>
                   </td>
+                  <td>{formatDate(c.effective)}</td>
                   <td>{formatDate(c.start)}</td>
                   <td>{formatDate(c.end)}</td>
                   <td>
                     <span className={`acx-tag ${stTagClass(c)}`}>
-                      {stText(c)}
+                      {statusOf(c)}
                     </span>
                   </td>
                   <td>
@@ -799,67 +1099,7 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
                     )}
                   </td>
                   <td onClick={(e) => e.stopPropagation()}>
-                    {canManageCycles ? (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <button
-                            type="button"
-                            className="acx-btn sm"
-                            disabled={saving}
-                            onClick={() => setSel(c.id)}
-                          >
-                            Actions ▾
-                          </button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent
-                          align="end"
-                          className="min-w-[200px]"
-                        >
-                          <DropdownMenuItem
-                            disabled={saving || c.archived}
-                            onSelect={() => openEditCycle(c)}
-                          >
-                            Edit dates
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={saving || c.archived}
-                            onSelect={() => openRemarks(c)}
-                          >
-                            Remarks
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={
-                              saving || c.status !== "Upcoming" || c.archived
-                            }
-                            className="text-red-600 focus:text-red-600"
-                            onSelect={() => openConfirm("delete", c)}
-                          >
-                            Delete cycle
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={
-                              saving || c.status !== "Closed" || c.archived
-                            }
-                            onSelect={() => openConfirm("reopen", c)}
-                          >
-                            Reopen (Closed → Active)
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            disabled={
-                              saving || (c.status !== "Closed" && !c.archived)
-                            }
-                            onSelect={() =>
-                              openConfirm(
-                                c.archived ? "unarchive" : "archive",
-                                c,
-                              )
-                            }
-                          >
-                            {c.archived ? "Unarchive" : "Archive"}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    ) : null}
+                    {canManageCycles ? renderMenu(c) : null}
                   </td>
                 </tr>
               );
@@ -904,26 +1144,15 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
     </>
   );
 
-  const ruleRows = (rs) =>
-    rs.map((x, i) => (
-      <div key={i} className={`acx-vr ${x.kind}`}>
-        <span className="lb">{x.label}</span>
-        <span className="rs">
-          {x.kind === "ok" ? "✓ " : x.kind === "no" ? "✗ " : ""}
-          {x.txt}
-        </span>
-      </div>
-    ));
-
   const renderCards = (c) => {
     if (!c) return null;
     const nb = nextBtn(c);
+    const st = statusOf(c);
     const stline = (
       <div className="acx-stl">
         {["Upcoming", "Active", "Closed", "Archived"].map((s, i, a) => {
-          const cur = c.archived ? "Archived" : c.status;
-          const idx = a.indexOf(cur);
-          const cls = cur === s ? "s on" : i < idx ? "s dn" : "s";
+          const idx = a.indexOf(st);
+          const cls = st === s ? "s on" : idx > -1 && i < idx ? "s dn" : "s";
           return (
             <span key={s}>
               <span className={cls}>{s}</span>
@@ -935,19 +1164,52 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
     );
 
     let left;
-    if (c.archived) {
+    if (st === "Cancelled") {
+      left = (
+        <>
+          <div className="top">
+            <span className="sl">Cycle</span>
+          </div>
+          <div className="big" style={{ color: "var(--muted)" }}>
+            Cancelled
+          </div>
+          <div className="mut2">
+            Stopped with the reason: <b>{c.cancelReason || "—"}</b>. Data is
+            kept; the cycle is never archived and cannot be reopened.
+          </div>
+        </>
+      );
+    } else if (st === "Deleted") {
+      left = (
+        <>
+          <div className="top">
+            <span className="sl">Cycle</span>
+          </div>
+          <div className="big" style={{ color: "var(--muted)" }}>
+            Deleted
+          </div>
+          <div className="mut2">
+            This cycle was removed. Its ID is never reused.
+          </div>
+        </>
+      );
+    } else if (c.archived) {
       left = (
         <>
           <div className="top">
             <span className="sl">Status</span>
-            <span className="acx-mut">{procLabel(c.process)}</span>
+            <span className="acx-mut">
+              {procLabel(c.process)}
+              {c.process === "None" ? "" : " process"}
+            </span>
           </div>
           <div className="big" style={{ color: "var(--green)" }}>
             Archived
           </div>
           {stline}
           <div className="mut2">
-            The cycle is read-only. Unarchive it from Actions if needed.
+            Final values are in Compensation History. The cycle is read-only and
+            cannot be reopened.
           </div>
         </>
       );
@@ -962,11 +1224,12 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
           </div>
           <div className="mut2">
             This cycle is only a label for uploads (for example payroll). It has
-            no status line, no steps and no button.
+            no status line, no steps and no button. It stays Open until it is
+            cancelled.
           </div>
         </>
       );
-    } else {
+    } else if (nb) {
       const chk = nb.k === "activate" ? activateRules(c) : [];
       const can = allOk(chk);
       left = (
@@ -996,10 +1259,12 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
           </div>
         </>
       );
+    } else {
+      left = null;
     }
 
     let right;
-    if (c.process === "Annual" && !c.archived) {
+    if (c.process === "Annual" && !c.archived && !isHidden(c)) {
       let grp = "";
       right = (
         <>
@@ -1025,7 +1290,7 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
                         key={a.id}
                         type="button"
                         className={a.link ? "acx-btn link" : "acx-btn sm"}
-                        onClick={() => checkAct(a.id)}
+                        onClick={() => checkAct(a.id, c)}
                       >
                         {a.l}
                       </button>
@@ -1037,15 +1302,16 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
           })}
         </>
       );
-    } else if (c.process === "Exceptional" && !c.archived) {
+    } else if (c.process === "Exceptional" && !c.archived && !isHidden(c)) {
       right = (
         <>
           <div className="top">
             <span className="sl">Exceptional process</span>
           </div>
           <div className="mut2">
-            None of the Annual steps apply. HR moves it manually through Active,
-            Closed and Archived. An employee is released only when the
+            None of the Annual steps apply. HR sets it up here and moves it
+            manually through Active, Closed and Archived. The rows are worked on
+            the Exceptional grid. An employee is released only when the
             Exceptional cycle is archived.
           </div>
         </>
@@ -1149,29 +1415,50 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
             <div className="m1">
               {c.process === "Annual" && c.status === "Upcoming"
                 ? "Pending items start to show once the Employee Master is updated and the cycle is activated."
-                : ""}
+                : c.process !== "Annual" && !c.archived
+                  ? "Pending items belong to the Annual process."
+                  : ""}
             </div>
           </div>
         );
       } else {
         body = (
           <>
-            <div className={`acx-co ${tot ? "am" : "gn"}`}>
-              <span className="tg">{tot ? "Pending" : "All clear"}</span>
-              <div className="ln">
-                {tot ? `${tot} to follow up` : "✓ Nothing pending"}
+            <div className={`acx-co fx ${tot ? "am" : "gn"}`}>
+              <div className="cb">
+                <span className="tg">{tot ? "Pending" : "All clear"}</span>
+                <div className="ln">
+                  {tot ? `${tot} to follow up` : "✓ Nothing pending"}
+                </div>
+                <div className="m1">
+                  Information only. Checks exist only at Activate (Employee
+                  Master and payroll).
+                </div>
               </div>
-              <div className="m1">
-                Information only. Checks exist only at Activate.
-              </div>
+              <button
+                type="button"
+                className="acx-btn sm"
+                onClick={() => navTo("go-dashboard")}
+              >
+                Open dashboard ›
+              </button>
             </div>
             {items
               .filter((x) => selKey === "all" || x.k === selKey)
               .map((x) => (
-                <div key={x.k} className="acx-cd">
-                  <div className="hd">{x.label}</div>
-                  <div className="bg">{x.n ? `${x.n} pending` : "None"}</div>
-                  <div className="m1">{x.sub}</div>
+                <div key={x.k} className="acx-cd cdr">
+                  <div className="cdb">
+                    <div className="hd">{x.label}</div>
+                    <div className="bg">{x.n ? `${x.n} pending` : "None"}</div>
+                    <div className="m1">{x.sub}</div>
+                  </div>
+                  <button
+                    type="button"
+                    className="acx-btn sm"
+                    onClick={() => navTo(PEND_NAV[x.k])}
+                  >
+                    Open ›
+                  </button>
                 </div>
               ))}
           </>
@@ -1263,13 +1550,13 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
         />
         <div className="acx-phw">
           <div className="who">
-            <b>{c.name}</b> · {c.id} · {c.archived ? "Archived" : c.status} ·{" "}
-            {procLabel(c.process)}
+            <b>{c.name}</b> · {c.id} · {statusOf(c)} · {procLabel(c.process)}
           </div>
           <button
             type="button"
             className="acx-ic2"
             title="Notes"
+            aria-label="Notes"
             style={{ background: notes ? "var(--tt)" : "" }}
             onClick={() => setNotes((v) => !v)}
           >
@@ -1278,6 +1565,7 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
           <button
             type="button"
             className="acx-ic2"
+            aria-label="Expand"
             title={wide ? "Normal width" : "Expand"}
             onClick={() => setWide((v) => !v)}
           >
@@ -1286,6 +1574,7 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
           <button
             type="button"
             className="acx-ic2"
+            aria-label="Fold the panel"
             title="Fold the panel"
             onClick={() => toggleFold(true)}
           >
@@ -1326,22 +1615,6 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
 
   /* ---------------- modals ---------------- */
 
-  const Modal = ({ title, onClose, children, footer, wideModal }) => (
-    <div className="acx-ov">
-      <div className="acx-md" style={wideModal ? { width: 560 } : undefined}>
-        <div className="mh">
-          <b>{title}</b>
-          <button type="button" className="x" onClick={onClose}>
-            <X size={16} />
-          </button>
-        </div>
-        <div className="mb">{children}</div>
-        {modalError && <div className="acx-err">{modalError}</div>}
-        <div className="mf">{footer}</div>
-      </div>
-    </div>
-  );
-
   const renderConfirm = () => {
     if (!confirm) return null;
     const { kind, cycle: c } = confirm;
@@ -1357,22 +1630,27 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
       close: "Close",
       archive: "Archive",
       reopen: "Reopen",
-      unarchive: "Unarchive",
       delete: "Delete cycle",
+      generate: "Generate",
     }[kind];
     const okLabel = isStepKind && has ? `${verb} anyway` : verb;
     const noLabel =
       isStepKind && has ? `Don't ${verb.toLowerCase()} yet` : "Cancel";
-    let intro = "";
-    if (kind === "reopen") intro = "Switch this Closed cycle back to Active.";
-    else if (kind === "unarchive") intro = "Make this cycle editable again.";
-    else if (kind === "delete")
-      intro = `Delete this cycle? It has nothing in it. This action cannot be undone.`;
-    else intro = BDESC[kind];
+    const intro =
+      kind === "reopen"
+        ? "Switch this Closed cycle back to Active. Only the read-only lock is lifted; nothing else changes."
+        : kind === "delete"
+          ? `Delete this cycle? It has nothing in it. The Cycle ID ${c.id} is never reused.`
+          : BDESC[kind];
+    const title =
+      kind === "generate"
+        ? `Generate Appraisal Sheet — ${c.name}`
+        : `${verb} — ${c.name}`;
     return (
       <Modal
-        title={`${verb} — ${c.name}`}
+        title={title}
         onClose={close}
+        error={modalError}
         footer={
           <>
             <button
@@ -1431,7 +1709,8 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
               onChange={(e) => setConfirmRemark(e.target.value)}
             />
             <div className="acx-hint">
-              Your remark is added to the cycle remarks and audited.
+              Your choice and the remark are added to the cycle remarks and
+              audited.
             </div>
           </>
         )}
@@ -1443,14 +1722,15 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
     Annual:
       "Annual process: status line with steps. Only one cycle on this process runs at a time.",
     Exceptional:
-      "Exceptional process: HR moves it manually through Active, Closed and Archived.",
-    None: "No process: the cycle is only a label for uploads. It has no steps.",
+      "Exceptional process: HR moves it manually through Active, Closed and Archived; rows go to the Exceptional grid.",
+    None: "No process: the cycle is only a label for uploads (for example payroll). It has no steps.",
   };
 
   /* ---------------- main render ---------------- */
 
   const nb = nextBtn(current);
   const nextOk = !nb || nb.k !== "activate" || allOk(activateRules(current));
+  const years = [thisYear - 1, thisYear, thisYear + 1, thisYear + 2];
 
   return (
     <div className="acx">
@@ -1535,7 +1815,7 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
             <div className="acx-ph">
               <span className="tt">Appraisal Cycle</span>
               <span className="nt">
-                Cycle is stamped on every row of the cycle
+                Cycle ID is stamped on every row of the cycle
               </span>
             </div>
             <div className="acx-pb">
@@ -1547,7 +1827,11 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
                     disabled={saving}
                     onClick={() => {
                       setModalError("");
-                      setNewForm((f) => ({ ...f, type }));
+                      setNewForm({
+                        ...blankNew,
+                        type,
+                        process: DEFAULT_PROCESS[type],
+                      });
                       setNewCycleOpen(true);
                     }}
                   >
@@ -1566,20 +1850,20 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
                 />
                 <span style={{ flex: 1 }} />
                 <span
-                  className={`acx-swt${showArchived ? " on" : ""}`}
+                  className={`acx-swt${showHidden ? " on" : ""}`}
                   role="switch"
-                  aria-checked={showArchived}
+                  aria-checked={showHidden}
                   onClick={() => {
-                    setShowArchived((v) => !v);
+                    setShowHidden((v) => !v);
                     setPage(1);
                   }}
                 >
                   <span className="sw" />
-                  <span>Show Archived</span>
+                  <span>Show Cancelled / Deleted</span>
                 </span>
                 <span className="acx-seln">
                   {current
-                    ? `${current.name} (${current.id}) · ${current.archived ? "Archived" : current.status}`
+                    ? `${current.name} (${current.id}) · ${statusOf(current)}`
                     : "No cycle selected"}
                 </span>
                 {canManageCycles && nb && (
@@ -1622,9 +1906,11 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
 
               {renderGrid()}
               <div className="acx-note">
-                Row Actions: Edit dates · Remarks · Delete (only an Upcoming
-                cycle) · Reopen and Archive (only a Closed cycle). The Process
-                follows the cycle type.
+                Row Actions: Edit dates · Remarks · Cancel (before Letters are
+                generated) · Delete (only a cycle with nothing in it) · Reopen
+                and Archive (only a Closed cycle). Every cycle is set up here;
+                the Process (Annual, Exceptional or No process) is chosen at set
+                up and locked at Activate.
               </div>
               {renderCards(current)}
             </div>
@@ -1644,6 +1930,7 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
         <Modal
           title={`Edit — ${editCycle.name}`}
           onClose={() => setEditCycle(null)}
+          error={modalError}
           footer={
             <>
               <button
@@ -1665,14 +1952,41 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
             </>
           }
         >
-          <label className="acx-fl">Cycle name</label>
+          {(() => {
+            const locked = !["Upcoming", "Open"].includes(statusOf(editCycle));
+            return (
+              <>
+                <label className="acx-fl">Process</label>
+                <select
+                  style={{ width: "100%" }}
+                  disabled={saving || locked}
+                  value={editForm.process}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, process: e.target.value }))
+                  }
+                >
+                  {PROCESSES.map(([v, l]) => (
+                    <option key={v} value={v}>
+                      {l}
+                    </option>
+                  ))}
+                </select>
+                {locked && (
+                  <div className="acx-hint">
+                    The process is locked once the cycle is activated.
+                  </div>
+                )}
+              </>
+            );
+          })()}
+          <label className="acx-fl">Effective date</label>
           <input
-            type="text"
+            type="date"
             style={{ width: "100%" }}
             disabled={saving}
-            value={editForm.name}
+            value={editForm.effective}
             onChange={(e) =>
-              setEditForm((f) => ({ ...f, name: e.target.value }))
+              setEditForm((f) => ({ ...f, effective: e.target.value }))
             }
           />
           <div className="acx-row2">
@@ -1699,10 +2013,6 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
               />
             </div>
           </div>
-          <div className="acx-hint">
-            The process follows the cycle type and is locked once the cycle is
-            activated.
-          </div>
         </Modal>
       )}
 
@@ -1710,6 +2020,7 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
         <Modal
           title={`Remarks — ${remarksCycle.name}`}
           onClose={() => setRemarksCycle(null)}
+          error={modalError}
           footer={
             <>
               <button
@@ -1752,10 +2063,50 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
             ))}
             {!remarksHistory.length && (
               <div className="acx-mut" style={{ padding: "8px 0" }}>
-                No remarks history yet.
+                No remarks yet.
               </div>
             )}
           </div>
+        </Modal>
+      )}
+
+      {cancelCycle && (
+        <Modal
+          title={`Cancel ${cancelCycle.name}`}
+          onClose={() => setCancelCycle(null)}
+          error={modalError}
+          footer={
+            <>
+              <button
+                type="button"
+                className="acx-btn"
+                disabled={saving}
+                onClick={() => setCancelCycle(null)}
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                className="acx-btn p"
+                disabled={saving}
+                onClick={saveCancel}
+              >
+                {saving ? "Saving…" : "Cancel cycle"}
+              </button>
+            </>
+          }
+        >
+          <div className="mut2">
+            The cycle is stopped. Its data and your reason are kept; it is never
+            archived and cannot be reopened.
+          </div>
+          <label className="acx-fl">Reason (required)</label>
+          <textarea
+            className="acx-ta"
+            disabled={saving}
+            value={cancelText}
+            onChange={(e) => setCancelText(e.target.value)}
+          />
         </Modal>
       )}
 
@@ -1763,6 +2114,7 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
         <Modal
           title="Set up cycle"
           onClose={() => setNewCycleOpen(false)}
+          error={modalError}
           footer={
             <>
               <button
@@ -1791,7 +2143,11 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
                 disabled={saving}
                 value={newForm.type}
                 onChange={(e) =>
-                  setNewForm((f) => ({ ...f, type: e.target.value }))
+                  setNewForm((f) => ({
+                    ...f,
+                    type: e.target.value,
+                    process: DEFAULT_PROCESS[e.target.value],
+                  }))
                 }
               >
                 {TYPES.map((t) => (
@@ -1800,49 +2156,54 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
               </select>
             </div>
             <div>
-              <label className="acx-fl">Process</label>
-              <input
-                type="text"
-                disabled
-                value={procLabel(DEFAULT_PROCESS[newForm.type])}
-              />
+              <label className="acx-fl">Year</label>
+              <select
+                disabled={saving}
+                value={newForm.year}
+                onChange={(e) =>
+                  setNewForm((f) => ({ ...f, year: Number(e.target.value) }))
+                }
+              >
+                {years.map((y) => (
+                  <option key={y}>{y}</option>
+                ))}
+              </select>
             </div>
           </div>
-          <div className="acx-hint">
-            {setupHint[DEFAULT_PROCESS[newForm.type]]}
-          </div>
-          <label className="acx-fl">Cycle name</label>
-          <input
-            type="text"
-            style={{ width: "100%" }}
-            disabled
-            value={generateCycleName(newForm.type, newForm.from, newForm.to)}
-            placeholder="Generated from From and To"
-          />
           <div className="acx-row2">
             <div>
-              <label className="acx-fl">From</label>
-              <input
-                type="date"
+              <label className="acx-fl">Process</label>
+              <select
                 disabled={saving}
-                value={newForm.from}
+                value={newForm.process}
                 onChange={(e) =>
-                  setNewForm((f) => ({ ...f, from: e.target.value }))
+                  setNewForm((f) => ({ ...f, process: e.target.value }))
                 }
-              />
+              >
+                {PROCESSES.map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
-              <label className="acx-fl">To</label>
-              <input
-                type="date"
-                disabled={saving}
-                value={newForm.to}
-                onChange={(e) =>
-                  setNewForm((f) => ({ ...f, to: e.target.value }))
-                }
-              />
+              <label className="acx-fl">Cycle name</label>
+              <input type="text" disabled value={newName(newForm)} />
             </div>
           </div>
+          <div className="acx-hint">{setupHint[newForm.process]}</div>
+          <label className="acx-fl">Effective date</label>
+          <input
+            type="date"
+            style={{ width: "100%" }}
+            disabled={saving}
+            value={newForm.effective}
+            onChange={(e) =>
+              setNewForm((f) => ({ ...f, effective: e.target.value }))
+            }
+          />
+          <div className="acx-hint">Picked by HR; there is no default.</div>
           <div className="acx-row2">
             <div>
               <label className="acx-fl">Start date</label>
@@ -1867,6 +2228,11 @@ export function AppraisalCycleMasterPage({ onNavigate, pendingItems = [] }) {
               />
             </div>
           </div>
+          {newForm.process === "None" && (
+            <div className="acx-hint">
+              Start and close dates are not needed for a cycle with no process.
+            </div>
+          )}
           <label className="acx-fl">Remarks</label>
           <textarea
             className="acx-ta"
@@ -1892,11 +2258,12 @@ export default AppraisalCycleMasterPage;
 const CSS = `
 .acx{--navy:#102A43;--active:#27548A;--cta:#2F6FED;--gutter:#D5DFEB;--line:#E5E7EB;--row-line:#F0F1F3;--ink:#111827;--muted:#6B7280;
 --hb:#E6EEF8;--hl:#C9D8EC;--odd:#FBFCFE;--even:#F2F5F9;--hover:#EAF2FF;--hi:#DCEBFF;--rowlabel:#EEF3FA;--link:#1559A6;
---green:#15803D;--green-bg:#ECFDF3;--amber:#B7791F;--amber-bg:#FEF6E7;--violet:#5B3FB0;--violet-bg:#ECE7FB;--info:#1D4FA8;--red:#C0392B;
+--green:#15803D;--green-bg:#ECFDF3;--amber:#B7791F;--amber-bg:#FEF6E7;--violet:#5B3FB0;--violet-bg:#ECE7FB;--info:#1D4FA8;--red:#C0392B;--tt:#E8F0FE;
 font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink);width:100%}
 .acx *{box-sizing:border-box}
 .acx button,.acx input,.acx select,.acx textarea{font-family:inherit;font-size:12.5px;color:inherit}
 .acx select,.acx input[type=text],.acx input[type=date],.acx textarea{border:1px solid #D1D5DB;border-radius:6px;padding:6px 9px;background:#fff;outline:none}
+.acx select:focus,.acx input:focus,.acx textarea:focus{border-color:var(--active)}
 .acx input:disabled,.acx select:disabled{background:#F3F4F6;color:#6B7280}
 .acx-ta{width:100%;min-height:70px;resize:vertical}
 .acx-work{background:var(--gutter);border-radius:14px;padding:12px;display:flex;gap:12px;align-items:stretch}
@@ -1912,6 +2279,7 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .acx-btn.cta:disabled{background:#A9C1F2;border-color:#A9C1F2;color:#fff}
 .acx-btn.sm{padding:3px 9px;font-size:11.5px}
 .acx-btn.link{border:none;background:none;color:var(--link);padding:0;font-weight:700}
+.acx-btn.link:disabled{background:none;color:#B6BCC6}
 .acx-tbar{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 .acx-srch{width:230px}
 .acx-swt{display:inline-flex;align-items:center;gap:7px;color:var(--muted);font-weight:600;cursor:pointer;user-select:none}
@@ -1930,7 +2298,7 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .acx-ttabs .ty[data-ty="New Joiner"]{--c:#475569;--t:#EEF1F5;--x:#334155}
 .acx-gwrap{border:1px solid var(--hl);border-radius:8px;overflow:auto;max-height:276px}
 .acx-g{border-collapse:separate;border-spacing:0;width:100%;table-layout:fixed}
-.acx-g th{background:var(--hb);color:var(--navy);font-size:11px;font-weight:700;text-align:left;padding:8px;border-bottom:1px solid var(--hl);white-space:nowrap;position:sticky;top:0;z-index:2}
+.acx-g th{background:var(--hb);color:var(--navy);font-size:11px;font-weight:700;text-align:left;padding:8px;border-bottom:1px solid var(--hl);white-space:nowrap;position:sticky;top:0;z-index:2;overflow:hidden;text-overflow:ellipsis}
 .acx-g td{padding:8px;border-bottom:1px solid var(--row-line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .acx-g tbody tr{cursor:pointer}
 .acx-g tbody tr:nth-child(odd) td{background:var(--odd)}.acx-g tbody tr:nth-child(even) td{background:var(--even)}
@@ -1938,6 +2306,7 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .acx-g td.rl{background:var(--rowlabel)!important;color:var(--navy);font-weight:700;border-right:1px solid var(--hl)}
 .acx-g tbody tr.cur td{background:var(--hi)!important}
 .acx-g tbody tr.cur td.rl{background:#CFE0F7!important;box-shadow:inset 3px 0 0 var(--cta)}
+.acx-g tbody tr.dim td{color:#9AA3B0}
 .acx-empty{padding:22px;text-align:center;color:var(--muted)}
 .acx-pg{display:flex;align-items:center;gap:10px;justify-content:flex-end;padding:8px 2px 0;color:var(--muted);font-size:11.5px}
 .acx-pg select{padding:3px 6px;font-size:11.5px}
@@ -1964,17 +2333,17 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .acx-vr{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--row-line);align-items:flex-start}
 .acx-vr:last-child{border-bottom:none}
 .acx-vr .lb{flex:0 0 190px;color:#4B5563}.acx-vr .rs{flex:1;font-weight:700}
+.acx-vr .acx-btn.link{flex:0 0 auto}
 .acx-vr.ok .rs{color:var(--green)}.acx-vr.no .rs{color:var(--red)}
-.ckg{font-size:10.5px;font-weight:800;letter-spacing:.07em;color:var(--muted);margin:10px 0 2px;text-transform:uppercase}
-.ck{display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid var(--row-line)}
-.ck .ic{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex:0 0 22px}
-.ck.ok .ic{background:var(--green-bg);color:var(--green)}.ck.wn .ic{background:var(--amber-bg);color:var(--amber)}.ck.lk .ic{background:#F3F4F6;color:#9AA3B0}.ck.pd .ic{background:var(--hi);color:var(--info)}
-.ck .tx{flex:1;min-width:0}.ck .tx b{display:block}.ck .tx span{color:var(--muted);font-size:11.5px;display:block}
-.ck.lk .tx b,.ck.lk .tx span{color:#9AA3B0}
-.ck .ac{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.acx .ckg{font-size:10.5px;font-weight:800;letter-spacing:.07em;color:var(--muted);margin:10px 0 2px;text-transform:uppercase}
+.acx .ck{display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid var(--row-line)}
+.acx .ck .ic{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex:0 0 22px}
+.acx .ck.ok .ic{background:var(--green-bg);color:var(--green)}.acx .ck.wn .ic{background:var(--amber-bg);color:var(--amber)}.acx .ck.lk .ic{background:#F3F4F6;color:#9AA3B0}.acx .ck.pd .ic{background:var(--hi);color:var(--info)}
+.acx .ck .tx{flex:1;min-width:0}.acx .ck .tx b{display:block}.acx .ck .tx span{color:var(--muted);font-size:11.5px;display:block}
+.acx .ck.lk .tx b,.acx .ck.lk .tx span{color:#9AA3B0}
+.acx .ck .ac{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
 .acx-panel{flex:0 0 auto;display:flex;flex-direction:column;position:relative;border-top:4px solid #2F6FED;--tc:#2F6FED;--tt:#E8F0FE;--tx:#1D4FA8;min-width:300px;max-width:720px}
 .acx-panel.aud{border-top-color:#0E8A8A;--tc:#0E8A8A;--tt:#E3F5F4;--tx:#0B6B6B}
-.acx{--tt:#E8F0FE}
 .acx-phw{background:#fff;color:var(--navy);border-bottom:1px solid var(--line);padding:8px 10px 8px 16px;display:flex;align-items:center;gap:8px}
 .acx-phw .who{flex:1;min-width:0;font-size:12px;color:#374151;line-height:1.35}.acx-phw .who b{color:var(--navy);font-size:13px}
 .acx-ic2{flex:0 0 auto;border:1px solid #D1D5DB;background:#fff;border-radius:6px;height:26px;min-width:26px;padding:0 6px;font-size:13px;color:#374151;cursor:pointer}
@@ -1994,34 +2363,49 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .acx-pbody{padding:12px 16px;overflow:auto;flex:1;min-height:300px;max-height:640px}
 .acx-pfoot{border-top:1px solid var(--line);padding:8px 16px;color:var(--muted);font-size:11px}
 .acx-co{border-radius:8px;padding:9px 12px;border:1px solid;margin:6px 0}
+.acx-co.fx{display:flex;align-items:center;gap:8px}.acx-co.fx .cb{flex:1;min-width:0}
 .acx-co .tg{display:inline-block;background:#fff;font-size:10px;font-weight:800;border-radius:5px;padding:1px 7px;margin-bottom:4px}
 .acx-co .ln{font-weight:700}.acx-co .m1{color:#4B5563;font-size:11.5px;margin-top:2px}
 .acx-co.in{background:#EEF5FF;border-color:#B9D3F5;border-left:5px solid var(--info)}.acx-co.in .tg{color:var(--info)}
 .acx-co.am{background:var(--amber-bg);border-color:#F2D59A;border-left:5px solid var(--amber)}.acx-co.am .tg{color:var(--amber)}
 .acx-co.gn{background:var(--green-bg);border-color:#BFE3CB;border-left:5px solid var(--green)}.acx-co.gn .tg{color:var(--green)}
 .acx-cd{border:1px solid #E5E7EB;border-radius:10px;padding:9px 12px;margin:8px 0;background:#fff}
+.acx-cd.cdr{display:flex;align-items:center;gap:8px}.acx-cd.cdr .cdb{flex:1;min-width:0}
 .acx-cd .hd{font-size:10.5px;font-weight:800;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}
 .acx-cd .hd:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--tc)}
 .acx-cd .bg{font-size:20px;font-weight:800;color:var(--navy);margin-top:2px}.acx-cd .m1{color:#4B5563;font-size:11.5px;margin-top:2px}
 .acx-au{padding:8px 0;border-bottom:1px solid var(--row-line)}.acx-au .m1{color:var(--muted);font-size:11px}
+.acx-hint{color:var(--muted);font-size:11.5px;margin-top:6px}
 .acx-foldtab{position:fixed;right:0;top:50%;transform:translateY(-50%);background:var(--navy);color:#fff;border-radius:8px 0 0 8px;padding:10px 6px;writing-mode:vertical-rl;font-weight:800;cursor:pointer;z-index:20}
 .acx-banner{display:flex;align-items:flex-start;gap:10px;padding:11px 13px;margin-bottom:12px;border:1px solid #bbf7d0;background:#f0fdf4;border-radius:8px;font-size:12px}
 .acx-banner.error{border-color:#fecaca;background:#fef2f2}
 .acx-banner strong{display:block;margin-bottom:2px}.acx-banner span{color:#475569}
 .acx-banner .close{margin-left:auto;border:0;background:transparent;cursor:pointer;font-size:18px;line-height:1}
 .acx-ov{position:fixed;inset:0;background:rgba(15,25,40,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
-.acx-md{background:#fff;border-radius:12px;width:470px;max-width:94vw;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.3)}
-.acx-md .mh{background:var(--navy);color:#fff;padding:12px 16px;border-radius:12px 12px 0 0;display:flex;align-items:center}
+.acx-md{background:#fff;border-radius:12px;width:470px;max-width:94vw;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.3);font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:#111827}
+.acx-md *{box-sizing:border-box}
+.acx-md input,.acx-md select,.acx-md textarea{font-family:inherit;font-size:12.5px;border:1px solid #D1D5DB;border-radius:6px;padding:6px 9px;background:#fff;outline:none}
+.acx-md input:disabled,.acx-md select:disabled{background:#F3F4F6;color:#6B7280}
+.acx-md textarea{width:100%;min-height:70px;resize:vertical}
+.acx-md .mh{background:#102A43;color:#fff;padding:12px 16px;border-radius:12px 12px 0 0;display:flex;align-items:center}
 .acx-md .mh b{font-size:15px}.acx-md .mh .x{margin-left:auto;cursor:pointer;color:#AAB4C0;background:none;border:none}
-.acx-md .mb{padding:14px 16px;overflow:auto}.acx-md .mf{padding:12px 16px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;gap:8px}
+.acx-md .mb{padding:14px 16px;overflow:auto}.acx-md .mf{padding:12px 16px;border-top:1px solid #E5E7EB;display:flex;justify-content:flex-end;gap:8px}
 .acx-md .mut2{color:#4B5563}
-.acx-err{color:var(--red);font-size:11.5px;padding:0 16px 10px}
+.acx-md .acx-btn{border:1px solid #D1D5DB;border-radius:6px;padding:6px 12px;background:#fff;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap}
+.acx-md .acx-btn.p{background:#102A43;color:#fff;border-color:#102A43}
+.acx-md .acx-btn.link{border:none;background:none;color:#1559A6;padding:0}
+.acx-md .acx-btn:disabled{cursor:not-allowed;color:#B6BCC6;border-color:#E5E7EB;background:#FAFAFB}
+.acx-md .acx-vl{display:flex;flex-direction:column}
+.acx-md .acx-vr{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #F0F1F3;align-items:flex-start}
+.acx-md .acx-vr .lb{flex:0 0 160px;color:#4B5563}.acx-md .acx-vr .rs{flex:1;font-weight:700}
+.acx-md .acx-vr.ok .rs{color:#15803D}.acx-md .acx-vr.no .rs{color:#C0392B}
+.acx-err{color:#C0392B;font-size:11.5px;padding:0 16px 10px}
 .acx-fl{display:block;font-size:11.5px;font-weight:700;margin:10px 0 4px}
 .acx-row2{display:flex;gap:10px}.acx-row2>div{flex:1}.acx-row2 input,.acx-row2 select{width:100%}
-.acx-hint{color:var(--muted);font-size:11.5px;margin-top:6px}
-.acx-hist{max-height:200px;overflow:auto;margin-top:10px;border-top:1px solid var(--line)}
-.acx-hist .h1{padding:7px 0;border-bottom:1px solid var(--row-line)}.acx-hist .h1 .m1{color:var(--muted);font-size:10.5px}
-.acx-pl{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--row-line)}
-.acx-pl b.n{color:var(--amber)}.acx-pl .m1{color:var(--muted);font-size:11px}
+.acx-md .acx-hint{color:#6B7280;font-size:11.5px;margin-top:6px}
+.acx-hist{max-height:200px;overflow:auto;margin-top:10px;border-top:1px solid #E5E7EB}
+.acx-hist .h1{padding:7px 0;border-bottom:1px solid #F0F1F3}.acx-hist .h1 .m1{color:#6B7280;font-size:10.5px}
+.acx-pl{display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #F0F1F3}
+.acx-pl b.n{color:#B7791F}.acx-pl .m1{color:#6B7280;font-size:11px}
 @media(max-width:1100px){.acx-work{flex-direction:column}.acx-panel{width:100%!important}.acx-twoc{flex-direction:column}}
 `;

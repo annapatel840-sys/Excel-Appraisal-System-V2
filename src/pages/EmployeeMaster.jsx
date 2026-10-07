@@ -575,14 +575,18 @@ function AuditHistoryPanel({ open, title, description, entries, onClose }) {
 
 export function EmployeeMaster() {
   const catalystUser = useCatalystUser();
-  const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const role = String(catalystUser?.role || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
   // UI gating only (the backend enforces authorization). Roster/status and
   // eligibility writes are for HR and App Administrator; others read only.
   const access = useAccess();
   const isRoleHR = role === "hr" || role === "appadministrator";
   // With access rules (/me ok) a 'view' level makes the screen read-only.
-  const canEditEmployees = isRoleHR && access.canScreen("employeeMaster", "edit");
+  const canEditEmployees =
+    isRoleHR && access.canScreen("employeeMaster", "edit");
   // Mirrors payrollcycleapi: payroll upload is allowed for HR and Comp. Manager.
   const canUploadPayroll = role === "hr" || role === "compmanager";
   // Mirrors payrollcycleapi canAccessPayroll (HR, Comp. Manager, Tech-Ed).
@@ -611,19 +615,24 @@ export function EmployeeMaster() {
   const [statusActionLoading, setStatusActionLoading] = useState(false);
 
   const initialTab = new URLSearchParams(window.location.search).get("tab");
-  const allowedTabs = new Set([
-    "roster",
-    "eligibility",
-    "appraisal-cycle",
-    "payroll-data",
-    "payroll-upload",
-    "team-changes",
-    "budget-master",
-    "budget-distribution",
-    "delegation",
-    "access",
-  ].filter(isTabVisible));
-  const defaultTab = allowedTabs.has("roster") || !allowedTabs.size ? "roster" : [...allowedTabs][0];
+  const allowedTabs = new Set(
+    [
+      "roster",
+      "eligibility",
+      "appraisal-cycle",
+      "payroll-data",
+      "payroll-upload",
+      "team-changes",
+      "budget-master",
+      "budget-distribution",
+      "delegation",
+      "access",
+    ].filter(isTabVisible),
+  );
+  const defaultTab =
+    allowedTabs.has("roster") || !allowedTabs.size
+      ? "roster"
+      : [...allowedTabs][0];
   const [activeTab, setActiveTab] = useState(
     isTechEd && !access.ok
       ? "roster"
@@ -970,8 +979,10 @@ export function EmployeeMaster() {
   // Deep link from the Detail Screen's "View all changes" link.
   useEffect(() => {
     const tab = new URLSearchParams(window.location.search).get("tab");
-    if (tab === "teamChanges" && isTabVisible("team-changes")) setActiveTab("team-changes");
-    if (tab === "budget-master" && isTabVisible("budget-master")) setActiveTab("budget-master");
+    if (tab === "teamChanges" && isTabVisible("team-changes"))
+      setActiveTab("team-changes");
+    if (tab === "budget-master" && isTabVisible("budget-master"))
+      setActiveTab("budget-master");
   }, []);
 
   /* ============================================================
@@ -1177,7 +1188,9 @@ export function EmployeeMaster() {
     const employeesByName = new Map();
 
     existingEmployees.forEach((employee) => {
-      const key = String(employee.name || "").trim().toLowerCase();
+      const key = String(employee.name || "")
+        .trim()
+        .toLowerCase();
 
       if (!key) {
         return;
@@ -1974,7 +1987,10 @@ export function EmployeeMaster() {
           return;
         }
 
-        if (!change.previousStatus || change.previousStatus === importedStatus) {
+        if (
+          !change.previousStatus ||
+          change.previousStatus === importedStatus
+        ) {
           return;
         }
 
@@ -2192,15 +2208,18 @@ export function EmployeeMaster() {
         newValue: normalizedEligible,
       });
 
-      applyLocalEligibilityChanges([
-        {
-          empId,
-          fields: {
-            Eligible: normalizedEligible,
-            Reason: eligibleReason || "",
+      applyLocalEligibilityChanges(
+        [
+          {
+            empId,
+            fields: {
+              Eligible: normalizedEligible,
+              Reason: eligibleReason || "",
+            },
           },
-        },
-      ], { manual: true });
+        ],
+        { manual: true },
+      );
 
       setEligibilityEmployee(null);
 
@@ -2226,88 +2245,106 @@ export function EmployeeMaster() {
   return (
     <AppShell>
       <div className="employee-master-page">
-        {isTabVisible("roster") && <div className="em-page-stats mb-2">
-          <div>
-            <span>Total</span>
-            <strong>{counts.total}</strong>
-          </div>
+        {isTabVisible("roster") && (
+          <div className="em-page-stats mb-2">
+            <div>
+              <span>Total</span>
+              <strong>{counts.total}</strong>
+            </div>
 
-          <div>
-            <span>Active</span>
-            <strong className="active">{counts.active}</strong>
-          </div>
+            <div>
+              <span>Active</span>
+              <strong className="active">{counts.active}</strong>
+            </div>
 
-          <div>
-            <span>Inactive</span>
-            <strong className="inactive">{counts.inactive}</strong>
+            <div>
+              <span>Inactive</span>
+              <strong className="inactive">{counts.inactive}</strong>
+            </div>
           </div>
-        </div>}
+        )}
 
         {/* ======================================================
             TABS
             ====================================================== */}
 
         <div className="em-tabs">
-          {isTabVisible("roster") && <button
-            type="button"
-            className={activeTab === "roster" ? "active" : ""}
-            onClick={() => setActiveTab("roster")}
-          >
-            Employee Master
-          </button>}
+          {isTabVisible("roster") && (
+            <button
+              type="button"
+              className={activeTab === "roster" ? "active" : ""}
+              onClick={() => setActiveTab("roster")}
+            >
+              Employee Master
+            </button>
+          )}
 
-          {isTabVisible("eligibility") && <button
-            type="button"
-            className={activeTab === "eligibility" ? "active" : ""}
-            onClick={() => setActiveTab("eligibility")}
-          >
-            Eligibility List
-          </button>}
+          {isTabVisible("eligibility") && (
+            <button
+              type="button"
+              className={activeTab === "eligibility" ? "active" : ""}
+              onClick={() => setActiveTab("eligibility")}
+            >
+              Eligibility List
+            </button>
+          )}
 
-          {isTabVisible("appraisal-cycle") && <button
-            type="button"
-            className={activeTab === "appraisal-cycle" ? "active" : ""}
-            onClick={() => setActiveTab("appraisal-cycle")}
-          >
-            Appraisal Cycle Master
-          </button>}
+          {isTabVisible("appraisal-cycle") && (
+            <button
+              type="button"
+              className={activeTab === "appraisal-cycle" ? "active" : ""}
+              onClick={() => setActiveTab("appraisal-cycle")}
+            >
+              Appraisal Cycle Master
+            </button>
+          )}
 
-          {isTabVisible("payroll-data") && <button
-            type="button"
-            className={activeTab === "payroll-data" ? "active" : ""}
-            onClick={() => setActiveTab("payroll-data")}
-          >
-            Payroll Data
-          </button>}
+          {isTabVisible("payroll-data") && (
+            <button
+              type="button"
+              className={activeTab === "payroll-data" ? "active" : ""}
+              onClick={() => setActiveTab("payroll-data")}
+            >
+              Payroll Data
+            </button>
+          )}
 
-          {isTabVisible("payroll-upload") && <button
-            type="button"
-            className={activeTab === "payroll-upload" ? "active" : ""}
-            onClick={() => setActiveTab("payroll-upload")}
-          >
-            Payroll Upload
-          </button>}
-          {isTabVisible("team-changes") && <button
-            type="button"
-            className={activeTab === "team-changes" ? "active" : ""}
-            onClick={() => setActiveTab("team-changes")}
-          >
-            Team Changes
-          </button>}
-          {isTabVisible("budget-master") && <button
+          {isTabVisible("payroll-upload") && (
+            <button
+              type="button"
+              className={activeTab === "payroll-upload" ? "active" : ""}
+              onClick={() => setActiveTab("payroll-upload")}
+            >
+              Payroll Upload
+            </button>
+          )}
+          {isTabVisible("team-changes") && (
+            <button
+              type="button"
+              className={activeTab === "team-changes" ? "active" : ""}
+              onClick={() => setActiveTab("team-changes")}
+            >
+              Team Changes
+            </button>
+          )}
+          {isTabVisible("budget-master") && (
+            <button
               type="button"
               className={activeTab === "budget-master" ? "active" : ""}
               onClick={() => setActiveTab("budget-master")}
             >
               Budget Master
-            </button>}
-          {isTabVisible("budget-distribution") && <button
+            </button>
+          )}
+          {isTabVisible("budget-distribution") && (
+            <button
               type="button"
               className={activeTab === "budget-distribution" ? "active" : ""}
               onClick={() => setActiveTab("budget-distribution")}
             >
               Budget Distribution
-            </button>}
+            </button>
+          )}
           {isTabVisible("delegation") && (
             <button
               type="button"
@@ -2373,7 +2410,9 @@ export function EmployeeMaster() {
               }
               onDownloadData={() => downloadRosterData(filteredRosterEmployees)}
               onAuditHistory={
-                access.canAction("viewAudit") ? () => openAuditHistory("status") : undefined
+                access.canAction("viewAudit")
+                  ? () => openAuditHistory("status")
+                  : undefined
               }
             />
 
@@ -2416,7 +2455,6 @@ export function EmployeeMaster() {
                 canEdit={canEditEmployees}
               />
             )}
-
           </div>
         )}
 
@@ -2458,7 +2496,9 @@ export function EmployeeMaster() {
                     canEditEmployees ? setEligibilityEmployee : undefined
                   }
                   onDownloadTemplate={downloadEligibilityTemplate}
-                  onImport={canEditEmployees ? handleEligibilityFile : undefined}
+                  onImport={
+                    canEditEmployees ? handleEligibilityFile : undefined
+                  }
                   onExport={exportEligibilityData}
                   onAuditHistory={
                     access.canAction("viewAudit")
@@ -2478,7 +2518,22 @@ export function EmployeeMaster() {
 
         {isTabVisible("appraisal-cycle") && activeTab === "appraisal-cycle" && (
           <div className="em-tab-content">
-            <AppraisalCycleMasterPage />
+            const KNOWN_TABS =
+            ["roster","payroll-data","payroll-upload","eligibility","delegation"];
+            <AppraisalCycleMasterPage
+              onNavigate={(tab) =>
+                KNOWN_TABS.includes(tab) && isTabVisible(tab)
+                  ? setActiveTab(tab)
+                  : showBanner(
+                      "Not connected",
+                      "That screen is not available here yet.",
+                      true,
+                    )
+              }
+              /* optional, when you have the data:
+  pendingItems={[...]}  cycleStats={{ [cycleId]: {...} }}
+  onGenerateSheet={async (cycle) => {...}} */
+            />
           </div>
         )}
 
@@ -2508,7 +2563,9 @@ export function EmployeeMaster() {
             <PayrollUploadPage />
           </div>
         )}
-        {isTabVisible("team-changes") && activeTab === "team-changes" && <TeamChangesPage />}
+        {isTabVisible("team-changes") && activeTab === "team-changes" && (
+          <TeamChangesPage />
+        )}
         {isTabVisible("budget-master") && activeTab === "budget-master" && (
           <div
             className="em-tab-content"
@@ -2522,18 +2579,19 @@ export function EmployeeMaster() {
           </div>
         )}
 
-        {isTabVisible("budget-distribution") && activeTab === "budget-distribution" && (
-          <div
-            className="em-tab-content"
-            style={{
-              height: "calc(100vh - 180px)",
-              overflowY: "auto",
-              overflowX: "hidden",
-            }}
-          >
-            <BudgetDistributionPage />
-          </div>
-        )}
+        {isTabVisible("budget-distribution") &&
+          activeTab === "budget-distribution" && (
+            <div
+              className="em-tab-content"
+              style={{
+                height: "calc(100vh - 180px)",
+                overflowY: "auto",
+                overflowX: "hidden",
+              }}
+            >
+              <BudgetDistributionPage />
+            </div>
+          )}
         {isTabVisible("delegation") && activeTab === "delegation" && (
           <div
             className="em-tab-content"
