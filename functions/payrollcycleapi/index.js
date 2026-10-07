@@ -197,11 +197,20 @@ async function getAllRows(table) {
 }
 
 function normalizeCycle(row) {
+  const id = rowId(row) || String(row.id || row.ID || "").trim();
+  const name = String(
+    row.cycle_name ||
+      row.cycleName ||
+      row.name ||
+      row.appraisal_year ||
+      row.appraisalYear ||
+      "",
+  ).trim();
   return {
-    id: rowId(row),
-    name: row.cycle_name || "",
-    start: row.start_date || "",
-    end: row.end_date || "",
+    id,
+    name,
+    start: row.start_date || row.startDate || "",
+    end: row.end_date || row.endDate || "",
     status: row.status || "Upcoming",
     remarks: row.remarks || "",
     changedBy: row.changed_by || "",
@@ -378,12 +387,25 @@ async function requirePayrollTables(adminApp) {
 }
 
 function mapPayroll(row, cycleById) {
-  const cycleId = String(row.appraisal_cycle_id || "");
+  const cycleId = String(
+    row.appraisal_cycle_id ||
+      row.appraisalCycleId ||
+      row.cycle_id ||
+      row.cycleId ||
+      "",
+  ).trim();
+  const cycle =
+    cycleById.get(cycleId) ||
+    [...cycleById.values()].find(
+      (item) =>
+        item.name === cycleId ||
+        String(item.id || "").trim() === cycleId,
+    );
   return {
     id: rowId(row),
     empId: row.emp_id || "",
     cycleId,
-    cycle: cycleById.get(cycleId)?.name || "",
+    cycle: cycle?.name || "",
     batch: row.source_batch || "",
     empName: row.emp_name || "",
     designation: row.designation || "",
