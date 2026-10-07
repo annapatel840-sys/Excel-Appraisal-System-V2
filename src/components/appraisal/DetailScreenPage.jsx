@@ -294,6 +294,33 @@ function useFitScale(depKey) {
    SMALL PRESENTATIONAL COMPONENTS
    ------------------------------------------------------------------ */
 function BudgetBanner({ notice, onGotIt, onViewBudget }) {
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [notesText, setNotesText] = useState("");
+  const [notes, setNotes] = useState(() => readDetailNotes());
+
+  const saveDetailNote = () => {
+    const trimmed = notesText.trim();
+    if (!trimmed) return;
+    const next = [
+      ...notes,
+      {
+        id: String(Date.now()),
+        at: formatDetailNoteTime(),
+        text: trimmed,
+        ctx: "Detailed Screen",
+      },
+    ];
+    setNotes(next);
+    window.localStorage.setItem(DETAIL_NOTES_KEY, JSON.stringify(next));
+    setNotesText("");
+  };
+
+  const deleteDetailNote = (id) => {
+    const next = notes.filter((note) => note.id !== id);
+    setNotes(next);
+    window.localStorage.setItem(DETAIL_NOTES_KEY, JSON.stringify(next));
+  };
+
   // Always renders a wrapper so the grid row structure never shifts.
   return (
     <div style={{ minWidth: 0 }}>
@@ -639,9 +666,6 @@ export function DetailScreenPage({
   const [metricsOpen, setMetricsOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(true);
   const [feedbackWidth, setFeedbackWidth] = useState(320);
-  const [notesOpen, setNotesOpen] = useState(false);
-  const [notesText, setNotesText] = useState("");
-  const [notes, setNotes] = useState(() => readDetailNotes());
   const [fbTab, setFbTab] = useState("manager");
   const baselineRef = useRef({});
 
@@ -950,31 +974,6 @@ export function DetailScreenPage({
   const handleViewBudget = () => {
     if (typeof onViewBudget === "function") onViewBudget();
     else window.location.assign(BUDGET_PATH);
-  };
-
-  const saveDetailNote = () => {
-    const trimmed = notesText.trim();
-    if (!trimmed) return;
-    const next = [
-      ...notes,
-      {
-        id: String(Date.now()),
-        at: formatDetailNoteTime(),
-        text: trimmed,
-        ctx: employee
-          ? `${employee.name} (${employee.empId}) · ${CURRENT_CYCLE}`
-          : `Detailed Screen · ${CURRENT_CYCLE}`,
-      },
-    ];
-    setNotes(next);
-    window.localStorage.setItem(DETAIL_NOTES_KEY, JSON.stringify(next));
-    setNotesText("");
-  };
-
-  const deleteDetailNote = (id) => {
-    const next = notes.filter((note) => note.id !== id);
-    setNotes(next);
-    window.localStorage.setItem(DETAIL_NOTES_KEY, JSON.stringify(next));
   };
 
   // Blur first so the field being edited commits, then move.
