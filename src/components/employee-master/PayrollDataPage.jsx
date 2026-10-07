@@ -33,6 +33,11 @@ const COLS = [
     cat: "master",
     money: true,
   },
+  { key: "allocatedPb", label: "Allocated PB", type: "number", cat: "input", money: true },
+  { key: "allocatedPbInstallment", label: "Allocated PB Installment", type: "number", cat: "input", money: true },
+  { key: "performanceBonus", label: "Performance Bonus", type: "number", cat: "input", money: true },
+  { key: "performanceBonusInstallment", label: "Performance Bonus Installment", type: "number", cat: "input", money: true },
+  { key: "retentionBonus", label: "Retention Bonus", type: "number", cat: "input", money: true },
   {
     key: "allocPB",
     label: "Allocated PB",
@@ -48,6 +53,7 @@ const COLS = [
     money: true,
   },
   { key: "newRB", label: "New Retention Bonus", type: "number", cat: "input", money: true },
+  { key: "joiningBonus", label: "Joining Bonus", type: "number", cat: "input", money: true },
   {
     key: "hikeAmt",
     label: "Hike Amount",
@@ -57,6 +63,9 @@ const COLS = [
   },
   { key: "promo", label: "Promotion", type: "text", cat: "input" },
   { key: "newTitle", label: "New Title", type: "text", cat: "input" },
+  { key: "targetPerformanceBonus", label: "Target Performance Bonus", type: "number", cat: "master", money: true },
+  { key: "managerRating", label: "Manager Rating", type: "text", cat: "master" },
+  { key: "rating", label: "Rating", type: "text", cat: "master" },
   {
     key: "totalPB",
     label: "Total PB",
