@@ -3,27 +3,30 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAccess } from "@/lib/access-store";
 
 const STATIC_COL_META = {
+  // Identity / cycle context.
   emp_id: { label: "Employee ID", frozen: true },
-  appraisal_cycle_id: { label: "Cycle ID" },
   appraisal_year: { label: "Cycle" },
-  emp_name: { label: "Employee Name" },
-  base_pay: { label: "Base Pay", type: "number", money: true },
-  alloc_pb: { label: "Allocated PB", type: "number", money: true },
-  alloc_inst: { label: "Allocated PB Installment", type: "number", money: true },
-  new_pb: { label: "Performance Bonus", type: "number", money: true },
-  new_pb_inst: { label: "Performance Bonus Installment", type: "number", money: true },
-  new_rb: { label: "Retention Bonus", type: "number", money: true },
-  total_pb: { label: "Total PB", type: "number", money: true },
-  joining_bonus: { label: "Joining Bonus", type: "number", money: true },
-  total_bonus: { label: "Total Bonus", type: "number", money: true },
-  hike_amt: { label: "Hike Amount", type: "number", money: true },
-  hike_pct: { label: "Hike %", type: "number", pct: true },
-  promo: { label: "Promotion" },
-  new_title: { label: "Title" },
-  target_pb_next_year: { label: "Target Performance Bonus", type: "number", money: true },
-  total_ctc: { label: "New CTC", type: "number", money: true },
-  manager_rating: { label: "Manager Rating" },
-  rating: { label: "Rating" },
+
+  // Entry / source pay values.
+  base_pay: { label: "Current Annual Base Pay", type: "number", money: true, cat: "entry" },
+  target_pb: { label: "Target PB Allocated for May", type: "number", money: true, cat: "entry" },
+  rb_paid: { label: "RB to be Paid", type: "number", money: true, cat: "entry" },
+  joining_bonus: { label: "Joining Bonus", type: "number", money: true, cat: "entry" },
+  pb_paid: { label: "PB to be Paid", type: "number", money: true, cat: "entry" },
+  alloc_pb: { label: "Allocated PB Amount", type: "number", money: true, cat: "entry" },
+  alloc_inst: { label: "Inst. (Allocated PB)", type: "number", money: true, cat: "entry" },
+  new_pb: { label: "New PB to be Offered", type: "number", money: true, cat: "entry" },
+  new_pb_inst: { label: "Inst. (New PB)", type: "number", money: true, cat: "entry" },
+  new_rb: { label: "New RB", type: "number", money: true, cat: "entry" },
+  hike_amt: { label: "Hike Amount", type: "number", money: true, cat: "entry" },
+  target_pb_next_year: { label: "Target PB for Next Year", type: "number", money: true, cat: "entry" },
+
+  // Calculated pay values.
+  total_pb: { label: "Total PB", type: "number", money: true, cat: "calc" },
+  total_bonus: { label: "Total Bonus", type: "number", money: true, cat: "calc" },
+  hike_pct: { label: "Hike %", type: "number", pct: true, cat: "calc" },
+  new_base_pay: { label: "New Base Pay", type: "number", money: true, cat: "calc" },
+  total_ctc: { label: "Total CTC", type: "number", money: true, cat: "calc" },
 };
 
 function schemaLabel(name) {
@@ -32,10 +35,11 @@ function schemaLabel(name) {
 
 function buildColumnsFromSchema(schema) {
   const hidden = new Set(["ROWID", "CREATORID", "CREATEDTIME", "MODIFIEDTIME", "appraisal_cycle_id", "source_batch", "source_file"]);
-  return (schema?.columns || []).filter((column) => !hidden.has(column.name)).map((column) => {
+  const allowed = new Set(Object.keys(STATIC_COL_META));
+  return (schema?.columns || []).filter((column) => !hidden.has(column.name) && allowed.has(column.name)).map((column) => {
     const meta = STATIC_COL_META[column.name] || {};
     const type = /int|decimal|double|float|number|numeric|bigint/.test(column.type || "") ? "number" : "text";
-    return { key: column.name, label: meta.label || column.label || schemaLabel(column.name), type: meta.type || type, frozen: meta.frozen, money: meta.money, pct: meta.pct };
+    return { key: column.name, label: meta.label || column.label || schemaLabel(column.name), type: meta.type || type, frozen: meta.frozen, money: meta.money, pct: meta.pct, cat: meta.cat };
   });
 }
 
@@ -493,7 +497,7 @@ export function PayrollDataPage() {
         <div>
           <h1>Payroll Data</h1>
           <p className="pd-sub">
-            Stored Master + Input data, plus derived Calculated fields and YoY.
+            Entry and calculated pay values only.
           </p>
         </div>
         <div className="pd-stat">
