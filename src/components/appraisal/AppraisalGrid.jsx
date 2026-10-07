@@ -1481,7 +1481,12 @@ export function AppraisalGrid({
   // ============================================================
 
   const [notesOpen, setNotesOpen] = useState(false);
+  const [notesSlot, setNotesSlot] = useState(null);
   const notesWrapRef = useRef(null);
+
+  useEffect(() => {
+    setNotesSlot(document.getElementById("appraisal-my-notes-slot"));
+  }, []);
 
   useEffect(() => {
     if (!notesOpen) {
@@ -3616,26 +3621,26 @@ export function AppraisalGrid({
       {/* LEFT SIDE: NOTES BAR + GRID + PAGINATION + HISTORY */}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {/* MY NOTES BAR */}
+        {notesSlot &&
+          createPortal(
+            <div ref={notesWrapRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setNotesOpen((previous) => !previous)}
+                className="inline-flex h-9 items-center whitespace-nowrap rounded-md border border-[#d1d5db] bg-white px-2.5 text-[12px] font-bold text-[#111827] hover:border-[#102a43]"
+              >
+                ✎ My notes
+                {notesCount > 0 && (
+                  <span className="ml-1.5 rounded-[9px] bg-[#102a43] px-1.5 text-[10.5px] font-extrabold text-white">
+                    {notesCount}
+                  </span>
+                )}
+              </button>
 
-        <div className="flex h-9 shrink-0 items-center justify-end border-b border-[#e5e7eb] bg-white px-3">
-          <div ref={notesWrapRef} className="relative">
-            <button
-              type="button"
-              onClick={() => setNotesOpen((previous) => !previous)}
-              className="inline-flex h-[30px] items-center whitespace-nowrap rounded-md border border-[#d1d5db] bg-white px-2.5 text-[12px] font-bold text-[#111827] hover:border-[#102a43]"
-            >
-              ✎ My notes
-              {notesCount > 0 && (
-                <span className="ml-1.5 rounded-[9px] bg-[#102a43] px-1.5 text-[10.5px] font-extrabold text-white">
-                  {notesCount}
-                </span>
-              )}
-            </button>
-
-            {notesOpen && <NotesPopover contextLabel={notesContext} />}
-          </div>
-        </div>
+              {notesOpen && <NotesPopover contextLabel={notesContext} />}
+            </div>,
+            notesSlot,
+          )}
 
         <div ref={gridViewportRef} className="min-h-0 flex-1 overflow-auto">
           <table
