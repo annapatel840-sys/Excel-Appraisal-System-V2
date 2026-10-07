@@ -65,11 +65,16 @@ const EMP_FIELDS = [
 // Keys must stay the same: the payroll backend validates these.
 const PAY_FIELDS = [
   { key: "empId", label: "Employee ID", required: true },
-  // Entry / source pay values.
+  // Keep payroll upload in the same pay-field order as Payroll Data.
+  { key: "hikePct", label: "Hike %" },
+  { key: "totalBonus", label: "Total Bonus" },
+  { key: "totalPB", label: "Total PB" },
+  { key: "newBasePay", label: "New Base Pay" },
+  { key: "totalCtc", label: "Total CTC" },
   { key: "basePay", label: "Current Annual Base Pay" },
+  { key: "joiningBonus", label: "Joining Bonus" },
   { key: "targetPB", label: "Target PB Allocated for May" },
   { key: "rbPaid", label: "RB to be Paid" },
-  { key: "joiningBonus", label: "Joining Bonus" },
   { key: "pbPaid", label: "PB to be Paid" },
   { key: "allocPB", label: "Allocated PB Amount" },
   { key: "allocInst", label: "Inst. (Allocated PB)" },
@@ -78,13 +83,6 @@ const PAY_FIELDS = [
   { key: "newRB", label: "New RB" },
   { key: "hikeAmt", label: "Hike Amount" },
   { key: "tpbNext", label: "Target PB for Next Year" },
-  // Calculation values are included so corrected historical files can be
-  // stored exactly; when left blank the backend derives them.
-  { key: "totalPB", label: "Total PB" },
-  { key: "totalBonus", label: "Total Bonus" },
-  { key: "hikePct", label: "Hike %" },
-  { key: "newBasePay", label: "New Base Pay" },
-  { key: "totalCtc", label: "Total CTC" },
 ];
 
 const FB_FIELDS = [
