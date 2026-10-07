@@ -128,12 +128,30 @@ const GRID_STYLES = `
 }
 .appraisal-cell-blink { animation: appraisalCellBlink .5s ease-in-out 3; }
 
-/* Row density (More tab -> Compact) */
-.appraisal-compact td { height: 30px; }
-.appraisal-compact [class*="min-h-[38px]"] { min-height: 28px !important; }
-.appraisal-compact input:not([type="checkbox"]),
-.appraisal-compact select { height: 24px !important; }
-.appraisal-compact textarea { min-height: 24px !important; }
+/* Row density: Compact (More tab). !important is needed because the cells
+   carry inline min-height styles that would otherwise win. */
+.appraisal-compact tbody tr {
+  min-height: 0 !important;
+}
+.appraisal-compact tbody td {
+  height: 28px !important;
+  min-height: 28px !important;
+}
+.appraisal-compact tbody td div,
+.appraisal-compact tbody td button {
+  min-height: 0 !important;
+  padding-top: 1px !important;
+  padding-bottom: 1px !important;
+}
+.appraisal-compact tbody td input:not([type="checkbox"]),
+.appraisal-compact tbody td select {
+  height: 22px !important;
+}
+.appraisal-compact tbody td textarea {
+  min-height: 22px !important;
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+}
 `;
 
 // ============================================================
@@ -646,9 +664,7 @@ function NotesPopover({ contextLabel }) {
 
         <span className="flex-1" />
 
-        {text && (
-          <span className="text-[11px] text-[#6b7280]">Draft kept</span>
-        )}
+        {text && <span className="text-[11px] text-[#6b7280]">Draft kept</span>}
 
         <button
           type="button"
@@ -1610,7 +1626,8 @@ export function AppraisalGrid({
   const orderedColumns = useMemo(
     () =>
       allColumns.filter(
-        (column) => FROZEN_KEYS.has(column.key) || !viewPrefs.hidden[column.key],
+        (column) =>
+          FROZEN_KEYS.has(column.key) || !viewPrefs.hidden[column.key],
       ),
     [allColumns, viewPrefs.hidden],
   );
