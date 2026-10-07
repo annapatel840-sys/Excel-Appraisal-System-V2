@@ -36,18 +36,18 @@ const MONTH_NAMES = [
 
 // Employee Master field key -> Catalyst column (same mapping as EmployeeMaster.jsx)
 const EM_TO_CATALYST = {
-  name: "name",
+  name: "emp_name",
   designation: "designation",
   organization: "department",
-  doj: "joining_date",
+  doj: "date_of_join",
   orgExp: "wissen_experience",
   totalExp: "total_experience",
-  reportingManager: "reporting_manager",
-  compManager: "comp_manager",
+  reportingManager: "repo_manager",
+  compManager: "director",
   appraiser: "appraiser_tech_ed",
-  managerMail: "manager_email_id",
+  managerMail: "email_id",
   superManagerMail: "super_man_email_id",
-  status: "status",
+  status: "emp_status",
 };
 
 /* ============================================================
@@ -278,6 +278,7 @@ export function UploadPage({ handlers = {} }) {
   const canPayroll = role === "hr" || role === "compmanager";
   const roleName = user?.name || user?.email || "—";
 
+  const [schemaTables, setSchemaTables] = useState([]);
   const [cycles, setCycles] = useState([]);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -317,11 +318,12 @@ export function UploadPage({ handlers = {} }) {
     let active = true;
     setLoading(true);
     setLoadError("");
-    Promise.all([payrollCycleRequest("cycles"), payrollCycleRequest("history")])
-      .then(([cycleData, historyData]) => {
+    Promise.all([payrollCycleRequest("cycles"), payrollCycleRequest("history"), payrollCycleRequest("schema")])
+      .then(([cycleData, historyData, schemaData]) => {
         if (!active) return;
         setCycles(cycleData);
         setHistory(historyData);
+        setSchemaTables(Array.isArray(schemaData) ? schemaData : []);
         setCycleId((current) => {
           if (current) return current;
           const first = cycleData.find(isOpenCycle);
@@ -364,7 +366,26 @@ export function UploadPage({ handlers = {} }) {
   };
 
   const def = screen ? UPLOADS[screen] : null;
-  const fields = def?.fields || [];
+
+  const schemaTable = useMemo(() => {
+    const wanted = screen === "emp" ? "Employee_Master" : screen === "pay" ? "Payroll_Data" : "Employees";
+    return schemaTables.find((table) => String(table.name).toLowerCase() === wanted.toLowerCase()) || null;
+  }, [schemaTables, screen]);
+
+  const fields = useMemo(() => {
+    const base = def?.fields || [];
+    if (!schemaTable?.columns?.length) return base;
+    const knownColumns = new Set(base.map((field) => field.column || EM_TO_CATALYST[field.key] || field.key));
+    const hidden = new Set(["ROWID", "CREATORID", "CREATEDTIME", "MODIFIEDTIME", "appraisal_cycle_id", "source_batch", "source_file", "emp_master_row_id", "emp_row_id"]);
+    const extras = schemaTable.columns.filter((column) => !hidden.has(column.name) && !knownColumns.has(column.name)).map((column) => ({
+      key: column.name,
+      column: column.name,
+      label: column.label || column.name,
+      required: column.mandatory === true,
+      schemaType: column.type,
+    }));
+    return [...base, ...extras];
+  }, [def, schemaTable]);
   const labelOf = (key) => fields.find((f) => f.key === key)?.label || key;
 
   /* ---------------- file ---------------- */
@@ -641,7 +662,7 @@ export function UploadPage({ handlers = {} }) {
           if (matches.length !== 1) return; // not matched: leave unchanged
           value = `${matches[0].empId} - ${matches[0].name}`;
         }
-        payload[EM_TO_CATALYST[f.key]] = value;
+        payload[f.column || EM_TO_CATALYST[f.key] || f.key] = value;
       });
       return payload;
     });
