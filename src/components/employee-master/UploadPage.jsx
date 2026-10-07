@@ -720,24 +720,25 @@ export function UploadPage({ handlers = {} }) {
           failed: records.length - created - updated,
         };
       } else {
-        const handler = handlers[screen];
-        if (!handler)
-          throw new Error(
-            `${def.label} upload is not connected to a backend yet.`,
-          );
         const failedRows = new Set(res.errors.map((e) => e.row));
-        const r = await handler({
-          cycleId,
-          batchId,
-          fileName: file.name,
-          records: records.filter((x) => !failedRows.has(x.row)),
+        const response = await payrollCycleRequest("import", {
+          method: "POST",
+          body: {
+            screen,
+            cycleId,
+            batchId,
+            fileName: file.name,
+            records: records.filter((x) => !failedRows.has(x.row)),
+          },
         });
+        const r = response || {};
         out = {
-          batchId,
+          batchId: r.batchId || batchId,
           total: records.length,
-          succeeded: r?.succeeded ?? records.length - failedRows.size,
-          failed: r?.failed ?? failedRows.size,
+          succeeded: r.succeeded ?? records.length - failedRows.size,
+          failed: r.failed ?? failedRows.size,
         };
+      }
       }
 
       setOutcome(out);
