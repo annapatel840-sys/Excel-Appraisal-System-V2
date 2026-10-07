@@ -353,6 +353,8 @@ export function SheetPage() {
                 Reset
               </Button>
 
+              <div id="appraisal-my-notes-slot" className="relative shrink-0" />
+
               <button
                 type="button"
                 onClick={() => setShowHistory((previous) => !previous)}
