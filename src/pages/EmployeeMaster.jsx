@@ -2531,7 +2531,7 @@ export function EmployeeMaster() {
               renderCycleScreen={(defaultProcess) => (
                 <AppraisalCycleMasterPage
                   defaultProcess={defaultProcess}
-                  cycleStats={cycleStats}
+                  cycleStats={null}
                   onNavigate={(tab) =>
                     KNOWN_TABS.includes(tab) && isTabVisible(tab)
                       ? setActiveTab(tab)
