@@ -233,6 +233,9 @@ const DS_CSS = `
 .ds-scroll{min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}
 .ds-hist{margin:0 12px 14px;min-height:240px}
 .ds-vbtn{writing-mode:vertical-rl;transform:rotate(180deg)}
+.ds-marquee{display:inline-flex;min-width:max-content;gap:72px;white-space:nowrap;animation:dsBudgetMarquee 18s linear infinite}
+.ds-marquee:hover{animation-play-state:paused}
+@keyframes dsBudgetMarquee{from{transform:translateX(0)}to{transform:translateX(calc(-50% - 36px))}}
 .ds-root button{cursor:pointer}
 .ds-root button:disabled{cursor:not-allowed}
 @media (max-width:999px){
@@ -442,9 +445,15 @@ function BudgetBanner({ notice, onGotIt, onViewBudget, notesOpen, setNotesOpen, 
             <span className="inline-flex items-center gap-2 font-bold" style={{ color: INK }}>
               <span style={{ color: RED }}>▲</span> Budget changed
             </span>
-            <span className="min-w-0 flex-1" style={{ color: "#3E4C59" }}>
-              Be aware: your team budget has changed from {notice.from} to {notice.to} —{" "}
-              {notice.changes} team changes since allocation on {notice.since}.
+            <span
+              className="min-w-0 flex-1 overflow-hidden"
+              style={{ color: "#3E4C59" }}
+              aria-label={budgetNoticeText}
+            >
+              <span className="ds-marquee">
+                <span>{budgetNoticeText}</span>
+                <span aria-hidden="true">{budgetNoticeText}</span>
+              </span>
             </span>
           </div>
         ) : (
@@ -726,6 +735,12 @@ export function DetailScreenPage({
   // Layout-only state (no effect on data)
   const [noticeOpen, setNoticeOpen] = useState(true);
   const [metricsOpen, setMetricsOpen] = useState(false);
+
+  // Keep the budget notice visible as a marquee; it is intentionally independent
+  // of the employee-selection state so changing employees cannot hide it.
+  const budgetNoticeText = budgetNotice
+    ? `Be aware: your team budget has changed from ${budgetNotice.from} to ${budgetNotice.to} — ${budgetNotice.changes} team changes since allocation on ${budgetNotice.since}.`
+    : "";
   const [notesOpen, setNotesOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(true);
   const [feedbackWidth, setFeedbackWidth] = useState(320);
