@@ -68,7 +68,7 @@ const INITIAL_ORG_AUDIT = [
 
 /* ---------- helpers ---------- */
 function money(value) {
-  return "₹ " + ((Number(value) || 0) / 100000).toFixed(2) + " L";
+  return ((Number(value) || 0) / 100000).toFixed(2) + " L";
 }
 
 function percent(value) {
