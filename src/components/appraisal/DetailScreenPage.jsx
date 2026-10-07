@@ -427,70 +427,71 @@ function useFitScale(depKey) {
 function BudgetBanner({ notice, onGotIt, onViewBudget, notesOpen, setNotesOpen, employee }) {
   return (
     <div style={{ minWidth: 0 }}>
-      {notice ? (
-        <div
-          className="flex flex-wrap items-center gap-3"
-          style={{
-            margin: "6px 12px 2px",
-            padding: "6px 12px",
-            background: "#fff",
-            border: `1px solid ${LINE}`,
-            borderRadius: 8,
-          }}
-        >
-          <span className="inline-flex items-center gap-2 font-bold" style={{ color: INK }}>
-            <span style={{ color: RED }}>▲</span> Budget changed
-          </span>
-          <span className="min-w-0 flex-1" style={{ color: "#3E4C59" }}>
-            Be aware: your team budget has changed from {notice.from} to {notice.to} —{" "}
-            {notice.changes} team changes since allocation on {notice.since}.
-          </span>
-        </div>
-      ) : null}
-
       <div
-        className="flex flex-wrap items-center gap-2"
-        style={{ margin: notice ? "0 12px 2px" : "6px 12px 2px" }}
+        className="flex items-start gap-3"
+        style={{
+          margin: "6px 12px 2px",
+          padding: "6px 12px",
+          background: "#fff",
+          border: `1px solid ${LINE}`,
+          borderRadius: 8,
+        }}
       >
-        <button
-          type="button"
-          onClick={onViewBudget}
-          className="rounded border px-3 py-1 font-semibold"
-          style={{ borderColor: "#C4CED6", background: "#fff", color: INK }}
-        >
-          View budget
-        </button>
+        {notice ? (
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+            <span className="inline-flex items-center gap-2 font-bold" style={{ color: INK }}>
+              <span style={{ color: RED }}>▲</span> Budget changed
+            </span>
+            <span className="min-w-0 flex-1" style={{ color: "#3E4C59" }}>
+              Be aware: your team budget has changed from {notice.from} to {notice.to} —{" "}
+              {notice.changes} team changes since allocation on {notice.since}.
+            </span>
+          </div>
+        ) : (
+          <div className="min-w-0 flex-1" />
+        )}
 
-        <div className="relative" data-detail-notes>
+        <div className="relative ml-auto flex shrink-0 items-center gap-2" data-detail-notes>
           <button
             type="button"
-            onClick={() => setNotesOpen((previous) => !previous)}
+            onClick={onViewBudget}
             className="rounded border px-3 py-1 font-semibold"
             style={{ borderColor: "#C4CED6", background: "#fff", color: INK }}
           >
-            ✎ My notes
+            View budget
           </button>
-          {notesOpen && (
-            <NotesPopover
-              contextLabel={
-                employee
-                  ? `${employee.name} (${employee.empId}) · ${CURRENT_CYCLE}`
-                  : `Detailed Screen · ${CURRENT_CYCLE}`
-              }
-            />
-          )}
-        </div>
 
-        {notice ? (
-          <button
-            type="button"
-            onClick={onGotIt}
-            className="rounded border px-3 py-1 font-semibold"
-            style={{ borderColor: "#C4CED6", background: SOFT, color: INK }}
-          >
-            Got it
-          </button>
-        ) : null}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setNotesOpen((previous) => !previous)}
+              className="rounded border px-3 py-1 font-semibold"
+              style={{ borderColor: "#C4CED6", background: "#fff", color: INK }}
+            >
+              ✎ My notes
+            </button>
+            {notesOpen && (
+              <NotesPopover
+                contextLabel={
+                  employee
+                    ? `${employee.name} (${employee.empId}) · ${CURRENT_CYCLE}`
+                    : `Detailed Screen · ${CURRENT_CYCLE}`
+                }
+              />
+            )}
+          </div>
+
+          {notice ? (
+            <button
+              type="button"
+              onClick={onGotIt}
+              className="rounded border px-3 py-1 font-semibold"
+              style={{ borderColor: "#C4CED6", background: SOFT, color: INK }}
+            >
+              Got it
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
