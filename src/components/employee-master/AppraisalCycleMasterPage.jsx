@@ -167,6 +167,7 @@ function Modal({ title, onClose, children, footer, error, wideModal }) {
                                 sheetGenerated, sheetRows,
                                 letters:{gen,toSend,sent,dropped} } }
    - onGenerateSheet(cycle)   async; called by "Generate Appraisal Sheet"
+   - defaultProcess           { Annual, "Mid-Year", Exceptional, "New Joiner" } from HR Config
    ============================================================ */
 
 export function AppraisalCycleMasterPage({
@@ -174,6 +175,7 @@ export function AppraisalCycleMasterPage({
   pendingItems = [],
   cycleStats = null,
   onGenerateSheet,
+  defaultProcess = null,
 }) {
   const user = useCatalystUser();
   const access = useAccess();
@@ -182,6 +184,10 @@ export function AppraisalCycleMasterPage({
       .trim()
       .toLowerCase() === "hr" && access.canScreen("cycleMaster", "edit");
   const canAudit = access.canAction("viewAudit");
+  const DPROC = useMemo(
+    () => ({ ...DEFAULT_PROCESS, ...(defaultProcess || {}) }),
+    [defaultProcess],
+  );
 
   const [rawCycles, setCycles] = useState([]);
   const [audit, setAudit] = useState([]);
@@ -300,12 +306,12 @@ export function AppraisalCycleMasterPage({
         return {
           ...c,
           type: t,
-          process: c.process || DEFAULT_PROCESS[t],
+          process: c.process || DPROC[t],
           effective: c.effective || c.start || "",
           cancelReason: c.cancelReason || "",
         };
       }),
-    [rawCycles],
+    [rawCycles, DPROC],
   );
 
   const current = useMemo(
@@ -1865,11 +1871,7 @@ export function AppraisalCycleMasterPage({
                     disabled={saving}
                     onClick={() => {
                       setModalError("");
-                      setNewForm({
-                        ...blankNew,
-                        type,
-                        process: DEFAULT_PROCESS[type],
-                      });
+                      setNewForm({ ...blankNew, type, process: DPROC[type] });
                       setNewCycleOpen(true);
                     }}
                   >
@@ -2184,7 +2186,7 @@ export function AppraisalCycleMasterPage({
                   setNewForm((f) => ({
                     ...f,
                     type: e.target.value,
-                    process: DEFAULT_PROCESS[e.target.value],
+                    process: DPROC[e.target.value],
                   }))
                 }
               >

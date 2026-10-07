@@ -5,6 +5,7 @@ import { AppShell } from "@/components/appraisal/AppShell";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { HrConfigPage } from "@/components/employee-master/HrConfigPage";
 import {
   FIELD_DEFS,
   fetchEmployeeMasterEmployees,
@@ -2525,19 +2526,23 @@ export function EmployeeMaster() {
 
         {isTabVisible("appraisal-cycle") && activeTab === "appraisal-cycle" && (
           <div className="em-tab-content">
-            <AppraisalCycleMasterPage
-              onNavigate={(tab) =>
-                KNOWN_TABS.includes(tab) && isTabVisible(tab)
-                  ? setActiveTab(tab)
-                  : showBanner(
-                      "Not connected",
-                      "That screen is not available here yet.",
-                      true,
-                    )
-              }
-              /* optional, when you have the data:
-  pendingItems={[...]}  cycleStats={{ [cycleId]: {...} }}
-  onGenerateSheet={async (cycle) => {...}} */
+            <HrConfigPage
+              canEdit={isRoleHR}
+              renderCycleScreen={(defaultProcess) => (
+                <AppraisalCycleMasterPage
+                  defaultProcess={defaultProcess}
+                  cycleStats={cycleStats}
+                  onNavigate={(tab) =>
+                    KNOWN_TABS.includes(tab) && isTabVisible(tab)
+                      ? setActiveTab(tab)
+                      : showBanner(
+                          "Not connected",
+                          "That screen is not available here yet.",
+                          true,
+                        )
+                  }
+                />
+              )}
             />
           </div>
         )}
