@@ -65,20 +65,12 @@ const EMP_FIELDS = [
 // Keys must stay the same: the payroll backend validates these.
 const PAY_FIELDS = [
   { key: "empId", label: "Employee ID", required: true },
-  { key: "empName", label: "Employee (Name)" },
-  { key: "designation", label: "Designation" },
-  { key: "compManager", label: "Comp. Manager" },
-  { key: "superManager", label: "Super Manager" },
-  { key: "managerMail", label: "Manager Mail" },
-  { key: "superManagerMail", label: "Super Manager Mail" },
-  { key: "appraiser", label: "Appraiser / Super Manager" },
+  // Entry / source pay values.
   { key: "basePay", label: "Current Annual Base Pay" },
   { key: "targetPB", label: "Target PB Allocated for May" },
   { key: "rbPaid", label: "RB to be Paid" },
   { key: "joiningBonus", label: "Joining Bonus" },
-  { key: "rbMonth", label: "Mo (RB)" },
   { key: "pbPaid", label: "PB to be Paid" },
-  { key: "pbMonth", label: "Mo (PB)" },
   { key: "allocPB", label: "Allocated PB Amount" },
   { key: "allocInst", label: "Inst. (Allocated PB)" },
   { key: "newPB", label: "New PB to be Offered" },
@@ -86,9 +78,13 @@ const PAY_FIELDS = [
   { key: "newRB", label: "New RB" },
   { key: "hikeAmt", label: "Hike Amount" },
   { key: "tpbNext", label: "Target PB for Next Year" },
-  { key: "promo", label: "Promo? (Yes/No)" },
-  { key: "newTitle", label: "New Title" },
-  { key: "remarks", label: "Remarks" },
+  // Calculation values are included so corrected historical files can be
+  // stored exactly; when left blank the backend derives them.
+  { key: "totalPB", label: "Total PB" },
+  { key: "totalBonus", label: "Total Bonus" },
+  { key: "hikePct", label: "Hike %" },
+  { key: "newBasePay", label: "New Base Pay" },
+  { key: "totalCtc", label: "Total CTC" },
 ];
 
 const FB_FIELDS = [
@@ -138,15 +134,15 @@ const UPLOADS = {
   pay: {
     label: "Payroll",
     short: "PY",
-    desc: "Pay and appraisal inputs per employee. Also used for history.",
+    desc: "Entry and calculated pay values only. Employee ID identifies the row.",
     fields: PAY_FIELDS,
     rules: [
-      "Employee ID is required on every row and is checked against the Employee Master.",
-      "Every row is checked on its own: valid rows upload, failed rows are skipped and listed in the error log.",
-      "Calculated columns (Hike %, totals) are never uploaded; the database works them out.",
-      "Month columns accept Jan, Feb … or an Excel date.",
-      "Match your file's columns to the template; Skip ignores a field.",
-      "Payroll batches can be undone from History.",
+      "Employee ID is required and is matched against the Employee Master.",
+      "The upload contains only pay/price entry values and calculated pay values.",
+      "If a calculated value is present in the file, it is stored as supplied. If it is blank, the server derives it.",
+      "Historical payroll matches by Employee ID + appraisal cycle; Apr-26 is not touched when another cycle is uploaded.",
+      "Match your file's columns to the template; non-payroll employee details are not part of this upload.",
+      "Payroll batches can be undone from History when the batch inserted new rows only.",
     ],
   },
   fb: {
@@ -379,6 +375,9 @@ export function UploadPage({ handlers = {} }) {
 
   const fields = useMemo(() => {
     const base = def?.fields || [];
+    // Payroll upload is intentionally limited to pay entry/calculation fields.
+    // Do not append arbitrary Data Store columns here.
+    if (screen === "pay") return base;
     if (!schemaTable?.columns?.length) return base;
     const knownColumns = new Set(base.map((field) => field.column || EM_TO_CATALYST[field.key] || field.key));
     const hidden = new Set(["ROWID", "CREATORID", "CREATEDTIME", "MODIFIEDTIME", "appraisal_cycle_id", "source_batch", "source_file", "emp_master_row_id", "emp_row_id"]);
