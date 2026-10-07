@@ -563,6 +563,148 @@ async function validateUpload(tables, body) {
   return { cycle, rows: validated };
 }
 
+async function getImportColumnSet(table) {
+  const result = await table.getPagedRows({ maxRows: 1 });
+  const row = Array.isArray(result?.data) && result.data.length ? result.data[0] : {};
+  return new Set(Object.keys(row).filter((name) => !SCHEMA_SYSTEM_COLUMNS.has(String(name).toUpperCase())));
+}
+
+const IMPORT_FIELD_MAP = {
+  fb: {
+    empId: "emp_id",
+    managerRating: "manager_rating",
+    managerFeedback: "manager_feedback",
+    rrPercent: "rr_percent",
+    interviewCount: "interview_count",
+    grossMargin: "gross_margin",
+    costCenter: "cost_center_client",
+    clientManager: "client_manager",
+    clientRating: "client_rating",
+    clientFeedback: "client_feedback",
+    atRisk: "at_risk",
+  },
+  sheet: {
+    empId: "emp_id",
+    newRB: "retention_bonus",
+    rbMonth: "rb_month",
+    newPB: "performance_bonus",
+    pbMonth: "pb_month",
+    newPBInst: "performance_bonus_installment",
+    hikeAmt: "hike_amount",
+    hikePct: "hike_pct",
+    tpbNext: "target_performance_bonus",
+    promo: "promotion",
+    newTitle: "title",
+    remarks: "remarks",
+    criteria: "target_pb_criteria",
+  },
+};
+
+const IMPORT_NUMERIC_FIELDS = new Set([
+  "rrPercent", "interviewCount", "grossMargin", "clientRating",
+  "newRB", "newPB", "newPBInst", "hikeAmt", "hikePct", "tpbNext",
+]);
+
+function normalizeImportValue(key, value) {
+  if (value === undefined || value === null || value === "") return "";
+  if (IMPORT_NUMERIC_FIELDS.has(key)) {
+    const number = Number(String(value).replace(/,/g, "").replace(/[%$]/g, "").trim());
+    if (!Number.isFinite(number) || number < 0) {
+      throw new ApiError(key + " must be a non-negative number.");
+    }
+    return number;
+  }
+  return String(value).trim();
+}
+
+async function importRows(tables, body) {
+  const screen = String(body.screen || "").trim().toLowerCase();
+  if (!["fb", "sheet"].includes(screen)) throw new ApiError("Unsupported upload type.");
+  const cycleId = String(body.cycleId || "").trim();
+  const cycleRows = await getAllRows(tables.cycles);
+  const cycle = cycleRows.map(normalizeCycle).find((item) => item.id === cycleId);
+  if (!cycle) throw new ApiError("The selected appraisal cycle no longer exists.", 404);
+  if (cycle.archived) throw new ApiError("The selected cycle is archived.", 409);
+
+  const targetTable = screen === "fb" ? tables.employees : tables.payroll;
+  const columns = await getImportColumnSet(targetTable);
+  const fieldMap = IMPORT_FIELD_MAP[screen];
+  const records = Array.isArray(body.records) ? body.records : [];
+  if (!records.length || records.length > MAX_UPLOAD_ROWS) throw new ApiError("Upload must contain between 1 and " + MAX_UPLOAD_ROWS + " rows.");
+
+  const employeeRows = await getAllRows(tables.employeeMaster);
+  const employeeIds = new Set(employeeRows.map((row) => String(row.emp_id || "").trim().toLowerCase()).filter(Boolean));
+  const existingRows = await getAllRows(targetTable);
+
+  let succeeded = 0;
+  let failed = 0;
+  const rows = [];
+
+  for (const input of records) {
+    const rowNumber = Number(input?.row) || rows.length + 2;
+    const empId = String(input?.empId || "").trim();
+    const errors = [];
+    if (!empId) errors.push("Employee ID is required.");
+    else if (!employeeIds.has(empId.toLowerCase())) errors.push("Employee ID not found in Employee Master.");
+
+    const payload = {};
+    if (!errors.length) {
+      for (const [key, column] of Object.entries(fieldMap)) {
+        if (input[key] === undefined) continue;
+        if (!columns.has(column)) {
+          if (key !== "empId") errors.push("Database column " + column + " is not available for this upload.");
+          continue;
+        }
+        try {
+          payload[column] = normalizeImportValue(key, input[key]);
+        } catch (error) {
+          errors.push(error.message);
+        }
+      }
+      if (columns.has("emp_id")) payload.emp_id = empId;
+      if (screen === "sheet") {
+        if (columns.has("appraisal_year")) payload.appraisal_year = cycle.name;
+        if (columns.has("appraisal_cycle_id")) payload.appraisal_cycle_id = cycle.id;
+        if (columns.has("total_pb")) payload.total_pb = (Number(payload.performance_bonus) || 0) + (Number(input.allocatedPBAmount) || 0);
+        if (columns.has("total_bonus")) payload.total_bonus = (Number(payload.total_pb) || 0) + (Number(payload.retention_bonus) || 0);
+        if (columns.has("hike_pct") && payload.hike_amount !== undefined) {
+          const master = employeeRows.find((row) => String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase());
+          const base = Number(master?.current_salary || master?.base_pay || 0);
+          payload.hike_pct = base > 0 ? Number(((Number(payload.hike_amount) || 0) / base * 100).toFixed(4)) : Number(payload.hike_pct || 0);
+        }
+        if (columns.has("new_ctc") && (payload.hike_amount !== undefined || payload.total_bonus !== undefined)) {
+          const master = employeeRows.find((row) => String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase());
+          const base = Number(master?.current_salary || master?.base_pay || 0);
+          payload.new_ctc = base + (Number(payload.hike_amount) || 0) + (Number(payload.total_bonus) || 0);
+        }
+      }
+    }
+
+    if (errors.length) {
+      failed += 1;
+      rows.push({ row: rowNumber, ok: false, reason: errors.join(" "), badFields: [] });
+      continue;
+    }
+
+    const existing = existingRows.find((row) => {
+      const sameEmp = String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase();
+      if (!sameEmp) return false;
+      if (screen !== "sheet") return true;
+      return !columns.has("appraisal_year") || String(row.appraisal_year || "").trim() === cycle.name;
+    });
+
+    if (existing) {
+      await targetTable.updateRow({ ROWID: rowId(existing), ...payload });
+    } else {
+      await targetTable.insertRow(payload);
+    }
+    succeeded += 1;
+    rows.push({ row: rowNumber, ok: true, reason: "", badFields: [] });
+  }
+
+  return { succeeded, failed, total: records.length, batchId: String(body.batchId || ""), rows };
+}
+
 async function routeRequest(req, res, identity, resource, a) {
   const enforced = Boolean(a && a.enforced);
   access.guard(a, () => requirePayrollAccess(a, resource, req.method));
@@ -594,6 +736,23 @@ async function routeRequest(req, res, identity, resource, a) {
   const actor = identity.name || identity.email;
 
   if (resource === "schema" && req.method === "GET") {
+  if (resource === "import" && req.method === "POST") {
+    const body = await readBody(req);
+    const screen = String(body.screen || "").trim().toLowerCase();
+    if (screen === "fb") {
+      if (enforced) access.requireScreen(a, "employeeMaster", "edit");
+      else if (!isHR(identity.user)) return sendJson(res, 403, { success: false, message: "HR role is required for Feedback & Rating upload." });
+    } else if (screen === "sheet") {
+      if (enforced) access.requireScreen(a, "appraisalSheet", "edit");
+      else if (!isHR(identity.user) && !isTechEd(identity.user)) return sendJson(res, 403, { success: false, message: "HR or Tech-Ed role is required for Appraisal Sheet upload." });
+    } else {
+      throw new ApiError("Unsupported upload type.");
+    }
+    const result = await importRows(tables, body);
+    return sendJson(res, 200, { success: true, data: result });
+  }
+
+
     const schema = await getProjectSchema(catalyst.initialize(req, { scope: "admin" }));
     return sendJson(res, 200, { success: true, data: schema });
   }
