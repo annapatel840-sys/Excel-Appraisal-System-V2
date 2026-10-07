@@ -3072,7 +3072,8 @@ export function AppraisalGrid({
                 return;
               }
 
-              // Remind to set New Title the moment Promotion flips to Yes.
+              // Promotion = Yes requires a designation/New Title. Keep the
+              // validation attached to the field instead of showing an alert.
               if (col.key === "eligibleForPromotion" && value === "Yes") {
                 updateCell(row.id, col.key, value);
                 flashSaved(cellKey);
@@ -3087,12 +3088,6 @@ export function AppraisalGrid({
                   "Yes",
                   true,
                 );
-
-                if (!row.newTitle) {
-                  window.alert(
-                    `${row.name || "This employee"} is now marked eligible for promotion. Please set the New Title — it is mandatory.`,
-                  );
-                }
 
                 return;
               }
@@ -3117,9 +3112,26 @@ export function AppraisalGrid({
             className={cn(
               "h-[30px] w-full cursor-pointer rounded-[4px] border px-1 text-[12px] outline-none",
               draftClass(cellKey, isBlinking),
+              col.key === "newTitle" &&
+                row.eligibleForPromotion === "Yes" &&
+                !row.newTitle &&
+                "border-red-500 bg-red-50 focus:border-red-600 focus:ring-red-200",
             )}
+            required={
+              col.key === "newTitle" && row.eligibleForPromotion === "Yes"
+            }
+            aria-required={
+              col.key === "newTitle" && row.eligibleForPromotion === "Yes"
+            }
+            title={
+              col.key === "newTitle" &&
+              row.eligibleForPromotion === "Yes" &&
+              !row.newTitle
+                ? "Designation is required when Promotion is Yes"
+                : undefined
+            }
           >
-            <option value="">Select...</option>
+            <option value="">Select... *</option>
 
             {(col.options || []).map((option) => (
               <option key={option} value={option}>
