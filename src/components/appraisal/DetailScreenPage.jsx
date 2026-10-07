@@ -34,8 +34,8 @@ const CURRENT_CYCLE = "Apr-26";
    ------------------------------------------------------------------ */
 const BUDGET_PATH = "/employee-master?tab=budget-master";
 const BUDGET_NOTICE_PLACEHOLDER = {
-  from: "₹ 10.41 L",
-  to: "₹ 9.79 L",
+  from: "10.41 L",
+  to: "9.79 L",
   changes: 5,
   since: "01-Sep-26",
 };
@@ -610,7 +610,7 @@ function PayRow({
       <Cell strong>{label}</Cell>
       <Cell>
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 56px", gap: 6 }}>
-          <ReadOnlyInput value={`₹${fmt(floorAmount)}`} />
+          <ReadOnlyInput value={fmt(floorAmount)} />
           <ReadOnlyInput value={month || "—"} />
         </div>
         <div
