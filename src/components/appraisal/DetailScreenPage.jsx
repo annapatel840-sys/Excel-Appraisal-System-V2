@@ -424,7 +424,7 @@ function useFitScale(depKey) {
 /* ------------------------------------------------------------------
    SMALL PRESENTATIONAL COMPONENTS
    ------------------------------------------------------------------ */
-function BudgetBanner({ notice, onGotIt, onViewBudget }) {
+function BudgetBanner({ notice, onGotIt, onViewBudget, notesOpen, setNotesOpen, employee }) {
   // Always renders a wrapper so the grid row structure never shifts.
   return (
     <div style={{ minWidth: 0 }}>
@@ -1131,6 +1131,9 @@ export function DetailScreenPage({
           notice={noticeOpen ? budgetNotice : null}
           onGotIt={() => setNoticeOpen(false)}
           onViewBudget={handleViewBudget}
+          notesOpen={notesOpen}
+          setNotesOpen={setNotesOpen}
+          employee={employee}
         />
 
         {!employee ? (
