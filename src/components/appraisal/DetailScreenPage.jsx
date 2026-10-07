@@ -428,6 +428,10 @@ function useFitScale(depKey) {
    SMALL PRESENTATIONAL COMPONENTS
    ------------------------------------------------------------------ */
 function BudgetBanner({ notice, onGotIt, onViewBudget, notesOpen, setNotesOpen, employee }) {
+  const budgetNoticeText = notice
+    ? `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`
+    : "";
+
   return (
     <div style={{ minWidth: 0 }}>
       <div
@@ -736,11 +740,6 @@ export function DetailScreenPage({
   const [noticeOpen, setNoticeOpen] = useState(true);
   const [metricsOpen, setMetricsOpen] = useState(false);
 
-  // Keep the budget notice visible as a marquee; it is intentionally independent
-  // of the employee-selection state so changing employees cannot hide it.
-  const budgetNoticeText = budgetNotice
-    ? `Be aware: your team budget has changed from ${budgetNotice.from} to ${budgetNotice.to} — ${budgetNotice.changes} team changes since allocation on ${budgetNotice.since}.`
-    : "";
   const [notesOpen, setNotesOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(true);
   const [feedbackWidth, setFeedbackWidth] = useState(320);
