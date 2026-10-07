@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAppraisal } from "@/lib/appraisal-store";
 import {
   NEW_TITLES,
@@ -121,7 +128,10 @@ function NotesPopover({ contextLabel }) {
       className="absolute right-0 top-full z-[300] mt-1.5 w-[380px] rounded-xl border bg-white px-3.5 py-3 text-[12.5px] text-[#111827] shadow-[0_8px_24px_rgba(17,24,39,.14)]"
       style={{ fontFamily: FONT }}
     >
-      <h4 className="mb-1.5 flex items-center justify-between text-[13px] font-extrabold" style={{ color: NAVY }}>
+      <h4
+        className="mb-1.5 flex items-center justify-between text-[13px] font-extrabold"
+        style={{ color: NAVY }}
+      >
         My notes
         <span className="text-[11px] font-semibold" style={{ color: MUTED }}>
           Saved in this browser only · not shared
@@ -137,7 +147,10 @@ function NotesPopover({ contextLabel }) {
       />
 
       <div className="mt-2 flex items-center gap-1.5">
-        <label className="flex items-center gap-1.5 text-[11.5px] font-semibold" style={{ color: "#374151" }}>
+        <label
+          className="flex items-center gap-1.5 text-[11.5px] font-semibold"
+          style={{ color: "#374151" }}
+        >
           <input
             type="checkbox"
             checked={tie}
@@ -148,7 +161,11 @@ function NotesPopover({ contextLabel }) {
         </label>
 
         <span className="flex-1" />
-        {text && <span className="text-[11px]" style={{ color: MUTED }}>Draft kept</span>}
+        {text && (
+          <span className="text-[11px]" style={{ color: MUTED }}>
+            Draft kept
+          </span>
+        )}
 
         <button
           type="button"
@@ -176,11 +193,18 @@ function NotesPopover({ contextLabel }) {
           </div>
         ) : (
           notes.map((note) => (
-            <div key={note.id} className="mb-1.5 rounded-md border p-2" style={{ borderColor: LINE }}>
+            <div
+              key={note.id}
+              className="mb-1.5 rounded-md border p-2"
+              style={{ borderColor: LINE }}
+            >
               <div className="text-[10.5px]" style={{ color: MUTED }}>
-                {note.at}{note.ctx ? ` · ${note.ctx}` : ""}
+                {note.at}
+                {note.ctx ? ` · ${note.ctx}` : ""}
               </div>
-              <div className="mt-0.5 whitespace-pre-wrap text-[12px]">{note.text}</div>
+              <div className="mt-0.5 whitespace-pre-wrap text-[12px]">
+                {note.text}
+              </div>
               <button
                 type="button"
                 onClick={() => deleteNote(note.id)}
@@ -427,7 +451,14 @@ function useFitScale(depKey) {
 /* ------------------------------------------------------------------
    SMALL PRESENTATIONAL COMPONENTS
    ------------------------------------------------------------------ */
-function BudgetBanner({ notice, onGotIt, onViewBudget, notesOpen, setNotesOpen, employee }) {
+function BudgetBanner({
+  notice,
+  onGotIt,
+  onViewBudget,
+  notesOpen,
+  setNotesOpen,
+  employee,
+}) {
   const budgetNoticeText = notice
     ? `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`
     : "";
@@ -446,7 +477,10 @@ function BudgetBanner({ notice, onGotIt, onViewBudget, notesOpen, setNotesOpen, 
       >
         {notice ? (
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-2 font-bold" style={{ color: INK }}>
+            <span
+              className="inline-flex items-center gap-2 font-bold"
+              style={{ color: INK }}
+            >
               <span style={{ color: RED }}>▲</span> Budget changed
             </span>
             <span
@@ -461,7 +495,10 @@ function BudgetBanner({ notice, onGotIt, onViewBudget, notesOpen, setNotesOpen, 
           <div className="min-w-0 flex-1" />
         )}
 
-        <div className="relative ml-auto flex shrink-0 items-center gap-2" data-detail-notes>
+        <div
+          className="relative ml-auto flex shrink-0 items-center gap-2"
+          data-detail-notes
+        >
           <button
             type="button"
             onClick={onViewBudget}
@@ -565,7 +602,14 @@ function ReadOnlyInput({ value, bold }) {
   );
 }
 
-function EditInput({ value, defaultValue, onLive, onCommit, edited, className = "" }) {
+function EditInput({
+  value,
+  defaultValue,
+  onLive,
+  onCommit,
+  edited,
+  className = "",
+}) {
   const controlled = value !== undefined;
   const valueProps = controlled ? { value } : { defaultValue };
   return (
@@ -600,7 +644,9 @@ function CompRow({ label, current, children, diffNode, diffText, muted }) {
       <Cell>{children}</Cell>
       <Cell align="right">
         {diffNode ?? (
-          <span style={{ color: muted ? MUTED : INK, fontSize: 11 }}>{diffText}</span>
+          <span style={{ color: muted ? MUTED : INK, fontSize: 11 }}>
+            {diffText}
+          </span>
         )}
       </Cell>
     </>
@@ -621,7 +667,13 @@ function PayRow({
     <>
       <Cell strong>{label}</Cell>
       <Cell>
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 56px", gap: 6 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0,1fr) 56px",
+            gap: 6,
+          }}
+        >
           <ReadOnlyInput value={fmt(floorAmount)} />
           <ReadOnlyInput value={month || "—"} />
         </div>
@@ -670,7 +722,14 @@ function HikeDiffInputs({
 }) {
   const lab = { fontSize: 10, color: MUTED, textAlign: "right" };
   return (
-    <div style={{ width: "100%", display: "flex", flexDirection: "column", gap: 2 }}>
+    <div
+      style={{
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+      }}
+    >
       <span style={lab}>Hike Amount</span>
       <EditInput
         value={amountValue}
@@ -948,14 +1007,18 @@ export function DetailScreenPage({
   const liveHist =
     employee && derived
       ? {
-          pbTotal: derived.totalPB + (livePB - (Number(employee.allocatedPBAmount) || 0)),
+          pbTotal:
+            derived.totalPB +
+            (livePB - (Number(employee.allocatedPBAmount) || 0)),
           rb: liveRB,
           bonus:
             derived.bonus +
             (livePB - (Number(employee.allocatedPBAmount) || 0)) +
             (liveRB - (Number(employee.newRB) || 0)),
           hike:
-            draft.baseStr !== undefined ? liveBase - baseNow : Number(employee.hikeAmount) || 0,
+            draft.baseStr !== undefined
+              ? liveBase - baseNow
+              : Number(employee.hikeAmount) || 0,
           tpb:
             draft.tpbStr !== undefined
               ? draftNum(draft.tpbStr)
@@ -983,7 +1046,9 @@ export function DetailScreenPage({
     if (!employee || !derived) return null;
     const lastCycle = priorCycles[0];
     const lastCtc = lastCycle
-      ? lastCycle.newBasePay + lastCycle.performanceBonus + lastCycle.retentionBonus
+      ? lastCycle.newBasePay +
+        lastCycle.performanceBonus +
+        lastCycle.retentionBonus
       : 0;
     const pct = lastCtc ? ((liveCtc - lastCtc) / lastCtc) * 100 : 0;
     return { lastCtc, pct };
@@ -1040,7 +1105,10 @@ export function DetailScreenPage({
     if (pctRaw === "") return;
     const base = baseNow;
     const hike = Math.round((base * Number(pctRaw)) / 100);
-    commitLinked({ hikeAmount: hike, hikePct: Number(Number(pctRaw).toFixed(2)) });
+    commitLinked({
+      hikeAmount: hike,
+      hikePct: Number(Number(pctRaw).toFixed(2)),
+    });
   };
 
   /* Live linking while typing (display only) */
@@ -1048,7 +1116,11 @@ export function DetailScreenPage({
   const liveHikeAmount = (raw) => {
     const hike = draftNum(raw);
     const pct = baseNow ? (hike / baseNow) * 100 : 0;
-    setDraft({ hikeStr: raw, pctStr: pct.toFixed(2), baseStr: fmt(baseNow + hike) });
+    setDraft({
+      hikeStr: raw,
+      pctStr: pct.toFixed(2),
+      baseStr: fmt(baseNow + hike),
+    });
   };
   const liveHikePct = (raw) => {
     const pct = draftNum(raw);
@@ -1103,7 +1175,9 @@ export function DetailScreenPage({
   // Title options: always include the current designation.
   const titleOptions = useMemo(() => {
     const list = Array.isArray(NEW_TITLES) ? [...NEW_TITLES] : [];
-    const names = list.map((t) => (typeof t === "string" ? t : t?.value ?? t?.label));
+    const names = list.map((t) =>
+      typeof t === "string" ? t : (t?.value ?? t?.label),
+    );
     if (employee?.designation && !names.includes(employee.designation)) {
       list.unshift(employee.designation);
     }
@@ -1111,12 +1185,16 @@ export function DetailScreenPage({
   }, [employee?.designation]);
 
   const targetPBCurrent =
-    employee?.currentTargetPB ?? baselineRef.current[employee?.id]?.targetPBNextYear;
+    employee?.currentTargetPB ??
+    baselineRef.current[employee?.id]?.targetPBNextYear;
 
   /* ---- Metrics numbers ---------------------------------------------- */
   const metrics = employee
     ? [
-        ["Hike %", baseNow ? signedPct(((liveBase - baseNow) / baseNow) * 100) : "—"],
+        [
+          "Hike %",
+          baseNow ? signedPct(((liveBase - baseNow) / baseNow) * 100) : "—",
+        ],
         [
           "Total CTC vs last cycle",
           ctcCompare?.lastCtc ? signedPct(ctcCompare.pct) : "—",
@@ -1186,7 +1264,10 @@ export function DetailScreenPage({
         ) : (
           <div className="ds-main" style={{ "--ds-cols": cols }}>
             {/* LEFT - Compensation input */}
-            <section className="ds-card ds-left" aria-label="Compensation input">
+            <section
+              className="ds-card ds-left"
+              aria-label="Compensation input"
+            >
               <div
                 className="flex shrink-0 items-center justify-between gap-2 border-b px-2.5 py-1"
                 style={{ borderColor: NAVY, background: NAVY }}
@@ -1210,8 +1291,9 @@ export function DetailScreenPage({
                     {employee.band ? ` · ${employee.band}` : ""}
                   </div>
                   <div className="truncate" style={{ color: "#BCCCDC" }}>
-                    {yrs(employee.totalExperience)} · {yrs(employee.wissenExperience)} here ·
-                    Reports to {dash(employee.reportingManager)}
+                    {yrs(employee.totalExperience)} ·{" "}
+                    {yrs(employee.wissenExperience)} here · Reports to{" "}
+                    {dash(employee.reportingManager)}
                   </div>
                 </div>
                 <span
@@ -1252,12 +1334,17 @@ export function DetailScreenPage({
               <div
                 className="ds-panel-scroll"
                 ref={boxRef}
-                style={{ overflow: scale <= FIT_MIN + 0.001 ? "auto" : "hidden" }}
+                style={{
+                  overflow: scale <= FIT_MIN + 0.001 ? "auto" : "hidden",
+                }}
               >
                 <div
                   className="ds-fit"
                   ref={fitRef}
-                  style={{ transform: `scale(${scale})`, width: `${100 / scale}%` }}
+                  style={{
+                    transform: `scale(${scale})`,
+                    width: `${100 / scale}%`,
+                  }}
                 >
                   <div
                     className="grid text-[12px]"
@@ -1277,9 +1364,12 @@ export function DetailScreenPage({
                           key={`${employee.id}-hike`}
                           employee={employee}
                           edited={isEdited("hikeAmount")}
-                          amountValue={draft.hikeStr ?? fmt(employee.hikeAmount)}
+                          amountValue={
+                            draft.hikeStr ?? fmt(employee.hikeAmount)
+                          }
                           pctValue={
-                            draft.pctStr ?? (Number(employee.hikePct) || 0).toFixed(2)
+                            draft.pctStr ??
+                            (Number(employee.hikePct) || 0).toFixed(2)
                           }
                           onLiveAmount={liveHikeAmount}
                           onLivePct={liveHikePct}
@@ -1307,7 +1397,12 @@ export function DetailScreenPage({
                     </CompRow>
 
                     {/* Joining Bonus */}
-                    <CompRow label="Joining Bonus" current="0" diffText="n/a this cycle" muted>
+                    <CompRow
+                      label="Joining Bonus"
+                      current="0"
+                      diffText="n/a this cycle"
+                      muted
+                    >
                       <ReadOnlyInput value="0" />
                     </CompRow>
 
@@ -1326,7 +1421,9 @@ export function DetailScreenPage({
                               ? ""
                               : String(employee.pbInstallment)
                           }
-                          onChange={(e) => commit("pbInstallment", e.target.value)}
+                          onChange={(e) =>
+                            commit("pbInstallment", e.target.value)
+                          }
                           className="h-[22px] w-[48px] shrink-0 rounded border px-1 text-[11.5px] outline-none focus:border-[#0B7A75]"
                           style={fieldStyle(isEdited("pbInstallment"))}
                         >
@@ -1365,7 +1462,10 @@ export function DetailScreenPage({
                         edited={isEdited("newRB")}
                         onLive={(v) => setDraft({ rbStr: v })}
                         onCommit={(v) => {
-                          commit("newRB", Number(String(v).replace(/[^0-9.]/g, "")) || 0);
+                          commit(
+                            "newRB",
+                            Number(String(v).replace(/[^0-9.]/g, "")) || 0,
+                          );
                           clearDraft(["rbStr"]);
                         }}
                       />
@@ -1417,14 +1517,19 @@ export function DetailScreenPage({
                     {/* Target PB Criteria */}
                     <CompRow
                       label="Target PB Criteria"
-                      current={dash(employee.currentTargetPBCriteria ?? employee.targetPBCriteria)}
+                      current={dash(
+                        employee.currentTargetPBCriteria ??
+                          employee.targetPBCriteria,
+                      )}
                       diffText=""
                       muted
                     >
                       <textarea
                         key={`${employee.id}-targetPBCriteria`}
                         defaultValue={blankStr(employee.targetPBCriteria)}
-                        onBlur={(e) => commit("targetPBCriteria", e.target.value)}
+                        onBlur={(e) =>
+                          commit("targetPBCriteria", e.target.value)
+                        }
                         rows={2}
                         className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[12px] outline-none focus:border-[#0B7A75]"
                         style={fieldStyle(isEdited("targetPBCriteria"))}
@@ -1436,7 +1541,8 @@ export function DetailScreenPage({
                       label="Designation"
                       current={dash(employee.designation)}
                       diffText={
-                        employee.newTitle && employee.newTitle !== employee.designation
+                        employee.newTitle &&
+                        employee.newTitle !== employee.designation
                           ? "Promotion"
                           : ""
                       }
@@ -1450,8 +1556,10 @@ export function DetailScreenPage({
                         style={fieldStyle(isEdited("newTitle"))}
                       >
                         {titleOptions.map((t) => {
-                          const v = typeof t === "string" ? t : t?.value ?? t?.label;
-                          const l = typeof t === "string" ? t : t?.label ?? t?.value;
+                          const v =
+                            typeof t === "string" ? t : (t?.value ?? t?.label);
+                          const l =
+                            typeof t === "string" ? t : (t?.label ?? t?.value);
                           return (
                             <option key={v} value={v}>
                               {l}
@@ -1463,15 +1571,19 @@ export function DetailScreenPage({
 
                     {/* Comp Manager Remarks */}
                     <CompRow
-                      label="Comp Manager Remarks"
-                      current={dash(baselineRef.current[employee.id]?.compManagerRemarks)}
+                      label="Comp. Manager Remarks"
+                      current={dash(
+                        baselineRef.current[employee.id]?.compManagerRemarks,
+                      )}
                       diffText=""
                       muted
                     >
                       <textarea
                         key={`${employee.id}-compManagerRemarks`}
                         defaultValue={blankStr(employee.compManagerRemarks)}
-                        onBlur={(e) => commit("compManagerRemarks", e.target.value)}
+                        onBlur={(e) =>
+                          commit("compManagerRemarks", e.target.value)
+                        }
                         rows={2}
                         className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[12px] outline-none focus:border-[#0B7A75]"
                         style={fieldStyle(isEdited("compManagerRemarks"))}
@@ -1547,7 +1659,11 @@ export function DetailScreenPage({
                       type="button"
                       onClick={() => setMetricsOpen(false)}
                       className="shrink-0 border-b px-3 py-2 text-left text-[12px] font-bold"
-                      style={{ borderColor: LINE, color: INK, background: "#fff" }}
+                      style={{
+                        borderColor: LINE,
+                        color: INK,
+                        background: "#fff",
+                      }}
                     >
                       Metrics ‹
                     </button>
@@ -1558,10 +1674,16 @@ export function DetailScreenPage({
                           className="mb-2.5 rounded border px-2.5 py-2"
                           style={{ borderColor: LINE, background: SOFT }}
                         >
-                          <div className="text-[10.5px]" style={{ color: MUTED }}>
+                          <div
+                            className="text-[10.5px]"
+                            style={{ color: MUTED }}
+                          >
                             {k}
                           </div>
-                          <div className="text-[14px] font-extrabold" style={{ color: INK }}>
+                          <div
+                            className="text-[14px] font-extrabold"
+                            style={{ color: INK }}
+                          >
                             {v}
                           </div>
                         </div>
@@ -1576,7 +1698,9 @@ export function DetailScreenPage({
                     style={{ background: "#fff", color: INK }}
                     aria-label="Open metrics"
                   >
-                    <span className="ds-vbtn text-[12px] font-bold">Metrics ›</span>
+                    <span className="ds-vbtn text-[12px] font-bold">
+                      Metrics ›
+                    </span>
                   </button>
                 )}
               </div>
@@ -1597,19 +1721,31 @@ export function DetailScreenPage({
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
-                          onClick={() => setFeedbackWidth((w) => Math.max(240, w - 40))}
+                          onClick={() =>
+                            setFeedbackWidth((w) => Math.max(240, w - 40))
+                          }
                           aria-label="Decrease feedback panel width"
                           className="h-[28px] w-[28px] rounded border font-bold"
-                          style={{ borderColor: "#4A6580", color: "#fff", background: "transparent" }}
+                          style={{
+                            borderColor: "#4A6580",
+                            color: "#fff",
+                            background: "transparent",
+                          }}
                         >
                           −
                         </button>
                         <button
                           type="button"
-                          onClick={() => setFeedbackWidth((w) => Math.min(620, w + 40))}
+                          onClick={() =>
+                            setFeedbackWidth((w) => Math.min(620, w + 40))
+                          }
                           aria-label="Increase feedback panel width"
                           className="h-[28px] w-[28px] rounded border font-bold"
-                          style={{ borderColor: "#4A6580", color: "#fff", background: "transparent" }}
+                          style={{
+                            borderColor: "#4A6580",
+                            color: "#fff",
+                            background: "transparent",
+                          }}
                         >
                           +
                         </button>
@@ -1619,7 +1755,11 @@ export function DetailScreenPage({
                         onClick={() => setCardOpen(false)}
                         aria-label="Close feedback"
                         className="h-[28px] w-[34px] rounded border"
-                        style={{ borderColor: "#4A6580", color: "#fff", background: "transparent" }}
+                        style={{
+                          borderColor: "#4A6580",
+                          color: "#fff",
+                          background: "transparent",
+                        }}
                       >
                         ✕
                       </button>
@@ -1677,9 +1817,18 @@ export function DetailScreenPage({
                                 className="rounded px-2 py-0.5 text-[11.5px]"
                                 style={{ background: SOFT, color: INK }}
                               >
-                                {fbTab === "manager" ? "Manager" : fbTab === "client" ? "Client" : "Other"}{" "}
-                                rating <b>{fbTab === "manager" ? t.rating : "—"}</b>
-                                {t.current && fbTab === "manager" && t.rating !== "—" ? " / 5" : ""}
+                                {fbTab === "manager"
+                                  ? "Manager"
+                                  : fbTab === "client"
+                                    ? "Client"
+                                    : "Other"}{" "}
+                                rating{" "}
+                                <b>{fbTab === "manager" ? t.rating : "—"}</b>
+                                {t.current &&
+                                fbTab === "manager" &&
+                                t.rating !== "—"
+                                  ? " / 5"
+                                  : ""}
                               </span>
                               {t.promo ? (
                                 <span
@@ -1691,7 +1840,10 @@ export function DetailScreenPage({
                               ) : null}
                             </div>
                             {t.note ? (
-                              <div className="mt-1" style={{ color: "#3E4C59" }}>
+                              <div
+                                className="mt-1"
+                                style={{ color: "#3E4C59" }}
+                              >
                                 {t.note}
                               </div>
                             ) : fbTab === "manager" && t.rating !== "—" ? (
@@ -1702,8 +1854,12 @@ export function DetailScreenPage({
                           </div>
                         </div>
                       ))}
-                      <div className="mt-2 text-[11.5px]" style={{ color: MUTED }}>
-                        Client rating and past RR % are not in the sheet yet, so they show “—”.
+                      <div
+                        className="mt-2 text-[11.5px]"
+                        style={{ color: MUTED }}
+                      >
+                        Client rating and past RR % are not in the sheet yet, so
+                        they show “—”.
                       </div>
                     </div>
                   </>
@@ -1715,7 +1871,9 @@ export function DetailScreenPage({
                     style={{ background: "#fff", color: INK }}
                     aria-label="Open feedback"
                   >
-                    <span className="ds-vbtn text-[12px] font-bold">Feedback ‹</span>
+                    <span className="ds-vbtn text-[12px] font-bold">
+                      Feedback ‹
+                    </span>
                   </button>
                 )}
               </div>
@@ -1746,7 +1904,10 @@ export function DetailScreenPage({
             >
               <div style={{ padding: "6px 10px" }}>Year</div>
               {HISTORY_COLUMNS.map((c) => (
-                <div key={c.key} style={{ padding: "6px 10px", textAlign: "right" }}>
+                <div
+                  key={c.key}
+                  style={{ padding: "6px 10px", textAlign: "right" }}
+                >
                   {c.label}
                 </div>
               ))}
@@ -1755,7 +1916,9 @@ export function DetailScreenPage({
             {/* current cycle row */}
             {liveHist
               ? (() => {
-                  const last = priorCycles[0] ? priorVals(priorCycles[0]) : null;
+                  const last = priorCycles[0]
+                    ? priorVals(priorCycles[0])
+                    : null;
                   const cur = [
                     baseNow,
                     0,
@@ -1776,11 +1939,21 @@ export function DetailScreenPage({
                         borderBottom: `1px solid ${LINE}`,
                       }}
                     >
-                      <div style={{ padding: "4px 10px", color: LTEAL, fontWeight: 800 }}>
+                      <div
+                        style={{
+                          padding: "4px 10px",
+                          color: LTEAL,
+                          fontWeight: 800,
+                        }}
+                      >
                         {CURRENT_CYCLE} ★
                       </div>
                       {cur.map((v, i) => (
-                        <HistCell key={i} value={v} prev={last ? last[i] : null} />
+                        <HistCell
+                          key={i}
+                          value={v}
+                          prev={last ? last[i] : null}
+                        />
                       ))}
                     </div>
                   );
@@ -1790,7 +1963,9 @@ export function DetailScreenPage({
             {/* prior cycles */}
             {priorCycles.map((h, i) => {
               const vals = priorVals(h);
-              const older = priorCycles[i + 1] ? priorVals(priorCycles[i + 1]) : null;
+              const older = priorCycles[i + 1]
+                ? priorVals(priorCycles[i + 1])
+                : null;
               return (
                 <div
                   key={normalizeYearKey(h.year)}
@@ -1801,9 +1976,17 @@ export function DetailScreenPage({
                     borderBottom: `1px solid ${LINE}`,
                   }}
                 >
-                  <div style={{ padding: "4px 10px", fontWeight: 700, color: INK }}>{h.year}</div>
+                  <div
+                    style={{ padding: "4px 10px", fontWeight: 700, color: INK }}
+                  >
+                    {h.year}
+                  </div>
                   {vals.map((v, c) => (
-                    <HistCell key={c} value={v} prev={older ? older[c] : null} />
+                    <HistCell
+                      key={c}
+                      value={v}
+                      prev={older ? older[c] : null}
+                    />
                   ))}
                 </div>
               );
@@ -1819,7 +2002,9 @@ export function DetailScreenPage({
                 {historyState.error}
               </div>
             ) : null}
-            {!historyState?.loading && !historyState?.error && priorCycles.length === 0 ? (
+            {!historyState?.loading &&
+            !historyState?.error &&
+            priorCycles.length === 0 ? (
               <div className="px-4 py-3 text-[12px]" style={{ color: MUTED }}>
                 No earlier cycles on record.
               </div>
