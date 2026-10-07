@@ -227,7 +227,7 @@ const DS_CSS = `
 .ds-left{height:100%}
 .ds-panel-scroll{position:relative;flex:1 1 0;min-width:0;min-height:0;overflow:hidden}
 .ds-fit{position:absolute;top:0;left:0;transform-origin:top left}
-.ds-foot{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid #E3E9EC;background:#fff}
+.ds-foot{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:6px 12px;border-top:1px solid #E3E9EC;background:#fff}
 .ds-side{position:relative;min-width:0;min-height:0;overflow:hidden}
 .ds-side>.ds-card{width:100%;height:100%}
 .ds-scroll{min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}
@@ -503,7 +503,8 @@ function CompHead({ children }) {
         background: SOFT,
         color: INK,
         fontWeight: 700,
-        padding: "6px 10px",
+        fontSize: "13px",
+        padding: "5px 10px",
         borderBottom: `1px solid ${LINE}`,
         borderRight: `1px solid ${LINE}`,
       }}
@@ -521,8 +522,9 @@ function Cell({ children, strong, align }) {
         flexDirection: "column",
         justifyContent: "center",
         alignItems: align === "right" ? "flex-end" : "stretch",
-        gap: 3,
-        padding: strong ? "6px 10px" : "5px 8px",
+        gap: 2,
+        padding: strong ? "5px 10px" : "4px 8px",
+        fontSize: "12.5px",
         borderBottom: `1px solid ${LINE}`,
         borderRight: `1px solid ${LINE}`,
         minWidth: 0,
@@ -542,7 +544,7 @@ function ReadOnlyInput({ value, bold }) {
       readOnly
       disabled
       value={value}
-      className="h-[24px] w-full min-w-0 rounded border px-2 text-[11.5px]"
+      className="h-[23px] w-full min-w-0 rounded border px-2 text-[12px]"
       style={{
         borderColor: "#D9E1E6",
         background: "#F3F6F7",
@@ -572,7 +574,7 @@ function EditInput({ value, defaultValue, onLive, onCommit, edited, className = 
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
       }}
-      className={`h-[24px] w-full min-w-0 rounded border px-2 text-[12px] outline-none focus:border-[#0B7A75] ${className}`}
+      className={`h-[23px] w-full min-w-0 rounded border px-2 text-[12px] outline-none focus:border-[#0B7A75] ${className}`}
       style={fieldStyle(edited)}
     />
   );
@@ -1314,7 +1316,7 @@ export function DetailScreenPage({
                               : String(employee.pbInstallment)
                           }
                           onChange={(e) => commit("pbInstallment", e.target.value)}
-                          className="h-[24px] w-[48px] shrink-0 rounded border px-1 text-[10.5px] outline-none focus:border-[#0B7A75]"
+                          className="h-[23px] w-[48px] shrink-0 rounded border px-1 text-[11px] outline-none focus:border-[#0B7A75]"
                           style={fieldStyle(isEdited("pbInstallment"))}
                         >
                           <option value="">—</option>
@@ -1413,7 +1415,7 @@ export function DetailScreenPage({
                         defaultValue={blankStr(employee.targetPBCriteria)}
                         onBlur={(e) => commit("targetPBCriteria", e.target.value)}
                         rows={2}
-                        className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[11.5px] outline-none focus:border-[#0B7A75]"
+                        className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[12px] outline-none focus:border-[#0B7A75]"
                         style={fieldStyle(isEdited("targetPBCriteria"))}
                       />
                     </CompRow>
@@ -1460,7 +1462,7 @@ export function DetailScreenPage({
                         defaultValue={blankStr(employee.compManagerRemarks)}
                         onBlur={(e) => commit("compManagerRemarks", e.target.value)}
                         rows={2}
-                        className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[11.5px] outline-none focus:border-[#0B7A75]"
+                        className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[12px] outline-none focus:border-[#0B7A75]"
                         style={fieldStyle(isEdited("compManagerRemarks"))}
                       />
                     </CompRow>
@@ -1471,7 +1473,7 @@ export function DetailScreenPage({
               {/* Legend + counter + Previous / Save & next: normal flow, always visible */}
               <div className="ds-foot">
                 <div
-                  className="flex flex-wrap items-center gap-3 text-[11px]"
+                  className="flex flex-wrap items-center gap-3 text-[11.5px]"
                   style={{ color: MUTED }}
                 >
                   <span className="inline-flex items-center gap-1.5">
