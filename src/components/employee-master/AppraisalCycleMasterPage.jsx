@@ -314,6 +314,44 @@ export function AppraisalCycleMasterPage({
   );
   const statsFor = (c) => (c && cycleStats && cycleStats[c.id]) || null;
 
+  // Pending items: use the prop when given, otherwise derive from cycleStats.
+  const pendingList = (() => {
+    if (pendingItems.length) return pendingItems;
+    const c = current;
+    const w = statsFor(c);
+    if (
+      !c ||
+      !w ||
+      c.process !== "Annual" ||
+      c.archived ||
+      c.status === "Upcoming" ||
+      !w.emUpdated
+    )
+      return [];
+    const np = missingPay(w);
+    const ni = w.notIncluded || 0;
+    const L = w.letters || { gen: false, toSend: 0, sent: 0, dropped: 0 };
+    const out = [
+      {
+        k: "mm",
+        label: "Mismatch",
+        n: np + ni,
+        sub:
+          np + ni
+            ? `${np} with no payroll data · ${ni} not included (open Exceptional cycle)`
+            : "None — all clear",
+      },
+    ];
+    if (L.gen)
+      out.push({
+        k: "lt",
+        label: "Letters to send",
+        n: L.toSend,
+        sub: `${L.toSend} To send · ${L.sent} Sent · ${L.dropped} Dropped`,
+      });
+    return out;
+  })();
+
   const gridRows = useMemo(() => {
     const s = q.toLowerCase();
     return cycles
@@ -566,7 +604,7 @@ export function AppraisalCycleMasterPage({
     }
     const items =
       (kind === "close" || kind === "archive") && cycle.process === "Annual"
-        ? pendingItems.filter((x) => x.n > 0)
+        ? pendingList.filter((x) => x.n > 0)
         : [];
     const ok = await runStep(
       cycle,
@@ -1382,7 +1420,7 @@ export function AppraisalCycleMasterPage({
         mm: "Mismatch",
         el: "Eligibility",
       };
-      const items = c.process === "Annual" && !c.archived ? pendingItems : [];
+      const items = c.process === "Annual" && !c.archived ? pendingList : [];
       const selKey =
         pk.chg !== "all" && !items.some((x) => x.k === pk.chg) ? "all" : pk.chg;
       const tot = items.reduce((a, x) => a + (x.n || 0), 0);
@@ -1622,7 +1660,7 @@ export function AppraisalCycleMasterPage({
     const isStepKind = kind === "close" || kind === "archive";
     const items =
       isStepKind && c.process === "Annual"
-        ? pendingItems.filter((x) => x.n > 0)
+        ? pendingList.filter((x) => x.n > 0)
         : [];
     const has = items.length > 0;
     const verb = {

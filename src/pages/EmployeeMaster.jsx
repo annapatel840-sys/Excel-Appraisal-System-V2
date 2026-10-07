@@ -4,7 +4,7 @@ import { CheckCircle2, AlertCircle, X, History } from "lucide-react";
 import { AppShell } from "@/components/appraisal/AppShell";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
-
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import {
   FIELD_DEFS,
   fetchEmployeeMasterEmployees,
@@ -48,6 +48,13 @@ import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
 import "@/styles/employee-master.css";
 
 const PAGE_SIZE = 20;
+const KNOWN_TABS = [
+  "roster",
+  "payroll-data",
+  "payroll-upload",
+  "eligibility",
+  "delegation",
+];
 
 const ROSTER_FIELD_TO_CATALYST = {
   name: "name",
@@ -2518,8 +2525,6 @@ export function EmployeeMaster() {
 
         {isTabVisible("appraisal-cycle") && activeTab === "appraisal-cycle" && (
           <div className="em-tab-content">
-            const KNOWN_TABS =
-            ["roster","payroll-data","payroll-upload","eligibility","delegation"];
             <AppraisalCycleMasterPage
               onNavigate={(tab) =>
                 KNOWN_TABS.includes(tab) && isTabVisible(tab)
