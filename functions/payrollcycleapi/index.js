@@ -18,6 +18,38 @@ const TABLES = {
 const PAGE_SIZE = 200;
 const MAX_UPLOAD_ROWS = 5000;
 
+const SCHEMA_SYSTEM_COLUMNS = new Set(["ROWID", "CREATORID", "CREATEDTIME", "MODIFIEDTIME"]);
+
+function schemaLabel(name) {
+  return String(name || "").replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function normalizeSchemaTable(table) {
+  const columns = Array.isArray(table?.column_details) ? table.column_details.filter((column) => !SCHEMA_SYSTEM_COLUMNS.has(String(column.column_name || "").toUpperCase())).sort((a, b) => Number(a.column_sequence || 0) - Number(b.column_sequence || 0)).map((column) => ({
+    name: String(column.column_name || ""),
+    label: schemaLabel(column.column_name),
+    type: String(column.data_type || "varchar").toLowerCase(),
+    mandatory: Boolean(column.is_mandatory),
+    unique: Boolean(column.is_unique),
+    maxLength: column.max_length == null ? null : Number(column.max_length),
+    decimalDigits: column.decimal_digits == null ? null : Number(column.decimal_digits),
+  })) : [];
+  return { id: String(table.table_id || table.id || ""), name: String(table.table_name || table.name || ""), modifiedTime: table.modified_time || "", columns };
+}
+
+async function getProjectSchema(adminApp) {
+  const datastore = adminApp.datastore();
+  const tableList = await datastore.getAllTables();
+  const tables = Array.isArray(tableList) ? tableList : [];
+  const detailed = await Promise.all(tables.map(async (table) => {
+    const id = table.table_id || table.id;
+    if (!id) return table;
+    try { return await datastore.getTableDetails(id); }
+    catch (error) { console.warn("Schema metadata unavailable for table", id, error?.message); return table; }
+  }));
+  return detailed.map(normalizeSchemaTable);
+}
+
 class ApiError extends Error {
   constructor(message, status = 400) {
     super(message);
@@ -113,7 +145,7 @@ async function checkAccess(req) {
 
 function requirePayrollAccess(a, resource, method) {
   if (resource === "session") return;
-  if (resource === "cycles" && method === "GET") return;
+  if ((resource === "cycles" || resource === "schema") && method === "GET") return;
   if (resource.startsWith("cycles/")) {
     access.requireScreen(a, "cycleMaster", "edit");
     return;
@@ -389,38 +421,53 @@ async function requirePayrollTables(adminApp) {
 function mapPayroll(row, cycleById) {
   const cycleId = String(row.appraisal_cycle_id || row.appraisalCycleId || row.cycle_id || row.cycleId || "").trim();
   const cycle = cycleById.get(cycleId);
+  const num = (...keys) => {
+    for (const key of keys) {
+      if (row[key] !== undefined && row[key] !== null && row[key] !== "") return Number(row[key]) || 0;
+    }
+    return 0;
+  };
+  const text = (...keys) => {
+    for (const key of keys) {
+      if (row[key] !== undefined && row[key] !== null) return String(row[key]);
+    }
+    return "";
+  };
+  const basePay = num("base_pay", "current_annual_base_pay");
+  const hikeAmt = num("hike_amt", "hike_amount");
+  const totalBonus = num("total_bonus");
   return {
+    ...row,
     id: rowId(row),
-    empId: row.emp_id || "",
-    appraisalYear: row.appraisal_year || row.APPRAISAL_YEAR || "",
-    cycle: row.appraisal_year || row.APPRAISAL_YEAR || cycle?.name || "",
-    basePay: Number(row.base_pay) || 0,
-    allocatedPb: Number(row.allocated_pb) || 0,
-    allocatedPbInstallment: Number(row.allocated_pb_installment) || 0,
-    performanceBonus: Number(row.performance_bonus) || 0,
-    performanceBonusInstallment: Number(row.performance_bonus_installment) || 0,
-    retentionBonus: Number(row.retention_bonus) || 0,
-    totalPB: Number(row.total_pb) || 0,
-    joiningBonus: Number(row.joining_bonus) || 0,
-    totalBonus: Number(row.total_bonus) || 0,
-    hikeAmt: Number(row.hike_amount) || 0,
-    hikePct: Number(row.hike_pct) || 0,
-    promo: row.promotion ?? "",
-    newTitle: row.title ?? "",
-    targetPerformanceBonus: Number(row.target_performance_bonus) || 0,
-    newCtc: Number(row.new_ctc) || 0,
-    managerRating: row.manager_rating ?? "",
-    rating: row.rating ?? "",
-    // Additional existing payroll fields are retained for compatibility.
-    empName: row.emp_name || "",
-    designation: row.designation || "",
-    compManager: row.comp_manager || "",
-    superManager: row.super_manager || "",
-    managerMail: row.manager_mail || "",
-    batch: row.source_batch || "",
+    empId: text("emp_id"),
+    appraisalYear: text("appraisal_year", "APPRAISAL_YEAR") || cycle?.name || "",
+    cycle: text("appraisal_year", "APPRAISAL_YEAR") || cycle?.name || "",
+    basePay,
+    allocatedPb: num("allocated_pb", "alloc_pb"),
+    allocatedPbInstallment: num("allocated_pb_installment", "alloc_inst"),
+    performanceBonus: num("performance_bonus", "new_pb"),
+    performanceBonusInstallment: num("performance_bonus_installment", "new_pb_inst"),
+    retentionBonus: num("retention_bonus", "new_rb"),
+    totalPB: num("total_pb"),
+    joiningBonus: num("joining_bonus"),
+    totalBonus,
+    hikeAmt,
+    hikePct: num("hike_pct"),
+    promo: text("promotion", "promo"),
+    newTitle: text("title", "new_title"),
+    targetPerformanceBonus: num("target_performance_bonus", "target_pb_next_year"),
+    newCtc: num("new_ctc", "total_ctc") || basePay + hikeAmt + totalBonus,
+    managerRating: text("manager_rating"),
+    rating: text("rating"),
+    empName: text("emp_name"),
+    designation: text("designation"),
+    compManager: text("comp_manager"),
+    superManager: text("super_manager"),
+    managerMail: text("manager_mail"),
+    batch: text("source_batch"),
     cycleId,
-    sourceFile: row.source_file || "",
-    createdTime: row.CREATEDTIME || "",
+    sourceFile: text("source_file"),
+    createdTime: text("CREATEDTIME"),
   };
 }
 
@@ -527,6 +574,11 @@ async function routeRequest(req, res, identity, resource, a) {
   const tables = await requirePayrollTables(adminApp);
   const query = getQuery(req);
   const actor = identity.name || identity.email;
+
+  if (resource === "schema" && req.method === "GET") {
+    const schema = await getProjectSchema(catalyst.initialize(req, { scope: "admin" }));
+    return sendJson(res, 200, { success: true, data: schema });
+  }
 
   if (resource === "cycles" && req.method === "GET") {
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
@@ -864,6 +916,7 @@ module.exports = async function payrollCycleApi(req, res) {
     // (a bare `return routeRequest(...)` left them as unhandled rejections).
     const resource = String(getQuery(req).resource || "");
     if (resource === "session") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "schema" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "cycles" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "audit" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "history" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
