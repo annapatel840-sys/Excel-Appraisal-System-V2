@@ -318,15 +318,20 @@ export function UploadPage({ handlers = {} }) {
     let active = true;
     setLoading(true);
     setLoadError("");
-    Promise.all([payrollCycleRequest("cycles"), payrollCycleRequest("history"), payrollCycleRequest("schema")])
+    Promise.all([
+      payrollCycleRequest("cycles"),
+      payrollCycleRequest("history").catch(() => []),
+      payrollCycleRequest("schema").catch(() => []),
+    ])
       .then(([cycleData, historyData, schemaData]) => {
         if (!active) return;
-        setCycles(cycleData);
-        setHistory(historyData);
+        const nextCycles = Array.isArray(cycleData) ? cycleData : [];
+        setCycles(nextCycles);
+        setHistory(Array.isArray(historyData) ? historyData : []);
         setSchemaTables(Array.isArray(schemaData) ? schemaData : []);
         setCycleId((current) => {
           if (current) return current;
-          const first = cycleData.find(isOpenCycle);
+          const first = nextCycles.find(isOpenCycle);
           return first ? String(first.id) : "";
         });
       })
@@ -368,7 +373,7 @@ export function UploadPage({ handlers = {} }) {
   const def = screen ? UPLOADS[screen] : null;
 
   const schemaTable = useMemo(() => {
-    const wanted = screen === "emp" ? "Employee_Master" : screen === "pay" ? "Payroll_Data" : "Employees";
+    const wanted = screen === "emp" ? "Employee_Master" : screen === "pay" ? "payroll" : "Employees";
     return schemaTables.find((table) => String(table.name).toLowerCase() === wanted.toLowerCase()) || null;
   }, [schemaTables, screen]);
 
