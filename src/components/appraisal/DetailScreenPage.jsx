@@ -233,9 +233,9 @@ const DS_CSS = `
 .ds-scroll{min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}
 .ds-hist{margin:0 12px 14px;min-height:240px}
 .ds-vbtn{writing-mode:vertical-rl;transform:rotate(180deg)}
-.ds-marquee{display:inline-flex;min-width:max-content;gap:72px;white-space:nowrap;animation:dsBudgetMarquee 18s linear infinite}
+.ds-marquee{display:inline-block;min-width:max-content;white-space:nowrap;animation:dsBudgetMarquee 18s linear infinite}
 .ds-marquee:hover{animation-play-state:paused}
-@keyframes dsBudgetMarquee{from{transform:translateX(0)}to{transform:translateX(calc(-50% - 36px))}}
+@keyframes dsBudgetMarquee{from{transform:translateX(0)}to{transform:translateX(-100%)}}
 .ds-root button{cursor:pointer}
 .ds-root button:disabled{cursor:not-allowed}
 @media (max-width:999px){
@@ -454,10 +454,7 @@ function BudgetBanner({ notice, onGotIt, onViewBudget, notesOpen, setNotesOpen, 
               style={{ color: "#3E4C59" }}
               aria-label={budgetNoticeText}
             >
-              <span className="ds-marquee">
-                <span>{budgetNoticeText}</span>
-                <span aria-hidden="true">{budgetNoticeText}</span>
-              </span>
+              <span className="ds-marquee">{budgetNoticeText}</span>
             </span>
           </div>
         ) : (
