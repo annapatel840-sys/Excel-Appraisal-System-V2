@@ -38,16 +38,34 @@ function normalizeSchemaTable(table) {
 }
 
 async function getProjectSchema(adminApp) {
+  // Catalyst's Node SDK exposes table rows reliably; infer the live column
+  // set from SELECT * results so added/removed columns are reflected without
+  // maintaining a second frontend column list.
+  const tables = [
+    { name: "Employees", id: TABLES.employees },
+    { name: "Employee_Master", id: TABLES.employeeMaster },
+    { name: "payroll", id: TABLES.payroll },
+    { name: "Appraisal_Cycle", id: TABLES.cycles },
+    { name: "Appraisal_Audit", id: TABLES.audit },
+  ];
   const datastore = adminApp.datastore();
-  const tableList = await datastore.getAllTables();
-  const tables = Array.isArray(tableList) ? tableList : [];
-  const detailed = await Promise.all(tables.map(async (table) => {
-    const id = table.table_id || table.id;
-    if (!id) return table;
-    try { return await datastore.getTableDetails(id); }
-    catch (error) { console.warn("Schema metadata unavailable for table", id, error?.message); return table; }
+  const schemas = await Promise.all(tables.map(async (meta) => {
+    const table = datastore.table(meta.id);
+    const result = await table.getPagedRows({ maxRows: 1 });
+    const row = Array.isArray(result?.data) && result.data.length ? result.data[0] : {};
+    const columns = Object.keys(row)
+      .filter((name) => !SCHEMA_SYSTEM_COLUMNS.has(String(name).toUpperCase()))
+      .map((name) => {
+        const value = row[name];
+        let type = "text";
+        if (typeof value === "number") type = "number";
+        else if (typeof value === "boolean") type = "boolean";
+        else if (value instanceof Date) type = "date";
+        return { name, label: schemaLabel(name), type, mandatory: false };
+      });
+    return { id: String(meta.id), name: meta.name, columns };
   }));
-  return detailed.map(normalizeSchemaTable);
+  return schemas;
 }
 
 class ApiError extends Error {
