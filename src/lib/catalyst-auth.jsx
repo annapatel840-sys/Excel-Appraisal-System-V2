@@ -1,11 +1,53 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
-import { CATALYST_SESSION_EXPIRED_EVENT } from "./catalyst-api";
+import { CATALYST_SESSION_EXPIRED_EVENT, catalystFunctionUrl } from "./catalyst-api";
 import { payrollCycleRequest } from "./payroll-cycle-api";
 
 const CatalystAuthContext = createContext(null);
 // Legacy key from an old sign-out workaround; it is only cleared now.
 const SIGNED_OUT_STORAGE_KEY = "catalyst-app-signed-out";
+
+/* ---------- Microsoft (Entra ID) single sign-on via the ssoapi function ----------
+   After Microsoft signs the user in, ssoapi sends the browser back to
+   APP_URL/#sso_code=<one-time code>&next=/path (or #sso_error=<reason>). */
+const SSO_ERRORS = {
+  not_employee: "Your Microsoft account is not an active employee in this tool. Contact HR.",
+  invalid_response: "Microsoft sign-in could not be verified. Try again.",
+  replayed: "This sign-in was already used. Sign in again.",
+  no_email: "Your Microsoft account did not share an email address. Contact your administrator.",
+  missing_response: "Microsoft did not return a sign-in response. Try again.",
+  token: "Signed in with Microsoft, but the app session could not be created. Contact your administrator.",
+  server: "Microsoft sign-in is unavailable right now. Try again shortly.",
+};
+
+// Read and remove the SSO result from the URL so it is used only once.
+function takeSsoResult() {
+  const hash = window.location.hash.replace(/^#/, "");
+  if (!/(^|&)(sso_code|sso_error)=/.test(hash)) return null;
+  const params = new URLSearchParams(hash);
+  const next = params.get("next") || "/";
+  const safeNext = /^\/(?!\/)/.test(next) && !next.includes("\\") ? next : "/";
+  window.history.replaceState(null, "", safeNext);
+  return { code: params.get("sso_code"), error: params.get("sso_error") };
+}
+
+async function exchangeSsoCode(code) {
+  const response = await fetch(catalystFunctionUrl("ssoapi") + "token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.jwt_token) {
+    throw new Error(result.error || "Microsoft sign-in could not be completed. Try again.");
+  }
+  return result;
+}
+
+function startMicrosoftSignIn() {
+  const next = window.location.pathname + window.location.search;
+  window.location.assign(catalystFunctionUrl("ssoapi") + "saml/login?next=" + encodeURIComponent(next));
+}
 
 export function useCatalystUser() {
   return useContext(CatalystAuthContext)?.user ?? null;
@@ -34,6 +76,7 @@ export function CatalystAuthGate({ children }) {
   const [user, setUser] = useState(null);
   const [state, setState] = useState("loading");
   const [message, setMessage] = useState("");
+  const [ssoEnabled, setSsoEnabled] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -57,6 +100,22 @@ export function CatalystAuthGate({ children }) {
         );
         setState("error");
         return;
+      }
+
+      // Coming back from Microsoft: turn the one-time code into a Catalyst session.
+      const sso = takeSsoResult();
+      if (sso?.error) {
+        setMessage(SSO_ERRORS[sso.error] || "Microsoft sign-in failed. Try again.");
+      } else if (sso?.code) {
+        try {
+          const token = await exchangeSsoCode(sso.code);
+          if (!auth.signinWithJwt) throw new Error("This Catalyst SDK does not support Microsoft sign-in.");
+          await auth.signinWithJwt(() => Promise.resolve(token));
+        } catch (error) {
+          if (!mounted) return;
+          setMessage(error?.message || "Microsoft sign-in failed. Try again.");
+        }
+        if (!mounted) return;
       }
 
       try {
@@ -152,6 +211,21 @@ export function CatalystAuthGate({ children }) {
     return () => window.clearTimeout(timer);
   }, [state]);
 
+  // Show "Sign in with Microsoft" only when ssoapi is deployed and configured.
+  useEffect(() => {
+    if (state !== "signed-out") return;
+    let active = true;
+    fetch(catalystFunctionUrl("ssoapi") + "status")
+      .then((response) => (response.ok ? response.json() : null))
+      .then((result) => {
+        if (active) setSsoEnabled(Boolean(result?.enabled));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [state]);
+
   // auth.signOut() synchronously navigates to the Catalyst logout URL, which
   // ends the session and returns to the app origin. Switch to "loading" so the
   // auto sign-in effect and the app tree don't run during the redirect.
@@ -229,6 +303,29 @@ export function CatalystAuthGate({ children }) {
                     <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                       {message}
                     </div>
+                  )}
+
+                  {ssoEnabled && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={startMicrosoftSignIn}
+                        className="mt-6 flex w-full items-center justify-center gap-3 rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-slate-50"
+                      >
+                        <svg width="18" height="18" viewBox="0 0 21 21" aria-hidden="true">
+                          <rect x="1" y="1" width="9" height="9" fill="#f25022" />
+                          <rect x="11" y="1" width="9" height="9" fill="#7fba00" />
+                          <rect x="1" y="11" width="9" height="9" fill="#00a4ef" />
+                          <rect x="11" y="11" width="9" height="9" fill="#ffb900" />
+                        </svg>
+                        Sign in with Microsoft
+                      </button>
+                      <div className="mt-5 flex items-center gap-3 text-xs text-slate-400">
+                        <span className="h-px flex-1 bg-slate-200" />
+                        or use your Catalyst account
+                        <span className="h-px flex-1 bg-slate-200" />
+                      </div>
+                    </>
                   )}
 
                   <div

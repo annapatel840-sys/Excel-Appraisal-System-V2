@@ -1,0 +1,20 @@
+{
+	"deployment": {
+		"name": "ssoapi",
+		"stack": "node24",
+		"type": "advancedio",
+		"memory": 256,
+		"env_variables": {
+			"SAML_IDP_SSO_URL": "",
+			"SAML_IDP_ISSUER": "",
+			"SAML_IDP_CERT": "",
+			"SAML_SP_ENTITY_ID": "",
+			"SAML_ACS_URL": "",
+			"APP_URL": "",
+			"SSO_NEW_USER_ROLE": "App User"
+		}
+	},
+	"execution": {
+		"main": "index.js"
+	}
+}
