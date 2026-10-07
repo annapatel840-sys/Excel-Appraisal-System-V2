@@ -4,7 +4,8 @@ import { useAccess } from "@/lib/access-store";
 
 const COLS = [
   { key: "empId", label: "Employee ID", type: "text", frozen: true },
-  { key: "cycle", label: "Cycle", type: "text" },
+  // Directly represents the payroll backend appraisal_year column.
+  { key: "appraisalYear", label: "Cycle", type: "text" },
   { key: "empName", label: "Employee Name", type: "text", cat: "master" },
   { key: "designation", label: "Designation", type: "text", cat: "master" },
   { key: "compManager", label: "Compensation Manager", type: "text", cat: "master" },
