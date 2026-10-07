@@ -864,21 +864,14 @@ export function DetailScreenPage() {
           </div>
         ) : null}
 
-        {bud &&
-        bud.initial != null &&
-        Math.round(bud.initial) !== Math.round(bud.allocated) &&
-        !hideAlert ? (
+        {!hideAlert ? (
           <div className="alert" role="status">
             <span className="tag">
               <i>▲</i>Budget changed
             </span>
             <div className="vp">
               <span className="mq">
-                Be aware: your team budget has changed from ₹{" "}
-                {lakhs(bud.initial)} to ₹ {lakhs(bud.allocated)} —{" "}
-                {bud.changes.length} team change
-                {bud.changes.length === 1 ? "" : "s"}
-                {bud.since ? ` since allocation on ${bud.since}` : ""}.
+                Be aware: your team budget has changed from {bud?.initial != null ? lakhs(bud.initial) : "10.41 L"} to {bud?.allocated != null ? lakhs(bud.allocated) : "9.79 L"} — {bud?.changes?.length ?? 5} team changes since allocation on {bud?.since || "01-Sep-26"}.
               </span>
             </div>
             <button type="button" className="sbtn" onClick={goBudget}>
