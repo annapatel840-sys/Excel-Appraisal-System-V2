@@ -3092,6 +3092,18 @@ export function AppraisalGrid({
                 return;
               }
 
+              // Do not allow a Promotion=Yes row to leave the required
+              // designation field empty. This is field-level validation, not
+              // an error alert/toast.
+              if (
+                col.key === "newTitle" &&
+                row.eligibleForPromotion === "Yes" &&
+                String(value).trim() === ""
+              ) {
+                setActive(cellKey);
+                return;
+              }
+
               updateCell(row.id, col.key, value);
 
               flashSaved(cellKey);
