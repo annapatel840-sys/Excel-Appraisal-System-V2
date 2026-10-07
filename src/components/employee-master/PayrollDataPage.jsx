@@ -107,6 +107,13 @@ const COLS = [
     computed: true,
   },
   {
+    key: "newCtc",
+    label: "New CTC",
+    type: "number",
+    cat: "calc",
+    money: true,
+  },
+  {
     key: "totalCtc",
     label: "Total CTC",
     type: "number",
