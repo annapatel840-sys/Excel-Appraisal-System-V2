@@ -449,6 +449,7 @@ function mapPayroll(row, cycleById) {
     totalBonus: Number(row.total_bonus) || 0,
     newBasePay: Number(row.new_base_pay) || 0,
     totalCtc: Number(row.total_ctc) || 0,
+    newCtc: Number(row.new_ctc) || 0,
     createdTime: row.CREATEDTIME || "",
   };
 }
