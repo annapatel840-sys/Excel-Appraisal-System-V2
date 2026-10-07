@@ -191,7 +191,6 @@ export const COLUMNS = [
   { key: "name", label: "Employee Name", type: "text", editable: false, width: 190 },
   { key: "empId", label: "Emp ID", type: "text", editable: false, width: 90 },
   { key: "compManager", label: "Comp. Manager", type: "text", editable: false, width: 125 },
-  { key: "techEd", label: "Tech Ed", type: "text", editable: false, width: 105 },
   { key: "appraiserTechED", label: "Appraiser Tech ed", type: "text", editable: false, width: 145 },
   { key: "wissenExperience", label: "Wissen exp as on 1st Jan", type: "decimal", editable: false, width: 145 },
   { key: "totalExperience", label: "Total Experience as on 1st Jan", type: "decimal", editable: false, width: 155 },
@@ -330,7 +329,6 @@ export function buildEmployees(count = 250) {
 
       compManager: pick(MANAGERS),
 
-      techEd: pick(MANAGERS),
 
       appraiserTechED: pick(["Yes", "No", "Tech", "ED"]),
 
