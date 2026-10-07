@@ -387,69 +387,39 @@ async function requirePayrollTables(adminApp) {
 }
 
 function mapPayroll(row, cycleById) {
-  const cycleId = String(
-    row.appraisal_cycle_id ||
-      row.appraisalCycleId ||
-      row.cycle_id ||
-      row.cycleId ||
-      "",
-  ).trim();
-  const cycle =
-    cycleById.get(cycleId) ||
-    [...cycleById.values()].find(
-      (item) =>
-        item.name === cycleId ||
-        String(item.id || "").trim() === cycleId,
-    );
+  const cycleId = String(row.appraisal_cycle_id || row.appraisalCycleId || row.cycle_id || row.cycleId || "").trim();
+  const cycle = cycleById.get(cycleId);
   return {
     id: rowId(row),
     empId: row.emp_id || "",
-    cycleId,
-    // Direct payroll-table mapping. Do not depend on Appraisal Cycle Master
-    // to identify the year of an already stored payroll row.
     appraisalYear: row.appraisal_year || row.APPRAISAL_YEAR || "",
     cycle: row.appraisal_year || row.APPRAISAL_YEAR || cycle?.name || "",
-    batch: row.source_batch || "",
+    basePay: Number(row.base_pay) || 0,
+    allocatedPb: Number(row.allocated_pb) || 0,
+    allocatedPbInstallment: Number(row.allocated_pb_installment) || 0,
+    performanceBonus: Number(row.performance_bonus) || 0,
+    performanceBonusInstallment: Number(row.performance_bonus_installment) || 0,
+    retentionBonus: Number(row.retention_bonus) || 0,
+    totalPB: Number(row.total_pb) || 0,
+    joiningBonus: Number(row.joining_bonus) || 0,
+    totalBonus: Number(row.total_bonus) || 0,
+    hikeAmt: Number(row.hike_amount) || 0,
+    hikePct: Number(row.hike_pct) || 0,
+    promo: row.promotion ?? "",
+    newTitle: row.title ?? "",
+    targetPerformanceBonus: Number(row.target_performance_bonus) || 0,
+    newCtc: Number(row.new_ctc) || 0,
+    managerRating: row.manager_rating ?? "",
+    rating: row.rating ?? "",
+    // Additional existing payroll fields are retained for compatibility.
     empName: row.emp_name || "",
     designation: row.designation || "",
     compManager: row.comp_manager || "",
     superManager: row.super_manager || "",
     managerMail: row.manager_mail || "",
-    superManagerMail: row.super_manager_mail || "",
-    appraiser: row.appraiser || "",
-    basePay: Number(row.base_pay) || 0,
-    targetPB: Number(row.target_pb) || 0,
-    allocatedPb: Number(row.allocated_pb ?? row.alloc_pb) || 0,
-    allocatedPbInstallment: Number(row.allocated_pb_installment ?? row.alloc_inst) || 0,
-    performanceBonus: Number(row.performance_bonus ?? row.new_pb) || 0,
-    performanceBonusInstallment: Number(row.performance_bonus_installment ?? row.new_pb_inst) || 0,
-    retentionBonus: Number(row.retention_bonus ?? row.new_rb) || 0,
-    rbPaid: Number(row.rb_paid) || 0,
-    joiningBonus: Number(row.joining_bonus) || 0,
-    rbMonth: row.rb_month || "",
-    pbPaid: Number(row.pb_paid) || 0,
-    pbMonth: row.pb_month || "",
-    allocPB: Number(row.alloc_pb) || 0,
-    allocInst: Number(row.alloc_inst) || 0,
-    newPB: Number(row.new_pb) || 0,
-    newPBInst: Number(row.new_pb_inst) || 0,
-    newRB: Number(row.new_rb) || 0,
-    joiningBonus: Number(row.joining_bonus) || 0,
-    hikeAmt: Number(row.hike_amt ?? row.hike_amount) || 0,
-    hikePct: Number(row.hike_pct) || 0,
-    tpbNext: Number(row.target_pb_next_year) || 0,
-    promo: row.promo || "",
-    newTitle: row.new_title || "",
-    targetPerformanceBonus: Number(row.target_performance_bonus ?? row.target_pb) || 0,
-    managerRating: row.manager_rating ?? "",
-    rating: row.rating ?? "",
-    remarks: row.remarks || "",
+    batch: row.source_batch || "",
+    cycleId,
     sourceFile: row.source_file || "",
-    totalPB: Number(row.total_pb) || 0,
-    totalBonus: Number(row.total_bonus) || 0,
-    newBasePay: Number(row.new_base_pay) || 0,
-    totalCtc: Number(row.total_ctc) || 0,
-    newCtc: Number(row.new_ctc) || 0,
     createdTime: row.CREATEDTIME || "",
   };
 }
