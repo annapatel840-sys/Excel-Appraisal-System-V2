@@ -2,27 +2,42 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAccess } from "@/lib/access-store";
 
-const COLS = [
-  { key: "empId", label: "Employee ID", type: "text", frozen: true },
-  { key: "appraisalYear", label: "Cycle", type: "text" },
-  { key: "basePay", label: "Base Pay", type: "number", money: true },
-  { key: "allocatedPb", label: "Allocated PB", type: "number", money: true },
-  { key: "allocatedPbInstallment", label: "Allocated PB Installment", type: "number", money: true },
-  { key: "performanceBonus", label: "Performance Bonus", type: "number", money: true },
-  { key: "performanceBonusInstallment", label: "Performance Bonus Installment", type: "number", money: true },
-  { key: "retentionBonus", label: "Retention Bonus", type: "number", money: true },
-  { key: "totalPB", label: "Total PB", type: "number", money: true },
-  { key: "joiningBonus", label: "Joining Bonus", type: "number", money: true },
-  { key: "totalBonus", label: "Total Bonus", type: "number", money: true },
-  { key: "hikeAmt", label: "Hike Amount", type: "number", money: true },
-  { key: "hikePct", label: "Hike %", type: "number", pct: true },
-  { key: "promo", label: "Promotion", type: "text" },
-  { key: "newTitle", label: "Title", type: "text" },
-  { key: "targetPerformanceBonus", label: "Target Performance Bonus", type: "number", money: true },
-  { key: "newCtc", label: "New CTC", type: "number", money: true },
-  { key: "managerRating", label: "Manager Rating", type: "text" },
-  { key: "rating", label: "Rating", type: "text" },
-];
+const STATIC_COL_META = {
+  emp_id: { label: "Employee ID", frozen: true },
+  appraisal_cycle_id: { label: "Cycle ID" },
+  appraisal_year: { label: "Cycle" },
+  emp_name: { label: "Employee Name" },
+  base_pay: { label: "Base Pay", type: "number", money: true },
+  alloc_pb: { label: "Allocated PB", type: "number", money: true },
+  alloc_inst: { label: "Allocated PB Installment", type: "number", money: true },
+  new_pb: { label: "Performance Bonus", type: "number", money: true },
+  new_pb_inst: { label: "Performance Bonus Installment", type: "number", money: true },
+  new_rb: { label: "Retention Bonus", type: "number", money: true },
+  total_pb: { label: "Total PB", type: "number", money: true },
+  joining_bonus: { label: "Joining Bonus", type: "number", money: true },
+  total_bonus: { label: "Total Bonus", type: "number", money: true },
+  hike_amt: { label: "Hike Amount", type: "number", money: true },
+  hike_pct: { label: "Hike %", type: "number", pct: true },
+  promo: { label: "Promotion" },
+  new_title: { label: "Title" },
+  target_pb_next_year: { label: "Target Performance Bonus", type: "number", money: true },
+  total_ctc: { label: "New CTC", type: "number", money: true },
+  manager_rating: { label: "Manager Rating" },
+  rating: { label: "Rating" },
+};
+
+function schemaLabel(name) {
+  return String(name || "").replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function buildColumnsFromSchema(schema) {
+  const hidden = new Set(["ROWID", "CREATORID", "CREATEDTIME", "MODIFIEDTIME", "appraisal_cycle_id", "source_batch", "source_file"]);
+  return (schema?.columns || []).filter((column) => !hidden.has(column.name)).map((column) => {
+    const meta = STATIC_COL_META[column.name] || {};
+    const type = /int|decimal|double|float|number|numeric|bigint/.test(column.type || "") ? "number" : "text";
+    return { key: column.name, label: meta.label || column.label || schemaLabel(column.name), type: meta.type || type, frozen: meta.frozen, money: meta.money, pct: meta.pct };
+  });
+}
 
 const NUMBER_OPS = [
   { v: "gt", l: "Greater than" },
@@ -305,6 +320,7 @@ export function PayrollDataPage() {
   const [stored, setStored] = useState([]);
   const [audit, setAudit] = useState([]);
   const [cycles, setCycles] = useState([]);
+  const [schema, setSchema] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
@@ -326,12 +342,15 @@ export function PayrollDataPage() {
       payrollCycleRequest("payroll"),
       payrollCycleRequest("audit"),
       payrollCycleRequest("cycles"),
+      payrollCycleRequest("schema"),
     ])
-      .then(([payroll, auditRows, cycleRows]) => {
+      .then(([payroll, auditRows, cycleRows, schemaData]) => {
         if (!active) return;
         setStored(payroll);
         setAudit(auditRows);
         setCycles(cycleRows);
+        const payrollSchema = Array.isArray(schemaData) ? schemaData.find((item) => String(item.name).toLowerCase() === "payroll") : null;
+        setSchema(payrollSchema || null);
         setLoadError("");
       })
       .catch((error) => {
@@ -360,6 +379,8 @@ export function PayrollDataPage() {
     () => Array.from(new Set(stored.map((r) => r.batch))),
     [stored],
   );
+
+  const COLS = useMemo(() => buildColumnsFromSchema(schema), [schema]);
 
   const colByKey = (key) => COLS.find((c) => c.key === key);
 
