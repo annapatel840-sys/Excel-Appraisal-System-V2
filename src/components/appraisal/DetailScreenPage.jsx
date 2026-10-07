@@ -425,7 +425,6 @@ function useFitScale(depKey) {
    SMALL PRESENTATIONAL COMPONENTS
    ------------------------------------------------------------------ */
 function BudgetBanner({ notice, onGotIt, onViewBudget, notesOpen, setNotesOpen, employee }) {
-  // Always renders a wrapper so the grid row structure never shifts.
   return (
     <div style={{ minWidth: 0 }}>
       {notice ? (
@@ -446,35 +445,43 @@ function BudgetBanner({ notice, onGotIt, onViewBudget, notesOpen, setNotesOpen, 
             Be aware: your team budget has changed from {notice.from} to {notice.to} —{" "}
             {notice.changes} team changes since allocation on {notice.since}.
           </span>
-          <div className="relative">
-            <button
-              type="button"
-              onClick={onViewBudget}
-              className="rounded border px-3 py-1 font-semibold"
-              style={{ borderColor: "#C4CED6", background: "#fff", color: INK }}
-            >
-              View budget
-            </button>
-          </div>
-          <div className="relative" data-detail-notes>
-            <button
-              type="button"
-              onClick={() => setNotesOpen((previous) => !previous)}
-              className="rounded border px-3 py-1 font-semibold"
-              style={{ borderColor: "#C4CED6", background: "#fff", color: INK }}
-            >
-              ✎ My notes
-            </button>
-            {notesOpen && (
-              <NotesPopover
-                contextLabel={
-                  employee
-                    ? `${employee.name} (${employee.empId}) · ${CURRENT_CYCLE}`
-                    : `Detailed Screen · ${CURRENT_CYCLE}`
-                }
-              />
-            )}
-          </div>
+        </div>
+      ) : null}
+
+      <div
+        className="flex flex-wrap items-center gap-2"
+        style={{ margin: notice ? "0 12px 2px" : "6px 12px 2px" }}
+      >
+        <button
+          type="button"
+          onClick={onViewBudget}
+          className="rounded border px-3 py-1 font-semibold"
+          style={{ borderColor: "#C4CED6", background: "#fff", color: INK }}
+        >
+          View budget
+        </button>
+
+        <div className="relative" data-detail-notes>
+          <button
+            type="button"
+            onClick={() => setNotesOpen((previous) => !previous)}
+            className="rounded border px-3 py-1 font-semibold"
+            style={{ borderColor: "#C4CED6", background: "#fff", color: INK }}
+          >
+            ✎ My notes
+          </button>
+          {notesOpen && (
+            <NotesPopover
+              contextLabel={
+                employee
+                  ? `${employee.name} (${employee.empId}) · ${CURRENT_CYCLE}`
+                  : `Detailed Screen · ${CURRENT_CYCLE}`
+              }
+            />
+          )}
+        </div>
+
+        {notice ? (
           <button
             type="button"
             onClick={onGotIt}
@@ -483,12 +490,11 @@ function BudgetBanner({ notice, onGotIt, onViewBudget, notesOpen, setNotesOpen, 
           >
             Got it
           </button>
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   );
 }
-
 function CompHead({ children }) {
   return (
     <div
@@ -744,6 +750,29 @@ export function DetailScreenPage({
   }, [currentUser.name]);
 
   const employee = rows[Math.min(index, rows.length - 1)] || rows[0];
+
+  const noticeSignature = employee
+    ? JSON.stringify({
+        hikeAmount: employee.hikeAmount,
+        hikePct: employee.hikePct,
+        newBasePay: employee.newBasePay,
+        performanceBonus: employee.performanceBonus,
+        retentionBonus: employee.retentionBonus,
+        compManagerRemarks: employee.compManagerRemarks,
+      })
+    : "";
+
+  const previousNoticeSignatureRef = useRef("");
+  useEffect(() => {
+    if (!noticeSignature) return;
+    if (
+      previousNoticeSignatureRef.current &&
+      previousNoticeSignatureRef.current !== noticeSignature
+    ) {
+      setNoticeOpen(true);
+    }
+    previousNoticeSignatureRef.current = noticeSignature;
+  }, [noticeSignature]);
 
   // Measure + scale the compensation table so it fits one screen.
   const { boxRef, fitRef, scale } = useFitScale(employee?.id);
