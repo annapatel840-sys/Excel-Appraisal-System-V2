@@ -32,7 +32,7 @@ const CURRENT_CYCLE = "Apr-26";
 /* ------------------------------------------------------------------
    FRONTEND-ONLY SETTINGS (layout / banner). None of these touch data.
    ------------------------------------------------------------------ */
-const BUDGET_PATH = "/employee-master?tab=budget-allocation";
+const BUDGET_PATH = "/employee-master?tab=budget-master";
 const BUDGET_NOTICE_PLACEHOLDER = {
   from: "₹ 10.41 L",
   to: "₹ 9.79 L",
