@@ -64,6 +64,7 @@ const EMP_FIELDS = [
 
 // Keys must stay the same: the payroll backend validates these.
 const PAY_FIELDS = [
+  // Employee ID is always the first payroll upload column; it must never drift to the end.
   { key: "empId", label: "Employee ID", required: true },
   // Keep payroll upload in the same pay-field order as Payroll Data.
   { key: "hikePct", label: "Hike %" },
