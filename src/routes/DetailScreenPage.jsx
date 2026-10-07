@@ -140,14 +140,14 @@ const CSS = `
 .ds .kpis{display:flex;gap:22px;justify-content:flex-end;flex-wrap:wrap}
 .ds .kpi{text-align:right;line-height:1.15}.ds .kpi span{display:block;font-size:10.5px;font-weight:700;color:#5F7482}.ds .kpi b{font-size:17px;color:#102A43}
 .ds .ok{color:#0B7A75!important}.ds .warn{color:#B7791F!important}.ds .danger{color:#C0392B!important}
-.ds .alert{display:flex;align-items:center;gap:12px;height:38px;padding:0 14px;background:#FAFAFB;border:1px solid #E5E7EB;border-radius:10px;font-size:12.5px}
+.ds .alert{display:flex;align-items:center;gap:12px;height:36px;padding:0 14px;background:#FAFAFB;border:1px solid #E5E7EB;border-radius:10px;font-size:12.5px}
 .ds .alert .tag{font-weight:700;color:#111827}.ds .alert .tag i{color:#D0473F;font-style:normal;margin-right:4px}
 .ds .alert .vp{flex:1;min-width:0;overflow:hidden}.ds .alert .mq{display:inline-block;white-space:nowrap;animation:dsmq 22s linear infinite}
 @keyframes dsmq{from{transform:translateX(100%)}to{transform:translateX(-100%)}}
 @media(prefers-reduced-motion:reduce){.ds .alert .mq{animation:none}}
 .ds .sbtn{height:28px;padding:0 12px;border-radius:6px;border:1px solid #CBD5E1;background:#fff;color:#111827;font-size:12px;font-weight:700;cursor:pointer}
 .ds .sbtn.g{background:#EEF0F3;border-color:#E2E5EA}
-.ds .ws{display:grid;gap:14px;align-items:stretch}
+.ds .ws{display:grid;gap:10px;align-items:stretch}
 .ds .card{background:#fff;border:1px solid #E3E9EC;border-radius:10px;box-shadow:0 1px 2px rgba(16,42,67,.04)}
 .ds .cis-t{display:flex;align-items:center;justify-content:space-between;height:38px;padding:0 14px;border-bottom:1px solid #E5E7EB;font-size:15px;font-weight:700;color:#102A43}
 .ds .edleg{font-size:11.5px;font-weight:600;color:#6B7280;display:inline-flex;align-items:center;gap:6px}
@@ -156,16 +156,16 @@ const CSS = `
 .ds .cis-s input{flex:1;height:30px;border:1px solid #9AA7B4;border-radius:4px;padding:0 10px;font-size:12.5px}
 .ds .scope{font-size:11.5px;font-weight:600;color:#0B5F5B;background:#E6F3F2;border-radius:6px;padding:4px 9px}
 .ds table.cis{width:100%;border-collapse:collapse;table-layout:fixed}
-.ds .cis th{background:#F4F6F9;color:#6B7A89;font-size:10.5px;font-weight:700;text-align:left;padding:6px 10px;border-bottom:1px solid #E3E9EC;border-right:1px solid #E3E9EC;text-transform:uppercase;letter-spacing:.02em}
+.ds .cis th{background:#F4F6F9;color:#6B7A89;font-size:11px;font-weight:700;text-align:left;padding:6px 10px;border-bottom:1px solid #E3E9EC;border-right:1px solid #E3E9EC;text-transform:uppercase;letter-spacing:.02em}
 .ds .cis th.r{text-align:right}
-.ds .cis td{padding:5px 10px;border-bottom:1px solid #E3E9EC;border-right:1px solid #E3E9EC;vertical-align:top;font-size:12px}
+.ds .cis td{padding:4px 10px;border-bottom:1px solid #E3E9EC;border-right:1px solid #E3E9EC;vertical-align:top;font-size:12.75px}
 .ds .cis th:last-child,.ds .cis td:last-child{border-right:0}
 .ds .cis td.d{font-weight:700;color:#102A43;background:#F8FAFB;padding-top:11px}
 .ds .cis td.f{text-align:right;font-weight:700;white-space:nowrap;padding-top:11px}
 .ds .up{color:#1F8A3B}.ds .dn{color:#C0392B}.ds .mut{color:#9AA7B4;font-weight:400;font-size:11px}.ds .dark{color:#1F2937}
 .ds .sub{display:block;font-size:10px;font-weight:400;color:#6B7280}
 .ds .cap{display:flex;gap:8px;font-size:10px;color:#6B7280;margin-top:1px}.ds .cap span:first-child{flex:1}.ds .cap span:last-child{width:56px;flex:0 0 56px}
-.ds .ro{height:26px;line-height:24px;border:1px solid #C9D1DA;background:#F1F3F6;border-radius:4px;padding:0 8px;font-size:12px;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ds .ro{height:25px;line-height:23px;border:1px solid #C9D1DA;background:#F1F3F6;border-radius:4px;padding:0 8px;font-size:12px;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ds .ro.na{color:#9AA7B4;font-size:11px;background:#fff;border-style:dashed}.ds .ro.calc{background:#fff;color:#102A43}
 .ds .pair{display:flex;gap:8px}.ds .pair>.ro,.ds .pair>input{flex:1;min-width:0}.ds .pair .q{flex:0 0 56px;width:56px}
 .ds .gi,.ds .gs{width:100%;height:26px;border:1px solid #D1D5DB;background:#fff;border-radius:4px;padding:0 8px;font-size:12px;color:#1F2937}
@@ -178,7 +178,7 @@ const CSS = `
 .ds .leg span{display:inline-flex;align-items:center;gap:5px}.ds .leg i{width:11px;height:11px;border-radius:2px;border:1px solid}
 .ds .foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 12px;border-top:1px solid #E3E9EC}
 .ds .pg{font-size:13px;color:#486070}.ds .pg b{color:#102A43}.ds .acts{display:flex;gap:8px}
-.ds .btn{height:34px;padding:0 16px;border-radius:7px;border:1px solid #102A43;background:#102A43;color:#fff;font-size:13px;font-weight:700;cursor:pointer}
+.ds .btn{height:32px;padding:0 16px;border-radius:7px;border:1px solid #102A43;background:#102A43;color:#fff;font-size:13px;font-weight:700;cursor:pointer}
 .ds .btn.ghost{background:#fff;color:#102A43;border-color:#CBD5DA}.ds .btn:disabled{opacity:.45;cursor:not-allowed}
 .ds .empty{padding:36px;color:#5F7482}
 /* metrics strip */
