@@ -3,9 +3,10 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAccess } from "@/lib/access-store";
 
 const STATIC_COL_META = {
-  // Intentional visible order: Cycle, Employee ID, then pay values.
-  appraisal_year: { label: "Cycle" },
+  // Intentional visible order: Employee ID first, then Cycle and pay values.
+  // Keep Employee ID as the leading key even when the Data Store schema order changes.
   emp_id: { label: "Employee ID", frozen: true },
+  appraisal_year: { label: "Cycle" },
 
   // Calculated pay values.
   hike_pct: { label: "Hike %", type: "number", pct: true, cat: "calc" },
