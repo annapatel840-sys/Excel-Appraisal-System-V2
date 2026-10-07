@@ -740,24 +740,7 @@ async function routeRequest(req, res, identity, resource, a) {
   const actor = identity.name || identity.email;
 
   if (resource === "schema" && req.method === "GET") {
-  if (resource === "import" && req.method === "POST") {
-    const body = await readBody(req);
-    const screen = String(body.screen || "").trim().toLowerCase();
-    if (screen === "fb") {
-      if (enforced) access.requireScreen(a, "employeeMaster", "edit");
-      else if (!isHR(identity.user)) return sendJson(res, 403, { success: false, message: "HR role is required for Feedback & Rating upload." });
-    } else if (screen === "sheet") {
-      if (enforced) access.requireScreen(a, "appraisalSheet", "edit");
-      else if (!isHR(identity.user) && !isTechEd(identity.user)) return sendJson(res, 403, { success: false, message: "HR or Tech-Ed role is required for Appraisal Sheet upload." });
-    } else {
-      throw new ApiError("Unsupported upload type.");
-    }
-    const result = await importRows(tables, body);
-    return sendJson(res, 200, { success: true, data: result });
-  }
-
-
-    const schema = await getProjectSchema(catalyst.initialize(req, { scope: "admin" }));
+    const schema = await getProjectSchema(adminApp);
     return sendJson(res, 200, { success: true, data: schema });
   }
 
