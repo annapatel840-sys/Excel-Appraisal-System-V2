@@ -38,9 +38,8 @@ function normalizeSchemaTable(table) {
 }
 
 async function getProjectSchema(adminApp) {
-  // Catalyst's Node SDK exposes table rows reliably; infer the live column
-  // set from SELECT * results so added/removed columns are reflected without
-  // maintaining a second frontend column list.
+  // Keep schema metadata stable even when a payroll column is blank in every row.
+  // PayrollDataPage/UploadPage intentionally expose only pay entry/calculation fields.
   const tables = [
     { name: "Employees", id: TABLES.employees },
     { name: "Employee_Master", id: TABLES.employeeMaster },
@@ -49,7 +48,38 @@ async function getProjectSchema(adminApp) {
     { name: "Appraisal_Audit", id: TABLES.audit },
   ];
   const datastore = adminApp.datastore();
-  const schemas = await Promise.all(tables.map(async (meta) => {
+  const payrollColumns = [
+    ["appraisal_year", "Cycle", "text"],
+    ["emp_id", "Employee ID", "text"],
+    ["hike_pct", "Hike %", "number"],
+    ["total_bonus", "Total Bonus", "number"],
+    ["total_pb", "Total PB", "number"],
+    ["new_base_pay", "New Base Pay", "number"],
+    ["total_ctc", "Total CTC", "number"],
+    ["base_pay", "Current Annual Base Pay", "number"],
+    ["joining_bonus", "Joining Bonus", "number"],
+    ["target_pb", "Target PB Allocated for May", "number"],
+    ["rb_paid", "RB to be Paid", "number"],
+    ["pb_paid", "PB to be Paid", "number"],
+    ["alloc_pb", "Allocated PB Amount", "number"],
+    ["alloc_inst", "Inst. (Allocated PB)", "number"],
+    ["new_pb", "New PB to be Offered", "number"],
+    ["new_pb_inst", "Inst. (New PB)", "number"],
+    ["new_rb", "New RB", "number"],
+    ["hike_amt", "Hike Amount", "number"],
+    ["target_pb_next_year", "Target PB for Next Year", "number"],
+  ];
+
+  return Promise.all(tables.map(async (meta) => {
+    if (meta.name === "payroll") {
+      return {
+        id: String(meta.id),
+        name: meta.name,
+        columns: payrollColumns.map(([name, label, type]) => ({
+          name, label, type, mandatory: name === "emp_id",
+        })),
+      };
+    }
     const table = datastore.table(meta.id);
     const result = await table.getPagedRows({ maxRows: 1 });
     const row = Array.isArray(result?.data) && result.data.length ? result.data[0] : {};
@@ -65,7 +95,6 @@ async function getProjectSchema(adminApp) {
       });
     return { id: String(meta.id), name: meta.name, columns };
   }));
-  return schemas;
 }
 
 class ApiError extends Error {
