@@ -14,6 +14,7 @@ const TABLES = {
   payroll: "74008000000035326",
   cycles: "74008000000034190",
   audit: "74008000000034940",
+  feedback: "74008000000022041",
 };
 const PAGE_SIZE = 200;
 const MAX_UPLOAD_ROWS = 5000;
@@ -415,6 +416,7 @@ async function requirePayrollTables(adminApp) {
     payroll: datastore.table(TABLES.payroll),
     cycles: datastore.table(TABLES.cycles),
     audit: datastore.table(TABLES.audit),
+    feedback: datastore.table(TABLES.feedback),
   };
 }
 
@@ -631,8 +633,18 @@ async function importRows(tables, body) {
   }
   if (cycle?.archived) throw new ApiError("The selected cycle is archived.", 409);
 
-  const targetTable = screen === "fb" ? tables.employees : tables.payroll;
-  const columns = await getImportColumnSet(targetTable);
+  const targetTable = screen === "fb" ? tables.feedback : tables.payroll;
+  // Feedback & Rating may be empty before the first upload, so do not infer
+  // its schema from the first row. Use the exact database columns instead.
+  const columns = screen === "fb"
+    ? new Set([
+        "emp_ID", "emp_name", "designation", "last_appraisal_date",
+        "revenue_released", "gross_margin", "manager_feedback", "manager_rating",
+        "client_manager_feedback", "client_feedback", "client_rating", "interview_count",
+        "at_risk", "eligible_for_promotion", "new_title", "remarks", "fy_year",
+        "appraisal_cycle_name",
+      ])
+    : await getImportColumnSet(targetTable);
   const fieldMap = IMPORT_FIELD_MAP[screen];
   const records = Array.isArray(body.records) ? body.records : [];
   if (!records.length || records.length > MAX_UPLOAD_ROWS) throw new ApiError("Upload must contain between 1 and " + MAX_UPLOAD_ROWS + " rows.");
