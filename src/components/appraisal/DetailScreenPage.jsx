@@ -40,12 +40,7 @@ const CURRENT_CYCLE = "Apr-26";
    FRONTEND-ONLY SETTINGS (layout / banner). None of these touch data.
    ------------------------------------------------------------------ */
 const BUDGET_PATH = "/employee-master?tab=budget-master";
-const BUDGET_NOTICE_PLACEHOLDER = {
-  from: "10.41 L",
-  to: "9.79 L",
-  changes: 5,
-  since: "01-Sep-26",
-};
+const BUDGET_NOTICE_PLACEHOLDER = null;
 
 const NOTES_KEY = "appraisal.myNotes";
 const NOTE_DRAFT_KEY = "appraisal.noteDraft";
@@ -775,7 +770,7 @@ export function DetailScreenPage({
   budgetNotice = BUDGET_NOTICE_PLACEHOLDER,
 } = {}) {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
-  const { currentUser, isHR } = useBudget();
+  const { currentUser, isHR, budgetMasterRows } = useBudget();
   const catalystUser = useCatalystUser();
   const role = String(catalystUser?.role || "")
     .trim()
@@ -823,6 +818,20 @@ export function DetailScreenPage({
   }, [currentUser.name]);
 
   const employee = rows[Math.min(index, rows.length - 1)] || rows[0];
+
+  const liveBudgetNotice = useMemo(() => {
+    const row = budgetMasterRows[0];
+    if (!row) return null;
+    const applied = Number(row.applied_budget) || 0;
+    const calculated = Number(row.calculated_budget) || 0;
+    if (!calculated && !applied) return null;
+    return {
+      from: (calculated / 100000).toFixed(2) + " L",
+      to: (applied / 100000).toFixed(2) + " L",
+      changes: 0,
+      since: "budget allocation",
+    };
+  }, [budgetMasterRows]);
 
   const noticeSignature = employee
     ? JSON.stringify({
@@ -1249,7 +1258,7 @@ export function DetailScreenPage({
       {/* ============ SCREEN 1 - fits one viewport, no scrolling ============ */}
       <div className="ds-screen">
         <BudgetBanner
-          notice={noticeOpen ? budgetNotice : null}
+          notice={noticeOpen ? (liveBudgetNotice || budgetNotice) : null}
           onGotIt={() => setNoticeOpen(false)}
           onViewBudget={handleViewBudget}
           notesOpen={notesOpen}
