@@ -1774,7 +1774,7 @@ export function AppraisalCycleMasterPage({
 
   const nb = nextBtn(current);
   const nextOk = !nb || nb.k !== "activate" || allOk(activateRules(current));
-  const years = [thisYear - 1, thisYear, thisYear + 1, thisYear + 2];
+  const years = Array.from({ length: 11 }, (_, index) => 2020 + index);
 
   return (
     <div className="acx">
