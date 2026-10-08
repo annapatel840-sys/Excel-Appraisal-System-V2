@@ -11,7 +11,12 @@ const TABLES = {
 };
 
 function sendJson(res, status, body) {
-  res.writeHead(status, { "Content-Type": "application/json" });
+  res.writeHead(status, {
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+  });
   res.end(JSON.stringify(body));
 }
 
@@ -224,7 +229,7 @@ function filterOwn(bundle, a) {
 module.exports = async function (req, res) {
   try {
     const method = String(req.method || "GET").toUpperCase();
-    if (method === "OPTIONS") return sendJson(res, 204, {});
+    if (method === "OPTIONS") return sendJson(res, 200, { success: true });
 
     const a = await checkAccess(req);
     requireBudgetScreen(a, method === "GET" ? "view" : "edit");
