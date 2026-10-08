@@ -436,11 +436,11 @@ function mapPayroll(row, cycleById, employeeById = new Map()) {
 }
 
 async function validateUpload(tables, body) {
-  const cycleId = String(body.cycleId || "");
+  const selectedCycleId = String(body.cycleId || "").trim();
   const sourceBatch = String(body.batchId || "").trim();
   const sourceFile = String(body.fileName || "");
   const records = body.records;
-  if (!cycleId) throw new ApiError("An appraisal cycle is required.");
+  if (!selectedCycleId) throw new ApiError("An appraisal cycle is required.");
   if (!sourceBatch || sourceBatch.length > 80) throw new ApiError("A valid upload batch ID is required.");
   if (!Array.isArray(records) || records.length === 0 || records.length > MAX_UPLOAD_ROWS) {
     throw new ApiError(`Upload must contain between 1 and ${MAX_UPLOAD_ROWS} rows.`);
@@ -452,44 +452,72 @@ async function validateUpload(tables, body) {
     getAllRows(tables.employeeMaster),
     getAllRows(tables.payroll),
   ]);
-  const cycle = cycleRows.map(normalizeCycle).find((item) => item.id === cycleId);
-  if (!cycle) throw new ApiError("The selected appraisal cycle no longer exists.", 404);
-  if (cycle.archived) throw new ApiError("Payroll cannot be uploaded to an archived cycle.", 409);
+  const cycles = cycleRows.map(normalizeCycle);
+  const selectedCycle = cycles.find((item) => item.id === selectedCycleId);
+  if (!selectedCycle) throw new ApiError("The selected appraisal cycle no longer exists.", 404);
 
+  const cycleById = new Map(cycles.map((item) => [item.id, item]));
+  const cycleByName = new Map(cycles.map((item) => [item.name.toLowerCase(), item]));
   const masterByEmpId = new Map();
   masterRows.forEach((row) => {
     const key = String(row.emp_id || "").trim().toLowerCase();
     if (key) masterByEmpId.set(key, row);
   });
+
   const existingByKey = new Map();
   payrollRows.forEach((row) => {
     const key = `${String(row.emp_id || "").trim().toLowerCase()}|${String(row.appraisal_cycle_name || "")}`;
     existingByKey.set(key, row);
   });
+
   const seen = new Set();
   const validated = records.map((record, index) => {
     const input = record && typeof record === "object" && !Array.isArray(record) ? record : {};
     const rowNumber = Number(input.row) || index + 2;
     const empId = String(input.empId || "").trim();
+    const requestedCycle = String(input.appraisalCycleName || "").trim();
+    const rowCycle =
+      (requestedCycle && (cycleById.get(requestedCycle) || cycleByName.get(requestedCycle.toLowerCase()))) ||
+      selectedCycle;
     const errors = [];
+
     if (!record || typeof record !== "object" || Array.isArray(record)) {
       errors.push("Row data must be an object.");
     }
-    const key = `${empId.toLowerCase()}|${cycleId}`;
-    if (!empId) errors.push("Employee ID is required.");
-    else if (!masterByEmpId.has(empId.toLowerCase())) errors.push("Employee ID not found in Employee Master.");
-    if (seen.has(key)) errors.push("Duplicate Employee ID within this file for the selected cycle.");
+    if (!empId) {
+      errors.push("Employee ID is required.");
+    } else if (!masterByEmpId.has(empId.toLowerCase())) {
+      errors.push("Employee ID not found in Employee Master.");
+    }
+    if (requestedCycle && !rowCycle) {
+      errors.push(`Appraisal Cycle Name "${requestedCycle}" was not found.`);
+    }
+
+    const key = `${empId.toLowerCase()}|${rowCycle?.id || ""}`;
+    if (seen.has(key)) errors.push("Duplicate Employee ID within this file for the same appraisal cycle.");
     seen.add(key);
 
     let payrollRow;
     try {
-      payrollRow = toPayrollRow(input, cycle, masterByEmpId.get(empId.toLowerCase()), sourceBatch, sourceFile);
+      if (!rowCycle) throw new ApiError("A valid appraisal cycle is required.");
+      payrollRow = toPayrollRow(
+        input,
+        rowCycle,
+        masterByEmpId.get(empId.toLowerCase()),
+        sourceBatch,
+        sourceFile,
+      );
     } catch (error) {
       errors.push(error.message);
     }
-    if (cycle.status === "Closed" && !existingByKey.has(key)) {
+
+    if (rowCycle?.archived) {
+      errors.push(`Payroll cannot be uploaded to archived cycle "${rowCycle.name}".`);
+    }
+    if (rowCycle?.status === "Closed" && !existingByKey.has(key)) {
       errors.push("New payroll rows cannot be added to a closed cycle.");
     }
+
     return {
       row: rowNumber,
       ok: errors.length === 0,
@@ -497,6 +525,7 @@ async function validateUpload(tables, body) {
       badFields: errors.length
         ? Array.from(new Set(errors.flatMap((message) => {
             if (message.startsWith("Employee ID") || message.startsWith("Duplicate Employee ID")) return ["empId"];
+            if (message.startsWith("Appraisal Cycle Name")) return ["appraisalCycleName"];
             return Object.keys(PAYROLL_FIELDS).filter((field) =>
               message.startsWith(`${field} `) || message.startsWith(`${field} exceeds`),
             );
@@ -504,11 +533,12 @@ async function validateUpload(tables, body) {
         : [],
       payrollRow,
       operation: existingByKey.has(key) ? "update" : "insert",
+      cycleId: rowCycle?.id || "",
+      cycleName: rowCycle?.name || "",
     };
   });
-  return { cycle, rows: validated };
+  return { cycle: selectedCycle, rows: validated };
 }
-
 async function getImportColumnSet(table) {
   const result = await table.getPagedRows({ maxRows: 1 });
   const row = Array.isArray(result?.data) && result.data.length ? result.data[0] : {};
