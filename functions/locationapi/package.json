@@ -1,10 +1,9 @@
 {
-	"name": "locationapi",
-	"version": "1.0.0",
-	"main": "index.js",
-	"author": "comptool@wissen.com",
-	"dependencies": {
-		"@zcatalyst/auth": "latest",
-		"@zcatalyst/cache": "latest"
-	}
+  "name": "locationapi",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "comptool@wissen.com",
+  "dependencies": {
+    "zcatalyst-sdk-node": "^3.4.0"
+  }
 }
