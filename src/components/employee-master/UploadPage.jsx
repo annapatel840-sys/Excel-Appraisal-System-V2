@@ -245,7 +245,7 @@ function normalizeDateCell(value) {
     ].join("-");
   }
 
-  match = text.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})/);
+  match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (match) {
     return [
       match[1],
