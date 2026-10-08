@@ -682,6 +682,17 @@ async function importRows(tables, body) {
     if (!empId) errors.push("Employee ID is required.");
     else if (!employeeIds.has(empId.toLowerCase())) errors.push("Employee ID not found in Employee Master.");
 
+    // Feedback files can contain historical records for different cycles in
+    // the same upload. Resolve the cycle from each row's business name/ID,
+    // rather than trusting the selected UI cycle ROWID.
+    const requestedRowCycle = String(input?.appraisalCycleName || "").trim();
+    const rowCycle = screen === "fb"
+      ? (normalizedCycles.find((item) =>
+          String(item.id || "").trim() === requestedRowCycle ||
+          String(item.name || "").trim().toLowerCase() === requestedRowCycle.toLowerCase()
+        ) || cycle)
+      : cycle;
+
     const payload = {};
     const master = screen === "fb"
       ? employeeRows.find((row) => String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase())
@@ -695,6 +706,18 @@ async function importRows(tables, body) {
           continue;
         }
         try {
+          // Excel serial dates are not valid Catalyst date values. Skip an
+          // invalid last-appraisal value instead of rejecting the whole row.
+          if (
+            screen === "fb" &&
+            key === "lastAppraisal" &&
+            (
+              typeof input[key] === "number" ||
+              !/^\d{4}-\d{2}-\d{2}$/.test(String(input[key]).trim())
+            )
+          ) {
+            continue;
+          }
           payload[column] = normalizeImportValue(key, input[key]);
         } catch (error) {
           errors.push(error.message);
@@ -710,8 +733,14 @@ async function importRows(tables, body) {
         if (columns.has("emp_ID")) payload.emp_ID = masterRowId;
         if (columns.has("emp_name")) payload.emp_name = masterRowId;
         if (columns.has("designation")) payload.designation = masterRowId;
-        if (columns.has("appraisal_cycle_name")) {
-          const cycleRowId = cycle?.sourceRowId ?? "";
+        if (!rowCycle) {
+          errors.push(
+            requestedRowCycle
+              ? `Appraisal Cycle Name "${requestedRowCycle}" was not found.`
+              : "Appraisal Cycle is required for Feedback & Rating upload."
+          );
+        } else if (columns.has("appraisal_cycle_name")) {
+          const cycleRowId = rowCycle.sourceRowId ?? rowCycle.id ?? "";
           if (!cycleRowId) {
             errors.push("A valid Appraisal Cycle ROWID is required for Feedback & Rating upload.");
           } else {
@@ -751,7 +780,8 @@ async function importRows(tables, body) {
       if (!sameEmp) return false;
       if (screen === "fb") {
         const storedCycle = String(row.appraisal_cycle_name || "").trim();
-        return storedCycle === String(cycleId || "").trim();
+        const targetCycleId = String(rowCycle?.id || rowCycle?.sourceRowId || cycleId || "").trim();
+        return storedCycle === targetCycleId;
       }
       if (screen !== "sheet") return true;
       return !columns.has("appraisal_year") || String(row.appraisal_year || "").trim() === cycle.name;
