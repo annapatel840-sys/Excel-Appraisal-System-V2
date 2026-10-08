@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect} from "react";
+import { catalystFetch } from "@/lib/catalyst-api";
 
 /* ============================================================
    HR Config screen (outer part of the reference HTML).
@@ -176,7 +177,7 @@ const [locationsLoading, setLocationsLoading] = useState(true);
         const locationUrl = new URL(LOCATION_API_URL);
         locationUrl.searchParams.set("resource", "locations");
 
-        const response = await fetch(locationUrl, {
+        const response = await catalystFetch(locationUrl, {
           method: "GET",
           headers: {
             Accept: "application/json",
