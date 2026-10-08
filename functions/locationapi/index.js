@@ -1,6 +1,7 @@
 "use strict";
 
 const catalyst = require("zcatalyst-sdk-node");
+const access = require("./accessCore");
 
 const LOCATION_TABLE_ID = "74008000000022481";
 const PAGE_SIZE = 200;
@@ -51,9 +52,13 @@ module.exports = async (req, res) => {
       });
     }
 
-    const app = catalyst.initialize(req, {
-      scope: "admin",
-    });
+    const userApp = catalyst.initialize(req);
+    const adminApp = catalyst.initialize(req, { scope: "admin" });
+
+    const a = await access.check(userApp, adminApp);
+    access.requireScreen(a, "cycleMaster", "view");
+
+    const app = adminApp;
 
     const datastore = app.datastore();
 
