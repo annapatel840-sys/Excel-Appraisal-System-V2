@@ -705,8 +705,15 @@ async function importRows(tables, body) {
     }
 
     const existing = existingRows.find((row) => {
-      const sameEmp = String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase();
+      const storedEmp = row.emp_ID ?? row.emp_id ?? "";
+      const sameEmp = screen === "fb"
+        ? String(storedEmp || "").trim() === String(master ? rowId(master) : "").trim()
+        : String(storedEmp || "").trim().toLowerCase() === empId.toLowerCase();
       if (!sameEmp) return false;
+      if (screen === "fb") {
+        const storedCycle = String(row.appraisal_cycle_name || "").trim();
+        return storedCycle === String(cycleId || "").trim();
+      }
       if (screen !== "sheet") return true;
       return !columns.has("appraisal_year") || String(row.appraisal_year || "").trim() === cycle.name;
     });
