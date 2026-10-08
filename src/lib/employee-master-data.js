@@ -777,56 +777,86 @@ export async function createEmployeeMasterEmployees(records) {
   // Catalyst Data Store imports are sent in bounded batches so a large
   // Employee Master sheet is never truncated by one request.
   const BATCH_SIZE = 100;
-  const totals = { created: 0, updated: 0, skipped: 0, skippedRecords: [], insertedRows: [], updatedRows: [], statusSyncResults: [] };
+  const totals = {
+    created: 0,
+    updated: 0,
+    skipped: 0,
+    skippedRecords: [],
+    insertedRows: [],
+    updatedRows: [],
+    statusSyncResults: [],
+  };
 
   for (let start = 0; start < records.length; start += BATCH_SIZE) {
     const batch = records.slice(start, start + BATCH_SIZE);
 
-    // Employee Master uploads must write to Employee_Master, not Employees.
-    // The screen uses frontend keys, while employeemasterapi expects the
-    // actual Data Store column names.
+    // Employee Master upload records may come from the upload mapper
+    // (emp_id / emp_name) or directly from the frontend record model
+    // (empId / name). Support both forms so the Employee ID and Name
+    // can never be lost between the mapper and API request.
     const payload = batch.map((record) => ({
-      emp_id: record.empId,
-      emp_name: record.name,
+      emp_id: record.emp_id ?? record.empId ?? "",
+      emp_name: record.emp_name ?? record.name ?? "",
       designation: record.designation,
-      department: record.organization,
-      repo_manager: record.reportingManager,
-      director: record.compManager,
-      appraiser_tech_ed: record.appraiser,
-      email_id: record.managerMail,
-      date_of_join: record.doj,
-      emp_status: record.status,
-      emp_type: record.empType,
-      wissen_experience: record.orgExp,
-      total_experience: record.totalExp,
-      cost_center: record.costCenter,
-      current_salary: record.currentSalary,
+      department: record.department ?? record.organization,
+      repo_manager: record.repo_manager ?? record.reportingManager,
+      director: record.director ?? record.compManager,
+      appraiser_tech_ed: record.appraiser_tech_ed ?? record.appraiser,
+      email_id: record.email_id ?? record.managerMail,
+      date_of_join: record.date_of_join ?? record.doj,
+      emp_status: record.emp_status ?? record.status,
+      emp_type: record.emp_type ?? record.empType,
+      wissen_experience: record.wissen_experience ?? record.orgExp,
+      total_experience: record.total_experience ?? record.totalExp,
+      cost_center: record.cost_center ?? record.costCenter,
+      current_salary: record.current_salary ?? record.currentSalary,
       location: record.location,
-      last_appraisal_month_year: record.lastAppraisal,
+      last_appraisal_month_year:
+        record.last_appraisal_month_year ?? record.lastAppraisal,
     }));
 
     const response = await catalystFetch(EMPLOYEE_MASTER_API_URL, {
       method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({ employees: payload }),
     });
 
     const result = await response.json().catch(() => null);
+
     if (!response.ok || !result || !result.success) {
-      throw new Error((result && result.message) || `Employee import failed with status ${response.status}`);
+      throw new Error(
+        (result && result.message) ||
+          `Employee import failed with status ${response.status}`,
+      );
     }
 
     const data = result.data || {};
+
     totals.created += Number(data.created || 0);
     totals.updated += Number(data.updated || 0);
     totals.skipped += Number(data.skipped || 0);
-    totals.skippedRecords.push(...(Array.isArray(data.skippedRecords) ? data.skippedRecords : []));
-    totals.insertedRows.push(...(Array.isArray(data.insertedRows) ? data.insertedRows : []));
-    totals.updatedRows.push(...(Array.isArray(data.updatedRows) ? data.updatedRows : []));
-    totals.statusSyncResults.push(...(Array.isArray(data.statusSyncResults) ? data.statusSyncResults : []));
+    totals.skippedRecords.push(
+      ...(Array.isArray(data.skippedRecords) ? data.skippedRecords : []),
+    );
+    totals.insertedRows.push(
+      ...(Array.isArray(data.insertedRows) ? data.insertedRows : []),
+    );
+    totals.updatedRows.push(
+      ...(Array.isArray(data.updatedRows) ? data.updatedRows : []),
+    );
+    totals.statusSyncResults.push(
+      ...(Array.isArray(data.statusSyncResults) ? data.statusSyncResults : []),
+    );
   }
 
-  return { success: true, message: "Roster import completed.", data: totals };
+  return {
+    success: true,
+    message: "Roster import completed.",
+    data: totals,
+  };
 }
 
 /* ============================================================
