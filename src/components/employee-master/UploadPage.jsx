@@ -101,19 +101,7 @@ const FB_FIELDS = [
   { key: "managerFeedback", label: "Manager Feedback" },
   { key: "atRisk", label: "At Risk" },
   { key: "interviewCount", label: "Interview Count" },
-  { key: "clientFeedback", label: "Client Feedback" },
-  { key: "promo", label: "Eligibility for Promotion" },
-  { key: "newTitle", label: "New Title" },
-  { key: "remarks", label: "Remarks" },
-  { key: "fyYear", label: "FY Year" },
-  { key: "appraisalCycleName", label: "Appraisal Cycle Name" },
-];
-
-ey: "clientFeedback", label: "Client Feedback" },
-  { key: "atRisk", label: "At Risk" },
-];
-
-const SHEET_FIELDS = [
+  { kconst SHEET_FIELDS = [
   { key: "empId", label: "Employee ID", required: true },
   { key: "newRB", label: "Retention Bonus (RB)" },
   { key: "rbMonth", label: "Month (RB)" },
