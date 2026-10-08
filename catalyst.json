@@ -8,7 +8,8 @@
       "payrollcycleapi",
       "budgetmasterapi",
       "accessapi",
-      "demo_seed"
+      "demo_seed",
+      "locationapi"
     ],
     "ignore": [],
     "source": "functions"
