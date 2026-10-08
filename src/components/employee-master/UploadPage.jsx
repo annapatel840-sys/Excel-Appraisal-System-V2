@@ -18,7 +18,7 @@ import { findFieldForHeader } from "@/lib/employee-master-utils";
 const ENABLE_HISTORICAL_LOAD = true;
 const ERR_PAGE_SIZE = 20;
 
-const MONTH_FIELDS = new Set(["rbMonth", "pbMonth"]);
+const MONTH_FIELDS = new Set(["rbMonth", "pbMonth", "tbMonth"]);
 const MONTH_NAMES = [
   "Jan",
   "Feb",
@@ -64,39 +64,47 @@ const EMP_FIELDS = [
 
 // Keys must stay the same: the payroll backend validates these.
 const PAY_FIELDS = [
-  // Employee ID is always the first payroll upload column; it must never drift to the end.
   { key: "empId", label: "Employee ID", required: true },
-  // Keep payroll upload in the same pay-field order as Payroll Data.
-  { key: "hikePct", label: "Hike %" },
-  { key: "totalBonus", label: "Total Bonus" },
-  { key: "totalPB", label: "Total PB" },
-  { key: "newBasePay", label: "New Base Pay" },
-  { key: "totalCtc", label: "Total CTC" },
+  { key: "empName", label: "Employee Name" },
+  { key: "appraisalCycleName", label: "Appraisal Cycle Name" },
+  { key: "fyYear", label: "FY Year" },
   { key: "basePay", label: "Current Annual Base Pay" },
   { key: "joiningBonus", label: "Joining Bonus" },
-  { key: "targetPB", label: "Target PB Allocated for May" },
-  { key: "rbPaid", label: "RB to be Paid" },
-  { key: "pbPaid", label: "PB to be Paid" },
-  { key: "allocPB", label: "Allocated PB Amount" },
-  { key: "allocInst", label: "Inst. (Allocated PB)" },
-  { key: "newPB", label: "New PB to be Offered" },
-  { key: "newPBInst", label: "Inst. (New PB)" },
-  { key: "newRB", label: "New RB" },
+  { key: "performanceBonus", label: "Performance Bonus" },
+  { key: "retentionBonus", label: "Retention Bonus" },
+  { key: "hikePct", label: "Hike%" },
   { key: "hikeAmt", label: "Hike Amount" },
-  { key: "tpbNext", label: "Target PB for Next Year" },
+  { key: "totalCtcRewards", label: "Total CTC with Rewards" },
+  { key: "totalRewardHikeAmt", label: "Total Reward Hike Amount" },
+  { key: "totalRewardHikePct", label: "Total Reward Hike%" },
+  { key: "targetPerformanceAgreed", label: "Target Performance Agreed" },
+  { key: "totalBonus", label: "Total Bonus" },
+  { key: "newBasePay", label: "New Base Pay" },
+  { key: "rbPaid", label: "RB to be paid" },
+  { key: "rbMonth", label: "Month(RB)" },
+  { key: "pbPaid", label: "PB to be paid" },
+  { key: "pbMonth", label: "Month(PB)" }const FB_FIELDS = [
+  { key: "empId", label: "Employee ID", required: true },
+  { key: "empName", label: "Employee Name" },
+  { key: "designation", label: "Designation" },
+  { key: "lastAppraisal", label: "Last Appraisal" },
+  { key: "rrPercent", label: "RR%" },
+  { key: "managerRating", label: "Manager Rating" },
+  { key: "clientManager", label: "Client Manager Feedback" },
+  { key: "clientRating", label: "Client Rating" },
+  { key: "grossMargin", label: "Gross Margin" },
+  { key: "managerFeedback", label: "Manager Feedback" },
+  { key: "atRisk", label: "At Risk" },
+  { key: "interviewCount", label: "Interview Count" },
+  { key: "clientFeedback", label: "Client Feedback" },
+  { key: "promo", label: "Eligibility for Promotion" },
+  { key: "newTitle", label: "New Title" },
+  { key: "remarks", label: "Remarks" },
+  { key: "fyYear", label: "FY Year" },
+  { key: "appraisalCycleName", label: "Appraisal Cycle Name" },
 ];
 
-const FB_FIELDS = [
-  { key: "empId", label: "Employee ID", required: true },
-  { key: "managerRating", label: "Manager Rating" },
-  { key: "managerFeedback", label: "Manager Feedback" },
-  { key: "rrPercent", label: "RR%" },
-  { key: "interviewCount", label: "Interview Count" },
-  { key: "grossMargin", label: "Gross Margin" },
-  { key: "costCenter", label: "Cost Center/Client" },
-  { key: "clientManager", label: "Client Manager" },
-  { key: "clientRating", label: "Client Rating" },
-  { key: "clientFeedback", label: "Client Feedback" },
+ey: "clientFeedback", label: "Client Feedback" },
   { key: "atRisk", label: "At Risk" },
 ];
 
