@@ -114,7 +114,7 @@ function displayValueFor(r, col, priorMap) {
   if (col.isYoy)
     return val == null ? "new" : (val >= 0 ? "+" : "") + val.toFixed(2) + "%";
   if (col.money) return fmtMoney(val);
-  if (col.pct) return val.toFixed(2) + "%";
+  if (col.pct) return val == null || val === "" || Number.isNaN(Number(val)) ? "—" : Number(val).toFixed(2) + "%";
   return val == null || val === "" ? "" : String(val);
 }
 
@@ -464,7 +464,7 @@ export function PayrollDataPage() {
       const vals = COLS.map((col) => {
         const val = rawValueFor(r, col, priorMap);
         if (col.money) return val == null ? "" : Math.round(val);
-        if (col.pct) return val == null ? "" : val.toFixed(2) + "%";
+        if (col.pct) return val == null || val === "" || Number.isNaN(Number(val)) ? "" : Number(val).toFixed(2) + "%";
         return val ?? "";
       });
       lines.push(vals.map(csvCell).join(","));
@@ -640,7 +640,7 @@ export function PayrollDataPage() {
                   }
                   let display;
                   if (col.money) display = fmtMoney(val);
-                  else if (col.pct) display = val.toFixed(2) + "%";
+                  else if (col.pct) display = val == null || val === "" || Number.isNaN(Number(val)) ? "—" : Number(val).toFixed(2) + "%";
                   else display = val == null || val === "" ? "—" : val;
 
                   const cls =
