@@ -186,7 +186,7 @@ export function CatalystAuthGate({ children }) {
           <div className="hidden bg-slate-900 p-10 text-white lg:flex lg:flex-col lg:justify-between">
             <div>
               <div className="mb-8 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-xl font-bold">
-                EA
+                CT
               </div>
               <p className="text-sm font-medium uppercase tracking-[0.2em] text-blue-300">
                 Wissen Technologies
