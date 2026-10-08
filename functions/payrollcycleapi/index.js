@@ -841,14 +841,21 @@ async function routeRequest(req, res, identity, resource, a) {
       if (!master) throw new ApiError(`Employee ${payrollRow.emp_id} was removed during validation. Re-validate the file.`, 409);
       const key = `${String(payrollRow.emp_id).toLowerCase()}|${String(payrollRow.appraisal_cycle_name)}`;
       const existing = existingByKey.get(key);
-      if (existing) {
-        await tables.payroll.updateRow({ ROWID: rowId(existing), ...payrollRow });
-        updated += 1;
-      } else {
-        await tables.payroll.insertRow(payrollRow);
-        inserted += 1;
+      try {
+        if (existing) {
+          await tables.payroll.updateRow({ ROWID: rowId(existing), ...payrollRow });
+          updated += 1;
+        } else {
+          await tables.payroll.insertRow(payrollRow);
+          inserted += 1;
+        }
+        succeeded += 1;
+      } catch (error) {
+        const reason = error?.message || "Payroll row could not be saved.";
+        item.ok = false;
+        item.reason = reason;
+        item.badFields = [];
       }
-      succeeded += 1;
     }
 
     await writeAudit(tables.audit, {
@@ -866,12 +873,12 @@ async function routeRequest(req, res, identity, resource, a) {
         succeeded,
         inserted,
         updated,
-        failed: rejected.length,
+        failed: result.rows.filter((row) => !row.ok).length,
       },
     });
     return sendJson(res, 200, {
       success: true,
-      data: { succeeded, failed: rejected.length, total: result.rows.length, batchId: body.batchId, rows: result.rows },
+      data: { succeeded, failed: result.rows.filter((row) => !row.ok).length, total: result.rows.length, batchId: body.batchId, rows: result.rows },
     });
   }
 
