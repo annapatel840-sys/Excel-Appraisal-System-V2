@@ -512,13 +512,6 @@ async function validateUpload(tables, body) {
       errors.push(error.message);
     }
 
-    if (rowCycle?.archived) {
-      errors.push(`Payroll cannot be uploaded to archived cycle "${rowCycle.name}".`);
-    }
-    if (rowCycle?.status === "Closed" && !existingByKey.has(key)) {
-      errors.push("New payroll rows cannot be added to a closed cycle.");
-    }
-
     return {
       row: rowNumber,
       ok: errors.length === 0,
