@@ -3,7 +3,9 @@
 		"name": "locationapi",
 		"stack": "node24",
 		"type": "advancedio",
-		"env_variables": {}
+		"env_variables": {
+			"ACCESS_ENFORCE": "true"
+		}
 	},
 	"execution": {
 		"main": "index.js"
