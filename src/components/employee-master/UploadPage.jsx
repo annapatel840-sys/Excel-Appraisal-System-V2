@@ -498,10 +498,29 @@ export function UploadPage({ handlers = {} }) {
   const buildRecords = () =>
     file.rows.map(({ row, cells }) => {
       const record = { row };
+
+      // Employee Master must always resolve its key columns from the
+      // actual uploaded headers. This prevents a stale/partial UI mapping
+      // from dropping Employee ID and Employee Name before the API call.
+      const resolvedMap =
+        screen === "emp" ? { ...autoMap("emp", fields, file.headers), ...map } : map;
+
       fields.forEach((f) => {
-        const idx = map[f.key];
-        if (idx >= 0) record[f.key] = normalizeCell(f.key, cells[idx]);
+        let idx = resolvedMap[f.key];
+
+        if (!(idx >= 0) && screen === "emp") {
+          idx = file.headers.findIndex(
+            (h, i) =>
+              !Object.values(resolvedMap).includes(i) &&
+              findFieldForHeader(h)?.key === f.key,
+          );
+        }
+
+        if (idx >= 0) {
+          record[f.key] = normalizeCell(f.key, cells[idx]);
+        }
       });
+
       return record;
     });
 
