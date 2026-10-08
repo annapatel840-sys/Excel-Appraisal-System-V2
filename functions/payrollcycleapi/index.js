@@ -348,7 +348,9 @@ function toPayrollRow(input, cycle, master, batchId, fileName) {
   const cycleRowId = cycle?.sourceRowId ?? cycle?.id ?? "";
   if (!employeeRowId) throw new ApiError(`Employee ${empId} has no valid Employee Master ROWID.`);
   if (!cycleRowId) throw new ApiError("The selected appraisal cycle has no valid ROWID.");
-  const row = { emp_id: empId, emp_name: employeeRowId, appraisal_cycle_name: cycleRowId };
+  // emp_id, emp_name and appraisal_cycle_name are BIGINT lookup/FK fields.
+  // The Excel Employee ID is only the business key used to find the master row.
+  const row = { emp_id: employeeRowId, emp_name: employeeRowId, appraisal_cycle_name: cycleRowId };
   Object.entries(PAYROLL_FIELDS).forEach(([key, column]) => {
     row[column] = NUMERIC_FIELDS.has(key) ? normalizeNumber(input[key], key) : normalizeText(input[key], key);
   });
@@ -470,8 +472,20 @@ async function validateUpload(tables, body) {
   });
 
   const existingByKey = new Map();
+  const masterRowIdByEmpId = new Map(
+    masterRows
+      .map((row) => [
+        String(row.emp_id || "").trim().toLowerCase(),
+        String(row.ROWID ?? row.rowid ?? "").trim(),
+      ])
+      .filter(([empId, rowIdValue]) => empId && rowIdValue),
+  );
+  const employeeKey = (value) => {
+    const raw = String(value ?? "").trim().toLowerCase();
+    return masterRowIdByEmpId.get(raw) || raw;
+  };
   payrollRows.forEach((row) => {
-    const key = `${String(row.emp_id || "").trim().toLowerCase()}|${String(row.appraisal_cycle_name || "")}`;
+    const key = `${employeeKey(row.emp_id)}|${String(row.appraisal_cycle_name || "")}`;
     existingByKey.set(key, row);
   });
 
@@ -498,7 +512,9 @@ async function validateUpload(tables, body) {
       errors.push(`Appraisal Cycle Name "${requestedCycle}" was not found. Create this cycle before uploading payroll.`);
     }
 
-    const key = `${empId.toLowerCase()}|${rowCycle?.id || ""}`;
+    const master = masterByEmpId.get(empId.toLowerCase());
+    const masterRowId = String(master?.ROWID ?? master?.rowid ?? "").trim();
+    const key = `${masterRowId || empId.toLowerCase()}|${rowCycle?.id || ""}`;
     if (seen.has(key)) errors.push("Duplicate Employee ID within this file for the same appraisal cycle.");
     seen.add(key);
 
@@ -508,7 +524,7 @@ async function validateUpload(tables, body) {
       payrollRow = toPayrollRow(
         input,
         rowCycle,
-        masterByEmpId.get(empId.toLowerCase()),
+        master,
         sourceBatch,
         sourceFile,
       );
@@ -790,7 +806,13 @@ async function routeRequest(req, res, identity, resource, a) {
     ]);
 
     const cycleById = new Map(cycles.map((row) => [rowId(row), normalizeCycle(row)]));
-    const employeeById = new Map(masterRows.map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]));
+    const employeeById = new Map();
+  masterRows.forEach((row) => {
+    const businessEmpId = String(row.emp_id || "").trim().toLowerCase();
+    const masterRowId = String(row.ROWID ?? row.rowid ?? "").trim().toLowerCase();
+    if (businessEmpId) employeeById.set(businessEmpId, row);
+    if (masterRowId) employeeById.set(masterRowId, row);
+  });
     const assignedEmpIds = techEdUser
       ? new Set(
           masterRows
