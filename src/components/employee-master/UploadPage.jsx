@@ -496,13 +496,19 @@ export function UploadPage({ handlers = {} }) {
       const id = sv(r.empId);
       if (!id) return E(r, "Employee ID", "Empty — Employee ID is required");
       const k = normId(id);
-      if (seen.has(k))
-        E(
-          r,
-          "Employee ID",
-          `Duplicate Employee ID — already on row ${seen.get(k)}`,
-        );
-      else seen.set(k, r.row);
+      // Feedback & Rating can contain the same employee in different
+      // appraisal cycles. The selected cycle is the uniqueness boundary.
+      // Do not reject repeated Employee IDs within one upload file here;
+      // the backend resolves/upserts by Employee + cycle.
+      if (screen !== "fb") {
+        if (seen.has(k))
+          E(
+            r,
+            "Employee ID",
+            `Duplicate Employee ID — already on row ${seen.get(k)}`,
+          );
+        else seen.set(k, r.row);
+      }
     });
 
     let nw = 0;
