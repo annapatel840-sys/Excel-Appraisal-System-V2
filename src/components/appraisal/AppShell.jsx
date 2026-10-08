@@ -66,6 +66,7 @@ export function AppShell({ children, headerActions }) {
   const allNav = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
     { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
+    { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
     ...(!isTechEd
       ? [
           {
@@ -76,7 +77,6 @@ export function AppShell({ children, headerActions }) {
           },
         ]
       : []),
-    { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
   ];
 
   const fallbackNav = isTechEd
@@ -102,6 +102,11 @@ export function AppShell({ children, headerActions }) {
           label: "Appraisal Sheet",
           icon: Table2,
         },
+        access.canScreen("detailScreen") && {
+          to: "/detail-screen",
+          label: "Detailed Screen",
+          icon: BookOpen,
+        },
         isTechEd && {
           to: "/budget-distribution",
           label: "Budget Distribution",
@@ -112,11 +117,6 @@ export function AppShell({ children, headerActions }) {
           label: "HR Operations",
           icon: Users,
           dropdown: true,
-        },
-        access.canScreen("detailScreen") && {
-          to: "/detail-screen",
-          label: "Detailed Screen",
-          icon: BookOpen,
         },
       ].filter(Boolean)
     : fallbackNav;
