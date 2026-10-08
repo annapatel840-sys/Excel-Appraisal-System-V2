@@ -159,6 +159,59 @@ const ALLOWED_FIELDS = [
   "emp_id",
 ];
 
+const NUMERIC_FIELDS = new Set([
+  "wissen_experience",
+  "total_experience",
+  "current_salary",
+]);
+
+function normalizeEmployeeMasterData(data) {
+  const normalized = { ...data };
+
+  NUMERIC_FIELDS.forEach(function (field) {
+    if (!Object.prototype.hasOwnProperty.call(normalized, field)) return;
+
+    const value = normalized[field];
+
+    if (value === null || value === undefined || String(value).trim() === "") {
+      delete normalized[field];
+      return;
+    }
+
+    const number = Number(
+      String(value)
+        .replace(/[₹,%\\s,]/g, "")
+        .trim(),
+    );
+
+    if (!Number.isFinite(number)) {
+      throw new Error(field + " must be a number.");
+    }
+
+    normalized[field] = number;
+  });
+
+  if (Object.prototype.hasOwnProperty.call(normalized, "date_of_join")) {
+    const value = normalized.date_of_join;
+
+    if (value !== null && value !== undefined && String(value).trim() !== "") {
+      const text = String(value).trim();
+      const match = text.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})/);
+
+      if (match) {
+        normalized.date_of_join =
+          match[1] +
+          "-" +
+          String(match[2]).padStart(2, "0") +
+          "-" +
+          String(match[3]).padStart(2, "0");
+      }
+    }
+  }
+
+  return normalized;
+}
+
 function pickAllowedFields(body) {
   const data = {};
 
@@ -168,7 +221,7 @@ function pickAllowedFields(body) {
     }
   });
 
-  return data;
+  return normalizeEmployeeMasterData(data);
 }
 
 // ============================================================
