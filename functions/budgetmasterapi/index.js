@@ -159,17 +159,37 @@ function requireBudgetScreen(a, level) {
   });
 }
 
-async function getAllRows(table) {
+async function getAllRows(app, tableName) {
   const rows = [];
-  let token = null;
-  for (let guard = 0; guard < 1000; guard += 1) {
-    const opts = { maxRows: 200 };
-    if (token) opts.nextToken = token;
-    const page = await table.getPagedRows(opts);
-    rows.push(...(page && Array.isArray(page.data) ? page.data : []));
-    token = page && page.next_token ? page.next_token : null;
-    if (!(page && page.more_records === true && token)) break;
+  const zcql = app.zcql();
+  let last = "0";
+
+  // Budget tables are small today, but keep the read paged so this remains safe
+  // when the cycle history grows. ZCQL avoids the Data Store getPagedRows
+  // request hanging on this Advanced I/O endpoint.
+  for (let guard = 0; guard < 10000; guard += 1) {
+    const query =
+      "SELECT * FROM " + tableName +
+      " WHERE ROWID > " + last +
+      " ORDER BY ROWID ASC LIMIT 300";
+    const result = await zcql.executeZCQLQuery(query);
+    const page = (result || []).map((item) => item && (item[tableName] || Object.values(item)[0]) || {});
+
+    rows.push(...page);
+
+    if (page.length < 300) break;
+
+    let max = last;
+    for (const row of page) {
+      const id = String(row.ROWID || "");
+      try {
+        if (BigInt(id) > BigInt(max)) max = id;
+      } catch (_) {}
+    }
+    if (max === last) break;
+    last = max;
   }
+
   return rows;
 }
 
@@ -200,9 +220,9 @@ function sendAccessError(res, error) {
 
 async function readBundle(app) {
   const [masterRows, distributionRows, compRows] = await Promise.all([
-    getAllRows(app.datastore().table(TABLES.master)),
-    getAllRows(app.datastore().table(TABLES.distribution)),
-    getAllRows(app.datastore().table(TABLES.comp)),
+    getAllRows(app, "Budget_Master"),
+    getAllRows(app, "Budget_Distribution"),
+    getAllRows(app, "Budget_Distribution_Comp"),
   ]);
 
   return {
@@ -283,7 +303,7 @@ module.exports = async function (req, res) {
     }
 
     const table = app.datastore().table(target.table);
-    const currentRows = await getAllRows(table);
+    const currentRows = await getAllRows(app, Object.keys(TABLES).find((key) => TABLES[key] === target.table) === "master" ? "Budget_Master" : Object.keys(TABLES).find((key) => TABLES[key] === target.table) === "distribution" ? "Budget_Distribution" : "Budget_Distribution_Comp");
     const current = currentRows.find((row) => idOf(row) === id);
     if (!current) return sendJson(res, 404, { success: false, message: "Budget row not found." });
 
@@ -293,7 +313,7 @@ module.exports = async function (req, res) {
       }
       if (resource === "comp" || resource === "compmanager") {
         const parentId = String(value(current, "budget_distribution_id") || "");
-        const parents = await getAllRows(app.datastore().table(TABLES.distribution));
+        const parents = await getAllRows(app, "Budget_Distribution");
         const parent = parents.find((row) => idOf(row) === parentId);
         if (!parent || !matchesOwner(value(parent, "appraiser_tech_ed_id"), a)) {
           throw new access.HttpError(403, "You can only update Comp Manager budgets under your Tech-Ed.");
