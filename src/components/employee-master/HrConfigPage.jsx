@@ -173,35 +173,87 @@ export function HrConfigPage({ renderCycleScreen, canEdit = true }) {
   };
 
   // Load the locations from the Location_Master table
-  useEffect(() => {
-    let mounted = true;
-    payrollCycleRequest("locations")
-      .then((res) => {
-        if (!mounted) return;
-        const rows = Array.isArray(res) ? res : res?.data || res?.rows || [];
-        const list = rows
-          .map((r) => {
-            const x = r?.Location_Master || r || {};
-            return {
-              name: x.location_name || "",
-              code: x.location_code || "",
-              address: x.address || "",
-              currency: x.currency_code || "",
-            };
-          })
-          .filter((x) => x.code);
-        setLocations(list);
-        setLoc((p) => p || list[0]?.code || "");
-      })
-      .catch((error) => {
-        if (mounted) say(`Unable to load locations: ${error.message}`);
-      })
-      .finally(() => mounted && setLocLoading(false));
-    return () => {
-      mounted = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
+  // Load the locations from the Location_Master table
+useEffect(() => {
+  let mounted = true;
+
+  payrollCycleRequest("locations")
+    .then((res) => {
+      if (!mounted) return;
+
+      const rows = Array.isArray(res)
+        ? res
+        : Array.isArray(res?.data)
+          ? res.data
+          : Array.isArray(res?.rows)
+            ? res.rows
+            : [];
+
+      const list = rows
+        .map((r) => {
+          const x = r?.Location_Master || r || {};
+
+          return {
+            name: String(
+              x.location_name ??
+              x.Location_Name ??
+              x.locationName ??
+              x.name ??
+              ""
+            ).trim(),
+
+            code: String(
+              x.location_code ??
+              x.Location_Code ??
+              x.locationCode ??
+              x.code ??
+              ""
+            ).trim(),
+
+            address: String(
+              x.address ??
+              x.Address ??
+              ""
+            ).trim(),
+
+            currency: String(
+              x.currency_code ??
+              x.Currency_Code ??
+              x.currencyCode ??
+              x.currency ??
+              ""
+            ).trim(),
+          };
+        })
+        .filter((x) => x.name || x.code);
+
+      setLocations(list);
+
+      setLoc((previous) => {
+        if (previous && list.some((item) => item.code === previous)) {
+          return previous;
+        }
+
+        return list[0]?.code || "";
+      });
+    })
+    .catch((error) => {
+      if (mounted) {
+        say(`Unable to load locations: ${error.message}`);
+      }
+    })
+    .finally(() => {
+      if (mounted) setLocLoading(false);
+    });
+
+  return () => {
+    mounted = false;
+  };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
 
   const ed = (k) => vals[k] !== applied[k];
   const set = (k, v) => setVals((p) => ({ ...p, [k]: v }));
@@ -960,8 +1012,8 @@ export function HrConfigPage({ renderCycleScreen, canEdit = true }) {
                 </option>
               )}
               {locations.map((l) => (
-                <option key={l.code} value={l.code}>
-                  {l.name} ({l.code})
+                <option key={l.code || l.name} value={l.code}>
+                  {l.name}
                 </option>
               ))}
             </select>
