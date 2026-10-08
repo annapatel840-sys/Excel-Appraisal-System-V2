@@ -193,16 +193,35 @@ export function TechEdBudgetDistribution() {
     }),
   );
 
-  const cmNodes = useMemo(() => DEMO.compManagers.map((cm) => cmNode(cm, log)), [log]);
+  const cmNodes = useMemo(() => {
+    const source = DEMO.compManagers.map((cm, index) => {
+      const live = liveComps[index];
+      if (!live) return cm;
+      const demoBase = num(cm.base);
+      const pct = num(live.percentage) || cm.pct;
+      const calculated = num(live.calculated_budget);
+      return {
+        ...cm,
+        pct0: num(cm.pct0) || pct,
+        pct,
+        base: pct ? (calculated * 100) / pct : demoBase,
+        liveId: live.id,
+        liveCalculated: calculated,
+        liveApplied: num(live.applied_budget),
+        liveUtilized: num(live.total_utilization),
+      };
+    });
+    return source.map((cm) => cmNode(cm, log));
+  }, [liveComps, log]);
 
   const allTeam0 = DEMO.compManagers.flatMap((c) => c.team0);
   const allTeam = DEMO.compManagers.flatMap((c) => c.team);
-  const myPct = DEMO.techEdPct;
-  const myOriginal = (baseOf([...new Set(allTeam0)]) * myPct) / 100;
-  const myUpdated = (baseOf(allTeam) * myPct) / 100;
+  const myPct = liveTech ? num(liveTech.percentage) : DEMO.techEdPct;
+  const myOriginal = liveTech ? num(liveTech.calculated_budget) : (baseOf([...new Set(allTeam0)]) * myPct) / 100;
+  const myUpdated = liveTech ? num(liveTech.applied_budget) : (baseOf(allTeam) * myPct) / 100;
   const team0 = new Set(allTeam0).size;
   const allotted = cmNodes.reduce((s, n) => s + n.updated, 0);
-  const used = hikeOf(allTeam);
+  const used = liveTech ? num(liveTech.total_utilization) : hikeOf(allTeam);
   const usedPct = myUpdated ? (used / myUpdated) * 100 : 0;
   const over = usedPct > 100;
 
@@ -260,6 +279,14 @@ export function TechEdBudgetDistribution() {
       return;
     }
     const t = nowParts();
+    const live = liveComps.find((x) => String(x.id) === String(node.liveId));
+    if (live && node.liveId) {
+      updateBudget(node.liveId, {
+        percentage: to,
+        calculated_budget: node.liveCalculated || newUpd,
+        applied_budget: newUpd,
+      }, "comp").catch((error) => setErr(error.message || "Failed to save Comp Manager budget."));
+    }
     setLog((l) => [...l, { name, from: node.pct, to, by: myName, date: t.date, time: t.time, before: node.updated, after: newUpd, reason: reason.trim() }]);
     setReason("");
     setErr("");
