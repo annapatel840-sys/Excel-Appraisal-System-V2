@@ -502,8 +502,14 @@ export function UploadPage({ handlers = {} }) {
       // Employee Master must always resolve its key columns from the
       // actual uploaded headers. This prevents a stale/partial UI mapping
       // from dropping Employee ID and Employee Name before the API call.
-      const resolvedMap =
-        screen === "emp" ? { ...autoMap("emp", fields, file.headers), ...map } : map;
+      const autoMapped =
+        screen === "emp" ? autoMap("emp", fields, file.headers) : map;
+      const resolvedMap = { ...autoMapped };
+      Object.keys(map).forEach((key) => {
+        // Keep an explicit user selection, but never let a stale -1 value
+        // overwrite a valid automatic Employee Master mapping.
+        if (map[key] >= 0) resolvedMap[key] = map[key];
+      });
 
       fields.forEach((f) => {
         let idx = resolvedMap[f.key];
