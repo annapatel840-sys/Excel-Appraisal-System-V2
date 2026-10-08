@@ -572,12 +572,16 @@ async function createRoster(req, res, table, employeesTable, afterWrite) {
     }
   });
 
+  // Employee Master is the source of truth for roster imports. A new
+  // Employee Master ID does not need to exist in Employees first; the
+  // corresponding Employees row is created automatically below.
   const employeeRows = await getAllEmployees(employeesTable);
 
   const employeeMap = buildEmployeeMap(employeeRows);
 
   const rowsToInsert = [];
   const rowsToUpdate = [];
+  const employeeRowsToInsert = [];
   const skipped = [];
   const statusChanges = [];
 
@@ -591,29 +595,6 @@ async function createRoster(req, res, table, employeesTable, afterWrite) {
         emp_id: "",
         reason: "emp_id is missing.",
       });
-
-      return;
-    }
-
-    const employee = findEmployeeByEmpId(employeeMap, empId);
-
-    if (!employee) {
-      skipped.push({
-        emp_id: empId,
-        reason: "Matching employee was not found in Employees table.",
-      });
-
-      return;
-    }
-
-    const employeeRowId = employee.ROWID || employee.rowid;
-
-    if (!employeeRowId) {
-      skipped.push({
-        emp_id: empId,
-        reason: "Employees ROWID was not found.",
-      });
-
       return;
     }
 
@@ -621,17 +602,12 @@ async function createRoster(req, res, table, employeesTable, afterWrite) {
 
     if (data.emp_status !== undefined) {
       const normalized = normalizeStatus(data.emp_status);
-
-      if (normalized) {
-        data.emp_status = normalized;
-      } else {
-        data.emp_status = "Active";
-      }
+      data.emp_status = normalized || "Active";
     }
 
     const masterStatus = data.emp_status || "Active";
-
     const existing = existingByEmpId.get(empId.toLowerCase());
+    const employee = findEmployeeByEmpId(employeeMap, empId);
 
     if (existing) {
       const masterRowId = existing.ROWID || existing.rowid;
@@ -641,7 +617,6 @@ async function createRoster(req, res, table, employeesTable, afterWrite) {
           emp_id: empId,
           reason: "Existing Employee_Master row has no ROWID.",
         });
-
         return;
       }
 
@@ -649,6 +624,17 @@ async function createRoster(req, res, table, employeesTable, afterWrite) {
         ROWID: masterRowId,
         ...data,
       });
+
+      if (!employee) {
+        employeeRowsToInsert.push({
+          emp_id: empId,
+          name: data.emp_name || "",
+          designation: data.designation || "",
+          department: data.department || "",
+          status: masterStatus,
+          emp_master_row_id: masterRowId,
+        });
+      }
 
       if (data.emp_status !== undefined) {
         statusChanges.push({
@@ -665,11 +651,6 @@ async function createRoster(req, res, table, employeesTable, afterWrite) {
       emp_status: masterStatus,
       ...data,
     });
-
-    statusChanges.push({
-      empId: empId,
-      status: masterStatus,
-    });
   });
 
   let insertedRows = [];
@@ -683,26 +664,86 @@ async function createRoster(req, res, table, employeesTable, afterWrite) {
     updatedRows = await table.updateRows(rowsToUpdate);
   }
 
-  const updatedMasterRows = rowsToInsert.length
-    ? await getAllRoster(table)
-    : existingRows;
+  // Build the latest master map so newly-created master rows can be linked
+  // to their corresponding Employees rows.
+  const updatedMasterRows = await getAllRoster(table);
   const masterByEmpId = new Map(
-    updatedMasterRows.map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]),
+    updatedMasterRows.map(function (row) {
+      return [
+        String(row.emp_id || "").trim().toLowerCase(),
+        row,
+      ];
+    }),
   );
-  const affectedEmpIds = new Set([
-    ...rowsToInsert.map((row) => row.emp_id),
-    ...rowsToUpdate.map((row) => existingRows.find((existing) =>
-      String(existing.ROWID || existing.rowid) === String(row.ROWID),
-    )?.emp_id).filter(Boolean),
-  ]);
+
+  // Create Employees rows for brand-new Employee Master IDs, and also repair
+  // an Employee Master record whose child Employees row was missing.
+  const newEmployeeRows = [];
+
+  rowsToInsert.forEach(function (row) {
+    const empId = String(row.emp_id || "").trim();
+    const master = masterByEmpId.get(empId.toLowerCase());
+
+    if (master) {
+      newEmployeeRows.push({
+        emp_id: empId,
+        name: row.emp_name || "",
+        designation: row.designation || "",
+        department: row.department || "",
+        status: row.emp_status || "Active",
+        emp_master_row_id: master.ROWID || master.rowid,
+      });
+    }
+  });
+
+  employeeRowsToInsert.forEach(function (row) {
+    newEmployeeRows.push(row);
+  });
+
+  let insertedEmployeeRows = [];
+
+  if (newEmployeeRows.length) {
+    insertedEmployeeRows = await employeesTable.insertRows(newEmployeeRows);
+  }
+
+  // Refresh the Employees map after inserts so status/reference
+  // synchronization works for both old and newly-created employees.
+  const latestEmployeeRows = await getAllEmployees(employeesTable);
+  const latestEmployeeMap = buildEmployeeMap(latestEmployeeRows);
+
+  const affectedEmpIds = new Set();
+
+  rowsToInsert.forEach(function (row) {
+    if (row.emp_id) affectedEmpIds.add(String(row.emp_id).trim());
+  });
+
+  rowsToUpdate.forEach(function (row) {
+    const existing = existingRows.find(function (item) {
+      return String(item.ROWID || item.rowid) === String(row.ROWID);
+    });
+
+    if (existing && existing.emp_id) {
+      affectedEmpIds.add(String(existing.emp_id).trim());
+    }
+  });
+
+  employeeRowsToInsert.forEach(function (row) {
+    if (row.emp_id) affectedEmpIds.add(String(row.emp_id).trim());
+  });
+
   for (const empId of affectedEmpIds) {
-    const master = masterByEmpId.get(String(empId).trim().toLowerCase());
-    const employee = findEmployeeByEmpId(employeeMap, empId);
+    const master = masterByEmpId.get(empId.toLowerCase());
+    const employee = findEmployeeByEmpId(latestEmployeeMap, empId);
+
     const parentRowId = master && (master.ROWID || master.rowid);
     const childRowId = employee && (employee.ROWID || employee.rowid);
+
     if (!parentRowId || !childRowId) {
-      throw new Error("Unable to synchronize Employee_Master reference for " + empId);
+      throw new Error(
+        "Unable to synchronize Employee_Master reference for " + empId,
+      );
     }
+
     await employeesTable.updateRow({
       ROWID: childRowId,
       emp_master_row_id: parentRowId,
@@ -714,12 +755,16 @@ async function createRoster(req, res, table, employeesTable, afterWrite) {
   for (const statusChange of statusChanges) {
     const master = masterByEmpId.get(statusChange.empId.toLowerCase());
     const masterRowId = master && (master.ROWID || master.rowid);
+
     if (!masterRowId) {
-      throw new Error("Employee_Master ROWID not found for " + statusChange.empId);
+      throw new Error(
+        "Employee_Master ROWID not found for " + statusChange.empId,
+      );
     }
+
     const result = await synchronizeEmployeeStatus(
       employeesTable,
-      employeeMap,
+      latestEmployeeMap,
       statusChange.empId,
       statusChange.status,
       masterRowId,
@@ -749,6 +794,7 @@ async function createRoster(req, res, table, employeesTable, afterWrite) {
       skippedRecords: skipped,
       insertedRows: insertedRows,
       updatedRows: updatedRows,
+      insertedEmployeeRows: insertedEmployeeRows,
       statusSyncResults: statusSyncResults,
     },
   });
