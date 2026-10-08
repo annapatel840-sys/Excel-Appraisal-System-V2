@@ -215,7 +215,50 @@ const isOpenCycle = (c) =>
 const nextBatchId = () =>
   `BATCH-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${crypto.randomUUID().slice(0, 8)}`;
 
+function normalizeDateCell(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return [
+      value.getFullYear(),
+      String(value.getMonth() + 1).padStart(2, "0"),
+      String(value.getDate()).padStart(2, "0"),
+    ].join("-");
+  }
+
+  if (typeof value === "number" && value > 0 && value < 2958466) {
+    const p = XLSX.SSF.parse_date_code(value);
+    if (p && p.y && p.m >= 1 && p.m <= 12 && p.d >= 1) {
+      return [
+        String(p.y),
+        String(p.m).padStart(2, "0"),
+        String(p.d).padStart(2, "0"),
+      ].join("-");
+    }
+  }
+
+  const text = sv(value);
+  let match = text.match(/^(\\d{1,2})[/.-](\\d{1,2})[/.-](\\d{4})$/);
+  if (match) {
+    return [
+      match[3],
+      String(match[2]).padStart(2, "0"),
+      String(match[1]).padStart(2, "0"),
+    ].join("-");
+  }
+
+  match = text.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})/);
+  if (match) {
+    return [
+      match[1],
+      String(match[2]).padStart(2, "0"),
+      String(match[3]).padStart(2, "0"),
+    ].join("-");
+  }
+
+  return value;
+}
+
 function normalizeCell(field, value) {
+  if (field === "doj") return normalizeDateCell(value);
   if (!MONTH_FIELDS.has(field)) return value;
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return `${MONTH_NAMES[value.getMonth()]}-${String(value.getFullYear()).slice(-2)}`;
