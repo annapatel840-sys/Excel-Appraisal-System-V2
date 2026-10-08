@@ -83,7 +83,12 @@ const PAY_FIELDS = [
   { key: "rbPaid", label: "RB to be paid" },
   { key: "rbMonth", label: "Month(RB)" },
   { key: "pbPaid", label: "PB to be paid" },
-  { key: "pbMonth", label: "Month(PB)" }const FB_FIELDS = [
+  { key: "pbMonth", label: "Month(PB)" },
+  { key: "tbPaid", label: "TB to be paid" },
+  { key: "tbMonth", label: "Month(TB)" },
+];
+
+const FB_FIELDS = [
   { key: "empId", label: "Employee ID", required: true },
   { key: "empName", label: "Employee Name" },
   { key: "designation", label: "Designation" },
