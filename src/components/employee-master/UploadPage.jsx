@@ -236,7 +236,8 @@ function normalizeDateCell(value) {
   }
 
   const text = sv(value);
-  let match = text.match(/^(\\d{1,2})[/.-](\\d{1,2})[/.-](\\d{4})$/);
+
+  let match = text.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
   if (match) {
     return [
       match[3],
