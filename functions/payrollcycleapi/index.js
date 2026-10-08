@@ -635,11 +635,13 @@ async function importRows(tables, body) {
   // selected ROWID. Resolve that name to the Appraisal Cycle ROWID.
   if (screen === "fb" && !cycle) {
     const requestedCycleName = String(
-      body.appraisalCycleName || body.cycleName || ""
+      body.appraisalCycleName || body.cycleName || cycleId || ""
     ).trim().toLowerCase();
     if (requestedCycleName) {
       cycle = normalizedCycles.find(
-        (item) => String(item.name || "").trim().toLowerCase() === requestedCycleName
+        (item) =>
+          String(item.name || "").trim().toLowerCase() === requestedCycleName ||
+          String(item.id || "").trim().toLowerCase() === requestedCycleName
       ) || null;
       if (cycle) cycleId = cycle.id;
     }
@@ -699,16 +701,22 @@ async function importRows(tables, body) {
         }
       }
       if (screen === "fb") {
-        const masterRowId = master ? String(rowId(master)) : "";
+        // Feedback foreign-key columns require native Catalyst ROWID values.
+        // Do not stringify the BIGINT ROWIDs before insert/update.
+        const masterRowId = master?.ROWID ?? master?.rowid ?? "";
+        if (!masterRowId) {
+          errors.push("Employee Master ROWID is missing for " + empId + ".");
+        }
         if (columns.has("emp_ID")) payload.emp_ID = masterRowId;
         if (columns.has("emp_name")) payload.emp_name = masterRowId;
-        if (columns.has("designation")) {
-          const d = master?.designation;
-          payload.designation = d?.ROWID ?? d?.rowid ?? d ?? "";
-        }
+        if (columns.has("designation")) payload.designation = masterRowId;
         if (columns.has("appraisal_cycle_name")) {
-          if (!cycleId) errors.push("A valid Appraisal Cycle is required for Feedback & Rating upload.");
-          else payload.appraisal_cycle_name = cycleId;
+          const cycleRowId = cycle?.sourceRowId ?? "";
+          if (!cycleRowId) {
+            errors.push("A valid Appraisal Cycle ROWID is required for Feedback & Rating upload.");
+          } else {
+            payload.appraisal_cycle_name = cycleRowId;
+          }
         }
       } else if (columns.has("emp_id")) payload.emp_id = empId;
       if (screen === "sheet") {
@@ -749,13 +757,20 @@ async function importRows(tables, body) {
       return !columns.has("appraisal_year") || String(row.appraisal_year || "").trim() === cycle.name;
     });
 
-    if (existing) {
-      await targetTable.updateRow({ ROWID: rowId(existing), ...payload });
-    } else {
-      await targetTable.insertRow(payload);
+    try {
+      if (existing) {
+        await targetTable.updateRow({ ROWID: rowId(existing), ...payload });
+      } else {
+        await targetTable.insertRow(payload);
+      }
+      succeeded += 1;
+      rows.push({ row: rowNumber, ok: true, reason: "", badFields: [] });
+    } catch (error) {
+      failed += 1;
+      const reason = error?.message || "Feedback & Rating row could not be saved.";
+      console.error("Import row failed:", { screen, row: rowNumber, empId, reason });
+      rows.push({ row: rowNumber, ok: false, reason, badFields: [] });
     }
-    succeeded += 1;
-    rows.push({ row: rowNumber, ok: true, reason: "", badFields: [] });
   }
 
   return { succeeded, failed, total: records.length, batchId: String(body.batchId || ""), rows };
