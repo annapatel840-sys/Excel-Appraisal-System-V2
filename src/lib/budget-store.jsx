@@ -216,11 +216,11 @@ export function BudgetProvider({ children }) {
   const eligibilityEvents = useMemo(() => [], []);
   const gridSupervisorChanges = useMemo(() => [], []);
 
-  const updateBudget = useCallback(async (id, changes) => {
+  const updateBudget = useCallback(async (id, changes, resource = "master") => {
     const response = await catalystFetch(catalystFunctionUrl("budgetmasterapi"), {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, ...changes }),
+      body: JSON.stringify({ id, resource, ...changes }),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result && result.message || "Budget update failed.");
