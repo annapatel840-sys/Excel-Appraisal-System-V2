@@ -824,7 +824,8 @@ async function routeRequest(req, res, identity, resource, a) {
   if (
     !enforced &&
     !canAccessPayroll(identity.user) &&
-    !resource.startsWith("cycles")
+    !resource.startsWith("cycles") &&
+    resource !== "locations"
   ) {
     return sendJson(res, 403, { success: false, message: "HR, Comp. Manager, or Tech-Ed role is required for payroll access." });
   }
@@ -1210,15 +1211,19 @@ async function routeRequest(req, res, identity, resource, a) {
 
 module.exports = async function payrollCycleApi(req, res) {
   try {
-    // Access first: enforced → 401/403 (via catch); dry run → never refuses.
-    const a = await checkAccess(req);
+    // Location Master is reference data needed by the Cycle Master dropdown.
+    // Keep the endpoint authenticated through requireIdentity, but do not require
+    // Compensation access-role resolution for this read-only lookup.
+    const resource = String(getQuery(req).resource || "");
+    const a = resource === "locations" && req.method === "GET"
+      ? { enforced: false, dryRun: true }
+      : await checkAccess(req);
 
     const identity = await requireIdentity(req);
     if (!identity) return sendJson(res, 401, { success: false, message: "Sign in with a Catalyst app user account to continue." });
 
     // `return await` so errors thrown inside routeRequest reach the catch below
     // (a bare `return routeRequest(...)` left them as unhandled rejections).
-    const resource = String(getQuery(req).resource || "");
     if (resource === "session") return await routeRequest(req, res, identity, resource, a);
     if (resource === "schema" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "cycles" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
