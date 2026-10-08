@@ -1,6 +1,7 @@
 import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
+const EMPLOYEE_MASTER_API_URL = catalystFunctionUrl("employeemasterapi");
 // Experience is reported "as on 1 Jan" of the current appraisal year.
 export const EXPERIENCE_REF_DATE = new Date(new Date().getFullYear(), 0, 1);
 export const APPRAISAL_YEAR = "Apr-26";
@@ -780,10 +781,34 @@ export async function createEmployeeMasterEmployees(records) {
 
   for (let start = 0; start < records.length; start += BATCH_SIZE) {
     const batch = records.slice(start, start + BATCH_SIZE);
-    const response = await catalystFetch(EMPLOYEE_API_URL, {
+
+    // Employee Master uploads must write to Employee_Master, not Employees.
+    // The screen uses frontend keys, while employeemasterapi expects the
+    // actual Data Store column names.
+    const payload = batch.map((record) => ({
+      emp_id: record.empId,
+      emp_name: record.name,
+      designation: record.designation,
+      department: record.organization,
+      repo_manager: record.reportingManager,
+      director: record.compManager,
+      appraiser_tech_ed: record.appraiser,
+      email_id: record.managerMail,
+      date_of_join: record.doj,
+      emp_status: record.status,
+      emp_type: record.empType,
+      wissen_experience: record.orgExp,
+      total_experience: record.totalExp,
+      cost_center: record.costCenter,
+      current_salary: record.currentSalary,
+      location: record.location,
+      last_appraisal_month_year: record.lastAppraisal,
+    }));
+
+    const response = await catalystFetch(EMPLOYEE_MASTER_API_URL, {
       method: "POST",
       headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({ employees: batch }),
+      body: JSON.stringify({ employees: payload }),
     });
 
     const result = await response.json().catch(() => null);
