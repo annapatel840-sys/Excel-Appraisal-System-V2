@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect} from "react";
 
 /* ============================================================
    HR Config screen (outer part of the reference HTML).
