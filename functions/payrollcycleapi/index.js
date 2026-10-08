@@ -411,13 +411,18 @@ async function requirePayrollTables(adminApp) {
   };
 }
 
-function mapPayroll(row, cycleById) {
+function mapPayroll(row, cycleById, employeeById = new Map()) {
   const cycleId = String(row.appraisal_cycle_name || "").trim();
   const cycle = cycleById.get(cycleId);
+  const employee = employeeById.get(String(row.emp_id || "").trim().toLowerCase());
   const num = (key) => row[key] === undefined || row[key] === null || row[key] === "" ? 0 : Number(row[key]) || 0;
   const text = (key) => row[key] === undefined || row[key] === null ? "" : String(row[key]);
   return {
-    ...row, id: rowId(row), empId: text("emp_id"), empName: text("emp_name"),
+    ...row, id: rowId(row),
+    emp_id: text("emp_id"),
+    emp_name: employee?.emp_name || employee?.name || text("emp_name"),
+    appraisal_cycle_name: cycle?.name || text("appraisal_cycle_name"),
+    empId: text("emp_id"), empName: employee?.emp_name || employee?.name || text("emp_name"),
     appraisalCycleName: cycle?.name || text("appraisal_cycle_name"), fyYear: text("fy_year"),
     basePay: num("current_annual_base_pay"), joiningBonus: num("joining_bonus"),
     performanceBonus: num("performance_bonus"), retentionBonus: num("retention_bonus"),
@@ -757,6 +762,7 @@ async function routeRequest(req, res, identity, resource, a) {
     ]);
 
     const cycleById = new Map(cycles.map((row) => [rowId(row), normalizeCycle(row)]));
+    const employeeById = new Map(masterRows.map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]));
     const assignedEmpIds = techEdUser
       ? new Set(
           masterRows
@@ -774,7 +780,7 @@ async function routeRequest(req, res, identity, resource, a) {
 
     return sendJson(res, 200, {
       success: true,
-      data: visibleRows.map((row) => mapPayroll(row, cycleById)),
+      data: visibleRows.map((row) => mapPayroll(row, cycleById, employeeById)),
     });
   }
 
