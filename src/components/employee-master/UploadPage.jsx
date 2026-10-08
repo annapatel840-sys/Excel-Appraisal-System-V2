@@ -802,48 +802,59 @@ export function UploadPage({ handlers = {} }) {
       if (k) byName.set(k, [...(byName.get(k) || []), e]);
     });
 
-    // Employee Master key fields must come directly from the uploaded file,
-    // not from the mapping preview/state.
     const findHeaderIndex = (aliases) =>
       file.headers.findIndex((header) => {
         const normalized = norm(header);
         return aliases.some((alias) => normalized === norm(alias));
       });
 
-    const empIdIndex = findHeaderIndex([
-      "Employee ID", "Emp ID", "EmpID", "EmployeeID", "emp_id",
-    ]);
-    const nameIndex = findHeaderIndex([
-      "Employee Name", "Emp Name", "EmpName", "EmployeeName", "Name", "emp_name",
-    ]);
+    const aliases = {
+      empId: ["Employee ID", "Emp ID", "EmpID", "EmployeeID", "emp_id"],
+      name: ["Employee Name", "Emp Name", "EmpName", "EmployeeName", "Name", "emp_name"],
+      designation: ["Designation", "designation"],
+      organization: ["Department", "Organization", "department"],
+      reportingManager: ["Reporting Manager", "ReportingManager", "repo_manager"],
+      compManager: ["Director", "Comp Manager", "director"],
+      appraiser: ["Appraiser / Tech ED", "Appraiser", "Tech ED", "appraiser_tech_ed"],
+      managerMail: ["Email ID", "Manager Mail", "email_id"],
+      doj: ["Date of Joining", "DOJ", "date_of_join"],
+      status: ["Status", "emp_status"],
+      empType: ["Employee Type", "Emp Type", "emp_type"],
+      orgExp: ["Wissen Experience", "Organization Experience", "wissen_experience"],
+      totalExp: ["Total Experience", "total_experience"],
+      costCenter: ["Cost Center", "cost_center"],
+      currentSalary: ["Current Salary", "current_salary"],
+      location: ["Location", "location"],
+      lastAppraisal: ["Last Appraisal (Month/Year)", "Last Appraisal", "last_appraisal_month_year"],
+    };
+
+    const indexes = Object.fromEntries(
+      Object.entries(aliases).map(([key, names]) => [key, findHeaderIndex(names)]),
+    );
 
     return records.map((r) => {
       const sourceRow = file.rows.find((item) => item.row === r.row);
       const cells = sourceRow?.cells || [];
 
-      const directEmpId = empIdIndex >= 0 ? sv(cells[empIdIndex]) : sv(r.empId);
-      const directName = nameIndex >= 0 ? sv(cells[nameIndex]) : sv(r.name);
-
-      const payload = {
-        emp_id: directEmpId,
-        emp_name: directName,
+      const read = (key) => {
+        const index = indexes[key];
+        return index >= 0 ? normalizeCell(key, cells[index]) : r[key];
       };
 
-      EMP_FIELDS.forEach((f) => {
-        if (f.key === "empId" || f.key === "name" || r[f.key] === undefined) return;
+      const payload = {};
 
-        let value = sv(r[f.key]);
-        if (!value) return;
+      EMP_FIELDS.forEach((f) => {
+        const raw = read(f.key);
+        if (raw === undefined || raw === null || sv(raw) === "") return;
+
+        let value = raw;
 
         if (f.key === "status") {
-          value = value.toLowerCase() === "active" ? "Active" : "Inactive";
+          value = sv(value).toLowerCase() === "active" ? "Active" : "Inactive";
         }
 
-        if (
-          f.key === "appraiser" &&
-          !/^\s*[A-Za-z]*\d+\s+-\s+\S/.test(value)
-        ) {
-          const matches = byName.get(value.toLowerCase()) || [];
+        if (f.key === "appraiser" && !/^\s*[A-Za-z]*\d+\s+-\s+\S/.test(sv(value))) {
+          const matches = byName.get(sv(value).toLowerCase()) || [];
           if (matches.length === 1) {
             value = matches[0].empId + " - " + matches[0].name;
           }
@@ -852,10 +863,15 @@ export function UploadPage({ handlers = {} }) {
         payload[f.column || EM_TO_CATALYST[f.key] || f.key] = value;
       });
 
+      const empId = read("empId");
+      const name = read("name");
+
+      if (sv(empId)) payload.emp_id = sv(empId);
+      if (sv(name)) payload.emp_name = sv(name);
+
       return payload;
     });
   };
-
   const runUpload = async () => {
     if (!res || (res.errors.length === 0 && false)) return;
     if (!file || busy) return;
