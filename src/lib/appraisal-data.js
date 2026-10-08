@@ -461,7 +461,7 @@ export const COLUMNS = [
   },
   {
     key: "clientManager",
-    label: "Client Manager",
+    label: "Client Manager Feedback",
     type: "text",
     editable: false,
     width: 140,
