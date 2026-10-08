@@ -15,6 +15,7 @@ const TABLES = {
   cycles: "74008000000034190",
   audit: "74008000000034940",
   feedback: "74008000000022041",
+  locations: "74008000000022481",
 };
 const PAGE_SIZE = 200;
 const MAX_UPLOAD_ROWS = 5000;
@@ -155,7 +156,7 @@ async function checkAccess(req) {
 
 function requirePayrollAccess(a, resource, method) {
   if (resource === "session") return;
-  if ((resource === "cycles" || resource === "schema") && method === "GET") return;
+  if ((resource === "cycles" || resource === "schema" || resource === "locations") && method === "GET") return;
   if (resource.startsWith("cycles/")) {
     access.requireScreen(a, "cycleMaster", "edit");
     return;
@@ -418,6 +419,7 @@ async function requirePayrollTables(adminApp) {
     cycles: datastore.table(TABLES.cycles),
     audit: datastore.table(TABLES.audit),
     feedback: datastore.table(TABLES.feedback),
+    locations: datastore.table(TABLES.locations),
   };
 }
 
@@ -846,6 +848,21 @@ async function routeRequest(req, res, identity, resource, a) {
     return sendJson(res, 200, { success: true, data: cycles });
   }
 
+  if (resource === "locations" && req.method === "GET") {
+    const rows = await getAllRows(tables.locations);
+    const locations = rows
+      .map((row) => ({
+        id: String(row.ROWID || row.rowid || row.id || ""),
+        location_name: String(row.location_name || "").trim(),
+        location_code: String(row.location_code || "").trim(),
+        address: String(row.address || "").trim(),
+        currency_code: String(row.currency_code || "").trim(),
+      }))
+      .filter((location) => location.location_code)
+      .sort((a, b) => a.location_name.localeCompare(b.location_name));
+    return sendJson(res, 200, { success: true, data: locations });
+  }
+
   if (resource === "audit" && req.method === "GET") {
     const auditRows = await getAllRows(tables.audit);
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
@@ -1205,6 +1222,7 @@ module.exports = async function payrollCycleApi(req, res) {
     if (resource === "session") return await routeRequest(req, res, identity, resource, a);
     if (resource === "schema" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "cycles" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "locations" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "audit" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "history" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "payroll" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
