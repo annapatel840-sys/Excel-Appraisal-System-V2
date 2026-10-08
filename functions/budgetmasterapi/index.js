@@ -234,7 +234,11 @@ module.exports = async function (req, res) {
     const a = await checkAccess(req);
     requireBudgetScreen(a, method === "GET" ? "view" : "edit");
 
-    const app = catalyst.initialize(req);
+    // Budget tables are accessed server-side after accessCore has already authorized
+    // the signed-in user. Use the admin-scoped Catalyst app here so Data Store
+    // App User table permissions cannot turn an authorized budget request into
+    // a 500 error.
+    const app = catalyst.initialize(req, { scope: "admin" });
 
     if (method === "GET") {
       const bundle = filterOwn(await readBundle(app), a);
