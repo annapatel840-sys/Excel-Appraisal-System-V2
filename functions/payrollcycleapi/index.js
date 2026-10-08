@@ -565,17 +565,24 @@ async function getImportColumnSet(table) {
 
 const IMPORT_FIELD_MAP = {
   fb: {
-    empId: "emp_id",
-    managerRating: "manager_rating",
-    managerFeedback: "manager_feedback",
-    rrPercent: "rr_percent",
-    interviewCount: "interview_count",
+    empId: "emp_ID",
+    empName: "emp_name",
+    designation: "designation",
+    lastAppraisal: "last_appraisal_date",
+    revenueReleased: "revenue_released",
     grossMargin: "gross_margin",
-    costCenter: "cost_center_client",
-    clientManager: "client_manager",
-    clientRating: "client_rating",
+    managerFeedback: "manager_feedback",
+    managerRating: "manager_rating",
+    clientManager: "client_manager_feedback",
     clientFeedback: "client_feedback",
+    clientRating: "client_rating",
+    interviewCount: "interview_count",
     atRisk: "at_risk",
+    promo: "eligible_for_promotion",
+    newTitle: "new_title",
+    remarks: "remarks",
+    fyYear: "fy_year",
+    appraisalCycleName: "appraisal_cycle_name",
   },
   sheet: {
     empId: "emp_id",
@@ -646,6 +653,10 @@ async function importRows(tables, body) {
     else if (!employeeIds.has(empId.toLowerCase())) errors.push("Employee ID not found in Employee Master.");
 
     const payload = {};
+    const master = screen === "fb"
+      ? employeeRows.find((row) => String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase())
+      : null;
+    if (screen === "fb" && !master) errors.push("Employee ID not found in Employee Master.");
     if (!errors.length) {
       for (const [key, column] of Object.entries(fieldMap)) {
         if (input[key] === undefined) continue;
@@ -659,7 +670,16 @@ async function importRows(tables, body) {
           errors.push(error.message);
         }
       }
-      if (columns.has("emp_id")) payload.emp_id = empId;
+      if (screen === "fb") {
+        const masterRowId = master ? String(rowId(master)) : "";
+        if (columns.has("emp_ID")) payload.emp_ID = masterRowId;
+        if (columns.has("emp_name")) payload.emp_name = masterRowId;
+        if (columns.has("designation")) {
+          const d = master?.designation;
+          payload.designation = d?.ROWID ?? d?.rowid ?? d ?? "";
+        }
+        if (columns.has("appraisal_cycle_name")) payload.appraisal_cycle_name = cycleId;
+      } else if (columns.has("emp_id")) payload.emp_id = empId;
       if (screen === "sheet") {
         if (columns.has("appraisal_year")) payload.appraisal_year = cycle.name;
         if (columns.has("appraisal_cycle_name")) payload.appraisal_cycle_name = cycle.id;
