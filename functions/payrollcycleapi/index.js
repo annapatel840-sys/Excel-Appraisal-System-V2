@@ -237,7 +237,8 @@ async function getAllRows(table) {
 }
 
 function normalizeCycle(row) {
-  const id = rowId(row) || String(row.id || row.ID || "").trim();
+  const sourceRowId = row.ROWID ?? row.rowid ?? row.id ?? row.ID ?? "";
+  const id = String(sourceRowId).trim();
   const name = String(
     row.cycle_name ||
       row.cycleName ||
@@ -248,6 +249,7 @@ function normalizeCycle(row) {
   ).trim();
   return {
     id,
+    sourceRowId,
     name,
     effective: row.effective_date || row.effectiveDate || "",
     start: row.start_date || row.startDate || "",
@@ -340,8 +342,10 @@ function toPayrollRow(input, cycle, master, batchId, fileName) {
   const empId = String(input.empId || "").trim();
   if (!empId) throw new ApiError("Employee ID is required.");
   if (empId.length > 50) throw new ApiError("Employee ID must be 50 characters or fewer.");
-  const employeeRowId = rowId(master);
-  const cycleRowId = String(cycle.id || "").trim();
+  // These two payroll columns are BIGINT/foreign-key fields. Preserve the
+  // native Catalyst ROWID value instead of converting it to a string.
+  const employeeRowId = master?.ROWID ?? master?.rowid ?? "";
+  const cycleRowId = cycle?.sourceRowId ?? cycle?.id ?? "";
   if (!employeeRowId) throw new ApiError(`Employee ${empId} has no valid Employee Master ROWID.`);
   if (!cycleRowId) throw new ApiError("The selected appraisal cycle has no valid ROWID.");
   const row = { emp_id: empId, emp_name: employeeRowId, appraisal_cycle_name: cycleRowId };
