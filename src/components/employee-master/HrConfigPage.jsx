@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 /* ============================================================
    HR Config screen (outer part of the reference HTML).
@@ -155,7 +156,10 @@ export function HrConfigPage({ renderCycleScreen, canEdit = true }) {
   const [extra, setExtra] = useState(saved.extra); // added categories, columns and buttons
   const [log, setLog] = useState([]);
   const [tab, setTab] = useState("cyc");
-  const [loc, setLoc] = useState("Dubai|AED");
+  // Location_Master rows (Zoho Catalyst); `loc` holds the selected location_code
+  const [locations, setLocations] = useState([]);
+  const [locLoading, setLocLoading] = useState(true);
+  const [loc, setLoc] = useState("");
   const [ptab, setPtab] = useState("q");
   const [fold, setFold] = useState(false);
   const [role, setRole] = useState("HR");
@@ -167,6 +171,38 @@ export function HrConfigPage({ renderCycleScreen, canEdit = true }) {
     setToast(m);
     setTimeout(() => setToast(""), 2400);
   };
+
+  // Load the locations from the Location_Master table
+  useEffect(() => {
+    let mounted = true;
+    payrollCycleRequest("locations")
+      .then((res) => {
+        if (!mounted) return;
+        const rows = Array.isArray(res) ? res : res?.data || res?.rows || [];
+        const list = rows
+          .map((r) => {
+            const x = r?.Location_Master || r || {};
+            return {
+              name: x.location_name || "",
+              code: x.location_code || "",
+              address: x.address || "",
+              currency: x.currency_code || "",
+            };
+          })
+          .filter((x) => x.code);
+        setLocations(list);
+        setLoc((p) => p || list[0]?.code || "");
+      })
+      .catch((error) => {
+        if (mounted) say(`Unable to load locations: ${error.message}`);
+      })
+      .finally(() => mounted && setLocLoading(false));
+    return () => {
+      mounted = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const ed = (k) => vals[k] !== applied[k];
   const set = (k, v) => setVals((p) => ({ ...p, [k]: v }));
   const labelOf = (k) => LAB[k] || extra.find((x) => x.key === k)?.label || k;
@@ -894,7 +930,7 @@ export function HrConfigPage({ renderCycleScreen, canEdit = true }) {
     ["col", "Columns"],
     ["agt", "Agent"],
   ];
-  const [curCode, curName] = ["", loc.split("|")[1]];
+  const curLoc = locations.find((l) => l.code === loc) || null;
 
   return (
     <div className="hrc">
@@ -909,20 +945,29 @@ export function HrConfigPage({ renderCycleScreen, canEdit = true }) {
             <label>Location</label>
             <select
               value={loc}
+              disabled={locLoading || !locations.length}
               onChange={(e) => {
+                const picked = locations.find((l) => l.code === e.target.value);
                 setLoc(e.target.value);
                 say(
-                  `Location: ${e.target.value.split("|")[0]}. Cycle dates and currency follow the location.`,
+                  `Location: ${picked?.name || e.target.value}. Cycle dates and currency follow the location.`,
                 );
               }}
             >
-              <option value="Dubai|AED">Dubai</option>
-              <option value="India|INR">India</option>
+              {!locations.length && (
+                <option value="">
+                  {locLoading ? "Loading…" : "No locations"}
+                </option>
+              )}
+              {locations.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.name} ({l.code})
+                </option>
+              ))}
             </select>
-            <span className="tag info">
-              {curName}
-              {curCode}
-            </span>
+            {curLoc?.currency && (
+              <span className="tag info">{curLoc.currency}</span>
+            )}
             <span className="note">
               Config opens for the location chosen at login. Each location has
               its own cycle and currency; the settings below are the same for
