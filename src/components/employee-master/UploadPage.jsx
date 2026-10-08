@@ -757,21 +757,57 @@ export function UploadPage({ handlers = {} }) {
       const k = sv(e.name).toLowerCase();
       if (k) byName.set(k, [...(byName.get(k) || []), e]);
     });
+
+    // Employee Master key fields must come directly from the uploaded file,
+    // not from the mapping preview/state.
+    const findHeaderIndex = (aliases) =>
+      file.headers.findIndex((header) => {
+        const normalized = norm(header);
+        return aliases.some((alias) => normalized === norm(alias));
+      });
+
+    const empIdIndex = findHeaderIndex([
+      "Employee ID", "Emp ID", "EmpID", "EmployeeID", "emp_id",
+    ]);
+    const nameIndex = findHeaderIndex([
+      "Employee Name", "Emp Name", "EmpName", "EmployeeName", "Name", "emp_name",
+    ]);
+
     return records.map((r) => {
-      const payload = { emp_id: sv(r.empId) };
+      const sourceRow = file.rows.find((item) => item.row === r.row);
+      const cells = sourceRow?.cells || [];
+
+      const directEmpId = empIdIndex >= 0 ? sv(cells[empIdIndex]) : sv(r.empId);
+      const directName = nameIndex >= 0 ? sv(cells[nameIndex]) : sv(r.name);
+
+      const payload = {
+        emp_id: directEmpId,
+        emp_name: directName,
+      };
+
       EMP_FIELDS.forEach((f) => {
-        if (f.key === "empId" || r[f.key] === undefined) return;
+        if (f.key === "empId" || f.key === "name" || r[f.key] === undefined) return;
+
         let value = sv(r[f.key]);
         if (!value) return;
-        if (f.key === "status")
+
+        if (f.key === "status") {
           value = value.toLowerCase() === "active" ? "Active" : "Inactive";
-        if (f.key === "appraiser" && !/^\s*[A-Za-z]*\d+\s+-\s+\S/.test(value)) {
-          const matches = byName.get(value.toLowerCase()) || [];
-          if (matches.length !== 1) return; // not matched: leave unchanged
-          value = `${matches[0].empId} - ${matches[0].name}`;
         }
+
+        if (
+          f.key === "appraiser" &&
+          !/^\s*[A-Za-z]*\d+\s+-\s+\S/.test(value)
+        ) {
+          const matches = byName.get(value.toLowerCase()) || [];
+          if (matches.length === 1) {
+            value = matches[0].empId + " - " + matches[0].name;
+          }
+        }
+
         payload[f.column || EM_TO_CATALYST[f.key] || f.key] = value;
       });
+
       return payload;
     });
   };
