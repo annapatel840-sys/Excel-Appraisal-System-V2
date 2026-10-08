@@ -347,8 +347,6 @@ export function TechEdBudgetDistribution() {
     <div className="tbd-root">
       <style>{CSS}</style>
 
-      <div className="demo-banner">Sample data for UI review — budgets, teams and changes on this screen are not from the Data Store.</div>
-
       {!liveTech ? (
         <div className="berr">No Budget Distribution record is available for the signed-in Tech-Ed.</div>
       ) : null}
