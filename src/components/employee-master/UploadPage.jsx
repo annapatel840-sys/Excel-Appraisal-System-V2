@@ -383,9 +383,9 @@ export function UploadPage({ handlers = {} }) {
 
   const fields = useMemo(() => {
     const base = def?.fields || [];
-    // Payroll upload is intentionally limited to pay entry/calculation fields.
-    // Do not append arbitrary Data Store columns here.
-    if (screen === "pay") return base;
+    // Payroll and Feedback & Rating uploads must use only their explicit
+    // database-mapped fields. Do not append arbitrary Data Store columns here.
+    if (screen === "pay" || screen === "fb") return base;
     if (!schemaTable?.columns?.length) return base;
     const knownColumns = new Set(base.map((field) => field.column || EM_TO_CATALYST[field.key] || field.key));
     const hidden = new Set(["ROWID", "CREATORID", "CREATEDTIME", "MODIFIEDTIME", "appraisal_cycle_id", "source_batch", "source_file", "emp_master_row_id", "emp_row_id"]);
