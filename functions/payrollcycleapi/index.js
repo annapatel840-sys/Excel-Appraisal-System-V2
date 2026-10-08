@@ -105,69 +105,20 @@ class ApiError extends Error {
 }
 
 const PAYROLL_FIELDS = {
-  empName: "emp_name",
-  designation: "designation",
-  compManager: "comp_manager",
-  superManager: "super_manager",
-  managerMail: "manager_mail",
-  superManagerMail: "super_manager_mail",
-  appraiser: "appraiser",
-  basePay: "base_pay",
-  targetPB: "target_pb",
-  rbPaid: "rb_paid",
-  joiningBonus: "joining_bonus",
-  rbMonth: "rb_month",
-  pbPaid: "pb_paid",
-  pbMonth: "pb_month",
-  allocPB: "alloc_pb",
-  allocInst: "alloc_inst",
-  newPB: "new_pb",
-  newPBInst: "new_pb_inst",
-  newRB: "new_rb",
-  hikeAmt: "hike_amt",
-  tpbNext: "target_pb_next_year",
-  totalPB: "total_pb",
-  totalBonus: "total_bonus",
-  hikePct: "hike_pct",
-  newBasePay: "new_base_pay",
-  totalCtc: "total_ctc",
-  promo: "promo",
-  newTitle: "new_title",
-  remarks: "remarks",
+  empName: "emp_name", fyYear: "fy_year", basePay: "current_annual_base_pay",
+  joiningBonus: "joining_bonus", performanceBonus: "performance_bonus", retentionBonus: "retention_bonus",
+  hikePct: "hike_pct", hikeAmt: "hike_amount", totalCtcRewards: "total_CTC_with_rewards",
+  totalRewardHikeAmt: "total_rewards_hike_amount", totalRewardHikePct: "total_reward_hike_pct",
+  targetPerformanceAgreed: "target_performance_agreed", totalBonus: "total_bonus", newBasePay: "new_base_pay",
+  rbPaid: "rb_to_be_paid", rbMonth: "month_rb", pbPaid: "pb_to_be_paid", pbMonth: "month_pb",
+  tbPaid: "tb_to_be_paid", tbMonth: "month_tb",
 };
 const NUMERIC_FIELDS = new Set([
-  "basePay",
-  "targetPB",
-  "rbPaid",
-  "joiningBonus",
-  "pbPaid",
-  "allocPB",
-  "allocInst",
-  "newPB",
-  "newPBInst",
-  "newRB",
-  "hikeAmt",
-  "tpbNext",
-  "totalPB",
-  "totalBonus",
-  "hikePct",
-  "newBasePay",
-  "totalCtc",
+  "basePay","joiningBonus","performanceBonus","retentionBonus","hikePct","hikeAmt",
+  "totalCtcRewards","totalRewardHikeAmt","totalRewardHikePct","targetPerformanceAgreed",
+  "totalBonus","newBasePay","rbPaid","pbPaid","tbPaid",
 ]);
-const MAX_TEXT_LENGTH = {
-  empName: 100,
-  designation: 100,
-  compManager: 100,
-  superManager: 100,
-  managerMail: 255,
-  superManagerMail: 255,
-  appraiser: 100,
-  rbMonth: 20,
-  pbMonth: 20,
-  promo: 20,
-  newTitle: 100,
-  remarks: 10000,
-};
+const MAX_TEXT_LENGTH = { empName: 100, fyYear: 20, rbMonth: 30, pbMonth: 30, tbMonth: 30 };
 
 function sendJson(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -378,46 +329,24 @@ function normalizeText(value, key) {
   return text;
 }
 
-function normalizeMoney(value, key) {
+function normalizeNumber(value, key) {
   if (value === undefined || value === null || value === "") return 0;
-  const number = typeof value === "number" ? value : Number(String(value).replace(/,/g, "").replace(/[₹$]/g, "").trim());
-  if (!Number.isFinite(number) || number < 0 || number > Number.MAX_SAFE_INTEGER) {
-    throw new ApiError(`${key} must be a non-negative number.`);
-  }
-  return Math.round(number);
+  const number = typeof value === "number" ? value : Number(String(value).replace(/,/g, "").replace(/[₹$%]/g, "").trim());
+  if (!Number.isFinite(number) || number < 0 || number > Number.MAX_SAFE_INTEGER) throw new ApiError(`${key} must be a non-negative number.`);
+  return number;
 }
-
-function toPayrollRow(input, cycleId, batchId, fileName) {
+function toPayrollRow(input, cycle, master, batchId, fileName) {
   const empId = String(input.empId || "").trim();
   if (!empId) throw new ApiError("Employee ID is required.");
   if (empId.length > 50) throw new ApiError("Employee ID must be 50 characters or fewer.");
-
-  const row = {
-    emp_id: empId,
-    appraisal_cycle_id: cycleId,
-    source_batch: batchId,
-    source_file: fileName,
-  };
+  const employeeRowId = rowId(master);
+  const cycleRowId = String(cycle.id || "").trim();
+  if (!employeeRowId) throw new ApiError(`Employee ${empId} has no valid Employee Master ROWID.`);
+  if (!cycleRowId) throw new ApiError("The selected appraisal cycle has no valid ROWID.");
+  const row = { emp_id: empId, emp_name: employeeRowId, appraisal_cycle_name: cycleRowId };
   Object.entries(PAYROLL_FIELDS).forEach(([key, column]) => {
-    if (NUMERIC_FIELDS.has(key)) {
-      row[column] = normalizeMoney(input[key], key);
-    } else {
-      row[column] = normalizeText(input[key], key);
-    }
+    row[column] = NUMERIC_FIELDS.has(key) ? normalizeNumber(input[key], key) : normalizeText(input[key], key);
   });
-
-  // Calculated values are accepted from corrected historical files when
-  // supplied. Blank calculated cells are derived from the entry values.
-  if (input.totalPB === undefined || input.totalPB === null || String(input.totalPB).trim() === "")
-    row.total_pb = row.alloc_pb + row.new_pb;
-  if (input.totalBonus === undefined || input.totalBonus === null || String(input.totalBonus).trim() === "")
-    row.total_bonus = row.total_pb + row.new_rb;
-  if (input.hikePct === undefined || input.hikePct === null || String(input.hikePct).trim() === "")
-    row.hike_pct = row.base_pay > 0 ? Number(((row.hike_amt / row.base_pay) * 100).toFixed(4)) : 0;
-  if (input.newBasePay === undefined || input.newBasePay === null || String(input.newBasePay).trim() === "")
-    row.new_base_pay = row.base_pay + row.hike_amt;
-  if (input.totalCtc === undefined || input.totalCtc === null || String(input.totalCtc).trim() === "")
-    row.total_ctc = row.new_base_pay + row.total_bonus;
   return row;
 }
 
@@ -483,55 +412,21 @@ async function requirePayrollTables(adminApp) {
 }
 
 function mapPayroll(row, cycleById) {
-  const cycleId = String(row.appraisal_cycle_id || row.appraisalCycleId || row.cycle_id || row.cycleId || "").trim();
+  const cycleId = String(row.appraisal_cycle_name || "").trim();
   const cycle = cycleById.get(cycleId);
-  const num = (...keys) => {
-    for (const key of keys) {
-      if (row[key] !== undefined && row[key] !== null && row[key] !== "") return Number(row[key]) || 0;
-    }
-    return 0;
-  };
-  const text = (...keys) => {
-    for (const key of keys) {
-      if (row[key] !== undefined && row[key] !== null) return String(row[key]);
-    }
-    return "";
-  };
-  const basePay = num("base_pay", "current_annual_base_pay");
-  const hikeAmt = num("hike_amt", "hike_amount");
-  const totalBonus = num("total_bonus");
+  const num = (key) => row[key] === undefined || row[key] === null || row[key] === "" ? 0 : Number(row[key]) || 0;
+  const text = (key) => row[key] === undefined || row[key] === null ? "" : String(row[key]);
   return {
-    ...row,
-    id: rowId(row),
-    empId: text("emp_id"),
-    appraisalYear: text("appraisal_year", "APPRAISAL_YEAR") || cycle?.name || "",
-    cycle: text("appraisal_year", "APPRAISAL_YEAR") || cycle?.name || "",
-    basePay,
-    allocatedPb: num("allocated_pb", "alloc_pb"),
-    allocatedPbInstallment: num("allocated_pb_installment", "alloc_inst"),
-    performanceBonus: num("performance_bonus", "new_pb"),
-    performanceBonusInstallment: num("performance_bonus_installment", "new_pb_inst"),
-    retentionBonus: num("retention_bonus", "new_rb"),
-    totalPB: num("total_pb"),
-    joiningBonus: num("joining_bonus"),
-    totalBonus,
-    hikeAmt,
-    hikePct: num("hike_pct"),
-    promo: text("promotion", "promo"),
-    newTitle: text("title", "new_title"),
-    targetPerformanceBonus: num("target_performance_bonus", "target_pb_next_year"),
-    newCtc: num("new_ctc", "total_ctc") || basePay + hikeAmt + totalBonus,
-    managerRating: text("manager_rating"),
-    rating: text("rating"),
-    empName: text("emp_name"),
-    designation: text("designation"),
-    compManager: text("comp_manager"),
-    superManager: text("super_manager"),
-    managerMail: text("manager_mail"),
-    batch: text("source_batch"),
-    cycleId,
-    sourceFile: text("source_file"),
-    createdTime: text("CREATEDTIME"),
+    ...row, id: rowId(row), empId: text("emp_id"), empName: text("emp_name"),
+    appraisalCycleName: cycle?.name || text("appraisal_cycle_name"), fyYear: text("fy_year"),
+    basePay: num("current_annual_base_pay"), joiningBonus: num("joining_bonus"),
+    performanceBonus: num("performance_bonus"), retentionBonus: num("retention_bonus"),
+    hikePct: num("hike_pct"), hikeAmt: num("hike_amount"),
+    totalCtcRewards: num("total_CTC_with_rewards"), totalRewardHikeAmt: num("total_rewards_hike_amount"),
+    totalRewardHikePct: num("total_reward_hike_pct"), targetPerformanceAgreed: num("target_performance_agreed"),
+    totalBonus: num("total_bonus"), newBasePay: num("new_base_pay"), rbPaid: num("rb_to_be_paid"),
+    rbMonth: text("month_rb"), pbPaid: num("pb_to_be_paid"), pbMonth: text("month_pb"),
+    tbPaid: num("tb_to_be_paid"), tbMonth: text("month_tb"), cycleId, createdTime: text("CREATEDTIME"),
   };
 }
 
@@ -563,7 +458,7 @@ async function validateUpload(tables, body) {
   });
   const existingByKey = new Map();
   payrollRows.forEach((row) => {
-    const key = `${String(row.emp_id || "").trim().toLowerCase()}|${String(row.appraisal_cycle_id || "")}`;
+    const key = `${String(row.emp_id || "").trim().toLowerCase()}|${String(row.appraisal_cycle_name || "")}`;
     existingByKey.set(key, row);
   });
   const seen = new Set();
@@ -583,7 +478,7 @@ async function validateUpload(tables, body) {
 
     let payrollRow;
     try {
-      payrollRow = toPayrollRow(input, cycleId, sourceBatch, sourceFile);
+      payrollRow = toPayrollRow(input, cycle, masterByEmpId.get(empId.toLowerCase()), sourceBatch, sourceFile);
     } catch (error) {
       errors.push(error.message);
     }
@@ -714,7 +609,7 @@ async function importRows(tables, body) {
       if (columns.has("emp_id")) payload.emp_id = empId;
       if (screen === "sheet") {
         if (columns.has("appraisal_year")) payload.appraisal_year = cycle.name;
-        if (columns.has("appraisal_cycle_id")) payload.appraisal_cycle_id = cycle.id;
+        if (columns.has("appraisal_cycle_name")) payload.appraisal_cycle_name = cycle.id;
         if (columns.has("total_pb")) payload.total_pb = (Number(payload.performance_bonus) || 0) + (Number(input.allocatedPBAmount) || 0);
         if (columns.has("total_bonus")) payload.total_bonus = (Number(payload.total_pb) || 0) + (Number(payload.retention_bonus) || 0);
         if (columns.has("hike_pct") && payload.hike_amount !== undefined) {
@@ -903,7 +798,7 @@ async function routeRequest(req, res, identity, resource, a) {
     const masterByEmpId = new Map(masterRows.map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]));
     const existingRows = await getAllRows(tables.payroll);
     const existingByKey = new Map(existingRows.map((row) => [
-      `${String(row.emp_id || "").trim().toLowerCase()}|${String(row.appraisal_cycle_id || "")}`,
+      `${String(row.emp_id || "").trim().toLowerCase()}|${String(row.appraisal_cycle_name || "")}`,
       row,
     ]));
 
@@ -914,7 +809,7 @@ async function routeRequest(req, res, identity, resource, a) {
       const payrollRow = item.payrollRow;
       const master = masterByEmpId.get(String(payrollRow.emp_id).toLowerCase());
       if (!master) throw new ApiError(`Employee ${payrollRow.emp_id} was removed during validation. Re-validate the file.`, 409);
-      const key = `${String(payrollRow.emp_id).toLowerCase()}|${String(payrollRow.appraisal_cycle_id)}`;
+      const key = `${String(payrollRow.emp_id).toLowerCase()}|${String(payrollRow.appraisal_cycle_name)}`;
       const existing = existingByKey.get(key);
       if (existing) {
         await tables.payroll.updateRow({ ROWID: rowId(existing), ...payrollRow });
@@ -1102,7 +997,7 @@ async function routeRequest(req, res, identity, resource, a) {
       if (new Date().toISOString().slice(0, 10) >= existing.start) {
         return sendJson(res, 409, { success: false, message: "A cycle can only be deleted before its start date." });
       }
-      const relatedPayroll = (await getAllRows(tables.payroll)).some((row) => String(row.appraisal_cycle_id || "") === id);
+      const relatedPayroll = (await getAllRows(tables.payroll)).some((row) => String(row.appraisal_cycle_name || "") === id);
       if (relatedPayroll) return sendJson(res, 409, { success: false, message: "Cycles with payroll records cannot be deleted." });
       await tables.cycles.deleteRow(id);
       if (existing.status === "Active") await bumpAccessVersion(req, a, "Active cycle deleted: " + existing.name);
