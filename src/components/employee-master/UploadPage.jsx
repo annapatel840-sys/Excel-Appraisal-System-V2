@@ -55,14 +55,26 @@ const EM_TO_CATALYST = {
    ============================================================ */
 
 const EMP_FIELDS = [
-  { key: "empId", label: "Employee ID", required: true },
-  ...FIELD_DEFS.filter((f) => EM_TO_CATALYST[f.key]).map((f) => ({
-    key: f.key,
-    label: f.label,
-  })),
+  { key: "empId", label: "emp_id", column: "emp_id", required: true },
+  { key: "name", label: "emp_name", column: "emp_name" },
+  { key: "designation", label: "designation", column: "designation" },
+  { key: "organization", label: "department", column: "department" },
+  { key: "reportingManager", label: "repo_manager", column: "repo_manager" },
+  { key: "compManager", label: "director", column: "director" },
+  { key: "appraiser", label: "appraiser_tech_ed", column: "appraiser_tech_ed" },
+  { key: "managerMail", label: "email_id", column: "email_id" },
+  { key: "doj", label: "date_of_join", column: "date_of_join" },
+  { key: "status", label: "emp_status", column: "emp_status" },
+  { key: "empType", label: "emp_type", column: "emp_type" },
+  { key: "orgExp", label: "wissen_experience", column: "wissen_experience" },
+  { key: "totalExp", label: "total_experience", column: "total_experience" },
+  { key: "costCenter", label: "cost_center", column: "cost_center" },
+  { key: "currentSalary", label: "current_salary", column: "current_salary" },
+  { key: "location", label: "location", column: "location" },
+  { key: "lastAppraisal", label: "last_appraisal_month_year", column: "last_appraisal_month_year" },
 ];
 
-// Keys must stay the same: the payroll backend validates these.
+// Keys must stay the same: the payroll backend validates these. the payroll backend validates these.
 const PAY_FIELDS = [
   { key: "empId", label: "Employee ID", required: true },
   { key: "empName", label: "Employee Name" },
