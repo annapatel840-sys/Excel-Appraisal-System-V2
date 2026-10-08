@@ -45,6 +45,7 @@ async function getProjectSchema(adminApp) {
     { name: "Employees", id: TABLES.employees },
     { name: "Employee_Master", id: TABLES.employeeMaster },
     { name: "payroll", id: TABLES.payroll },
+    { name: "Feedback_And_Rating", id: TABLES.feedback },
     { name: "Appraisal_Cycle", id: TABLES.cycles },
     { name: "Appraisal_Audit", id: TABLES.audit },
   ];
@@ -604,7 +605,7 @@ const IMPORT_FIELD_MAP = {
 };
 
 const IMPORT_NUMERIC_FIELDS = new Set([
-  "rrPercent", "interviewCount", "grossMargin", "clientRating",
+  "rrPercent", "revenueReleased", "grossMargin", "managerRating", "interviewCount",
   "newRB", "newPB", "newPBInst", "hikeAmt", "hikePct", "tpbNext",
 ]);
 
@@ -623,11 +624,26 @@ function normalizeImportValue(key, value) {
 async function importRows(tables, body) {
   const screen = String(body.screen || "").trim().toLowerCase();
   if (!["fb", "sheet"].includes(screen)) throw new ApiError("Unsupported upload type.");
-  const cycleId = String(body.cycleId || "").trim();
+  let cycleId = String(body.cycleId || "").trim();
   const cycleRows = await getAllRows(tables.cycles);
-  const cycle = cycleId
-    ? cycleRows.map(normalizeCycle).find((item) => item.id === cycleId)
+  const normalizedCycles = cycleRows.map(normalizeCycle);
+  let cycle = cycleId
+    ? normalizedCycles.find((item) => item.id === cycleId)
     : null;
+
+  // Feedback uploads may carry the cycle name from the CSV instead of the
+  // selected ROWID. Resolve that name to the Appraisal Cycle ROWID.
+  if (screen === "fb" && !cycle) {
+    const requestedCycleName = String(
+      body.appraisalCycleName || body.cycleName || ""
+    ).trim().toLowerCase();
+    if (requestedCycleName) {
+      cycle = normalizedCycles.find(
+        (item) => String(item.name || "").trim().toLowerCase() === requestedCycleName
+      ) || null;
+      if (cycle) cycleId = cycle.id;
+    }
+  }
   if (screen === "sheet" && !cycle) {
     throw new ApiError("The selected appraisal cycle no longer exists.", 404);
   }
@@ -690,7 +706,10 @@ async function importRows(tables, body) {
           const d = master?.designation;
           payload.designation = d?.ROWID ?? d?.rowid ?? d ?? "";
         }
-        if (columns.has("appraisal_cycle_name")) payload.appraisal_cycle_name = cycleId;
+        if (columns.has("appraisal_cycle_name")) {
+          if (!cycleId) errors.push("A valid Appraisal Cycle is required for Feedback & Rating upload.");
+          else payload.appraisal_cycle_name = cycleId;
+        }
       } else if (columns.has("emp_id")) payload.emp_id = empId;
       if (screen === "sheet") {
         if (columns.has("appraisal_year")) payload.appraisal_year = cycle.name;
