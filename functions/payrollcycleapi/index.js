@@ -844,17 +844,16 @@ async function routeRequest(req, res, identity, resource, a) {
     const body = await readBody(req);
     const result = await validateUpload(tables, body);
     const batchId = String(body.batchId || "").trim();
-    const auditRows = await getAllRows(tables.audit);
-    if (auditRows.some((row) => String(row.batch_id || "") === batchId)) {
-      throw new ApiError("This batch ID has already been used. Revalidate the file to create a new batch.", 409);
-    }
+    // Commit is intentionally retry-safe. If the browser retries the same batch
+    // after a timeout, update/insert the same Employee + Cycle rows instead of
+    // returning 409 and making a successful upload look like it did nothing.
     const valid = result.rows.filter((row) => row.ok);
     const rejected = result.rows.filter((row) => !row.ok);
     const masterRows = await getAllRows(tables.employeeMaster);
     const masterByEmpId = new Map(masterRows.map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]));
     const existingRows = await getAllRows(tables.payroll);
     const existingByKey = new Map(existingRows.map((row) => [
-      `${String(row.emp_id || "").trim().toLowerCase()}|${String(row.appraisal_cycle_name || "")}`,
+      `${String(row.emp_id || "").trim()}|${String(row.appraisal_cycle_name || "").trim()}`,
       row,
     ]));
 
@@ -863,9 +862,13 @@ async function routeRequest(req, res, identity, resource, a) {
     let updated = 0;
     for (const item of valid) {
       const payrollRow = item.payrollRow;
-      const master = masterByEmpId.get(String(payrollRow.emp_id).toLowerCase());
-      if (!master) throw new ApiError(`Employee ${payrollRow.emp_id} was removed during validation. Re-validate the file.`, 409);
-      const key = `${String(payrollRow.emp_id).toLowerCase()}|${String(payrollRow.appraisal_cycle_name)}`;
+      const master = masterByEmpId.get(String(item.empId || payrollRow.emp_id || "").trim().toLowerCase()) || masterRows.find(
+        (row) => String(row.ROWID ?? row.rowid ?? "").trim() === String(payrollRow.emp_id).trim(),
+      );
+      if (!master) throw new ApiError(`Employee ${item.empId || payrollRow.emp_id} was removed during validation. Re-validate the file.`, 409);
+      const masterRowId = String(master.ROWID ?? master.rowid ?? "").trim();
+      const cycleRowId = String(payrollRow.appraisal_cycle_name ?? "").trim();
+      const key = `${masterRowId}|${cycleRowId}`;
       const existing = existingByKey.get(key);
       try {
         if (existing) {
