@@ -942,6 +942,12 @@ async function routeRequest(req, res, identity, resource, a) {
     });
   }
 
+  if (resource === "import" && req.method === "POST") {
+    const body = await readBody(req);
+    const result = await importRows(tables, body);
+    return sendJson(res, 200, { success: true, data: result });
+  }
+
   if (resource === "undo" && req.method === "POST") {
     const body = await readBody(req);
     const batchId = String(body.batchId || "").trim();
