@@ -311,17 +311,17 @@ export function TechEdBudgetMasterPage() {
     const name = rawName.toLowerCase();
     return owner === name || owner.includes(name) || name.includes(owner);
   }) || budgetDistributionRows[0];
-  const me0 = TECH_EDS.find((r) => rawName.includes(r.name)) || TECH_EDS[0];
-  const me = liveMe ? {
+  const me0 = TECH_EDS.find((r) => rawName.includes(r.name)) || null;
+  const me = liveMe && me0 ? {
     ...me0,
     id: liveMe.id,
     pct: Number(liveMe.percentage) || me0.pct,
     original: Number(liveMe.calculated_budget) || me0.original,
     updated: Number(liveMe.applied_budget) || me0.updated,
     utilised: Number(liveMe.total_utilization) || 0,
-  } : me0;
+  } : null;
   const liveKids = liveMe ? budgetCompManagerRows.filter((r) => String(r.budget_distribution_id) === String(liveMe.id)) : [];
-  const kids0 = COMP_MANAGERS.filter((c) => c.parent === me0.name).map((c, i) => {
+  const kids0 = me0 ? COMP_MANAGERS.filter((c) => c.parent === me0.name).map((c, i) => {
     const live = liveKids[i];
     return live ? {
       ...c,
@@ -333,7 +333,7 @@ export function TechEdBudgetMasterPage() {
       utilised: Number(live.total_utilization) || c.utilised,
       base: Number(live.percentage) ? (Number(live.calculated_budget) * 100) / Number(live.percentage) : c.base,
     } : c;
-  });
+  }) : [];
 
   const [reports, setReports] = useState(kids0);
   const [audit, setAudit] = useState(() => [
