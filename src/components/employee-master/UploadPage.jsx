@@ -712,13 +712,8 @@ export function UploadPage({ handlers = {} }) {
           succeeded: result.succeeded,
           failed: result.failed,
         };
-        try {
-          setHistory(await payrollCycleRequest("history"));
-        } catch (e) {
-          setError(
-            `Upload succeeded, but upload history could not be refreshed: ${e.message}`,
-          );
-        }
+        // Do not block the upload result on the history refresh.
+        // The commit has already saved the payroll rows at this point.
       } else if (screen === "emp") {
         const failedRows = new Set(res.errors.map((e) => e.row));
         const good = records.filter((r) => !failedRows.has(r.row));
@@ -752,7 +747,17 @@ export function UploadPage({ handlers = {} }) {
         };
       }
 
+      // Show the upload result immediately after the commit/import finishes.
+      // History is refreshed separately so a slow history query cannot make
+      // a successful upload look like the Upload button did nothing.
       setOutcome(out);
+      if (screen === "pay") {
+        payrollCycleRequest("history")
+          .then((data) => setHistory(Array.isArray(data) ? data : []))
+          .catch((e) => {
+            setError(`Upload succeeded, but upload history could not be refreshed: ${e.message}`);
+          });
+      }
       if (screen !== "pay") {
         setLocal((l) => [
           {
