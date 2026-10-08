@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
+import { useBudget } from "@/lib/budget-store";
 import { TechEdBudgetMasterPage } from "./TechEdBudgetMasterPage";
 
 const NAVY = "#12304f";
@@ -228,6 +229,7 @@ const HR_COLS = [
 ];
 
 function HRApplyBudget() {
+  const { budgetMasterRows, budgetDistributionRows, updateBudget, loading: budgetLoading } = useBudget();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const canConfig =
@@ -243,6 +245,31 @@ function HRApplyBudget() {
   const [audit, setAudit] = useState(INITIAL_AUDIT);
   const [orgAudit, setOrgAudit] = useState(INITIAL_ORG_AUDIT);
   const [overrides, setOverrides] = useState({});
+
+  useEffect(() => {
+    if (!budgetDistributionRows.length) return;
+    setRows((current) => budgetDistributionRows.map((row, index) => {
+      const fallback = current[index] || TECH_ED_DATA[index] || {};
+      const calculated = Number(row.calculated_budget) || 0;
+      const applied = Number(row.applied_budget) || calculated;
+      return {
+        ...fallback,
+        id: row.id,
+        name: ownerName(row.appraiser_tech_ed_id || fallback.name),
+        pct: Number(row.percentage) || 0,
+        base: Number(row.percentage) ? calculated * 100 / Number(row.percentage) : (fallback.base || calculated),
+        original: calculated,
+        updated: applied,
+        team0: fallback.team0 || 0,
+        team: fallback.team || 0,
+        lastChanged: fallback.lastChanged || "—",
+      };
+    }));
+    const master = budgetMasterRows[0];
+    if (master && Number.isFinite(Number(master.budget_percentage))) {
+      setOrgPct(String(Number(master.budget_percentage)));
+    }
+  }, [budgetDistributionRows, budgetMasterRows]);
 
   const total = useMemo(
     () =>
@@ -302,7 +329,7 @@ function HRApplyBudget() {
     setError("");
   }
 
-  function apply() {
+  async function apply() {
     const org = Number(orgPct);
     if (!(org >= 0 && org <= 100)) {
       setError("Enter a valid org % between 0 and 100.");
@@ -362,6 +389,27 @@ function HRApplyBudget() {
       ]);
     }
 
+    try {
+      await Promise.all([
+        ...changedRows.filter((r) => r.id).map((r) =>
+          updateBudget(r.id, {
+            percentage: Number(previewPct(r)),
+            applied_budget: previewBudget(r),
+          }, "distribution")
+        ),
+        ...(orgPending && budgetMasterRows[0]?.id
+          ? [updateBudget(budgetMasterRows[0].id, {
+              budget_percentage: org,
+              calculated_budget: previewTotal,
+              applied_budget: previewTotal,
+            }, "master")]
+          : []),
+      ]);
+    } catch (saveError) {
+      setError(saveError.message || "Budget changes could not be saved.");
+      return;
+    }
+
     setRows(next);
     setAudit((a) => [...newAudit, ...a]);
     setPending({});
@@ -417,6 +465,7 @@ function HRApplyBudget() {
                 Appraisal Cycle
               </div>
               <select
+                disabled={budgetLoading}
                 value={selectedCycle}
                 onChange={(e) => setSelectedCycle(e.target.value)}
                 className="mt-1 h-[38px] min-w-[140px] rounded border border-[#14a3a3] bg-white px-2 text-[13px] font-bold text-[#12304f] outline-none"
