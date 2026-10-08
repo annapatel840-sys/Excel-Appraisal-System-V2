@@ -264,10 +264,6 @@ export function HrConfigPage({ renderCycleScreen, canEdit = true }) {
   }, []);
 
   const [nc, setNc] = useState(null); // new category form
-
-  const [ncol, setNcol] = useState(null); // new column form
-
-  const [nc, setNc] = useState(null); // new category form
   const [ncol, setNcol] = useState(null); // new column form
 
   const say = (m) => {
