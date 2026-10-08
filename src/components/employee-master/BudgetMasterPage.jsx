@@ -236,8 +236,8 @@ function HRApplyBudget() {
     access.canScreen("budgetAllocation", "edit") &&
     access.canAction("changeBudgetConfig");
   const canAudit = access.canAction("viewAudit");
-  const [rows, setRows] = useState(TECH_ED_DATA);
-  const [orgPct, setOrgPct] = useState("8");
+  const [rows, setRows] = useState([]);
+  const [orgPct, setOrgPct] = useState("");
   const [pending, setPending] = useState({});
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
@@ -291,11 +291,11 @@ function HRApplyBudget() {
       ? Number(pending[row.name])
       : overrides[row.name]
         ? row.pct
-        : Number(orgPct);
+        : (orgPct === "" ? Number(row.pct || 0) : Number(orgPct));
 
   const previewBudget = (row) => (row.base * previewPct(row)) / 100;
   const changes = rows.filter((r) => Number(previewPct(r)) !== r.pct);
-  const orgPending = Number(orgPct) !== 8;
+  const orgPending = orgPct !== "" && budgetMasterRows.length > 0 && Number(orgPct) !== Number(budgetMasterRows[0]?.budget_percentage || 0);
   const pendingCount =
     changes.length || orgPending ? changes.length + (orgPending ? 1 : 0) : 0;
   const previewTotal = rows.reduce((s, r) => s + previewBudget(r), 0);
