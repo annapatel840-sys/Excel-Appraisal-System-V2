@@ -165,23 +165,93 @@ const NUMERIC_FIELDS = new Set([
   "current_salary",
 ]);
 
+function normalizeEmployeeMasterDate(value) {
+  if (value === null || value === undefined) return null;
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  const text = String(value).trim();
+  if (!text) return null;
+
+  // YYYY-MM-DD (optionally followed by a time).
+  let match = text.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})(?:[T\\s].*)?$/);
+  if (match) {
+    const y = Number(match[1]);
+    const m = Number(match[2]);
+    const d = Number(match[3]);
+    const date = new Date(y, m - 1, d);
+    if (
+      date.getFullYear() === y &&
+      date.getMonth() === m - 1 &&
+      date.getDate() === d
+    ) {
+      return date;
+    }
+  }
+
+  // DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY.
+  match = text.match(/^(\\d{1,2})[\\/.-](\\d{1,2})[\\/.-](\\d{4})(?:[T\\s].*)?$/);
+  if (match) {
+    const d = Number(match[1]);
+    const m = Number(match[2]);
+    const y = Number(match[3]);
+    const date = new Date(y, m - 1, d);
+    if (
+      date.getFullYear() === y &&
+      date.getMonth() === m - 1 &&
+      date.getDate() === d
+    ) {
+      return date;
+    }
+  }
+
+  // Excel serial date.
+  if (/^\\d+(?:\\.\\d+)?$/.test(text)) {
+    const serial = Number(text);
+    if (serial > 0 && serial < 2958466) {
+      const date = new Date(1899, 11, 30 + Math.floor(serial));
+      if (!Number.isNaN(date.getTime())) return date;
+    }
+  }
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
 function normalizeEmployeeMasterData(data) {
-  const normalized = { ...data };
+  const normalized = {};
+
+  // Never pass undefined / empty values to Catalyst Data Store.
+  Object.keys(data || {}).forEach(function (field) {
+    const value = data[field];
+
+    if (value === undefined || value === null) return;
+    if (typeof value === "string" && value.trim() === "") return;
+
+    normalized[field] = value;
+  });
+
+  if (Object.prototype.hasOwnProperty.call(normalized, "date_of_join")) {
+    const normalizedDate = normalizeEmployeeMasterDate(
+      normalized.date_of_join,
+    );
+
+    if (normalizedDate) {
+      // Catalyst Node SDK Date columns require a JavaScript Date value.
+      normalized.date_of_join = normalizedDate;
+    } else {
+      delete normalized.date_of_join;
+    }
+  }
 
   NUMERIC_FIELDS.forEach(function (field) {
     if (!Object.prototype.hasOwnProperty.call(normalized, field)) return;
 
     const value = normalized[field];
-
-    if (value === null || value === undefined || String(value).trim() === "") {
-      delete normalized[field];
-      return;
-    }
-
     const number = Number(
-      String(value)
-        .replace(/[₹,%\\s,]/g, "")
-        .trim(),
+      String(value).replace(/[₹,%\\s,]/g, "").trim(),
     );
 
     if (!Number.isFinite(number)) {
@@ -190,24 +260,6 @@ function normalizeEmployeeMasterData(data) {
 
     normalized[field] = number;
   });
-
-  if (Object.prototype.hasOwnProperty.call(normalized, "date_of_join")) {
-    const value = normalized.date_of_join;
-
-    if (value !== null && value !== undefined && String(value).trim() !== "") {
-      const text = String(value).trim();
-      const match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-
-      if (match) {
-        normalized.date_of_join =
-          match[1] +
-          "-" +
-          String(match[2]).padStart(2, "0") +
-          "-" +
-          String(match[3]).padStart(2, "0");
-      }
-    }
-  }
 
   return normalized;
 }
