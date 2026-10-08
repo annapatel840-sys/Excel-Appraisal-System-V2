@@ -236,19 +236,31 @@ function isMonth(v) {
 function autoMap(type, fields, headers) {
   const map = {};
   const used = new Set();
+
   fields.forEach((f) => {
+    const candidates = [
+      f.label,
+      f.key,
+      f.column,
+      ...(f.uploadHeaders || []),
+    ].filter(Boolean);
+
     let idx = headers.findIndex(
       (h, i) =>
-        !used.has(i) && (norm(h) === norm(f.label) || norm(h) === norm(f.key)),
+        !used.has(i) &&
+        candidates.some((candidate) => norm(h) === norm(candidate)),
     );
+
     if (idx < 0 && type === "emp") {
       idx = headers.findIndex(
         (h, i) => !used.has(i) && findFieldForHeader(h)?.key === f.key,
       );
     }
+
     map[f.key] = idx;
     if (idx >= 0) used.add(idx);
   });
+
   return map;
 }
 
