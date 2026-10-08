@@ -1,0 +1,10 @@
+{
+	"name": "locationapi",
+	"version": "1.0.0",
+	"main": "index.js",
+	"author": "comptool@wissen.com",
+	"dependencies": {
+		"@zcatalyst/auth": "latest",
+		"@zcatalyst/cache": "latest"
+	}
+}

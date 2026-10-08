@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
-import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { useMemo, useState } from "react";
 
 /* ============================================================
    HR Config screen (outer part of the reference HTML).
@@ -11,6 +10,8 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
    ============================================================ */
 
 const STORE = "hr_config_v1";
+const LOCATION_API_URL =
+  "https://excelappraisalmanagement-60090194508.development.catalystserverless.in/server/locationapi/";
 const PROC_OPTS = [
   ["Annual", "Annual process"],
   ["Exceptional", "Exceptional process"],
@@ -24,6 +25,7 @@ const CT = [
 ];
 const MISM = [
   {
+    
     id: "m1",
     name: "Employee Master changes",
     src: "Employee Master upload or sync, against the current data",
@@ -156,14 +158,115 @@ export function HrConfigPage({ renderCycleScreen, canEdit = true }) {
   const [extra, setExtra] = useState(saved.extra); // added categories, columns and buttons
   const [log, setLog] = useState([]);
   const [tab, setTab] = useState("cyc");
-  // Location_Master rows (Zoho Catalyst); `loc` holds the selected location_code
-  const [locations, setLocations] = useState([]);
-  const [locLoading, setLocLoading] = useState(true);
-  const [loc, setLoc] = useState("");
+  const [loc, setLoc] = useState([]);
+  const [locationsLoading, setLocationsLoading] = useState(true);
   const [ptab, setPtab] = useState("q");
   const [fold, setFold] = useState(false);
   const [role, setRole] = useState("HR");
   const [toast, setToast] = useState("");
+
+    useEffect(() => {
+    let mounted = true;
+
+    const loadLocations = async () => {
+      try {
+        setLocationsLoading(true);
+
+        const response = await fetch(LOCATION_API_URL, {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Location API returned ${response.status}`
+          );
+        }
+
+        const result = await response.json();
+
+        if (!result?.success) {
+          throw new Error(
+            result?.message ||
+              "Unable to load locations."
+          );
+        }
+
+        const rows = Array.isArray(result.data)
+          ? result.data
+          : [];
+
+        const list = rows
+          .map((row) => ({
+            id: row?.id || "",
+            name: String(
+              row?.location_name || ""
+            ).trim(),
+            code: String(
+              row?.location_code || ""
+            ).trim(),
+            address: String(
+              row?.address || ""
+            ).trim(),
+            currency: String(
+              row?.currency_code || ""
+            ).trim(),
+          }))
+          .filter((item) => item.code);
+
+        if (!mounted) return;
+
+        setLocations(list);
+
+        if (list.length > 0) {
+          setLoc((current) => {
+            if (
+              current &&
+              list.some(
+                (item) => item.code === current
+              )
+            ) {
+              return current;
+            }
+
+            return list[0].code;
+          });
+        }
+      } catch (error) {
+        console.error(
+          "Failed to load locations:",
+          error
+        );
+
+        if (mounted) {
+          setLocations([]);
+          setLoc("");
+
+          setToast(
+            error?.message ||
+              "Unable to load locations."
+          );
+        }
+      } finally {
+        if (mounted) {
+          setLocationsLoading(false);
+        }
+      }
+    };
+
+    loadLocations();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const [nc, setNc] = useState(null); // new category form
+
+  const [ncol, setNcol] = useState(null); // new column form
+
   const [nc, setNc] = useState(null); // new category form
   const [ncol, setNcol] = useState(null); // new column form
 
@@ -171,90 +274,6 @@ export function HrConfigPage({ renderCycleScreen, canEdit = true }) {
     setToast(m);
     setTimeout(() => setToast(""), 2400);
   };
-
-  // Load the locations from the Location_Master table
-
-  // Load the locations from the Location_Master table
-useEffect(() => {
-  let mounted = true;
-
-  payrollCycleRequest("locations")
-    .then((res) => {
-      if (!mounted) return;
-
-      const rows = Array.isArray(res)
-        ? res
-        : Array.isArray(res?.data)
-          ? res.data
-          : Array.isArray(res?.rows)
-            ? res.rows
-            : [];
-
-      const list = rows
-        .map((r) => {
-          const x = r?.Location_Master || r || {};
-
-          return {
-            name: String(
-              x.location_name ??
-              x.Location_Name ??
-              x.locationName ??
-              x.name ??
-              ""
-            ).trim(),
-
-            code: String(
-              x.location_code ??
-              x.Location_Code ??
-              x.locationCode ??
-              x.code ??
-              ""
-            ).trim(),
-
-            address: String(
-              x.address ??
-              x.Address ??
-              ""
-            ).trim(),
-
-            currency: String(
-              x.currency_code ??
-              x.Currency_Code ??
-              x.currencyCode ??
-              x.currency ??
-              ""
-            ).trim(),
-          };
-        })
-        .filter((x) => x.name || x.code);
-
-      setLocations(list);
-
-      setLoc((previous) => {
-        if (previous && list.some((item) => item.code === previous)) {
-          return previous;
-        }
-
-        return list[0]?.code || "";
-      });
-    })
-    .catch((error) => {
-      if (mounted) {
-        say(`Unable to load locations: ${error.message}`);
-      }
-    })
-    .finally(() => {
-      if (mounted) setLocLoading(false);
-    });
-
-  return () => {
-    mounted = false;
-  };
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
-
-
   const ed = (k) => vals[k] !== applied[k];
   const set = (k, v) => setVals((p) => ({ ...p, [k]: v }));
   const labelOf = (k) => LAB[k] || extra.find((x) => x.key === k)?.label || k;
@@ -982,7 +1001,16 @@ useEffect(() => {
     ["col", "Columns"],
     ["agt", "Agent"],
   ];
-  const curLoc = locations.find((l) => l.code === loc) || null;
+  // const [curCode, curName] = ["", loc.split("|")[1]];
+
+    const currentLocation = locations.find(
+    (item) => item.code === loc
+  );
+
+  const curCode = currentLocation?.code || "";
+
+  const curName =
+    currentLocation?.currency || "";
 
   return (
     <div className="hrc">
@@ -994,32 +1022,55 @@ useEffect(() => {
             <small>HR Admin only</small>
           </div>
           <div className="locbar">
-            <label>Location</label>
-            <select
+          <select
               value={loc}
-              disabled={locLoading || !locations.length}
+              disabled={
+                locationsLoading ||
+                locations.length === 0
+              }
               onChange={(e) => {
-                const picked = locations.find((l) => l.code === e.target.value);
-                setLoc(e.target.value);
+                const selectedCode = e.target.value;
+
+                const selectedLocation =
+                  locations.find(
+                    (item) =>
+                      item.code === selectedCode
+                  );
+
+                setLoc(selectedCode);
+
                 say(
-                  `Location: ${picked?.name || e.target.value}. Cycle dates and currency follow the location.`,
+                  `Location: ${
+                    selectedLocation?.name ||
+                    selectedCode
+                  }. Cycle dates and currency follow the location.`,
                 );
               }}
             >
-              {!locations.length && (
+              {locationsLoading ? (
                 <option value="">
-                  {locLoading ? "Loading…" : "No locations"}
+                  Loading locations...
                 </option>
+              ) : locations.length === 0 ? (
+                <option value="">
+                  No locations available
+                </option>
+              ) : (
+                locations.map((location) => (
+                  <option
+                    key={location.code}
+                    value={location.code}
+                  >
+                    {location.name}
+                  </option>
+                ))
               )}
-              {locations.map((l) => (
-                <option key={l.code || l.name} value={l.code}>
-                  {l.name}
-                </option>
-              ))}
             </select>
-            {curLoc?.currency && (
-              <span className="tag info">{curLoc.currency}</span>
-            )}
+
+            <span className="tag info">
+              {curName}
+              {curCode}
+            </span>
             <span className="note">
               Config opens for the location chosen at login. Each location has
               its own cycle and currency; the settings below are the same for
