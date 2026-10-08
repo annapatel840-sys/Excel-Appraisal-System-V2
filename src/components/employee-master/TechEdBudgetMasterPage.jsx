@@ -1,6 +1,7 @@
 import { useState, Fragment } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
+import { useBudget } from "@/lib/budget-store";
 
 /* Add once in index.html <head> so the font matches the reference:
    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"> */
@@ -297,6 +298,7 @@ const HEADS = [
 
 export function TechEdBudgetMasterPage() {
   const user = useCatalystUser();
+  const { budgetDistributionRows, budgetCompManagerRows, updateBudget, loading: budgetLoading, error: budgetError } = useBudget();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const canAllot =
@@ -304,8 +306,34 @@ export function TechEdBudgetMasterPage() {
     access.canAction("allotNextLevel");
   const canAudit = access.canAction("viewAudit");
   const rawName = String(user?.name || user?.email || "").trim();
-  const me = TECH_EDS.find((r) => rawName.includes(r.name)) || TECH_EDS[0];
-  const kids0 = COMP_MANAGERS.filter((c) => c.parent === me.name);
+  const liveMe = budgetDistributionRows.find((r) => {
+    const owner = String(r.appraiser_tech_ed_id || "").toLowerCase();
+    const name = rawName.toLowerCase();
+    return owner === name || owner.includes(name) || name.includes(owner);
+  }) || budgetDistributionRows[0];
+  const me0 = TECH_EDS.find((r) => rawName.includes(r.name)) || TECH_EDS[0];
+  const me = liveMe ? {
+    ...me0,
+    id: liveMe.id,
+    pct: Number(liveMe.percentage) || me0.pct,
+    original: Number(liveMe.calculated_budget) || me0.original,
+    updated: Number(liveMe.applied_budget) || me0.updated,
+    utilised: Number(liveMe.total_utilization) || 0,
+  } : me0;
+  const liveKids = liveMe ? budgetCompManagerRows.filter((r) => String(r.budget_distribution_id) === String(liveMe.id)) : [];
+  const kids0 = COMP_MANAGERS.filter((c) => c.parent === me0.name).map((c, i) => {
+    const live = liveKids[i];
+    return live ? {
+      ...c,
+      id: live.id,
+      pct0: c.pct0,
+      pct: Number(live.percentage) || c.pct,
+      original: Number(live.calculated_budget) || c.original,
+      updated: Number(live.applied_budget) || c.updated,
+      utilised: Number(live.total_utilization) || c.utilised,
+      base: Number(live.percentage) ? (Number(live.calculated_budget) * 100) / Number(live.percentage) : c.base,
+    } : c;
+  });
 
   const [reports, setReports] = useState(kids0);
   const [audit, setAudit] = useState(() => [
@@ -422,6 +450,11 @@ export function TechEdBudgetMasterPage() {
     setReports((rs) =>
       rs.map((r) => (r.name === name ? { ...r, pct: to } : r)),
     );
+    const liveRow = kids0.find((r) => r.name === name && r.id);
+    if (liveRow?.id) {
+      updateBudget(liveRow.id, { percentage: to, applied_budget: newUpd }, "comp")
+        .catch((error) => setError(error.message || "Failed to save Comp Manager budget."));
+    }
     setReason("");
     setError("");
   }
