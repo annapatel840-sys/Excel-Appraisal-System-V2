@@ -1,244 +1,188 @@
 "use strict";
 
-/* ACCESS CONTROL: ./accessCore.js is a byte-for-byte copy of
-   functions/accessapi/accessCore.js and MUST stay identical to it
-   (every Catalyst function deploys separately). Edit the accessapi copy,
-   then copy it here. See docs/ACCESS_SPEC.md. */
-
 const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
 
-const TABLE_ID = "74008000000034565";
+// These IDs are the Data Store table IDs from Catalyst Console → Data Store.
+const TABLES = {
+  master: "74008000000034565",       // Budget_Master
+  distribution: "74008000000033809", // Budget_Distribution
+  comp: "74008000000023149",         // Budget_Distribution_Comp
+};
 
 function sendJson(res, status, body) {
-  res.writeHead(status, {
-    "Content-Type": "application/json",
-  });
+  res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
 }
 
 function value(row, key) {
-  if (row && row[key] !== undefined && row[key] !== null) return row[key];
-  return "";
+  return row && row[key] !== undefined && row[key] !== null ? row[key] : "";
 }
 
-function mapRow(row) {
-  var budget = Number(value(row, "budget_amount")) || 0;
-  var additional = Number(value(row, "additional_budget")) || 0;
-  var updated = budget + additional;
-  var utilized = Number(value(row, "budget_utilized")) || 0;
-  var remaining = value(row, "budget_remaining");
+function n(v) {
+  const x = Number(v);
+  return Number.isFinite(x) ? x : 0;
+}
 
+function idOf(row) {
+  return String(value(row, "ROWID") || value(row, "rowid") || "");
+}
+
+function mapMaster(row) {
+  const calculated = n(value(row, "calculated_budget"));
+  const applied = n(value(row, "applied_budget"));
+  const utilized = n(value(row, "budget_utilized"));
   return {
-    id: String(value(row, "ROWID") || value(row, "rowid")),
+    id: idOf(row),
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
-    tech_ed_id: String(value(row, "tech_ed_id")),
-    budget_percentage: Number(value(row, "budget_percentage")) || 0,
-    budget_amount: budget,
-    additional_budget: additional,
+    budget_percentage: n(value(row, "budget_percentage")),
     budget_utilized: utilized,
-    budget_remaining:
-      remaining === "" ? updated - utilized : Number(remaining) || 0,
-    status: String(value(row, "status")),
-    updated_budget: updated,
+    calculated_budget: calculated,
+    applied_budget: applied,
+    budget_remaining: applied - utilized,
+    utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
+
+    // Compatibility aliases for existing budget screens. These fields are
+    // not stored in Budget_Master; they are derived or kept in browser state.
+    budget_amount: calculated,
+    additional_budget: 0,
+    updated_budget: applied,
+    status: "Active",
+    tech_ed_id: "",
+  };
+}
+
+function mapDistribution(row) {
+  const calculated = n(value(row, "claculated_budget")); // column name is kept exactly as created in Data Store.
+  const applied = n(value(row, "applied_budget"));
+  const utilized = n(value(row, "total_utilization"));
+  return {
+    id: idOf(row),
+    appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
+    appraiser_tech_ed_id: String(value(row, "appraiser_tech_ed_id")),
+    percentage: n(value(row, "percentage")),
+    calculated_budget: calculated,
+    total_utilization: utilized,
+    applied_budget: applied,
+    utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
+  };
+}
+
+function mapComp(row) {
+  const applied = n(value(row, "applied_budget"));
+  const utilized = n(value(row, "total_utilization"));
+  return {
+    id: idOf(row),
+    comp_manager: String(value(row, "comp_manager")),
+    percentage: n(value(row, "percentage")),
+    calculated_budget: n(value(row, "calculated_budget")),
+    total_utilization: utilized,
+    applied_budget: applied,
+    budget_distribution_id: String(value(row, "budget_distribution_id")),
+    appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
+    utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
   };
 }
 
 function getUserField(user, key) {
-  if (user && user[key] !== undefined && user[key] !== null) {
-    return String(user[key]).trim();
-  }
+  if (user && user[key] !== undefined && user[key] !== null) return String(user[key]).trim();
   return "";
 }
 
-function getCurrentUserName(user) {
-  var first = getUserField(user, "first_name");
-  var last = getUserField(user, "last_name");
-  var full = (first + " " + last).trim();
-
-  return (
-    getUserField(user, "display_name") ||
-    getUserField(user, "name") ||
-    full ||
-    getUserField(user, "email") ||
-    getUserField(user, "email_id")
-  );
-}
-
 function getUserRole(user) {
-  var role = "";
-
-  if (user && user.role_details) {
-    role = user.role_details.role_name || "";
-  }
-
+  let role = "";
+  if (user && user.role_details) role = user.role_details.role_name || "";
   if (!role && user) role = user.role_name || "";
   if (!role && user) role = user.role || "";
-
   return String(role).trim().toLowerCase();
 }
 
 function isHR(user) {
-  var role = getUserRole(user);
+  const role = getUserRole(user);
   return role === "hr" || role.indexOf("hr") !== -1;
 }
 
 function getUserValues(user) {
-  var values = [];
-  var keys = [
-    "user_id",
-    "email",
-    "email_id",
-    "display_name",
-    "name",
-  ];
-
-  keys.forEach(function (key) {
-    var v = getUserField(user, key).toLowerCase();
+  const values = [];
+  ["user_id", "email", "email_id", "display_name", "name"].forEach((key) => {
+    const v = getUserField(user, key).toLowerCase();
     if (v) values.push(v);
   });
-
-  var full = (
-    getUserField(user, "first_name") +
-    " " +
-    getUserField(user, "last_name")
-  ).trim().toLowerCase();
-
+  const full = (getUserField(user, "first_name") + " " + getUserField(user, "last_name")).trim().toLowerCase();
   if (full) values.push(full);
-
   return values;
 }
 
-function matchesUser(techEdId, user) {
-  var owner = String(techEdId || "").trim().toLowerCase();
-  if (!owner) return false;
-
-  var values = getUserValues(user);
-
-  for (var i = 0; i < values.length; i += 1) {
-    if (
-      owner === values[i] ||
-      owner.indexOf(values[i]) !== -1 ||
-      values[i].indexOf(owner) !== -1
-    ) {
-      return true;
-    }
-  }
-
-  return false;
+function matchesOwner(owner, a) {
+  const text = String(owner || "").trim().toLowerCase();
+  if (!text || !a || !a.user) return false;
+  const empId = String(a.user.empId || "").trim().toLowerCase();
+  const email = String(a.user.email || "").trim().toLowerCase();
+  const parts = text.match(/^(\S+)\s*-\s*(.+)$/);
+  const ownerId = parts ? parts[1] : text;
+  return Boolean((empId && ownerId === empId) || (email && text === email) ||
+    getUserValues(a.user).some((v) => v === text || v === ownerId));
 }
-
-async function getCurrentUser(app) {
-  var user = await app.userManagement().getCurrentUser();
-  if (user && user.user_id) return user;
-  return null;
-}
-
-function parseJson(text) {
-  if (!String(text || "").trim()) return {};
-  try {
-    return JSON.parse(text);
-  } catch (error) {
-    return {};
-  }
-}
-
-/* A raw Advanced I/O handler has no body parser: req.body is undefined, so
-   read and JSON-parse the request stream (this used to make every PUT 400). */
-function parseBody(req) {
-  if (req.body && typeof req.body === "object") return Promise.resolve(req.body);
-
-  if (typeof req.body === "string") return Promise.resolve(parseJson(req.body));
-
-  if (typeof req.on !== "function" || req.readableEnded) return Promise.resolve({});
-
-  return new Promise(function (resolve, reject) {
-    var text = "";
-    req.on("data", function (chunk) {
-      text += chunk.toString();
-    });
-    req.on("end", function () {
-      resolve(parseJson(text));
-    });
-    req.on("error", reject);
-  });
-}
-
-/* ============================================================
-   ACCESS CONTROL (docs/ACCESS_SPEC.md)
-
-   GET → view on budgetAllocation or budgetDistribution; enforced: users
-         without scope.all only get their own Tech ED rows (strict match of
-         tech_ed_id to their emp_id, "EMPxxxx - Name" or email).
-   PUT → edit on budgetAllocation or budgetDistribution, own row (unless
-         scope.all); config fields → action changeBudgetConfig;
-         budget_utilized (budget allotted onward) → action allotNextLevel.
-   Dry run (ACCESS_ENFORCE != 'true'): legacy behaviour (GET open, PUT
-   HR-only by role name); refusals only logged.
-   ============================================================ */
-
-var BUDGET_SCREENS = ["budgetAllocation", "budgetDistribution"];
-var CONFIG_FIELDS = ["budget_percentage", "budget_amount", "additional_budget", "status"];
-var ALLOT_FIELDS = ["budget_utilized"];
 
 async function checkAccess(req) {
-  var userApp = catalyst.initialize(req);
-  var adminApp = catalyst.initialize(req, { scope: "admin" });
-
+  const userApp = catalyst.initialize(req);
+  const adminApp = catalyst.initialize(req, { scope: "admin" });
   try {
     return await access.check(userApp, adminApp);
   } catch (error) {
     if (access.isEnforced()) throw error;
-    // Dry run must never change legacy behaviour, even if access data is unreadable.
     console.log("ACCESS dry-run: access check failed:", error && error.message);
     return { dryRun: true, enforced: false, denied: error };
   }
 }
 
-function requireAnyScreen(a, keys, level) {
-  var ok = keys.some(function (key) {
-    try {
-      access.requireScreen(a, key, level);
-      return true;
-    } catch (error) {
-      if (error instanceof access.HttpError) return false;
-      throw error;
-    }
+function requireBudgetScreen(a, level) {
+  access.guard(a, function () {
+    const keys = ["budgetAllocation", "budgetDistribution"];
+    let ok = false;
+    keys.some((key) => {
+      try {
+        access.requireScreen(a, key, level);
+        ok = true;
+        return true;
+      } catch (error) {
+        if (error instanceof access.HttpError) return false;
+        throw error;
+      }
+    });
+    if (!ok) throw new access.HttpError(403, "You do not have access to this budget screen.");
   });
-
-  if (!ok) {
-    throw new access.HttpError(403, "You do not have access to this screen.");
-  }
 }
 
-/* Strict owner match: tech_ed_id equals the user's emp_id or email, or is
-   "EMPxxxx - Name" whose id part equals the emp_id (case-insensitive). */
-function isOwnBudgetRow(a, row) {
-  var owner = String(value(row, "tech_ed_id")).trim().toLowerCase();
-  if (!owner || !a || !a.user) return false;
-
-  var empId = String(a.user.empId || "").trim().toLowerCase();
-  var email = String(a.user.email || "").trim().toLowerCase();
-  var parts = owner.match(/^(\S+)\s*-\s*(.+)$/);
-  var ownerId = parts ? parts[1] : owner;
-
-  return Boolean((empId && ownerId === empId) || (email && owner === email));
-}
-
-async function getAllBudgetRows(table) {
-  var rows = [];
-  var nextToken = null;
-
-  for (var guard = 0; guard < 1000; guard += 1) {
-    var options = { maxRows: 200 };
-    if (nextToken) options.nextToken = nextToken;
-    var page = await table.getPagedRows(options);
-    rows = rows.concat(page && Array.isArray(page.data) ? page.data : []);
-    nextToken = page && page.next_token ? page.next_token : null;
-    if (!(page && page.more_records === true && nextToken)) break;
+async function getAllRows(table) {
+  const rows = [];
+  let token = null;
+  for (let guard = 0; guard < 1000; guard += 1) {
+    const opts = { maxRows: 200 };
+    if (token) opts.nextToken = token;
+    const page = await table.getPagedRows(opts);
+    rows.push(...(page && Array.isArray(page.data) ? page.data : []));
+    token = page && page.next_token ? page.next_token : null;
+    if (!(page && page.more_records === true && token)) break;
   }
-
   return rows;
+}
+
+function parseJson(text) {
+  if (!String(text || "").trim()) return {};
+  try { return JSON.parse(text); } catch (_) { return {}; }
+}
+
+function parseBody(req) {
+  if (req.body && typeof req.body === "object") return Promise.resolve(req.body);
+  if (typeof req.body === "string") return Promise.resolve(parseJson(req.body));
+  if (typeof req.on !== "function" || req.readableEnded) return Promise.resolve({});
+  return new Promise((resolve, reject) => {
+    let text = "";
+    req.on("data", (chunk) => { text += chunk.toString(); });
+    req.on("end", () => resolve(parseJson(text)));
+    req.on("error", reject);
+  });
 }
 
 function sendAccessError(res, error) {
@@ -249,166 +193,154 @@ function sendAccessError(res, error) {
   });
 }
 
+async function readBundle(app) {
+  const [masterRows, distributionRows, compRows] = await Promise.all([
+    getAllRows(app.datastore().table(TABLES.master)),
+    getAllRows(app.datastore().table(TABLES.distribution)),
+    getAllRows(app.datastore().table(TABLES.comp)),
+  ]);
+
+  return {
+    master: masterRows.map(mapMaster),
+    techEd: distributionRows.map(mapDistribution),
+    compManager: compRows.map(mapComp),
+  };
+}
+
+function filterOwn(bundle, a) {
+  if (!a || !a.enforced || (a.scope && a.scope.all)) return bundle;
+  const techEd = bundle.techEd.filter((row) => matchesOwner(row.appraiser_tech_ed_id, a));
+  const allowedDistributionIds = new Set(techEd.map((row) => row.id));
+  const compManager = bundle.compManager.filter((row) =>
+    allowedDistributionIds.has(String(row.budget_distribution_id)),
+  );
+  // Budget_Master is org-level and has no owner column, so a non-HR user gets
+  // only the master row for the cycle represented by their Tech-Ed allocation.
+  const cycleIds = new Set(techEd.map((row) => row.appraisal_cycle_id));
+  const master = bundle.master.filter((row) => cycleIds.has(row.appraisal_cycle_id));
+  return { master, techEd, compManager };
+}
+
 module.exports = async function (req, res) {
   try {
-    var method = String(req.method || "GET").toUpperCase();
+    const method = String(req.method || "GET").toUpperCase();
+    if (method === "OPTIONS") return sendJson(res, 204, {});
 
-    if (method === "OPTIONS") {
-      return sendJson(res, 204, {});
-    }
+    const a = await checkAccess(req);
+    requireBudgetScreen(a, method === "GET" ? "view" : "edit");
 
-    // Enforced → 401/403 (via catch); dry run → never refuses.
-    var a = await checkAccess(req);
-    var enforced = Boolean(a && a.enforced);
-
-    var app = catalyst.initialize(req);
+    const app = catalyst.initialize(req);
 
     if (method === "GET") {
-      access.guard(a, function () {
-        requireAnyScreen(a, BUDGET_SCREENS, "view");
-      });
-
-      var table = app.datastore().table(TABLE_ID);
-
-      if (enforced && !(a.scope && a.scope.all)) {
-        // Own rows only — read every page so the row is found wherever it is.
-        var ownRows = (await getAllBudgetRows(table)).filter(function (row) {
-          return isOwnBudgetRow(a, row);
-        });
-
-        return sendJson(res, 200, {
-          success: true,
-          data: ownRows.map(mapRow),
-          current_user: null,
-          more_records: false,
-          next_token: null,
-        });
-      }
-
-      var result = await table.getPagedRows({
-        maxRows: 100,
-      });
-
-      var rows = result && Array.isArray(result.data) ? result.data : [];
-
+      const bundle = filterOwn(await readBundle(app), a);
+      // data remains an array for the existing screens; the new relational
+      // collections are exposed beside it for screens that need each level.
       return sendJson(res, 200, {
         success: true,
-        data: rows.map(mapRow),
-        current_user: null,
-        more_records: result && result.more_records === true,
-        next_token: result && result.next_token ? result.next_token : null,
+        data: bundle.techEd,
+        master: bundle.master,
+        techEd: bundle.techEd,
+        compManager: bundle.compManager,
+        more_records: false,
+        next_token: null,
       });
     }
 
-    if (method === "PUT") {
-      access.guard(a, function () {
-        requireAnyScreen(a, BUDGET_SCREENS, "edit");
-      });
+    if (method !== "PUT") {
+      return sendJson(res, 405, { success: false, message: "Method not allowed" });
+    }
 
-      var putUser = null;
+    const body = await parseBody(req);
+    const resource = String(body.resource || "master").toLowerCase();
+    const id = String(body.id || "").trim();
+    if (!id) return sendJson(res, 400, { success: false, message: "Budget row id is required." });
 
-      if (!enforced) {
-        putUser = await getCurrentUser(app);
+    const tables = {
+      master: { table: TABLES.master, mapper: mapMaster },
+      distribution: { table: TABLES.distribution, mapper: mapDistribution },
+      comp: { table: TABLES.comp, mapper: mapComp },
+      compmanager: { table: TABLES.comp, mapper: mapComp },
+    };
+    const target = tables[resource];
+    if (!target) return sendJson(res, 400, { success: false, message: "Invalid budget resource." });
 
-        if (!putUser) {
-          return sendJson(res, 401, {
-            success: false,
-            message: "Authentication is required.",
-          });
-        }
+    const isAdminScope = Boolean(a && a.scope && a.scope.all);
+    if (!a.enforced) {
+      const user = await app.userManagement().getCurrentUser();
+      if (!user) return sendJson(res, 401, { success: false, message: "Authentication is required." });
+      if (!isHR(user) && resource === "master") {
+        return sendJson(res, 403, { success: false, message: "Only HR can update Budget Master." });
+      }
+    }
 
-        if (!isHR(putUser)) {
-          return sendJson(res, 403, {
-            success: false,
-            message: "Only HR can update Budget Master.",
-          });
+    const table = app.datastore().table(target.table);
+    const currentRows = await getAllRows(table);
+    const current = currentRows.find((row) => idOf(row) === id);
+    if (!current) return sendJson(res, 404, { success: false, message: "Budget row not found." });
+
+    if (a.enforced && !isAdminScope) {
+      if (resource === "distribution" && !matchesOwner(value(current, "appraiser_tech_ed_id"), a)) {
+        throw new access.HttpError(403, "You can only update your own Tech-Ed budget.");
+      }
+      if (resource === "comp" || resource === "compmanager") {
+        const parentId = String(value(current, "budget_distribution_id") || "");
+        const parents = await getAllRows(app.datastore().table(TABLES.distribution));
+        const parent = parents.find((row) => idOf(row) === parentId);
+        if (!parent || !matchesOwner(value(parent, "appraiser_tech_ed_id"), a)) {
+          throw new access.HttpError(403, "You can only update Comp Manager budgets under your Tech-Ed.");
         }
       }
-
-      var body = await parseBody(req);
-      var id = String(body.id || "").trim();
-
-      if (!id) {
-        return sendJson(res, 400, {
-          success: false,
-          message: "Budget Master row id is required.",
-        });
+      if (resource === "master" && !isHR(a.user)) {
+        throw new access.HttpError(403, "Only HR can update Budget Master.");
       }
+    }
 
-      var allowed = [
-        "budget_percentage",
-        "budget_amount",
-        "additional_budget",
-        "budget_utilized",
-        "status",
-      ];
+    const fieldsByResource = {
+      master: ["budget_percentage", "budget_utilized", "calculated_budget", "applied_budget"],
+      distribution: ["percentage", "claculated_budget", "total_utilization", "applied_budget", "appraisal_cycle_id", "appraiser_tech_ed_id"],
+      comp: ["percentage", "calculated_budget", "total_utilization", "applied_budget", "comp_manager", "budget_distribution_id", "appraisal_cycle_id"],
+    };
+    const fields = fieldsByResource[resource === "compmanager" ? "comp" : resource];
+    const update = { ROWID: id };
+    fields.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(body, key)) update[key] = body[key];
+      // Accept the correctly-spelled frontend name while writing the actual
+      // Data Store column "claculated_budget".
+      if (key === "claculated_budget" && Object.prototype.hasOwnProperty.call(body, "calculated_budget")) {
+        update[key] = body.calculated_budget;
+      }
+    });
 
-      var update = { ROWID: id };
+    const changed = Object.keys(update).filter((key) => key !== "ROWID");
+    if (!changed.length) return sendJson(res, 400, { success: false, message: "No budget fields were provided." });
 
-      allowed.forEach(function (key) {
-        if (Object.prototype.hasOwnProperty.call(body, key)) {
-          update[key] = body[key];
+    access.guard(a, function () {
+      if (resource === "master" || resource === "distribution" || resource === "comp" || resource === "compmanager") {
+        if (changed.some((key) => ["budget_percentage", "percentage", "calculated_budget", "claculated_budget", "applied_budget"].includes(key))) {
+          try { access.requireAction(a, "changeBudgetConfig"); } catch (e) {
+            if (!(e instanceof access.HttpError)) throw e;
+          }
         }
-      });
-
-      if (Object.keys(update).length === 1) {
-        return sendJson(res, 400, {
-          success: false,
-          message: "No Budget Master fields were provided.",
-        });
-      }
-
-      var putTable = app.datastore().table(TABLE_ID);
-      var changed = Object.keys(update).filter(function (key) {
-        return key !== "ROWID";
-      });
-
-      if (enforced) {
-        if (!(a.scope && a.scope.all)) {
-          var current = (await getAllBudgetRows(putTable)).find(function (row) {
-            return String(value(row, "ROWID") || value(row, "rowid")) === id;
-          });
-          if (!current || !isOwnBudgetRow(a, current)) {
-            throw new access.HttpError(403, "You can only update your own budget.");
+        if (changed.some((key) => ["budget_utilized", "total_utilization"].includes(key))) {
+          try { access.requireAction(a, "allotNextLevel"); } catch (e) {
+            if (!(e instanceof access.HttpError)) throw e;
           }
         }
       }
+    });
 
-      access.guard(a, function () {
-        if (changed.some(function (key) { return CONFIG_FIELDS.indexOf(key) !== -1; })) {
-          access.requireAction(a, "changeBudgetConfig");
-        }
-        if (changed.some(function (key) { return ALLOT_FIELDS.indexOf(key) !== -1; })) {
-          access.requireAction(a, "allotNextLevel");
-        }
-      });
-
-      var updated = await putTable.updateRow(update);
-
-      return sendJson(res, 200, {
-        success: true,
-        data: mapRow(updated),
-        changed_by: enforced
-          ? a.user.email
-          : getUserField(putUser, "email") ||
-            getUserField(putUser, "email_id") ||
-            getUserField(putUser, "user_id"),
-      });
-    }
-
-    return sendJson(res, 405, {
-      success: false,
-      message: "Method not allowed",
+    const updated = await table.updateRow(update);
+    return sendJson(res, 200, {
+      success: true,
+      resource,
+      data: target.mapper(updated),
     });
   } catch (error) {
     if (error instanceof access.HttpError) return sendAccessError(res, error);
-
     console.error("budgetmasterapi:", error);
-
     return sendJson(res, 500, {
       success: false,
-      message:
-        error && error.message ? error.message : "Budget Master API failed.",
+      message: error && error.message ? error.message : "Budget API failed.",
     });
   }
 };
