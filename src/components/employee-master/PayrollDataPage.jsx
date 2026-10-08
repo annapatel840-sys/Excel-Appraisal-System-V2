@@ -3,31 +3,28 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAccess } from "@/lib/access-store";
 
 const STATIC_COL_META = {
-  // Intentional visible order: Employee ID first, then Cycle and pay values.
-  // Keep Employee ID as the leading key even when the Data Store schema order changes.
   emp_id: { label: "Employee ID", frozen: true },
-  appraisal_year: { label: "Cycle" },
-
-  // Calculated pay values.
-  hike_pct: { label: "Hike %", type: "number", pct: true, cat: "calc" },
-  total_bonus: { label: "Total Bonus", type: "number", money: true, cat: "calc" },
-  total_pb: { label: "Total PB", type: "number", money: true, cat: "calc" },
-  new_base_pay: { label: "New Base Pay", type: "number", money: true, cat: "calc" },
-  total_ctc: { label: "Total CTC", type: "number", money: true, cat: "calc" },
-
-  // Entry / source pay values.
-  base_pay: { label: "Current Annual Base Pay", type: "number", money: true, cat: "entry" },
-  joining_bonus: { label: "Joining Bonus", type: "number", money: true, cat: "entry" },
-  target_pb: { label: "Target PB Allocated for May", type: "number", money: true, cat: "entry" },
-  rb_paid: { label: "RB to be Paid", type: "number", money: true, cat: "entry" },
-  pb_paid: { label: "PB to be Paid", type: "number", money: true, cat: "entry" },
-  alloc_pb: { label: "Allocated PB Amount", type: "number", money: true, cat: "entry" },
-  alloc_inst: { label: "Inst. (Allocated PB)", type: "number", money: true, cat: "entry" },
-  new_pb: { label: "New PB to be Offered", type: "number", money: true, cat: "entry" },
-  new_pb_inst: { label: "Inst. (New PB)", type: "number", money: true, cat: "entry" },
-  new_rb: { label: "New RB", type: "number", money: true, cat: "entry" },
-  hike_amt: { label: "Hike Amount", type: "number", money: true, cat: "entry" },
-  target_pb_next_year: { label: "Target PB for Next Year", type: "number", money: true, cat: "entry" },
+  emp_name: { label: "Employee Name" },
+  appraisal_cycle_name: { label: "Appraisal Cycle Name" },
+  fy_year: { label: "FY Year" },
+  base_pay: { label: "Current Annual Base Pay", type: "number", money: true },
+  joining_bonus: { label: "Joining Bonus", type: "number", money: true },
+  performance_bonus: { label: "Performance Bonus", type: "number", money: true },
+  retention_bonus: { label: "Retention Bonus", type: "number", money: true },
+  hike_pct: { label: "Hike%", type: "number", pct: true },
+  hike_amt: { label: "Hike Amount", type: "number", money: true },
+  total_ctc_rewards: { label: "Total CTC with Rewards", type: "number", money: true },
+  total_reward_hike_amt: { label: "Total Reward Hike Amount", type: "number", money: true },
+  total_reward_hike_pct: { label: "Total Reward Hike%", type: "number", pct: true },
+  target_performance_agreed: { label: "Target Performance Agreed", type: "number", money: true },
+  total_bonus: { label: "Total Bonus", type: "number", money: true },
+  new_base_pay: { label: "New Base Pay", type: "number", money: true },
+  rb_paid: { label: "RB to be paid", type: "number", money: true },
+  rb_month: { label: "Month(RB)" },
+  pb_paid: { label: "PB to be paid", type: "number", money: true },
+  pb_month: { label: "Month(PB)" },
+  tb_paid: { label: "TB to be paid", type: "number", money: true },
+  tb_month: { label: "Month(TB)" },
 };
 
 function schemaLabel(name) {
@@ -37,12 +34,19 @@ function schemaLabel(name) {
 function buildColumnsFromSchema(schema) {
   const hidden = new Set(["ROWID", "CREATORID", "CREATEDTIME", "MODIFIEDTIME", "appraisal_cycle_id", "source_batch", "source_file"]);
   const schemaMap = new Map((schema?.columns || []).map((column) => [column.name, column]));
-  return Object.keys(STATIC_COL_META).filter((key) => schemaMap.has(key)).map((key) => {
+  return Object.keys(STATIC_COL_META).map((key) => {
     const column = schemaMap.get(key);
-    if (hidden.has(column.name)) return null;
+    if (column && hidden.has(column.name)) return null;
     const meta = STATIC_COL_META[key];
-    const type = /int|decimal|double|float|number|numeric|bigint/.test(column.type || "") ? "number" : "text";
-    return { key, label: meta.label || column.label || schemaLabel(key), type: meta.type || type, frozen: meta.frozen, money: meta.money, pct: meta.pct, cat: meta.cat };
+    const type = column && /int|decimal|double|float|number|numeric|bigint/.test(column.type || "") ? "number" : "text";
+    return {
+      key,
+      label: meta.label,
+      type: meta.type || type,
+      frozen: meta.frozen,
+      money: meta.money,
+      pct: meta.pct,
+    };
   }).filter(Boolean);
 }
 
