@@ -422,14 +422,18 @@ function mapPayroll(row, cycleById, employeeById = new Map()) {
   const cycleId = String(row.appraisal_cycle_name || "").trim();
   const cycle = cycleById.get(cycleId);
   const employee = employeeById.get(String(row.emp_id || "").trim().toLowerCase());
+  const businessEmpId = employee?.emp_id ?? "";
+  const employeeName = employee?.emp_name || employee?.name || "";
   const num = (key) => row[key] === undefined || row[key] === null || row[key] === "" ? 0 : Number(row[key]) || 0;
   const text = (key) => row[key] === undefined || row[key] === null ? "" : String(row[key]);
   return {
     ...row, id: rowId(row),
-    emp_id: text("emp_id"),
-    emp_name: employee?.emp_name || employee?.name || text("emp_name"),
+    // Payroll stores the Employee Master ROWID as the foreign key. Expose
+    // the human/business Employee ID to the UI instead of the internal ROWID.
+    emp_id: businessEmpId || text("emp_id"),
+    emp_name: employeeName || text("emp_name"),
     appraisal_cycle_name: cycle?.name || text("appraisal_cycle_name"),
-    empId: text("emp_id"), empName: employee?.emp_name || employee?.name || text("emp_name"),
+    empId: businessEmpId || text("emp_id"), empName: employeeName || text("emp_name"),
     appraisalCycleName: cycle?.name || text("appraisal_cycle_name"), fyYear: text("fy_year"),
     basePay: num("current_annual_base_pay"), joiningBonus: num("joining_bonus"),
     performanceBonus: num("performance_bonus"), retentionBonus: num("retention_bonus"),
