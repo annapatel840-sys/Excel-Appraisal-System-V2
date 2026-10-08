@@ -1135,6 +1135,7 @@ module.exports = async function payrollCycleApi(req, res) {
     if (resource === "validate" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
     if (resource === "commit" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
     if (resource === "undo" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "import" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
     if (resource.startsWith("cycles/") && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
     return sendJson(res, 404, { success: false, message: "The requested operation was not found." });
   } catch (error) {
