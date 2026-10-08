@@ -196,7 +196,7 @@ function normalizeEmployeeMasterData(data) {
 
     if (value !== null && value !== undefined && String(value).trim() !== "") {
       const text = String(value).trim();
-      const match = text.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})/);
+      const match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
 
       if (match) {
         normalized.date_of_join =
