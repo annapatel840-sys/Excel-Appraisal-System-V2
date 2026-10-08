@@ -150,7 +150,7 @@ export function AppShell({ children, headerActions }) {
       {!isCollapsed && (
         <div className={cn(!isVertical && "hidden xl:block")}>
           <h1 className="text-xs font-semibold leading-tight text-white">
-            Employee Appraisal Management
+            Compensation Tool Management
           </h1>
           <p className="text-[9px] text-white/70">
             FY 2025-26 · Compensation Review
