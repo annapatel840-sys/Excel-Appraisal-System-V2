@@ -499,19 +499,60 @@ export function UploadPage({ handlers = {} }) {
     file.rows.map(({ row, cells }) => {
       const record = { row };
 
-      // Employee Master must always resolve its key columns from the
-      // actual uploaded headers. This prevents a stale/partial UI mapping
-      // from dropping Employee ID and Employee Name before the API call.
-      const autoMapped =
-        screen === "emp" ? autoMap("emp", fields, file.headers) : map;
-      const resolvedMap = { ...autoMapped };
+      const resolvedMap =
+        screen === "emp"
+          ? autoMap("emp", fields, file.headers)
+          : { ...map };
+
+      // Keep explicit user selections, but never allow an old/empty mapping
+      // to remove the Employee Master key fields.
       Object.keys(map).forEach((key) => {
-        // Keep an explicit user selection, but never let a stale -1 value
-        // overwrite a valid automatic Employee Master mapping.
         if (map[key] >= 0) resolvedMap[key] = map[key];
       });
 
+      if (screen === "emp") {
+        // Employee Master keys are resolved directly from the uploaded
+        // headers. This is intentionally independent of React mapping state
+        // so Employee ID and Employee Name can never be dropped from payload.
+        const findHeaderIndex = (aliases) =>
+          file.headers.findIndex((header) => {
+            const normalized = norm(header);
+            return aliases.some((alias) => normalized === norm(alias));
+          });
+
+        const empIdIndex = findHeaderIndex([
+          "Employee ID",
+          "Emp ID",
+          "EmpID",
+          "EmployeeID",
+          "emp_id",
+        ]);
+        const nameIndex = findHeaderIndex([
+          "Employee Name",
+          "Emp Name",
+          "EmpName",
+          "EmployeeName",
+          "Name",
+          "emp_name",
+        ]);
+
+        if (empIdIndex >= 0) {
+          record.empId = normalizeCell("empId", cells[empIdIndex]);
+        }
+        if (nameIndex >= 0) {
+          record.name = normalizeCell("name", cells[nameIndex]);
+        }
+      }
+
       fields.forEach((f) => {
+        // These two fields were resolved explicitly above for Employee Master.
+        if (
+          screen === "emp" &&
+          (f.key === "empId" || f.key === "name")
+        ) {
+          return;
+        }
+
         let idx = resolvedMap[f.key];
 
         if (!(idx >= 0) && screen === "emp") {
