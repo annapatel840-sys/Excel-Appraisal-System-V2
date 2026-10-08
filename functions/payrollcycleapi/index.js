@@ -1215,12 +1215,19 @@ module.exports = async function payrollCycleApi(req, res) {
     // Keep the endpoint authenticated through requireIdentity, but do not require
     // Compensation access-role resolution for this read-only lookup.
     const resource = String(getQuery(req).resource || "");
-    const a = resource === "locations" && req.method === "GET"
-      ? { enforced: false, dryRun: true }
-      : await checkAccess(req);
 
+    // Session is the bootstrap endpoint used immediately after Catalyst login.
+    // Do not resolve screen/action permissions before returning the signed-in
+    // user, otherwise a valid Tech-Ed user with incomplete access mappings can
+    // be blocked with 403 before the app can even finish authentication.
     const identity = await requireIdentity(req);
     if (!identity) return sendJson(res, 401, { success: false, message: "Sign in with a Catalyst app user account to continue." });
+
+    const a = resource === "session"
+      ? { enforced: false, dryRun: true }
+      : resource === "locations" && req.method === "GET"
+        ? { enforced: false, dryRun: true }
+        : await checkAccess(req);
 
     // `return await` so errors thrown inside routeRequest reach the catch below
     // (a bare `return routeRequest(...)` left them as unhandled rejections).
