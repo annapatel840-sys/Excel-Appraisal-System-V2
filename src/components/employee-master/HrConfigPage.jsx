@@ -11,7 +11,7 @@ import { useMemo, useState, useEffect} from "react";
 
 const STORE = "hr_config_v1";
 const LOCATION_API_URL =
-  "https://excelappraisalmanagement-60090194508.development.catalystserverless.in/server/locationapi/";
+  "https://excelappraisalmanagement-60090194508.development.catalystserverless.in/server/payrollcycleapi/";
 const PROC_OPTS = [
   ["Annual", "Annual process"],
   ["Exceptional", "Exceptional process"],
@@ -173,7 +173,10 @@ const [locationsLoading, setLocationsLoading] = useState(true);
       try {
         setLocationsLoading(true);
 
-        const response = await fetch(LOCATION_API_URL, {
+        const locationUrl = new URL(LOCATION_API_URL);
+        locationUrl.searchParams.set("resource", "locations");
+
+        const response = await fetch(locationUrl, {
           method: "GET",
           headers: {
             Accept: "application/json",
