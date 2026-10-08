@@ -1,4 +1,4 @@
-import { useState, Fragment } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useBudget } from "@/lib/budget-store";
@@ -336,30 +336,35 @@ export function TechEdBudgetMasterPage() {
   }) : [];
 
   const [reports, setReports] = useState(kids0);
-  const [audit, setAudit] = useState(() => [
-    {
-      date: ALLOC_DATE,
-      owner: me.name,
-      from: null,
-      to: me.pct,
-      before: null,
-      after: me.original,
-      by: "HR Admin",
-      reason: "Initial allocation",
-      initial: true,
-    },
-    ...kids0.map((c) => ({
-      date: ALLOC_DATE,
-      owner: c.name,
-      from: null,
-      to: c.pct0,
-      before: null,
-      after: (c.base * c.pct0) / 100,
-      by: me.name,
-      reason: "Initial allocation",
-      initial: true,
-    })),
-  ]);
+  useEffect(() => {
+    setReports(kids0);
+  }, [liveTech, liveKids.length]);
+  const [audit, setAudit] = useState(() =>
+    me ? [
+      {
+        date: ALLOC_DATE,
+        owner: me.name,
+        from: null,
+        to: me.pct,
+        before: null,
+        after: me.original,
+        by: "HR Admin",
+        reason: "Initial allocation",
+        initial: true,
+      },
+      ...kids0.map((c) => ({
+        date: ALLOC_DATE,
+        owner: c.name,
+        from: null,
+        to: c.pct0,
+        before: null,
+        after: (c.base * c.pct0) / 100,
+        by: me.name,
+        reason: "Initial allocation",
+        initial: true,
+      })),
+    ] : []
+  );
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [nonce, setNonce] = useState(0);
