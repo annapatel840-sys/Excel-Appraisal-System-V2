@@ -56,6 +56,48 @@ const ONE_CRORE = 10000000;
 const formatCrore = (amount) => `₹ ${(amount / ONE_CRORE).toFixed(2)} Cr`;
 
 // ============================================================
+// APPRAISAL SHEET BUDGET NOTICE
+// Same budget-change message used by Detailed Screen.
+// ============================================================
+const BUDGET_NOTICE_PLACEHOLDER = {
+  from: "10.41 L",
+  to: "9.79 L",
+  changes: 5,
+  since: "01-Sep-26",
+};
+
+function BudgetNotice({ notice, onGotIt }) {
+  if (!notice) return null;
+
+  const budgetNoticeText =
+    `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`;
+
+  return (
+    <div className="flex items-center gap-3 rounded-md border border-[#e3e9ec] bg-white px-3 py-1.5">
+      <span className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-[#102a43]">
+        <span className="text-[#b42318]">▲</span>
+        Budget changed
+      </span>
+      <span
+        className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[12px] text-[#3e4c59]"
+        aria-label={budgetNoticeText}
+      >
+        <span className="appraisal-budget-marquee inline-block min-w-max">
+          {budgetNoticeText}
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={onGotIt}
+        className="shrink-0 rounded border border-[#c4ced6] bg-[#eef3f3] px-3 py-1 text-[11px] font-semibold text-[#102a43] hover:bg-[#e4ecec]"
+      >
+        Got it
+      </button>
+    </div>
+  );
+}
+
+// ============================================================
 // HEADER COUNTER
 // ============================================================
 
@@ -122,6 +164,7 @@ export function SheetPage() {
 
   const [auditOpen, setAuditOpen] = useState(false);
   const [lastEditedTarget, setLastEditedTarget] = useState("");
+  const [budgetNoticeOpen, setBudgetNoticeOpen] = useState(true);
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -301,8 +344,18 @@ export function SheetPage() {
 
   return (
     <>
+      <style>{`
+        .appraisal-budget-marquee{animation:appraisalBudgetMarquee 18s linear infinite}
+        .appraisal-budget-marquee:hover{animation-play-state:paused}
+        @keyframes appraisalBudgetMarquee{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+      `}</style>
       <AppShell headerActions={headerActions}>
         <div className={cn("flex min-h-0 flex-1 flex-col gap-2", budgetVertical && "pl-1 pr-0 pt-0")}>
+          <BudgetNotice
+            notice={budgetNoticeOpen ? BUDGET_NOTICE_PLACEHOLDER : null}
+            onGotIt={() => setBudgetNoticeOpen(false)}
+          />
+
           {(saveError || loadError) && (
             <div
               role="alert"
