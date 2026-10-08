@@ -11,23 +11,25 @@ function number(value) {
 }
 
 function normalizeRow(row) {
-  const base = number(row.budget_amount);
-  const additional = number(row.additional_budget);
-  const updated = base + additional;
-  const utilized = number(row.budget_utilized);
+  const calculated = number(row.calculated_budget);
+  const applied = number(row.applied_budget);
+  const utilized = number(row.budget_utilized ?? row.total_utilization);
   return {
     ...row,
     id: String(row.id || ""),
     appraisal_cycle_id: String(row.appraisal_cycle_id || ""),
-    tech_ed_id: String(row.tech_ed_id || ""),
-    budget_percentage: number(row.budget_percentage),
-    budget_amount: base,
-    additional_budget: additional,
+    tech_ed_id: String(row.tech_ed_id || row.appraiser_tech_ed_id || ""),
+    budget_percentage: number(row.budget_percentage ?? row.percentage),
+    budget_amount: calculated,
+    additional_budget: 0,
     budget_utilized: utilized,
-    budget_remaining: updated - utilized,
-    status: String(row.status || ""),
-    updated_budget: updated,
-    utilization_percentage: updated > 0 ? (utilized / updated) * 100 : 0,
+    budget_remaining: applied - utilized,
+    status: "Active",
+    updated_budget: applied,
+    calculated_budget: calculated,
+    applied_budget: applied,
+    total_utilization: number(row.total_utilization ?? row.budget_utilized),
+    utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
   };
 }
 
@@ -85,6 +87,9 @@ export function BudgetProvider({ children }) {
   const roleText = String(currentUser.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isHR = roleText === "hr" || roleText === "humanresources" || roleText === "hroperation";
   const [budgetRows, setBudgetRows] = useState([]);
+  const [budgetMasterRows, setBudgetMasterRows] = useState([]);
+  const [budgetDistributionRows, setBudgetDistributionRows] = useState([]);
+  const [budgetCompManagerRows, setBudgetCompManagerRows] = useState([]);
   const [employeeRows, setEmployeeRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -110,7 +115,33 @@ export function BudgetProvider({ children }) {
         throw new Error(statusText);
       }
 
-      setBudgetRows((Array.isArray(budgetJson && budgetJson.data) ? budgetJson.data : []).map(normalizeRow));
+      const techEdRows = Array.isArray(budgetJson && budgetJson.techEd)
+        ? budgetJson.techEd
+        : (Array.isArray(budgetJson && budgetJson.data) ? budgetJson.data : []);
+      const masterRows = Array.isArray(budgetJson && budgetJson.master) ? budgetJson.master : [];
+      const compRows = Array.isArray(budgetJson && budgetJson.compManager) ? budgetJson.compManager : [];
+      const normalizedTechEd = techEdRows.map(normalizeRow);
+      const normalizedMaster = masterRows.map(normalizeRow);
+      const normalizedComp = compRows.map((row) => ({
+        ...row,
+        id: String(row.id || ""),
+        appraisal_cycle_id: String(row.appraisal_cycle_id || ""),
+        budget_distribution_id: String(row.budget_distribution_id || ""),
+        comp_manager: String(row.comp_manager || ""),
+        percentage: number(row.percentage),
+        calculated_budget: number(row.calculated_budget),
+        total_utilization: number(row.total_utilization),
+        applied_budget: number(row.applied_budget),
+        utilization_percentage: number(row.applied_budget) > 0
+          ? (number(row.total_utilization) / number(row.applied_budget)) * 100
+          : 0,
+      }));
+      // Keep the existing budgetRows API shape for current screens, while
+      // exposing the three relational levels to every budget consumer.
+      setBudgetRows(normalizedTechEd);
+      setBudgetMasterRows(normalizedMaster);
+      setBudgetDistributionRows(normalizedTechEd);
+      setBudgetCompManagerRows(normalizedComp);
       setEmployeeRows(employeeResult.employees);
       if (employeeResult.employeeError) {
         console.error("Failed to load employees for budget counts:", employeeResult.employeeError);
@@ -119,6 +150,9 @@ export function BudgetProvider({ children }) {
     } catch (e) {
       console.error("Failed to load Budget Master:", e);
       setBudgetRows([]);
+      setBudgetMasterRows([]);
+      setBudgetDistributionRows([]);
+      setBudgetCompManagerRows([]);
       setEmployeeRows([]);
       setError(e && e.message || "Failed to load Budget Master.");
     } finally {
@@ -200,6 +234,9 @@ export function BudgetProvider({ children }) {
         currentUser,
         isHR,
         budgetRows: rows,
+        budgetMasterRows,
+        budgetDistributionRows,
+        budgetCompManagerRows,
         employeeCounts,
         totals,
         loading,
