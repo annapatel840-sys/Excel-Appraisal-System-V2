@@ -172,6 +172,7 @@ function Modal({ title, onClose, children, footer, error, wideModal }) {
 
 export function AppraisalCycleMasterPage({
   onNavigate,
+  canNavigate,
   pendingItems = [],
   cycleStats = null,
   onGenerateSheet,
@@ -267,10 +268,15 @@ export function AppraisalCycleMasterPage({
   /* ---------------- data ---------------- */
 
   const loadData = useCallback(async () => {
-    const [cycleRows, auditRows] = await Promise.all([
+    const [cycleResult, auditResult] = await Promise.allSettled([
       payrollCycleRequest("cycles"),
       payrollCycleRequest("audit"),
     ]);
+    if (cycleResult.status === "rejected") throw cycleResult.reason;
+    const cycleRows = cycleResult.value;
+    // Audit needs payroll access; without it the cycles still show.
+    const auditRows =
+      auditResult.status === "fulfilled" ? auditResult.value : [];
     setCycles(cycleRows);
     setAudit(
       auditRows.map((e) => ({
@@ -416,14 +422,9 @@ export function AppraisalCycleMasterPage({
 
   /* ---------------- rules ---------------- */
 
-  const otherAnnualRunning = (c) =>
-    cycles.some(
-      (x) =>
-        x.id !== c.id &&
-        x.process === "Annual" &&
-        x.status === "Active" &&
-        !x.archived,
-    );
+  // Only one cycle can be Active at a time (access follows the Active cycle).
+  const otherActive = (c) =>
+    cycles.find((x) => x.id !== c.id && x.status === "Active" && !x.archived);
 
   // Activate: Employee Master updated + payroll resolved (Annual process, when
   // data is supplied) + no other Annual cycle running + dates set.
@@ -458,25 +459,33 @@ export function AppraisalCycleMasterPage({
           ),
         );
       }
-      const other = otherAnnualRunning(c);
-      r.push(
-        rule(
-          "No other cycle on the Annual process running",
-          !other,
-          other
-            ? "Not met: another cycle on the Annual process is running"
-            : "Met",
-        ),
-      );
     }
-    const dOk = !!(c.effective && c.start && c.end && c.end > c.start);
+    const other = otherActive(c);
+    r.push(
+      rule(
+        "No other cycle active",
+        !other,
+        other
+          ? `Not met: close or archive ${other.name} first. Only one cycle can be Active at a time.`
+          : "Met",
+      ),
+    );
+    // Cycles on "No process" need only the effective date.
+    const dOk =
+      c.process === "None"
+        ? !!c.effective
+        : !!(c.effective && c.start && c.end && c.end > c.start);
     r.push(
       rule(
         "Dates set",
         dOk,
         dOk
-          ? `Effective ${formatDate(c.effective)} · Start ${formatDate(c.start)} · Close ${formatDate(c.end)}`
-          : "Effective, start and close dates are required; close must be after start",
+          ? c.process === "None"
+            ? `Effective ${formatDate(c.effective)}`
+            : `Effective ${formatDate(c.effective)} · Start ${formatDate(c.start)} · Close ${formatDate(c.end)}`
+          : c.process === "None"
+            ? "The effective date is required"
+            : "Effective, start and close dates are required; close must be after start",
       ),
     );
     return r;
@@ -517,31 +526,38 @@ export function AppraisalCycleMasterPage({
 
   const runStep = async (c, kind, remark, pendingSnap) => {
     let ok = false;
+    // Saved with the step in the same request; the server adds "Activate: …" etc.
+    const stepRemark = [
+      pendingSnap ? `Pending at that time: ${pendingSnap}` : "",
+      remark ? `Remark: ${remark}` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
     if (kind === "activate")
       ok = await mutateCycle(
         `cycles/status/${c.id}`,
-        { status: "Active" },
+        { status: "Active", remark: stepRemark },
         "Cycle activated",
         `${c.name} is now Active.`,
       );
     else if (kind === "close")
       ok = await mutateCycle(
         `cycles/status/${c.id}`,
-        { status: "Closed" },
+        { status: "Closed", remark: stepRemark },
         "Cycle closed",
         `${c.name} is now Closed.`,
       );
     else if (kind === "reopen")
       ok = await mutateCycle(
         `cycles/status/${c.id}`,
-        { status: "Active" },
+        { status: "Active", remark: stepRemark },
         "Cycle reopened",
         `${c.name} is Active again.`,
       );
     else if (kind === "archive")
       ok = await mutateCycle(
         `cycles/archive/${c.id}`,
-        { archived: true },
+        { archived: true, remark: stepRemark },
         "Cycle archived",
         `${c.name} was archived.`,
       );
@@ -553,26 +569,6 @@ export function AppraisalCycleMasterPage({
         `${c.name} was deleted.`,
       );
 
-    const label = {
-      activate: "Activate",
-      close: "Close",
-      archive: "Archive",
-      reopen: "Reopen",
-    }[kind];
-    const text = [
-      pendingSnap ? `Pending at that time: ${pendingSnap}` : "",
-      remark ? `Remark: ${remark}` : "",
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    if (ok && label && text) {
-      await mutateCycle(
-        `cycles/remarks/${c.id}`,
-        { remarks: `${c.remarks ? c.remarks + " | " : ""}${label}: ${text}` },
-        "Remark saved",
-        `Your remark was added to ${c.name}.`,
-      );
-    }
     return ok;
   };
 
@@ -695,9 +691,9 @@ export function AppraisalCycleMasterPage({
       return setModalError("Remarks cannot exceed 10,000 characters.");
     const saved = await mutateCycle(
       `cycles/remarks/${remarksCycle.id}`,
-      { remarks },
-      "Remarks updated",
-      `${remarksCycle.name} remarks were saved.`,
+      { remark: remarks },
+      "Remark added",
+      `Your remark was added to ${remarksCycle.name}.`,
     );
     if (saved) setRemarksCycle(null);
   };
@@ -722,10 +718,10 @@ export function AppraisalCycleMasterPage({
 
   const newName = (f) => {
     const base = `${f.type} ${f.year}`;
+    // Cancelled cycles keep their name (names are unique), so count them too.
     const same = cycles.filter(
       (x) =>
         (x.name === base || x.name.startsWith(`${base} (`)) &&
-        x.status !== "Cancelled" &&
         x.status !== "Deleted",
     );
     if (f.type === "Exceptional" && same.length)
@@ -751,9 +747,14 @@ export function AppraisalCycleMasterPage({
     if (f.type !== "Exceptional") {
       const dup = cycles.find(
         (x) =>
-          x.name === name && x.status !== "Cancelled" && x.status !== "Deleted",
+          x.name.toLowerCase() === name.toLowerCase() && x.status !== "Deleted",
       );
-      if (dup) return setModalError(`${name} already exists (ID ${dup.id}).`);
+      if (dup)
+        return setModalError(
+          dup.status === "Cancelled"
+            ? `${name} was used by a cancelled cycle (ID ${dup.id}); the name cannot be reused.`
+            : `${name} already exists (ID ${dup.id}).`,
+        );
     }
     if (ENFORCE_ONE_OPEN_ANNUAL && f.process === "Annual") {
       const prev = cycles.find(
@@ -786,6 +787,13 @@ export function AppraisalCycleMasterPage({
   };
 
   /* ---------------- navigation ---------------- */
+
+  // A link is shown only when its screen can be opened from here.
+  const canGo = (id) => {
+    const tabKey = NAV_TAB[id];
+    if (!tabKey || !onNavigate) return false;
+    return canNavigate ? !!canNavigate(tabKey) : true;
+  };
 
   const navTo = (id) => {
     const tabKey = NAV_TAB[id];
@@ -1004,7 +1012,7 @@ export function AppraisalCycleMasterPage({
           {x.kind === "ok" ? "✓ " : "✗ "}
           {x.txt}
         </span>
-        {x.act && !x.ok && (
+        {x.act && !x.ok && canGo(x.act) && (
           <button
             type="button"
             className="acx-btn link"
@@ -1329,7 +1337,9 @@ export function AppraisalCycleMasterPage({
                     <span>{r.sub}</span>
                   </span>
                   <span className="ac">
-                    {r.acts.map((a) => (
+                    {r.acts
+                      .filter((a) => a.id === "gen" || canGo(a.id))
+                      .map((a) => (
                       <button
                         key={a.id}
                         type="button"
@@ -1479,13 +1489,15 @@ export function AppraisalCycleMasterPage({
                   Master and payroll).
                 </div>
               </div>
-              <button
-                type="button"
-                className="acx-btn sm"
-                onClick={() => navTo("go-dashboard")}
-              >
-                Open dashboard ›
-              </button>
+              {canGo("go-dashboard") && (
+                <button
+                  type="button"
+                  className="acx-btn sm"
+                  onClick={() => navTo("go-dashboard")}
+                >
+                  Open dashboard ›
+                </button>
+              )}
             </div>
             {items
               .filter((x) => selKey === "all" || x.k === selKey)
@@ -1496,13 +1508,15 @@ export function AppraisalCycleMasterPage({
                     <div className="bg">{x.n ? `${x.n} pending` : "None"}</div>
                     <div className="m1">{x.sub}</div>
                   </div>
-                  <button
-                    type="button"
-                    className="acx-btn sm"
-                    onClick={() => navTo(PEND_NAV[x.k])}
-                  >
-                    Open ›
-                  </button>
+                  {canGo(PEND_NAV[x.k]) && (
+                    <button
+                      type="button"
+                      className="acx-btn sm"
+                      onClick={() => navTo(PEND_NAV[x.k])}
+                    >
+                      Open ›
+                    </button>
+                  )}
                 </div>
               ))}
           </>

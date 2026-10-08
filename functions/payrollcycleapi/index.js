@@ -16,6 +16,55 @@ const TABLES = {
   audit: "74008000000034940",
 };
 const PAGE_SIZE = 200;
+
+/* ---------- Appraisal cycles ---------- */
+const CYCLE_TYPES = ["Annual", "Mid-Year", "Exceptional", "New Joiner"];
+const CYCLE_PROCESSES = ["Annual", "Exceptional", "None"];
+// Default process when a cycle has none stored (same defaults as HR Config).
+const DEFAULT_CYCLE_PROCESS = { Annual: "Annual", "Mid-Year": "Annual", Exceptional: "Exceptional", "New Joiner": "None" };
+// Status moves HR may make: activate, close, reopen.
+const CYCLE_MOVES = { Upcoming: ["Active"], Active: ["Closed"], Closed: ["Active"] };
+// Optional Appraisal_Cycle_Master columns. Values are saved only when the
+// column exists, so the function works before and after they are added.
+const OPTIONAL_CYCLE_COLUMNS = ["cycle_type", "process", "effective_date", "cancel_reason"];
+const BUSINESS_TZ = "Asia/Kolkata";
+
+// "YYYY-MM-DD HH:mm:ss" in the project's time zone (IST), not UTC.
+function nowLocal(date = new Date()) {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: BUSINESS_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+    }).formatToParts(date).map((x) => [x.type, x.value]),
+  );
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+}
+const todayLocal = () => nowLocal().slice(0, 10);
+
+function cycleTypeOf(name) {
+  const lower = String(name || "").toLowerCase();
+  return CYCLE_TYPES.find((type) => lower.startsWith(type.toLowerCase())) || "Annual";
+}
+const cycleProcessOf = (cycle) => cycle.process || DEFAULT_CYCLE_PROCESS[cycle.type || cycleTypeOf(cycle.name)] || "Annual";
+
+let cycleColumnCache = { at: 0, names: null };
+async function cycleColumns(table) {
+  if (cycleColumnCache.names && Date.now() - cycleColumnCache.at < 5 * 60 * 1000) return cycleColumnCache.names;
+  try {
+    const columns = await table.getAllColumns();
+    cycleColumnCache = { at: Date.now(), names: new Set(columns.map((c) => c.column_name)) };
+  } catch (error) {
+    console.error("Appraisal_Cycle_Master columns could not be read:", error && error.message);
+    return new Set();
+  }
+  return cycleColumnCache.names;
+}
+function withOptionalColumns(columns, row, values) {
+  OPTIONAL_CYCLE_COLUMNS.forEach((key) => {
+    if (columns.has(key) && values[key] !== undefined) row[key] = values[key];
+  });
+  return row;
+}
 const MAX_UPLOAD_ROWS = 5000;
 
 const SCHEMA_SYSTEM_COLUMNS = new Set(["ROWID", "CREATORID", "CREATEDTIME", "MODIFIEDTIME"]);
@@ -236,6 +285,13 @@ async function getAllRows(table) {
   return rows;
 }
 
+// Without a cancel_reason column the reason is kept in the remarks.
+function cancelReasonFromRemarks(row) {
+  if (String(row.status || "") !== "Cancelled") return "";
+  const match = String(row.remarks || "").match(/(?:^|\| )Cancelled: ([^|]*)$/);
+  return match ? match[1].trim() : "";
+}
+
 function normalizeCycle(row) {
   const id = rowId(row) || String(row.id || row.ID || "").trim();
   const name = String(
@@ -256,6 +312,10 @@ function normalizeCycle(row) {
     changedBy: row.changed_by || "",
     changedAt: row.changed_at || "",
     archived: row.archived === true || row.archived === "true",
+    type: row.cycle_type || "",
+    process: row.process || "",
+    effective: row.effective_date || "",
+    cancelReason: row.cancel_reason || cancelReasonFromRemarks(row),
   };
 }
 
@@ -378,7 +438,7 @@ async function writeAudit(auditTable, {
     old_value: String(oldValue).slice(0, 50),
     new_value: String(newValue).slice(0, 50),
     changed_by: actor,
-    changed_at: new Date().toISOString().replace("T", " ").slice(0, 19),
+    changed_at: nowLocal(),
     source,
     batch_id: batchId || cycle?.id || "",
     appraisal_year: cycle?.name || "",
@@ -913,100 +973,176 @@ async function routeRequest(req, res, identity, resource, a) {
       const date = new Date(`${value}T00:00:00.000Z`);
       return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
     };
-    const validDates = (start, end) => validDate(start) && validDate(end) && end > start;
-    const now = new Date().toISOString().replace("T", " ").slice(0, 19);
+    const now = nowLocal();
+    const columns = await cycleColumns(tables.cycles);
+
+    // Cycle fields from the screen. Cycles on "No process" need only the
+    // effective date; the others need start < end (effective defaults to start).
+    const readCycleFields = (fallback = {}) => {
+      const name = String(body.name ?? fallback.name ?? "").trim();
+      const type = String(body.type ?? (fallback.type || cycleTypeOf(name))).trim();
+      const process = String(body.process ?? (fallback.process || DEFAULT_CYCLE_PROCESS[type] || "Annual")).trim();
+      const start = String(body.start ?? fallback.start ?? "").trim();
+      const end = String(body.end ?? fallback.end ?? "").trim();
+      const effective = String(body.effective ?? (fallback.effective || start)).trim();
+      let error = "";
+      if (!name || name.length > 100) error = "Provide a cycle name (up to 100 characters).";
+      else if (!CYCLE_TYPES.includes(type)) error = `Cycle type must be one of: ${CYCLE_TYPES.join(", ")}.`;
+      else if (!CYCLE_PROCESSES.includes(process)) error = "Process must be Annual, Exceptional or None.";
+      else if (process === "None") {
+        if (!validDate(effective)) error = "The effective date is required (YYYY-MM-DD).";
+        else if ((start || end) && !(validDate(start) && validDate(end) && end > start)) error = "If you give start and close dates, both must be valid and close must be after start.";
+      } else if (!(validDate(start) && validDate(end) && end > start)) error = "Provide valid start and close dates; close must be after start.";
+      else if (effective && !validDate(effective)) error = "The effective date must be a valid date (YYYY-MM-DD).";
+      return { name, type, process, start: start || null, end: end || null, effective: effective || start, error };
+    };
+    const optionalValues = (fields) => ({ cycle_type: fields.type, process: fields.process, effective_date: fields.effective || null });
+    // Until effective_date exists, a "No process" cycle keeps its effective
+    // date in start_date (the screen shows start as the effective date).
+    const storedStart = (fields) => fields.start || (!columns.has("effective_date") && fields.process === "None" ? fields.effective : null);
+    const appendRemark = (current, entry) => (current ? `${current} | ${entry}` : entry);
+    // Only one cycle may be Active: access scoping follows the Active cycle.
+    const otherActiveCycle = (id) => cycles.find((cycle) => cycle.status === "Active" && cycle.id !== id && !cycle.archived);
 
     if (action === "create") {
-      const name = String(body.name || "").trim();
-      const start = String(body.start || "");
-      const end = String(body.end || "");
+      const fields = readCycleFields();
       const remarks = String(body.remarks || "").trim();
-      if (!name || name.length > 100 || remarks.length > 10000 || !validDates(start, end)) {
-        return sendJson(res, 400, { success: false, message: "Provide a cycle name (up to 100 characters), remarks (up to 10,000 characters), and valid start/end dates; end date must be after start date." });
+      if (fields.error || remarks.length > 10000) {
+        return sendJson(res, 400, { success: false, message: fields.error || "Remarks cannot exceed 10,000 characters." });
       }
-      if (cycles.some((cycle) => cycle.name.toLowerCase() === name.toLowerCase())) {
-        return sendJson(res, 409, { success: false, message: "An appraisal cycle with that name already exists." });
+      // cycle_name is unique in the Data Store, cancelled cycles included.
+      const same = cycles.find((cycle) => cycle.name.toLowerCase() === fields.name.toLowerCase());
+      if (same) {
+        return sendJson(res, 409, { success: false, message: same.status === "Cancelled" ? `"${same.name}" was used by a cancelled cycle. Choose another name.` : "An appraisal cycle with that name already exists." });
       }
-      const created = await tables.cycles.insertRow({
-        cycle_name: name,
-        start_date: start,
-        end_date: end,
-        status: "Upcoming",
-        remarks,
-        changed_by: actor,
-        changed_at: now,
-        archived: false,
-      });
-      const cycle = normalizeCycle({ ...created, cycle_name: name, start_date: start, end_date: end, status: "Upcoming", remarks, changed_by: actor, changed_at: now, archived: false });
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle, action: "Created cycle", details: { kind: "cycle", action: "Created cycle", message: "Cycle created as Upcoming.", cycleName: cycle.name, newRemarks: cycle.remarks } });
+      const row = withOptionalColumns(columns, {
+        cycle_name: fields.name, start_date: storedStart(fields), end_date: fields.end, status: "Upcoming",
+        remarks, changed_by: actor, changed_at: now, archived: false,
+      }, optionalValues(fields));
+      const created = await tables.cycles.insertRow(row);
+      const cycle = normalizeCycle({ ...row, ...created });
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle, action: "Created cycle", details: { kind: "cycle", action: "Created cycle", message: `Cycle created as Upcoming (${fields.type}, ${fields.process === "None" ? "no process" : fields.process + " process"}).`, cycleName: cycle.name, newRemarks: cycle.remarks } });
       return sendJson(res, 201, { success: true, data: cycle });
     }
 
     if (!existing || !id) return sendJson(res, 404, { success: false, message: "Appraisal cycle not found." });
+    if (existing.status === "Cancelled" && action !== "remarks") {
+      return sendJson(res, 409, { success: false, message: "This cycle was cancelled and can no longer be changed." });
+    }
 
     if (action === "update") {
-      const name = String(body.name || "").trim();
-      const start = String(body.start || "");
-      const end = String(body.end || "");
-      if (!name || name.length > 100 || !validDates(start, end)) {
-        return sendJson(res, 400, { success: false, message: "Provide a cycle name (up to 100 characters) and valid start/end dates; end date must be after start date." });
-      }
-      if (cycles.some((cycle) => cycle.id !== id && cycle.name.toLowerCase() === name.toLowerCase())) {
+      if (existing.archived) return sendJson(res, 409, { success: false, message: "Archived cycles are read-only." });
+      const fields = readCycleFields({ ...existing, type: existing.type || cycleTypeOf(existing.name), process: cycleProcessOf(existing) });
+      if (fields.error) return sendJson(res, 400, { success: false, message: fields.error });
+      if (cycles.some((cycle) => cycle.id !== id && cycle.name.toLowerCase() === fields.name.toLowerCase())) {
         return sendJson(res, 409, { success: false, message: "An appraisal cycle with that name already exists." });
       }
-      await tables.cycles.updateRow({ ROWID: id, cycle_name: name, start_date: start, end_date: end, changed_by: actor, changed_at: now });
-      const updated = { ...existing, name, start, end, changedBy: actor, changedAt: now };
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Cycle edited", details: { kind: "cycle", action: "Cycle edited", message: "Cycle name or dates updated.", cycleName: name } });
+      // The process is fixed once the cycle has been activated.
+      if (existing.status !== "Upcoming" && fields.process !== cycleProcessOf(existing)) {
+        return sendJson(res, 409, { success: false, message: "The process can only be changed while the cycle is Upcoming." });
+      }
+      const row = withOptionalColumns(columns, {
+        ROWID: id, cycle_name: fields.name, start_date: storedStart(fields), end_date: fields.end, changed_by: actor, changed_at: now,
+      }, optionalValues(fields));
+      await tables.cycles.updateRow(row);
+      const updated = { ...existing, name: fields.name, start: storedStart(fields) || "", end: fields.end || "", changedBy: actor, changedAt: now };
+      if (columns.has("cycle_type")) updated.type = fields.type;
+      if (columns.has("process")) updated.process = fields.process;
+      if (columns.has("effective_date")) updated.effective = fields.effective || "";
+      const before = { name: existing.name, type: existing.type, process: existing.process, effective: existing.effective, start: existing.start, end: existing.end };
+      const after = { name: updated.name, type: updated.type, process: updated.process, effective: updated.effective, start: updated.start, end: updated.end };
+      const changed = Object.keys(before).filter((key) => String(before[key] || "") !== String(after[key] || ""));
+      const describe = (v) => changed.map((key) => `${key} ${v[key] || "—"}`).join(", ");
+      await writeAudit(tables.audit, {
+        actor, source: "cycle", cycle: updated, action: "Cycle edited",
+        oldValue: describe(before), newValue: describe(after),
+        details: { kind: "cycle", action: "Cycle edited", message: changed.length ? `Changed: ${changed.map((key) => `${key} ${before[key] || "—"} → ${after[key] || "—"}`).join("; ")}.` : "No values changed.", cycleName: updated.name, before, after },
+      });
       return sendJson(res, 200, { success: true, data: updated });
     }
 
     if (action === "remarks") {
-      const remarks = String(body.remarks || "");
+      // Remarks are a running log: a new remark is added, nothing is overwritten.
+      const remark = String(body.remark ?? body.remarks ?? "").trim();
+      if (!remark) return sendJson(res, 400, { success: false, message: "Enter a remark." });
+      const remarks = appendRemark(existing.remarks, remark);
       if (remarks.length > 10000) return sendJson(res, 400, { success: false, message: "Remarks exceed 10,000 characters." });
       await tables.cycles.updateRow({ ROWID: id, remarks, changed_by: actor, changed_at: now });
       const updated = { ...existing, remarks, changedBy: actor, changedAt: now };
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Remarks changed", details: { kind: "cycle", action: "Remarks changed", message: "Cycle remarks updated.", cycleName: updated.name, newRemarks: remarks } });
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Remarks changed", details: { kind: "cycle", action: "Remarks changed", message: "Remark added.", cycleName: updated.name, newRemarks: remark } });
       return sendJson(res, 200, { success: true, data: updated });
     }
 
     if (action === "status") {
       const status = String(body.status || "");
+      const remark = String(body.remark || "").trim();
       if (!["Upcoming", "Active", "Closed"].includes(status)) return sendJson(res, 400, { success: false, message: "Status must be Upcoming, Active, or Closed." });
-      if (existing.archived && status === "Active") return sendJson(res, 409, { success: false, message: "Unarchive the cycle before activating it." });
-      const otherActive = cycles.find((cycle) =>
-        cycle.status === "Active" && cycle.id !== id && !cycle.archived,
-      );
-      if (status === "Active" && otherActive) {
-        return sendJson(res, 409, { success: false, message: `Archive "${otherActive.name}" before activating another cycle.` });
+      if (existing.archived) return sendJson(res, 409, { success: false, message: "Archived cycles are read-only. Unarchive the cycle first." });
+      if (!(CYCLE_MOVES[existing.status] || []).includes(status)) {
+        return sendJson(res, 409, { success: false, message: `A cycle cannot move from ${existing.status} to ${status}.` });
       }
-      await tables.cycles.updateRow({ ROWID: id, status, changed_by: actor, changed_at: now });
-      if (status !== existing.status) await bumpAccessVersion(req, a, "Cycle status changed: " + existing.name);
-      const updated = { ...existing, status, changedBy: actor, changedAt: now };
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Status changed", details: { kind: "cycle", action: "Status changed", message: `Cycle status changed from ${existing.status} to ${status}.`, cycleName: updated.name } });
+      const otherActive = otherActiveCycle(id);
+      if (status === "Active" && otherActive) {
+        return sendJson(res, 409, { success: false, message: `Close or archive "${otherActive.name}" first. Only one cycle can be Active at a time.` });
+      }
+      const verb = existing.status === "Closed" ? "Reopen" : status === "Active" ? "Activate" : "Close";
+      const remarks = remark ? appendRemark(existing.remarks, `${verb}: ${remark}`) : existing.remarks;
+      if (remarks.length > 10000) return sendJson(res, 400, { success: false, message: "Remarks exceed 10,000 characters." });
+      const row = { ROWID: id, status, changed_by: actor, changed_at: now };
+      if (remark) row.remarks = remarks;
+      // The process is locked at activation: store the one in use.
+      if (status === "Active" && !existing.process) withOptionalColumns(columns, row, { process: cycleProcessOf(existing) });
+      await tables.cycles.updateRow(row);
+      await bumpAccessVersion(req, a, "Cycle status changed: " + existing.name);
+      const updated = { ...existing, status, remarks, changedBy: actor, changedAt: now };
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Status changed", details: { kind: "cycle", action: "Status changed", message: `Cycle status changed from ${existing.status} to ${status}.`, cycleName: updated.name, ...(remark ? { newRemarks: `${verb}: ${remark}` } : {}) } });
       return sendJson(res, 200, { success: true, data: updated });
     }
 
     if (action === "archive") {
       if (typeof body.archived !== "boolean") return sendJson(res, 400, { success: false, message: "Archived must be true or false." });
       const archived = body.archived;
-      const otherActive = cycles.find((cycle) => cycle.status === "Active" && cycle.id !== id && !cycle.archived);
+      const remark = String(body.remark || "").trim();
+      if (archived && existing.status !== "Closed") return sendJson(res, 409, { success: false, message: "Close the cycle before archiving it." });
+      const otherActive = otherActiveCycle(id);
       if (!archived && existing.status === "Active" && otherActive) {
-        return sendJson(res, 409, { success: false, message: `Archive "${otherActive.name}" before unarchiving this active cycle.` });
+        return sendJson(res, 409, { success: false, message: `Close or archive "${otherActive.name}" before unarchiving this active cycle.` });
       }
-      await tables.cycles.updateRow({ ROWID: id, archived, changed_by: actor, changed_at: now });
-      const updated = { ...existing, archived, changedBy: actor, changedAt: now };
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: archived ? "Cycle archived" : "Cycle unarchived", details: { kind: "cycle", action: archived ? "Cycle archived" : "Cycle unarchived", message: archived ? "Cycle archived." : "Cycle unarchived.", cycleName: updated.name } });
+      const remarks = remark ? appendRemark(existing.remarks, `${archived ? "Archive" : "Unarchive"}: ${remark}`) : existing.remarks;
+      if (remarks.length > 10000) return sendJson(res, 400, { success: false, message: "Remarks exceed 10,000 characters." });
+      const row = { ROWID: id, archived, changed_by: actor, changed_at: now };
+      if (remark) row.remarks = remarks;
+      await tables.cycles.updateRow(row);
+      const updated = { ...existing, archived, remarks, changedBy: actor, changedAt: now };
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: archived ? "Cycle archived" : "Cycle unarchived", details: { kind: "cycle", action: archived ? "Cycle archived" : "Cycle unarchived", message: archived ? "Cycle archived." : "Cycle unarchived.", cycleName: updated.name, ...(remark ? { newRemarks: `${archived ? "Archive" : "Unarchive"}: ${remark}` } : {}) } });
+      return sendJson(res, 200, { success: true, data: updated });
+    }
+
+    if (action === "cancel") {
+      const reason = String(body.reason || "").trim();
+      if (!reason || reason.length > 1000) return sendJson(res, 400, { success: false, message: "Give a reason for cancelling (up to 1,000 characters)." });
+      if (existing.archived || !["Upcoming", "Active"].includes(existing.status)) {
+        return sendJson(res, 409, { success: false, message: "Only Upcoming or Active cycles can be cancelled." });
+      }
+      const remarks = appendRemark(existing.remarks, `Cancelled: ${reason.replace(/\|/g, "/")}`);
+      if (remarks.length > 10000) return sendJson(res, 400, { success: false, message: "Remarks exceed 10,000 characters." });
+      const row = withOptionalColumns(columns, { ROWID: id, status: "Cancelled", remarks, changed_by: actor, changed_at: now }, { cancel_reason: reason });
+      await tables.cycles.updateRow(row);
+      if (existing.status === "Active") await bumpAccessVersion(req, a, "Active cycle cancelled: " + existing.name);
+      const updated = { ...existing, status: "Cancelled", remarks, cancelReason: reason, changedBy: actor, changedAt: now };
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Cycle cancelled", oldValue: existing.status, newValue: "Cancelled", details: { kind: "cycle", action: "Cycle cancelled", message: `Cycle cancelled (was ${existing.status}). Reason: ${reason}`, cycleName: updated.name, newRemarks: `Cancelled: ${reason}` } });
       return sendJson(res, 200, { success: true, data: updated });
     }
 
     if (action === "delete") {
-      if (new Date().toISOString().slice(0, 10) >= existing.start) {
+      // Compare dates in IST (the business time zone), not UTC.
+      if (existing.start && todayLocal() >= existing.start) {
         return sendJson(res, 409, { success: false, message: "A cycle can only be deleted before its start date." });
       }
+      if (existing.status !== "Upcoming") return sendJson(res, 409, { success: false, message: "Only Upcoming cycles can be deleted." });
       const relatedPayroll = (await getAllRows(tables.payroll)).some((row) => String(row.appraisal_cycle_name || "") === id);
       if (relatedPayroll) return sendJson(res, 409, { success: false, message: "Cycles with payroll records cannot be deleted." });
       await tables.cycles.deleteRow(id);
-      if (existing.status === "Active") await bumpAccessVersion(req, a, "Active cycle deleted: " + existing.name);
       await writeAudit(tables.audit, { actor, source: "cycle", cycle: existing, action: "Cycle deleted", details: { kind: "cycle", action: "Cycle deleted", message: "Cycle deleted before its start date.", cycleName: existing.name } });
       return sendJson(res, 200, { success: true, data: { id } });
     }
