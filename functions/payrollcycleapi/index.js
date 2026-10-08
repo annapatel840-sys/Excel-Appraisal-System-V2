@@ -476,9 +476,9 @@ async function validateUpload(tables, body) {
     const rowNumber = Number(input.row) || index + 2;
     const empId = String(input.empId || "").trim();
     const requestedCycle = String(input.appraisalCycleName || "").trim();
-    const rowCycle =
-      (requestedCycle && (cycleById.get(requestedCycle) || cycleByName.get(requestedCycle.toLowerCase()))) ||
-      selectedCycle;
+    const rowCycle = requestedCycle
+      ? (cycleById.get(requestedCycle) || cycleByName.get(requestedCycle.toLowerCase()) || null)
+      : selectedCycle;
     const errors = [];
 
     if (!record || typeof record !== "object" || Array.isArray(record)) {
@@ -490,7 +490,7 @@ async function validateUpload(tables, body) {
       errors.push("Employee ID not found in Employee Master.");
     }
     if (requestedCycle && !rowCycle) {
-      errors.push(`Appraisal Cycle Name "${requestedCycle}" was not found.`);
+      errors.push(`Appraisal Cycle Name "${requestedCycle}" was not found. Create this cycle before uploading payroll.`);
     }
 
     const key = `${empId.toLowerCase()}|${rowCycle?.id || ""}`;
