@@ -1,6 +1,7 @@
 import { Fragment, useMemo, useState } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
+import { useBudget } from "@/lib/budget-store";
 
 /* Budget Distribution as a Tech ED sees it (design: Budget Allocation view of
    the "Detail Screen & Budget" prototype).
@@ -175,7 +176,34 @@ function AuditTable({ list, showName }) {
 
 export function TechEdBudgetDistribution() {
   const user = useCatalystUser();
-  const myName = user?.name || "Vikram Rao";
+  const {
+    budgetDistributionRows,
+    budgetCompManagerRows,
+    budgetMasterRows,
+    updateBudget,
+    loading: budgetLoading,
+    error: budgetError,
+  } = useBudget();
+  const myName = user?.name || "Unknown user";
+  const liveTech = useMemo(() => {
+    const name = String(myName).trim().toLowerCase();
+    return budgetDistributionRows.find((r) => {
+      const owner = String(r.appraiser_tech_ed_id || "").trim().toLowerCase();
+      return owner && (owner === name || owner.includes(name) || name.includes(owner));
+    }) || budgetDistributionRows[0] || null;
+  }, [budgetDistributionRows, myName]);
+  const liveComps = useMemo(
+    () => liveTech
+      ? budgetCompManagerRows.filter((r) => String(r.budget_distribution_id) === String(liveTech.id))
+      : [],
+    [budgetCompManagerRows, liveTech],
+  );
+  const liveMaster = useMemo(
+    () => liveTech
+      ? budgetMasterRows.find((r) => String(r.appraisal_cycle_id) === String(liveTech.appraisal_cycle_id)) || budgetMasterRows[0]
+      : budgetMasterRows[0],
+    [budgetMasterRows, liveTech],
+  );
 
   const [pane, setPane] = useState({ mine: true, alloc: true, audit: true });
   const [appliedOpen, setAppliedOpen] = useState(false);
@@ -194,8 +222,15 @@ export function TechEdBudgetDistribution() {
   );
 
   const cmNodes = useMemo(() => {
-    const source = DEMO.compManagers.map((cm, index) => {
-      const live = liveComps[index];
+    if (!liveTech) return [];
+    const source = liveComps.map((live, index) => {
+      const cm = DEMO.compManagers[index] || {
+        name: live.comp_manager || "Comp Manager",
+        pct0: Number(live.percentage) || 0,
+        team0: [],
+        team: [],
+        base: Number(live.percentage) ? (Number(live.calculated_budget) * 100) / Number(live.percentage) : 0,
+      };
       if (!live) return cm;
       const demoBase = num(cm.base);
       const pct = num(live.percentage) || cm.pct;
@@ -216,12 +251,12 @@ export function TechEdBudgetDistribution() {
 
   const allTeam0 = DEMO.compManagers.flatMap((c) => c.team0);
   const allTeam = DEMO.compManagers.flatMap((c) => c.team);
-  const myPct = liveTech ? num(liveTech.percentage) : DEMO.techEdPct;
-  const myOriginal = liveTech ? num(liveTech.calculated_budget) : (baseOf([...new Set(allTeam0)]) * myPct) / 100;
-  const myUpdated = liveTech ? num(liveTech.applied_budget) : (baseOf(allTeam) * myPct) / 100;
-  const team0 = new Set(allTeam0).size;
+  const myPct = liveTech ? num(liveTech.percentage) : 0;
+  const myOriginal = liveTech ? num(liveTech.calculated_budget) : 0;
+  const myUpdated = liveTech ? num(liveTech.applied_budget) : 0;
+  const team0 = liveTech ? allTeam0.length : 0;
   const allotted = cmNodes.reduce((s, n) => s + n.updated, 0);
-  const used = liveTech ? num(liveTech.total_utilization) : hikeOf(allTeam);
+  const used = liveTech ? num(liveTech.total_utilization) : 0;
   const usedPct = myUpdated ? (used / myUpdated) * 100 : 0;
   const over = usedPct > 100;
 
@@ -314,13 +349,16 @@ export function TechEdBudgetDistribution() {
 
       <div className="demo-banner">Sample data for UI review — budgets, teams and changes on this screen are not from the Data Store.</div>
 
+      {!liveTech ? (
+        <div className="berr">No Budget Distribution record is available for the signed-in Tech-Ed.</div>
+      ) : null}
       <div className="btop">
         <span>
-          Appraisal cycle <b>{DEMO.cycle}</b>
+          Appraisal cycle <b>{liveTech?.appraisal_cycle_id || "—"}</b>
         </span>
         <span className="sep" />
         <span>
-          Allocated {dateText(DEMO.allocation.date)} by {DEMO.allocation.by}
+          Allocated from Budget Master · applied {liveMaster ? lakh(liveMaster.applied_budget) : "—"}
         </span>
         <span className="sep" />
         <span>
@@ -328,7 +366,7 @@ export function TechEdBudgetDistribution() {
         </span>
         <span className="sep" />
         <span className="applied">
-          Budget applied by HR: <b>{myPct}%</b> <span className="muted-small">(org default)</span> = <b>{lakh(myUpdated)}</b> updated · original{" "}
+          Budget applied by HR: <b>{liveMaster ? num(liveMaster.budget_percentage) : myPct}%</b> = <b>{lakh(myUpdated)}</b> updated · original{" "}
           {lakh(myOriginal)}
           <button type="button" className="dd" aria-expanded={appliedOpen} onClick={() => setAppliedOpen((v) => !v)}>
             % history {appliedOpen ? "▴" : "▾"}
