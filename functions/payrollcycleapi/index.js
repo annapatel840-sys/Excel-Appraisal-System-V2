@@ -249,6 +249,7 @@ function normalizeCycle(row) {
   return {
     id,
     name,
+    effective: row.effective_date || row.effectiveDate || "",
     start: row.start_date || row.startDate || "",
     end: row.end_date || row.endDate || "",
     status: row.status || "Upcoming",
@@ -948,17 +949,19 @@ async function routeRequest(req, res, identity, resource, a) {
 
     if (action === "create") {
       const name = String(body.name || "").trim();
+      const effective = String(body.effective || "");
       const start = String(body.start || "");
       const end = String(body.end || "");
       const remarks = String(body.remarks || "").trim();
-      if (!name || name.length > 100 || remarks.length > 10000 || !validDates(start, end)) {
-        return sendJson(res, 400, { success: false, message: "Provide a cycle name (up to 100 characters), remarks (up to 10,000 characters), and valid start/end dates; end date must be after start date." });
+      if (!name || name.length > 100 || remarks.length > 10000 || !validDate(effective) || !validDates(start, end)) {
+        return sendJson(res, 400, { success: false, message: "Provide a cycle name (up to 100 characters), remarks (up to 10,000 characters), and valid effective/start/end dates; end date must be after start date." });
       }
       if (cycles.some((cycle) => cycle.name.toLowerCase() === name.toLowerCase())) {
         return sendJson(res, 409, { success: false, message: "An appraisal cycle with that name already exists." });
       }
       const created = await tables.cycles.insertRow({
         cycle_name: name,
+        effective_date: effective,
         start_date: start,
         end_date: end,
         status: "Upcoming",
@@ -967,7 +970,7 @@ async function routeRequest(req, res, identity, resource, a) {
         changed_at: now,
         archived: false,
       });
-      const cycle = normalizeCycle({ ...created, cycle_name: name, start_date: start, end_date: end, status: "Upcoming", remarks, changed_by: actor, changed_at: now, archived: false });
+      const cycle = normalizeCycle({ ...created, cycle_name: name, effective_date: effective, start_date: start, end_date: end, status: "Upcoming", remarks, changed_by: actor, changed_at: now, archived: false });
       await writeAudit(tables.audit, { actor, source: "cycle", cycle, action: "Created cycle", details: { kind: "cycle", action: "Created cycle", message: "Cycle created as Upcoming.", cycleName: cycle.name, newRemarks: cycle.remarks } });
       return sendJson(res, 201, { success: true, data: cycle });
     }
@@ -976,16 +979,17 @@ async function routeRequest(req, res, identity, resource, a) {
 
     if (action === "update") {
       const name = String(body.name || "").trim();
+      const effective = String(body.effective || "");
       const start = String(body.start || "");
       const end = String(body.end || "");
-      if (!name || name.length > 100 || !validDates(start, end)) {
+      if (!name || name.length > 100 || !validDate(effective) || !validDates(start, end)) {
         return sendJson(res, 400, { success: false, message: "Provide a cycle name (up to 100 characters) and valid start/end dates; end date must be after start date." });
       }
       if (cycles.some((cycle) => cycle.id !== id && cycle.name.toLowerCase() === name.toLowerCase())) {
         return sendJson(res, 409, { success: false, message: "An appraisal cycle with that name already exists." });
       }
-      await tables.cycles.updateRow({ ROWID: id, cycle_name: name, start_date: start, end_date: end, changed_by: actor, changed_at: now });
-      const updated = { ...existing, name, start, end, changedBy: actor, changedAt: now };
+      await tables.cycles.updateRow({ ROWID: id, cycle_name: name, effective_date: effective, start_date: start, end_date: end, changed_by: actor, changed_at: now });
+      const updated = { ...existing, name, effective, start, end, changedBy: actor, changedAt: now };
       await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Cycle edited", details: { kind: "cycle", action: "Cycle edited", message: "Cycle name or dates updated.", cycleName: name } });
       return sendJson(res, 200, { success: true, data: updated });
     }
