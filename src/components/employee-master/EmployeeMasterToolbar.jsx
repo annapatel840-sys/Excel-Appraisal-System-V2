@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 
 import { usePanel } from "./panelStore";
+import { LocationMasterControl } from "./LocationMasterControl";
 import "./employee-master-ui.css";
 
 export function EmployeeMasterToolbar({
@@ -17,7 +18,7 @@ export function EmployeeMasterToolbar({
   setStatusFilter,
   locationFilter = "All",
   setLocationFilter,
-  locations = [],
+  canCreateLocation = false,
   onDownloadTemplate,
   onUpload,
   onDownloadData,
@@ -75,20 +76,15 @@ export function EmployeeMasterToolbar({
 
       <div className="em-toolbar-spacer" />
 
-      <select
-        className="em-status-select em-location-select"
-        aria-label="Filter Employee Master by location"
+      <LocationMasterControl
         value={locationFilter}
-        onChange={(event) => {
-          setLocationFilter?.(event.target.value);
+        onChange={(value) => {
+          setLocationFilter?.(value);
           setMenuOpen(false);
         }}
-      >
-        <option value="All">All Locations</option>
-        {locations.map((location) => (
-          <option key={location} value={location}>{location}</option>
-        ))}
-      </select>
+        canCreate={canCreateLocation}
+        ariaLabel="Filter Employee Master by Location Master"
+      />
 
       <div className="em-menu-wrapper" ref={menuRef}>
         <button
