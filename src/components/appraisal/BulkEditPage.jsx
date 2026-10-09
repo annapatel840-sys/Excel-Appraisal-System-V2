@@ -2618,10 +2618,6 @@ const BulkOperations = forwardRef(function BulkOperations(
       <style>{CSS}</style>
 
       <div className="topbar">
-        <div className="tb-l">
-          <span className="title">Bulk Edit</span>
-          <span className="cycle">{cyc.name}{cyc.location ? " · " + cyc.location : ""}</span>
-        </div>
         <div className="tb-r">
           <div className="tk">
             <span>Budget Allocated</span>
