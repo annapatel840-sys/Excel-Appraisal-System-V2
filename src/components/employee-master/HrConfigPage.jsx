@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect} from "react";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { LocationMasterControl } from "./LocationMasterControl";
  
 /* ============================================================
    HR Config screen (outer part of the reference HTML).
@@ -1007,69 +1008,37 @@ const [locationsLoading, setLocationsLoading] = useState(true);
     const currentLocation = locations.find(
     (item) => item.code === loc
   );
- 
-  const curCode = currentLocation?.code || "";
- 
-  const curName =
-    currentLocation?.currency || "";
- 
+
   return (
     <div className="hrc">
       <style>{CSS}</style>
  
       <div className="hrc-locbar">
         <span className="hrc-loclbl">Location</span>
-        <select
-          className="hrc-locsel"
-          aria-label="Location"
-          value={loc}
-          disabled={
-            locationsLoading ||
-            locations.length === 0
-          }
-          onChange={(e) => {
-            const selectedCode = e.target.value;
- 
-            const selectedLocation =
-              locations.find(
-                (item) =>
-                  item.code === selectedCode
+        {locationsLoading ? (
+          <select className="hrc-locsel" aria-label="Location" disabled>
+            <option>Loading locations...</option>
+          </select>
+        ) : (
+          <LocationMasterControl
+            value={loc}
+            valueKey="location_code"
+            showCurrencyCode
+            onChange={(selectedCode) => {
+              const selectedLocation = locations.find(
+                (item) => item.code === selectedCode
               );
- 
-            setLoc(selectedCode);
- 
-            say(
-              `Location: ${
-                selectedLocation?.name ||
-                selectedCode
-              }. Cycle dates and currency follow the location.`,
-            );
-          }}
-        >
-          {locationsLoading ? (
-            <option value="">
-              Loading locations...
-            </option>
-          ) : locations.length === 0 ? (
-            <option value="">
-              No locations available
-            </option>
-          ) : (
-            locations.map((location) => (
-              <option
-                key={location.code}
-                value={location.code}
-              >
-                {location.name}
-              </option>
-            ))
-          )}
-        </select>
- 
-        {curCode && (
-          <span className="hrc-cur">
-            {curName ? `${curName} · ${curCode}` : curCode}
-          </span>
+              setLoc(selectedCode);
+              if (selectedLocation) {
+                say(
+                  `Location: ${selectedLocation.name}. Cycle dates and currency follow the location.`,
+                );
+              }
+            }}
+            canCreate={canEdit}
+            ariaLabel="Location"
+            triggerClassName="hrc-locsel"
+          />
         )}
       </div>
  
