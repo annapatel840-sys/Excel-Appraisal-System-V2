@@ -1568,3 +1568,52 @@ body:has(.employee-master-page) {
     padding: 7px;
   }
 }
+
+
+/* ============================================================
+   EMPLOYEE MASTER / ELIGIBILITY — supplied reference layout
+   Visual-only additions; data and API behavior remain unchanged.
+   ============================================================ */
+.employee-master-page .em-reference-employee {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 180px;
+  line-height: 1.25;
+}
+.employee-master-page .em-reference-employee strong {
+  color: #1d4f91;
+  font-size: 12px;
+  font-weight: 700;
+}
+.employee-master-page .em-reference-employee span {
+  color: var(--em-muted);
+  font-size: 10px;
+}
+.employee-master-page .em-table th {
+  background: #e6eef8;
+  color: #243b53;
+}
+.employee-master-page .em-table td {
+  vertical-align: middle;
+}
+.employee-master-page .em-eligibility-list .em-grid-wrap {
+  min-height: 220px;
+}
+.employee-master-page .em-eligibility-list .em-table {
+  min-width: 1120px;
+}
+.employee-master-page .em-eligibility-list .em-table th,
+.employee-master-page .em-eligibility-list .em-table td {
+  padding: 8px 11px;
+  height: 38px;
+}
+.employee-master-page .em-eligibility-list .em-table tbody tr:hover {
+  background: #eef5ff;
+}
+.employee-master-page .em-eligibility-list .em-pagination {
+  border-top: 1px solid var(--em-border);
+  margin-top: 6px;
+  padding-top: 9px;
+}
