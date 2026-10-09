@@ -133,7 +133,6 @@ export function EligibilityList({
   setSearch,
   locationFilter = "All",
   setLocationFilter,
-  canCreateLocation = false,
   onChangeEligibility, // (employeeOrArray) => open your EligibilityModal; arrays carry .preset = "Yes" | "No"
   onDownloadTemplate,
   onImport,
