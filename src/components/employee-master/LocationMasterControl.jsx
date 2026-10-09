@@ -23,6 +23,9 @@ export function LocationMasterControl({
   onChange,
   canCreate = false,
   ariaLabel = "Filter by location",
+  valueKey = "location_name",
+  showCurrencyCode = false,
+  triggerClassName = "",
 }) {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -76,7 +79,13 @@ export function LocationMasterControl({
         body: payload,
       });
       await load();
-      if (!loc.id) onChange?.(result?.location_name || payload.location_name);
+      if (!loc.id) {
+        onChange?.(
+          valueKey === "location_code"
+            ? result?.location_code || payload.location_code
+            : result?.location_name || payload.location_name,
+        );
+      }
       setEditing("");
       setDraft(null);
       setCreating(false);
@@ -104,13 +113,23 @@ export function LocationMasterControl({
         <div className="em-location-dropdown">
           <button
             type="button"
-            className="em-status-select em-location-select em-location-trigger"
+            className={`em-status-select em-location-select em-location-trigger ${triggerClassName}`}
             aria-label={ariaLabel}
             aria-expanded={menu}
             disabled={loading}
             onClick={() => setMenu((v) => !v)}
           >
-            <span>{value === "All" ? "All Locations" : value}</span>
+            <span>
+              {value === "All"
+                ? "All Locations"
+                : (locations.find((loc) => String(loc[valueKey]) === String(value))?.location_name || value)}
+              {showCurrencyCode && value !== "All" && (() => {
+                const selected = locations.find((loc) => String(loc[valueKey]) === String(value));
+                return selected
+                  ? ` ${selected.currency_code ? `${selected.currency_code} · ` : ""}${selected.location_code || ""}`
+                  : "";
+              })()}
+            </span>
             <ChevronDown size={14} />
           </button>
           {menu && (
@@ -132,14 +151,14 @@ export function LocationMasterControl({
                   key={loc.id || loc.location_code}
                   type="button"
                   role="option"
-                  aria-selected={value === loc.location_name}
+                  aria-selected={String(value) === String(loc[valueKey])}
                   onClick={() => {
-                    onChange?.(loc.location_name);
+                    onChange?.(loc[valueKey] || loc.location_name);
                     setMenu(false);
                   }}
                 >
                   <span>{loc.location_name}</span>
-                  {value === loc.location_name && <Check size={14} />}
+                  {String(value) === String(loc[valueKey]) && <Check size={14} />}
                 </button>
               ))}
               {canCreate && (
