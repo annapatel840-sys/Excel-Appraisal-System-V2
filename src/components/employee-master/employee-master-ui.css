@@ -190,3 +190,53 @@
   gap: 8px;
   flex-wrap: wrap;
 }
+
+
+/* Inline Location Master screen: no management popups */
+.em-location-master-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 240px;
+  padding: 20px;
+  border: 1px solid var(--border, #dbe1ea);
+  border-radius: 12px;
+  background: var(--card, #fff);
+  color: var(--foreground, #172033);
+}
+.em-location-master-page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.em-location-master-page-head h2 { margin: 0; font-size: 19px; font-weight: 700; }
+.em-location-master-page-head p {
+  max-width: 650px; margin: 6px 0 0;
+  color: var(--muted-foreground, #64748b); font-size: 13px; line-height: 1.55;
+}
+.em-location-inline-form {
+  display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 12px; padding: 16px; border: 1px solid var(--border, #dbe1ea);
+  border-radius: 10px; background: var(--muted, #f8fafc);
+}
+.em-location-inline-form label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; font-weight: 600; }
+.em-location-inline-form input {
+  width: 100%; min-width: 0; padding: 9px 10px;
+  border: 1px solid var(--border, #cbd5e1); border-radius: 7px;
+  background: var(--card, #fff); color: var(--foreground, #172033); font: inherit;
+}
+.em-location-inline-actions { display: flex; align-items: center; gap: 8px; grid-column: 1 / -1; }
+.em-location-master-summary {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  color: var(--muted-foreground, #64748b); font-size: 12px;
+}
+.em-location-master-summary button { margin-left: auto; }
+.em-location-master-table-wrap { width: 100%; max-height: none; overflow: auto; }
+.em-location-master-table-wrap .em-location-table { width: 100%; min-width: 780px; }
+.em-location-master-table-wrap .em-location-table td input { width: 100%; min-width: 90px; box-sizing: border-box; }
+@media (max-width: 680px) {
+  .em-location-inline-form { grid-template-columns: minmax(0, 1fr); }
+  .em-location-inline-actions { grid-column: auto; }
+}
