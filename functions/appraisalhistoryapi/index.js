@@ -309,11 +309,21 @@ const getAllPreviousAppraisalRecords = async (table) => {
 GET HISTORY FOR EMPLOYEE
 ============================================================ */
 
+// History imports may store either the bare employee ID (EMP001) or the
+// display value ("EMP001 - Employee Name"). Match on the stable ID portion.
+const normalizeHistoryEmpId = (value) =>
+  String(value == null ? "" : value)
+    .trim()
+    .split(/\s+-\s+/, 1)[0]
+    .trim()
+    .toUpperCase();
+
 const getHistory = async (table, empId) => {
   const allRecords = await getAllPreviousAppraisalRecords(table);
+  const wantedId = normalizeHistoryEmpId(empId);
 
   const history = allRecords
-    .filter((record) => String(record.emp_id || "").trim() === empId)
+    .filter((record) => normalizeHistoryEmpId(record.emp_id) === wantedId)
     .sort((a, b) =>
       String(b.appraisal_year || "").localeCompare(
         String(a.appraisal_year || ""),
@@ -348,9 +358,10 @@ FIND CURRENT YEAR RECORD
 const findHistoryRecord = async (table, empId, appraisalYear) => {
   const allRecords = await getAllPreviousAppraisalRecords(table);
 
+  const wantedId = normalizeHistoryEmpId(empId);
   return allRecords.find(
     (item) =>
-      String(item.emp_id || "").trim() === empId &&
+      normalizeHistoryEmpId(item.emp_id) === wantedId &&
       String(item.appraisal_year || "").trim() === appraisalYear,
   );
 };
