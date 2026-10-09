@@ -381,10 +381,6 @@ export function EmployeeRosterTable({
           </span>
         </div>
 
-        <div className="emx-note">
-          Employees are never deleted. An inactive employee leaves the Appraisal
-          Sheet but stays in history.
-        </div>
       </div>
 
       <SidePanel
