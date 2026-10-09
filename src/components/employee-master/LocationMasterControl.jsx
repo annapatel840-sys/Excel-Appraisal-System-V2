@@ -68,8 +68,8 @@ export function LocationMasterControl({
         body: payload,
       });
       await loadLocations();
-      const newCode = String(created?.location_code || payload.location_code);
-      onChange?.(newCode);
+      const newName = String(created?.location_name || payload.location_name);
+      onChange?.(newName);
       setModalOpen(false);
       setForm(blankLocation);
     } catch (saveError) {
@@ -91,7 +91,7 @@ export function LocationMasterControl({
         >
           <option value="All">All Locations</option>
           {locations.map((location) => (
-            <option key={location.id || location.location_code} value={location.location_code}>
+            <option key={location.id || location.location_code} value={location.location_name}>
               {location.location_name}
             </option>
           ))}
