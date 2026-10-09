@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import BulkOperations from "@/components/appraisal/BulkEditPage";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import "@/styles/bulk-edit-screen.css";
 
 const isActiveCycle = (cycle) =>
   String(cycle?.status || "").trim().toLowerCase() === "active" &&
