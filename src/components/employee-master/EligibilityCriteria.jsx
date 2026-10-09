@@ -1,96 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, Search, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Check, X } from "lucide-react";
 
-function MultiSelect({ label, values, selected, setSelected }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  const allSelected = values.length > 0 && selected.length === values.length;
-
-  useEffect(() => {
-    if (!open) return;
-
-    const handleOutsideClick = (event) => {
-      if (!ref.current?.contains(event.target)) {
-        setOpen(false);
-      }
-    };
-
-    const handleEscape = (event) => {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick, true);
-    document.addEventListener("keydown", handleEscape);
-
-    return () => {
-      document.removeEventListener("mousedown", handleOutsideClick, true);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [open]);
+function CheckList({ values, selected, setSelected, disabled }) {
+  const toggle = (value) =>
+    setSelected((current) =>
+      current.includes(value)
+        ? current.filter((item) => item !== value)
+        : [...current, value],
+    );
 
   return (
-    <div className="em-field" ref={ref}>
-      <label>{label}</label>
-
-      <div className="em-multiselect">
-        <button
-          type="button"
-          className="em-multiselect-toggle"
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            setOpen((current) => !current);
-          }}
-        >
-          <span>
-            {allSelected
-              ? `All ${label}`
-              : selected.length
-                ? `${selected.length} selected`
-                : `Select ${label}`}
-          </span>
-
-          <ChevronDown size={14} />
-        </button>
-
-        {open && (
-          <div
-            className="em-multiselect-panel"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="em-ms-actions">
-              <button type="button" onClick={() => setSelected([...values])}>
-                Select all
-              </button>
-
-              <button type="button" onClick={() => setSelected([])}>
-                Clear
-              </button>
-            </div>
-
-            {values.map((value) => (
-              <label key={value} className="em-ms-option">
-                <input
-                  type="checkbox"
-                  checked={selected.includes(value)}
-                  onChange={() => {
-                    setSelected((current) =>
-                      current.includes(value)
-                        ? current.filter((item) => item !== value)
-                        : [...current, value],
-                    );
-                  }}
-                />
-
-                <span>{value}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
+    <div className="em-chk-list">
+      {values.length === 0 && <div className="em-hint">No values</div>}
+      {values.map((value) => (
+        <label key={value}>
+          <input
+            type="checkbox"
+            checked={selected.includes(value)}
+            onChange={() => toggle(value)}
+            disabled={disabled}
+          />
+          <span>{value}</span>
+        </label>
+      ))}
     </div>
   );
 }
@@ -100,10 +32,12 @@ export function EligibilityCriteria({
   excludedEmployees,
   setExcludedEmployees,
   onApply,
+  readOnly = false,
 }) {
   const [selectedDepartments, setSelectedDepartments] = useState([]);
   const [selectedDesignations, setSelectedDesignations] = useState([]);
   const [search, setSearch] = useState("");
+  const [showSuggest, setShowSuggest] = useState(false);
   const [cutoffDate, setCutoffDate] = useState("");
 
   const activeEmployees = useMemo(
@@ -127,98 +61,114 @@ export function EligibilityCriteria({
     [activeEmployees],
   );
 
-  const addExcludedEmployee = () => {
+  const suggestions = useMemo(() => {
     const term = search.trim().toLowerCase();
+    if (!term) return [];
+    return activeEmployees
+      .filter(
+        (employee) =>
+          !excludedEmployees.includes(employee.empId) &&
+          `${employee.empId} ${employee.name}`.toLowerCase().includes(term),
+      )
+      .slice(0, 6);
+  }, [search, activeEmployees, excludedEmployees]);
 
-    if (!term) return;
-
-    const employee = activeEmployees.find(
-      (item) =>
-        String(item.empId).toLowerCase() === term ||
-        String(item.name).toLowerCase().includes(term),
-    );
-
-    if (!employee) return;
-
+  const addExcluded = (empId) => {
     setExcludedEmployees((current) =>
-      current.includes(employee.empId) ? current : [...current, employee.empId],
+      current.includes(empId) ? current : [...current, empId],
     );
-
     setSearch("");
+    setShowSuggest(false);
   };
 
   return (
     <div className="em-criteria-pane">
-      <div className="em-pane-title">Eligibility Criteria</div>
-
-      <MultiSelect
-        label="Departments"
+      <div className="em-crit-h">Exclude by department</div>
+      <CheckList
         values={departments}
         selected={selectedDepartments}
         setSelected={setSelectedDepartments}
+        disabled={readOnly}
       />
 
-      <MultiSelect
-        label="Designations"
+      <div className="em-crit-h">Exclude by designation</div>
+      <CheckList
         values={designations}
         selected={selectedDesignations}
         setSelected={setSelectedDesignations}
+        disabled={readOnly}
       />
 
-      <div className="em-field">
-        <label>Exclude Employees</label>
-
-        <div className="em-search-field">
-          <Search size={13} />
-
-          <input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") addExcludedEmployee();
-            }}
-            placeholder="Search name or Emp ID"
-          />
-        </div>
-
-        <div className="em-chips">
-          {excludedEmployees.map((empId) => {
-            const employee = employees.find((item) => item.empId === empId);
-
-            return (
-              <span className="em-chip" key={empId}>
-                {employee?.name ?? empId}
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    setExcludedEmployees((current) =>
-                      current.filter((item) => item !== empId),
-                    )
-                  }
-                >
-                  <X size={11} />
-                </button>
-              </span>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="em-field">
-        <label>Joining Date Cutoff</label>
-
+      <div className="em-crit-h">Exclude specific employees</div>
+      <div className="em-search-field">
         <input
-          type="date"
-          className="em-date-input"
-          value={cutoffDate}
-          onChange={(event) => setCutoffDate(event.target.value)}
+          value={search}
+          disabled={readOnly}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setShowSuggest(true);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && suggestions[0])
+              addExcluded(suggestions[0].empId);
+          }}
+          placeholder="Type name or ID"
         />
       </div>
+
+      {showSuggest && search.trim() && (
+        <div className="em-suggest">
+          {suggestions.length ? (
+            suggestions.map((employee) => (
+              <div
+                key={employee.empId}
+                onMouseDown={() => addExcluded(employee.empId)}
+              >
+                {employee.empId} - {employee.name}
+              </div>
+            ))
+          ) : (
+            <div className="em-hint">No match</div>
+          )}
+        </div>
+      )}
+
+      <div className="em-chips">
+        {excludedEmployees.map((empId) => {
+          const employee = employees.find((item) => item.empId === empId);
+          return (
+            <span className="em-chip" key={empId}>
+              {employee?.name ?? empId}
+              <button
+                type="button"
+                disabled={readOnly}
+                onClick={() =>
+                  setExcludedEmployees((current) =>
+                    current.filter((item) => item !== empId),
+                  )
+                }
+              >
+                <X size={11} />
+              </button>
+            </span>
+          );
+        })}
+      </div>
+
+      <div className="em-crit-h">Joining date cutoff</div>
+      <div className="em-hint">Exclude anyone who joined after this date</div>
+      <input
+        type="date"
+        className="em-date-input"
+        value={cutoffDate}
+        disabled={readOnly}
+        onChange={(event) => setCutoffDate(event.target.value)}
+      />
 
       <button
         type="button"
         className="em-btn em-btn-primary em-apply-btn"
+        disabled={readOnly}
         onClick={() =>
           onApply({
             departments: selectedDepartments,
@@ -231,6 +181,11 @@ export function EligibilityCriteria({
         <Check size={14} />
         Apply Criteria
       </button>
+
+      <div className="em-hint">
+        Criteria only change employees who were not set by hand; manual
+        decisions are never overwritten. Inactive employees are always left out.
+      </div>
     </div>
   );
 }

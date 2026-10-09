@@ -2,53 +2,51 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 
 const ELIGIBLE_REASONS = ["ML", "Withdrew resignation", "Others"];
-
 const NOT_ELIGIBLE_REASONS = ["PIP", "ML", "Resigned", "Other"];
 
 export function EligibilityModal({ employee, onClose, onSave }) {
-  const [status, setStatus] = useState(
-    employee?.eligible === "Yes" ? "Yes" : "No",
-  );
+  const list = Array.isArray(employee) ? employee : employee ? [employee] : [];
+  const first = list[0];
+  const isBulk = list.length > 1;
 
-  const [reason, setReason] = useState(employee?.eligibleReason || "");
-
+  const [status, setStatus] = useState("Yes");
+  const [reason, setReason] = useState("");
   const [otherReason, setOtherReason] = useState("");
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!employee) {
-      return;
-    }
-
-    setStatus(employee.eligible === "Yes" ? "Yes" : "No");
-
-    const reasons =
-      employee.eligible === "Yes" ? ELIGIBLE_REASONS : NOT_ELIGIBLE_REASONS;
-
-    if (employee.eligibleReason && !reasons.includes(employee.eligibleReason)) {
-      setReason(employee.eligible === "Yes" ? "Others" : "Other");
-
-      setOtherReason(employee.eligibleReason);
-    } else {
-      setReason(employee.eligibleReason || "");
-      setOtherReason("");
-    }
+    if (!first) return;
+    // The action flips the current state (Eligible -> Not Eligible and back)
+    setStatus(first.eligible === "Yes" ? "No" : "Yes");
+    setReason("");
+    setOtherReason("");
+    setError("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employee]);
 
-  if (!employee) {
-    return null;
-  }
+  if (!first) return null;
 
   const reasons = status === "Yes" ? ELIGIBLE_REASONS : NOT_ELIGIBLE_REASONS;
-
   const isOther = reason === "Others" || reason === "Other";
 
   const save = () => {
+    if (!reason) {
+      setError("Select a reason.");
+      return;
+    }
+    if (isOther && !otherReason.trim()) {
+      setError("Details are required for this reason.");
+      return;
+    }
+
     const finalReason = isOther ? otherReason.trim() : reason;
 
-    onSave({
-      empId: employee.empId,
-      eligible: status,
-      eligibleReason: finalReason,
+    list.forEach((item) => {
+      onSave({
+        empId: item.empId,
+        eligible: status,
+        eligibleReason: finalReason,
+      });
     });
   };
 
@@ -57,9 +55,12 @@ export function EligibilityModal({ employee, onClose, onSave }) {
       <div className="em-modal em-small-modal">
         <div className="em-modal-header">
           <div>
-            <strong>Change Eligibility</strong>
+            <strong>
+              {status === "Yes" ? "Set Eligible" : "Set Not Eligible"}
+              {isBulk ? ` · ${list.length} employees` : ""}
+            </strong>
             <span>
-              {employee.name} · {employee.empId}
+              {isBulk ? "Bulk change" : `${first.name} · ${first.empId}`}
             </span>
           </div>
 
@@ -71,7 +72,6 @@ export function EligibilityModal({ employee, onClose, onSave }) {
         <div className="em-modal-body">
           <div className="em-field">
             <label>Eligibility</label>
-
             <select
               className="em-date-input"
               value={status}
@@ -79,6 +79,7 @@ export function EligibilityModal({ employee, onClose, onSave }) {
                 setStatus(event.target.value);
                 setReason("");
                 setOtherReason("");
+                setError("");
               }}
             >
               <option value="Yes">Eligible</option>
@@ -88,14 +89,15 @@ export function EligibilityModal({ employee, onClose, onSave }) {
 
           <div className="em-field">
             <label>Reason</label>
-
             <select
               className="em-date-input"
               value={reason}
-              onChange={(event) => setReason(event.target.value)}
+              onChange={(event) => {
+                setReason(event.target.value);
+                setError("");
+              }}
             >
               <option value="">Select reason</option>
-
               {reasons.map((item) => (
                 <option value={item} key={item}>
                   {item}
@@ -106,16 +108,20 @@ export function EligibilityModal({ employee, onClose, onSave }) {
 
           {isOther && (
             <div className="em-field">
-              <label>Other Reason</label>
-
+              <label>Details</label>
               <input
-                className="em-date-input"
+                className={`em-date-input ${error && !otherReason.trim() ? "em-bad" : ""}`}
                 value={otherReason}
-                onChange={(event) => setOtherReason(event.target.value)}
-                placeholder="Enter reason"
+                onChange={(event) => {
+                  setOtherReason(event.target.value);
+                  setError("");
+                }}
+                placeholder="Specify reason"
               />
             </div>
           )}
+
+          {error && <div className="em-err">{error}</div>}
         </div>
 
         <div className="em-modal-footer">
@@ -126,7 +132,6 @@ export function EligibilityModal({ employee, onClose, onSave }) {
           >
             Cancel
           </button>
-
           <button
             type="button"
             className="em-btn em-btn-primary"
