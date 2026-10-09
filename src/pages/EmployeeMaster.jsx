@@ -2549,7 +2549,7 @@ export function EmployeeMaster() {
           <div
             className="em-tab-content"
             style={{
-              height: "calc(100vh - 180px)",
+              height: "calc(100vh - 140px)",
               overflowY: "auto",
               overflowX: "hidden",
             }}
@@ -2564,7 +2564,7 @@ export function EmployeeMaster() {
           <div
             className="em-tab-content"
             style={{
-              height: "calc(100vh - 180px)",
+              height: "calc(100vh - 140px)",
               overflowY: "auto",
               overflowX: "hidden",
             }}
@@ -2578,7 +2578,7 @@ export function EmployeeMaster() {
             <div
               className="em-tab-content"
               style={{
-                height: "calc(100vh - 180px)",
+                height: "calc(100vh - 140px)",
                 overflowY: "auto",
                 overflowX: "hidden",
               }}
@@ -2590,7 +2590,7 @@ export function EmployeeMaster() {
           <div
             className="em-tab-content"
             style={{
-              height: "calc(100vh - 180px)",
+              height: "calc(100vh - 140px)",
               overflowY: "auto",
               overflowX: "hidden",
             }}
