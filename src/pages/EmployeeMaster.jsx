@@ -653,7 +653,6 @@ export function EmployeeMaster() {
 
   const [statusFilter, setStatusFilter] = useState("All");
   const [locationFilter, setLocationFilter] = useState("All");
-  const [rosterLocations, setRosterLocations] = useState([]);
 
   const [rosterFilters, setRosterFilters] = useState({});
 
@@ -907,7 +906,6 @@ export function EmployeeMaster() {
 
         const employees = Array.isArray(result?.data) ? result.data : [];
 
-        setRosterLocations(Array.isArray(result?.locations) ? result.locations : []);
         setAllEmployees(employees);
 
         setRosterPagination({
@@ -2399,7 +2397,7 @@ export function EmployeeMaster() {
               setStatusFilter={setStatusFilter}
               locationFilter={locationFilter}
               setLocationFilter={setLocationFilter}
-              locations={rosterLocations}
+              canCreateLocation={isRoleHR && access.canScreen("cycleMaster", "edit")}
               onDownloadTemplate={downloadRosterTemplate}
               onUpload={
                 canEditEmployees && !importPreparing
@@ -2490,6 +2488,7 @@ export function EmployeeMaster() {
                   setSearch={setEligibilitySearch}
                   locationFilter={eligibilityLocationFilter}
                   setLocationFilter={setEligibilityLocationFilter}
+                  canCreateLocation={isRoleHR && access.canScreen("cycleMaster", "edit")}
                   filters={eligibilityFilters}
                   setFilters={setEligibilityFilters}
                   onChangeEligibility={
