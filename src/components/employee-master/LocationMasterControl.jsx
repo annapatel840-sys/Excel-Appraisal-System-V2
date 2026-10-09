@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Plus, Settings2, X } from "lucide-react";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import "./employee-master-ui.css";
@@ -30,6 +30,7 @@ export function LocationMasterControl({
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [menu, setMenu] = useState(false);
+  const dropdownRef = useRef(null);
   const [modal, setModal] = useState(false);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState(blank);
@@ -53,6 +54,26 @@ export function LocationMasterControl({
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!menu) return undefined;
+
+    const closeOnOutsidePointer = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setMenu(false);
+      }
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") setMenu(false);
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [menu]);
 
   const save = async (loc) => {
     const payload = {
@@ -110,7 +131,7 @@ export function LocationMasterControl({
   return (
     <>
       <div className="em-location-control">
-        <div className="em-location-dropdown">
+        <div className="em-location-dropdown" ref={dropdownRef}>
           <button
             type="button"
             className={`em-status-select em-location-select em-location-trigger ${triggerClassName}`}
