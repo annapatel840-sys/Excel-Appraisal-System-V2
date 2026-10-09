@@ -1209,7 +1209,37 @@ async function routeRequest(req, res, identity, resource, a) {
   return sendJson(res, 404, { success: false, message: "The requested payroll/cycle operation was not found." });
 }
 
+const CORS_ALLOWED_ORIGINS = new Set([
+  "https://excel-appraisal-syst-rjpjnpjn.onslate.in",
+  "http://localhost:5173",
+]);
+
+function applyPayrollCors(req, res) {
+  const origin = String(req.headers?.origin || "");
+  if (!CORS_ALLOWED_ORIGINS.has(origin)) return false;
+
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept, X-Requested-With");
+  res.setHeader("Access-Control-Max-Age", "86400");
+  return true;
+}
+
 module.exports = async function payrollCycleApi(req, res) {
+  const corsAllowed = applyPayrollCors(req, res);
+
+  // Browser preflight requests do not include the app's Catalyst auth token.
+  // Return before requireIdentity(), which is only for the actual request.
+  if (req.method === "OPTIONS") {
+    if (!corsAllowed) {
+      return sendJson(res, 403, { success: false, message: "CORS origin is not allowed." });
+    }
+    res.writeHead(204);
+    return res.end();
+  }
+
   try {
     // Location Master is reference data needed by the Cycle Master dropdown.
     // Keep the endpoint authenticated through requireIdentity, but do not require
