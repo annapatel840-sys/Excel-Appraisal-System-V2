@@ -139,8 +139,18 @@ const missingPay = (w) =>
   Math.max(0, (w.emCount || 0) - (w.payHave || 0) - (w.payIgnored || 0));
 
 function Modal({ title, onClose, children, footer, error, wideModal }) {
+  useEffect(() => {
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") onClose?.();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
   return (
-    <div className="acx-ov">
+    <div className="acx-ov" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose?.();
+    }}>
       <div className="acx-md" style={wideModal ? { width: 560 } : undefined}>
         <div className="mh">
           <b>{title}</b>
