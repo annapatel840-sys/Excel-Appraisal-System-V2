@@ -577,6 +577,7 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       comp_manager: String(row.comp_manager || master.director || ""),
       appraiser_tech_ed: String(master.appraiser_tech_ed || row.appraiser_tech_ed || ""),
       department: String(master.department || row.department || ""),
+      location: String(master.location || master.work_location || row.location || row.work_location || ""),
       wissen_experience: Number(master.wissen_experience || row.wissen_experience || 0),
       total_experience: Number(master.total_experience || row.total_experience || 0),
       joining_date: String(master.date_of_join || row.joining_date || ""),
@@ -655,6 +656,7 @@ function filterEmployees(
   status,
   eligible,
   view,
+  location,
 ) {
   let filtered = employees;
 
@@ -712,6 +714,17 @@ function filterEmployees(
           .trim()
           .toLowerCase() === status.toLowerCase()
       );
+    });
+  }
+
+  /* ==========================================================
+     LOCATION FILTER
+     ========================================================== */
+
+  if (location) {
+    const locationValue = String(location).trim().toLowerCase();
+    filtered = filtered.filter(function (employee) {
+      return String(employee.location || employee.work_location || "").trim().toLowerCase() === locationValue;
     });
   }
 
@@ -810,6 +823,8 @@ async function getEmployees(req, res) {
     .trim()
     .toLowerCase();
 
+  const location = String(params.location || "").trim();
+
   const eligibleParam = String(params.eligible || "")
     .trim()
     .toLowerCase();
@@ -903,6 +918,7 @@ async function getEmployees(req, res) {
     status === "all" ? "" : status,
     eligibleParam === "all" ? "" : eligibleParam,
     hrUser ? "master" : view,
+    location,
   );
 
   const userScopedEmployees = filteredEmployees;
@@ -949,9 +965,14 @@ async function getEmployees(req, res) {
       inactive: scopedInactiveCount,
     },
 
+    locations: Array.from(new Set(scopedEmployees.map(function (employee) {
+      return String(employee.location || employee.work_location || "").trim();
+    }).filter(Boolean))).sort(),
+
     filters: {
       search: search,
       status: status || "all",
+      location: location || "all",
       eligible: eligibleParam || "all",
       view: view || "appraisal",
     },
