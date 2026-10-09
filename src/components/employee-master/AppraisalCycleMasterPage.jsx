@@ -1904,7 +1904,7 @@ export function AppraisalCycleMasterPage({
                   }}
                 />
                 <span style={{ flex: 1 }} />
-                <LocationMasterControl canCreate={canManageCycles} ariaLabel="Open Location Master menu" />
+                <LocationMasterControl canCreate ariaLabel="Open Location Master menu" />
                 <span
                   className={`acx-swt${showHidden ? " on" : ""}`}
                   role="switch"
