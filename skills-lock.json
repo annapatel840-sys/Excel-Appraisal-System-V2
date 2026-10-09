@@ -5,7 +5,7 @@
       "source": "catalystbyzoho/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/catalyst-appsail/SKILL.md",
-      "computedHash": "cb131b24d1c14f7e8780ac72a02c4dfd1725497a90d59c33fce42d106239a734"
+      "computedHash": "672fab838c760a568cb73b45274409f3f2d3b48b6e9e6e6f5b74de27128fa7db"
     },
     "catalyst-authentication": {
       "source": "catalystbyzoho/agent-skills",
@@ -17,19 +17,19 @@
       "source": "catalystbyzoho/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/catalyst-basics/SKILL.md",
-      "computedHash": "cb634b407885a1371f65b9ea92cc5dc28b56d6ad8fa425fca71a53c7e4a98828"
+      "computedHash": "f2943e28d3aa25457853eca563b7fa636a3ce1506d360e98a8fc450a80d2859a"
     },
     "catalyst-by-zoho": {
       "source": "catalystbyzoho/agent-skills",
       "sourceType": "github",
-      "skillPath": "catalyst-by-zoho/SKILL.md",
-      "computedHash": "380eebb2438f0aee06769df3f9ca654b778dcb0544e76121b6d96de37c1ffabc"
+      "skillPath": "skills/catalyst-by-zoho/SKILL.md",
+      "computedHash": "cdd58e8eba10fe6069bd99a78b4ced9871febb2b25b66f6446ba066fb521be78"
     },
     "catalyst-cache": {
       "source": "catalystbyzoho/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/catalyst-cache/SKILL.md",
-      "computedHash": "29ef4f1f6a164ca33de748d96bf387e6caaa4b47553e107677821899f6e9c048"
+      "computedHash": "58f588e8b508fae7d35eadcc3cd26bc3a44785e6459ddd26dcc5dce15a5dd5a2"
     },
     "catalyst-datastore": {
       "source": "catalystbyzoho/agent-skills",
@@ -59,19 +59,25 @@
       "source": "catalystbyzoho/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/catalyst-pricing/SKILL.md",
-      "computedHash": "ba4fb666b7375eb6c49d707c53cbcb3433a860530ed16b258f126befffdbb4b7"
+      "computedHash": "da4b747dae7ea6ce42b6dca73c02baee273a40b4f7a9f22b291246fcea1f1977"
+    },
+    "catalyst-quickml": {
+      "source": "catalystbyzoho/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/catalyst-quickml/SKILL.md",
+      "computedHash": "ea349adfac5466df9688b96b192908d0a5f74305eda73f555beb5d8ed402f995"
     },
     "catalyst-sdk": {
       "source": "catalystbyzoho/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/catalyst-sdk/SKILL.md",
-      "computedHash": "74eca24e32981f4e5ec703ba25a6df1b6132141442eab1429d83b637034096ee"
+      "computedHash": "67380ed3190058807e0ea1163ff98ca5e3c654ed568e7cf87e67bb0137a81bba"
     },
     "catalyst-signals": {
       "source": "catalystbyzoho/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/catalyst-signals/SKILL.md",
-      "computedHash": "753f724bc2fae7bf9a40ed9891d847cb7365db1e1bb2d77016723c34456a7bf2"
+      "computedHash": "c13e1363acf310d7b4a247ce711a70f7541eb06a42890d758a84ec0583cdd887"
     },
     "catalyst-slate": {
       "source": "catalystbyzoho/agent-skills",
@@ -83,7 +89,7 @@
       "source": "catalystbyzoho/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/catalyst-smartbrowz/SKILL.md",
-      "computedHash": "b558610ee7a3215f9b5ef2232a8d835138d2a9b102948cb823e59545f37b2131"
+      "computedHash": "6bdb2ffdfb78533d192e177c286986ed029f46002f4cdc774a9e35ede4b04299"
     },
     "catalyst-stratus": {
       "source": "catalystbyzoho/agent-skills",
@@ -95,13 +101,13 @@
       "source": "catalystbyzoho/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/catalyst-zia/SKILL.md",
-      "computedHash": "f6489789abf90981a0fcd55b5cd35a9b4607a744f3017cfba3ac454cabdf8991"
+      "computedHash": "bb2b905b1d93020ae17eea9182728a4f24f805ef89b078d9a6d6f6055bfdf2f0"
     },
     "catalyst-zoho-mcp": {
       "source": "catalystbyzoho/agent-skills",
       "sourceType": "github",
       "skillPath": "skills/catalyst-zoho-mcp/SKILL.md",
-      "computedHash": "63ba86aa5ce978739b17059f836856cab9d595fa68381220f4cc5eb4e448d8b1"
+      "computedHash": "e5d9541e4b8e4c86bab7e7bb179a017de0fda17c81d19ddb0c94bad15954075f"
     }
   }
 }

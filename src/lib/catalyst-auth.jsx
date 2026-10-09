@@ -141,7 +141,7 @@ export function CatalystAuthGate({ children }) {
 
     window.requestAnimationFrame(() => {
       auth.signIn("catalyst-login-container", {
-        service_url: window.location.origin + "/",
+        redirect_url: "/",
       });
     });
   };
