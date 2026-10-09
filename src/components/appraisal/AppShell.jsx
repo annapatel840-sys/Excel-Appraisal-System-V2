@@ -15,7 +15,6 @@ import { cn } from "@/lib/utils";
 
 const TECH_ED_PATHS = [
   "/",
-  "/employee-master",
   "/sheet",
   "/detail-screen",
   "/budget-distribution",
@@ -112,7 +111,7 @@ export function AppShell({ children, headerActions }) {
           label: "Budget Distribution",
           icon: WalletCards,
         },
-        hrMenuItems.length > 0 && {
+        !isTechEd && hrMenuItems.length > 0 && {
           to: "/employee-master",
           label: "HR Operations",
           icon: Users,
