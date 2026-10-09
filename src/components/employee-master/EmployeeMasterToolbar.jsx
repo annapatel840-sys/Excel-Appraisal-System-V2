@@ -15,6 +15,9 @@ export function EmployeeMasterToolbar({
   setSearch,
   statusFilter,
   setStatusFilter,
+  locationFilter = "All",
+  setLocationFilter,
+  locations = [],
   onDownloadTemplate,
   onUpload,
   onDownloadData,
@@ -71,6 +74,21 @@ export function EmployeeMasterToolbar({
       </select>
 
       <div className="em-toolbar-spacer" />
+
+      <select
+        className="em-status-select em-location-select"
+        aria-label="Filter Employee Master by location"
+        value={locationFilter}
+        onChange={(event) => {
+          setLocationFilter?.(event.target.value);
+          setMenuOpen(false);
+        }}
+      >
+        <option value="All">All Locations</option>
+        {locations.map((location) => (
+          <option key={location} value={location}>{location}</option>
+        ))}
+      </select>
 
       <div className="em-menu-wrapper" ref={menuRef}>
         <button
