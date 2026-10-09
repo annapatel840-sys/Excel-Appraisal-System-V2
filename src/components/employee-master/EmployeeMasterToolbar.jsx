@@ -81,7 +81,6 @@ export function EmployeeMasterToolbar({
           setLocationFilter?.(value);
           setMenuOpen(false);
         }}
-        canCreate={canCreateLocation}
         ariaLabel="Filter Employee Master by Location Master"
       />
 
