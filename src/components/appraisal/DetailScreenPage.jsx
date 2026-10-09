@@ -19,6 +19,10 @@ import {
 import { useBudget } from "@/lib/budget-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+<<<<<<< HEAD
+=======
+import { HeaderActions, HeaderSlot } from "./HeaderActions";
+>>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
 
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#12304f";
@@ -42,6 +46,15 @@ const CURRENT_CYCLE = "Apr-26";
 const BUDGET_PATH = "/employee-master?tab=budget-master";
 const BUDGET_NOTICE_PLACEHOLDER = null;
 
+<<<<<<< HEAD
+=======
+/* TODO: paste the options that were in the gear button here.
+   { key, label, onClick?: fn, href?: string, divider?: true } */
+const HEADER_MENU_ITEMS = [
+  { key: "settings", label: "Settings", href: "/settings" },
+];
+
+>>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
 const NOTES_KEY = "appraisal.myNotes";
 const NOTE_DRAFT_KEY = "appraisal.noteDraft";
 
@@ -446,6 +459,7 @@ function useFitScale(depKey) {
 /* ------------------------------------------------------------------
    SMALL PRESENTATIONAL COMPONENTS
    ------------------------------------------------------------------ */
+<<<<<<< HEAD
 function BudgetBanner({
   notice,
   onGotIt,
@@ -454,6 +468,10 @@ function BudgetBanner({
   setNotesOpen,
   employee,
 }) {
+=======
+function BudgetBanner({ notice, onGotIt }) {
+  if (!notice) return <div />;
+>>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
   const budgetNoticeText = notice
     ? `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`
     : "";
@@ -490,6 +508,7 @@ function BudgetBanner({
           <div className="min-w-0 flex-1" />
         )}
 
+<<<<<<< HEAD
         <div
           className="relative ml-auto flex shrink-0 items-center gap-2"
           data-detail-notes
@@ -523,6 +542,9 @@ function BudgetBanner({
             )}
           </div>
 
+=======
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+>>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
           {notice ? (
             <button
               type="button"
@@ -791,6 +813,7 @@ export function DetailScreenPage({
   const [noticeOpen, setNoticeOpen] = useState(true);
   const [metricsOpen, setMetricsOpen] = useState(false);
 
+<<<<<<< HEAD
   const [notesOpen, setNotesOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(true);
   const [feedbackWidth, setFeedbackWidth] = useState(320);
@@ -803,6 +826,10 @@ export function DetailScreenPage({
     document.addEventListener("mousedown", handleOutside);
     return () => document.removeEventListener("mousedown", handleOutside);
   }, [notesOpen]);
+=======
+  const [cardOpen, setCardOpen] = useState(true);
+  const [feedbackWidth, setFeedbackWidth] = useState(320);
+>>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
   const [fbTab, setFbTab] = useState("manager");
   const baselineRef = useRef({});
 
@@ -1163,6 +1190,14 @@ export function DetailScreenPage({
     else window.location.assign(BUDGET_PATH);
   };
 
+<<<<<<< HEAD
+=======
+  const handleSignOut = () => {
+    // TODO: use your existing sign-out (the one the gear menu calls)
+    window.location.assign("/logout");
+  };
+
+>>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
   // Blur first so the field being edited commits, then move.
   const goTo = (next) => {
     if (document.activeElement && document.activeElement.blur) {
@@ -1255,15 +1290,41 @@ export function DetailScreenPage({
     >
       <style>{DS_CSS}</style>
 
+<<<<<<< HEAD
+=======
+      {/* Top bar, far right (where the gear was): View budget · My notes · Profile */}
+      <HeaderSlot>
+        <HeaderActions
+          user={{
+            name: catalystUser?.name || currentUser?.name,
+            email: catalystUser?.email,
+            role: catalystUser?.role,
+          }}
+          menuItems={HEADER_MENU_ITEMS}
+          onSignOut={handleSignOut}
+          onViewBudget={handleViewBudget}
+          NotesPopover={NotesPopover}
+          notesContext={
+            employee
+              ? `${employee.name} (${employee.empId}) · ${CURRENT_CYCLE}`
+              : `Detailed Screen · ${CURRENT_CYCLE}`
+          }
+        />
+      </HeaderSlot>
+
+>>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
       {/* ============ SCREEN 1 - fits one viewport, no scrolling ============ */}
       <div className="ds-screen">
         <BudgetBanner
           notice={noticeOpen ? (liveBudgetNotice || budgetNotice) : null}
           onGotIt={() => setNoticeOpen(false)}
+<<<<<<< HEAD
           onViewBudget={handleViewBudget}
           notesOpen={notesOpen}
           setNotesOpen={setNotesOpen}
           employee={employee}
+=======
+>>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
         />
 
         {!employee ? (
@@ -2052,4 +2113,8 @@ export function DetailScreenPage({
   );
 }
 
+<<<<<<< HEAD
 export default DetailScreenPage;
+=======
+export default DetailScreenPage;
+>>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
