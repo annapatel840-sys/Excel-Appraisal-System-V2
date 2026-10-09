@@ -1502,10 +1502,17 @@ export function AppraisalGrid({
         setNotesOpen(false);
       }
     };
+    const handleEscape = (event) => {
+      if (event.key === "Escape") setNotesOpen(false);
+    };
 
     document.addEventListener("mousedown", handleOutside);
+    document.addEventListener("keydown", handleEscape);
 
-    return () => document.removeEventListener("mousedown", handleOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
   }, [notesOpen]);
 
   const [notesCount, setNotesCount] = useState(
