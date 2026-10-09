@@ -1,7 +1,7 @@
 import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 
 export async function payrollCycleRequest(resource, { method = "GET", body } = {}) {
-  // Catalyst Advanced I/O functions are invoked through the /execute endpoint.
+  // Advanced I/O function URLs do not include /execute.
   const url = new URL(catalystFunctionUrl("payrollcycleapi"));
   url.searchParams.set("resource", resource);
 
