@@ -123,6 +123,22 @@ const NUMERIC_FIELDS = new Set([
 ]);
 const MAX_TEXT_LENGTH = { empName: 100, fyYear: 20, rbMonth: 30, pbMonth: 30, tbMonth: 30 };
 
+const ALLOWED_APP_ORIGINS = new Set([
+  "https://excel-appraisal-syst-rjpjnpjn.onslate.in",
+]);
+
+function applyCors(req, res) {
+  const origin = String(req.headers?.origin || "");
+  if (!ALLOWED_APP_ORIGINS.has(origin)) return false;
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Requested-With");
+  res.setHeader("Access-Control-Max-Age", "600");
+  return true;
+}
+
 function sendJson(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
@@ -1210,6 +1226,10 @@ async function routeRequest(req, res, identity, resource, a) {
 }
 
 module.exports = async function payrollCycleApi(req, res) {
+  applyCors(req, res);
+  if (String(req.method || "").toUpperCase() === "OPTIONS") {
+    return res.writeHead(204).end();
+  }
   try {
     // Location Master is reference data needed by the Cycle Master dropdown.
     // Keep the endpoint authenticated through requireIdentity, but do not require
