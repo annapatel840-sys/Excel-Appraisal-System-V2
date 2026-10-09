@@ -18,7 +18,6 @@ export function EmployeeMasterToolbar({
   setStatusFilter,
   locationFilter = "All",
   setLocationFilter,
-  canCreateLocation = false,
   onDownloadTemplate,
   onUpload,
   onDownloadData,
