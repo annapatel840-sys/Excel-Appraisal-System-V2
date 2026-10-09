@@ -16,7 +16,7 @@ import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 import { SettingsProvider } from "@/lib/settings-store";
 import { AccessProvider, HR_TAB_SCREENS, NoAccessPage, PATH_SCREENS, useAccess } from "@/lib/access-store";
 
-const TECH_ED_PATHS = ["/", "/sheet", "/employee-master", "/detail-screen", "/budget-distribution", "/settings" ];
+const TECH_ED_PATHS = ["/", "/sheet", "/detail-screen", "/budget-distribution", "/settings"];
 
 // A crash in one screen shows a message instead of blanking the whole app.
 // It is keyed by path, so navigating to another screen clears the error.
@@ -74,6 +74,7 @@ const FIRST_SCREEN_PATHS = [
 // With access rules (/me ok): the path to show, or null when nothing is allowed.
 function accessAllowedPath(path, access, isTechEd = false) {
   const hrTabs = Object.keys(HR_TAB_SCREENS).filter((tab) => access.canScreen(HR_TAB_SCREENS[tab]));
+  if (isTechEd && path === "/employee-master") return "/";
   if (isTechEd && TECH_ED_PATHS.includes(path)) return path;
   const allowed =
     path === "/employee-master"
@@ -97,7 +98,7 @@ function AppRoutes() {
   const targetPath = access.ok
     ? accessAllowedPath(path, access, isTechEd)
     : isTechEd && !TECH_ED_PATHS.includes(path)
-      ? "/employee-master"
+      ? "/"
       : path;
   const effectivePath = targetPath === null ? path : targetPath.split("?")[0];
 
