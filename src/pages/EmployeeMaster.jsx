@@ -2253,25 +2253,6 @@ export function EmployeeMaster() {
   return (
     <AppShell>
       <div className="employee-master-page">
-        {isTabVisible("roster") && (
-          <div className="em-page-stats mb-2">
-            <div>
-              <span>Total</span>
-              <strong>{counts.total}</strong>
-            </div>
-
-            <div>
-              <span>Active</span>
-              <strong className="active">{counts.active}</strong>
-            </div>
-
-            <div>
-              <span>Inactive</span>
-              <strong className="inactive">{counts.inactive}</strong>
-            </div>
-          </div>
-        )}
-
         {/* ======================================================
             TABS
             ====================================================== */}
