@@ -494,10 +494,6 @@ export function EligibilityList({
             grid={grid}
           />
 
-          <div className="emx-note">
-            One Employee ID appears once in the list. An employee in an open
-            Exceptional cycle stays in the list but gets no Appraisal Sheet row.
-          </div>
         </div>
 
         <SidePanel
