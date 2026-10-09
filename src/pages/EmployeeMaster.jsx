@@ -2411,7 +2411,6 @@ export function EmployeeMaster() {
               setStatusFilter={setStatusFilter}
               locationFilter={locationFilter}
               setLocationFilter={setLocationFilter}
-              canCreateLocation={isRoleHR && access.canScreen("cycleMaster", "edit")}
               onDownloadTemplate={downloadRosterTemplate}
               onUpload={
                 canEditEmployees && !importPreparing
@@ -2502,7 +2501,6 @@ export function EmployeeMaster() {
                   setSearch={setEligibilitySearch}
                   locationFilter={eligibilityLocationFilter}
                   setLocationFilter={setEligibilityLocationFilter}
-                  canCreateLocation={isRoleHR && access.canScreen("cycleMaster", "edit")}
                   filters={eligibilityFilters}
                   setFilters={setEligibilityFilters}
                   onChangeEligibility={
