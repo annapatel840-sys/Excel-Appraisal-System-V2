@@ -965,14 +965,9 @@ async function getEmployees(req, res) {
       inactive: scopedInactiveCount,
     },
 
-    locations: Array.from(new Set(scopedEmployees.map(function (employee) {
-      return String(employee.location || employee.work_location || "").trim();
-    }).filter(Boolean))).sort(),
-
     filters: {
       search: search,
       status: status || "all",
-      location: location || "all",
       eligible: eligibleParam || "all",
       view: view || "appraisal",
     },
