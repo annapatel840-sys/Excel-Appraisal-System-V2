@@ -126,6 +126,16 @@ export function LocationMasterControl({
     setForm(blank);
     setError("");
   };
+
+  useEffect(() => {
+    if (!modal) return undefined;
+    const closeModalOnEscape = (event) => {
+      if (event.key === "Escape") close();
+    };
+    document.addEventListener("keydown", closeModalOnEscape);
+    return () => document.removeEventListener("keydown", closeModalOnEscape);
+  }, [modal, saving]);
+
   const active = locations.filter((x) => x.status === "Active");
 
   return (
