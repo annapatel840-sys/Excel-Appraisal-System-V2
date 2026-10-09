@@ -921,6 +921,7 @@ async function routeRequest(req, res, identity, resource, a) {
         location_code: String(row.location_code || "").trim(),
         address: String(row.address || "").trim(),
         currency_code: String(row.currency_code || "").trim(),
+        status: String(row.status || "Active").trim() || "Active",
       }))
       .filter((location) => location.location_code)
       .sort((a, b) => a.location_name.localeCompare(b.location_name));
@@ -929,6 +930,7 @@ async function routeRequest(req, res, identity, resource, a) {
 
   if (resource === "locations" && req.method === "POST") {
     const body = await readBody(req);
+    const locationId = String(body.id || "").trim();
     const locationName = String(body.location_name || "").trim();
     const locationCode = String(body.location_code || "").trim().toUpperCase();
     const address = String(body.address || "").trim();
@@ -937,19 +939,23 @@ async function routeRequest(req, res, identity, resource, a) {
       return sendJson(res, 400, { success: false, message: "Location Name and Location Code are required." });
     }
     const rows = await getAllRows(tables.locations);
-    const duplicate = rows.find((row) =>
-      String(row.location_code || "").trim().toLowerCase() === locationCode.toLowerCase() ||
-      String(row.location_name || "").trim().toLowerCase() === locationName.toLowerCase()
-    );
-    if (duplicate) {
-      return sendJson(res, 409, { success: false, message: "A location with this name or code already exists." });
+    const duplicate = rows.find((row) => {
+      const rowId = String(row.ROWID || row.rowid || row.id || "");
+      if (locationId && rowId === locationId) return false;
+      return String(row.location_code || "").trim().toLowerCase() === locationCode.toLowerCase() ||
+        String(row.location_name || "").trim().toLowerCase() === locationName.toLowerCase();
+    });
+    if (duplicate) return sendJson(res, 409, { success: false, message: "A location with this name or code already exists." });
+    const status = String(body.status || "Active").trim().toLowerCase() === "inactive" ? "Inactive" : "Active";
+    const payload = { location_name: locationName, location_code: locationCode, address, currency_code: currencyCode, status };
+    if (locationId) {
+      const existing = rows.find((row) => String(row.ROWID || row.rowid || row.id || "") === locationId);
+      if (!existing) return sendJson(res, 404, { success: false, message: "Location not found." });
+      await tables.locations.updateRow({ ROWID: locationId, ...payload });
+      return sendJson(res, 200, { success: true, data: { id: locationId, ...payload } });
     }
-    const payload = { location_name: locationName, location_code: locationCode, address, currency_code: currencyCode };
     const inserted = await tables.locations.insertRow(payload);
-    return sendJson(res, 201, { success: true, data: {
-      id: String(inserted?.ROWID || inserted?.rowid || inserted?.id || ""),
-      ...payload,
-    } });
+    return sendJson(res, 201, { success: true, data: { id: String(inserted?.ROWID || inserted?.rowid || inserted?.id || ""), ...payload } });
   }
 
   if (resource === "audit" && req.method === "GET") {
