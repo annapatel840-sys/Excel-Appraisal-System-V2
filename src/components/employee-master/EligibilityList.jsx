@@ -38,6 +38,12 @@ const DEFS = [
     ),
   },
   {
+    key: "location",
+    label: "Location",
+    w: 120,
+    get: (e) => e.location || e.rawEmployee?.location || e.rawEmployee?.work_location || "—",
+  },
+  {
     key: "dept",
     label: "Department",
     w: 140,
@@ -124,6 +130,8 @@ export function EligibilityList({
   employees,
   search,
   setSearch,
+  locationFilter = "All",
+  setLocationFilter,
   onChangeEligibility, // (employeeOrArray) => open your EligibilityModal; arrays carry .preset = "Yes" | "No"
   onDownloadTemplate,
   onImport,
@@ -174,12 +182,23 @@ export function EligibilityList({
     [search],
   );
 
-  const view = useGridView(employees, DEFS, grid, searchPre);
+  const locations = useMemo(() => [...new Set(
+    employees.map((employee) => String(employee.location || employee.rawEmployee?.location || employee.rawEmployee?.work_location || "").trim()).filter(Boolean),
+  )].sort((a, b) => a.localeCompare(b)), [employees]);
+
+  const locationFilteredEmployees = useMemo(() => {
+    if (!locationFilter || locationFilter === "All") return employees;
+    return employees.filter((employee) =>
+      String(employee.location || employee.rawEmployee?.location || employee.rawEmployee?.work_location || "").trim() === locationFilter,
+    );
+  }, [employees, locationFilter]);
+
+  const view = useGridView(locationFilteredEmployees, DEFS, grid, searchPre);
 
   /* counts (Removed rows are not counted) */
   const counted = useMemo(
-    () => employees.filter((e) => tagOf(e) !== "Removed"),
-    [employees],
+    () => locationFilteredEmployees.filter((e) => tagOf(e) !== "Removed"),
+    [locationFilteredEmployees],
   );
   const eligibleCount = counted.filter((e) => e.eligible === "Yes").length;
   const notEligibleCount = counted.length - eligibleCount;
@@ -190,7 +209,7 @@ export function EligibilityList({
   useEffect(() => {
     if (page > pages) setPage(pages);
   }, [page, pages]);
-  useEffect(() => setPage(1), [grid.filters, grid.sort, search]);
+  useEffect(() => setPage(1), [grid.filters, grid.sort, search, locationFilter]);
 
   const pageRows = useMemo(
     () => view.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
@@ -206,10 +225,10 @@ export function EligibilityList({
   );
   const selectedRows = useMemo(
     () =>
-      employees.filter(
+      locationFilteredEmployees.filter(
         (e) => selectedIds.has(e.empId) && tagOf(e) !== "Removed",
       ),
-    [employees, selectedIds],
+    [locationFilteredEmployees, selectedIds],
   );
   const viewSelected = selectable.filter((e) =>
     selectedIds.has(e.empId),
@@ -318,6 +337,18 @@ export function EligibilityList({
               placeholder="Search name / ID"
             />
           </div>
+
+          <select
+            className="em-status-select em-location-select"
+            aria-label="Filter Eligibility List by location"
+            value={locationFilter}
+            onChange={(event) => setLocationFilter?.(event.target.value)}
+          >
+            <option value="All">All Locations</option>
+            {locations.map((location) => (
+              <option key={location} value={location}>{location}</option>
+            ))}
+          </select>
 
           {onAddEmployee && canEdit && (
             <button
