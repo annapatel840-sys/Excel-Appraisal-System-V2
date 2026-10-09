@@ -2532,6 +2532,9 @@ export function EmployeeMaster() {
                 <AppraisalCycleMasterPage
                   defaultProcess={defaultProcess}
                   cycleStats={null}
+                  canNavigate={(tab) =>
+                    KNOWN_TABS.includes(tab) && isTabVisible(tab)
+                  }
                   onNavigate={(tab) =>
                     KNOWN_TABS.includes(tab) && isTabVisible(tab)
                       ? setActiveTab(tab)
