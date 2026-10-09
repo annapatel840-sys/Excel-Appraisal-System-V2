@@ -1,5 +1,5 @@
 import { useMemo, useState, useEffect} from "react";
-import { catalystFetch } from "@/lib/catalyst-api";
+import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
  
 /* ============================================================
    HR Config screen (outer part of the reference HTML).
@@ -11,8 +11,8 @@ import { catalystFetch } from "@/lib/catalyst-api";
    ============================================================ */
  
 const STORE = "hr_config_v1";
-const LOCATION_API_URL =
-  "https://excelappraisalmanagement-60090194508.development.catalystserverless.in/server/payrollcycleapi/";
+// Same project as the rest of the app (see catalyst-api.js).
+const LOCATION_API_URL = catalystFunctionUrl("payrollcycleapi");
 const PROC_OPTS = [
   ["Annual", "Annual process"],
   ["Exceptional", "Exceptional process"],
