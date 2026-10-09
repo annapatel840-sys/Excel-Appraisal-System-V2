@@ -8,24 +8,10 @@
 const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
 
-/* CORS: allow the deployed OnSlate app and local Vite development. */
-const ALLOWED_ORIGINS = new Set([
-  "https://excel-appraisal-syst-rjpjnpjn.onslate.in",
-  "http://localhost:5173",
-]);
-
-function applyCors(req, res) {
-  const origin = req.headers && req.headers.origin;
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-    res.setHeader("Vary", "Origin");
-  }
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
-  res.setHeader("Access-Control-Max-Age", "86400");
-}
-
+/* CORS: Catalyst adds the CORS headers itself for the Authorized Domains
+   (Authentication > Authorized Domains). Do not set them here: two
+   Access-Control-Allow-Origin headers make the browser reject the response
+   ("Failed to fetch"). */
 
 const TABLES = {
   employees: "74008000000039094",
@@ -1228,7 +1214,7 @@ async function routeRequest(req, res, identity, resource, a) {
 }
 
 module.exports = async function payrollCycleApi(req, res) {
-  applyCors(req, res);
+  // A preflight that reaches the function is answered before any auth.
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     return res.end();
