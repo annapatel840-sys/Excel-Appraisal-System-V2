@@ -307,6 +307,7 @@ function getCurrentUserMatchValues(user) {
 
   return [
     user?.user_id,
+    user?.empId,
     user?.email_id,
     user?.email,
     user?.display_name,
@@ -867,7 +868,15 @@ async function getEmployees(req, res) {
   // removed BEFORE counting / searching / paginating.
   const scopedEmployees = enforced
     ? allEmployees
+        // Tech-Ed roster ownership is maintained in Employee_Master.appraiser_tech_ed
+        // (for example, "EMP002 - Ashok Kumar"). Use that assignment as the source
+        // of truth for the Tech-Ed's visible employees instead of requiring a
+        // separate Delegation row to duplicate the same assignment.
         .filter(function (employee) {
+          if (a.scope && a.scope.all) return true;
+          if (a.role === "techEd") {
+            return employeeBelongsToCurrentUser(employee, a.user);
+          }
           return access.inScope(a, employee);
         })
         .map(function (employee) {
