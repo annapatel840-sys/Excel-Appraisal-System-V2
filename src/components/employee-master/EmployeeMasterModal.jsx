@@ -1,9 +1,19 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 
 function Shell({ title, sub, onClose, children, footer }) {
+  useEffect(() => {
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") onClose?.();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
   return (
-    <div className="em-modal-overlay">
+    <div className="em-modal-overlay" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose?.();
+    }}>
       <div className="em-modal em-small-modal">
         <div className="em-modal-header">
           <div>
