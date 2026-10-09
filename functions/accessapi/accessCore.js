@@ -339,15 +339,21 @@ async function loadDelegation(zcql, cycleId) {
   const people = masterRows.map((r) => ({
     empId: String(r[e.empId] || '').trim(),
     name: String(r[e.name] || '').trim(),
+    email: String(r[e.email] || '').trim().toLowerCase(),
   })).filter((p) => p.empId);
 
   const resolveManager = (value) => {
     const raw = String(value || '').trim().toLowerCase();
     if (!raw) return '';
+    // Employee Master manager assignments can be stored as an employee ID,
+    // display name, or login email. Resolve all three to the stable employee ID
+    // before constructing team scope; otherwise a manager stored as an email
+    // is treated as a literal ID and their team history requests are denied.
     const person = people.find((p) =>
       raw === p.empId.toLowerCase() ||
       raw.includes(p.empId.toLowerCase()) ||
-      (p.name && raw.includes(p.name.toLowerCase()))
+      (p.name && raw.includes(p.name.toLowerCase())) ||
+      (p.email && raw.includes(p.email))
     );
     return person ? norm(person.empId) : norm(value);
   };
