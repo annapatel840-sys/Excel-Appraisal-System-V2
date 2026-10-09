@@ -1209,9 +1209,40 @@ async function routeRequest(req, res, identity, resource, a) {
   return sendJson(res, 404, { success: false, message: "The requested payroll/cycle operation was not found." });
 }
 
+const CORS_ALLOWED_ORIGINS = new Set([
+  "https://excel-appraisal-syst-rjpjnpjn.onslate.in",
+  "http://localhost:5173",
+  "http://localhost:3000",
+]);
+
+function applyCors(req, res) {
+  const origin = String(req.headers?.origin || "");
+  if (!CORS_ALLOWED_ORIGINS.has(origin)) return false;
+
+  res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Vary", "Origin");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    req.headers?.["access-control-request-headers"] || "Authorization, Content-Type",
+  );
+  res.setHeader("Access-Control-Max-Age", "86400");
+  return true;
+}
+
 module.exports = async function payrollCycleApi(req, res) {
-  // Catalyst's authorized-domain gateway handles production CORS headers and preflight.
-  // Do not add duplicate Access-Control-Allow-Origin headers here.
+  // Handle browser preflight before Catalyst identity/auth checks. The browser
+  // sends OPTIONS without the app's Authorization token.
+  const corsAllowed = applyCors(req, res);
+  if (req.method === "OPTIONS") {
+    if (!corsAllowed) {
+      return sendJson(res, 403, { success: false, message: "CORS origin is not allowed." });
+    }
+    res.writeHead(204);
+    return res.end();
+  }
+
   try {
     // Location Master is reference data needed by the Cycle Master dropdown.
     // Keep the endpoint authenticated through requireIdentity, but do not require
