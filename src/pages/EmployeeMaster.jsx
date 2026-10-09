@@ -6,6 +6,7 @@ import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { HrConfigPage } from "@/components/employee-master/HrConfigPage";
+import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
 import {
   FIELD_DEFS,
   fetchEmployeeMasterEmployees,
@@ -603,9 +604,11 @@ export function EmployeeMaster() {
   // otherwise the role-based rules used before access control.
   const isTabVisible = (tab) => {
     if (access.ok) {
+      if (tab === "location-master") return isRoleHR && access.canScreen("cycleMaster", "edit");
       if (tab === "payroll-upload") return access.canScreen("payroll", "edit");
       return access.canScreen(HR_TAB_SCREENS[tab] || "employeeMaster");
     }
+    if (tab === "location-master") return isRoleHR;
     if (tab === "roster" || tab === "eligibility") return true;
     if (tab === "payroll-data") return canViewPayroll;
     if (tab === "payroll-upload") return canUploadPayroll;
@@ -628,6 +631,7 @@ export function EmployeeMaster() {
       "roster",
       "eligibility",
       "appraisal-cycle",
+      "location-master",
       "payroll-data",
       "payroll-upload",
       "team-changes",
@@ -2292,6 +2296,16 @@ export function EmployeeMaster() {
             </button>
           )}
 
+          {isTabVisible("location-master") && (
+            <button
+              type="button"
+              className={activeTab === "location-master" ? "active" : ""}
+              onClick={() => setActiveTab("location-master")}
+            >
+              Location Master
+            </button>
+          )}
+
           {isTabVisible("payroll-data") && (
             <button
               type="button"
@@ -2538,6 +2552,12 @@ export function EmployeeMaster() {
                 />
               )}
             />
+          </div>
+        )}
+
+        {isTabVisible("location-master") && activeTab === "location-master" && (
+          <div className="em-tab-content">
+            <LocationMasterControl managerOnly />
           </div>
         )}
 
