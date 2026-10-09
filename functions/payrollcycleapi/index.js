@@ -10,29 +10,11 @@ const access = require("./accessCore");
 
 /* ============================================================
    CORS
+   Catalyst adds the CORS headers itself for the Authorized Domains
+   (Authentication > Authorized Domains). Do not set them here: two
+   Access-Control-Allow-Origin headers make the browser reject the
+   response ("Failed to fetch").
    ============================================================ */
-const ALLOWED_ORIGINS = new Set([
-  "https://excel-appraisal-syst-rjpjnpjn.onslate.in",
-  "http://localhost:5173", // local dev - remove if not needed
-]);
-
-function applyCors(req, res) {
-  const origin = req.headers && req.headers.origin;
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Access-Control-Allow-Credentials", "true");
-    res.setHeader("Vary", "Origin");
-  }
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS",
-  );
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With",
-  );
-  res.setHeader("Access-Control-Max-Age", "86400");
-}
 
 /* ============================================================
    CONSTANTS
@@ -225,7 +207,6 @@ const MAX_TEXT_LENGTH = {
 };
 
 function sendJson(res, status, body) {
-  // CORS headers were already set by applyCors() at the top of the handler.
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
 }
@@ -1248,9 +1229,7 @@ const mainHandler = async (req, res) => {
 };
 
 module.exports = async (req, res) => {
-  applyCors(req, res);
-
-  // Answer the CORS preflight BEFORE any auth / Catalyst calls.
+  // Answer a preflight that reaches the function before any auth / Catalyst calls.
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     return res.end();

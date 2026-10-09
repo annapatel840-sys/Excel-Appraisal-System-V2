@@ -10,13 +10,10 @@ const TABLES = {
   comp: "74008000000023149",         // Budget_Distribution_Comp
 };
 
+// CORS headers come from Catalyst (Authorized Domains); setting them here too
+// gives the browser two Access-Control-Allow-Origin values and it rejects the response.
 function sendJson(res, status, body) {
-  res.writeHead(status, {
-    "Content-Type": "application/json",
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
-  });
+  res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
 }
 
