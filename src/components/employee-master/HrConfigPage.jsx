@@ -1034,7 +1034,6 @@ const [locationsLoading, setLocationsLoading] = useState(true);
                 );
               }
             }}
-            canCreate={canEdit}
             ariaLabel="Location"
             triggerClassName="hrc-locsel"
           />
