@@ -17,31 +17,25 @@ const COLUMNS = [
     key: "name",
     label: "Employee",
     type: "text",
-    get: (employee) => `${employee.name} ${employee.empId}`,
-  },
-  {
-    key: "appraisalYear",
-    label: "Appraisal Year",
-    type: "text",
-    get: () => "Apr-26",
+    get: (employee) => `${employee.empId} - ${employee.name} ${employee.designation || ""}`,
   },
   {
     key: "organization",
-    label: "Organization",
+    label: "Department",
     type: "select",
     get: (employee) => employee.organization || "",
-  },
-  {
-    key: "designation",
-    label: "Designation",
-    type: "select",
-    get: (employee) => employee.designation || "",
   },
   {
     key: "doj",
     label: "Date of Joining",
     type: "text",
     get: (employee) => fmtDoj(employee.doj),
+  },
+  {
+    key: "appraiser",
+    label: "Tech-ED/BU Head Name",
+    type: "select",
+    get: (employee) => employee.appraiser || employee.superManager || "",
   },
   {
     key: "eligible",
@@ -52,11 +46,27 @@ const COLUMNS = [
   },
   {
     key: "eligibleReason",
-    // Reason has no backend column: it is derived/entered locally and is
-    // lost on reload.
-    label: "Reason (not saved)",
+    label: "Reason",
     type: "text",
     get: (employee) => employee.eligibleReason || "",
+  },
+  {
+    key: "setBy",
+    label: "Set by",
+    type: "select",
+    get: (employee) => employee.manualOverride ? "Manual" : "Criteria",
+  },
+  {
+    key: "changeTag",
+    label: "Change tag",
+    type: "select",
+    get: (employee) => employee.manualOverride ? "Changed" : "—",
+  },
+  {
+    key: "lastUpdated",
+    label: "Last updated",
+    type: "text",
+    get: (employee) => employee.eligibilityUpdatedAt || "—",
   },
 ];
 
@@ -417,25 +427,16 @@ export function EligibilityList({
               <tr key={employee.empId}>
                 {/* EMPLOYEE */}
                 <td>
-                  <div className="em-name-cell">
-                    <strong>{employee.name}</strong>
-                    <span>{employee.empId}</span>
+                  <div className="em-reference-employee">
+                    <strong>{employee.empId} - {employee.name}</strong>
+                    <span>{employee.designation || "—"}</span>
                   </div>
                 </td>
 
-                {/* APPRAISAL YEAR */}
-                <td>Apr-26</td>
-
-                {/* ORGANIZATION */}
-                <td>{employee.organization}</td>
-
-                {/* DESIGNATION */}
-                <td>{employee.designation}</td>
-
-                {/* DOJ */}
-                <td>{fmtDoj(employee.doj)}</td>
-
-                {/* ELIGIBILITY */}
+                {/* SUPPLIED DESIGN COLUMNS */}
+                <td>{employee.organization || "—"}</td>
+                <td>{fmtDoj(employee.doj) || "—"}</td>
+                <td>{employee.appraiser || employee.superManager || "—"}</td>
                 <td>
                   <span
                     className={`em-elig-badge ${
@@ -445,17 +446,17 @@ export function EligibilityList({
                     {employee.eligible === "Yes" ? "Eligible" : "Not Eligible"}
                   </span>
                 </td>
-
-                {/* REASON */}
                 <td>
                   <div className="em-reason">
-                    <span title="Not saved: there is no backend column for the reason">
+                    <span title="Reason is shown from the existing eligibility data">
                       {employee.eligibleReason || "—"}
                     </span>
-
                     {employee.manualOverride && <small>Manual</small>}
                   </div>
                 </td>
+                <td>{employee.manualOverride ? "Manual" : "Criteria"}</td>
+                <td>{employee.manualOverride ? "Changed" : "—"}</td>
+                <td>{employee.eligibilityUpdatedAt || "—"}</td>
 
                 {/* ACTION (only when the user may write) */}
                 {onChangeEligibility && (
@@ -474,7 +475,7 @@ export function EligibilityList({
 
             {!paginatedRows.length && (
               <tr>
-                <td colSpan={8} className="em-empty">
+                <td colSpan={COLUMNS.length + (onChangeEligibility ? 1 : 0)} className="em-empty">
                   No eligibility records found.
                 </td>
               </tr>
