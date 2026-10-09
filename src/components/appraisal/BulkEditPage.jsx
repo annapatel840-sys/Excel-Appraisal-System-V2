@@ -882,9 +882,8 @@ const BulkOperations = forwardRef(function BulkOperations(
     [fa, setFa] = useState(null);
   const [sb, setSb] = useState(null),
     [sb0, setSb0] = useState(null);
-  const [role, setRole] = useState("HR"),
-    [user, setUser] = useState(""),
-    [asState, setAsState] = useState("");
+  const [role] = useState("HR"),
+    [user] = useState("");
   const [locked, setLocked] = useState(false),
     [lockReason, setLockReason] = useState("");
   const [loading, setLoading] = useState(false),
@@ -1525,7 +1524,6 @@ const BulkOperations = forwardRef(function BulkOperations(
   const loadAll = async (asOv) => {
     if (asOv !== undefined) {
       asRef.current = asOv;
-      setAsState(asOv);
     }
     setLoading(true);
     setErr("");
@@ -1548,10 +1546,8 @@ const BulkOperations = forwardRef(function BulkOperations(
       if (rl.length > 1) {
         const cur = asRef.current || res.me.activeRole || rl[0].key;
         asRef.current = cur;
-        setAsState(cur);
       } else {
         asRef.current = "";
-        setAsState("");
       }
       try {
         const au = await apiCall("GET", "/audit" + q());
@@ -2233,20 +2229,6 @@ const BulkOperations = forwardRef(function BulkOperations(
       wb,
       "bulk_operations_" + new Date().toISOString().slice(0, 10) + ".xlsx",
     );
-  };
-
-  /* role switch (demo) / view-as (api) */
-  const onRoleChange = (v) => {
-    setOff({});
-    setPage(1);
-    setPvOn(false);
-    setFlash("");
-    if (apiMode) {
-      loadAll(v);
-      return;
-    }
-    setRole(v);
-    setUser(v === "HR" ? "" : (v === "TE" ? TES : CMS)[0]);
   };
 
   /* ============================== derived render data ============================== */
