@@ -12,6 +12,7 @@ import { DetailScreenPage } from "@/components/appraisal/DetailScreenPage";
 import { AppShell } from "./components/appraisal/AppShell";
 import { BudgetMasterPage } from "@/components/employee-master/BudgetMasterPage";
 import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
+import BulkEditScreen from "@/components/appraisal/BulkEditScreen";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 import { SettingsProvider } from "@/lib/settings-store";
 import { AccessProvider, HR_TAB_SCREENS, NoAccessPage, PATH_SCREENS, useAccess } from "@/lib/access-store";
@@ -162,6 +163,12 @@ function AppRoutes() {
     page = (
       <AppShell>
         <BudgetDistributionPage />
+      </AppShell>
+    );
+  } else if (effectivePath === "/bulk-edit") {
+    page = (
+      <AppShell>
+        <BulkEditScreen />
       </AppShell>
     );
   } else if (effectivePath === "/settings") {
