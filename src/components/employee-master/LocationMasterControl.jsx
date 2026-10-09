@@ -145,18 +145,122 @@ export function LocationMasterControl({
           <div className="em-location-master-page-head">
             <div>
               <h2>Location Master</h2>
-              <p>Add, edit, and activate or deactivate locations shared across Employee Master, Eligibility List, and Appraisal Cycle Master.</p>
+              <p>Manage locations shared across Employee Master, Eligibility List, and Appraisal Cycle Master.</p>
             </div>
-            <div className="em-location-master-page-actions">
-              <button type="button" className="em-btn em-btn-primary" onClick={() => { setModal(true); setCreating(true); setForm(blank); setError(""); }}>
-                Add Location <Plus size={14} />
-              </button>
-              <button type="button" className="em-btn" onClick={() => { setModal(true); setCreating(false); setError(""); }}>
-                Manage Locations <Settings2 size={14} />
-              </button>
-            </div>
+            <button
+              type="button"
+              className="em-btn em-btn-primary"
+              onClick={() => {
+                setCreating((v) => !v);
+                setForm(blank);
+                setError("");
+                setEditing("");
+                setDraft(null);
+              }}
+            >
+              {creating ? "Cancel Add" : "Add Location"} <Plus size={14} />
+            </button>
           </div>
-          {error && !modal && <div className="em-location-error" role="alert">{error}</div>}
+
+          {error && <div className="em-location-error" role="alert">{error}</div>}
+
+          {creating && (
+            <form
+              className="em-location-form em-location-inline-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                save({ ...form, status: "Active" });
+              }}
+            >
+              <label>
+                Location Name *
+                <input required maxLength={120} value={form.location_name}
+                  onChange={(e) => setForm((v) => ({ ...v, location_name: e.target.value }))} />
+              </label>
+              <label>
+                Location Code *
+                <input required maxLength={30} value={form.location_code}
+                  onChange={(e) => setForm((v) => ({ ...v, location_code: e.target.value.toUpperCase() }))} />
+              </label>
+              <label>
+                Address
+                <input maxLength={250} value={form.address}
+                  onChange={(e) => setForm((v) => ({ ...v, address: e.target.value }))} />
+              </label>
+              <label>
+                Currency Code
+                <input maxLength={10} value={form.currency_code}
+                  onChange={(e) => setForm((v) => ({ ...v, currency_code: e.target.value.toUpperCase() }))} />
+              </label>
+              <div className="em-location-inline-actions">
+                <button type="submit" className="em-btn em-btn-primary" disabled={Boolean(saving)}>
+                  {saving ? "Saving..." : "Save Location"}
+                </button>
+                <button type="button" className="em-btn" onClick={() => { setCreating(false); setForm(blank); }}>
+                  Cancel
+                </button>
+              </div>
+            </form>
+          )}
+
+          <div className="em-location-master-summary">
+            <span>{loading ? "Loading locations..." : `${locations.length} total locations`}</span>
+            <span>{active.length} active · {locations.length - active.length} inactive</span>
+            <button type="button" className="em-btn" onClick={load} disabled={loading}>Refresh</button>
+          </div>
+
+          <div className="em-location-table-wrap em-location-master-table-wrap">
+            <table className="em-location-table">
+              <thead>
+                <tr>
+                  <th>Location</th><th>Code</th><th>Address</th><th>Currency</th><th>Status</th><th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {locations.map((loc) => {
+                  const edit = editing === loc.id;
+                  const row = edit ? draft : loc;
+                  return (
+                    <tr key={loc.id || loc.location_code}>
+                      {["location_name", "location_code", "address", "currency_code"].map((key) => (
+                        <td key={key}>
+                          {edit ? (
+                            <input aria-label={key} value={row[key] || ""}
+                              onChange={(e) => setDraft((v) => ({
+                                ...v,
+                                [key]: key === "location_code" || key === "currency_code"
+                                  ? e.target.value.toUpperCase() : e.target.value,
+                              }))} />
+                          ) : (loc[key] || "—")}
+                        </td>
+                      ))}
+                      <td><span className={`em-location-status ${loc.status.toLowerCase()}`}>{loc.status}</span></td>
+                      <td className="em-location-row-actions">
+                        {edit ? (
+                          <>
+                            <button type="button" className="em-btn em-btn-primary" disabled={Boolean(saving)} onClick={() => save(row)}>
+                              {saving === loc.id ? "Saving..." : "Save"}
+                            </button>
+                            <button type="button" className="em-btn" onClick={() => { setEditing(""); setDraft(null); }}>Cancel</button>
+                          </>
+                        ) : (
+                          <>
+                            <button type="button" className="em-btn" disabled={Boolean(saving) || creating} onClick={() => { setEditing(loc.id); setDraft({ ...loc }); }}>
+                              Edit
+                            </button>
+                            <button type="button" className="em-btn" disabled={Boolean(saving) || creating} onClick={() => save({ ...loc, status: loc.status === "Active" ? "Inactive" : "Active" })}>
+                              {saving === loc.id ? "Saving..." : loc.status === "Active" ? "Deactivate" : "Activate"}
+                            </button>
+                          </>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {!loading && !locations.length && <tr><td colSpan={6}>No locations found.</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </section>
       )}
       {!managerOnly && (
