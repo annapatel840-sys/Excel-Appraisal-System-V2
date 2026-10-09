@@ -57,11 +57,7 @@ const CSS = `
   .tk strong{font-size:15px;font-weight:800}
   .tk strong.warn{color:#FFCF70}.tk strong.danger{color:#FF9A8A}
   .tk small{font-size:10.5px;color:#AAB4C0;font-weight:600}
-  .row2{background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px;padding:0 14px;min-height:42px;flex-wrap:wrap}
-  .nav{font-size:14px;font-weight:600;color:#4B5563;padding:11px 12px;border:0;background:none;font-family:inherit;cursor:default;border-bottom:2px solid transparent}
-  .nav.act{color:var(--navy);font-weight:700;border-bottom-color:var(--navy)}
   .sp{flex:1}
-  .viewas{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--muted)}
   .badge{font-size:10.5px;font-weight:800;border-radius:10px;padding:2px 9px;background:var(--ok-bg);color:var(--ok)}
   select,input[type=text],input[type=number]{font-family:inherit;font-size:12.5px;border:1px solid var(--input-border);border-radius:6px;background:#fff;color:var(--ink);padding:6px 8px;height:30px}
   select:focus,input:focus{outline:2px solid #9DBDEB;outline-offset:0}
@@ -2630,13 +2626,6 @@ const BulkOperations = forwardRef(function BulkOperations(
   const lb = lastBatch(),
     lbArmed = lb && restoreAt.id === lb.id && Date.now() - restoreAt.t < 6000;
   const okPv = !!pv && pv.n.chg > 0 && !locked && !busy;
-  const apiRoles = me && Array.isArray(me.roles) ? me.roles : [];
-  const showRoleSel = apiMode ? apiRoles.length > 1 : true;
-  const cycTxt =
-    cyc.name +
-    " cycle" +
-    (cyc.location ? " · " + cyc.location : "") +
-    (apiMode ? "" : " · demo data");
 
   /* ============================== render ============================== */
   return (
@@ -2648,8 +2637,8 @@ const BulkOperations = forwardRef(function BulkOperations(
 
       <div className="topbar">
         <div className="tb-l">
-          <span className="title">Compensation Management</span>
-          <span className="cycle">{cycTxt}</span>
+          <span className="title">Bulk Edit</span>
+          <span className="cycle">{cyc.name}{cyc.location ? " · " + cyc.location : ""}</span>
         </div>
         <div className="tb-r">
           <div className="tk">
@@ -2667,67 +2656,6 @@ const BulkOperations = forwardRef(function BulkOperations(
         </div>
       </div>
 
-      <div className="row2">
-        <button className="nav" type="button">
-          Appraisal Sheet
-        </button>
-        <button className="nav" type="button">
-          Detail screen
-        </button>
-        <button className="nav act" type="button">
-          Bulk Operations
-        </button>
-        <span className="sp" />
-        <div className="viewas">
-          <span className="badge">
-            {apiMode
-              ? (me && me.name ? me.name + " · " : "") + ((me && me.role) || "")
-              : role === "HR"
-                ? "HR"
-                : role === "TE"
-                  ? "Tech ED"
-                  : "Comp Manager"}
-          </span>
-          {showRoleSel && <label htmlFor="roleSel">View as</label>}
-          {showRoleSel && (
-            <select
-              id="roleSel"
-              value={apiMode ? asState : role}
-              onChange={(e) => onRoleChange(e.target.value)}
-            >
-              {apiMode ? (
-                apiRoles.map((x) => (
-                  <option key={x.key} value={x.key}>
-                    {x.label || x.key}
-                  </option>
-                ))
-              ) : (
-                <>
-                  <option value="HR">HR</option>
-                  <option value="TE">Tech ED</option>
-                  <option value="CM">Comp Manager</option>
-                </>
-              )}
-            </select>
-          )}
-          {!apiMode && role !== "HR" && (
-            <select
-              value={user}
-              onChange={(e) => {
-                setUser(e.target.value);
-                setOff({});
-                setPage(1);
-                setPvOn(false);
-              }}
-            >
-              {(role === "TE" ? TES : CMS).map((x) => (
-                <option key={x}>{x}</option>
-              ))}
-            </select>
-          )}
-        </div>
-      </div>
-
       <div className="work">
         <div
           id="mainCol"
@@ -2739,9 +2667,6 @@ const BulkOperations = forwardRef(function BulkOperations(
             <div className="card" id="ruleCard">
               <div className="card-h">
                 <h2>Bulk operations</h2>
-                <span className="note">
-                  Preview first. Nothing is saved until Apply.
-                </span>
                 <span className="sp" />
                 <button
                   className="btn pri"
