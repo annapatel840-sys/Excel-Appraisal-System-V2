@@ -16,8 +16,9 @@ export function EligibilityModal({ employee, onClose, onSave }) {
 
   useEffect(() => {
     if (!first) return;
-    // The action flips the current state (Eligible -> Not Eligible and back)
-    setStatus(first.eligible === "Yes" ? "No" : "Yes");
+    const preset = Array.isArray(employee) ? employee.preset : undefined;
+    // preset comes from the bulk bar; a single row flips its current state
+    setStatus(preset ?? (first.eligible === "Yes" ? "No" : "Yes"));
     setReason("");
     setOtherReason("");
     setError("");

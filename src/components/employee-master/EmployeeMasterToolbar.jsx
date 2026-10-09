@@ -7,6 +7,9 @@ import {
   Upload,
 } from "lucide-react";
 
+import { usePanel } from "./panelStore";
+import "./employee-master-ui.css";
+
 export function EmployeeMasterToolbar({
   search,
   setSearch,
@@ -19,22 +22,19 @@ export function EmployeeMasterToolbar({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const [panel, updatePanel] = usePanel("em");
 
   useEffect(() => {
-    const handleOutsideClick = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
+    const outside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target))
         setMenuOpen(false);
-      }
     };
-    const handleEscape = (event) => {
-      if (event.key === "Escape") setMenuOpen(false);
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-    document.addEventListener("keydown", handleEscape);
+    const esc = (event) => event.key === "Escape" && setMenuOpen(false);
+    document.addEventListener("mousedown", outside);
+    document.addEventListener("keydown", esc);
     return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("mousedown", outside);
+      document.removeEventListener("keydown", esc);
     };
   }, []);
 
@@ -76,13 +76,13 @@ export function EmployeeMasterToolbar({
         <button
           type="button"
           className="em-btn em-btn-primary"
+          aria-label="Menu"
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
           onClick={(event) => {
             event.stopPropagation();
             setMenuOpen((current) => !current);
           }}
-          aria-label="Menu"
-          aria-expanded={menuOpen}
-          aria-haspopup="menu"
         >
           Menu ▾
         </button>
@@ -114,19 +114,36 @@ export function EmployeeMasterToolbar({
               <span>Export to Excel</span>
             </button>
 
-            {onAuditHistory && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={run(onAuditHistory)}
-              >
-                <History size={14} />
-                <span>Audit Trail</span>
-              </button>
-            )}
+            <button
+              type="button"
+              role="menuitem"
+              onClick={run(() =>
+                updatePanel({
+                  open: true,
+                  tab: "aud",
+                  fullAudit: onAuditHistory || null,
+                }),
+              )}
+            >
+              <History size={14} />
+              <span>Audit Trail</span>
+            </button>
           </div>
         )}
       </div>
+
+      <button
+        type="button"
+        className="em-btn"
+        onClick={() =>
+          updatePanel({
+            open: !panel.open,
+            fullAudit: onAuditHistory || panel.fullAudit,
+          })
+        }
+      >
+        Panel {panel.open ? "‹" : "›"}
+      </button>
     </div>
   );
 }

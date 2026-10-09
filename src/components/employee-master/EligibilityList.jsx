@@ -1,214 +1,291 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Download,
-  History,
-  Menu,
-  Plus,
-  Search,
-  Upload,
-} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Download, History, Menu, Plus, Search, Upload } from "lucide-react";
 
-import { ColumnFilter } from "./ColumnFilter";
+import { ClientPager, DataGrid, useGridState, useGridView } from "./DataGrid";
+import { SidePanel } from "./SidePanel";
+import { AddEmployeeModal } from "./AddEmployeeModal";
+import { usePanel } from "./panelStore";
 import { fmtDoj } from "@/lib/employee-master-utils";
+import "./employee-master-ui.css";
 
-/* Change tag: New / Changed / Removed (comes from the data if present) */
-function tagOf(employee) {
-  return (
-    employee.changeTag ||
-    employee.eligibilityTag ||
-    (employee.manualOverride ? "Changed" : "")
-  );
-}
+const PAGE_SIZE = 20;
 
-function updatedOf(employee) {
-  return (
-    employee.eligibilityUpdatedAt ||
-    employee.rawEmployee?.eligible_updated_at ||
-    employee.rawEmployee?.updated_at ||
-    employee.rawEmployee?.modifiedtime ||
-    employee.rawEmployee?.MODIFIEDTIME ||
-    "—"
-  );
-}
+/* optional data fields: changeTag = "New" | "Changed" | "Removed", inExceptionalCycle = true/false */
+const tagOf = (e) =>
+  e.changeTag || e.eligibilityTag || (e.manualOverride ? "Changed" : "");
 
-const COLUMNS = [
+const updatedOf = (e) =>
+  e.eligibilityUpdatedAt ||
+  e.rawEmployee?.eligible_updated_at ||
+  e.rawEmployee?.updated_at ||
+  e.rawEmployee?.modifiedtime ||
+  e.rawEmployee?.MODIFIEDTIME ||
+  "—";
+
+const DEFS = [
   {
-    key: "name",
+    key: "employee",
     label: "Employee",
-    type: "text",
-    get: (e) => `${e.empId} - ${e.name} ${e.designation || ""}`,
+    w: 260,
+    get: (e) => `${e.empId} - ${e.name} · ${e.designation || ""}`,
+    render: (e) => (
+      <>
+        <div className="emx-e1">
+          {e.empId} - {e.name}
+        </div>
+        <div className="emx-e2">{e.designation || "—"}</div>
+      </>
+    ),
   },
-  { key: "organization", label: "Department", type: "select", get: (e) => e.organization || "" },
-  { key: "doj", label: "Date of Joining", type: "text", get: (e) => fmtDoj(e.doj) },
   {
-    key: "appraiser",
+    key: "dept",
+    label: "Department",
+    w: 140,
+    get: (e) => e.organization || "—",
+  },
+  {
+    key: "doj",
+    label: "Date of Joining",
+    w: 115,
+    get: (e) => fmtDoj(e.doj) || "—",
+    sv: (e) => String(e.doj ?? ""),
+  },
+  {
+    key: "te",
     label: "Tech-ED/BU Head Name",
-    type: "select",
-    get: (e) => e.appraiser || e.superManager || "",
+    w: 160,
+    get: (e) => e.appraiser || e.superManager || "—",
   },
   {
     key: "eligible",
     label: "Eligible",
-    type: "select",
+    w: 110,
     get: (e) => (e.eligible === "Yes" ? "Eligible" : "Not Eligible"),
+    render: (e) => (
+      <span className={`emx-tag ${e.eligible === "Yes" ? "ok" : "warn"}`}>
+        {e.eligible === "Yes" ? "Eligible" : "Not Eligible"}
+      </span>
+    ),
   },
-  { key: "eligibleReason", label: "Reason", type: "text", get: (e) => e.eligibleReason || "" },
-  { key: "setBy", label: "Set by", type: "select", get: (e) => (e.manualOverride ? "Manual" : "Criteria") },
   {
-    key: "changeTag",
+    key: "reason",
+    label: "Reason",
+    w: 200,
+    get: (e) => e.eligibleReason || "—",
+  },
+  {
+    key: "by",
+    label: "Set by",
+    w: 90,
+    get: (e) => (e.manualOverride ? "Manual" : "Criteria"),
+  },
+  {
+    key: "tag",
     label: "Change tag",
-    type: "select",
-    get: (e) => {
-      const t = tagOf(e);
-      const x = e.inExceptionalCycle ? "In open Exceptional cycle" : "";
-      return [t, x].filter(Boolean).join(" · ") || "—";
+    w: 200,
+    get: (e) =>
+      [tagOf(e), e.inExceptionalCycle ? "In open Exceptional cycle" : ""]
+        .filter(Boolean)
+        .join(" · ") || "—",
+    render: (e) => {
+      const tag = tagOf(e);
+      if (!tag && !e.inExceptionalCycle) return "—";
+      return (
+        <>
+          {tag && (
+            <span
+              className={`emx-tag ${tag === "New" ? "info" : tag === "Changed" ? "chg" : "grey"}`}
+            >
+              {tag}
+            </span>
+          )}{" "}
+          {e.inExceptionalCycle && (
+            <span className="emx-tag warn">In open Exceptional cycle</span>
+          )}
+        </>
+      );
     },
   },
-  { key: "lastUpdated", label: "Last updated", type: "text", get: (e) => updatedOf(e) },
+  { key: "upd", label: "Last updated", w: 180, get: (e) => updatedOf(e) },
 ];
 
-const PAGE_SIZE = 20;
+function countBy(list, fn) {
+  const map = {};
+  list.forEach((item) => {
+    const k = fn(item);
+    map[k] = (map[k] || 0) + 1;
+  });
+  return Object.keys(map)
+    .sort((a, b) => map[b] - map[a])
+    .map((k) => [k, map[k]]);
+}
 
 export function EligibilityList({
   employees,
   search,
   setSearch,
-  filters,
-  setFilters,
-  onChangeEligibility,
+  onChangeEligibility, // (employeeOrArray) => open your EligibilityModal; arrays carry .preset = "Yes" | "No"
   onDownloadTemplate,
   onImport,
   onExport,
   onAuditHistory,
-  onAddEmployee,
+  onAddEmployee, // ({ empId, eligible: "Yes", eligibleReason }) => Promise   -> shows "+ Add employee"
+  masterEmployees = [], // full Employee Master list, used by "+ Add employee" and the Statistics tab
+  auditEntries, // optional: [{ title, meta, detail }]
 }) {
   const fileInputRef = useRef(null);
   const menuRef = useRef(null);
 
+  const grid = useGridState(DEFS);
+  const [panel, updatePanel] = usePanel("el");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [addOpen, setAddOpen] = useState(false);
 
   const canEdit = Boolean(onChangeEligibility);
 
   useEffect(() => {
-    const handleOutsideClick = (event) => {
+    const outside = (event) => {
       if (!menuRef.current?.contains(event.target)) setMenuOpen(false);
     };
-    const handleEscape = (event) => {
-      if (event.key === "Escape") setMenuOpen(false);
-    };
-    document.addEventListener("mousedown", handleOutsideClick);
-    document.addEventListener("keydown", handleEscape);
+    const esc = (event) => event.key === "Escape" && setMenuOpen(false);
+    document.addEventListener("mousedown", outside);
+    document.addEventListener("keydown", esc);
     return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("mousedown", outside);
+      document.removeEventListener("keydown", esc);
     };
   }, []);
 
-  const activeEmployees = useMemo(() => employees, [employees]);
-
-  const rows = useMemo(() => {
-    const searchTerm = search.trim().toLowerCase();
-
-    return activeEmployees.filter((employee) => {
-      if (
-        searchTerm &&
-        !String(employee.name ?? "").toLowerCase().includes(searchTerm) &&
-        !String(employee.empId ?? "").toLowerCase().includes(searchTerm)
-      ) {
-        return false;
-      }
-
-      return COLUMNS.every((column) => {
-        const filter = filters[column.key];
-        if (!filter) return true;
-        const value = column.get(employee) ?? "";
-        if (filter.type === "text") {
-          return String(value).toLowerCase().includes(String(filter.term || "").toLowerCase());
-        }
-        return filter.values.has(value);
-      });
-    });
-  }, [activeEmployees, filters, search]);
-
-  const removedCount = activeEmployees.filter((e) => tagOf(e) === "Removed").length;
-  const countable = activeEmployees.length - removedCount;
-  const eligibleCount = activeEmployees.filter(
-    (e) => e.eligible === "Yes" && tagOf(e) !== "Removed",
-  ).length;
-  const notEligibleCount = countable - eligibleCount;
-
-  /* pagination */
-  const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-  const safePage = Math.min(currentPage, totalPages);
-
-  useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(totalPages);
-  }, [currentPage, totalPages]);
-
-  const paginatedRows = useMemo(() => {
-    const start = (safePage - 1) * PAGE_SIZE;
-    return rows.slice(start, start + PAGE_SIZE);
-  }, [rows, safePage]);
-
-  const startRecord = rows.length === 0 ? 0 : (safePage - 1) * PAGE_SIZE + 1;
-  const endRecord = Math.min(safePage * PAGE_SIZE, rows.length);
-
-  /* selection (only rows that are not Removed can be selected) */
-  const selectableRows = useMemo(() => rows.filter((e) => tagOf(e) !== "Removed"), [rows]);
-  const selectedRows = useMemo(
-    () => activeEmployees.filter((e) => selectedIds.has(e.empId)),
-    [activeEmployees, selectedIds],
+  const searchPre = useCallback(
+    (e) => {
+      const term = (search || "").trim().toLowerCase();
+      if (!term) return true;
+      return (
+        String(e.name ?? "")
+          .toLowerCase()
+          .includes(term) ||
+        String(e.empId ?? "")
+          .toLowerCase()
+          .includes(term)
+      );
+    },
+    [search],
   );
-  const selectedVisible = selectableRows.filter((e) => selectedIds.has(e.empId)).length;
-  const allSelected = selectableRows.length > 0 && selectedVisible === selectableRows.length;
 
-  const toggleOne = (empId) =>
+  const view = useGridView(employees, DEFS, grid, searchPre);
+
+  /* counts (Removed rows are not counted) */
+  const counted = useMemo(
+    () => employees.filter((e) => tagOf(e) !== "Removed"),
+    [employees],
+  );
+  const eligibleCount = counted.filter((e) => e.eligible === "Yes").length;
+  const notEligibleCount = counted.length - eligibleCount;
+
+  /* paging */
+  const pages = Math.max(1, Math.ceil(view.length / PAGE_SIZE));
+  const safePage = Math.min(page, pages);
+  useEffect(() => {
+    if (page > pages) setPage(pages);
+  }, [page, pages]);
+  useEffect(() => setPage(1), [grid.filters, grid.sort, search]);
+
+  const pageRows = useMemo(
+    () => view.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [view, safePage],
+  );
+  const from = view.length ? (safePage - 1) * PAGE_SIZE + 1 : 0;
+  const to = Math.min(view.length, safePage * PAGE_SIZE);
+
+  /* selection */
+  const selectable = useMemo(
+    () => view.filter((e) => tagOf(e) !== "Removed"),
+    [view],
+  );
+  const selectedRows = useMemo(
+    () =>
+      employees.filter(
+        (e) => selectedIds.has(e.empId) && tagOf(e) !== "Removed",
+      ),
+    [employees, selectedIds],
+  );
+  const viewSelected = selectable.filter((e) =>
+    selectedIds.has(e.empId),
+  ).length;
+  const allSelected =
+    selectable.length > 0 && viewSelected === selectable.length;
+
+  const toggleRow = (id) =>
     setSelectedIds((current) => {
       const next = new Set(current);
-      if (next.has(empId)) next.delete(empId);
-      else next.add(empId);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
 
   const toggleAll = () =>
     setSelectedIds((current) => {
       const next = new Set(current);
-      if (allSelected) selectableRows.forEach((e) => next.delete(e.empId));
-      else selectableRows.forEach((e) => next.add(e.empId));
+      selectable.forEach((e) =>
+        allSelected ? next.delete(e.empId) : next.add(e.empId),
+      );
       return next;
     });
 
-  const handleSearchChange = (value) => {
-    setSearch(value);
-    setCurrentPage(1);
-    setMenuOpen(false);
-  };
-
-  const handleFilterChange = (key, value) => {
-    setFilters((current) => {
-      const next = { ...current };
-      if (!value) delete next[key];
-      else next[key] = value;
-      return next;
-    });
-    setCurrentPage(1);
-    setMenuOpen(false);
-  };
-
-  const filterCount = Object.keys(filters || {}).length;
-
-  const getActionLabel = (employee) =>
-    employee.eligible === "Yes" ? "Set Not Eligible" : "Set Eligible";
-
-  const changeSelected = () => {
+  const bulk = (preset) => {
     if (!selectedRows.length) return;
-    onChangeEligibility(selectedRows);
+    onChangeEligibility(Object.assign([...selectedRows], { preset }));
     setSelectedIds(new Set());
   };
+
+  /* statistics tab */
+  const stats = useMemo(() => {
+    const notEl = counted.filter((e) => e.eligible !== "Yes");
+    const el = counted.filter((e) => e.eligible === "Yes");
+    const listed = new Set(employees.map((e) => e.empId));
+    const notInList = masterEmployees.filter(
+      (e) => e.status === "Active" && !listed.has(e.empId),
+    ).length;
+
+    return {
+      summary: [
+        ["In the list", counted.length],
+        ["Eligible", el.length],
+        ["Not Eligible", notEl.length],
+        ...(masterEmployees.length
+          ? [["Active in Employee Master, not in list", notInList]]
+          : []),
+        ["Set by hand", counted.filter((e) => e.manualOverride).length],
+        [
+          "In open Exceptional cycle",
+          counted.filter((e) => e.inExceptionalCycle).length,
+        ],
+      ],
+      sections: [
+        {
+          title: "Not Eligible, by reason",
+          rows: countBy(
+            notEl,
+            (e) => e.eligibleReason || "Excluded by criteria",
+          ),
+        },
+        {
+          title: "Eligible, by reason",
+          rows: countBy(
+            el,
+            (e) => e.eligibleReason || "Criteria (no exception)",
+          ),
+        },
+      ],
+    };
+  }, [counted, employees, masterEmployees]);
+
+  const listedIds = useMemo(
+    () => new Set(employees.map((e) => e.empId)),
+    [employees],
+  );
 
   return (
     <div className="em-eligibility-list">
@@ -216,7 +293,7 @@ export function EligibilityList({
       <div className="em-eligibility-header">
         <div className="em-eligibility-stats">
           <div>
-            <strong>{countable}</strong>
+            <strong>{counted.length}</strong>
             <span>Total</span>
           </div>
           <div>
@@ -234,13 +311,20 @@ export function EligibilityList({
             <Search size={14} />
             <input
               value={search}
-              onChange={(event) => handleSearchChange(event.target.value)}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setMenuOpen(false);
+              }}
               placeholder="Search name / ID"
             />
           </div>
 
-          {onAddEmployee && (
-            <button type="button" className="em-btn em-btn-dashed" onClick={onAddEmployee}>
+          {onAddEmployee && canEdit && (
+            <button
+              type="button"
+              className="em-btn emx-dashed"
+              onClick={() => setAddOpen(true)}
+            >
               <Plus size={14} /> Add employee
             </button>
           )}
@@ -272,11 +356,10 @@ export function EligibilityList({
                   role="menuitem"
                   onClick={() => {
                     setMenuOpen(false);
-                    onDownloadTemplate();
+                    onDownloadTemplate?.();
                   }}
                 >
-                  <Download size={14} />
-                  Download Template
+                  <Download size={14} /> Download Template
                 </button>
 
                 {onImport && (
@@ -288,8 +371,7 @@ export function EligibilityList({
                       fileInputRef.current?.click();
                     }}
                   >
-                    <Upload size={14} />
-                    Import Eligibility
+                    <Upload size={14} /> Import Eligibility
                   </button>
                 )}
 
@@ -298,26 +380,22 @@ export function EligibilityList({
                   role="menuitem"
                   onClick={() => {
                     setMenuOpen(false);
-                    onExport(rows);
+                    onExport?.(view);
                   }}
                 >
-                  <Download size={14} />
-                  Export to Excel
+                  <Download size={14} /> Export to Excel
                 </button>
 
-                {onAuditHistory && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      onAuditHistory?.();
-                    }}
-                  >
-                    <History size={14} />
-                    Audit Trail
-                  </button>
-                )}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    updatePanel({ open: true, tab: "aud" });
+                  }}
+                >
+                  <History size={14} /> Audit Trail
+                </button>
               </div>
             )}
 
@@ -333,205 +411,118 @@ export function EligibilityList({
               }}
             />
           </div>
+
+          <button
+            type="button"
+            className="em-btn"
+            onClick={() => updatePanel({ open: !panel.open })}
+          >
+            Panel {panel.open ? "‹" : "›"}
+          </button>
         </div>
       </div>
 
-      {/* ================= SELECTION BAR ================= */}
-      {canEdit && selectedRows.length > 0 && (
-        <div className="em-sel-bar">
-          <b>{selectedRows.length} selected</b>
-          <button type="button" className="em-mini-btn" onClick={changeSelected}>
-            Set Eligible / Not Eligible…
-          </button>
-          <button type="button" className="em-mini-btn" onClick={() => setSelectedIds(new Set())}>
-            Clear selection
-          </button>
-        </div>
-      )}
-
-      {/* ================= TABLE ================= */}
-      <div className="em-grid-wrap">
-        <table className="em-table em-sticky-first">
-          <thead>
-            <tr>
-              {COLUMNS.map((column, index) => (
-                <th key={column.key} style={index === 0 ? { minWidth: 260 } : undefined}>
-                  <div className="em-th-inner">
-                    {canEdit && index === 0 && (
-                      <input
-                        type="checkbox"
-                        className="em-chk"
-                        checked={allSelected}
-                        ref={(el) => {
-                          if (el) el.indeterminate = !allSelected && selectedVisible > 0;
-                        }}
-                        onChange={toggleAll}
-                        title="Select all rows in the current filter"
-                        aria-label="Select all"
-                      />
-                    )}
-                    <span>{column.label}</span>
-                    <ColumnFilter
-                      column={column}
-                      rows={activeEmployees}
-                      value={filters[column.key]}
-                      onChange={(value) => handleFilterChange(column.key, value)}
-                    />
-                  </div>
-                </th>
-              ))}
-              {canEdit && <th>Action</th>}
-            </tr>
-          </thead>
-
-          <tbody>
-            {paginatedRows.map((employee) => {
-              const tag = tagOf(employee);
-              const removed = tag === "Removed";
-              const checked = selectedIds.has(employee.empId);
-
-              return (
-                <tr
-                  key={employee.empId}
-                  className={`${checked ? "em-row-sel" : ""} ${removed ? "em-row-dim" : ""}`}
-                >
-                  <td>
-                    <div className="em-emp-cell">
-                      {canEdit && (
-                        <input
-                          type="checkbox"
-                          className="em-chk"
-                          checked={checked}
-                          disabled={removed}
-                          onChange={() => toggleOne(employee.empId)}
-                          aria-label={`Select ${employee.name}`}
-                        />
-                      )}
-                      <div className="em-reference-employee">
-                        <strong>
-                          {employee.empId} - {employee.name}
-                        </strong>
-                        <span>{employee.designation || "—"}</span>
-                      </div>
-                    </div>
-                  </td>
-
-                  <td>{employee.organization || "—"}</td>
-                  <td>{fmtDoj(employee.doj) || "—"}</td>
-                  <td>{employee.appraiser || employee.superManager || "—"}</td>
-
-                  <td>
-                    <span className={`em-tag ${employee.eligible === "Yes" ? "ok" : "warn"}`}>
-                      {employee.eligible === "Yes" ? "Eligible" : "Not Eligible"}
-                    </span>
-                  </td>
-
-                  <td>{employee.eligibleReason || "—"}</td>
-                  <td>{employee.manualOverride ? "Manual" : "Criteria"}</td>
-
-                  <td>
-                    {tag && (
-                      <span
-                        className={`em-tag ${
-                          tag === "New" ? "info" : tag === "Changed" ? "chg" : "grey"
-                        }`}
-                      >
-                        {tag}
-                      </span>
-                    )}{" "}
-                    {employee.inExceptionalCycle && (
-                      <span className="em-tag warn">In open Exceptional cycle</span>
-                    )}
-                    {!tag && !employee.inExceptionalCycle && "—"}
-                  </td>
-
-                  <td>{updatedOf(employee)}</td>
-
-                  {canEdit && (
-                    <td>
-                      {removed ? (
-                        "—"
-                      ) : (
-                        <button
-                          type="button"
-                          className="em-mini-btn"
-                          onClick={() => onChangeEligibility(employee)}
-                        >
-                          {getActionLabel(employee)}
-                        </button>
-                      )}
-                    </td>
-                  )}
-                </tr>
-              );
-            })}
-
-            {!paginatedRows.length && (
-              <tr>
-                <td colSpan={COLUMNS.length + (canEdit ? 1 : 0)} className="em-empty">
-                  No eligibility records found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* ================= PAGINATION ================= */}
-      <div className="em-pagination">
-        <div className="em-pagination-info">
-          Showing{" "}
-          <strong>
-            {startRecord}-{endRecord}
-          </strong>{" "}
-          of <strong>{rows.length}</strong> employees
-          {rows.length !== activeEmployees.length && ` (filtered from ${activeEmployees.length})`}
-          {filterCount > 0 && (
-            <span className="em-showing">
-              {filterCount} filter{filterCount > 1 ? "s" : ""}
-              <button type="button" onClick={() => setFilters({})}>
-                ✕ Clear
+      {/* ================= TABLE + PANEL ================= */}
+      <div className="emx-work">
+        <div className="emx-main">
+          {canEdit && selectedRows.length > 0 && (
+            <div className="emx-selbar">
+              <b>{selectedRows.length} selected</b>
+              <button
+                type="button"
+                className="emx-mini"
+                onClick={() => bulk("Yes")}
+              >
+                Set Eligible…
               </button>
-            </span>
+              <button
+                type="button"
+                className="emx-mini"
+                onClick={() => bulk("No")}
+              >
+                Set Not Eligible…
+              </button>
+              <button
+                type="button"
+                className="emx-mini"
+                onClick={() => setSelectedIds(new Set())}
+              >
+                Clear selection
+              </button>
+            </div>
           )}
+
+          <DataGrid
+            defs={DEFS}
+            grid={grid}
+            allRows={employees}
+            rows={pageRows}
+            rowKey={(e) => e.empId}
+            selectable={canEdit}
+            selected={selectedIds}
+            onToggleRow={toggleRow}
+            onToggleAll={toggleAll}
+            allSelected={allSelected}
+            someSelected={viewSelected > 0}
+            canSelectRow={(e) => tagOf(e) !== "Removed"}
+            rowClass={(e) => (tagOf(e) === "Removed" ? "emx-dim" : "")}
+            actionHeader={canEdit ? "Action" : null}
+            renderAction={(e) =>
+              tagOf(e) === "Removed" ? (
+                "—"
+              ) : (
+                <button
+                  type="button"
+                  className="emx-mini"
+                  onClick={() => onChangeEligibility(e)}
+                >
+                  {e.eligible === "Yes" ? "Set Not Eligible" : "Set Eligible"}
+                </button>
+              )
+            }
+            emptyText="No eligibility records found."
+          />
+
+          <ClientPager
+            page={safePage}
+            pages={pages}
+            from={from}
+            to={to}
+            total={view.length}
+            allTotal={employees.length}
+            onPage={setPage}
+            grid={grid}
+          />
+
+          <div className="emx-note">
+            One Employee ID appears once in the list. An employee in an open
+            Exceptional cycle stays in the list but gets no Appraisal Sheet row.
+          </div>
         </div>
 
-        <div className="em-pagination-controls">
-          <button
-            type="button"
-            disabled={safePage <= 1}
-            onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
-            aria-label="Previous page"
-          >
-            <ChevronLeft size={14} />
-          </button>
-
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-            <button
-              key={page}
-              type="button"
-              className={page === safePage ? "active" : ""}
-              onClick={() => setCurrentPage(page)}
-            >
-              {page}
-            </button>
-          ))}
-
-          <button
-            type="button"
-            disabled={safePage >= totalPages}
-            onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
-            aria-label="Next page"
-          >
-            <ChevronRight size={14} />
-          </button>
-        </div>
+        <SidePanel
+          open={panel.open}
+          title="Eligibility List"
+          tab={panel.tab}
+          onTab={(tab) => updatePanel({ tab })}
+          onClose={() => updatePanel({ open: false })}
+          defs={DEFS}
+          grid={grid}
+          stats={stats}
+          audit={auditEntries}
+          auditHint="Every manual change: user, date and time, employee, previous and new value."
+          onFullAudit={onAuditHistory}
+        />
       </div>
 
-      <div className="em-note">
-        One Employee ID appears once in the list. An employee in an open Exceptional cycle stays in
-        the list but gets no Appraisal Sheet row.
-      </div>
+      {addOpen && (
+        <AddEmployeeModal
+          masterEmployees={masterEmployees}
+          listedIds={listedIds}
+          onAdd={onAddEmployee}
+          onClose={() => setAddOpen(false)}
+        />
+      )}
     </div>
   );
 }

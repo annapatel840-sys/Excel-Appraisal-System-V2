@@ -1,32 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ColumnFilter } from "./ColumnFilter";
+import { DataGrid, useGridState, useGridView } from "./DataGrid";
+import { SidePanel } from "./SidePanel";
+import { InactiveModal, ChangeModal } from "./EmployeeMasterModals";
+import { usePanel } from "./panelStore";
 import { fmtDoj } from "@/lib/employee-master-utils";
+import "./employee-master-ui.css";
 
-const COLUMNS = [
-  { key: "type", label: "Emp Type", type: "select" },
-  { key: "dept", label: "Department", type: "select" },
-  { key: "reportingManager", label: "Reporting Manager", type: "select" },
-  { key: "te", label: "Tech-ED/BU Head Name", type: "select" },
-  { key: "director", label: "Director", type: "select" },
-  { key: "appraiser", label: "Appraiser Tech-ED", type: "select" },
-  { key: "totalExp", label: "Total Experience", type: "text" },
-  { key: "orgExp", label: "Wissen Experience", type: "text" },
-  { key: "email", label: "Email ID", type: "text" },
-  { key: "doj", label: "Date of Joining", type: "text" },
-  { key: "status", label: "Employee Status", type: "select" },
-  { key: "location", label: "Location", type: "select" },
-  {
-    key: "lastAppraisal",
-    label: "Last Appraisal Month and Year",
-    type: "select",
-  },
-  { key: "recordOwner", label: "Record Owner ID", type: "select" },
-  { key: "band", label: "Band", type: "select" },
-  { key: "skillType", label: "Skill Type", type: "select" },
-  { key: "exitDate", label: "Exit date", type: "text" },
-];
-
+/* ---------- value helpers (same aliases as before) ---------- */
 function getEmployeeId(employee) {
   return String(
     employee?.empId ??
@@ -99,22 +80,16 @@ function getValue(employee, key) {
   return value;
 }
 
-function normalizeStatus(status) {
-  return String(status ?? "")
+const normalizeStatus = (s) =>
+  String(s ?? "")
     .trim()
     .toLowerCase();
-}
 
-/* Value shown in the cell AND used by the column filter */
 function cellText(employee, key) {
-  if (key === "employee") {
-    return `${getEmployeeId(employee)} - ${getEmployeeName(employee)} ${getDesignation(employee)}`;
-  }
-  if (key === "status") {
+  if (key === "status")
     return normalizeStatus(employee?.status) === "active"
       ? "Active"
       : "Inactive";
-  }
   if (key === "doj") {
     const raw = getValue(employee, "doj");
     if (raw === "-") return "-";
@@ -127,356 +102,319 @@ function cellText(employee, key) {
   return String(getValue(employee, key));
 }
 
-const EMPLOYEE_COLUMN = { key: "employee", label: "Employee", type: "text" };
+/* ---------- column definitions (module level = stable) ---------- */
+const PLAIN = [
+  ["type", "Emp Type", 100],
+  ["dept", "Department", 140],
+  ["reportingManager", "Reporting Manager", 150],
+  ["te", "Tech-ED/BU Head Name", 160],
+  ["director", "Director", 130],
+  ["appraiser", "Appraiser Tech-ED", 150],
+  [
+    "totalExp",
+    "Total Experience",
+    120,
+    "As on the cut-off date set in HR Config",
+  ],
+  [
+    "orgExp",
+    "Wissen Experience",
+    120,
+    "As on the cut-off date set in HR Config",
+  ],
+  ["email", "Email ID", 220],
+  ["doj", "Date of Joining", 115],
+  ["status", "Employee Status", 120],
+  ["location", "Location", 90],
+  ["lastAppraisal", "Last Appraisal Month and Year", 140],
+  ["recordOwner", "Record Owner ID", 120],
+  ["band", "Band", 90],
+  ["skillType", "Skill Type", 110],
+  ["exitDate", "Exit date", 110],
+];
 
-function withGet(column) {
-  return { ...column, get: (employee) => cellText(employee, column.key) };
-}
+const DEFS = [
+  {
+    key: "employee",
+    label: "Employee",
+    w: 260,
+    get: (e) =>
+      `${getEmployeeId(e) || "-"} - ${getEmployeeName(e)} · ${getDesignation(e)}`,
+    render: (e) => (
+      <>
+        <div className="emx-e1">
+          {getEmployeeId(e) || "-"} - {getEmployeeName(e)}
+        </div>
+        <div className="emx-e2">{getDesignation(e)}</div>
+      </>
+    ),
+  },
+  ...PLAIN.map(([key, label, w, info]) => ({
+    key,
+    label,
+    w,
+    info,
+    get: (e) => cellText(e, key),
+    render:
+      key === "status"
+        ? (e) => (
+            <span
+              className={`emx-tag ${normalizeStatus(e?.status) === "active" ? "ok" : "grey"}`}
+            >
+              {cellText(e, "status")}
+            </span>
+          )
+        : undefined,
+  })),
+];
 
-const ALL_COLUMNS = [EMPLOYEE_COLUMN, ...COLUMNS].map(withGet);
-
-function StatusBadge({ status }) {
-  const isActive = normalizeStatus(status) === "active";
-  return (
-    <span className={`em-tag ${isActive ? "ok" : "grey"}`}>
-      {isActive ? "Active" : "Inactive"}
-    </span>
-  );
-}
+const LEGACY_KEYS = PLAIN.map((p) => p[0]);
 
 export function EmployeeRosterTable({
   rows = [],
-  filters = {},
-  setFilters,
+  filters = {}, // legacy string filters from the parent (still honoured)
   currentPage = 1,
   setCurrentPage,
   totalPages = 1,
   totalCount = 0,
   onToggleStatus,
-  onBulkStatusChange,
+  onBulkStatusChange, // (status, employees, { exitDate, remark }) => Promise
+  onBulkFieldChange, // optional: ({ field, value, remark }, employees) => Promise  -> shows "Change…"
   statusUpdatingIds = new Set(),
   bulkStatusUpdating = false,
   canEdit = true,
+  auditEntries, // optional: [{ title, meta, detail }]
 }) {
-  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState(new Set());
-  // Excel-style column filters: { [key]: { type:"text", term } | { type:"select", values:Set } }
-  const [colFilters, setColFilters] = useState({});
+  const grid = useGridState(DEFS);
+  const [panel, updatePanel] = usePanel("em");
+  const [selected, setSelected] = useState(new Set());
+  const [modal, setModal] = useState(null); // "inactive" | "change"
 
-  const filteredRows = useMemo(() => {
-    if (!Array.isArray(rows)) return [];
+  const list = useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
 
-    return rows.filter((employee) => {
-      // legacy string filters coming from the parent (kept for compatibility)
-      const legacyOk = COLUMNS.every((column) => {
-        const filterValue = String(filters?.[column.key] ?? "")
+  const legacy = useCallback(
+    (employee) =>
+      LEGACY_KEYS.every((key) => {
+        const f = String(filters?.[key] ?? "")
           .trim()
           .toLowerCase();
-        if (!filterValue) return true;
-        return cellText(employee, column.key)
-          .trim()
-          .toLowerCase()
-          .includes(filterValue);
-      });
-      if (!legacyOk) return false;
-
-      // new column-menu filters
-      return ALL_COLUMNS.every((column) => {
-        const filter = colFilters[column.key];
-        if (!filter) return true;
-        const value = column.get(employee);
-        if (filter.type === "text") {
-          return String(value)
-            .toLowerCase()
-            .includes(String(filter.term || "").toLowerCase());
-        }
-        return filter.values.has(value);
-      });
-    });
-  }, [rows, filters, colFilters]);
-
-  const handleFilterChange = (key, value) => {
-    setColFilters((current) => {
-      const next = { ...current };
-      if (!value) delete next[key];
-      else next[key] = value;
-      return next;
-    });
-  };
-
-  const activeFilterCount = Object.keys(colFilters).length;
-
-  /* keep selection only for visible employees */
-  useEffect(() => {
-    const visibleIds = new Set(
-      filteredRows.map((employee) => getEmployeeId(employee)).filter(Boolean),
-    );
-    setSelectedEmployeeIds((current) => {
-      const next = new Set([...current].filter((id) => visibleIds.has(id)));
-      return next.size === current.size ? current : next;
-    });
-  }, [filteredRows]);
-
-  const visibleEmployeeIds = useMemo(
-    () =>
-      filteredRows.map((employee) => getEmployeeId(employee)).filter(Boolean),
-    [filteredRows],
+        return !f || cellText(employee, key).toLowerCase().includes(f);
+      }),
+    [filters],
   );
 
-  const selectedCount = visibleEmployeeIds.filter((id) =>
-    selectedEmployeeIds.has(id),
-  ).length;
-  const allVisibleSelected =
-    visibleEmployeeIds.length > 0 &&
-    selectedCount === visibleEmployeeIds.length;
-  const someVisibleSelected = selectedCount > 0;
+  const view = useGridView(list, DEFS, grid, legacy);
 
-  const toggleEmployeeSelection = (employeeId) => {
-    const id = String(employeeId ?? "").trim();
-    if (!id) return;
-    setSelectedEmployeeIds((current) => {
+  /* drop selections that are no longer on this page */
+  useEffect(() => {
+    const ids = new Set(list.map(getEmployeeId));
+    setSelected((current) => {
+      const next = new Set([...current].filter((id) => ids.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [list]);
+
+  const viewIds = useMemo(
+    () => view.map(getEmployeeId).filter(Boolean),
+    [view],
+  );
+  const selectedRows = useMemo(
+    () => list.filter((e) => selected.has(getEmployeeId(e))),
+    [list, selected],
+  );
+  const viewSelected = viewIds.filter((id) => selected.has(id)).length;
+  const allSelected = viewIds.length > 0 && viewSelected === viewIds.length;
+
+  const toggleRow = (id) =>
+    setSelected((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  };
 
-  const toggleSelectAll = () => {
-    setSelectedEmployeeIds((current) => {
+  const toggleAll = () =>
+    setSelected((current) => {
       const next = new Set(current);
-      if (allVisibleSelected)
-        visibleEmployeeIds.forEach((id) => next.delete(id));
-      else visibleEmployeeIds.forEach((id) => next.add(id));
+      viewIds.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
       return next;
     });
+
+  const bulkStatus = async (status, extra = {}) => {
+    if (!selectedRows.length) return;
+    await onBulkStatusChange?.(status, selectedRows, extra);
+    setSelected(new Set());
+    setModal(null);
   };
 
-  const handleBulkStatus = async (status) => {
-    const selectedEmployees = filteredRows.filter((employee) =>
-      selectedEmployeeIds.has(getEmployeeId(employee)),
-    );
-    if (selectedEmployees.length === 0) return;
-    await onBulkStatusChange?.(status, selectedEmployees);
-    setSelectedEmployeeIds(new Set());
+  const bulkField = async (change) => {
+    if (!selectedRows.length) return;
+    await onBulkFieldChange?.(change, selectedRows);
+    setSelected(new Set());
+    setModal(null);
   };
 
-  const handlePageChange = (page) => {
+  const suggestionsFor = (key) =>
+    [
+      ...new Set(
+        list.map((e) => String(getValue(e, key))).filter((v) => v && v !== "-"),
+      ),
+    ].sort();
+
+  const goTo = (page) => {
     if (page < 1 || page > totalPages) return;
     setCurrentPage?.(page);
   };
 
-  const dataColumns = ALL_COLUMNS.slice(1);
-
   return (
-    <div className="em-roster">
-      {/* ================= SELECTION BAR ================= */}
-      {canEdit && someVisibleSelected && (
-        <div className="em-sel-bar">
-          <b>{selectedCount} selected</b>
-          <button
-            type="button"
-            className="em-mini-btn"
-            disabled={bulkStatusUpdating}
-            onClick={() => handleBulkStatus("Inactive")}
-          >
-            Set Inactive
-          </button>
-          <button
-            type="button"
-            className="em-mini-btn"
-            disabled={bulkStatusUpdating}
-            onClick={() => handleBulkStatus("Active")}
-          >
-            Set Active
-          </button>
-          <button
-            type="button"
-            className="em-mini-btn"
-            onClick={() => setSelectedEmployeeIds(new Set())}
-          >
-            Clear selection
-          </button>
-        </div>
-      )}
-
-      <div className="em-grid-wrap">
-        <table className="em-table em-sticky-first">
-          <thead>
-            <tr>
-              {/* Employee (sticky) */}
-              <th style={{ minWidth: 260 }}>
-                <div className="em-th-inner">
-                  {canEdit && (
-                    <input
-                      type="checkbox"
-                      className="em-chk"
-                      checked={allVisibleSelected}
-                      ref={(element) => {
-                        if (element) {
-                          element.indeterminate =
-                            !allVisibleSelected && someVisibleSelected;
-                        }
-                      }}
-                      onChange={toggleSelectAll}
-                      disabled={filteredRows.length === 0 || bulkStatusUpdating}
-                      title="Select all rows in the current filter"
-                      aria-label="Select all"
-                    />
-                  )}
-                  <span>Employee</span>
-                  <ColumnFilter
-                    column={ALL_COLUMNS[0]}
-                    rows={rows}
-                    value={colFilters.employee}
-                    onChange={(value) => handleFilterChange("employee", value)}
-                  />
-                </div>
-              </th>
-
-              {dataColumns.map((column) => (
-                <th key={column.key} style={{ whiteSpace: "nowrap" }}>
-                  <div className="em-th-inner">
-                    <span>{column.label}</span>
-                    <ColumnFilter
-                      column={column}
-                      rows={rows}
-                      value={colFilters[column.key]}
-                      onChange={(value) =>
-                        handleFilterChange(column.key, value)
-                      }
-                    />
-                  </div>
-                </th>
-              ))}
-
-              {canEdit && (
-                <th style={{ whiteSpace: "nowrap", minWidth: 115 }}>Action</th>
-              )}
-            </tr>
-          </thead>
-
-          <tbody>
-            {filteredRows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={dataColumns.length + 1 + (canEdit ? 1 : 0)}
-                  className="em-empty"
-                >
-                  No employees found.
-                </td>
-              </tr>
-            ) : (
-              filteredRows.map((employee) => {
-                const employeeId = getEmployeeId(employee);
-                const employeeName = getEmployeeName(employee);
-                const status = String(employee?.status ?? "Inactive").trim();
-                const isActive = normalizeStatus(status) === "active";
-                const isSelected = selectedEmployeeIds.has(employeeId);
-                const isUpdating =
-                  statusUpdatingIds?.has?.(employeeId) || bulkStatusUpdating;
-
-                return (
-                  <tr
-                    key={employeeId || employeeName}
-                    className={`${isSelected ? "em-row-sel" : ""} ${isActive ? "" : "em-row-dim"}`}
-                  >
-                    <td>
-                      <div className="em-emp-cell">
-                        {canEdit && (
-                          <input
-                            type="checkbox"
-                            className="em-chk"
-                            checked={isSelected}
-                            onChange={() => toggleEmployeeSelection(employeeId)}
-                            disabled={bulkStatusUpdating}
-                            aria-label={`Select ${employeeName}`}
-                          />
-                        )}
-                        <div className="em-reference-employee">
-                          <strong>
-                            {employeeId || "-"} - {employeeName}
-                          </strong>
-                          <span>{getDesignation(employee)}</span>
-                        </div>
-                      </div>
-                    </td>
-
-                    {dataColumns.map((column) => (
-                      <td key={column.key} style={{ whiteSpace: "nowrap" }}>
-                        {column.key === "status" ? (
-                          <StatusBadge status={status} />
-                        ) : (
-                          column.get(employee)
-                        )}
-                      </td>
-                    ))}
-
-                    {canEdit && (
-                      <td>
-                        <button
-                          type="button"
-                          onClick={() => onToggleStatus?.(employee)}
-                          disabled={isUpdating}
-                          className={`em-mini-btn ${isActive ? "danger" : "good"}`}
-                        >
-                          {isUpdating
-                            ? "Saving..."
-                            : isActive
-                              ? "Set Inactive"
-                              : "Set Active"}
-                        </button>
-                      </td>
-                    )}
-                  </tr>
-                );
-              })
+    <div className="emx-work">
+      <div className="emx-main">
+        {canEdit && selectedRows.length > 0 && (
+          <div className="emx-selbar">
+            <b>{selectedRows.length} selected</b>
+            <button
+              type="button"
+              className="emx-mini"
+              disabled={bulkStatusUpdating}
+              onClick={() => setModal("inactive")}
+            >
+              Set Inactive
+            </button>
+            <button
+              type="button"
+              className="emx-mini"
+              disabled={bulkStatusUpdating}
+              onClick={() => bulkStatus("Active")}
+            >
+              Set Active
+            </button>
+            {onBulkFieldChange && (
+              <button
+                type="button"
+                className="emx-mini p"
+                onClick={() => setModal("change")}
+              >
+                Change…
+              </button>
             )}
-          </tbody>
-        </table>
-      </div>
+            <button
+              type="button"
+              className="emx-mini"
+              onClick={() => setSelected(new Set())}
+            >
+              Clear selection
+            </button>
+          </div>
+        )}
 
-      {/* ================= PAGINATION ================= */}
-      <div className="em-pg-row">
-        <div className="em-pg-info">
-          {totalCount > 0
-            ? `Page ${currentPage} of ${totalPages} • ${totalCount} employees`
-            : "No employees"}
-          {activeFilterCount > 0 && (
-            <span className="em-showing">
-              {activeFilterCount} column filter
-              {activeFilterCount > 1 ? "s" : ""} (this page)
-              <button type="button" onClick={() => setColFilters({})}>
+        <DataGrid
+          defs={DEFS}
+          grid={grid}
+          allRows={list}
+          rows={view}
+          rowKey={(e) => getEmployeeId(e) || String(getEmployeeName(e))}
+          selectable={canEdit}
+          selected={selected}
+          onToggleRow={toggleRow}
+          onToggleAll={toggleAll}
+          allSelected={allSelected}
+          someSelected={viewSelected > 0}
+          rowClass={(e) =>
+            normalizeStatus(e?.status) === "active" ? "" : "emx-dim"
+          }
+          actionHeader={canEdit ? "Action" : null}
+          renderAction={(employee) => {
+            const id = getEmployeeId(employee);
+            const active = normalizeStatus(employee?.status) === "active";
+            const busy = statusUpdatingIds?.has?.(id) || bulkStatusUpdating;
+            return (
+              <button
+                type="button"
+                disabled={busy}
+                className={`emx-mini ${active ? "danger" : "good"}`}
+                onClick={() => onToggleStatus?.(employee)}
+              >
+                {busy ? "Saving..." : active ? "Set Inactive" : "Set Active"}
+              </button>
+            );
+          }}
+          emptyText="No employees found."
+        />
+
+        <div className="emx-pg">
+          <span>
+            {totalCount > 0
+              ? `Page ${currentPage} of ${totalPages} • ${totalCount} employees`
+              : "No employees"}
+            {view.length !== list.length &&
+              ` • showing ${view.length} of ${list.length} on this page`}
+          </span>
+
+          {grid.filterCount > 0 && (
+            <span className="emx-chip">
+              Showing: {grid.filterCount} column filter
+              {grid.filterCount > 1 ? "s" : ""} (this page){" "}
+              <button type="button" onClick={grid.clearAll}>
                 ✕ Clear
               </button>
             </span>
           )}
-        </div>
 
-        <div className="em-pg-btns">
-          <button
-            type="button"
-            onClick={() => handlePageChange(currentPage - 1)}
-            disabled={currentPage <= 1 || bulkStatusUpdating}
-          >
-            ‹ Previous
-          </button>
-          <span className="em-pg-cur">
-            {currentPage} / {totalPages}
+          <span className="emx-pgs">
+            <button
+              type="button"
+              disabled={currentPage <= 1 || bulkStatusUpdating}
+              onClick={() => goTo(currentPage - 1)}
+            >
+              ‹ Previous
+            </button>
+            <span>
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={currentPage >= totalPages || bulkStatusUpdating}
+              onClick={() => goTo(currentPage + 1)}
+            >
+              Next ›
+            </button>
           </span>
-          <button
-            type="button"
-            onClick={() => handlePageChange(currentPage + 1)}
-            disabled={currentPage >= totalPages || bulkStatusUpdating}
-          >
-            Next ›
-          </button>
+        </div>
+
+        <div className="emx-note">
+          Employees are never deleted. An inactive employee leaves the Appraisal
+          Sheet but stays in history.
         </div>
       </div>
 
-      <div className="em-note">
-        Employees are never deleted. An inactive employee leaves the Appraisal
-        Sheet but stays in history.
-      </div>
+      <SidePanel
+        open={panel.open}
+        title="Employee Master"
+        tab={panel.tab}
+        onTab={(tab) => updatePanel({ tab })}
+        onClose={() => updatePanel({ open: false })}
+        defs={DEFS}
+        grid={grid}
+        audit={auditEntries}
+        auditHint="Uploads and changes made on this screen: user, date and time, employee, previous and new value."
+        onFullAudit={panel.fullAudit}
+      />
+
+      {modal === "inactive" && (
+        <InactiveModal
+          count={selectedRows.length}
+          onClose={() => setModal(null)}
+          onApply={(extra) => bulkStatus("Inactive", extra)}
+        />
+      )}
+      {modal === "change" && (
+        <ChangeModal
+          count={selectedRows.length}
+          suggestionsFor={suggestionsFor}
+          onClose={() => setModal(null)}
+          onApply={bulkField}
+        />
+      )}
     </div>
   );
 }
