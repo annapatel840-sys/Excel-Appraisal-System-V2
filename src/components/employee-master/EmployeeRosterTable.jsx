@@ -2,17 +2,23 @@
 import { useEffect, useMemo, useState } from "react";
 
 const COLUMNS = [
-  { key: "status", label: "Status" },
-  { key: "designation", label: "Designation" },
-  { key: "organization", label: "Organization" },
-  { key: "doj", label: "Date of Joining" },
-  { key: "orgExp", label: "Org Exp" },
-  { key: "totalExp", label: "Total Exp" },
+  { key: "type", label: "Emp Type" },
+  { key: "dept", label: "Department" },
   { key: "reportingManager", label: "Reporting Manager" },
-  { key: "compManager", label: "Comp Manager" },
-  { key: "superManager", label: "Super Manager" },
-  { key: "managerMail", label: "Manager Email" },
-  { key: "superManagerMail", label: "Super Manager Email" },
+  { key: "te", label: "Tech-ED/BU Head Name" },
+  { key: "director", label: "Director" },
+  { key: "appraiser", label: "Appraiser Tech-ED" },
+  { key: "totalExp", label: "Total Experience" },
+  { key: "orgExp", label: "Wissen Experience" },
+  { key: "email", label: "Email ID" },
+  { key: "doj", label: "Date of Joining" },
+  { key: "status", label: "Employee Status" },
+  { key: "location", label: "Location" },
+  { key: "lastAppraisal", label: "Last Appraisal Month and Year" },
+  { key: "recordOwner", label: "Record Owner ID" },
+  { key: "band", label: "Band" },
+  { key: "skillType", label: "Skill Type" },
+  { key: "exitDate", label: "Exit date" },
 ];
 
 function getEmployeeId(employee) {
@@ -37,20 +43,35 @@ function getEmployeeName(employee) {
 }
 
 function getValue(employee, key) {
+  const raw = employee?.rawEmployee || {};
+  const aliases = {
+    type: ["emp_type", "employee_type", "employment_type", "type"],
+    dept: ["department", "organization", "orgtn"],
+    reportingManager: ["reporting_manager", "reportingManager", "manager"],
+    te: ["tech_ed_bu_head_name", "tech_ed_name", "appraiser_tech_ed", "super_manager", "superManager"],
+    director: ["director", "director_name"],
+    appraiser: ["appraiser_tech_ed", "appraiser", "appraiser_name"],
+    totalExp: ["total_experience", "totalExp"],
+    orgExp: ["wissen_experience", "wissenExperience", "orgExp"],
+    email: ["email_id", "email", "emailId"],
+    location: ["location", "work_location"],
+    lastAppraisal: ["last_appraisal_month_year", "last_appraisal", "lastAppraisal"],
+    recordOwner: ["record_owner_id", "record_owner", "owner_id"],
+    band: ["band", "employee_band"],
+    skillType: ["skill_type", "skill", "skillType"],
+    exitDate: ["exit_date", "exitDate", "resignation_date"],
+  };
   let value = employee?.[key];
-
-  if (key === "orgExp") {
-    value =
-      employee?.orgExp ??
-      employee?.wissen_experience ??
-      employee?.wissenExperience ??
-      "";
+  if (value === undefined || value === null || value === "") {
+    for (const alias of aliases[key] || []) {
+      if (raw?.[alias] !== undefined && raw?.[alias] !== null && raw?.[alias] !== "") {
+        value = raw[alias];
+        break;
+      }
+    }
   }
-
-  if (value === null || value === undefined || value === "") {
-    return "-";
-  }
-
+  if (key === "status") value = employee?.status ?? raw?.status ?? "";
+  if (value === null || value === undefined || value === "") return "-";
   return value;
 }
 
@@ -457,29 +478,9 @@ export function EmployeeRosterTable({
                       whiteSpace: "nowrap",
                     }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "2px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontWeight: 600,
-                        }}
-                      >
-                        {employeeName}
-                      </span>
-
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          color: "#6b7280",
-                        }}
-                      >
-                        {employeeId || "-"}
-                      </span>
+                    <div className="em-reference-employee">
+                      <strong>{employeeId || "-" } - {employeeName}</strong>
+                      <span>{employee?.designation || employee?.rawEmployee?.designation || "-"}</span>
                     </div>
                   </td>
 
