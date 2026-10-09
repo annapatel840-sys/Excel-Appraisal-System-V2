@@ -155,7 +155,7 @@ export function LocationMasterControl({
                       setError("");
                     }}
                   >
-                    <Plus size={14} /> Add Location
+                    <span>Add Location</span> <Plus size={14} />
                   </button>
                   <button
                     type="button"
