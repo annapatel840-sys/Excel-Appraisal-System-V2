@@ -213,30 +213,6 @@ export function LocationMasterControl({
                 </button>
               ))}
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenu(false);
-                      setModal(true);
-                      setCreating(true);
-                      setForm(blank);
-                      setError("");
-                    }}
-                  >
-                    <span>Add Location +</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenu(false);
-                      setModal(true);
-                      setCreating(false);
-                      setError("");
-                    }}
-                  >
-                    Manage Locations
-                    <Settings2 size={14} />
-                  </button>
             </div>
           )}
         </div>
