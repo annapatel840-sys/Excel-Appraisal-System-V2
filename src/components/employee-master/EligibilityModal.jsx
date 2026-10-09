@@ -15,6 +15,14 @@ export function EligibilityModal({ employee, onClose, onSave }) {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") onClose?.();
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    return () => document.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  useEffect(() => {
     if (!first) return;
     const preset = Array.isArray(employee) ? employee.preset : undefined;
     // preset comes from the bulk bar; a single row flips its current state
@@ -52,7 +60,9 @@ export function EligibilityModal({ employee, onClose, onSave }) {
   };
 
   return (
-    <div className="em-modal-overlay">
+    <div className="em-modal-overlay" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose?.();
+    }}>
       <div className="em-modal em-small-modal">
         <div className="em-modal-header">
           <div>
