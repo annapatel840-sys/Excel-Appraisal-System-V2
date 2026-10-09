@@ -6,6 +6,7 @@ import {
   ChevronDown,
   Settings,
   WalletCards,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
@@ -66,6 +67,7 @@ export function AppShell({ children, headerActions }) {
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
     { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
     { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
+    ...(!isTechEd ? [{ to: "/bulk-edit", label: "Bulk Edit", icon: SlidersHorizontal }] : []),
     ...(!isTechEd
       ? [
           {
@@ -105,6 +107,11 @@ export function AppShell({ children, headerActions }) {
           to: "/detail-screen",
           label: "Detailed Screen",
           icon: BookOpen,
+        },
+        access.canAction("bulkEdit") && {
+          to: "/bulk-edit",
+          label: "Bulk Edit",
+          icon: SlidersHorizontal,
         },
         isTechEd && {
           to: "/budget-distribution",
