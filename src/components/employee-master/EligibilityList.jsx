@@ -6,6 +6,7 @@ import { SidePanel } from "./SidePanel";
 import { AddEmployeeModal } from "./AddEmployeeModal";
 import { usePanel } from "./panelStore";
 import { fmtDoj } from "@/lib/employee-master-utils";
+import { LocationMasterControl } from "./LocationMasterControl";
 import "./employee-master-ui.css";
 
 const PAGE_SIZE = 20;
@@ -132,6 +133,7 @@ export function EligibilityList({
   setSearch,
   locationFilter = "All",
   setLocationFilter,
+  canCreateLocation = false,
   onChangeEligibility, // (employeeOrArray) => open your EligibilityModal; arrays carry .preset = "Yes" | "No"
   onDownloadTemplate,
   onImport,
@@ -182,15 +184,12 @@ export function EligibilityList({
     [search],
   );
 
-  const locations = useMemo(() => [...new Set(
-    employees.map((employee) => String(employee.location || employee.rawEmployee?.location || employee.rawEmployee?.work_location || "").trim()).filter(Boolean),
-  )].sort((a, b) => a.localeCompare(b)), [employees]);
-
   const locationFilteredEmployees = useMemo(() => {
     if (!locationFilter || locationFilter === "All") return employees;
-    return employees.filter((employee) =>
-      String(employee.location || employee.rawEmployee?.location || employee.rawEmployee?.work_location || "").trim() === locationFilter,
-    );
+    return employees.filter((employee) => {
+      const employeeLocation = String(employee.location || employee.rawEmployee?.location || employee.rawEmployee?.work_location || "").trim();
+      return employeeLocation.toLowerCase() === locationFilter.toLowerCase();
+    });
   }, [employees, locationFilter]);
 
   const view = useGridView(locationFilteredEmployees, DEFS, grid, searchPre);
@@ -338,17 +337,12 @@ export function EligibilityList({
             />
           </div>
 
-          <select
-            className="em-status-select em-location-select"
-            aria-label="Filter Eligibility List by location"
+          <LocationMasterControl
             value={locationFilter}
-            onChange={(event) => setLocationFilter?.(event.target.value)}
-          >
-            <option value="All">All Locations</option>
-            {locations.map((location) => (
-              <option key={location} value={location}>{location}</option>
-            ))}
-          </select>
+            onChange={setLocationFilter}
+            canCreate={canCreateLocation}
+            ariaLabel="Filter Eligibility List by Location Master"
+          />
 
           {onAddEmployee && canEdit && (
             <button
