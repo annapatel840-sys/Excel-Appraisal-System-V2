@@ -171,7 +171,17 @@ function requireAnyScreen(a, keys, level) {
   }
 }
 
-function requireInScope(a, empId) {
+function requireInScope(a, empId, allowOwnRead = false) {
+  const requestedId = String(empId || "").trim().toUpperCase();
+  const signedInId = String(a?.user?.empId || "").trim().toUpperCase();
+
+  // A Tech-Ed user may read their own historical appraisal record, even though
+  // the team scope intentionally excludes the manager's own employee row.
+  // This exception is for GET only; PATCH still requires normal team scope.
+  if (allowOwnRead && requestedId && signedInId && requestedId === signedInId) {
+    return;
+  }
+
   if (!access.inScope(a, empId)) {
     throw new access.HttpError(
       403,
@@ -473,7 +483,7 @@ module.exports = async (req, res) => {
         return;
       }
 
-      access.guard(a, () => requireInScope(a, empId));
+      access.guard(a, () => requireInScope(a, empId, true));
 
       const history = await getHistory(table, empId);
 
