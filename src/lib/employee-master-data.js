@@ -281,6 +281,8 @@ export function mapEmployeeFromApi(employee) {
 
     designation: String(row.designation || "").trim(),
 
+    location: String(row.location || row.work_location || row.workLocation || "").trim(),
+
     organization: String(
       row.organization || row.department || row.orgtn || "",
     ).trim(),
@@ -378,6 +380,7 @@ export async function fetchEmployeeMasterEmployees({
   limit = 20,
   search = "",
   status = "all",
+  location = "",
 } = {}) {
   const url = new URL(EMPLOYEE_API_URL);
 
@@ -397,6 +400,11 @@ export async function fetchEmployeeMasterEmployees({
 
   if (normalizedStatus && normalizedStatus !== "all") {
     url.searchParams.set("status", normalizedStatus);
+  }
+
+  const normalizedLocation = String(location || "").trim();
+  if (normalizedLocation && normalizedLocation !== "All") {
+    url.searchParams.set("location", normalizedLocation);
   }
 
   const response = await catalystFetch(url.toString(), {
@@ -464,6 +472,8 @@ export async function fetchEmployeeMasterEmployees({
           ? result.counts.inactive
           : 0,
     },
+
+    locations: Array.isArray(result.locations) ? result.locations : [],
 
     filters: {
       search:
