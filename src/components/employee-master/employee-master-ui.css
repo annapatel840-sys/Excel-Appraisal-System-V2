@@ -117,3 +117,17 @@
 .em-apply-btn:disabled{background:#A9C1F2;border-color:#A9C1F2;cursor:not-allowed}
 .em-err{color:#C0392B;font-size:11.5px;margin-top:4px;font-weight:600}
 .em-bad{border-color:#C0392B !important}
+
+/* Location Master selector and create dialog */
+.em-location-control { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.em-location-control .em-location-select { max-width: 190px; }
+.em-location-modal-backdrop { position: fixed; inset: 0; z-index: 10000; display: grid; place-items: center; padding: 20px; background: rgba(15, 23, 42, .48); }
+.em-location-modal { width: min(480px, 100%); max-height: min(90vh, 760px); overflow: auto; border: 1px solid var(--border, #dbe1ea); border-radius: 14px; background: var(--card, #fff); color: var(--foreground, #172033); box-shadow: 0 24px 70px rgba(15, 23, 42, .28); }
+.em-location-modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 22px 12px; }
+.em-location-modal-header h2 { margin: 0; font-size: 18px; font-weight: 650; }
+.em-location-modal-header p { margin: 5px 0 0; color: var(--muted-foreground, #64748b); font-size: 13px; }
+.em-location-form { display: grid; gap: 14px; padding: 10px 22px 22px; }
+.em-location-form label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }
+.em-location-form input { width: 100%; min-height: 38px; box-sizing: border-box; border: 1px solid var(--border, #cbd5e1); border-radius: 8px; padding: 8px 10px; background: var(--background, #fff); color: inherit; font: inherit; font-weight: 400; }
+.em-location-modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 6px; }
+.em-location-error { border-radius: 8px; padding: 9px 11px; color: #b42318; background: rgba(220, 38, 38, .08); font-size: 13px; }
