@@ -652,10 +652,14 @@ export function EmployeeMaster() {
   const [search, setSearch] = useState("");
 
   const [statusFilter, setStatusFilter] = useState("All");
+  const [locationFilter, setLocationFilter] = useState("All");
+  const [rosterLocations, setRosterLocations] = useState([]);
 
   const [rosterFilters, setRosterFilters] = useState({});
 
   const [eligibilitySearch, setEligibilitySearch] = useState("");
+
+  const [eligibilityLocationFilter, setEligibilityLocationFilter] = useState("All");
 
   const [eligibilityFilters, setEligibilityFilters] = useState({});
 
@@ -894,6 +898,7 @@ export function EmployeeMaster() {
             statusFilter === "All"
               ? "all"
               : String(statusFilter || "").toLowerCase(),
+          location: locationFilter === "All" ? "" : locationFilter,
         });
 
         if (cancelled) {
@@ -902,6 +907,7 @@ export function EmployeeMaster() {
 
         const employees = Array.isArray(result?.data) ? result.data : [];
 
+        setRosterLocations(Array.isArray(result?.locations) ? result.locations : []);
         setAllEmployees(employees);
 
         setRosterPagination({
@@ -974,7 +980,7 @@ export function EmployeeMaster() {
     return () => {
       cancelled = true;
     };
-  }, [currentPage, search, statusFilter, refreshKey]);
+  }, [currentPage, search, statusFilter, locationFilter, refreshKey]);
 
   /* ============================================================
      RESET PAGE WHEN SEARCH / STATUS FILTER CHANGES
@@ -982,7 +988,7 @@ export function EmployeeMaster() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, statusFilter]);
+  }, [search, statusFilter, locationFilter]);
 
   // Deep link from the Detail Screen's "View all changes" link.
   useEffect(() => {
@@ -2391,6 +2397,9 @@ export function EmployeeMaster() {
               setSearch={setSearch}
               statusFilter={statusFilter}
               setStatusFilter={setStatusFilter}
+              locationFilter={locationFilter}
+              setLocationFilter={setLocationFilter}
+              locations={rosterLocations}
               onDownloadTemplate={downloadRosterTemplate}
               onUpload={
                 canEditEmployees && !importPreparing
@@ -2479,6 +2488,8 @@ export function EmployeeMaster() {
                   employees={eligibilityEmployees}
                   search={eligibilitySearch}
                   setSearch={setEligibilitySearch}
+                  locationFilter={eligibilityLocationFilter}
+                  setLocationFilter={setEligibilityLocationFilter}
                   filters={eligibilityFilters}
                   setFilters={setEligibilityFilters}
                   onChangeEligibility={
