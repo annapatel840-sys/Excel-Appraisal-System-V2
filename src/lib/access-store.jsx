@@ -34,6 +34,7 @@ export const PATH_SCREENS = {
   "/budget-master": "budgetAllocation",
   "/budget-distribution": "budgetDistribution",
   "/settings": "settings",
+  "/bulk-edit": "appraisalSheet",
 };
 
 const AccessContext = createContext(null);
