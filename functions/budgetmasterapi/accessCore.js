@@ -356,8 +356,10 @@ async function loadDelegation(zcql, cycleId) {
     const emp = String(r[e.empId] || '').trim();
     if (!emp) return;
     const existing = out.byEmp[norm(emp)] || { empId: emp, techEd: '', compMgr: '' };
-    const t = existing.techEd || resolveManager(r.appraiser_tech_ed);
-    const c = existing.compMgr || resolveManager(r.comp_manager);
+    // Employee_Master is the source of truth for current manager assignment.
+    // Prefer the explicit employee fields over any stale Delegation row.
+    const t = resolveManager(r.appraiser_tech_ed) || existing.techEd;
+    const c = resolveManager(r.comp_manager) || existing.compMgr;
     out.byEmp[norm(emp)] = { empId: emp, techEd: t, compMgr: c };
     if (t && !(out.teamTechEd[t] || []).some((id) => norm(id) === norm(emp))) {
       out.teamTechEd[t] = out.teamTechEd[t] || [];
