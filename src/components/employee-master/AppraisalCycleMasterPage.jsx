@@ -3,7 +3,6 @@ import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
-import { LocationMasterControl } from "./LocationMasterControl";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -1904,7 +1903,6 @@ export function AppraisalCycleMasterPage({
                   }}
                 />
                 <span style={{ flex: 1 }} />
-                <LocationMasterControl canCreate ariaLabel="Open Location Master menu" />
                 <span
                   className={`acx-swt${showHidden ? " on" : ""}`}
                   role="switch"
