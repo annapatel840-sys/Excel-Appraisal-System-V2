@@ -16,6 +16,7 @@ export const HR_TAB_SCREENS = {
   roster: "employeeMaster",
   eligibility: "employeeMaster",
   "appraisal-cycle": "cycleMaster",
+  "location-master": "cycleMaster",
   "payroll-data": "payroll",
   "payroll-upload": "payroll",
   "team-changes": "teamChanges",
