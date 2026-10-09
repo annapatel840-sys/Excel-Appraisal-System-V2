@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { DataGrid, useGridState, useGridView } from "./DataGrid";
 import { SidePanel } from "./SidePanel";
-import { InactiveModal, ChangeModal } from "./EmployeeMasterModals";
+import { InactiveModal, ChangeModal } from "./EmployeeMasterModal";
 import { usePanel } from "./panelStore";
 import { fmtDoj } from "@/lib/employee-master-utils";
 import "./employee-master-ui.css";
