@@ -21,11 +21,11 @@ const normalize = (x) => ({
 export function LocationMasterControl({
   value = "All",
   onChange,
-  canCreate = false,
   ariaLabel = "Filter by location",
   valueKey = "location_name",
   showCurrencyCode = false,
   triggerClassName = "",
+  managerOnly = false,
 }) {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -140,6 +140,26 @@ export function LocationMasterControl({
 
   return (
     <>
+      {managerOnly && (
+        <section className="em-location-master-page">
+          <div className="em-location-master-page-head">
+            <div>
+              <h2>Location Master</h2>
+              <p>Add, edit, and activate or deactivate locations shared across Employee Master, Eligibility List, and Appraisal Cycle Master.</p>
+            </div>
+            <div className="em-location-master-page-actions">
+              <button type="button" className="em-btn em-btn-primary" onClick={() => { setModal(true); setCreating(true); setForm(blank); setError(""); }}>
+                Add Location <Plus size={14} />
+              </button>
+              <button type="button" className="em-btn" onClick={() => { setModal(true); setCreating(false); setError(""); }}>
+                Manage Locations <Settings2 size={14} />
+              </button>
+            </div>
+          </div>
+          {error && !modal && <div className="em-location-error" role="alert">{error}</div>}
+        </section>
+      )}
+      {!managerOnly && (
       <div className="em-location-control">
         <div className="em-location-dropdown" ref={dropdownRef}>
           <button
@@ -192,9 +212,7 @@ export function LocationMasterControl({
                   {String(value) === String(loc[valueKey]) && <Check size={14} />}
                 </button>
               ))}
-              {canCreate && (
-                <>
-                  <div className="em-location-menu-divider" />
+
                   <button
                     type="button"
                     onClick={() => {
@@ -219,12 +237,11 @@ export function LocationMasterControl({
                     Manage Locations
                     <Settings2 size={14} />
                   </button>
-                </>
-              )}
             </div>
           )}
         </div>
       </div>
+      )}
       {modal && (
         <div
           className="em-location-modal-backdrop"
