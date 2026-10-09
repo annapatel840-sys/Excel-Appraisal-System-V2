@@ -339,7 +339,6 @@ export function EligibilityList({
           <LocationMasterControl
             value={locationFilter}
             onChange={setLocationFilter}
-            canCreate={canCreateLocation}
             ariaLabel="Filter Eligibility List by Location Master"
           />
 
