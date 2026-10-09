@@ -182,10 +182,6 @@ export function EligibilityCriteria({
         Apply Criteria
       </button>
 
-      <div className="em-hint">
-        Criteria only change employees who were not set by hand; manual
-        decisions are never overwritten. Inactive employees are always left out.
-      </div>
     </div>
   );
 }
