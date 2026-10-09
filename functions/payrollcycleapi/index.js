@@ -211,7 +211,7 @@ async function checkAccess(req) {
 function requirePayrollAccess(a, resource, method) {
   if (resource === "session") return;
   if ((resource === "cycles" || resource === "schema" || resource === "locations") && method === "GET") return;
-  if (resource.startsWith("cycles/")) {
+  if (resource.startsWith("cycles/") || (resource === "locations" && method === "POST")) {
     access.requireScreen(a, "cycleMaster", "edit");
     return;
   }
@@ -927,6 +927,31 @@ async function routeRequest(req, res, identity, resource, a) {
     return sendJson(res, 200, { success: true, data: locations });
   }
 
+  if (resource === "locations" && req.method === "POST") {
+    const body = await readBody(req);
+    const locationName = String(body.location_name || "").trim();
+    const locationCode = String(body.location_code || "").trim().toUpperCase();
+    const address = String(body.address || "").trim();
+    const currencyCode = String(body.currency_code || "").trim().toUpperCase();
+    if (!locationName || !locationCode) {
+      return sendJson(res, 400, { success: false, message: "Location Name and Location Code are required." });
+    }
+    const rows = await getAllRows(tables.locations);
+    const duplicate = rows.find((row) =>
+      String(row.location_code || "").trim().toLowerCase() === locationCode.toLowerCase() ||
+      String(row.location_name || "").trim().toLowerCase() === locationName.toLowerCase()
+    );
+    if (duplicate) {
+      return sendJson(res, 409, { success: false, message: "A location with this name or code already exists." });
+    }
+    const payload = { location_name: locationName, location_code: locationCode, address, currency_code: currencyCode };
+    const inserted = await tables.locations.insertRow(payload);
+    return sendJson(res, 201, { success: true, data: {
+      id: String(inserted?.ROWID || inserted?.rowid || inserted?.id || ""),
+      ...payload,
+    } });
+  }
+
   if (resource === "audit" && req.method === "GET") {
     const auditRows = await getAllRows(tables.audit);
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
@@ -1364,7 +1389,7 @@ module.exports = async function payrollCycleApi(req, res) {
     if (resource === "session") return await routeRequest(req, res, identity, resource, a);
     if (resource === "schema" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "cycles" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
-    if (resource === "locations" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "locations" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
     if (resource === "audit" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "history" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "payroll" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
