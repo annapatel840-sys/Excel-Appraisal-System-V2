@@ -66,7 +66,7 @@ const COLUMNS = [
     key: "lastUpdated",
     label: "Last updated",
     type: "text",
-    get: (employee) => employee.eligibilityUpdatedAt || "—",
+    get: (employee) => employee.eligibilityUpdatedAt || employee.rawEmployee?.eligible_updated_at || employee.rawEmployee?.updated_at || employee.rawEmployee?.modifiedtime || employee.rawEmployee?.MODIFIEDTIME || "—",
   },
 ];
 
