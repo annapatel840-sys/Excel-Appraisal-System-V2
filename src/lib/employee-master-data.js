@@ -473,8 +473,6 @@ export async function fetchEmployeeMasterEmployees({
           : 0,
     },
 
-    locations: Array.isArray(result.locations) ? result.locations : [],
-
     filters: {
       search:
         result.filters && result.filters.search !== undefined
