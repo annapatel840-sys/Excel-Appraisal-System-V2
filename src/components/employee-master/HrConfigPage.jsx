@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect} from "react";
 import { catalystFetch } from "@/lib/catalyst-api";
-
+ 
 /* ============================================================
    HR Config screen (outer part of the reference HTML).
    Tabs: Cycle setup (default process + the Appraisal Cycle screen),
@@ -9,7 +9,7 @@ import { catalystFetch } from "@/lib/catalyst-api";
    this browser (localStorage) because no config API exists yet.
    Only the default process per cycle type is passed on to the cycle screen.
    ============================================================ */
-
+ 
 const STORE = "hr_config_v1";
 const LOCATION_API_URL =
   "https://excelappraisalmanagement-60090194508.development.catalystserverless.in/server/payrollcycleapi/";
@@ -69,7 +69,7 @@ const QBASE = [
   ["mg1", "Manager", "Show my team summary", "Main row"],
   ["mg2", "Manager", "Who has no proposal yet", "Main row"],
 ];
-
+ 
 function buildInitial() {
   const v = {
     ct_a: "Annual",
@@ -106,7 +106,7 @@ function buildInitial() {
   return v;
 }
 const INIT = buildInitial();
-
+ 
 function load() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORE) || "null");
@@ -117,7 +117,7 @@ function load() {
   }
   return { vals: INIT, extra: [] };
 }
-
+ 
 const LAB = (() => {
   const l = {};
   CT.forEach(([k, , lab]) => (l[k] = lab));
@@ -147,11 +147,11 @@ const LAB = (() => {
   });
   return l;
 })();
-
+ 
 const show = (v) => (v === true ? "On" : v === false ? "Off" : String(v));
 const nowT = () =>
   new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
+ 
 export function HrConfigPage({ renderCycleScreen, canEdit = true }) {
   const saved = useMemo(load, []);
   const [applied, setApplied] = useState(saved.vals);
@@ -166,43 +166,43 @@ const [locationsLoading, setLocationsLoading] = useState(true);
   const [fold, setFold] = useState(false);
   const [role, setRole] = useState("HR");
   const [toast, setToast] = useState("");
-
+ 
     useEffect(() => {
     let mounted = true;
-
+ 
     const loadLocations = async () => {
       try {
         setLocationsLoading(true);
-
+ 
         const locationUrl = new URL(LOCATION_API_URL);
         locationUrl.searchParams.set("resource", "locations");
-
+ 
         const response = await catalystFetch(locationUrl, {
           method: "GET",
           headers: {
             Accept: "application/json",
           },
         });
-
+ 
         if (!response.ok) {
           throw new Error(
             `Location API returned ${response.status}`
           );
         }
-
+ 
         const result = await response.json();
-
+ 
         if (!result?.success) {
           throw new Error(
             result?.message ||
               "Unable to load locations."
           );
         }
-
+ 
         const rows = Array.isArray(result.data)
           ? result.data
           : [];
-
+ 
         const list = rows
           .map((row) => ({
             id: row?.id || "",
@@ -220,11 +220,11 @@ const [locationsLoading, setLocationsLoading] = useState(true);
             ).trim(),
           }))
           .filter((item) => item.code);
-
+ 
         if (!mounted) return;
-
+ 
         setLocations(list);
-
+ 
         if (list.length > 0) {
           setLoc((current) => {
             if (
@@ -235,7 +235,7 @@ const [locationsLoading, setLocationsLoading] = useState(true);
             ) {
               return current;
             }
-
+ 
             return list[0].code;
           });
         }
@@ -244,11 +244,11 @@ const [locationsLoading, setLocationsLoading] = useState(true);
           "Failed to load locations:",
           error
         );
-
+ 
         if (mounted) {
           setLocations([]);
           setLoc("");
-
+ 
           setToast(
             error?.message ||
               "Unable to load locations."
@@ -260,17 +260,17 @@ const [locationsLoading, setLocationsLoading] = useState(true);
         }
       }
     };
-
+ 
     loadLocations();
-
+ 
     return () => {
       mounted = false;
     };
   }, []);
-
+ 
   const [nc, setNc] = useState(null); // new category form
   const [ncol, setNcol] = useState(null); // new column form
-
+ 
   const say = (m) => {
     setToast(m);
     setTimeout(() => setToast(""), 2400);
@@ -278,7 +278,7 @@ const [locationsLoading, setLocationsLoading] = useState(true);
   const ed = (k) => vals[k] !== applied[k];
   const set = (k, v) => setVals((p) => ({ ...p, [k]: v }));
   const labelOf = (k) => LAB[k] || extra.find((x) => x.key === k)?.label || k;
-
+ 
   const pend = useMemo(() => {
     const p = [];
     Object.keys(vals).forEach((k) => {
@@ -291,13 +291,13 @@ const [locationsLoading, setLocationsLoading] = useState(true);
     return p;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [vals, applied, extra]);
-
+ 
   const discard = () => {
     setVals(applied);
     setExtra((e) => e.filter((x) => x.done));
     say("Changes discarded");
   };
-
+ 
   const apply = () => {
     const t = nowT();
     const ex = extra.map((x) => ({ ...x, done: true }));
@@ -313,7 +313,7 @@ const [locationsLoading, setLocationsLoading] = useState(true);
       `Applied ${pend.length} change${pend.length > 1 ? "s" : ""} · future cycles only`,
     );
   };
-
+ 
   const addExtra = (item, key, initial) => {
     setExtra((e) => [...e, { ...item, key, done: false }]);
     if (key) {
@@ -321,7 +321,7 @@ const [locationsLoading, setLocationsLoading] = useState(true);
       setVals((p) => ({ ...p, [key]: initial }));
     }
   };
-
+ 
   // controls
   const sw = (k, locked) => (
     <label className={`sw${ed(k) ? " edited" : ""}${locked ? " locked" : ""}`}>
@@ -363,7 +363,7 @@ const [locationsLoading, setLocationsLoading] = useState(true);
       onChange={(e) => set(k, Number(e.target.value))}
     />
   );
-
+ 
   const defaultProcess = useMemo(
     () => ({
       Annual: applied.ct_a,
@@ -373,7 +373,7 @@ const [locationsLoading, setLocationsLoading] = useState(true);
     }),
     [applied.ct_a, applied.ct_m, applied.ct_e, applied.ct_n],
   );
-
+ 
   const qs = [
     ...QBASE.map(([id, r]) => ({ id, role: r })),
     ...extra
@@ -382,12 +382,12 @@ const [locationsLoading, setLocationsLoading] = useState(true);
   ].filter((q) => q.role === role);
   const cats = extra.filter((x) => x.kind === "cat");
   const cols = extra.filter((x) => x.kind === "col");
-
+ 
   let seq = extra.length + 1;
   const nextId = () => `n${Date.now()}${seq++}`;
-
+ 
   /* ---------------- tabs ---------------- */
-
+ 
   const tabCycle = (
     <div>
       <div className="lbl">Default process per cycle type</div>
@@ -424,7 +424,7 @@ const [locationsLoading, setLocationsLoading] = useState(true);
       </p>
     </div>
   );
-
+ 
   const tabUploads = (
     <div>
       <div className="lbl">Mismatch categories</div>
@@ -593,7 +593,7 @@ const [locationsLoading, setLocationsLoading] = useState(true);
       </table>
     </div>
   );
-
+ 
   const tabColumns = (
     <div>
       <div className="lbl">Extra Employee Master columns</div>
@@ -727,7 +727,7 @@ const [locationsLoading, setLocationsLoading] = useState(true);
       </div>
     </div>
   );
-
+ 
   const tabAgent = (
     <div>
       <div className="lbl">Agent</div>
@@ -898,9 +898,9 @@ const [locationsLoading, setLocationsLoading] = useState(true);
       </div>
     </div>
   );
-
+ 
   /* ---------------- side panel ---------------- */
-
+ 
   const n = pend.length;
   const panel = (
     <div className="card panel">
@@ -995,7 +995,7 @@ const [locationsLoading, setLocationsLoading] = useState(true);
       </div>
     </div>
   );
-
+ 
   const TABS = [
     ["cyc", "Cycle setup"],
     ["upl", "Uploads & mismatches"],
@@ -1003,156 +1003,91 @@ const [locationsLoading, setLocationsLoading] = useState(true);
     ["agt", "Agent"],
   ];
   // const [curCode, curName] = ["", loc.split("|")[1]];
-
+ 
     const currentLocation = locations.find(
     (item) => item.code === loc
   );
-
+ 
   const curCode = currentLocation?.code || "";
-
+ 
   const curName =
     currentLocation?.currency || "";
-
+ 
   return (
     <div className="hrc">
       <style>{CSS}</style>
-      <div className={`wrap${fold ? " fold" : ""}`}>
-        <div className="card">
-          <div className="ch">
-            <span>HR configuration</span>
-            <small>HR Admin only</small>
-          </div>
-          <div className="locbar">
-          <select
-              value={loc}
-              disabled={
-                locationsLoading ||
-                locations.length === 0
-              }
-              onChange={(e) => {
-                const selectedCode = e.target.value;
-
-                const selectedLocation =
-                  locations.find(
-                    (item) =>
-                      item.code === selectedCode
-                  );
-
-                setLoc(selectedCode);
-
-                say(
-                  `Location: ${
-                    selectedLocation?.name ||
-                    selectedCode
-                  }. Cycle dates and currency follow the location.`,
-                );
-              }}
-            >
-              {locationsLoading ? (
-                <option value="">
-                  Loading locations...
-                </option>
-              ) : locations.length === 0 ? (
-                <option value="">
-                  No locations available
-                </option>
-              ) : (
-                locations.map((location) => (
-                  <option
-                    key={location.code}
-                    value={location.code}
-                  >
-                    {location.name}
-                  </option>
-                ))
-              )}
-            </select>
-
-            <span className="tag info">
-              {curName}
-              {curCode}
-            </span>
-            <span className="note">
-              Config opens for the location chosen at login. Each location has
-              its own cycle and currency; the settings below are the same for
-              every location.
-            </span>
-          </div>
-          <div className="tabs">
-            {TABS.map(([k, l]) => (
-              <a
-                key={k}
-                className={tab === k ? "on" : ""}
-                onClick={() => setTab(k)}
+ 
+      <div className="hrc-locbar">
+        <span className="hrc-loclbl">Location</span>
+        <select
+          className="hrc-locsel"
+          aria-label="Location"
+          value={loc}
+          disabled={
+            locationsLoading ||
+            locations.length === 0
+          }
+          onChange={(e) => {
+            const selectedCode = e.target.value;
+ 
+            const selectedLocation =
+              locations.find(
+                (item) =>
+                  item.code === selectedCode
+              );
+ 
+            setLoc(selectedCode);
+ 
+            say(
+              `Location: ${
+                selectedLocation?.name ||
+                selectedCode
+              }. Cycle dates and currency follow the location.`,
+            );
+          }}
+        >
+          {locationsLoading ? (
+            <option value="">
+              Loading locations...
+            </option>
+          ) : locations.length === 0 ? (
+            <option value="">
+              No locations available
+            </option>
+          ) : (
+            locations.map((location) => (
+              <option
+                key={location.code}
+                value={location.code}
               >
-                {l}
-              </a>
-            ))}
-          </div>
-          <div className="body">
-            {/* keep the cycle screen mounted so its state survives tab switches */}
-            <div style={{ display: tab === "cyc" ? "block" : "none" }}>
-              {tabCycle}
-            </div>
-            {tab === "upl" && tabUploads}
-            {tab === "col" && tabColumns}
-            {tab === "agt" && tabAgent}
-          </div>
-          <div className="bar">
-            <div className={`chg${n ? " has" : ""}`}>
-              {n
-                ? `${n} pending change${n > 1 ? "s" : ""}. They apply to future cycles only.`
-                : "No pending changes."}
-            </div>
-            <button
-              type="button"
-              className="btn"
-              disabled={!n}
-              onClick={discard}
-            >
-              Discard
-            </button>
-            <button
-              type="button"
-              className="btn main"
-              disabled={!n || !canEdit}
-              onClick={() => {
-                setPtab("c");
-                setFold(false);
-              }}
-            >
-              Review and apply
-            </button>
-          </div>
-        </div>
-        {fold ? (
-          <div className="foldtab" onClick={() => setFold(false)}>
-            Side panel ›
-          </div>
-        ) : (
-          panel
+                {location.name}
+              </option>
+            ))
+          )}
+        </select>
+ 
+        {curCode && (
+          <span className="hrc-cur">
+            {curName ? `${curName} · ${curCode}` : curCode}
+          </span>
         )}
       </div>
-
+ 
       {tab === "cyc" && renderCycleScreen && (
-        <section className="hrc-cycle-section">
+        <section className="hrc-work">
           <div className="hrc-cycle-body">
             {renderCycleScreen(defaultProcess)}
           </div>
-          <div className="hrc-cycle-foot">
-            Budget formula, rating scale and rating rounding remain governed by
-            the appraisal cycle and feedback rules.
-          </div>
         </section>
       )}
-
+ 
       {toast && <div className="toast show">{toast}</div>}
     </div>
   );
 }
-
+ 
 export default HrConfigPage;
-
+ 
 const CSS = `
 .hrc{--ink:#111827;--muted:#6B7280;--navy:#102A43;--link:#1559A6;--line:#E5E7EB;--gutter:#D5DFEB;--info-strip:#DCEBFF;--info-border:#B9D3F5;
 --th-bg:#E6EEF8;--th-line:#C9D8EC;--row-odd:#FBFCFE;--row-even:#F2F5F9;--row-hover:#EAF2FF;--input-border:#9CA3AF;--readonly:#F3F4F6;--edited:#FFE066;--edited-border:#C9A400;
@@ -1227,4 +1162,12 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .hrc .hrc-cycle-foot{padding:10px 18px;border-top:1px solid var(--line);background:#F7FAFE;color:var(--muted);font-size:11.5px}
 @media(max-width:1100px){.hrc .wrap{grid-template-columns:1fr}}
 @media(max-width:700px){.hrc .hrc-cycle-head{align-items:flex-start;flex-direction:column}.hrc .hrc-cycle-badge{display:none}}
+.hrc .hrc-locbar{display:flex;align-items:center;gap:14px;background:var(--navy);color:#fff;border-radius:12px;padding:10px 20px;margin-bottom:12px;flex-wrap:wrap}
+.hrc .hrc-loclbl{color:#AAB4C0;font-weight:700;font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+.hrc .hrc-locsel{background:#1B3A58;border:1px solid #38577A;color:#fff;border-radius:6px;padding:6px 10px;font:inherit;font-size:12.5px;font-weight:700;min-width:120px}
+.hrc .hrc-locsel:disabled{background:#1B3A58;color:#AAB4C0;border-color:#38577A}
+.hrc .hrc-locsel option{color:var(--ink);background:#fff}
+.hrc .hrc-cur{background:var(--info-strip);color:var(--info);border-radius:10px;padding:3px 10px;font-weight:800;font-size:11px}
+.hrc .hrc-work{background:var(--gutter);border-radius:14px;padding:12px}
+.hrc .hrc-work .hrc-cycle-body{padding:0}
 `;
