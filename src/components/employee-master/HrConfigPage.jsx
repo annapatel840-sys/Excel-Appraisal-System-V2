@@ -1023,7 +1023,6 @@ const [locationsLoading, setLocationsLoading] = useState(true);
           <LocationMasterControl
             value={loc}
             valueKey="location_code"
-            showCurrencyCode
             onChange={(selectedCode) => {
               const selectedLocation = locations.find(
                 (item) => item.code === selectedCode
@@ -1039,6 +1038,13 @@ const [locationsLoading, setLocationsLoading] = useState(true);
             ariaLabel="Location"
             triggerClassName="hrc-locsel"
           />
+        )}
+        {currentLocation && (
+          <span className="hrc-cur">
+            {currentLocation.currency
+              ? `${currentLocation.currency} · ${currentLocation.code}`
+              : currentLocation.code}
+          </span>
         )}
       </div>
  
