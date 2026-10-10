@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, History, Menu, Plus, Search, Upload } from "lucide-react";
 
 import { ClientPager, DataGrid, useGridState, useGridView } from "./DataGrid";
-import { SidePanel } from "./SidePanel";
+import { PanelTab, SidePanel } from "./SidePanel";
 import { AddEmployeeModal } from "./AddEmployeeModal";
 import { usePanel } from "./panelStore";
 import { fmtDoj } from "@/lib/employee-master-utils";
@@ -434,14 +434,6 @@ export function EligibilityList({
               }}
             />
           </div>
-
-          <button
-            type="button"
-            className="em-btn"
-            onClick={() => updatePanel({ open: !panel.open })}
-          >
-            Panel {panel.open ? "‹" : "›"}
-          </button>
         </div>
       </div>
 
@@ -532,6 +524,7 @@ export function EligibilityList({
           auditHint="Every manual change: user, date and time, employee, previous and new value."
           onFullAudit={onAuditHistory}
         />
+        <PanelTab open={panel.open} onOpen={() => updatePanel({ open: true })} />
       </div>
 
       {addOpen && (
