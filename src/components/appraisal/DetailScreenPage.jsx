@@ -16,7 +16,7 @@ import {
   newBaseSalary,
   totalCTCWithRewards,
 } from "@/lib/appraisal-data";
-import { ChevronDown, WalletCards } from "lucide-react";
+import { WalletCards } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
@@ -463,25 +463,15 @@ function BudgetBanner({ notice, onGotIt }) {
 
   const budgetNoticeText = `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`;
 
+  // Same size and look as the notice on the Appraisal Sheet.
   return (
-    <div
-      className="flex items-center gap-3"
-      style={{
-        padding: "6px 12px",
-        background: "#fff",
-        border: `1px solid ${LINE}`,
-        borderRadius: 6,
-      }}
-    >
-      <span
-        className="inline-flex shrink-0 items-center gap-2 font-bold"
-        style={{ color: INK }}
-      >
-        <span style={{ color: RED }}>▲</span> Budget changed
+    <div className="flex items-center gap-3 rounded-md border border-[#e3e9ec] bg-white px-3 py-1.5">
+      <span className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-[#102a43]">
+        <span className="text-[#b42318]">▲</span>
+        Budget changed
       </span>
       <span
-        className="min-w-0 flex-1 overflow-hidden"
-        style={{ color: "#3E4C59" }}
+        className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[12px] text-[#3e4c59]"
         aria-label={budgetNoticeText}
       >
         <span className="ds-marquee">{budgetNoticeText}</span>
@@ -489,8 +479,7 @@ function BudgetBanner({ notice, onGotIt }) {
       <button
         type="button"
         onClick={onGotIt}
-        className="shrink-0 rounded border px-3 py-1 font-semibold"
-        style={{ borderColor: "#C4CED6", background: SOFT, color: INK }}
+        className="shrink-0 rounded border border-[#c4ced6] bg-[#eef3f3] px-3 py-1 text-[11px] font-semibold text-[#102a43] hover:bg-[#e4ecec]"
       >
         Got it
       </button>
@@ -499,18 +488,10 @@ function BudgetBanner({ notice, onGotIt }) {
 }
 
 /* White bar under the blue top nav, same look as the Appraisal Sheet's:
-   View budget, My notes and Menu on the right. */
-function DetailToolbar({
-  onViewBudget,
-  employee,
-  metricsOpen,
-  onToggleMetrics,
-  feedbackOpen,
-  onToggleFeedback,
-}) {
+   View budget and My notes on the right (the same two buttons this screen
+   always had; only their position changed). */
+function DetailToolbar({ onViewBudget, employee }) {
   const [notesOpen, setNotesOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef(null);
 
   const notesCount = useMemo(() => {
     const saved = readStore(NOTES_KEY, []);
@@ -518,17 +499,13 @@ function DetailToolbar({
   }, [notesOpen]);
 
   useEffect(() => {
-    if (!notesOpen && !menuOpen) return undefined;
+    if (!notesOpen) return undefined;
     const handleOutside = (event) => {
-      const target = event.target;
-      if (notesOpen && !target?.closest?.("[data-detail-notes]")) {
-        setNotesOpen(false);
-      }
-      if (menuOpen && !menuRef.current?.contains(target)) setMenuOpen(false);
+      if (!event.target?.closest?.("[data-detail-notes]")) setNotesOpen(false);
     };
     document.addEventListener("mousedown", handleOutside);
     return () => document.removeEventListener("mousedown", handleOutside);
-  }, [notesOpen, menuOpen]);
+  }, [notesOpen]);
 
   return (
     <div
@@ -553,10 +530,7 @@ function DetailToolbar({
         <div className="relative" data-detail-notes>
           <button
             type="button"
-            onClick={() => {
-              setNotesOpen((previous) => !previous);
-              setMenuOpen(false);
-            }}
+            onClick={() => setNotesOpen((previous) => !previous)}
             aria-expanded={notesOpen}
             className="inline-flex h-8 items-center whitespace-nowrap rounded-md border border-[#d1d5db] bg-white px-2.5 text-[12px] font-bold text-[#111827] hover:border-[#102a43]"
           >
@@ -577,72 +551,11 @@ function DetailToolbar({
             />
           )}
         </div>
-
-        <div ref={menuRef} className="relative">
-          <button
-            type="button"
-            onClick={() => {
-              setMenuOpen((previous) => !previous);
-              setNotesOpen(false);
-            }}
-            aria-expanded={menuOpen}
-            aria-haspopup="menu"
-            className="flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-[#17365d] bg-[#17365d] px-4 text-[13px] font-semibold text-white hover:bg-[#123056]"
-          >
-            Menu
-            <ChevronDown
-              className={
-                "size-3.5 transition-transform" + (menuOpen ? " rotate-180" : "")
-              }
-            />
-          </button>
-
-          {menuOpen && (
-            <div
-              className="absolute right-0 top-full z-[300] mt-1.5 w-[200px] overflow-hidden rounded-md border border-[#cbd5e1] bg-white shadow-lg"
-              role="menu"
-            >
-              {[
-                [
-                  metricsOpen ? "Hide metrics" : "Show metrics",
-                  onToggleMetrics,
-                ],
-                [
-                  feedbackOpen ? "Hide feedback" : "Show feedback",
-                  onToggleFeedback,
-                ],
-                employee
-                  ? [
-                      "Employee history",
-                      () =>
-                        document
-                          .querySelector('[aria-label="Employee history"]')
-                          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
-                    ]
-                  : null,
-              ]
-                .filter(Boolean)
-                .map(([label, action]) => (
-                  <button
-                    key={label}
-                    type="button"
-                    role="menuitem"
-                    className="block w-full px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      action();
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );
 }
+
 function CompHead({ children }) {
   return (
     <div
@@ -1345,18 +1258,11 @@ export function DetailScreenPage({
           className="flex flex-col gap-2"
           style={{ padding: "6px 12px 2px", minWidth: 0 }}
         >
-          <DetailToolbar
-            onViewBudget={handleViewBudget}
-            employee={employee}
-            metricsOpen={metricsOpen}
-            onToggleMetrics={() => setMetricsOpen((open) => !open)}
-            feedbackOpen={cardOpen}
-            onToggleFeedback={() => setCardOpen((open) => !open)}
-          />
           <BudgetBanner
             notice={noticeOpen ? budgetNotice : null}
             onGotIt={() => setNoticeOpen(false)}
           />
+          <DetailToolbar onViewBudget={handleViewBudget} employee={employee} />
         </div>
 
         {!employee ? (
