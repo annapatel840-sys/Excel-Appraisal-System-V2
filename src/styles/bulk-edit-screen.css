@@ -4,7 +4,7 @@
   color: var(--foreground, #172033);
 }
 .bulk-edit-screen-toolbar {
-  display: flex; align-items: center; justify-content: space-between;
+  display: flex; align-items: center; justify-content: flex-start;
   gap: 16px; flex-wrap: wrap; flex: 0 0 auto; padding: 2px 2px 8px;
 }
 .bulk-edit-screen-toolbar h1 { margin: 0; font-size: 20px; font-weight: 700; line-height: 1.25; }

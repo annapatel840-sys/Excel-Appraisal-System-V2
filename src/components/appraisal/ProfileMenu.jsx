@@ -4,6 +4,8 @@ import { Check, LogOut, RotateCcw, Save } from "lucide-react";
 import { useCatalystSignOut, useCatalystUser } from "@/lib/catalyst-auth";
 import { DEFAULT_SETTINGS, useSettings } from "@/lib/settings-store";
 import { cn } from "@/lib/utils";
+import { roleLabelOf, useViewAs } from "@/lib/view-as-store";
+import { ViewAsSelect } from "./ViewAsSwitcher";
 
 // Same options the old gear / Settings page offered.
 const THEMES = [
@@ -47,6 +49,7 @@ export function ProfileMenu({ isVertical, isCollapsed, showSettings }) {
   const user = useCatalystUser();
   const signOut = useCatalystSignOut();
   const { settings, saveSettings, resetSettings } = useSettings();
+  const { canSwitch, effectiveId, preview } = useViewAs();
 
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(settings);
@@ -54,7 +57,9 @@ export function ProfileMenu({ isVertical, isCollapsed, showSettings }) {
 
   const name = user?.name || "User";
   const email = user?.email || "";
-  const role = user?.role || "";
+  const role = preview
+    ? `Viewing as ${roleLabelOf(effectiveId)}`
+    : user?.role || "";
   const initials = initialsOf(user?.name, email);
   const firstName = name.trim().split(/\s+/)[0];
 
@@ -153,6 +158,14 @@ export function ProfileMenu({ isVertical, isCollapsed, showSettings }) {
               )}
             </div>
           </div>
+
+          {/* With a collapsed sidebar there is no room for "View as" in the bar */}
+          {isCollapsed && canSwitch && (
+            <div className="flex items-center justify-between gap-3 border-b border-[#eef3f3] px-4 py-3">
+              <span className="text-xs font-medium text-slate-600">View as</span>
+              <ViewAsSelect className="min-w-[130px] border-[#cbd5e1]" />
+            </div>
+          )}
 
           {/* What used to be behind the gear */}
           {showSettings && (

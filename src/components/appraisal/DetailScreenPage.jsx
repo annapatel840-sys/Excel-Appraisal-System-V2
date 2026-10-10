@@ -16,10 +16,8 @@ import {
   newBaseSalary,
   totalCTCWithRewards,
 } from "@/lib/appraisal-data";
-import { Pencil, WalletCards } from "lucide-react";
-import { HeaderSlot } from "@/components/appraisal/AppShell";
+import { ChevronDown, WalletCards } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
-import { useSettings } from "@/lib/settings-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
@@ -43,7 +41,13 @@ const CURRENT_CYCLE = "Apr-26";
    FRONTEND-ONLY SETTINGS (layout / banner). None of these touch data.
    ------------------------------------------------------------------ */
 const BUDGET_PATH = "/employee-master?tab=budget-master";
-const BUDGET_NOTICE_PLACEHOLDER = null;
+// Same budget-change message the Appraisal Sheet shows.
+const BUDGET_NOTICE_PLACEHOLDER = {
+  from: "10.41 L",
+  to: "9.79 L",
+  changes: 5,
+  since: "01-Sep-26",
+};
 
 const NOTES_KEY = "appraisal.myNotes";
 const NOTE_DRAFT_KEY = "appraisal.noteDraft";
@@ -80,7 +84,7 @@ const formatNoteTime = () => {
   );
 };
 
-function NotesPopover({ contextLabel, placement }) {
+function NotesPopover({ contextLabel }) {
   const [notes, setNotes] = useState(() => readStore(NOTES_KEY, []));
   const [text, setText] = useState(() => readStore(NOTE_DRAFT_KEY, ""));
   const [tie, setTie] = useState(true);
@@ -123,12 +127,7 @@ function NotesPopover({ contextLabel, placement }) {
 
   return (
     <div
-      className={
-        (placement === "side"
-          ? "absolute bottom-0 left-full ml-2 "
-          : "absolute right-0 top-full mt-1.5 ") +
-        "z-[300] w-[380px] max-w-[calc(100vw-1rem)] rounded-xl border bg-white px-3.5 py-3 text-[12.5px] text-[#111827] shadow-[0_8px_24px_rgba(17,24,39,.14)]"
-      }
+      className="absolute right-0 top-full z-[300] mt-1.5 w-[380px] max-w-[calc(100vw-1rem)] rounded-xl border bg-white px-3.5 py-3 text-[12.5px] text-[#111827] shadow-[0_8px_24px_rgba(17,24,39,.14)]"
       style={{ fontFamily: FONT }}
     >
       <h4
@@ -260,6 +259,9 @@ const DS_CSS = `
 .ds-scroll{min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}
 .ds-hist{margin:0 12px 14px;min-height:240px}
 .ds-vbtn{writing-mode:vertical-rl;transform:rotate(180deg)}
+.ds-rail{display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:10px;min-width:0;min-height:0}
+.ds-tab{writing-mode:vertical-rl;background:${NAVY};color:#fff;border:0;border-radius:8px;padding:14px 7px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+.ds-tab:hover{background:#0c2740}
 .ds-marquee{display:inline-block;min-width:max-content;white-space:nowrap;animation:dsBudgetMarquee 18s linear infinite}
 .ds-marquee:hover{animation-play-state:paused}
 @keyframes dsBudgetMarquee{from{transform:translateX(0)}to{transform:translateX(-100%)}}
@@ -270,6 +272,8 @@ const DS_CSS = `
 .ds-main{display:flex;flex-direction:column;overflow:visible}
 .ds-left{height:calc(100dvh - var(--ds-offset) - 60px);flex:none}
 .ds-side{flex:none;min-height:340px}
+.ds-rail{flex-direction:row;justify-content:flex-end;flex:none}
+.ds-tab{writing-mode:horizontal-tb;padding:7px 14px}
 }
 `;
 
@@ -455,110 +459,188 @@ function useFitScale(depKey) {
    SMALL PRESENTATIONAL COMPONENTS
    ------------------------------------------------------------------ */
 function BudgetBanner({ notice, onGotIt }) {
-  // Keep an empty row when there is no notice: the screen grid expects it.
-  if (!notice) return <div />;
+  if (!notice) return null;
 
   const budgetNoticeText = `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`;
 
   return (
-    <div style={{ minWidth: 0 }}>
-      <div
-        className="flex items-start gap-3"
-        style={{
-          margin: "6px 12px 2px",
-          padding: "6px 12px",
-          background: "#fff",
-          border: `1px solid ${LINE}`,
-          borderRadius: 8,
-        }}
+    <div
+      className="flex items-center gap-3"
+      style={{
+        padding: "6px 12px",
+        background: "#fff",
+        border: `1px solid ${LINE}`,
+        borderRadius: 6,
+      }}
+    >
+      <span
+        className="inline-flex shrink-0 items-center gap-2 font-bold"
+        style={{ color: INK }}
       >
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-          <span
-            className="inline-flex items-center gap-2 font-bold"
-            style={{ color: INK }}
-          >
-            <span style={{ color: RED }}>▲</span> Budget changed
-          </span>
-          <span
-            className="min-w-0 flex-1 overflow-hidden"
-            style={{ color: "#3E4C59" }}
-            aria-label={budgetNoticeText}
-          >
-            <span className="ds-marquee">{budgetNoticeText}</span>
-          </span>
-        </div>
-
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          <button
-            type="button"
-            onClick={onGotIt}
-            className="rounded border px-3 py-1 font-semibold"
-            style={{ borderColor: "#C4CED6", background: SOFT, color: INK }}
-          >
-            Got it
-          </button>
-        </div>
-      </div>
+        <span style={{ color: RED }}>▲</span> Budget changed
+      </span>
+      <span
+        className="min-w-0 flex-1 overflow-hidden"
+        style={{ color: "#3E4C59" }}
+        aria-label={budgetNoticeText}
+      >
+        <span className="ds-marquee">{budgetNoticeText}</span>
+      </span>
+      <button
+        type="button"
+        onClick={onGotIt}
+        className="shrink-0 rounded border px-3 py-1 font-semibold"
+        style={{ borderColor: "#C4CED6", background: SOFT, color: INK }}
+      >
+        Got it
+      </button>
     </div>
   );
 }
 
-/* View budget + My notes now live in the blue top bar, just before the
-   profile icon. Same behaviour as before; only the position changed. */
-function DetailHeaderButtons({ onViewBudget, employee }) {
-  const { settings } = useSettings();
-  const vertical = settings.menuPosition === "left";
-  const collapsed = vertical && settings.menuCollapsed;
+/* White bar under the blue top nav, same look as the Appraisal Sheet's:
+   View budget, My notes and Menu on the right. */
+function DetailToolbar({
+  onViewBudget,
+  employee,
+  metricsOpen,
+  onToggleMetrics,
+  feedbackOpen,
+  onToggleFeedback,
+}) {
   const [notesOpen, setNotesOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  const notesCount = useMemo(() => {
+    const saved = readStore(NOTES_KEY, []);
+    return Array.isArray(saved) ? saved.length : 0;
+  }, [notesOpen]);
 
   useEffect(() => {
-    if (!notesOpen) return undefined;
+    if (!notesOpen && !menuOpen) return undefined;
     const handleOutside = (event) => {
-      if (!event.target?.closest?.("[data-detail-notes]")) setNotesOpen(false);
+      const target = event.target;
+      if (notesOpen && !target?.closest?.("[data-detail-notes]")) {
+        setNotesOpen(false);
+      }
+      if (menuOpen && !menuRef.current?.contains(target)) setMenuOpen(false);
     };
     document.addEventListener("mousedown", handleOutside);
     return () => document.removeEventListener("mousedown", handleOutside);
-  }, [notesOpen]);
-
-  const btn =
-    "flex h-7 items-center justify-center gap-1.5 rounded-md border border-white/25 bg-white/10 text-[11px] font-medium text-white transition-colors hover:bg-white/20 " +
-    (collapsed ? "w-full px-0" : "px-2.5");
+  }, [notesOpen, menuOpen]);
 
   return (
-    <HeaderSlot>
-      <button
-        type="button"
-        onClick={onViewBudget}
-        className={btn}
-        title="View budget"
-      >
-        <WalletCards className="size-3.5 shrink-0" />
-        {!collapsed && "View budget"}
-      </button>
-
-      <div className="relative" data-detail-notes>
+    <div
+      className="flex items-center gap-2"
+      style={{
+        padding: "6px 12px",
+        background: "#fff",
+        border: "1px solid #D9DEE7",
+        borderRadius: 6,
+      }}
+    >
+      <div className="ml-auto flex items-center gap-2">
         <button
           type="button"
-          onClick={() => setNotesOpen((previous) => !previous)}
-          className={btn + " w-full"}
-          title="My notes"
-          aria-expanded={notesOpen}
+          onClick={onViewBudget}
+          className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#d1d5db] bg-white px-2.5 text-[12px] font-bold text-[#111827] hover:border-[#102a43]"
         >
-          <Pencil className="size-3.5 shrink-0" />
-          {!collapsed && "My notes"}
+          <WalletCards className="size-3.5" />
+          View budget
         </button>
-        {notesOpen && (
-          <NotesPopover
-            placement={vertical ? "side" : "below"}
-            contextLabel={
-              employee
-                ? `${employee.name} (${employee.empId}) · ${CURRENT_CYCLE}`
-                : `Detailed Screen · ${CURRENT_CYCLE}`
-            }
-          />
-        )}
+
+        <div className="relative" data-detail-notes>
+          <button
+            type="button"
+            onClick={() => {
+              setNotesOpen((previous) => !previous);
+              setMenuOpen(false);
+            }}
+            aria-expanded={notesOpen}
+            className="inline-flex h-8 items-center whitespace-nowrap rounded-md border border-[#d1d5db] bg-white px-2.5 text-[12px] font-bold text-[#111827] hover:border-[#102a43]"
+          >
+            ✎ My notes
+            {notesCount > 0 && (
+              <span className="ml-1.5 rounded-[9px] bg-[#102a43] px-1.5 text-[10.5px] font-extrabold text-white">
+                {notesCount}
+              </span>
+            )}
+          </button>
+          {notesOpen && (
+            <NotesPopover
+              contextLabel={
+                employee
+                  ? `${employee.name} (${employee.empId}) · ${CURRENT_CYCLE}`
+                  : `Detailed Screen · ${CURRENT_CYCLE}`
+              }
+            />
+          )}
+        </div>
+
+        <div ref={menuRef} className="relative">
+          <button
+            type="button"
+            onClick={() => {
+              setMenuOpen((previous) => !previous);
+              setNotesOpen(false);
+            }}
+            aria-expanded={menuOpen}
+            aria-haspopup="menu"
+            className="flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-[#17365d] bg-[#17365d] px-4 text-[13px] font-semibold text-white hover:bg-[#123056]"
+          >
+            Menu
+            <ChevronDown
+              className={
+                "size-3.5 transition-transform" + (menuOpen ? " rotate-180" : "")
+              }
+            />
+          </button>
+
+          {menuOpen && (
+            <div
+              className="absolute right-0 top-full z-[300] mt-1.5 w-[200px] overflow-hidden rounded-md border border-[#cbd5e1] bg-white shadow-lg"
+              role="menu"
+            >
+              {[
+                [
+                  metricsOpen ? "Hide metrics" : "Show metrics",
+                  onToggleMetrics,
+                ],
+                [
+                  feedbackOpen ? "Hide feedback" : "Show feedback",
+                  onToggleFeedback,
+                ],
+                employee
+                  ? [
+                      "Employee history",
+                      () =>
+                        document
+                          .querySelector('[aria-label="Employee history"]')
+                          ?.scrollIntoView({ behavior: "smooth", block: "start" }),
+                    ]
+                  : null,
+              ]
+                .filter(Boolean)
+                .map(([label, action]) => (
+                  <button
+                    key={label}
+                    type="button"
+                    role="menuitem"
+                    className="block w-full px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      action();
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+            </div>
+          )}
+        </div>
       </div>
-    </HeaderSlot>
+    </div>
   );
 }
 function CompHead({ children }) {
@@ -793,7 +875,7 @@ export function DetailScreenPage({
   budgetNotice = BUDGET_NOTICE_PLACEHOLDER,
 } = {}) {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
-  const { currentUser, isHR, budgetMasterRows } = useBudget();
+  const { currentUser, isHR } = useBudget();
   const catalystUser = useCatalystUser();
   const role = String(catalystUser?.role || "")
     .trim()
@@ -831,20 +913,6 @@ export function DetailScreenPage({
   }, [currentUser.name]);
 
   const employee = rows[Math.min(index, rows.length - 1)] || rows[0];
-
-  const liveBudgetNotice = useMemo(() => {
-    const row = budgetMasterRows[0];
-    if (!row) return null;
-    const applied = Number(row.applied_budget) || 0;
-    const calculated = Number(row.calculated_budget) || 0;
-    if (!calculated && !applied) return null;
-    return {
-      from: (calculated / 100000).toFixed(2) + " L",
-      to: (applied / 100000).toFixed(2) + " L",
-      changes: 0,
-      since: "budget allocation",
-    };
-  }, [budgetMasterRows]);
 
   const noticeSignature = employee
     ? JSON.stringify({
@@ -1190,9 +1258,12 @@ export function DetailScreenPage({
 
   const cols = [
     "minmax(0,2.25fr)",
-    metricsOpen ? "minmax(150px,0.6fr)" : "34px",
-    cardOpen ? `minmax(240px, ${feedbackWidth}px)` : "34px",
-  ].join(" ");
+    metricsOpen && "minmax(150px,0.6fr)",
+    cardOpen && `minmax(240px, ${feedbackWidth}px)`,
+    (!metricsOpen || !cardOpen) && "30px",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   // Title options: always include the current designation.
   const titleOptions = useMemo(() => {
@@ -1270,14 +1341,23 @@ export function DetailScreenPage({
 
       {/* ============ SCREEN 1 - fits one viewport, no scrolling ============ */}
       <div className="ds-screen">
-        <BudgetBanner
-          notice={noticeOpen ? (liveBudgetNotice || budgetNotice) : null}
-          onGotIt={() => setNoticeOpen(false)}
-        />
-        <DetailHeaderButtons
-          onViewBudget={handleViewBudget}
-          employee={employee}
-        />
+        <div
+          className="flex flex-col gap-2"
+          style={{ padding: "6px 12px 2px", minWidth: 0 }}
+        >
+          <DetailToolbar
+            onViewBudget={handleViewBudget}
+            employee={employee}
+            metricsOpen={metricsOpen}
+            onToggleMetrics={() => setMetricsOpen((open) => !open)}
+            feedbackOpen={cardOpen}
+            onToggleFeedback={() => setCardOpen((open) => !open)}
+          />
+          <BudgetBanner
+            notice={noticeOpen ? budgetNotice : null}
+            onGotIt={() => setNoticeOpen(false)}
+          />
+        </div>
 
         {!employee ? (
           <div className="p-6 text-sm text-slate-500">
@@ -1673,6 +1753,7 @@ export function DetailScreenPage({
             </section>
 
             {/* METRICS */}
+            {metricsOpen && (
             <aside className="ds-side" aria-label="Metrics">
               <div className="ds-card">
                 {metricsOpen ? (
@@ -1712,23 +1793,13 @@ export function DetailScreenPage({
                       ))}
                     </div>
                   </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setMetricsOpen(true)}
-                    className="flex h-full w-full items-center justify-center"
-                    style={{ background: "#fff", color: INK }}
-                    aria-label="Open metrics"
-                  >
-                    <span className="ds-vbtn text-[12px] font-bold">
-                      Metrics ›
-                    </span>
-                  </button>
-                )}
+                ) : null}
               </div>
             </aside>
+            )}
 
             {/* FEEDBACK */}
+            {cardOpen && (
             <aside className="ds-side" aria-label="Feedback">
               <div className="ds-card">
                 {cardOpen ? (
@@ -1885,21 +1956,36 @@ export function DetailScreenPage({
                       </div>
                     </div>
                   </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setCardOpen(true)}
-                    className="flex h-full w-full items-center justify-center"
-                    style={{ background: "#fff", color: INK }}
-                    aria-label="Open feedback"
-                  >
-                    <span className="ds-vbtn text-[12px] font-bold">
-                      Feedback ‹
-                    </span>
-                  </button>
-                )}
+                ) : null}
               </div>
             </aside>
+            )}
+
+            {/* Closed panels: dark tabs on the right edge, like Bulk Edit */}
+            {(!metricsOpen || !cardOpen) && (
+              <aside className="ds-rail" aria-label="Side panels">
+                {!metricsOpen && (
+                  <button
+                    type="button"
+                    className="ds-tab"
+                    onClick={() => setMetricsOpen(true)}
+                    aria-label="Open metrics"
+                  >
+                    Metrics ›
+                  </button>
+                )}
+                {!cardOpen && (
+                  <button
+                    type="button"
+                    className="ds-tab"
+                    onClick={() => setCardOpen(true)}
+                    aria-label="Open feedback"
+                  >
+                    Feedback ‹
+                  </button>
+                )}
+              </aside>
+            )}
           </div>
         )}
       </div>
