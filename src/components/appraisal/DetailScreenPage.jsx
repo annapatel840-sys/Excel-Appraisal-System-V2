@@ -16,13 +16,12 @@ import {
   newBaseSalary,
   totalCTCWithRewards,
 } from "@/lib/appraisal-data";
+import { Pencil, WalletCards } from "lucide-react";
+import { HeaderSlot } from "@/components/appraisal/AppShell";
 import { useBudget } from "@/lib/budget-store";
+import { useSettings } from "@/lib/settings-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
-<<<<<<< HEAD
-=======
-import { HeaderActions, HeaderSlot } from "./HeaderActions";
->>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
 
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#12304f";
@@ -46,15 +45,6 @@ const CURRENT_CYCLE = "Apr-26";
 const BUDGET_PATH = "/employee-master?tab=budget-master";
 const BUDGET_NOTICE_PLACEHOLDER = null;
 
-<<<<<<< HEAD
-=======
-/* TODO: paste the options that were in the gear button here.
-   { key, label, onClick?: fn, href?: string, divider?: true } */
-const HEADER_MENU_ITEMS = [
-  { key: "settings", label: "Settings", href: "/settings" },
-];
-
->>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
 const NOTES_KEY = "appraisal.myNotes";
 const NOTE_DRAFT_KEY = "appraisal.noteDraft";
 
@@ -90,7 +80,7 @@ const formatNoteTime = () => {
   );
 };
 
-function NotesPopover({ contextLabel }) {
+function NotesPopover({ contextLabel, placement }) {
   const [notes, setNotes] = useState(() => readStore(NOTES_KEY, []));
   const [text, setText] = useState(() => readStore(NOTE_DRAFT_KEY, ""));
   const [tie, setTie] = useState(true);
@@ -133,7 +123,12 @@ function NotesPopover({ contextLabel }) {
 
   return (
     <div
-      className="absolute right-0 top-full z-[300] mt-1.5 w-[380px] rounded-xl border bg-white px-3.5 py-3 text-[12.5px] text-[#111827] shadow-[0_8px_24px_rgba(17,24,39,.14)]"
+      className={
+        (placement === "side"
+          ? "absolute bottom-0 left-full ml-2 "
+          : "absolute right-0 top-full mt-1.5 ") +
+        "z-[300] w-[380px] max-w-[calc(100vw-1rem)] rounded-xl border bg-white px-3.5 py-3 text-[12.5px] text-[#111827] shadow-[0_8px_24px_rgba(17,24,39,.14)]"
+      }
       style={{ fontFamily: FONT }}
     >
       <h4
@@ -459,22 +454,11 @@ function useFitScale(depKey) {
 /* ------------------------------------------------------------------
    SMALL PRESENTATIONAL COMPONENTS
    ------------------------------------------------------------------ */
-<<<<<<< HEAD
-function BudgetBanner({
-  notice,
-  onGotIt,
-  onViewBudget,
-  notesOpen,
-  setNotesOpen,
-  employee,
-}) {
-=======
 function BudgetBanner({ notice, onGotIt }) {
+  // Keep an empty row when there is no notice: the screen grid expects it.
   if (!notice) return <div />;
->>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
-  const budgetNoticeText = notice
-    ? `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`
-    : "";
+
+  const budgetNoticeText = `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`;
 
   return (
     <div style={{ minWidth: 0 }}>
@@ -488,76 +472,93 @@ function BudgetBanner({ notice, onGotIt }) {
           borderRadius: 8,
         }}
       >
-        {notice ? (
-          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
-            <span
-              className="inline-flex items-center gap-2 font-bold"
-              style={{ color: INK }}
-            >
-              <span style={{ color: RED }}>▲</span> Budget changed
-            </span>
-            <span
-              className="min-w-0 flex-1 overflow-hidden"
-              style={{ color: "#3E4C59" }}
-              aria-label={budgetNoticeText}
-            >
-              <span className="ds-marquee">{budgetNoticeText}</span>
-            </span>
-          </div>
-        ) : (
-          <div className="min-w-0 flex-1" />
-        )}
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-3">
+          <span
+            className="inline-flex items-center gap-2 font-bold"
+            style={{ color: INK }}
+          >
+            <span style={{ color: RED }}>▲</span> Budget changed
+          </span>
+          <span
+            className="min-w-0 flex-1 overflow-hidden"
+            style={{ color: "#3E4C59" }}
+            aria-label={budgetNoticeText}
+          >
+            <span className="ds-marquee">{budgetNoticeText}</span>
+          </span>
+        </div>
 
-<<<<<<< HEAD
-        <div
-          className="relative ml-auto flex shrink-0 items-center gap-2"
-          data-detail-notes
-        >
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <button
             type="button"
-            onClick={onViewBudget}
+            onClick={onGotIt}
             className="rounded border px-3 py-1 font-semibold"
-            style={{ borderColor: "#C4CED6", background: "#fff", color: INK }}
+            style={{ borderColor: "#C4CED6", background: SOFT, color: INK }}
           >
-            View budget
+            Got it
           </button>
-
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setNotesOpen((previous) => !previous)}
-              className="rounded border px-3 py-1 font-semibold"
-              style={{ borderColor: "#C4CED6", background: "#fff", color: INK }}
-            >
-              ✎ My notes
-            </button>
-            {notesOpen && (
-              <NotesPopover
-                contextLabel={
-                  employee
-                    ? `${employee.name} (${employee.empId}) · ${CURRENT_CYCLE}`
-                    : `Detailed Screen · ${CURRENT_CYCLE}`
-                }
-              />
-            )}
-          </div>
-
-=======
-        <div className="ml-auto flex shrink-0 items-center gap-2">
->>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
-          {notice ? (
-            <button
-              type="button"
-              onClick={onGotIt}
-              className="rounded border px-3 py-1 font-semibold"
-              style={{ borderColor: "#C4CED6", background: SOFT, color: INK }}
-            >
-              Got it
-            </button>
-          ) : null}
         </div>
       </div>
     </div>
+  );
+}
+
+/* View budget + My notes now live in the blue top bar, just before the
+   profile icon. Same behaviour as before; only the position changed. */
+function DetailHeaderButtons({ onViewBudget, employee }) {
+  const { settings } = useSettings();
+  const vertical = settings.menuPosition === "left";
+  const collapsed = vertical && settings.menuCollapsed;
+  const [notesOpen, setNotesOpen] = useState(false);
+
+  useEffect(() => {
+    if (!notesOpen) return undefined;
+    const handleOutside = (event) => {
+      if (!event.target?.closest?.("[data-detail-notes]")) setNotesOpen(false);
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [notesOpen]);
+
+  const btn =
+    "flex h-7 items-center justify-center gap-1.5 rounded-md border border-white/25 bg-white/10 text-[11px] font-medium text-white transition-colors hover:bg-white/20 " +
+    (collapsed ? "w-full px-0" : "px-2.5");
+
+  return (
+    <HeaderSlot>
+      <button
+        type="button"
+        onClick={onViewBudget}
+        className={btn}
+        title="View budget"
+      >
+        <WalletCards className="size-3.5 shrink-0" />
+        {!collapsed && "View budget"}
+      </button>
+
+      <div className="relative" data-detail-notes>
+        <button
+          type="button"
+          onClick={() => setNotesOpen((previous) => !previous)}
+          className={btn + " w-full"}
+          title="My notes"
+          aria-expanded={notesOpen}
+        >
+          <Pencil className="size-3.5 shrink-0" />
+          {!collapsed && "My notes"}
+        </button>
+        {notesOpen && (
+          <NotesPopover
+            placement={vertical ? "side" : "below"}
+            contextLabel={
+              employee
+                ? `${employee.name} (${employee.empId}) · ${CURRENT_CYCLE}`
+                : `Detailed Screen · ${CURRENT_CYCLE}`
+            }
+          />
+        )}
+      </div>
+    </HeaderSlot>
   );
 }
 function CompHead({ children }) {
@@ -813,23 +814,8 @@ export function DetailScreenPage({
   const [noticeOpen, setNoticeOpen] = useState(true);
   const [metricsOpen, setMetricsOpen] = useState(false);
 
-<<<<<<< HEAD
-  const [notesOpen, setNotesOpen] = useState(false);
   const [cardOpen, setCardOpen] = useState(true);
   const [feedbackWidth, setFeedbackWidth] = useState(320);
-  useEffect(() => {
-    if (!notesOpen) return undefined;
-    const handleOutside = (event) => {
-      const target = event.target;
-      if (!target?.closest?.("[data-detail-notes]")) setNotesOpen(false);
-    };
-    document.addEventListener("mousedown", handleOutside);
-    return () => document.removeEventListener("mousedown", handleOutside);
-  }, [notesOpen]);
-=======
-  const [cardOpen, setCardOpen] = useState(true);
-  const [feedbackWidth, setFeedbackWidth] = useState(320);
->>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
   const [fbTab, setFbTab] = useState("manager");
   const baselineRef = useRef({});
 
@@ -1190,14 +1176,6 @@ export function DetailScreenPage({
     else window.location.assign(BUDGET_PATH);
   };
 
-<<<<<<< HEAD
-=======
-  const handleSignOut = () => {
-    // TODO: use your existing sign-out (the one the gear menu calls)
-    window.location.assign("/logout");
-  };
-
->>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
   // Blur first so the field being edited commits, then move.
   const goTo = (next) => {
     if (document.activeElement && document.activeElement.blur) {
@@ -1290,41 +1268,15 @@ export function DetailScreenPage({
     >
       <style>{DS_CSS}</style>
 
-<<<<<<< HEAD
-=======
-      {/* Top bar, far right (where the gear was): View budget · My notes · Profile */}
-      <HeaderSlot>
-        <HeaderActions
-          user={{
-            name: catalystUser?.name || currentUser?.name,
-            email: catalystUser?.email,
-            role: catalystUser?.role,
-          }}
-          menuItems={HEADER_MENU_ITEMS}
-          onSignOut={handleSignOut}
-          onViewBudget={handleViewBudget}
-          NotesPopover={NotesPopover}
-          notesContext={
-            employee
-              ? `${employee.name} (${employee.empId}) · ${CURRENT_CYCLE}`
-              : `Detailed Screen · ${CURRENT_CYCLE}`
-          }
-        />
-      </HeaderSlot>
-
->>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
       {/* ============ SCREEN 1 - fits one viewport, no scrolling ============ */}
       <div className="ds-screen">
         <BudgetBanner
           notice={noticeOpen ? (liveBudgetNotice || budgetNotice) : null}
           onGotIt={() => setNoticeOpen(false)}
-<<<<<<< HEAD
+        />
+        <DetailHeaderButtons
           onViewBudget={handleViewBudget}
-          notesOpen={notesOpen}
-          setNotesOpen={setNotesOpen}
           employee={employee}
-=======
->>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
         />
 
         {!employee ? (
@@ -2113,8 +2065,4 @@ export function DetailScreenPage({
   );
 }
 
-<<<<<<< HEAD
 export default DetailScreenPage;
-=======
-export default DetailScreenPage;
->>>>>>> 3488e2a (updated the detailed view and added a file headeraction for the profile view)
