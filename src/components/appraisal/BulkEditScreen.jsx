@@ -50,10 +50,6 @@ export default function BulkEditScreen() {
   return (
     <section className="bulk-edit-screen">
       <div className="bulk-edit-screen-toolbar">
-        <div>
-          <h1>Bulk Edit</h1>
-          <p>Apply and review bulk compensation changes for an appraisal cycle.</p>
-        </div>
         <label className="bulk-edit-cycle-select">
           <span>Appraisal Cycle</span>
           <select

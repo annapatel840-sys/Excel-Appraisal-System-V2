@@ -1,5 +1,3 @@
-import { createContext, useContext, useState } from "react";
-import { createPortal } from "react-dom";
 import {
   LayoutDashboard,
   Table2,
@@ -14,16 +12,9 @@ import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useSettings } from "@/lib/settings-store";
 import { cn } from "@/lib/utils";
+import { useViewAs } from "@/lib/view-as-store";
 import { ProfileMenu } from "./ProfileMenu";
-
-// A screen can put its own buttons into the top bar (just before the profile
-// icon) by rendering <HeaderSlot>...</HeaderSlot>. Only screens that do so
-// show anything there.
-const HeaderSlotContext = createContext(null);
-export function HeaderSlot({ children }) {
-  const target = useContext(HeaderSlotContext);
-  return target ? createPortal(children, target) : null;
-}
+import { ViewAsSwitcher } from "./ViewAsSwitcher";
 
 const TECH_ED_PATHS = [
   "/",
@@ -59,12 +50,14 @@ export function AppShell({ children, headerActions }) {
   const user = useCatalystUser();
   const access = useAccess();
   const { settings } = useSettings();
-  const [slotEl, setSlotEl] = useState(null);
+  const { effectiveId, preview } = useViewAs();
 
-  const role = String(user?.role || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
+  const role = preview
+    ? effectiveId
+    : String(user?.role || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
   const isHR =
     role === "hr" ||
@@ -98,12 +91,26 @@ export function AppShell({ children, headerActions }) {
 
   // With access rules (/me ok) the menu follows the user's screens; otherwise
   // the role-based menu above is used unchanged.
+  const useAccessRules = access.ok && !preview;
   const hrMenuItems = HR_MENU_ITEMS.filter(([, tab]) =>
-    access.ok
+    useAccessRules
       ? access.canScreen(HR_TAB_SCREENS[tab])
       : tab !== "access" || isHR,
   );
-  const nav = access.ok
+  // "View as": HR previewing another role sees that role's menu.
+  const previewNav = isTechEd
+    ? [
+        ...fallbackNav,
+        {
+          to: "/budget-distribution",
+          label: "Budget Distribution",
+          icon: WalletCards,
+        },
+      ]
+    : fallbackNav;
+  const nav = preview
+    ? previewNav
+    : access.ok
     ? [
         access.canScreen("dashboard") && {
           to: "/",
@@ -179,7 +186,6 @@ export function AppShell({ children, headerActions }) {
   );
 
   return (
-    <HeaderSlotContext.Provider value={slotEl}>
     <div
       className={cn(
         "min-h-screen bg-background",
@@ -294,13 +300,7 @@ export function AppShell({ children, headerActions }) {
           >
             {!isVertical && headerActions}
             {isVertical && headerActions}
-            <div
-              ref={setSlotEl}
-              className={cn(
-                "flex gap-1.5 empty:hidden",
-                isVertical ? "flex-col items-stretch" : "items-center",
-              )}
-            />
+            {!isCollapsed && <ViewAsSwitcher isVertical={isVertical} />}
             <ProfileMenu
               isVertical={isVertical}
               isCollapsed={isCollapsed}
@@ -323,6 +323,5 @@ export function AppShell({ children, headerActions }) {
         {children}
       </main>
     </div>
-    </HeaderSlotContext.Provider>
   );
 }

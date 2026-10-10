@@ -374,7 +374,7 @@ export function SheetPage() {
             </div>
           )}
 
-          {/* TOOLBAR: search on the left, reset + menu on the right */}
+          {/* TOOLBAR: search on the left; filters, My notes and Menu on the right */}
 
           <div className="flex items-center gap-2 rounded-md border border-[#d9dee7] bg-white px-3 py-2">
             <div className="relative w-[320px]">
@@ -405,8 +405,6 @@ export function SheetPage() {
                 <RotateCcw className="size-3.5" />
                 Reset
               </Button>
-
-              <div id="appraisal-my-notes-slot" className="relative shrink-0" />
 
               <button
                 type="button"
@@ -476,6 +474,8 @@ export function SheetPage() {
                 <span>↪ Last edited:</span>
                 <span className="truncate">{lastEditedRow?.name || "—"}</span>
               </button>
+              <div id="appraisal-my-notes-slot" className="relative shrink-0" />
+
               <div ref={menuRef} className="relative">
                 <button
                   type="button"
