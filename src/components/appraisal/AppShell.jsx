@@ -1,10 +1,11 @@
+import { createContext, useContext, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   LayoutDashboard,
   Table2,
   Users,
   BookOpen,
   ChevronDown,
-  Settings,
   WalletCards,
   SlidersHorizontal,
 } from "lucide-react";
@@ -13,6 +14,16 @@ import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useSettings } from "@/lib/settings-store";
 import { cn } from "@/lib/utils";
+import { ProfileMenu } from "./ProfileMenu";
+
+// A screen can put its own buttons into the top bar (just before the profile
+// icon) by rendering <HeaderSlot>...</HeaderSlot>. Only screens that do so
+// show anything there.
+const HeaderSlotContext = createContext(null);
+export function HeaderSlot({ children }) {
+  const target = useContext(HeaderSlotContext);
+  return target ? createPortal(children, target) : null;
+}
 
 const TECH_ED_PATHS = [
   "/",
@@ -48,6 +59,7 @@ export function AppShell({ children, headerActions }) {
   const user = useCatalystUser();
   const access = useAccess();
   const { settings } = useSettings();
+  const [slotEl, setSlotEl] = useState(null);
 
   const role = String(user?.role || "")
     .trim()
@@ -166,19 +178,8 @@ export function AppShell({ children, headerActions }) {
     </div>
   );
 
-  const settingsButton = (
-    <a
-      href="/settings"
-      onClick={(event) => navigate(event, "/settings")}
-      className="flex h-7 shrink-0 items-center gap-1.5 rounded-md px-2 text-[11px] font-medium text-white/85 transition-colors hover:bg-white/10 hover:text-white"
-      title="Settings"
-      aria-label="Settings"
-    >
-      <Settings className="size-3.5" />
-    </a>
-  );
-
   return (
+    <HeaderSlotContext.Provider value={slotEl}>
     <div
       className={cn(
         "min-h-screen bg-background",
@@ -293,7 +294,18 @@ export function AppShell({ children, headerActions }) {
           >
             {!isVertical && headerActions}
             {isVertical && headerActions}
-            {(isTechEd || access.canScreen("settings")) && settingsButton}
+            <div
+              ref={setSlotEl}
+              className={cn(
+                "flex gap-1.5 empty:hidden",
+                isVertical ? "flex-col items-stretch" : "items-center",
+              )}
+            />
+            <ProfileMenu
+              isVertical={isVertical}
+              isCollapsed={isCollapsed}
+              showSettings={isTechEd || access.canScreen("settings")}
+            />
           </div>
 
           {!isVertical && headerActions && (
@@ -311,5 +323,6 @@ export function AppShell({ children, headerActions }) {
         {children}
       </main>
     </div>
+    </HeaderSlotContext.Provider>
   );
 }
