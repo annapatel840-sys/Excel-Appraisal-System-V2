@@ -81,6 +81,8 @@
 
 /* ===== right panel ===== */
 .emx-panel{width:290px;flex:none;height:100%;min-height:0;border:1px solid #E5E7EB;border-radius:12px;background:#fff;overflow:hidden;display:flex;flex-direction:column}
+.emx-panel-tab{flex:none;align-self:center;writing-mode:vertical-rl;background:var(--app-brand,#173b63);color:#fff;border:0;border-radius:8px;padding:14px 7px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+.emx-panel-tab:hover{opacity:.9}
 .emx-ph{display:flex;align-items:center;justify-content:space-between;padding:10px 12px;color:#102A43}
 .emx-ph button{border:none;background:none;cursor:pointer;font-size:14px;color:#6B7280}
 .emx-ptabs{display:flex;border-bottom:1px solid #E5E7EB}

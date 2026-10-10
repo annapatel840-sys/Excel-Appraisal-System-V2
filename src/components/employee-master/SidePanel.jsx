@@ -163,3 +163,20 @@ export function SidePanel({
     </aside>
   );
 }
+
+/* Dark vertical tab shown beside the table while the panel is folded.
+   It replaces the old "Panel ›" button in the toolbar. */
+export function PanelTab({ open, onOpen }) {
+  if (open) return null;
+  return (
+    <button
+      type="button"
+      className="emx-panel-tab"
+      onClick={onOpen}
+      title="Open the panel"
+      aria-label="Open the panel"
+    >
+      Panel ›
+    </button>
+  );
+}

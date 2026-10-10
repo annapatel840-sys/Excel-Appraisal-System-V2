@@ -41,6 +41,14 @@ export function EmployeeMasterToolbar({
     };
   }, []);
 
+  // The panel is opened from the dark tab beside the table; keep handing it
+  // the full audit history link the old Panel button used to pass along.
+  useEffect(() => {
+    if (onAuditHistory && panel.fullAudit !== onAuditHistory) {
+      updatePanel({ fullAudit: onAuditHistory });
+    }
+  }, [onAuditHistory, panel.fullAudit]);
+
   const run = (fn) => () => {
     setMenuOpen(false);
     fn?.();
@@ -143,19 +151,6 @@ export function EmployeeMasterToolbar({
           </div>
         )}
       </div>
-
-      <button
-        type="button"
-        className="em-btn"
-        onClick={() =>
-          updatePanel({
-            open: !panel.open,
-            fullAudit: onAuditHistory || panel.fullAudit,
-          })
-        }
-      >
-        Panel {panel.open ? "‹" : "›"}
-      </button>
     </div>
   );
 }

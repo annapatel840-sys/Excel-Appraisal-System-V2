@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { DataGrid, useGridState, useGridView } from "./DataGrid";
-import { SidePanel } from "./SidePanel";
+import { PanelTab, SidePanel } from "./SidePanel";
 import { InactiveModal, ChangeModal } from "./EmployeeMasterModal";
 import { usePanel } from "./panelStore";
 import { fmtDoj } from "@/lib/employee-master-utils";
@@ -395,6 +395,7 @@ export function EmployeeRosterTable({
         auditHint="Uploads and changes made on this screen: user, date and time, employee, previous and new value."
         onFullAudit={panel.fullAudit}
       />
+      <PanelTab open={panel.open} onOpen={() => updatePanel({ open: true })} />
 
       {modal === "inactive" && (
         <InactiveModal
