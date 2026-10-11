@@ -10,6 +10,15 @@ const access = require("./accessCore");
 
 const PAYROLL_DATA_TABLE_ID = "74008000000035326";
 
+/*
+ * CHANGED: name of the parent (employee) table that Payroll_Data.emp_id
+ * points to. Used only to translate "EMP001" -> that row's ROWID, because a
+ * foreign-key column stores the ROWID and not the text id.
+ * If your table is named differently, change it here. If the lookup fails
+ * for any reason, the function falls back to plain emp_id matching.
+ */
+const EMPLOYEE_TABLE_NAME = "Employee_Master";
+
 const DATASTORE_PAGE_SIZE = 200;
 
 /* ============================================================
@@ -328,12 +337,96 @@ const normalizeHistoryEmpId = (value) =>
     .trim()
     .toUpperCase();
 
-const getHistory = async (table, empId) => {
+/*
+ * CHANGED (new): Payroll_Data.emp_id is a foreign key, so the stored value may
+ * be the parent row's ROWID instead of "EMP001". Build the set of values that
+ * identify this employee: the text id, plus the parent ROWID when it can be
+ * looked up. Never throws — falls back to the text id alone.
+ */
+const resolveEmpKeys = async (app, empId) => {
+  const keys = new Set([normalizeHistoryEmpId(empId)]);
+
+  try {
+    const safeId = String(empId || "")
+      .trim()
+      .split(/\s+-\s+/, 1)[0]
+      .trim()
+      .replace(/'/g, "''");
+
+    const result = await app
+      .zcql()
+      .executeZCQLQuery(
+        "SELECT ROWID FROM " +
+          EMPLOYEE_TABLE_NAME +
+          " WHERE emp_id = '" +
+          safeId +
+          "'",
+      );
+
+    (Array.isArray(result) ? result : []).forEach((item) => {
+      const row =
+        (item && item[EMPLOYEE_TABLE_NAME]) ||
+        (item && Object.values(item)[0]) ||
+        {};
+
+      if (row.ROWID) {
+        keys.add(normalizeHistoryEmpId(row.ROWID));
+      }
+    });
+  } catch (error) {
+    console.warn(
+      "Employee ROWID lookup failed (using emp_id text only):",
+      error && error.message,
+    );
+  }
+
+  console.log("History emp keys for", empId, ":", Array.from(keys));
+
+  return keys;
+};
+
+/*
+ * CHANGED (new): older payroll rows may only have the original Payroll_Data
+ * column names. Fill the names the grid reads from them when the history
+ * columns are empty. Existing values are never overwritten.
+ */
+const withHistoryAliases = (record) => {
+  const pick = (primary, fallback) =>
+    record[primary] !== undefined &&
+    record[primary] !== null &&
+    record[primary] !== ""
+      ? record[primary]
+      : record[fallback];
+
+  return {
+    ...record,
+    appraisal_year: pick("appraisal_year", "fy_year"),
+    base_pay: pick("base_pay", "current_annual_base_pay"),
+    new_ctc: pick("new_ctc", "total_CTC_with_rewards"),
+    target_performance_bonus: pick(
+      "target_performance_bonus",
+      "target_performance_agreed",
+    ),
+  };
+};
+
+const getHistory = async (app, table, empId) => {
   const allRecords = await getAllPreviousAppraisalRecords(table);
-  const wantedId = normalizeHistoryEmpId(empId);
+  const wantedKeys = await resolveEmpKeys(app, empId);
+
+  // Helps confirm the cause if rows still do not match.
+  console.log(
+    "Payroll_Data sample emp_id/year values:",
+    JSON.stringify(
+      allRecords
+        .slice(0, 10)
+        .map((r) => [r.emp_id, r.appraisal_year, r.fy_year]),
+    ),
+  );
 
   const history = allRecords
-    .filter((record) => normalizeHistoryEmpId(record.emp_id) === wantedId)
+    .filter((record) => wantedKeys.has(normalizeHistoryEmpId(record.emp_id)))
+    .map(withHistoryAliases)
     .sort((a, b) =>
       String(b.appraisal_year || "").localeCompare(
         String(a.appraisal_year || ""),
@@ -365,14 +458,17 @@ const buildUpdateData = (body) => {
 FIND CURRENT YEAR RECORD
 ============================================================ */
 
-const findHistoryRecord = async (table, empId, appraisalYear) => {
+const findHistoryRecord = async (app, table, empId, appraisalYear) => {
   const allRecords = await getAllPreviousAppraisalRecords(table);
 
-  const wantedId = normalizeHistoryEmpId(empId);
+  // CHANGED: match on the same employee keys as GET (text id or ROWID).
+  const wantedKeys = await resolveEmpKeys(app, empId);
+
   return allRecords.find(
     (item) =>
-      normalizeHistoryEmpId(item.emp_id) === wantedId &&
-      String(item.appraisal_year || "").trim() === appraisalYear,
+      wantedKeys.has(normalizeHistoryEmpId(item.emp_id)) &&
+      String(item.appraisal_year || item.fy_year || "").trim() ===
+        appraisalYear,
   );
 };
 
@@ -485,7 +581,7 @@ module.exports = async (req, res) => {
 
       access.guard(a, () => requireInScope(a, empId, true));
 
-      const history = await getHistory(table, empId);
+      const history = await getHistory(app, table, empId);
 
       const data = a.enforced
         ? history.map((row) => shapeHistoryRow(a, row))
@@ -583,6 +679,7 @@ module.exports = async (req, res) => {
       console.log("Searching Payroll_Data for:", empId, appraisalYear);
 
       const existingRecord = await findHistoryRecord(
+        app,
         table,
         empId,
         appraisalYear,
