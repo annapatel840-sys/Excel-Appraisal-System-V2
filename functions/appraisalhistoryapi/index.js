@@ -17,7 +17,17 @@ const PAYROLL_DATA_TABLE_ID = "74008000000035326";
  * If your table is named differently, change it here. If the lookup fails
  * for any reason, the function falls back to plain emp_id matching.
  */
-const EMPLOYEE_TABLE_NAME = "Employee_Master";
+const EMPLOYEE_TABLE_CANDIDATES = [
+  process.env.EMPLOYEE_TABLE_NAME || "Employee_Master",
+  "Employee_Master",
+  "Employee",
+  "Employees",
+  "Employee_Details",
+  "Employee_Data",
+].filter((name, index, list) => name && list.indexOf(name) === index);
+
+// Text columns on the employee table that may hold "EMP001".
+const EMPLOYEE_ID_COLUMNS = ["emp_id", "employee_id", "emp_code"];
 
 const DATASTORE_PAGE_SIZE = 200;
 
@@ -343,44 +353,93 @@ const normalizeHistoryEmpId = (value) =>
  * identify this employee: the text id, plus the parent ROWID when it can be
  * looked up. Never throws — falls back to the text id alone.
  */
+// Remembers which employee table/column worked so later calls try it first.
+let knownEmployeeSource = null;
+let employeeLookup = { table: "", column: "", error: "" };
+
 const resolveEmpKeys = async (app, empId) => {
   const keys = new Set([normalizeHistoryEmpId(empId)]);
 
-  try {
-    const safeId = String(empId || "")
-      .trim()
-      .split(/\s+-\s+/, 1)[0]
-      .trim()
-      .replace(/'/g, "''");
+  const safeId = String(empId || "")
+    .trim()
+    .split(/\s+-\s+/, 1)[0]
+    .trim()
+    .replace(/'/g, "''");
 
-    const result = await app
-      .zcql()
-      .executeZCQLQuery(
-        "SELECT ROWID FROM " +
-          EMPLOYEE_TABLE_NAME +
-          " WHERE emp_id = '" +
-          safeId +
-          "'",
-      );
+  const attempts = [];
 
-    (Array.isArray(result) ? result : []).forEach((item) => {
-      const row =
-        (item && item[EMPLOYEE_TABLE_NAME]) ||
-        (item && Object.values(item)[0]) ||
-        {};
+  if (knownEmployeeSource) attempts.push(knownEmployeeSource);
 
-      if (row.ROWID) {
-        keys.add(normalizeHistoryEmpId(row.ROWID));
-      }
+  EMPLOYEE_TABLE_CANDIDATES.forEach((table) => {
+    EMPLOYEE_ID_COLUMNS.forEach((column) => {
+      attempts.push({ table, column });
     });
-  } catch (error) {
-    console.warn(
-      "Employee ROWID lookup failed (using emp_id text only):",
-      error && error.message,
-    );
+  });
+
+  const errors = [];
+  employeeLookup = { table: "", column: "", error: "" };
+
+  for (const attempt of attempts) {
+    try {
+      const result = await app
+        .zcql()
+        .executeZCQLQuery(
+          "SELECT ROWID FROM " +
+            attempt.table +
+            " WHERE " +
+            attempt.column +
+            " = '" +
+            safeId +
+            "'",
+        );
+
+      const list = Array.isArray(result) ? result : [];
+
+      list.forEach((item) => {
+        const row =
+          (item && item[attempt.table]) ||
+          (item && Object.values(item)[0]) ||
+          {};
+
+        if (row.ROWID) {
+          keys.add(normalizeHistoryEmpId(row.ROWID));
+        }
+      });
+
+      if (list.length) {
+        knownEmployeeSource = attempt;
+        employeeLookup = {
+          table: attempt.table,
+          column: attempt.column,
+          error: "",
+        };
+        break;
+      }
+    } catch (error) {
+      errors.push(
+        attempt.table +
+          "." +
+          attempt.column +
+          ": " +
+          String((error && error.message) || error).slice(0, 80),
+      );
+    }
   }
 
-  console.log("History emp keys for", empId, ":", Array.from(keys));
+  if (!employeeLookup.table) {
+    employeeLookup.error =
+      errors.slice(0, 6).join(" | ") || "no employee row matched " + safeId;
+    console.warn("Employee ROWID lookup failed:", employeeLookup.error);
+  }
+
+  console.log(
+    "History emp keys for",
+    empId,
+    ":",
+    Array.from(keys),
+    "via",
+    employeeLookup.table || "(text id only)",
+  );
 
   return keys;
 };
@@ -410,19 +469,26 @@ const withHistoryAliases = (record) => {
   };
 };
 
-const getHistory = async (app, table, empId) => {
+const countBy = (records, fn) => {
+  const counts = {};
+
+  records.forEach((record) => {
+    const value = fn(record);
+    const key = String(value === null || value === undefined ? "" : value);
+    counts[key] = (counts[key] || 0) + 1;
+  });
+
+  return counts;
+};
+
+/*
+ * `diag` (optional object) is filled with what the table really contains, so
+ * a missing-history problem can be read straight from the normal response
+ * (meta field, HR / dry-run only). Safe to delete once history works.
+ */
+const getHistory = async (app, table, empId, diag) => {
   const allRecords = await getAllPreviousAppraisalRecords(table);
   const wantedKeys = await resolveEmpKeys(app, empId);
-
-  // Helps confirm the cause if rows still do not match.
-  console.log(
-    "Payroll_Data sample emp_id/year values:",
-    JSON.stringify(
-      allRecords
-        .slice(0, 10)
-        .map((r) => [r.emp_id, r.appraisal_year, r.fy_year]),
-    ),
-  );
 
   const history = allRecords
     .filter((record) => wantedKeys.has(normalizeHistoryEmpId(record.emp_id)))
@@ -434,6 +500,20 @@ const getHistory = async (app, table, empId) => {
     );
 
   console.log("History records for", empId, ":", history.length);
+
+  if (diag) {
+    diag.keysTriedForMatching = Array.from(wantedKeys);
+    diag.employeeLookup = employeeLookup;
+    diag.totalRowsInPayrollData = allRecords.length;
+    diag.matchedRows = history.length;
+    diag.matchedYears = history.map((r) => r.appraisal_year);
+    diag.columnsInFirstRow = allRecords[0] ? Object.keys(allRecords[0]) : [];
+    diag.rowsPerEmpIdValue = Object.fromEntries(
+      Object.entries(countBy(allRecords, (r) => r.emp_id)).slice(0, 40),
+    );
+    diag.rowsPerAppraisalYear = countBy(allRecords, (r) => r.appraisal_year);
+    diag.rowsPerFyYear = countBy(allRecords, (r) => r.fy_year);
+  }
 
   return history;
 };
@@ -581,7 +661,10 @@ module.exports = async (req, res) => {
 
       access.guard(a, () => requireInScope(a, empId, true));
 
-      const history = await getHistory(app, table, empId);
+      // HR / dry-run only: include what the table contains (see getHistory).
+      const diag = !a.enforced || a.role === "hr" ? {} : null;
+
+      const history = await getHistory(app, table, empId, diag);
 
       const data = a.enforced
         ? history.map((row) => shapeHistoryRow(a, row))
@@ -592,6 +675,7 @@ module.exports = async (req, res) => {
         emp_id: empId,
         count: data.length,
         data: data,
+        ...(diag ? { meta: diag } : {}),
       });
 
       return;
