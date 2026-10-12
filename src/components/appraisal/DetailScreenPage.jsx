@@ -1313,7 +1313,7 @@ export function DetailScreenPage({
           note: "Feedback captured during the review.",
         },
         ...priorCycles.map((p) => ({
-          year: p.year,
+          year: p.cycleName || p.year,
           current: false,
           title: p.designation,
           rating: p.feedback !== "—" ? p.feedback : p.rating,
@@ -2069,7 +2069,7 @@ export function DetailScreenPage({
                   <div
                     style={{ padding: "4px 10px", fontWeight: 700, color: INK }}
                   >
-                    {h.year}
+                    {h.cycleName || h.year}
                   </div>
                   {vals.map((v, c) => (
                     <HistCell
