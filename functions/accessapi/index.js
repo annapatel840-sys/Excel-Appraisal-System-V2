@@ -136,7 +136,7 @@ app.get('/delegation/requests', asyncRoute(async (req, res) => {
   const a = await A.check(ap.user, ap.admin);
   if (a.denied) throw a.denied;
   const isHR = a.role === 'hr';
-  if (!isHR && !a.actions.delegateRequest) throw new HttpError(403, 'You are not allowed to view delegation requests.');
+  if (!isHR && a.role !== 'techEd') throw new HttpError(403, 'Only Tech ED and HR Admin can access delegation requests.');
   const rows = await selectAll(ap.admin.zcql(), T.log);
   const requests = rows.filter((r) => String(r.kind || '').startsWith(DELEGATION_REQUEST_PREFIX))
     .map(decodeDelegationRequest)
@@ -154,7 +154,7 @@ app.post('/delegation/requests', asyncRoute(async (req, res) => {
   const action = String(body.action || 'submit').toLowerCase();
 
   if (action === 'submit') {
-    if (!a.actions.delegateRequest) throw new HttpError(403, 'You are not allowed to request delegation changes.');
+    if (a.role !== 'techEd') throw new HttpError(403, 'Only Tech ED can submit delegation requests.');
     const empId = String(body.empId || body.rowId || '').trim();
     const field = String(body.field || '').trim();
     const newId = String(body.newId || '').trim();
