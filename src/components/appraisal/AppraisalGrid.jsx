@@ -1730,7 +1730,7 @@ export function AppraisalGrid({
   // STATES
   // ============================================================
 
-  const [, setActive] = useState(null);
+  const [active, setActive] = useState(null);
   const [saving, setSaving] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
 
