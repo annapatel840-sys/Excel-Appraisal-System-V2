@@ -197,7 +197,6 @@ app.post('/delegation/requests', asyncRoute(async (req, res) => {
     const status = String(body.status || '').toLowerCase();
     const remarks = String(body.remarks || '').trim();
     if (!id || !['approved', 'rejected'].includes(status)) throw new HttpError(422, 'Request and decision are required.');
-    if (status === 'rejected' && !remarks) throw new HttpError(422, 'HR remarks are mandatory when rejecting.');
     const all = await selectAll(ap.admin.zcql(), T.log);
     const row = all.find((r) => String(r.batch_id) === id && r.kind === DELEGATION_REQUEST_PREFIX + 'pending');
     if (!row) throw new HttpError(404, 'Pending request not found. It may already have been decided.');
