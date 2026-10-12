@@ -335,7 +335,9 @@ async function readTechEdOwners(app) {
       if (!assignment) return;
       // A cell may contain either "EMP005" or "EMP005 - Name".
       // Deduplicate by the employee ID so both representations count once.
-      const pair = assignment.match(/^(\S+)\s*-/);
+      // Strip a prefix only when it looks like an employee ID (for example, EMP005 - Name).
+      // Do not split ordinary Tech-ED names at the hyphen, or distinct owners collapse into one.
+      const pair = assignment.match(/^([a-z]*\d+)\s*-/i);
       const key = String(pair ? pair[1] : assignment).trim().toLowerCase();
       if (!owners.has(key)) owners.set(key, { assignment });
     });
