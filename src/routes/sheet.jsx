@@ -634,7 +634,20 @@ export function SheetPage() {
             isHR={isHR}
             onRequest={async (request) => {
               if (request.type !== "delegation") {
-                window.alert("Screen requests are not part of the delegation approval queue.");
+                const current = JSON.parse(localStorage.getItem("appraisal-screen-requests") || "[]");
+                current.unshift({
+                  id: "SCREEN-" + Date.now(),
+                  rowId: request.employee?.empId || request.employee?.id || "",
+                  empId: request.employee?.empId || request.employee?.id || "",
+                  empName: request.employee?.name || "",
+                  field: "screen",
+                  reason: request.reason || "Requested from Appraisal Sheet",
+                  byId: catalystUser?.email || catalystUser?.user_id || "",
+                  byName: catalystUser?.name || catalystUser?.email || "Tech Ed",
+                  on: new Date().toISOString(), status: "Pending",
+                });
+                localStorage.setItem("appraisal-screen-requests", JSON.stringify(current));
+                window.alert("Screen request sent.");
                 return;
               }
               try {
