@@ -369,26 +369,39 @@ app.post(
       if (!id || !["approved", "rejected"].includes(status))
         throw new HttpError(422, "Request and decision are required.");
       const all = await selectAll(ap.admin.zcql(), T.log);
-      // The UI normally sends batch_id, but older requests or clients may send
-      // the AccessLog ROWID. Match either identifier independently; using
-      // (batch_id || ROWID) only checks ROWID when batch_id is empty.
-      // Request IDs (DR-...) are persisted in batch_id. Determine state
-      // from explicit decision records, never timestamp order.
-      const requestEvents = all.filter((r) =>
-        String(r.batch_id || "").trim() === id ||
-        String(r.ROWID || "").trim() === id
+      const requestKind = (r) => String(r.kind || "").trim().toLowerCase();
+      const isPending = (r) =>
+        requestKind(r) === DELEGATION_REQUEST_PREFIX + "pending";
+      const isDecision = (r) =>
+        [
+          DELEGATION_REQUEST_PREFIX + "approved",
+          DELEGATION_REQUEST_PREFIX + "rejected",
+        ].includes(requestKind(r));
+
+      // New requests use the stable DR-* batch_id. Resolve that identifier
+      // first and keep all decision checks scoped to the same batch_id.
+      // Only fall back to AccessLog ROWID for legacy clients that send a
+      // numeric row ID; never mix ROWID matches into a DR-* request.
+      let row = all.find(
+        (r) => String(r.batch_id || "").trim() === id && isPending(r),
       );
-      const row = requestEvents.find(
-        (r) => String(r.kind || "") === DELEGATION_REQUEST_PREFIX + "pending",
+      let requestKey = id;
+      if (!row && /^\d+$/.test(id)) {
+        row = all.find(
+          (r) => String(r.ROWID || "").trim() === id && isPending(r),
+        );
+        if (row) requestKey = String(row.batch_id || row.ROWID || "").trim();
+      }
+      const requestEvents = all.filter(
+        (r) => String(r.batch_id || "").trim() === requestKey,
       );
-      const decisionAlreadyRecorded = requestEvents.some((r) =>
-        [DELEGATION_REQUEST_PREFIX + "approved", DELEGATION_REQUEST_PREFIX + "rejected"]
-          .includes(String(r.kind || ""))
-      );
+      const decisionAlreadyRecorded = requestEvents.some(isDecision);
       if (!row || decisionAlreadyRecorded)
         throw new HttpError(
           409,
-          "This request is already decided or could not be found. Refresh the request list and try again.",
+          !row
+            ? "Pending request not found. Refresh the request list and try again."
+            : "This request already has a recorded decision. Refresh the request list.",
         );
       let meta = {};
       try {
