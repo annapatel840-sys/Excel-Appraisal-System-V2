@@ -16,13 +16,14 @@ import { COLUMNS, formatValue } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useAccess } from "@/lib/access-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { useCurrentCycleName } from "@/lib/current-cycle";
 
 // ============================================================
 // API
 // ============================================================
 
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
-const CURRENT_APPRAISAL_YEAR = "Apr-26";
+const CURRENT_APPRAISAL_YEAR = "Apr-26"; // fallback while cycle master is loading
 
 const APPRAISAL_FONT = "Arial, Helvetica, sans-serif";
 
@@ -491,38 +492,36 @@ const emptyHistoryRecord = (year) => ({
   newBasePay: 0,
 });
 
-const CURRENT_APPRAISAL_YEAR_NUMERIC = (() => {
-  const match = CURRENT_APPRAISAL_YEAR.match(/(\d{2,4})$/);
-
-  if (!match) {
-    return null;
-  }
-
+const yearNumberFromCycle = (cycleName) => {
+  const match = String(cycleName || "").match(/(\\d{2,4})$/);
+  if (!match) return null;
   return match[1].length === 2 ? `20${match[1]}` : match[1];
-})();
+};
 
-const isCurrentYearRecord = (record) => {
-  const cycleKey = normalizeCycleKey(record?.cycleName || record?.year);
-  const currentCycleKey = normalizeCycleKey(CURRENT_APPRAISAL_YEAR);
-  if (cycleKey && cycleKey === currentCycleKey) return true;
+const isCurrentYearRecord = (record, currentCycleName = CURRENT_APPRAISAL_YEAR) => {
+  const cycleKey = normalizeCycleKey(record?.cycleName);
+  const currentCycleKey = normalizeCycleKey(currentCycleName);
+  if (cycleKey && currentCycleKey && cycleKey === currentCycleKey) return true;
 
-  // Keep compatibility with historical rows that do not yet have a cycle name.
+  // Legacy records without a cycle lookup name use the year as a fallback.
+  if (record?.cycleName && cycleKey && currentCycleKey) return false;
   const year = String(record?.year ?? "").trim();
-  if (year === CURRENT_APPRAISAL_YEAR_NUMERIC) return true;
-  const fiscal = year.match(/(\d{4})\s*[-/–]\s*(\d{2,4})/);
+  const currentYear = yearNumberFromCycle(currentCycleName);
+  if (year === currentYear) return true;
+  const fiscal = year.match(/(\\d{4})\\s*[-/–]\\s*(\\d{2,4})/);
   if (fiscal) {
     const endYear = fiscal[2].length === 2 ? `20${fiscal[2]}` : fiscal[2];
-    return endYear === CURRENT_APPRAISAL_YEAR_NUMERIC;
+    return endYear === currentYear;
   }
-  return false;
+  return normalizeCycleKey(year) === currentCycleKey;
 };
 
 // ============================================================
 // APPLY LIVE SHEET VALUES TO CURRENT-YEAR HISTORY
 // ============================================================
 
-const applyCurrentYearSheetValues = (historyRecord, row) => {
-  if (!row || !isCurrentYearRecord(historyRecord)) {
+const applyCurrentYearSheetValues = (historyRecord, row, currentCycleName = CURRENT_APPRAISAL_YEAR) => {
+  if (!row || !isCurrentYearRecord(historyRecord, currentCycleName)) {
     return historyRecord;
   }
 
@@ -558,7 +557,7 @@ const applyCurrentYearSheetValues = (historyRecord, row) => {
 };
 
 // Current cycle row (always first, always live) + older cycles from the API.
-const buildHistoryView = (records, row) => {
+const buildHistoryView = (records, row, currentCycleName = CURRENT_APPRAISAL_YEAR) => {
   if (!row) {
     return [];
   }
@@ -567,9 +566,9 @@ const buildHistoryView = (records, row) => {
     records.find(isCurrentYearRecord) ||
     emptyHistoryRecord(CURRENT_APPRAISAL_YEAR);
 
-  const olderRecords = records.filter((record) => !isCurrentYearRecord(record));
+  const olderRecords = records.filter((record) => !isCurrentYearRecord(record, currentCycleName));
 
-  return [applyCurrentYearSheetValues(currentRecord, row), ...olderRecords];
+  return [applyCurrentYearSheetValues(currentRecord, row, currentCycleName), ...olderRecords];
 };
 
 const historyYearOrder = (value) => {
@@ -1118,7 +1117,7 @@ function EmployeePanel({
         <tbody>
           <tr>
             <td className="border-b border-[#f1f3f5] p-1">
-              {CURRENT_APPRAISAL_YEAR}
+              {currentCycleName}
             </td>
             <td className="border-b border-[#f1f3f5] p-1 text-right">
               {dash(employee.rrPercent)}
@@ -3701,7 +3700,7 @@ export function AppraisalGrid({
     : null;
 
   const notesContext = liveHistoryRow
-    ? `${liveHistoryRow.name} (${liveHistoryRow.empId}) · ${CURRENT_APPRAISAL_YEAR}`
+    ? `${liveHistoryRow.name} (${liveHistoryRow.empId}) · ${currentCycleName}`
     : `Appraisal Sheet · ${CURRENT_APPRAISAL_YEAR}`;
 
   // ============================================================
