@@ -10,6 +10,7 @@ const isActiveCycle = (cycle) =>
 
 export default function BulkEditScreen() {
   const [cycles, setCycles] = useState([]);
+  // The cycle is picked automatically (active one first); no manual selector.
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -49,25 +50,6 @@ export default function BulkEditScreen() {
 
   return (
     <section className="bulk-edit-screen">
-      <div className="bulk-edit-screen-toolbar">
-        <label className="bulk-edit-cycle-select">
-          <span>Appraisal Cycle</span>
-          <select
-            value={selectedId}
-            onChange={(event) => setSelectedId(event.target.value)}
-            disabled={loading || !cycles.length}
-          >
-            {!cycles.length && <option value="">{loading ? "Loading cycles…" : "No cycles available"}</option>}
-            {cycles.map((cycle) => (
-              <option key={cycle.id} value={String(cycle.id)}>
-                {cycle.name}{cycle.location ? ` · ${cycle.location}` : ""}
-                {cycle.status && String(cycle.status).toLowerCase() !== "active" ? ` (${cycle.status})` : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
       {error && <div className="bulk-edit-screen-error" role="alert">{error}</div>}
       {loading && <div className="bulk-edit-screen-state">Loading appraisal cycles…</div>}
       {!loading && !error && !selectedCycle && (
