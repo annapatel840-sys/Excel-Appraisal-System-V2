@@ -94,6 +94,7 @@ export function BudgetProvider({ children }) {
   const [budgetDistributionRows, setBudgetDistributionRows] = useState([]);
   const [budgetCompManagerRows, setBudgetCompManagerRows] = useState([]);
   const [employeeRows, setEmployeeRows] = useState([]);
+  const [techEdOwners, setTechEdOwners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -121,6 +122,9 @@ export function BudgetProvider({ children }) {
       const techEdRows = Array.isArray(budgetJson && budgetJson.techEd)
         ? budgetJson.techEd
         : (Array.isArray(budgetJson && budgetJson.data) ? budgetJson.data : []);
+      const techEdOwners = Array.isArray(budgetJson && budgetJson.techEdOwners)
+        ? budgetJson.techEdOwners
+        : [];
       const masterRows = Array.isArray(budgetJson && budgetJson.master) ? budgetJson.master : [];
       const compRows = Array.isArray(budgetJson && budgetJson.compManager) ? budgetJson.compManager : [];
       const normalizedTechEd = techEdRows.map(normalizeRow);
@@ -145,6 +149,7 @@ export function BudgetProvider({ children }) {
       setBudgetMasterRows(normalizedMaster);
       setBudgetDistributionRows(normalizedTechEd);
       setBudgetCompManagerRows(normalizedComp);
+      setTechEdOwners(techEdOwners);
       const apiEmployees = Array.isArray(employeeResult.employees) ? employeeResult.employees : [];
       const rosterEmployees = Array.isArray(budgetJson && budgetJson.employeeRoster) ? budgetJson.employeeRoster : [];
       // Merge rather than choose one source: employeesapi supplies the full
@@ -177,6 +182,7 @@ export function BudgetProvider({ children }) {
       setBudgetDistributionRows([]);
       setBudgetCompManagerRows([]);
       setEmployeeRows([]);
+      setTechEdOwners([]);
       setError(e && e.message || "Failed to load Budget Master.");
     } finally {
       setLoading(false);
@@ -261,6 +267,7 @@ export function BudgetProvider({ children }) {
         budgetDistributionRows,
         budgetCompManagerRows,
         employeeRows,
+        techEdOwners,
         employeeCounts,
         totals,
         loading,
