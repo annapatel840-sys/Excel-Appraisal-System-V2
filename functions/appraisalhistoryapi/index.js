@@ -312,32 +312,57 @@ const cycleLookupId = (value) => {
 };
 
 const withAppraisalCycleNames = async (app, records) => {
-  try {
-    const cycleTable = app.datastore().table(APPRAISAL_CYCLE_TABLE_ID);
-    const cycleRows = await getAllRowsFromTable(cycleTable);
-    const cycleNames = new Map();
-    cycleRows.forEach((cycle) => {
-      const id = cycleLookupId(cycle.ROWID ?? cycle.rowid ?? cycle.id);
-      const name = String(
-        cycle.cycle_name ?? cycle.cycleName ?? cycle.name ??
-        cycle.appraisal_year ?? cycle.appraisalYear ?? ""
-      ).trim();
-      if (id && name) cycleNames.set(id, name);
-    });
+  const cycleTable = app.datastore().table(APPRAISAL_CYCLE_TABLE_ID);
+  const cycleNames = new Map();
 
-    return records.map((record) => {
-      const raw = record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name;
-      const id = cycleLookupId(raw);
-      const resolvedName = cycleNames.get(id);
-      return {
-        ...record,
-        appraisal_cycle_name: resolvedName || (typeof raw === "string" && !/^\\d+$/.test(raw) ? raw : ""),
-      };
-    });
-  } catch (error) {
-    console.error("Could not resolve appraisal cycle names:", error?.message || error);
-    return records;
+  // Resolve lookup values directly by ROWID first. Payroll_Data stores
+  // appraisal_cycle_name as the Appraisal_Cycle_Master ROWID, not its name.
+  const ids = [...new Set(records
+    .map((record) => cycleLookupId(
+      record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name
+    ))
+    .filter((id) => /^\d+$/.test(id)))];
+
+  await Promise.all(ids.map(async (id) => {
+    try {
+      const cycle = await cycleTable.getRow(id);
+      const name = String(
+        cycle?.cycle_name ?? cycle?.cycleName ?? cycle?.name ??
+        cycle?.appraisal_year ?? cycle?.appraisalYear ?? ""
+      ).trim();
+      if (name) cycleNames.set(id, name);
+    } catch (error) {
+      console.warn("Could not fetch appraisal cycle ROWID", id, error?.message || error);
+    }
+  }));
+
+  // Fallback to a full table scan for SDK/table variants where getRow fails.
+  if (ids.some((id) => !cycleNames.has(id))) {
+    try {
+      const cycleRows = await getAllRowsFromTable(cycleTable);
+      cycleRows.forEach((cycle) => {
+        const id = cycleLookupId(cycle.ROWID ?? cycle.rowid ?? cycle.id);
+        const name = String(
+          cycle.cycle_name ?? cycle.cycleName ?? cycle.name ??
+          cycle.appraisal_year ?? cycle.appraisalYear ?? ""
+        ).trim();
+        if (id && name) cycleNames.set(id, name);
+      });
+    } catch (error) {
+      console.error("Could not scan appraisal cycle table:", error?.message || error);
+    }
   }
+
+  return records.map((record) => {
+    const raw = record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name;
+    const id = cycleLookupId(raw);
+    const resolvedName = cycleNames.get(id);
+    const rawText = typeof raw === "string" && !/^\d+$/.test(raw) ? raw.trim() : "";
+    return {
+      ...record,
+      appraisal_cycle_name: resolvedName || rawText,
+    };
+  });
 };
 
 const getAllPreviousAppraisalRecords = async (table) => {
