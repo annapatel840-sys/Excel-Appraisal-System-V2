@@ -246,7 +246,7 @@ async function readEmployeeRoster(app) {
     return {
       emp_id: id,
       name: String(value(master, "emp_name") || value(row, "name") || id),
-      appraiser_tech_ed: String(value(master, "appraiser_tech_ed") || value(master, "appraiser_tech_ed_id") || value(row, "appraiser_tech_ed") || value(row, "appraiser_tech_ed_id") || ""),
+      appraiser_tech_ed: String(value(row, "appraiser_tech_ed") || value(row, "appraiser_tech_ed_id") || value(master, "appraiser_tech_ed") || value(master, "appraiser_tech_ed_id") || ""),
       status: String(value(master, "emp_status") || value(row, "status") || ""),
     };
   }).filter((row) => row.emp_id);
