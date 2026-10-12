@@ -387,11 +387,15 @@ const priorVals = (h) => {
   ];
 };
 
-// Shared look for editable controls; green when changed this cycle.
+// Shared look for editable controls: lightest green with dark, bold-ish text
+// so values stay clearly readable; a stronger green once changed this cycle.
+const EDITABLE_BG = "#F1FAF4";
+const EDITABLE_BORDER = "#BFE2CE";
 const editableStyle = {
-  borderColor: "#D1D5DB",
-  background: "#fff",
-  color: "#102A43",
+  borderColor: EDITABLE_BORDER,
+  background: EDITABLE_BG,
+  color: "#0E2A3B",
+  fontWeight: 600,
 };
 const editedStyle = {
   borderColor: "#4FA38F",
@@ -1418,15 +1422,10 @@ export function DetailScreenPage({
                         />
                       }
                     >
-                      <EditInput
+                      <ReadOnlyInput
                         key={`${employee.id}-newBase`}
                         value={draft.baseStr ?? fmt(derived.newBase)}
-                        onLive={liveNewBasePay}
-                        edited={isEdited("hikeAmount")}
-                        onCommit={(v) => {
-                          handleNewBasePayChange(v);
-                          clearDraft(HIKE_DRAFT_KEYS);
-                        }}
+                        bold
                       />
                     </CompRow>
 
@@ -1643,7 +1642,7 @@ export function DetailScreenPage({
                   <span className="inline-flex items-center gap-1.5">
                     <i
                       className="inline-block h-[11px] w-[11px] rounded-[3px] border"
-                      style={{ background: "#fff", borderColor: "#D1D5DB" }}
+                      style={{ background: EDITABLE_BG, borderColor: EDITABLE_BORDER }}
                     />
                     Proposed (editable)
                   </span>
