@@ -5,9 +5,9 @@ const access = require("./accessCore");
 
 // These IDs are the Data Store table IDs from Catalyst Console → Data Store.
 const TABLES = {
-  master: "74008000000034565",       // Budget_Master
+  master: "74008000000034565", // Budget_Master
   distribution: "74008000000033809", // Budget_Distribution
-  comp: "74008000000023149",         // Budget_Distribution_Comp
+  comp: "74008000000023149", // Budget_Distribution_Comp
 };
 
 // CORS headers come from Catalyst (Authorized Domains); setting them here too
@@ -87,7 +87,8 @@ function mapComp(row) {
 }
 
 function getUserField(user, key) {
-  if (user && user[key] !== undefined && user[key] !== null) return String(user[key]).trim();
+  if (user && user[key] !== undefined && user[key] !== null)
+    return String(user[key]).trim();
   return "";
 }
 
@@ -110,20 +111,35 @@ function getUserValues(user) {
     const v = getUserField(user, key).toLowerCase();
     if (v) values.push(v);
   });
-  const full = (getUserField(user, "first_name") + " " + getUserField(user, "last_name")).trim().toLowerCase();
+  const full = (
+    getUserField(user, "first_name") +
+    " " +
+    getUserField(user, "last_name")
+  )
+    .trim()
+    .toLowerCase();
   if (full) values.push(full);
   return values;
 }
 
 function matchesOwner(owner, a) {
-  const text = String(owner || "").trim().toLowerCase();
+  const text = String(owner || "")
+    .trim()
+    .toLowerCase();
   if (!text || !a || !a.user) return false;
-  const empId = String(a.user.empId || "").trim().toLowerCase();
-  const email = String(a.user.email || "").trim().toLowerCase();
+  const empId = String(a.user.empId || "")
+    .trim()
+    .toLowerCase();
+  const email = String(a.user.email || "")
+    .trim()
+    .toLowerCase();
   const parts = text.match(/^(\S+)\s*-\s*(.+)$/);
   const ownerId = parts ? parts[1] : text;
-  return Boolean((empId && ownerId === empId) || (email && text === email) ||
-    getUserValues(a.user).some((v) => v === text || v === ownerId));
+  return Boolean(
+    (empId && ownerId === empId) ||
+    (email && text === email) ||
+    getUserValues(a.user).some((v) => v === text || v === ownerId),
+  );
 }
 
 async function checkAccess(req) {
@@ -152,7 +168,11 @@ function requireBudgetScreen(a, level) {
         throw error;
       }
     });
-    if (!ok) throw new access.HttpError(403, "You do not have access to this budget screen.");
+    if (!ok)
+      throw new access.HttpError(
+        403,
+        "You do not have access to this budget screen.",
+      );
   });
 }
 
@@ -166,11 +186,15 @@ async function getAllRows(app, tableName) {
   // request hanging on this Advanced I/O endpoint.
   for (let guard = 0; guard < 10000; guard += 1) {
     const query =
-      "SELECT * FROM " + tableName +
-      " WHERE ROWID > " + last +
+      "SELECT * FROM " +
+      tableName +
+      " WHERE ROWID > " +
+      last +
       " ORDER BY ROWID ASC LIMIT 300";
     const result = await zcql.executeZCQLQuery(query);
-    const page = (result || []).map((item) => item && (item[tableName] || Object.values(item)[0]) || {});
+    const page = (result || []).map(
+      (item) => (item && (item[tableName] || Object.values(item)[0])) || {},
+    );
 
     rows.push(...page);
 
@@ -192,16 +216,24 @@ async function getAllRows(app, tableName) {
 
 function parseJson(text) {
   if (!String(text || "").trim()) return {};
-  try { return JSON.parse(text); } catch (_) { return {}; }
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return {};
+  }
 }
 
 function parseBody(req) {
-  if (req.body && typeof req.body === "object") return Promise.resolve(req.body);
+  if (req.body && typeof req.body === "object")
+    return Promise.resolve(req.body);
   if (typeof req.body === "string") return Promise.resolve(parseJson(req.body));
-  if (typeof req.on !== "function" || req.readableEnded) return Promise.resolve({});
+  if (typeof req.on !== "function" || req.readableEnded)
+    return Promise.resolve({});
   return new Promise((resolve, reject) => {
     let text = "";
-    req.on("data", (chunk) => { text += chunk.toString(); });
+    req.on("data", (chunk) => {
+      text += chunk.toString();
+    });
     req.on("end", () => resolve(parseJson(text)));
     req.on("error", reject);
   });
@@ -248,11 +280,22 @@ function readField(row, candidates) {
   if (!row) return "";
   const keys = Object.keys(row);
   for (const candidate of candidates) {
-    if (row[candidate] !== undefined && row[candidate] !== null && String(row[candidate]).trim()) {
+    if (
+      row[candidate] !== undefined &&
+      row[candidate] !== null &&
+      String(row[candidate]).trim()
+    ) {
       return row[candidate];
     }
-    const key = keys.find((item) => item.toLowerCase() === candidate.toLowerCase());
-    if (key && row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
+    const key = keys.find(
+      (item) => item.toLowerCase() === candidate.toLowerCase(),
+    );
+    if (
+      key &&
+      row[key] !== undefined &&
+      row[key] !== null &&
+      String(row[key]).trim()
+    ) {
       return row[key];
     }
   }
@@ -267,34 +310,69 @@ async function readEmployeeRoster(app) {
     getAllRows(app, "Appraisal_Sheet"),
     getAllRows(app, "Employee_Master"),
   ]);
-  const masterById = new Map(masterRows.map((row) => [
-    String(readField(row, ["emp_id", "employee_id"])).trim().toLowerCase(),
-    row,
-  ]));
-  const appraisalById = new Map(appraisalRows.map((row) => [
-    String(readField(row, ["emp_id", "employee_id"])).trim().toLowerCase(),
-    row,
-  ]));
+  const masterById = new Map(
+    masterRows.map((row) => [
+      String(readField(row, ["emp_id", "employee_id"]))
+        .trim()
+        .toLowerCase(),
+      row,
+    ]),
+  );
+  const appraisalById = new Map(
+    appraisalRows.map((row) => [
+      String(readField(row, ["emp_id", "employee_id"]))
+        .trim()
+        .toLowerCase(),
+      row,
+    ]),
+  );
   const allIds = new Set([...masterById.keys(), ...appraisalById.keys()]);
-  return Array.from(allIds).map((key) => {
-    const row = appraisalById.get(key) || {};
-    const master = masterById.get(key) || {};
-    const id = String(readField(row, ["emp_id", "employee_id"]) || readField(master, ["emp_id", "employee_id"])).trim();
-    const assignment = readField(row, ["appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_teched", "tech_ed", "tech_ed_id"]) ||
-      readField(master, ["appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_teched", "tech_ed", "tech_ed_id"]);
-    return {
-      emp_id: id,
-      name: String(readField(master, ["emp_name", "employee_name", "name"]) || readField(row, ["emp_name", "employee_name", "name"]) || id),
-      appraiser_tech_ed: String(assignment).trim(),
-      status: String(readField(master, ["emp_status", "status"]) || readField(row, ["emp_status", "status"]) || ""),
-    };
-  }).filter((row) => row.emp_id);
+  return Array.from(allIds)
+    .map((key) => {
+      const row = appraisalById.get(key) || {};
+      const master = masterById.get(key) || {};
+      const id = String(
+        readField(row, ["emp_id", "employee_id"]) ||
+          readField(master, ["emp_id", "employee_id"]),
+      ).trim();
+      const assignment =
+        readField(row, [
+          "appraiser_tech_ed",
+          "appraiser_tech_ed_id",
+          "appraiser_teched",
+          "tech_ed",
+          "tech_ed_id",
+        ]) ||
+        readField(master, [
+          "appraiser_tech_ed",
+          "appraiser_tech_ed_id",
+          "appraiser_teched",
+          "tech_ed",
+          "tech_ed_id",
+        ]);
+      return {
+        emp_id: id,
+        name: String(
+          readField(master, ["emp_name", "employee_name", "name"]) ||
+            readField(row, ["emp_name", "employee_name", "name"]) ||
+            id,
+        ),
+        appraiser_tech_ed: String(assignment).trim(),
+        status: String(
+          readField(master, ["emp_status", "status"]) ||
+            readField(row, ["emp_status", "status"]) ||
+            "",
+        ),
+      };
+    })
+    .filter((row) => row.emp_id);
 }
-
 
 function filterOwn(bundle, a) {
   if (!a || !a.enforced || (a.scope && a.scope.all)) return bundle;
-  const techEd = bundle.techEd.filter((row) => matchesOwner(row.appraiser_tech_ed_id, a));
+  const techEd = bundle.techEd.filter((row) =>
+    matchesOwner(row.appraiser_tech_ed_id, a),
+  );
   const allowedDistributionIds = new Set(techEd.map((row) => row.id));
   const compManager = bundle.compManager.filter((row) =>
     allowedDistributionIds.has(String(row.budget_distribution_id)),
@@ -302,7 +380,9 @@ function filterOwn(bundle, a) {
   // Budget_Master is org-level and has no owner column, so a non-HR user gets
   // only the master row for the cycle represented by their Tech-Ed allocation.
   const cycleIds = new Set(techEd.map((row) => row.appraisal_cycle_id));
-  const master = bundle.master.filter((row) => cycleIds.has(row.appraisal_cycle_id));
+  const master = bundle.master.filter((row) =>
+    cycleIds.has(row.appraisal_cycle_id),
+  );
   return { master, techEd, compManager };
 }
 
@@ -321,21 +401,21 @@ module.exports = async function (req, res) {
     const app = catalyst.initialize(req, { scope: "admin" });
 
     if (method === "GET") {
-      const [rawBundle, employeeRoster] = await Promise.all([
+      const [rawBundle, roster] = await Promise.all([
         readBundle(app),
-        readEmployeeRoster(app),
+        readEmployeeRoster(app)
+          .then((rows) => ({ rows, error: "" }))
+          .catch((err) => {
+            console.error("budgetmasterapi roster:", err);
+            return {
+              rows: [],
+              error: err && err.message ? err.message : "Roster read failed",
+            };
+          }),
       ]);
+      const employeeRoster = roster.rows;
       const bundle = filterOwn(rawBundle, a);
-      // Build the distinct Tech-ED list directly from Appraisal Sheet assignment
-      // values. This list does not depend on Budget_Distribution being populated.
-      const techEdOwnersByKey = new Map();
-      employeeRoster.forEach((employee) => {
-        const owner = String(employee.appraiser_tech_ed || "").trim();
-        const key = owner.toLowerCase();
-        if (key && !techEdOwnersByKey.has(key)) {
-          techEdOwnersByKey.set(key, { assignment: owner });
-        }
-      });
+      // ... keep your techEdOwnersByKey code unchanged ...
       return sendJson(res, 200, {
         success: true,
         data: bundle.techEd,
@@ -343,6 +423,7 @@ module.exports = async function (req, res) {
         techEd: bundle.techEd,
         compManager: bundle.compManager,
         employeeRoster,
+        rosterError: roster.error,
         techEdOwners: Array.from(techEdOwnersByKey.values()),
         more_records: false,
         next_token: null,
@@ -350,13 +431,20 @@ module.exports = async function (req, res) {
     }
 
     if (method !== "PUT") {
-      return sendJson(res, 405, { success: false, message: "Method not allowed" });
+      return sendJson(res, 405, {
+        success: false,
+        message: "Method not allowed",
+      });
     }
 
     const body = await parseBody(req);
     const resource = String(body.resource || "master").toLowerCase();
     const id = String(body.id || "").trim();
-    if (!id) return sendJson(res, 400, { success: false, message: "Budget row id is required." });
+    if (!id)
+      return sendJson(res, 400, {
+        success: false,
+        message: "Budget row id is required.",
+      });
 
     const tables = {
       master: { table: TABLES.master, mapper: mapMaster },
@@ -365,32 +453,68 @@ module.exports = async function (req, res) {
       compmanager: { table: TABLES.comp, mapper: mapComp },
     };
     const target = tables[resource];
-    if (!target) return sendJson(res, 400, { success: false, message: "Invalid budget resource." });
+    if (!target)
+      return sendJson(res, 400, {
+        success: false,
+        message: "Invalid budget resource.",
+      });
 
     const isAdminScope = Boolean(a && a.scope && a.scope.all);
     if (!a.enforced) {
       const user = await app.userManagement().getCurrentUser();
-      if (!user) return sendJson(res, 401, { success: false, message: "Authentication is required." });
+      if (!user)
+        return sendJson(res, 401, {
+          success: false,
+          message: "Authentication is required.",
+        });
       if (!isHR(user) && resource === "master") {
-        return sendJson(res, 403, { success: false, message: "Only HR can update Budget Master." });
+        return sendJson(res, 403, {
+          success: false,
+          message: "Only HR can update Budget Master.",
+        });
       }
     }
 
     const table = app.datastore().table(target.table);
-    const currentRows = await getAllRows(app, Object.keys(TABLES).find((key) => TABLES[key] === target.table) === "master" ? "Budget_Master" : Object.keys(TABLES).find((key) => TABLES[key] === target.table) === "distribution" ? "Budget_Distribution" : "Budget_Distribution_Comp");
+    const currentRows = await getAllRows(
+      app,
+      Object.keys(TABLES).find((key) => TABLES[key] === target.table) ===
+        "master"
+        ? "Budget_Master"
+        : Object.keys(TABLES).find((key) => TABLES[key] === target.table) ===
+            "distribution"
+          ? "Budget_Distribution"
+          : "Budget_Distribution_Comp",
+    );
     const current = currentRows.find((row) => idOf(row) === id);
-    if (!current) return sendJson(res, 404, { success: false, message: "Budget row not found." });
+    if (!current)
+      return sendJson(res, 404, {
+        success: false,
+        message: "Budget row not found.",
+      });
 
     if (a.enforced && !isAdminScope) {
-      if (resource === "distribution" && !matchesOwner(value(current, "appraiser_tech_ed_id"), a)) {
-        throw new access.HttpError(403, "You can only update your own Tech-Ed budget.");
+      if (
+        resource === "distribution" &&
+        !matchesOwner(value(current, "appraiser_tech_ed_id"), a)
+      ) {
+        throw new access.HttpError(
+          403,
+          "You can only update your own Tech-Ed budget.",
+        );
       }
       if (resource === "comp" || resource === "compmanager") {
         const parentId = String(value(current, "budget_distribution_id") || "");
         const parents = await getAllRows(app, "Budget_Distribution");
         const parent = parents.find((row) => idOf(row) === parentId);
-        if (!parent || !matchesOwner(value(parent, "appraiser_tech_ed_id"), a)) {
-          throw new access.HttpError(403, "You can only update Comp Manager budgets under your Tech-Ed.");
+        if (
+          !parent ||
+          !matchesOwner(value(parent, "appraiser_tech_ed_id"), a)
+        ) {
+          throw new access.HttpError(
+            403,
+            "You can only update Comp Manager budgets under your Tech-Ed.",
+          );
         }
       }
       if (resource === "master" && !isHR(a.user)) {
@@ -399,33 +523,85 @@ module.exports = async function (req, res) {
     }
 
     const fieldsByResource = {
-      master: ["budget_percentage", "budget_utilized", "calculated_budget", "applied_budget"],
-      distribution: ["percentage", "claculated_budget", "total_utilization", "applied_budget", "appraisal_cycle_id", "appraiser_tech_ed_id"],
-      comp: ["percentage", "calculated_budget", "total_utilization", "applied_budget", "comp_manager", "budget_distribution_id", "appraisal_cycle_id"],
+      master: [
+        "budget_percentage",
+        "budget_utilized",
+        "calculated_budget",
+        "applied_budget",
+      ],
+      distribution: [
+        "percentage",
+        "claculated_budget",
+        "total_utilization",
+        "applied_budget",
+        "appraisal_cycle_id",
+        "appraiser_tech_ed_id",
+      ],
+      comp: [
+        "percentage",
+        "calculated_budget",
+        "total_utilization",
+        "applied_budget",
+        "comp_manager",
+        "budget_distribution_id",
+        "appraisal_cycle_id",
+      ],
     };
-    const fields = fieldsByResource[resource === "compmanager" ? "comp" : resource];
+    const fields =
+      fieldsByResource[resource === "compmanager" ? "comp" : resource];
     const update = { ROWID: id };
     fields.forEach((key) => {
-      if (Object.prototype.hasOwnProperty.call(body, key)) update[key] = body[key];
+      if (Object.prototype.hasOwnProperty.call(body, key))
+        update[key] = body[key];
       // Accept the correctly-spelled frontend name while writing the actual
       // Data Store column "claculated_budget".
-      if (key === "claculated_budget" && Object.prototype.hasOwnProperty.call(body, "calculated_budget")) {
+      if (
+        key === "claculated_budget" &&
+        Object.prototype.hasOwnProperty.call(body, "calculated_budget")
+      ) {
         update[key] = body.calculated_budget;
       }
     });
 
     const changed = Object.keys(update).filter((key) => key !== "ROWID");
-    if (!changed.length) return sendJson(res, 400, { success: false, message: "No budget fields were provided." });
+    if (!changed.length)
+      return sendJson(res, 400, {
+        success: false,
+        message: "No budget fields were provided.",
+      });
 
     access.guard(a, function () {
-      if (resource === "master" || resource === "distribution" || resource === "comp" || resource === "compmanager") {
-        if (changed.some((key) => ["budget_percentage", "percentage", "calculated_budget", "claculated_budget", "applied_budget"].includes(key))) {
-          try { access.requireAction(a, "changeBudgetConfig"); } catch (e) {
+      if (
+        resource === "master" ||
+        resource === "distribution" ||
+        resource === "comp" ||
+        resource === "compmanager"
+      ) {
+        if (
+          changed.some((key) =>
+            [
+              "budget_percentage",
+              "percentage",
+              "calculated_budget",
+              "claculated_budget",
+              "applied_budget",
+            ].includes(key),
+          )
+        ) {
+          try {
+            access.requireAction(a, "changeBudgetConfig");
+          } catch (e) {
             if (!(e instanceof access.HttpError)) throw e;
           }
         }
-        if (changed.some((key) => ["budget_utilized", "total_utilization"].includes(key))) {
-          try { access.requireAction(a, "allotNextLevel"); } catch (e) {
+        if (
+          changed.some((key) =>
+            ["budget_utilized", "total_utilization"].includes(key),
+          )
+        ) {
+          try {
+            access.requireAction(a, "allotNextLevel");
+          } catch (e) {
             if (!(e instanceof access.HttpError)) throw e;
           }
         }

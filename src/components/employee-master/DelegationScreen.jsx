@@ -3,20 +3,49 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useAppraisal } from "@/lib/appraisal-store";
- 
+
 /* ------------------------------------------------------------------ data */
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
 const ACCESS_API_URL = catalystFunctionUrl("accessapi");
 const FIELDS = { comp: "Comp Manager", app: "Appraiser Tech Ed" };
-const ST = { CF: "Carried forward", NEW: "New – Tech Ed default", HR: "Changed – HR", TE: "Changed – Tech Ed (approved)", PD: "Pending HR approval" };
-const TAG = { [ST.CF]: "cf", [ST.NEW]: "nw", [ST.HR]: "hr", [ST.TE]: "te", [ST.PD]: "pd" };
+const ST = {
+  CF: "Carried forward",
+  NEW: "New – Tech Ed default",
+  HR: "Changed – HR",
+  TE: "Changed – Tech Ed (approved)",
+  PD: "Pending HR approval",
+};
+const TAG = {
+  [ST.CF]: "cf",
+  [ST.NEW]: "nw",
+  [ST.HR]: "hr",
+  [ST.TE]: "te",
+  [ST.PD]: "pd",
+};
 const PAGE = 50;
 const nameOf = (value) => String(value || "").trim();
 const now = () => new Date().toISOString().replace("T", " ").slice(0, 19);
-const fmt = (s) => { const d = new Date(String(s).replace(" ", "T")); return isNaN(d) ? s : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); };
-const csvCell = (v) => /[",\n]/.test(String(v ?? "")) ? "\"" + String(v).replace(/"/g, '""') + "\"" : String(v ?? "");
+const fmt = (s) => {
+  const d = new Date(String(s).replace(" ", "T"));
+  return isNaN(d)
+    ? s
+    : d.toLocaleDateString("en-GB", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+};
+const csvCell = (v) =>
+  /[",\n]/.test(String(v ?? ""))
+    ? '"' + String(v).replace(/"/g, '""') + '"'
+    : String(v ?? "");
 let seq = 1;
-const refNo = (p) => p + "-" + now().replace(/\D/g, "").slice(2, 12) + "-" + String(seq++).padStart(4, "0");
+const refNo = (p) =>
+  p +
+  "-" +
+  now().replace(/\D/g, "").slice(2, 12) +
+  "-" +
+  String(seq++).padStart(4, "0");
 /* -------------------------------------------------------------- component */
 export default function DelegationScreen({
   initialRows,
@@ -26,24 +55,47 @@ export default function DelegationScreen({
   onUpload, // optional: () => void
 }) {
   const catalystUser = useCatalystUser();
-  const loggedInName = String(catalystUser?.name || catalystUser?.email || "").trim();
-  const isHRUser = String(catalystUser?.role || "").toLowerCase().replace(/[^a-z0-9]/g, "").includes("hr");
-  const [user, setUser] = useState({ id: loggedInName, name: loggedInName, role: isHRUser ? "HR Admin" : "Tech Ed" });
+  const loggedInName = String(
+    catalystUser?.name || catalystUser?.email || "",
+  ).trim();
+  const isHRUser = String(catalystUser?.role || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .includes("hr");
+  const [user, setUser] = useState({
+    id: loggedInName,
+    name: loggedInName,
+    role: isHRUser ? "HR Admin" : "Tech Ed",
+  });
   const [rows, setRows] = useState(() => initialRows || []);
   const normalizeRequests = (items) =>
     (Array.isArray(items) ? items : []).map((q) => ({
       ...q,
       field: (() => {
-        const rawField = String(q.field || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
-        if (["compmanager", "comp_manager", "comp"].includes(rawField)) return "comp";
-        if (["appraiserteched", "appraiser_tech_ed", "app", "tech_ed_appraiser"].includes(rawField)) return "app";
+        const rawField = String(q.field || "")
+          .trim()
+          .toLowerCase()
+          .replace(/[\s-]+/g, "_");
+        if (["compmanager", "comp_manager", "comp"].includes(rawField))
+          return "comp";
+        if (
+          [
+            "appraiserteched",
+            "appraiser_tech_ed",
+            "app",
+            "tech_ed_appraiser",
+          ].includes(rawField)
+        )
+          return "app";
         if (rawField === "screen_request") return "screen";
         return rawField;
       })(),
       empId: q.empId || q.employee?.empId || q.rowId || "",
       rowId: q.empId || q.employee?.empId || q.rowId || "",
       status: (() => {
-        const raw = String(q.status || "").trim().toLowerCase();
+        const raw = String(q.status || "")
+          .trim()
+          .toLowerCase();
         if (["approved", "rejected", "withdrawn", "superseded"].includes(raw)) {
           return raw.charAt(0).toUpperCase() + raw.slice(1);
         }
@@ -74,11 +126,15 @@ export default function DelegationScreen({
   const [modal, setModal] = useState(null); // {type, ...}
   const [reason, setReason] = useState("");
   const [toast, setToast] = useState(null);
- 
+
   const loadRequests = async () => {
-    const response = await catalystFetch(ACCESS_API_URL + "delegation/requests", { method: "GET", cache: "no-store" });
+    const response = await catalystFetch(
+      ACCESS_API_URL + "delegation/requests",
+      { method: "GET", cache: "no-store" },
+    );
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to load delegation requests.");
+    if (!response.ok || !payload.ok)
+      throw new Error(payload.error || "Unable to load delegation requests.");
     setReqs(normalizeRequests(payload.requests || []));
   };
 
@@ -86,20 +142,30 @@ export default function DelegationScreen({
     let cancelled = false;
     const reloadRequests = async () => {
       try {
-        const response = await catalystFetch(ACCESS_API_URL + "delegation/requests", { method: "GET", cache: "no-store" });
+        const response = await catalystFetch(
+          ACCESS_API_URL + "delegation/requests",
+          { method: "GET", cache: "no-store" },
+        );
         const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to load delegation requests.");
+        if (!response.ok || !payload.ok)
+          throw new Error(
+            payload.error || "Unable to load delegation requests.",
+          );
         if (!cancelled) setReqs(normalizeRequests(payload.requests || []));
       } catch (error) {
-        if (!cancelled) say(error?.message || "Unable to load delegation requests.", true);
+        if (!cancelled)
+          say(error?.message || "Unable to load delegation requests.", true);
       }
     };
     const onFocus = () => reloadRequests();
     reloadRequests();
     window.addEventListener("focus", onFocus);
-    return () => { cancelled = true; window.removeEventListener("focus", onFocus); };
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", onFocus);
+    };
   }, []);
- 
+
   const isHR = user.role === "HR Admin";
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
@@ -111,30 +177,62 @@ export default function DelegationScreen({
     locked ||
     (!isHR && !access.canScreen("delegation", "edit")) ||
     (!isHR && !access.canAction("delegateRequest"));
- 
+
   useEffect(() => {
     if (initialRows || rows.length) return;
     let cancelled = false;
     const loadRoster = async () => {
       try {
-        const firstResponse = await catalystFetch(EMPLOYEE_API_URL + "?page=1&limit=100", { method: "GET", cache: "no-store" });
+        const firstResponse = await catalystFetch(
+          EMPLOYEE_API_URL + "?page=1&limit=100",
+          { method: "GET", cache: "no-store" },
+        );
         const first = await firstResponse.json();
-        if (!firstResponse.ok || !first?.success) throw new Error(first?.message || "Unable to load appraisal employees.");
+        if (!firstResponse.ok || !first?.success)
+          throw new Error(
+            first?.message || "Unable to load appraisal employees.",
+          );
         const all = Array.isArray(first.data) ? [...first.data] : [];
-        const totalPages = Math.max(1, Number(first.pagination?.totalPages || 1));
+        const totalPages = Math.max(
+          1,
+          Number(first.pagination?.totalPages || 1),
+        );
         for (let pageNo = 2; pageNo <= totalPages; pageNo += 1) {
-          const response = await catalystFetch(EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=100", { method: "GET", cache: "no-store" });
+          const response = await catalystFetch(
+            EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=100",
+            { method: "GET", cache: "no-store" },
+          );
           const payload = await response.json();
-          if (response.ok && Array.isArray(payload.data)) all.push(...payload.data);
+          if (response.ok && Array.isArray(payload.data))
+            all.push(...payload.data);
         }
         if (cancelled) return;
-        setRows(all.map((item) => ({ id: String(item.emp_id || item.ROWID || "").trim(), name: String(item.name || item.emp_id || "").trim(), rm: String(item.reporting_manager || "").trim(), teId: String(item.appraiser_tech_ed || "").trim(), te: String(item.appraiser_tech_ed || "").trim(), comp: String(item.comp_manager || "").trim(), app: String(item.appraiser_tech_ed || "").trim(), prevComp: "", prevApp: "", base: "", lastRole: "" })).filter((row) => row.id));
+        setRows(
+          all
+            .map((item) => ({
+              id: String(item.emp_id || item.ROWID || "").trim(),
+              name: String(item.name || item.emp_id || "").trim(),
+              rm: String(item.reporting_manager || "").trim(),
+              teId: String(item.appraiser_tech_ed || "").trim(),
+              te: String(item.appraiser_tech_ed || "").trim(),
+              comp: String(item.comp_manager || "").trim(),
+              app: String(item.appraiser_tech_ed || "").trim(),
+              prevComp: "",
+              prevApp: "",
+              base: "",
+              lastRole: "",
+            }))
+            .filter((row) => row.id),
+        );
       } catch (error) {
-        if (!cancelled) say(error?.message || "Unable to load appraisal employees.", true);
+        if (!cancelled)
+          say(error?.message || "Unable to load appraisal employees.", true);
       }
     };
     loadRoster();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [initialRows]);
   const say = (msg, err) => {
     setToast({ msg, err });
@@ -145,7 +243,7 @@ export default function DelegationScreen({
       { on: now(), by: user.name, role: user.role, ...a },
       ...l,
     ]);
- 
+
   /* derived */
   const pendingFor = (rid, reqList = reqs) =>
     reqList.some((q) => q.rowId === rid && q.status === "Pending");
@@ -158,16 +256,39 @@ export default function DelegationScreen({
           ? ST.TE
           : r.base;
   const scoped = useMemo(
-    () => rows.filter((r) => {
-      if (isHR) return true;
-      const assigned = String(r.te || r.teId || "").trim().toLowerCase();
-      const loggedIn = String(user.name || user.id || "").trim().toLowerCase();
-      return assigned === loggedIn || assigned.includes(loggedIn);
-    }),
+    () =>
+      rows.filter((r) => {
+        if (isHR) return true;
+        const assigned = String(r.te || r.teId || "")
+          .trim()
+          .toLowerCase();
+        const loggedIn = String(user.name || user.id || "")
+          .trim()
+          .toLowerCase();
+        return assigned === loggedIn || assigned.includes(loggedIn);
+      }),
     [rows, user, isHR],
   );
-  const myReqs = reqs.filter((q) => (q.requestType === "screen" || FIELDS[q.field]) && (isHR || String(q.byId || "").toLowerCase() === String(catalystUser?.email || "").toLowerCase()));
-  const people = useMemo(() => [...new Set([...rows.map((r) => r.comp), ...rows.map((r) => r.app)].filter(Boolean).map((v) => String(v).trim()))].sort((a, b) => a.localeCompare(b)).map((value) => ({ id: value, name: value, roles: [] })), [rows]);
+  const myReqs = reqs.filter(
+    (q) =>
+      (q.requestType === "screen" || FIELDS[q.field]) &&
+      (isHR ||
+        String(q.byId || "").toLowerCase() ===
+          String(catalystUser?.email || "").toLowerCase()),
+  );
+  const people = useMemo(
+    () =>
+      [
+        ...new Set(
+          [...rows.map((r) => r.comp), ...rows.map((r) => r.app)]
+            .filter(Boolean)
+            .map((v) => String(v).trim()),
+        ),
+      ]
+        .sort((a, b) => a.localeCompare(b))
+        .map((value) => ({ id: value, name: value, roles: [] })),
+    [rows],
+  );
   const pending = myReqs.filter((q) => q.status === "Pending");
   const list = useMemo(() => {
     const q = filter.q.toLowerCase();
@@ -189,7 +310,7 @@ export default function DelegationScreen({
   const selIds = Object.keys(sel).filter((k) => sel[k]);
   const count = (s) => scoped.filter((r) => statusOf(r) === s).length;
   const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort();
- 
+
   /* mutations */
   const applyTo = (rows0, rid, field, pid, role, why, by) =>
     rows0.map((r) =>
@@ -204,7 +325,7 @@ export default function DelegationScreen({
           }
         : r,
     );
- 
+
   const raise = (reqList, r, field, pid, why, batch) => {
     const out = reqList.map((q) =>
       q.rowId === r.id && q.field === field && q.status === "Pending"
@@ -232,23 +353,35 @@ export default function DelegationScreen({
     });
     return out;
   };
- 
+
   const saveChange = async () => {
     const { row, field, person } = modal;
     if (!reason.trim()) return say("Reason is mandatory.", true);
     try {
       const request = await submitDelegationRequest({
-        empId: row.id, empName: row.name, field, oldId: row[field],
-        newId: person.id, reason: reason.trim(), byName: user.name
+        empId: row.id,
+        empName: row.name,
+        field,
+        oldId: row[field],
+        newId: person.id,
+        reason: reason.trim(),
+        byName: user.name,
       });
       await loadRequests();
       log({
-        emp: row.id, field: FIELDS[field], from: nameOf(row[field]), to: person.name,
-        action: "Requested", why: reason,
+        emp: row.id,
+        field: FIELDS[field],
+        from: nameOf(row[field]),
+        to: person.name,
+        action: "Requested",
+        why: reason,
       });
       say(`Request ${request?.id || "submitted"} sent to HR for approval.`);
     } catch (error) {
-      return say(error?.message || "Unable to send delegation request to HR.", true);
+      return say(
+        error?.message || "Unable to send delegation request to HR.",
+        true,
+      );
     }
     setModal(null);
   };
@@ -279,15 +412,24 @@ export default function DelegationScreen({
           try {
             for (const r of t) {
               await submitDelegationRequest({
-                empId: r.id, empName: r.name, field, oldId: r[field],
-                newId: person, reason: why.trim(), byName: user.name, batch: no
+                empId: r.id,
+                empName: r.name,
+                field,
+                oldId: r[field],
+                newId: person,
+                reason: why.trim(),
+                byName: user.name,
+                batch: no,
               });
             }
             await loadRequests();
             say(`${t.length} request(s) sent to HR for approval (${no}).`);
           } catch (error) {
             await loadRequests().catch(() => {});
-            say(error?.message || "Unable to send bulk delegation requests.", true);
+            say(
+              error?.message || "Unable to send bulk delegation requests.",
+              true,
+            );
           }
         })();
         setSel({});
@@ -295,26 +437,45 @@ export default function DelegationScreen({
       },
     });
   };
- 
+
   const submitDelegationRequest = async (request) => {
-    const response = await catalystFetch(ACCESS_API_URL + "delegation/requests", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ action: "submit", ...request }),
-    });
+    const response = await catalystFetch(
+      ACCESS_API_URL + "delegation/requests",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ action: "submit", ...request }),
+      },
+    );
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to submit delegation request.");
+    if (!response.ok || !payload.ok)
+      throw new Error(payload.error || "Unable to submit delegation request.");
     return payload.request;
   };
 
   const decideDelegationRequest = async (id, status, remarksText = "") => {
-    const response = await catalystFetch(ACCESS_API_URL + "delegation/requests", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ action: "decide", id, status: status.toLowerCase(), remarks: remarksText }),
-    });
+    const response = await catalystFetch(
+      ACCESS_API_URL + "delegation/requests",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          action: "decide",
+          id,
+          status: status.toLowerCase(),
+          remarks: remarksText,
+        }),
+      },
+    );
     const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to update delegation request.");
+    if (!response.ok || !payload.ok)
+      throw new Error(payload.error || "Unable to update delegation request.");
     return payload;
   };
 
@@ -322,11 +483,18 @@ export default function DelegationScreen({
     const field = fieldKey === "comp" ? "comp_manager" : "appraiser_tech_ed";
     const response = await catalystFetch(EMPLOYEE_API_URL, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ emp_id: String(empId || ""), [field]: String(newId || "") }),
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        emp_id: String(empId || ""),
+        [field]: String(newId || ""),
+      }),
     });
     const payload = await response.json().catch(() => null);
-    if (!response.ok || !payload?.success) throw new Error(payload?.message || "Delegation update failed.");
+    if (!response.ok || !payload?.success)
+      throw new Error(payload?.message || "Delegation update failed.");
     return payload.data;
   };
 
@@ -334,32 +502,42 @@ export default function DelegationScreen({
     persistFieldChange(q.empId || q.rowId, q.field, q.newId);
   const decide = async (q, approve, rm = remarks[q.id] || "") => {
     if (!isHR || !canApprove)
-      return say("Only HR with Delegation edit access can approve or reject requests.", true);
+      return say(
+        "Only HR with Delegation edit access can approve or reject requests.",
+        true,
+      );
+    if (!approve && !rm.trim())
+      return say("HR remarks are mandatory when rejecting.", true);
     try {
-      // The shared API applies the assignment and marks the request decided
-      // atomically in this order. Do not PATCH the employee separately here.
-      await decideDelegationRequest(q.id, approve ? "approved" : "rejected", rm.trim());
-      if (approve && q.requestType !== "screen") {
-        await refreshEmployees();
-        setRows((rs) => applyTo(rs, q.rowId, q.field, q.newId, "HR Admin", q.reason, q.byName + " (approved by " + user.name + ")"));
-      }
-      await loadRequests();
+      await decideDelegationRequest(
+        q.id,
+        approve ? "approved" : "rejected",
+        rm.trim(),
+      );
     } catch (error) {
-      return say(error?.message || "Unable to " + (approve ? "approve" : "reject") + " delegation request.", true);
+      return say(
+        error?.message ||
+          "Unable to " +
+            (approve ? "approve" : "reject") +
+            " delegation request.",
+        true,
+      );
     }
-    setReqs((qs) =>
-      qs.map((x) =>
-        x.id === q.id
-          ? {
-              ...x,
-              status: approve ? "Approved" : "Rejected",
-              decidedBy: user.name,
-              decidedOn: now(),
-              remarks: rm.trim(),
-            }
-          : x,
-      ),
-    );
+    if (approve && q.requestType !== "screen") {
+      await refreshEmployees().catch(() => {}); // saved already; don't fail the approval
+      setRows((rs) =>
+        applyTo(
+          rs,
+          q.rowId,
+          q.field,
+          q.newId,
+          "HR Admin",
+          q.reason,
+          q.byName + " (approved by " + user.name + ")",
+        ),
+      );
+    }
+    await loadRequests().catch(() => {});
     log({
       emp: q.empId,
       field: q.requestType === "screen" ? "Screen Request" : FIELDS[q.field],
@@ -397,11 +575,27 @@ export default function DelegationScreen({
           await refreshEmployees();
         } catch (error) {
           await refreshEmployees().catch(() => {});
-          say(error?.message || "Unable to approve all delegation requests.", true);
+          say(
+            error?.message || "Unable to approve all delegation requests.",
+            true,
+          );
           return;
         }
         let rs = rows;
-        pending.filter((q) => q.requestType !== "screen").forEach((q) => (rs = applyTo(rs, q.rowId, q.field, q.newId, "HR Admin", q.reason, q.byName + " (approved by " + user.name + ")")));
+        pending
+          .filter((q) => q.requestType !== "screen")
+          .forEach(
+            (q) =>
+              (rs = applyTo(
+                rs,
+                q.rowId,
+                q.field,
+                q.newId,
+                "HR Admin",
+                q.reason,
+                q.byName + " (approved by " + user.name + ")",
+              )),
+          );
         setRows(rs);
         const ids = new Set(pending.map((q) => q.id));
         setReqs((qs) =>
@@ -433,7 +627,7 @@ export default function DelegationScreen({
         say(`Delegation for ${cycleName} locked.`);
       },
     });
- 
+
   const exportCsv = () => {
     const head = [
       "Employee ID",
@@ -472,7 +666,7 @@ export default function DelegationScreen({
     }).click();
     URL.revokeObjectURL(url);
   };
- 
+
   // The demo role switcher had a USERS list that was never defined; only the signed-in user remains.
   const USERS = [user];
 
@@ -483,13 +677,18 @@ export default function DelegationScreen({
     setReqTab("Pending");
     setFilter({ q: "", te: "", comp: "", status: "" });
   };
- 
+
   const isPendingRequest = (request) =>
     !["Approved", "Rejected", "Withdrawn", "Superseded"].includes(
-      String(request.status || "").trim().toLowerCase().replace(/^./, (letter) => letter.toUpperCase()),
+      String(request.status || "")
+        .trim()
+        .toLowerCase()
+        .replace(/^./, (letter) => letter.toUpperCase()),
     );
   const shownReqs = myReqs
-    .filter((q) => reqTab === "Pending" ? isPendingRequest(q) : !isPendingRequest(q))
+    .filter((q) =>
+      reqTab === "Pending" ? isPendingRequest(q) : !isPendingRequest(q),
+    )
     .sort((a, b) => String(b.on || "").localeCompare(String(a.on || "")));
   const teScopes = isHR
     ? uniq(scoped.map((r) => r.te)).map((t) => {
@@ -503,11 +702,11 @@ export default function DelegationScreen({
       ? [{ id: user.id, label: `All my employees (${scoped.length})` }]
       : [];
   const allSel = slice.length > 0 && slice.every((r) => sel[r.id]);
- 
+
   return (
     <div className="dg">
       <style>{CSS}</style>
- 
+
       {showRoleSwitch && (
         <div className="dg-pv">
           <span>Preview data. Logged in as</span>
@@ -535,7 +734,7 @@ export default function DelegationScreen({
             : `${pending.length} of your request(s) awaiting HR approval.`}
         </div>
       )}
- 
+
       <div className="dg-body">
         {/* ------------------------------ main */}
         <div className="dg-card dg-main">
@@ -560,7 +759,7 @@ export default function DelegationScreen({
               </div>
             ))}
           </div>
- 
+
           <div className="dg-tb">
             <input
               className="srch"
@@ -673,7 +872,7 @@ export default function DelegationScreen({
               </button>
             )}
           </div>
- 
+
           <div className="dg-tw">
             {!scoped.length ? (
               <div className="empty">
@@ -787,7 +986,7 @@ export default function DelegationScreen({
               <div className="empty">No employees match the filters.</div>
             )}
           </div>
- 
+
           <div className="dg-foot">
             <span>
               <b style={{ color: "#e0914f" }}>■</b> Orange = differs from
@@ -826,277 +1025,302 @@ export default function DelegationScreen({
               : 'You see employees whose Tech Ed is you. Any change you make is sent to HR for approval; the current value stays until HR approves. You can withdraw a pending request from "My requests".'}
           </div>
         </div>
- 
+
         {/* ------------------------------ side */}
         <div className={"dg-side" + (bulkOpen && reqOpen ? " both" : "")}>
           {/* ADDED: Bulk assign folds left to right; folded on load */}
           <div className={"dg-col" + (bulkOpen ? " open" : "")} id="dg-bulk">
-          {bulkOpen ? (
-            <div className="dg-card">
-              <div className="sh">
-                <span className="ic">⇄</span>
-                <div>
-                  <div className="tt">Bulk assign</div>
-                  <div className="ss">
-                    {selIds.length} employee{selIds.length === 1 ? "" : "s"}{" "}
-                    selected
+            {bulkOpen ? (
+              <div className="dg-card">
+                <div className="sh">
+                  <span className="ic">⇄</span>
+                  <div>
+                    <div className="tt">Bulk assign</div>
+                    <div className="ss">
+                      {selIds.length} employee{selIds.length === 1 ? "" : "s"}{" "}
+                      selected
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn sm"
+                    style={{ marginLeft: "auto" }}
+                    onClick={() => setBulkOpen(false)}
+                    title="Fold bulk assign"
+                  >
+                    ‹ Fold
+                  </button>
+                </div>
+                <div className="sb">
+                  <div className="lb">Field to change</div>
+                  <select
+                    className="fld"
+                    disabled={editLocked}
+                    value={bulk.field}
+                    onChange={(e) =>
+                      setBulk({ ...bulk, field: e.target.value })
+                    }
+                  >
+                    <option value="comp">Comp Manager</option>
+                    <option value="app">Appraiser Tech Ed</option>
+                  </select>
+                  <div className="lb">Apply to</div>
+                  <select
+                    className="fld"
+                    disabled={editLocked}
+                    value={bulk.scope}
+                    onChange={(e) =>
+                      setBulk({ ...bulk, scope: e.target.value })
+                    }
+                  >
+                    <option value="sel">
+                      Selected employees ({selIds.length})
+                    </option>
+                    {teScopes.map((s) => (
+                      <option key={s.id} value={`te:${s.id}`}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="lb">Assign to</div>
+                  <select
+                    className="fld"
+                    disabled={editLocked}
+                    value={bulk.person}
+                    onChange={(e) =>
+                      setBulk({ ...bulk, person: e.target.value })
+                    }
+                  >
+                    <option value="">— choose —</option>
+                    {people.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} · {p.roles.join(", ")}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="lb">Reason (mandatory)</div>
+                  <input
+                    className="fld"
+                    disabled={editLocked}
+                    maxLength={2000}
+                    value={bulk.reason}
+                    onChange={(e) =>
+                      setBulk({ ...bulk, reason: e.target.value })
+                    }
+                  />
+                  <button
+                    className="btn p sm"
+                    disabled={editLocked}
+                    onClick={doBulk}
+                  >
+                    Apply
+                  </button>{" "}
+                  <button
+                    className="btn sm"
+                    disabled={editLocked}
+                    onClick={() => {
+                      setSel({});
+                      setBulk({ ...bulk, person: "", reason: "" });
+                    }}
+                  >
+                    Clear
+                  </button>
+                  <div className="note">
+                    {isHR
+                      ? "HR Admin: applied immediately."
+                      : "Tech Ed: one request per employee is sent to HR for approval."}
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="btn sm"
-                  style={{ marginLeft: "auto" }}
-                  onClick={() => setBulkOpen(false)}
-                  title="Fold bulk assign"
-                >
-                  ‹ Fold
-                </button>
               </div>
-              <div className="sb">
-                <div className="lb">Field to change</div>
-                <select
-                  className="fld"
-                  disabled={editLocked}
-                  value={bulk.field}
-                  onChange={(e) => setBulk({ ...bulk, field: e.target.value })}
-                >
-                  <option value="comp">Comp Manager</option>
-                  <option value="app">Appraiser Tech Ed</option>
-                </select>
-                <div className="lb">Apply to</div>
-                <select
-                  className="fld"
-                  disabled={editLocked}
-                  value={bulk.scope}
-                  onChange={(e) => setBulk({ ...bulk, scope: e.target.value })}
-                >
-                  <option value="sel">
-                    Selected employees ({selIds.length})
-                  </option>
-                  {teScopes.map((s) => (
-                    <option key={s.id} value={`te:${s.id}`}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-                <div className="lb">Assign to</div>
-                <select
-                  className="fld"
-                  disabled={editLocked}
-                  value={bulk.person}
-                  onChange={(e) => setBulk({ ...bulk, person: e.target.value })}
-                >
-                  <option value="">— choose —</option>
-                  {people.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} · {p.roles.join(", ")}
-                    </option>
-                  ))}
-                </select>
-                <div className="lb">Reason (mandatory)</div>
-                <input
-                  className="fld"
-                  disabled={editLocked}
-                  maxLength={2000}
-                  value={bulk.reason}
-                  onChange={(e) => setBulk({ ...bulk, reason: e.target.value })}
-                />
-                <button className="btn p sm" disabled={editLocked} onClick={doBulk}>
-                  Apply
-                </button>{" "}
-                <button
-                  className="btn sm"
-                  disabled={editLocked}
-                  onClick={() => {
-                    setSel({});
-                    setBulk({ ...bulk, person: "", reason: "" });
-                  }}
-                >
-                  Clear
-                </button>
-                <div className="note">
-                  {isHR
-                    ? "HR Admin: applied immediately."
-                    : "Tech Ed: one request per employee is sent to HR for approval."}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              className="dg-fold"
-              onClick={() => setBulkOpen(true)}
-              title="Open bulk assign"
-              aria-expanded="false"
-            >
-              <span className="dg-vbtn">Bulk assign ({selIds.length}) ›</span>
-            </button>
-          )}
-          </div>
- 
-          {/* ADDED: Pending approvals folds left to right; folded on load */}
-          <div className={"dg-col" + (reqOpen ? " open" : "")}>
-          {reqOpen ? (
-          <div className="dg-card">
-            <div className="sh">
-              <span className="ic o">✓</span>
-              <div>
-                <div className="tt">
-                  {isHR ? "Pending approvals" : "My requests"}
-                </div>
-                <div className="ss">
-                  {isHR
-                    ? "Requests raised by Tech Eds"
-                    : "Changes you sent to HR"}
-                </div>
-              </div>
+            ) : (
               <button
                 type="button"
-                className="btn sm"
-                style={{ marginLeft: "auto" }}
-                onClick={() => setReqOpen(false)}
-                title="Fold pending approvals"
+                className="dg-fold"
+                onClick={() => setBulkOpen(true)}
+                title="Open bulk assign"
+                aria-expanded="false"
               >
-                ‹ Fold
+                <span className="dg-vbtn">Bulk assign ({selIds.length}) ›</span>
               </button>
-            </div>
-            <div className="sb">
-              <div className="rtabs">
-                {["Pending", "Decided"].map((t) => (
-                  <button
-                    key={t}
-                    className={"btn sm" + (reqTab === t ? " p" : "")}
-                    onClick={() => setReqTab(t)}
-                  >
-                    {t}
-                  </button>
-                ))}
-                {isHR &&
-                  canApprove &&
-                  reqTab === "Pending" &&
-                  pending.length > 1 &&
-                  !locked && (
-                    <>
-                      <span style={{ flex: 1 }} />
-                      <button className="btn p sm" onClick={approveAll}>
-                        Approve all shown
-                      </button>
-                    </>
-                  )}
-              </div>
-              <div className="rq-list">
-                {!shownReqs.length && (
-                  <div className="none">
-                    {reqTab === "Pending"
-                      ? "No pending requests."
-                      : "No decided requests yet."}
+            )}
+          </div>
+
+          {/* ADDED: Pending approvals folds left to right; folded on load */}
+          <div className={"dg-col" + (reqOpen ? " open" : "")}>
+            {reqOpen ? (
+              <div className="dg-card">
+                <div className="sh">
+                  <span className="ic o">✓</span>
+                  <div>
+                    <div className="tt">
+                      {isHR ? "Pending approvals" : "My requests"}
+                    </div>
+                    <div className="ss">
+                      {isHR
+                        ? "Requests raised by Tech Eds"
+                        : "Changes you sent to HR"}
+                    </div>
                   </div>
-                )}
-                {shownReqs.map((q) => (
-                  <div className="req" key={q.id}>
-                    <div className="n">
-                      <span>
-                        {q.empId} · {q.empName}
-                      </span>
-                      <span
-                        className={
-                          "tag " +
-                          (q.status === "Approved"
-                            ? "cf"
-                            : q.status === "Pending" || q.status === "Rejected"
-                              ? "pd"
-                              : "gr")
-                        }
+                  <button
+                    type="button"
+                    className="btn sm"
+                    style={{ marginLeft: "auto" }}
+                    onClick={() => setReqOpen(false)}
+                    title="Fold pending approvals"
+                  >
+                    ‹ Fold
+                  </button>
+                </div>
+                <div className="sb">
+                  <div className="rtabs">
+                    {["Pending", "Decided"].map((t) => (
+                      <button
+                        key={t}
+                        className={"btn sm" + (reqTab === t ? " p" : "")}
+                        onClick={() => setReqTab(t)}
                       >
-                        {q.status}
-                      </span>
-                    </div>
-                    <div className="m">
-                      {q.requestType === "screen" ? "Screen Request" : FIELDS[q.field]}{q.requestType === "screen" ? "" : `: ${nameOf(q.oldId) || "—"}`}{" "}
-                      {q.requestType !== "screen" && <span className="ar">→ {nameOf(q.newId)}</span>}
-                      <br />
-                      {isHR ? (
+                        {t}
+                      </button>
+                    ))}
+                    {isHR &&
+                      canApprove &&
+                      reqTab === "Pending" &&
+                      pending.length > 1 &&
+                      !locked && (
                         <>
-                          Raised by <b>{q.byName}</b>{q.requestedRole ? ` (${q.requestedRole})` : ""}
-                        </>
-                      ) : (
-                        "Raised"
-                      )}{" "}
-                      · {fmt(q.on)} · {q.no}
-                      <br />
-                      Reason: {q.reason}
-                      {q.status !== "Pending" && q.decidedBy && (
-                        <>
-                          <br />
-                          {q.status} by {q.decidedBy} · {fmt(q.decidedOn)}
-                        </>
-                      )}
-                      {q.remarks && (
-                        <>
-                          <br />
-                          HR remarks: {q.remarks}
-                        </>
-                      )}
-                    </div>
-                    {q.status === "Pending" &&
-                      !locked &&
-                      (!isHR || canApprove) &&
-                      (isHR ? (
-                        <>
-                          <input
-                            className="fld"
-                            placeholder="HR remarks (mandatory if rejecting)"
-                            maxLength={2000}
-                            value={remarks[q.id] || ""}
-                            onChange={(e) =>
-                              setRemarks({ ...remarks, [q.id]: e.target.value })
-                            }
-                          />
-                          <button
-                            type="button"
-                            className="btn p sm"
-                            onClick={() => decide(q, true)}
-                          >
-                            Approve
-                          </button>{" "}
-                          <button
-                            type="button"
-                            className="btn sm r"
-                            onClick={() => decide(q, false)}
-                          >
-                            Reject
+                          <span style={{ flex: 1 }} />
+                          <button className="btn p sm" onClick={approveAll}>
+                            Approve all shown
                           </button>
                         </>
-                      ) : (
-                        <button
-                          className="btn sm r"
-                          onClick={() => withdraw(q)}
-                        >
-                          Withdraw
-                        </button>
-                      ))}
+                      )}
                   </div>
-                ))}
+                  <div className="rq-list">
+                    {!shownReqs.length && (
+                      <div className="none">
+                        {reqTab === "Pending"
+                          ? "No pending requests."
+                          : "No decided requests yet."}
+                      </div>
+                    )}
+                    {shownReqs.map((q) => (
+                      <div className="req" key={q.id}>
+                        <div className="n">
+                          <span>
+                            {q.empId} · {q.empName}
+                          </span>
+                          <span
+                            className={
+                              "tag " +
+                              (q.status === "Approved"
+                                ? "cf"
+                                : q.status === "Pending" ||
+                                    q.status === "Rejected"
+                                  ? "pd"
+                                  : "gr")
+                            }
+                          >
+                            {q.status}
+                          </span>
+                        </div>
+                        <div className="m">
+                          {q.requestType === "screen"
+                            ? "Screen Request"
+                            : FIELDS[q.field]}
+                          {q.requestType === "screen"
+                            ? ""
+                            : `: ${nameOf(q.oldId) || "—"}`}{" "}
+                          {q.requestType !== "screen" && (
+                            <span className="ar">→ {nameOf(q.newId)}</span>
+                          )}
+                          <br />
+                          {isHR ? (
+                            <>
+                              Raised by <b>{q.byName}</b>
+                              {q.requestedRole ? ` (${q.requestedRole})` : ""}
+                            </>
+                          ) : (
+                            "Raised"
+                          )}{" "}
+                          · {fmt(q.on)} · {q.no}
+                          <br />
+                          Reason: {q.reason}
+                          {q.status !== "Pending" && q.decidedBy && (
+                            <>
+                              <br />
+                              {q.status} by {q.decidedBy} · {fmt(q.decidedOn)}
+                            </>
+                          )}
+                          {q.remarks && (
+                            <>
+                              <br />
+                              HR remarks: {q.remarks}
+                            </>
+                          )}
+                        </div>
+                        {q.status === "Pending" &&
+                          !locked &&
+                          (!isHR || canApprove) &&
+                          (isHR ? (
+                            <>
+                              <input
+                                className="fld"
+                                placeholder="HR remarks (mandatory if rejecting)"
+                                maxLength={2000}
+                                value={remarks[q.id] || ""}
+                                onChange={(e) =>
+                                  setRemarks({
+                                    ...remarks,
+                                    [q.id]: e.target.value,
+                                  })
+                                }
+                              />
+                              <button
+                                type="button"
+                                className="btn p sm"
+                                onClick={() => decide(q, true)}
+                              >
+                                Approve
+                              </button>{" "}
+                              <button
+                                type="button"
+                                className="btn sm r"
+                                onClick={() => decide(q, false)}
+                              >
+                                Reject
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              className="btn sm r"
+                              onClick={() => withdraw(q)}
+                            >
+                              Withdraw
+                            </button>
+                          ))}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
-          ) : (
-            <button
-              type="button"
-              className="dg-fold"
-              onClick={() => setReqOpen(true)}
-              title="Open pending approvals"
-              aria-expanded="false"
-            >
-              <span className="dg-vbtn">
-                {isHR ? "Pending approvals" : "My requests"} ({pending.length}) ›
-              </span>
-            </button>
-          )}
+            ) : (
+              <button
+                type="button"
+                className="dg-fold"
+                onClick={() => setReqOpen(true)}
+                title="Open pending approvals"
+                aria-expanded="false"
+              >
+                <span className="dg-vbtn">
+                  {isHR ? "Pending approvals" : "My requests"} ({pending.length}
+                  ) ›
+                </span>
+              </button>
+            )}
           </div>
         </div>
       </div>
- 
+
       {/* ------------------------------ modals */}
       {modal?.type === "reason" && (
         <Modal
@@ -1224,7 +1448,7 @@ export default function DelegationScreen({
     </div>
   );
 }
- 
+
 function Modal({ title, children, foot, onClose, wide }) {
   return (
     <div
@@ -1239,7 +1463,7 @@ function Modal({ title, children, foot, onClose, wide }) {
     </div>
   );
 }
- 
+
 /* ---------------------------------------------------------------- styles */
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
