@@ -636,13 +636,18 @@ export function SheetPage() {
               const current = JSON.parse(localStorage.getItem(key) || "[]");
               current.unshift({
                 id: request.type.toUpperCase() + "-" + Date.now(),
-                rowId: request.employee?.id || request.employee?.empId || "",
-                empId: request.employee?.empId || "",
+                // Use employee ID consistently because employeesapi and Delegation
+                // Screen scope/lookup are keyed by emp_id, not a React row ID.
+                rowId: request.employee?.empId || request.employee?.id || "",
+                empId: request.employee?.empId || request.employee?.id || "",
                 empName: request.employee?.name || "",
-                field: request.field || request.type,
+                field:
+                  request.field === "compManager" ? "comp" :
+                  request.field === "appraiserTechED" ? "app" :
+                  request.field || request.type,
                 oldId: request.oldId || "",
                 newId: request.newId || "",
-                reason: "Requested from appraisal detail panel",
+                reason: request.reason || "Requested from Appraisal Sheet",
                 byId: catalystUser?.name || catalystUser?.email || catalystUser?.user_id || "",
                 byName: catalystUser?.name || catalystUser?.email || "Tech Ed",
                 on: new Date().toISOString(),
