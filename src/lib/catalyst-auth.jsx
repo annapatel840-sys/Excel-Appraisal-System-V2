@@ -192,7 +192,7 @@ export function CatalystAuthGate({ children }) {
                 Wissen Technologies
               </p>
               <h1 className="mt-4 text-4xl font-semibold leading-tight">
-                Compensation Tool Management
+                Compensation Tool
               </h1>
               <p className="mt-5 max-w-sm text-sm leading-6 text-slate-300">
                 Secure access to Compensation Management
