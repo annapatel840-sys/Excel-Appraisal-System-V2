@@ -302,6 +302,38 @@ function readField(row, candidates) {
   return "";
 }
 
+async function readTechEdOwners(app) {
+  // Only read the two columns needed to render the Tech-ED list. Do not scan
+  // Employee_Master or budget distribution to discover Tech-ED names.
+  const zcql = app.zcql();
+  const owners = new Map();
+  let last = "0";
+  for (let guard = 0; guard < 10000; guard += 1) {
+    const query =
+      "SELECT ROWID, emp_id, appraiser_tech_ed FROM Appraisal_Sheet " +
+      "WHERE ROWID > " + last + " ORDER BY ROWID ASC LIMIT 300";
+    const result = await zcql.executeZCQLQuery(query);
+    const rows = (result || []).map(
+      (item) => (item && (item.Appraisal_Sheet || Object.values(item)[0])) || {},
+    );
+    if (!rows.length) break;
+    let max = last;
+    rows.forEach((row) => {
+      const rowId = String(row.ROWID || "");
+      try { if (BigInt(rowId) > BigInt(max)) max = rowId; } catch (_) {}
+      const assignment = String(
+        row.appraiser_tech_ed || row.appraiser_tech_ed_id || "",
+      ).trim();
+      if (!assignment) return;
+      const key = assignment.toLowerCase();
+      if (!owners.has(key)) owners.set(key, { assignment });
+    });
+    if (rows.length < 300 || max === last) break;
+    last = max;
+  }
+  return Array.from(owners.values());
+}
+
 async function readEmployeeRoster(app) {
   // Use the API's ZCQL paging helper rather than Data Store getPagedRows.
   // getPagedRows across both full employee tables was causing the endpoint
@@ -404,13 +436,19 @@ module.exports = async function (req, res) {
       // Keep this endpoint limited to the three budget tables. The frontend
       // already loads the full employee roster through employeesapi; scanning
       // both employee tables again here caused Catalyst's execution timeout.
-      const bundle = filterOwn(await readBundle(app), a);
+      const [rawBundle, techEdOwners] = await Promise.all([
+        readBundle(app),
+        readTechEdOwners(app),
+      ]);
+      const bundle = filterOwn(rawBundle, a);
       return sendJson(res, 200, {
         success: true,
         data: bundle.techEd,
         master: bundle.master,
         techEd: bundle.techEd,
         compManager: bundle.compManager,
+        techEdOwners,
+        techEdCount: techEdOwners.length,
         more_records: false,
         next_token: null,
       });
