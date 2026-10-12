@@ -3102,7 +3102,9 @@ export function AppraisalGrid({
             value={String(
               row[col.key] !== null && row[col.key] !== undefined
                 ? row[col.key]
-                : "",
+                : col.key === "eligibleForPromotion"
+                  ? "No"
+                  : "",
             )}
             onFocus={() => {
               setActive(`${rowIndex}:${col.key}`);
@@ -3149,7 +3151,11 @@ export function AppraisalGrid({
               // Promotion = Yes requires a designation/New Title. Keep the
               // validation attached to the field instead of showing an alert.
               if (col.key === "eligibleForPromotion" && value === "Yes") {
-                updateCell(row.id, col.key, value);
+                updateLinkedCells(
+                  row.id,
+                  { eligibleForPromotion: "Yes", newTitle: row.newTitle || null },
+                  "Cell edit",
+                );
                 flashSaved(cellKey);
                 markEdited(cellKey);
 
@@ -3219,7 +3225,9 @@ export function AppraisalGrid({
                 : undefined
             }
           >
-            <option value="">Select... *</option>
+            {col.key !== "eligibleForPromotion" && (
+              <option value="">Select... *</option>
+            )}
 
             {(col.options || []).map((option) => (
               <option key={option} value={option}>
@@ -3227,6 +3235,13 @@ export function AppraisalGrid({
               </option>
             ))}
           </select>
+          {col.key === "newTitle" &&
+            row.eligibleForPromotion === "Yes" &&
+            !row.newTitle && (
+              <span className="ml-1 shrink-0 text-[10px] font-semibold text-red-600" role="alert">
+                Required
+              </span>
+            )}
         </div>
       );
     }
