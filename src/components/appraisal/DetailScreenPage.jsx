@@ -705,6 +705,7 @@ function EditInput({
   onLive,
   onCommit,
   edited,
+  invalid = false,
   className = "",
 }) {
   const controlled = value !== undefined;
@@ -726,7 +727,17 @@ function EditInput({
         if (e.key === "Enter") e.currentTarget.blur();
       }}
       className={`h-[26px] w-full min-w-0 rounded border px-2 text-[13.5px] outline-none focus:border-[#0B7A75] ${className}`}
-      style={fieldStyle(edited)}
+      style={
+        invalid
+          ? {
+              ...fieldStyle(edited),
+              borderColor: "#C0392B",
+              background: "#FDECEA",
+              color: "#7A1F14",
+            }
+          : fieldStyle(edited)
+      }
+      aria-invalid={invalid || undefined}
     />
   );
 }
@@ -757,6 +768,7 @@ function PayRow({
   floorCaptionPrefix,
   diffValue,
   instalmentSelect,
+  error,
   children,
 }) {
   const color = diffValue < 0 ? RED : diffValue > 0 ? GREEN : MUTED;
@@ -792,10 +804,15 @@ function PayRow({
           {children}
           {instalmentSelect}
         </div>
-        <div style={{ fontSize: 11.5, color: MUTED }}>
-          {diffValue < 0
-            ? `Preloaded · less than this → ${fmt(floorAmount)} paid`
-            : "Preloaded"}
+        <div
+          role={error ? "alert" : undefined}
+          style={{
+            fontSize: 11.5,
+            color: error ? RED : MUTED,
+            fontWeight: error ? 700 : 400,
+          }}
+        >
+          {error || `Preloaded · cannot be less than ${fmt(floorAmount)}`}
         </div>
       </Cell>
       <Cell align="right">
@@ -1073,16 +1090,36 @@ export function DetailScreenPage({
     toNum(employee?.currentAnnualBasePay) ||
     (derived ? toNum(derived.newBase) - toNum(employee?.hikeAmount) : 0);
 
+  // Validation messages for the PB / RB proposed fields, plus a counter that
+  // remounts a field so a rejected value snaps back to the last good one.
+  const [payErr, setPayErr] = useState({ pb: "", rb: "" });
+  const [payReset, setPayReset] = useState({ pb: 0, rb: 0 });
+  useEffect(() => {
+    setPayErr({ pb: "", rb: "" });
+  }, [employee?.id]);
+
+  // Proposed PB / RB start from the Appraisal Sheet's "PB to be Paid" /
+  // "RB to be Paid" until a value has been entered for this employee.
+  const proposedPB = !employee
+    ? 0
+    : isBlank(employee.allocatedPBAmount)
+      ? employee.pbToBePaid
+      : employee.allocatedPBAmount;
+  const proposedRB = !employee
+    ? 0
+    : isBlank(employee.newRB)
+      ? employee.rbToBePaid
+      : employee.newRB;
   const livePB = !employee
     ? 0
     : draft.pbStr !== undefined
       ? draftNum(draft.pbStr)
-      : Number(employee.allocatedPBAmount) || 0;
+      : Number(proposedPB) || 0;
   const liveRB = !employee
     ? 0
     : draft.rbStr !== undefined
       ? draftNum(draft.rbStr)
-      : Number(employee.newRB) || 0;
+      : Number(proposedRB) || 0;
   const liveBase =
     !employee || !derived
       ? 0
@@ -1120,15 +1157,15 @@ export function DetailScreenPage({
   /* ---- PB / RB "to be paid" floors + payment month ------------------- */
   const payFloors = useMemo(() => {
     if (!employee) return null;
-    const pbFloor = Number(employee.targetPBAllocatedForMay) || 0;
-    const rbFloor = Number(employee.rbToBePaid) || 0; // TODO: wire the real "RB to be paid" source
+    const pbFloor = Number(employee.pbToBePaid) || 0; // sheet: PB to be Paid
+    const rbFloor = Number(employee.rbToBePaid) || 0; // sheet: RB to be Paid
     return {
       pbFloor,
       pbMonth: employee.pbMonth ?? "", // TODO: wire the real PB payment month
       rbFloor,
       rbMonth: employee.rbMonth ?? "", // TODO: wire the real RB payment month
-      pbDiff: (Number(employee.allocatedPBAmount) || 0) - pbFloor,
-      rbDiff: (Number(employee.newRB) || 0) - rbFloor,
+      pbDiff: (Number(proposedPB) || 0) - pbFloor,
+      rbDiff: (Number(proposedRB) || 0) - rbFloor,
     };
   }, [employee]);
 
@@ -1501,6 +1538,12 @@ export function DetailScreenPage({
                       month={payFloors.pbMonth}
                       floorCaptionPrefix="PB"
                       diffValue={livePB - payFloors.pbFloor}
+                      error={
+                        payErr.pb ||
+                        (livePB < payFloors.pbFloor
+                          ? `Below PB to be Paid (${fmt(payFloors.pbFloor)}) — not allowed`
+                          : "")
+                      }
                       instalmentSelect={
                         <select
                           key={`${employee.id}-pbInstallment`}
@@ -1523,13 +1566,29 @@ export function DetailScreenPage({
                       }
                     >
                       <EditInput
-                        key={`${employee.id}-allocatedPBAmount`}
+                        key={`${employee.id}-allocatedPBAmount-${payReset.pb}`}
                         className="flex-1"
-                        defaultValue={fmtOrBlank(employee.allocatedPBAmount)}
+                        defaultValue={fmtOrBlank(proposedPB)}
                         edited={isEdited("allocatedPBAmount")}
-                        onLive={(v) => setDraft({ pbStr: v })}
+                        invalid={livePB < payFloors.pbFloor}
+                        onLive={(v) => {
+                          setDraft({ pbStr: v });
+                          if (payErr.pb) setPayErr((e) => ({ ...e, pb: "" }));
+                        }}
                         onCommit={(v) => {
-                          commit("allocatedPBAmount", parseAmount(v));
+                          const n = parseAmount(v);
+                          if ((Number(n) || 0) < payFloors.pbFloor) {
+                            // Lesser than PB to be Paid: refuse and snap back.
+                            setPayErr((e) => ({
+                              ...e,
+                              pb: `PB can't be less than PB to be Paid (${fmt(payFloors.pbFloor)}). Not saved.`,
+                            }));
+                            setPayReset((r) => ({ ...r, pb: r.pb + 1 }));
+                            clearDraft(["pbStr"]);
+                            return;
+                          }
+                          setPayErr((e) => ({ ...e, pb: "" }));
+                          commit("allocatedPBAmount", n);
                           clearDraft(["pbStr"]);
                         }}
                       />
@@ -1542,18 +1601,37 @@ export function DetailScreenPage({
                       month={payFloors.rbMonth}
                       floorCaptionPrefix="RB"
                       diffValue={liveRB - payFloors.rbFloor}
+                      error={
+                        payErr.rb ||
+                        (liveRB < payFloors.rbFloor
+                          ? `Below RB to be Paid (${fmt(payFloors.rbFloor)}) — not allowed`
+                          : "")
+                      }
                     >
                       <EditInput
-                        key={`${employee.id}-newRB`}
+                        key={`${employee.id}-newRB-${payReset.rb}`}
                         className="flex-1"
-                        defaultValue={fmt(employee.newRB ?? 0)}
+                        defaultValue={fmt(proposedRB ?? 0)}
                         edited={isEdited("newRB")}
-                        onLive={(v) => setDraft({ rbStr: v })}
+                        invalid={liveRB < payFloors.rbFloor}
+                        onLive={(v) => {
+                          setDraft({ rbStr: v });
+                          if (payErr.rb) setPayErr((e) => ({ ...e, rb: "" }));
+                        }}
                         onCommit={(v) => {
-                          commit(
-                            "newRB",
-                            Number(String(v).replace(/[^0-9.]/g, "")) || 0,
-                          );
+                          const n = Number(String(v).replace(/[^0-9.]/g, "")) || 0;
+                          if (n < payFloors.rbFloor) {
+                            // Lesser than RB to be Paid: refuse and snap back.
+                            setPayErr((e) => ({
+                              ...e,
+                              rb: `RB can't be less than RB to be Paid (${fmt(payFloors.rbFloor)}). Not saved.`,
+                            }));
+                            setPayReset((r) => ({ ...r, rb: r.rb + 1 }));
+                            clearDraft(["rbStr"]);
+                            return;
+                          }
+                          setPayErr((e) => ({ ...e, rb: "" }));
+                          commit("newRB", n);
                           clearDraft(["rbStr"]);
                         }}
                       />
