@@ -1,19 +1,19 @@
-import { VIEW_AS_ROLES, useViewAs } from "@/lib/view-as-store";
+import { useViewAs } from "@/lib/view-as-store";
 import { cn } from "@/lib/utils";
 
 export function ViewAsSelect({ className }) {
-  const { effectiveId, setViewAs } = useViewAs();
+  const { effectiveId, setViewAs, availableRoles } = useViewAs();
   return (
     <select
       value={effectiveId}
       onChange={(event) => setViewAs(event.target.value)}
       aria-label="View as role"
       className={cn(
-        "h-7 rounded-md border border-white/30 bg-white px-1.5 text-[11px] font-medium text-[#102a43] outline-none focus:ring-2 focus:ring-white/40",
+        "h-7 rounded-md font-sans border border-white/30 bg-white px-1.5 text-[11px] font-medium text-[#102a43] outline-none focus:ring-2 focus:ring-white/40",
         className,
       )}
     >
-      {VIEW_AS_ROLES.map((role) => (
+      {availableRoles.map((role) => (
         <option key={role.id} value={role.id}>
           {role.label}
         </option>
@@ -24,7 +24,8 @@ export function ViewAsSelect({ className }) {
 
 /**
  * Top-bar role switcher: View as [dropdown].
- * Only HR logins see it; everyone else gets nothing here.
+ * HR logins (HR / Tech-ED / Comp Manager) and Tech-ED logins (Tech-ED /
+ * Comp Manager) see it; everyone else gets nothing here.
  */
 export function ViewAsSwitcher({ isVertical }) {
   const { canSwitch } = useViewAs();

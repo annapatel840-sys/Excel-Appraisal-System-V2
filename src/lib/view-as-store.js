@@ -2,8 +2,8 @@ import { useSyncExternalStore } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 
-// "View as": lets an HR login preview the top menu the way Tech-ED or
-// Comp Manager users see it. It only changes what the UI shows. What data a
+// "View as": lets an HR login preview the top menu as HR, Tech-ED or Comp
+// Manager, and lets a Tech-ED login preview it as Tech-ED or Comp Manager. It only changes what the UI shows. What data a
 // login can read or save is still decided by the backend for the real login.
 
 export const VIEW_AS_ROLES = [
@@ -11,6 +11,15 @@ export const VIEW_AS_ROLES = [
   { id: "teched", label: "Tech-ED" },
   { id: "compmanager", label: "Comp Manager" },
 ];
+
+// Which roles each real login may switch between (Comp Managers get none).
+const SWITCHABLE_ROLES = {
+  hr: ["hr", "teched", "compmanager"],
+  teched: ["teched", "compmanager"],
+};
+
+export const viewAsRolesFor = (actualId) =>
+  VIEW_AS_ROLES.filter((role) => (SWITCHABLE_ROLES[actualId] || []).includes(role.id));
 
 const STORAGE_KEY = "appraisal-view-as-role";
 const listeners = new Set();
@@ -73,15 +82,18 @@ export function useViewAs() {
   );
 
   const actualId = roleIdOf(user?.role);
-  // Only HR logins get the switcher.
-  const canSwitch = actualId === "hr";
-  const effectiveId = canSwitch && chosen ? chosen : actualId;
+  // HR and Tech-ED logins get the switcher; HR sees 3 options, Tech-ED sees 2.
+  const availableRoles = viewAsRolesFor(actualId);
+  const canSwitch = availableRoles.length > 0;
+  const chosenIsAllowed = availableRoles.some((role) => role.id === chosen);
+  const effectiveId = canSwitch && chosen && chosenIsAllowed ? chosen : actualId;
   const preview = canSwitch && effectiveId !== actualId;
 
   return {
     actualId,
     effectiveId,
     canSwitch,
+    availableRoles,
     preview,
     setViewAs: (id) => writeSelected(id === actualId ? "" : id),
   };
