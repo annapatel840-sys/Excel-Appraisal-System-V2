@@ -359,13 +359,31 @@ app.post(
         String(r.batch_id || "").trim() === id ||
         String(r.ROWID || "").trim() === id
       );
-      const row = matchingEvents.find(
-        (r) => r.kind === DELEGATION_REQUEST_PREFIX + "pending",
-      );
+      // Decisions are append-only events. Always decide against the latest event
+      // for this request, not the original pending row, otherwise a request that
+      // was already approved/rejected can be processed again.
+      const requestKey = String(
+        matchingEvents.find((r) => String(r.batch_id || "").trim() === id)?.batch_id ||
+        matchingEvents.find((r) => String(r.ROWID || "").trim() === id)?.batch_id ||
+        id
+      ).trim();
+      const latestRequestEvent = all
+        .filter((r) =>
+          String(r.batch_id || r.ROWID || "").trim() === requestKey ||
+          String(r.ROWID || "").trim() === id
+        )
+        .sort((x, y) =>
+          String(y.changed_at || "").localeCompare(String(x.changed_at || ""))
+        )[0];
+      const row =
+        latestRequestEvent &&
+        latestRequestEvent.kind === DELEGATION_REQUEST_PREFIX + "pending"
+          ? latestRequestEvent
+          : null;
       if (!row)
         throw new HttpError(
           404,
-          "Pending request not found. Refresh the request list and try again.",
+          "This request is no longer pending. Refresh the request list and try again.",
         );
       let meta = {};
       try {
