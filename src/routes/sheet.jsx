@@ -156,7 +156,8 @@ export function SheetPage() {
   const [filters, setFilters] = useState({});
   const [selected, setSelected] = useState({});
 
-  const [showHistory, setShowHistory] = useState(true);
+  // History starts hidden; the user turns it on with the toggle when needed.
+  const [showHistory, setShowHistory] = useState(false);
   const [showEditedOnly, setShowEditedOnly] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
