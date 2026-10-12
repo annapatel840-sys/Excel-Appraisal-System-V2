@@ -317,7 +317,13 @@ const withAppraisalCycleNames = async (app, records) => {
 
   // Always read the Appraisal_Cycle_Master rows and build a ROWID -> cycle_name
   // map. Payroll_Data.appraisal_cycle_name stores the master ROWID, not its name.
-  const cycleRows = await getAllRowsFromTable(cycleTable);
+  let cycleRows = [];
+  try {
+    cycleRows = await getAllRowsFromTable(cycleTable);
+  } catch (error) {
+    console.error("Could not read Appraisal Cycle Master rows:", error?.message || error);
+    return records;
+  }
   for (const cycle of cycleRows) {
     const id = String(cycle.ROWID ?? cycle.rowid ?? cycle.id ?? cycle.ID ?? "").trim();
     const name = String(
@@ -781,7 +787,11 @@ module.exports = async (req, res) => {
       const diag = !a.enforced || a.role === "hr" ? {} : null;
 
       const history = await getHistory(app, table, empId, diag);
-      const namedHistory = await withAppraisalCycleNames(app, history);
+      const cycleLookupApp = catalyst.initialize(req, { scope: "admin" });
+      const namedHistory = await withAppraisalCycleNames(cycleLookupApp, history).catch((error) => {
+        console.error("Appraisal cycle-name lookup failed; returning history without cycle-name enrichment:", error?.message || error);
+        return history;
+      });
 
       const data = a.enforced
         ? namedHistory.map((row) => shapeHistoryRow(a, row))
