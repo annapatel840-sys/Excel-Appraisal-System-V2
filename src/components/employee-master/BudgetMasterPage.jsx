@@ -70,28 +70,32 @@ const INITIAL_ORG_AUDIT = [
 /* ---------- helpers ---------- */
 function normalizeOwnerKey(value) {
   const text = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
-  const pair = text.match(/^(\S+)\s*-\s*(.+)$/);
+  // Only treat an ID-looking prefix as an ID. A plain name (including names
+  // containing hyphens) must remain a searchable owner value.
+  const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
   return pair ? pair[1] : text;
 }
 
 function canonicalOwnerKey(value, employees = []) {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  const pair = raw.match(/^(\S+)\s*-\s*(.+)$/);
+  const pair = raw.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
   const rawId = pair ? pair[1].trim() : "";
   const rawName = pair ? pair[2].trim() : raw;
+  const valuesFor = (employee) => [
+    employee.emp_id, employee.employee_id, employee.name, employee.employee_name,
+    employee.emp_name, employee.email, employee.email_id,
+  ].filter(Boolean).map(normalizeOwnerKey);
   const matched = employees.find((employee) => {
-    const id = String(employee.emp_id || employee.employee_id || "").trim();
-    const name = String(employee.name || employee.employee_name || "").trim();
-    const email = String(employee.email || employee.email_id || "").trim();
-    const values = [id, name, email].filter(Boolean).map(normalizeOwnerKey);
+    const values = valuesFor(employee);
     return values.includes(normalizeOwnerKey(raw)) ||
       (rawId && values.includes(normalizeOwnerKey(rawId))) ||
       (rawName && values.includes(normalizeOwnerKey(rawName)));
   });
   if (matched) {
     const id = String(matched.emp_id || matched.employee_id || "").trim();
-    return normalizeOwnerKey(id || matched.name || matched.employee_name || raw);
+    const name = String(matched.name || matched.employee_name || matched.emp_name || "").trim();
+    return normalizeOwnerKey(id || name || raw);
   }
   return normalizeOwnerKey(rawId || raw);
 }
@@ -99,19 +103,21 @@ function canonicalOwnerKey(value, employees = []) {
 function ownerName(value, employees = []) {
   const raw = String(value || "").trim();
   if (!raw) return "Unassigned";
-  const pair = raw.match(/^(\S+)\s*-\s*(.+)$/);
-  const key = pair ? pair[1] : raw;
+  const pair = raw.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
+  const rawId = pair ? pair[1].trim() : "";
+  const rawName = pair ? pair[2].trim() : raw;
   const person = employees.find((employee) => {
     const id = String(employee.emp_id || employee.employee_id || "").trim();
-    const name = String(employee.name || employee.employee_name || "").trim();
+    const name = String(employee.name || employee.employee_name || employee.emp_name || "").trim();
     const email = String(employee.email || employee.email_id || "").trim();
     return [id, name, email].some((candidate) =>
-      candidate && normalizeOwnerKey(candidate) === normalizeOwnerKey(key),
+      candidate && [normalizeOwnerKey(raw), normalizeOwnerKey(rawId), normalizeOwnerKey(rawName)]
+        .filter(Boolean).includes(normalizeOwnerKey(candidate)),
     );
   });
   if (person) {
     const id = String(person.emp_id || person.employee_id || "").trim();
-    const name = String(person.name || person.employee_name || "").trim();
+    const name = String(person.name || person.employee_name || person.emp_name || "").trim();
     return id && name ? id + " - " + name : name || id || raw;
   }
   return pair ? pair[2].trim() : raw;
