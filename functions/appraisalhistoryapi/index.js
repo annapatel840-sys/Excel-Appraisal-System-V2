@@ -347,6 +347,31 @@ const normalizeHistoryEmpId = (value) =>
     .trim()
     .toUpperCase();
 
+// Catalyst foreign-key values can be returned as a ROWID string/number or
+// as an object containing the referenced row. Normalize all supported shapes.
+const historyEmployeeKeys = (value) => {
+  const keys = new Set();
+  const add = (candidate) => {
+    if (candidate === null || candidate === undefined || candidate === "") return;
+    if (typeof candidate === "string" || typeof candidate === "number") {
+      const key = normalizeHistoryEmpId(candidate);
+      if (key) keys.add(key);
+      return;
+    }
+    if (Array.isArray(candidate)) {
+      candidate.forEach(add);
+      return;
+    }
+    if (typeof candidate === "object") {
+      ["ROWID", "rowid", "emp_id", "employee_id", "id", "value"].forEach((key) => {
+        if (candidate[key] !== undefined) add(candidate[key]);
+      });
+    }
+  };
+  add(value);
+  return keys;
+};
+
 /*
  * CHANGED (new): Payroll_Data.emp_id is a foreign key, so the stored value may
  * be the parent row's ROWID instead of "EMP001". Build the set of values that
@@ -462,10 +487,14 @@ const withHistoryAliases = (record) => {
     appraisal_year: pick("appraisal_year", "fy_year"),
     base_pay: pick("base_pay", "current_annual_base_pay"),
     new_ctc: pick("new_ctc", "total_CTC_with_rewards"),
-    target_performance_bonus: pick(
-      "target_performance_bonus",
-      "target_performance_agreed",
-    ),
+    target_performance_bonus: pick("target_performance_bonus", "target_performance_agreed"),
+    new_base_pay: pick("new_base_pay", "new_base_pay"),
+    joining_bonus: record.joining_bonus,
+    performance_bonus: record.performance_bonus,
+    retention_bonus: record.retention_bonus,
+    total_bonus: record.total_bonus,
+    hike_amount: record.hike_amount,
+    hike_pct: record.hike_pct,
   };
 };
 
@@ -491,13 +520,24 @@ const getHistory = async (app, table, empId, diag) => {
   const wantedKeys = await resolveEmpKeys(app, empId);
 
   const history = allRecords
-    .filter((record) => wantedKeys.has(normalizeHistoryEmpId(record.emp_id)))
+    .filter((record) => {
+      const recordKeys = historyEmployeeKeys(record.emp_id);
+      return Array.from(recordKeys).some((key) => wantedKeys.has(key));
+    })
     .map(withHistoryAliases)
-    .sort((a, b) =>
-      String(b.appraisal_year || "").localeCompare(
-        String(a.appraisal_year || ""),
-      ),
-    );
+    .sort((a, b) => {
+      const yearOrder = (value) => {
+        const year = String(value || "").trim();
+        const fiscal = year.match(/(\\d{4})\\s*[-/–]\\s*(\\d{2,4})/);
+        if (fiscal) return Number(fiscal[2].length === 2 ? `20${fiscal[2]}` : fiscal[2]);
+        const full = year.match(/(?:19|20)\\d{2}/);
+        if (full) return Number(full[0]);
+        const short = year.match(/(?:Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar)[-\\s](\\d{2})/i);
+        return short ? Number(`20${short[1]}`) : 0;
+      };
+      return yearOrder(b.appraisal_year) - yearOrder(a.appraisal_year) ||
+        String(b.appraisal_year || "").localeCompare(String(a.appraisal_year || ""));
+    });
 
   console.log("History records for", empId, ":", history.length);
 
