@@ -1,8 +1,4 @@
-import {
-  VIEW_AS_ROLES,
-  roleLabelOf,
-  useViewAs,
-} from "@/lib/view-as-store";
+import { VIEW_AS_ROLES, useViewAs } from "@/lib/view-as-store";
 import { cn } from "@/lib/utils";
 
 export function ViewAsSelect({ className }) {
@@ -27,11 +23,11 @@ export function ViewAsSelect({ className }) {
 }
 
 /**
- * Top-bar role switcher: [current role pill]  View as [dropdown].
+ * Top-bar role switcher: View as [dropdown].
  * Only HR logins see it; everyone else gets nothing here.
  */
 export function ViewAsSwitcher({ isVertical }) {
-  const { canSwitch, effectiveId } = useViewAs();
+  const { canSwitch } = useViewAs();
   if (!canSwitch) return null;
 
   return (
@@ -41,14 +37,6 @@ export function ViewAsSwitcher({ isVertical }) {
         isVertical && "flex-col items-stretch gap-1.5",
       )}
     >
-      <span
-        className={cn(
-          "rounded-full bg-white/15 px-2.5 py-0.5 text-center text-[10px] font-bold text-white",
-          !isVertical && "whitespace-nowrap",
-        )}
-      >
-        {roleLabelOf(effectiveId)}
-      </span>
       <label
         className={cn(
           "flex items-center gap-1.5 text-[11px] text-white/75",

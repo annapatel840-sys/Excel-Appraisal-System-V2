@@ -12,6 +12,7 @@ import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useSettings } from "@/lib/settings-store";
 import { cn } from "@/lib/utils";
+import { useCurrentCycleName } from "@/lib/current-cycle";
 import { useViewAs } from "@/lib/view-as-store";
 import { ProfileMenu } from "./ProfileMenu";
 import { ViewAsSwitcher } from "./ViewAsSwitcher";
@@ -51,6 +52,7 @@ export function AppShell({ children, headerActions }) {
   const access = useAccess();
   const { settings } = useSettings();
   const { effectiveId, preview } = useViewAs();
+  const cycleName = useCurrentCycleName();
 
   const role = preview
     ? effectiveId
@@ -175,11 +177,11 @@ export function AppShell({ children, headerActions }) {
       {!isCollapsed && (
         <div className={cn(!isVertical && "hidden xl:block")}>
           <h1 className="text-xs font-semibold leading-tight text-white">
-            Compensation Tool Management
+            Compensation Tool
           </h1>
-          <p className="text-[9px] text-white/70">
-            FY 2025-26 · Compensation Review
-          </p>
+          {cycleName && (
+            <p className="text-[9px] text-white/70">{cycleName}</p>
+          )}
         </div>
       )}
     </div>
