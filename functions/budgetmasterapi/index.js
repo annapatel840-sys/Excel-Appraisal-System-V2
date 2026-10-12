@@ -401,30 +401,16 @@ module.exports = async function (req, res) {
     const app = catalyst.initialize(req, { scope: "admin" });
 
     if (method === "GET") {
-      const [rawBundle, roster] = await Promise.all([
-        readBundle(app),
-        readEmployeeRoster(app)
-          .then((rows) => ({ rows, error: "" }))
-          .catch((err) => {
-            console.error("budgetmasterapi roster:", err);
-            return {
-              rows: [],
-              error: err && err.message ? err.message : "Roster read failed",
-            };
-          }),
-      ]);
-      const employeeRoster = roster.rows;
-      const bundle = filterOwn(rawBundle, a);
-      // ... keep your techEdOwnersByKey code unchanged ...
+      // Keep this endpoint limited to the three budget tables. The frontend
+      // already loads the full employee roster through employeesapi; scanning
+      // both employee tables again here caused Catalyst's execution timeout.
+      const bundle = filterOwn(await readBundle(app), a);
       return sendJson(res, 200, {
         success: true,
         data: bundle.techEd,
         master: bundle.master,
         techEd: bundle.techEd,
         compManager: bundle.compManager,
-        employeeRoster,
-        rosterError: roster.error,
-        techEdOwners: Array.from(techEdOwnersByKey.values()),
         more_records: false,
         next_token: null,
       });
