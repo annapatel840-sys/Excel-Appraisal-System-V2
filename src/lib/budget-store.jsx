@@ -147,9 +147,25 @@ export function BudgetProvider({ children }) {
       setBudgetCompManagerRows(normalizedComp);
       const apiEmployees = Array.isArray(employeeResult.employees) ? employeeResult.employees : [];
       const rosterEmployees = Array.isArray(budgetJson && budgetJson.employeeRoster) ? budgetJson.employeeRoster : [];
-      // Prefer the complete roster supplied by Budget Master API when the
-      // employee endpoint is restricted or returns an empty scoped result.
-      setEmployeeRows(apiEmployees.length ? apiEmployees : rosterEmployees);
+      // Merge rather than choose one source: employeesapi supplies the full
+      // employee detail where permitted, while Budget Master API guarantees
+      // the appraisal/master Tech-ED assignment is present.
+      const employeeById = new Map();
+      apiEmployees.forEach((employee) => {
+        const id = String(employee.emp_id || employee.employee_id || "").trim().toLowerCase();
+        if (id) employeeById.set(id, employee);
+      });
+      rosterEmployees.forEach((employee) => {
+        const id = String(employee.emp_id || employee.employee_id || "").trim().toLowerCase();
+        if (!id) return;
+        const previous = employeeById.get(id) || {};
+        employeeById.set(id, {
+          ...previous,
+          ...employee,
+          appraiser_tech_ed: String(employee.appraiser_tech_ed || previous.appraiser_tech_ed || previous.appraiser_tech_ed_id || ""),
+        });
+      });
+      setEmployeeRows(Array.from(employeeById.values()));
       if (employeeResult.employeeError) {
         console.error("Failed to load employees for budget counts:", employeeResult.employeeError);
         setError(employeeResult.employeeError.message || "Failed to load employee counts.");
