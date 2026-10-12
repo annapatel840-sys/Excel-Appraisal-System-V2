@@ -122,7 +122,15 @@ const CSS = `
   border-right: 1px solid #d7dce3;
   border-top: 3px solid transparent;
 }
-.bd-root .summary > div:nth-child(2) { border-top-color: #14a3a3; }
+.bd-root .summary > div:nth-child(2) {
+  background: #0e7c6b;
+  border-top-color: #0a5c4f;
+  border-right-color: #0e7c6b;
+}
+.bd-root .summary > div:nth-child(2) .label,
+.bd-root .summary > div:nth-child(2) .value,
+.bd-root .summary > div:nth-child(2) .sub { color: #fff; }
+.bd-root .summary > div:nth-child(2) .sub { opacity: 0.88; }
 .bd-root .summary > div:last-child { border-right: 0; }
 .bd-root .label {
   font-size: 11px;

@@ -1,3 +1,4 @@
+
 import { createContext, useContext, useEffect, useState } from "react";
 
 import { CATALYST_SESSION_EXPIRED_EVENT } from "./catalyst-api";
@@ -194,9 +195,6 @@ export function CatalystAuthGate({ children }) {
               <h1 className="mt-4 text-4xl font-semibold leading-tight">
                 Compensation Tool
               </h1>
-              <p className="mt-5 max-w-sm text-sm leading-6 text-slate-300">
-                Secure access to Compensation Management
-              </p>
             </div>
             <p className="text-xs text-slate-400">
               Authorized users only • Secure Catalyst authentication
