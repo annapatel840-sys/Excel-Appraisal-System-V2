@@ -309,8 +309,10 @@ async function readTechEdOwners(app) {
   const owners = new Map();
   let last = "0";
   for (let guard = 0; guard < 10000; guard += 1) {
+    // Read all columns because Appraisal_Sheet schemas may use a legacy alias
+    // for the Tech-ED assignment. readField below handles those column names.
     const query =
-      "SELECT ROWID, emp_id, appraiser_tech_ed FROM Appraisal_Sheet " +
+      "SELECT * FROM Appraisal_Sheet " +
       "WHERE ROWID > " + last + " ORDER BY ROWID ASC LIMIT 300";
     const result = await zcql.executeZCQLQuery(query);
     const rows = (result || []).map(
