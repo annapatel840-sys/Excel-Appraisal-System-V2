@@ -216,20 +216,35 @@ app.post('/delegation/requests', asyncRoute(async (req, res) => {
       }
       const datastore = ap.admin.datastore();
       const assignmentColumn = field === 'comp' ? 'comp_manager' : 'appraiser_tech_ed';
+      // Use the same stable Data Store table IDs as employeesapi. The
+      // Catalyst Data Store table SDK does not guarantee getAllRows(); read
+      // with getPagedRows so approval does not fail before it updates the row.
       const targetTables = field === 'comp'
-        ? [SETTINGS.appraisalSheet.table]
-        : [SETTINGS.employeeMaster.table, SETTINGS.appraisalSheet.table];
+        ? [{ id: '74008000000039094', label: 'Appraisal Sheet' }]
+        : [
+            { id: '74008000000035727', label: 'Employee Master' },
+            { id: '74008000000039094', label: 'Appraisal Sheet' },
+          ];
 
-      // The Appraisal Sheet displays the assignment directly. Appraiser Tech-ED
-      // is also maintained in Employee_Master, so keep both records in sync.
-      for (const tableName of targetTables) {
-        const assignmentTable = datastore.table(tableName);
-        const assignmentRows = await assignmentTable.getAllRows();
-        const employeeRow = (assignmentRows || []).find((item) =>
+      for (const target of targetTables) {
+        const assignmentTable = datastore.table(target.id);
+        const assignmentRows = [];
+        let nextToken = null;
+        let moreRecords = true;
+        while (moreRecords) {
+          const options = { maxRows: 200 };
+          if (nextToken) options.nextToken = nextToken;
+          const page = await assignmentTable.getPagedRows(options);
+          assignmentRows.push(...(Array.isArray(page && page.data) ? page.data : []));
+          moreRecords = page && page.more_records === true;
+          nextToken = page && page.next_token || null;
+          if (!nextToken) moreRecords = false;
+        }
+        const employeeRow = assignmentRows.find((item) =>
           String(item.emp_id || '').trim().toLowerCase() === empId.toLowerCase()
         );
         if (!employeeRow || !(employeeRow.ROWID || employeeRow.rowid)) {
-          throw new HttpError(404, 'Employee ' + empId + ' was not found in ' + tableName + '.');
+          throw new HttpError(404, 'Employee ' + empId + ' was not found in ' + target.label + '.');
         }
         await assignmentTable.updateRow({
           ROWID: employeeRow.ROWID || employeeRow.rowid,
