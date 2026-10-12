@@ -260,12 +260,12 @@ function readField(row, candidates) {
 }
 
 async function readEmployeeRoster(app) {
-  // Return the full roster, not only employees who already have a Tech-ED.
-  // Budget Master needs the full roster both to resolve Tech-ED IDs to names
-  // and to count each employee assigned to a Tech-ED.
+  // Use the API's ZCQL paging helper rather than Data Store getPagedRows.
+  // getPagedRows across both full employee tables was causing the endpoint
+  // to exceed Catalyst's execution timeout.
   const [appraisalRows, masterRows] = await Promise.all([
-    readTableById(app, "74008000000039094"),
-    readTableById(app, "74008000000035727"),
+    getAllRows(app, "Appraisal_Sheet"),
+    getAllRows(app, "Employee_Master"),
   ]);
   const masterById = new Map(masterRows.map((row) => [
     String(readField(row, ["emp_id", "employee_id"])).trim().toLowerCase(),
