@@ -476,10 +476,21 @@ const CURRENT_APPRAISAL_YEAR_NUMERIC = (() => {
 const isCurrentYearRecord = (record) => {
   const year = String(record?.year ?? "").trim();
 
-  return (
+  if (
     year === CURRENT_APPRAISAL_YEAR ||
     (CURRENT_APPRAISAL_YEAR_NUMERIC && year === CURRENT_APPRAISAL_YEAR_NUMERIC)
-  );
+  ) {
+    return true;
+  }
+
+  // Treat FY labels such as "2025-2026" as the year in which the cycle ends.
+  const fiscal = year.match(/(\\d{4})\\s*[-/–]\\s*(\\d{2,4})/);
+  if (fiscal) {
+    const endYear = fiscal[2].length === 2 ? `20${fiscal[2]}` : fiscal[2];
+    return endYear === CURRENT_APPRAISAL_YEAR_NUMERIC;
+  }
+
+  return false;
 };
 
 // ============================================================
@@ -4106,7 +4117,7 @@ export function AppraisalGrid({
                   <thead>
                     <tr className="bg-[#eef2f7]">
                       <th className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-2 py-1.5 text-center align-bottom text-[11px] font-bold text-[#24364d]">
-                        Year
+                        Appraisal Year
                       </th>
 
                       {historyMetricColumns.map((col) => (
