@@ -3298,7 +3298,7 @@ export function AppraisalGrid({
           type={col.type === "date" ? "date" : "text"}
           inputMode={isNumericType(col.type) ? "decimal" : undefined}
           value={
-            isNumericType(col.type) && active !== `${rowIndex}:${col.key}`
+            isNumericType(col.type) && editingValues[cellKey] === undefined
               ? formatEditableNumeric(storedValue, col.type)
               : draftValue
           }
