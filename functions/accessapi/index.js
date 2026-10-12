@@ -352,15 +352,20 @@ app.post(
       if (!id || !["approved", "rejected"].includes(status))
         throw new HttpError(422, "Request and decision are required.");
       const all = await selectAll(ap.admin.zcql(), T.log);
-      const row = all.find(
-        (r) =>
-          String(r.batch_id || r.ROWID) === id &&
-          r.kind === DELEGATION_REQUEST_PREFIX + "pending",
+      // The UI normally sends batch_id, but older requests or clients may send
+      // the AccessLog ROWID. Match either identifier independently; using
+      // (batch_id || ROWID) only checks ROWID when batch_id is empty.
+      const matchingEvents = all.filter((r) =>
+        String(r.batch_id || "").trim() === id ||
+        String(r.ROWID || "").trim() === id
+      );
+      const row = matchingEvents.find(
+        (r) => r.kind === DELEGATION_REQUEST_PREFIX + "pending",
       );
       if (!row)
         throw new HttpError(
           404,
-          "Pending request not found. It may already have been decided.",
+          "Pending request not found. Refresh the request list and try again.",
         );
       let meta = {};
       try {
