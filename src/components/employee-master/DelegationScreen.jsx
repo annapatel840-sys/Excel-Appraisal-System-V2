@@ -251,17 +251,20 @@ export default function DelegationScreen({
       });
       say(`${FIELDS[field]} for ${row.name} changed to ${person.name} and saved to the Appraisal Sheet.`);
     } else {
-      const next = raise(reqs, row, field, person.id, reason.trim());
-      setReqs(next);
-      log({
-        emp: row.id,
-        field: FIELDS[field],
-        from: nameOf(row[field]),
-        to: person.name,
-        action: "Requested",
-        why: reason,
-      });
-      say(`Request ${next[next.length - 1].no} sent to HR for approval.`);
+      try {
+        const request = await submitDelegationRequest({
+          empId: row.id, empName: row.name, field, oldId: row[field],
+          newId: person.id, reason: reason.trim(), byName: user.name
+        });
+        await loadRequests();
+        log({
+          emp: row.id, field: FIELDS[field], from: nameOf(row[field]), to: person.name,
+          action: "Requested", why: reason,
+        });
+        say(`Request ${request?.id || "submitted"} sent to HR for approval.`);
+      } catch (error) {
+        return say(error?.message || "Unable to send delegation request to HR.", true);
+      }
     }
     setModal(null);
   };
@@ -311,10 +314,21 @@ export default function DelegationScreen({
             }
           })();
         } else {
-          let qs = reqs;
-          t.forEach((r) => (qs = raise(qs, r, field, person, why.trim(), no)));
-          setReqs(qs);
-          say(`${t.length} request(s) sent to HR for approval (${no}).`);
+          (async () => {
+            try {
+              for (const r of t) {
+                await submitDelegationRequest({
+                  empId: r.id, empName: r.name, field, oldId: r[field],
+                  newId: person, reason: why.trim(), byName: user.name, batch: no
+                });
+              }
+              await loadRequests();
+              say(`${t.length} request(s) sent to HR for approval (${no}).`);
+            } catch (error) {
+              await loadRequests().catch(() => {});
+              say(error?.message || "Unable to send bulk delegation requests.", true);
+            }
+          })();
         }
         setSel({});
         setBulk({ ...bulk, person: "", reason: "" });
@@ -322,6 +336,28 @@ export default function DelegationScreen({
     });
   };
  
+  const submitDelegationRequest = async (request) => {
+    const response = await catalystFetch(ACCESS_API_URL + "delegation/requests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ action: "submit", ...request }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to submit delegation request.");
+    return payload.request;
+  };
+
+  const decideDelegationRequest = async (id, status, remarksText = "") => {
+    const response = await catalystFetch(ACCESS_API_URL + "delegation/requests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ action: "decide", id, status: status.toLowerCase(), remarks: remarksText }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to update delegation request.");
+    return payload;
+  };
+
   const persistFieldChange = async (empId, fieldKey, newId) => {
     const field = fieldKey === "comp" ? "comp_manager" : "appraiser_tech_ed";
     const response = await catalystFetch(EMPLOYEE_API_URL, {
@@ -350,7 +386,13 @@ export default function DelegationScreen({
       }
       setRows((rs) => applyTo(rs, q.rowId, q.field, q.newId, "HR Admin", q.reason, q.byName + " (approved by " + user.name + ")"));
     }
-    setReqs((qs) =>
+    try {
+      await decideDelegationRequest(q.id, approve ? "approved" : "rejected", rm.trim());
+      await loadRequests();
+    } catch (error) {
+      return say(error?.message || "Unable to save approval decision.", true);
+    }
+    setReqs((qs)
       qs.map((x) =>
         x.id === q.id
           ? {
