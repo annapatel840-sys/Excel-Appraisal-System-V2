@@ -1057,11 +1057,11 @@ export default function DelegationScreen({
                     </div>
                     <div className="m">
                       {q.requestType === "screen" ? "Screen Request" : FIELDS[q.field]}{q.requestType === "screen" ? "" : `: ${nameOf(q.oldId) || "—"}`}{" "}
-                      <span className="ar">→ {nameOf(q.newId)}</span>
+                      {q.requestType !== "screen" && <span className="ar">→ {nameOf(q.newId)}</span>}
                       <br />
                       {isHR ? (
                         <>
-                          Raised by <b>{q.byName}</b> (Tech Ed)
+                          Raised by <b>{q.byName}</b>{q.requestedRole ? ` (${q.requestedRole})` : ""}
                         </>
                       ) : (
                         "Raised"
