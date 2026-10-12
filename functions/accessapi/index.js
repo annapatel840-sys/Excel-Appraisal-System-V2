@@ -210,14 +210,24 @@ async function syncCatalystRoles(adm, roles, users, by) {
    Persisted in the existing AccessLog table so all users/devices see the same queue. */
 const DELEGATION_REQUEST_PREFIX = "delegation-request:";
 
+function delegationStatusFromKind(kind) {
+  const suffix = String(kind || "")
+    .trim()
+    .slice(DELEGATION_REQUEST_PREFIX.length)
+    .toLowerCase();
+  // Older AccessLog records use P/A/R while newer records use full words.
+  if (suffix === "p" || suffix === "pending") return "pending";
+  if (suffix === "a" || suffix === "approved") return "approved";
+  if (suffix === "r" || suffix === "rejected") return "rejected";
+  return suffix;
+}
+
 function decodeDelegationRequest(row) {
   let meta = {};
   try {
     meta = JSON.parse(row.old_value || "{}");
   } catch (_) {}
-  const status = String(row.kind || "")
-    .slice(DELEGATION_REQUEST_PREFIX.length)
-    .toLowerCase();
+  const status = delegationStatusFromKind(row.kind);
   return {
     id: String(row.batch_id || row.ROWID),
     no: String(row.batch_id || row.ROWID),
@@ -265,15 +275,16 @@ app.get(
         const key = String(row.batch_id || row.ROWID || "");
         if (!key) return;
         const previous = latestById.get(key);
-        const isDecision = /^(approved|rejected)$/i.test(
-          String(row.kind || "").slice(DELEGATION_REQUEST_PREFIX.length),
-        );
-        const previousIsPending = previous &&
-          String(previous.kind || "") === DELEGATION_REQUEST_PREFIX + "pending";
+        const currentStatus = delegationStatusFromKind(row.kind);
+        const previousStatus = previous
+          ? delegationStatusFromKind(previous.kind)
+          : "";
+        const isDecision = currentStatus === "approved" || currentStatus === "rejected";
+        const previousIsPending = previousStatus === "pending";
+        const previousIsDecision =
+          previousStatus === "approved" || previousStatus === "rejected";
         if (!previous || (isDecision && previousIsPending) ||
-            (isDecision === /^(approved|rejected)$/i.test(
-              String(previous.kind || "").slice(DELEGATION_REQUEST_PREFIX.length),
-            ) && compareRequestEvents(previous, row) <= 0)) {
+            ((isDecision === previousIsDecision) && compareRequestEvents(previous, row) <= 0)) {
           latestById.set(key, row);
         }
       });
@@ -369,14 +380,10 @@ app.post(
       if (!id || !["approved", "rejected"].includes(status))
         throw new HttpError(422, "Request and decision are required.");
       const all = await selectAll(ap.admin.zcql(), T.log);
-      const requestKind = (r) => String(r.kind || "").trim().toLowerCase();
-      const isPending = (r) =>
-        requestKind(r) === DELEGATION_REQUEST_PREFIX + "pending";
+      const requestStatus = (r) => delegationStatusFromKind(r.kind);
+      const isPending = (r) => requestStatus(r) === "pending";
       const isDecision = (r) =>
-        [
-          DELEGATION_REQUEST_PREFIX + "approved",
-          DELEGATION_REQUEST_PREFIX + "rejected",
-        ].includes(requestKind(r));
+        ["approved", "rejected"].includes(requestStatus(r));
 
       // New requests use the stable DR-* batch_id. Resolve that identifier
       // first and keep all decision checks scoped to the same batch_id.
