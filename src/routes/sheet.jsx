@@ -658,7 +658,8 @@ export function SheetPage() {
               } catch (error) {
                 window.alert(error?.message || "Unable to send request to HR.");
               }
-            }}          />
+            }}
+          />
         </div>
       </AppShell>
 
