@@ -9,6 +9,7 @@ const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
 
 const PAYROLL_DATA_TABLE_ID = "74008000000035326";
+const APPRAISAL_CYCLE_TABLE_ID = "74008000000034190";
 
 /*
  * CHANGED: name of the parent (employee) table that Payroll_Data.emp_id
@@ -286,6 +287,58 @@ function shapeHistoryRow(a, row) {
 /* ============================================================
 GET ALL PREVIOUS APPRAISAL RECORDS
 ============================================================ */
+
+const getAllRowsFromTable = async (table) => {
+  const allRows = [];
+  let nextToken;
+  while (true) {
+    const options = { maxRows: DATASTORE_PAGE_SIZE };
+    if (nextToken) options.nextToken = nextToken;
+    const result = await table.getPagedRows(options);
+    const rows = Array.isArray(result?.data) ? result.data : [];
+    allRows.push(...rows);
+    if (result?.more_records !== true || !result?.next_token) break;
+    nextToken = result.next_token;
+  }
+  return allRows;
+};
+
+const cycleLookupId = (value) => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
+    return String(value.ROWID ?? value.rowid ?? value.id ?? value.value ?? "").trim();
+  }
+  return String(value).trim();
+};
+
+const withAppraisalCycleNames = async (app, records) => {
+  try {
+    const cycleTable = app.datastore().table(APPRAISAL_CYCLE_TABLE_ID);
+    const cycleRows = await getAllRowsFromTable(cycleTable);
+    const cycleNames = new Map();
+    cycleRows.forEach((cycle) => {
+      const id = cycleLookupId(cycle.ROWID ?? cycle.rowid ?? cycle.id);
+      const name = String(
+        cycle.cycle_name ?? cycle.cycleName ?? cycle.name ??
+        cycle.appraisal_year ?? cycle.appraisalYear ?? ""
+      ).trim();
+      if (id && name) cycleNames.set(id, name);
+    });
+
+    return records.map((record) => {
+      const raw = record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name;
+      const id = cycleLookupId(raw);
+      const resolvedName = cycleNames.get(id);
+      return {
+        ...record,
+        appraisal_cycle_name: resolvedName || (typeof raw === "string" && !/^\\d+$/.test(raw) ? raw : ""),
+      };
+    });
+  } catch (error) {
+    console.error("Could not resolve appraisal cycle names:", error?.message || error);
+    return records;
+  }
+};
 
 const getAllPreviousAppraisalRecords = async (table) => {
   let allRecords = [];
@@ -711,10 +764,11 @@ module.exports = async (req, res) => {
       const diag = !a.enforced || a.role === "hr" ? {} : null;
 
       const history = await getHistory(app, table, empId, diag);
+      const namedHistory = await withAppraisalCycleNames(app, history);
 
       const data = a.enforced
-        ? history.map((row) => shapeHistoryRow(a, row))
-        : history;
+        ? namedHistory.map((row) => shapeHistoryRow(a, row))
+        : namedHistory;
 
       sendJson(res, 200, {
         success: true,
