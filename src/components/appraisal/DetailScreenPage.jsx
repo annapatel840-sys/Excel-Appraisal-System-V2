@@ -348,7 +348,7 @@ const isCurrentCycleYearKey = (year) => {
   const raw = String(year ?? "")
     .trim()
     .toLowerCase()
-    .replace(/\\s+/g, " ");
+    .replace(/\s+/g, " ");
   if (!raw) return false;
 
   // Match only labels that identify the current Apr-26 cycle.
