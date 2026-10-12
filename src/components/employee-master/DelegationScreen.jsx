@@ -515,6 +515,9 @@ export default function DelegationScreen({
         rm.trim(),
       );
     } catch (error) {
+      // The server may already have recorded a decision while this screen still
+      // has a stale Pending row. Refresh the shared queue before showing the error.
+      await loadRequests().catch(() => {});
       return say(
         error?.message ||
           "Unable to " +
