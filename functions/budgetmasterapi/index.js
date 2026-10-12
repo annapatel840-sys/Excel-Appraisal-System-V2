@@ -303,8 +303,8 @@ function readField(row, candidates) {
 }
 
 async function readTechEdOwners(app) {
-  // Only read the two columns needed to render the Tech-ED list. Do not scan
-  // Employee_Master or budget distribution to discover Tech-ED names.
+  // Read Appraisal_Sheet directly for the source-of-truth Tech-ED assignments.
+  // Do not scan Employee_Master or budget distribution to discover Tech-ED names.
   const zcql = app.zcql();
   const owners = new Map();
   let last = "0";
