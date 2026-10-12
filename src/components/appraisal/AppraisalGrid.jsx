@@ -420,8 +420,6 @@ const getCycleName = (value) => {
     const text = String(value).trim();
     return /^\d+$/.test(text) ? "" : text;
   }
-    return "";
-  }
   if (typeof value === "object") {
     for (const key of ["appraisal_cycle_name", "cycle_name", "cycleName", "name", "display_value", "value", "label"]) {
       const name = getCycleName(value[key]);
