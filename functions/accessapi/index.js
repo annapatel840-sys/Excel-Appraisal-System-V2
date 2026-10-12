@@ -203,6 +203,35 @@ app.post('/delegation/requests', asyncRoute(async (req, res) => {
     if (!row) throw new HttpError(404, 'Pending request not found. It may already have been decided.');
     let meta = {};
     try { meta = JSON.parse(row.old_value || '{}'); } catch (_) {}
+
+    // Apply approved delegation assignments on the server, using the admin
+    // datastore context. The request is marked decided only after the employee
+    // assignment update succeeds, so failed updates remain in Pending.
+    if (status === 'approved' && String(meta.requestType || 'delegation').toLowerCase() !== 'screen') {
+      const empId = String(row.target || '').trim();
+      const newId = String(row.new_value || '').trim();
+      const field = String(meta.field || '').trim().toLowerCase();
+      if (!empId || !newId || !['comp', 'app'].includes(field)) {
+        throw new HttpError(422, 'The delegation request is missing its employee, field, or new assignment.');
+      }
+      const datastore = ap.admin.datastore();
+      const tableName = field === 'comp' ? SETTINGS.appraisalSheet.table : SETTINGS.employeeMaster.table;
+      const assignmentColumn = field === 'comp' ? 'comp_manager' : 'appraiser_tech_ed';
+      const assignmentTable = datastore.table(tableName);
+      const assignmentRows = await assignmentTable.getAllRows();
+      const employeeRow = (assignmentRows || []).find((item) =>
+        String(item.emp_id || '').trim().toLowerCase() === empId.toLowerCase()
+      );
+      if (!employeeRow || !(employeeRow.ROWID || employeeRow.rowid)) {
+        throw new HttpError(404, 'Employee ' + empId + ' was not found in ' + tableName + '.');
+      }
+      await assignmentTable.updateRow({
+        ROWID: employeeRow.ROWID || employeeRow.rowid,
+        [assignmentColumn]: newId
+      });
+      await A.bumpVersion(ap.admin, a.user.email || '', 'Delegation approved for ' + empId);
+    }
+
     meta.decidedBy = a.user.name || a.user.email;
     meta.decidedOn = nowDT();
     meta.remarks = remarks;
