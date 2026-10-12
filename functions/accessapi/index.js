@@ -115,6 +115,88 @@ async function syncCatalystRoles(adm, roles, users, by) {
   return changed;
 }
 
+/* Shared delegation request queue, persisted in the existing AccessLog table. */
+const DELEGATION_REQUEST_PREFIX = 'delegation-request:';
+
+function decodeDelegationRequest(row) {
+  let meta = {};
+  try { meta = JSON.parse(row.old_value || '{}'); } catch (_) {}
+  return {
+    id: row.batch_id, no: row.batch_id, rowId: row.target, empId: row.target,
+    empName: meta.empName || row.target, field: meta.field, oldId: meta.oldId || '',
+    newId: row.new_value || '', reason: row.reason || '', byId: meta.byId || row.changed_by || '',
+    byName: meta.byName || row.role || row.changed_by || 'Tech Ed', on: row.changed_at,
+    status: String(row.kind || '').slice(DELEGATION_REQUEST_PREFIX.length) || 'pending',
+    decidedBy: meta.decidedBy || '', decidedOn: meta.decidedOn || '', remarks: meta.remarks || ''
+  };
+}
+
+app.get('/delegation/requests', asyncRoute(async (req, res) => {
+  const ap = apps(req);
+  const a = await A.check(ap.user, ap.admin);
+  if (a.denied) throw a.denied;
+  const isHR = a.role === 'hr';
+  if (!isHR && !a.actions.delegateRequest) throw new HttpError(403, 'You are not allowed to view delegation requests.');
+  const rows = await selectAll(ap.admin.zcql(), T.log);
+  const requests = rows.filter((r) => String(r.kind || '').startsWith(DELEGATION_REQUEST_PREFIX))
+    .map(decodeDelegationRequest)
+    .filter((r) => isHR || String(r.byId).toLowerCase() === String(a.user.email || '').toLowerCase())
+    .sort((x, y) => String(y.on).localeCompare(String(x.on)));
+  send(res, { requests });
+}));
+
+app.post('/delegation/requests', asyncRoute(async (req, res) => {
+  const ap = apps(req);
+  const a = await A.check(ap.user, ap.admin);
+  if (a.denied) throw a.denied;
+  const body = req.body || {};
+  const table = ap.admin.datastore().table(T.log);
+  const action = String(body.action || 'submit').toLowerCase();
+
+  if (action === 'submit') {
+    if (!a.actions.delegateRequest) throw new HttpError(403, 'You are not allowed to request delegation changes.');
+    const empId = String(body.empId || body.rowId || '').trim();
+    const field = String(body.field || '').trim();
+    const newId = String(body.newId || '').trim();
+    const reason = String(body.reason || '').trim();
+    if (!empId || !['comp', 'app'].includes(field) || !newId || !reason) throw new HttpError(422, 'Employee, assignment, new value, and reason are required.');
+    if (a.role !== 'hr' && !A.inScope(a, empId)) throw new HttpError(403, 'You do not have access to employee ' + empId + '.');
+    const id = 'DR-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+    const at = nowDT();
+    const byName = String(body.byName || a.user.name || 'Tech Ed');
+    await table.insertRow({
+      changed_at: at, changed_by: a.user.email, kind: DELEGATION_REQUEST_PREFIX + 'pending',
+      target: empId, role: byName,
+      old_value: JSON.stringify({ field, oldId: String(body.oldId || ''), empName: String(body.empName || empId), byId: a.user.email, byName }),
+      new_value: newId, reason: reason.slice(0, 500), batch_id: id
+    });
+    send(res, { request: { id, no: id } });
+    return;
+  }
+
+  if (action === 'decide') {
+    if (a.role !== 'hr') throw new HttpError(403, 'Only HR Admin can approve or reject delegation requests.');
+    A.requireScreen(a, 'delegation', 'edit');
+    const id = String(body.id || '').trim();
+    const status = String(body.status || '').toLowerCase();
+    const remarks = String(body.remarks || '').trim();
+    if (!id || !['approved', 'rejected'].includes(status)) throw new HttpError(422, 'Request and decision are required.');
+    if (status === 'rejected' && !remarks) throw new HttpError(422, 'HR remarks are mandatory when rejecting.');
+    const all = await selectAll(ap.admin.zcql(), T.log);
+    const row = all.find((r) => String(r.batch_id) === id && r.kind === DELEGATION_REQUEST_PREFIX + 'pending');
+    if (!row) throw new HttpError(404, 'Pending delegation request not found. It may already have been decided.');
+    let meta = {};
+    try { meta = JSON.parse(row.old_value || '{}'); } catch (_) {}
+    meta.decidedBy = a.user.name || a.user.email;
+    meta.decidedOn = nowDT();
+    meta.remarks = remarks;
+    await table.updateRow({ ROWID: row.ROWID, kind: DELEGATION_REQUEST_PREFIX + status, old_value: JSON.stringify(meta), changed_at: nowDT() });
+    send(res, { id, status });
+    return;
+  }
+  throw new HttpError(422, 'Unsupported delegation request action.');
+}));
+
 /* ---------------------------------------------------------------------
    GET /admin/state — HR (always fresh reads, not the cache)
    --------------------------------------------------------------------- */
@@ -168,7 +250,7 @@ app.get('/admin/state', asyncRoute(async (req, res) => {
     listCycleId, listCycleActive: !!cycleId && listCycleId === cycleId,
     listDeleg: { techEd: shown.techEd, compMgr: shown.compMgr },
     overrides: ovs.map((o) => ({ id: String(o.ROWID), empId: o.emp_id, type: o.ov_type, key: o.target_key || '', value: o.ov_type === 'action' ? bool(o.value) : o.value, to: o.end_date ? String(o.end_date).slice(0, 10) : '', reason: o.reason || '', by: o.set_by || '', at: String(o.set_at || '').slice(0, 10) })),
-    log: log.slice(-500).reverse().map((l) => ({ at: l.changed_at, by: l.changed_by, kind: l.kind, target: l.target, role: l.role, from: l.old_value, to: l.new_value, reason: l.reason })),
+    log: log.filter((l) => !String(l.kind || '').startsWith(DELEGATION_REQUEST_PREFIX)).slice(-500).reverse().map((l) => ({ at: l.changed_at, by: l.changed_by, kind: l.kind, target: l.target, role: l.role, from: l.old_value, to: l.new_value, reason: l.reason })),
     catalystCheck: users ? 'ok' : 'skipped'
   });
 }));
