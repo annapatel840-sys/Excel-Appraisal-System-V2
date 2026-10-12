@@ -354,7 +354,7 @@ app.post(
       const all = await selectAll(ap.admin.zcql(), T.log);
       const row = all.find(
         (r) =>
-          String(r.batch_id) === id &&
+          String(r.batch_id || r.ROWID) === id &&
           r.kind === DELEGATION_REQUEST_PREFIX + "pending",
       );
       if (!row)
