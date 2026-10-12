@@ -413,14 +413,41 @@ const textOrDash = (value) =>
     ? String(value)
     : "—";
 
+const getCycleName = (value) => {
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "string" || typeof value === "number") return String(value).trim();
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const name = getCycleName(item);
+      if (name) return name;
+    }
+    return "";
+  }
+  if (typeof value === "object") {
+    for (const key of ["appraisal_cycle_name", "cycle_name", "cycleName", "name", "display_value", "value", "label"]) {
+      const name = getCycleName(value[key]);
+      if (name) return name;
+    }
+  }
+  return "";
+};
+
+const normalizeCycleKey = (value) =>
+  String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+
 const normalizeHistoryRecord = (record) => {
   // Payroll_Data uses fy_year/current_annual_base_pay/total_CTC_with_rewards;
   // older history rows may instead use appraisal_year/base_pay/new_ctc.
   const basePay = Number(record?.base_pay ?? record?.current_annual_base_pay) || 0;
   const hikeAmount = Number(record?.hike_amount) || 0;
   const year = record?.appraisal_year ?? record?.fy_year;
+  const cycleName =
+    getCycleName(record?.appraisal_cycle_name) ||
+    getCycleName(record?.appraisalCycleName) ||
+    getCycleName(record?.cycle_name);
 
   return {
+    cycleName: cycleName || textOrDash(year),
     year: textOrDash(year),
     basePay,
     joiningBonus: Number(record?.joining_bonus) || 0,
@@ -443,6 +470,7 @@ const normalizeHistoryRecord = (record) => {
 };
 
 const emptyHistoryRecord = (year) => ({
+  cycleName: year,
   year,
   basePay: 0,
   joiningBonus: 0,
@@ -474,22 +502,18 @@ const CURRENT_APPRAISAL_YEAR_NUMERIC = (() => {
 })();
 
 const isCurrentYearRecord = (record) => {
+  const cycleKey = normalizeCycleKey(record?.cycleName || record?.year);
+  const currentCycleKey = normalizeCycleKey(CURRENT_APPRAISAL_YEAR);
+  if (cycleKey && cycleKey === currentCycleKey) return true;
+
+  // Keep compatibility with historical rows that do not yet have a cycle name.
   const year = String(record?.year ?? "").trim();
-
-  if (
-    year === CURRENT_APPRAISAL_YEAR ||
-    (CURRENT_APPRAISAL_YEAR_NUMERIC && year === CURRENT_APPRAISAL_YEAR_NUMERIC)
-  ) {
-    return true;
-  }
-
-  // Treat FY labels such as "2025-2026" as the year in which the cycle ends.
-  const fiscal = year.match(/(\\d{4})\\s*[-/–]\\s*(\\d{2,4})/);
+  if (year === CURRENT_APPRAISAL_YEAR_NUMERIC) return true;
+  const fiscal = year.match(/(\d{4})\s*[-/–]\s*(\d{2,4})/);
   if (fiscal) {
     const endYear = fiscal[2].length === 2 ? `20${fiscal[2]}` : fiscal[2];
     return endYear === CURRENT_APPRAISAL_YEAR_NUMERIC;
   }
-
   return false;
 };
 
@@ -983,7 +1007,7 @@ function EmployeePanel({
 
             return (
               <li
-                key={`${item.year}-${index}`}
+                key={`${normalizeCycleKey(item.cycleName || item.year)}-${index}`}
                 className="relative pb-2.5 pt-1.5"
               >
                 {renderTimelineDot(index)}
@@ -4117,7 +4141,7 @@ export function AppraisalGrid({
                   <thead>
                     <tr className="bg-[#eef2f7]">
                       <th className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-2 py-1.5 text-center align-bottom text-[11px] font-bold text-[#24364d]">
-                        Appraisal Year
+                        Appraisal Cycle Name
                       </th>
 
                       {historyMetricColumns.map((col) => (
