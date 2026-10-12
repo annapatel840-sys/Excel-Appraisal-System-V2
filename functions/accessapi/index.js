@@ -224,27 +224,21 @@ app.post('/delegation/requests', asyncRoute(async (req, res) => {
       // Catalyst Data Store table SDK does not guarantee getAllRows(); read
       // with getPagedRows so approval does not fail before it updates the row.
       const targetTables = field === 'comp'
-        ? [{ id: '74008000000039094', label: 'Appraisal Sheet' }]
+        ? [{ id: '74008000000039094', tableName: 'Appraisal_Sheet', label: 'Appraisal Sheet' }]
         : [
-            { id: '74008000000035727', label: 'Employee Master' },
-            { id: '74008000000039094', label: 'Appraisal Sheet' },
+            { id: '74008000000035727', tableName: 'Employee_Master', label: 'Employee Master' },
+            { id: '74008000000039094', tableName: 'Appraisal_Sheet', label: 'Appraisal Sheet' },
           ];
 
       for (const target of targetTables) {
         const assignmentTable = datastore.table(target.id);
-        const assignmentRows = [];
-        let nextToken = null;
-        let moreRecords = true;
-        while (moreRecords) {
-          const options = { maxRows: 200 };
-          if (nextToken) options.nextToken = nextToken;
-          const page = await assignmentTable.getPagedRows(options);
-          assignmentRows.push(...(Array.isArray(page && page.data) ? page.data : []));
-          moreRecords = page && page.more_records === true;
-          nextToken = page && page.next_token || null;
-          if (!nextToken) moreRecords = false;
-        }
-        const employeeRow = assignmentRows.find((item) =>
+        const safeEmpId = empId.replace(/'/g, "''");
+        const query = "SELECT * FROM " + target.tableName +
+          " WHERE emp_id = '" + safeEmpId + "' LIMIT 1";
+        const queryRows = await ap.admin.zcql().executeZCQLQuery(query);
+        const employeeRow = (queryRows || []).map((item) =>
+          item && (item[target.tableName] || Object.values(item)[0]) || {}
+        ).find((item) =>
           String(item.emp_id || '').trim().toLowerCase() === empId.toLowerCase()
         );
         if (!employeeRow || !(employeeRow.ROWID || employeeRow.rowid)) {
