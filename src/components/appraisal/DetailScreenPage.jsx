@@ -277,14 +277,54 @@ const DS_CSS = `
 }
 `;
 
+const getCycleName = (value) => {
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value).trim();
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const name = getCycleName(item);
+      if (name) return name;
+    }
+    return "";
+  }
+  if (typeof value === "object") {
+    for (const key of [
+      "appraisal_cycle_name",
+      "cycle_name",
+      "cycleName",
+      "name",
+      "display_value",
+      "value",
+      "label",
+    ]) {
+      const name = getCycleName(value[key]);
+      if (name) return name;
+    }
+  }
+  return "";
+};
+
+const normalizeCycleKey = (value) =>
+  String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+
 const normalizeHistoryRecord = (record) => {
   const basePay = Number(record?.base_pay) || 0;
   const hike = Number(record?.hike_amount) || 0;
+  const cycleName =
+    getCycleName(record?.appraisal_cycle_name) ||
+    getCycleName(record?.appraisalCycleName) ||
+    getCycleName(record?.cycle_name);
+  const year =
+    record?.appraisal_year !== null && record?.appraisal_year !== undefined
+      ? String(record.appraisal_year)
+      : record?.fy_year !== null && record?.fy_year !== undefined
+        ? String(record.fy_year)
+        : "—";
   return {
-    year:
-      record?.appraisal_year !== null && record?.appraisal_year !== undefined
-        ? String(record.appraisal_year)
-        : "—",
+    cycleName: cycleName || year,
+    year,
     basePay,
     joiningBonus: Number(record?.joining_bonus) || 0,
     performanceBonus: Number(record?.performance_bonus) || 0,
@@ -782,7 +822,7 @@ function HistCell({ value, prev }) {
   );
 }
 
-const HIST_GRID = "110px repeat(9, minmax(0, 1fr))";
+const HIST_GRID = "150px repeat(9, minmax(0, 1fr))";
 
 /* ------------------------------------------------------------------
    PAGE
@@ -937,12 +977,15 @@ export function DetailScreenPage({
   const priorCycles = useMemo(() => {
     const seen = new Set();
     const result = [];
+    const currentCycleKey = normalizeCycleKey(CURRENT_CYCLE);
+
     for (const record of historyRecords) {
-      if (isCurrentCycleYearKey(record.year)) continue;
+      // Identify a cycle by its name, not by its year/fiscal-year label.
+      const cycleKey = normalizeCycleKey(record.cycleName || record.year);
+      if (!cycleKey || cycleKey === currentCycleKey) continue;
       if (isBlankRecord(record)) continue;
-      const yearKey = normalizeYearKey(record.year);
-      if (!yearKey || seen.has(yearKey)) continue;
-      seen.add(yearKey);
+      if (seen.has(cycleKey)) continue;
+      seen.add(cycleKey);
       result.push(record);
     }
     return result;
@@ -1920,7 +1963,7 @@ export function DetailScreenPage({
                 borderBottom: `1px solid ${LINE}`,
               }}
             >
-              <div style={{ padding: "6px 10px" }}>Year</div>
+              <div style={{ padding: "6px 10px" }}>Appraisal Cycle Name</div>
               {HISTORY_COLUMNS.map((c) => (
                 <div
                   key={c.key}
@@ -1986,7 +2029,7 @@ export function DetailScreenPage({
                 : null;
               return (
                 <div
-                  key={normalizeYearKey(h.year)}
+                  key={normalizeCycleKey(h.cycleName || h.year)}
                   className="grid items-center text-[12px]"
                   style={{
                     gridTemplateColumns: HIST_GRID,
