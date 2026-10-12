@@ -6,6 +6,7 @@ import { useAppraisal } from "@/lib/appraisal-store";
  
 /* ------------------------------------------------------------------ data */
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
+const ACCESS_API_URL = catalystFunctionUrl("accessapi");
 const FIELDS = { comp: "Comp Manager", app: "Appraiser Tech Ed" };
 const ST = { CF: "Carried forward", NEW: "New – Tech Ed default", HR: "Changed – HR", TE: "Changed – Tech Ed (approved)", PD: "Pending HR approval" };
 const TAG = { [ST.CF]: "cf", [ST.NEW]: "nw", [ST.HR]: "hr", [ST.TE]: "te", [ST.PD]: "pd" };
@@ -37,18 +38,12 @@ export default function DelegationScreen({
         q.field === "appraiserTechED" || q.field === "app" ? "app" : q.field,
       empId: q.empId || q.employee?.empId || q.rowId || "",
       rowId: q.empId || q.employee?.empId || q.rowId || "",
-      status: q.status || "Pending",
+      status: String(q.status || "Pending").replace(/^./, (letter) => letter.toUpperCase()),
       reason: q.reason || q.details || "",
       byName: q.byName || q.requestedBy || q.byId || "Tech Ed",
       no: q.no || q.id || `DR-${Date.now()}`,
     }));
-  const [reqs, setReqs] = useState(() => {
-    try {
-      return normalizeRequests(JSON.parse(localStorage.getItem("appraisal-delegation-requests") || "[]"));
-    } catch {
-      return [];
-    }
-  });
+  const [reqs, setReqs] = useState([]);
   const [audit, setAudit] = useState([]);
   const [locked, setLocked] = useState(false);
   const [filter, setFilter] = useState({ q: "", te: "", comp: "", status: "" });
@@ -68,31 +63,29 @@ export default function DelegationScreen({
   const [reason, setReason] = useState("");
   const [toast, setToast] = useState(null);
  
-  useEffect(() => {
-    try {
-      localStorage.setItem("appraisal-delegation-requests", JSON.stringify(reqs));
-    } catch {
-      // Shared server storage is still required for different browsers/devices.
-    }
-  }, [reqs]);
+  const loadRequests = async () => {
+    const response = await catalystFetch(ACCESS_API_URL + "delegation/requests", { method: "GET", cache: "no-store" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to load delegation requests.");
+    setReqs(normalizeRequests(payload.requests || []));
+  };
 
   useEffect(() => {
-    const reloadRequests = () => {
+    let cancelled = false;
+    const reloadRequests = async () => {
       try {
-        setReqs(normalizeRequests(JSON.parse(localStorage.getItem("appraisal-delegation-requests") || "[]")));
-      } catch {
-        // Keep the current list if local storage is temporarily unavailable.
+        const response = await catalystFetch(ACCESS_API_URL + "delegation/requests", { method: "GET", cache: "no-store" });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to load delegation requests.");
+        if (!cancelled) setReqs(normalizeRequests(payload.requests || []));
+      } catch (error) {
+        if (!cancelled) say(error?.message || "Unable to load delegation requests.", true);
       }
     };
-    const onStorage = (event) => {
-      if (event.key === "appraisal-delegation-requests") reloadRequests();
-    };
-    window.addEventListener("focus", reloadRequests);
-    window.addEventListener("storage", onStorage);
-    return () => {
-      window.removeEventListener("focus", reloadRequests);
-      window.removeEventListener("storage", onStorage);
-    };
+    const onFocus = () => reloadRequests();
+    reloadRequests();
+    window.addEventListener("focus", onFocus);
+    return () => { cancelled = true; window.removeEventListener("focus", onFocus); };
   }, []);
  
   const isHR = user.role === "HR Admin";
