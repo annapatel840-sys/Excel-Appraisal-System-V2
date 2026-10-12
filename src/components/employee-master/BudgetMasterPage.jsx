@@ -68,6 +68,33 @@ const INITIAL_ORG_AUDIT = [
 ];
 
 /* ---------- helpers ---------- */
+function normalizeOwnerKey(value) {
+  const text = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const pair = text.match(/^(\S+)\s*-\s*(.+)$/);
+  return pair ? pair[1] : text;
+}
+
+function ownerName(value, employees = []) {
+  const raw = String(value || "").trim();
+  if (!raw) return "Unassigned";
+  const pair = raw.match(/^(\S+)\s*-\s*(.+)$/);
+  const key = pair ? pair[1] : raw;
+  const person = employees.find((employee) => {
+    const id = String(employee.emp_id || employee.employee_id || "").trim();
+    const name = String(employee.name || employee.employee_name || "").trim();
+    const email = String(employee.email || employee.email_id || "").trim();
+    return [id, name, email].some((candidate) =>
+      candidate && normalizeOwnerKey(candidate) === normalizeOwnerKey(key),
+    );
+  });
+  if (person) {
+    const id = String(person.emp_id || person.employee_id || "").trim();
+    const name = String(person.name || person.employee_name || "").trim();
+    return id && name ? id + " - " + name : name || id || raw;
+  }
+  return pair ? pair[2].trim() : raw;
+}
+
 function money(value) {
   return ((Number(value) || 0) / 100000).toFixed(2) + " L";
 }
@@ -229,7 +256,7 @@ const HR_COLS = [
 ];
 
 function HRApplyBudget() {
-  const { budgetMasterRows, budgetDistributionRows, updateBudget, loading: budgetLoading } = useBudget();
+  const { budgetMasterRows, budgetDistributionRows, employeeRows, updateBudget, loading: budgetLoading } = useBudget();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const canConfig =
@@ -247,29 +274,65 @@ function HRApplyBudget() {
   const [overrides, setOverrides] = useState({});
 
   useEffect(() => {
-    if (!budgetDistributionRows.length) return;
-    setRows((current) => budgetDistributionRows.map((row, index) => {
-      const fallback = current[index] || TECH_ED_DATA[index] || {};
+    const employeeCounts = new Map();
+    const ownerValues = new Map();
+    employeeRows.forEach((employee) => {
+      const assignedOwner = employee.appraiser_tech_ed || employee.tech_ed_id || employee.tech_ed || employee.appraiserTechEd || "";
+      const key = normalizeOwnerKey(assignedOwner);
+      if (!key) return;
+      employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
+      if (!ownerValues.has(key)) ownerValues.set(key, assignedOwner);
+    });
+
+    const nextRows = [];
+    const seenOwners = new Set();
+    budgetDistributionRows.forEach((row) => {
+      const owner = row.appraiser_tech_ed_id || "";
+      const key = normalizeOwnerKey(owner);
+      if (!key) return;
       const calculated = Number(row.calculated_budget) || 0;
       const applied = Number(row.applied_budget) || calculated;
-      return {
-        ...fallback,
-        id: row.id,
-        name: ownerName(row.appraiser_tech_ed_id || fallback.name),
+      const assignedCount = employeeCounts.get(key) || 0;
+      nextRows.push({
+        id: row.id || "tech-ed-" + key,
+        name: ownerName(owner, employeeRows),
         pct: Number(row.percentage) || 0,
-        base: Number(row.percentage) ? calculated * 100 / Number(row.percentage) : (fallback.base || calculated),
+        base: Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated,
         original: calculated,
         updated: applied,
-        team0: fallback.team0 || 0,
-        team: fallback.team || 0,
-        lastChanged: fallback.lastChanged || "—",
-      };
-    }));
+        team0: assignedCount,
+        team: assignedCount,
+        lastChanged: "—",
+      });
+      seenOwners.add(key);
+    });
+
+    // Appraisal Sheet is the source of truth for the Tech-ED assignments.
+    // Include every assigned Tech-ED even if no Budget_Distribution row exists yet.
+    ownerValues.forEach((owner, key) => {
+      if (seenOwners.has(key)) return;
+      const label = ownerName(owner, employeeRows);
+      nextRows.push({
+        id: "tech-ed-" + key,
+        name: label,
+        pct: 0,
+        base: 0,
+        original: 0,
+        updated: 0,
+        team0: employeeCounts.get(key) || 0,
+        team: employeeCounts.get(key) || 0,
+        lastChanged: "—",
+      });
+      seenOwners.add(key);
+    });
+
+    nextRows.sort((a, b) => a.name.localeCompare(b.name));
+    setRows(nextRows);
     const master = budgetMasterRows[0];
     if (master && Number.isFinite(Number(master.budget_percentage))) {
       setOrgPct(String(Number(master.budget_percentage)));
     }
-  }, [budgetDistributionRows, budgetMasterRows]);
+  }, [budgetDistributionRows, budgetMasterRows, employeeRows]);
 
   const total = useMemo(
     () =>
