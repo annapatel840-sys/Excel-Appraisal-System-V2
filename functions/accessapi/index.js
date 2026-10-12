@@ -252,14 +252,20 @@ app.get(
     if (!["hr", "techEd", "compMgr"].includes(a.role))
       throw new HttpError(403, "You do not have access to the request queue.");
     const rows = await selectAll(ap.admin.zcql(), T.log);
-    const requests = rows
+    const latestById = new Map();
+    rows
       .filter((r) => String(r.kind || "").startsWith(DELEGATION_REQUEST_PREFIX))
+      .sort((x, y) => String(x.changed_at || "").localeCompare(String(y.changed_at || "")))
+      .forEach((row) => {
+        const key = String(row.batch_id || row.ROWID || "");
+        if (key) latestById.set(key, row);
+      });
+    const requests = Array.from(latestById.values())
       .map(decodeDelegationRequest)
       .filter(
         (r) =>
           a.role === "hr" ||
-          String(r.byId).toLowerCase() ===
-            String(a.user.email || "").toLowerCase(),
+          String(r.byId).toLowerCase() === String(a.user.email || "").toLowerCase(),
       )
       .sort((x, y) => String(y.on).localeCompare(String(x.on)));
     send(res, { requests });
@@ -433,11 +439,19 @@ app.post(
       meta.decidedBy = a.user.name || a.user.email;
       meta.decidedOn = nowDT();
       meta.remarks = remarks;
-      await table.updateRow({
-        ROWID: row.ROWID,
+      // Append a decision event instead of updating the original AccessLog row.
+      // GET collapses events by request ID, preserving one visible request while
+      // avoiding update-privilege failures on the shared queue.
+      await table.insertRow({
+        changed_at: meta.decidedOn,
+        changed_by: a.user.email || "",
         kind: DELEGATION_REQUEST_PREFIX + status,
+        target: row.target || "",
+        role: row.role || "",
         old_value: JSON.stringify(meta),
-        changed_at: nowDT(),
+        new_value: row.new_value || "",
+        reason: row.reason || "",
+        batch_id: id,
       });
       send(res, { id, status });
       return;
