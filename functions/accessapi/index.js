@@ -129,7 +129,7 @@ function decodeDelegationRequest(row) {
     requestType: meta.requestType || (meta.field === 'screen' ? 'screen' : 'delegation'),
     field: meta.field || '', oldId: meta.oldId || '', newId: row.new_value || '',
     reason: row.reason || '', byId: meta.byId || row.changed_by || '',
-    byName: meta.byName || row.role || row.changed_by || 'Application user',
+    byName: meta.byName || row.role || row.changed_by || 'Application user', requestedRole: meta.requestedRole || '',
     on: row.changed_at, status: status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Pending',
     decidedBy: meta.decidedBy || '', decidedOn: meta.decidedOn || '', remarks: meta.remarks || ''
   };
