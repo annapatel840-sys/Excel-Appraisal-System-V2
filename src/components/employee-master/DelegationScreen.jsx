@@ -33,9 +33,13 @@ export default function DelegationScreen({
   const normalizeRequests = (items) =>
     (Array.isArray(items) ? items : []).map((q) => ({
       ...q,
-      field:
-        q.field === "compManager" || q.field === "comp" ? "comp" :
-        q.field === "appraiserTechED" || q.field === "app" ? "app" : q.field,
+      field: (() => {
+        const rawField = String(q.field || "").trim().toLowerCase().replace(/[\s-]+/g, "_");
+        if (["compmanager", "comp_manager", "comp"].includes(rawField)) return "comp";
+        if (["appraiserteched", "appraiser_tech_ed", "app", "tech_ed_appraiser"].includes(rawField)) return "app";
+        if (rawField === "screen_request") return "screen";
+        return rawField;
+      })(),
       empId: q.empId || q.employee?.empId || q.rowId || "",
       rowId: q.empId || q.employee?.empId || q.rowId || "",
       status: (() => {
