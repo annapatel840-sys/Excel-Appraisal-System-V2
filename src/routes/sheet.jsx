@@ -42,6 +42,7 @@ import {
 import { exportToExcel } from "@/lib/export-excel";
 import { useAccess } from "@/lib/access-store";
 import { useSettings } from "@/lib/settings-store";
+import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
 // ============================================================
 // BUDGET
@@ -631,33 +632,33 @@ export function SheetPage() {
             onFocusEmployeeHandled={() => setLastEditedTarget("")}
             isTechEd={isTechEd}
             isHR={isHR}
-            onRequest={(request) => {
-              const key = request.type === "delegation" ? "appraisal-delegation-requests" : "appraisal-screen-requests";
-              const current = JSON.parse(localStorage.getItem(key) || "[]");
-              current.unshift({
-                id: request.type.toUpperCase() + "-" + Date.now(),
-                // Use employee ID consistently because employeesapi and Delegation
-                // Screen scope/lookup are keyed by emp_id, not a React row ID.
-                rowId: request.employee?.empId || request.employee?.id || "",
-                empId: request.employee?.empId || request.employee?.id || "",
-                empName: request.employee?.name || "",
-                field:
-                  request.field === "compManager" ? "comp" :
-                  request.field === "appraiserTechED" ? "app" :
-                  request.field || request.type,
-                oldId: request.oldId || "",
-                newId: request.newId || "",
-                reason: request.reason || "Requested from Appraisal Sheet",
-                byId: catalystUser?.name || catalystUser?.email || catalystUser?.user_id || "",
-                byName: catalystUser?.name || catalystUser?.email || "Tech Ed",
-                on: new Date().toISOString(),
-                status: "Pending",
-                decidedBy: "",
-                decidedOn: "",
-                remarks: "",
-              });
-              localStorage.setItem(key, JSON.stringify(current));
-              window.alert(request.type === "delegation" ? "Delegation request sent to HR." : "Screen request sent.");
+            onRequest={async (request) => {
+              if (request.type !== "delegation") {
+                window.alert("Screen requests are not part of the delegation approval queue.");
+                return;
+              }
+              try {
+                const response = await catalystFetch(catalystFunctionUrl("accessapi") + "delegation/requests", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Accept: "application/json" },
+                  body: JSON.stringify({
+                    action: "submit",
+                    empId: request.employee?.empId || request.employee?.id || "",
+                    empName: request.employee?.name || "",
+                    field: request.field === "compManager" ? "comp" :
+                      request.field === "appraiserTechED" ? "app" : request.field,
+                    oldId: request.oldId || "",
+                    newId: request.newId || "",
+                    reason: request.reason || "Requested from Appraisal Sheet",
+                    byName: catalystUser?.name || catalystUser?.email || "Tech Ed",
+                  }),
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to send delegation request.");
+                window.alert("Delegation request sent to HR for approval.");
+              } catch (error) {
+                window.alert(error?.message || "Unable to send delegation request to HR.");
+              }
             }}
           />
         </div>
