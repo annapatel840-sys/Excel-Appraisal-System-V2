@@ -392,7 +392,7 @@ export default function DelegationScreen({
     } catch (error) {
       return say(error?.message || "Unable to save approval decision.", true);
     }
-    setReqs((qs)
+    setReqs((qs) =>
       qs.map((x) =>
         x.id === q.id
           ? {
