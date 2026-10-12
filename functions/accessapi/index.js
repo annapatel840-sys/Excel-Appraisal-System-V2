@@ -256,20 +256,26 @@ app.get(
     const compareRequestEvents = (x, y) => {
       const byTime = String(x.changed_at || "").localeCompare(String(y.changed_at || ""));
       if (byTime) return byTime;
-      // Catalyst timestamps are stored only to seconds. A decision can share
-      // the same timestamp as the pending row, so use the monotonically
-      // increasing Data Store ROWID to break ties deterministically.
-      const xId = Number(x.ROWID);
-      const yId = Number(y.ROWID);
-      if (Number.isFinite(xId) && Number.isFinite(yId) && xId !== yId) return xId - yId;
-      return String(x.ROWID || "").localeCompare(String(y.ROWID || ""));
+      return String(x.ROWID || "").localeCompare(String(y.ROWID || ""), undefined, { numeric: true });
     };
     rows
       .filter((r) => String(r.kind || "").startsWith(DELEGATION_REQUEST_PREFIX))
       .sort(compareRequestEvents)
       .forEach((row) => {
         const key = String(row.batch_id || row.ROWID || "");
-        if (key) latestById.set(key, row);
+        if (!key) return;
+        const previous = latestById.get(key);
+        const isDecision = /^(approved|rejected)$/i.test(
+          String(row.kind || "").slice(DELEGATION_REQUEST_PREFIX.length),
+        );
+        const previousIsPending = previous &&
+          String(previous.kind || "") === DELEGATION_REQUEST_PREFIX + "pending";
+        if (!previous || (isDecision && previousIsPending) ||
+            (isDecision === /^(approved|rejected)$/i.test(
+              String(previous.kind || "").slice(DELEGATION_REQUEST_PREFIX.length),
+            ) && compareRequestEvents(previous, row) <= 0)) {
+          latestById.set(key, row);
+        }
       });
     const requests = Array.from(latestById.values())
       .map(decodeDelegationRequest)
@@ -366,33 +372,23 @@ app.post(
       // The UI normally sends batch_id, but older requests or clients may send
       // the AccessLog ROWID. Match either identifier independently; using
       // (batch_id || ROWID) only checks ROWID when batch_id is empty.
-      const matchingEvents = all.filter((r) =>
+      // Request IDs (DR-...) are persisted in batch_id. Determine state
+      // from explicit decision records, never timestamp order.
+      const requestEvents = all.filter((r) =>
         String(r.batch_id || "").trim() === id ||
         String(r.ROWID || "").trim() === id
       );
-      const requestKey = String(
-        matchingEvents.find((r) => String(r.batch_id || "").trim() === id)?.batch_id ||
-        matchingEvents.find((r) => String(r.ROWID || "").trim() === id)?.batch_id ||
-        id
-      ).trim();
-      const requestEvents = all
-        .filter((r) => String(r.batch_id || "").trim() === requestKey)
-        .sort((x, y) => {
-          const byTime = String(x.changed_at || "").localeCompare(String(y.changed_at || ""));
-          if (byTime) return byTime;
-          const xId = Number(x.ROWID);
-          const yId = Number(y.ROWID);
-          if (Number.isFinite(xId) && Number.isFinite(yId) && xId !== yId) return xId - yId;
-          return String(x.ROWID || "").localeCompare(String(y.ROWID || ""));
-        });
       const row = requestEvents.find(
-        (r) => r.kind === DELEGATION_REQUEST_PREFIX + "pending",
+        (r) => String(r.kind || "") === DELEGATION_REQUEST_PREFIX + "pending",
       );
-      const latestEvent = requestEvents[requestEvents.length - 1];
-      if (!row || (latestEvent && latestEvent.kind !== DELEGATION_REQUEST_PREFIX + "pending"))
+      const decisionAlreadyRecorded = requestEvents.some((r) =>
+        [DELEGATION_REQUEST_PREFIX + "approved", DELEGATION_REQUEST_PREFIX + "rejected"]
+          .includes(String(r.kind || ""))
+      );
+      if (!row || decisionAlreadyRecorded)
         throw new HttpError(
           409,
-          "This request is no longer pending. Refresh the request list and try again.",
+          "This request is already decided or could not be found. Refresh the request list and try again.",
         );
       let meta = {};
       try {
