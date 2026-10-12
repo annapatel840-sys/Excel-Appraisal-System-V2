@@ -145,7 +145,11 @@ export function BudgetProvider({ children }) {
       setBudgetMasterRows(normalizedMaster);
       setBudgetDistributionRows(normalizedTechEd);
       setBudgetCompManagerRows(normalizedComp);
-      setEmployeeRows(employeeResult.employees);
+      const apiEmployees = Array.isArray(employeeResult.employees) ? employeeResult.employees : [];
+      const rosterEmployees = Array.isArray(budgetJson && budgetJson.employeeRoster) ? budgetJson.employeeRoster : [];
+      // Prefer the complete roster supplied by Budget Master API when the
+      // employee endpoint is restricted or returns an empty scoped result.
+      setEmployeeRows(apiEmployees.length ? apiEmployees : rosterEmployees);
       if (employeeResult.employeeError) {
         console.error("Failed to load employees for budget counts:", employeeResult.employeeError);
         setError(employeeResult.employeeError.message || "Failed to load employee counts.");
