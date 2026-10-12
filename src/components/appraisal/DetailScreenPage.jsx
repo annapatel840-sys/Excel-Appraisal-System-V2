@@ -730,7 +730,7 @@ function PayRow({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(0,1fr) 56px",
+            gridTemplateColumns: "minmax(0,1fr) 84px",
             gap: 6,
           }}
         >
@@ -740,14 +740,18 @@ function PayRow({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "minmax(0,1fr) 56px",
+            gridTemplateColumns: "minmax(0,1fr) 84px",
             gap: 6,
             fontSize: 11.5,
             color: MUTED,
           }}
         >
-          <span>{floorCaptionPrefix} to be Paid</span>
-          <span>Month ({floorCaptionPrefix})</span>
+          <span style={{ whiteSpace: "nowrap" }}>
+            {floorCaptionPrefix} to be Paid
+          </span>
+          <span style={{ whiteSpace: "nowrap" }}>
+            Month ({floorCaptionPrefix})
+          </span>
         </div>
       </Cell>
       <Cell>
