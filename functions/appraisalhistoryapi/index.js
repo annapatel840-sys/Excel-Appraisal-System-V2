@@ -432,13 +432,19 @@ const resolveEmpKeys = async (app, empId) => {
       });
 
       if (list.length) {
+        // Keep ROWIDs from every matching employee table. Payroll_Data.emp_id
+        // may reference Employees or Employee_Master depending on how the FK
+        // was configured; stopping at the first match can hide valid history.
         knownEmployeeSource = attempt;
         employeeLookup = {
-          table: attempt.table,
-          column: attempt.column,
+          table: employeeLookup.table
+            ? employeeLookup.table + ", " + attempt.table
+            : attempt.table,
+          column: employeeLookup.column
+            ? employeeLookup.column + ", " + attempt.column
+            : attempt.column,
           error: "",
         };
-        break;
       }
     } catch (error) {
       errors.push(
