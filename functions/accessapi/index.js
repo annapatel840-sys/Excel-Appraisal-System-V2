@@ -115,18 +115,22 @@ async function syncCatalystRoles(adm, roles, users, by) {
   return changed;
 }
 
-/* Shared delegation request queue, persisted in the existing AccessLog table. */
+/* Shared request queue for delegation and screen requests.
+   Persisted in the existing AccessLog table so all users/devices see the same queue. */
 const DELEGATION_REQUEST_PREFIX = 'delegation-request:';
 
 function decodeDelegationRequest(row) {
   let meta = {};
   try { meta = JSON.parse(row.old_value || '{}'); } catch (_) {}
+  const status = String(row.kind || '').slice(DELEGATION_REQUEST_PREFIX.length).toLowerCase();
   return {
-    id: row.batch_id, no: row.batch_id, rowId: row.target, empId: row.target,
-    empName: meta.empName || row.target, field: meta.field, oldId: meta.oldId || '',
-    newId: row.new_value || '', reason: row.reason || '', byId: meta.byId || row.changed_by || '',
-    byName: meta.byName || row.role || row.changed_by || 'Tech Ed', on: row.changed_at,
-    status: String(row.kind || '').slice(DELEGATION_REQUEST_PREFIX.length) || 'pending',
+    id: String(row.batch_id || row.ROWID), no: String(row.batch_id || row.ROWID),
+    rowId: row.target || '', empId: row.target || '', empName: meta.empName || row.target || '',
+    requestType: meta.requestType || (meta.field === 'screen' ? 'screen' : 'delegation'),
+    field: meta.field || '', oldId: meta.oldId || '', newId: row.new_value || '',
+    reason: row.reason || '', byId: meta.byId || row.changed_by || '',
+    byName: meta.byName || row.role || row.changed_by || 'Application user',
+    on: row.changed_at, status: status ? status.charAt(0).toUpperCase() + status.slice(1) : 'Pending',
     decidedBy: meta.decidedBy || '', decidedOn: meta.decidedOn || '', remarks: meta.remarks || ''
   };
 }
@@ -135,12 +139,12 @@ app.get('/delegation/requests', asyncRoute(async (req, res) => {
   const ap = apps(req);
   const a = await A.check(ap.user, ap.admin);
   if (a.denied) throw a.denied;
-  const isHR = a.role === 'hr';
-  if (!isHR && a.role !== 'techEd') throw new HttpError(403, 'Only Tech ED and HR Admin can access delegation requests.');
+  if (!['hr', 'techEd', 'compMgr'].includes(a.role)) throw new HttpError(403, 'You do not have access to the request queue.');
   const rows = await selectAll(ap.admin.zcql(), T.log);
-  const requests = rows.filter((r) => String(r.kind || '').startsWith(DELEGATION_REQUEST_PREFIX))
+  const requests = rows
+    .filter((r) => String(r.kind || '').startsWith(DELEGATION_REQUEST_PREFIX))
     .map(decodeDelegationRequest)
-    .filter((r) => isHR || String(r.byId).toLowerCase() === String(a.user.email || '').toLowerCase())
+    .filter((r) => a.role === 'hr' || String(r.byId).toLowerCase() === String(a.user.email || '').toLowerCase())
     .sort((x, y) => String(y.on).localeCompare(String(x.on)));
   send(res, { requests });
 }));
@@ -149,35 +153,46 @@ app.post('/delegation/requests', asyncRoute(async (req, res) => {
   const ap = apps(req);
   const a = await A.check(ap.user, ap.admin);
   if (a.denied) throw a.denied;
+  if (!['hr', 'techEd', 'compMgr'].includes(a.role)) throw new HttpError(403, 'You do not have access to submit or view requests.');
   const body = req.body || {};
   const table = ap.admin.datastore().table(T.log);
   const action = String(body.action || 'submit').toLowerCase();
 
   if (action === 'submit') {
-    if (a.role !== 'techEd') throw new HttpError(403, 'Only Tech ED can submit delegation requests.');
+    const requestType = String(body.requestType || (body.field === 'screen' ? 'screen' : 'delegation')).toLowerCase();
     const empId = String(body.empId || body.rowId || '').trim();
     const field = String(body.field || '').trim();
     const newId = String(body.newId || '').trim();
     const reason = String(body.reason || '').trim();
-    if (!empId || !['comp', 'app'].includes(field) || !newId || !reason) throw new HttpError(422, 'Employee, assignment, new value, and reason are required.');
-    if (a.role !== 'hr' && !A.inScope(a, empId)) throw new HttpError(403, 'You do not have access to employee ' + empId + '.');
-    const id = 'DR-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
+    if (!empId || !reason) throw new HttpError(422, 'Employee and reason are required.');
+    if (requestType === 'delegation') {
+      if (!['comp', 'app'].includes(field) || !newId) throw new HttpError(422, 'Choose an assignment and a new value.');
+      if (a.role !== 'hr' && !A.inScope(a, empId)) throw new HttpError(403, 'You do not have access to employee ' + empId + '.');
+    } else if (requestType === 'screen') {
+      if (!['hr', 'techEd', 'compMgr'].includes(a.role)) throw new HttpError(403, 'Your role cannot submit screen requests.');
+    } else {
+      throw new HttpError(422, 'Unsupported request type.');
+    }
+    const id = 'DR-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
     const at = nowDT();
-    const byName = String(body.byName || a.user.name || 'Tech Ed');
+    const byName = String(body.byName || a.user.name || a.user.email || 'Application user');
     await table.insertRow({
-      changed_at: at, changed_by: a.user.email, kind: DELEGATION_REQUEST_PREFIX + 'pending',
+      changed_at: at, changed_by: a.user.email || '', kind: DELEGATION_REQUEST_PREFIX + 'pending',
       target: empId, role: byName,
-      old_value: JSON.stringify({ field, oldId: String(body.oldId || ''), empName: String(body.empName || empId), byId: a.user.email, byName }),
-      new_value: newId, reason: reason.slice(0, 500), batch_id: id
+      old_value: JSON.stringify({
+        requestType, field: requestType === 'screen' ? 'screen' : field,
+        oldId: String(body.oldId || ''), empName: String(body.empName || empId),
+        byId: a.user.email || '', byName, requestedRole: a.role
+      }),
+      new_value: requestType === 'screen' ? '' : newId,
+      reason: reason.slice(0, 500), batch_id: id
     });
     send(res, { request: { id, no: id } });
     return;
   }
 
   if (action === 'decide') {
-    if (a.role !== 'hr') throw new HttpError(403, 'Only HR Admin can approve or reject delegation requests.');
-    // HR is the designated approver. Do not block HR on a stale or missing
-    // Delegation screen matrix entry; authorization is role-checked above.
+    if (a.role !== 'hr') throw new HttpError(403, 'Only HR Admin can approve or reject requests.');
     const id = String(body.id || '').trim();
     const status = String(body.status || '').toLowerCase();
     const remarks = String(body.remarks || '').trim();
@@ -185,7 +200,7 @@ app.post('/delegation/requests', asyncRoute(async (req, res) => {
     if (status === 'rejected' && !remarks) throw new HttpError(422, 'HR remarks are mandatory when rejecting.');
     const all = await selectAll(ap.admin.zcql(), T.log);
     const row = all.find((r) => String(r.batch_id) === id && r.kind === DELEGATION_REQUEST_PREFIX + 'pending');
-    if (!row) throw new HttpError(404, 'Pending delegation request not found. It may already have been decided.');
+    if (!row) throw new HttpError(404, 'Pending request not found. It may already have been decided.');
     let meta = {};
     try { meta = JSON.parse(row.old_value || '{}'); } catch (_) {}
     meta.decidedBy = a.user.name || a.user.email;
@@ -195,7 +210,7 @@ app.post('/delegation/requests', asyncRoute(async (req, res) => {
     send(res, { id, status });
     return;
   }
-  throw new HttpError(422, 'Unsupported delegation request action.');
+  throw new HttpError(422, 'Unsupported request action.');
 }));
 
 /* ---------------------------------------------------------------------
