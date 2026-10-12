@@ -310,7 +310,10 @@ const getCycleName = (value) => {
 };
 
 const normalizeCycleKey = (value) =>
-  String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 
 const normalizeHistoryRecord = (record) => {
   const basePay = Number(record?.base_pay) || 0;
@@ -344,13 +347,13 @@ const normalizeHistoryRecord = (record) => {
 };
 
 const HISTORY_COLUMNS = [
-  { key: "basePay", label: "Curr Base Pay" },
+  { key: "basePay", label: "Current Base Pay" },
   { key: "joiningBonus", label: "Joining Bonus" },
-  { key: "performanceBonus", label: "Perf. Bonus" },
+  { key: "performanceBonus", label: "Perfermance Bonus" },
   { key: "retentionBonus", label: "Retention Bonus" },
   { key: "totalBonus", label: "Total Bonus" },
   { key: "hikeAmount", label: "Hike Amount" },
-  { key: "newCTC", label: "Total CTC" },
+  { key: "newCTC", label: "Total CTC with Rewards" },
   { key: "targetPB", label: "Target PB" },
   { key: "newBasePay", label: "New Base Pay" },
 ];
@@ -1736,211 +1739,214 @@ export function DetailScreenPage({
 
             {/* METRICS */}
             {metricsOpen && (
-            <aside className="ds-side" aria-label="Metrics">
-              <div className="ds-card">
-                {metricsOpen ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => setMetricsOpen(false)}
-                      className="shrink-0 border-b px-3 py-2 text-left text-[12px] font-bold"
-                      style={{
-                        borderColor: LINE,
-                        color: INK,
-                        background: "#fff",
-                      }}
-                    >
-                      Metrics ‹
-                    </button>
-                    <div className="ds-scroll flex-1 p-3">
-                      {metrics.map(([k, v]) => (
-                        <div
-                          key={k}
-                          className="mb-2.5 rounded border px-2.5 py-2"
-                          style={{ borderColor: LINE, background: SOFT }}
-                        >
+              <aside className="ds-side" aria-label="Metrics">
+                <div className="ds-card">
+                  {metricsOpen ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setMetricsOpen(false)}
+                        className="shrink-0 border-b px-3 py-2 text-left text-[12px] font-bold"
+                        style={{
+                          borderColor: LINE,
+                          color: INK,
+                          background: "#fff",
+                        }}
+                      >
+                        Metrics ‹
+                      </button>
+                      <div className="ds-scroll flex-1 p-3">
+                        {metrics.map(([k, v]) => (
                           <div
-                            className="text-[10.5px]"
-                            style={{ color: MUTED }}
+                            key={k}
+                            className="mb-2.5 rounded border px-2.5 py-2"
+                            style={{ borderColor: LINE, background: SOFT }}
                           >
-                            {k}
+                            <div
+                              className="text-[10.5px]"
+                              style={{ color: MUTED }}
+                            >
+                              {k}
+                            </div>
+                            <div
+                              className="text-[14px] font-extrabold"
+                              style={{ color: INK }}
+                            >
+                              {v}
+                            </div>
                           </div>
-                          <div
-                            className="text-[14px] font-extrabold"
-                            style={{ color: INK }}
-                          >
-                            {v}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : null}
-              </div>
-            </aside>
+                        ))}
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              </aside>
             )}
 
             {/* FEEDBACK */}
             {cardOpen && (
-            <aside className="ds-side" aria-label="Feedback">
-              <div className="ds-card">
-                {cardOpen ? (
-                  <>
-                    <div
-                      className="flex shrink-0 items-center justify-between gap-2 px-3 py-2"
-                      style={{ background: NAVY, color: "#fff" }}
-                    >
-                      <span className="flex-1 text-center text-[14px] font-extrabold">
-                        Feedback
-                      </span>
-                      <div className="flex items-center gap-1">
+              <aside className="ds-side" aria-label="Feedback">
+                <div className="ds-card">
+                  {cardOpen ? (
+                    <>
+                      <div
+                        className="flex shrink-0 items-center justify-between gap-2 px-3 py-2"
+                        style={{ background: NAVY, color: "#fff" }}
+                      >
+                        <span className="flex-1 text-center text-[14px] font-extrabold">
+                          Feedback
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFeedbackWidth((w) => Math.max(240, w - 40))
+                            }
+                            aria-label="Decrease feedback panel width"
+                            className="h-[28px] w-[28px] rounded border font-bold"
+                            style={{
+                              borderColor: "#4A6580",
+                              color: "#fff",
+                              background: "transparent",
+                            }}
+                          >
+                            −
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setFeedbackWidth((w) => Math.min(620, w + 40))
+                            }
+                            aria-label="Increase feedback panel width"
+                            className="h-[28px] w-[28px] rounded border font-bold"
+                            style={{
+                              borderColor: "#4A6580",
+                              color: "#fff",
+                              background: "transparent",
+                            }}
+                          >
+                            +
+                          </button>
+                        </div>
                         <button
                           type="button"
-                          onClick={() =>
-                            setFeedbackWidth((w) => Math.max(240, w - 40))
-                          }
-                          aria-label="Decrease feedback panel width"
-                          className="h-[28px] w-[28px] rounded border font-bold"
+                          onClick={() => setCardOpen(false)}
+                          aria-label="Close feedback"
+                          className="h-[28px] w-[34px] rounded border"
                           style={{
                             borderColor: "#4A6580",
                             color: "#fff",
                             background: "transparent",
                           }}
                         >
-                          −
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setFeedbackWidth((w) => Math.min(620, w + 40))
-                          }
-                          aria-label="Increase feedback panel width"
-                          className="h-[28px] w-[28px] rounded border font-bold"
-                          style={{
-                            borderColor: "#4A6580",
-                            color: "#fff",
-                            background: "transparent",
-                          }}
-                        >
-                          +
+                          ✕
                         </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => setCardOpen(false)}
-                        aria-label="Close feedback"
-                        className="h-[28px] w-[34px] rounded border"
-                        style={{
-                          borderColor: "#4A6580",
-                          color: "#fff",
-                          background: "transparent",
-                        }}
-                      >
-                        ✕
-                      </button>
-                    </div>
 
-                    <div className="flex shrink-0 gap-2 px-3 py-2.5">
-                      {[
-                        ["manager", "Manager"],
-                        ["client", "Client"],
-                        ["other", "Other"],
-                      ].map(([k, l]) => (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => setFbTab(k)}
-                          className="rounded-full border px-3 py-1 text-[12px] font-semibold"
-                          style={{
-                            borderColor: fbTab === k ? "#9AA7B4" : LINE,
-                            background: fbTab === k ? SOFT : "#fff",
-                            color: INK,
-                          }}
-                        >
-                          {l}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="ds-scroll flex-1 px-4 pb-3">
-                      {timeline.map((t) => (
-                        <div key={t.year} className="mb-3 flex gap-2.5">
-                          <span
-                            className="mt-1.5 inline-block h-[11px] w-[11px] shrink-0 rounded-full border-2"
+                      <div className="flex shrink-0 gap-2 px-3 py-2.5">
+                        {[
+                          ["manager", "Manager"],
+                          ["client", "Client"],
+                          ["other", "Other"],
+                        ].map(([k, l]) => (
+                          <button
+                            key={k}
+                            type="button"
+                            onClick={() => setFbTab(k)}
+                            className="rounded-full border px-3 py-1 text-[12px] font-semibold"
                             style={{
-                              borderColor: t.current ? LTEAL : "#C4CED6",
-                              background: t.current ? LTEAL : "#fff",
+                              borderColor: fbTab === k ? "#9AA7B4" : LINE,
+                              background: fbTab === k ? SOFT : "#fff",
+                              color: INK,
                             }}
-                          />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <b className="text-[14px]" style={{ color: INK }}>
-                                {t.year}
-                              </b>
-                              {t.current ? (
-                                <span
-                                  className="rounded px-2 py-0.5 text-[11px] font-semibold"
-                                  style={{ background: SOFT, color: INK }}
+                          >
+                            {l}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="ds-scroll flex-1 px-4 pb-3">
+                        {timeline.map((t) => (
+                          <div key={t.year} className="mb-3 flex gap-2.5">
+                            <span
+                              className="mt-1.5 inline-block h-[11px] w-[11px] shrink-0 rounded-full border-2"
+                              style={{
+                                borderColor: t.current ? LTEAL : "#C4CED6",
+                                background: t.current ? LTEAL : "#fff",
+                              }}
+                            />
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <b
+                                  className="text-[14px]"
+                                  style={{ color: INK }}
                                 >
-                                  This cycle
-                                </span>
-                              ) : null}
-                            </div>
-                            <div style={{ color: MUTED }}>{t.title}</div>
-                            <div className="mt-1 flex flex-wrap gap-1.5">
-                              <span
-                                className="rounded px-2 py-0.5 text-[11.5px]"
-                                style={{ background: SOFT, color: INK }}
-                              >
-                                {fbTab === "manager"
-                                  ? "Manager"
-                                  : fbTab === "client"
-                                    ? "Client"
-                                    : "Other"}{" "}
-                                rating{" "}
-                                <b>{fbTab === "manager" ? t.rating : "—"}</b>
-                                {t.current &&
-                                fbTab === "manager" &&
-                                t.rating !== "—"
-                                  ? " / 5"
-                                  : ""}
-                              </span>
-                              {t.promo ? (
+                                  {t.year}
+                                </b>
+                                {t.current ? (
+                                  <span
+                                    className="rounded px-2 py-0.5 text-[11px] font-semibold"
+                                    style={{ background: SOFT, color: INK }}
+                                  >
+                                    This cycle
+                                  </span>
+                                ) : null}
+                              </div>
+                              <div style={{ color: MUTED }}>{t.title}</div>
+                              <div className="mt-1 flex flex-wrap gap-1.5">
                                 <span
                                   className="rounded px-2 py-0.5 text-[11.5px]"
                                   style={{ background: SOFT, color: INK }}
                                 >
-                                  Eligible for promotion: {t.promo}
+                                  {fbTab === "manager"
+                                    ? "Manager"
+                                    : fbTab === "client"
+                                      ? "Client"
+                                      : "Other"}{" "}
+                                  rating{" "}
+                                  <b>{fbTab === "manager" ? t.rating : "—"}</b>
+                                  {t.current &&
+                                  fbTab === "manager" &&
+                                  t.rating !== "—"
+                                    ? " / 5"
+                                    : ""}
                                 </span>
+                                {t.promo ? (
+                                  <span
+                                    className="rounded px-2 py-0.5 text-[11.5px]"
+                                    style={{ background: SOFT, color: INK }}
+                                  >
+                                    Eligible for promotion: {t.promo}
+                                  </span>
+                                ) : null}
+                              </div>
+                              {t.note ? (
+                                <div
+                                  className="mt-1"
+                                  style={{ color: "#3E4C59" }}
+                                >
+                                  {t.note}
+                                </div>
+                              ) : fbTab === "manager" && t.rating !== "—" ? (
+                                <div className="mt-1" style={{ color: MUTED }}>
+                                  {t.rating} / 5
+                                </div>
                               ) : null}
                             </div>
-                            {t.note ? (
-                              <div
-                                className="mt-1"
-                                style={{ color: "#3E4C59" }}
-                              >
-                                {t.note}
-                              </div>
-                            ) : fbTab === "manager" && t.rating !== "—" ? (
-                              <div className="mt-1" style={{ color: MUTED }}>
-                                {t.rating} / 5
-                              </div>
-                            ) : null}
                           </div>
+                        ))}
+                        <div
+                          className="mt-2 text-[11.5px]"
+                          style={{ color: MUTED }}
+                        >
+                          Client rating and past RR % are not in the sheet yet,
+                          so they show “—”.
                         </div>
-                      ))}
-                      <div
-                        className="mt-2 text-[11.5px]"
-                        style={{ color: MUTED }}
-                      >
-                        Client rating and past RR % are not in the sheet yet, so
-                        they show “—”.
                       </div>
-                    </div>
-                  </>
-                ) : null}
-              </div>
-            </aside>
+                    </>
+                  ) : null}
+                </div>
+              </aside>
             )}
 
             {/* Closed panels: dark tabs on the right edge, like Bulk Edit */}
