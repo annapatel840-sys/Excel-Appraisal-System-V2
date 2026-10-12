@@ -494,7 +494,7 @@ const withHistoryAliases = (record) => {
     base_pay: pick("base_pay", "current_annual_base_pay"),
     new_ctc: pick("new_ctc", "total_CTC_with_rewards"),
     target_performance_bonus: pick("target_performance_bonus", "target_performance_agreed"),
-    new_base_pay: pick("new_base_pay", "new_base_pay"),
+    new_base_pay: record.new_base_pay,
     joining_bonus: record.joining_bonus,
     performance_bonus: record.performance_bonus,
     retention_bonus: record.retention_bonus,
@@ -534,11 +534,11 @@ const getHistory = async (app, table, empId, diag) => {
     .sort((a, b) => {
       const yearOrder = (value) => {
         const year = String(value || "").trim();
-        const fiscal = year.match(/(\\d{4})\\s*[-/–]\\s*(\\d{2,4})/);
+        const fiscal = year.match(/(\d{4})\s*[-/–]\s*(\d{2,4})/);
         if (fiscal) return Number(fiscal[2].length === 2 ? `20${fiscal[2]}` : fiscal[2]);
-        const full = year.match(/(?:19|20)\\d{2}/);
+        const full = year.match(/(?:19|20)\d{2}/);
         if (full) return Number(full[0]);
-        const short = year.match(/(?:Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar)[-\\s](\\d{2})/i);
+        const short = year.match(/(?:Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar)[-\s](\d{2})/i);
         return short ? Number(`20${short[1]}`) : 0;
       };
       return yearOrder(b.appraisal_year) - yearOrder(a.appraisal_year) ||
