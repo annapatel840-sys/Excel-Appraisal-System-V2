@@ -74,6 +74,28 @@ function normalizeOwnerKey(value) {
   return pair ? pair[1] : text;
 }
 
+function canonicalOwnerKey(value, employees = []) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const pair = raw.match(/^(\S+)\s*-\s*(.+)$/);
+  const rawId = pair ? pair[1].trim() : "";
+  const rawName = pair ? pair[2].trim() : raw;
+  const matched = employees.find((employee) => {
+    const id = String(employee.emp_id || employee.employee_id || "").trim();
+    const name = String(employee.name || employee.employee_name || "").trim();
+    const email = String(employee.email || employee.email_id || "").trim();
+    const values = [id, name, email].filter(Boolean).map(normalizeOwnerKey);
+    return values.includes(normalizeOwnerKey(raw)) ||
+      (rawId && values.includes(normalizeOwnerKey(rawId))) ||
+      (rawName && values.includes(normalizeOwnerKey(rawName)));
+  });
+  if (matched) {
+    const id = String(matched.emp_id || matched.employee_id || "").trim();
+    return normalizeOwnerKey(id || matched.name || matched.employee_name || raw);
+  }
+  return normalizeOwnerKey(rawId || raw);
+}
+
 function ownerName(value, employees = []) {
   const raw = String(value || "").trim();
   if (!raw) return "Unassigned";
@@ -278,7 +300,7 @@ function HRApplyBudget() {
     const ownerValues = new Map();
     employeeRows.forEach((employee) => {
       const assignedOwner = employee.appraiser_tech_ed || employee.tech_ed_id || employee.tech_ed || employee.appraiserTechEd || "";
-      const key = normalizeOwnerKey(assignedOwner);
+      const key = canonicalOwnerKey(assignedOwner, employeeRows);
       if (!key) return;
       employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
       if (!ownerValues.has(key)) ownerValues.set(key, assignedOwner);
@@ -288,7 +310,7 @@ function HRApplyBudget() {
     const seenOwners = new Set();
     budgetDistributionRows.forEach((row) => {
       const owner = row.appraiser_tech_ed_id || "";
-      const key = normalizeOwnerKey(owner);
+      const key = canonicalOwnerKey(owner, employeeRows);
       if (!key) return;
       const calculated = Number(row.calculated_budget) || 0;
       const applied = Number(row.applied_budget) || calculated;
