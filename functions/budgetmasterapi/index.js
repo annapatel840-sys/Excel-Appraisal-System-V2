@@ -244,31 +244,51 @@ async function readTableById(app, tableId) {
   return rows;
 }
 
+function readField(row, candidates) {
+  if (!row) return "";
+  const keys = Object.keys(row);
+  for (const candidate of candidates) {
+    if (row[candidate] !== undefined && row[candidate] !== null && String(row[candidate]).trim()) {
+      return row[candidate];
+    }
+    const key = keys.find((item) => item.toLowerCase() === candidate.toLowerCase());
+    if (key && row[key] !== undefined && row[key] !== null && String(row[key]).trim()) {
+      return row[key];
+    }
+  }
+  return "";
+}
+
 async function readEmployeeRoster(app) {
-  // Read Appraisal_Sheet directly by its stable Catalyst table ID; this is
-  // the source of truth for the Tech-ED assignment shown on the appraisal grid.
+  // Return the full roster, not only employees who already have a Tech-ED.
+  // Budget Master needs the full roster both to resolve Tech-ED IDs to names
+  // and to count each employee assigned to a Tech-ED.
   const [appraisalRows, masterRows] = await Promise.all([
     readTableById(app, "74008000000039094"),
     readTableById(app, "74008000000035727"),
   ]);
   const masterById = new Map(masterRows.map((row) => [
-    String(value(row, "emp_id")).trim().toLowerCase(),
+    String(readField(row, ["emp_id", "employee_id"])).trim().toLowerCase(),
     row,
   ]));
-  return appraisalRows.map((row) => {
-    const id = String(value(row, "emp_id")).trim();
-    const master = masterById.get(id.toLowerCase()) || {};
-    const assignment = value(row, "appraiser_tech_ed") ||
-      value(row, "appraiser_tech_ed_id") ||
-      value(master, "appraiser_tech_ed") ||
-      value(master, "appraiser_tech_ed_id") || "";
+  const appraisalById = new Map(appraisalRows.map((row) => [
+    String(readField(row, ["emp_id", "employee_id"])).trim().toLowerCase(),
+    row,
+  ]));
+  const allIds = new Set([...masterById.keys(), ...appraisalById.keys()]);
+  return Array.from(allIds).map((key) => {
+    const row = appraisalById.get(key) || {};
+    const master = masterById.get(key) || {};
+    const id = String(readField(row, ["emp_id", "employee_id"]) || readField(master, ["emp_id", "employee_id"])).trim();
+    const assignment = readField(row, ["appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_teched", "tech_ed", "tech_ed_id"]) ||
+      readField(master, ["appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_teched", "tech_ed", "tech_ed_id"]);
     return {
       emp_id: id,
-      name: String(value(master, "emp_name") || value(row, "name") || id),
+      name: String(readField(master, ["emp_name", "employee_name", "name"]) || readField(row, ["emp_name", "employee_name", "name"]) || id),
       appraiser_tech_ed: String(assignment).trim(),
-      status: String(value(master, "emp_status") || value(row, "status") || ""),
+      status: String(readField(master, ["emp_status", "status"]) || readField(row, ["emp_status", "status"]) || ""),
     };
-  }).filter((row) => row.emp_id && row.appraiser_tech_ed);
+  }).filter((row) => row.emp_id);
 }
 
 
