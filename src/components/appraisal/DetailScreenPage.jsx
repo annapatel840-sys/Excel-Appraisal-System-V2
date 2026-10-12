@@ -20,6 +20,7 @@ import { WalletCards } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { useCurrentCycleName } from "@/lib/current-cycle";
 
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#12304f";
@@ -832,6 +833,7 @@ export function DetailScreenPage({
   budgetNotice = BUDGET_NOTICE_PLACEHOLDER,
 } = {}) {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
+  const currentCycleName = useCurrentCycleName() || CURRENT_CYCLE;
   const { currentUser, isHR } = useBudget();
   const catalystUser = useCatalystUser();
   const role = String(catalystUser?.role || "")
@@ -977,7 +979,7 @@ export function DetailScreenPage({
   const priorCycles = useMemo(() => {
     const seen = new Set();
     const result = [];
-    const currentCycleKey = normalizeCycleKey(CURRENT_CYCLE);
+    const currentCycleKey = normalizeCycleKey(currentCycleName);
 
     for (const record of historyRecords) {
       // Identify a cycle by its name, not by its year/fiscal-year label.
@@ -1269,7 +1271,7 @@ export function DetailScreenPage({
   const timeline = employee
     ? [
         {
-          year: CURRENT_CYCLE,
+          year: currentCycleName,
           current: true,
           title: dash(employee.designation),
           rating: dash(employee.managerRating ?? employee.rating),
@@ -2007,7 +2009,7 @@ export function DetailScreenPage({
                           fontWeight: 800,
                         }}
                       >
-                        {CURRENT_CYCLE} ★
+                        {currentCycleName} ★
                       </div>
                       {cur.map((v, i) => (
                         <HistCell
