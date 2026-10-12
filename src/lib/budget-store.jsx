@@ -237,6 +237,7 @@ export function BudgetProvider({ children }) {
         budgetMasterRows,
         budgetDistributionRows,
         budgetCompManagerRows,
+        employeeRows,
         employeeCounts,
         totals,
         loading,
