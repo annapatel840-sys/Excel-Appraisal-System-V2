@@ -315,52 +315,44 @@ const withAppraisalCycleNames = async (app, records) => {
   const cycleTable = app.datastore().table(APPRAISAL_CYCLE_TABLE_ID);
   const cycleNames = new Map();
 
-  // Resolve lookup values directly by ROWID first. Payroll_Data stores
-  // appraisal_cycle_name as the Appraisal_Cycle_Master ROWID, not its name.
-  const ids = [...new Set(records
-    .map((record) => cycleLookupId(
-      record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name
-    ))
-    .filter((id) => /^\d+$/.test(id)))];
-
-  await Promise.all(ids.map(async (id) => {
-    try {
-      const cycle = await cycleTable.getRow(id);
-      const name = String(
-        cycle?.cycle_name ?? cycle?.cycleName ?? cycle?.name ??
-        cycle?.appraisal_year ?? cycle?.appraisalYear ?? ""
-      ).trim();
-      if (name) cycleNames.set(id, name);
-    } catch (error) {
-      console.warn("Could not fetch appraisal cycle ROWID", id, error?.message || error);
-    }
-  }));
-
-  // Fallback to a full table scan for SDK/table variants where getRow fails.
-  if (ids.some((id) => !cycleNames.has(id))) {
-    try {
-      const cycleRows = await getAllRowsFromTable(cycleTable);
-      cycleRows.forEach((cycle) => {
-        const id = cycleLookupId(cycle.ROWID ?? cycle.rowid ?? cycle.id);
-        const name = String(
-          cycle.cycle_name ?? cycle.cycleName ?? cycle.name ??
-          cycle.appraisal_year ?? cycle.appraisalYear ?? ""
-        ).trim();
-        if (id && name) cycleNames.set(id, name);
-      });
-    } catch (error) {
-      console.error("Could not scan appraisal cycle table:", error?.message || error);
-    }
+  // Always read the Appraisal_Cycle_Master rows and build a ROWID -> cycle_name
+  // map. Payroll_Data.appraisal_cycle_name stores the master ROWID, not its name.
+  const cycleRows = await getAllRowsFromTable(cycleTable);
+  for (const cycle of cycleRows) {
+    const id = String(cycle.ROWID ?? cycle.rowid ?? cycle.id ?? cycle.ID ?? "").trim();
+    const name = String(
+      cycle.cycle_name ?? cycle.cycleName ?? cycle.CYCLE_NAME ??
+      cycle.name ?? cycle.appraisal_year ?? cycle.appraisalYear ?? ""
+    ).trim();
+    if (id && name) cycleNames.set(id, name);
   }
+
+  const getForeignKeyId = (value) => {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "object") {
+      const directId = value.ROWID ?? value.rowid ?? value.id ?? value.ID;
+      if (directId !== undefined && directId !== null) return String(directId).trim();
+      for (const key of ["value", "appraisal_cycle_name", "cycle_name"]) {
+        const nested = getForeignKeyId(value[key]);
+        if (nested) return nested;
+      }
+      return "";
+    }
+    const text = String(value).trim();
+    return /^\\d+$/.test(text) ? text : "";
+  };
 
   return records.map((record) => {
     const raw = record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name;
-    const id = cycleLookupId(raw);
-    const resolvedName = cycleNames.get(id);
-    const rawText = typeof raw === "string" && !/^\d+$/.test(raw) ? raw.trim() : "";
+    const id = getForeignKeyId(raw);
+    const resolvedName = id ? cycleNames.get(id) : "";
+    const rawText = typeof raw === "string" && !/^\\d+$/.test(raw.trim())
+      ? raw.trim()
+      : "";
     return {
       ...record,
       appraisal_cycle_name: resolvedName || rawText,
+      appraisalCycleName: resolvedName || rawText,
     };
   });
 };
