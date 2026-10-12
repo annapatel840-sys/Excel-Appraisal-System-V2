@@ -99,7 +99,7 @@ export default function DelegationScreen({
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const { refreshEmployees } = useAppraisal();
-  const canApprove = access.canAction("delegateApprove");
+  const canApprove = isHR && access.canScreen("delegation", "edit");
   const canAudit = access.canAction("viewAudit");
   // View-only screen, or a Tech Ed without the delegateRequest action: no edits.
   const editLocked =
@@ -344,6 +344,8 @@ export default function DelegationScreen({
   const persistDelegationChange = async (q) =>
     persistFieldChange(q.empId || q.rowId, q.field, q.newId);
   const decide = async (q, approve, rm = remarks[q.id] || "") => {
+    if (!isHR || !canApprove)
+      return say("Only HR with Delegation edit access can approve or reject requests.", true);
     if (!approve && !rm.trim())
       return say("HR remarks are mandatory when rejecting.", true);
     if (approve) {
