@@ -633,47 +633,32 @@ export function SheetPage() {
             isTechEd={isTechEd}
             isHR={isHR}
             onRequest={async (request) => {
-              if (request.type !== "delegation") {
-                const current = JSON.parse(localStorage.getItem("appraisal-screen-requests") || "[]");
-                current.unshift({
-                  id: "SCREEN-" + Date.now(),
-                  rowId: request.employee?.empId || request.employee?.id || "",
-                  empId: request.employee?.empId || request.employee?.id || "",
-                  empName: request.employee?.name || "",
-                  field: "screen",
-                  reason: request.reason || "Requested from Appraisal Sheet",
-                  byId: catalystUser?.email || catalystUser?.user_id || "",
-                  byName: catalystUser?.name || catalystUser?.email || "Tech Ed",
-                  on: new Date().toISOString(), status: "Pending",
-                });
-                localStorage.setItem("appraisal-screen-requests", JSON.stringify(current));
-                window.alert("Screen request sent.");
-                return;
-              }
+              const isScreenRequest = request.type === "screen";
               try {
                 const response = await catalystFetch(catalystFunctionUrl("accessapi") + "delegation/requests", {
                   method: "POST",
                   headers: { "Content-Type": "application/json", Accept: "application/json" },
                   body: JSON.stringify({
                     action: "submit",
+                    requestType: isScreenRequest ? "screen" : "delegation",
                     empId: request.employee?.empId || request.employee?.id || "",
                     empName: request.employee?.name || "",
-                    field: request.field === "compManager" ? "comp" :
+                    field: isScreenRequest ? "screen" :
+                      request.field === "compManager" ? "comp" :
                       request.field === "appraiserTechED" ? "app" : request.field,
                     oldId: request.oldId || "",
                     newId: request.newId || "",
-                    reason: request.reason || "Requested from Appraisal Sheet",
-                    byName: catalystUser?.name || catalystUser?.email || "Tech Ed",
+                    reason: request.reason || (isScreenRequest ? "Screen access requested from Appraisal Sheet" : "Requested from Appraisal Sheet"),
+                    byName: catalystUser?.name || catalystUser?.email || "Application user",
                   }),
                 });
                 const payload = await response.json().catch(() => ({}));
-                if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to send delegation request.");
-                window.alert("Delegation request sent to HR for approval.");
+                if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to send request.");
+                window.alert(isScreenRequest ? "Screen request sent to HR for approval." : "Delegation request sent to HR for approval.");
               } catch (error) {
-                window.alert(error?.message || "Unable to send delegation request to HR.");
+                window.alert(error?.message || "Unable to send request to HR.");
               }
-            }}
-          />
+            }}          />
         </div>
       </AppShell>
 
