@@ -38,7 +38,15 @@ export default function DelegationScreen({
         q.field === "appraiserTechED" || q.field === "app" ? "app" : q.field,
       empId: q.empId || q.employee?.empId || q.rowId || "",
       rowId: q.empId || q.employee?.empId || q.rowId || "",
-      status: String(q.status || "Pending").replace(/^./, (letter) => letter.toUpperCase()),
+      status: (() => {
+        const raw = String(q.status || "").trim().toLowerCase();
+        if (["approved", "rejected", "withdrawn", "superseded"].includes(raw)) {
+          return raw.charAt(0).toUpperCase() + raw.slice(1);
+        }
+        // Any submitted/requested/unknown state stays in the approval queue.
+        // Only an explicit HR decision moves a request to Decided.
+        return "Pending";
+      })(),
       reason: q.reason || q.details || "",
       byName: q.byName || q.requestedBy || q.byId || "Tech Ed",
       no: q.no || q.id || `DR-${Date.now()}`,
@@ -478,11 +486,13 @@ export default function DelegationScreen({
     setFilter({ q: "", te: "", comp: "", status: "" });
   };
  
+  const isPendingRequest = (request) =>
+    !["Approved", "Rejected", "Withdrawn", "Superseded"].includes(
+      String(request.status || "").trim().toLowerCase().replace(/^./, (letter) => letter.toUpperCase()),
+    );
   const shownReqs = myReqs
-    .filter((q) =>
-      reqTab === "Pending" ? q.status === "Pending" : q.status !== "Pending",
-    )
-    .sort((a, b) => b.on.localeCompare(a.on));
+    .filter((q) => reqTab === "Pending" ? isPendingRequest(q) : !isPendingRequest(q))
+    .sort((a, b) => String(b.on || "").localeCompare(String(a.on || "")));
   const teScopes = isHR
     ? uniq(scoped.map((r) => r.te)).map((t) => {
         const rs = scoped.filter((r) => r.te === t);
