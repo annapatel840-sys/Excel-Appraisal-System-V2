@@ -61,6 +61,9 @@ export function AppShell({ children, headerActions }) {
         .toLowerCase()
         .replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
+  // Comp Managers get Budget Distribution in the top menu instead of
+  // HR Operations.
+  const isCompManager = role.includes("compmanager");
   const isHR =
     role === "hr" ||
     role === "humanresources" ||
@@ -75,13 +78,22 @@ export function AppShell({ children, headerActions }) {
     { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
     { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
     ...(!isTechEd ? [{ to: "/bulk-edit", label: "Bulk Edit", icon: SlidersHorizontal }] : []),
-    ...(!isTechEd
+    ...(!isTechEd && !isCompManager
       ? [
           {
             to: "/employee-master",
             label: "HR Operations",
             icon: Users,
             dropdown: isHR,
+          },
+        ]
+      : []),
+    ...(isCompManager
+      ? [
+          {
+            to: "/budget-distribution",
+            label: "Budget Distribution",
+            icon: WalletCards,
           },
         ]
       : []),
@@ -134,12 +146,13 @@ export function AppShell({ children, headerActions }) {
           label: "Bulk Edit",
           icon: SlidersHorizontal,
         },
-        isTechEd && {
+        (isTechEd ||
+          (isCompManager && access.canScreen("budgetDistribution"))) && {
           to: "/budget-distribution",
           label: "Budget Distribution",
           icon: WalletCards,
         },
-        !isTechEd && hrMenuItems.length > 0 && {
+        !isTechEd && !isCompManager && hrMenuItems.length > 0 && {
           to: "/employee-master",
           label: "HR Operations",
           icon: Users,
