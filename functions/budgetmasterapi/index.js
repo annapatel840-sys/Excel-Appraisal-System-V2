@@ -229,12 +229,27 @@ async function readBundle(app) {
   };
 }
 
+async function readTableById(app, tableId) {
+  const table = app.datastore().table(tableId);
+  const rows = [];
+  let nextToken = null;
+  for (let guard = 0; guard < 10000; guard += 1) {
+    const options = { maxRows: 200 };
+    if (nextToken) options.nextToken = nextToken;
+    const page = await table.getPagedRows(options);
+    rows.push(...(Array.isArray(page && page.data) ? page.data : []));
+    if (!(page && page.more_records === true) || !page.next_token) break;
+    nextToken = page.next_token;
+  }
+  return rows;
+}
+
 async function readEmployeeRoster(app) {
-  // Read the actual appraisal/master tables using the admin API so Budget
-  // Master doesn't depend on the signed-in user's Employee Master screen access.
+  // Read Appraisal_Sheet directly by its stable Catalyst table ID; this is
+  // the source of truth for the Tech-ED assignment shown on the appraisal grid.
   const [appraisalRows, masterRows] = await Promise.all([
-    getAllRows(app, "Appraisal_Sheet"),
-    getAllRows(app, "Employee_Master"),
+    readTableById(app, "74008000000039094"),
+    readTableById(app, "74008000000035727"),
   ]);
   const masterById = new Map(masterRows.map((row) => [
     String(value(row, "emp_id")).trim().toLowerCase(),
@@ -243,13 +258,17 @@ async function readEmployeeRoster(app) {
   return appraisalRows.map((row) => {
     const id = String(value(row, "emp_id")).trim();
     const master = masterById.get(id.toLowerCase()) || {};
+    const assignment = value(row, "appraiser_tech_ed") ||
+      value(row, "appraiser_tech_ed_id") ||
+      value(master, "appraiser_tech_ed") ||
+      value(master, "appraiser_tech_ed_id") || "";
     return {
       emp_id: id,
       name: String(value(master, "emp_name") || value(row, "name") || id),
-      appraiser_tech_ed: String(value(row, "appraiser_tech_ed") || value(row, "appraiser_tech_ed_id") || value(master, "appraiser_tech_ed") || value(master, "appraiser_tech_ed_id") || ""),
+      appraiser_tech_ed: String(assignment).trim(),
       status: String(value(master, "emp_status") || value(row, "status") || ""),
     };
-  }).filter((row) => row.emp_id);
+  }).filter((row) => row.emp_id && row.appraiser_tech_ed);
 }
 
 
