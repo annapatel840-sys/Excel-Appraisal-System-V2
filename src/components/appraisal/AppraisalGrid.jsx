@@ -416,12 +416,10 @@ const textOrDash = (value) =>
 
 const getCycleName = (value) => {
   if (value === null || value === undefined || value === "") return "";
-  if (typeof value === "string" || typeof value === "number") return String(value).trim();
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const name = getCycleName(item);
-      if (name) return name;
-    }
+  if (typeof value === "string" || typeof value === "number") {
+    const text = String(value).trim();
+    return /^\d+$/.test(text) ? "" : text;
+  }
     return "";
   }
   if (typeof value === "object") {
