@@ -215,20 +215,27 @@ app.post('/delegation/requests', asyncRoute(async (req, res) => {
         throw new HttpError(422, 'The delegation request is missing its employee, field, or new assignment.');
       }
       const datastore = ap.admin.datastore();
-      const tableName = field === 'comp' ? SETTINGS.appraisalSheet.table : SETTINGS.employeeMaster.table;
       const assignmentColumn = field === 'comp' ? 'comp_manager' : 'appraiser_tech_ed';
-      const assignmentTable = datastore.table(tableName);
-      const assignmentRows = await assignmentTable.getAllRows();
-      const employeeRow = (assignmentRows || []).find((item) =>
-        String(item.emp_id || '').trim().toLowerCase() === empId.toLowerCase()
-      );
-      if (!employeeRow || !(employeeRow.ROWID || employeeRow.rowid)) {
-        throw new HttpError(404, 'Employee ' + empId + ' was not found in ' + tableName + '.');
+      const targetTables = field === 'comp'
+        ? [SETTINGS.appraisalSheet.table]
+        : [SETTINGS.employeeMaster.table, SETTINGS.appraisalSheet.table];
+
+      // The Appraisal Sheet displays the assignment directly. Appraiser Tech-ED
+      // is also maintained in Employee_Master, so keep both records in sync.
+      for (const tableName of targetTables) {
+        const assignmentTable = datastore.table(tableName);
+        const assignmentRows = await assignmentTable.getAllRows();
+        const employeeRow = (assignmentRows || []).find((item) =>
+          String(item.emp_id || '').trim().toLowerCase() === empId.toLowerCase()
+        );
+        if (!employeeRow || !(employeeRow.ROWID || employeeRow.rowid)) {
+          throw new HttpError(404, 'Employee ' + empId + ' was not found in ' + tableName + '.');
+        }
+        await assignmentTable.updateRow({
+          ROWID: employeeRow.ROWID || employeeRow.rowid,
+          [assignmentColumn]: newId
+        });
       }
-      await assignmentTable.updateRow({
-        ROWID: employeeRow.ROWID || employeeRow.rowid,
-        [assignmentColumn]: newId
-      });
       await A.bumpVersion(ap.admin, a.user.email || '', 'Delegation approved for ' + empId);
     }
 
