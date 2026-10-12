@@ -389,8 +389,10 @@ const priorVals = (h) => {
 
 // Shared look for editable controls: lightest green with dark, bold-ish text
 // so values stay clearly readable; a stronger green once changed this cycle.
-const EDITABLE_BG = "#F1FAF4";
-const EDITABLE_BORDER = "#BFE2CE";
+const EDITABLE_BG = "#DCF1E3";
+const EDITABLE_BORDER = "#86C8A3";
+const EDITED_BG = "#BFE5CE";
+const EDITED_BORDER = "#3F9A7C";
 const editableStyle = {
   borderColor: EDITABLE_BORDER,
   background: EDITABLE_BG,
@@ -398,9 +400,9 @@ const editableStyle = {
   fontWeight: 600,
 };
 const editedStyle = {
-  borderColor: "#4FA38F",
-  background: "#E3F4EF",
-  color: "#0B4F46",
+  borderColor: EDITED_BORDER,
+  background: EDITED_BG,
+  color: "#073B33",
   fontWeight: 700,
 };
 const fieldStyle = (edited) => (edited ? editedStyle : editableStyle);
@@ -1649,7 +1651,7 @@ export function DetailScreenPage({
                   <span className="inline-flex items-center gap-1.5">
                     <i
                       className="inline-block h-[11px] w-[11px] rounded-[3px] border"
-                      style={{ background: "#E3F4EF", borderColor: "#4FA38F" }}
+                      style={{ background: EDITED_BG, borderColor: EDITED_BORDER }}
                     />
                     Edited this cycle
                   </span>
@@ -2011,7 +2013,7 @@ export function DetailScreenPage({
                   className="grid items-center text-[12px]"
                   style={{
                     gridTemplateColumns: HIST_GRID,
-                    background: i % 2 ? "#FAFCFC" : "#fff",
+                    background: "#fff",
                     borderBottom: `1px solid ${LINE}`,
                   }}
                 >
