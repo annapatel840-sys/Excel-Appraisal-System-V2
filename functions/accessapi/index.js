@@ -397,43 +397,39 @@ app.post(
           );
         }
 
-        const e = SETTINGS.employeeMaster,
-          s = SETTINGS.appraisalSheet;
+        const s = SETTINGS.appraisalSheet;
         const column = field === "comp" ? "comp_manager" : "appraiser_tech_ed";
-        const targets =
-          field === "comp"
-            ? [{ table: s.table, col: s.empId }]
-            : [
-                { table: e.table, col: e.empId },
-                { table: s.table, col: s.empId },
-              ];
-
-        const datastore = ap.admin.datastore();
-        const zcql = ap.admin.zcql();
-        let updatedCount = 0;
-        for (const target of targets) {
-          const found = await selectAll(
-            zcql,
-            target.table,
-            target.col + " = '" + q(empId) + "'",
-          );
-          for (const r of found) {
-            await datastore
-              .table(target.table)
-              .updateRow({ ROWID: r.ROWID, [column]: newId });
-            updatedCount++;
-          }
-        }
-        if (!updatedCount)
+        // Appraisal_Sheet is the source of truth for these assignments.
+        // Updating Employee_Master as well can fail when that optional column
+        // is absent or protected, leaving the approval action appearing broken.
+        const found = await selectAll(
+          ap.admin.zcql(),
+          s.table,
+          s.empId + " = '" + q(empId) + "'",
+        );
+        if (!found.length)
           throw new HttpError(
             404,
-            "Employee " + empId + " was not found in the employee tables.",
+            "Employee " + empId + " was not found in Appraisal_Sheet.",
           );
-        await A.bumpVersion(
-          ap.admin,
-          a.user.email || "",
-          "Delegation approved for " + empId,
-        );
+        const datastore = ap.admin.datastore();
+        for (const row of found) {
+          await datastore.table(s.table).updateRow({
+            ROWID: row.ROWID,
+            [column]: newId,
+          });
+        }
+        // Version invalidation is helpful but must not turn a successful
+        // assignment update into a failed approval if AccessVersion is locked.
+        try {
+          await A.bumpVersion(
+            ap.admin,
+            a.user.email || "",
+            "Delegation approved for " + empId,
+          );
+        } catch (versionError) {
+          console.error("Delegation approved; access version refresh failed:", versionError);
+        }
       }
 
       meta.decidedBy = a.user.name || a.user.email;
