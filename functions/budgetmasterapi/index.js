@@ -229,6 +229,30 @@ async function readBundle(app) {
   };
 }
 
+async function readEmployeeRoster(app) {
+  // Read the actual appraisal/master tables using the admin API so Budget
+  // Master doesn't depend on the signed-in user's Employee Master screen access.
+  const [appraisalRows, masterRows] = await Promise.all([
+    getAllRows(app, "Appraisal_Sheet"),
+    getAllRows(app, "Employee_Master"),
+  ]);
+  const masterById = new Map(masterRows.map((row) => [
+    String(value(row, "emp_id")).trim().toLowerCase(),
+    row,
+  ]));
+  return appraisalRows.map((row) => {
+    const id = String(value(row, "emp_id")).trim();
+    const master = masterById.get(id.toLowerCase()) || {};
+    return {
+      emp_id: id,
+      name: String(value(master, "emp_name") || value(row, "name") || id),
+      appraiser_tech_ed: String(value(master, "appraiser_tech_ed") || value(row, "appraiser_tech_ed") || value(row, "appraiser_tech_ed_id") || ""),
+      status: String(value(master, "emp_status") || value(row, "status") || ""),
+    };
+  }).filter((row) => row.emp_id);
+}
+
+
 function filterOwn(bundle, a) {
   if (!a || !a.enforced || (a.scope && a.scope.all)) return bundle;
   const techEd = bundle.techEd.filter((row) => matchesOwner(row.appraiser_tech_ed_id, a));
@@ -258,15 +282,20 @@ module.exports = async function (req, res) {
     const app = catalyst.initialize(req, { scope: "admin" });
 
     if (method === "GET") {
-      const bundle = filterOwn(await readBundle(app), a);
-      // data remains an array for the existing screens; the new relational
-      // collections are exposed beside it for screens that need each level.
+      const [rawBundle, employeeRoster] = await Promise.all([
+        readBundle(app),
+        readEmployeeRoster(app),
+      ]);
+      const bundle = filterOwn(rawBundle, a);
+      // The HR Budget Master needs the full assignment roster independently
+      // from budget distribution rows and employee-screen permissions.
       return sendJson(res, 200, {
         success: true,
         data: bundle.techEd,
         master: bundle.master,
         techEd: bundle.techEd,
         compManager: bundle.compManager,
+        employeeRoster,
         more_records: false,
         next_token: null,
       });
