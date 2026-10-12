@@ -347,19 +347,23 @@ const normalizeYearKey = (y) =>
 const isCurrentCycleYearKey = (year) => {
   const raw = String(year ?? "")
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/\\s+/g, " ");
   if (!raw) return false;
-  return (
-    raw === "2026" ||
-    raw === "2026-27" ||
-    raw === "fy2026" ||
-    raw === "fy 2026" ||
-    raw === "apr-26" ||
-    raw === "apr 26" ||
-    raw === "apr-2026" ||
-    raw === "apr 2026" ||
-    raw.includes("2026")
-  );
+
+  // Match only labels that identify the current Apr-26 cycle.
+  // Do not use raw.includes("2026"): it incorrectly classifies a prior
+  // fiscal year such as "FY 2025-2026" as the current cycle and hides it.
+  return new Set([
+    "2026",
+    "2026-27",
+    "fy2026",
+    "fy 2026",
+    "apr-26",
+    "apr 26",
+    "apr-2026",
+    "apr 2026",
+  ]).has(raw);
 };
 const isBlankRecord = (h) =>
   h.designation === "—" &&
