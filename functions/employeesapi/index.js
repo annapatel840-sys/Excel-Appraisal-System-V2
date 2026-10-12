@@ -1196,12 +1196,19 @@ async function updateEmployee(req, res) {
 
   access.guard(a, function () {
     if (isDelegationAssignmentChange) {
-      access.requireScreen(a, "delegation", "edit");
+      // HR administrators manage delegation for the whole organization. Their
+      // authorization must not depend on employee hierarchy scope or a stale
+      // per-screen matrix entry. Non-HR users still need delegation edit access
+      // and must remain within their assigned employee scope.
+      if (a.role !== "hr") {
+        access.requireScreen(a, "delegation", "edit");
+        requireInScope(a, [empId]);
+      }
     } else {
       requireAnyScreen(a, EDIT_SCREENS, "edit");
       requireEditableColumns(a, changedColumns);
+      requireInScope(a, [empId]);
     }
-    requireInScope(a, [empId]);
   });
 
   const appraisalTable = datastore.table(EMPLOYEES_TABLE_ID);
