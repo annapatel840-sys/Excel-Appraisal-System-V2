@@ -493,7 +493,7 @@ const emptyHistoryRecord = (year) => ({
 });
 
 const yearNumberFromCycle = (cycleName) => {
-  const match = String(cycleName || "").match(/(\\d{2,4})$/);
+  const match = String(cycleName || "").match(/(\d{2,4})$/);
   if (!match) return null;
   return match[1].length === 2 ? `20${match[1]}` : match[1];
 };
@@ -508,7 +508,7 @@ const isCurrentYearRecord = (record, currentCycleName = CURRENT_APPRAISAL_YEAR) 
   const year = String(record?.year ?? "").trim();
   const currentYear = yearNumberFromCycle(currentCycleName);
   if (year === currentYear) return true;
-  const fiscal = year.match(/(\\d{4})\\s*[-/–]\\s*(\\d{2,4})/);
+  const fiscal = year.match(/(\d{4})\s*[-/–]\s*(\d{2,4})/);
   if (fiscal) {
     const endYear = fiscal[2].length === 2 ? `20${fiscal[2]}` : fiscal[2];
     return endYear === currentYear;
@@ -563,8 +563,8 @@ const buildHistoryView = (records, row, currentCycleName = CURRENT_APPRAISAL_YEA
   }
 
   const currentRecord =
-    records.find(isCurrentYearRecord) ||
-    emptyHistoryRecord(CURRENT_APPRAISAL_YEAR);
+    records.find((record) => isCurrentYearRecord(record, currentCycleName)) ||
+    emptyHistoryRecord(currentCycleName);
 
   const olderRecords = records.filter((record) => !isCurrentYearRecord(record, currentCycleName));
 
@@ -1478,6 +1478,7 @@ export function AppraisalGrid({
 }) {
   const { updateCell, updateLinkedCells, bulkUpdate, modified } =
     useAppraisal();
+  const currentCycleName = useCurrentCycleName() || CURRENT_APPRAISAL_YEAR;
 
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
@@ -2209,8 +2210,8 @@ export function AppraisalGrid({
   const historyError = historyState?.error || "";
 
   const historyData = useMemo(
-    () => buildHistoryView(historyState?.data || [], liveHistoryRow),
-    [historyState, liveHistoryRow],
+    () => buildHistoryView(historyState?.data || [], liveHistoryRow, currentCycleName),
+    [historyState, liveHistoryRow, currentCycleName],
   );
 
   // ============================================================
