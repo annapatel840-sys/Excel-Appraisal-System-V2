@@ -326,8 +326,16 @@ module.exports = async function (req, res) {
         readEmployeeRoster(app),
       ]);
       const bundle = filterOwn(rawBundle, a);
-      // The HR Budget Master needs the full assignment roster independently
-      // from budget distribution rows and employee-screen permissions.
+      // Build the distinct Tech-ED list directly from Appraisal Sheet assignment
+      // values. This list does not depend on Budget_Distribution being populated.
+      const techEdOwnersByKey = new Map();
+      employeeRoster.forEach((employee) => {
+        const owner = String(employee.appraiser_tech_ed || "").trim();
+        const key = owner.toLowerCase();
+        if (key && !techEdOwnersByKey.has(key)) {
+          techEdOwnersByKey.set(key, { assignment: owner });
+        }
+      });
       return sendJson(res, 200, {
         success: true,
         data: bundle.techEd,
@@ -335,6 +343,7 @@ module.exports = async function (req, res) {
         techEd: bundle.techEd,
         compManager: bundle.compManager,
         employeeRoster,
+        techEdOwners: Array.from(techEdOwnersByKey.values()),
         more_records: false,
         next_token: null,
       });
