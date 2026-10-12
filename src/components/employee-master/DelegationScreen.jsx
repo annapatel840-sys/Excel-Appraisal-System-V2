@@ -337,20 +337,17 @@ export default function DelegationScreen({
       return say("Only HR with Delegation edit access can approve or reject requests.", true);
     if (!approve && !rm.trim())
       return say("HR remarks are mandatory when rejecting.", true);
-    if (approve && q.requestType !== "screen") {
-      try {
-        await persistDelegationChange(q);
-        await refreshEmployees();
-      } catch (error) {
-        return say(error?.message || "Unable to apply delegation change.", true);
-      }
-      setRows((rs) => applyTo(rs, q.rowId, q.field, q.newId, "HR Admin", q.reason, q.byName + " (approved by " + user.name + ")"));
-    }
     try {
+      // The shared API applies the assignment and marks the request decided
+      // atomically in this order. Do not PATCH the employee separately here.
       await decideDelegationRequest(q.id, approve ? "approved" : "rejected", rm.trim());
+      if (approve && q.requestType !== "screen") {
+        await refreshEmployees();
+        setRows((rs) => applyTo(rs, q.rowId, q.field, q.newId, "HR Admin", q.reason, q.byName + " (approved by " + user.name + ")"));
+      }
       await loadRequests();
     } catch (error) {
-      return say(error?.message || "Unable to save approval decision.", true);
+      return say(error?.message || "Unable to " + (approve ? "approve" : "reject") + " delegation request.", true);
     }
     setReqs((qs) =>
       qs.map((x) =>
@@ -397,10 +394,9 @@ export default function DelegationScreen({
       ok: async () => {
         try {
           for (const q of pending) {
-            if (q.requestType !== "screen") await persistDelegationChange(q);
+            await decideDelegationRequest(q.id, "approved");
           }
           await refreshEmployees();
-          for (const q of pending) await decideDelegationRequest(q.id, "approved");
         } catch (error) {
           await refreshEmployees().catch(() => {});
           say(error?.message || "Unable to approve all delegation requests.", true);
