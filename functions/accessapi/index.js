@@ -413,8 +413,12 @@ app.post(
             "Employee " + empId + " was not found in Appraisal_Sheet.",
           );
         const datastore = ap.admin.datastore();
+        // Catalyst Data Store writes must use the stable table ID. The logical
+        // table name works for ZCQL reads but can fail on updateRow with
+        // "No privileges to perform this action".
+        const appraisalTable = datastore.table("74008000000039094");
         for (const row of found) {
-          await datastore.table(s.table).updateRow({
+          await appraisalTable.updateRow({
             ROWID: row.ROWID,
             [column]: newId,
           });
