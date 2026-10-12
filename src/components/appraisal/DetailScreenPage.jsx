@@ -281,7 +281,8 @@ const DS_CSS = `
 const getCycleName = (value) => {
   if (value === null || value === undefined || value === "") return "";
   if (typeof value === "string" || typeof value === "number") {
-    return String(value).trim();
+    const text = String(value).trim();
+    return /^\d+$/.test(text) ? "" : text;
   }
   if (Array.isArray(value)) {
     for (const item of value) {
