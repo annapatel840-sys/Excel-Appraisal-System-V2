@@ -213,9 +213,26 @@ const numericValue = (value) => {
     return "";
   }
 
-  const n = Number(value);
+  const normalized = typeof value === "string" ? value.replace(/,/g, "").trim() : value;
+  const n = Number(normalized);
 
   return Number.isFinite(n) ? n : 0;
+};
+
+const formatEditableNumeric = (value, type) => {
+  if (value === "" || value === null || value === undefined) return "";
+  const number = Number(typeof value === "string" ? value.replace(/,/g, "") : value);
+  if (!Number.isFinite(number)) return String(value);
+  if (type === "decimal") {
+    return number.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+  if (type === "currency" || type === "number") {
+    return number.toLocaleString("en-IN", { maximumFractionDigits: 10 });
+  }
+  return String(value);
 };
 
 // input = yellow tint, calculated = blue tint, master = banded rows.
@@ -2477,7 +2494,7 @@ export function AppraisalGrid({
       }
 
       const basePay = Number(row.currentAnnualBasePay || 0);
-      const pct = Number(raw) || 0;
+      const pct = Number(String(raw).replace(/,/g, "")) || 0;
       const amount = Math.round(basePay * (pct / 100));
 
       const changed =
@@ -2518,7 +2535,7 @@ export function AppraisalGrid({
       }
 
       const basePay = Number(row.currentAnnualBasePay || 0);
-      const amount = Number(raw) || 0;
+      const amount = Number(String(raw).replace(/,/g, "")) || 0;
       const pct = basePay ? Number(((amount / basePay) * 100).toFixed(1)) : 0;
 
       const changed =
@@ -3278,14 +3295,13 @@ export function AppraisalGrid({
           ref={(element) => {
             cellRefs.current[`${rowIndex}:${col.key}`] = element;
           }}
-          type={
-            col.type === "date"
-              ? "date"
-              : isNumericType(col.type)
-                ? "number"
-                : "text"
+          type={col.type === "date" ? "date" : "text"}
+          inputMode={isNumericType(col.type) ? "decimal" : undefined}
+          value={
+            isNumericType(col.type) && active !== `${rowIndex}:${col.key}`
+              ? formatEditableNumeric(storedValue, col.type)
+              : draftValue
           }
-          value={draftValue}
           onFocus={(event) => {
             setActive(`${rowIndex}:${col.key}`);
             selectRowForEdit(row);
