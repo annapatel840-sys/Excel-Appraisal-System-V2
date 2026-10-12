@@ -209,7 +209,12 @@ app.post('/delegation/requests', asyncRoute(async (req, res) => {
     if (status === 'approved' && String(meta.requestType || 'delegation').toLowerCase() !== 'screen') {
       const empId = String(row.target || '').trim();
       const newId = String(row.new_value || '').trim();
-      const field = String(meta.field || '').trim().toLowerCase();
+      const rawField = String(meta.field || '').trim().toLowerCase().replace(/[\\s-]+/g, '_');
+      const field = ['comp', 'comp_manager', 'compmanager'].includes(rawField)
+        ? 'comp'
+        : ['app', 'appraiser_tech_ed', 'appraiserteched', 'tech_ed_appraiser'].includes(rawField)
+          ? 'app'
+          : rawField;
       if (!empId || !newId || !['comp', 'app'].includes(field)) {
         throw new HttpError(422, 'The delegation request is missing its employee, field, or new assignment.');
       }
