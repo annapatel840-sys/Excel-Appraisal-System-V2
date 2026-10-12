@@ -16,7 +16,8 @@ import {
   newBaseSalary,
   totalCTCWithRewards,
 } from "@/lib/appraisal-data";
-import { WalletCards } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Bell } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
@@ -84,7 +85,7 @@ const formatNoteTime = () => {
   );
 };
 
-function NotesPopover({ contextLabel }) {
+function NotesPopover({ contextLabel, floating = false }) {
   const [notes, setNotes] = useState(() => readStore(NOTES_KEY, []));
   const [text, setText] = useState(() => readStore(NOTE_DRAFT_KEY, ""));
   const [tie, setTie] = useState(true);
@@ -127,7 +128,7 @@ function NotesPopover({ contextLabel }) {
 
   return (
     <div
-      className="absolute right-0 top-full z-[300] mt-1.5 w-[380px] max-w-[calc(100vw-1rem)] rounded-xl border bg-white px-3.5 py-3 text-[12.5px] text-[#111827] shadow-[0_8px_24px_rgba(17,24,39,.14)]"
+      className={`${floating ? "" : "absolute right-0 top-full mt-1.5"} z-[300] w-[380px] max-w-[calc(100vw-1rem)] rounded-xl border bg-white px-3.5 py-3 text-[12.5px] text-[#111827] shadow-[0_8px_24px_rgba(17,24,39,.14)]`}
       style={{ fontFamily: FONT }}
     >
       <h4
@@ -458,40 +459,68 @@ function useFitScale(depKey) {
 /* ------------------------------------------------------------------
    SMALL PRESENTATIONAL COMPONENTS
    ------------------------------------------------------------------ */
-function BudgetBanner({ notice, onGotIt }) {
-  if (!notice) return null;
+const BANNER_BTN =
+  "min-w-[92px] shrink-0 rounded border border-[#c4ced6] bg-[#eef3f3] px-3 py-1 text-center text-[11px] font-semibold text-[#102a43] hover:bg-[#e4ecec]";
 
-  const budgetNoticeText = `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`;
+/* Budget notice. Expanded: [Budget changed] [marquee] [View budget] [Got it].
+   After "Got it" it folds into a slim row with a bell icon button that opens
+   the notice again; View budget stays reachable on the right either way. */
+function BudgetBanner({ notice, open, onGotIt, onShow, onViewBudget }) {
+  const viewBudgetBtn = (
+    <button type="button" onClick={onViewBudget} className={BANNER_BTN}>
+      View budget
+    </button>
+  );
 
-  // Same size and look as the notice on the Appraisal Sheet.
+  if (notice && open) {
+    const budgetNoticeText = `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`;
+
+    // Same size and look as the notice on the Appraisal Sheet.
+    return (
+      <div className="flex items-center gap-3 rounded-md border border-[#e3e9ec] bg-white px-3 py-1.5">
+        <span className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-[#102a43]">
+          <span className="text-[#b42318]">▲</span>
+          Budget changed
+        </span>
+        <span
+          className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[12px] text-[#3e4c59]"
+          aria-label={budgetNoticeText}
+        >
+          <span className="ds-marquee">{budgetNoticeText}</span>
+        </span>
+        {viewBudgetBtn}
+        <button type="button" onClick={onGotIt} className={BANNER_BTN}>
+          Got it
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex items-center gap-3 rounded-md border border-[#e3e9ec] bg-white px-3 py-1.5">
-      <span className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-[#102a43]">
-        <span className="text-[#b42318]">▲</span>
-        Budget changed
-      </span>
-      <span
-        className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[12px] text-[#3e4c59]"
-        aria-label={budgetNoticeText}
-      >
-        <span className="ds-marquee">{budgetNoticeText}</span>
-      </span>
-      <button
-        type="button"
-        onClick={onGotIt}
-        className="shrink-0 rounded border border-[#c4ced6] bg-[#eef3f3] px-3 py-1 text-[11px] font-semibold text-[#102a43] hover:bg-[#e4ecec]"
-      >
-        Got it
-      </button>
+    <div className="flex items-center gap-2">
+      {notice && (
+        <button
+          type="button"
+          onClick={onShow}
+          title="Show budget notice"
+          aria-label="Show budget notice"
+          className="relative inline-flex size-7 shrink-0 items-center justify-center rounded border border-[#c4ced6] bg-[#eef3f3] text-[#102a43] hover:bg-[#e4ecec]"
+        >
+          <Bell className="size-3.5" />
+          <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-[#b42318]" />
+        </button>
+      )}
+      <div className="ml-auto">{viewBudgetBtn}</div>
     </div>
   );
 }
 
-/* White bar under the blue top nav, same look as the Appraisal Sheet's:
-   View budget and My notes on the right (the same two buttons this screen
-   always had; only their position changed). */
-function DetailToolbar({ onViewBudget, employee }) {
+/* My notes button for the blue employee bar. The popover is drawn through a
+   portal (fixed position) because the card around the bar clips overflow. */
+function NotesButton({ employee }) {
   const [notesOpen, setNotesOpen] = useState(false);
+  const [anchor, setAnchor] = useState({ top: 0, right: 0 });
+  const btnRef = useRef(null);
 
   const notesCount = useMemo(() => {
     const saved = readStore(NOTES_KEY, []);
@@ -507,51 +536,56 @@ function DetailToolbar({ onViewBudget, employee }) {
     return () => document.removeEventListener("mousedown", handleOutside);
   }, [notesOpen]);
 
-  return (
-    <div
-      className="flex items-center gap-2"
-      style={{
-        padding: "6px 12px",
-        background: "#fff",
-        border: "1px solid #D9DEE7",
-        borderRadius: 6,
-      }}
-    >
-      <div className="ml-auto flex items-center gap-2">
-        <button
-          type="button"
-          onClick={onViewBudget}
-          className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#d1d5db] bg-white px-2.5 text-[12px] font-bold text-[#111827] hover:border-[#102a43]"
-        >
-          <WalletCards className="size-3.5" />
-          View budget
-        </button>
+  const toggle = () => {
+    if (!notesOpen && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setAnchor({
+        top: r.bottom + 6,
+        right: Math.max(8, window.innerWidth - r.right),
+      });
+    }
+    setNotesOpen((previous) => !previous);
+  };
 
-        <div className="relative" data-detail-notes>
-          <button
-            type="button"
-            onClick={() => setNotesOpen((previous) => !previous)}
-            aria-expanded={notesOpen}
-            className="inline-flex h-8 items-center whitespace-nowrap rounded-md border border-[#d1d5db] bg-white px-2.5 text-[12px] font-bold text-[#111827] hover:border-[#102a43]"
+  return (
+    <div className="shrink-0" data-detail-notes>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggle}
+        aria-expanded={notesOpen}
+        className="inline-flex h-6 items-center whitespace-nowrap rounded-md border border-white/40 bg-white/10 px-2.5 text-[11.5px] font-bold text-white hover:bg-white/20"
+        style={{ fontFamily: FONT }}
+      >
+        ✎ My notes
+        {notesCount > 0 && (
+          <span className="ml-1.5 rounded-[9px] bg-white px-1.5 text-[10.5px] font-extrabold text-[#102a43]">
+            {notesCount}
+          </span>
+        )}
+      </button>
+      {notesOpen &&
+        createPortal(
+          <div
+            data-detail-notes
+            style={{
+              position: "fixed",
+              top: anchor.top,
+              right: anchor.right,
+              zIndex: 400,
+            }}
           >
-            ✎ My notes
-            {notesCount > 0 && (
-              <span className="ml-1.5 rounded-[9px] bg-[#102a43] px-1.5 text-[10.5px] font-extrabold text-white">
-                {notesCount}
-              </span>
-            )}
-          </button>
-          {notesOpen && (
             <NotesPopover
+              floating
               contextLabel={
                 employee
                   ? `${employee.name} (${employee.empId}) · ${CURRENT_CYCLE}`
                   : `Detailed Screen · ${CURRENT_CYCLE}`
               }
             />
-          )}
-        </div>
-      </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
@@ -1259,10 +1293,12 @@ export function DetailScreenPage({
           style={{ padding: "6px 12px 2px", minWidth: 0 }}
         >
           <BudgetBanner
-            notice={noticeOpen ? budgetNotice : null}
+            notice={budgetNotice}
+            open={noticeOpen}
             onGotIt={() => setNoticeOpen(false)}
+            onShow={() => setNoticeOpen(true)}
+            onViewBudget={handleViewBudget}
           />
-          <DetailToolbar onViewBudget={handleViewBudget} employee={employee} />
         </div>
 
         {!employee ? (
@@ -1304,16 +1340,7 @@ export function DetailScreenPage({
                     {dash(employee.reportingManager)}
                   </div>
                 </div>
-                <span
-                  className="inline-flex shrink-0 items-center gap-1.5 text-[11.5px] font-semibold"
-                  style={{ color: "#D6E0EC" }}
-                >
-                  <i
-                    className="inline-block h-[11px] w-[11px] rounded-[3px] border"
-                    style={{ background: "#E3F4EF", borderColor: "#4FA38F" }}
-                  />
-                  Edited this cycle
-                </span>
+                <NotesButton employee={employee} />
               </div>
 
               <div
