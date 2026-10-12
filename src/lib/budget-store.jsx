@@ -58,8 +58,11 @@ async function fetchAllEligibleEmployees() {
     const url = new URL(catalystFunctionUrl("employeesapi"));
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(EMPLOYEE_PAGE_LIMIT));
-    url.searchParams.set("status", "active");
-    url.searchParams.set("eligible", "eligible");
+    // HR Budget Master needs the full Appraisal Sheet roster to discover
+    // every assigned Tech-ED, not only active/eligible employees.
+    url.searchParams.set("view", "master");
+    url.searchParams.set("status", "all");
+    url.searchParams.set("eligible", "all");
     const response = await catalystFetch(url.toString());
     let json = {};
     try { json = await response.json(); } catch (_) { json = {}; }
