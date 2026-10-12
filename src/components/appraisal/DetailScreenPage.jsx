@@ -42,7 +42,7 @@ const CURRENT_CYCLE = "Apr-26";
 /* ------------------------------------------------------------------
    FRONTEND-ONLY SETTINGS (layout / banner). None of these touch data.
    ------------------------------------------------------------------ */
-const BUDGET_PATH = "/employee-master?tab=budget-master";
+const BUDGET_PATH = "/budget-distribution";
 // Same budget-change message the Appraisal Sheet shows.
 const BUDGET_NOTICE_PLACEHOLDER = {
   from: "10.41 L",
@@ -466,8 +466,8 @@ const toNum = (v) => {
    so it always fits the box it is given (height AND width). Capped at
    100%, floored at MIN. Re-measures on resize / employee / content change.
    ------------------------------------------------------------------ */
-const FIT_BASE_WIDTH = 760;
-const FIT_MIN = 0.45;
+const FIT_BASE_WIDTH = 700;
+const FIT_MIN = 0.75; // below this the table scrolls instead of shrinking
 function useFitScale(depKey) {
   const boxRef = useRef(null);
   const fitRef = useRef(null);
@@ -509,54 +509,49 @@ const BANNER_BTN =
   "min-w-[92px] shrink-0 rounded border border-[#c4ced6] bg-[#eef3f3] px-3 py-1 text-center text-[11px] font-semibold text-[#102a43] hover:bg-[#e4ecec]";
 
 /* Budget notice. Expanded: [Budget changed] [marquee] [View budget] [Got it].
-   After "Got it" it folds into a slim row with a bell icon button that opens
-   the notice again; View budget stays reachable on the right either way. */
+   After "Got it" only a bell icon button is left on the far right; clicking
+   it brings the whole notice (including View budget) back. */
 function BudgetBanner({ notice, open, onGotIt, onShow, onViewBudget }) {
-  const viewBudgetBtn = (
-    <button type="button" onClick={onViewBudget} className={BANNER_BTN}>
-      View budget
-    </button>
-  );
+  if (!notice) return null;
 
-  if (notice && open) {
-    const budgetNoticeText = `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`;
-
-    // Same size and look as the notice on the Appraisal Sheet.
+  if (!open) {
     return (
-      <div className="flex items-center gap-3 rounded-md border border-[#e3e9ec] bg-white px-3 py-1.5">
-        <span className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-[#102a43]">
-          <span className="text-[#b42318]">▲</span>
-          Budget changed
-        </span>
-        <span
-          className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[12px] text-[#3e4c59]"
-          aria-label={budgetNoticeText}
-        >
-          <span className="ds-marquee">{budgetNoticeText}</span>
-        </span>
-        {viewBudgetBtn}
-        <button type="button" onClick={onGotIt} className={BANNER_BTN}>
-          Got it
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-2">
-      {notice && (
+      <div className="flex items-center">
         <button
           type="button"
           onClick={onShow}
           title="Show budget notice"
           aria-label="Show budget notice"
-          className="relative inline-flex size-7 shrink-0 items-center justify-center rounded border border-[#c4ced6] bg-[#eef3f3] text-[#102a43] hover:bg-[#e4ecec]"
+          className="relative ml-auto inline-flex size-7 shrink-0 items-center justify-center rounded border border-[#c4ced6] bg-[#eef3f3] text-[#102a43] hover:bg-[#e4ecec]"
         >
           <Bell className="size-3.5" />
           <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-[#b42318]" />
         </button>
-      )}
-      <div className="ml-auto">{viewBudgetBtn}</div>
+      </div>
+    );
+  }
+
+  const budgetNoticeText = `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`;
+
+  // Same size and look as the notice on the Appraisal Sheet.
+  return (
+    <div className="flex items-center gap-3 rounded-md border border-[#e3e9ec] bg-white px-3 py-1.5">
+      <span className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-[#102a43]">
+        <span className="text-[#b42318]">▲</span>
+        Budget changed
+      </span>
+      <span
+        className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[12px] text-[#3e4c59]"
+        aria-label={budgetNoticeText}
+      >
+        <span className="ds-marquee">{budgetNoticeText}</span>
+      </span>
+      <button type="button" onClick={onViewBudget} className={BANNER_BTN}>
+        View budget
+      </button>
+      <button type="button" onClick={onGotIt} className={BANNER_BTN}>
+        Got it
+      </button>
     </div>
   );
 }
@@ -643,7 +638,7 @@ function CompHead({ children }) {
         background: SOFT,
         color: INK,
         fontWeight: 700,
-        fontSize: "13.5px",
+        fontSize: "14.5px",
         padding: "4px 10px",
         borderBottom: `1px solid ${LINE}`,
         borderRight: `1px solid ${LINE}`,
@@ -664,7 +659,7 @@ function Cell({ children, strong, align }) {
         alignItems: align === "right" ? "flex-end" : "stretch",
         gap: 2,
         padding: strong ? "4px 10px" : "3px 8px",
-        fontSize: "13px",
+        fontSize: "14px",
         borderBottom: `1px solid ${LINE}`,
         borderRight: `1px solid ${LINE}`,
         minWidth: 0,
@@ -684,7 +679,7 @@ function ReadOnlyInput({ value, bold }) {
       readOnly
       disabled
       value={value}
-      className="h-[23px] w-full min-w-0 rounded border px-2 text-[12px]"
+      className="h-[27px] w-full min-w-0 rounded border px-2 text-[13.5px]"
       style={{
         borderColor: "#D9E1E6",
         background: "#F3F6F7",
@@ -721,7 +716,7 @@ function EditInput({
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
       }}
-      className={`h-[22px] w-full min-w-0 rounded border px-2 text-[12.5px] outline-none focus:border-[#0B7A75] ${className}`}
+      className={`h-[26px] w-full min-w-0 rounded border px-2 text-[13.5px] outline-none focus:border-[#0B7A75] ${className}`}
       style={fieldStyle(edited)}
     />
   );
@@ -737,7 +732,7 @@ function CompRow({ label, current, children, diffNode, diffText, muted }) {
       <Cell>{children}</Cell>
       <Cell align="right">
         {diffNode ?? (
-          <span style={{ color: muted ? MUTED : INK, fontSize: 11 }}>
+          <span style={{ color: muted ? MUTED : INK, fontSize: 12.5 }}>
             {diffText}
           </span>
         )}
@@ -775,7 +770,7 @@ function PayRow({
             display: "grid",
             gridTemplateColumns: "minmax(0,1fr) 56px",
             gap: 6,
-            fontSize: 10,
+            fontSize: 11.5,
             color: MUTED,
           }}
         >
@@ -788,17 +783,17 @@ function PayRow({
           {children}
           {instalmentSelect}
         </div>
-        <div style={{ fontSize: 10, color: MUTED }}>
+        <div style={{ fontSize: 11.5, color: MUTED }}>
           {diffValue < 0
             ? `Preloaded · less than this → ${fmt(floorAmount)} paid`
             : "Preloaded"}
         </div>
       </Cell>
       <Cell align="right">
-        <span style={{ color, fontWeight: 800, fontSize: 11.5 }}>
+        <span style={{ color, fontWeight: 800, fontSize: 13 }}>
           {signedNum(diffValue)}
         </span>
-        <span style={{ color: MUTED, fontSize: 10 }}>vs to be paid</span>
+        <span style={{ color: MUTED, fontSize: 11.5 }}>vs to be paid</span>
       </Cell>
     </>
   );
@@ -813,7 +808,7 @@ function HikeDiffInputs({
   onHikeAmount,
   onHikePct,
 }) {
-  const lab = { fontSize: 10, color: MUTED, textAlign: "right" };
+  const lab = { fontSize: 11.5, color: MUTED, textAlign: "right" };
   return (
     <div
       style={{
@@ -1238,7 +1233,11 @@ export function DetailScreenPage({
 
   const handleViewBudget = () => {
     if (typeof onViewBudget === "function") onViewBudget();
-    else window.location.assign(BUDGET_PATH);
+    else {
+      // Same in-app navigation the top menu uses (no page reload).
+      window.history.pushState({}, "", BUDGET_PATH);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }
   };
 
   // Blur first so the field being edited commits, then move.
@@ -1367,12 +1366,12 @@ export function DetailScreenPage({
                 style={{ borderColor: NAVY, background: NAVY }}
               >
                 <div
-                  className="min-w-0 flex-1 text-[12.5px] leading-snug"
+                  className="min-w-0 flex-1 text-[13.5px] leading-snug"
                   style={{ color: "#fff" }}
                 >
                   <div className="truncate">
                     <b
-                      className="text-[13px]"
+                      className="text-[14px]"
                       style={{ color: "#fff", letterSpacing: "-.01em" }}
                     >
                       {employee.name}
@@ -1403,12 +1402,12 @@ export function DetailScreenPage({
                   onChange={(e) => handleSearch(e.target.value)}
                   placeholder="Search your team by name or employee ID"
                   aria-label="Search your team"
-                  className="h-[25px] flex-1 rounded border px-2 text-[11px] outline-none focus:border-[#0B7A75]"
+                  className="h-[29px] flex-1 rounded border px-2 text-[12.5px] outline-none focus:border-[#0B7A75]"
                   style={{ borderColor: "#9AA7B4" }}
                 />
                 <span
                   title={`Scope: ${scopeLabel}`}
-                  className="whitespace-nowrap rounded px-2 py-0.5 text-[10.5px] font-semibold"
+                  className="whitespace-nowrap rounded px-2 py-0.5 text-[11.5px] font-semibold"
                   style={{ background: "#E6F3F2", color: "#0B5F5B" }}
                 >
                   {rows.length}
@@ -1432,7 +1431,7 @@ export function DetailScreenPage({
                   }}
                 >
                   <div
-                    className="grid text-[12px]"
+                    className="grid text-[13.5px]"
                     style={{ gridTemplateColumns: COMP_COLS }}
                   >
                     <CompHead>Description</CompHead>
@@ -1509,7 +1508,7 @@ export function DetailScreenPage({
                           onChange={(e) =>
                             commit("pbInstallment", e.target.value)
                           }
-                          className="h-[22px] w-[48px] shrink-0 rounded border px-1 text-[11.5px] outline-none focus:border-[#0B7A75]"
+                          className="h-[26px] w-[48px] shrink-0 rounded border px-1 text-[12.5px] outline-none focus:border-[#0B7A75]"
                           style={fieldStyle(isEdited("pbInstallment"))}
                         >
                           <option value="">—</option>
@@ -1566,7 +1565,7 @@ export function DetailScreenPage({
                             style={{
                               color: ctcCompare.pct < 0 ? RED : GREEN,
                               fontWeight: 800,
-                              fontSize: 11.5,
+                              fontSize: 13,
                             }}
                           >
                             {ctcCompare.pct < 0 ? "−" : ""}
@@ -1616,7 +1615,7 @@ export function DetailScreenPage({
                           commit("targetPBCriteria", e.target.value)
                         }
                         rows={2}
-                        className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[12px] outline-none focus:border-[#0B7A75]"
+                        className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[13.5px] outline-none focus:border-[#0B7A75]"
                         style={fieldStyle(isEdited("targetPBCriteria"))}
                       />
                     </CompRow>
@@ -1637,7 +1636,7 @@ export function DetailScreenPage({
                         key={`${employee.id}-newTitle`}
                         value={employee.newTitle || employee.designation || ""}
                         onChange={(e) => handleNewTitleChange(e.target.value)}
-                        className="h-[24px] w-full min-w-0 rounded border px-1 text-[11.5px] outline-none focus:border-[#0B7A75]"
+                        className="h-[24px] w-full min-w-0 rounded border px-1 text-[12.5px] outline-none focus:border-[#0B7A75]"
                         style={fieldStyle(isEdited("newTitle"))}
                       >
                         {titleOptions.map((t) => {
@@ -1670,7 +1669,7 @@ export function DetailScreenPage({
                           commit("compManagerRemarks", e.target.value)
                         }
                         rows={2}
-                        className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[12px] outline-none focus:border-[#0B7A75]"
+                        className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[13.5px] outline-none focus:border-[#0B7A75]"
                         style={fieldStyle(isEdited("compManagerRemarks"))}
                       />
                     </CompRow>
@@ -1681,7 +1680,7 @@ export function DetailScreenPage({
               {/* Legend + counter + Previous / Save & next: normal flow, always visible */}
               <div className="ds-foot">
                 <div
-                  className="flex flex-wrap items-center gap-3 text-[11.5px]"
+                  className="flex flex-wrap items-center gap-3 text-[12.5px]"
                   style={{ color: MUTED }}
                 >
                   <span className="inline-flex items-center gap-1.5">
@@ -1707,14 +1706,14 @@ export function DetailScreenPage({
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-[11.5px]" style={{ color: MUTED }}>
+                  <span className="text-[12.5px]" style={{ color: MUTED }}>
                     {safeIndex + 1} of {rows.length} · {scopeLabel}
                   </span>
                   <button
                     type="button"
                     onClick={() => goTo(safeIndex - 1)}
                     disabled={safeIndex <= 0}
-                    className="rounded border px-3 py-1.5 text-[12px] font-semibold"
+                    className="rounded border px-3 py-1.5 text-[13.5px] font-semibold"
                     style={{
                       borderColor: LINE,
                       background: "#fff",
@@ -1726,7 +1725,7 @@ export function DetailScreenPage({
                   <button
                     type="button"
                     onClick={() => goTo(safeIndex + 1)}
-                    className="rounded px-4 py-1.5 text-[12.5px] font-bold"
+                    className="rounded px-4 py-1.5 text-[13.5px] font-bold"
                     style={{ background: NAVY, color: "#fff" }}
                   >
                     Save &amp; next ›
