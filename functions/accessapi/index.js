@@ -176,7 +176,8 @@ app.post('/delegation/requests', asyncRoute(async (req, res) => {
 
   if (action === 'decide') {
     if (a.role !== 'hr') throw new HttpError(403, 'Only HR Admin can approve or reject delegation requests.');
-    A.requireScreen(a, 'delegation', 'edit');
+    // HR is the designated approver. Do not block HR on a stale or missing
+    // Delegation screen matrix entry; authorization is role-checked above.
     const id = String(body.id || '').trim();
     const status = String(body.status || '').toLowerCase();
     const remarks = String(body.remarks || '').trim();
