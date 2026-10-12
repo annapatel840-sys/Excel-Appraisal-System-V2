@@ -473,27 +473,25 @@ const CURRENT_APPRAISAL_YEAR_NUMERIC = (() => {
   return match[1].length === 2 ? `20${match[1]}` : match[1];
 })();
 
-const historyYearIdentity = (value) => {
-  const year = String(value ?? "").trim();
-  if (!year) return "";
+const isCurrentYearRecord = (record) => {
+  const year = String(record?.year ?? "").trim();
 
-  // FY labels belong to the year in which the appraisal cycle ends.
-  const fiscal = year.match(/(?:FY\s*)?(\d{4})\s*[-/–]\s*(\d{2,4})/i);
-  if (fiscal) {
-    return fiscal[2].length === 2 ? `20${fiscal[2]}` : fiscal[2];
+  if (
+    year === CURRENT_APPRAISAL_YEAR ||
+    (CURRENT_APPRAISAL_YEAR_NUMERIC && year === CURRENT_APPRAISAL_YEAR_NUMERIC)
+  ) {
+    return true;
   }
 
-  const fullYear = year.match(/(?:19|20)\d{2}/);
-  if (fullYear) return fullYear[0];
+  // Treat FY labels such as "2025-2026" as the year in which the cycle ends.
+  const fiscal = year.match(/(\\d{4})\\s*[-/–]\\s*(\\d{2,4})/);
+  if (fiscal) {
+    const endYear = fiscal[2].length === 2 ? `20${fiscal[2]}` : fiscal[2];
+    return endYear === CURRENT_APPRAISAL_YEAR_NUMERIC;
+  }
 
-  const monthYear = year.match(/(?:Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar)[-\s](\d{2})/i);
-  if (monthYear) return `20${monthYear[1]}`;
-
-  return year.toLowerCase();
+  return false;
 };
-
-const isCurrentYearRecord = (record) =>
-  historyYearIdentity(record?.year) === CURRENT_APPRAISAL_YEAR_NUMERIC;
 
 // ============================================================
 // APPLY LIVE SHEET VALUES TO CURRENT-YEAR HISTORY
@@ -535,28 +533,17 @@ const applyCurrentYearSheetValues = (historyRecord, row) => {
   };
 };
 
-// Current cycle row (always first, always live) + every distinct prior appraisal year.
+// Current cycle row (always first, always live) + older cycles from the API.
 const buildHistoryView = (records, row) => {
-  if (!row) return [];
+  if (!row) {
+    return [];
+  }
 
   const currentRecord =
     records.find(isCurrentYearRecord) ||
     emptyHistoryRecord(CURRENT_APPRAISAL_YEAR);
 
-  // A cycle can be labelled Apr-25, 2025, or FY 2024-2025 in different
-  // source rows. Normalize labels before filtering so only the current cycle
-  // is promoted to the top; other appraisal years are retained.
-  const seenYears = new Set([CURRENT_APPRAISAL_YEAR_NUMERIC]);
-  const olderRecords = [];
-
-  records
-    .filter((record) => !isCurrentYearRecord(record))
-    .forEach((record) => {
-      const identity = historyYearIdentity(record.year);
-      if (identity && seenYears.has(identity)) return;
-      if (identity) seenYears.add(identity);
-      olderRecords.push(record);
-    });
+  const olderRecords = records.filter((record) => !isCurrentYearRecord(record));
 
   return [applyCurrentYearSheetValues(currentRecord, row), ...olderRecords];
 };
