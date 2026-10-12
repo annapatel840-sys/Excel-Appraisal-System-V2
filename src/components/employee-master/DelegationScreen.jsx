@@ -29,9 +29,22 @@ export default function DelegationScreen({
   const isHRUser = String(catalystUser?.role || "").toLowerCase().replace(/[^a-z0-9]/g, "").includes("hr");
   const [user, setUser] = useState({ id: loggedInName, name: loggedInName, role: isHRUser ? "HR Admin" : "Tech Ed" });
   const [rows, setRows] = useState(() => initialRows || []);
+  const normalizeRequests = (items) =>
+    (Array.isArray(items) ? items : []).map((q) => ({
+      ...q,
+      field:
+        q.field === "compManager" || q.field === "comp" ? "comp" :
+        q.field === "appraiserTechED" || q.field === "app" ? "app" : q.field,
+      empId: q.empId || q.employee?.empId || q.rowId || "",
+      rowId: q.empId || q.employee?.empId || q.rowId || "",
+      status: q.status || "Pending",
+      reason: q.reason || q.details || "",
+      byName: q.byName || q.requestedBy || q.byId || "Tech Ed",
+      no: q.no || q.id || `DR-${Date.now()}`,
+    }));
   const [reqs, setReqs] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem("appraisal-delegation-requests") || "[]");
+      return normalizeRequests(JSON.parse(localStorage.getItem("appraisal-delegation-requests") || "[]"));
     } catch {
       return [];
     }
@@ -59,9 +72,28 @@ export default function DelegationScreen({
     try {
       localStorage.setItem("appraisal-delegation-requests", JSON.stringify(reqs));
     } catch {
-      // Local persistence is a temporary bridge until the delegation Data Store/API is connected.
+      // Shared server storage is still required for different browsers/devices.
     }
   }, [reqs]);
+
+  useEffect(() => {
+    const reloadRequests = () => {
+      try {
+        setReqs(normalizeRequests(JSON.parse(localStorage.getItem("appraisal-delegation-requests") || "[]")));
+      } catch {
+        // Keep the current list if local storage is temporarily unavailable.
+      }
+    };
+    const onStorage = (event) => {
+      if (event.key === "appraisal-delegation-requests") reloadRequests();
+    };
+    window.addEventListener("focus", reloadRequests);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener("focus", reloadRequests);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
  
   const isHR = user.role === "HR Admin";
   // Access rules (permissive when accessapi is unavailable).
