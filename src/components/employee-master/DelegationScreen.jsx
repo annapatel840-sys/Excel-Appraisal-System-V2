@@ -224,47 +224,19 @@ export default function DelegationScreen({
   const saveChange = async () => {
     const { row, field, person } = modal;
     if (!reason.trim()) return say("Reason is mandatory.", true);
-    if (isHR) {
-      try {
-        await persistFieldChange(row.id, field, person.id);
-        await refreshEmployees();
-      } catch (error) {
-        return say(error?.message || "Unable to save delegation change.", true);
-      }
-      setRows((rs) =>
-        applyTo(rs, row.id, field, person.id, "HR Admin", reason.trim(), user.name),
-      );
-      setReqs((qs) =>
-        qs.map((q) =>
-          q.rowId === row.id && q.field === field && q.status === "Pending"
-            ? { ...q, status: "Superseded" }
-            : q,
-        ),
-      );
-      log({
-        emp: row.id,
-        field: FIELDS[field],
-        from: nameOf(row[field]),
-        to: person.name,
-        action: "Edited",
-        why: reason,
+    try {
+      const request = await submitDelegationRequest({
+        empId: row.id, empName: row.name, field, oldId: row[field],
+        newId: person.id, reason: reason.trim(), byName: user.name
       });
-      say(`${FIELDS[field]} for ${row.name} changed to ${person.name} and saved to the Appraisal Sheet.`);
-    } else {
-      try {
-        const request = await submitDelegationRequest({
-          empId: row.id, empName: row.name, field, oldId: row[field],
-          newId: person.id, reason: reason.trim(), byName: user.name
-        });
-        await loadRequests();
-        log({
-          emp: row.id, field: FIELDS[field], from: nameOf(row[field]), to: person.name,
-          action: "Requested", why: reason,
-        });
-        say(`Request ${request?.id || "submitted"} sent to HR for approval.`);
-      } catch (error) {
-        return say(error?.message || "Unable to send delegation request to HR.", true);
-      }
+      await loadRequests();
+      log({
+        emp: row.id, field: FIELDS[field], from: nameOf(row[field]), to: person.name,
+        action: "Requested", why: reason,
+      });
+      say(`Request ${request?.id || "submitted"} sent to HR for approval.`);
+    } catch (error) {
+      return say(error?.message || "Unable to send delegation request to HR.", true);
     }
     setModal(null);
   };
@@ -288,48 +260,24 @@ export default function DelegationScreen({
     setModal({
       type: "confirm",
       title: "Bulk assign",
-      body: `${FIELDS[field]} → ${nameOf(person)} for ${t.length} employee(s). ${isHR ? "This applies immediately." : "One request per employee will be sent to HR."}`,
+      body: `${FIELDS[field]} → ${nameOf(person)} for ${t.length} employee(s). One request per employee will be sent to HR for approval.`,
       ok: () => {
         const no = refNo("BA");
-        if (isHR) {
-          (async () => {
-            try {
-              for (const r of t) await persistFieldChange(r.id, field, person);
-              await refreshEmployees();
-              let rs = rows;
-              t.forEach((r) => {
-                rs = applyTo(rs, r.id, field, person, "HR Admin", why.trim(), user.name);
+        (async () => {
+          try {
+            for (const r of t) {
+              await submitDelegationRequest({
+                empId: r.id, empName: r.name, field, oldId: r[field],
+                newId: person, reason: why.trim(), byName: user.name, batch: no
               });
-              setRows(rs);
-              log({
-                field: FIELDS[field],
-                to: nameOf(person),
-                action: "Bulk applied",
-                why: `${no} – ${why}`,
-              });
-              say(`${t.length} employee(s) changed to ${nameOf(person)} and saved to the Appraisal Sheet (${no}).`);
-            } catch (error) {
-              await refreshEmployees().catch(() => {});
-              say(error?.message || "Bulk delegation update failed.", true);
             }
-          })();
-        } else {
-          (async () => {
-            try {
-              for (const r of t) {
-                await submitDelegationRequest({
-                  empId: r.id, empName: r.name, field, oldId: r[field],
-                  newId: person, reason: why.trim(), byName: user.name, batch: no
-                });
-              }
-              await loadRequests();
-              say(`${t.length} request(s) sent to HR for approval (${no}).`);
-            } catch (error) {
-              await loadRequests().catch(() => {});
-              say(error?.message || "Unable to send bulk delegation requests.", true);
-            }
-          })();
-        }
+            await loadRequests();
+            say(`${t.length} request(s) sent to HR for approval (${no}).`);
+          } catch (error) {
+            await loadRequests().catch(() => {});
+            say(error?.message || "Unable to send bulk delegation requests.", true);
+          }
+        })();
         setSel({});
         setBulk({ ...bulk, person: "", reason: "" });
       },
