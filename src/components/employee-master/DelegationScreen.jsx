@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
+import { useAppraisal } from "@/lib/appraisal-store";
  
 /* ------------------------------------------------------------------ data */
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
@@ -65,6 +66,7 @@ export default function DelegationScreen({
   const isHR = user.role === "HR Admin";
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
+  const { refreshEmployees } = useAppraisal();
   const canApprove = access.canAction("delegateApprove");
   const canAudit = access.canAction("viewAudit");
   // View-only screen, or a Tech Ed without the delegateRequest action: no edits.
@@ -194,20 +196,18 @@ export default function DelegationScreen({
     return out;
   };
  
-  const saveChange = () => {
+  const saveChange = async () => {
     const { row, field, person } = modal;
     if (!reason.trim()) return say("Reason is mandatory.", true);
     if (isHR) {
+      try {
+        await persistFieldChange(row.id, field, person.id);
+        await refreshEmployees();
+      } catch (error) {
+        return say(error?.message || "Unable to save delegation change.", true);
+      }
       setRows((rs) =>
-        applyTo(
-          rs,
-          row.id,
-          field,
-          person.id,
-          "HR Admin",
-          reason.trim(),
-          user.name,
-        ),
+        applyTo(rs, row.id, field, person.id, "HR Admin", reason.trim(), user.name),
       );
       setReqs((qs) =>
         qs.map((q) =>
@@ -224,7 +224,7 @@ export default function DelegationScreen({
         action: "Edited",
         why: reason,
       });
-      say(`${FIELDS[field]} for ${row.name} changed to ${person.name}.`);
+      say(`${FIELDS[field]} for ${row.name} changed to ${person.name} and saved to the Appraisal Sheet.`);
     } else {
       const next = raise(reqs, row, field, person.id, reason.trim());
       setReqs(next);
@@ -240,7 +240,7 @@ export default function DelegationScreen({
     }
     setModal(null);
   };
- 
+
   const doBulk = () => {
     const { field, scope, person, reason: why } = bulk;
     if (!person) return say("Choose who to assign.", true);
@@ -264,27 +264,27 @@ export default function DelegationScreen({
       ok: () => {
         const no = refNo("BA");
         if (isHR) {
-          let rs = rows;
-          t.forEach(
-            (r) =>
-              (rs = applyTo(
-                rs,
-                r.id,
-                field,
-                person,
-                "HR Admin",
-                why.trim(),
-                user.name,
-              )),
-          );
-          setRows(rs);
-          log({
-            field: FIELDS[field],
-            to: nameOf(person),
-            action: "Bulk applied",
-            why: `${no} – ${why}`,
-          });
-          say(`${t.length} employee(s) changed to ${nameOf(person)} (${no}).`);
+          (async () => {
+            try {
+              for (const r of t) await persistFieldChange(r.id, field, person);
+              await refreshEmployees();
+              let rs = rows;
+              t.forEach((r) => {
+                rs = applyTo(rs, r.id, field, person, "HR Admin", why.trim(), user.name);
+              });
+              setRows(rs);
+              log({
+                field: FIELDS[field],
+                to: nameOf(person),
+                action: "Bulk applied",
+                why: `${no} – ${why}`,
+              });
+              say(`${t.length} employee(s) changed to ${nameOf(person)} and saved to the Appraisal Sheet (${no}).`);
+            } catch (error) {
+              await refreshEmployees().catch(() => {});
+              say(error?.message || "Bulk delegation update failed.", true);
+            }
+          })();
         } else {
           let qs = reqs;
           t.forEach((r) => (qs = raise(qs, r, field, person, why.trim(), no)));
@@ -297,22 +297,27 @@ export default function DelegationScreen({
     });
   };
  
-  const persistDelegationChange = async (q) => {
-    const field = q.field === "comp" ? "comp_manager" : "appraiser_tech_ed";
+  const persistFieldChange = async (empId, fieldKey, newId) => {
+    const field = fieldKey === "comp" ? "comp_manager" : "appraiser_tech_ed";
     const response = await catalystFetch(EMPLOYEE_API_URL, {
       method: "PATCH",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ emp_id: String(q.empId || q.rowId), [field]: String(q.newId || "") }),
+      body: JSON.stringify({ emp_id: String(empId || ""), [field]: String(newId || "") }),
     });
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload?.success) throw new Error(payload?.message || "Delegation update failed.");
+    return payload.data;
   };
+
+  const persistDelegationChange = async (q) =>
+    persistFieldChange(q.empId || q.rowId, q.field, q.newId);
   const decide = async (q, approve, rm = remarks[q.id] || "") => {
     if (!approve && !rm.trim())
       return say("HR remarks are mandatory when rejecting.", true);
     if (approve) {
       try {
         await persistDelegationChange(q);
+        await refreshEmployees();
       } catch (error) {
         return say(error?.message || "Unable to apply delegation change.", true);
       }
@@ -363,7 +368,9 @@ export default function DelegationScreen({
       ok: async () => {
         try {
           for (const q of pending) await persistDelegationChange(q);
+          await refreshEmployees();
         } catch (error) {
+          await refreshEmployees().catch(() => {});
           say(error?.message || "Unable to approve all delegation requests.", true);
           return;
         }
