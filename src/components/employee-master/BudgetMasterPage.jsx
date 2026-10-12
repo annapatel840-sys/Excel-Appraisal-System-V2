@@ -278,7 +278,7 @@ const HR_COLS = [
 ];
 
 function HRApplyBudget() {
-  const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], updateBudget, loading: budgetLoading } = useBudget();
+  const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], techEdOwners = [], updateBudget, loading: budgetLoading } = useBudget();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const canConfig =
@@ -304,6 +304,14 @@ function HRApplyBudget() {
       if (!key) return;
       employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
       if (!ownerValues.has(key)) ownerValues.set(key, assignedOwner);
+    });
+
+    // The API returns distinct Appraisal Sheet Tech-ED assignments separately
+    // so they still render when there are no Budget_Distribution rows.
+    (Array.isArray(techEdOwners) ? techEdOwners : []).forEach((item) => {
+      const assignedOwner = String(item && item.assignment || "").trim();
+      const key = canonicalOwnerKey(assignedOwner, employeeRows);
+      if (key && !ownerValues.has(key)) ownerValues.set(key, assignedOwner);
     });
 
     const nextRows = [];
@@ -354,7 +362,7 @@ function HRApplyBudget() {
     if (master && Number.isFinite(Number(master.budget_percentage))) {
       setOrgPct(String(Number(master.budget_percentage)));
     }
-  }, [budgetDistributionRows, budgetMasterRows, employeeRows]);
+  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners]);
 
   const total = useMemo(
     () =>
