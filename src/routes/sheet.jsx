@@ -255,28 +255,23 @@ export function SheetPage() {
 
   // ============================================================
   // BUDGET NUMBERS
-  // Consumed = Hike Amount + Total Bonus (Allocated PB + New PB + New RB)
-  // for every employee, independent of search / column filters.
+  // Consumed = the three totals in the grid's last (Total) row added
+  // together: Performance Bonus (PB) + Retention Bonus (RB) + Hike Amount.
+  // It sums the same rows the grid shows, so it always matches that row.
+  // Utilisation = Consumed as a percentage of Budget Allocated.
   // ============================================================
 
   const budgetConsumed = useMemo(
     () =>
-      rows
-        .filter(
-        (row) =>
-          String(row.status || "").trim().toLowerCase() === "active" &&
-          String(row.eligibility || "").trim().toLowerCase() === "eligible",
-      )
-        .reduce(
-          (sum, row) =>
-            sum +
-            (Number(row.hikeAmount) || 0) +
-            (Number(row.allocatedPBAmount) || 0) +
-            (Number(row.newPBToBeOffered) || 0) +
-            (Number(row.newRB) || 0),
-          0,
-        ),
-    [rows],
+      filtered.reduce(
+        (sum, row) =>
+          sum +
+          (Number(row.allocatedPBAmount) || 0) +
+          (Number(row.newRB) || 0) +
+          (Number(row.hikeAmount) || 0),
+        0,
+      ),
+    [filtered],
   );
 
   const realBudget =
