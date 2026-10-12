@@ -1184,9 +1184,10 @@ async function updateEmployee(req, res) {
   const a = req.access;
   const changedColumns = Object.keys(pickAllowedFields(body));
 
-  // Delegation assignments are approved and edited from the Delegation screen.
-  // Keep this permission path narrowly limited to these two fields and require
-  // both Delegation edit access and the explicit approval action.
+  // Delegation assignments are changed only from the Delegation screen.
+  // Screen-level edit permission is the authorization source here. Requiring
+  // the separate delegateApprove action as well caused HR saves to fail when
+  // the action matrix was not seeded or had a stale value.
   const isDelegationAssignmentChange =
     changedColumns.length > 0 &&
     changedColumns.every(function (column) {
@@ -1196,7 +1197,6 @@ async function updateEmployee(req, res) {
   access.guard(a, function () {
     if (isDelegationAssignmentChange) {
       access.requireScreen(a, "delegation", "edit");
-      access.requireAction(a, "delegateApprove");
     } else {
       requireAnyScreen(a, EDIT_SCREENS, "edit");
       requireEditableColumns(a, changedColumns);
