@@ -575,7 +575,7 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       // Appraisal_Sheet.comp_manager is the value users edit; Employee_Master
       // has no comp_manager column, so director is only a fallback.
       comp_manager: String(row.comp_manager || master.director || ""),
-      appraiser_tech_ed: String(master.appraiser_tech_ed || row.appraiser_tech_ed || ""),
+      appraiser_tech_ed: String(row.appraiser_tech_ed || master.appraiser_tech_ed || ""),
       department: String(master.department || row.department || ""),
       location: String(master.location || master.work_location || row.location || row.work_location || ""),
       wissen_experience: Number(master.wissen_experience || row.wissen_experience || 0),
