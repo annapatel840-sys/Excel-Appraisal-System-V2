@@ -339,14 +339,14 @@ const withAppraisalCycleNames = async (app, records) => {
       return "";
     }
     const text = String(value).trim();
-    return /^\\d+$/.test(text) ? text : "";
+    return /^\d+$/.test(text) ? text : "";
   };
 
   return records.map((record) => {
     const raw = record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name;
     const id = getForeignKeyId(raw);
     const resolvedName = id ? cycleNames.get(id) : "";
-    const rawText = typeof raw === "string" && !/^\\d+$/.test(raw.trim())
+    const rawText = typeof raw === "string" && !/^\d+$/.test(raw.trim())
       ? raw.trim()
       : "";
     return {
