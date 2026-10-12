@@ -178,8 +178,8 @@ const CSS = `
   .sec b{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:var(--navy)}
   .sec .hint{font-size:11.5px;color:var(--muted);margin-left:auto}
   #fbSearch{display:block;position:relative}
-  #fbSearch::before{content:"⌕";position:absolute;left:10px;top:3px;color:var(--muted);font-size:14px}
-  #fbSearch input{width:100%;padding-left:30px}
+  #fbSearch::before{content:"⌕";position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:14px;line-height:1;pointer-events:none;z-index:1}
+  #fbSearch input,#ruleCard #fbSearch input[type=text]{width:100%;padding-left:30px}
   .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px;align-items:center}
   .fchip{display:inline-flex;align-items:center;background:var(--th-bg);border:1px solid var(--th-line);border-radius:16px;height:24px;color:var(--navy);font-size:11.5px}
   .fchip button{font-family:inherit;border:0;background:none;cursor:pointer;color:inherit;height:22px}
@@ -950,8 +950,10 @@ const BulkOperations = forwardRef(function BulkOperations(
   const [fold, setFoldS] = useState(false);
   const [impOpen, setImpOpenS] = useState(() => lsGet(IMP_KEY, "1") !== "0");
   const [pt, setPt] = useState(() => {
-    const v = lsGet(PT_KEY, "budget");
-    return v === "spread" ? "budget" : v;
+    // The Budget tab was removed (the budget already sits in the header),
+    // so any saved "budget" / "spread" choice opens Checks instead.
+    const v = lsGet(PT_KEY, "checks");
+    return v === "checks" || v === "history" ? v : "checks";
   });
   const [gb, setGb] = useState(() => lsGet(GB_KEY, "rating"));
   const [incTpb, setIncTpb] = useState(() => lsGet(TPB_KEY, "0") === "1");
@@ -3829,7 +3831,6 @@ const BulkOperations = forwardRef(function BulkOperations(
           </div>
           <div className="mp-tabs">
             {[
-              ["budget", "Budget"],
               ["checks", "Checks"],
               ["history", "History"],
             ].map((t) => (
@@ -3868,7 +3869,7 @@ const BulkOperations = forwardRef(function BulkOperations(
                     ? checksTab()
                     : pt === "history"
                       ? historyTab()
-                      : budgetTab()}
+                      : checksTab()}
                 </>
               )}
             </div>
