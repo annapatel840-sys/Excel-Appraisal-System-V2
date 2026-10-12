@@ -1013,7 +1013,7 @@ function EmployeePanel({
                 {renderTimelineDot(index)}
 
                 <span className="font-extrabold text-[#102a43]">
-                  {item.year}
+                  {item.cycleName || item.year}
                 </span>
 
                 {index === 0 && <PanelChip tone="now">This cycle</PanelChip>}
@@ -4173,7 +4173,7 @@ export function AppraisalGrid({
                           )}
                         >
                           <td className="border-r border-b border-[#e0e5ec] px-2 py-1 text-center text-[12px] font-bold text-[#1859a8]">
-                            {item.year}
+                            {item.cycleName || item.year}
                             {isLatest ? " ★" : ""}
                           </td>
 
