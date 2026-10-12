@@ -1184,10 +1184,24 @@ async function updateEmployee(req, res) {
   const a = req.access;
   const changedColumns = Object.keys(pickAllowedFields(body));
 
+  // Delegation assignments are approved and edited from the Delegation screen.
+  // Keep this permission path narrowly limited to these two fields and require
+  // both Delegation edit access and the explicit approval action.
+  const isDelegationAssignmentChange =
+    changedColumns.length > 0 &&
+    changedColumns.every(function (column) {
+      return column === "comp_manager" || column === "appraiser_tech_ed";
+    });
+
   access.guard(a, function () {
-    requireAnyScreen(a, EDIT_SCREENS, "edit");
+    if (isDelegationAssignmentChange) {
+      access.requireScreen(a, "delegation", "edit");
+      access.requireAction(a, "delegateApprove");
+    } else {
+      requireAnyScreen(a, EDIT_SCREENS, "edit");
+      requireEditableColumns(a, changedColumns);
+    }
     requireInScope(a, [empId]);
-    requireEditableColumns(a, changedColumns);
   });
 
   const appraisalTable = datastore.table(EMPLOYEES_TABLE_ID);
