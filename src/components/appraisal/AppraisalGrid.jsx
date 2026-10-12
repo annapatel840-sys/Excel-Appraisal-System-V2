@@ -478,15 +478,15 @@ const historyYearIdentity = (value) => {
   if (!year) return "";
 
   // FY labels belong to the year in which the appraisal cycle ends.
-  const fiscal = year.match(/(?:FY\\s*)?(\\d{4})\\s*[-/–]\\s*(\\d{2,4})/i);
+  const fiscal = year.match(/(?:FY\s*)?(\d{4})\s*[-/–]\s*(\d{2,4})/i);
   if (fiscal) {
     return fiscal[2].length === 2 ? `20${fiscal[2]}` : fiscal[2];
   }
 
-  const fullYear = year.match(/(?:19|20)\\d{2}/);
+  const fullYear = year.match(/(?:19|20)\d{2}/);
   if (fullYear) return fullYear[0];
 
-  const monthYear = year.match(/(?:Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar)[-\\s](\\d{2})/i);
+  const monthYear = year.match(/(?:Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar)[-\s](\d{2})/i);
   if (monthYear) return `20${monthYear[1]}`;
 
   return year.toLowerCase();
