@@ -335,8 +335,6 @@ export default function DelegationScreen({
   const decide = async (q, approve, rm = remarks[q.id] || "") => {
     if (!isHR || !canApprove)
       return say("Only HR with Delegation edit access can approve or reject requests.", true);
-    if (!approve && !rm.trim())
-      return say("HR remarks are mandatory when rejecting.", true);
     try {
       // The shared API applies the assignment and marks the request decided
       // atomically in this order. Do not PATCH the employee separately here.
@@ -1055,12 +1053,14 @@ export default function DelegationScreen({
                             }
                           />
                           <button
+                            type="button"
                             className="btn p sm"
                             onClick={() => decide(q, true)}
                           >
                             Approve
                           </button>{" "}
                           <button
+                            type="button"
                             className="btn sm r"
                             onClick={() => decide(q, false)}
                           >
