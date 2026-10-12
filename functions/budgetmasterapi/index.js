@@ -322,10 +322,19 @@ async function readTechEdOwners(app) {
       const rowId = String(row.ROWID || "");
       try { if (BigInt(rowId) > BigInt(max)) max = rowId; } catch (_) {}
       const assignment = String(
-        row.appraiser_tech_ed || row.appraiser_tech_ed_id || "",
+        readField(row, [
+          "appraiser_tech_ed",
+          "appraiser_tech_ed_id",
+          "appraiser_teched",
+          "tech_ed",
+          "tech_ed_id",
+        ]) || "",
       ).trim();
       if (!assignment) return;
-      const key = assignment.toLowerCase();
+      // A cell may contain either "EMP005" or "EMP005 - Name".
+      // Deduplicate by the employee ID so both representations count once.
+      const pair = assignment.match(/^(\S+)\s*-/);
+      const key = String(pair ? pair[1] : assignment).trim().toLowerCase();
       if (!owners.has(key)) owners.set(key, { assignment });
     });
     if (rows.length < 300 || max === last) break;
