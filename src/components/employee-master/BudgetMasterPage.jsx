@@ -278,7 +278,7 @@ const HR_COLS = [
 ];
 
 function HRApplyBudget() {
-  const { budgetMasterRows, budgetDistributionRows, employeeRows, updateBudget, loading: budgetLoading } = useBudget();
+  const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], updateBudget, loading: budgetLoading } = useBudget();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const canConfig =
@@ -298,7 +298,7 @@ function HRApplyBudget() {
   useEffect(() => {
     const employeeCounts = new Map();
     const ownerValues = new Map();
-    employeeRows.forEach((employee) => {
+    (Array.isArray(employeeRows) ? employeeRows : []).forEach((employee) => {
       const assignedOwner = employee.appraiser_tech_ed || employee.tech_ed_id || employee.tech_ed || employee.appraiserTechEd || "";
       const key = canonicalOwnerKey(assignedOwner, employeeRows);
       if (!key) return;
@@ -308,7 +308,7 @@ function HRApplyBudget() {
 
     const nextRows = [];
     const seenOwners = new Set();
-    budgetDistributionRows.forEach((row) => {
+    (Array.isArray(budgetDistributionRows) ? budgetDistributionRows : []).forEach((row) => {
       const owner = row.appraiser_tech_ed_id || "";
       const key = canonicalOwnerKey(owner, employeeRows);
       if (!key) return;
