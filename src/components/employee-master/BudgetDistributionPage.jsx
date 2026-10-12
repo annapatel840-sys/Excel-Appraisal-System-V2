@@ -3,6 +3,7 @@ import { WalletCards, RefreshCw } from "lucide-react";
  
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
+import { useAppraisal } from "@/lib/appraisal-store";
 import { TechEdBudgetDistribution } from "./TechEdBudgetDistribution";
  
 const money = (value) =>
@@ -249,6 +250,30 @@ export function BudgetDistributionPage() {
     isHR,
   } = useBudget();
  
+  // Total utilised = the Appraisal Sheet's "Consumed (Hikes + Bonuses)": the
+  // Performance Bonus (PB), Retention Bonus (RB) and Hike Amount totals added
+  // together over the same (Active + Eligible) rows the sheet shows.
+  const { rows: appraisalAll } = useAppraisal();
+  const utilised = useMemo(
+    () =>
+      (appraisalAll || [])
+        .filter(
+          (row) =>
+            String(row.status || "").trim().toLowerCase() === "active" &&
+            String(row.eligibility || "").trim().toLowerCase() === "eligible",
+        )
+        .reduce(
+          (sum, row) =>
+            sum +
+            (Number(row.allocatedPBAmount) || 0) +
+            (Number(row.newRB) || 0) +
+            (Number(row.hikeAmount) || 0),
+          0,
+        ),
+    [appraisalAll],
+  );
+  const remaining = totals.updated - utilised;
+
   const [open, setOpen] = useState({});
   const [summaryOpen, setSummaryOpen] = useState(true);
   const [tableOpen, setTableOpen] = useState(true);
@@ -349,16 +374,16 @@ export function BudgetDistributionPage() {
             </div>
             <div>
               <div className="label">Total utilised</div>
-              <div className="value">{money(totals.utilized)}</div>
+              <div className="value">{money(utilised)}</div>
               <div className="sub muted">
                 {totals.updated
-                  ? ((totals.utilized / totals.updated) * 100).toFixed(0) + "% utilised"
+                  ? ((utilised / totals.updated) * 100).toFixed(0) + "% utilised"
                   : "—"}
               </div>
             </div>
             <div>
               <div className="label">Total remaining</div>
-              <div className="value">{money(totals.remaining)}</div>
+              <div className="value">{money(remaining)}</div>
               <div className="sub muted">Updated budget − utilised</div>
             </div>
           </div>
