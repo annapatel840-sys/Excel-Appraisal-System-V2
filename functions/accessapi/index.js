@@ -253,9 +253,20 @@ app.get(
       throw new HttpError(403, "You do not have access to the request queue.");
     const rows = await selectAll(ap.admin.zcql(), T.log);
     const latestById = new Map();
+    const compareRequestEvents = (x, y) => {
+      const byTime = String(x.changed_at || "").localeCompare(String(y.changed_at || ""));
+      if (byTime) return byTime;
+      // Catalyst timestamps are stored only to seconds. A decision can share
+      // the same timestamp as the pending row, so use the monotonically
+      // increasing Data Store ROWID to break ties deterministically.
+      const xId = Number(x.ROWID);
+      const yId = Number(y.ROWID);
+      if (Number.isFinite(xId) && Number.isFinite(yId) && xId !== yId) return xId - yId;
+      return String(x.ROWID || "").localeCompare(String(y.ROWID || ""));
+    };
     rows
       .filter((r) => String(r.kind || "").startsWith(DELEGATION_REQUEST_PREFIX))
-      .sort((x, y) => String(x.changed_at || "").localeCompare(String(y.changed_at || "")))
+      .sort(compareRequestEvents)
       .forEach((row) => {
         const key = String(row.batch_id || row.ROWID || "");
         if (key) latestById.set(key, row);
@@ -359,30 +370,28 @@ app.post(
         String(r.batch_id || "").trim() === id ||
         String(r.ROWID || "").trim() === id
       );
-      // Decisions are append-only events. Always decide against the latest event
-      // for this request, not the original pending row, otherwise a request that
-      // was already approved/rejected can be processed again.
       const requestKey = String(
         matchingEvents.find((r) => String(r.batch_id || "").trim() === id)?.batch_id ||
         matchingEvents.find((r) => String(r.ROWID || "").trim() === id)?.batch_id ||
         id
       ).trim();
-      const latestRequestEvent = all
-        .filter((r) =>
-          String(r.batch_id || r.ROWID || "").trim() === requestKey ||
-          String(r.ROWID || "").trim() === id
-        )
-        .sort((x, y) =>
-          String(y.changed_at || "").localeCompare(String(x.changed_at || ""))
-        )[0];
-      const row =
-        latestRequestEvent &&
-        latestRequestEvent.kind === DELEGATION_REQUEST_PREFIX + "pending"
-          ? latestRequestEvent
-          : null;
-      if (!row)
+      const requestEvents = all
+        .filter((r) => String(r.batch_id || "").trim() === requestKey)
+        .sort((x, y) => {
+          const byTime = String(x.changed_at || "").localeCompare(String(y.changed_at || ""));
+          if (byTime) return byTime;
+          const xId = Number(x.ROWID);
+          const yId = Number(y.ROWID);
+          if (Number.isFinite(xId) && Number.isFinite(yId) && xId !== yId) return xId - yId;
+          return String(x.ROWID || "").localeCompare(String(y.ROWID || ""));
+        });
+      const row = requestEvents.find(
+        (r) => r.kind === DELEGATION_REQUEST_PREFIX + "pending",
+      );
+      const latestEvent = requestEvents[requestEvents.length - 1];
+      if (!row || (latestEvent && latestEvent.kind !== DELEGATION_REQUEST_PREFIX + "pending"))
         throw new HttpError(
-          404,
+          409,
           "This request is no longer pending. Refresh the request list and try again.",
         );
       let meta = {};
