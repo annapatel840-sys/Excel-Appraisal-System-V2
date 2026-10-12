@@ -986,8 +986,15 @@ const BulkOperations = forwardRef(function BulkOperations(
   const hiddenForRole = (d) =>
     d.field === "compManager" &&
     (role === "CM" || (me && me.role === "Comp Manager"));
+  // Per-field edit access from the server. An empty map, or a field the map
+  // does not mention, is not a restriction (the server still refuses
+  // unauthorised saves); only an explicit non-"edit" entry locks a field.
   const canEdit = (key) =>
-    !apiMode || !fa || (fa[key] && fa[key].access === "edit");
+    !apiMode ||
+    !fa ||
+    !Object.keys(fa).length ||
+    !fa[key] ||
+    fa[key].access === "edit";
   const usedKeys = (rs, except) => {
     const u = {};
     rs.forEach((r) => {
@@ -2826,9 +2833,14 @@ const BulkOperations = forwardRef(function BulkOperations(
                                       value={f}
                                       disabled={dis && !cur}
                                     >
-                                      {f === "hikePct"
+                                      {(f === "hikePct"
                                         ? "Hike"
-                                        : FIELDS[f].label}
+                                        : FIELDS[f].label) +
+                                        (dis && !cur
+                                          ? taken[FIELDS[f].key]
+                                            ? " (already used)"
+                                            : " (no access)"
+                                          : "")}
                                     </option>
                                   );
                                 })}
