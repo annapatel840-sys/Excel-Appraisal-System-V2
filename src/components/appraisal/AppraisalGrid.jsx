@@ -414,17 +414,20 @@ const textOrDash = (value) =>
     : "—";
 
 const normalizeHistoryRecord = (record) => {
-  const basePay = Number(record?.base_pay) || 0;
+  // Payroll_Data uses fy_year/current_annual_base_pay/total_CTC_with_rewards;
+  // older history rows may instead use appraisal_year/base_pay/new_ctc.
+  const basePay = Number(record?.base_pay ?? record?.current_annual_base_pay) || 0;
   const hikeAmount = Number(record?.hike_amount) || 0;
+  const year = record?.appraisal_year ?? record?.fy_year;
 
   return {
-    year: textOrDash(record?.appraisal_year),
+    year: textOrDash(year),
     basePay,
     joiningBonus: Number(record?.joining_bonus) || 0,
     allocatedPB: Number(record?.allocated_pb) || 0,
     performanceBonus: Number(record?.performance_bonus) || 0,
     retentionBonus: Number(record?.retention_bonus) || 0,
-    totalPB: Number(record?.total_pb) || 0,
+    totalPB: Number(record?.total_pb ?? record?.performance_bonus) || 0,
     totalBonus: Number(record?.total_bonus) || 0,
     hikeAmount,
     hikePct: Number(record?.hike_pct) || 0,
@@ -433,9 +436,9 @@ const normalizeHistoryRecord = (record) => {
     designation: textOrDash(record?.designation),
     rating: textOrDash(record?.rating),
     feedback: textOrDash(record?.manager_rating),
-    targetPB: Number(record?.target_performance_bonus) || 0,
-    newCTC: Number(record?.new_ctc) || 0,
-    newBasePay: basePay + hikeAmount,
+    targetPB: Number(record?.target_performance_bonus ?? record?.target_performance_agreed) || 0,
+    newCTC: Number(record?.new_ctc ?? record?.total_CTC_with_rewards) || 0,
+    newBasePay: Number(record?.new_base_pay) || (basePay + hikeAmount),
   };
 };
 
@@ -534,7 +537,23 @@ const buildHistoryView = (records, row) => {
   return [applyCurrentYearSheetValues(currentRecord, row), ...olderRecords];
 };
 
-const sortHistoryDesc = (a, b) => String(b.year).localeCompare(String(a.year));
+const historyYearOrder = (value) => {
+  const year = String(value || "").trim();
+  const fiscal = year.match(/(?:FY\s*)?(\d{4})\s*[-/–]\s*(\d{2,4})/i);
+  if (fiscal) {
+    const end = fiscal[2].length === 2 ? Number(`20${fiscal[2]}`) : Number(fiscal[2]);
+    return end * 100 + 1;
+  }
+  const fullYear = year.match(/(?:19|20)\d{2}/);
+  if (fullYear) return Number(fullYear[0]) * 100;
+  const shortYear = year.match(/(?:Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar)[-\s](\d{2})/i);
+  if (shortYear) return Number(`20${shortYear[1]}`) * 100;
+  return 0;
+};
+
+const sortHistoryDesc = (a, b) =>
+  historyYearOrder(b.year) - historyYearOrder(a.year) ||
+  String(b.year).localeCompare(String(a.year));
 
 // ============================================================
 // SMALL PANEL UI PIECES
