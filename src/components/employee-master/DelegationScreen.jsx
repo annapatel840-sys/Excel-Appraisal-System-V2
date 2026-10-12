@@ -92,12 +92,12 @@ export default function DelegationScreen({
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const { refreshEmployees } = useAppraisal();
-  const canApprove = isHR && access.canScreen("delegation", "edit");
+  const canApprove = isHR;
   const canAudit = access.canAction("viewAudit");
   // View-only screen, or a Tech Ed without the delegateRequest action: no edits.
   const editLocked =
     locked ||
-    !access.canScreen("delegation", "edit") ||
+    (!isHR && !access.canScreen("delegation", "edit")) ||
     (!isHR && !access.canAction("delegateRequest"));
  
   useEffect(() => {
@@ -154,7 +154,7 @@ export default function DelegationScreen({
     }),
     [rows, user, isHR],
   );
-  const myReqs = reqs.filter((q) => FIELDS[q.field] && (isHR || q.byId === user.id));
+  const myReqs = reqs.filter((q) => FIELDS[q.field] && (isHR || String(q.byId || "").toLowerCase() === String(catalystUser?.email || "").toLowerCase()));
   const people = useMemo(() => [...new Set([...rows.map((r) => r.comp), ...rows.map((r) => r.app)].filter(Boolean).map((v) => String(v).trim()))].sort((a, b) => a.localeCompare(b)).map((value) => ({ id: value, name: value, roles: [] })), [rows]);
   const pending = myReqs.filter((q) => q.status === "Pending");
   const list = useMemo(() => {
@@ -438,6 +438,7 @@ export default function DelegationScreen({
         try {
           for (const q of pending) await persistDelegationChange(q);
           await refreshEmployees();
+          for (const q of pending) await decideDelegationRequest(q.id, "approved");
         } catch (error) {
           await refreshEmployees().catch(() => {});
           say(error?.message || "Unable to approve all delegation requests.", true);
