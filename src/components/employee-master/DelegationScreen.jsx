@@ -154,7 +154,7 @@ export default function DelegationScreen({
     }),
     [rows, user, isHR],
   );
-  const myReqs = reqs.filter((q) => FIELDS[q.field] && (isHR || String(q.byId || "").toLowerCase() === String(catalystUser?.email || "").toLowerCase()));
+  const myReqs = reqs.filter((q) => (q.requestType === "screen" || FIELDS[q.field]) && (isHR || String(q.byId || "").toLowerCase() === String(catalystUser?.email || "").toLowerCase()));
   const people = useMemo(() => [...new Set([...rows.map((r) => r.comp), ...rows.map((r) => r.app)].filter(Boolean).map((v) => String(v).trim()))].sort((a, b) => a.localeCompare(b)).map((value) => ({ id: value, name: value, roles: [] })), [rows]);
   const pending = myReqs.filter((q) => q.status === "Pending");
   const list = useMemo(() => {
@@ -377,7 +377,7 @@ export default function DelegationScreen({
       return say("Only HR with Delegation edit access can approve or reject requests.", true);
     if (!approve && !rm.trim())
       return say("HR remarks are mandatory when rejecting.", true);
-    if (approve) {
+    if (approve && q.requestType !== "screen") {
       try {
         await persistDelegationChange(q);
         await refreshEmployees();
@@ -407,7 +407,7 @@ export default function DelegationScreen({
     );
     log({
       emp: q.empId,
-      field: FIELDS[q.field],
+      field: q.requestType === "screen" ? "Screen Request" : FIELDS[q.field],
       from: nameOf(q.oldId),
       to: nameOf(q.newId),
       action: approve ? "Approved" : "Rejected",
@@ -436,7 +436,9 @@ export default function DelegationScreen({
       body: `Approve all ${pending.length} pending request(s)?`,
       ok: async () => {
         try {
-          for (const q of pending) await persistDelegationChange(q);
+          for (const q of pending) {
+            if (q.requestType !== "screen") await persistDelegationChange(q);
+          }
           await refreshEmployees();
           for (const q of pending) await decideDelegationRequest(q.id, "approved");
         } catch (error) {
@@ -445,7 +447,7 @@ export default function DelegationScreen({
           return;
         }
         let rs = rows;
-        pending.forEach((q) => (rs = applyTo(rs, q.rowId, q.field, q.newId, "HR Admin", q.reason, q.byName + " (approved by " + user.name + ")")));
+        pending.filter((q) => q.requestType !== "screen").forEach((q) => (rs = applyTo(rs, q.rowId, q.field, q.newId, "HR Admin", q.reason, q.byName + " (approved by " + user.name + ")")));
         setRows(rs);
         const ids = new Set(pending.map((q) => q.id));
         setReqs((qs) =>
@@ -1054,7 +1056,7 @@ export default function DelegationScreen({
                       </span>
                     </div>
                     <div className="m">
-                      {FIELDS[q.field]}: {nameOf(q.oldId) || "—"}{" "}
+                      {q.requestType === "screen" ? "Screen Request" : FIELDS[q.field]}{q.requestType === "screen" ? "" : `: ${nameOf(q.oldId) || "—"}`}{" "}
                       <span className="ar">→ {nameOf(q.newId)}</span>
                       <br />
                       {isHR ? (
