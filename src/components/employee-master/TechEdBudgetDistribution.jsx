@@ -191,7 +191,7 @@ export function TechEdBudgetDistribution() {
         name: live.comp_manager || "Unassigned Comp Manager",
         pct, pct0: pct, base,
         team0: num(live.original_headcount) || stats.count,
-        team: stats.count, original, updated, liveId: live.id,
+        team: stats.count || num(live.current_headcount), original, updated, liveId: live.id,
         liveCalculated: original, liveApplied: updated,
         liveUtilized: num(live.total_utilization),
         history: [{ date: "", amount: original, team: stats.count, pct }],
@@ -251,10 +251,10 @@ export function TechEdBudgetDistribution() {
     if (to === node.pct) return;
     const newUpd = (node.base * to) / 100;
     const sum = allotted - node.updated + newUpd;
-    if (sum > myOriginal + 0.5) {
+    if (sum > myUpdated + 0.5) {
       setErr(
         "Blocked: " + to + "% for " + name + " would take total allotted to " + lakh(sum) + ", which is " +
-          lakh(sum - myOriginal) + " more than your original budget of " + lakh(myOriginal) + ".",
+          lakh(sum - myUpdated) + " more than your available Tech-Ed budget of " + lakh(myUpdated) + ".",
       );
       return;
     }
