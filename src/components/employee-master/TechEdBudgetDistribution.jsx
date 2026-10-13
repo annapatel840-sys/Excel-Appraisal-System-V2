@@ -3,13 +3,9 @@ import { Fragment, useMemo, useState } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
 
-/* Budget Distribution as a Tech ED sees it (design: Budget Allocation view of
-   the "Detail Screen & Budget" prototype).
-
-   UI REVIEW BUILD: this screen uses the sample data below and makes no
-   backend calls. Allot % changes stay on screen until the page is reloaded.
-   To go live, replace DEMO with the Tech ED's Budget_Master row, their team
-   from the Appraisal Sheet and the allocation history. */
+/* Budget Distribution uses persisted Budget_Distribution and
+   Budget_Distribution_Comp rows. The prior UI-only sample allocations have
+   been removed so this screen never displays invented team budgets. */
 
 const LEVELS = ["Tech ED", "Comp Manager"];
 const UTILISED_LABEL = "Hike Amount";
