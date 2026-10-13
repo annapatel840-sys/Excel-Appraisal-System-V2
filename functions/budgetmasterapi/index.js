@@ -877,7 +877,6 @@ module.exports = async function (req, res) {
       comp: [
         "percentage",
         "budget_base",
-        "calculated_budget",
         "total_utilization",
         "applied_budget",
         "comp_manager",
@@ -888,9 +887,10 @@ module.exports = async function (req, res) {
     const fields = [
       ...fieldsByResource[resource === "compmanager" ? "comp" : resource],
     ];
-    if (resource === "distribution") {
+    if (resource === "distribution" || resource === "comp" || resource === "compmanager") {
       const columns = await getColumnNames(table);
-      fields.push(pickColumn(columns, ["calculated_budget", "claculated_budget"], "claculated_budget"));
+      const fallback = resource === "distribution" ? "claculated_budget" : "calculated_budget";
+      fields.push(pickColumn(columns, ["calculated_budget", "claculated_budget"], fallback));
     }
     const update = { ROWID: id };
     fields.forEach((key) => {
