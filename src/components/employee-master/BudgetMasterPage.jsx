@@ -32,41 +32,6 @@ const TECH_ED_DATA = [
   },
 ];
 
-const INITIAL_AUDIT = [
-  {
-    date: "2026-09-01",
-    owner: "Prabhu Prasad Parida",
-    from: null,
-    to: 8,
-    before: null,
-    after: 3400000,
-    by: "HR",
-    reason: "Initial allocation",
-  },
-  {
-    date: "2026-09-01",
-    owner: "Ashok Kumar",
-    from: null,
-    to: 8,
-    before: null,
-    after: 3040000,
-    by: "HR",
-    reason: "Initial allocation",
-  },
-];
-
-const INITIAL_ORG_AUDIT = [
-  {
-    date: "2026-09-01",
-    from: null,
-    to: 8,
-    before: null,
-    after: 6440000,
-    by: "HR",
-    reason: "Initial allocation",
-  },
-];
-
 /* ---------- helpers ---------- */
 function normalizeOwnerKey(value) {
   const text = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -297,8 +262,8 @@ function HRApplyBudget() {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [history, setHistory] = useState({});
-  const [audit, setAudit] = useState(INITIAL_AUDIT);
-  const [orgAudit, setOrgAudit] = useState(INITIAL_ORG_AUDIT);
+  const [audit, setAudit] = useState([]);
+  const [orgAudit, setOrgAudit] = useState([]);
   const [overrides, setOverrides] = useState({});
   const appraisalCycles = useMemo(
     () => budgetMasterRows.map((row) => ({
@@ -845,8 +810,8 @@ function HRAuditTrail() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [filter, setFilter] = useState("all");
-  const [audit] = useState(INITIAL_AUDIT);
-  const [orgAudit] = useState(INITIAL_ORG_AUDIT);
+  const [audit] = useState([]);
+  const [orgAudit] = useState([]);
 
   const orgRows = orgAudit.filter(
     (r) => (!from || r.date >= from) && (!to || r.date <= to),
