@@ -14,54 +14,6 @@ import { useBudget } from "@/lib/budget-store";
 const LEVELS = ["Tech ED", "Comp Manager"];
 const UTILISED_LABEL = "Hike Amount";
 
-const DEMO = {
-  cycle: "Apr-26",
-  allocation: { date: "2026-09-01", by: "HR Admin" },
-  techEdPct: 8,
-  // Employees in the Tech ED's teams now and at allocation.
-  // base = Current Annual Base Pay + Allocated PB Amount; hike = Hike Amount.
-  employees: {
-    EMP00125: { name: "Rohan Kapoor", base: 2500000 + 300000, hike: 250000 },
-    EMP200: { name: "Aarav Iyer", base: 800000 + 86400, hike: 48000 },
-    EMP205: { name: "Sai Gupta", base: 1550000 + 167400, hike: 170500 },
-    EMP210: { name: "Ananya Bhatt", base: 2300000 + 248400, hike: 138000 },
-    EMP220: { name: "Rahul Iyer", base: 3800000 + 410400, hike: 228000 },
-    EMP225: { name: "Varun Gupta", base: 800000 + 86400, hike: 88000 },
-    EMP201: { name: "Vivaan Mehta", base: 950000 + 102600, hike: 66500 },
-    EMP206: { name: "Reyansh Reddy", base: 1700000 + 183600, hike: 204000 },
-    EMP202: { name: "Aditya Singh", base: 1100000 + 118800, hike: 88000 },
-    EMP290: { name: "Kiran Das", base: 1200000 + 130000, hike: 0 },
-    EMP211: { name: "Diya Sharma", base: 2450000 + 264600, hike: 0 },
-    EMP215: { name: "Myra Patel", base: 3050000 + 329400, hike: 0 },
-  },
-  compManagers: [
-    {
-      name: "Anita Sharma",
-      pct0: 7.5,
-      team0: ["EMP00125", "EMP200", "EMP205", "EMP210", "EMP215", "EMP290", "EMP202"],
-      team: ["EMP00125", "EMP200", "EMP205", "EMP210", "EMP220", "EMP225"],
-    },
-    {
-      name: "Raj Mehta",
-      pct0: 6,
-      team0: ["EMP201", "EMP206", "EMP211", "EMP220"],
-      team: ["EMP201", "EMP206"],
-    },
-  ],
-  // Team changes since allocation (eligibility list + appraisal grid).
-  events: [
-    { date: "2026-09-12", cm: "Anita Sharma", emp: "EMP290", sign: -1, text: "Resigned: Kiran Das" },
-    { date: "2026-09-15", cm: "Anita Sharma", emp: "EMP225", sign: 1, text: "Added: Varun Gupta" },
-    { date: "2026-09-18", cm: "Anita Sharma", emp: "EMP220", sign: 1, text: "Transferred in: Rahul Iyer (from Raj Mehta)" },
-    { date: "2026-09-18", cm: "Raj Mehta", emp: "EMP220", sign: -1, text: "Transferred out: Rahul Iyer (to Anita Sharma)" },
-    { date: "2026-09-20", cm: "Anita Sharma", emp: "EMP202", sign: -1, text: "Transferred out: Aditya Singh (to Suresh Iyer)" },
-    { date: "2026-09-21", cm: "Raj Mehta", emp: "EMP211", sign: -1, text: "Resigned: Diya Sharma" },
-    { date: "2026-09-22", cm: "Anita Sharma", emp: "EMP215", sign: -1, text: "Resigned: Myra Patel" },
-  ],
-  // % changes the Tech ED made after allocation.
-  pctLog: [{ name: "Raj Mehta", from: 6, to: 6.5, date: "2026-09-24", time: "11:20", reason: "Rahul Iyer moved out; keep Raj's budget steady" }],
-};
-
 const num = (v) => Number(v) || 0;
 const lakh = (n) => "₹ " + (num(n) / 1e5).toFixed(2) + " L";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -74,54 +26,7 @@ function nowParts() {
   const pad = (n) => String(n).padStart(2, "0");
   return { date: d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()), time: pad(d.getHours()) + ":" + pad(d.getMinutes()) };
 }
-const baseOf = (ids) => ids.reduce((s, id) => s + num(DEMO.employees[id]?.base), 0);
-const hikeOf = (ids) => ids.reduce((s, id) => s + num(DEMO.employees[id]?.hike), 0);
-const empBase = (id) => num(DEMO.employees[id]?.base);
 const byDate = (a, b) => String(a.date + (a.time || "")).localeCompare(String(b.date + (b.time || "")));
-
-/* One Comp Manager: budget at allocation, now, and a dated history. */
-function cmNode(cm, log) {
-  const changes = log.filter((l) => l.name === cm.name).sort(byDate);
-  const pct = changes.length ? changes[changes.length - 1].to : cm.pct0;
-  const base0 = baseOf(cm.team0);
-  const base = baseOf(cm.team);
-  const original = (base0 * cm.pct0) / 100;
-  const items = [{ date: DEMO.allocation.date, amount: original, team: cm.team0.length, pct: cm.pct0 }];
-  let amount = original;
-  let team = cm.team0.length;
-  let p = cm.pct0;
-  let b = base0;
-  const steps = [
-    ...DEMO.events.filter((e) => e.cm === cm.name).map((e) => ({ ...e, kind: "team" })),
-    ...changes.map((c) => ({ ...c, kind: "pct" })),
-  ].sort(byDate);
-  steps.forEach((s) => {
-    if (s.kind === "team") {
-      b += s.sign * empBase(s.emp);
-      team += s.sign;
-    } else {
-      p = s.to;
-    }
-    amount = (b * p) / 100;
-    const row = { date: s.date, amount, team, pct: p };
-    const last = items[items.length - 1];
-    if (last.date === s.date) items[items.length - 1] = row;
-    else items.push(row);
-  });
-  return {
-    name: cm.name,
-    pct,
-    pct0: cm.pct0,
-    base,
-    team0: cm.team0.length,
-    team: cm.team.length,
-    original,
-    updated: (base * pct) / 100,
-    history: items,
-    lastChanged: steps.length ? steps[steps.length - 1].date : "",
-  };
-}
-const asOf = (hist, date) => hist.reduce((r, x) => (x.date <= date ? x : r), hist[0]);
 
 function Chg({ d }) {
   if (Math.abs(d) < 1) return <span className="mut">No change</span>;
