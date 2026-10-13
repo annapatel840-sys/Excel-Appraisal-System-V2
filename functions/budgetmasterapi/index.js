@@ -481,7 +481,7 @@ function pickColumn(columns, candidates, fallback) {
   return candidates.find((name) => columns.has(name)) || fallback;
 }
 
-async function calculateBudgetBases(app, bundle) {
+async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   // Appraisal_Sheet is the source of truth for employee base, allocated PB,
   // Tech-ED and Comp Manager assignments. Do not depend on Payroll_Data cycle
   // foreign keys: those IDs are not the budget calculation source.
@@ -535,8 +535,7 @@ async function calculateBudgetBases(app, bundle) {
 
   // Merge labels from the roster as well, so a Tech-ED with no assigned
   // employees is still visible with a true zero base rather than disappearing.
-  const rosterOwners = await readTechEdOwners(app);
-  rosterOwners.forEach((item) => {
+  techEdOwners.forEach((item) => {
     const label = String(item.assignment || "").trim();
     const key = ownerKey(label);
     if (key && !techLabels.has(key)) techLabels.set(key, label);
@@ -768,7 +767,7 @@ module.exports = async function (req, res) {
       ]);
       let calculatedBundle = rawBundle;
       try {
-        calculatedBundle = await calculateBudgetBases(app, rawBundle);
+        calculatedBundle = await calculateBudgetBases(app, rawBundle, techEdOwners);
       } catch (calculationError) {
         // Never report a successful zero-budget response when source calculations
         // failed. Return the actionable source/schema error to the frontend.
