@@ -595,7 +595,7 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
         }
         // Preserve legacy text assignments, but don't show a numeric FK as a name.
         const legacy = String(row.appraiser_tech_ed || master.appraiser_tech_ed || "").trim();
-        if (legacy && !/^\\d+$/.test(legacy)) return legacy;
+        if (legacy && !/^[0-9]+$/.test(legacy)) return legacy;
         return "";
       })(),
       department: String(master.department || row.department || ""),
