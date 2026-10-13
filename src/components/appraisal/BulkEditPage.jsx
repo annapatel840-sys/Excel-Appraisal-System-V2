@@ -29,6 +29,7 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from "react";
+import { useAppraisal } from "@/lib/appraisal-store";
 
 /* ============================== styles ============================== */
 const CSS = `
@@ -460,6 +461,7 @@ const filterVal = (e, field) => {
   if (field === "managerRating")
     v = e.managerRating != null && e.managerRating !== "" ? e.managerRating : e.rating;
   else if (field === "clientRating") v = e.clientRating ?? e.client_rating;
+  else if (field === "promo") v = e.promo ?? e.eligibleForPromotion;
   else if (field === "promoDesignation")
     v =
       e.promoDesignation ??
@@ -984,6 +986,28 @@ const BulkOperations = forwardRef(function BulkOperations(
   const [batches, setBatches] = useState([]);
   const [restoreAt, setRestoreAt] = useState({ id: "", t: 0 });
 
+  /* ---------- appraisal sheet rows (already loaded in the app) ---------- */
+  let sheetRows = [];
+  try {
+    sheetRows = useAppraisal().rows || [];
+  } catch (x) {
+    sheetRows = [];
+  }
+  const sheetById = useMemo(() => {
+    const m = {};
+    sheetRows.forEach((r) => {
+      m[String(r.empId)] = r;
+    });
+    return m;
+  }, [sheetRows]);
+  // Value of a filter field: the bulk row first, then the appraisal sheet row.
+  const fVal = (e, field) => {
+    const own = filterVal(e, field);
+    if (own !== "") return own;
+    const sh = sheetById[String(e.empId)];
+    return sh ? filterVal(sh, field) : "";
+  };
+
   /* ---------- scope & filters ---------- */
   const scope = useMemo(() => {
     if (apiMode) return emp;
@@ -1033,7 +1057,7 @@ const BulkOperations = forwardRef(function BulkOperations(
       }
       const hit = v.some((x) => {
         if (d.type === "select")
-          return filterVal(e, d.field) === x;
+          return fVal(e, d.field) === x;
         if (d.type === "range")
           return rangeHit(e[d.field], d.ranges[Number(x)]);
         return true;
@@ -1050,8 +1074,13 @@ const BulkOperations = forwardRef(function BulkOperations(
         n: scope.filter((e) => rangeHit(e[d.field], r)).length,
       }));
     const m = {};
+    // Options come from the appraisal sheet; counts are for the rows in scope.
+    sheetRows.forEach((r) => {
+      const x = filterVal(r, d.field);
+      if (x !== "" && m[x] == null) m[x] = 0;
+    });
     scope.forEach((e) => {
-      const x = filterVal(e, d.field);
+      const x = fVal(e, d.field);
       if (x !== "") m[x] = (m[x] || 0) + 1;
     });
     return Object.keys(m)
