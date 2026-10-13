@@ -335,8 +335,20 @@ function readField(row, candidates) {
 }
 
 async function readTechEdOwners(app) {
-  // Read Appraisal_Sheet directly for the source-of-truth Tech-ED assignments.
-  // Do not scan Employee_Master or budget distribution to discover Tech-ED names.
+  // Appraisal_Sheet's Tech-Ed foreign key stores Employee_Master.ROWID.
+  // Resolve it to the stable Employee ID + name for display and roster deduplication.
+  const [employeeRows, unused] = await Promise.all([
+    getAllRows(app, "Employee_Master"),
+    Promise.resolve([]),
+  ]);
+  const employeeByRowId = new Map(employeeRows.map((employee) => [
+    idOf(employee),
+    {
+      row_id: idOf(employee),
+      employee_id: String(readField(employee, ["emp_id", "employee_id"]) || "").trim(),
+      name: String(readField(employee, ["emp_name", "employee_name", "name"]) || "").trim(),
+    },
+  ]));
   const zcql = app.zcql();
   const owners = new Map();
   let last = "0";
@@ -355,7 +367,7 @@ async function readTechEdOwners(app) {
     rows.forEach((row) => {
       const rowId = String(row.ROWID || "");
       try { if (BigInt(rowId) > BigInt(max)) max = rowId; } catch (_) {}
-      const assignment = String(
+      const rawAssignment = String(
         readField(row, [
           "appraiser_tech_ed",
           "appraiser_tech_ed_id",
@@ -364,14 +376,25 @@ async function readTechEdOwners(app) {
           "tech_ed_id",
         ]) || "",
       ).trim();
-      if (!assignment) return;
-      // A cell may contain either "EMP005" or "EMP005 - Name".
-      // Deduplicate by the employee ID so both representations count once.
-      // Strip a prefix only when it looks like an employee ID (for example, EMP005 - Name).
-      // Do not split ordinary Tech-ED names at the hyphen, or distinct owners collapse into one.
-      const pair = assignment.match(/^([a-z]*\d+)\s*-/i);
-      const key = String(pair ? pair[1] : assignment).trim().toLowerCase();
-      if (!owners.has(key)) owners.set(key, { assignment });
+      if (!rawAssignment) return;
+
+      const employee = employeeByRowId.get(rawAssignment);
+      const assignment = employee
+        ? (employee.employee_id && employee.name
+            ? employee.employee_id + " - " + employee.name
+            : employee.employee_id || employee.name || rawAssignment)
+        : rawAssignment;
+      const key = employee
+        ? (employee.employee_id || employee.row_id).toLowerCase()
+        : rawAssignment.toLowerCase();
+      if (!owners.has(key)) {
+        owners.set(key, {
+          assignment,
+          row_id: employee ? employee.row_id : "",
+          employee_id: employee ? employee.employee_id : "",
+          name: employee ? employee.name : "",
+        });
+      }
     });
     if (rows.length < 300 || max === last) break;
     last = max;
@@ -395,6 +418,16 @@ async function readEmployeeRoster(app) {
       row,
     ]),
   );
+  const masterByRowId = new Map(masterRows.map((row) => [idOf(row), row]));
+  const formatTechEdAssignment = (raw) => {
+    const assignment = String(raw || "").trim();
+    if (!assignment) return "";
+    const linked = masterByRowId.get(assignment);
+    if (!linked) return assignment;
+    const linkedId = String(readField(linked, ["emp_id", "employee_id"]) || "").trim();
+    const linkedName = String(readField(linked, ["emp_name", "employee_name", "name"]) || "").trim();
+    return linkedId && linkedName ? linkedId + " - " + linkedName : linkedId || linkedName || assignment;
+  };
   const appraisalById = new Map(
     appraisalRows.map((row) => [
       String(readField(row, ["emp_id", "employee_id"]))
@@ -428,13 +461,14 @@ async function readEmployeeRoster(app) {
           "tech_ed_id",
         ]);
       return {
+        row_id: idOf(master),
         emp_id: id,
         name: String(
           readField(master, ["emp_name", "employee_name", "name"]) ||
             readField(row, ["emp_name", "employee_name", "name"]) ||
             id,
         ),
-        appraiser_tech_ed: String(assignment).trim(),
+        appraiser_tech_ed: formatTechEdAssignment(assignment),
         status: String(
           readField(master, ["emp_status", "status"]) ||
             readField(row, ["emp_status", "status"]) ||
