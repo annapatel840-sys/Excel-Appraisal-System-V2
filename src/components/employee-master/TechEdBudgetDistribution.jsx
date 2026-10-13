@@ -185,16 +185,41 @@ export function TechEdBudgetDistribution() {
     );
     const candidates = directMatches.length ? directMatches : assignmentMatches;
 
-    // Prefer the active cycle; if cycle IDs differ across API aliases, an
-    // unambiguous owner match across cycles is still safer than showing no data.
-    const cycleMatches = activeCycleId
-      ? candidates.filter((row) => String(row.appraisal_cycle_id) === String(activeCycleId))
-      : [];
+    // Cycle API and budget tables can refer to the same cycle through different
+    // ID aliases. Resolve the active cycle through Budget_Master's cycle name
+    // before concluding that the Tech-Ed has no matching allocation.
+    const activeCycle = cycleRows.find((cycle) =>
+      String(cycle.id ?? cycle.appraisal_cycle_id ?? cycle.cycle_id ?? cycle.ROWID) === String(activeCycleId),
+    );
+    const activeCycleName = normalizeOwner(
+      activeCycle?.name || activeCycle?.cycle_name || activeCycle?.appraisal_year || "",
+    );
+    const activeMasterCycleIds = new Set(
+      budgetMasterRows
+        .filter((master) => {
+          const masterCycleName = normalizeOwner(
+            master.appraisal_cycle_name || master.cycle_name || master.cycleName || master.appraisal_year || "",
+          );
+          return (
+            (activeCycleId && String(master.appraisal_cycle_id) === String(activeCycleId)) ||
+            (activeCycleName && masterCycleName === activeCycleName)
+          );
+        })
+        .map((master) => String(master.appraisal_cycle_id || ""))
+        .filter(Boolean),
+    );
+    const cycleMatches = candidates.filter((row) =>
+      (activeCycleId && String(row.appraisal_cycle_id) === String(activeCycleId)) ||
+      activeMasterCycleIds.has(String(row.appraisal_cycle_id)),
+    );
     if (cycleMatches.length === 1) return cycleMatches[0];
     if (cycleMatches.length > 1) return null;
+
+    // Never guess between multiple cycles. A unique owner allocation is safe
+    // to show when cycle metadata has no matching alias.
     return candidates.length === 1 ? candidates[0] : null;
   }, [
-    budgetDistributionRows, employeeRows, myName,
+    budgetDistributionRows, budgetMasterRows, cycleRows, employeeRows, myName,
     user?.name, user?.display_name, user?.first_name, user?.last_name,
     user?.email, user?.email_id, user?.user_id, user?.empId, user?.employeeId, user?.employee_id,
     activeCycleId,
