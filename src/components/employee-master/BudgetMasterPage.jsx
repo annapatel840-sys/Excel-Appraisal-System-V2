@@ -429,6 +429,16 @@ function HRApplyBudget() {
       return;
     }
 
+    const orgBaseForCycle = Number(selectedMaster?.org_budget_base) || total.base;
+    const orgOriginalBudget = orgBaseForCycle * org / 100;
+    if (previewTotal > orgOriginalBudget + 0.5) {
+      setError(
+        "Not applied. Tech-Ed Original Budgets total " + money(previewTotal) +
+        ", which exceeds the Org Original Budget of " + money(orgOriginalBudget) + ". Reduce one or more Tech-Ed percentages.",
+      );
+      return;
+    }
+
     const now = new Date().toISOString().slice(0, 10);
     const changedRows = rows.filter((r) => Number(previewPct(r)) !== r.pct);
     const next = rows.map((r) => {
