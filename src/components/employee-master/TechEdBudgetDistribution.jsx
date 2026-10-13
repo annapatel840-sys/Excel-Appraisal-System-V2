@@ -387,7 +387,7 @@ export function TechEdBudgetDistribution() {
         </span>
         <span className="sep" />
         <span>
-          Allocated from Budget Master · applied {liveMaster ? lakh(liveMaster.applied_budget) : "—"}
+          Tech-Ed allocation from Budget Master · updated {lakh(myUpdated)}
         </span>
         <span className="sep" />
         <span>
@@ -395,7 +395,7 @@ export function TechEdBudgetDistribution() {
         </span>
         <span className="sep" />
         <span className="applied">
-          Budget applied by HR: <b>{liveMaster ? num(liveMaster.budget_percentage) : myPct}%</b> = <b>{lakh(myUpdated)}</b> updated · original{" "}
+          Budget applied by HR: <b>{myPct}%</b> = <b>{lakh(myUpdated)}</b> updated · original{" "}
           {lakh(myOriginal)}
           <button type="button" className="dd" aria-expanded={appliedOpen} onClick={() => setAppliedOpen((v) => !v)}>
             % history {appliedOpen ? "▴" : "▾"}
