@@ -214,7 +214,8 @@ const numericValue = (value) => {
     return "";
   }
 
-  const normalized = typeof value === "string" ? value.replace(/,/g, "").trim() : value;
+  const normalized =
+    typeof value === "string" ? value.replace(/,/g, "").trim() : value;
   const n = Number(normalized);
 
   return Number.isFinite(n) ? n : 0;
@@ -222,7 +223,9 @@ const numericValue = (value) => {
 
 const formatEditableNumeric = (value, type) => {
   if (value === "" || value === null || value === undefined) return "";
-  const number = Number(typeof value === "string" ? value.replace(/,/g, "") : value);
+  const number = Number(
+    typeof value === "string" ? value.replace(/,/g, "") : value,
+  );
   if (!Number.isFinite(number)) return String(value);
   if (type === "decimal") {
     return number.toLocaleString("en-IN", {
@@ -421,7 +424,15 @@ const getCycleName = (value) => {
     return /^\d+$/.test(text) ? "" : text;
   }
   if (typeof value === "object") {
-    for (const key of ["appraisal_cycle_name", "cycle_name", "cycleName", "name", "display_value", "value", "label"]) {
+    for (const key of [
+      "appraisal_cycle_name",
+      "cycle_name",
+      "cycleName",
+      "name",
+      "display_value",
+      "value",
+      "label",
+    ]) {
       const name = getCycleName(value[key]);
       if (name) return name;
     }
@@ -430,12 +441,16 @@ const getCycleName = (value) => {
 };
 
 const normalizeCycleKey = (value) =>
-  String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
 
 const normalizeHistoryRecord = (record) => {
   // Payroll_Data uses fy_year/current_annual_base_pay/total_CTC_with_rewards;
   // older history rows may instead use appraisal_year/base_pay/new_ctc.
-  const basePay = Number(record?.base_pay ?? record?.current_annual_base_pay) || 0;
+  const basePay =
+    Number(record?.base_pay ?? record?.current_annual_base_pay) || 0;
   const hikeAmount = Number(record?.hike_amount) || 0;
   const year = record?.appraisal_year ?? record?.fy_year;
   const cycleName =
@@ -460,9 +475,12 @@ const normalizeHistoryRecord = (record) => {
     designation: textOrDash(record?.designation),
     rating: textOrDash(record?.rating),
     feedback: textOrDash(record?.manager_rating),
-    targetPB: Number(record?.target_performance_bonus ?? record?.target_performance_agreed) || 0,
+    targetPB:
+      Number(
+        record?.target_performance_bonus ?? record?.target_performance_agreed,
+      ) || 0,
     newCTC: Number(record?.new_ctc ?? record?.total_CTC_with_rewards) || 0,
-    newBasePay: Number(record?.new_base_pay) || (basePay + hikeAmount),
+    newBasePay: Number(record?.new_base_pay) || basePay + hikeAmount,
   };
 };
 
@@ -494,7 +512,10 @@ const yearNumberFromCycle = (cycleName) => {
   return match[1].length === 2 ? `20${match[1]}` : match[1];
 };
 
-const isCurrentYearRecord = (record, currentCycleName = CURRENT_APPRAISAL_YEAR) => {
+const isCurrentYearRecord = (
+  record,
+  currentCycleName = CURRENT_APPRAISAL_YEAR,
+) => {
   const cycleKey = normalizeCycleKey(record?.cycleName);
   const currentCycleKey = normalizeCycleKey(currentCycleName);
   if (cycleKey && currentCycleKey && cycleKey === currentCycleKey) return true;
@@ -520,7 +541,6 @@ const applyCurrentYearSheetValues = (
   historyRecord,
   row,
   currentCycleName = CURRENT_APPRAISAL_YEAR,
-  previousRecord = null,
 ) => {
   if (!row || !isCurrentYearRecord(historyRecord, currentCycleName)) {
     return historyRecord;
@@ -529,13 +549,7 @@ const applyCurrentYearSheetValues = (
   const allocatedPBAmount = Number(row.allocatedPBAmount) || 0;
   const newPBToBeOffered = Number(row.newPBToBeOffered) || 0;
   const newRB = Number(row.newRB) || 0;
-
-  // The current cycle's Current Base Pay is the previous cycle's New Base Pay.
-  // When there is no previous cycle, fall back to the sheet value.
-  const sheetBasePay = Number(row.currentAnnualBasePay) || 0;
-  const previousNewBasePay = Number(previousRecord?.newBasePay) || 0;
-  const currentAnnualBasePay =
-    previousRecord && previousNewBasePay > 0 ? previousNewBasePay : sheetBasePay;
+  const currentAnnualBasePay = Number(row.currentAnnualBasePay) || 0;
   const hikeAmount = Number(row.hikeAmount) || 0;
   const targetPBNextYear = Number(row.targetPBNextYear) || 0;
 
@@ -564,7 +578,11 @@ const applyCurrentYearSheetValues = (
 };
 
 // Current cycle row (always first, always live) + older cycles from the API.
-const buildHistoryView = (records, row, currentCycleName = CURRENT_APPRAISAL_YEAR) => {
+const buildHistoryView = (
+  records,
+  row,
+  currentCycleName = CURRENT_APPRAISAL_YEAR,
+) => {
   if (!row) {
     return [];
   }
@@ -573,11 +591,12 @@ const buildHistoryView = (records, row, currentCycleName = CURRENT_APPRAISAL_YEA
     records.find((record) => isCurrentYearRecord(record, currentCycleName)) ||
     emptyHistoryRecord(currentCycleName);
 
-  const olderRecords = records.filter((record) => !isCurrentYearRecord(record, currentCycleName));
+  const olderRecords = records.filter(
+    (record) => !isCurrentYearRecord(record, currentCycleName),
+  );
 
-  // olderRecords are already sorted newest first, so [0] is the previous cycle.
   return [
-    applyCurrentYearSheetValues(currentRecord, row, currentCycleName, olderRecords[0] || null),
+    applyCurrentYearSheetValues(currentRecord, row, currentCycleName),
     ...olderRecords,
   ];
 };
@@ -586,12 +605,15 @@ const historyYearOrder = (value) => {
   const year = String(value || "").trim();
   const fiscal = year.match(/(?:FY\s*)?(\d{4})\s*[-/–]\s*(\d{2,4})/i);
   if (fiscal) {
-    const end = fiscal[2].length === 2 ? Number(`20${fiscal[2]}`) : Number(fiscal[2]);
+    const end =
+      fiscal[2].length === 2 ? Number(`20${fiscal[2]}`) : Number(fiscal[2]);
     return end * 100 + 1;
   }
   const fullYear = year.match(/(?:19|20)\d{2}/);
   if (fullYear) return Number(fullYear[0]) * 100;
-  const shortYear = year.match(/(?:Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar)[-\s](\d{2})/i);
+  const shortYear = year.match(
+    /(?:Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar)[-\s](\d{2})/i,
+  );
   if (shortYear) return Number(`20${shortYear[1]}`) * 100;
   return 0;
 };
@@ -1107,39 +1129,7 @@ function EmployeePanel({
     }
 
     // other
-    const dash = (value) =>
-      value !== undefined && value !== null && value !== "" ? value : "—";
-
-    return (
-      <table className="w-full border-collapse text-[12px]">
-        <thead>
-          <tr>
-            <th className="border-b border-[#e5e7eb] px-1 py-1 text-left text-[10.5px] font-bold text-[#6b7280]">
-              Cycle
-            </th>
-            <th className="border-b border-[#e5e7eb] px-1 py-1 text-right text-[10.5px] font-bold text-[#6b7280]">
-              RR %
-            </th>
-            <th className="border-b border-[#e5e7eb] px-1 py-1 text-right text-[10.5px] font-bold text-[#6b7280]">
-              IC
-            </th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td className="border-b border-[#f1f3f5] p-1">
-              {currentCycleName}
-            </td>
-            <td className="border-b border-[#f1f3f5] p-1 text-right">
-              {dash(employee.rrPercent)}
-            </td>
-            <td className="border-b border-[#f1f3f5] p-1 text-right">
-              {dash(employee.interviewCount)}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    );
+    return <PanelInfo>No Other Available</PanelInfo>;
   };
 
   // ---------- REQUEST (Tech Ed login only) ----------
@@ -2221,7 +2211,12 @@ export function AppraisalGrid({
   const historyError = historyState?.error || "";
 
   const historyData = useMemo(
-    () => buildHistoryView(historyState?.data || [], liveHistoryRow, currentCycleName),
+    () =>
+      buildHistoryView(
+        historyState?.data || [],
+        liveHistoryRow,
+        currentCycleName,
+      ),
     [historyState, liveHistoryRow, currentCycleName],
   );
 
@@ -3168,7 +3163,10 @@ export function AppraisalGrid({
               if (col.key === "eligibleForPromotion" && value === "Yes") {
                 updateLinkedCells(
                   row.id,
-                  { eligibleForPromotion: "Yes", newTitle: row.newTitle || null },
+                  {
+                    eligibleForPromotion: "Yes",
+                    newTitle: row.newTitle || null,
+                  },
                   "Cell edit",
                 );
                 flashSaved(cellKey);
@@ -3253,7 +3251,10 @@ export function AppraisalGrid({
           {col.key === "newTitle" &&
             row.eligibleForPromotion === "Yes" &&
             !row.newTitle && (
-              <span className="ml-1 shrink-0 text-[10px] font-semibold text-red-600" role="alert">
+              <span
+                className="ml-1 shrink-0 text-[10px] font-semibold text-red-600"
+                role="alert"
+              >
                 Required
               </span>
             )}
@@ -4242,11 +4243,6 @@ export function AppraisalGrid({
                   </tbody>
                 </table>
               )}
-            </div>
-
-            <div className="flex h-6 items-center border-t border-[#e2e8f0] bg-[#f8fafc] px-3 text-[10px] text-slate-500">
-              The starred row reflects the employee currently selected in the
-              grid above, live. Older cycles are reference data.
             </div>
           </div>
         )}
