@@ -514,16 +514,17 @@ function HRApplyBudget() {
             percentage: Number(previewPct(r)),
             budget_base: r.base,
             calculated_budget: previewBudget(r),
-          }, "distribution")
+          }, "distribution", false)
         ),
         ...(selectedMaster?.id
           ? [updateBudget(selectedMaster.id, {
               budget_percentage: org,
               org_budget_base: orgBase,
               calculated_budget: orgBase * org / 100,
-            }, "master")]
+            }, "master", false)]
           : []),
       ]);
+      await reloadBudget();
     } catch (saveError) {
       setError(saveError.message || "Budget changes could not be saved.");
       return;
