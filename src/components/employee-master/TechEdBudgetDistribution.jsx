@@ -13,7 +13,7 @@ const UTILISED_LABEL = "Hike Amount";
 const num = (v) => {
   if (typeof v === "number") return Number.isFinite(v) ? v : 0;
   if (v === null || v === undefined || v === "") return 0;
-  const parsed = Number(String(v).trim().replace(/[₹,\\s]/g, "").replace(/^(?:INR|Rs\\.?)/i, ""));
+  const parsed = Number(String(v).trim().replace(/[₹,\s]/g, "").replace(/^(?:INR|Rs\.?)/i, ""));
   return Number.isFinite(parsed) ? parsed : 0;
 };
 const lakh = (n) => "₹ " + (num(n) / 1e5).toFixed(2) + " L";
