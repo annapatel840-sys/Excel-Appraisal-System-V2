@@ -94,7 +94,7 @@ export function TechEdBudgetDistribution() {
     return budgetDistributionRows.find((row) => {
       const owner = String(row.appraiser_tech_ed_id || "").trim().toLowerCase();
       return owner && identities.some((identity) => owner === identity || owner.includes(identity) || identity.includes(owner));
-    }) || null;
+    }) || budgetDistributionRows[0] || null;
   }, [budgetDistributionRows, myName]);
   const liveComps = useMemo(
     () => liveTech
