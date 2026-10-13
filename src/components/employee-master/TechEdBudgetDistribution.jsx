@@ -126,7 +126,8 @@ export function TechEdBudgetDistribution() {
         const active = allCycles.find(
           (cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived,
         );
-        setActiveCycleId(active?.id ? String(active.id) : "");
+        const cycleId = active?.id ?? active?.appraisal_cycle_id ?? active?.cycle_id ?? active?.ROWID ?? "";
+        setActiveCycleId(cycleId ? String(cycleId) : "");
       })
       .catch((cycleError) => {
         console.error("Failed to load appraisal cycles for Budget Distribution:", cycleError);
@@ -143,35 +144,65 @@ export function TechEdBudgetDistribution() {
 
   const liveTech = useMemo(() => {
     const identities = new Set(
-      [myName, user?.email, user?.empId, user?.employeeId, user?.employee_id]
-        .map(normalizeOwner)
-        .filter(Boolean),
-    );
-    // If the auth profile exposes an employee ID/email, enrich identity from the
-    // actual employee row before matching "EmployeeID - Full Name" owner cells.
-    const loginEmployee = employeeRows.find((employee) => {
-      const employeeIds = [
-        employee.emp_id, employee.employee_id, employee.employeeId,
-        employee.email, employee.email_id, employee.emailId,
-      ].map(normalizeOwner).filter(Boolean);
-      return employeeIds.some((value) => identities.has(value));
-    });
-    if (loginEmployee) {
       [
-        loginEmployee.emp_id, loginEmployee.employee_id, loginEmployee.employeeId,
-        loginEmployee.emp_name, loginEmployee.employee_name, loginEmployee.name,
-        loginEmployee.email, loginEmployee.email_id,
-      ].map(normalizeOwner).filter(Boolean).forEach((value) => identities.add(value));
-    }
+        myName, user?.name, user?.display_name, user?.first_name, user?.last_name,
+        [user?.first_name, user?.last_name].filter(Boolean).join(" "),
+        user?.email, user?.email_id, user?.user_id, user?.empId, user?.employeeId, user?.employee_id,
+      ].map(normalizeOwner).filter(Boolean),
+    );
+
+    const employeeIdentityValues = (employee) => [
+      employee.emp_id, employee.employee_id, employee.employeeId,
+      employee.emp_name, employee.employee_name, employee.name,
+      employee.email, employee.email_id, employee.emailId,
+    ].map(normalizeOwner).filter(Boolean);
+
+    // Resolve the logged-in account to an actual employee row where possible.
+    const loginEmployee = employeeRows.find((employee) =>
+      employeeIdentityValues(employee).some((value) => identities.has(value)),
+    );
+    if (loginEmployee) employeeIdentityValues(loginEmployee).forEach((value) => identities.add(value));
+
+    // Some session accounts are not employees. In that case, use the Appraisal
+    // Sheet assignment whose Tech-Ed owner contains the logged-in identity.
+    const assignedOwners = Array.from(new Set(employeeRows
+      .map((employee) => employee.appraiser_tech_ed || employee.appraiser_tech_ed_id ||
+        employee.appraiser_teched || employee.appraiserTechED || employee.tech_ed || employee.tech_ed_id || "")
+      .map((value) => String(value || "").trim())
+      .filter((owner) => owner && ownerMatches(owner, Array.from(identities)))));
+
+    const allRows = budgetDistributionRows.filter((row) =>
+      row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed || row.appraiser_tech_ed,
+    );
+    const ownerMatchesLogin = (row) => ownerMatches(
+      row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed || row.appraiser_tech_ed,
+      Array.from(identities),
+    );
+    const directMatches = allRows.filter(ownerMatchesLogin);
+    const assignmentMatches = allRows.filter((row) =>
+      assignedOwners.some((owner) => ownerKey(owner) === ownerKey(
+        row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed || row.appraiser_tech_ed,
+      )),
+    );
+    const candidates = directMatches.length ? directMatches : assignmentMatches;
+
+    // Prefer the active cycle; if cycle IDs differ across API aliases, an
+    // unambiguous owner match across cycles is still safer than showing no data.
     const cycleMatches = activeCycleId
-      ? budgetDistributionRows.filter((row) => String(row.appraisal_cycle_id) === String(activeCycleId))
+      ? candidates.filter((row) => String(row.appraisal_cycle_id) === String(activeCycleId))
       : [];
-    const matches = cycleMatches.filter((row) => ownerMatches(row.appraiser_tech_ed_id, Array.from(identities)));
-    return matches.length === 1 ? matches[0] : null;
-  }, [budgetDistributionRows, employeeRows, myName, user?.email, user?.empId, user?.employeeId, user?.employee_id, activeCycleId]);
+    if (cycleMatches.length === 1) return cycleMatches[0];
+    if (cycleMatches.length > 1) return null;
+    return candidates.length === 1 ? candidates[0] : null;
+  }, [
+    budgetDistributionRows, employeeRows, myName,
+    user?.name, user?.display_name, user?.first_name, user?.last_name,
+    user?.email, user?.email_id, user?.user_id, user?.empId, user?.employeeId, user?.employee_id,
+    activeCycleId,
+  ]);
 
   const activeCycle = useMemo(
-    () => cycleRows.find((cycle) => String(cycle.id) === String(liveTech?.appraisal_cycle_id || activeCycleId)) || null,
+    () => cycleRows.find((cycle) => String(cycle.id ?? cycle.appraisal_cycle_id ?? cycle.cycle_id ?? cycle.ROWID) === String(liveTech?.appraisal_cycle_id || activeCycleId)) || null,
     [cycleRows, liveTech?.appraisal_cycle_id, activeCycleId],
   );
   const liveComps = useMemo(
