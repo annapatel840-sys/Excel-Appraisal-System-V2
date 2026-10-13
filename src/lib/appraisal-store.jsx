@@ -85,6 +85,8 @@ const REACT_TO_CATALYST_FIELD = {
 
   manager: "manager",
   department: "department",
+  targetPBCriteria: "target_PB_criteria",
+  compManagerRewards: "comp_manager_rewards",
 
   status: "status",
 };
@@ -118,7 +120,7 @@ const REACT_TO_HISTORY_FIELD = {
 
   newTitle: "title",
 
-  targetPBNextYear: "target_performance_bonus",
+  targetPBNextYear: "target_performance_agreed",
 
   rating: "rating",
 
