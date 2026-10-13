@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useBudget } from "@/lib/budget-store";
-import { useCurrentCycleName } from "@/lib/current-cycle";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { TechEdBudgetMasterPage } from "./TechEdBudgetMasterPage";
 
 const NAVY = "#12304f";
@@ -428,10 +428,31 @@ function HRApplyBudget() {
 
   const orgCell = "shrink-0 min-w-[170px] border-r border-[#d7dce3] px-[22px] py-4";
 
-  // Read-only: the Appraisal Cycle under Org Budget is the name of the current
-  // cycle set up in Appraisal Cycle Master (the same value the top bar uses).
-  const currentCycleName = useCurrentCycleName();
-  const currentCycle = currentCycleName || "—";
+  // The Appraisal Cycle shown under Org Budget is read-only: it always shows
+  // the current (active) appraisal cycle, using the same cycles list the Bulk
+  // Edit screen reads.
+  const [currentCycle, setCurrentCycle] = useState("Apr-26");
+  useEffect(() => {
+    let alive = true;
+    payrollCycleRequest("cycles")
+      .then((data) => {
+        const list = Array.isArray(data) ? data : [];
+        const active =
+          list.find(
+            (cycle) =>
+              String(cycle?.status || "").trim().toLowerCase() === "active" &&
+              !cycle?.archived &&
+              !cycle?.hidden,
+          ) ||
+          list.find((cycle) => !cycle?.archived) ||
+          list[0];
+        if (alive && active?.name) setCurrentCycle(String(active.name));
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   return (
     <div className="flex flex-col gap-2">
