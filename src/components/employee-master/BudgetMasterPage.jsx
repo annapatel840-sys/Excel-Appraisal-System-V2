@@ -88,8 +88,15 @@ function ownerName(value, employees = []) {
   return pair ? pair[2].trim() : raw;
 }
 
+function amount(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (value === null || value === undefined || value === "") return 0;
+  const n = Number(String(value).trim().replace(/[₹,\\s]/g, "").replace(/^(?:INR|Rs\\.?)/i, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
 function money(value) {
-  return ((Number(value) || 0) / 100000).toFixed(2) + " L";
+  return (amount(value) / 100000).toFixed(2) + " L";
 }
 
 function percent(value) {
@@ -310,14 +317,14 @@ function HRApplyBudget() {
       const owner = row.appraiser_tech_ed_id || "";
       const key = canonicalOwnerKey(owner, employeeRows);
       if (!key) return;
-      const calculated = Number(row.calculated_budget) || 0;
-      const applied = Number(row.applied_budget) || calculated;
+      const calculated = amount(row.calculated_budget);
+      const applied = amount(row.applied_budget) || calculated;
       const assignedCount = employeeCounts.get(key) || 0;
       nextRows.push({
         id: row.id || "tech-ed-" + key,
         name: ownerName(owner, employeeRows),
-        pct: Number(row.percentage) || 0,
-        base: Number(row.budget_base) || (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated),
+        pct: amount(row.percentage),
+        base: amount(row.budget_base) || (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated),
         original: calculated,
         updated: applied,
         team0: assignedCount,
@@ -373,11 +380,11 @@ function HRApplyBudget() {
       ? Number(pending[row.name])
       : overrides[row.name]
         ? row.pct
-        : (orgPct === "" ? Number(row.pct || 0) : Number(orgPct));
+        : (orgPct === "" ? amount(row.pct || 0) : amount(orgPct));
 
   const previewBudget = (row) => (row.base * previewPct(row)) / 100;
   const changes = rows.filter((r) => Number(previewPct(r)) !== r.pct);
-  const orgPending = orgPct !== "" && !!selectedMaster && Number(orgPct) !== Number(selectedMaster.budget_percentage || 0);
+  const orgPending = orgPct !== "" && !!selectedMaster && amount(orgPct) !== Number(selectedMaster.budget_percentage || 0);
   const pendingCount =
     changes.length || orgPending ? changes.length + (orgPending ? 1 : 0) : 0;
   const previewTotal = rows.reduce((s, r) => s + previewBudget(r), 0);
@@ -412,7 +419,7 @@ function HRApplyBudget() {
   }
 
   async function apply() {
-    const org = Number(orgPct);
+    const org = amount(orgPct);
     if (!(org >= 0 && org <= 100)) {
       setError("Enter a valid org % between 0 and 100.");
       return;
@@ -429,7 +436,7 @@ function HRApplyBudget() {
       return;
     }
 
-    const orgBaseForCycle = Number(selectedMaster?.org_budget_base) || total.base;
+    const orgBaseForCycle = amount(selectedMaster?.org_budget_base) || total.base;
     const orgOriginalBudget = orgBaseForCycle * org / 100;
     if (previewTotal > orgOriginalBudget + 0.5) {
       setError(
@@ -482,7 +489,7 @@ function HRApplyBudget() {
     }
 
     try {
-      const orgBase = Number(selectedMaster?.org_budget_base) || total.base;
+      const orgBase = amount(selectedMaster?.org_budget_base) || total.base;
       await Promise.all([
         ...rows.filter((r) => r.id && !String(r.id).startsWith("tech-ed-")).map((r) =>
           updateBudget(r.id, {
@@ -595,7 +602,7 @@ function HRApplyBudget() {
             <div className={orgCell}>
               <div className="text-[11px] text-[#5b6b80]">Org budget base</div>
               <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
-                {money(Number(selectedMaster?.org_budget_base) || total.base)}
+                {money(amount(selectedMaster?.org_budget_base) || total.base)}
               </div>
             </div>
             <div className={orgCell}>
@@ -661,7 +668,7 @@ function HRApplyBudget() {
                 const sourceOverride =
                   overrides[r.name] ||
                   (Object.prototype.hasOwnProperty.call(pending, r.name) &&
-                    Number(p) !== Number(orgPct));
+                    Number(p) !== amount(orgPct));
                 const td =
                   "border-b border-[#e1e5eb] px-2.5 py-2 align-middle " +
                   (changing ? "bg-[#fdf8e7] " : "bg-white ");
