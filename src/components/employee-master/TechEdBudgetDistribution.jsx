@@ -177,7 +177,7 @@ export function TechEdBudgetDistribution() {
           employee.appraiser_tech_ed1 || employee.appraiser_teched || employee.appraiserTechED || employee.tech_ed || employee.tech_ed_id || "").trim();
         return ownerByForeignKey.get(normalizeOwner(raw)) || raw;
       })
-      .filter((owner) => owner && ownerMatches(owner, Array.from(identities))));
+      .filter((owner) => owner && ownerMatches(owner, Array.from(identities)))));
 
     const allRows = budgetDistributionRows.filter((row) =>
       row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed || row.appraiser_tech_ed,
