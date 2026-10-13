@@ -468,10 +468,11 @@ function cycleDate(row) {
 async function calculateBudgetBases(app, bundle) {
   // Payroll rows are keyed to the employee and appraisal-cycle ROWIDs. Use the
   // table IDs here so the calculation does not depend on the physical table name.
-  const [payrollRows, cycleRows, appraisalRows] = await Promise.all([
+  const [payrollRows, cycleRows, appraisalRows, employeeMasterRows] = await Promise.all([
     readTableById(app, "74008000000035326"),
     readTableById(app, "74008000000034190"),
     getAllRows(app, "Appraisal_Sheet"),
+    readTableById(app, "74008000000035727"),
   ]);
 
   const cycles = cycleRows.map((row) => ({
@@ -480,14 +481,27 @@ async function calculateBudgetBases(app, bundle) {
     date: cycleDate(row),
   })).filter((row) => row.id && row.date).sort((a, b) => a.date.localeCompare(b.date));
 
+  const employeeMasterByRef = new Map();
+  employeeMasterRows.forEach((row) => {
+    const businessId = String(firstValue(row, ["emp_id", "employee_id"]) || "").trim().toLowerCase();
+    const rowId = idOf(row).toLowerCase();
+    if (businessId) employeeMasterByRef.set(businessId, row);
+    if (rowId) employeeMasterByRef.set(rowId, row);
+  });
+
   const assignments = new Map();
   appraisalRows.forEach((row) => {
-    const emp = String(firstValue(row, ["emp_id", "employee_id", "employee_master_id"]) || "").trim().toLowerCase();
-    if (!emp) return;
-    assignments.set(emp, {
+    const employeeRef = String(firstValue(row, ["emp_id", "employee_id", "employee_master_id"]) || "").trim().toLowerCase();
+    const masterEmployee = employeeMasterByRef.get(employeeRef) || {};
+    const assignment = {
       techEd: String(firstValue(row, ["appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_teched", "tech_ed", "tech_ed_id"]) || "").trim(),
       compManager: String(firstValue(row, ["comp_manager", "comp_manager_id", "comp_manager_name", "comp_manager_emp_id"]) || "").trim(),
-    });
+    };
+    [
+      employeeRef,
+      idOf(masterEmployee).toLowerCase(),
+      String(firstValue(masterEmployee, ["emp_id", "employee_id"]) || "").trim().toLowerCase(),
+    ].filter(Boolean).forEach((key) => assignments.set(key, assignment));
   });
 
   const byTargetCycle = new Map();
