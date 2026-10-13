@@ -5,9 +5,9 @@ const access = require("./accessCore");
 
 // These IDs are the Data Store table IDs from Catalyst Console → Data Store.
 const TABLES = {
-  master: "74008000000034565",       // Budget_Master
+  master: "74008000000034565", // Budget_Master
   distribution: "74008000000033809", // Budget_Distribution
-  comp: "74008000000023149",         // Budget_Distribution_Comp
+  comp: "74008000000023149", // Budget_Distribution_Comp
 };
 
 // CORS headers come from Catalyst (Authorized Domains); setting them here too
@@ -22,8 +22,20 @@ function value(row, key) {
 }
 
 function n(v) {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : 0;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  if (v === null || v === undefined || v === "") return 0;
+  // Catalyst imports can return Indian-grouped values such as "12,34,567.50".
+  // Number("12,34,567.50") is NaN, which previously silently became zero.
+  let text = String(v).trim();
+  const negative = /^\(.*\)$/.test(text);
+  // "1.25 L" / "1.25 Lakh" = 1,25,000; "2 Cr" / "2 Crore" = 2,00,00,000.
+  const unit = text.match(/(lakhs?|lacs?|l|crores?|cr)\.?\s*\)?$/i);
+  const scale = !unit ? 1 : /^c/i.test(unit[1]) ? 1e7 : 1e5;
+  if (unit) text = text.slice(0, unit.index);
+  text = text.replace(/[₹,\s]/g, "").replace(/^(?:INR|Rs\.?)/i, "").replace(/[^0-9.+-]/g, "");
+  const parsed = Number(text) * scale;
+  if (!Number.isFinite(parsed)) return 0;
+  return negative ? -Math.abs(parsed) : parsed;
 }
 
 function idOf(row) {
@@ -38,6 +50,7 @@ function mapMaster(row) {
     id: idOf(row),
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
     budget_percentage: n(value(row, "budget_percentage")),
+    org_budget_base: n(value(row, "org_budget_base")),
     budget_utilized: utilized,
     calculated_budget: calculated,
     applied_budget: applied,
@@ -55,14 +68,17 @@ function mapMaster(row) {
 }
 
 function mapDistribution(row) {
-  const calculated = n(value(row, "claculated_budget")); // column name is kept exactly as created in Data Store.
+  const calculated = n(value(row, "calculated_budget") || value(row, "claculated_budget"));
   const applied = n(value(row, "applied_budget"));
   const utilized = n(value(row, "total_utilization"));
   return {
     id: idOf(row),
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
     appraiser_tech_ed_id: String(value(row, "appraiser_tech_ed_id")),
-    percentage: n(value(row, "percentage")),
+    percentage: value(row, "percentage") === "" || value(row, "percentage") === null || value(row, "percentage") === undefined
+      ? null
+      : n(value(row, "percentage")),
+    budget_base: n(value(row, "budget_base")),
     calculated_budget: calculated,
     total_utilization: utilized,
     applied_budget: applied,
@@ -77,7 +93,8 @@ function mapComp(row) {
     id: idOf(row),
     comp_manager: String(value(row, "comp_manager")),
     percentage: n(value(row, "percentage")),
-    calculated_budget: n(value(row, "calculated_budget")),
+    budget_base: n(value(row, "budget_base")),
+    calculated_budget: n(value(row, "calculated_budget") || value(row, "claculated_budget")),
     total_utilization: utilized,
     applied_budget: applied,
     budget_distribution_id: String(value(row, "budget_distribution_id")),
@@ -87,7 +104,8 @@ function mapComp(row) {
 }
 
 function getUserField(user, key) {
-  if (user && user[key] !== undefined && user[key] !== null) return String(user[key]).trim();
+  if (user && user[key] !== undefined && user[key] !== null)
+    return String(user[key]).trim();
   return "";
 }
 
@@ -110,20 +128,35 @@ function getUserValues(user) {
     const v = getUserField(user, key).toLowerCase();
     if (v) values.push(v);
   });
-  const full = (getUserField(user, "first_name") + " " + getUserField(user, "last_name")).trim().toLowerCase();
+  const full = (
+    getUserField(user, "first_name") +
+    " " +
+    getUserField(user, "last_name")
+  )
+    .trim()
+    .toLowerCase();
   if (full) values.push(full);
   return values;
 }
 
 function matchesOwner(owner, a) {
-  const text = String(owner || "").trim().toLowerCase();
+  const text = String(owner || "")
+    .trim()
+    .toLowerCase();
   if (!text || !a || !a.user) return false;
-  const empId = String(a.user.empId || "").trim().toLowerCase();
-  const email = String(a.user.email || "").trim().toLowerCase();
+  const empId = String(a.user.empId || "")
+    .trim()
+    .toLowerCase();
+  const email = String(a.user.email || "")
+    .trim()
+    .toLowerCase();
   const parts = text.match(/^(\S+)\s*-\s*(.+)$/);
   const ownerId = parts ? parts[1] : text;
-  return Boolean((empId && ownerId === empId) || (email && text === email) ||
-    getUserValues(a.user).some((v) => v === text || v === ownerId));
+  return Boolean(
+    (empId && ownerId === empId) ||
+    (email && text === email) ||
+    getUserValues(a.user).some((v) => v === text || v === ownerId),
+  );
 }
 
 async function checkAccess(req) {
@@ -152,7 +185,11 @@ function requireBudgetScreen(a, level) {
         throw error;
       }
     });
-    if (!ok) throw new access.HttpError(403, "You do not have access to this budget screen.");
+    if (!ok)
+      throw new access.HttpError(
+        403,
+        "You do not have access to this budget screen.",
+      );
   });
 }
 
@@ -166,11 +203,15 @@ async function getAllRows(app, tableName) {
   // request hanging on this Advanced I/O endpoint.
   for (let guard = 0; guard < 10000; guard += 1) {
     const query =
-      "SELECT * FROM " + tableName +
-      " WHERE ROWID > " + last +
+      "SELECT * FROM " +
+      tableName +
+      " WHERE ROWID > " +
+      last +
       " ORDER BY ROWID ASC LIMIT 300";
     const result = await zcql.executeZCQLQuery(query);
-    const page = (result || []).map((item) => item && (item[tableName] || Object.values(item)[0]) || {});
+    const page = (result || []).map(
+      (item) => (item && (item[tableName] || Object.values(item)[0])) || {},
+    );
 
     rows.push(...page);
 
@@ -192,16 +233,24 @@ async function getAllRows(app, tableName) {
 
 function parseJson(text) {
   if (!String(text || "").trim()) return {};
-  try { return JSON.parse(text); } catch (_) { return {}; }
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    return {};
+  }
 }
 
 function parseBody(req) {
-  if (req.body && typeof req.body === "object") return Promise.resolve(req.body);
+  if (req.body && typeof req.body === "object")
+    return Promise.resolve(req.body);
   if (typeof req.body === "string") return Promise.resolve(parseJson(req.body));
-  if (typeof req.on !== "function" || req.readableEnded) return Promise.resolve({});
+  if (typeof req.on !== "function" || req.readableEnded)
+    return Promise.resolve({});
   return new Promise((resolve, reject) => {
     let text = "";
-    req.on("data", (chunk) => { text += chunk.toString(); });
+    req.on("data", (chunk) => {
+      text += chunk.toString();
+    });
     req.on("end", () => resolve(parseJson(text)));
     req.on("error", reject);
   });
@@ -229,9 +278,163 @@ async function readBundle(app) {
   };
 }
 
+async function readTableById(app, tableId) {
+  const table = app.datastore().table(tableId);
+  const rows = [];
+  let nextToken = null;
+  for (let guard = 0; guard < 10000; guard += 1) {
+    const options = { maxRows: 200 };
+    if (nextToken) options.nextToken = nextToken;
+    const page = await table.getPagedRows(options);
+    rows.push(...(Array.isArray(page && page.data) ? page.data : []));
+    if (!(page && page.more_records === true) || !page.next_token) break;
+    nextToken = page.next_token;
+  }
+  return rows;
+}
+
+function readField(row, candidates) {
+  if (!row) return "";
+  const keys = Object.keys(row);
+  for (const candidate of candidates) {
+    if (
+      row[candidate] !== undefined &&
+      row[candidate] !== null &&
+      String(row[candidate]).trim()
+    ) {
+      return row[candidate];
+    }
+    const key = keys.find(
+      (item) => item.toLowerCase() === candidate.toLowerCase(),
+    );
+    if (
+      key &&
+      row[key] !== undefined &&
+      row[key] !== null &&
+      String(row[key]).trim()
+    ) {
+      return row[key];
+    }
+  }
+  return "";
+}
+
+async function readTechEdOwners(app) {
+  // Read Appraisal_Sheet directly for the source-of-truth Tech-ED assignments.
+  // Do not scan Employee_Master or budget distribution to discover Tech-ED names.
+  const zcql = app.zcql();
+  const owners = new Map();
+  let last = "0";
+  for (let guard = 0; guard < 10000; guard += 1) {
+    // Read all columns because Appraisal_Sheet schemas may use a legacy alias
+    // for the Tech-ED assignment. readField below handles those column names.
+    const query =
+      "SELECT * FROM Appraisal_Sheet " +
+      "WHERE ROWID > " + last + " ORDER BY ROWID ASC LIMIT 300";
+    const result = await zcql.executeZCQLQuery(query);
+    const rows = (result || []).map(
+      (item) => (item && (item.Appraisal_Sheet || Object.values(item)[0])) || {},
+    );
+    if (!rows.length) break;
+    let max = last;
+    rows.forEach((row) => {
+      const rowId = String(row.ROWID || "");
+      try { if (BigInt(rowId) > BigInt(max)) max = rowId; } catch (_) {}
+      const assignment = String(
+        readField(row, [
+          "appraiser_tech_ed",
+          "appraiser_tech_ed_id",
+          "appraiser_teched",
+          "tech_ed",
+          "tech_ed_id",
+        ]) || "",
+      ).trim();
+      if (!assignment) return;
+      // A cell may contain either "EMP005" or "EMP005 - Name".
+      // Deduplicate by the employee ID so both representations count once.
+      // Strip a prefix only when it looks like an employee ID (for example, EMP005 - Name).
+      // Do not split ordinary Tech-ED names at the hyphen, or distinct owners collapse into one.
+      const pair = assignment.match(/^([a-z]*\d+)\s*-/i);
+      const key = String(pair ? pair[1] : assignment).trim().toLowerCase();
+      if (!owners.has(key)) owners.set(key, { assignment });
+    });
+    if (rows.length < 300 || max === last) break;
+    last = max;
+  }
+  return Array.from(owners.values());
+}
+
+async function readEmployeeRoster(app) {
+  // Use the API's ZCQL paging helper rather than Data Store getPagedRows.
+  // getPagedRows across both full employee tables was causing the endpoint
+  // to exceed Catalyst's execution timeout.
+  const [appraisalRows, masterRows] = await Promise.all([
+    getAllRows(app, "Appraisal_Sheet"),
+    getAllRows(app, "Employee_Master"),
+  ]);
+  const masterById = new Map(
+    masterRows.map((row) => [
+      String(readField(row, ["emp_id", "employee_id"]))
+        .trim()
+        .toLowerCase(),
+      row,
+    ]),
+  );
+  const appraisalById = new Map(
+    appraisalRows.map((row) => [
+      String(readField(row, ["emp_id", "employee_id"]))
+        .trim()
+        .toLowerCase(),
+      row,
+    ]),
+  );
+  const allIds = new Set([...masterById.keys(), ...appraisalById.keys()]);
+  return Array.from(allIds)
+    .map((key) => {
+      const row = appraisalById.get(key) || {};
+      const master = masterById.get(key) || {};
+      const id = String(
+        readField(row, ["emp_id", "employee_id"]) ||
+          readField(master, ["emp_id", "employee_id"]),
+      ).trim();
+      const assignment =
+        readField(row, [
+          "appraiser_tech_ed",
+          "appraiser_tech_ed_id",
+          "appraiser_teched",
+          "tech_ed",
+          "tech_ed_id",
+        ]) ||
+        readField(master, [
+          "appraiser_tech_ed",
+          "appraiser_tech_ed_id",
+          "appraiser_teched",
+          "tech_ed",
+          "tech_ed_id",
+        ]);
+      return {
+        emp_id: id,
+        name: String(
+          readField(master, ["emp_name", "employee_name", "name"]) ||
+            readField(row, ["emp_name", "employee_name", "name"]) ||
+            id,
+        ),
+        appraiser_tech_ed: String(assignment).trim(),
+        status: String(
+          readField(master, ["emp_status", "status"]) ||
+            readField(row, ["emp_status", "status"]) ||
+            "",
+        ),
+      };
+    })
+    .filter((row) => row.emp_id);
+}
+
 function filterOwn(bundle, a) {
   if (!a || !a.enforced || (a.scope && a.scope.all)) return bundle;
-  const techEd = bundle.techEd.filter((row) => matchesOwner(row.appraiser_tech_ed_id, a));
+  const techEd = bundle.techEd.filter((row) =>
+    matchesOwner(row.appraiser_tech_ed_id, a),
+  );
   const allowedDistributionIds = new Set(techEd.map((row) => row.id));
   const compManager = bundle.compManager.filter((row) =>
     allowedDistributionIds.has(String(row.budget_distribution_id)),
@@ -239,8 +442,337 @@ function filterOwn(bundle, a) {
   // Budget_Master is org-level and has no owner column, so a non-HR user gets
   // only the master row for the cycle represented by their Tech-Ed allocation.
   const cycleIds = new Set(techEd.map((row) => row.appraisal_cycle_id));
-  const master = bundle.master.filter((row) => cycleIds.has(row.appraisal_cycle_id));
+  const master = bundle.master.filter((row) =>
+    cycleIds.has(row.appraisal_cycle_id),
+  );
   return { master, techEd, compManager };
+}
+
+
+function ownerKey(raw) {
+  const text = String(raw || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
+  return pair ? pair[1].toLowerCase() : text;
+}
+
+function firstValue(row, names) {
+  for (const name of names) {
+    const hit = Object.keys(row || {}).find((key) => key.toLowerCase() === name.toLowerCase());
+    if (hit && row[hit] !== null && row[hit] !== undefined && String(row[hit]).trim() !== "") return row[hit];
+  }
+  return "";
+}
+
+function cycleDate(row) {
+  const raw = firstValue(row, ["effective_date", "effectiveDate", "start_date", "startDate"]);
+  const match = String(raw || "").match(/^\d{4}-\d{2}-\d{2}/);
+  if (match) return match[0];
+  const name = String(firstValue(row, ["cycle_name", "cycleName", "name", "appraisal_year"]) || "");
+  const yearMatch = name.match(/(?:^|\D)(20\d{2}|\d{2})(?:\D|$)/);
+  if (yearMatch) {
+    const y = yearMatch[1].length === 2 ? 2000 + Number(yearMatch[1]) : Number(yearMatch[1]);
+    const monthMatch = name.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i);
+    const months = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+    const month = monthMatch ? months.indexOf(monthMatch[1].slice(0,3).toLowerCase()) + 1 : 1;
+    return String(y).padStart(4, "0") + "-" + String(month).padStart(2, "0") + "-01";
+  }
+  return "";
+}
+
+async function getColumnNames(table) {
+  try {
+    const columns = await table.getAllColumns();
+    return new Set((columns || []).map((column) => String(column.column_name || column.name || "").trim()).filter(Boolean));
+  } catch (_) {
+    return null;
+  }
+}
+
+function pickColumn(columns, candidates, fallback) {
+  if (!columns) return fallback;
+  return candidates.find((name) => columns.has(name)) || fallback;
+}
+
+async function calculateBudgetBases(app, bundle, techEdOwners = []) {
+  // Appraisal_Sheet is the source of truth for employee base, allocated PB,
+  // Tech-ED and Comp Manager assignments. Do not depend on Payroll_Data cycle
+  // foreign keys: those IDs are not the budget calculation source.
+  const appraisalRows = await getAllRows(app, "Appraisal_Sheet");
+  if (!appraisalRows.length) {
+    throw new Error("Appraisal_Sheet returned no rows; cannot calculate budget bases.");
+  }
+
+  const appraisalByEmployee = new Map();
+  appraisalRows.forEach((row) => {
+    const employeeId = String(firstValue(row, ["emp_id", "empId", "employee_id", "employeeId", "employee_id_text"]) || idOf(row)).trim().toLowerCase();
+    if (!employeeId) return;
+    const techEd = String(firstValue(row, [
+      "appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_teched", "appraiserTechED", "appraiserTechEd", "tech_ed", "tech_ed_id", "techED", "techEd",
+    ]) || "").trim();
+    const compManager = String(firstValue(row, [
+      "comp_manager", "comp_manager_id", "comp_manager_name", "comp_manager_emp_id", "compManager", "compManagerId",
+    ]) || "").trim();
+    const basePay = n(firstValue(row, [
+      "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "currentBasePay", "base_pay", "basePay", "annual_base_pay", "annualBasePay",
+    ]));
+    const allocatedPB = n(firstValue(row, [
+      "allocated_pb_amount", "allocatedPBAmount", "pb_to_be_paid", "pbToBePaid", "target_pb_allocated_for_may", "targetPBAllocatedForMay", "allocated_pb", "allocatedPB", "total_pb", "totalPB",
+    ]));
+    // Appraisal_Sheet can contain repeated employee records during imports.
+    // Keep one record per employee so the same salary is never summed twice.
+    appraisalByEmployee.set(employeeId, {
+      employeeId,
+      techEd,
+      compManager,
+      base: basePay + allocatedPB,
+    });
+  });
+  const employees = Array.from(appraisalByEmployee.values());
+  const withBase = employees.filter((employee) => employee.base > 0).length;
+  const withTechEd = employees.filter((employee) => employee.techEd).length;
+  bundle.diagnostics = {
+    appraisalRows: appraisalRows.length,
+    employees: employees.length,
+    employeesWithBase: withBase,
+    employeesWithTechEd: withTechEd,
+    budgetMasterCycles: bundle.master.filter((m) => String(m.appraisal_cycle_id || "").trim()).length,
+    baseColumns: "current_annual_base_pay + allocated_pb_amount",
+  };
+  if (!bundle.diagnostics.budgetMasterCycles) {
+    bundle.diagnostics.warning = "No Budget_Master row has an appraisal cycle, so no budget base was calculated. Add a Budget_Master row for the cycle (appraisal_cycle_id) first.";
+  } else if (!withBase) {
+    bundle.diagnostics.warning = `None of the ${employees.length} employees in Appraisal_Sheet has Current Annual Base Pay or Allocated PB Amount, so the budget base is 0. Fill these columns (or re-upload the Appraisal Sheet).`;
+  } else if (withBase < employees.length) {
+    bundle.diagnostics.warning = `${employees.length - withBase} of ${employees.length} employees have no Current Annual Base Pay / Allocated PB Amount and add 0 to the budget base.`;
+  }
+  if (!withTechEd) {
+    bundle.diagnostics.warning = (bundle.diagnostics.warning ? bundle.diagnostics.warning + " " : "") + "No employee in Appraisal_Sheet has an Appraiser Tech-ED, so no Tech-ED gets a base.";
+  }
+
+  const techLabels = new Map();
+  const compLabels = new Map();
+  employees.forEach((employee) => {
+    const techKey = ownerKey(employee.techEd);
+    const compKey = ownerKey(employee.compManager);
+    if (techKey && !techLabels.has(techKey)) techLabels.set(techKey, employee.techEd);
+    if (techKey && compKey && !compLabels.has(techKey + "::" + compKey)) {
+      compLabels.set(techKey + "::" + compKey, {
+        techEdKey: techKey,
+        compKey,
+        techEdName: employee.techEd,
+        name: employee.compManager,
+      });
+    }
+  });
+
+  // Merge labels from the roster as well, so a Tech-ED with no assigned
+  // employees is still visible with a true zero base rather than disappearing.
+  techEdOwners.forEach((item) => {
+    const label = String(item.assignment || "").trim();
+    const key = ownerKey(label);
+    if (key && !techLabels.has(key)) techLabels.set(key, label);
+  });
+
+  const distributionTable = app.datastore().table(TABLES.distribution);
+  const compTable = app.datastore().table(TABLES.comp);
+  const masterTable = app.datastore().table(TABLES.master);
+  const [distributionColumns, compColumns, masterColumns] = await Promise.all([
+    getColumnNames(distributionTable),
+    getColumnNames(compTable),
+    getColumnNames(masterTable),
+  ]);
+  const distCalcField = pickColumn(distributionColumns, ["calculated_budget", "claculated_budget"], "claculated_budget");
+  const compCalcField = pickColumn(compColumns, ["calculated_budget", "claculated_budget"], "calculated_budget");
+  const masterCalcField = pickColumn(masterColumns, ["calculated_budget"], "calculated_budget");
+
+  const persistOptional = async (table, rowId, columns, candidates, val) => {
+    if (!rowId || !columns) return;
+    const field = candidates.find((candidate) => columns.has(candidate));
+    if (!field) return;
+    await table.updateRow({ ROWID: rowId, [field]: val });
+  };
+
+  // Appraisal_Sheet is the current appraisal roster. If a future schema adds
+  // an appraisal-cycle field, cycle scoping can be applied without relying on
+  // unrelated Payroll_Data foreign keys. For now each saved budget cycle uses
+  // this sheet's employee assignments and pay/PB values.
+  for (const master of bundle.master) {
+    const cycleId = String(master.appraisal_cycle_id || "").trim();
+    if (!cycleId) continue;
+    const orgBase = employees.reduce((sum, employee) => sum + employee.base, 0);
+    const techBases = new Map(Array.from(techLabels.keys(), (key) => [key, { base: 0, count: 0 }]));
+    const compBases = new Map(Array.from(compLabels.keys(), (key) => [key, { base: 0, count: 0 }]));
+
+    employees.forEach((employee) => {
+      const techKey = ownerKey(employee.techEd);
+      const compKey = ownerKey(employee.compManager);
+      if (techKey) {
+        const tech = techBases.get(techKey) || { base: 0, count: 0 };
+        tech.base += employee.base;
+        tech.count += 1;
+        techBases.set(techKey, tech);
+      }
+      if (techKey && compKey) {
+        const key = techKey + "::" + compKey;
+        const comp = compBases.get(key) || { base: 0, count: 0 };
+        comp.base += employee.base;
+        comp.count += 1;
+        compBases.set(key, comp);
+      }
+    });
+
+    // Upsert missing Tech-ED owners for this appraisal cycle.
+    for (const [techKey, ownerName] of techLabels) {
+      let row = bundle.techEd.find((item) =>
+        String(item.appraisal_cycle_id) === cycleId &&
+        ownerKey(item.appraiser_tech_ed_id) === techKey
+      );
+      if (!row) {
+        const created = await distributionTable.insertRow({
+          appraisal_cycle_id: cycleId,
+          appraiser_tech_ed_id: ownerName,
+          percentage: null,
+          budget_base: 0,
+          [distCalcField]: 0,
+          applied_budget: 0,
+          total_utilization: 0,
+        });
+        row = mapDistribution(created);
+        bundle.techEd.push(row);
+      }
+      const stats = techBases.get(techKey) || { base: 0, count: 0 };
+      const rawPct = row.percentage === null || row.percentage === undefined || row.percentage === "" ? null : n(row.percentage);
+      const orgPct = n(master.budget_percentage);
+      const effectivePct = rawPct === null || rawPct === orgPct ? orgPct : rawPct;
+      const originalBase = n(row.original_budget_base || row.original_base || row.budget_base) || stats.base;
+      const originalBudget = n(row.calculated_budget) || (originalBase * orgPct / 100);
+      const updatedBudget = stats.base * effectivePct / 100;
+
+      const update = {
+        ROWID: row.id,
+        budget_base: stats.base,
+        [distCalcField]: originalBudget,
+        applied_budget: updatedBudget,
+      };
+      // A Tech-ED at the Org % inherits the default. Store null in the
+      // override field so future Org % changes flow through automatically.
+      if (rawPct === null || rawPct === orgPct) update.percentage = null;
+      if (distributionColumns) {
+        const originalBaseField = ["original_budget_base", "original_base"].find((key) => distributionColumns.has(key));
+        const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => distributionColumns.has(key));
+        const currentCountField = ["current_headcount", "headcount"].find((key) => distributionColumns.has(key));
+        const currentBaseField = ["current_budget_base", "current_base"].find((key) => distributionColumns.has(key));
+        const overrideField = ["override_percentage", "allocation_percentage"].find((key) => distributionColumns.has(key));
+        if (originalBaseField) update[originalBaseField] = originalBase;
+        if (originalCountField && !(n(row[originalCountField]) > 0)) update[originalCountField] = stats.count;
+        if (currentCountField) update[currentCountField] = stats.count;
+        if (currentBaseField) update[currentBaseField] = stats.base;
+        if (overrideField && (rawPct === null || rawPct === orgPct)) update[overrideField] = null;
+      }
+      await distributionTable.updateRow(update);
+      Object.assign(row, {
+        budget_base: stats.base,
+        percentage: effectivePct,
+        override_percentage: rawPct === null || rawPct === orgPct ? null : rawPct,
+        calculated_budget: originalBudget,
+        applied_budget: updatedBudget,
+        effective_percentage: effectivePct,
+        current_headcount: stats.count,
+        original_headcount: n(row.original_headcount) || stats.count,
+      });
+    }
+
+    // Upsert Comp Manager owners under their matching Tech-ED parent.
+    for (const [pairKey, details] of compLabels) {
+      const parent = bundle.techEd.find((item) =>
+        String(item.appraisal_cycle_id) === cycleId &&
+        ownerKey(item.appraiser_tech_ed_id) === details.techEdKey
+      );
+      if (!parent) continue;
+      let row = bundle.compManager.find((item) =>
+        String(item.appraisal_cycle_id) === cycleId &&
+        String(item.budget_distribution_id) === String(parent.id) &&
+        ownerKey(item.comp_manager) === details.compKey
+      );
+      if (!row) {
+        const created = await compTable.insertRow({
+          appraisal_cycle_id: cycleId,
+          budget_distribution_id: String(parent.id),
+          comp_manager: details.name,
+          percentage: 0,
+          budget_base: 0,
+          [compCalcField]: 0,
+          applied_budget: 0,
+          total_utilization: 0,
+        });
+        row = mapComp(created);
+        bundle.compManager.push(row);
+      }
+      const stats = compBases.get(pairKey) || { base: 0, count: 0 };
+      const pct = n(row.percentage);
+      const originalBase = n(row.original_budget_base || row.original_base || row.budget_base) || stats.base;
+      const originalBudget = n(row.calculated_budget) || (originalBase * pct / 100);
+      const updatedBudget = stats.base * pct / 100;
+      const update = {
+        ROWID: row.id,
+        budget_base: stats.base,
+        [compCalcField]: originalBudget,
+        applied_budget: updatedBudget,
+      };
+      if (compColumns) {
+        const originalBaseField = ["original_budget_base", "original_base"].find((key) => compColumns.has(key));
+        const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => compColumns.has(key));
+        const currentCountField = ["current_headcount", "headcount"].find((key) => compColumns.has(key));
+        const currentBaseField = ["current_budget_base", "current_base"].find((key) => compColumns.has(key));
+        if (originalBaseField) update[originalBaseField] = originalBase;
+        if (originalCountField && !(n(row[originalCountField]) > 0)) update[originalCountField] = stats.count;
+        if (currentCountField) update[currentCountField] = stats.count;
+        if (currentBaseField) update[currentBaseField] = stats.base;
+      }
+      await compTable.updateRow(update);
+      Object.assign(row, {
+        budget_base: stats.base,
+        calculated_budget: originalBudget,
+        applied_budget: updatedBudget,
+        current_headcount: stats.count,
+        original_headcount: n(row.original_headcount) || stats.count,
+      });
+    }
+
+    // Org totals are the roll-up of the Tech-ED allocations. Preserve the
+    // original budget once captured; refresh the current/applied total each read.
+    const cycleTech = bundle.techEd.filter((row) => String(row.appraisal_cycle_id) === cycleId);
+    const orgOriginal = cycleTech.reduce((sum, row) => sum + n(row.calculated_budget), 0);
+    const orgUpdated = cycleTech.reduce((sum, row) => sum + n(row.applied_budget), 0);
+    const previousOrgBase = n(master.org_budget_base);
+    const orgOriginalBase = previousOrgBase || orgBase;
+    const orgFields = {
+      ROWID: master.id,
+      org_budget_base: orgOriginalBase,
+      [masterCalcField]: orgOriginal || (orgOriginalBase * n(master.budget_percentage) / 100),
+      applied_budget: orgUpdated || (orgBase * n(master.budget_percentage) / 100),
+    };
+    if (masterColumns) {
+      const originalBaseField = ["original_budget_base", "original_base"].find((key) => masterColumns.has(key));
+      const currentBaseField = ["current_budget_base", "current_base"].find((key) => masterColumns.has(key));
+      const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => masterColumns.has(key));
+      const currentCountField = ["current_headcount", "headcount"].find((key) => masterColumns.has(key));
+      if (originalBaseField) orgFields[originalBaseField] = orgOriginalBase;
+      if (currentBaseField) orgFields[currentBaseField] = orgBase;
+      if (originalCountField && !(n(master[originalCountField]) > 0)) orgFields[originalCountField] = employees.length;
+      if (currentCountField) orgFields[currentCountField] = employees.length;
+    }
+    await masterTable.updateRow(orgFields);
+    Object.assign(master, {
+      org_budget_base: orgOriginalBase,
+      calculated_budget: orgOriginal || (orgOriginalBase * n(master.budget_percentage) / 100),
+      applied_budget: orgUpdated || (orgBase * n(master.budget_percentage) / 100),
+      current_budget_base: orgBase,
+      current_headcount: employees.length,
+    });
+  }
+
+  return bundle;
 }
 
 module.exports = async function (req, res) {
@@ -258,28 +790,56 @@ module.exports = async function (req, res) {
     const app = catalyst.initialize(req, { scope: "admin" });
 
     if (method === "GET") {
-      const bundle = filterOwn(await readBundle(app), a);
-      // data remains an array for the existing screens; the new relational
-      // collections are exposed beside it for screens that need each level.
+      // Keep this endpoint limited to the three budget tables. The frontend
+      // already loads the full employee roster through employeesapi; scanning
+      // both employee tables again here caused Catalyst's execution timeout.
+      const [rawBundle, techEdOwners] = await Promise.all([
+        readBundle(app),
+        readTechEdOwners(app),
+      ]);
+      let calculatedBundle = rawBundle;
+      try {
+        calculatedBundle = await calculateBudgetBases(app, rawBundle, techEdOwners);
+      } catch (calculationError) {
+        // Never report a successful zero-budget response when source calculations
+        // failed. Return the actionable source/schema error to the frontend.
+        console.error("Budget base calculation failed:", calculationError);
+        return sendJson(res, 500, {
+          success: false,
+          message: "Could not calculate budget from Appraisal_Sheet: " +
+            String(calculationError && calculationError.message || calculationError),
+        });
+      }
+      const bundle = filterOwn(calculatedBundle, a);
       return sendJson(res, 200, {
         success: true,
         data: bundle.techEd,
         master: bundle.master,
         techEd: bundle.techEd,
         compManager: bundle.compManager,
+        techEdOwners,
+        techEdCount: techEdOwners.length,
+        diagnostics: calculatedBundle.diagnostics || null,
         more_records: false,
         next_token: null,
       });
     }
 
     if (method !== "PUT") {
-      return sendJson(res, 405, { success: false, message: "Method not allowed" });
+      return sendJson(res, 405, {
+        success: false,
+        message: "Method not allowed",
+      });
     }
 
     const body = await parseBody(req);
     const resource = String(body.resource || "master").toLowerCase();
     const id = String(body.id || "").trim();
-    if (!id) return sendJson(res, 400, { success: false, message: "Budget row id is required." });
+    if (!id)
+      return sendJson(res, 400, {
+        success: false,
+        message: "Budget row id is required.",
+      });
 
     const tables = {
       master: { table: TABLES.master, mapper: mapMaster },
@@ -288,32 +848,68 @@ module.exports = async function (req, res) {
       compmanager: { table: TABLES.comp, mapper: mapComp },
     };
     const target = tables[resource];
-    if (!target) return sendJson(res, 400, { success: false, message: "Invalid budget resource." });
+    if (!target)
+      return sendJson(res, 400, {
+        success: false,
+        message: "Invalid budget resource.",
+      });
 
     const isAdminScope = Boolean(a && a.scope && a.scope.all);
     if (!a.enforced) {
       const user = await app.userManagement().getCurrentUser();
-      if (!user) return sendJson(res, 401, { success: false, message: "Authentication is required." });
+      if (!user)
+        return sendJson(res, 401, {
+          success: false,
+          message: "Authentication is required.",
+        });
       if (!isHR(user) && resource === "master") {
-        return sendJson(res, 403, { success: false, message: "Only HR can update Budget Master." });
+        return sendJson(res, 403, {
+          success: false,
+          message: "Only HR can update Budget Master.",
+        });
       }
     }
 
     const table = app.datastore().table(target.table);
-    const currentRows = await getAllRows(app, Object.keys(TABLES).find((key) => TABLES[key] === target.table) === "master" ? "Budget_Master" : Object.keys(TABLES).find((key) => TABLES[key] === target.table) === "distribution" ? "Budget_Distribution" : "Budget_Distribution_Comp");
+    const currentRows = await getAllRows(
+      app,
+      Object.keys(TABLES).find((key) => TABLES[key] === target.table) ===
+        "master"
+        ? "Budget_Master"
+        : Object.keys(TABLES).find((key) => TABLES[key] === target.table) ===
+            "distribution"
+          ? "Budget_Distribution"
+          : "Budget_Distribution_Comp",
+    );
     const current = currentRows.find((row) => idOf(row) === id);
-    if (!current) return sendJson(res, 404, { success: false, message: "Budget row not found." });
+    if (!current)
+      return sendJson(res, 404, {
+        success: false,
+        message: "Budget row not found.",
+      });
 
     if (a.enforced && !isAdminScope) {
-      if (resource === "distribution" && !matchesOwner(value(current, "appraiser_tech_ed_id"), a)) {
-        throw new access.HttpError(403, "You can only update your own Tech-Ed budget.");
+      if (
+        resource === "distribution" &&
+        !matchesOwner(value(current, "appraiser_tech_ed_id"), a)
+      ) {
+        throw new access.HttpError(
+          403,
+          "You can only update your own Tech-Ed budget.",
+        );
       }
       if (resource === "comp" || resource === "compmanager") {
         const parentId = String(value(current, "budget_distribution_id") || "");
         const parents = await getAllRows(app, "Budget_Distribution");
         const parent = parents.find((row) => idOf(row) === parentId);
-        if (!parent || !matchesOwner(value(parent, "appraiser_tech_ed_id"), a)) {
-          throw new access.HttpError(403, "You can only update Comp Manager budgets under your Tech-Ed.");
+        if (
+          !parent ||
+          !matchesOwner(value(parent, "appraiser_tech_ed_id"), a)
+        ) {
+          throw new access.HttpError(
+            403,
+            "You can only update Comp Manager budgets under your Tech-Ed.",
+          );
         }
       }
       if (resource === "master" && !isHR(a.user)) {
@@ -322,33 +918,94 @@ module.exports = async function (req, res) {
     }
 
     const fieldsByResource = {
-      master: ["budget_percentage", "budget_utilized", "calculated_budget", "applied_budget"],
-      distribution: ["percentage", "claculated_budget", "total_utilization", "applied_budget", "appraisal_cycle_id", "appraiser_tech_ed_id"],
-      comp: ["percentage", "calculated_budget", "total_utilization", "applied_budget", "comp_manager", "budget_distribution_id", "appraisal_cycle_id"],
+      master: [
+        "budget_percentage",
+        "org_budget_base",
+        "budget_utilized",
+        "calculated_budget",
+        "applied_budget",
+      ],
+      distribution: [
+        "percentage",
+        "budget_base",
+        "total_utilization",
+        "applied_budget",
+        "appraisal_cycle_id",
+        "appraiser_tech_ed_id",
+      ],
+      comp: [
+        "percentage",
+        "budget_base",
+        "total_utilization",
+        "applied_budget",
+        "comp_manager",
+        "budget_distribution_id",
+        "appraisal_cycle_id",
+      ],
     };
-    const fields = fieldsByResource[resource === "compmanager" ? "comp" : resource];
+    const fields = [
+      ...fieldsByResource[resource === "compmanager" ? "comp" : resource],
+    ];
+    if (resource === "distribution" || resource === "comp" || resource === "compmanager") {
+      const columns = await getColumnNames(table);
+      const fallback = resource === "distribution" ? "claculated_budget" : "calculated_budget";
+      fields.push(pickColumn(columns, ["calculated_budget", "claculated_budget"], fallback));
+    }
     const update = { ROWID: id };
     fields.forEach((key) => {
-      if (Object.prototype.hasOwnProperty.call(body, key)) update[key] = body[key];
-      // Accept the correctly-spelled frontend name while writing the actual
-      // Data Store column "claculated_budget".
-      if (key === "claculated_budget" && Object.prototype.hasOwnProperty.call(body, "calculated_budget")) {
+      if (Object.prototype.hasOwnProperty.call(body, key))
+        update[key] = body[key];
+      // Frontend uses calculated_budget. Persist to whichever calculated
+      // amount column actually exists in this Data Store table.
+      if (
+        (key === "claculated_budget" || key === "calculated_budget") &&
+        Object.prototype.hasOwnProperty.call(body, "calculated_budget")
+      ) {
         update[key] = body.calculated_budget;
       }
     });
 
     const changed = Object.keys(update).filter((key) => key !== "ROWID");
-    if (!changed.length) return sendJson(res, 400, { success: false, message: "No budget fields were provided." });
+    if (!changed.length)
+      return sendJson(res, 400, {
+        success: false,
+        message: "No budget fields were provided.",
+      });
 
     access.guard(a, function () {
-      if (resource === "master" || resource === "distribution" || resource === "comp" || resource === "compmanager") {
-        if (changed.some((key) => ["budget_percentage", "percentage", "calculated_budget", "claculated_budget", "applied_budget"].includes(key))) {
-          try { access.requireAction(a, "changeBudgetConfig"); } catch (e) {
+      if (
+        resource === "master" ||
+        resource === "distribution" ||
+        resource === "comp" ||
+        resource === "compmanager"
+      ) {
+        if (
+          changed.some((key) =>
+            [
+              "budget_percentage",
+              "org_budget_base",
+              "budget_base",
+              "percentage",
+              "calculated_budget",
+              "claculated_budget",
+              "applied_budget",
+            ].includes(key),
+          )
+        ) {
+          try {
+            access.requireAction(a, "changeBudgetConfig");
+          } catch (e) {
             if (!(e instanceof access.HttpError)) throw e;
           }
         }
-        if (changed.some((key) => ["budget_utilized", "total_utilization"].includes(key))) {
-          try { access.requireAction(a, "allotNextLevel"); } catch (e) {
+        if (
+          changed.some((key) =>
+            ["budget_utilized", "total_utilization"].includes(key),
+          )
+        ) {
+          try {
+            access.requireAction(a, "allotNextLevel");
+          } catch (e) {
             if (!(e instanceof access.HttpError)) throw e;
           }
         }

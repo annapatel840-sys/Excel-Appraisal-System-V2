@@ -16,13 +16,14 @@ import { COLUMNS, formatValue } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useAccess } from "@/lib/access-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { useCurrentCycleName } from "@/lib/current-cycle";
 
 // ============================================================
 // API
 // ============================================================
 
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
-const CURRENT_APPRAISAL_YEAR = "Apr-26";
+const CURRENT_APPRAISAL_YEAR = "Apr-26"; // fallback while cycle master is loading
 
 const APPRAISAL_FONT = "Arial, Helvetica, sans-serif";
 
@@ -213,9 +214,26 @@ const numericValue = (value) => {
     return "";
   }
 
-  const n = Number(value);
+  const normalized = typeof value === "string" ? value.replace(/,/g, "").trim() : value;
+  const n = Number(normalized);
 
   return Number.isFinite(n) ? n : 0;
+};
+
+const formatEditableNumeric = (value, type) => {
+  if (value === "" || value === null || value === undefined) return "";
+  const number = Number(typeof value === "string" ? value.replace(/,/g, "") : value);
+  if (!Number.isFinite(number)) return String(value);
+  if (type === "decimal") {
+    return number.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+  if (type === "currency" || type === "number") {
+    return number.toLocaleString("en-IN", { maximumFractionDigits: 10 });
+  }
+  return String(value);
 };
 
 // input = yellow tint, calculated = blue tint, master = banded rows.
@@ -396,18 +414,44 @@ const textOrDash = (value) =>
     ? String(value)
     : "—";
 
+const getCycleName = (value) => {
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "string" || typeof value === "number") {
+    const text = String(value).trim();
+    return /^\d+$/.test(text) ? "" : text;
+  }
+  if (typeof value === "object") {
+    for (const key of ["appraisal_cycle_name", "cycle_name", "cycleName", "name", "display_value", "value", "label"]) {
+      const name = getCycleName(value[key]);
+      if (name) return name;
+    }
+  }
+  return "";
+};
+
+const normalizeCycleKey = (value) =>
+  String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+
 const normalizeHistoryRecord = (record) => {
-  const basePay = Number(record?.base_pay) || 0;
+  // Payroll_Data uses fy_year/current_annual_base_pay/total_CTC_with_rewards;
+  // older history rows may instead use appraisal_year/base_pay/new_ctc.
+  const basePay = Number(record?.base_pay ?? record?.current_annual_base_pay) || 0;
   const hikeAmount = Number(record?.hike_amount) || 0;
+  const year = record?.appraisal_year ?? record?.fy_year;
+  const cycleName =
+    getCycleName(record?.appraisal_cycle_name) ||
+    getCycleName(record?.appraisalCycleName) ||
+    getCycleName(record?.cycle_name);
 
   return {
-    year: textOrDash(record?.appraisal_year),
+    cycleName: cycleName || textOrDash(year),
+    year: textOrDash(year),
     basePay,
     joiningBonus: Number(record?.joining_bonus) || 0,
     allocatedPB: Number(record?.allocated_pb) || 0,
     performanceBonus: Number(record?.performance_bonus) || 0,
     retentionBonus: Number(record?.retention_bonus) || 0,
-    totalPB: Number(record?.total_pb) || 0,
+    totalPB: Number(record?.total_pb ?? record?.performance_bonus) || 0,
     totalBonus: Number(record?.total_bonus) || 0,
     hikeAmount,
     hikePct: Number(record?.hike_pct) || 0,
@@ -416,13 +460,14 @@ const normalizeHistoryRecord = (record) => {
     designation: textOrDash(record?.designation),
     rating: textOrDash(record?.rating),
     feedback: textOrDash(record?.manager_rating),
-    targetPB: Number(record?.target_performance_bonus) || 0,
-    newCTC: Number(record?.new_ctc) || 0,
-    newBasePay: basePay + hikeAmount,
+    targetPB: Number(record?.target_performance_bonus ?? record?.target_performance_agreed) || 0,
+    newCTC: Number(record?.new_ctc ?? record?.total_CTC_with_rewards) || 0,
+    newBasePay: Number(record?.new_base_pay) || (basePay + hikeAmount),
   };
 };
 
 const emptyHistoryRecord = (year) => ({
+  cycleName: year,
   year,
   basePay: 0,
   joiningBonus: 0,
@@ -443,38 +488,54 @@ const emptyHistoryRecord = (year) => ({
   newBasePay: 0,
 });
 
-const CURRENT_APPRAISAL_YEAR_NUMERIC = (() => {
-  const match = CURRENT_APPRAISAL_YEAR.match(/(\d{2,4})$/);
-
-  if (!match) {
-    return null;
-  }
-
+const yearNumberFromCycle = (cycleName) => {
+  const match = String(cycleName || "").match(/(\d{2,4})$/);
+  if (!match) return null;
   return match[1].length === 2 ? `20${match[1]}` : match[1];
-})();
+};
 
-const isCurrentYearRecord = (record) => {
+const isCurrentYearRecord = (record, currentCycleName = CURRENT_APPRAISAL_YEAR) => {
+  const cycleKey = normalizeCycleKey(record?.cycleName);
+  const currentCycleKey = normalizeCycleKey(currentCycleName);
+  if (cycleKey && currentCycleKey && cycleKey === currentCycleKey) return true;
+
+  // Legacy records without a cycle lookup name use the year as a fallback.
+  if (record?.cycleName && cycleKey && currentCycleKey) return false;
   const year = String(record?.year ?? "").trim();
-
-  return (
-    year === CURRENT_APPRAISAL_YEAR ||
-    (CURRENT_APPRAISAL_YEAR_NUMERIC && year === CURRENT_APPRAISAL_YEAR_NUMERIC)
-  );
+  const currentYear = yearNumberFromCycle(currentCycleName);
+  if (year === currentYear) return true;
+  const fiscal = year.match(/(\d{4})\s*[-/–]\s*(\d{2,4})/);
+  if (fiscal) {
+    const endYear = fiscal[2].length === 2 ? `20${fiscal[2]}` : fiscal[2];
+    return endYear === currentYear;
+  }
+  return normalizeCycleKey(year) === currentCycleKey;
 };
 
 // ============================================================
 // APPLY LIVE SHEET VALUES TO CURRENT-YEAR HISTORY
 // ============================================================
 
-const applyCurrentYearSheetValues = (historyRecord, row) => {
-  if (!row || !isCurrentYearRecord(historyRecord)) {
+const applyCurrentYearSheetValues = (
+  historyRecord,
+  row,
+  currentCycleName = CURRENT_APPRAISAL_YEAR,
+  previousRecord = null,
+) => {
+  if (!row || !isCurrentYearRecord(historyRecord, currentCycleName)) {
     return historyRecord;
   }
 
   const allocatedPBAmount = Number(row.allocatedPBAmount) || 0;
   const newPBToBeOffered = Number(row.newPBToBeOffered) || 0;
   const newRB = Number(row.newRB) || 0;
-  const currentAnnualBasePay = Number(row.currentAnnualBasePay) || 0;
+
+  // The current cycle's Current Base Pay is the previous cycle's New Base Pay.
+  // When there is no previous cycle, fall back to the sheet value.
+  const sheetBasePay = Number(row.currentAnnualBasePay) || 0;
+  const previousNewBasePay = Number(previousRecord?.newBasePay) || 0;
+  const currentAnnualBasePay =
+    previousRecord && previousNewBasePay > 0 ? previousNewBasePay : sheetBasePay;
   const hikeAmount = Number(row.hikeAmount) || 0;
   const targetPBNextYear = Number(row.targetPBNextYear) || 0;
 
@@ -503,21 +564,41 @@ const applyCurrentYearSheetValues = (historyRecord, row) => {
 };
 
 // Current cycle row (always first, always live) + older cycles from the API.
-const buildHistoryView = (records, row) => {
+const buildHistoryView = (records, row, currentCycleName = CURRENT_APPRAISAL_YEAR) => {
   if (!row) {
     return [];
   }
 
   const currentRecord =
-    records.find(isCurrentYearRecord) ||
-    emptyHistoryRecord(CURRENT_APPRAISAL_YEAR);
+    records.find((record) => isCurrentYearRecord(record, currentCycleName)) ||
+    emptyHistoryRecord(currentCycleName);
 
-  const olderRecords = records.filter((record) => !isCurrentYearRecord(record));
+  const olderRecords = records.filter((record) => !isCurrentYearRecord(record, currentCycleName));
 
-  return [applyCurrentYearSheetValues(currentRecord, row), ...olderRecords];
+  // olderRecords are already sorted newest first, so [0] is the previous cycle.
+  return [
+    applyCurrentYearSheetValues(currentRecord, row, currentCycleName, olderRecords[0] || null),
+    ...olderRecords,
+  ];
 };
 
-const sortHistoryDesc = (a, b) => String(b.year).localeCompare(String(a.year));
+const historyYearOrder = (value) => {
+  const year = String(value || "").trim();
+  const fiscal = year.match(/(?:FY\s*)?(\d{4})\s*[-/–]\s*(\d{2,4})/i);
+  if (fiscal) {
+    const end = fiscal[2].length === 2 ? Number(`20${fiscal[2]}`) : Number(fiscal[2]);
+    return end * 100 + 1;
+  }
+  const fullYear = year.match(/(?:19|20)\d{2}/);
+  if (fullYear) return Number(fullYear[0]) * 100;
+  const shortYear = year.match(/(?:Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar)[-\s](\d{2})/i);
+  if (shortYear) return Number(`20${shortYear[1]}`) * 100;
+  return 0;
+};
+
+const sortHistoryDesc = (a, b) =>
+  historyYearOrder(b.year) - historyYearOrder(a.year) ||
+  String(b.year).localeCompare(String(a.year));
 
 // ============================================================
 // SMALL PANEL UI PIECES
@@ -936,13 +1017,13 @@ function EmployeePanel({
 
             return (
               <li
-                key={`${item.year}-${index}`}
+                key={`${normalizeCycleKey(item.cycleName || item.year)}-${index}`}
                 className="relative pb-2.5 pt-1.5"
               >
                 {renderTimelineDot(index)}
 
                 <span className="font-extrabold text-[#102a43]">
-                  {item.year}
+                  {item.cycleName || item.year}
                 </span>
 
                 {index === 0 && <PanelChip tone="now">This cycle</PanelChip>}
@@ -1047,7 +1128,7 @@ function EmployeePanel({
         <tbody>
           <tr>
             <td className="border-b border-[#f1f3f5] p-1">
-              {CURRENT_APPRAISAL_YEAR}
+              {currentCycleName}
             </td>
             <td className="border-b border-[#f1f3f5] p-1 text-right">
               {dash(employee.rrPercent)}
@@ -1408,6 +1489,7 @@ export function AppraisalGrid({
 }) {
   const { updateCell, updateLinkedCells, bulkUpdate, modified } =
     useAppraisal();
+  const currentCycleName = useCurrentCycleName() || CURRENT_APPRAISAL_YEAR;
 
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
@@ -1713,7 +1795,7 @@ export function AppraisalGrid({
   // STATES
   // ============================================================
 
-  const [, setActive] = useState(null);
+  const [active, setActive] = useState(null);
   const [saving, setSaving] = useState({});
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -2139,8 +2221,8 @@ export function AppraisalGrid({
   const historyError = historyState?.error || "";
 
   const historyData = useMemo(
-    () => buildHistoryView(historyState?.data || [], liveHistoryRow),
-    [historyState, liveHistoryRow],
+    () => buildHistoryView(historyState?.data || [], liveHistoryRow, currentCycleName),
+    [historyState, liveHistoryRow, currentCycleName],
   );
 
   // ============================================================
@@ -2477,7 +2559,7 @@ export function AppraisalGrid({
       }
 
       const basePay = Number(row.currentAnnualBasePay || 0);
-      const pct = Number(raw) || 0;
+      const pct = Number(String(raw).replace(/,/g, "")) || 0;
       const amount = Math.round(basePay * (pct / 100));
 
       const changed =
@@ -2518,7 +2600,7 @@ export function AppraisalGrid({
       }
 
       const basePay = Number(row.currentAnnualBasePay || 0);
-      const amount = Number(raw) || 0;
+      const amount = Number(String(raw).replace(/,/g, "")) || 0;
       const pct = basePay ? Number(((amount / basePay) * 100).toFixed(1)) : 0;
 
       const changed =
@@ -3035,7 +3117,9 @@ export function AppraisalGrid({
             value={String(
               row[col.key] !== null && row[col.key] !== undefined
                 ? row[col.key]
-                : "",
+                : col.key === "eligibleForPromotion"
+                  ? "No"
+                  : "",
             )}
             onFocus={() => {
               setActive(`${rowIndex}:${col.key}`);
@@ -3082,7 +3166,11 @@ export function AppraisalGrid({
               // Promotion = Yes requires a designation/New Title. Keep the
               // validation attached to the field instead of showing an alert.
               if (col.key === "eligibleForPromotion" && value === "Yes") {
-                updateCell(row.id, col.key, value);
+                updateLinkedCells(
+                  row.id,
+                  { eligibleForPromotion: "Yes", newTitle: row.newTitle || null },
+                  "Cell edit",
+                );
                 flashSaved(cellKey);
                 markEdited(cellKey);
 
@@ -3152,7 +3240,9 @@ export function AppraisalGrid({
                 : undefined
             }
           >
-            <option value="">Select... *</option>
+            {col.key !== "eligibleForPromotion" && (
+              <option value="">Select... *</option>
+            )}
 
             {(col.options || []).map((option) => (
               <option key={option} value={option}>
@@ -3160,6 +3250,13 @@ export function AppraisalGrid({
               </option>
             ))}
           </select>
+          {col.key === "newTitle" &&
+            row.eligibleForPromotion === "Yes" &&
+            !row.newTitle && (
+              <span className="ml-1 shrink-0 text-[10px] font-semibold text-red-600" role="alert">
+                Required
+              </span>
+            )}
         </div>
       );
     }
@@ -3278,14 +3375,13 @@ export function AppraisalGrid({
           ref={(element) => {
             cellRefs.current[`${rowIndex}:${col.key}`] = element;
           }}
-          type={
-            col.type === "date"
-              ? "date"
-              : isNumericType(col.type)
-                ? "number"
-                : "text"
+          type={col.type === "date" ? "date" : "text"}
+          inputMode={isNumericType(col.type) ? "decimal" : undefined}
+          value={
+            isNumericType(col.type) && editingValues[cellKey] === undefined
+              ? formatEditableNumeric(storedValue, col.type)
+              : draftValue
           }
-          value={draftValue}
           onFocus={(event) => {
             setActive(`${rowIndex}:${col.key}`);
             selectRowForEdit(row);
@@ -3631,7 +3727,7 @@ export function AppraisalGrid({
     : null;
 
   const notesContext = liveHistoryRow
-    ? `${liveHistoryRow.name} (${liveHistoryRow.empId}) · ${CURRENT_APPRAISAL_YEAR}`
+    ? `${liveHistoryRow.name} (${liveHistoryRow.empId}) · ${currentCycleName}`
     : `Appraisal Sheet · ${CURRENT_APPRAISAL_YEAR}`;
 
   // ============================================================
@@ -4071,7 +4167,7 @@ export function AppraisalGrid({
                   <thead>
                     <tr className="bg-[#eef2f7]">
                       <th className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-2 py-1.5 text-center align-bottom text-[11px] font-bold text-[#24364d]">
-                        Year
+                        Appraisal Cycle Name
                       </th>
 
                       {historyMetricColumns.map((col) => (
@@ -4103,7 +4199,7 @@ export function AppraisalGrid({
                           )}
                         >
                           <td className="border-r border-b border-[#e0e5ec] px-2 py-1 text-center text-[12px] font-bold text-[#1859a8]">
-                            {item.year}
+                            {item.cycleName || item.year}
                             {isLatest ? " ★" : ""}
                           </td>
 

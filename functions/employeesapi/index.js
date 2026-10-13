@@ -575,7 +575,7 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       // Appraisal_Sheet.comp_manager is the value users edit; Employee_Master
       // has no comp_manager column, so director is only a fallback.
       comp_manager: String(row.comp_manager || master.director || ""),
-      appraiser_tech_ed: String(master.appraiser_tech_ed || row.appraiser_tech_ed || ""),
+      appraiser_tech_ed: String(row.appraiser_tech_ed || master.appraiser_tech_ed || ""),
       department: String(master.department || row.department || ""),
       location: String(master.location || master.work_location || row.location || row.work_location || ""),
       wissen_experience: Number(master.wissen_experience || row.wissen_experience || 0),
@@ -1184,10 +1184,31 @@ async function updateEmployee(req, res) {
   const a = req.access;
   const changedColumns = Object.keys(pickAllowedFields(body));
 
+  // Delegation assignments are changed only from the Delegation screen.
+  // Screen-level edit permission is the authorization source here. Requiring
+  // the separate delegateApprove action as well caused HR saves to fail when
+  // the action matrix was not seeded or had a stale value.
+  const isDelegationAssignmentChange =
+    changedColumns.length > 0 &&
+    changedColumns.every(function (column) {
+      return column === "comp_manager" || column === "appraiser_tech_ed";
+    });
+
   access.guard(a, function () {
-    requireAnyScreen(a, EDIT_SCREENS, "edit");
-    requireInScope(a, [empId]);
-    requireEditableColumns(a, changedColumns);
+    if (isDelegationAssignmentChange) {
+      // HR administrators manage delegation for the whole organization. Their
+      // authorization must not depend on employee hierarchy scope or a stale
+      // per-screen matrix entry. Non-HR users still need delegation edit access
+      // and must remain within their assigned employee scope.
+      if (a.role !== "hr") {
+        access.requireScreen(a, "delegation", "edit");
+        requireInScope(a, [empId]);
+      }
+    } else {
+      requireAnyScreen(a, EDIT_SCREENS, "edit");
+      requireEditableColumns(a, changedColumns);
+      requireInScope(a, [empId]);
+    }
   });
 
   const appraisalTable = datastore.table(EMPLOYEES_TABLE_ID);

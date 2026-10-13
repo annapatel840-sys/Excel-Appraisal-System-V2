@@ -402,7 +402,11 @@ function normalizeText(value, key) {
 function normalizeNumber(value, key) {
   if (value === undefined || value === null || value === "") return 0;
   const number = typeof value === "number" ? value : Number(String(value).replace(/,/g, "").replace(/[₹$%]/g, "").trim());
-  if (!Number.isFinite(number) || number < 0 || number > Number.MAX_SAFE_INTEGER) throw new ApiError(`${key} must be a non-negative number.`);
+  // Payroll values can legitimately be negative (for example, a negative hike amount).
+  // Validate numeric input and magnitude, not its sign.
+  if (!Number.isFinite(number) || Math.abs(number) > Number.MAX_SAFE_INTEGER) {
+    throw new ApiError(`${key} must be a valid number.`);
+  }
   return number;
 }
 function toPayrollRow(input, cycle, master, batchId, fileName) {

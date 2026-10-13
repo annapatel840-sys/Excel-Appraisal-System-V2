@@ -9,6 +9,26 @@ const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
 
 const PAYROLL_DATA_TABLE_ID = "74008000000035326";
+const APPRAISAL_CYCLE_TABLE_ID = "74008000000034190";
+
+/*
+ * CHANGED: name of the parent (employee) table that Payroll_Data.emp_id
+ * points to. Used only to translate "EMP001" -> that row's ROWID, because a
+ * foreign-key column stores the ROWID and not the text id.
+ * If your table is named differently, change it here. If the lookup fails
+ * for any reason, the function falls back to plain emp_id matching.
+ */
+const EMPLOYEE_TABLE_CANDIDATES = [
+  process.env.EMPLOYEE_TABLE_NAME || "Employee_Master",
+  "Employee_Master",
+  "Employee",
+  "Employees",
+  "Employee_Details",
+  "Employee_Data",
+].filter((name, index, list) => name && list.indexOf(name) === index);
+
+// Text columns on the employee table that may hold "EMP001".
+const EMPLOYEE_ID_COLUMNS = ["emp_id", "employee_id", "emp_code"];
 
 const DATASTORE_PAGE_SIZE = 200;
 
@@ -268,6 +288,81 @@ function shapeHistoryRow(a, row) {
 GET ALL PREVIOUS APPRAISAL RECORDS
 ============================================================ */
 
+const getAllRowsFromTable = async (table) => {
+  const allRows = [];
+  let nextToken;
+  while (true) {
+    const options = { maxRows: DATASTORE_PAGE_SIZE };
+    if (nextToken) options.nextToken = nextToken;
+    const result = await table.getPagedRows(options);
+    const rows = Array.isArray(result?.data) ? result.data : [];
+    allRows.push(...rows);
+    if (result?.more_records !== true || !result?.next_token) break;
+    nextToken = result.next_token;
+  }
+  return allRows;
+};
+
+const cycleLookupId = (value) => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
+    return String(value.ROWID ?? value.rowid ?? value.id ?? value.value ?? "").trim();
+  }
+  return String(value).trim();
+};
+
+const withAppraisalCycleNames = async (app, records) => {
+  const cycleTable = app.datastore().table(APPRAISAL_CYCLE_TABLE_ID);
+  const cycleNames = new Map();
+
+  // Always read the Appraisal_Cycle_Master rows and build a ROWID -> cycle_name
+  // map. Payroll_Data.appraisal_cycle_name stores the master ROWID, not its name.
+  let cycleRows = [];
+  try {
+    cycleRows = await getAllRowsFromTable(cycleTable);
+  } catch (error) {
+    console.error("Could not read Appraisal Cycle Master rows:", error?.message || error);
+    return records;
+  }
+  for (const cycle of cycleRows) {
+    const id = String(cycle.ROWID ?? cycle.rowid ?? cycle.id ?? cycle.ID ?? "").trim();
+    const name = String(
+      cycle.cycle_name ?? cycle.cycleName ?? cycle.CYCLE_NAME ??
+      cycle.name ?? cycle.appraisal_year ?? cycle.appraisalYear ?? ""
+    ).trim();
+    if (id && name) cycleNames.set(id, name);
+  }
+
+  const getForeignKeyId = (value) => {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "object") {
+      const directId = value.ROWID ?? value.rowid ?? value.id ?? value.ID;
+      if (directId !== undefined && directId !== null) return String(directId).trim();
+      for (const key of ["value", "appraisal_cycle_name", "cycle_name"]) {
+        const nested = getForeignKeyId(value[key]);
+        if (nested) return nested;
+      }
+      return "";
+    }
+    const text = String(value).trim();
+    return /^\d+$/.test(text) ? text : "";
+  };
+
+  return records.map((record) => {
+    const raw = record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name;
+    const id = getForeignKeyId(raw);
+    const resolvedName = id ? cycleNames.get(id) : "";
+    const rawText = typeof raw === "string" && !/^\d+$/.test(raw.trim())
+      ? raw.trim()
+      : "";
+    return {
+      ...record,
+      appraisal_cycle_name: resolvedName || rawText,
+      appraisalCycleName: resolvedName || rawText,
+    };
+  });
+};
+
 const getAllPreviousAppraisalRecords = async (table) => {
   let allRecords = [];
   let nextToken = undefined;
@@ -328,19 +423,219 @@ const normalizeHistoryEmpId = (value) =>
     .trim()
     .toUpperCase();
 
-const getHistory = async (table, empId) => {
+// Catalyst foreign-key values can be returned as a ROWID string/number or
+// as an object containing the referenced row. Normalize all supported shapes.
+const historyEmployeeKeys = (value) => {
+  const keys = new Set();
+  const add = (candidate) => {
+    if (candidate === null || candidate === undefined || candidate === "") return;
+    if (typeof candidate === "string" || typeof candidate === "number") {
+      const key = normalizeHistoryEmpId(candidate);
+      if (key) keys.add(key);
+      return;
+    }
+    if (Array.isArray(candidate)) {
+      candidate.forEach(add);
+      return;
+    }
+    if (typeof candidate === "object") {
+      ["ROWID", "rowid", "emp_id", "employee_id", "id", "value"].forEach((key) => {
+        if (candidate[key] !== undefined) add(candidate[key]);
+      });
+    }
+  };
+  add(value);
+  return keys;
+};
+
+/*
+ * CHANGED (new): Payroll_Data.emp_id is a foreign key, so the stored value may
+ * be the parent row's ROWID instead of "EMP001". Build the set of values that
+ * identify this employee: the text id, plus the parent ROWID when it can be
+ * looked up. Never throws — falls back to the text id alone.
+ */
+// Remembers which employee table/column worked so later calls try it first.
+let knownEmployeeSource = null;
+let employeeLookup = { table: "", column: "", error: "" };
+
+const resolveEmpKeys = async (app, empId) => {
+  const keys = new Set([normalizeHistoryEmpId(empId)]);
+
+  const safeId = String(empId || "")
+    .trim()
+    .split(/\s+-\s+/, 1)[0]
+    .trim()
+    .replace(/'/g, "''");
+
+  const attempts = [];
+
+  if (knownEmployeeSource) attempts.push(knownEmployeeSource);
+
+  EMPLOYEE_TABLE_CANDIDATES.forEach((table) => {
+    EMPLOYEE_ID_COLUMNS.forEach((column) => {
+      attempts.push({ table, column });
+    });
+  });
+
+  const errors = [];
+  employeeLookup = { table: "", column: "", error: "" };
+
+  for (const attempt of attempts) {
+    try {
+      const result = await app
+        .zcql()
+        .executeZCQLQuery(
+          "SELECT ROWID FROM " +
+            attempt.table +
+            " WHERE " +
+            attempt.column +
+            " = '" +
+            safeId +
+            "'",
+        );
+
+      const list = Array.isArray(result) ? result : [];
+
+      list.forEach((item) => {
+        const row =
+          (item && item[attempt.table]) ||
+          (item && Object.values(item)[0]) ||
+          {};
+
+        if (row.ROWID) {
+          keys.add(normalizeHistoryEmpId(row.ROWID));
+        }
+      });
+
+      if (list.length) {
+        // Keep ROWIDs from every matching employee table. Payroll_Data.emp_id
+        // may reference Employees or Employee_Master depending on how the FK
+        // was configured; stopping at the first match can hide valid history.
+        knownEmployeeSource = attempt;
+        employeeLookup = {
+          table: employeeLookup.table
+            ? employeeLookup.table + ", " + attempt.table
+            : attempt.table,
+          column: employeeLookup.column
+            ? employeeLookup.column + ", " + attempt.column
+            : attempt.column,
+          error: "",
+        };
+      }
+    } catch (error) {
+      errors.push(
+        attempt.table +
+          "." +
+          attempt.column +
+          ": " +
+          String((error && error.message) || error).slice(0, 80),
+      );
+    }
+  }
+
+  if (!employeeLookup.table) {
+    employeeLookup.error =
+      errors.slice(0, 6).join(" | ") || "no employee row matched " + safeId;
+    console.warn("Employee ROWID lookup failed:", employeeLookup.error);
+  }
+
+  console.log(
+    "History emp keys for",
+    empId,
+    ":",
+    Array.from(keys),
+    "via",
+    employeeLookup.table || "(text id only)",
+  );
+
+  return keys;
+};
+
+/*
+ * CHANGED (new): older payroll rows may only have the original Payroll_Data
+ * column names. Fill the names the grid reads from them when the history
+ * columns are empty. Existing values are never overwritten.
+ */
+const withHistoryAliases = (record) => {
+  const pick = (primary, fallback) =>
+    record[primary] !== undefined &&
+    record[primary] !== null &&
+    record[primary] !== ""
+      ? record[primary]
+      : record[fallback];
+
+  return {
+    ...record,
+    appraisal_year: pick("appraisal_year", "fy_year"),
+    base_pay: pick("base_pay", "current_annual_base_pay"),
+    new_ctc: pick("new_ctc", "total_CTC_with_rewards"),
+    target_performance_bonus: pick("target_performance_bonus", "target_performance_agreed"),
+    new_base_pay: record.new_base_pay,
+    joining_bonus: record.joining_bonus,
+    performance_bonus: record.performance_bonus,
+    retention_bonus: record.retention_bonus,
+    total_bonus: record.total_bonus,
+    hike_amount: record.hike_amount,
+    hike_pct: record.hike_pct,
+  };
+};
+
+const countBy = (records, fn) => {
+  const counts = {};
+
+  records.forEach((record) => {
+    const value = fn(record);
+    const key = String(value === null || value === undefined ? "" : value);
+    counts[key] = (counts[key] || 0) + 1;
+  });
+
+  return counts;
+};
+
+/*
+ * `diag` (optional object) is filled with what the table really contains, so
+ * a missing-history problem can be read straight from the normal response
+ * (meta field, HR / dry-run only). Safe to delete once history works.
+ */
+const getHistory = async (app, table, empId, diag) => {
   const allRecords = await getAllPreviousAppraisalRecords(table);
-  const wantedId = normalizeHistoryEmpId(empId);
+  const wantedKeys = await resolveEmpKeys(app, empId);
 
   const history = allRecords
-    .filter((record) => normalizeHistoryEmpId(record.emp_id) === wantedId)
-    .sort((a, b) =>
-      String(b.appraisal_year || "").localeCompare(
-        String(a.appraisal_year || ""),
-      ),
-    );
+    .filter((record) => {
+      const recordKeys = historyEmployeeKeys(record.emp_id);
+      return Array.from(recordKeys).some((key) => wantedKeys.has(key));
+    })
+    .map(withHistoryAliases)
+    .sort((a, b) => {
+      const yearOrder = (value) => {
+        const year = String(value || "").trim();
+        const fiscal = year.match(/(\d{4})\s*[-/–]\s*(\d{2,4})/);
+        if (fiscal) return Number(fiscal[2].length === 2 ? `20${fiscal[2]}` : fiscal[2]);
+        const full = year.match(/(?:19|20)\d{2}/);
+        if (full) return Number(full[0]);
+        const short = year.match(/(?:Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar)[-\s](\d{2})/i);
+        return short ? Number(`20${short[1]}`) : 0;
+      };
+      return yearOrder(b.appraisal_year) - yearOrder(a.appraisal_year) ||
+        String(b.appraisal_year || "").localeCompare(String(a.appraisal_year || ""));
+    });
 
   console.log("History records for", empId, ":", history.length);
+
+  if (diag) {
+    diag.keysTriedForMatching = Array.from(wantedKeys);
+    diag.employeeLookup = employeeLookup;
+    diag.totalRowsInPayrollData = allRecords.length;
+    diag.matchedRows = history.length;
+    diag.matchedYears = history.map((r) => r.appraisal_year);
+    diag.columnsInFirstRow = allRecords[0] ? Object.keys(allRecords[0]) : [];
+    diag.rowsPerEmpIdValue = Object.fromEntries(
+      Object.entries(countBy(allRecords, (r) => r.emp_id)).slice(0, 40),
+    );
+    diag.rowsPerAppraisalYear = countBy(allRecords, (r) => r.appraisal_year);
+    diag.rowsPerFyYear = countBy(allRecords, (r) => r.fy_year);
+  }
 
   return history;
 };
@@ -365,14 +660,17 @@ const buildUpdateData = (body) => {
 FIND CURRENT YEAR RECORD
 ============================================================ */
 
-const findHistoryRecord = async (table, empId, appraisalYear) => {
+const findHistoryRecord = async (app, table, empId, appraisalYear) => {
   const allRecords = await getAllPreviousAppraisalRecords(table);
 
-  const wantedId = normalizeHistoryEmpId(empId);
+  // CHANGED: match on the same employee keys as GET (text id or ROWID).
+  const wantedKeys = await resolveEmpKeys(app, empId);
+
   return allRecords.find(
     (item) =>
-      normalizeHistoryEmpId(item.emp_id) === wantedId &&
-      String(item.appraisal_year || "").trim() === appraisalYear,
+      wantedKeys.has(normalizeHistoryEmpId(item.emp_id)) &&
+      String(item.appraisal_year || item.fy_year || "").trim() ===
+        appraisalYear,
   );
 };
 
@@ -485,17 +783,26 @@ module.exports = async (req, res) => {
 
       access.guard(a, () => requireInScope(a, empId, true));
 
-      const history = await getHistory(table, empId);
+      // HR / dry-run only: include what the table contains (see getHistory).
+      const diag = !a.enforced || a.role === "hr" ? {} : null;
+
+      const history = await getHistory(app, table, empId, diag);
+      const cycleLookupApp = catalyst.initialize(req, { scope: "admin" });
+      const namedHistory = await withAppraisalCycleNames(cycleLookupApp, history).catch((error) => {
+        console.error("Appraisal cycle-name lookup failed; returning history without cycle-name enrichment:", error?.message || error);
+        return history;
+      });
 
       const data = a.enforced
-        ? history.map((row) => shapeHistoryRow(a, row))
-        : history;
+        ? namedHistory.map((row) => shapeHistoryRow(a, row))
+        : namedHistory;
 
       sendJson(res, 200, {
         success: true,
         emp_id: empId,
         count: data.length,
         data: data,
+        ...(diag ? { meta: diag } : {}),
       });
 
       return;
@@ -583,6 +890,7 @@ module.exports = async (req, res) => {
       console.log("Searching Payroll_Data for:", empId, appraisalYear);
 
       const existingRecord = await findHistoryRecord(
+        app,
         table,
         empId,
         appraisalYear,

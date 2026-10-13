@@ -42,6 +42,7 @@ import {
 import { exportToExcel } from "@/lib/export-excel";
 import { useAccess } from "@/lib/access-store";
 import { useSettings } from "@/lib/settings-store";
+import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
 // ============================================================
 // BUDGET
@@ -627,28 +628,32 @@ export function SheetPage() {
             onFocusEmployeeHandled={() => setLastEditedTarget("")}
             isTechEd={isTechEd}
             isHR={isHR}
-            onRequest={(request) => {
-              const key = request.type === "delegation" ? "appraisal-delegation-requests" : "appraisal-screen-requests";
-              const current = JSON.parse(localStorage.getItem(key) || "[]");
-              current.unshift({
-                id: request.type.toUpperCase() + "-" + Date.now(),
-                rowId: request.employee?.id || request.employee?.empId || "",
-                empId: request.employee?.empId || "",
-                empName: request.employee?.name || "",
-                field: request.field || request.type,
-                oldId: request.oldId || "",
-                newId: request.newId || "",
-                reason: "Requested from appraisal detail panel",
-                byId: catalystUser?.name || catalystUser?.email || catalystUser?.user_id || "",
-                byName: catalystUser?.name || catalystUser?.email || "Tech Ed",
-                on: new Date().toISOString(),
-                status: "Pending",
-                decidedBy: "",
-                decidedOn: "",
-                remarks: "",
-              });
-              localStorage.setItem(key, JSON.stringify(current));
-              window.alert(request.type === "delegation" ? "Delegation request sent to HR." : "Screen request sent.");
+            onRequest={async (request) => {
+              const isScreenRequest = request.type === "screen";
+              try {
+                const response = await catalystFetch(catalystFunctionUrl("accessapi") + "delegation/requests", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Accept: "application/json" },
+                  body: JSON.stringify({
+                    action: "submit",
+                    requestType: isScreenRequest ? "screen" : "delegation",
+                    empId: request.employee?.empId || request.employee?.id || "",
+                    empName: request.employee?.name || "",
+                    field: isScreenRequest ? "screen" :
+                      request.field === "compManager" ? "comp" :
+                      request.field === "appraiserTechED" ? "app" : request.field,
+                    oldId: request.oldId || "",
+                    newId: request.newId || "",
+                    reason: request.reason || (isScreenRequest ? "Screen access requested from Appraisal Sheet" : "Requested from Appraisal Sheet"),
+                    byName: catalystUser?.name || catalystUser?.email || "Application user",
+                  }),
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to send request.");
+                window.alert(isScreenRequest ? "Screen request sent to HR for approval." : "Delegation request sent to HR for approval.");
+              } catch (error) {
+                window.alert(error?.message || "Unable to send request to HR.");
+              }
             }}
           />
         </div>

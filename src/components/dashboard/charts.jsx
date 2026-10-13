@@ -3,21 +3,24 @@ import { cn } from "@/lib/utils";
 export function StackedColumnChart({ columns, height = 190 }) {
   const maxValue = Math.max(1, ...columns.flatMap((c) => c.bars.map((b) => b.total)));
   const barArea = height - 60;
+  const minColumnWidth = 116;
+  const chartWidth = Math.max(0, columns.length * minColumnWidth);
 
   return (
-    <div className="flex items-end justify-around gap-3" style={{ height }}>
+    <div className="w-full min-w-0 overflow-x-auto pb-2" style={{ height }}>
+      <div className="flex items-end justify-start gap-3" style={{ minWidth: chartWidth, height }}>
       {columns.map((col) => (
-        <div key={col.label} className="flex min-w-0 flex-1 flex-col items-center gap-1">
-          <div className="flex items-end gap-1.5" style={{ height: height - 40 }}>
+        <div key={col.label} className="flex min-w-0 shrink-0 flex-col items-center gap-1" style={{ width: minColumnWidth }}>
+          <div className="flex items-end justify-center gap-1.5" style={{ height: height - 40, width: "100%" }}>
             {col.bars.map((bar, bi) => (
-              <div key={bi} className="flex flex-col items-center gap-1">
-                <span className="whitespace-nowrap text-[11px] font-semibold text-foreground">
+              <div key={bi} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                <span className="max-w-full truncate text-[10px] font-semibold text-foreground" title={bar.topLabel}>
                   {bar.topLabel}
                 </span>
 
                 <div
                   className={cn(
-                    "flex w-9 flex-col justify-end overflow-hidden rounded-t-sm",
+                    "flex w-full max-w-10 flex-col justify-end overflow-hidden rounded-t-sm",
                     bar.outline && "border border-b-0",
                   )}
                   style={{ height: barArea, borderColor: bar.outline }}
@@ -50,12 +53,13 @@ export function StackedColumnChart({ columns, height = 190 }) {
           {col.sub && <div className="truncate text-[11px] text-muted-foreground">{col.sub}</div>}
 
           {col.sub2 && (
-            <div className="truncate text-[11px] font-semibold" style={{ color: col.subColor }}>
+            <div className="max-w-full truncate text-[11px] font-semibold" title={col.sub2} style={{ color: col.subColor }}>
               {col.sub2}
             </div>
           )}
         </div>
       ))}
+      </div>
     </div>
   );
 }
