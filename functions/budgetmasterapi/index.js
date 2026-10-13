@@ -80,7 +80,7 @@ function mapComp(row) {
     comp_manager: String(value(row, "comp_manager")),
     percentage: n(value(row, "percentage")),
     budget_base: n(value(row, "budget_base")),
-    calculated_budget: n(value(row, "calculated_budget")),
+    calculated_budget: n(value(row, "calculated_budget") || value(row, "claculated_budget")),
     total_utilization: utilized,
     applied_budget: applied,
     budget_distribution_id: String(value(row, "budget_distribution_id")),
@@ -885,8 +885,9 @@ module.exports = async function (req, res) {
         "appraisal_cycle_id",
       ],
     };
-    const fields =
-      fieldsByResource[resource === "compmanager" ? "comp" : resource];
+    const fields = [
+      ...fieldsByResource[resource === "compmanager" ? "comp" : resource],
+    ];
     if (resource === "distribution") {
       const columns = await getColumnNames(table);
       fields.push(pickColumn(columns, ["calculated_budget", "claculated_budget"], "claculated_budget"));
