@@ -256,7 +256,7 @@ const HR_COLS = [
 ];
 
 function HRApplyBudget() {
-  const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], techEdOwners = [], updateBudget, reload: reloadBudget, loading: budgetLoading } = useBudget();
+  const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], techEdOwners = [], updateBudget, reload: reloadBudget, loading: budgetLoading, error: budgetError = "", budgetWarning = "" } = useBudget();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const canConfig =
@@ -534,6 +534,15 @@ function HRApplyBudget() {
 
   return (
     <div className="flex flex-col gap-2">
+      {budgetError || budgetWarning ? (
+        <div
+          role="alert"
+          className="rounded-[8px] border border-[#f2d27a] bg-[#fff8e1] px-3 py-2 text-[12px] text-[#7a4b00]"
+        >
+          {budgetError ? <div><b>Budget data could not be loaded:</b> {budgetError}</div> : null}
+          {budgetWarning ? <div><b>Budget base:</b> {budgetWarning}</div> : null}
+        </div>
+      ) : null}
       {error ? (
         <div className="flex justify-between gap-2 rounded-md border border-[#e3e8ef] border-l-4 border-l-[#c2410c] bg-white px-3 py-2 text-[12px] text-[#7c2d12]">
           <span>{error}</span>

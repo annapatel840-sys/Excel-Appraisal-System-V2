@@ -129,6 +129,8 @@ export function BudgetProvider({ children }) {
   const [budgetCompManagerRows, setBudgetCompManagerRows] = useState([]);
   const [employeeRows, setEmployeeRows] = useState([]);
   const [techEdOwners, setTechEdOwners] = useState([]);
+  // Why the budget base may be 0 (from budgetmasterapi), shown to HR.
+  const [budgetWarning, setBudgetWarning] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -257,6 +259,7 @@ export function BudgetProvider({ children }) {
         if (key && !ownerByKey.has(key)) ownerByKey.set(key, { assignment });
       });
       setTechEdOwners(Array.from(ownerByKey.values()));
+      setBudgetWarning(String(budgetJson && budgetJson.diagnostics && budgetJson.diagnostics.warning || ""));
 
       // Show the first problem found so a failed roster read is visible on the page.
       if (budgetJson && budgetJson.rosterError) {
@@ -379,6 +382,7 @@ export function BudgetProvider({ children }) {
         budgetCompManagerRows,
         employeeRows,
         techEdOwners,
+        budgetWarning,
         employeeCounts,
         totals,
         loading,
