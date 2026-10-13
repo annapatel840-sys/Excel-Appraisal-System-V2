@@ -3,6 +3,7 @@ import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useBudget } from "@/lib/budget-store";
 import { TechEdBudgetMasterPage } from "./TechEdBudgetMasterPage";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 const NAVY = "#12304f";
 const TEAL = "#14a3a3";
@@ -272,6 +273,8 @@ function HRApplyBudget() {
   const [audit, setAudit] = useState([]);
   const [orgAudit, setOrgAudit] = useState([]);
   const [overrides, setOverrides] = useState({});
+  const [activeCycle, setActiveCycle] = useState(null);
+  const [cycleLoading, setCycleLoading] = useState(true);
   const appraisalCycles = useMemo(
     () => budgetMasterRows.map((row) => ({
       id: String(row.appraisal_cycle_id || ""),
@@ -282,13 +285,34 @@ function HRApplyBudget() {
   const [selectedCycle, setSelectedCycle] = useState("");
   const selectedMaster = budgetMasterRows.find(
     (row) => String(row.appraisal_cycle_id) === String(selectedCycle),
-  ) || budgetMasterRows[0] || null;
+  ) || null;
 
   useEffect(() => {
-    if (appraisalCycles.length && !appraisalCycles.some((cycle) => cycle.id === selectedCycle)) {
-      setSelectedCycle(appraisalCycles[0].id);
-    }
-  }, [appraisalCycles, selectedCycle]);
+    let mounted = true;
+    payrollCycleRequest("cycles")
+      .then((cycles) => {
+        if (!mounted) return;
+        const active = (Array.isArray(cycles) ? cycles : []).find(
+          (cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived,
+        );
+        setActiveCycle(active || null);
+      })
+      .catch((cycleError) => {
+        console.error("Failed to load active appraisal cycle:", cycleError);
+        if (mounted) setActiveCycle(null);
+      })
+      .finally(() => {
+        if (mounted) setCycleLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (cycleLoading) return;
+    setSelectedCycle(activeCycle?.id ? String(activeCycle.id) : "");
+  }, [activeCycle, cycleLoading]);
 
   useEffect(() => {
     const employeeCounts = new Map();
@@ -573,22 +597,15 @@ function HRApplyBudget() {
           <div className="flex items-stretch gap-3 px-3 py-1">
             <div className={orgCell}>
               <div className="text-[11px] font-medium text-[#5b6b80]">
-                Appraisal Cycle
+                Active Appraisal Cycle
               </div>
-              <select
-                disabled
-                aria-disabled="true"
-                value={selectedCycle}
-                onChange={(e) => setSelectedCycle(e.target.value)}
-                className="mt-1 h-[38px] min-w-[140px] cursor-not-allowed rounded border border-[#14a3a3] bg-[#f4f7fa] px-2 text-[13px] font-bold text-[#12304f] outline-none"
-                style={{ opacity: 1, color: "#12304f", WebkitTextFillColor: "#12304f" }}
+              <div
+                className="mt-1 flex h-[38px] min-w-[180px] items-center rounded border border-[#14a3a3] bg-[#f4f7fa] px-3 text-[13px] font-bold text-[#12304f]"
+                aria-label="Currently active appraisal cycle"
+                title={activeCycle?.name || "No active cycle"}
               >
-                {appraisalCycles.map((cycle) => (
-                  <option key={cycle.id} value={cycle.id}>
-                    {cycle.label}
-                  </option>
-                ))}
-              </select>
+                {cycleLoading ? "Loading active cycle…" : activeCycle?.name || "No active cycle"}
+              </div>
             </div>
             <div className={orgCell}>
               <div className="text-[11px] font-medium text-[#5b6b80]">
