@@ -174,7 +174,7 @@ export function TechEdBudgetDistribution() {
     const assignedOwners = Array.from(new Set(employeeRows
       .map((employee) => {
         const raw = String(employee.appraiser_tech_ed || employee.appraiser_tech_ed_id ||
-          employee.appraiser_teched || employee.appraiserTechED || employee.tech_ed || employee.tech_ed_id || "").trim();
+          employee.appraiser_tech_ed1 || employee.appraiser_teched || employee.appraiserTechED || employee.tech_ed || employee.tech_ed_id || "").trim();
         return ownerByForeignKey.get(normalizeOwner(raw)) || raw;
       })
       .filter((owner) => owner && ownerMatches(owner, Array.from(identities))));
