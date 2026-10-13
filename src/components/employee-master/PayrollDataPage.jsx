@@ -502,7 +502,7 @@ export function PayrollDataPage() {
 
       <div className="pd-topbar">
         <div>
-          <h1>Payroll Data</h1>
+          <h1>Payroll Master</h1>
           <p className="pd-sub">
             Entry and calculated pay values only.
           </p>
@@ -722,7 +722,7 @@ export function PayrollDataPage() {
         >
           <div className="pd-modal" onClick={(e) => e.stopPropagation()}>
             <div className="pd-modal-head">
-              <h2>Audit Trail — Payroll Data</h2>
+              <h2>Audit Trail — Payroll Master</h2>
               <span className="pd-x" onClick={() => setAuditOpen(false)}>
                 ✕
               </span>

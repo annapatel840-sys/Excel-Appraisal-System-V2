@@ -45,6 +45,7 @@ import { BudgetMasterPage } from "@/components/employee-master/BudgetMasterPage"
 import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
 import DelegationScreen from "@/components/employee-master/DelegationScreen";
 import AccessPage from "@/components/employee-master/AccessPage";
+import { HrOperationsNav } from "@/components/employee-master/HrOperationsNav";
 import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
 
 import "@/styles/employee-master.css";
@@ -641,8 +642,10 @@ export function EmployeeMaster() {
       "access",
     ].filter(isTabVisible),
   );
-  const defaultTab =
-    allowedTabs.has("roster") || !allowedTabs.size
+  // HR Operations opens on Access (when the user may see it).
+  const defaultTab = allowedTabs.has("access")
+    ? "access"
+    : allowedTabs.has("roster") || !allowedTabs.size
       ? "roster"
       : [...allowedTabs][0];
   const [activeTab, setActiveTab] = useState(
@@ -2265,112 +2268,11 @@ export function EmployeeMaster() {
             TABS
             ====================================================== */}
 
-        <div className="em-tabs">
-          {isTabVisible("roster") && (
-            <button
-              type="button"
-              className={activeTab === "roster" ? "active" : ""}
-              onClick={() => setActiveTab("roster")}
-            >
-              Employee Master
-            </button>
-          )}
-
-          {isTabVisible("eligibility") && (
-            <button
-              type="button"
-              className={activeTab === "eligibility" ? "active" : ""}
-              onClick={() => setActiveTab("eligibility")}
-            >
-              Eligibility List
-            </button>
-          )}
-
-          {isTabVisible("appraisal-cycle") && (
-            <button
-              type="button"
-              className={activeTab === "appraisal-cycle" ? "active" : ""}
-              onClick={() => setActiveTab("appraisal-cycle")}
-            >
-              Appraisal Cycle Master
-            </button>
-          )}
-
-          {isTabVisible("location-master") && (
-            <button
-              type="button"
-              className={activeTab === "location-master" ? "active" : ""}
-              onClick={() => setActiveTab("location-master")}
-            >
-              Location Master
-            </button>
-          )}
-
-          {isTabVisible("payroll-data") && (
-            <button
-              type="button"
-              className={activeTab === "payroll-data" ? "active" : ""}
-              onClick={() => setActiveTab("payroll-data")}
-            >
-              Payroll Data
-            </button>
-          )}
-
-          {isTabVisible("payroll-upload") && (
-            <button
-              type="button"
-              className={activeTab === "payroll-upload" ? "active" : ""}
-              onClick={() => setActiveTab("payroll-upload")}
-            >
-              Upload
-            </button>
-          )}
-          {isTabVisible("team-changes") && (
-            <button
-              type="button"
-              className={activeTab === "team-changes" ? "active" : ""}
-              onClick={() => setActiveTab("team-changes")}
-            >
-              Team Changes
-            </button>
-          )}
-          {isTabVisible("budget-master") && (
-            <button
-              type="button"
-              className={activeTab === "budget-master" ? "active" : ""}
-              onClick={() => setActiveTab("budget-master")}
-            >
-              Budget Master
-            </button>
-          )}
-          {isTabVisible("budget-distribution") && (
-            <button
-              type="button"
-              className={activeTab === "budget-distribution" ? "active" : ""}
-              onClick={() => setActiveTab("budget-distribution")}
-            >
-              Budget Distribution
-            </button>
-          )}
-          {isTabVisible("delegation") && (
-            <button
-              type="button"
-              className={activeTab === "delegation" ? "active" : ""}
-              onClick={() => setActiveTab("delegation")}
-            >
-              Delegation
-            </button>
-          )}
-          {isTabVisible("access") && (
-            <button
-              type="button"
-              className={activeTab === "access" ? "active" : ""}
-              onClick={() => setActiveTab("access")}
-            >
-              Access
-            </button>
-          )}
-        </div>
+        <HrOperationsNav
+          activeTab={activeTab}
+          isTabVisible={isTabVisible}
+          onSelect={setActiveTab}
+        />
 
         {/* ======================================================
             BANNER
