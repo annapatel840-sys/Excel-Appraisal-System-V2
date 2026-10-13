@@ -333,7 +333,7 @@ function HRApplyBudget() {
         id: row.id || "tech-ed-" + key,
         name: ownerName(owner, employeeRows),
         pct: Number(row.percentage) || 0,
-        base: Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated,
+        base: Number(row.budget_base) || (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated),
         original: calculated,
         updated: applied,
         team0: assignedCount,
@@ -493,14 +493,15 @@ function HRApplyBudget() {
         ...changedRows.filter((r) => r.id).map((r) =>
           updateBudget(r.id, {
             percentage: Number(previewPct(r)),
-            applied_budget: previewBudget(r),
+            budget_base: r.base,
+            calculated_budget: previewBudget(r),
           }, "distribution")
         ),
         ...(orgPending && budgetMasterRows[0]?.id
           ? [updateBudget(budgetMasterRows[0].id, {
               budget_percentage: org,
-              calculated_budget: previewTotal,
-              applied_budget: previewTotal,
+              org_budget_base: Number(budgetMasterRows[0]?.org_budget_base) || total.base,
+              calculated_budget: (Number(budgetMasterRows[0]?.org_budget_base) || total.base) * org / 100,
             }, "master")]
           : []),
       ]);
@@ -597,7 +598,7 @@ function HRApplyBudget() {
             <div className={orgCell}>
               <div className="text-[11px] text-[#5b6b80]">Org budget base</div>
               <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
-                {money(total.base)}
+                {money(Number(budgetMasterRows.find((row) => String(row.appraisal_cycle_id) === String(selectedCycle))?.org_budget_base) || total.base)}
               </div>
             </div>
             <div className={orgCell}>
