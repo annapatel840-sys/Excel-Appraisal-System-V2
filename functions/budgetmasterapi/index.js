@@ -28,8 +28,12 @@ function n(v) {
   // Number("12,34,567.50") is NaN, which previously silently became zero.
   let text = String(v).trim();
   const negative = /^\(.*\)$/.test(text);
+  // "1.25 L" / "1.25 Lakh" = 1,25,000; "2 Cr" / "2 Crore" = 2,00,00,000.
+  const unit = text.match(/(lakhs?|lacs?|l|crores?|cr)\.?\s*\)?$/i);
+  const scale = !unit ? 1 : /^c/i.test(unit[1]) ? 1e7 : 1e5;
+  if (unit) text = text.slice(0, unit.index);
   text = text.replace(/[₹,\s]/g, "").replace(/^(?:INR|Rs\.?)/i, "").replace(/[^0-9.+-]/g, "");
-  const parsed = Number(text);
+  const parsed = Number(text) * scale;
   if (!Number.isFinite(parsed)) return 0;
   return negative ? -Math.abs(parsed) : parsed;
 }
@@ -524,6 +528,26 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     });
   });
   const employees = Array.from(appraisalByEmployee.values());
+  const withBase = employees.filter((employee) => employee.base > 0).length;
+  const withTechEd = employees.filter((employee) => employee.techEd).length;
+  bundle.diagnostics = {
+    appraisalRows: appraisalRows.length,
+    employees: employees.length,
+    employeesWithBase: withBase,
+    employeesWithTechEd: withTechEd,
+    budgetMasterCycles: bundle.master.filter((m) => String(m.appraisal_cycle_id || "").trim()).length,
+    baseColumns: "current_annual_base_pay + allocated_pb_amount",
+  };
+  if (!bundle.diagnostics.budgetMasterCycles) {
+    bundle.diagnostics.warning = "No Budget_Master row has an appraisal cycle, so no budget base was calculated. Add a Budget_Master row for the cycle (appraisal_cycle_id) first.";
+  } else if (!withBase) {
+    bundle.diagnostics.warning = `None of the ${employees.length} employees in Appraisal_Sheet has Current Annual Base Pay or Allocated PB Amount, so the budget base is 0. Fill these columns (or re-upload the Appraisal Sheet).`;
+  } else if (withBase < employees.length) {
+    bundle.diagnostics.warning = `${employees.length - withBase} of ${employees.length} employees have no Current Annual Base Pay / Allocated PB Amount and add 0 to the budget base.`;
+  }
+  if (!withTechEd) {
+    bundle.diagnostics.warning = (bundle.diagnostics.warning ? bundle.diagnostics.warning + " " : "") + "No employee in Appraisal_Sheet has an Appraiser Tech-ED, so no Tech-ED gets a base.";
+  }
 
   const techLabels = new Map();
   const compLabels = new Map();
@@ -795,6 +819,7 @@ module.exports = async function (req, res) {
         compManager: bundle.compManager,
         techEdOwners,
         techEdCount: techEdOwners.length,
+        diagnostics: calculatedBundle.diagnostics || null,
         more_records: false,
         next_token: null,
       });
