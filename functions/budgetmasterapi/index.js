@@ -479,7 +479,10 @@ async function calculateBudgetBases(app, bundle) {
     id: idOf(row),
     name: String(firstValue(row, ["cycle_name", "cycleName", "name", "appraisal_year"]) || idOf(row)),
     date: cycleDate(row),
-  })).filter((row) => row.id && row.date).sort((a, b) => a.date.localeCompare(b.date));
+    status: String(firstValue(row, ["status"]) || "Upcoming").toLowerCase(),
+    archived: String(firstValue(row, ["archived"]) || "false").toLowerCase() === "true",
+  })).filter((row) => row.id && row.date && row.status !== "cancelled" && !row.archived)
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   const employeeMasterByRef = new Map();
   employeeMasterRows.forEach((row) => {
