@@ -96,8 +96,10 @@ function amount(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+// Exact rupee amount with Indian grouping (no lakh rounding), e.g. ₹ 12,34,567.50
+const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 function money(value) {
-  return (amount(value) / 100000).toFixed(2) + " L";
+  return "₹ " + INR.format(amount(value));
 }
 
 function percent(value) {

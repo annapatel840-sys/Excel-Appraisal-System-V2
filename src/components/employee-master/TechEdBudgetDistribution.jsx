@@ -16,7 +16,9 @@ const num = (v) => {
   const parsed = Number(String(v).trim().replace(/[₹,\s]/g, "").replace(/^(?:INR|Rs\.?)/i, ""));
   return Number.isFinite(parsed) ? parsed : 0;
 };
-const lakh = (n) => "₹ " + (num(n) / 1e5).toFixed(2) + " L";
+// Exact rupee amount with Indian grouping (no lakh rounding), e.g. ₹ 12,34,567.50
+const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const lakh = (n) => "₹ " + INR.format(num(n));
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function dateText(iso) {
   const p = String(iso || "").slice(0, 10).split("-");
