@@ -666,7 +666,25 @@ function EditInput({
       type="text"
       inputMode="decimal"
       {...valueProps}
-      onChange={(e) => onLive && onLive(e.target.value)}
+      onChange={(e) => {
+        // Numbers only: drop letters/symbols, keep digits, commas and one dot.
+        const raw = e.target.value;
+        let clean = raw.replace(/[^0-9.,]/g, "");
+        const firstDot = clean.indexOf(".");
+        if (firstDot > -1)
+          clean =
+            clean.slice(0, firstDot + 1) +
+            clean.slice(firstDot + 1).replace(/\./g, "");
+        if (clean !== raw) e.target.value = clean;
+        if (onLive) onLive(clean);
+      }}
+      onBeforeInput={(e) => {
+        if (e.data && /[^0-9.,]/.test(e.data)) e.preventDefault();
+      }}
+      onPaste={(e) => {
+        const t = (e.clipboardData?.getData("text") || "").trim();
+        if (/[^0-9.,]/.test(t)) e.preventDefault();
+      }}
       onBlur={(e) => {
         if (!controlled) {
           const n = parseAmount(e.target.value);
@@ -1119,6 +1137,11 @@ export function DetailScreenPage({
 
   // Validation messages for the PB / RB proposed fields, plus a counter that
   // remounts a field so a rejected value snaps back to the last good one.
+  const [hikeErr, setHikeErr] = useState("");
+  useEffect(() => {
+    setHikeErr("");
+  }, [employee?.id]);
+  const HIKE_MAX_MSG = "Hike % cannot exceed 100%.";
   const [payErr, setPayErr] = useState({ pb: "", rb: "" });
   const [payReset, setPayReset] = useState({ pb: 0, rb: 0 });
   useEffect(() => {
@@ -1252,12 +1275,22 @@ export function DetailScreenPage({
     const hike = parseAmount(raw);
     if (hike === "") return;
     const base = baseNow;
+    if (base && (Number(hike) / base) * 100 > 100) {
+      setHikeErr(HIKE_MAX_MSG + " Not saved.");
+      return;
+    }
+    setHikeErr("");
     const pct = base ? Number(((hike / base) * 100).toFixed(2)) : 0;
     commitLinked({ hikeAmount: hike, hikePct: pct });
   };
   const handleHikePctChange = (raw) => {
     const pctRaw = parseAmount(raw);
     if (pctRaw === "") return;
+    if (Number(pctRaw) > 100) {
+      setHikeErr(HIKE_MAX_MSG + " Not saved.");
+      return;
+    }
+    setHikeErr("");
     const base = baseNow;
     const hike = Math.round((base * Number(pctRaw)) / 100);
     commitLinked({
@@ -1271,6 +1304,7 @@ export function DetailScreenPage({
   const liveHikeAmount = (raw) => {
     const hike = draftNum(raw);
     const pct = baseNow ? (hike / baseNow) * 100 : 0;
+    setHikeErr(pct > 100 ? HIKE_MAX_MSG : "");
     setDraft({
       hikeStr: raw,
       pctStr: pct.toFixed(2),
@@ -1279,6 +1313,7 @@ export function DetailScreenPage({
   };
   const liveHikePct = (raw) => {
     const pct = draftNum(raw);
+    setHikeErr(pct > 100 ? HIKE_MAX_MSG : "");
     const hike = Math.round((baseNow * pct) / 100);
     setDraft({ pctStr: raw, hikeStr: fmt(hike), baseStr: fmt(baseNow + hike) });
   };
@@ -1583,6 +1618,7 @@ export function DetailScreenPage({
                                   clearDraft(HIKE_DRAFT_KEYS);
                                 }}
                                 edited={isEdited("hikeAmount")}
+                                invalid={!!hikeErr}
                               />
                             </div>
                             <div className="flex w-[30%] min-w-[64px] flex-col gap-0.5">
@@ -1598,9 +1634,18 @@ export function DetailScreenPage({
                                   clearDraft(HIKE_DRAFT_KEYS);
                                 }}
                                 edited={isEdited("hikeAmount")}
+                                invalid={!!hikeErr}
                               />
                             </div>
                           </div>
+                          {hikeErr && (
+                            <span
+                              role="alert"
+                              style={{ ...subNote, color: RED, fontWeight: 700 }}
+                            >
+                              {hikeErr}
+                            </span>
+                          )}
                         </FieldRow>
 
                         {/* Joining Bonus */}
