@@ -588,7 +588,8 @@ module.exports = async function (req, res) {
         readBundle(app),
         readTechEdOwners(app),
       ]);
-      const calculatedBundle = await calculateBudgetBases(app, rawBundle);\n      const bundle = filterOwn(calculatedBundle, a);
+      const calculatedBundle = await calculateBudgetBases(app, rawBundle);
+      const bundle = filterOwn(calculatedBundle, a);
       return sendJson(res, 200, {
         success: true,
         data: bundle.techEd,
