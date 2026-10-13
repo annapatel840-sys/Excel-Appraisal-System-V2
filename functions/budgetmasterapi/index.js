@@ -146,7 +146,8 @@ function getUserValues(user) {
 function matchesOwner(owner, a) {
   const text = String(owner || "")
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/\s+/g, " ");
   if (!text || !a || !a.user) return false;
   const empId = String(a.user.empId || "")
     .trim()
@@ -154,12 +155,22 @@ function matchesOwner(owner, a) {
   const email = String(a.user.email || "")
     .trim()
     .toLowerCase();
-  const parts = text.match(/^(\S+)\s*-\s*(.+)$/);
-  const ownerId = parts ? parts[1] : text;
+
+  // Appraiser values use "Employee ID - Full Name". Employee IDs may
+  // themselves contain hyphens (e.g. WIS-1234), so split only on the
+  // spaced separator, never on a hyphen inside the ID.
+  const parts = text.split(/\s+-\s+/);
+  const ownerId = parts.length > 1 ? parts[0].trim() : text;
+  const ownerName = parts.length > 1 ? parts.slice(1).join(" - ").trim() : "";
+  const userValues = getUserValues(a.user).map((value) =>
+    String(value || "").trim().toLowerCase().replace(/\s+/g, " "),
+  );
   return Boolean(
-    (empId && ownerId === empId) ||
-    (email && text === email) ||
-    getUserValues(a.user).some((v) => v === text || v === ownerId),
+    (empId && (ownerId === empId || text === empId)) ||
+    (email && (text === email || ownerId === email)) ||
+    userValues.some((value) =>
+      value === text || value === ownerId || (ownerName && value === ownerName),
+    ),
   );
 }
 
@@ -455,8 +466,8 @@ function filterOwn(bundle, a) {
 
 function ownerKey(raw) {
   const text = String(raw || "").trim().toLowerCase().replace(/\s+/g, " ");
-  const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
-  return pair ? pair[1].toLowerCase() : text;
+  const parts = text.split(/\s+-\s+/);
+  return (parts.length > 1 ? parts[0] : text).trim();
 }
 
 function firstValue(row, names) {
