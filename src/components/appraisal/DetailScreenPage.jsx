@@ -21,7 +21,6 @@ import { Bell } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
-import { useCurrentCycleName } from "@/lib/current-cycle";
 
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#12304f";
@@ -279,58 +278,14 @@ const DS_CSS = `
 }
 `;
 
-const getCycleName = (value) => {
-  if (value === null || value === undefined || value === "") return "";
-  if (typeof value === "string" || typeof value === "number") {
-    const text = String(value).trim();
-    return /^\d+$/.test(text) ? "" : text;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const name = getCycleName(item);
-      if (name) return name;
-    }
-    return "";
-  }
-  if (typeof value === "object") {
-    for (const key of [
-      "appraisal_cycle_name",
-      "cycle_name",
-      "cycleName",
-      "name",
-      "display_value",
-      "value",
-      "label",
-    ]) {
-      const name = getCycleName(value[key]);
-      if (name) return name;
-    }
-  }
-  return "";
-};
-
-const normalizeCycleKey = (value) =>
-  String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-
 const normalizeHistoryRecord = (record) => {
   const basePay = Number(record?.base_pay) || 0;
   const hike = Number(record?.hike_amount) || 0;
-  const cycleName =
-    getCycleName(record?.appraisal_cycle_name) ||
-    getCycleName(record?.appraisalCycleName) ||
-    getCycleName(record?.cycle_name);
-  const year =
-    record?.appraisal_year !== null && record?.appraisal_year !== undefined
-      ? String(record.appraisal_year)
-      : record?.fy_year !== null && record?.fy_year !== undefined
-        ? String(record.fy_year)
-        : "—";
   return {
-    cycleName: cycleName || year,
-    year,
+    year:
+      record?.appraisal_year !== null && record?.appraisal_year !== undefined
+        ? String(record.appraisal_year)
+        : "—",
     basePay,
     joiningBonus: Number(record?.joining_bonus) || 0,
     performanceBonus: Number(record?.performance_bonus) || 0,
@@ -347,13 +302,13 @@ const normalizeHistoryRecord = (record) => {
 };
 
 const HISTORY_COLUMNS = [
-  { key: "basePay", label: "Current Base Pay" },
+  { key: "basePay", label: "Curr Base Pay" },
   { key: "joiningBonus", label: "Joining Bonus" },
-  { key: "performanceBonus", label: "Perfermance Bonus" },
+  { key: "performanceBonus", label: "Perf. Bonus" },
   { key: "retentionBonus", label: "Retention Bonus" },
   { key: "totalBonus", label: "Total Bonus" },
   { key: "hikeAmount", label: "Hike Amount" },
-  { key: "newCTC", label: "Total CTC with Rewards" },
+  { key: "newCTC", label: "Total CTC" },
   { key: "targetPB", label: "Target PB" },
   { key: "newBasePay", label: "New Base Pay" },
 ];
@@ -393,23 +348,19 @@ const normalizeYearKey = (y) =>
 const isCurrentCycleYearKey = (year) => {
   const raw = String(year ?? "")
     .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
+    .toLowerCase();
   if (!raw) return false;
-
-  // Match only labels that identify the current Apr-26 cycle.
-  // Do not use raw.includes("2026"): it incorrectly classifies a prior
-  // fiscal year such as "FY 2025-2026" as the current cycle and hides it.
-  return new Set([
-    "2026",
-    "2026-27",
-    "fy2026",
-    "fy 2026",
-    "apr-26",
-    "apr 26",
-    "apr-2026",
-    "apr 2026",
-  ]).has(raw);
+  return (
+    raw === "2026" ||
+    raw === "2026-27" ||
+    raw === "fy2026" ||
+    raw === "fy 2026" ||
+    raw === "apr-26" ||
+    raw === "apr 26" ||
+    raw === "apr-2026" ||
+    raw === "apr 2026" ||
+    raw.includes("2026")
+  );
 };
 const isBlankRecord = (h) =>
   h.designation === "—" &&
@@ -866,6 +817,82 @@ function HikeDiffInputs({
   );
 }
 
+/* ---- Detail-screen field table: Description | Previous year | This year | Diff ---- */
+const FIELD_COLS = "minmax(140px,0.9fr) minmax(190px,1.2fr) minmax(250px,1.8fr) minmax(90px,0.6fr)";
+
+function FieldHead({ children, right }) {
+  return (
+    <div
+      style={{
+        background: "#F4F7FA",
+        color: MUTED,
+        fontWeight: 700,
+        fontSize: 11.5,
+        letterSpacing: ".04em",
+        textTransform: "uppercase",
+        padding: "9px 12px",
+        textAlign: right ? "right" : "left",
+        borderBottom: `1px solid ${LINE}`,
+        borderRight: right ? "none" : `1px solid ${LINE}`,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function FieldCell({ children, label, right, last }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: label ? "flex-start" : "center",
+        alignItems: right ? "flex-end" : "stretch",
+        gap: 3,
+        padding: label ? "8px 12px" : "4px 10px",
+        minWidth: 0,
+        fontSize: label ? 14 : 13.5,
+        fontWeight: label ? 700 : 400,
+        color: INK,
+        borderBottom: `1px solid ${LINE}`,
+        borderRight: last ? "none" : `1px solid ${LINE}`,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+const subNote = { fontSize: 11.5, color: MUTED, lineHeight: 1.25 };
+
+// Green / red signed difference with a small caption underneath.
+function DiffValue({ value, caption }) {
+  if (value === null || value === undefined) return null;
+  const color = value < 0 ? RED : value > 0 ? GREEN : MUTED;
+  return (
+    <>
+      <span style={{ color, fontWeight: 800, fontSize: 14 }}>
+        {signedNum(value)}
+      </span>
+      {caption ? <span style={subNote}>{caption}</span> : null}
+    </>
+  );
+}
+
+function FieldRow({ label, prev, children, diff }) {
+  return (
+    <>
+      <FieldCell label>{label}</FieldCell>
+      <FieldCell>{prev}</FieldCell>
+      <FieldCell>{children}</FieldCell>
+      <FieldCell right last>
+        {diff}
+      </FieldCell>
+    </>
+  );
+}
+
 function HistCell({ value, prev }) {
   const hasPrev = prev !== undefined && prev !== null;
   const pct = hasPrev ? (prev ? ((value - prev) / prev) * 100 : 0) : null;
@@ -883,7 +910,7 @@ function HistCell({ value, prev }) {
   );
 }
 
-const HIST_GRID = "150px repeat(9, minmax(0, 1fr))";
+const HIST_GRID = "110px repeat(9, minmax(0, 1fr))";
 
 /* ------------------------------------------------------------------
    PAGE
@@ -893,7 +920,6 @@ export function DetailScreenPage({
   budgetNotice = BUDGET_NOTICE_PLACEHOLDER,
 } = {}) {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
-  const currentCycleName = useCurrentCycleName() || CURRENT_CYCLE;
   const { currentUser, isHR } = useBudget();
   const catalystUser = useCatalystUser();
   const role = String(catalystUser?.role || "")
@@ -1039,15 +1065,12 @@ export function DetailScreenPage({
   const priorCycles = useMemo(() => {
     const seen = new Set();
     const result = [];
-    const currentCycleKey = normalizeCycleKey(currentCycleName);
-
     for (const record of historyRecords) {
-      // Identify a cycle by its name, not by its year/fiscal-year label.
-      const cycleKey = normalizeCycleKey(record.cycleName || record.year);
-      if (!cycleKey || cycleKey === currentCycleKey) continue;
+      if (isCurrentCycleYearKey(record.year)) continue;
       if (isBlankRecord(record)) continue;
-      if (seen.has(cycleKey)) continue;
-      seen.add(cycleKey);
+      const yearKey = normalizeYearKey(record.year);
+      if (!yearKey || seen.has(yearKey)) continue;
+      seen.add(yearKey);
       result.push(record);
     }
     return result;
@@ -1355,7 +1378,7 @@ export function DetailScreenPage({
   const timeline = employee
     ? [
         {
-          year: currentCycleName,
+          year: CURRENT_CYCLE,
           current: true,
           title: dash(employee.designation),
           rating: dash(employee.managerRating ?? employee.rating),
@@ -1363,7 +1386,7 @@ export function DetailScreenPage({
           note: "Feedback captured during the review.",
         },
         ...priorCycles.map((p) => ({
-          year: p.cycleName || p.year,
+          year: p.year,
           current: false,
           title: p.designation,
           rating: p.feedback !== "—" ? p.feedback : p.rating,
@@ -1452,7 +1475,7 @@ export function DetailScreenPage({
                   onChange={(e) => handleSearch(e.target.value)}
                   placeholder="Search your team by name or employee ID"
                   aria-label="Search your team"
-                  className="h-[29px] flex-1 rounded border px-2 text-[12.5px] outline-none focus:border-[#0B7A75]"
+                  className="h-[36px] flex-1 rounded-md border px-3 text-[14px] outline-none focus:border-[#0B7A75]"
                   style={{ borderColor: "#9AA7B4" }}
                 />
                 <span
@@ -1480,291 +1503,384 @@ export function DetailScreenPage({
                     width: `${100 / scale}%`,
                   }}
                 >
-                  <div
-                    className="grid text-[13.5px]"
-                    style={{ gridTemplateColumns: COMP_COLS }}
-                  >
-                    <CompHead>Description</CompHead>
-                    <CompHead>Current</CompHead>
-                    <CompHead>Proposed</CompHead>
-                    <CompHead>Difference</CompHead>
+                  {(() => {
+                    const last = priorCycles[0];
+                    const dashPrev = (v) => (last ? fmt(v) : "—");
+                    const lastHikePct =
+                      last && last.basePay
+                        ? ((last.hikeAmount / last.basePay) * 100).toFixed(1)
+                        : null;
+                    const prevTPB = Number(targetPBCurrent) || 0;
+                    const vsLast = (live, prev) => (last ? live - prev : null);
+                    const naBox = (
+                      <div
+                        style={{
+                          border: "1px dashed #B8C4CE",
+                          background: "#F3F6F7",
+                          color: MUTED,
+                          borderRadius: 4,
+                          padding: "4px 8px",
+                          fontSize: 13,
+                        }}
+                      >
+                        n/a this cycle
+                      </div>
+                    );
+                    const lab = { ...subNote, textAlign: "center" };
+                    return (
+                      <div
+                        className="grid text-[13.5px]"
+                        style={{ gridTemplateColumns: FIELD_COLS }}
+                      >
+                        <FieldHead>Description</FieldHead>
+                        <FieldHead>Previous Year</FieldHead>
+                        <FieldHead>This Year (Proposed)</FieldHead>
+                        <FieldHead right>Diff</FieldHead>
 
-                    {/* Base Pay */}
-                    <CompRow
-                      label="Base Pay"
-                      current={inr(employee.currentAnnualBasePay)}
-                      diffNode={
-                        <HikeDiffInputs
-                          key={`${employee.id}-hike`}
-                          employee={employee}
-                          edited={isEdited("hikeAmount")}
-                          amountValue={
-                            draft.hikeStr ?? fmt(employee.hikeAmount)
-                          }
-                          pctValue={
-                            draft.pctStr ??
-                            (Number(employee.hikePct) || 0).toFixed(2)
-                          }
-                          onLiveAmount={liveHikeAmount}
-                          onLivePct={liveHikePct}
-                          onHikeAmount={(v) => {
-                            handleHikeAmountChange(v);
-                            clearDraft(HIKE_DRAFT_KEYS);
-                          }}
-                          onHikePct={(v) => {
-                            handleHikePctChange(v);
-                            clearDraft(HIKE_DRAFT_KEYS);
-                          }}
-                        />
-                      }
-                    >
-                      <ReadOnlyInput
-                        key={`${employee.id}-newBase`}
-                        value={draft.baseStr ?? fmt(derived.newBase)}
-                        bold
-                      />
-                    </CompRow>
-
-                    {/* Joining Bonus */}
-                    <CompRow
-                      label="Joining Bonus"
-                      current="0"
-                      diffText="n/a this cycle"
-                      muted
-                    >
-                      <ReadOnlyInput value="0" />
-                    </CompRow>
-
-                    {/* Performance Bonus */}
-                    <PayRow
-                      label="Performance Bonus (PB) / Instalment"
-                      floorAmount={payFloors.pbFloor}
-                      month={payFloors.pbMonth}
-                      floorCaptionPrefix="PB"
-                      diffValue={livePB - payFloors.pbFloor}
-                      error={
-                        payErr.pb ||
-                        (livePB < payFloors.pbFloor
-                          ? `Below PB to be Paid (${fmt(payFloors.pbFloor)}) — not allowed`
-                          : "")
-                      }
-                      instalmentSelect={
-                        <select
-                          key={`${employee.id}-pbInstallment`}
-                          value={
-                            isBlank(employee.pbInstallment)
-                              ? ""
-                              : String(employee.pbInstallment)
-                          }
-                          onChange={(e) =>
-                            commit("pbInstallment", e.target.value)
-                          }
-                          className="h-[26px] w-[48px] shrink-0 rounded border px-1 text-[12.5px] outline-none focus:border-[#0B7A75]"
-                          style={fieldStyle(isEdited("pbInstallment"))}
+                        {/* Base Pay */}
+                        <FieldRow
+                          label="Base Pay"
+                          prev={<ReadOnlyInput value={dashPrev(last?.basePay)} />}
                         >
-                          <option value="">—</option>
-                          {INSTALLMENT_OPTIONS.map((o) => (
-                            <option key={o}>{o}</option>
-                          ))}
-                        </select>
-                      }
-                    >
-                      <EditInput
-                        key={`${employee.id}-allocatedPBAmount-${payReset.pb}`}
-                        className="flex-1"
-                        defaultValue={fmtOrBlank(proposedPB)}
-                        edited={isEdited("allocatedPBAmount")}
-                        invalid={livePB < payFloors.pbFloor}
-                        onLive={(v) => {
-                          setDraft({ pbStr: v });
-                          if (payErr.pb) setPayErr((e) => ({ ...e, pb: "" }));
-                        }}
-                        onCommit={(v) => {
-                          const n = parseAmount(v);
-                          if ((Number(n) || 0) < payFloors.pbFloor) {
-                            // Lesser than PB to be Paid: refuse and snap back.
-                            setPayErr((e) => ({
-                              ...e,
-                              pb: `PB can't be less than PB to be Paid (${fmt(payFloors.pbFloor)}). Not saved.`,
-                            }));
-                            setPayReset((r) => ({ ...r, pb: r.pb + 1 }));
-                            clearDraft(["pbStr"]);
-                            return;
-                          }
-                          setPayErr((e) => ({ ...e, pb: "" }));
-                          commit("allocatedPBAmount", n);
-                          clearDraft(["pbStr"]);
-                        }}
-                      />
-                    </PayRow>
+                          <ReadOnlyInput value={inr(employee.currentAnnualBasePay)} />
+                        </FieldRow>
 
-                    {/* Retention Bonus */}
-                    <PayRow
-                      label="Retention Bonus (RB)"
-                      floorAmount={payFloors.rbFloor}
-                      month={payFloors.rbMonth}
-                      floorCaptionPrefix="RB"
-                      diffValue={liveRB - payFloors.rbFloor}
-                      error={
-                        payErr.rb ||
-                        (liveRB < payFloors.rbFloor
-                          ? `Below RB to be Paid (${fmt(payFloors.rbFloor)}) — not allowed`
-                          : "")
-                      }
-                    >
-                      <EditInput
-                        key={`${employee.id}-newRB-${payReset.rb}`}
-                        className="flex-1"
-                        defaultValue={fmt(proposedRB ?? 0)}
-                        edited={isEdited("newRB")}
-                        invalid={liveRB < payFloors.rbFloor}
-                        onLive={(v) => {
-                          setDraft({ rbStr: v });
-                          if (payErr.rb) setPayErr((e) => ({ ...e, rb: "" }));
-                        }}
-                        onCommit={(v) => {
-                          const n = Number(String(v).replace(/[^0-9.]/g, "")) || 0;
-                          if (n < payFloors.rbFloor) {
-                            // Lesser than RB to be Paid: refuse and snap back.
-                            setPayErr((e) => ({
-                              ...e,
-                              rb: `RB can't be less than RB to be Paid (${fmt(payFloors.rbFloor)}). Not saved.`,
-                            }));
-                            setPayReset((r) => ({ ...r, rb: r.rb + 1 }));
-                            clearDraft(["rbStr"]);
-                            return;
+                        {/* New Base Pay + hike inputs */}
+                        <FieldRow
+                          label="New Base Pay"
+                          prev={
+                            <>
+                              <div style={{ width: "62%", minWidth: 110 }}>
+                                <ReadOnlyInput value={dashPrev(last?.newBasePay)} />
+                              </div>
+                              {last && (
+                                <span style={subNote}>
+                                  Cycle hike {fmt(last.hikeAmount)}
+                                  {lastHikePct !== null ? ` · ${lastHikePct}%` : ""}
+                                </span>
+                              )}
+                            </>
                           }
-                          setPayErr((e) => ({ ...e, rb: "" }));
-                          commit("newRB", n);
-                          clearDraft(["rbStr"]);
-                        }}
-                      />
-                    </PayRow>
+                        >
+                          <div
+                            className="flex items-end gap-2"
+                            key={`${employee.id}-hike`}
+                          >
+                            <div style={{ width: "36%", minWidth: 100 }}>
+                              <ReadOnlyInput
+                                key={`${employee.id}-newBase`}
+                                value={draft.baseStr ?? fmt(derived.newBase)}
+                                bold
+                              />
+                            </div>
+                            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                              <span style={lab}>Hike Amount</span>
+                              <EditInput
+                                value={draft.hikeStr ?? fmt(employee.hikeAmount)}
+                                onLive={liveHikeAmount}
+                                onCommit={(v) => {
+                                  handleHikeAmountChange(v);
+                                  clearDraft(HIKE_DRAFT_KEYS);
+                                }}
+                                edited={isEdited("hikeAmount")}
+                              />
+                            </div>
+                            <div className="flex w-[30%] min-w-[64px] flex-col gap-0.5">
+                              <span style={lab}>Hike%</span>
+                              <EditInput
+                                value={
+                                  draft.pctStr ??
+                                  (Number(employee.hikePct) || 0).toFixed(2)
+                                }
+                                onLive={liveHikePct}
+                                onCommit={(v) => {
+                                  handleHikePctChange(v);
+                                  clearDraft(HIKE_DRAFT_KEYS);
+                                }}
+                                edited={isEdited("hikeAmount")}
+                              />
+                            </div>
+                          </div>
+                        </FieldRow>
 
-                    {/* Total CTC with Rewards */}
-                    <CompRow
-                      label="Total CTC with Rewards"
-                      current={inr(ctcCompare.lastCtc)}
-                      diffNode={
-                        ctcCompare.lastCtc ? (
+                        {/* Joining Bonus */}
+                        <FieldRow
+                          label="Joining Bonus"
+                          prev={<ReadOnlyInput value={dashPrev(last?.joiningBonus)} />}
+                        >
+                          {naBox}
+                        </FieldRow>
+
+                        {/* Performance Bonus / Instalment */}
+                        <FieldRow
+                          label="Performance Bonus (PB) / Instalment"
+                          prev={
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "minmax(0,1fr) 70px",
+                                gap: 6,
+                              }}
+                            >
+                              <ReadOnlyInput value={dashPrev(last?.performanceBonus)} />
+                              <ReadOnlyInput value={payFloors.pbMonth || "—"} />
+                            </div>
+                          }
+                          diff={
+                            <DiffValue
+                              value={vsLast(livePB, last?.performanceBonus || 0)}
+                              caption="vs last year"
+                            />
+                          }
+                        >
+                          <div className="flex items-center gap-1.5">
+                            <EditInput
+                              key={`${employee.id}-allocatedPBAmount-${payReset.pb}`}
+                              className="flex-1"
+                              defaultValue={fmtOrBlank(proposedPB)}
+                              edited={isEdited("allocatedPBAmount")}
+                              invalid={livePB < payFloors.pbFloor}
+                              onLive={(v) => {
+                                setDraft({ pbStr: v });
+                                if (payErr.pb) setPayErr((e) => ({ ...e, pb: "" }));
+                              }}
+                              onCommit={(v) => {
+                                const n = parseAmount(v);
+                                if ((Number(n) || 0) < payFloors.pbFloor) {
+                                  setPayErr((e) => ({
+                                    ...e,
+                                    pb: `PB can't be less than PB to be Paid (${fmt(payFloors.pbFloor)}). Not saved.`,
+                                  }));
+                                  setPayReset((r) => ({ ...r, pb: r.pb + 1 }));
+                                  clearDraft(["pbStr"]);
+                                  return;
+                                }
+                                setPayErr((e) => ({ ...e, pb: "" }));
+                                commit("allocatedPBAmount", n);
+                                clearDraft(["pbStr"]);
+                              }}
+                            />
+                            <select
+                              key={`${employee.id}-pbInstallment`}
+                              value={
+                                isBlank(employee.pbInstallment)
+                                  ? ""
+                                  : String(employee.pbInstallment)
+                              }
+                              onChange={(e) => commit("pbInstallment", e.target.value)}
+                              className="h-[26px] w-[56px] shrink-0 rounded border px-1 text-[12.5px] outline-none focus:border-[#0B7A75]"
+                              style={fieldStyle(isEdited("pbInstallment"))}
+                            >
+                              <option value="">—</option>
+                              {INSTALLMENT_OPTIONS.map((o) => (
+                                <option key={o}>{o}</option>
+                              ))}
+                            </select>
+                          </div>
                           <span
+                            role={payErr.pb || livePB < payFloors.pbFloor ? "alert" : undefined}
                             style={{
-                              color: ctcCompare.pct < 0 ? RED : GREEN,
-                              fontWeight: 800,
-                              fontSize: 13,
+                              ...subNote,
+                              color:
+                                payErr.pb || livePB < payFloors.pbFloor ? RED : MUTED,
+                              fontWeight:
+                                payErr.pb || livePB < payFloors.pbFloor ? 700 : 400,
                             }}
                           >
-                            {ctcCompare.pct < 0 ? "−" : ""}
-                            {Math.abs(ctcCompare.pct).toFixed(1)}%
+                            {payErr.pb ||
+                              (livePB < payFloors.pbFloor
+                                ? `Below PB to be Paid (${fmt(payFloors.pbFloor)}) — not allowed`
+                                : `Preloaded · less than this → ${fmt(payFloors.pbFloor)} paid`)}
                           </span>
-                        ) : (
-                          <span style={{ color: MUTED }}>—</span>
-                        )
-                      }
-                    >
-                      <ReadOnlyInput value={inr(liveCtc)} bold />
-                    </CompRow>
+                        </FieldRow>
 
-                    {/* Target PB for Next Year */}
-                    <CompRow
-                      label="Target PB for Next Year"
-                      current={fmtOrBlank(targetPBCurrent) || "—"}
-                      diffText="next yr"
-                      muted
-                    >
-                      <EditInput
-                        key={`${employee.id}-targetPBNextYear`}
-                        defaultValue={fmtOrBlank(employee.targetPBNextYear)}
-                        edited={isEdited("targetPBNextYear")}
-                        onLive={(v) => setDraft({ tpbStr: v })}
-                        onCommit={(v) => {
-                          commit("targetPBNextYear", parseAmount(v));
-                          clearDraft(["tpbStr"]);
-                        }}
-                      />
-                    </CompRow>
+                        {/* Retention Bonus */}
+                        <FieldRow
+                          label="Retention Bonus (RB)"
+                          prev={
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "minmax(0,1fr) 70px",
+                                gap: 6,
+                              }}
+                            >
+                              <ReadOnlyInput value={dashPrev(last?.retentionBonus)} />
+                              <ReadOnlyInput value={payFloors.rbMonth || "—"} />
+                            </div>
+                          }
+                          diff={
+                            <DiffValue
+                              value={vsLast(liveRB, last?.retentionBonus || 0)}
+                              caption="vs last year"
+                            />
+                          }
+                        >
+                          <EditInput
+                            key={`${employee.id}-newRB-${payReset.rb}`}
+                            defaultValue={fmt(proposedRB ?? 0)}
+                            edited={isEdited("newRB")}
+                            invalid={liveRB < payFloors.rbFloor}
+                            className="w-[75%]"
+                            onLive={(v) => {
+                              setDraft({ rbStr: v });
+                              if (payErr.rb) setPayErr((e) => ({ ...e, rb: "" }));
+                            }}
+                            onCommit={(v) => {
+                              const n = Number(String(v).replace(/[^0-9.]/g, "")) || 0;
+                              if (n < payFloors.rbFloor) {
+                                setPayErr((e) => ({
+                                  ...e,
+                                  rb: `RB can't be less than RB to be Paid (${fmt(payFloors.rbFloor)}). Not saved.`,
+                                }));
+                                setPayReset((r) => ({ ...r, rb: r.rb + 1 }));
+                                clearDraft(["rbStr"]);
+                                return;
+                              }
+                              setPayErr((e) => ({ ...e, rb: "" }));
+                              commit("newRB", n);
+                              clearDraft(["rbStr"]);
+                            }}
+                          />
+                          <span
+                            role={payErr.rb || liveRB < payFloors.rbFloor ? "alert" : undefined}
+                            style={{
+                              ...subNote,
+                              color:
+                                payErr.rb || liveRB < payFloors.rbFloor ? RED : MUTED,
+                              fontWeight:
+                                payErr.rb || liveRB < payFloors.rbFloor ? 700 : 400,
+                            }}
+                          >
+                            {payErr.rb ||
+                              (liveRB < payFloors.rbFloor
+                                ? `Below RB to be Paid (${fmt(payFloors.rbFloor)}) — not allowed`
+                                : `Preloaded · less than this → ${fmt(payFloors.rbFloor)} paid`)}
+                          </span>
+                        </FieldRow>
 
-                    {/* Target PB Criteria */}
-                    <CompRow
-                      label="Target PB Criteria"
-                      current={dash(
-                        employee.currentTargetPBCriteria ??
-                          employee.targetPBCriteria,
-                      )}
-                      diffText=""
-                      muted
-                    >
-                      <textarea
-                        key={`${employee.id}-targetPBCriteria`}
-                        defaultValue={blankStr(employee.targetPBCriteria)}
-                        onBlur={(e) =>
-                          commit("targetPBCriteria", e.target.value)
-                        }
-                        rows={2}
-                        className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[13.5px] outline-none focus:border-[#0B7A75]"
-                        style={fieldStyle(isEdited("targetPBCriteria"))}
-                      />
-                    </CompRow>
+                        {/* Total CTC with Rewards */}
+                        <FieldRow
+                          label="Total CTC with Rewards"
+                          prev={<ReadOnlyInput value={ctcCompare.lastCtc ? inr(ctcCompare.lastCtc) : "—"} />}
+                          diff={
+                            ctcCompare.lastCtc ? (
+                              <DiffValue
+                                value={liveCtc - ctcCompare.lastCtc}
+                                caption={`${Math.abs(ctcCompare.pct).toFixed(1)}%`}
+                              />
+                            ) : null
+                          }
+                        >
+                          <ReadOnlyInput value={inr(liveCtc)} bold />
+                        </FieldRow>
 
-                    {/* Designation / New Title */}
-                    <CompRow
-                      label="Designation"
-                      current={dash(employee.designation)}
-                      diffText={
-                        employee.newTitle &&
-                        employee.newTitle !== employee.designation
-                          ? "Promotion"
-                          : ""
-                      }
-                      muted
-                    >
-                      <select
-                        key={`${employee.id}-newTitle`}
-                        value={employee.newTitle || employee.designation || ""}
-                        onChange={(e) => handleNewTitleChange(e.target.value)}
-                        className="h-[24px] w-full min-w-0 rounded border px-1 text-[12.5px] outline-none focus:border-[#0B7A75]"
-                        style={fieldStyle(isEdited("newTitle"))}
-                      >
-                        {titleOptions.map((t) => {
-                          const v =
-                            typeof t === "string" ? t : (t?.value ?? t?.label);
-                          const l =
-                            typeof t === "string" ? t : (t?.label ?? t?.value);
-                          return (
-                            <option key={v} value={v}>
-                              {l}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </CompRow>
+                        {/* Target PB for Next Year */}
+                        <FieldRow
+                          label="Target PB for Next Year"
+                          prev={<ReadOnlyInput value={fmt(prevTPB)} />}
+                          diff={
+                            <DiffValue
+                              value={
+                                (liveHist?.tpb ?? Number(employee.targetPBNextYear) ?? 0) -
+                                prevTPB
+                              }
+                              caption="vs last year"
+                            />
+                          }
+                        >
+                          <EditInput
+                            key={`${employee.id}-targetPBNextYear`}
+                            defaultValue={fmtOrBlank(employee.targetPBNextYear)}
+                            edited={isEdited("targetPBNextYear")}
+                            onLive={(v) => setDraft({ tpbStr: v })}
+                            onCommit={(v) => {
+                              commit("targetPBNextYear", parseAmount(v));
+                              clearDraft(["tpbStr"]);
+                            }}
+                          />
+                        </FieldRow>
 
-                    {/* Comp Manager Remarks */}
-                    <CompRow
-                      label="Comp. Manager Remarks"
-                      current={dash(
-                        baselineRef.current[employee.id]?.compManagerRemarks,
-                      )}
-                      diffText=""
-                      muted
-                    >
-                      <textarea
-                        key={`${employee.id}-compManagerRemarks`}
-                        defaultValue={blankStr(employee.compManagerRemarks)}
-                        onBlur={(e) =>
-                          commit("compManagerRemarks", e.target.value)
-                        }
-                        rows={2}
-                        className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[13.5px] outline-none focus:border-[#0B7A75]"
-                        style={fieldStyle(isEdited("compManagerRemarks"))}
-                      />
-                    </CompRow>
-                  </div>
+                        {/* Target PB criteria */}
+                        <FieldRow
+                          label="Target PB criteria"
+                          prev={
+                            <ReadOnlyInput
+                              value={dash(
+                                employee.currentTargetPBCriteria ??
+                                  employee.targetPBCriteria,
+                              )}
+                            />
+                          }
+                        >
+                          <textarea
+                            key={`${employee.id}-targetPBCriteria`}
+                            defaultValue={blankStr(employee.targetPBCriteria)}
+                            onBlur={(e) => commit("targetPBCriteria", e.target.value)}
+                            rows={2}
+                            className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[13.5px] outline-none focus:border-[#0B7A75]"
+                            style={fieldStyle(isEdited("targetPBCriteria"))}
+                          />
+                        </FieldRow>
+
+                        {/* Designation / New Title */}
+                        <FieldRow
+                          label="Designation / New Title"
+                          prev={<ReadOnlyInput value={dash(employee.designation)} />}
+                          diff={
+                            <span style={{ ...subNote, fontWeight: 600 }}>
+                              Eligible: {dash(employee.eligibleForPromotion)}
+                            </span>
+                          }
+                        >
+                          <select
+                            key={`${employee.id}-newTitle`}
+                            value={employee.newTitle || employee.designation || ""}
+                            onChange={(e) => handleNewTitleChange(e.target.value)}
+                            className="h-[28px] w-full min-w-0 rounded border px-1 text-[13px] outline-none focus:border-[#0B7A75]"
+                            style={fieldStyle(isEdited("newTitle"))}
+                          >
+                            {titleOptions.map((t) => {
+                              const v = typeof t === "string" ? t : (t?.value ?? t?.label);
+                              const l = typeof t === "string" ? t : (t?.label ?? t?.value);
+                              return (
+                                <option key={v} value={v}>
+                                  {l}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </FieldRow>
+
+                        {/* Comp Manager Remarks */}
+                        <FieldRow
+                          label="Comp Manager Remarks"
+                          prev={
+                            <ReadOnlyInput
+                              value={dash(
+                                baselineRef.current[employee.id]?.compManagerRemarks,
+                              )}
+                            />
+                          }
+                        >
+                          <textarea
+                            key={`${employee.id}-compManagerRemarks`}
+                            defaultValue={blankStr(employee.compManagerRemarks)}
+                            onBlur={(e) => commit("compManagerRemarks", e.target.value)}
+                            rows={2}
+                            placeholder="Add remarks for this cycle"
+                            className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[13.5px] outline-none focus:border-[#0B7A75]"
+                            style={fieldStyle(isEdited("compManagerRemarks"))}
+                          />
+                        </FieldRow>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 
               {/* Legend + counter + Previous / Save & next: normal flow, always visible */}
-              <div className="ds-foot">
+              <div className="shrink-0 border-t px-3 py-1.5" style={{ borderColor: LINE }}>
                 <div
                   className="flex flex-wrap items-center gap-3 text-[12.5px]"
                   style={{ color: MUTED }}
@@ -1774,14 +1890,14 @@ export function DetailScreenPage({
                       className="inline-block h-[11px] w-[11px] rounded-[3px] border"
                       style={{ background: "#F3F6F7", borderColor: "#D9E1E6" }}
                     />
-                    Current (read-only)
+                    Read-only
                   </span>
                   <span className="inline-flex items-center gap-1.5">
                     <i
                       className="inline-block h-[11px] w-[11px] rounded-[3px] border"
                       style={{ background: EDITABLE_BG, borderColor: EDITABLE_BORDER }}
                     />
-                    Proposed (editable)
+                    Editable
                   </span>
                   <span className="inline-flex items-center gap-1.5">
                     <i
@@ -1791,10 +1907,13 @@ export function DetailScreenPage({
                     Edited this cycle
                   </span>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-[12.5px]" style={{ color: MUTED }}>
-                    {safeIndex + 1} of {rows.length} · {scopeLabel}
+              </div>
+              <div className="ds-foot" style={{ borderTop: `1px solid ${LINE}` }}>
+                <div className="flex w-full items-center justify-between gap-3">
+                  <span className="text-[14px]" style={{ color: MUTED }}>
+                    <b style={{ color: INK }}>{safeIndex + 1}</b> of {rows.length} · {scopeLabel}
                   </span>
+                  <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => goTo(safeIndex - 1)}
@@ -1816,220 +1935,218 @@ export function DetailScreenPage({
                   >
                     Save &amp; next ›
                   </button>
+                  </div>
                 </div>
               </div>
             </section>
 
             {/* METRICS */}
             {metricsOpen && (
-              <aside className="ds-side" aria-label="Metrics">
-                <div className="ds-card">
-                  {metricsOpen ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setMetricsOpen(false)}
-                        className="shrink-0 border-b px-3 py-2 text-left text-[12px] font-bold"
-                        style={{
-                          borderColor: LINE,
-                          color: INK,
-                          background: "#fff",
-                        }}
-                      >
-                        Metrics ‹
-                      </button>
-                      <div className="ds-scroll flex-1 p-3">
-                        {metrics.map(([k, v]) => (
+            <aside className="ds-side" aria-label="Metrics">
+              <div className="ds-card">
+                {metricsOpen ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setMetricsOpen(false)}
+                      className="shrink-0 border-b px-3 py-2 text-left text-[12px] font-bold"
+                      style={{
+                        borderColor: LINE,
+                        color: INK,
+                        background: "#fff",
+                      }}
+                    >
+                      Metrics ‹
+                    </button>
+                    <div className="ds-scroll flex-1 p-3">
+                      {metrics.map(([k, v]) => (
+                        <div
+                          key={k}
+                          className="mb-2.5 rounded border px-2.5 py-2"
+                          style={{ borderColor: LINE, background: SOFT }}
+                        >
                           <div
-                            key={k}
-                            className="mb-2.5 rounded border px-2.5 py-2"
-                            style={{ borderColor: LINE, background: SOFT }}
+                            className="text-[10.5px]"
+                            style={{ color: MUTED }}
                           >
-                            <div
-                              className="text-[10.5px]"
-                              style={{ color: MUTED }}
-                            >
-                              {k}
-                            </div>
-                            <div
-                              className="text-[14px] font-extrabold"
-                              style={{ color: INK }}
-                            >
-                              {v}
-                            </div>
+                            {k}
                           </div>
-                        ))}
-                      </div>
-                    </>
-                  ) : null}
-                </div>
-              </aside>
+                          <div
+                            className="text-[14px] font-extrabold"
+                            style={{ color: INK }}
+                          >
+                            {v}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </aside>
             )}
 
             {/* FEEDBACK */}
             {cardOpen && (
-              <aside className="ds-side" aria-label="Feedback">
-                <div className="ds-card">
-                  {cardOpen ? (
-                    <>
-                      <div
-                        className="flex shrink-0 items-center justify-between gap-2 px-3 py-2"
-                        style={{ background: NAVY, color: "#fff" }}
-                      >
-                        <span className="flex-1 text-center text-[14px] font-extrabold">
-                          Feedback
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setFeedbackWidth((w) => Math.max(240, w - 40))
-                            }
-                            aria-label="Decrease feedback panel width"
-                            className="h-[28px] w-[28px] rounded border font-bold"
-                            style={{
-                              borderColor: "#4A6580",
-                              color: "#fff",
-                              background: "transparent",
-                            }}
-                          >
-                            −
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setFeedbackWidth((w) => Math.min(620, w + 40))
-                            }
-                            aria-label="Increase feedback panel width"
-                            className="h-[28px] w-[28px] rounded border font-bold"
-                            style={{
-                              borderColor: "#4A6580",
-                              color: "#fff",
-                              background: "transparent",
-                            }}
-                          >
-                            +
-                          </button>
-                        </div>
+            <aside className="ds-side" aria-label="Feedback">
+              <div className="ds-card">
+                {cardOpen ? (
+                  <>
+                    <div
+                      className="flex shrink-0 items-center justify-between gap-2 px-3 py-2"
+                      style={{ background: NAVY, color: "#fff" }}
+                    >
+                      <span className="flex-1 text-center text-[14px] font-extrabold">
+                        Feedback
+                      </span>
+                      <div className="flex items-center gap-1">
                         <button
                           type="button"
-                          onClick={() => setCardOpen(false)}
-                          aria-label="Close feedback"
-                          className="h-[28px] w-[34px] rounded border"
+                          onClick={() =>
+                            setFeedbackWidth((w) => Math.max(240, w - 40))
+                          }
+                          aria-label="Decrease feedback panel width"
+                          className="h-[28px] w-[28px] rounded border font-bold"
                           style={{
                             borderColor: "#4A6580",
                             color: "#fff",
                             background: "transparent",
                           }}
                         >
-                          ✕
+                          −
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFeedbackWidth((w) => Math.min(620, w + 40))
+                          }
+                          aria-label="Increase feedback panel width"
+                          className="h-[28px] w-[28px] rounded border font-bold"
+                          style={{
+                            borderColor: "#4A6580",
+                            color: "#fff",
+                            background: "transparent",
+                          }}
+                        >
+                          +
                         </button>
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => setCardOpen(false)}
+                        aria-label="Close feedback"
+                        className="h-[28px] w-[34px] rounded border"
+                        style={{
+                          borderColor: "#4A6580",
+                          color: "#fff",
+                          background: "transparent",
+                        }}
+                      >
+                        ✕
+                      </button>
+                    </div>
 
-                      <div className="flex shrink-0 gap-2 px-3 py-2.5">
-                        {[
-                          ["manager", "Manager"],
-                          ["client", "Client"],
-                          ["other", "Other"],
-                        ].map(([k, l]) => (
-                          <button
-                            key={k}
-                            type="button"
-                            onClick={() => setFbTab(k)}
-                            className="rounded-full border px-3 py-1 text-[12px] font-semibold"
+                    <div className="flex shrink-0 gap-2 px-3 py-2.5">
+                      {[
+                        ["manager", "Manager"],
+                        ["client", "Client"],
+                        ["other", "Other"],
+                      ].map(([k, l]) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => setFbTab(k)}
+                          className="rounded-full border px-3 py-1 text-[12px] font-semibold"
+                          style={{
+                            borderColor: fbTab === k ? "#9AA7B4" : LINE,
+                            background: fbTab === k ? SOFT : "#fff",
+                            color: INK,
+                          }}
+                        >
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="ds-scroll flex-1 px-4 pb-3">
+                      {timeline.map((t) => (
+                        <div key={t.year} className="mb-3 flex gap-2.5">
+                          <span
+                            className="mt-1.5 inline-block h-[11px] w-[11px] shrink-0 rounded-full border-2"
                             style={{
-                              borderColor: fbTab === k ? "#9AA7B4" : LINE,
-                              background: fbTab === k ? SOFT : "#fff",
-                              color: INK,
+                              borderColor: t.current ? LTEAL : "#C4CED6",
+                              background: t.current ? LTEAL : "#fff",
                             }}
-                          >
-                            {l}
-                          </button>
-                        ))}
-                      </div>
-
-                      <div className="ds-scroll flex-1 px-4 pb-3">
-                        {timeline.map((t) => (
-                          <div key={t.year} className="mb-3 flex gap-2.5">
-                            <span
-                              className="mt-1.5 inline-block h-[11px] w-[11px] shrink-0 rounded-full border-2"
-                              style={{
-                                borderColor: t.current ? LTEAL : "#C4CED6",
-                                background: t.current ? LTEAL : "#fff",
-                              }}
-                            />
-                            <div className="min-w-0">
-                              <div className="flex items-center gap-2">
-                                <b
-                                  className="text-[14px]"
-                                  style={{ color: INK }}
+                          />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <b className="text-[14px]" style={{ color: INK }}>
+                                {t.year}
+                              </b>
+                              {t.current ? (
+                                <span
+                                  className="rounded px-2 py-0.5 text-[11px] font-semibold"
+                                  style={{ background: SOFT, color: INK }}
                                 >
-                                  {t.year}
-                                </b>
-                                {t.current ? (
-                                  <span
-                                    className="rounded px-2 py-0.5 text-[11px] font-semibold"
-                                    style={{ background: SOFT, color: INK }}
-                                  >
-                                    This cycle
-                                  </span>
-                                ) : null}
-                              </div>
-                              <div style={{ color: MUTED }}>{t.title}</div>
-                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                  This cycle
+                                </span>
+                              ) : null}
+                            </div>
+                            <div style={{ color: MUTED }}>{t.title}</div>
+                            <div className="mt-1 flex flex-wrap gap-1.5">
+                              <span
+                                className="rounded px-2 py-0.5 text-[11.5px]"
+                                style={{ background: SOFT, color: INK }}
+                              >
+                                {fbTab === "manager"
+                                  ? "Manager"
+                                  : fbTab === "client"
+                                    ? "Client"
+                                    : "Other"}{" "}
+                                rating{" "}
+                                <b>{fbTab === "manager" ? t.rating : "—"}</b>
+                                {t.current &&
+                                fbTab === "manager" &&
+                                t.rating !== "—"
+                                  ? " / 5"
+                                  : ""}
+                              </span>
+                              {t.promo ? (
                                 <span
                                   className="rounded px-2 py-0.5 text-[11.5px]"
                                   style={{ background: SOFT, color: INK }}
                                 >
-                                  {fbTab === "manager"
-                                    ? "Manager"
-                                    : fbTab === "client"
-                                      ? "Client"
-                                      : "Other"}{" "}
-                                  rating{" "}
-                                  <b>{fbTab === "manager" ? t.rating : "—"}</b>
-                                  {t.current &&
-                                  fbTab === "manager" &&
-                                  t.rating !== "—"
-                                    ? " / 5"
-                                    : ""}
+                                  Eligible for promotion: {t.promo}
                                 </span>
-                                {t.promo ? (
-                                  <span
-                                    className="rounded px-2 py-0.5 text-[11.5px]"
-                                    style={{ background: SOFT, color: INK }}
-                                  >
-                                    Eligible for promotion: {t.promo}
-                                  </span>
-                                ) : null}
-                              </div>
-                              {t.note ? (
-                                <div
-                                  className="mt-1"
-                                  style={{ color: "#3E4C59" }}
-                                >
-                                  {t.note}
-                                </div>
-                              ) : fbTab === "manager" && t.rating !== "—" ? (
-                                <div className="mt-1" style={{ color: MUTED }}>
-                                  {t.rating} / 5
-                                </div>
                               ) : null}
                             </div>
+                            {t.note ? (
+                              <div
+                                className="mt-1"
+                                style={{ color: "#3E4C59" }}
+                              >
+                                {t.note}
+                              </div>
+                            ) : fbTab === "manager" && t.rating !== "—" ? (
+                              <div className="mt-1" style={{ color: MUTED }}>
+                                {t.rating} / 5
+                              </div>
+                            ) : null}
                           </div>
-                        ))}
-                        <div
-                          className="mt-2 text-[11.5px]"
-                          style={{ color: MUTED }}
-                        >
-                          Client rating and past RR % are not in the sheet yet,
-                          so they show “—”.
                         </div>
+                      ))}
+                      <div
+                        className="mt-2 text-[11.5px]"
+                        style={{ color: MUTED }}
+                      >
+                        Client rating and past RR % are not in the sheet yet, so
+                        they show “—”.
                       </div>
-                    </>
-                  ) : null}
-                </div>
-              </aside>
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </aside>
             )}
 
             {/* Closed panels: dark tabs on the right edge, like Bulk Edit */}
@@ -2081,7 +2198,7 @@ export function DetailScreenPage({
                 borderBottom: `1px solid ${LINE}`,
               }}
             >
-              <div style={{ padding: "6px 10px" }}>Appraisal Cycle Name</div>
+              <div style={{ padding: "6px 10px" }}>Year</div>
               {HISTORY_COLUMNS.map((c) => (
                 <div
                   key={c.key}
@@ -2125,7 +2242,7 @@ export function DetailScreenPage({
                           fontWeight: 800,
                         }}
                       >
-                        {currentCycleName} ★
+                        {CURRENT_CYCLE} ★
                       </div>
                       {cur.map((v, i) => (
                         <HistCell
@@ -2147,7 +2264,7 @@ export function DetailScreenPage({
                 : null;
               return (
                 <div
-                  key={normalizeCycleKey(h.cycleName || h.year)}
+                  key={normalizeYearKey(h.year)}
                   className="grid items-center text-[12px]"
                   style={{
                     gridTemplateColumns: HIST_GRID,
@@ -2158,7 +2275,7 @@ export function DetailScreenPage({
                   <div
                     style={{ padding: "4px 10px", fontWeight: 700, color: INK }}
                   >
-                    {h.cycleName || h.year}
+                    {h.year}
                   </div>
                   {vals.map((v, c) => (
                     <HistCell
