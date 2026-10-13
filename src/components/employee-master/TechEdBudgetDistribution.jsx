@@ -296,7 +296,13 @@ export function TechEdBudgetDistribution() {
         + num(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.pb_to_be_paid ?? employee.target_pb_allocated_for_may ?? employee.allocated_pb ?? employee.total_pb);
       managerStats.set(key, stats);
     });
-    return liveComps.map((live) => {
+    // Comp Managers in the team that have no saved Budget_Distribution_Comp
+    // row yet are listed too (a row is created when their Allot % is saved).
+    const savedKeys = new Set(liveComps.map((live) => ownerKey(live.comp_manager)));
+    const unsaved = Array.from(managerStats.entries())
+      .filter(([key]) => key && !savedKeys.has(key))
+      .map(([, stats]) => ({ id: "", comp_manager: stats.name, percentage: 0, budget_base: stats.base, calculated_budget: 0, applied_budget: 0, total_utilization: 0 }));
+    return liveComps.concat(unsaved).map((live) => {
       const pct = num(live.percentage);
       const stats = managerStats.get(ownerKey(live.comp_manager)) || { count: 0, base: 0, name: live.comp_manager };
       const base = num(live.budget_base) || stats.base || (pct ? num(live.calculated_budget) * 100 / pct : 0);
@@ -380,17 +386,18 @@ export function TechEdBudgetDistribution() {
       return;
     }
     const t = nowParts();
-    const live = liveComps.find((x) => String(x.id) === String(node.liveId));
-    if (!live || !node.liveId) {
-      setErr("This Comp Manager does not have a saved Data Store budget row yet.");
+    if (!liveTech?.id) {
+      setErr("Your Tech-Ed budget allocation is not saved yet, so Comp Manager budgets cannot be allotted.");
       return;
     }
     try {
-      await updateBudget(node.liveId, {
+      // No saved row yet: the API creates it under this Tech-ED's allocation.
+      await updateBudget(node.liveId || "", {
         percentage: to,
         budget_base: node.base,
         calculated_budget: newUpd,
         applied_budget: newUpd,
+        ...(node.liveId ? {} : { budget_distribution_id: liveTech.id, comp_manager: name }),
       }, "comp");
     } catch (error) {
       setErr(error.message || "Failed to save Comp Manager budget.");
