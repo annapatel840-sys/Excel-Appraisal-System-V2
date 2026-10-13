@@ -425,7 +425,6 @@ const PAGE = 20;
 
 const FILTER_DEFAULT = [
   { id: "q", label: "Search", type: "search" },
-  { id: "band", label: "Band", type: "select", field: "band" },
   {
     id: "designation",
     label: "Designation",
@@ -433,18 +432,43 @@ const FILTER_DEFAULT = [
     field: "designation",
   },
   {
-    id: "compManager",
-    label: "Comp. Manager",
+    id: "managerRating",
+    label: "Manager Rating",
     type: "select",
-    field: "compManager",
+    field: "managerRating",
   },
   {
-    id: "promo",
-    label: "Eligible for Promotion",
+    id: "clientRating",
+    label: "Client Rating",
     type: "select",
-    field: "promo",
+    field: "clientRating",
+  },
+  { id: "promo", label: "Promotion", type: "select", field: "promo" },
+  {
+    id: "promoDesignation",
+    label: "Promotion Designation",
+    type: "select",
+    field: "promoDesignation",
   },
 ];
+const FILTER_IDS = FILTER_DEFAULT.filter((d) => d.type !== "search").map(
+  (d) => d.id,
+);
+/* Value of a filter field for a row (read from the appraisal sheet rows). */
+const filterVal = (e, field) => {
+  let v;
+  if (field === "managerRating")
+    v = e.managerRating != null && e.managerRating !== "" ? e.managerRating : e.rating;
+  else if (field === "clientRating") v = e.clientRating ?? e.client_rating;
+  else if (field === "promoDesignation")
+    v =
+      e.promoDesignation ??
+      e.promotionDesignation ??
+      e.newTitle ??
+      e.new_title;
+  else v = e[field];
+  return v == null ? "" : String(v);
+};
 const CFG_KEY = "bulkForWhomCfg_v1",
   MY_KEY = "bulkMyFilters_v1",
   TPB_KEY = "bulkIncTpb_v1",
@@ -901,22 +925,12 @@ const BulkOperations = forwardRef(function BulkOperations(
     [checkF, setCheckF] = useState("");
 
   /* filters */
-  const [fdefs, setFdefs] = useState(() => {
-    try {
-      const v = localStorage.getItem(CFG_KEY);
-      if (v) {
-        const n = normFilters(JSON.parse(v));
-        if (n.length) return n;
-      }
-    } catch (x) {
-      /* ignore */
-    }
-    return FILTER_DEFAULT;
-  });
+  // The "For whom" filter list is fixed (see FILTER_DEFAULT).
+  const [fdefs, setFdefs] = useState(FILTER_DEFAULT);
   const [active, setActive] = useState(() => {
     try {
       const v = JSON.parse(localStorage.getItem(MY_KEY) || "null");
-      if (Array.isArray(v)) return v;
+      if (Array.isArray(v)) return v.filter((id) => FILTER_IDS.indexOf(id) >= 0);
     } catch (x) {
       /* ignore */
     }
@@ -1019,7 +1033,7 @@ const BulkOperations = forwardRef(function BulkOperations(
       }
       const hit = v.some((x) => {
         if (d.type === "select")
-          return String(e[d.field] == null ? "" : e[d.field]) === x;
+          return filterVal(e, d.field) === x;
         if (d.type === "range")
           return rangeHit(e[d.field], d.ranges[Number(x)]);
         return true;
@@ -1037,8 +1051,8 @@ const BulkOperations = forwardRef(function BulkOperations(
       }));
     const m = {};
     scope.forEach((e) => {
-      const x = e[d.field];
-      if (x !== "" && x != null) m[x] = (m[x] || 0) + 1;
+      const x = filterVal(e, d.field);
+      if (x !== "") m[x] = (m[x] || 0) + 1;
     });
     return Object.keys(m)
       .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
@@ -1577,10 +1591,7 @@ const BulkOperations = forwardRef(function BulkOperations(
       try {
         const st = await apiCall("GET", "/settings");
         const c = st && st.settings && st.settings.bulkFilters;
-        if (c) {
-          const n = normFilters(c);
-          if (n.length) setFdefs(n);
-        }
+        void c; /* filter list is fixed in the UI; server list is ignored */
       } catch (x) {
         /* optional */
       }
