@@ -22,8 +22,16 @@ function value(row, key) {
 }
 
 function n(v) {
-  const x = Number(v);
-  return Number.isFinite(x) ? x : 0;
+  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+  if (v === null || v === undefined || v === "") return 0;
+  // Catalyst imports can return Indian-grouped values such as "12,34,567.50".
+  // Number("12,34,567.50") is NaN, which previously silently became zero.
+  let text = String(v).trim();
+  const negative = /^\(.*\)$/.test(text);
+  text = text.replace(/[₹,\s]/g, "").replace(/^(?:INR|Rs\.?)/i, "").replace(/[^0-9.+-]/g, "");
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed)) return 0;
+  return negative ? -Math.abs(parsed) : parsed;
 }
 
 function idOf(row) {
@@ -492,19 +500,19 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
 
   const appraisalByEmployee = new Map();
   appraisalRows.forEach((row) => {
-    const employeeId = String(firstValue(row, ["emp_id", "employee_id", "employee_id_text"]) || idOf(row)).trim().toLowerCase();
+    const employeeId = String(firstValue(row, ["emp_id", "empId", "employee_id", "employeeId", "employee_id_text"]) || idOf(row)).trim().toLowerCase();
     if (!employeeId) return;
     const techEd = String(firstValue(row, [
-      "appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_teched", "tech_ed", "tech_ed_id",
+      "appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_teched", "appraiserTechED", "appraiserTechEd", "tech_ed", "tech_ed_id", "techED", "techEd",
     ]) || "").trim();
     const compManager = String(firstValue(row, [
-      "comp_manager", "comp_manager_id", "comp_manager_name", "comp_manager_emp_id",
+      "comp_manager", "comp_manager_id", "comp_manager_name", "comp_manager_emp_id", "compManager", "compManagerId",
     ]) || "").trim();
     const basePay = n(firstValue(row, [
-      "current_annual_base_pay", "current_base_pay", "base_pay", "annual_base_pay",
+      "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "currentBasePay", "base_pay", "basePay", "annual_base_pay", "annualBasePay",
     ]));
     const allocatedPB = n(firstValue(row, [
-      "allocated_pb_amount", "pb_to_be_paid", "target_pb_allocated_for_may", "allocated_pb", "total_pb",
+      "allocated_pb_amount", "allocatedPBAmount", "pb_to_be_paid", "pbToBePaid", "target_pb_allocated_for_may", "targetPBAllocatedForMay", "allocated_pb", "allocatedPB", "total_pb", "totalPB",
     ]));
     // Appraisal_Sheet can contain repeated employee records during imports.
     // Keep one record per employee so the same salary is never summed twice.
