@@ -244,8 +244,15 @@ export function BudgetProvider({ children }) {
       const ownerByKey = new Map();
       apiTechEdOwners.forEach((item) => {
         const assignment = String((item && item.assignment) || "").trim();
-        if (assignment)
-          ownerByKey.set(normalizeOwner(assignment), { assignment });
+        if (assignment) {
+          ownerByKey.set(normalizeOwner(assignment), {
+            ...item,
+            assignment,
+            row_id: String(item.row_id || item.ROWID || ""),
+            employee_id: String(item.employee_id || item.emp_id || ""),
+            name: String(item.name || ""),
+          });
+        }
       });
       mergedEmployees.forEach((employee) => {
         const assignment = String(
