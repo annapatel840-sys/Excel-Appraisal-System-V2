@@ -182,10 +182,18 @@ export function TechEdBudgetDistribution() {
     const allRows = budgetDistributionRows.filter((row) =>
       row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed || row.appraiser_tech_ed,
     );
-    const ownerMatchesLogin = (row) => ownerMatches(
-      row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed || row.appraiser_tech_ed,
-      Array.from(identities),
-    );
+    const ownerForBudgetRow = (row) => {
+      const raw = String(
+        row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed ||
+        row.appraiser_tech_ed || row.appraiser_tech_ed1 || ""
+      ).trim();
+      // Budget_Distribution may store Employee_Master.ROWID as its Tech-Ed FK.
+      // Convert that FK to the display assignment returned from Appraisal_Sheet.
+      return ownerByForeignKey.get(normalizeOwner(raw)) || raw;
+    };
+    const ownerMatchesLogin = (row) =>
+      ownerMatches(ownerForBudgetRow(row), Array.from(identities)) ||
+      Boolean(loginEmployee && normalizeOwner(row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed || row.appraiser_tech_ed || row.appraiser_tech_ed1) === normalizeOwner(loginEmployee.row_id || loginEmployee.ROWID));
     const directMatches = allRows.filter(ownerMatchesLogin);
     const assignmentMatches = allRows.filter((row) =>
       assignedOwners.some((owner) => ownerKey(owner) === ownerKey(
