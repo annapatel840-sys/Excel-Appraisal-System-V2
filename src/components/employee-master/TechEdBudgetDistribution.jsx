@@ -185,7 +185,7 @@ export function TechEdBudgetDistribution() {
     if (sum > myOriginal + 0.5) {
       setErr(
         "Blocked: " + to + "% for " + name + " would take total allotted to " + lakh(sum) + ", which is " +
-          lakh(sum - myUpdated) + " more than your original budget of " + lakh(myOriginal) + ".",
+          lakh(sum - myOriginal) + " more than your original budget of " + lakh(myOriginal) + ".",
       );
       return;
     }
