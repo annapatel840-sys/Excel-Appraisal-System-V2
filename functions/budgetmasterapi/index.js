@@ -56,7 +56,7 @@ function mapMaster(row) {
 }
 
 function mapDistribution(row) {
-  const calculated = n(value(row, "claculated_budget")); // column name is kept exactly as created in Data Store.
+  const calculated = n(value(row, "calculated_budget") || value(row, "claculated_budget"));
   const applied = n(value(row, "applied_budget"));
   const utilized = n(value(row, "total_utilization"));
   return {
@@ -465,6 +465,20 @@ function cycleDate(row) {
   return "";
 }
 
+async function getColumnNames(table) {
+  try {
+    const columns = await table.getAllColumns();
+    return new Set((columns || []).map((column) => String(column.column_name || column.name || "").trim()).filter(Boolean));
+  } catch (_) {
+    return null;
+  }
+}
+
+function pickColumn(columns, candidates, fallback) {
+  if (!columns) return fallback;
+  return candidates.find((name) => columns.has(name)) || fallback;
+}
+
 async function calculateBudgetBases(app, bundle) {
   const [payrollRows, cycleRows, appraisalRows, employeeMasterRows] = await Promise.all([
     readTableById(app, "74008000000035326"),
@@ -537,6 +551,14 @@ async function calculateBudgetBases(app, bundle) {
   const distributionTable = app.datastore().table(TABLES.distribution);
   const compTable = app.datastore().table(TABLES.comp);
   const masterTable = app.datastore().table(TABLES.master);
+  const [distributionColumns, compColumns, masterColumns] = await Promise.all([
+    getColumnNames(distributionTable),
+    getColumnNames(compTable),
+    getColumnNames(masterTable),
+  ]);
+  const distributionCalculatedField = pickColumn(distributionColumns, ["calculated_budget", "claculated_budget"], "claculated_budget");
+  const compCalculatedField = pickColumn(compColumns, ["calculated_budget", "claculated_budget"], "calculated_budget");
+  const masterCalculatedField = pickColumn(masterColumns, ["calculated_budget"], "calculated_budget");
   const byTargetCycle = new Map();
 
   for (const master of bundle.master) {
@@ -614,7 +636,7 @@ async function calculateBudgetBases(app, bundle) {
           appraiser_tech_ed_id: owner,
           percentage: 0,
           budget_base: base,
-          claculated_budget: 0,
+          [distributionCalculatedField]: 0,
           applied_budget: 0,
           total_utilization: 0,
         });
@@ -643,7 +665,7 @@ async function calculateBudgetBases(app, bundle) {
           comp_manager: details.name,
           percentage: 0,
           budget_base: base,
-          calculated_budget: 0,
+          [compCalculatedField]: 0,
           applied_budget: 0,
           total_utilization: 0,
         });
@@ -660,7 +682,7 @@ async function calculateBudgetBases(app, bundle) {
     const pct = n(row.budget_percentage);
     const calculated = base > 0 ? base * pct / 100 : n(row.calculated_budget);
     if (row.id && (base !== n(row.org_budget_base) || calculated !== n(row.calculated_budget))) {
-      await masterTable.updateRow({ ROWID: row.id, org_budget_base: base, calculated_budget: calculated });
+      await masterTable.updateRow({ ROWID: row.id, org_budget_base: base, [masterCalculatedField]: calculated });
     }
     return {
       ...row,
@@ -678,7 +700,7 @@ async function calculateBudgetBases(app, bundle) {
     const pct = n(row.percentage);
     const calculated = base * pct / 100;
     if (row.id && (base !== n(row.budget_base) || calculated !== n(row.calculated_budget))) {
-      await distributionTable.updateRow({ ROWID: row.id, budget_base: base, claculated_budget: calculated });
+      await distributionTable.updateRow({ ROWID: row.id, budget_base: base, [distributionCalculatedField]: calculated });
     }
     return { ...row, budget_base: base, calculated_budget: calculated };
   }));
@@ -692,7 +714,7 @@ async function calculateBudgetBases(app, bundle) {
     const pct = n(row.percentage);
     const calculated = base * pct / 100;
     if (row.id && (base !== n(row.budget_base) || calculated !== n(row.calculated_budget))) {
-      await compTable.updateRow({ ROWID: row.id, budget_base: base, calculated_budget: calculated });
+      await compTable.updateRow({ ROWID: row.id, budget_base: base, [compCalculatedField]: calculated });
     }
     return { ...row, budget_base: base, calculated_budget: calculated };
   }));
@@ -847,7 +869,6 @@ module.exports = async function (req, res) {
       distribution: [
         "percentage",
         "budget_base",
-        "claculated_budget",
         "total_utilization",
         "applied_budget",
         "appraisal_cycle_id",
@@ -866,14 +887,18 @@ module.exports = async function (req, res) {
     };
     const fields =
       fieldsByResource[resource === "compmanager" ? "comp" : resource];
+    if (resource === "distribution") {
+      const columns = await getColumnNames(table);
+      fields.push(pickColumn(columns, ["calculated_budget", "claculated_budget"], "claculated_budget"));
+    }
     const update = { ROWID: id };
     fields.forEach((key) => {
       if (Object.prototype.hasOwnProperty.call(body, key))
         update[key] = body[key];
-      // Accept the correctly-spelled frontend name while writing the actual
-      // Data Store column "claculated_budget".
+      // Frontend uses calculated_budget. Persist to whichever calculated
+      // amount column actually exists in this Data Store table.
       if (
-        key === "claculated_budget" &&
+        (key === "claculated_budget" || key === "calculated_budget") &&
         Object.prototype.hasOwnProperty.call(body, "calculated_budget")
       ) {
         update[key] = body.calculated_budget;
