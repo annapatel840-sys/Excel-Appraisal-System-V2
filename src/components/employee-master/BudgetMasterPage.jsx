@@ -32,41 +32,6 @@ const TECH_ED_DATA = [
   },
 ];
 
-const INITIAL_AUDIT = [
-  {
-    date: "2026-09-01",
-    owner: "Prabhu Prasad Parida",
-    from: null,
-    to: 8,
-    before: null,
-    after: 3400000,
-    by: "HR",
-    reason: "Initial allocation",
-  },
-  {
-    date: "2026-09-01",
-    owner: "Ashok Kumar",
-    from: null,
-    to: 8,
-    before: null,
-    after: 3040000,
-    by: "HR",
-    reason: "Initial allocation",
-  },
-];
-
-const INITIAL_ORG_AUDIT = [
-  {
-    date: "2026-09-01",
-    from: null,
-    to: 8,
-    before: null,
-    after: 6440000,
-    by: "HR",
-    reason: "Initial allocation",
-  },
-];
-
 /* ---------- helpers ---------- */
 function normalizeOwnerKey(value) {
   const text = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -284,7 +249,7 @@ const HR_COLS = [
 ];
 
 function HRApplyBudget() {
-  const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], techEdOwners = [], updateBudget, loading: budgetLoading } = useBudget();
+  const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], techEdOwners = [], updateBudget, reload: reloadBudget, loading: budgetLoading } = useBudget();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const canConfig =
@@ -297,9 +262,26 @@ function HRApplyBudget() {
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [history, setHistory] = useState({});
-  const [audit, setAudit] = useState(INITIAL_AUDIT);
-  const [orgAudit, setOrgAudit] = useState(INITIAL_ORG_AUDIT);
+  const [audit, setAudit] = useState([]);
+  const [orgAudit, setOrgAudit] = useState([]);
   const [overrides, setOverrides] = useState({});
+  const appraisalCycles = useMemo(
+    () => budgetMasterRows.map((row) => ({
+      id: String(row.appraisal_cycle_id || ""),
+      label: String(row.appraisal_cycle_name || row.appraisal_cycle_id || "Unknown cycle"),
+    })).filter((cycle) => cycle.id),
+    [budgetMasterRows],
+  );
+  const [selectedCycle, setSelectedCycle] = useState("");
+  const selectedMaster = budgetMasterRows.find(
+    (row) => String(row.appraisal_cycle_id) === String(selectedCycle),
+  ) || budgetMasterRows[0] || null;
+
+  useEffect(() => {
+    if (appraisalCycles.length && !appraisalCycles.some((cycle) => cycle.id === selectedCycle)) {
+      setSelectedCycle(appraisalCycles[0].id);
+    }
+  }, [appraisalCycles, selectedCycle]);
 
   useEffect(() => {
     const employeeCounts = new Map();
@@ -322,7 +304,9 @@ function HRApplyBudget() {
 
     const nextRows = [];
     const seenOwners = new Set();
-    (Array.isArray(budgetDistributionRows) ? budgetDistributionRows : []).forEach((row) => {
+    (Array.isArray(budgetDistributionRows) ? budgetDistributionRows : [])
+      .filter((row) => !selectedCycle || String(row.appraisal_cycle_id) === String(selectedCycle))
+      .forEach((row) => {
       const owner = row.appraiser_tech_ed_id || "";
       const key = canonicalOwnerKey(owner, employeeRows);
       if (!key) return;
@@ -333,7 +317,7 @@ function HRApplyBudget() {
         id: row.id || "tech-ed-" + key,
         name: ownerName(owner, employeeRows),
         pct: Number(row.percentage) || 0,
-        base: Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated,
+        base: Number(row.budget_base) || (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated),
         original: calculated,
         updated: applied,
         team0: assignedCount,
@@ -364,11 +348,10 @@ function HRApplyBudget() {
 
     nextRows.sort((a, b) => a.name.localeCompare(b.name));
     setRows(nextRows);
-    const master = budgetMasterRows[0];
-    if (master && Number.isFinite(Number(master.budget_percentage))) {
-      setOrgPct(String(Number(master.budget_percentage)));
+    if (selectedMaster && Number.isFinite(Number(selectedMaster.budget_percentage))) {
+      setOrgPct(String(Number(selectedMaster.budget_percentage)));
     }
-  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners]);
+  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, selectedCycle]);
 
   const total = useMemo(
     () =>
@@ -394,7 +377,7 @@ function HRApplyBudget() {
 
   const previewBudget = (row) => (row.base * previewPct(row)) / 100;
   const changes = rows.filter((r) => Number(previewPct(r)) !== r.pct);
-  const orgPending = orgPct !== "" && budgetMasterRows.length > 0 && Number(orgPct) !== Number(budgetMasterRows[0]?.budget_percentage || 0);
+  const orgPending = orgPct !== "" && !!selectedMaster && Number(orgPct) !== Number(selectedMaster.budget_percentage || 0);
   const pendingCount =
     changes.length || orgPending ? changes.length + (orgPending ? 1 : 0) : 0;
   const previewTotal = rows.reduce((s, r) => s + previewBudget(r), 0);
@@ -446,6 +429,16 @@ function HRApplyBudget() {
       return;
     }
 
+    const orgBaseForCycle = Number(selectedMaster?.org_budget_base) || total.base;
+    const orgOriginalBudget = orgBaseForCycle * org / 100;
+    if (previewTotal > orgOriginalBudget + 0.5) {
+      setError(
+        "Not applied. Tech-Ed Original Budgets total " + money(previewTotal) +
+        ", which exceeds the Org Original Budget of " + money(orgOriginalBudget) + ". Reduce one or more Tech-Ed percentages.",
+      );
+      return;
+    }
+
     const now = new Date().toISOString().slice(0, 10);
     const changedRows = rows.filter((r) => Number(previewPct(r)) !== r.pct);
     const next = rows.map((r) => {
@@ -455,7 +448,7 @@ function HRApplyBudget() {
         : {
             ...r,
             pct: to,
-            updated: (r.base * to) / 100,
+            original: (r.base * to) / 100,
             lastChanged: dateText(now),
           };
     });
@@ -489,21 +482,24 @@ function HRApplyBudget() {
     }
 
     try {
+      const orgBase = Number(selectedMaster?.org_budget_base) || total.base;
       await Promise.all([
-        ...changedRows.filter((r) => r.id).map((r) =>
+        ...rows.filter((r) => r.id && !String(r.id).startsWith("tech-ed-")).map((r) =>
           updateBudget(r.id, {
             percentage: Number(previewPct(r)),
-            applied_budget: previewBudget(r),
-          }, "distribution")
+            budget_base: r.base,
+            calculated_budget: previewBudget(r),
+          }, "distribution", false)
         ),
-        ...(orgPending && budgetMasterRows[0]?.id
-          ? [updateBudget(budgetMasterRows[0].id, {
+        ...(selectedMaster?.id
+          ? [updateBudget(selectedMaster.id, {
               budget_percentage: org,
-              calculated_budget: previewTotal,
-              applied_budget: previewTotal,
-            }, "master")]
+              org_budget_base: orgBase,
+              calculated_budget: orgBase * org / 100,
+            }, "master", false)]
           : []),
       ]);
+      await reloadBudget();
     } catch (saveError) {
       setError(saveError.message || "Budget changes could not be saved.");
       return;
@@ -526,8 +522,6 @@ function HRApplyBudget() {
 
   const orgCell = "shrink-0 min-w-[170px] border-r border-[#d7dce3] px-[22px] py-4";
 
-  const appraisalCycles = ["Apr-26"];
-  const [selectedCycle, setSelectedCycle] = useState(appraisalCycles[0]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -570,8 +564,8 @@ function HRApplyBudget() {
                 className="mt-1 h-[38px] min-w-[140px] rounded border border-[#14a3a3] bg-white px-2 text-[13px] font-bold text-[#12304f] outline-none"
               >
                 {appraisalCycles.map((cycle) => (
-                  <option key={cycle} value={cycle}>
-                    {cycle}
+                  <option key={cycle.id} value={cycle.id}>
+                    {cycle.label}
                   </option>
                 ))}
               </select>
@@ -597,7 +591,7 @@ function HRApplyBudget() {
             <div className={orgCell}>
               <div className="text-[11px] text-[#5b6b80]">Org budget base</div>
               <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
-                {money(total.base)}
+                {money(Number(selectedMaster?.org_budget_base) || total.base)}
               </div>
             </div>
             <div className={orgCell}>
@@ -826,8 +820,8 @@ function HRAuditTrail() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [filter, setFilter] = useState("all");
-  const [audit] = useState(INITIAL_AUDIT);
-  const [orgAudit] = useState(INITIAL_ORG_AUDIT);
+  const [audit] = useState([]);
+  const [orgAudit] = useState([]);
 
   const orgRows = orgAudit.filter(
     (r) => (!from || r.date >= from) && (!to || r.date <= to),

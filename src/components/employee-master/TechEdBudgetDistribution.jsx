@@ -3,64 +3,12 @@ import { Fragment, useMemo, useState } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
 
-/* Budget Distribution as a Tech ED sees it (design: Budget Allocation view of
-   the "Detail Screen & Budget" prototype).
-
-   UI REVIEW BUILD: this screen uses the sample data below and makes no
-   backend calls. Allot % changes stay on screen until the page is reloaded.
-   To go live, replace DEMO with the Tech ED's Budget_Master row, their team
-   from the Appraisal Sheet and the allocation history. */
+/* Budget Distribution uses persisted Budget_Distribution and
+   Budget_Distribution_Comp rows. The prior UI-only sample allocations have
+   been removed so this screen never displays invented team budgets. */
 
 const LEVELS = ["Tech ED", "Comp Manager"];
 const UTILISED_LABEL = "Hike Amount";
-
-const DEMO = {
-  cycle: "Apr-26",
-  allocation: { date: "2026-09-01", by: "HR Admin" },
-  techEdPct: 8,
-  // Employees in the Tech ED's teams now and at allocation.
-  // base = Current Annual Base Pay + Allocated PB Amount; hike = Hike Amount.
-  employees: {
-    EMP00125: { name: "Rohan Kapoor", base: 2500000 + 300000, hike: 250000 },
-    EMP200: { name: "Aarav Iyer", base: 800000 + 86400, hike: 48000 },
-    EMP205: { name: "Sai Gupta", base: 1550000 + 167400, hike: 170500 },
-    EMP210: { name: "Ananya Bhatt", base: 2300000 + 248400, hike: 138000 },
-    EMP220: { name: "Rahul Iyer", base: 3800000 + 410400, hike: 228000 },
-    EMP225: { name: "Varun Gupta", base: 800000 + 86400, hike: 88000 },
-    EMP201: { name: "Vivaan Mehta", base: 950000 + 102600, hike: 66500 },
-    EMP206: { name: "Reyansh Reddy", base: 1700000 + 183600, hike: 204000 },
-    EMP202: { name: "Aditya Singh", base: 1100000 + 118800, hike: 88000 },
-    EMP290: { name: "Kiran Das", base: 1200000 + 130000, hike: 0 },
-    EMP211: { name: "Diya Sharma", base: 2450000 + 264600, hike: 0 },
-    EMP215: { name: "Myra Patel", base: 3050000 + 329400, hike: 0 },
-  },
-  compManagers: [
-    {
-      name: "Anita Sharma",
-      pct0: 7.5,
-      team0: ["EMP00125", "EMP200", "EMP205", "EMP210", "EMP215", "EMP290", "EMP202"],
-      team: ["EMP00125", "EMP200", "EMP205", "EMP210", "EMP220", "EMP225"],
-    },
-    {
-      name: "Raj Mehta",
-      pct0: 6,
-      team0: ["EMP201", "EMP206", "EMP211", "EMP220"],
-      team: ["EMP201", "EMP206"],
-    },
-  ],
-  // Team changes since allocation (eligibility list + appraisal grid).
-  events: [
-    { date: "2026-09-12", cm: "Anita Sharma", emp: "EMP290", sign: -1, text: "Resigned: Kiran Das" },
-    { date: "2026-09-15", cm: "Anita Sharma", emp: "EMP225", sign: 1, text: "Added: Varun Gupta" },
-    { date: "2026-09-18", cm: "Anita Sharma", emp: "EMP220", sign: 1, text: "Transferred in: Rahul Iyer (from Raj Mehta)" },
-    { date: "2026-09-18", cm: "Raj Mehta", emp: "EMP220", sign: -1, text: "Transferred out: Rahul Iyer (to Anita Sharma)" },
-    { date: "2026-09-20", cm: "Anita Sharma", emp: "EMP202", sign: -1, text: "Transferred out: Aditya Singh (to Suresh Iyer)" },
-    { date: "2026-09-21", cm: "Raj Mehta", emp: "EMP211", sign: -1, text: "Resigned: Diya Sharma" },
-    { date: "2026-09-22", cm: "Anita Sharma", emp: "EMP215", sign: -1, text: "Resigned: Myra Patel" },
-  ],
-  // % changes the Tech ED made after allocation.
-  pctLog: [{ name: "Raj Mehta", from: 6, to: 6.5, date: "2026-09-24", time: "11:20", reason: "Rahul Iyer moved out; keep Raj's budget steady" }],
-};
 
 const num = (v) => Number(v) || 0;
 const lakh = (n) => "₹ " + (num(n) / 1e5).toFixed(2) + " L";
@@ -74,54 +22,7 @@ function nowParts() {
   const pad = (n) => String(n).padStart(2, "0");
   return { date: d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()), time: pad(d.getHours()) + ":" + pad(d.getMinutes()) };
 }
-const baseOf = (ids) => ids.reduce((s, id) => s + num(DEMO.employees[id]?.base), 0);
-const hikeOf = (ids) => ids.reduce((s, id) => s + num(DEMO.employees[id]?.hike), 0);
-const empBase = (id) => num(DEMO.employees[id]?.base);
 const byDate = (a, b) => String(a.date + (a.time || "")).localeCompare(String(b.date + (b.time || "")));
-
-/* One Comp Manager: budget at allocation, now, and a dated history. */
-function cmNode(cm, log) {
-  const changes = log.filter((l) => l.name === cm.name).sort(byDate);
-  const pct = changes.length ? changes[changes.length - 1].to : cm.pct0;
-  const base0 = baseOf(cm.team0);
-  const base = baseOf(cm.team);
-  const original = (base0 * cm.pct0) / 100;
-  const items = [{ date: DEMO.allocation.date, amount: original, team: cm.team0.length, pct: cm.pct0 }];
-  let amount = original;
-  let team = cm.team0.length;
-  let p = cm.pct0;
-  let b = base0;
-  const steps = [
-    ...DEMO.events.filter((e) => e.cm === cm.name).map((e) => ({ ...e, kind: "team" })),
-    ...changes.map((c) => ({ ...c, kind: "pct" })),
-  ].sort(byDate);
-  steps.forEach((s) => {
-    if (s.kind === "team") {
-      b += s.sign * empBase(s.emp);
-      team += s.sign;
-    } else {
-      p = s.to;
-    }
-    amount = (b * p) / 100;
-    const row = { date: s.date, amount, team, pct: p };
-    const last = items[items.length - 1];
-    if (last.date === s.date) items[items.length - 1] = row;
-    else items.push(row);
-  });
-  return {
-    name: cm.name,
-    pct,
-    pct0: cm.pct0,
-    base,
-    team0: cm.team0.length,
-    team: cm.team.length,
-    original,
-    updated: (base * pct) / 100,
-    history: items,
-    lastChanged: steps.length ? steps[steps.length - 1].date : "",
-  };
-}
-const asOf = (hist, date) => hist.reduce((r, x) => (x.date <= date ? x : r), hist[0]);
 
 function Chg({ d }) {
   if (Math.abs(d) < 1) return <span className="mut">No change</span>;
@@ -180,17 +81,20 @@ export function TechEdBudgetDistribution() {
     budgetDistributionRows,
     budgetCompManagerRows,
     budgetMasterRows,
+    employeeRows = [],
     updateBudget,
     loading: budgetLoading,
     error: budgetError,
   } = useBudget();
   const myName = user?.name || "Unknown user";
   const liveTech = useMemo(() => {
-    const name = String(myName).trim().toLowerCase();
-    return budgetDistributionRows.find((r) => {
-      const owner = String(r.appraiser_tech_ed_id || "").trim().toLowerCase();
-      return owner && (owner === name || owner.includes(name) || name.includes(owner));
-    }) || budgetDistributionRows[0] || null;
+    const identities = [myName, user?.email, user?.empId, user?.employeeId]
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean);
+    return budgetDistributionRows.find((row) => {
+      const owner = String(row.appraiser_tech_ed_id || "").trim().toLowerCase();
+      return owner && identities.some((identity) => owner === identity || owner.includes(identity) || identity.includes(owner));
+    }) || null;
   }, [budgetDistributionRows, myName]);
   const liveComps = useMemo(
     () => liveTech
@@ -213,44 +117,30 @@ export function TechEdBudgetDistribution() {
   const [auditFilter, setAuditFilter] = useState("all");
   const [drafts, setDrafts] = useState({});
   // Demo % log: sample entries plus whatever is changed during the review.
-  const [log, setLog] = useState(() =>
-    DEMO.pctLog.map((l) => {
-      const cm = DEMO.compManagers.find((c) => c.name === l.name);
-      const base = cm ? baseOf(cm.team) : 0;
-      return { ...l, by: myName, before: (base * l.from) / 100, after: (base * l.to) / 100 };
-    }),
-  );
+  const [log, setLog] = useState([]);
 
-  const cmNodes = useMemo(() => {
-    if (!liveTech) return [];
-    const source = liveComps.map((live, index) => {
-      const cm = DEMO.compManagers[index] || {
-        name: live.comp_manager || "Comp Manager",
-        pct0: Number(live.percentage) || 0,
-        team0: [],
-        team: [],
-        base: Number(live.percentage) ? (Number(live.calculated_budget) * 100) / Number(live.percentage) : 0,
-      };
-      if (!live) return cm;
-      const demoBase = num(cm.base);
-      const pct = num(live.percentage) || cm.pct;
-      const calculated = num(live.calculated_budget);
-      return {
-        ...cm,
-        pct0: num(cm.pct0) || pct,
-        pct,
-        base: pct ? (calculated * 100) / pct : demoBase,
-        liveId: live.id,
-        liveCalculated: calculated,
-        liveApplied: num(live.applied_budget),
-        liveUtilized: num(live.total_utilization),
-      };
-    });
-    return source.map((cm) => cmNode(cm, log));
-  }, [liveComps, log]);
+  const cmNodes = useMemo(() => liveComps.map((live) => {
+    const pct = num(live.percentage);
+    const base = num(live.budget_base) || (pct ? num(live.calculated_budget) * 100 / pct : 0);
+    const original = num(live.calculated_budget);
+    const updated = num(live.applied_budget);
+    return {
+      name: live.comp_manager || "Unassigned Comp Manager",
+      pct, pct0: pct, base, team0: 0, team: 0, original,
+      updated: updated || original, liveId: live.id,
+      liveCalculated: original, liveApplied: updated,
+      liveUtilized: num(live.total_utilization),
+      history: [{ date: "", amount: original, team: 0, pct }],
+    };
+  }), [liveComps]);
 
-  const allTeam0 = DEMO.compManagers.flatMap((c) => c.team0);
-  const allTeam = DEMO.compManagers.flatMap((c) => c.team);
+  const assignedTeam = useMemo(() => employeeRows.filter((employee) => {
+    const assignment = String(employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.tech_ed || employee.tech_ed_id || "").trim().toLowerCase();
+    const owner = String(liveTech?.appraiser_tech_ed_id || "").trim().toLowerCase();
+    return owner && assignment && (assignment === owner || assignment.includes(owner) || owner.includes(assignment));
+  }), [employeeRows, liveTech]);
+  const allTeam0 = assignedTeam;
+  const allTeam = assignedTeam;
   const myPct = liveTech ? num(liveTech.percentage) : 0;
   const myOriginal = liveTech ? num(liveTech.calculated_budget) : 0;
   const myUpdated = liveTech ? num(liveTech.applied_budget) : 0;
@@ -261,40 +151,26 @@ export function TechEdBudgetDistribution() {
   const over = usedPct > 100;
 
   // Tech ED history: own budget per date, rolled up with the Comp Managers.
-  const myHistory = useMemo(() => {
-    const dates = [...new Set([DEMO.allocation.date, ...cmNodes.flatMap((n) => n.history.map((h) => h.date))])].sort();
-    let base = baseOf([...new Set(allTeam0)]);
-    let team = team0;
-    // Moves between this Tech ED's own Comp Managers don't change their total.
-    const own = DEMO.events.filter((e) => !(e.sign > 0 && e.text.startsWith("Transferred in")) && !(e.sign < 0 && /\(to (Anita Sharma|Raj Mehta)\)/.test(e.text)));
-    return dates.map((d) => {
-      own.filter((e) => e.date === d).forEach((e) => {
-        base += e.sign * empBase(e.emp);
-        team += e.sign;
-      });
-      const allot = cmNodes.reduce((s, n) => s + asOf(n.history, d).amount, 0);
-      const updated = (base * myPct) / 100;
-      return { date: d, allocated: myOriginal, updated, team, allotted: allot, buffer: updated - allot };
-    });
-  }, [cmNodes, myOriginal, myPct, team0]);
+  const myHistory = useMemo(() => [{
+    date: "", allocated: myOriginal, updated: myUpdated, team: team0,
+    allotted, buffer: myUpdated - allotted,
+  }], [myOriginal, myUpdated, team0, allotted]);
 
   const auditFor = (names) => {
     const out = [];
-    names.forEach((n) => {
-      if (n === myName) {
-        out.push({ date: DEMO.allocation.date, time: "", name: n, from: null, to: myPct, before: null, after: myOriginal, by: DEMO.allocation.by, reason: "Initial allocation" });
+    names.forEach((name) => {
+      if (name === myName && liveTech) {
+        out.push({ date: "", time: "", name, from: null, to: myPct, before: null, after: myOriginal, by: "Data Store", reason: "Current saved allocation" });
         return;
       }
-      const c = cmNodes.find((x) => x.name === n);
-      if (c) out.push({ date: DEMO.allocation.date, time: "", name: n, from: null, to: c.pct0, before: null, after: c.original, by: myName, reason: "Initial allocation" });
+      const node = cmNodes.find((item) => item.name === name);
+      if (node) out.push({ date: "", time: "", name, from: null, to: node.pct0, before: null, after: node.original, by: "Data Store", reason: "Current saved allocation" });
     });
-    log.forEach((l) => {
-      if (names.includes(l.name)) out.push(l);
-    });
+    log.forEach((entry) => { if (names.includes(entry.name)) out.push(entry); });
     return out.sort((a, b) => byDate(b, a));
   };
 
-  function setPct(name, raw) {
+  async function setPct(name, raw) {
     const node = cmNodes.find((x) => x.name === name);
     setDrafts((d) => {
       const next = { ...d };
@@ -306,21 +182,28 @@ export function TechEdBudgetDistribution() {
     if (!(to >= 0) || to === node.pct) return;
     const newUpd = (node.base * to) / 100;
     const sum = allotted - node.updated + newUpd;
-    if (sum > myUpdated + 0.5) {
+    if (sum > myOriginal + 0.5) {
       setErr(
         "Blocked: " + to + "% for " + name + " would take total allotted to " + lakh(sum) + ", which is " +
-          lakh(sum - myUpdated) + " more than your updated budget of " + lakh(myUpdated) + ".",
+          lakh(sum - myOriginal) + " more than your original budget of " + lakh(myOriginal) + ".",
       );
       return;
     }
     const t = nowParts();
     const live = liveComps.find((x) => String(x.id) === String(node.liveId));
-    if (live && node.liveId) {
-      updateBudget(node.liveId, {
+    if (!live || !node.liveId) {
+      setErr("This Comp Manager does not have a saved Data Store budget row yet.");
+      return;
+    }
+    try {
+      await updateBudget(node.liveId, {
         percentage: to,
-        calculated_budget: node.liveCalculated || newUpd,
-        applied_budget: newUpd,
-      }, "comp").catch((error) => setErr(error.message || "Failed to save Comp Manager budget."));
+        budget_base: node.base,
+        calculated_budget: newUpd,
+      }, "comp");
+    } catch (error) {
+      setErr(error.message || "Failed to save Comp Manager budget.");
+      return;
     }
     setLog((l) => [...l, { name, from: node.pct, to, by: myName, date: t.date, time: t.time, before: node.updated, after: newUpd, reason: reason.trim() }]);
     setReason("");

@@ -347,7 +347,7 @@ export function BudgetProvider({ children }) {
   const gridSupervisorChanges = useMemo(() => [], []);
 
   const updateBudget = useCallback(
-    async (id, changes, resource = "master") => {
+    async (id, changes, resource = "master", refresh = true) => {
       const response = await catalystFetch(
         catalystFunctionUrl("budgetmasterapi"),
         {
@@ -359,7 +359,7 @@ export function BudgetProvider({ children }) {
       const result = await response.json();
       if (!response.ok)
         throw new Error((result && result.message) || "Budget update failed.");
-      await load();
+      if (refresh) await load();
       return result;
     },
     [load],

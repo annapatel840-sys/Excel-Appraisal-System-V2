@@ -38,6 +38,7 @@ function mapMaster(row) {
     id: idOf(row),
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
     budget_percentage: n(value(row, "budget_percentage")),
+    org_budget_base: n(value(row, "org_budget_base")),
     budget_utilized: utilized,
     calculated_budget: calculated,
     applied_budget: applied,
@@ -63,6 +64,7 @@ function mapDistribution(row) {
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
     appraiser_tech_ed_id: String(value(row, "appraiser_tech_ed_id")),
     percentage: n(value(row, "percentage")),
+    budget_base: n(value(row, "budget_base")),
     calculated_budget: calculated,
     total_utilization: utilized,
     applied_budget: applied,
@@ -77,6 +79,7 @@ function mapComp(row) {
     id: idOf(row),
     comp_manager: String(value(row, "comp_manager")),
     percentage: n(value(row, "percentage")),
+    budget_base: n(value(row, "budget_base")),
     calculated_budget: n(value(row, "calculated_budget")),
     total_utilization: utilized,
     applied_budget: applied,
@@ -431,6 +434,138 @@ function filterOwn(bundle, a) {
   return { master, techEd, compManager };
 }
 
+
+function ownerKey(raw) {
+  const text = String(raw || "").trim().toLowerCase().replace(/\\s+/g, " ");
+  const pair = text.match(/^([a-z]*\\d+)\\s*-\\s*(.+)$/i);
+  return pair ? pair[1].toLowerCase() : text;
+}
+
+function firstValue(row, names) {
+  for (const name of names) {
+    const hit = Object.keys(row || {}).find((key) => key.toLowerCase() === name.toLowerCase());
+    if (hit && row[hit] !== null && row[hit] !== undefined && String(row[hit]).trim() !== "") return row[hit];
+  }
+  return "";
+}
+
+function cycleDate(row) {
+  const raw = firstValue(row, ["effective_date", "effectiveDate", "start_date", "startDate"]);
+  const match = String(raw || "").match(/^\\d{4}-\\d{2}-\\d{2}/);
+  if (match) return match[0];
+  const name = String(firstValue(row, ["cycle_name", "cycleName", "name", "appraisal_year"]) || "");
+  const yearMatch = name.match(/(?:^|\\D)(20\\d{2}|\\d{2})(?:\\D|$)/);
+  if (yearMatch) {
+    const y = yearMatch[1].length === 2 ? 2000 + Number(yearMatch[1]) : Number(yearMatch[1]);
+    const monthMatch = name.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i);
+    const months = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"];
+    const month = monthMatch ? months.indexOf(monthMatch[1].slice(0,3).toLowerCase()) + 1 : 1;
+    return String(y).padStart(4, "0") + "-" + String(month).padStart(2, "0") + "-01";
+  }
+  return "";
+}
+
+async function calculateBudgetBases(app, bundle) {
+  // Payroll rows are keyed to the employee and appraisal-cycle ROWIDs. Use the
+  // table IDs here so the calculation does not depend on the physical table name.
+  const [payrollRows, cycleRows, appraisalRows, employeeMasterRows] = await Promise.all([
+    readTableById(app, "74008000000035326"),
+    readTableById(app, "74008000000034190"),
+    getAllRows(app, "Appraisal_Sheet"),
+    readTableById(app, "74008000000035727"),
+  ]);
+
+  const cycles = cycleRows.map((row) => ({
+    id: idOf(row),
+    name: String(firstValue(row, ["cycle_name", "cycleName", "name", "appraisal_year"]) || idOf(row)),
+    date: cycleDate(row),
+    status: String(firstValue(row, ["status"]) || "Upcoming").toLowerCase(),
+    archived: String(firstValue(row, ["archived"]) || "false").toLowerCase() === "true",
+  })).filter((row) => row.id && row.date && row.status !== "cancelled" && !row.archived)
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const employeeMasterByRef = new Map();
+  employeeMasterRows.forEach((row) => {
+    const businessId = String(firstValue(row, ["emp_id", "employee_id"]) || "").trim().toLowerCase();
+    const rowId = idOf(row).toLowerCase();
+    if (businessId) employeeMasterByRef.set(businessId, row);
+    if (rowId) employeeMasterByRef.set(rowId, row);
+  });
+
+  const assignments = new Map();
+  appraisalRows.forEach((row) => {
+    const employeeRef = String(firstValue(row, ["emp_id", "employee_id", "employee_master_id"]) || "").trim().toLowerCase();
+    const masterEmployee = employeeMasterByRef.get(employeeRef) || {};
+    const assignment = {
+      techEd: String(firstValue(row, ["appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_teched", "tech_ed", "tech_ed_id"]) || "").trim(),
+      compManager: String(firstValue(row, ["comp_manager", "comp_manager_id", "comp_manager_name", "comp_manager_emp_id"]) || "").trim(),
+    };
+    [
+      employeeRef,
+      idOf(masterEmployee).toLowerCase(),
+      String(firstValue(masterEmployee, ["emp_id", "employee_id"]) || "").trim().toLowerCase(),
+    ].filter(Boolean).forEach((key) => assignments.set(key, assignment));
+  });
+
+  const byTargetCycle = new Map();
+  bundle.master.forEach((master) => {
+    const targetId = String(master.appraisal_cycle_id || "");
+    const targetIndex = cycles.findIndex((cycle) => cycle.id === targetId);
+    if (targetIndex < 0 || targetIndex === 0) {
+      byTargetCycle.set(targetId, { orgBase: 0, techEd: new Map(), compManager: new Map(), sourceCycleId: "" });
+      return;
+    }
+    const sourceCycleId = cycles[targetIndex - 1].id;
+    const baseByEmp = new Map();
+    payrollRows.forEach((row) => {
+      if (String(firstValue(row, ["appraisal_cycle_name", "appraisal_cycle_id", "cycle_id"]) || "").trim() !== sourceCycleId) return;
+      const empId = String(firstValue(row, ["emp_id", "employee_id"]) || "").trim().toLowerCase();
+      if (!empId) return;
+      const base = n(firstValue(row, ["current_annual_base_pay", "base_pay", "previous_base_pay"]))
+        + n(firstValue(row, ["joining_bonus", "previous_joining_bonus"]))
+        + n(firstValue(row, ["retention_bonus", "previous_retention_bonus"]))
+        + n(firstValue(row, ["hike_amount", "hike_amt", "previous_hike_amount"]))
+        + n(firstValue(row, ["performance_bonus", "total_pb", "previous_performance_bonus"]));
+      baseByEmp.set(empId, base);
+    });
+    let orgBase = 0;
+    const techEd = new Map();
+    const compManager = new Map();
+    baseByEmp.forEach((base, empId) => {
+      orgBase += base;
+      const assignment = assignments.get(empId);
+      if (!assignment) return;
+      const teKey = ownerKey(assignment.techEd);
+      const cmKey = ownerKey(assignment.compManager);
+      if (teKey) techEd.set(teKey, (techEd.get(teKey) || 0) + base);
+      if (teKey && cmKey) compManager.set(teKey + "::" + cmKey, (compManager.get(teKey + "::" + cmKey) || 0) + base);
+    });
+    byTargetCycle.set(targetId, { orgBase, techEd, compManager, sourceCycleId });
+  });
+
+  bundle.master = bundle.master.map((row) => {
+    const bases = byTargetCycle.get(String(row.appraisal_cycle_id)) || {};
+    const base = n(bases.orgBase) || n(row.org_budget_base);
+    const pct = n(row.budget_percentage);
+    return { ...row, appraisal_cycle_name: (cycles.find((cycle) => cycle.id === String(row.appraisal_cycle_id)) || {}).name || String(row.appraisal_cycle_id), org_budget_base: base, source_payroll_cycle_id: bases.sourceCycleId || "", calculated_budget: base > 0 ? base * pct / 100 : n(row.calculated_budget) };
+  });
+  bundle.techEd = bundle.techEd.map((row) => {
+    const bases = byTargetCycle.get(String(row.appraisal_cycle_id)) || {};
+    const base = n(bases.techEd && bases.techEd.get(ownerKey(row.appraiser_tech_ed_id))) || n(row.budget_base);
+    const pct = n(row.percentage);
+    return { ...row, budget_base: base, calculated_budget: base > 0 ? base * pct / 100 : n(row.calculated_budget) };
+  });
+  bundle.compManager = bundle.compManager.map((row) => {
+    const parent = bundle.techEd.find((item) => String(item.id) === String(row.budget_distribution_id));
+    const bases = byTargetCycle.get(String(row.appraisal_cycle_id)) || {};
+    const key = ownerKey(parent && parent.appraiser_tech_ed_id) + "::" + ownerKey(row.comp_manager);
+    const base = n(bases.compManager && bases.compManager.get(key)) || n(row.budget_base);
+    const pct = n(row.percentage);
+    return { ...row, budget_base: base, calculated_budget: base > 0 ? base * pct / 100 : n(row.calculated_budget) };
+  });
+  return bundle;
+}
+
 module.exports = async function (req, res) {
   try {
     const method = String(req.method || "GET").toUpperCase();
@@ -453,7 +588,7 @@ module.exports = async function (req, res) {
         readBundle(app),
         readTechEdOwners(app),
       ]);
-      const bundle = filterOwn(rawBundle, a);
+      const calculatedBundle = await calculateBudgetBases(app, rawBundle);\n      const bundle = filterOwn(calculatedBundle, a);
       return sendJson(res, 200, {
         success: true,
         data: bundle.techEd,
@@ -562,12 +697,14 @@ module.exports = async function (req, res) {
     const fieldsByResource = {
       master: [
         "budget_percentage",
+        "org_budget_base",
         "budget_utilized",
         "calculated_budget",
         "applied_budget",
       ],
       distribution: [
         "percentage",
+        "budget_base",
         "claculated_budget",
         "total_utilization",
         "applied_budget",
@@ -576,6 +713,7 @@ module.exports = async function (req, res) {
       ],
       comp: [
         "percentage",
+        "budget_base",
         "calculated_budget",
         "total_utilization",
         "applied_budget",
@@ -618,6 +756,8 @@ module.exports = async function (req, res) {
           changed.some((key) =>
             [
               "budget_percentage",
+              "org_budget_base",
+              "budget_base",
               "percentage",
               "calculated_budget",
               "claculated_budget",
