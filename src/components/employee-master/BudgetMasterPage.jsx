@@ -489,6 +489,7 @@ function HRApplyBudget() {
             percentage: Number(previewPct(r)),
             budget_base: r.base,
             calculated_budget: previewBudget(r),
+            applied_budget: previewBudget(r),
           }, "distribution", false)
         ),
         ...(selectedMaster?.id
@@ -496,6 +497,7 @@ function HRApplyBudget() {
               budget_percentage: org,
               org_budget_base: orgBase,
               calculated_budget: orgBase * org / 100,
+              applied_budget: orgBase * org / 100,
             }, "master", false)]
           : []),
       ]);
