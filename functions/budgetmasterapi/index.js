@@ -476,6 +476,7 @@ async function calculateBudgetBases(app, bundle) {
 
   const cycles = cycleRows.map((row) => ({
     id: idOf(row),
+    name: String(firstValue(row, ["cycle_name", "cycleName", "name", "appraisal_year"]) || idOf(row)),
     date: cycleDate(row),
   })).filter((row) => row.id && row.date).sort((a, b) => a.date.localeCompare(b.date));
 
@@ -529,7 +530,7 @@ async function calculateBudgetBases(app, bundle) {
     const bases = byTargetCycle.get(String(row.appraisal_cycle_id)) || {};
     const base = n(bases.orgBase) || n(row.org_budget_base);
     const pct = n(row.budget_percentage);
-    return { ...row, org_budget_base: base, source_payroll_cycle_id: bases.sourceCycleId || "", calculated_budget: base > 0 ? base * pct / 100 : n(row.calculated_budget) };
+    return { ...row, appraisal_cycle_name: (cycles.find((cycle) => cycle.id === String(row.appraisal_cycle_id)) || {}).name || String(row.appraisal_cycle_id), org_budget_base: base, source_payroll_cycle_id: bases.sourceCycleId || "", calculated_budget: base > 0 ? base * pct / 100 : n(row.calculated_budget) };
   });
   bundle.techEd = bundle.techEd.map((row) => {
     const bases = byTargetCycle.get(String(row.appraisal_cycle_id)) || {};
