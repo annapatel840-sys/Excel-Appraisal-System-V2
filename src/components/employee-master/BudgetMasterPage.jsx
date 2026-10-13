@@ -35,10 +35,7 @@ const TECH_ED_DATA = [
 
 /* ---------- helpers ---------- */
 function normalizeOwnerKey(value) {
-  const text = String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
+  const text = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
   // Only treat an ID-looking prefix as an ID. A plain name (including names
   // containing hyphens) must remain a searchable owner value.
   const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
@@ -51,31 +48,19 @@ function canonicalOwnerKey(value, employees = []) {
   const pair = raw.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
   const rawId = pair ? pair[1].trim() : "";
   const rawName = pair ? pair[2].trim() : raw;
-  const valuesFor = (employee) =>
-    [
-      employee.emp_id,
-      employee.employee_id,
-      employee.name,
-      employee.employee_name,
-      employee.emp_name,
-      employee.email,
-      employee.email_id,
-    ]
-      .filter(Boolean)
-      .map(normalizeOwnerKey);
+  const valuesFor = (employee) => [
+    employee.emp_id, employee.employee_id, employee.name, employee.employee_name,
+    employee.emp_name, employee.email, employee.email_id,
+  ].filter(Boolean).map(normalizeOwnerKey);
   const matched = employees.find((employee) => {
     const values = valuesFor(employee);
-    return (
-      values.includes(normalizeOwnerKey(raw)) ||
+    return values.includes(normalizeOwnerKey(raw)) ||
       (rawId && values.includes(normalizeOwnerKey(rawId))) ||
-      (rawName && values.includes(normalizeOwnerKey(rawName)))
-    );
+      (rawName && values.includes(normalizeOwnerKey(rawName)));
   });
   if (matched) {
     const id = String(matched.emp_id || matched.employee_id || "").trim();
-    const name = String(
-      matched.name || matched.employee_name || matched.emp_name || "",
-    ).trim();
+    const name = String(matched.name || matched.employee_name || matched.emp_name || "").trim();
     return normalizeOwnerKey(id || name || raw);
   }
   return normalizeOwnerKey(rawId || raw);
@@ -89,34 +74,32 @@ function ownerName(value, employees = []) {
   const rawName = pair ? pair[2].trim() : raw;
   const person = employees.find((employee) => {
     const id = String(employee.emp_id || employee.employee_id || "").trim();
-    const name = String(
-      employee.name || employee.employee_name || employee.emp_name || "",
-    ).trim();
+    const name = String(employee.name || employee.employee_name || employee.emp_name || "").trim();
     const email = String(employee.email || employee.email_id || "").trim();
-    return [id, name, email].some(
-      (candidate) =>
-        candidate &&
-        [
-          normalizeOwnerKey(raw),
-          normalizeOwnerKey(rawId),
-          normalizeOwnerKey(rawName),
-        ]
-          .filter(Boolean)
-          .includes(normalizeOwnerKey(candidate)),
+    return [id, name, email].some((candidate) =>
+      candidate && [normalizeOwnerKey(raw), normalizeOwnerKey(rawId), normalizeOwnerKey(rawName)]
+        .filter(Boolean).includes(normalizeOwnerKey(candidate)),
     );
   });
   if (person) {
     const id = String(person.emp_id || person.employee_id || "").trim();
-    const name = String(
-      person.name || person.employee_name || person.emp_name || "",
-    ).trim();
+    const name = String(person.name || person.employee_name || person.emp_name || "").trim();
     return id && name ? id + " - " + name : name || id || raw;
   }
   return pair ? pair[2].trim() : raw;
 }
 
+function amount(value) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (value === null || value === undefined || value === "") return 0;
+  const n = Number(String(value).trim().replace(/[₹,\s]/g, "").replace(/^(?:INR|Rs\.?)/i, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+// Exact rupee amount with Indian grouping (no lakh rounding), e.g. ₹ 12,34,567.50
+const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 function money(value) {
-  return ((Number(value) || 0) / 100000).toFixed(2) + " L";
+  return "₹ " + INR.format(amount(value));
 }
 
 function percent(value) {
@@ -207,11 +190,7 @@ function AuditTable({
   return (
     <div className="w-full overflow-x-auto">
       <table className="w-full min-w-[980px] table-fixed border-collapse text-[12px] tabular-nums">
-        <colgroup>
-          {cols.map(([h]) => (
-            <col key={h} />
-          ))}
-        </colgroup>
+        <colgroup>{cols.map(([h]) => <col key={h} />)}</colgroup>
         <thead>
           <tr>
             {cols.map(([h, right]) => (
@@ -280,15 +259,7 @@ const HR_COLS = [
 ];
 
 function HRApplyBudget() {
-  const {
-    budgetMasterRows = [],
-    budgetDistributionRows = [],
-    employeeRows = [],
-    techEdOwners = [],
-    updateBudget,
-    reload: reloadBudget,
-    loading: budgetLoading,
-  } = useBudget();
+  const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], techEdOwners = [], updateBudget, reload: reloadBudget, loading: budgetLoading, error: budgetError = "", budgetWarning = "" } = useBudget();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const canConfig =
@@ -307,37 +278,13 @@ function HRApplyBudget() {
   const [activeCycle, setActiveCycle] = useState(null);
   const [cycleLoading, setCycleLoading] = useState(true);
   const appraisalCycles = useMemo(
-    () =>
-      budgetMasterRows
-        .map((row) => ({
-          id: String(row.appraisal_cycle_id || ""),
-          label: String(
-            row.appraisal_cycle_name ||
-              row.appraisal_cycle_id ||
-              "Unknown cycle",
-          ),
-        }))
-        .filter((cycle) => cycle.id),
+    () => budgetMasterRows.map((row) => ({
+      id: String(row.appraisal_cycle_id || ""),
+      label: String(row.appraisal_cycle_name || row.appraisal_cycle_id || "Unknown cycle"),
+    })).filter((cycle) => cycle.id),
     [budgetMasterRows],
   );
   const [selectedCycle, setSelectedCycle] = useState("");
-<<<<<<< HEAD
-  const selectedMaster =
-    budgetMasterRows.find(
-      (row) => String(row.appraisal_cycle_id) === String(selectedCycle),
-    ) ||
-    budgetMasterRows[0] ||
-    null;
-
-  useEffect(() => {
-    if (
-      appraisalCycles.length &&
-      !appraisalCycles.some((cycle) => cycle.id === selectedCycle)
-    ) {
-      setSelectedCycle(appraisalCycles[0].id);
-    }
-  }, [appraisalCycles, selectedCycle]);
-=======
   const selectedMaster = budgetMasterRows.find(
     (row) => String(row.appraisal_cycle_id) === String(selectedCycle),
   ) || null;
@@ -368,18 +315,12 @@ function HRApplyBudget() {
     if (cycleLoading) return;
     setSelectedCycle(activeCycle?.id ? String(activeCycle.id) : "");
   }, [activeCycle, cycleLoading]);
->>>>>>> 6870838ec13f28a574e6e10e60880993c140ecc0
 
   useEffect(() => {
     const employeeCounts = new Map();
     const ownerValues = new Map();
     (Array.isArray(employeeRows) ? employeeRows : []).forEach((employee) => {
-      const assignedOwner =
-        employee.appraiser_tech_ed ||
-        employee.tech_ed_id ||
-        employee.tech_ed ||
-        employee.appraiserTechEd ||
-        "";
+      const assignedOwner = employee.appraiser_tech_ed || employee.tech_ed_id || employee.tech_ed || employee.appraiserTechEd || "";
       const key = canonicalOwnerKey(assignedOwner, employeeRows);
       if (!key) return;
       employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
@@ -389,7 +330,7 @@ function HRApplyBudget() {
     // The API returns distinct Appraisal Sheet Tech-ED assignments separately
     // so they still render when there are no Budget_Distribution rows.
     (Array.isArray(techEdOwners) ? techEdOwners : []).forEach((item) => {
-      const assignedOwner = String((item && item.assignment) || "").trim();
+      const assignedOwner = String(item && item.assignment || "").trim();
       const key = canonicalOwnerKey(assignedOwner, employeeRows);
       if (key && !ownerValues.has(key)) ownerValues.set(key, assignedOwner);
     });
@@ -397,35 +338,27 @@ function HRApplyBudget() {
     const nextRows = [];
     const seenOwners = new Set();
     (Array.isArray(budgetDistributionRows) ? budgetDistributionRows : [])
-      .filter(
-        (row) =>
-          !selectedCycle ||
-          String(row.appraisal_cycle_id) === String(selectedCycle),
-      )
+      .filter((row) => !selectedCycle || String(row.appraisal_cycle_id) === String(selectedCycle))
       .forEach((row) => {
-        const owner = row.appraiser_tech_ed_id || "";
-        const key = canonicalOwnerKey(owner, employeeRows);
-        if (!key) return;
-        const calculated = Number(row.calculated_budget) || 0;
-        const applied = Number(row.applied_budget) || calculated;
-        const assignedCount = employeeCounts.get(key) || 0;
-        nextRows.push({
-          id: row.id || "tech-ed-" + key,
-          name: ownerName(owner, employeeRows),
-          pct: Number(row.percentage) || 0,
-          base:
-            Number(row.budget_base) ||
-            (Number(row.percentage)
-              ? (calculated * 100) / Number(row.percentage)
-              : calculated),
-          original: calculated,
-          updated: applied,
-          team0: assignedCount,
-          team: assignedCount,
-          lastChanged: "—",
-        });
-        seenOwners.add(key);
+      const owner = row.appraiser_tech_ed_id || "";
+      const key = canonicalOwnerKey(owner, employeeRows);
+      if (!key) return;
+      const calculated = amount(row.calculated_budget);
+      const applied = amount(row.applied_budget) || calculated;
+      const assignedCount = employeeCounts.get(key) || 0;
+      nextRows.push({
+        id: row.id || "tech-ed-" + key,
+        name: ownerName(owner, employeeRows),
+        pct: amount(row.percentage),
+        base: amount(row.budget_base) || (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated),
+        original: calculated,
+        updated: applied,
+        team0: assignedCount,
+        team: assignedCount,
+        lastChanged: "—",
       });
+      seenOwners.add(key);
+    });
 
     // Appraisal Sheet is the source of truth for the Tech-ED assignments.
     // Include every assigned Tech-ED even if no Budget_Distribution row exists yet.
@@ -448,19 +381,10 @@ function HRApplyBudget() {
 
     nextRows.sort((a, b) => a.name.localeCompare(b.name));
     setRows(nextRows);
-    if (
-      selectedMaster &&
-      Number.isFinite(Number(selectedMaster.budget_percentage))
-    ) {
+    if (selectedMaster && Number.isFinite(Number(selectedMaster.budget_percentage))) {
       setOrgPct(String(Number(selectedMaster.budget_percentage)));
     }
-  }, [
-    budgetDistributionRows,
-    budgetMasterRows,
-    employeeRows,
-    techEdOwners,
-    selectedCycle,
-  ]);
+  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, selectedCycle]);
 
   const total = useMemo(
     () =>
@@ -482,16 +406,11 @@ function HRApplyBudget() {
       ? Number(pending[row.name])
       : overrides[row.name]
         ? row.pct
-        : orgPct === ""
-          ? Number(row.pct || 0)
-          : Number(orgPct);
+        : (orgPct === "" ? amount(row.pct || 0) : amount(orgPct));
 
   const previewBudget = (row) => (row.base * previewPct(row)) / 100;
   const changes = rows.filter((r) => Number(previewPct(r)) !== r.pct);
-  const orgPending =
-    orgPct !== "" &&
-    !!selectedMaster &&
-    Number(orgPct) !== Number(selectedMaster.budget_percentage || 0);
+  const orgPending = orgPct !== "" && !!selectedMaster && amount(orgPct) !== Number(selectedMaster.budget_percentage || 0);
   const pendingCount =
     changes.length || orgPending ? changes.length + (orgPending ? 1 : 0) : 0;
   const previewTotal = rows.reduce((s, r) => s + previewBudget(r), 0);
@@ -526,7 +445,7 @@ function HRApplyBudget() {
   }
 
   async function apply() {
-    const org = Number(orgPct);
+    const org = amount(orgPct);
     if (!(org >= 0 && org <= 100)) {
       setError("Enter a valid org % between 0 and 100.");
       return;
@@ -543,16 +462,12 @@ function HRApplyBudget() {
       return;
     }
 
-    const orgBaseForCycle =
-      Number(selectedMaster?.org_budget_base) || total.base;
-    const orgOriginalBudget = (orgBaseForCycle * org) / 100;
+    const orgBaseForCycle = amount(selectedMaster?.org_budget_base) || total.base;
+    const orgOriginalBudget = orgBaseForCycle * org / 100;
     if (previewTotal > orgOriginalBudget + 0.5) {
       setError(
-        "Not applied. Tech-Ed Original Budgets total " +
-          money(previewTotal) +
-          ", which exceeds the Org Original Budget of " +
-          money(orgOriginalBudget) +
-          ". Reduce one or more Tech-Ed percentages.",
+        "Not applied. Tech-Ed Original Budgets total " + money(previewTotal) +
+        ", which exceeds the Org Original Budget of " + money(orgOriginalBudget) + ". Reduce one or more Tech-Ed percentages.",
       );
       return;
     }
@@ -600,35 +515,23 @@ function HRApplyBudget() {
     }
 
     try {
-      const orgBase = Number(selectedMaster?.org_budget_base) || total.base;
+      const orgBase = amount(selectedMaster?.org_budget_base) || total.base;
       await Promise.all([
-        ...rows
-          .filter((r) => r.id && !String(r.id).startsWith("tech-ed-"))
-          .map((r) =>
-            updateBudget(
-              r.id,
-              {
-                percentage: Number(previewPct(r)),
-                budget_base: r.base,
-                calculated_budget: previewBudget(r),
-              },
-              "distribution",
-              false,
-            ),
-          ),
+        ...rows.filter((r) => r.id && !String(r.id).startsWith("tech-ed-")).map((r) =>
+          updateBudget(r.id, {
+            percentage: Number(previewPct(r)),
+            budget_base: r.base,
+            calculated_budget: previewBudget(r),
+            applied_budget: previewBudget(r),
+          }, "distribution", false)
+        ),
         ...(selectedMaster?.id
-          ? [
-              updateBudget(
-                selectedMaster.id,
-                {
-                  budget_percentage: org,
-                  org_budget_base: orgBase,
-                  calculated_budget: (orgBase * org) / 100,
-                },
-                "master",
-                false,
-              ),
-            ]
+          ? [updateBudget(selectedMaster.id, {
+              budget_percentage: org,
+              org_budget_base: orgBase,
+              calculated_budget: orgBase * org / 100,
+              applied_budget: orgBase * org / 100,
+            }, "master", false)]
           : []),
       ]);
       await reloadBudget();
@@ -652,11 +555,20 @@ function HRApplyBudget() {
     setError("");
   }
 
-  const orgCell =
-    "shrink-0 min-w-[170px] border-r border-[#d7dce3] px-[22px] py-4";
+  const orgCell = "shrink-0 min-w-[170px] border-r border-[#d7dce3] px-[22px] py-4";
+
 
   return (
     <div className="flex flex-col gap-2">
+      {budgetError || budgetWarning ? (
+        <div
+          role="alert"
+          className="rounded-[8px] border border-[#f2d27a] bg-[#fff8e1] px-3 py-2 text-[12px] text-[#7a4b00]"
+        >
+          {budgetError ? <div><b>Budget data could not be loaded:</b> {budgetError}</div> : null}
+          {budgetWarning ? <div><b>Budget base:</b> {budgetWarning}</div> : null}
+        </div>
+      ) : null}
       {error ? (
         <div className="flex justify-between gap-2 rounded-md border border-[#e3e8ef] border-l-4 border-l-[#c2410c] bg-white px-3 py-2 text-[12px] text-[#7c2d12]">
           <span>{error}</span>
@@ -689,24 +601,10 @@ function HRApplyBudget() {
               <div className="text-[11px] font-medium text-[#5b6b80]">
                 Active Appraisal Cycle
               </div>
-<<<<<<< HEAD
-              <select
-                disabled
-                aria-disabled="true"
-                value={selectedCycle}
-                onChange={(e) => setSelectedCycle(e.target.value)}
-                className="mt-1 h-[38px] min-w-[140px] cursor-not-allowed rounded border border-[#14a3a3] bg-[#f4f7fa] px-2 text-[13px] font-bold text-[#12304f] outline-none"
-                style={{
-                  opacity: 1,
-                  color: "#12304f",
-                  WebkitTextFillColor: "#12304f",
-                }}
-=======
               <div
                 className="mt-1 flex h-[38px] min-w-[180px] items-center rounded border border-[#14a3a3] bg-[#f4f7fa] px-3 text-[13px] font-bold text-[#12304f]"
                 aria-label="Currently active appraisal cycle"
                 title={activeCycle?.name || "No active cycle"}
->>>>>>> 6870838ec13f28a574e6e10e60880993c140ecc0
               >
                 {cycleLoading ? "Loading active cycle…" : activeCycle?.name || "No active cycle"}
               </div>
@@ -732,7 +630,7 @@ function HRApplyBudget() {
             <div className={orgCell}>
               <div className="text-[11px] text-[#5b6b80]">Org budget base</div>
               <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
-                {money(Number(selectedMaster?.org_budget_base) || total.base)}
+                {money(amount(selectedMaster?.org_budget_base) || total.base)}
               </div>
             </div>
             <div className={orgCell}>
@@ -798,7 +696,7 @@ function HRApplyBudget() {
                 const sourceOverride =
                   overrides[r.name] ||
                   (Object.prototype.hasOwnProperty.call(pending, r.name) &&
-                    Number(p) !== Number(orgPct));
+                    Number(p) !== amount(orgPct));
                 const td =
                   "border-b border-[#e1e5eb] px-2.5 py-2 align-middle " +
                   (changing ? "bg-[#fdf8e7] " : "bg-white ");
@@ -1093,22 +991,20 @@ export function BudgetMasterPage() {
                   : "bg-white text-[#334155]")
               }
             >
-              Apply Budget
+               Apply Budget
             </button>
-            {canAudit && (
-              <button
-                type="button"
-                onClick={() => setTab("audit")}
-                className={
-                  "rounded-2xl border px-4 py-1.5 text-[12px] font-medium " +
-                  (tab === "audit"
-                    ? "border-[#14a3a3] bg-[#14a3a3] font-semibold text-white"
-                    : "bg-white text-[#334155]")
-                }
-              >
-                Audit Trail
-              </button>
-            )}
+            {canAudit && <button
+              type="button"
+              onClick={() => setTab("audit")}
+              className={
+                "rounded-2xl border px-4 py-1.5 text-[12px] font-medium " +
+                (tab === "audit"
+                  ? "border-[#14a3a3] bg-[#14a3a3] font-semibold text-white"
+                  : "bg-white text-[#334155]")
+              }
+            >
+               Audit Trail
+            </button>}
           </div>
           {tab === "apply" || !canAudit ? <HRApplyBudget /> : <HRAuditTrail />}
         </>

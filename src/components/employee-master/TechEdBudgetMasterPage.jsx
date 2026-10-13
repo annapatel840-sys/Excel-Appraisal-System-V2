@@ -70,7 +70,9 @@ const COMP_MANAGERS = [
   },
 ];
 
-const money = (v) => "₹ " + ((Number(v) || 0) / 100000).toFixed(2) + " L";
+// Exact rupee amount with Indian grouping (no lakh rounding), e.g. ₹ 12,34,567.50
+const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const money = (v) => "₹ " + INR.format(Number(v) || 0);
 function dateText(iso) {
   const p = String(iso || "").split("-");
   const M = [
@@ -338,7 +340,7 @@ export function TechEdBudgetMasterPage() {
   const [reports, setReports] = useState(kids0);
   useEffect(() => {
     setReports(kids0);
-  }, [liveTech, liveKids.length]);
+  }, [liveMe?.id, liveKids.length]);
   const [audit, setAudit] = useState(() =>
     me ? [
       {
