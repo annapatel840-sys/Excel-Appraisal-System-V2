@@ -49,8 +49,8 @@ function canonicalOwnerKey(value, employees = []) {
   const rawId = pair ? pair[1].trim() : "";
   const rawName = pair ? pair[2].trim() : raw;
   const valuesFor = (employee) => [
-    employee.emp_id, employee.employee_id, employee.name, employee.employee_name,
-    employee.emp_name, employee.email, employee.email_id,
+    employee.row_id, employee.ROWID, employee.emp_id, employee.employee_id,
+    employee.name, employee.employee_name, employee.emp_name, employee.email, employee.email_id,
   ].filter(Boolean).map(normalizeOwnerKey);
   const matched = employees.find((employee) => {
     const values = valuesFor(employee);
