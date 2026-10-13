@@ -21,16 +21,15 @@ const num = (v) => {
 const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const lakh = (n) => "₹ " + INR.format(num(n));
 const normalizeOwner = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
-const ownerKey = (value) => {
-  const text = normalizeOwner(value);
-  const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
-  return pair ? pair[1] : text;
-};
+// Employee IDs can themselves contain hyphens (for example WIS-1234).
+// The owner separator is the spaced delimiter " - ", not every hyphen.
 const ownerParts = (value) => {
   const text = normalizeOwner(value);
-  const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
-  return pair ? [text, pair[1], pair[2]] : [text];
+  if (!text) return [];
+  const separator = text.split(/\s+-\s+/);
+  return separator.length > 1 ? [text, ...separator] : [text];
 };
+const ownerKey = (value) => ownerParts(value)[1] || ownerParts(value)[0] || "";
 const ownerMatches = (owner, identities) => {
   const parts = ownerParts(owner);
   const compactParts = parts.map((part) => part.replace(/[^a-z0-9]/g, ""));
