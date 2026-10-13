@@ -373,7 +373,7 @@ export const COLUMNS = [
     width: 170,
   },
   {
-{
+
   key: "targetPBCriteria",
   label: "Target PB Criteria",
   type: "text",
@@ -381,15 +381,15 @@ export const COLUMNS = [
   width: 165,
 },
 
-  },
+  
   {
-    {
+    
   key: "compManagerRemarks",
   label: "Comp. Manager Remarks",
   type: "textarea",
   editable: true,
   width: 190,
-},
+
   },
   {
     key: "eligibleForPromotion",
