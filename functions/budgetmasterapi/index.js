@@ -99,6 +99,10 @@ function mapComp(row) {
     applied_budget: applied,
     budget_distribution_id: String(value(row, "budget_distribution_id")),
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
+    original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
+    current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
+    original_headcount: n(value(row, "original_headcount") || value(row, "allocation_headcount")),
+    current_headcount: n(value(row, "current_headcount") || value(row, "headcount")),
     utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
   };
 }
@@ -699,7 +703,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
           appraisal_cycle_id: cycleId,
           budget_distribution_id: String(parent.id),
           comp_manager: details.name,
-          percentage: 0,
+          // A new Comp Manager inherits the Tech-Ed's effective percentage,
+          // giving the assigned team an initial base-proportional allocation.
+          percentage: n(parent.effective_percentage ?? parent.percentage ?? master.budget_percentage),
           budget_base: 0,
           [compCalcField]: 0,
           applied_budget: 0,
@@ -887,6 +893,45 @@ module.exports = async function (req, res) {
         success: false,
         message: "Budget row not found.",
       });
+
+    if (resource === "comp" || resource === "compmanager") {
+      const requestedPercentage = Object.prototype.hasOwnProperty.call(body, "percentage")
+        ? Number(body.percentage)
+        : n(value(current, "percentage"));
+      if (!Number.isFinite(requestedPercentage) || requestedPercentage < 0 || requestedPercentage > 100) {
+        return sendJson(res, 400, {
+          success: false,
+          message: "Comp Manager allotment percentage must be between 0 and 100.",
+        });
+      }
+
+      const parentId = String(value(current, "budget_distribution_id") || "");
+      const parentRows = await getAllRows(app, "Budget_Distribution");
+      const parent = parentRows.find((row) => idOf(row) === parentId);
+      if (!parent) {
+        return sendJson(res, 400, {
+          success: false,
+          message: "The parent Tech-Ed budget allocation was not found.",
+        });
+      }
+
+      const requestedApplied = Object.prototype.hasOwnProperty.call(body, "applied_budget")
+        ? n(body.applied_budget)
+        : n(body.budget_base ?? value(current, "budget_base")) * requestedPercentage / 100;
+      const siblings = await getAllRows(app, "Budget_Distribution_Comp");
+      const totalAfter = siblings
+        .filter((row) => String(value(row, "budget_distribution_id") || "") === parentId && idOf(row) !== id)
+        .reduce((sum, row) => sum + n(value(row, "applied_budget")), 0) + requestedApplied;
+      const parentBudget = n(value(parent, "applied_budget"));
+      if (totalAfter > parentBudget + 0.5) {
+        return sendJson(res, 400, {
+          success: false,
+          message: "Allocation blocked: Comp Manager budgets would total " +
+            totalAfter.toFixed(2) + ", exceeding the Tech-Ed's available budget of " +
+            parentBudget.toFixed(2) + ". Reduce one or more Comp Manager percentages.",
+        });
+      }
+    }
 
     if (a.enforced && !isAdminScope) {
       if (

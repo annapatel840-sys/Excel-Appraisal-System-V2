@@ -1,7 +1,8 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 /* Budget Distribution uses persisted Budget_Distribution and
    Budget_Distribution_Comp rows. The prior UI-only sample allocations have
@@ -94,15 +95,49 @@ export function TechEdBudgetDistribution() {
     error: budgetError,
   } = useBudget();
   const myName = user?.name || "Unknown user";
+  const [activeCycleId, setActiveCycleId] = useState("");
+  const [cycleLoading, setCycleLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    payrollCycleRequest("cycles")
+      .then((cycles) => {
+        if (!mounted) return;
+        const active = (Array.isArray(cycles) ? cycles : []).find(
+          (cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived,
+        );
+        setActiveCycleId(active?.id ? String(active.id) : "");
+      })
+      .catch((cycleError) => {
+        console.error("Failed to load active appraisal cycle for Budget Distribution:", cycleError);
+        if (mounted) setActiveCycleId("");
+      })
+      .finally(() => {
+        if (mounted) setCycleLoading(false);
+      });
+    return () => { mounted = false; };
+  }, []);
+
   const liveTech = useMemo(() => {
-    const identities = [myName, user?.email, user?.empId, user?.employeeId]
+    const identities = [myName, user?.email, user?.empId, user?.employeeId, user?.employee_id]
       .map((value) => String(value || "").trim().toLowerCase())
       .filter(Boolean);
-    return budgetDistributionRows.find((row) => {
+    const cycleRows = activeCycleId
+      ? budgetDistributionRows.filter((row) => String(row.appraisal_cycle_id) === activeCycleId)
+      : budgetDistributionRows;
+    const matches = cycleRows.filter((row) => {
       const owner = String(row.appraiser_tech_ed_id || "").trim().toLowerCase();
-      return owner && identities.some((identity) => owner === identity || owner.includes(identity) || identity.includes(owner));
-    }) || budgetDistributionRows[0] || null;
-  }, [budgetDistributionRows, myName]);
+      if (!owner) return false;
+      return identities.some((identity) => {
+        if (owner === identity) return true;
+        return owner.split(/\s+-\s+/).some((part) => part.trim() === identity);
+      });
+    });
+    // Never silently show another Tech-Ed's first row when identity matching fails.
+    return matches.length === 1
+      ? matches[0]
+      : matches.find((row) => String(row.appraisal_cycle_id) === activeCycleId) || null;
+  }, [budgetDistributionRows, myName, user?.email, user?.empId, user?.employeeId, user?.employee_id, activeCycleId]);
   const liveComps = useMemo(
     () => liveTech
       ? budgetCompManagerRows.filter((r) => String(r.budget_distribution_id) === String(liveTech.id))
@@ -126,20 +161,43 @@ export function TechEdBudgetDistribution() {
   // Demo % log: sample entries plus whatever is changed during the review.
   const [log, setLog] = useState([]);
 
-  const cmNodes = useMemo(() => liveComps.map((live) => {
-    const pct = num(live.percentage);
-    const base = num(live.budget_base) || (pct ? num(live.calculated_budget) * 100 / pct : 0);
-    const original = num(live.calculated_budget);
-    const updated = num(live.applied_budget);
-    return {
-      name: live.comp_manager || "Unassigned Comp Manager",
-      pct, pct0: pct, base, team0: 0, team: 0, original,
-      updated: updated || original, liveId: live.id,
-      liveCalculated: original, liveApplied: updated,
-      liveUtilized: num(live.total_utilization),
-      history: [{ date: "", amount: original, team: 0, pct }],
-    };
-  }), [liveComps]);
+  const cmNodes = useMemo(() => {
+    const managerStats = new Map();
+    employeeRows.forEach((employee) => {
+      const techAssignment = String(employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.tech_ed || employee.tech_ed_id || "").trim().toLowerCase();
+      const currentTechOwner = String(liveTech?.appraiser_tech_ed_id || "").trim().toLowerCase();
+      const techParts = techAssignment.split(/\s+-\s+/);
+      const ownerParts = currentTechOwner.split(/\s+-\s+/);
+      if (!currentTechOwner || !techAssignment ||
+          !(techAssignment === currentTechOwner ||
+            techParts.some((part) => ownerParts.includes(part)) ||
+            ownerParts.some((part) => techParts.includes(part)))) return;
+      const manager = String(employee.comp_manager || employee.comp_manager_id || employee.comp_manager_name || employee.compManager || "").trim();
+      if (!manager) return;
+      const key = manager.toLowerCase();
+      const stats = managerStats.get(key) || { count: 0, base: 0 };
+      stats.count += 1;
+      stats.base += num(employee.current_annual_base_pay ?? employee.currentAnnualBasePay ?? employee.current_base_pay ?? employee.base_pay ?? employee.basePay)
+        + num(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.pb_to_be_paid ?? employee.target_pb_allocated_for_may ?? employee.allocated_pb ?? employee.total_pb);
+      managerStats.set(key, stats);
+    });
+    return liveComps.map((live) => {
+      const pct = num(live.percentage);
+      const stats = managerStats.get(String(live.comp_manager || "").trim().toLowerCase()) || { count: 0, base: 0 };
+      const base = num(live.budget_base) || stats.base || (pct ? num(live.calculated_budget) * 100 / pct : 0);
+      const original = num(live.calculated_budget);
+      const updated = num(live.applied_budget);
+      return {
+        name: live.comp_manager || "Unassigned Comp Manager",
+        pct, pct0: pct, base,
+        team0: num(live.original_headcount) || stats.count,
+        team: stats.count || num(live.current_headcount), original, updated, liveId: live.id,
+        liveCalculated: original, liveApplied: updated,
+        liveUtilized: num(live.total_utilization),
+        history: [{ date: "", amount: original, team: stats.count, pct }],
+      };
+    });
+  }, [liveComps, employeeRows, liveTech]);
 
   const assignedTeam = useMemo(() => employeeRows.filter((employee) => {
     const assignment = String(employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.tech_ed || employee.tech_ed_id || "").trim().toLowerCase();
@@ -186,13 +244,17 @@ export function TechEdBudgetDistribution() {
     });
     if (!node) return;
     const to = Math.round(Number(raw) * 10) / 10;
-    if (!(to >= 0) || to === node.pct) return;
+    if (!Number.isFinite(to) || to < 0 || to > 100) {
+      setErr("Enter an allotment percentage between 0 and 100 for " + name + ".");
+      return;
+    }
+    if (to === node.pct) return;
     const newUpd = (node.base * to) / 100;
     const sum = allotted - node.updated + newUpd;
-    if (sum > myOriginal + 0.5) {
+    if (sum > myUpdated + 0.5) {
       setErr(
         "Blocked: " + to + "% for " + name + " would take total allotted to " + lakh(sum) + ", which is " +
-          lakh(sum - myOriginal) + " more than your original budget of " + lakh(myOriginal) + ".",
+          lakh(sum - myUpdated) + " more than your available Tech-Ed budget of " + lakh(myUpdated) + ".",
       );
       return;
     }
@@ -238,8 +300,14 @@ export function TechEdBudgetDistribution() {
     <div className="tbd-root">
       <style>{CSS}</style>
 
-      {!liveTech ? (
-        <div className="berr">No Budget Distribution record is available for the signed-in Tech-Ed.</div>
+      {cycleLoading ? (
+        <div className="berr">Loading active appraisal cycle and Tech-Ed allocation…</div>
+      ) : null}
+      {!cycleLoading && !liveTech ? (
+        <div className="berr">
+          No matching Tech-Ed budget was found for this login in the active appraisal cycle.
+          Check that the signed-in account matches the Appraiser Tech-ED value in Appraisal Sheet.
+        </div>
       ) : null}
       <div className="btop">
         <span>
@@ -448,6 +516,7 @@ export function TechEdBudgetDistribution() {
                               className="pct-in"
                               type="number"
                               min="0"
+                              max="100"
                               step="0.1"
                               aria-label={"Allot % for " + n.name}
                               value={drafts[n.name] ?? n.pct}
