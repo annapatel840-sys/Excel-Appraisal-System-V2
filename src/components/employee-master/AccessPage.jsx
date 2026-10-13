@@ -1332,14 +1332,6 @@ export default function AccessPage() {
         <div className="banner">Access rules are in dry-run (ACCESS_ENFORCE is off): settings are saved and shown, but not yet enforced.</div>
       )}
 
-      <div className="info">
-        <div><span className="t">Access</span><span className="d">Roles from Catalyst and Delegation. Set what each role can do; override for one person.</span></div>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-          <span className="d" title="Access data is downloaded only when it has changed">{dataVer.version ? "Data v" + dataVer.version + " · " + dataVer.from + " · " : ""}</span>
-          <span className="d">{lastLog ? "Last change " + fmtD(String(lastLog.at).slice(0, 10)) + " by " + lastLog.by : ""}</span>
-        </div>
-      </div>
-
       <div className="wrap">
         <div className="card">
           <div className="chead"><span>{tabDef.title}</span><small>{tabDef.sub}</small></div>
