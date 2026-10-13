@@ -106,6 +106,7 @@ export function TechEdBudgetDistribution() {
     budgetCompManagerRows,
     budgetMasterRows,
     employeeRows = [],
+    techEdOwners = [],
     updateBudget,
     loading: budgetLoading,
     error: budgetError,
@@ -151,6 +152,7 @@ export function TechEdBudgetDistribution() {
     );
 
     const employeeIdentityValues = (employee) => [
+      employee.row_id, employee.ROWID, employee.ROW_ID, employee.id,
       employee.emp_id, employee.employee_id, employee.employeeId,
       employee.emp_name, employee.employee_name, employee.name,
       employee.email, employee.email_id, employee.emailId,
@@ -164,11 +166,18 @@ export function TechEdBudgetDistribution() {
 
     // Some session accounts are not employees. In that case, use the Appraisal
     // Sheet assignment whose Tech-Ed owner contains the logged-in identity.
+    const ownerByForeignKey = new Map();
+    techEdOwners.forEach((item) => {
+      const fk = normalizeOwner(item?.row_id || item?.ROWID || "");
+      if (fk && item?.assignment) ownerByForeignKey.set(fk, String(item.assignment).trim());
+    });
     const assignedOwners = Array.from(new Set(employeeRows
-      .map((employee) => employee.appraiser_tech_ed || employee.appraiser_tech_ed_id ||
-        employee.appraiser_teched || employee.appraiserTechED || employee.tech_ed || employee.tech_ed_id || "")
-      .map((value) => String(value || "").trim())
-      .filter((owner) => owner && ownerMatches(owner, Array.from(identities)))));
+      .map((employee) => {
+        const raw = String(employee.appraiser_tech_ed || employee.appraiser_tech_ed_id ||
+          employee.appraiser_teched || employee.appraiserTechED || employee.tech_ed || employee.tech_ed_id || "").trim();
+        return ownerByForeignKey.get(normalizeOwner(raw)) || raw;
+      })
+      .filter((owner) => owner && ownerMatches(owner, Array.from(identities))));
 
     const allRows = budgetDistributionRows.filter((row) =>
       row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed || row.appraiser_tech_ed,
@@ -219,7 +228,7 @@ export function TechEdBudgetDistribution() {
     // to show when cycle metadata has no matching alias.
     return candidates.length === 1 ? candidates[0] : null;
   }, [
-    budgetDistributionRows, budgetMasterRows, cycleRows, employeeRows, myName,
+    budgetDistributionRows, budgetMasterRows, cycleRows, employeeRows, techEdOwners, myName,
     user?.name, user?.display_name, user?.first_name, user?.last_name,
     user?.email, user?.email_id, user?.user_id, user?.empId, user?.employeeId, user?.employee_id,
     activeCycleId,
