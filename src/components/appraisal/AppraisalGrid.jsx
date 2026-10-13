@@ -1,3 +1,6 @@
+appraisalGrid
+
+
 import {
   Fragment,
   useCallback,
@@ -218,12 +221,6 @@ const numericValue = (value) => {
   const n = Number(normalized);
 
   return Number.isFinite(n) ? n : 0;
-};
-
-// Valid: 20000, 20,000, 1,234.50, -500, .5  (empty is allowed = clearing the cell)
-const isValidNumericInput = (value) => {
-  if (value === "" || value === null || value === undefined) return true;
-  return /^[+-]?(\d+\.?\d*|\.\d+)$/.test(String(value).replace(/,/g, "").trim());
 };
 
 const formatEditableNumeric = (value, type) => {
@@ -2644,11 +2641,6 @@ export function AppraisalGrid({
 
   const commit = useCallback(
     (row, col, raw, anchor) => {
-      // Invalid number (e.g. "20000hhhhh"): save nothing, keep the old value.
-      if (isNumericType(col.type) && !isValidNumericInput(raw)) {
-        return;
-      }
-
       if (col.key === "hikePct" || col.key === "hikeAmount") {
         const outcome =
           col.key === "hikePct"
@@ -3431,8 +3423,7 @@ export function AppraisalGrid({
 
             if (
               !liveToastCellsRef.current.has(cellKey) &&
-              String(storedValue) !== String(value) &&
-              (!isNumericType(col.type) || isValidNumericInput(value))
+              String(storedValue) !== String(value)
             ) {
               liveToastCellsRef.current.add(cellKey);
               if (YOY_FIELDS[col.key]) {
