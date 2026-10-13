@@ -25,6 +25,9 @@ const TECH_ED_PATHS = [
   "/settings",
 ];
 
+// HR Operations is a plain link now; it opens on the Access tab.
+const HR_OPERATIONS_HOME = "/employee-master?tab=access";
+
 const HR_MENU_ITEMS = [
   ["Employee Master", "roster", "/employee-master?tab=roster"],
   ["Eligibility List", "eligibility", "/employee-master?tab=eligibility"],
@@ -33,7 +36,7 @@ const HR_MENU_ITEMS = [
     "appraisal-cycle",
     "/employee-master?tab=appraisal-cycle",
   ],
-  ["Payroll Data", "payroll-data", "/employee-master?tab=payroll-data"],
+  ["Payroll Master", "payroll-data", "/employee-master?tab=payroll-data"],
   ["Upload", "payroll-upload", "/employee-master?tab=payroll-upload"],
   ["Team Changes", "team-changes", "/employee-master?tab=team-changes"],
   ["Budget Master", "budget-master", "/employee-master?tab=budget-master"],
@@ -84,7 +87,7 @@ export function AppShell({ children, headerActions }) {
             to: "/employee-master",
             label: "HR Operations",
             icon: Users,
-            dropdown: isHR,
+            go: HR_OPERATIONS_HOME,
           },
         ]
       : []),
@@ -156,7 +159,7 @@ export function AppShell({ children, headerActions }) {
           to: "/employee-master",
           label: "HR Operations",
           icon: Users,
-          dropdown: true,
+          go: HR_OPERATIONS_HOME,
         },
       ].filter(Boolean)
     : fallbackNav;
@@ -245,8 +248,8 @@ export function AppShell({ children, headerActions }) {
                   className={cn("relative", isHrMenu && "group")}
                 >
                   <a
-                    href={item.to}
-                    onClick={(event) => navigate(event, item.to)}
+                    href={item.go || item.to}
+                    onClick={(event) => navigate(event, item.go || item.to)}
                     className={cn(
                       "flex rounded-md font-medium transition-colors",
                       isVertical
