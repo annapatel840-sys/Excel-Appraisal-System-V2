@@ -20,23 +20,6 @@ const num = (v) => {
 // Exact rupee amount with Indian grouping (no lakh rounding), e.g. ₹ 12,34,567.50
 const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const lakh = (n) => "₹ " + INR.format(num(n));
-const normalizeOwner = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
-const ownerKey = (value) => {
-  const text = normalizeOwner(value);
-  const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
-  return pair ? pair[1] : text;
-};
-const ownerParts = (value) => {
-  const text = normalizeOwner(value);
-  const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
-  return pair ? [text, pair[1], pair[2]] : [text];
-};
-const ownerMatches = (owner, identities) => {
-  const parts = ownerParts(owner);
-  const compactParts = parts.map((part) => part.replace(/[^a-z0-9]/g, ""));
-  return parts.some((part) => identities.includes(part)) ||
-    compactParts.some((part) => identities.some((identity) => identity.replace(/[^a-z0-9]/g, "") === part));
-};
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function dateText(iso) {
   const p = String(iso || "").slice(0, 10).split("-");
@@ -112,7 +95,6 @@ export function TechEdBudgetDistribution() {
     error: budgetError,
   } = useBudget();
   const myName = user?.name || "Unknown user";
-  const [cycleRows, setCycleRows] = useState([]);
   const [activeCycleId, setActiveCycleId] = useState("");
   const [cycleLoading, setCycleLoading] = useState(true);
 
@@ -121,19 +103,14 @@ export function TechEdBudgetDistribution() {
     payrollCycleRequest("cycles")
       .then((cycles) => {
         if (!mounted) return;
-        const allCycles = Array.isArray(cycles) ? cycles : [];
-        setCycleRows(allCycles);
-        const active = allCycles.find(
+        const active = (Array.isArray(cycles) ? cycles : []).find(
           (cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived,
         );
         setActiveCycleId(active?.id ? String(active.id) : "");
       })
       .catch((cycleError) => {
-        console.error("Failed to load appraisal cycles for Budget Distribution:", cycleError);
-        if (mounted) {
-          setCycleRows([]);
-          setActiveCycleId("");
-        }
+        console.error("Failed to load active appraisal cycle for Budget Distribution:", cycleError);
+        if (mounted) setActiveCycleId("");
       })
       .finally(() => {
         if (mounted) setCycleLoading(false);
@@ -142,38 +119,25 @@ export function TechEdBudgetDistribution() {
   }, []);
 
   const liveTech = useMemo(() => {
-    const identities = new Set(
-      [myName, user?.email, user?.empId, user?.employeeId, user?.employee_id]
-        .map(normalizeOwner)
-        .filter(Boolean),
-    );
-    // If the auth profile exposes an employee ID/email, enrich identity from the
-    // actual employee row before matching "EmployeeID - Full Name" owner cells.
-    const loginEmployee = employeeRows.find((employee) => {
-      const employeeIds = [
-        employee.emp_id, employee.employee_id, employee.employeeId,
-        employee.email, employee.email_id, employee.emailId,
-      ].map(normalizeOwner).filter(Boolean);
-      return employeeIds.some((value) => identities.has(value));
+    const identities = [myName, user?.email, user?.empId, user?.employeeId, user?.employee_id]
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean);
+    const cycleRows = activeCycleId
+      ? budgetDistributionRows.filter((row) => String(row.appraisal_cycle_id) === activeCycleId)
+      : budgetDistributionRows;
+    const matches = cycleRows.filter((row) => {
+      const owner = String(row.appraiser_tech_ed_id || "").trim().toLowerCase();
+      if (!owner) return false;
+      return identities.some((identity) => {
+        if (owner === identity) return true;
+        return owner.split(/\s+-\s+/).some((part) => part.trim() === identity);
+      });
     });
-    if (loginEmployee) {
-      [
-        loginEmployee.emp_id, loginEmployee.employee_id, loginEmployee.employeeId,
-        loginEmployee.emp_name, loginEmployee.employee_name, loginEmployee.name,
-        loginEmployee.email, loginEmployee.email_id,
-      ].map(normalizeOwner).filter(Boolean).forEach((value) => identities.add(value));
-    }
-    const cycleMatches = activeCycleId
-      ? budgetDistributionRows.filter((row) => String(row.appraisal_cycle_id) === String(activeCycleId))
-      : [];
-    const matches = cycleMatches.filter((row) => ownerMatches(row.appraiser_tech_ed_id, Array.from(identities)));
-    return matches.length === 1 ? matches[0] : null;
-  }, [budgetDistributionRows, employeeRows, myName, user?.email, user?.empId, user?.employeeId, user?.employee_id, activeCycleId]);
-
-  const activeCycle = useMemo(
-    () => cycleRows.find((cycle) => String(cycle.id) === String(liveTech?.appraisal_cycle_id || activeCycleId)) || null,
-    [cycleRows, liveTech?.appraisal_cycle_id, activeCycleId],
-  );
+    // Never silently show another Tech-Ed's first row when identity matching fails.
+    return matches.length === 1
+      ? matches[0]
+      : matches.find((row) => String(row.appraisal_cycle_id) === activeCycleId) || null;
+  }, [budgetDistributionRows, myName, user?.email, user?.empId, user?.employeeId, user?.employee_id, activeCycleId]);
   const liveComps = useMemo(
     () => liveTech
       ? budgetCompManagerRows.filter((r) => String(r.budget_distribution_id) === String(liveTech.id))
@@ -182,11 +146,10 @@ export function TechEdBudgetDistribution() {
   );
   const liveMaster = useMemo(
     () => liveTech
-      ? budgetMasterRows.find((r) => String(r.appraisal_cycle_id) === String(liveTech.appraisal_cycle_id)) || null
-      : null,
+      ? budgetMasterRows.find((r) => String(r.appraisal_cycle_id) === String(liveTech.appraisal_cycle_id)) || budgetMasterRows[0]
+      : budgetMasterRows[0],
     [budgetMasterRows, liveTech],
   );
-  const cycleLabel = String(activeCycle?.name || liveMaster?.appraisal_cycle_name || liveMaster?.cycle_name || "").trim();
 
   const [pane, setPane] = useState({ mine: true, alloc: true, audit: true });
   const [appliedOpen, setAppliedOpen] = useState(false);
@@ -195,47 +158,24 @@ export function TechEdBudgetDistribution() {
   const [err, setErr] = useState("");
   const [auditFilter, setAuditFilter] = useState("all");
   const [drafts, setDrafts] = useState({});
-  const auditStorageKey = liveTech
-    ? "appraisal-budget-audit:" + String(liveTech.appraisal_cycle_id) + ":" + ownerKey(liveTech.appraiser_tech_ed_id)
-    : "";
-  const [auditState, setAuditState] = useState({ key: "", entries: [] });
-  const log = auditState.key === auditStorageKey ? auditState.entries : [];
-
-  useEffect(() => {
-    if (!auditStorageKey) {
-      setAuditState({ key: "", entries: [] });
-      return;
-    }
-    let entries = [];
-    try {
-      const saved = window.localStorage.getItem(auditStorageKey);
-      const parsed = saved ? JSON.parse(saved) : [];
-      entries = Array.isArray(parsed) ? parsed : [];
-    } catch (storageError) {
-      console.error("Could not read the Budget Distribution audit trail:", storageError);
-    }
-    setAuditState({ key: auditStorageKey, entries });
-  }, [auditStorageKey]);
-
-  useEffect(() => {
-    if (!auditStorageKey || auditState.key !== auditStorageKey) return;
-    try {
-      window.localStorage.setItem(auditStorageKey, JSON.stringify(auditState.entries));
-    } catch (storageError) {
-      console.error("Could not save the Budget Distribution audit trail:", storageError);
-    }
-  }, [auditStorageKey, auditState]);
+  // Demo % log: sample entries plus whatever is changed during the review.
+  const [log, setLog] = useState([]);
 
   const cmNodes = useMemo(() => {
     const managerStats = new Map();
-    const currentTechOwner = ownerKey(liveTech?.appraiser_tech_ed_id);
     employeeRows.forEach((employee) => {
-      const techAssignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.tech_ed || employee.tech_ed_id || "";
-      if (!currentTechOwner || ownerKey(techAssignment) !== currentTechOwner) return;
+      const techAssignment = String(employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.tech_ed || employee.tech_ed_id || "").trim().toLowerCase();
+      const currentTechOwner = String(liveTech?.appraiser_tech_ed_id || "").trim().toLowerCase();
+      const techParts = techAssignment.split(/\s+-\s+/);
+      const ownerParts = currentTechOwner.split(/\s+-\s+/);
+      if (!currentTechOwner || !techAssignment ||
+          !(techAssignment === currentTechOwner ||
+            techParts.some((part) => ownerParts.includes(part)) ||
+            ownerParts.some((part) => techParts.includes(part)))) return;
       const manager = String(employee.comp_manager || employee.comp_manager_id || employee.comp_manager_name || employee.compManager || "").trim();
       if (!manager) return;
-      const key = ownerKey(manager);
-      const stats = managerStats.get(key) || { count: 0, base: 0, name: manager };
+      const key = manager.toLowerCase();
+      const stats = managerStats.get(key) || { count: 0, base: 0 };
       stats.count += 1;
       stats.base += num(employee.current_annual_base_pay ?? employee.currentAnnualBasePay ?? employee.current_base_pay ?? employee.base_pay ?? employee.basePay)
         + num(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.pb_to_be_paid ?? employee.target_pb_allocated_for_may ?? employee.allocated_pb ?? employee.total_pb);
@@ -243,32 +183,26 @@ export function TechEdBudgetDistribution() {
     });
     return liveComps.map((live) => {
       const pct = num(live.percentage);
-      const stats = managerStats.get(ownerKey(live.comp_manager)) || { count: 0, base: 0, name: live.comp_manager };
+      const stats = managerStats.get(String(live.comp_manager || "").trim().toLowerCase()) || { count: 0, base: 0 };
       const base = num(live.budget_base) || stats.base || (pct ? num(live.calculated_budget) * 100 / pct : 0);
       const original = num(live.calculated_budget);
       const updated = num(live.applied_budget);
-      const managerName = String(live.comp_manager || stats.name || "Unassigned Comp Manager").trim();
-      const managerLog = log.filter((entry) => ownerKey(entry.name) === ownerKey(managerName));
-      const history = [
-        { date: "", amount: original, team: num(live.original_headcount) || stats.count, pct },
-        ...managerLog.map((entry) => ({ date: entry.date, amount: num(entry.after), team: stats.count || num(live.current_headcount), pct: num(entry.to) })),
-      ];
       return {
-        name: managerName,
+        name: live.comp_manager || "Unassigned Comp Manager",
         pct, pct0: pct, base,
         team0: num(live.original_headcount) || stats.count,
         team: stats.count || num(live.current_headcount), original, updated, liveId: live.id,
         liveCalculated: original, liveApplied: updated,
         liveUtilized: num(live.total_utilization),
-        lastChanged: managerLog.length ? managerLog[managerLog.length - 1].date : "",
-        history,
+        history: [{ date: "", amount: original, team: stats.count, pct }],
       };
     });
-  }, [liveComps, employeeRows, liveTech, log]);
+  }, [liveComps, employeeRows, liveTech]);
 
   const assignedTeam = useMemo(() => employeeRows.filter((employee) => {
-    const assignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.tech_ed || employee.tech_ed_id || "";
-    return ownerKey(assignment) === ownerKey(liveTech?.appraiser_tech_ed_id);
+    const assignment = String(employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.tech_ed || employee.tech_ed_id || "").trim().toLowerCase();
+    const owner = String(liveTech?.appraiser_tech_ed_id || "").trim().toLowerCase();
+    return owner && assignment && (assignment === owner || assignment.includes(owner) || owner.includes(assignment));
   }), [employeeRows, liveTech]);
   const allTeam0 = assignedTeam;
   const allTeam = assignedTeam;
@@ -341,13 +275,7 @@ export function TechEdBudgetDistribution() {
       setErr(error.message || "Failed to save Comp Manager budget.");
       return;
     }
-    setAuditState((state) => ({
-      key: auditStorageKey,
-      entries: [
-        ...(state.key === auditStorageKey ? state.entries : []),
-        { name, from: node.pct, to, by: myName, date: t.date, time: t.time, before: node.updated, after: newUpd, reason: reason.trim() },
-      ],
-    }));
+    setLog((l) => [...l, { name, from: node.pct, to, by: myName, date: t.date, time: t.time, before: node.updated, after: newUpd, reason: reason.trim() }]);
     setReason("");
     setErr("");
   }
@@ -383,11 +311,11 @@ export function TechEdBudgetDistribution() {
       ) : null}
       <div className="btop">
         <span>
-          Appraisal cycle <b>{cycleLabel || "Cycle name unavailable"}</b>
+          Appraisal cycle <b>{liveTech?.appraisal_cycle_id || "—"}</b>
         </span>
         <span className="sep" />
         <span>
-          Tech-Ed allocation from Budget Master · updated {lakh(myUpdated)}
+          Allocated from Budget Master · applied {liveMaster ? lakh(liveMaster.applied_budget) : "—"}
         </span>
         <span className="sep" />
         <span>
@@ -395,7 +323,7 @@ export function TechEdBudgetDistribution() {
         </span>
         <span className="sep" />
         <span className="applied">
-          Budget applied by HR: <b>{myPct}%</b> = <b>{lakh(myUpdated)}</b> updated · original{" "}
+          Budget applied by HR: <b>{liveMaster ? num(liveMaster.budget_percentage) : myPct}%</b> = <b>{lakh(myUpdated)}</b> updated · original{" "}
           {lakh(myOriginal)}
           <button type="button" className="dd" aria-expanded={appliedOpen} onClick={() => setAppliedOpen((v) => !v)}>
             % history {appliedOpen ? "▴" : "▾"}
@@ -495,7 +423,7 @@ export function TechEdBudgetDistribution() {
                   <tr className="self">
                     <td className="first">{LEVELS[0]}</td>
                     <td>
-                      <b>{liveTech?.appraiser_tech_ed_id || myName}</b> <span className="muted-small">(you)</span>
+                      <b>{myName}</b> <span className="muted-small">(you)</span>
                     </td>
                     <td className="r">{lakh(myOriginal)}</td>
                     <td className="r">{lakh(myUpdated)}</td>
@@ -688,11 +616,7 @@ const CSS = `
 .tbd-root .pane-head .chev { font-size: 12px; }
 .tbd-root .bsum { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .tbd-root .bsum > div { padding: 12px 16px; border-right: 1px solid #d7dce3; border-top: 3px solid transparent; }
-.tbd-root .bsum > div:nth-child(2) { background: #0e7c6b; border-top-color: #0a5c4f; border-right-color: #0e7c6b; }
-.tbd-root .bsum > div:nth-child(2) .f-label,
-.tbd-root .bsum > div:nth-child(2) .v,
-.tbd-root .bsum > div:nth-child(2) .d { color: #fff; }
-.tbd-root .bsum > div:nth-child(2) .d { opacity: .88; }
+.tbd-root .bsum > div:nth-child(2) { border-top-color: #14a3a3; }
 .tbd-root .bsum > div:last-child { border-right: 0; }
 .tbd-root .f-label { font-size: 11px; color: #5b6b80; font-weight: 500; }
 .tbd-root .bsum .v { font-size: 18px; font-weight: 600; color: #12304f; margin-top: 2px; }
