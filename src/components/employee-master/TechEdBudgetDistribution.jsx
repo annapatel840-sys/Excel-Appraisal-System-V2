@@ -31,7 +31,12 @@ const ownerParts = (value) => {
   const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
   return pair ? [text, pair[1], pair[2]] : [text];
 };
-const ownerMatches = (owner, identities) => ownerParts(owner).some((part) => identities.includes(part));
+const ownerMatches = (owner, identities) => {
+  const parts = ownerParts(owner);
+  const compactParts = parts.map((part) => part.replace(/[^a-z0-9]/g, ""));
+  return parts.some((part) => identities.includes(part)) ||
+    compactParts.some((part) => identities.some((identity) => identity.replace(/[^a-z0-9]/g, "") === part));
+};
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function dateText(iso) {
   const p = String(iso || "").slice(0, 10).split("-");
@@ -137,15 +142,33 @@ export function TechEdBudgetDistribution() {
   }, []);
 
   const liveTech = useMemo(() => {
-    const identities = [myName, user?.email, user?.empId, user?.employeeId, user?.employee_id]
-      .map(normalizeOwner)
-      .filter(Boolean);
+    const identities = new Set(
+      [myName, user?.email, user?.empId, user?.employeeId, user?.employee_id]
+        .map(normalizeOwner)
+        .filter(Boolean),
+    );
+    // If the auth profile exposes an employee ID/email, enrich identity from the
+    // actual employee row before matching "EmployeeID - Full Name" owner cells.
+    const loginEmployee = employeeRows.find((employee) => {
+      const employeeIds = [
+        employee.emp_id, employee.employee_id, employee.employeeId,
+        employee.email, employee.email_id, employee.emailId,
+      ].map(normalizeOwner).filter(Boolean);
+      return employeeIds.some((value) => identities.has(value));
+    });
+    if (loginEmployee) {
+      [
+        loginEmployee.emp_id, loginEmployee.employee_id, loginEmployee.employeeId,
+        loginEmployee.emp_name, loginEmployee.employee_name, loginEmployee.name,
+        loginEmployee.email, loginEmployee.email_id,
+      ].map(normalizeOwner).filter(Boolean).forEach((value) => identities.add(value));
+    }
     const cycleMatches = activeCycleId
       ? budgetDistributionRows.filter((row) => String(row.appraisal_cycle_id) === String(activeCycleId))
       : [];
-    const matches = cycleMatches.filter((row) => ownerMatches(row.appraiser_tech_ed_id, identities));
+    const matches = cycleMatches.filter((row) => ownerMatches(row.appraiser_tech_ed_id, Array.from(identities)));
     return matches.length === 1 ? matches[0] : null;
-  }, [budgetDistributionRows, myName, user?.email, user?.empId, user?.employeeId, user?.employee_id, activeCycleId]);
+  }, [budgetDistributionRows, employeeRows, myName, user?.email, user?.empId, user?.employeeId, user?.employee_id, activeCycleId]);
 
   const activeCycle = useMemo(
     () => cycleRows.find((cycle) => String(cycle.id) === String(liveTech?.appraisal_cycle_id || activeCycleId)) || null,
@@ -224,7 +247,7 @@ export function TechEdBudgetDistribution() {
       const base = num(live.budget_base) || stats.base || (pct ? num(live.calculated_budget) * 100 / pct : 0);
       const original = num(live.calculated_budget);
       const updated = num(live.applied_budget);
-      const managerName = stats.name || live.comp_manager || "Unassigned Comp Manager";
+      const managerName = String(live.comp_manager || stats.name || "Unassigned Comp Manager").trim();
       const managerLog = log.filter((entry) => ownerKey(entry.name) === ownerKey(managerName));
       const history = [
         { date: "", amount: original, team: num(live.original_headcount) || stats.count, pct },
