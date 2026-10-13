@@ -200,6 +200,7 @@ export function TechEdBudgetDistribution() {
         percentage: to,
         budget_base: node.base,
         calculated_budget: newUpd,
+        applied_budget: newUpd,
       }, "comp");
     } catch (error) {
       setErr(error.message || "Failed to save Comp Manager budget.");
