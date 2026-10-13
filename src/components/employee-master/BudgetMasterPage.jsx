@@ -465,12 +465,10 @@ function HRApplyBudget() {
                 Appraisal Cycle
               </div>
               <select
-                disabled
-                aria-disabled="true"
+                disabled={budgetLoading}
                 value={selectedCycle}
                 onChange={(e) => setSelectedCycle(e.target.value)}
-                className="mt-1 h-[38px] min-w-[140px] cursor-not-allowed rounded border border-[#14a3a3] bg-[#f4f7fa] px-2 text-[13px] font-bold text-[#12304f] outline-none"
-                style={{ opacity: 1, color: "#12304f", WebkitTextFillColor: "#12304f" }}
+                className="mt-1 h-[38px] min-w-[140px] rounded border border-[#14a3a3] bg-white px-2 text-[13px] font-bold text-[#12304f] outline-none"
               >
                 {appraisalCycles.map((cycle) => (
                   <option key={cycle} value={cycle}>
