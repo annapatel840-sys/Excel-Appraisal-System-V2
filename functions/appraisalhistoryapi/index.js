@@ -110,7 +110,7 @@ const ALLOWED_FIELDS = [
   "hike_pct",
   "promotion",
   "title",
-  "target_performance_bonus",
+  "target_performance_agreed",
   "new_ctc",
   "manager_rating",
   "rating",
@@ -149,7 +149,7 @@ const HISTORY_FIELDS = {
   hike_pct: "hikePct",
   promotion: "eligibleForPromotion",
   title: "newTitle",
-  target_performance_bonus: "targetPBNextYear",
+  target_performance_agreed: "targetPBNextYear",
   new_ctc: "totalCTCWithRewards",
   manager_rating: "managerRating",
 };
@@ -569,7 +569,7 @@ const withHistoryAliases = (record) => {
     appraisal_year: pick("appraisal_year", "fy_year"),
     base_pay: pick("base_pay", "current_annual_base_pay"),
     new_ctc: pick("new_ctc", "total_CTC_with_rewards"),
-    target_performance_bonus: pick("target_performance_bonus", "target_performance_agreed"),
+    target_performance_bonus: pick("target_performance_bonus","target_performance_agreed",),
     new_base_pay: record.new_base_pay,
     joining_bonus: record.joining_bonus,
     performance_bonus: record.performance_bonus,
@@ -696,25 +696,104 @@ const updateExistingHistory = async (table, record, updateData) => {
 /* ============================================================
 CREATE HISTORY RECORD IF MISSING
 ============================================================ */
+const resolveEmployeeMasterRowId = async (app, empId) => {
+  const safeEmpId = String(empId || "")
+    .trim()
+    .split(/\s+-\s+/, 1)[0]
+    .trim()
+    .replace(/'/g, "''");
 
-const createHistoryRecord = async (table, empId, appraisalYear, updateData) => {
+  if (!safeEmpId) {
+    throw new Error("Employee ID is required to create history.");
+  }
+
+  const columns = ["emp_id", "employee_id", "emp_code"];
+
+  for (const column of columns) {
+    try {
+      const result = await app
+        .zcql()
+        .executeZCQLQuery(
+          "SELECT ROWID FROM Employee_Master WHERE " +
+            column +
+            " = '" +
+            safeEmpId +
+            "'"
+        );
+
+      const rows = Array.isArray(result) ? result : [];
+
+      for (const item of rows) {
+        const row =
+          item?.Employee_Master || Object.values(item || {})[0] || {};
+
+        const rowId = row.ROWID ?? row.rowid;
+
+        if (rowId !== undefined && rowId !== null) {
+          return String(rowId);
+        }
+      }
+    } catch (error) {
+      console.warn(
+        "Employee_Master lookup using " + column + " failed:",
+        error?.message || error
+      );
+    }
+  }
+
+  throw new Error(
+    "Could not find Employee_Master ROWID for employee " + safeEmpId
+  );
+};
+
+const createHistoryRecord = async (
+  app,
+  table,
+  empId,
+  appraisalYear,
+  updateData
+) => {
+  const employeeRowId = await resolveEmployeeMasterRowId(app, empId);
+
   const payload = {
-    emp_id: empId,
-    appraisal_year: appraisalYear,
+    emp_id: employeeRowId,
+    fy_year: appraisalYear,
     ...updateData,
   };
 
   console.log(
     "Payroll_Data insertRows payload:",
-    JSON.stringify(payload),
+    JSON.stringify(payload)
   );
 
   const result = await table.insertRows([payload]);
 
-  console.log("Payroll_Data insertRows result:", JSON.stringify(result));
+  console.log(
+    "Payroll_Data insertRows result:",
+    JSON.stringify(result)
+  );
 
   return Array.isArray(result) ? result[0] : result;
 };
+
+// const createHistoryRecord = async (table, empId, appraisalYear, updateData) => {
+//   const payload = {
+//     emp_id: empId,
+//     appraisal_year: appraisalYear,
+//     ...updateData,
+//   };
+
+//   console.log(
+//     "Payroll_Data insertRows payload:",
+//     JSON.stringify(payload),
+//   );
+
+//   const result = await table.insertRows([payload]);
+
+//   console.log("Payroll_Data insertRows result:", JSON.stringify(result));
+
+//   return Array.isArray(result) ? result[0] : result;
+// };
 
 /* ============================================================
 MAIN API
@@ -925,27 +1004,20 @@ module.exports = async (req, res) => {
       }
 
       /* ------------------------------------------------------
-      CREATE RECORD IF IT DOES NOT EXIST
+      NO EXISTING RECORD: DO NOT CREATE ONE
+      (CHANGED: creating a row here produced a duplicate "Apr-26" row in
+      the History panel. createHistoryRecord is kept above, unused.)
       ------------------------------------------------------ */
 
-      console.log("No Payroll_Data record found.");
-
-      console.log("Creating new history record for:", empId, appraisalYear);
-
-      const createdRecord = await createHistoryRecord(
-        table,
-        empId,
-        appraisalYear,
-        updateData,
-      );
+      console.log("No Payroll_Data record found; not creating one.");
 
       sendJson(res, 200, {
         success: true,
-        action: "created",
+        action: "skipped",
         emp_id: empId,
         appraisal_year: appraisalYear,
-        message: "Payroll_Data history created successfully.",
-        data: createdRecord,
+        message: "No matching history record; nothing created.",
+        data: null,
       });
 
       return;

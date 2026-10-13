@@ -99,6 +99,10 @@ function mapComp(row) {
     applied_budget: applied,
     budget_distribution_id: String(value(row, "budget_distribution_id")),
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
+    original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
+    current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
+    original_headcount: n(value(row, "original_headcount") || value(row, "allocation_headcount")),
+    current_headcount: n(value(row, "current_headcount") || value(row, "headcount")),
     utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
   };
 }
@@ -142,7 +146,8 @@ function getUserValues(user) {
 function matchesOwner(owner, a) {
   const text = String(owner || "")
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/\s+/g, " ");
   if (!text || !a || !a.user) return false;
   const empId = String(a.user.empId || "")
     .trim()
@@ -150,12 +155,22 @@ function matchesOwner(owner, a) {
   const email = String(a.user.email || "")
     .trim()
     .toLowerCase();
-  const parts = text.match(/^(\S+)\s*-\s*(.+)$/);
-  const ownerId = parts ? parts[1] : text;
+
+  // Appraiser values use "Employee ID - Full Name". Employee IDs may
+  // themselves contain hyphens (e.g. WIS-1234), so split only on the
+  // spaced separator, never on a hyphen inside the ID.
+  const parts = text.split(/\s+-\s+/);
+  const ownerId = parts.length > 1 ? parts[0].trim() : text;
+  const ownerName = parts.length > 1 ? parts.slice(1).join(" - ").trim() : "";
+  const userValues = getUserValues(a.user).map((value) =>
+    String(value || "").trim().toLowerCase().replace(/\s+/g, " "),
+  );
   return Boolean(
-    (empId && ownerId === empId) ||
-    (email && text === email) ||
-    getUserValues(a.user).some((v) => v === text || v === ownerId),
+    (empId && (ownerId === empId || text === empId)) ||
+    (email && (text === email || ownerId === email)) ||
+    userValues.some((value) =>
+      value === text || value === ownerId || (ownerName && value === ownerName),
+    ),
   );
 }
 
@@ -451,8 +466,8 @@ function filterOwn(bundle, a) {
 
 function ownerKey(raw) {
   const text = String(raw || "").trim().toLowerCase().replace(/\s+/g, " ");
-  const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
-  return pair ? pair[1].toLowerCase() : text;
+  const parts = text.split(/\s+-\s+/);
+  return (parts.length > 1 ? parts[0] : text).trim();
 }
 
 function firstValue(row, names) {
@@ -497,10 +512,20 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   // Appraisal_Sheet is the source of truth for employee base, allocated PB,
   // Tech-ED and Comp Manager assignments. Do not depend on Payroll_Data cycle
   // foreign keys: those IDs are not the budget calculation source.
-  const appraisalRows = await getAllRows(app, "Appraisal_Sheet");
+  const [appraisalRows, masterEmployeeRows] = await Promise.all([
+    getAllRows(app, "Appraisal_Sheet"),
+    getAllRows(app, "Employee_Master").catch(() => []),
+  ]);
   if (!appraisalRows.length) {
     throw new Error("Appraisal_Sheet returned no rows; cannot calculate budget bases.");
   }
+  // Same rule as employeesapi: Appraisal_Sheet first, Employee_Master as the
+  // fallback (Comp Manager = director when the sheet has no comp_manager).
+  const masterByEmployee = new Map();
+  masterEmployeeRows.forEach((row) => {
+    const key = String(firstValue(row, ["emp_id", "empId", "employee_id"]) || "").trim().toLowerCase();
+    if (key) masterByEmployee.set(key, row);
+  });
 
   const appraisalByEmployee = new Map();
   appraisalRows.forEach((row) => {
@@ -509,9 +534,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const techEd = String(firstValue(row, [
       "appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_teched", "appraiserTechED", "appraiserTechEd", "tech_ed", "tech_ed_id", "techED", "techEd",
     ]) || "").trim();
+    const masterRow = masterByEmployee.get(employeeId) || {};
     const compManager = String(firstValue(row, [
       "comp_manager", "comp_manager_id", "comp_manager_name", "comp_manager_emp_id", "compManager", "compManagerId",
-    ]) || "").trim();
+    ]) || firstValue(masterRow, ["comp_manager", "director"]) || "").trim();
     const basePay = n(firstValue(row, [
       "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "currentBasePay", "base_pay", "basePay", "annual_base_pay", "annualBasePay",
     ]));
@@ -699,7 +725,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
           appraisal_cycle_id: cycleId,
           budget_distribution_id: String(parent.id),
           comp_manager: details.name,
-          percentage: 0,
+          // A new Comp Manager inherits the Tech-Ed's effective percentage,
+          // giving the assigned team an initial base-proportional allocation.
+          percentage: n(parent.effective_percentage ?? parent.percentage ?? master.budget_percentage),
           budget_base: 0,
           [compCalcField]: 0,
           applied_budget: 0,
@@ -834,7 +862,42 @@ module.exports = async function (req, res) {
 
     const body = await parseBody(req);
     const resource = String(body.resource || "master").toLowerCase();
-    const id = String(body.id || "").trim();
+    let id = String(body.id || "").trim();
+
+    // A Comp Manager in the Tech-ED's team may have no Budget_Distribution_Comp
+    // row yet: create it under the parent allocation, then update it below.
+    if (!id && (resource === "comp" || resource === "compmanager") && body.budget_distribution_id && String(body.comp_manager || "").trim()) {
+      const parentId = String(body.budget_distribution_id).trim();
+      const compName = String(body.comp_manager).trim();
+      const parent = (await getAllRows(app, "Budget_Distribution")).find((row) => idOf(row) === parentId);
+      if (!parent) {
+        return sendJson(res, 400, { success: false, message: "The parent Tech-Ed budget allocation was not found." });
+      }
+      const adminScope = Boolean(a && a.scope && a.scope.all);
+      if (a.enforced && !adminScope && !matchesOwner(value(parent, "appraiser_tech_ed_id"), a)) {
+        throw new access.HttpError(403, "You can only update Comp Manager budgets under your Tech-Ed.");
+      }
+      const existingComp = (await getAllRows(app, "Budget_Distribution_Comp")).find((row) =>
+        String(value(row, "budget_distribution_id")) === parentId && ownerKey(value(row, "comp_manager")) === ownerKey(compName),
+      );
+      if (existingComp) {
+        id = idOf(existingComp);
+      } else {
+        const compTable = app.datastore().table(TABLES.comp);
+        const calcField = pickColumn(await getColumnNames(compTable), ["calculated_budget", "claculated_budget"], "calculated_budget");
+        const created = await compTable.insertRow({
+          appraisal_cycle_id: String(value(parent, "appraisal_cycle_id")),
+          budget_distribution_id: parentId,
+          comp_manager: compName,
+          percentage: 0,
+          budget_base: n(body.budget_base),
+          [calcField]: 0,
+          applied_budget: 0,
+          total_utilization: 0,
+        });
+        id = idOf(created);
+      }
+    }
     if (!id)
       return sendJson(res, 400, {
         success: false,
@@ -887,6 +950,45 @@ module.exports = async function (req, res) {
         success: false,
         message: "Budget row not found.",
       });
+
+    if (resource === "comp" || resource === "compmanager") {
+      const requestedPercentage = Object.prototype.hasOwnProperty.call(body, "percentage")
+        ? Number(body.percentage)
+        : n(value(current, "percentage"));
+      if (!Number.isFinite(requestedPercentage) || requestedPercentage < 0 || requestedPercentage > 100) {
+        return sendJson(res, 400, {
+          success: false,
+          message: "Comp Manager allotment percentage must be between 0 and 100.",
+        });
+      }
+
+      const parentId = String(value(current, "budget_distribution_id") || "");
+      const parentRows = await getAllRows(app, "Budget_Distribution");
+      const parent = parentRows.find((row) => idOf(row) === parentId);
+      if (!parent) {
+        return sendJson(res, 400, {
+          success: false,
+          message: "The parent Tech-Ed budget allocation was not found.",
+        });
+      }
+
+      const requestedApplied = Object.prototype.hasOwnProperty.call(body, "applied_budget")
+        ? n(body.applied_budget)
+        : n(body.budget_base ?? value(current, "budget_base")) * requestedPercentage / 100;
+      const siblings = await getAllRows(app, "Budget_Distribution_Comp");
+      const totalAfter = siblings
+        .filter((row) => String(value(row, "budget_distribution_id") || "") === parentId && idOf(row) !== id)
+        .reduce((sum, row) => sum + n(value(row, "applied_budget")), 0) + requestedApplied;
+      const parentBudget = n(value(parent, "applied_budget"));
+      if (totalAfter > parentBudget + 0.5) {
+        return sendJson(res, 400, {
+          success: false,
+          message: "Allocation blocked: Comp Manager budgets would total " +
+            totalAfter.toFixed(2) + ", exceeding the Tech-Ed's available budget of " +
+            parentBudget.toFixed(2) + ". Reduce one or more Comp Manager percentages.",
+        });
+      }
+    }
 
     if (a.enforced && !isAdminScope) {
       if (

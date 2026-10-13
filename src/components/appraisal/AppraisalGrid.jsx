@@ -221,6 +221,12 @@ const numericValue = (value) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+// Valid: 20000, 20,000, 1,234.50, -500, .5  (empty is allowed = clearing the cell)
+const isValidNumericInput = (value) => {
+  if (value === "" || value === null || value === undefined) return true;
+  return /^[+-]?(\d+\.?\d*|\.\d+)$/.test(String(value).replace(/,/g, "").trim());
+};
+
 const formatEditableNumeric = (value, type) => {
   if (value === "" || value === null || value === undefined) return "";
   const number = Number(
@@ -591,8 +597,19 @@ const buildHistoryView = (
     records.find((record) => isCurrentYearRecord(record, currentCycleName)) ||
     emptyHistoryRecord(currentCycleName);
 
+  // CHANGED: hide the legacy duplicate row labelled with the hardcoded
+  // CURRENT_APPRAISAL_YEAR ("Apr-26") when the real current cycle has a
+  // different name (e.g. "Annual 2026").
+  const legacyCycleKey = normalizeCycleKey(CURRENT_APPRAISAL_YEAR);
+  const currentCycleKey = normalizeCycleKey(currentCycleName);
+
   const olderRecords = records.filter(
-    (record) => !isCurrentYearRecord(record, currentCycleName),
+    (record) =>
+      !isCurrentYearRecord(record, currentCycleName) &&
+      !(
+        legacyCycleKey !== currentCycleKey &&
+        normalizeCycleKey(record.cycleName) === legacyCycleKey
+      ),
   );
 
   return [
@@ -2620,6 +2637,11 @@ export function AppraisalGrid({
 
   const commit = useCallback(
     (row, col, raw, anchor) => {
+      // Invalid number (e.g. "20000hhhhh"): save nothing, keep the old value.
+      if (isNumericType(col.type) && !isValidNumericInput(raw)) {
+        return;
+      }
+
       if (col.key === "hikePct" || col.key === "hikeAmount") {
         const outcome =
           col.key === "hikePct"
@@ -3408,7 +3430,8 @@ export function AppraisalGrid({
 
             if (
               !liveToastCellsRef.current.has(cellKey) &&
-              String(storedValue) !== String(value)
+              String(storedValue) !== String(value) &&
+              (!isNumericType(col.type) || isValidNumericInput(value))
             ) {
               liveToastCellsRef.current.add(cellKey);
               if (YOY_FIELDS[col.key]) {
