@@ -371,6 +371,7 @@ async function readTechEdOwners(app) {
         readField(row, [
           "appraiser_tech_ed",
           "appraiser_tech_ed_id",
+          "appraiser_tech_ed1",
           "appraiser_teched",
           "tech_ed",
           "tech_ed_id",
@@ -449,6 +450,7 @@ async function readEmployeeRoster(app) {
         readField(row, [
           "appraiser_tech_ed",
           "appraiser_tech_ed_id",
+          "appraiser_tech_ed1",
           "appraiser_teched",
           "tech_ed",
           "tech_ed_id",
@@ -456,6 +458,7 @@ async function readEmployeeRoster(app) {
         readField(master, [
           "appraiser_tech_ed",
           "appraiser_tech_ed_id",
+          "appraiser_tech_ed1",
           "appraiser_teched",
           "tech_ed",
           "tech_ed_id",
