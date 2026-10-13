@@ -436,8 +436,8 @@ function filterOwn(bundle, a) {
 
 
 function ownerKey(raw) {
-  const text = String(raw || "").trim().toLowerCase().replace(/\\s+/g, " ");
-  const pair = text.match(/^([a-z]*\\d+)\\s*-\\s*(.+)$/i);
+  const text = String(raw || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
   return pair ? pair[1].toLowerCase() : text;
 }
 
@@ -451,10 +451,10 @@ function firstValue(row, names) {
 
 function cycleDate(row) {
   const raw = firstValue(row, ["effective_date", "effectiveDate", "start_date", "startDate"]);
-  const match = String(raw || "").match(/^\\d{4}-\\d{2}-\\d{2}/);
+  const match = String(raw || "").match(/^\d{4}-\d{2}-\d{2}/);
   if (match) return match[0];
   const name = String(firstValue(row, ["cycle_name", "cycleName", "name", "appraisal_year"]) || "");
-  const yearMatch = name.match(/(?:^|\\D)(20\\d{2}|\\d{2})(?:\\D|$)/);
+  const yearMatch = name.match(/(?:^|\D)(20\d{2}|\d{2})(?:\D|$)/);
   if (yearMatch) {
     const y = yearMatch[1].length === 2 ? 2000 + Number(yearMatch[1]) : Number(yearMatch[1]);
     const monthMatch = name.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i);
@@ -588,7 +588,14 @@ module.exports = async function (req, res) {
         readBundle(app),
         readTechEdOwners(app),
       ]);
-      const calculatedBundle = await calculateBudgetBases(app, rawBundle);
+      let calculatedBundle = rawBundle;
+      try {
+        calculatedBundle = await calculateBudgetBases(app, rawBundle);
+      } catch (calculationError) {
+        // Budget screens must remain available if optional historical payroll/cycle
+        // data is unavailable; retain the persisted budget percentages and amounts.
+        console.error("Budget base calculation skipped:", calculationError);
+      }
       const bundle = filterOwn(calculatedBundle, a);
       return sendJson(res, 200, {
         success: true,
