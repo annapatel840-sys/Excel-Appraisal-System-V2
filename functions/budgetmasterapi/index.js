@@ -466,8 +466,6 @@ function cycleDate(row) {
 }
 
 async function calculateBudgetBases(app, bundle) {
-  // Payroll rows are keyed to the employee and appraisal-cycle ROWIDs. Use the
-  // table IDs here so the calculation does not depend on the physical table name.
   const [payrollRows, cycleRows, appraisalRows, employeeMasterRows] = await Promise.all([
     readTableById(app, "74008000000035326"),
     readTableById(app, "74008000000034190"),
@@ -492,6 +490,8 @@ async function calculateBudgetBases(app, bundle) {
     if (rowId) employeeMasterByRef.set(rowId, row);
   });
 
+  // Payroll stores Employee_Master.ROWID in emp_id; normalize Appraisal Sheet
+  // assignments under both that ROWID and the business Employee ID.
   const assignments = new Map();
   appraisalRows.forEach((row) => {
     const employeeRef = String(firstValue(row, ["emp_id", "employee_id", "employee_master_id"]) || "").trim().toLowerCase();
@@ -507,62 +507,168 @@ async function calculateBudgetBases(app, bundle) {
     ].filter(Boolean).forEach((key) => assignments.set(key, assignment));
   });
 
+  const ownerLabels = new Map();
+  const compLabels = new Map();
+  assignments.forEach((assignment) => {
+    const teKey = ownerKey(assignment.techEd);
+    const cmKey = ownerKey(assignment.compManager);
+    if (teKey && !ownerLabels.has(teKey)) ownerLabels.set(teKey, assignment.techEd);
+    if (teKey && cmKey && !compLabels.has(teKey + "::" + cmKey)) {
+      compLabels.set(teKey + "::" + cmKey, {
+        techEdKey: teKey,
+        compKey: cmKey,
+        name: assignment.compManager,
+      });
+    }
+  });
+
+  const distributionTable = app.datastore().table(TABLES.distribution);
+  const compTable = app.datastore().table(TABLES.comp);
+  const masterTable = app.datastore().table(TABLES.master);
   const byTargetCycle = new Map();
-  bundle.master.forEach((master) => {
+
+  for (const master of bundle.master) {
     const targetId = String(master.appraisal_cycle_id || "");
     const targetIndex = cycles.findIndex((cycle) => cycle.id === targetId);
-    if (targetIndex < 0 || targetIndex === 0) {
+    if (targetIndex <= 0) {
       byTargetCycle.set(targetId, { orgBase: 0, techEd: new Map(), compManager: new Map(), sourceCycleId: "" });
-      return;
+      continue;
     }
+
     const sourceCycleId = cycles[targetIndex - 1].id;
     const baseByEmp = new Map();
     payrollRows.forEach((row) => {
-      if (String(firstValue(row, ["appraisal_cycle_name", "appraisal_cycle_id", "cycle_id"]) || "").trim() !== sourceCycleId) return;
+      const payrollCycle = String(firstValue(row, ["appraisal_cycle_name", "appraisal_cycle_id", "cycle_id"]) || "").trim();
+      if (payrollCycle !== sourceCycleId) return;
       const empId = String(firstValue(row, ["emp_id", "employee_id"]) || "").trim().toLowerCase();
       if (!empId) return;
-      const base = n(firstValue(row, ["current_annual_base_pay", "base_pay", "previous_base_pay"]))
-        + n(firstValue(row, ["joining_bonus", "previous_joining_bonus"]))
-        + n(firstValue(row, ["retention_bonus", "previous_retention_bonus"]))
-        + n(firstValue(row, ["hike_amount", "hike_amt", "previous_hike_amount"]))
-        + n(firstValue(row, ["performance_bonus", "total_pb", "previous_performance_bonus"]));
+      // Use the actual Payroll_Data columns. Each reward is counted once.
+      const base =
+        n(firstValue(row, ["current_annual_base_pay", "base_pay", "previous_base_pay"])) +
+        n(firstValue(row, ["joining_bonus", "previous_joining_bonus"])) +
+        n(firstValue(row, ["retention_bonus", "previous_retention_bonus"])) +
+        n(firstValue(row, ["hike_amount", "hike_amt", "previous_hike_amount"])) +
+        n(firstValue(row, ["performance_bonus", "total_pb", "previous_performance_bonus"]));
       baseByEmp.set(empId, base);
     });
+
     let orgBase = 0;
-    const techEd = new Map();
-    const compManager = new Map();
+    const techEdBases = new Map(Array.from(ownerLabels.keys(), (key) => [key, 0]));
+    const compBases = new Map(Array.from(compLabels.keys(), (key) => [key, 0]));
     baseByEmp.forEach((base, empId) => {
       orgBase += base;
       const assignment = assignments.get(empId);
       if (!assignment) return;
       const teKey = ownerKey(assignment.techEd);
       const cmKey = ownerKey(assignment.compManager);
-      if (teKey) techEd.set(teKey, (techEd.get(teKey) || 0) + base);
-      if (teKey && cmKey) compManager.set(teKey + "::" + cmKey, (compManager.get(teKey + "::" + cmKey) || 0) + base);
+      if (teKey) techEdBases.set(teKey, (techEdBases.get(teKey) || 0) + base);
+      if (teKey && cmKey) {
+        const key = teKey + "::" + cmKey;
+        compBases.set(key, (compBases.get(key) || 0) + base);
+      }
     });
-    byTargetCycle.set(targetId, { orgBase, techEd, compManager, sourceCycleId });
-  });
 
-  bundle.master = bundle.master.map((row) => {
+    byTargetCycle.set(targetId, { orgBase, techEd: techEdBases, compManager: compBases, sourceCycleId });
+
+    // Ensure each assigned Tech-Ed has a real persisted row for this cycle.
+    // Existing percentages and applied budgets are preserved.
+    for (const [teKey, owner] of ownerLabels) {
+      let row = bundle.techEd.find((item) =>
+        String(item.appraisal_cycle_id) === targetId && ownerKey(item.appraiser_tech_ed_id) === teKey
+      );
+      if (!row && sourceCycleId) {
+        const pct = n(master.budget_percentage);
+        const base = n(techEdBases.get(teKey));
+        const created = await distributionTable.insertRow({
+          appraisal_cycle_id: targetId,
+          appraiser_tech_ed_id: owner,
+          percentage: pct,
+          budget_base: base,
+          claculated_budget: base * pct / 100,
+          applied_budget: 0,
+          total_utilization: 0,
+        });
+        row = mapDistribution(created);
+        bundle.techEd.push(row);
+      }
+    }
+
+    // Persist a Comp Manager row for each actual Tech-Ed/Comp Manager assignment.
+    for (const [pairKey, details] of compLabels) {
+      const parent = bundle.techEd.find((item) =>
+        String(item.appraisal_cycle_id) === targetId && ownerKey(item.appraiser_tech_ed_id) === details.techEdKey
+      );
+      if (!parent) continue;
+      let row = bundle.compManager.find((item) =>
+        String(item.appraisal_cycle_id) === targetId &&
+        String(item.budget_distribution_id) === String(parent.id) &&
+        ownerKey(item.comp_manager) === details.compKey
+      );
+      if (!row && sourceCycleId) {
+        const pct = n(parent.percentage);
+        const base = n(compBases.get(pairKey));
+        const created = await compTable.insertRow({
+          appraisal_cycle_id: targetId,
+          budget_distribution_id: String(parent.id),
+          comp_manager: details.name,
+          percentage: pct,
+          budget_base: base,
+          calculated_budget: base * pct / 100,
+          applied_budget: 0,
+          total_utilization: 0,
+        });
+        row = mapComp(created);
+        bundle.compManager.push(row);
+      }
+    }
+  }
+
+  // Calculate from the preceding cycle and write Original Budget/base to Data Store.
+  // applied_budget is intentionally never changed by this calculation.
+  bundle.master = await Promise.all(bundle.master.map(async (row) => {
     const bases = byTargetCycle.get(String(row.appraisal_cycle_id)) || {};
-    const base = n(bases.orgBase) || n(row.org_budget_base);
+    const computedBase = n(bases.orgBase);
+    const base = computedBase > 0 ? computedBase : n(row.org_budget_base);
     const pct = n(row.budget_percentage);
-    return { ...row, appraisal_cycle_name: (cycles.find((cycle) => cycle.id === String(row.appraisal_cycle_id)) || {}).name || String(row.appraisal_cycle_id), org_budget_base: base, source_payroll_cycle_id: bases.sourceCycleId || "", calculated_budget: base > 0 ? base * pct / 100 : n(row.calculated_budget) };
-  });
-  bundle.techEd = bundle.techEd.map((row) => {
+    const calculated = base > 0 ? base * pct / 100 : n(row.calculated_budget);
+    if (computedBase > 0 && row.id) {
+      await masterTable.updateRow({ ROWID: row.id, org_budget_base: base, calculated_budget: calculated });
+    }
+    return {
+      ...row,
+      appraisal_cycle_name: (cycles.find((cycle) => cycle.id === String(row.appraisal_cycle_id)) || {}).name || String(row.appraisal_cycle_id),
+      org_budget_base: base,
+      source_payroll_cycle_id: bases.sourceCycleId || "",
+      calculated_budget: calculated,
+    };
+  }));
+
+  bundle.techEd = await Promise.all(bundle.techEd.map(async (row) => {
     const bases = byTargetCycle.get(String(row.appraisal_cycle_id)) || {};
-    const base = n(bases.techEd && bases.techEd.get(ownerKey(row.appraiser_tech_ed_id))) || n(row.budget_base);
+    const computedBase = n(bases.techEd && bases.techEd.get(ownerKey(row.appraiser_tech_ed_id)));
+    const base = computedBase > 0 ? computedBase : n(row.budget_base);
     const pct = n(row.percentage);
-    return { ...row, budget_base: base, calculated_budget: base > 0 ? base * pct / 100 : n(row.calculated_budget) };
-  });
-  bundle.compManager = bundle.compManager.map((row) => {
+    const calculated = base > 0 ? base * pct / 100 : n(row.calculated_budget);
+    if (base > 0 && row.id) {
+      await distributionTable.updateRow({ ROWID: row.id, budget_base: base, claculated_budget: calculated });
+    }
+    return { ...row, budget_base: base, calculated_budget: calculated };
+  }));
+
+  bundle.compManager = await Promise.all(bundle.compManager.map(async (row) => {
     const parent = bundle.techEd.find((item) => String(item.id) === String(row.budget_distribution_id));
     const bases = byTargetCycle.get(String(row.appraisal_cycle_id)) || {};
     const key = ownerKey(parent && parent.appraiser_tech_ed_id) + "::" + ownerKey(row.comp_manager);
-    const base = n(bases.compManager && bases.compManager.get(key)) || n(row.budget_base);
+    const computedBase = n(bases.compManager && bases.compManager.get(key));
+    const base = computedBase > 0 ? computedBase : n(row.budget_base);
     const pct = n(row.percentage);
-    return { ...row, budget_base: base, calculated_budget: base > 0 ? base * pct / 100 : n(row.calculated_budget) };
-  });
+    const calculated = base > 0 ? base * pct / 100 : n(row.calculated_budget);
+    if (base > 0 && row.id) {
+      await compTable.updateRow({ ROWID: row.id, budget_base: base, calculated_budget: calculated });
+    }
+    return { ...row, budget_base: base, calculated_budget: calculated };
+  }));
+
   return bundle;
 }
 
