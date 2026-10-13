@@ -239,7 +239,7 @@ export function TechEdBudgetDistribution() {
         ...cm,
         pct0: num(cm.pct0) || pct,
         pct,
-        base: pct ? (calculated * 100) / pct : demoBase,
+        base: num(live.budget_base) || (pct ? (calculated * 100) / pct : demoBase),
         liveId: live.id,
         liveCalculated: calculated,
         liveApplied: num(live.applied_budget),
@@ -318,8 +318,8 @@ export function TechEdBudgetDistribution() {
     if (live && node.liveId) {
       updateBudget(node.liveId, {
         percentage: to,
-        calculated_budget: node.liveCalculated || newUpd,
-        applied_budget: newUpd,
+        budget_base: node.base,
+        calculated_budget: newUpd,
       }, "comp").catch((error) => setErr(error.message || "Failed to save Comp Manager budget."));
     }
     setLog((l) => [...l, { name, from: node.pct, to, by: myName, date: t.date, time: t.time, before: node.updated, after: newUpd, reason: reason.trim() }]);
