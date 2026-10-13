@@ -91,7 +91,7 @@ function ownerName(value, employees = []) {
 function amount(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (value === null || value === undefined || value === "") return 0;
-  const n = Number(String(value).trim().replace(/[₹,\\s]/g, "").replace(/^(?:INR|Rs\\.?)/i, ""));
+  const n = Number(String(value).trim().replace(/[₹,\s]/g, "").replace(/^(?:INR|Rs\.?)/i, ""));
   return Number.isFinite(n) ? n : 0;
 }
 
