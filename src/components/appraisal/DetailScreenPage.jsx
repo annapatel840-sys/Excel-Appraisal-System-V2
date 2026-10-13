@@ -639,7 +639,7 @@ function ReadOnlyInput({ value, bold }) {
       readOnly
       disabled
       value={value}
-      className="h-[27px] w-full min-w-0 rounded border px-2 text-[13.5px]"
+      className="h-[36px] w-full min-w-0 rounded border px-2.5 text-[15.5px]"
       style={{
         borderColor: "#D9E1E6",
         background: "#F3F6F7",
@@ -695,7 +695,7 @@ function EditInput({
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
       }}
-      className={`h-[26px] w-full min-w-0 rounded border px-2 text-[13.5px] outline-none focus:border-[#0B7A75] ${className}`}
+      className={`h-[36px] w-full min-w-0 rounded border px-2.5 text-[15.5px] outline-none focus:border-[#0B7A75] ${className}`}
       style={
         invalid
           ? {
@@ -836,7 +836,7 @@ function HikeDiffInputs({
 }
 
 /* ---- Detail-screen field table: Description | Previous year | This year | Diff ---- */
-const FIELD_COLS = "minmax(140px,0.9fr) minmax(190px,1.2fr) minmax(250px,1.8fr) minmax(90px,0.6fr)";
+const FIELD_COLS = "minmax(150px,0.9fr) minmax(200px,1.2fr) minmax(280px,1.9fr) minmax(100px,0.6fr)";
 
 function FieldHead({ children, right }) {
   return (
@@ -845,10 +845,10 @@ function FieldHead({ children, right }) {
         background: "#F4F7FA",
         color: MUTED,
         fontWeight: 700,
-        fontSize: 11.5,
+        fontSize: 12.5,
         letterSpacing: ".04em",
         textTransform: "uppercase",
-        padding: "9px 12px",
+        padding: "11px 12px",
         textAlign: right ? "right" : "left",
         borderBottom: `1px solid ${LINE}`,
         borderRight: right ? "none" : `1px solid ${LINE}`,
@@ -868,9 +868,9 @@ function FieldCell({ children, label, right, last }) {
         justifyContent: label ? "flex-start" : "center",
         alignItems: right ? "flex-end" : "stretch",
         gap: 3,
-        padding: label ? "8px 12px" : "4px 10px",
+        padding: label ? "10px 12px" : "6px 10px",
         minWidth: 0,
-        fontSize: label ? 14 : 13.5,
+        fontSize: label ? 16 : 15,
         fontWeight: label ? 700 : 400,
         color: INK,
         borderBottom: `1px solid ${LINE}`,
@@ -882,7 +882,7 @@ function FieldCell({ children, label, right, last }) {
   );
 }
 
-const subNote = { fontSize: 11.5, color: MUTED, lineHeight: 1.25 };
+const subNote = { fontSize: 12.5, color: MUTED, lineHeight: 1.3 };
 
 // Green / red signed difference with a small caption underneath.
 function DiffValue({ value, caption }) {
@@ -890,7 +890,7 @@ function DiffValue({ value, caption }) {
   const color = value < 0 ? RED : value > 0 ? GREEN : MUTED;
   return (
     <>
-      <span style={{ color, fontWeight: 800, fontSize: 14 }}>
+      <span style={{ color, fontWeight: 800, fontSize: 16 }}>
         {signedNum(value)}
       </span>
       {caption ? <span style={subNote}>{caption}</span> : null}
@@ -1497,29 +1497,30 @@ export function DetailScreenPage({
                     {dash(employee.reportingManager)}
                   </div>
                 </div>
-                <NotesButton employee={employee} />
-              </div>
-
-              <div
-                className="flex shrink-0 items-center gap-1.5 border-b px-2.5 py-1"
-                style={{ borderColor: LINE }}
-              >
-                <input
-                  type="text"
-                  value={search}
-                  onChange={(e) => handleSearch(e.target.value)}
-                  placeholder="Search your team by name or employee ID"
-                  aria-label="Search your team"
-                  className="h-[36px] flex-1 rounded-md border px-3 text-[14px] outline-none focus:border-[#0B7A75]"
-                  style={{ borderColor: "#9AA7B4" }}
-                />
-                <span
-                  title={`Scope: ${scopeLabel}`}
-                  className="whitespace-nowrap rounded px-2 py-0.5 text-[11.5px] font-semibold"
-                  style={{ background: "#E6F3F2", color: "#0B5F5B" }}
-                >
-                  {rows.length}
-                </span>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => handleSearch(e.target.value)}
+                    placeholder="Search name or ID"
+                    aria-label="Search your team"
+                    title="Search your team by name or employee ID"
+                    className="h-[30px] w-[210px] rounded-md border px-2.5 text-[13px] outline-none focus:border-[#7CE0C3]"
+                    style={{
+                      borderColor: "rgba(255,255,255,.35)",
+                      background: "rgba(255,255,255,.95)",
+                      color: INK,
+                    }}
+                  />
+                  <span
+                    title={`Scope: ${scopeLabel}`}
+                    className="whitespace-nowrap rounded px-2 py-0.5 text-[12px] font-semibold"
+                    style={{ background: "#E6F3F2", color: "#0B5F5B" }}
+                  >
+                    {rows.length}
+                  </span>
+                  <NotesButton employee={employee} />
+                </div>
               </div>
 
               {/* Table area: takes all leftover height; content is scaled to fit it */}
@@ -1564,7 +1565,7 @@ export function DetailScreenPage({
                     const lab = { ...subNote, textAlign: "center" };
                     return (
                       <div
-                        className="grid text-[13.5px]"
+                        className="grid text-[15px]"
                         style={{ gridTemplateColumns: FIELD_COLS }}
                       >
                         <FieldHead>Description</FieldHead>
@@ -1713,7 +1714,7 @@ export function DetailScreenPage({
                                   : String(employee.pbInstallment)
                               }
                               onChange={(e) => commit("pbInstallment", e.target.value)}
-                              className="h-[26px] w-[56px] shrink-0 rounded border px-1 text-[12.5px] outline-none focus:border-[#0B7A75]"
+                              className="h-[36px] w-[64px] shrink-0 rounded border px-1 text-[14.5px] outline-none focus:border-[#0B7A75]"
                               style={fieldStyle(isEdited("pbInstallment"))}
                             >
                               <option value="">—</option>
@@ -1863,7 +1864,7 @@ export function DetailScreenPage({
                             defaultValue={blankStr(employee.targetPBCriteria)}
                             onBlur={(e) => commit("targetPBCriteria", e.target.value)}
                             rows={2}
-                            className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[13.5px] outline-none focus:border-[#0B7A75]"
+                            className="w-full min-w-0 resize-none rounded border px-2.5 py-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
                             style={fieldStyle(isEdited("targetPBCriteria"))}
                           />
                         </FieldRow>
@@ -1882,7 +1883,7 @@ export function DetailScreenPage({
                             key={`${employee.id}-newTitle`}
                             value={employee.newTitle || employee.designation || ""}
                             onChange={(e) => handleNewTitleChange(e.target.value)}
-                            className="h-[28px] w-full min-w-0 rounded border px-1 text-[13px] outline-none focus:border-[#0B7A75]"
+                            className="h-[36px] w-full min-w-0 rounded border px-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
                             style={fieldStyle(isEdited("newTitle"))}
                           >
                             {titleOptions.map((t) => {
@@ -1914,7 +1915,7 @@ export function DetailScreenPage({
                             onBlur={(e) => commit("compManagerRemarks", e.target.value)}
                             rows={2}
                             placeholder="Add remarks for this cycle"
-                            className="w-full min-w-0 resize-none rounded border px-2 py-1 text-[13.5px] outline-none focus:border-[#0B7A75]"
+                            className="w-full min-w-0 resize-none rounded border px-2.5 py-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
                             style={fieldStyle(isEdited("compManagerRemarks"))}
                           />
                         </FieldRow>
