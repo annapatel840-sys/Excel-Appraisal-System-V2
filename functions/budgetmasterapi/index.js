@@ -38,6 +38,7 @@ function mapMaster(row) {
     id: idOf(row),
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
     budget_percentage: n(value(row, "budget_percentage")),
+    org_budget_base: n(value(row, "org_budget_base")),
     budget_utilized: utilized,
     calculated_budget: calculated,
     applied_budget: applied,
@@ -63,6 +64,7 @@ function mapDistribution(row) {
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
     appraiser_tech_ed_id: String(value(row, "appraiser_tech_ed_id")),
     percentage: n(value(row, "percentage")),
+    budget_base: n(value(row, "budget_base")),
     calculated_budget: calculated,
     total_utilization: utilized,
     applied_budget: applied,
@@ -77,6 +79,7 @@ function mapComp(row) {
     id: idOf(row),
     comp_manager: String(value(row, "comp_manager")),
     percentage: n(value(row, "percentage")),
+    budget_base: n(value(row, "budget_base")),
     calculated_budget: n(value(row, "calculated_budget")),
     total_utilization: utilized,
     applied_budget: applied,
@@ -562,12 +565,14 @@ module.exports = async function (req, res) {
     const fieldsByResource = {
       master: [
         "budget_percentage",
+        "org_budget_base",
         "budget_utilized",
         "calculated_budget",
         "applied_budget",
       ],
       distribution: [
         "percentage",
+        "budget_base",
         "claculated_budget",
         "total_utilization",
         "applied_budget",
@@ -576,6 +581,7 @@ module.exports = async function (req, res) {
       ],
       comp: [
         "percentage",
+        "budget_base",
         "calculated_budget",
         "total_utilization",
         "applied_budget",
@@ -618,6 +624,8 @@ module.exports = async function (req, res) {
           changed.some((key) =>
             [
               "budget_percentage",
+              "org_budget_base",
+              "budget_base",
               "percentage",
               "calculated_budget",
               "claculated_budget",
