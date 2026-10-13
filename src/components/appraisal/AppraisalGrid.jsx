@@ -1146,7 +1146,7 @@ function EmployeePanel({
     }
 
     // other
-    return <PanelInfo>No Other Available</PanelInfo>;
+    return <PanelInfo>No Other Feedback Available</PanelInfo>;
   };
 
   // ---------- REQUEST (Tech Ed login only) ----------
