@@ -16,6 +16,12 @@ import { useCatalystUser } from "./catalyst-auth";
 const CURRENT_USER = "Unknown user";
 const APPRAISAL_YEAR = "Apr-26";
 
+// CHANGED: grid edits no longer write to Payroll_Data (history). The current
+// cycle row in the History panel is computed live from the sheet, and writing
+// with the hardcoded "Apr-26" label created a duplicate history row.
+// Set to true to turn history writes back on.
+const WRITE_CURRENT_CYCLE_HISTORY = false;
+
 const AppraisalContext = createContext(null);
 
 let seq = 0;
@@ -478,6 +484,10 @@ const savePreviousAppraisalChangeToCatalyst = async ({
   key,
   newValue,
 }) => {
+  if (!WRITE_CURRENT_CYCLE_HISTORY) {
+    return null;
+  }
+
   const historyField = REACT_TO_HISTORY_FIELD[key];
 
   if (!historyField) {
@@ -512,6 +522,10 @@ const savePreviousAppraisalChangesToCatalyst = async ({
   empId,
   fieldValues,
 }) => {
+  if (!WRITE_CURRENT_CYCLE_HISTORY) {
+    return null;
+  }
+
   const historyPayload = {
     emp_id: String(empId),
     appraisal_year: APPRAISAL_YEAR,

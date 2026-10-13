@@ -573,7 +573,20 @@ const buildHistoryView = (records, row, currentCycleName = CURRENT_APPRAISAL_YEA
     records.find((record) => isCurrentYearRecord(record, currentCycleName)) ||
     emptyHistoryRecord(currentCycleName);
 
-  const olderRecords = records.filter((record) => !isCurrentYearRecord(record, currentCycleName));
+  // CHANGED: hide the legacy duplicate row labelled with the hardcoded
+  // CURRENT_APPRAISAL_YEAR ("Apr-26") when the real current cycle has a
+  // different name (e.g. "Annual 2026").
+  const legacyCycleKey = normalizeCycleKey(CURRENT_APPRAISAL_YEAR);
+  const currentCycleKey = normalizeCycleKey(currentCycleName);
+
+  const olderRecords = records.filter(
+    (record) =>
+      !isCurrentYearRecord(record, currentCycleName) &&
+      !(
+        legacyCycleKey !== currentCycleKey &&
+        normalizeCycleKey(record.cycleName) === legacyCycleKey
+      ),
+  );
 
   // olderRecords are already sorted newest first, so [0] is the previous cycle.
   return [
