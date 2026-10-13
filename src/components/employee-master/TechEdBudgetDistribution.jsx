@@ -88,10 +88,12 @@ export function TechEdBudgetDistribution() {
   } = useBudget();
   const myName = user?.name || "Unknown user";
   const liveTech = useMemo(() => {
-    const name = String(myName).trim().toLowerCase();
-    return budgetDistributionRows.find((r) => {
-      const owner = String(r.appraiser_tech_ed_id || "").trim().toLowerCase();
-      return owner && (owner === name || owner.includes(name) || name.includes(owner));
+    const identities = [myName, user?.email, user?.empId, user?.employeeId]
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean);
+    return budgetDistributionRows.find((row) => {
+      const owner = String(row.appraiser_tech_ed_id || "").trim().toLowerCase();
+      return owner && identities.some((identity) => owner === identity || owner.includes(identity) || identity.includes(owner));
     }) || null;
   }, [budgetDistributionRows, myName]);
   const liveComps = useMemo(
@@ -180,10 +182,10 @@ export function TechEdBudgetDistribution() {
     if (!(to >= 0) || to === node.pct) return;
     const newUpd = (node.base * to) / 100;
     const sum = allotted - node.updated + newUpd;
-    if (sum > myUpdated + 0.5) {
+    if (sum > myOriginal + 0.5) {
       setErr(
         "Blocked: " + to + "% for " + name + " would take total allotted to " + lakh(sum) + ", which is " +
-          lakh(sum - myUpdated) + " more than your updated budget of " + lakh(myUpdated) + ".",
+          lakh(sum - myUpdated) + " more than your original budget of " + lakh(myOriginal) + ".",
       );
       return;
     }
