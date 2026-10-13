@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useBudget } from "@/lib/budget-store";
-import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { TechEdBudgetMasterPage } from "./TechEdBudgetMasterPage";
 
 const NAVY = "#12304f";
@@ -428,31 +427,8 @@ function HRApplyBudget() {
 
   const orgCell = "shrink-0 min-w-[170px] border-r border-[#d7dce3] px-[22px] py-4";
 
-  // The Appraisal Cycle shown under Org Budget is read-only: it always shows
-  // the current (active) appraisal cycle, using the same cycles list the Bulk
-  // Edit screen reads.
-  const [currentCycle, setCurrentCycle] = useState("Apr-26");
-  useEffect(() => {
-    let alive = true;
-    payrollCycleRequest("cycles")
-      .then((data) => {
-        const list = Array.isArray(data) ? data : [];
-        const active =
-          list.find(
-            (cycle) =>
-              String(cycle?.status || "").trim().toLowerCase() === "active" &&
-              !cycle?.archived &&
-              !cycle?.hidden,
-          ) ||
-          list.find((cycle) => !cycle?.archived) ||
-          list[0];
-        if (alive && active?.name) setCurrentCycle(String(active.name));
-      })
-      .catch(() => {});
-    return () => {
-      alive = false;
-    };
-  }, []);
+  const appraisalCycles = ["Apr-26"];
+  const [selectedCycle, setSelectedCycle] = useState(appraisalCycles[0]);
 
   return (
     <div className="flex flex-col gap-2">
@@ -488,20 +464,20 @@ function HRApplyBudget() {
               <div className="text-[11px] font-medium text-[#5b6b80]">
                 Appraisal Cycle
               </div>
-              <input
-                type="text"
-                value={currentCycle}
+              <select
                 disabled
-                readOnly
-                aria-label="Appraisal Cycle (current)"
+                aria-disabled="true"
+                value={selectedCycle}
+                onChange={(e) => setSelectedCycle(e.target.value)}
                 className="mt-1 h-[38px] min-w-[140px] cursor-not-allowed rounded border border-[#14a3a3] bg-[#f4f7fa] px-2 text-[13px] font-bold text-[#12304f] outline-none"
-                style={{
-                  opacity: 1,
-                  color: "#12304f",
-                  WebkitTextFillColor: "#12304f",
-                  width: `${Math.max(14, currentCycle.length + 4)}ch`,
-                }}
-              />
+                style={{ opacity: 1, color: "#12304f", WebkitTextFillColor: "#12304f" }}
+              >
+                {appraisalCycles.map((cycle) => (
+                  <option key={cycle} value={cycle}>
+                    {cycle}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className={orgCell}>
               <div className="text-[11px] font-medium text-[#5b6b80]">
