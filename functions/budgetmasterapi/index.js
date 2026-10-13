@@ -63,7 +63,9 @@ function mapDistribution(row) {
     id: idOf(row),
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
     appraiser_tech_ed_id: String(value(row, "appraiser_tech_ed_id")),
-    percentage: n(value(row, "percentage")),
+    percentage: value(row, "percentage") === "" || value(row, "percentage") === null || value(row, "percentage") === undefined
+      ? null
+      : n(value(row, "percentage")),
     budget_base: n(value(row, "budget_base")),
     calculated_budget: calculated,
     total_utilization: utilized,
@@ -621,6 +623,9 @@ async function calculateBudgetBases(app, bundle) {
         [distCalcField]: originalBudget,
         applied_budget: updatedBudget,
       };
+      // A Tech-ED at the Org % inherits the default. Store null in the
+      // override field so future Org % changes flow through automatically.
+      if (rawPct === null || rawPct === orgPct) update.percentage = null;
       if (distributionColumns) {
         const originalBaseField = ["original_budget_base", "original_base"].find((key) => distributionColumns.has(key));
         const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => distributionColumns.has(key));
@@ -636,6 +641,8 @@ async function calculateBudgetBases(app, bundle) {
       await distributionTable.updateRow(update);
       Object.assign(row, {
         budget_base: stats.base,
+        percentage: effectivePct,
+        override_percentage: rawPct === null || rawPct === orgPct ? null : rawPct,
         calculated_budget: originalBudget,
         applied_budget: updatedBudget,
         effective_percentage: effectivePct,
@@ -763,9 +770,14 @@ module.exports = async function (req, res) {
       try {
         calculatedBundle = await calculateBudgetBases(app, rawBundle);
       } catch (calculationError) {
-        // Budget screens must remain available if optional historical payroll/cycle
-        // data is unavailable; retain the persisted budget percentages and amounts.
-        console.error("Budget base calculation skipped:", calculationError);
+        // Never report a successful zero-budget response when source calculations
+        // failed. Return the actionable source/schema error to the frontend.
+        console.error("Budget base calculation failed:", calculationError);
+        return sendJson(res, 500, {
+          success: false,
+          message: "Could not calculate budget from Appraisal_Sheet: " +
+            String(calculationError && calculationError.message || calculationError),
+        });
       }
       const bundle = filterOwn(calculatedBundle, a);
       return sendJson(res, 200, {
