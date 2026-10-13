@@ -13,7 +13,10 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 const BudgetContext = createContext(null);
 
 function number(value) {
-  const n = Number(value);
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (value === null || value === undefined || value === "") return 0;
+  const text = String(value).trim().replace(/[₹,\\s]/g, "").replace(/^(?:INR|Rs\\.?)/i, "");
+  const n = Number(text);
   return Number.isFinite(n) ? n : 0;
 }
 
