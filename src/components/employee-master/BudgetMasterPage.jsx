@@ -601,10 +601,11 @@ function HRApplyBudget() {
               <div className="text-[11px] font-medium text-[#5b6b80]">
                 Active Appraisal Cycle
               </div>
+
               <div
                 className="mt-1 flex h-[38px] min-w-[180px] items-center rounded border border-[#14a3a3] bg-[#f4f7fa] px-3 text-[13px] font-bold text-[#12304f]"
                 aria-label="Currently active appraisal cycle"
-                title={activeCycle?.name || "No active cycle"}
+                title={activeCycle?.name || "No active cycle"}            
               >
                 {cycleLoading ? "Loading active cycle…" : activeCycle?.name || "No active cycle"}
               </div>
