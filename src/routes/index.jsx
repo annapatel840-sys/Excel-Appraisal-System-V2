@@ -303,6 +303,7 @@ export function Dashboard() {
               </CardHeader>
               <CardContent>
                 <StackedColumnChart
+                  wrapLabels
                   columns={mgrStats.map((m) => ({
                     label: m.name,
                     sub: `HC ${m.headcount}`,
