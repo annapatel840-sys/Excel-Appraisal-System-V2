@@ -7,9 +7,9 @@ import { useAppraisal } from "@/lib/appraisal-store";
 import { TechEdBudgetDistribution } from "./TechEdBudgetDistribution";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
  
-// Exact rupee amount with Indian grouping (no lakh rounding), e.g. ₹ 12,34,567.50
+// Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
 const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-const money = (value) => "₹ " + INR.format(Number(value) || 0);
+const money = (value) => INR.format(Number(value) || 0);
  
 const pct = (value) => (Number(value) || 0).toFixed(1) + "%";
  
