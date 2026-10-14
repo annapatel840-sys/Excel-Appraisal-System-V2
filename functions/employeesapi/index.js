@@ -616,7 +616,7 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       comp_manager_display: (() => {
         const raw = String(row.comp_manager || master.director || "").trim();
         if (!raw) return "";
-        const key = raw.split(/\\s+-\\s+/)[0].trim();
+        const key = raw.split(/\s+-\s+/)[0].trim();
         const manager = employeeMasterMap.get(raw) ||
           employeeMasterMap.get(raw.toLowerCase()) ||
           employeeMasterMap.get(key) ||
