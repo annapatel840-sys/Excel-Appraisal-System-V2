@@ -742,15 +742,14 @@ export function AppraisalCycleMasterPage({
   const createCycle = async () => {
     const f = newForm;
     const name = newName(f);
+    if (!f.effective) {
+      return setModalError("The effective date is required.");
+    }
     if (f.process !== "None") {
-      if (!f.effective || !f.start || !f.end)
-        return setModalError(
-          "Effective, start and close dates are all required.",
-        );
+      if (!f.start || !f.end)
+        return setModalError("Start and close dates are required.");
       if (f.end <= f.start)
         return setModalError("The close date must be after the start date.");
-    } else if (!f.effective) {
-      return setModalError("The effective date is required.");
     }
     if (f.remarks.length > 10000)
       return setModalError("Remarks cannot exceed 10,000 characters.");
@@ -2261,6 +2260,8 @@ export function AppraisalCycleMasterPage({
           <input
             type="date"
             style={{ width: "100%" }}
+            required
+            aria-required="true"
             disabled={saving}
             value={newForm.effective}
             onChange={(e) =>
