@@ -505,7 +505,7 @@ const ALLOWED_FIELDS = [
   "eligible_status",
   "joining_bonus",
   "target_PB_criteria",
-  "comp_manager_rewards",
+  "comp_manager_remarks",
 ];
 
 function pickAllowedFields(body) {
