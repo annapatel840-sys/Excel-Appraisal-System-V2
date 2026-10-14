@@ -97,6 +97,8 @@ The "HR Operations" menu item shows when the user can see at least one of its ta
 | hikeAmount | input | | hike_amount |
 | hikePct | pair | pairOf hikeAmount | hike_pct |
 | targetPBNextYear | input | | target_pb_next_year |
+| targetPBCriteria | input | | target_PB_criteria |
+| compManagerRemarks | input | | comp_manager_remarks |
 | eligibleForPromotion | input | | eligible_for_promotion |
 | newTitle | input | | new_title |
 | atRisk | input | | at_risk |
