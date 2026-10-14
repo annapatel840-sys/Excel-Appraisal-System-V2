@@ -1183,8 +1183,14 @@ module.exports = async function (req, res) {
     }
     const update = { ROWID: id };
     fields.forEach((key) => {
-      if (Object.prototype.hasOwnProperty.call(body, key))
+      if (Object.prototype.hasOwnProperty.call(body, key)) {
         update[key] = body[key];
+        // Store the stable business employee ID in the varchar Tech-Ed field,
+        // even when the UI submits the friendly "Employee ID - Name" label.
+        if (resource === "distribution" && key === "appraiser_tech_ed_id") {
+          update[key] = String(body[key] || "").trim().split(/\s+-\s+/)[0].slice(0, 20);
+        }
+      }
       // Frontend uses calculated_budget. Persist to whichever calculated
       // amount column actually exists in this Data Store table.
       if (
