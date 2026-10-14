@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 
-export function StackedColumnChart({ columns, height = 190 }) {
+export function StackedColumnChart({ columns, height = 190, wrapLabels = false }) {
   const maxValue = Math.max(1, ...columns.flatMap((c) => c.bars.map((b) => b.total)));
   const barArea = height - 60;
   const minColumnWidth = 116;
@@ -48,7 +48,17 @@ export function StackedColumnChart({ columns, height = 190 }) {
 
           <div className="w-full border-t border-border" />
 
-          <div className="truncate text-xs font-medium text-foreground">{col.label}</div>
+          <div
+            className={cn(
+              "w-full max-w-full text-xs font-medium text-foreground",
+              wrapLabels
+                ? "min-h-8 whitespace-normal break-words text-center leading-tight"
+                : "truncate",
+            )}
+            title={col.label}
+          >
+            {col.label}
+          </div>
 
           {col.sub && <div className="truncate text-[11px] text-muted-foreground">{col.sub}</div>}
 
