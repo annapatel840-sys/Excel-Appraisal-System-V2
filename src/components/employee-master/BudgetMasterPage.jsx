@@ -365,14 +365,28 @@ function HRApplyBudget() {
       const owner = row.appraiser_tech_ed_id || "";
       const key = resolveTechOwnerKey(owner);
       if (!key || !ownerValues.has(key)) return;
+      // Multiple legacy records may point to the same Tech-Ed using ROWID,
+      // employee ID, or label. Keep one display row per canonical roster key.
+      if (seenOwners.has(key)) {
+        const existing = nextRows.find((item) => item.canonicalKey === key);
+        if (existing) {
+          existing.pct = amount(row.percentage);
+          existing.base = amount(row.budget_base) || existing.base;
+          existing.original = amount(row.calculated_budget);
+          existing.updated = amount(row.applied_budget) || existing.original;
+          existing.id = row.id || existing.id;
+        }
+        return;
+      }
       const calculated = amount(row.calculated_budget);
       const applied = amount(row.applied_budget) || calculated;
       const assignedCount = employeeCounts.get(key) || 0;
       nextRows.push({
         id: row.id || "tech-ed-" + key,
-        name: ownerName(owner, employeeRows),
+        canonicalKey: key,
+        name: ownerValues.get(key) || ownerName(owner, employeeRows),
         pct: amount(row.percentage),
-        base: amount(row.budget_base) || (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated),
+        base: employeeBases.get(key) || amount(row.budget_base) || (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated),
         original: calculated,
         updated: applied,
         team0: assignedCount,
