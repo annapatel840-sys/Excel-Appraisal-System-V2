@@ -337,6 +337,9 @@ export function BudgetDistributionPage() {
     return employeeRows.filter((employee) => {
       const assignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
       const resolved = resolveTechRecord(assignment);
+      // Match the Appraisal Sheet roster; Employee_Master-only records are
+      // not part of this appraisal cycle's team headcount.
+      if (employee.in_appraisal_sheet !== true) return false;
       const eligibility = String(
         [
           employee.eligibility,
