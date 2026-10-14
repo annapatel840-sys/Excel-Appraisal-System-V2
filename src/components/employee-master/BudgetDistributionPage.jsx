@@ -288,6 +288,7 @@ export function BudgetDistributionPage() {
   const [summaryOpen, setSummaryOpen] = useState(true);
   const [tableOpen, setTableOpen] = useState(true);
   const [cycleLabel, setCycleLabel] = useState("");
+  const [activeCycleId, setActiveCycleId] = useState("");
   useEffect(() => {
     let mounted = true;
     payrollCycleRequest("cycles").then((cycles) => {
@@ -295,11 +296,15 @@ export function BudgetDistributionPage() {
       const all = Array.isArray(cycles) ? cycles : [];
       const active = all.find((cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived);
       const activeId = String(active?.id || active?.appraisal_cycle_id || active?.cycle_id || active?.ROWID || "");
+      setActiveCycleId(activeId);
       const master = budgetMasterRows.find((row) => String(row.appraisal_cycle_id || "") === activeId);
       setCycleLabel(String(active?.name || active?.cycle_name || master?.appraisal_cycle_name || master?.cycle_name || "Active cycle unavailable"));
     }).catch((cycleError) => {
       console.error("Failed to load Budget Distribution cycle:", cycleError);
-      if (mounted) setCycleLabel(String(budgetMasterRows[0]?.appraisal_cycle_name || budgetMasterRows[0]?.cycle_name || "Cycle unavailable"));
+      if (mounted) {
+        setActiveCycleId(String(budgetMasterRows[0]?.appraisal_cycle_id || ""));
+        setCycleLabel(String(budgetMasterRows[0]?.appraisal_cycle_name || budgetMasterRows[0]?.cycle_name || "Cycle unavailable"));
+      }
     });
     return () => { mounted = false; };
   }, [budgetMasterRows]);
@@ -329,10 +334,10 @@ export function BudgetDistributionPage() {
 
   const rows = useMemo(
     () =>
-      [...budgetRows].sort((a, b) =>
-        resolveTechOwner(a.tech_ed_id).localeCompare(resolveTechOwner(b.tech_ed_id)),
-      ),
-    [budgetRows, techEdOwners, employeeRows],
+      [...budgetRows]
+        .filter((row) => !activeCycleId || String(row.appraisal_cycle_id || "") === activeCycleId)
+        .sort((a, b) => resolveTechOwner(a.tech_ed_id).localeCompare(resolveTechOwner(b.tech_ed_id))),
+    [budgetRows, techEdOwners, employeeRows, activeCycleId],
   );
  
   const totalPercentage = useMemo(
