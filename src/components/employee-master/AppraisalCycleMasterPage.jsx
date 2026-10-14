@@ -2256,7 +2256,7 @@ export function AppraisalCycleMasterPage({
             </div>
           </div>
           <div className="acx-hint">{setupHint[newForm.process]}</div>
-          <label className="acx-fl">Effective date</label>
+          <label className="acx-fl">Effective date <span style={{ color: "#DC2626", fontWeight: 800 }} aria-hidden="true">*</span></label>
           <input
             type="date"
             style={{ width: "100%" }}
