@@ -373,10 +373,10 @@ function HRApplyBudget() {
       nextRows.push({
         id: "tech-ed-" + key,
         name: label,
-        pct: amount(orgPct),
+        pct: amount(selectedMaster?.budget_percentage),
         base: employeeBases.get(key) || 0,
-        original: ((employeeBases.get(key) || 0) * amount(selectedMaster?.budget_percentage ?? orgPct)) / 100,
-        updated: ((employeeBases.get(key) || 0) * amount(orgPct || selectedMaster?.budget_percentage)) / 100,
+        original: ((employeeBases.get(key) || 0) * amount(selectedMaster?.budget_percentage)) / 100,
+        updated: ((employeeBases.get(key) || 0) * amount(selectedMaster?.budget_percentage)) / 100,
         team0: employeeCounts.get(key) || 0,
         team: employeeCounts.get(key) || 0,
         lastChanged: "—",
@@ -389,7 +389,7 @@ function HRApplyBudget() {
     if (selectedMaster && Number.isFinite(Number(selectedMaster.budget_percentage))) {
       setOrgPct(String(Number(selectedMaster.budget_percentage)));
     }
-  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, selectedCycle, orgPct, selectedMaster?.budget_percentage]);
+  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, selectedCycle, selectedMaster?.budget_percentage]);
 
   const total = useMemo(
     () =>
