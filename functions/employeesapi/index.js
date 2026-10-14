@@ -581,6 +581,9 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       // Separate Appraisal_Sheet assignment for budget headcounts. Do not
       // fall back to Employee_Master assignment: that can add an employee to
       // a Tech-Ed count when the current appraisal row is unassigned/different.
+      // Keep the real Employee_Master ROWID for identity/authorization matching.
+      // The UI must use the resolved label below, never this raw foreign key.
+      appraiser_tech_ed_row_id: String(row.appraiser_tech_ed1 || "").trim(),
       appraiser_tech_ed_appraisal_sheet: (() => {
         const techEdLookupId = String(row.appraiser_tech_ed1 || row.appraiser_tech_ed || "").trim();
         const techEdEmployee = techEdLookupId
