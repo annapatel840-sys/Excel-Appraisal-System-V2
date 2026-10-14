@@ -726,6 +726,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       rb_to_be_paid: previousRetention,
       previous_year_retention_bonus: previousRetention,
       previous_year_joining_bonus: previousJoining,
+      utilized_amount: currentHike + currentPerformance + currentRetention + currentJoining
+        - previousPerformance - previousRetention - previousJoining,
     });
   });
   const employees = Array.from(appraisalByEmployee.values());
@@ -751,6 +753,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     rb_to_be_paid: employee.rb_to_be_paid,
     previous_year_retention_bonus: employee.previous_year_retention_bonus,
     previous_year_joining_bonus: employee.previous_year_joining_bonus,
+    utilized_amount: employee.utilized_amount,
   }));
   const withBase = employees.filter((employee) => employee.base > 0).length;
   const withTechEd = employees.filter((employee) => employee.techEd).length;
