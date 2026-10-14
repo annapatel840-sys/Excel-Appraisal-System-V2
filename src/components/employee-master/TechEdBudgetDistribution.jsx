@@ -472,12 +472,16 @@ export function TechEdBudgetDistribution() {
     const assignment = String(linked?.assignment || raw).trim();
     return Boolean(techOwnerKey) && ownerKey(assignment) === techOwnerKey && isActiveAndEligible(employee);
   }), [employeeRows, techOwnerKey, techEdOwners]);
-  const allTeam0 = assignedTeam;
   const allTeam = assignedTeam;
   const myPct = liveTech ? num(liveTech.percentage) : 0;
   const myOriginal = liveTech ? num(liveTech.calculated_budget) : 0;
   const myUpdated = liveTech ? num(liveTech.applied_budget) : 0;
-  const team0 = allTeam0.length;
+  // Original headcount is the allocation-time snapshot stored by HR; current
+  // headcount is always recomputed from the current Appraisal Sheet roster.
+  const currentTeamCount = allTeam.length;
+  const team0 = liveTech
+    ? (num(liveTech.original_headcount ?? liveTech.allocation_headcount) || currentTeamCount)
+    : currentTeamCount;
   const allotted = cmNodes.reduce((s, n) => s + n.updated, 0);
   const used = assignedTeam.reduce((sum, employee) => sum + employeeUtilized(employee), 0);
   const usedPct = myUpdated ? (used / myUpdated) * 100 : 0;
@@ -633,7 +637,7 @@ export function TechEdBudgetDistribution() {
               <div>
                 <div className="f-label">Team size</div>
                 <div className="v">
-                  {team0} → {allTeam.length}
+                  {team0} → {currentTeamCount}
                 </div>
                 <div className="d mut">At allocation → now</div>
               </div>
@@ -708,7 +712,7 @@ export function TechEdBudgetDistribution() {
                       <ChangeCell from={myOriginal} to={myUpdated} />
                     </td>
                     <td className="r">{team0}</td>
-                    <td className="r">{allTeam.length}</td>
+                    <td className="r">{currentTeamCount}</td>
                     <td>
                       <button
                         type="button"
