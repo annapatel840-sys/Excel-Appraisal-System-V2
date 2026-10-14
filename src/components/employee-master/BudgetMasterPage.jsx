@@ -351,7 +351,24 @@ function HRApplyBudget() {
       const assignedOwner = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed_id || employee.tech_ed || employee.appraiserTechEd || "";
       const key = resolveTechOwnerKey(assignedOwner);
       if (!key) return;
-      employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
+
+      // Budget headcount follows appraisal eligibility, not the total Employee
+      // Master roster. Keep status and eligibility independent when both exist.
+      const eligibility = String(
+        employee.eligibility ??
+          employee.eligible_status ??
+          employee.eligibility_status ??
+          employee.eligible ??
+          "",
+      ).trim().toLowerCase().replace(/[ _-]+/g, "");
+      const eligible = eligibility
+        ? ["eligible", "yes", "true", "1"].includes(eligibility)
+        : String(employee.status || employee.emp_status || "").trim().toLowerCase() === "active";
+
+      if (eligible) employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
+
+      // Preserve the existing budget-base calculation; this change only fixes
+      // the employee count shown for each Tech-Ed.
       const base = amount(employee.current_annual_base_pay ?? employee.currentAnnualBasePay ?? employee.current_base_pay ?? employee.currentBasePay ?? employee.base_pay ?? employee.basePay) +
         amount(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.pb_to_be_paid ?? employee.pbToBePaid ?? employee.target_pb_allocated_for_may ?? employee.allocated_pb ?? employee.total_pb);
       employeeBases.set(key, (employeeBases.get(key) || 0) + base);
