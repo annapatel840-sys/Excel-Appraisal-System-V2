@@ -346,10 +346,13 @@ export function BudgetDistributionPage() {
           employee.eligible,
         ].find((value) => value !== null && value !== undefined && String(value).trim() !== "") ?? "",
       ).trim().toLowerCase().replace(/[ _-]+/g, "");
-      // Count only an explicit eligibility decision. Active/Inactive is
-      // separate from Eligible/Not Eligible and is not a fallback.
+      // Match Budget Master: an employee counts only when both status
+      // and eligibility are explicitly Active + Eligible.
+      const status = String(employee.emp_status ?? employee.status ?? employee.employee_status ?? "")
+        .trim().toLowerCase();
+      const active = status === "active";
       const eligible = ["eligible", "yes", "true", "1"].includes(eligibility);
-      if (resolved?.key !== record.key || !eligible) return false;
+      if (resolved?.key !== record.key || !active || !eligible) return false;
       const employeeId = normalize(
         employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text ||
           employee.row_id || employee.ROWID || employee.id || "",
