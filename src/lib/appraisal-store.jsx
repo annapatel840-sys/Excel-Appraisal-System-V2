@@ -92,12 +92,12 @@ const REACT_TO_CATALYST_FIELD = {
   manager: "manager",
   department: "department",
   targetPBCriteria: "target_PB_criteria",
-  compManagerRewards: "comp_manager_rewards",
+  // compManagerRewards: "comp_manager_rewards",
   // CHANGED: the grid column key is compManagerRemarks; it is stored in the
   // comp_manager_rewards column (the one employeesapi ALLOWED_FIELDS lists).
   // If your Data Store column has a different name, change it here AND in
   // employeesapi ALLOWED_FIELDS.
-  compManagerRemarks: "comp_manager_rewards",
+  compManagerRemarks: "comp_manager_remarks",
 
   status: "status",
 };
