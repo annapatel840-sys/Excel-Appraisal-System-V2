@@ -351,6 +351,9 @@ function HRApplyBudget() {
       const assignedOwner = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed_id || employee.tech_ed || employee.appraiserTechEd || "";
       const key = resolveTechOwnerKey(assignedOwner);
       if (!key) return;
+      // Ignore Employee_Master-only rows that are not present in Appraisal Sheet.
+      // The budget headcount must match the actual appraisal roster.
+      if (employee.in_appraisal_sheet !== true) return;
 
       // Budget headcount follows appraisal eligibility, not the total Employee
       // Master roster. Keep status and eligibility independent when both exist.
