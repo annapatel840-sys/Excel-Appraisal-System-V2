@@ -95,6 +95,26 @@ const FIELD_KIND = Object.fromEntries(
   }),
 );
 
+// Appraisal Sheet input columns that must remain editable by assigned Tech-Ed
+// and Comp Manager users even when an older deployed access catalogue has not
+// yet learned their field-key mapping. Screen permission and employee scope
+// are still enforced before any update.
+const APPRAISAL_INPUT_COLUMNS = new Set([
+  "allocated_pb_amount",
+  "pb_installment",
+  "new_pb_to_be_offered",
+  "new_pb_installment",
+  "new_rb",
+  "hike_amount",
+  "hike_pct",
+  "target_pb_next_year",
+  "target_PB_criteria",
+  "comp_manager_remarks",
+  "eligible_for_promotion",
+  "new_title",
+  "at_risk",
+]);
+
 // Columns whose change alters the hierarchy / identity used by access.
 const HIERARCHY_COLUMNS = new Set([
   "status",
@@ -161,7 +181,10 @@ function requireInScope(a, empIds) {
  */
 function isMasterColumn(column) {
   const key = access.fieldOfColumn(column);
-  if (!key) return true;
+  // Known appraisal input columns are not Employee_Master fields. This
+  // fallback is important during a staged deployment when employeesapi and
+  // accessCore may not yet have the same field catalogue version.
+  if (!key) return !APPRAISAL_INPUT_COLUMNS.has(column);
   const kind = FIELD_KIND[key];
   return kind === "master" || kind === "upload";
 }
