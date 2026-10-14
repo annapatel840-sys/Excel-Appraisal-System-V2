@@ -230,6 +230,11 @@ export function BudgetProvider({ children }) {
           ...employee,
           // Preserve the resolved Appraisal Sheet assignment separately;
           // the raw lookup FK may be a numeric Employee_Master ROWID.
+          appraiser_tech_ed_row_id: String(
+            employee.appraiser_tech_ed_row_id ||
+              previous.appraiser_tech_ed_row_id ||
+              "",
+          ),
           appraiser_tech_ed_appraisal_sheet: String(
             employee.appraiser_tech_ed_appraisal_sheet ||
               previous.appraiser_tech_ed_appraisal_sheet ||
