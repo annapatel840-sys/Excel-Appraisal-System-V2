@@ -338,11 +338,12 @@ export function BudgetDistributionPage() {
       const assignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
       const resolved = resolveTechRecord(assignment);
       const eligibility = String(
-        employee.eligibility ??
-          employee.eligible_status ??
-          employee.eligibility_status ??
-          employee.eligible ??
-          "",
+        [
+          employee.eligibility,
+          employee.eligible_status,
+          employee.eligibility_status,
+          employee.eligible,
+        ].find((value) => value !== null && value !== undefined && String(value).trim() !== "") ?? "",
       ).trim().toLowerCase().replace(/[ _-]+/g, "");
       const eligible = eligibility
         ? ["eligible", "yes", "true", "1"].includes(eligibility)
