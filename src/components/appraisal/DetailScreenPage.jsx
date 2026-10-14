@@ -21,6 +21,7 @@ import { Bell } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { useCurrentCycleName } from "@/lib/current-cycle";
 
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#12304f";
@@ -281,11 +282,25 @@ const DS_CSS = `
 const normalizeHistoryRecord = (record) => {
   const basePay = Number(record?.base_pay) || 0;
   const hike = Number(record?.hike_amount) || 0;
+  const rawCycleName =
+    record?.appraisal_cycle_name ??
+    record?.appraisalCycleName ??
+    record?.cycle_name ??
+    record?.cycleName;
+  const cycleName =
+    typeof rawCycleName === "string" && !/^\\d+$/.test(rawCycleName.trim())
+      ? rawCycleName.trim()
+      : "";
+  const year =
+    cycleName ||
+    (record?.appraisal_year !== null && record?.appraisal_year !== undefined
+      ? String(record.appraisal_year)
+      : record?.fy_year !== null && record?.fy_year !== undefined
+        ? String(record.fy_year)
+        : "—");
   return {
-    year:
-      record?.appraisal_year !== null && record?.appraisal_year !== undefined
-        ? String(record.appraisal_year)
-        : "—",
+    cycleName,
+    year,
     basePay,
     joiningBonus: Number(record?.joining_bonus) || 0,
     performanceBonus: Number(record?.performance_bonus) || 0,
@@ -345,20 +360,18 @@ const normalizeYearKey = (y) =>
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
-const isCurrentCycleYearKey = (year) => {
-  const raw = String(year ?? "")
-    .trim()
-    .toLowerCase();
+const isCurrentCycleYearKey = (year, currentCycleName = CURRENT_CYCLE) => {
+  const raw = normalizeYearKey(year);
   if (!raw) return false;
+  const current = normalizeYearKey(currentCycleName);
+  if (current && raw === current) return true;
+  // Support older history rows that only stored a year instead of a cycle name.
   return (
     raw === "2026" ||
-    raw === "2026-27" ||
+    raw === "202627" ||
     raw === "fy2026" ||
-    raw === "fy 2026" ||
-    raw === "apr-26" ||
-    raw === "apr 26" ||
-    raw === "apr-2026" ||
-    raw === "apr 2026" ||
+    raw === "apr26" ||
+    raw === "apr2026" ||
     raw.includes("2026")
   );
 };
@@ -938,6 +951,7 @@ export function DetailScreenPage({
   budgetNotice = BUDGET_NOTICE_PLACEHOLDER,
 } = {}) {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
+  const currentCycleName = useCurrentCycleName() || CURRENT_CYCLE;
   const { currentUser, isHR } = useBudget();
   const catalystUser = useCatalystUser();
   const role = String(catalystUser?.role || "")
@@ -1094,15 +1108,15 @@ export function DetailScreenPage({
     const seen = new Set();
     const result = [];
     for (const record of historyRecords) {
-      if (isCurrentCycleYearKey(record.year)) continue;
+      if (isCurrentCycleYearKey(record.cycleName || record.year, currentCycleName)) continue;
       if (isBlankRecord(record)) continue;
-      const yearKey = normalizeYearKey(record.year);
+      const yearKey = normalizeYearKey(record.cycleName || record.year);
       if (!yearKey || seen.has(yearKey)) continue;
       seen.add(yearKey);
       result.push(record);
     }
     return result;
-  }, [historyRecords]);
+  }, [historyRecords, currentCycleName]);
 
   const derived = useMemo(() => {
     if (!employee) return null;
@@ -2254,7 +2268,7 @@ export function DetailScreenPage({
                 borderBottom: `1px solid ${LINE}`,
               }}
             >
-              <div style={{ padding: "6px 10px" }}>Year</div>
+              <div style={{ padding: "6px 10px" }}>Appraisal Cycle Name</div>
               {HISTORY_COLUMNS.map((c) => (
                 <div
                   key={c.key}
@@ -2298,7 +2312,7 @@ export function DetailScreenPage({
                           fontWeight: 800,
                         }}
                       >
-                        {CURRENT_CYCLE} ★
+                        {currentCycleName} ★
                       </div>
                       {cur.map((v, i) => (
                         <HistCell
@@ -2320,7 +2334,7 @@ export function DetailScreenPage({
                 : null;
               return (
                 <div
-                  key={normalizeYearKey(h.year)}
+                  key={normalizeYearKey(h.cycleName || h.year)}
                   className="grid items-center text-[12px]"
                   style={{
                     gridTemplateColumns: HIST_GRID,
@@ -2331,7 +2345,7 @@ export function DetailScreenPage({
                   <div
                     style={{ padding: "4px 10px", fontWeight: 700, color: INK }}
                   >
-                    {h.year}
+                    {h.cycleName || h.year}
                   </div>
                   {vals.map((v, c) => (
                     <HistCell
