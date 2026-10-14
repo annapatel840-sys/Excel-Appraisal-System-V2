@@ -594,7 +594,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const rawCompManager = String(firstValue(row, [
       "comp_manager", "comp_manager_id", "comp_manager_name", "comp_manager_emp_id", "compManager", "compManagerId",
     ]) || firstValue(masterRow, ["comp_manager", "director"]) || "").trim();
-    const compManager = resolvePersonId(rawCompManager);
+    const compManager = rawCompManager;
     const basePay = n(firstValue(row, [
       "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "currentBasePay", "base_pay", "basePay", "annual_base_pay", "annualBasePay",
     ]));
