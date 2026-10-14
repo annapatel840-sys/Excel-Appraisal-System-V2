@@ -465,6 +465,13 @@ async function readEmployeeRoster(app) {
           "tech_ed",
           "tech_ed_id",
         ]);
+      const managerRaw = String(readField(row, ["comp_manager", "comp_manager_id", "comp_manager_name", "director"]) || readField(master, ["comp_manager", "comp_manager_id", "comp_manager_name", "director"]) || "").trim();
+      const managerKey = managerRaw.split(/\s+-\s+/)[0].trim().toLowerCase();
+      const managerRow = masterById.get(managerKey) || masterByRowId.get(managerKey) ||
+        masterByRowId.get(managerRaw) || masterById.get(managerRaw.toLowerCase());
+      const managerId = managerRow ? String(readField(managerRow, ["emp_id", "employee_id"]) || "").trim() : "";
+      const managerName = managerRow ? String(readField(managerRow, ["emp_name", "employee_name", "name"]) || "").trim() : "";
+      const displayManager = managerId && managerName ? managerId + " - " + managerName : managerName || managerRaw;
       return {
         row_id: idOf(master),
         emp_id: id,
@@ -474,11 +481,24 @@ async function readEmployeeRoster(app) {
             id,
         ),
         appraiser_tech_ed: formatTechEdAssignment(assignment),
+        comp_manager: managerRaw,
+        comp_manager_display: displayManager,
+        // Return appraisal amounts with the roster so utilization does not depend
+        // on a separate employee endpoint's view or field projection.
+        hike_amount: Number(readField(row, ["hike_amount", "hikeAmount", "current_hike_amount"]) || 0),
+        new_pb_to_be_offered: Number(readField(row, ["new_pb_to_be_offered", "newPBToBeOffered", "performance_bonus", "current_performance_bonus"]) || 0),
+        new_rb: Number(readField(row, ["new_rb", "newRB", "retention_bonus", "current_retention_bonus"]) || 0),
+        joining_bonus: Number(readField(row, ["joining_bonus", "joiningBonus", "current_joining_bonus"]) || 0),
+        pb_to_be_paid: Number(readField(row, ["pb_to_be_paid", "previous_year_performance_bonus", "previous_year_pb", "previous_pb"]) || 0),
+        rb_to_be_paid: Number(readField(row, ["rb_to_be_paid", "previous_year_retention_bonus", "previous_year_rb", "previous_rb"]) || 0),
+        previous_year_joining_bonus: Number(readField(row, ["previous_year_joining_bonus", "previous_year_jb", "previous_joining_bonus"]) || 0),
+        appraiser_tech_ed_row_id: String(readField(row, ["appraiser_tech_ed1", "appraiser_tech_ed_row_id"]) || "").trim(),
         status: String(
           readField(master, ["emp_status", "status"]) ||
             readField(row, ["emp_status", "status"]) ||
             "",
         ),
+        eligible_status: String(readField(master, ["eligible_status", "eligibility", "eligible"]) || readField(row, ["eligible_status", "eligibility", "eligible"]) || "").trim(),
       };
     })
     .filter((row) => row.emp_id);
