@@ -593,7 +593,7 @@ function HRApplyBudget() {
           r.id && !String(r.id).startsWith("tech-ed-") ? r.id : "",
           {
             appraisal_cycle_id: cycleId,
-            appraiser_tech_ed_id: r.name,
+            appraiser_tech_ed_id: String(r.name || r.canonicalKey || "").trim().split(/\\s+-\\s+/)[0].slice(0, 20),
             percentage: Number(previewPct(r)),
             budget_base: r.base,
             calculated_budget: (r.base * org) / 100,
