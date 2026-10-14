@@ -559,22 +559,42 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   // Same rule as employeesapi: Appraisal_Sheet first, Employee_Master as the
   // fallback (Comp Manager = director when the sheet has no comp_manager).
   const masterByEmployee = new Map();
+  const masterByRowId = new Map();
+  const masterByName = new Map();
   masterEmployeeRows.forEach((row) => {
-    const key = String(firstValue(row, ["emp_id", "empId", "employee_id"]) || "").trim().toLowerCase();
-    if (key) masterByEmployee.set(key, row);
+    const empId = String(firstValue(row, ["emp_id", "empId", "employee_id"]) || "").trim();
+    const name = String(firstValue(row, ["emp_name", "employee_name", "name"]) || "").trim();
+    const rowId = idOf(row);
+    if (empId) masterByEmployee.set(empId.toLowerCase(), row);
+    if (rowId) masterByRowId.set(rowId, row);
+    if (name) masterByName.set(name.toLowerCase(), row);
   });
+  // Appraisal_Sheet assignment columns can contain Employee_Master.ROWID
+  // foreign keys. Budget_Distribution stores stable business employee IDs.
+  const resolvePersonId = (raw) => {
+    const text = String(raw || "").trim();
+    if (!text) return "";
+    const split = text.split(/\\s+-\\s+/);
+    if (split.length > 1) return split[0].trim();
+    const person = masterByRowId.get(text) || masterByEmployee.get(text.toLowerCase()) || masterByName.get(text.toLowerCase());
+    return person
+      ? String(firstValue(person, ["emp_id", "empId", "employee_id"]) || idOf(person) || text).trim()
+      : text;
+  };
 
   const appraisalByEmployee = new Map();
   appraisalRows.forEach((row) => {
     const employeeId = String(firstValue(row, ["emp_id", "empId", "employee_id", "employeeId", "employee_id_text"]) || idOf(row)).trim().toLowerCase();
     if (!employeeId) return;
-    const techEd = String(firstValue(row, [
-      "appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_teched", "appraiserTechED", "appraiserTechEd", "tech_ed", "tech_ed_id", "techED", "techEd",
+    const rawTechEd = String(firstValue(row, [
+      "appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_tech_ed1", "appraiser_teched", "appraiserTechED", "appraiserTechEd", "tech_ed", "tech_ed_id", "techED", "techEd",
     ]) || "").trim();
+    const techEd = resolvePersonId(rawTechEd);
     const masterRow = masterByEmployee.get(employeeId) || {};
-    const compManager = String(firstValue(row, [
+    const rawCompManager = String(firstValue(row, [
       "comp_manager", "comp_manager_id", "comp_manager_name", "comp_manager_emp_id", "compManager", "compManagerId",
     ]) || firstValue(masterRow, ["comp_manager", "director"]) || "").trim();
+    const compManager = resolvePersonId(rawCompManager);
     const basePay = n(firstValue(row, [
       "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "currentBasePay", "base_pay", "basePay", "annual_base_pay", "annualBasePay",
     ]));
@@ -628,12 +648,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     }
   });
 
-  // Merge labels from the roster as well, so a Tech-ED with no assigned
-  // employees is still visible with a true zero base rather than disappearing.
+  // Keep stable Employee IDs in varchar allocation columns. Display labels
+  // (Employee ID - Name) are resolved by the frontend from Employee_Master.
   techEdOwners.forEach((item) => {
-    const label = String(item.assignment || "").trim();
-    const key = ownerKey(label);
-    if (key && !techLabels.has(key)) techLabels.set(key, label);
+    const key = String(item.employee_id || ownerKey(item.assignment) || "").trim();
+    if (key && !techLabels.has(key.toLowerCase())) techLabels.set(key.toLowerCase(), key);
   });
 
   const distributionTable = app.datastore().table(TABLES.distribution);
@@ -693,7 +712,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       if (!row) {
         const created = await distributionTable.insertRow({
           appraisal_cycle_id: cycleId,
-          appraiser_tech_ed_id: ownerName,
+          appraiser_tech_ed_id: String(ownerName || techKey).slice(0, 20),
           percentage: null,
           budget_base: 0,
           [distCalcField]: 0,
@@ -761,7 +780,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         const created = await compTable.insertRow({
           appraisal_cycle_id: cycleId,
           budget_distribution_id: String(parent.id),
-          comp_manager: details.name,
+          comp_manager: String(details.compKey || details.name).slice(0, 30),
           // A new Comp Manager inherits the Tech-Ed's effective percentage,
           // giving the assigned team an initial base-proportional allocation.
           percentage: n(parent.effective_percentage ?? parent.percentage ?? master.budget_percentage),
@@ -900,6 +919,68 @@ module.exports = async function (req, res) {
     const body = await parseBody(req);
     const resource = String(body.resource || "master").toLowerCase();
     let id = String(body.id || "").trim();
+
+    // Upsert cycle-scoped allocations using the actual foreign-key ROWIDs.
+    // Budget_Master.appraisal_cycle_id and both cycle/parent columns are Data Store
+    // foreign keys; the Tech-ED/Comp Manager varchar columns store business IDs.
+    if (!id && resource === "master" && String(body.appraisal_cycle_id || "").trim()) {
+      if (a.enforced && !Boolean(a.scope && a.scope.all) && !isHR(a.user)) {
+        throw new access.HttpError(403, "Only HR can update Budget Master.");
+      }
+      if (!a.enforced) {
+        const currentUser = await app.userManagement().getCurrentUser();
+        if (!currentUser || !isHR(currentUser)) {
+          return sendJson(res, 403, { success: false, message: "Only HR can update Budget Master." });
+        }
+      }
+      const cycleId = String(body.appraisal_cycle_id).trim();
+      const existing = (await getAllRows(app, "Budget_Master")).find(
+        (row) => String(value(row, "appraisal_cycle_id")) === cycleId,
+      );
+      if (existing) {
+        id = idOf(existing);
+      } else {
+        const masterTable = app.datastore().table(TABLES.master);
+        const created = await masterTable.insertRow({
+          appraisal_cycle_id: cycleId,
+          budget_percentage: n(body.budget_percentage),
+          budget_utilized: n(body.budget_utilized),
+          org_budget_base: n(body.org_budget_base),
+          calculated_budget: n(body.calculated_budget),
+          applied_budget: n(body.applied_budget),
+        });
+        id = idOf(created);
+      }
+    }
+
+    if (!id && resource === "distribution" && String(body.appraisal_cycle_id || "").trim() && String(body.appraiser_tech_ed_id || "").trim()) {
+      const cycleId = String(body.appraisal_cycle_id).trim();
+      const techEdId = String(body.appraiser_tech_ed_id).trim().split(/\\s+-\\s+/)[0].slice(0, 20);
+      if (a.enforced && !Boolean(a.scope && a.scope.all) && !matchesOwner(techEdId, a)) {
+        throw new access.HttpError(403, "You can only configure your own Tech-Ed budget.");
+      }
+      access.guard(a, () => access.requireAction(a, "changeBudgetConfig"));
+      const existing = (await getAllRows(app, "Budget_Distribution")).find((row) =>
+        String(value(row, "appraisal_cycle_id")) === cycleId &&
+        ownerKey(value(row, "appraiser_tech_ed_id")) === ownerKey(techEdId),
+      );
+      if (existing) {
+        id = idOf(existing);
+      } else {
+        const distTable = app.datastore().table(TABLES.distribution);
+        const calcField = pickColumn(await getColumnNames(distTable), ["calculated_budget", "claculated_budget"], "claculated_budget");
+        const created = await distTable.insertRow({
+          appraisal_cycle_id: cycleId,
+          appraiser_tech_ed_id: techEdId,
+          percentage: body.percentage === "" || body.percentage === undefined ? null : n(body.percentage),
+          budget_base: n(body.budget_base),
+          [calcField]: n(body.calculated_budget),
+          applied_budget: n(body.applied_budget),
+          total_utilization: n(body.total_utilization),
+        });
+        id = idOf(created);
+      }
+    }
 
     // A Comp Manager in the Tech-ED's team may have no Budget_Distribution_Comp
     // row yet: create it under the parent allocation, then update it below.
