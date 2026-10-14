@@ -17,9 +17,9 @@ const num = (v) => {
   const parsed = Number(String(v).trim().replace(/[₹,\s]/g, "").replace(/^(?:INR|Rs\.?)/i, ""));
   return Number.isFinite(parsed) ? parsed : 0;
 };
-// Exact rupee amount with Indian grouping (no lakh rounding), e.g. ₹ 12,34,567.50
+// Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
 const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-const lakh = (n) => "₹ " + INR.format(num(n));
+const lakh = (n) => INR.format(num(n));
 const normalizeOwner = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 // Employee IDs can themselves contain hyphens (for example WIS-1234).
 // The owner separator is the spaced delimiter " - ", not every hyphen.
