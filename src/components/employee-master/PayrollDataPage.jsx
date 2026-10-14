@@ -797,6 +797,8 @@ const PAYROLL_DATA_CSS = `
 .pd-btn:hover { background: #eef2f8; }
 .pd-menu-wrap { position: relative; }
 .pd-menu-btn { display: flex; align-items: center; gap: 6px; }
+.pd-btn.pd-menu-btn { background: #17365d; color: #fff; border-color: #17365d; padding: 9px 16px; font-size: 13.5px; }
+.pd-btn.pd-menu-btn:hover, .pd-btn.pd-menu-btn.open { background: #0f2745; border-color: #0f2745; }
 .pd-caret { font-size: 10px; transition: transform .15s; }
 .pd-menu-btn.open .pd-caret { transform: rotate(180deg); }
 .pd-menu-dropdown { position: absolute; top: calc(100% + 6px); right: 0; z-index: 40; background: white; border: 1px solid #c7d0dc; border-radius: 8px; box-shadow: 0 10px 28px rgba(20,30,50,.18); width: 200px; padding: 8px; }
