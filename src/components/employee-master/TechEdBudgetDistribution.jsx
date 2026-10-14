@@ -39,6 +39,30 @@ const ownerMatches = (owner, identities) => {
   return parts.some((part) => identities.includes(part)) ||
     compactParts.some((part) => identities.some((identity) => identity.replace(/[^a-z0-9]/g, "") === part));
 };
+
+const firstNonBlank = (object, keys) => {
+  for (const key of keys) {
+    const value = object?.[key];
+    if (value !== null && value !== undefined && String(value).trim() !== "") return value;
+  }
+  return 0;
+};
+const isActiveAndEligible = (employee) => {
+  const status = String(firstNonBlank(employee, ["emp_status", "status", "employee_status"]) || "").trim().toLowerCase();
+  const eligibility = String(firstNonBlank(employee, ["eligibility", "eligible_status", "eligibility_status", "eligible"]) || "").trim().toLowerCase().replace(/[ _-]+/g, "");
+  return status === "active" && ["eligible", "yes", "true", "1"].includes(eligibility);
+};
+const employeeUtilized = (employee) => {
+  // Prefer the current-cycle appraisal values, then historical aliases when present.
+  const amount = (keys) => num(firstNonBlank(employee, keys));
+  return amount(["hike_amount", "hikeAmount", "current_hike_amount"]) +
+    amount(["performance_bonus", "performanceBonus", "pb_to_be_paid", "pbToBePaid", "allocated_pb_amount", "allocatedPBAmount", "joining_performance_bonus"]) +
+    amount(["retention_bonus", "retentionBonus", "rb_to_be_paid", "rbToBePaid", "new_rb", "newRB"]) +
+    amount(["joining_bonus", "joiningBonus", "joining_bonus_amount"]) +
+    amount(["previous_year_performance_bonus", "previousPerformanceBonus", "previous_year_pb", "previous_pb_to_be_paid", "previous_pb"]) +
+    amount(["previous_year_retention_bonus", "previousRetentionBonus", "previous_year_rb", "previous_rb_to_be_paid", "previous_rb"]) +
+    amount(["previous_year_joining_bonus", "previousJoiningBonus", "previous_year_jb", "previous_joining_bonus"]);
+};
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function dateText(iso) {
   const p = String(iso || "").slice(0, 10).split("-");
@@ -370,44 +394,57 @@ export function TechEdBudgetDistribution() {
     const currentTechOwner = techOwnerKey;
     const resolveTechAssignment = (raw) => {
       const text = String(raw || "").trim();
-      const linked = techEdOwners.find((item) => {
-        const id = String(item?.employee_id || "").trim();
-        const rowId = String(item?.row_id || item?.ROWID || "").trim();
-        const label = String(item?.assignment || "").trim();
-        const name = String(item?.name || "").trim();
-        return [id, rowId, label, name].filter(Boolean).some((alias) =>
-          ownerMatches(alias, text)
-        );
-      });
+      const linked = techEdOwners.find((item) =>
+        [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name]
+          .filter(Boolean).some((alias) => ownerMatches(alias, text))
+      );
       return String(linked?.assignment || text).trim();
+    };
+    const resolveManager = (raw) => {
+      const text = String(raw || "").trim();
+      if (!text) return "";
+      const parts = ownerParts(text);
+      const manager = employeeRows.find((employee) => {
+        const aliases = [
+          employee.empId, employee.emp_id, employee.employee_id, employee.employeeId,
+          employee.id, employee.ROWID, employee.row_id, employee.name, employee.employee_name,
+        ].filter(Boolean);
+        return aliases.some((alias) => ownerMatches(alias, parts));
+      });
+      if (!manager) return text;
+      const id = String(manager.empId || manager.emp_id || manager.employee_id || manager.employeeId || "").trim();
+      const name = String(manager.name || manager.employee_name || manager.emp_name || "").trim();
+      return id && name ? id + " - " + name : name || text;
     };
     employeeRows.forEach((employee) => {
       const rawTechAssignment = employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
       const techAssignment = resolveTechAssignment(rawTechAssignment);
       if (!currentTechOwner || ownerKey(techAssignment) !== currentTechOwner) return;
-      const manager = String(employee.comp_manager || employee.comp_manager_id || employee.comp_manager_name || employee.compManager || "").trim();
+      if (!isActiveAndEligible(employee)) return;
+      const rawManager = employee.comp_manager || employee.comp_manager_id || employee.comp_manager_name || employee.compManager || "";
+      const manager = resolveManager(rawManager);
       if (!manager) return;
       const key = ownerKey(manager);
-      const stats = managerStats.get(key) || { count: 0, base: 0, name: manager };
+      const stats = managerStats.get(key) || { count: 0, base: 0, utilized: 0, name: manager };
       stats.count += 1;
       stats.base += num(employee.current_annual_base_pay ?? employee.currentAnnualBasePay ?? employee.current_base_pay ?? employee.base_pay ?? employee.basePay)
         + num(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.pb_to_be_paid ?? employee.target_pb_allocated_for_may ?? employee.allocated_pb ?? employee.total_pb);
+      stats.utilized += employeeUtilized(employee);
       managerStats.set(key, stats);
     });
-    // Comp Managers in the team that have no saved Budget_Distribution_Comp
-    // row yet are listed too (a row is created when their Allot % is saved).
-    const savedKeys = new Set(liveComps.map((live) => ownerKey(live.comp_manager)));
+    const savedKeys = new Set(liveComps.map((live) => ownerKey(resolveManager(live.comp_manager))));
     const unsaved = Array.from(managerStats.entries())
       .filter(([key]) => key && !savedKeys.has(key))
-      .map(([, stats]) => ({ id: "", comp_manager: stats.name, percentage: 0, budget_base: stats.base, calculated_budget: 0, applied_budget: 0, total_utilization: 0 }));
+      .map(([, stats]) => ({ id: "", comp_manager: stats.name, percentage: 0, budget_base: stats.base, calculated_budget: 0, applied_budget: 0, total_utilization: stats.utilized }));
     return liveComps.concat(unsaved).map((live) => {
       const pct = num(live.percentage);
-      const stats = managerStats.get(ownerKey(live.comp_manager)) || { count: 0, base: 0, name: live.comp_manager };
+      const resolvedName = resolveManager(live.comp_manager);
+      const stats = managerStats.get(ownerKey(resolvedName)) || { count: 0, base: 0, utilized: 0, name: resolvedName || live.comp_manager };
       const base = num(live.budget_base) || stats.base || (pct ? num(live.calculated_budget) * 100 / pct : 0);
       const original = num(live.calculated_budget);
       const updated = num(live.applied_budget);
-      const managerName = String(live.comp_manager || stats.name || "Unassigned Comp Manager").trim();
-      const managerLog = log.filter((entry) => ownerKey(entry.name) === ownerKey(managerName));
+      const managerName = String(stats.name || resolvedName || "Unassigned Comp Manager").trim();
+      const managerLog = log.filter((entry) => ownerKey(resolveManager(entry.name)) === ownerKey(managerName));
       const history = [
         { date: "", amount: original, team: num(live.original_headcount) || stats.count, pct },
         ...managerLog.map((entry) => ({ date: entry.date, amount: num(entry.after), team: stats.count || num(live.current_headcount), pct: num(entry.to) })),
@@ -416,9 +453,10 @@ export function TechEdBudgetDistribution() {
         name: managerName,
         pct, pct0: pct, base,
         team0: num(live.original_headcount) || stats.count,
-        team: stats.count || num(live.current_headcount), original, updated, liveId: live.id,
+        team: stats.count,
+        original, updated, liveId: live.id,
         liveCalculated: original, liveApplied: updated,
-        liveUtilized: num(live.total_utilization),
+        liveUtilized: stats.utilized,
         lastChanged: managerLog.length ? managerLog[managerLog.length - 1].date : "",
         history,
       };
@@ -432,7 +470,7 @@ export function TechEdBudgetDistribution() {
         .some((alias) => ownerMatches(alias, raw))
     );
     const assignment = String(linked?.assignment || raw).trim();
-    return Boolean(techOwnerKey) && ownerKey(assignment) === techOwnerKey;
+    return Boolean(techOwnerKey) && ownerKey(assignment) === techOwnerKey && isActiveAndEligible(employee);
   }), [employeeRows, techOwnerKey, techEdOwners]);
   const allTeam0 = assignedTeam;
   const allTeam = assignedTeam;
@@ -441,7 +479,7 @@ export function TechEdBudgetDistribution() {
   const myUpdated = liveTech ? num(liveTech.applied_budget) : 0;
   const team0 = allTeam0.length;
   const allotted = cmNodes.reduce((s, n) => s + n.updated, 0);
-  const used = liveTech ? num(liveTech.total_utilization) : 0;
+  const used = assignedTeam.reduce((sum, employee) => sum + employeeUtilized(employee), 0);
   const usedPct = myUpdated ? (used / myUpdated) * 100 : 0;
   const over = usedPct > 100;
 
@@ -500,7 +538,8 @@ export function TechEdBudgetDistribution() {
         budget_base: node.base,
         calculated_budget: newUpd,
         applied_budget: newUpd,
-        ...(node.liveId ? {} : { budget_distribution_id: liveTech.id, comp_manager: name }),
+        comp_manager: name,
+        ...(node.liveId ? {} : { budget_distribution_id: liveTech.id }),
       }, "comp");
     } catch (error) {
       setErr(error.message || "Failed to save Comp Manager budget.");
