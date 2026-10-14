@@ -817,6 +817,8 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       manager_rating: String(row.manager_rating || ""),
       rating: Number(row.rating || 0),
       joining_bonus: Number(row.joining_bonus || 0),
+      target_PB_criteria: String(row.target_PB_criteria || ""),
+      comp_manager_remarks: String(row.comp_manager_remarks || ""),
     };
   });
 }
