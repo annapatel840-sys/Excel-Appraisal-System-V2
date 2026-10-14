@@ -53,12 +53,9 @@ const isActiveAndEligible = (employee) => {
   return status === "active" && ["eligible", "yes", "true", "1"].includes(eligibility);
 };
 const employeeUtilized = (employee) => {
-  // Current appraisal awards plus prior-year bonuses, when the source row has them.
-  // Keep each category separate so a current and prior-year bonus are not lost
-  // by choosing only the first alias for both periods.
+  // Business rule: current-year awards minus previous-year awards.
+  // Ignore zero-filled aliases so another populated field can supply the value.
   const amount = (keys) => {
-    // API normalization may populate an unavailable optional field as 0.
-    // Continue through aliases until a real non-zero value is found.
     for (const key of keys) {
       const value = employee?.[key];
       if (value === null || value === undefined || String(value).trim() === "") continue;
@@ -67,15 +64,18 @@ const employeeUtilized = (employee) => {
     }
     return 0;
   };
-  const currentPerformance = amount(["performance_bonus", "performanceBonus", "new_pb_to_be_offered", "newPBToBeOffered", "current_performance_bonus"]);
-  const currentRetention = amount(["new_rb", "newRB", "retention_bonus", "retentionBonus", "current_retention_bonus"]);
+
+  const currentHike = amount(["hike_amount", "hikeAmount", "current_hike_amount"]);
+  const currentPerformance = amount(["new_pb_to_be_offered", "newPBToBeOffered", "current_performance_bonus", "performance_bonus", "performanceBonus"]);
+  const currentRetention = amount(["new_rb", "newRB", "current_retention_bonus", "retention_bonus", "retentionBonus"]);
   const currentJoining = amount(["joining_bonus", "joiningBonus", "current_joining_bonus"]);
+
   const previousPerformance = amount(["previous_year_performance_bonus", "previousPerformanceBonus", "previous_year_pb", "pb_to_be_paid", "pbToBePaid", "allocated_pb_amount", "allocatedPBAmount"]);
   const previousRetention = amount(["previous_year_retention_bonus", "previousRetentionBonus", "previous_year_rb", "rb_to_be_paid", "rbToBePaid", "previous_rb"]);
   const previousJoining = amount(["previous_year_joining_bonus", "previousJoiningBonus", "previous_year_jb", "previous_joining_bonus"]);
-  return amount(["hike_amount", "hikeAmount", "current_hike_amount"]) +
-    currentPerformance + currentRetention + currentJoining +
-    previousPerformance + previousRetention + previousJoining;
+
+  return currentHike + currentPerformance + currentRetention + currentJoining
+    - previousPerformance - previousRetention - previousJoining;
 };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function dateText(iso) {
