@@ -486,9 +486,17 @@ function matchesTechEdOwner(owner, a, techEdOwners = []) {
   if (matchesOwner(owner, a)) return true;
   const key = ownerKey(owner);
   if (!key) return false;
+  // Budget_Distribution may store Employee_Master.ROWID, Employee ID, or
+  // the display assignment. Resolve all three aliases to the same Tech-Ed.
   return techEdOwners.some((item) => {
-    const employeeId = String(item.employee_id || "").trim();
-    return employeeId && ownerKey(employeeId) === key && matchesOwner(item.assignment, a);
+    const aliases = [
+      item.employee_id,
+      item.row_id,
+      item.ROWID,
+      item.assignment,
+      item.name,
+    ].map((value) => ownerKey(value)).filter(Boolean);
+    return aliases.includes(key) && matchesOwner(item.assignment, a);
   });
 }
 
