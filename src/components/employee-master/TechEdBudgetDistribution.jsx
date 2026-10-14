@@ -66,11 +66,14 @@ const employeeUtilized = (employee) => {
   };
 
   const currentHike = amount(["hike_amount", "hikeAmount", "current_hike_amount"]);
-  const currentPerformance = amount(["new_pb_to_be_offered", "newPBToBeOffered", "current_performance_bonus", "performance_bonus", "performanceBonus"]);
+  // Appraisal_Sheet current-year performance bonus may be stored in the
+  // allocation/offer columns depending on the cycle's schema.
+  const currentPerformance = amount(["new_pb_to_be_offered", "newPBToBeOffered", "current_performance_bonus", "performance_bonus", "performanceBonus", "target_pb_allocated_for_may", "targetPBAllocatedForMay", "allocated_pb_amount", "allocatedPBAmount", "target_pb_next_year", "targetPBNextYear"]);
   const currentRetention = amount(["new_rb", "newRB", "current_retention_bonus", "retention_bonus", "retentionBonus"]);
   const currentJoining = amount(["joining_bonus", "joiningBonus", "current_joining_bonus"]);
 
-  const previousPerformance = amount(["previous_year_performance_bonus", "previousPerformanceBonus", "previous_year_pb", "pb_to_be_paid", "pbToBePaid", "allocated_pb_amount", "allocatedPBAmount"]);
+  // PB/RB-to-be-paid are previous-year values in the appraisal sheet.
+  const previousPerformance = amount(["previous_year_performance_bonus", "previousPerformanceBonus", "previous_year_pb", "pb_to_be_paid", "pbToBePaid", "previous_pb"]);
   const previousRetention = amount(["previous_year_retention_bonus", "previousRetentionBonus", "previous_year_rb", "rb_to_be_paid", "rbToBePaid", "previous_rb"]);
   const previousJoining = amount(["previous_year_joining_bonus", "previousJoiningBonus", "previous_year_jb", "previous_joining_bonus"]);
 
@@ -422,6 +425,7 @@ export function TechEdBudgetDistribution() {
         const aliases = [
           employee.empId, employee.emp_id, employee.employee_id, employee.employeeId,
           employee.id, employee.ROWID, employee.row_id, employee.name, employee.employee_name,
+          employee.comp_manager_display,
         ].filter(Boolean);
         return aliases.some((alias) => ownerMatches(alias, parts));
       });
@@ -435,7 +439,7 @@ export function TechEdBudgetDistribution() {
       const techAssignment = resolveTechAssignment(rawTechAssignment);
       if (!currentTechOwner || ownerKey(techAssignment) !== currentTechOwner) return;
       if (!isActiveAndEligible(employee)) return;
-      const rawManager = employee.comp_manager || employee.comp_manager_id || employee.comp_manager_name || employee.compManager || "";
+      const rawManager = employee.comp_manager_display || employee.comp_manager_name || employee.comp_manager || employee.comp_manager_id || employee.compManager || "";
       const manager = resolveManager(rawManager);
       if (!manager) return;
       const key = ownerKey(manager);
