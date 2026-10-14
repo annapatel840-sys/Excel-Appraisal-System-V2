@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useAppraisal } from "@/lib/appraisal-store";
 import {
   NEW_TITLES,
@@ -14,19 +21,263 @@ import { Bell } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#12304f";
 const TEAL = "#14a3a3";
 /* Ledger look: Manrope. Load it once in index.html:
-   <link href="https\://fonts.googleapis.com/css2?family=Manrope:wght\@400;500;600;700;800&display=swap" rel="stylesheet"> */
+   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"> */
 const FONT = '"Manrope", "Segoe UI", system-ui, Arial, sans-serif';
-/* Ledger tokens used by the left pane */
+/* Ledger tokens */
 const INK = "#102A43";
 const LTEAL = "#0B7A75";
 const LINE = "#E3E9EC";
 const SOFT = "#EEF3F3";
 const MUTED = "#5F7482";
+const GREEN = "#12805C";
+const RED = "#B42318";
 const CURRENT_CYCLE = "Apr-26";
+
+/* ------------------------------------------------------------------
+   FRONTEND-ONLY SETTINGS (layout / banner). None of these touch data.
+   ------------------------------------------------------------------ */
+const BUDGET_PATH = "/budget-distribution";
+// Same budget-change message the Appraisal Sheet shows.
+const BUDGET_NOTICE_PLACEHOLDER = {
+  from: "10.41 L",
+  to: "9.79 L",
+  changes: 5,
+  since: "01-Sep-26",
+};
+
+const NOTES_KEY = "appraisal.myNotes";
+const NOTE_DRAFT_KEY = "appraisal.noteDraft";
+
+const readStore = (key, fallback) => {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw === null ? fallback : JSON.parse(raw);
+  } catch {
+    return fallback;
+  }
+};
+
+const writeStore = (key, value) => {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // storage unavailable — ignore
+  }
+};
+
+const formatNoteTime = () => {
+  const d = new Date();
+  return (
+    d.toLocaleDateString("en-GB", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }) +
+    " " +
+    `0${d.getHours()}`.slice(-2) +
+    ":" +
+    `0${d.getMinutes()}`.slice(-2)
+  );
+};
+
+function NotesPopover({ contextLabel, floating = false }) {
+  const [notes, setNotes] = useState(() => readStore(NOTES_KEY, []));
+  const [text, setText] = useState(() => readStore(NOTE_DRAFT_KEY, ""));
+  const [tie, setTie] = useState(true);
+
+  const onTextChange = (value) => {
+    setText(value);
+    writeStore(NOTE_DRAFT_KEY, value);
+  };
+
+  const saveNote = () => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+
+    const next = [
+      ...notes,
+      {
+        id: String(Date.now()),
+        at: formatNoteTime(),
+        text: trimmed,
+        ctx: tie ? contextLabel : "",
+      },
+    ];
+
+    setNotes(next);
+    writeStore(NOTES_KEY, next);
+    setText("");
+    writeStore(NOTE_DRAFT_KEY, "");
+  };
+
+  const clearDraft = () => {
+    setText("");
+    writeStore(NOTE_DRAFT_KEY, "");
+  };
+
+  const deleteNote = (id) => {
+    const next = notes.filter((note) => note.id !== id);
+    setNotes(next);
+    writeStore(NOTES_KEY, next);
+  };
+
+  return (
+    <div
+      className={`${floating ? "" : "absolute right-0 top-full mt-1.5"} z-[300] w-[380px] max-w-[calc(100vw-1rem)] rounded-xl border bg-white px-3.5 py-3 text-[12.5px] text-[#111827] shadow-[0_8px_24px_rgba(17,24,39,.14)]`}
+      style={{ fontFamily: FONT }}
+    >
+      <h4
+        className="mb-1.5 flex items-center justify-between text-[13px] font-extrabold"
+        style={{ color: NAVY }}
+      >
+        My notes
+        <span className="text-[11px] font-semibold" style={{ color: MUTED }}>
+          Saved in this browser only · not shared
+        </span>
+      </h4>
+
+      <textarea
+        value={text}
+        onChange={(event) => onTextChange(event.target.value)}
+        placeholder="Write a note…"
+        className="min-h-[90px] w-full resize-y rounded-md border p-2 text-[12.5px] outline-none"
+        style={{ borderColor: "#d1d5db" }}
+      />
+
+      <div className="mt-2 flex items-center gap-1.5">
+        <label
+          className="flex items-center gap-1.5 text-[11.5px] font-semibold"
+          style={{ color: "#374151" }}
+        >
+          <input
+            type="checkbox"
+            checked={tie}
+            onChange={(event) => setTie(event.target.checked)}
+            className="accent-[#102a43]"
+          />
+          Mention the employee on screen
+        </label>
+
+        <span className="flex-1" />
+        {text && (
+          <span className="text-[11px]" style={{ color: MUTED }}>
+            Draft kept
+          </span>
+        )}
+
+        <button
+          type="button"
+          onClick={clearDraft}
+          className="rounded-md border bg-white px-3 py-1 text-[12px] font-bold"
+          style={{ borderColor: "#d1d5db" }}
+        >
+          Clear
+        </button>
+
+        <button
+          type="button"
+          onClick={saveNote}
+          className="rounded-md border px-3 py-1 text-[12px] font-bold text-white"
+          style={{ borderColor: NAVY, background: NAVY }}
+        >
+          Save note
+        </button>
+      </div>
+
+      <div className="mt-2 max-h-[260px] overflow-auto">
+        {notes.length === 0 ? (
+          <div className="py-2 text-[12px]" style={{ color: MUTED }}>
+            No saved notes yet.
+          </div>
+        ) : (
+          notes.map((note) => (
+            <div
+              key={note.id}
+              className="mb-1.5 rounded-md border p-2"
+              style={{ borderColor: LINE }}
+            >
+              <div className="text-[10.5px]" style={{ color: MUTED }}>
+                {note.at}
+                {note.ctx ? ` · ${note.ctx}` : ""}
+              </div>
+              <div className="mt-0.5 whitespace-pre-wrap text-[12px]">
+                {note.text}
+              </div>
+              <button
+                type="button"
+                onClick={() => deleteNote(note.id)}
+                className="mt-1 text-[10.5px] font-semibold"
+                style={{ color: RED }}
+              >
+                Delete
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Fields the screen can edit; used only to paint the "Edited this cycle" green.
+const EDIT_FIELDS = [
+  "hikeAmount",
+  "newRB",
+  "allocatedPBAmount",
+  "pbInstallment",
+  "targetPBNextYear",
+  "targetPBCriteria",
+  "newTitle",
+  "compManagerRemarks",
+];
+
+/* ------------------------------------------------------------------
+   LAYOUT
+   Screen 1 (exactly one viewport): banner + Compensation + Metrics +
+   Feedback + Previous / Save & next. It never scrolls.
+   The compensation table is measured and scaled to fit the space it
+   gets (useFitScale), so nothing overlaps at any resolution.
+   Screen 2: Employee History - reached by scrolling the page only.
+   If your app header is not 72px tall, change --ds-offset.
+   ------------------------------------------------------------------ */
+const DS_CSS = `
+.ds-root{--ds-offset:72px;height:calc(100dvh - var(--ds-offset));overflow-y:auto;overflow-x:hidden;scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}
+.ds-screen{display:grid;grid-template-rows:auto minmax(0,1fr);height:calc(100dvh - var(--ds-offset));min-height:0;overflow:hidden}
+.ds-main{display:grid;grid-template-columns:var(--ds-cols);grid-template-rows:minmax(0,1fr);gap:8px;padding:4px 12px 8px;min-width:0;min-height:0;overflow:hidden}
+.ds-main>*{min-width:0;min-height:0}
+.ds-card{display:flex;flex-direction:column;background:#fff;border:1px solid #E3E9EC;border-radius:10px;box-shadow:0 1px 2px rgba(16,42,67,.04);overflow:hidden;min-width:0;min-height:0}
+.ds-left{height:100%}
+.ds-panel-scroll{position:relative;flex:1 1 0;min-width:0;min-height:0;overflow:hidden}
+.ds-fit{position:absolute;top:0;left:0;transform-origin:top left}
+.ds-foot{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:6px 12px;border-top:1px solid #E3E9EC;background:#fff}
+.ds-side{position:relative;min-width:0;min-height:0;overflow:hidden}
+.ds-side>.ds-card{width:100%;height:100%}
+.ds-scroll{min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}
+.ds-hist{margin:0 12px 14px;min-height:240px}
+.ds-vbtn{writing-mode:vertical-rl;transform:rotate(180deg)}
+.ds-rail{display:flex;flex-direction:column;justify-content:center;align-items:stretch;gap:10px;min-width:0;min-height:0}
+.ds-tab{writing-mode:vertical-rl;background:${NAVY};color:#fff;border:0;border-radius:8px;padding:14px 7px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+.ds-tab:hover{background:#0c2740}
+.ds-marquee{display:inline-block;min-width:max-content;white-space:nowrap;animation:dsBudgetMarquee 18s linear infinite}
+.ds-marquee:hover{animation-play-state:paused}
+@keyframes dsBudgetMarquee{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+.ds-root button{cursor:pointer}
+.ds-root button:disabled{cursor:not-allowed}
+@media (max-width:999px){
+.ds-screen{display:block;height:auto;overflow:visible}
+.ds-main{display:flex;flex-direction:column;overflow:visible}
+.ds-left{height:calc(100dvh - var(--ds-offset) - 60px);flex:none}
+.ds-side{flex:none;min-height:340px}
+.ds-rail{flex-direction:row;justify-content:flex-end;flex:none}
+.ds-tab{writing-mode:horizontal-tb;padding:7px 14px}
+}
+`;
+
 const normalizeHistoryRecord = (record) => {
   const basePay = Number(record?.base_pay) || 0;
   const hike = Number(record?.hike_amount) || 0;
@@ -49,6 +300,7 @@ const normalizeHistoryRecord = (record) => {
     newBasePay: basePay + hike,
   };
 };
+
 const HISTORY_COLUMNS = [
   { key: "basePay", label: "Curr Base Pay" },
   { key: "joiningBonus", label: "Joining Bonus" },
@@ -60,6 +312,7 @@ const HISTORY_COLUMNS = [
   { key: "targetPB", label: "Target PB" },
   { key: "newBasePay", label: "New Base Pay" },
 ];
+
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
 const lakhs = (n) => `${((Number(n) || 0) / 1e5).toFixed(2)} L`;
 const dash = (v) => (v === null || v === undefined || v === "" ? "—" : v);
@@ -77,6 +330,7 @@ const ordinal = (n) => {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 };
 const signedPct = (v) => `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(1)}%`;
+const signedNum = (v) => `${v > 0 ? "+" : v < 0 ? "-" : ""}${fmt(Math.abs(v))}`;
 const isBlank = (v) => v === "" || v === null || v === undefined;
 // Blank stays blank (like the grid's numeric cells); otherwise format.
 const fmtOrBlank = (n) => (isBlank(n) ? "" : fmt(n));
@@ -85,6 +339,7 @@ const parseAmount = (raw) => {
   const cleaned = String(raw ?? "").replace(/[^0-9.]/g, "");
   return cleaned === "" ? "" : Number(cleaned) || 0;
 };
+const blankStr = (v) => (isBlank(v) ? "" : String(v));
 const normalizeYearKey = (y) =>
   String(y ?? "")
     .trim()
@@ -95,11 +350,6 @@ const isCurrentCycleYearKey = (year) => {
     .trim()
     .toLowerCase();
   if (!raw) return false;
-  // ------------------------------------------------------------
-  // PAGE LAYOUT
-  // Fixed application frame with the compensation area, metrics area,
-  // employee/feedback area, and employee history section.
-  // ------------------------------------------------------------
   return (
     raw === "2026" ||
     raw === "2026-27" ||
@@ -120,96 +370,716 @@ const isBlankRecord = (h) =>
   !h.totalBonus &&
   !h.newCTC &&
   !h.hikeAmount;
-/* ============================================================
-   DETAIL SCREEN PAGE
-   Existing data fetching, store usage, calculations, and edits are preserved.
-   Only the page layout/UI integration is handled in this component.
-   ============================================================ */
-export function DetailScreenPage() {
-  // Dynamic appraisal data comes from the existing appraisal store.
-  // Do not hardcode employee records or fetched values here.
+
+// Same formulas the history grid already used for prior cycles.
+const priorVals = (h) => {
+  const tb = (h.performanceBonus || 0) + (h.retentionBonus || 0);
+  return [
+    h.basePay,
+    h.joiningBonus,
+    h.performanceBonus,
+    h.retentionBonus,
+    tb,
+    h.hikeAmount,
+    (h.newBasePay || 0) + tb,
+    h.targetPB,
+    h.newBasePay,
+  ];
+};
+
+// Shared look for editable controls: lightest green with dark, bold-ish text
+// so values stay clearly readable; a stronger green once changed this cycle.
+const EDITABLE_BG = "#DCF1E3";
+const EDITABLE_BORDER = "#86C8A3";
+const EDITED_BG = "#BFE5CE";
+const EDITED_BORDER = "#3F9A7C";
+const editableStyle = {
+  borderColor: EDITABLE_BORDER,
+  background: EDITABLE_BG,
+  color: "#0E2A3B",
+  fontWeight: 600,
+};
+const editedStyle = {
+  borderColor: EDITED_BORDER,
+  background: EDITED_BG,
+  color: "#073B33",
+  fontWeight: 700,
+};
+const fieldStyle = (edited) => (edited ? editedStyle : editableStyle);
+
+const COMP_COLS =
+  "minmax(120px,0.95fr) minmax(130px,0.95fr) minmax(170px,1.25fr) minmax(110px,0.75fr)";
+
+// typed text -> number for the live (while typing) calculations; empty = 0.
+const draftNum = (s) => {
+  const v = parseAmount(s);
+  return v === "" ? 0 : v;
+};
+// tolerant parse ("3,50,000", "₹350000.00", 350000 all work).
+const toNum = (v) => {
+  const n = Number(String(v ?? "").replace(/[^0-9.\-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+};
+
+/* ------------------------------------------------------------------
+   useFitScale: measures the natural height of the table and scales it
+   so it always fits the box it is given (height AND width). Capped at
+   100%, floored at MIN. Re-measures on resize / employee / content change.
+   ------------------------------------------------------------------ */
+const FIT_BASE_WIDTH = 700;
+const FIT_MIN = 0.75; // below this the table scrolls instead of shrinking
+function useFitScale(depKey) {
+  const boxRef = useRef(null);
+  const fitRef = useRef(null);
+  const [scale, setScale] = useState(1);
+
+  useLayoutEffect(() => {
+    const box = boxRef.current;
+    const fit = fitRef.current;
+    if (!box || !fit) return undefined;
+    const calc = () => {
+      const needH = fit.offsetHeight || 1; // layout height ignores transforms
+      const availH = box.clientHeight;
+      const availW = box.clientWidth;
+      if (!availH || !availW) return;
+      const s = Math.max(
+        FIT_MIN,
+        Math.min(1, availH / needH, availW / FIT_BASE_WIDTH),
+      );
+      setScale((prev) => (Math.abs(prev - s) > 0.004 ? s : prev));
+    };
+    calc();
+    const ro = new ResizeObserver(calc);
+    ro.observe(box);
+    ro.observe(fit);
+    window.addEventListener("resize", calc);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", calc);
+    };
+  }, [depKey]);
+
+  return { boxRef, fitRef, scale };
+}
+
+/* ------------------------------------------------------------------
+   SMALL PRESENTATIONAL COMPONENTS
+   ------------------------------------------------------------------ */
+const BANNER_BTN =
+  "min-w-[92px] shrink-0 rounded border border-[#c4ced6] bg-[#eef3f3] px-3 py-1 text-center text-[11px] font-semibold text-[#102a43] hover:bg-[#e4ecec]";
+
+/* Budget notice. Expanded: [Budget changed] [marquee] [View budget] [Got it].
+   After "Got it" only a bell icon button is left on the far right; clicking
+   it brings the whole notice (including View budget) back. */
+function BudgetBanner({ notice, open, onGotIt, onShow, onViewBudget }) {
+  if (!notice) return null;
+
+  if (!open) {
+    return (
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={onShow}
+          title="Show budget notice"
+          aria-label="Show budget notice"
+          className="relative ml-auto inline-flex size-7 shrink-0 items-center justify-center rounded border border-[#c4ced6] bg-[#eef3f3] text-[#102a43] hover:bg-[#e4ecec]"
+        >
+          <Bell className="size-3.5" />
+          <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-[#b42318]" />
+        </button>
+      </div>
+    );
+  }
+
+  const budgetNoticeText = `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`;
+
+  // Same size and look as the notice on the Appraisal Sheet.
+  return (
+    <div className="flex items-center gap-3 rounded-md border border-[#e3e9ec] bg-white px-3 py-1.5">
+      <span className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-[#102a43]">
+        <span className="text-[#b42318]">▲</span>
+        Budget changed
+      </span>
+      <span
+        className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[12px] text-[#3e4c59]"
+        aria-label={budgetNoticeText}
+      >
+        <span className="ds-marquee">{budgetNoticeText}</span>
+      </span>
+      <button type="button" onClick={onViewBudget} className={BANNER_BTN}>
+        View budget
+      </button>
+      <button type="button" onClick={onGotIt} className={BANNER_BTN}>
+        Got it
+      </button>
+    </div>
+  );
+}
+
+/* My notes button for the blue employee bar. The popover is drawn through a
+   portal (fixed position) because the card around the bar clips overflow. */
+function NotesButton({ employee }) {
+  const [notesOpen, setNotesOpen] = useState(false);
+  const [anchor, setAnchor] = useState({ top: 0, right: 0 });
+  const btnRef = useRef(null);
+
+  const notesCount = useMemo(() => {
+    const saved = readStore(NOTES_KEY, []);
+    return Array.isArray(saved) ? saved.length : 0;
+  }, [notesOpen]);
+
+  useEffect(() => {
+    if (!notesOpen) return undefined;
+    const handleOutside = (event) => {
+      if (!event.target?.closest?.("[data-detail-notes]")) setNotesOpen(false);
+    };
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [notesOpen]);
+
+  const toggle = () => {
+    if (!notesOpen && btnRef.current) {
+      const r = btnRef.current.getBoundingClientRect();
+      setAnchor({
+        top: r.bottom + 6,
+        right: Math.max(8, window.innerWidth - r.right),
+      });
+    }
+    setNotesOpen((previous) => !previous);
+  };
+
+  return (
+    <div className="shrink-0" data-detail-notes>
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggle}
+        aria-expanded={notesOpen}
+        className="inline-flex h-6 items-center whitespace-nowrap rounded-md border border-white/40 bg-white/10 px-2.5 text-[11.5px] font-bold text-white hover:bg-white/20"
+        style={{ fontFamily: FONT }}
+      >
+        ✎ My notes
+        {notesCount > 0 && (
+          <span className="ml-1.5 rounded-[9px] bg-white px-1.5 text-[10.5px] font-extrabold text-[#102a43]">
+            {notesCount}
+          </span>
+        )}
+      </button>
+      {notesOpen &&
+        createPortal(
+          <div
+            data-detail-notes
+            style={{
+              position: "fixed",
+              top: anchor.top,
+              right: anchor.right,
+              zIndex: 400,
+            }}
+          >
+            <NotesPopover
+              floating
+              contextLabel={
+                employee
+                  ? `${employee.name} (${employee.empId}) · ${CURRENT_CYCLE}`
+                  : `Detailed Screen · ${CURRENT_CYCLE}`
+              }
+            />
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
+}
+
+function CompHead({ children }) {
+  return (
+    <div
+      style={{
+        background: SOFT,
+        color: INK,
+        fontWeight: 700,
+        fontSize: "14.5px",
+        padding: "4px 10px",
+        borderBottom: `1px solid ${LINE}`,
+        borderRight: `1px solid ${LINE}`,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function Cell({ children, strong, align }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        alignItems: align === "right" ? "flex-end" : "stretch",
+        gap: 2,
+        padding: strong ? "4px 10px" : "3px 8px",
+        fontSize: "14px",
+        borderBottom: `1px solid ${LINE}`,
+        borderRight: `1px solid ${LINE}`,
+        minWidth: 0,
+        fontWeight: strong ? 700 : 400,
+        color: INK,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function ReadOnlyInput({ value, bold }) {
+  return (
+    <input
+      type="text"
+      readOnly
+      disabled
+      value={value}
+      className="h-[36px] w-full min-w-0 rounded border px-2.5 text-[15.5px]"
+      style={{
+        borderColor: "#D9E1E6",
+        background: "#F3F6F7",
+        color: bold ? INK : MUTED,
+        fontWeight: bold ? 800 : 400,
+      }}
+    />
+  );
+}
+
+function EditInput({
+  value,
+  defaultValue,
+  onLive,
+  onCommit,
+  edited,
+  invalid = false,
+  className = "",
+}) {
+  const controlled = value !== undefined;
+  const valueProps = controlled ? { value } : { defaultValue };
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      {...valueProps}
+      onChange={(e) => {
+        // Numbers only: drop letters/symbols, keep digits, commas and one dot.
+        const raw = e.target.value;
+        let clean = raw.replace(/[^0-9.,]/g, "");
+        const firstDot = clean.indexOf(".");
+        if (firstDot > -1)
+          clean =
+            clean.slice(0, firstDot + 1) +
+            clean.slice(firstDot + 1).replace(/\./g, "");
+        if (clean !== raw) e.target.value = clean;
+        if (onLive) onLive(clean);
+      }}
+      onBeforeInput={(e) => {
+        if (e.data && /[^0-9.,]/.test(e.data)) e.preventDefault();
+      }}
+      onPaste={(e) => {
+        const t = (e.clipboardData?.getData("text") || "").trim();
+        if (/[^0-9.,]/.test(t)) e.preventDefault();
+      }}
+      onBlur={(e) => {
+        if (!controlled) {
+          const n = parseAmount(e.target.value);
+          e.target.value = fmtOrBlank(n);
+        }
+        if (onCommit) onCommit(e.target.value);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") e.currentTarget.blur();
+      }}
+      className={`h-[36px] w-full min-w-0 rounded border px-2.5 text-[15.5px] outline-none focus:border-[#0B7A75] ${className}`}
+      style={
+        invalid
+          ? {
+              ...fieldStyle(edited),
+              borderColor: "#C0392B",
+              background: "#FDECEA",
+              color: "#7A1F14",
+            }
+          : fieldStyle(edited)
+      }
+      aria-invalid={invalid || undefined}
+    />
+  );
+}
+
+function CompRow({ label, current, children, diffNode, diffText, muted }) {
+  return (
+    <>
+      <Cell strong>{label}</Cell>
+      <Cell>
+        <ReadOnlyInput value={current} />
+      </Cell>
+      <Cell>{children}</Cell>
+      <Cell align="right">
+        {diffNode ?? (
+          <span style={{ color: muted ? MUTED : INK, fontSize: 12.5 }}>
+            {diffText}
+          </span>
+        )}
+      </Cell>
+    </>
+  );
+}
+
+function PayRow({
+  label,
+  floorAmount,
+  month,
+  floorCaptionPrefix,
+  diffValue,
+  instalmentSelect,
+  error,
+  children,
+}) {
+  const color = diffValue < 0 ? RED : diffValue > 0 ? GREEN : MUTED;
+  return (
+    <>
+      <Cell strong>{label}</Cell>
+      <Cell>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0,1fr) 84px",
+            gap: 6,
+          }}
+        >
+          <ReadOnlyInput value={fmt(floorAmount)} />
+          <ReadOnlyInput value={month || "—"} />
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0,1fr) 84px",
+            gap: 6,
+            fontSize: 11.5,
+            color: MUTED,
+          }}
+        >
+          <span style={{ whiteSpace: "nowrap" }}>
+            {floorCaptionPrefix} to be Paid
+          </span>
+          <span style={{ whiteSpace: "nowrap" }}>
+            Month ({floorCaptionPrefix})
+          </span>
+        </div>
+      </Cell>
+      <Cell>
+        <div className="flex items-center gap-1.5">
+          {children}
+          {instalmentSelect}
+        </div>
+        <div
+          role={error ? "alert" : undefined}
+          style={{
+            fontSize: 11.5,
+            color: error ? RED : MUTED,
+            fontWeight: error ? 700 : 400,
+          }}
+        >
+          {error || `Preloaded · cannot be less than ${fmt(floorAmount)}`}
+        </div>
+      </Cell>
+      <Cell align="right">
+        <span style={{ color, fontWeight: 800, fontSize: 13 }}>
+          {signedNum(diffValue)}
+        </span>
+        <span style={{ color: MUTED, fontSize: 11.5 }}>vs to be paid</span>
+      </Cell>
+    </>
+  );
+}
+
+function HikeDiffInputs({
+  edited,
+  amountValue,
+  pctValue,
+  onLiveAmount,
+  onLivePct,
+  onHikeAmount,
+  onHikePct,
+}) {
+  const lab = { fontSize: 11.5, color: MUTED, textAlign: "right" };
+  return (
+    <div
+      style={{
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        gap: 2,
+      }}
+    >
+      <span style={lab}>Hike Amount</span>
+      <EditInput
+        value={amountValue}
+        onLive={onLiveAmount}
+        onCommit={onHikeAmount}
+        edited={edited}
+      />
+      <span style={lab}>Hike%</span>
+      <EditInput
+        value={pctValue}
+        onLive={onLivePct}
+        onCommit={onHikePct}
+        edited={edited}
+      />
+    </div>
+  );
+}
+
+/* ---- Detail-screen field table: Description | Previous year | This year | Diff ---- */
+const FIELD_COLS = "minmax(150px,0.9fr) minmax(200px,1.2fr) minmax(280px,1.9fr) minmax(100px,0.6fr)";
+
+function FieldHead({ children, right }) {
+  return (
+    <div
+      style={{
+        background: "#F4F7FA",
+        color: MUTED,
+        fontWeight: 700,
+        fontSize: 12.5,
+        letterSpacing: ".04em",
+        textTransform: "uppercase",
+        padding: "11px 12px",
+        textAlign: right ? "right" : "left",
+        borderBottom: `1px solid ${LINE}`,
+        borderRight: right ? "none" : `1px solid ${LINE}`,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function FieldCell({ children, label, right, last }) {
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: label ? "flex-start" : "center",
+        alignItems: right ? "flex-end" : "stretch",
+        gap: 3,
+        padding: label ? "10px 12px" : "6px 10px",
+        minWidth: 0,
+        fontSize: label ? 16 : 15,
+        fontWeight: label ? 700 : 400,
+        color: INK,
+        borderBottom: `1px solid ${LINE}`,
+        borderRight: last ? "none" : `1px solid ${LINE}`,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+const subNote = { fontSize: 12.5, color: MUTED, lineHeight: 1.3 };
+
+// Green / red signed difference with a small caption underneath.
+function DiffValue({ value, caption }) {
+  if (value === null || value === undefined) return null;
+  const color = value < 0 ? RED : value > 0 ? GREEN : MUTED;
+  return (
+    <>
+      <span style={{ color, fontWeight: 800, fontSize: 16 }}>
+        {signedNum(value)}
+      </span>
+      {caption ? <span style={subNote}>{caption}</span> : null}
+    </>
+  );
+}
+
+function FieldRow({ label, prev, children, diff }) {
+  return (
+    <>
+      <FieldCell label>{label}</FieldCell>
+      <FieldCell>{prev}</FieldCell>
+      <FieldCell>{children}</FieldCell>
+      <FieldCell right last>
+        {diff}
+      </FieldCell>
+    </>
+  );
+}
+
+function HistCell({ value, prev }) {
+  const hasPrev = prev !== undefined && prev !== null;
+  const pct = hasPrev ? (prev ? ((value - prev) / prev) * 100 : 0) : null;
+  const color = pct === null ? MUTED : pct > 0 ? GREEN : pct < 0 ? RED : MUTED;
+  return (
+    <div style={{ textAlign: "right", padding: "4px 10px", lineHeight: 1.15 }}>
+      <div style={{ color: INK }}>{fmt(value)}</div>
+      {pct !== null ? (
+        <div style={{ fontSize: 10.5, color, fontWeight: 600 }}>
+          {pct >= 0 ? "+" : "−"}
+          {Math.abs(pct).toFixed(2)}%
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const HIST_GRID = "110px repeat(9, minmax(0, 1fr))";
+
+/* ------------------------------------------------------------------
+   PAGE
+   ------------------------------------------------------------------ */
+export function DetailScreenPage({
+  onViewBudget,
+  budgetNotice = BUDGET_NOTICE_PLACEHOLDER,
+} = {}) {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
   const { currentUser, isHR } = useBudget();
   const catalystUser = useCatalystUser();
-  const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const role = String(catalystUser?.role || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
-  // The backend already scopes rows to what this login may see, so no
-  // extra client-side narrowing by comp manager name here.
+
+  // The backend already scopes rows to what this login may see.
   const rows = liveRows || [];
   const isScopedToTeam = isTechEd || rows.length > 0;
+
   const [index, setIndex] = useState(0);
   const [search, setSearch] = useState("");
   const [historyByEmpId, setHistoryByEmpId] = useState({});
   const historyPromiseRef = useRef(new Map());
-  // UI-only state for the reference layout.
+
+  // Layout-only state (no effect on data)
+  const [noticeOpen, setNoticeOpen] = useState(true);
   const [metricsOpen, setMetricsOpen] = useState(false);
+
+  const [cardOpen, setCardOpen] = useState(true);
+  const [feedbackWidth, setFeedbackWidth] = useState(320);
+  const [fbTab, setFbTab] = useState("manager");
+  const baselineRef = useRef({});
+
+  // What the user is typing right now (per employee), used only to show
+  // live values. Saving still happens on blur exactly as before.
+  const [draftState, setDraftState] = useState({ id: null });
+  // Whatever the CTC formula adds beyond Base + PB + RB, frozen per employee.
+  const ctcOffsetRef = useRef({});
+
   useEffect(() => {
     setIndex(0);
     setSearch("");
   }, [currentUser.name]);
+
   const employee = rows[Math.min(index, rows.length - 1)] || rows[0];
-  // Existing Catalyst appraisal-history API flow — intentionally preserved.
-  const loadHistory = useCallback(
-    (empId) => {
-      const key = String(empId || "").trim();
-      if (!key) {
-        return Promise.resolve([]);
+
+  const noticeSignature = employee
+    ? JSON.stringify({
+        hikeAmount: employee.hikeAmount,
+        hikePct: employee.hikePct,
+        newBasePay: employee.newBasePay,
+        performanceBonus: employee.performanceBonus,
+        retentionBonus: employee.retentionBonus,
+        compManagerRemarks: employee.compManagerRemarks,
+      })
+    : "";
+
+  const previousNoticeSignatureRef = useRef("");
+  useEffect(() => {
+    if (!noticeSignature) return;
+    if (
+      previousNoticeSignatureRef.current &&
+      previousNoticeSignatureRef.current !== noticeSignature
+    ) {
+      setNoticeOpen(true);
+    }
+    previousNoticeSignatureRef.current = noticeSignature;
+  }, [noticeSignature]);
+
+  // Measure + scale the compensation table so it fits one screen.
+  const { boxRef, fitRef, scale } = useFitScale(employee?.id);
+
+  // Remember each employee's values when first shown, so edits can be highlighted.
+  if (employee && !baselineRef.current[employee.id]) {
+    const snap = {};
+    EDIT_FIELDS.forEach((f) => {
+      snap[f] = employee[f];
+    });
+    baselineRef.current[employee.id] = snap;
+  }
+
+  const isEdited = (field) => {
+    if (!employee) return false;
+    const base = baselineRef.current[employee.id];
+    if (!base) return false;
+    return blankStr(base[field]) !== blankStr(employee[field]);
+  };
+
+  const loadHistory = useCallback((empId) => {
+    const key = String(empId || "").trim();
+    if (!key) {
+      return Promise.resolve([]);
+    }
+    const existing = historyPromiseRef.current.get(key);
+    if (existing) {
+      return existing;
+    }
+    setHistoryByEmpId((prev) => ({
+      ...prev,
+      [key]: { loading: true, data: [], error: "" },
+    }));
+    const promise = (async () => {
+      const response = await catalystFetch(
+        `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(key)}`,
+      );
+      if (!response.ok) {
+        throw new Error(`History request failed (${response.status}).`);
       }
-      const existing = historyPromiseRef.current.get(key);
-      if (existing) {
-        return existing;
+      const result = await response.json();
+      if (!result?.success) {
+        throw new Error(result?.message || "Failed to load history.");
       }
-      setHistoryByEmpId((prev) => ({
-        ...prev,
-        [key]: { loading: true, data: [], error: "" },
-      }));
-      const promise = (async () => {
-        const response = await catalystFetch(
-          `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(key)}`,
-        );
-        if (!response.ok) {
-          throw new Error(`History request failed (${response.status}).`);
-        }
-        const result = await response.json();
-        if (!result?.success) {
-          throw new Error(result?.message || "Failed to load history.");
-        }
-        const records = Array.isArray(result?.data) ? result.data : [];
-        return records
-          .map(normalizeHistoryRecord)
-          .sort((a, b) => String(b.year).localeCompare(String(a.year)));
-      })();
-      historyPromiseRef.current.set(key, promise);
-      promise
-        .then((data) => {
-          setHistoryByEmpId((prev) => ({
-            ...prev,
-            [key]: { loading: false, data, error: "" },
-          }));
-        })
-        .catch((error) => {
-          historyPromiseRef.current.delete(key);
-          setHistoryByEmpId((prev) => ({
-            ...prev,
-            [key]: {
-              loading: false,
-              data: [],
-              error: error?.message || "Unable to load history.",
-            },
-          }));
-        });
-      return promise;
-    },
-    [],
-  );
+      const records = Array.isArray(result?.data) ? result.data : [];
+      return records
+        .map(normalizeHistoryRecord)
+        .sort((a, b) => String(b.year).localeCompare(String(a.year)));
+    })();
+    historyPromiseRef.current.set(key, promise);
+    promise
+      .then((data) => {
+        setHistoryByEmpId((prev) => ({
+          ...prev,
+          [key]: { loading: false, data, error: "" },
+        }));
+      })
+      .catch((error) => {
+        historyPromiseRef.current.delete(key);
+        setHistoryByEmpId((prev) => ({
+          ...prev,
+          [key]: {
+            loading: false,
+            data: [],
+            error: error?.message || "Unable to load history.",
+          },
+        }));
+      });
+    return promise;
+  }, []);
+
   useEffect(() => {
     if (employee?.empId) {
       loadHistory(employee.empId).catch(() => {});
     }
   }, [employee?.empId, loadHistory]);
+
   const empKey = employee ? String(employee.empId || "").trim() : "";
   const historyState = historyByEmpId[empKey];
   const historyRecords = historyState?.data || [];
+
   const priorCycles = useMemo(() => {
     const seen = new Set();
     const result = [];
@@ -223,7 +1093,7 @@ export function DetailScreenPage() {
     }
     return result;
   }, [historyRecords]);
-  // Existing calculations are derived from the currently selected dynamic employee record.
+
   const derived = useMemo(() => {
     if (!employee) return null;
     return {
@@ -233,6 +1103,135 @@ export function DetailScreenPage() {
       totalCtc: totalCTCWithRewards(employee),
     };
   }, [employee]);
+
+  /* ---- live (while typing) values ----------------------------------- */
+  if (employee && derived && ctcOffsetRef.current[employee.id] === undefined) {
+    ctcOffsetRef.current[employee.id] =
+      derived.totalCtc -
+      derived.newBase -
+      (Number(employee.allocatedPBAmount) || 0) -
+      (Number(employee.newRB) || 0);
+  }
+
+  const draft = employee && draftState.id === employee.id ? draftState : {};
+  const setDraft = (patch) =>
+    setDraftState((prev) => ({
+      ...(prev.id === employee.id ? prev : {}),
+      ...patch,
+      id: employee.id,
+    }));
+  const clearDraft = (keys) =>
+    setDraftState((prev) => {
+      if (prev.id !== employee.id) return prev;
+      const next = { ...prev };
+      keys.forEach((k) => {
+        delete next[k];
+      });
+      return next;
+    });
+
+  // Current base pay used by every hike calculation.
+  const baseNow =
+    toNum(employee?.currentAnnualBasePay) ||
+    (derived ? toNum(derived.newBase) - toNum(employee?.hikeAmount) : 0);
+
+  // Validation messages for the PB / RB proposed fields, plus a counter that
+  // remounts a field so a rejected value snaps back to the last good one.
+  const [hikeErr, setHikeErr] = useState("");
+  useEffect(() => {
+    setHikeErr("");
+  }, [employee?.id]);
+  const HIKE_MAX_MSG = "Hike % cannot exceed 100%.";
+  const [payErr, setPayErr] = useState({ pb: "", rb: "" });
+  const [payReset, setPayReset] = useState({ pb: 0, rb: 0 });
+  useEffect(() => {
+    setPayErr({ pb: "", rb: "" });
+  }, [employee?.id]);
+
+  // Proposed PB / RB start from the Appraisal Sheet's "PB to be Paid" /
+  // "RB to be Paid" until a value has been entered for this employee.
+  const proposedPB = !employee
+    ? 0
+    : isBlank(employee.allocatedPBAmount)
+      ? employee.pbToBePaid
+      : employee.allocatedPBAmount;
+  const proposedRB = !employee
+    ? 0
+    : isBlank(employee.newRB)
+      ? employee.rbToBePaid
+      : employee.newRB;
+  const livePB = !employee
+    ? 0
+    : draft.pbStr !== undefined
+      ? draftNum(draft.pbStr)
+      : Number(proposedPB) || 0;
+  const liveRB = !employee
+    ? 0
+    : draft.rbStr !== undefined
+      ? draftNum(draft.rbStr)
+      : Number(proposedRB) || 0;
+  const liveBase =
+    !employee || !derived
+      ? 0
+      : draft.baseStr !== undefined
+        ? draftNum(draft.baseStr)
+        : derived.newBase;
+  const liveCtc =
+    employee && derived
+      ? liveBase + livePB + liveRB + (ctcOffsetRef.current[employee.id] || 0)
+      : 0;
+
+  // Live figures for the "Apr-26 ★" row in Employee History.
+  const liveHist =
+    employee && derived
+      ? {
+          pbTotal:
+            derived.totalPB +
+            (livePB - (Number(employee.allocatedPBAmount) || 0)),
+          rb: liveRB,
+          bonus:
+            derived.bonus +
+            (livePB - (Number(employee.allocatedPBAmount) || 0)) +
+            (liveRB - (Number(employee.newRB) || 0)),
+          hike:
+            draft.baseStr !== undefined
+              ? liveBase - baseNow
+              : Number(employee.hikeAmount) || 0,
+          tpb:
+            draft.tpbStr !== undefined
+              ? draftNum(draft.tpbStr)
+              : Number(employee.targetPBNextYear) || 0,
+        }
+      : null;
+
+  /* ---- PB / RB "to be paid" floors + payment month ------------------- */
+  const payFloors = useMemo(() => {
+    if (!employee) return null;
+    const pbFloor = Number(employee.pbToBePaid) || 0; // sheet: PB to be Paid
+    const rbFloor = Number(employee.rbToBePaid) || 0; // sheet: RB to be Paid
+    return {
+      pbFloor,
+      pbMonth: employee.pbMonth ?? "", // TODO: wire the real PB payment month
+      rbFloor,
+      rbMonth: employee.rbMonth ?? "", // TODO: wire the real RB payment month
+      pbDiff: (Number(proposedPB) || 0) - pbFloor,
+      rbDiff: (Number(proposedRB) || 0) - rbFloor,
+    };
+  }, [employee]);
+
+  /* ---- Total CTC with Rewards vs last cycle's CTC (moves while typing) */
+  const ctcCompare = useMemo(() => {
+    if (!employee || !derived) return null;
+    const lastCycle = priorCycles[0];
+    const lastCtc = lastCycle
+      ? lastCycle.newBasePay +
+        lastCycle.performanceBonus +
+        lastCycle.retentionBonus
+      : 0;
+    const pct = lastCtc ? ((liveCtc - lastCtc) / lastCtc) * 100 : 0;
+    return { lastCtc, pct };
+  }, [employee, derived, priorCycles, liveCtc]);
+
   const handleSearch = (value) => {
     setSearch(value);
     const q = value.trim().toLowerCase();
@@ -245,7 +1244,7 @@ export function DetailScreenPage() {
     );
     if (found > -1) setIndex(found);
   };
-  // Existing store update logic — keeps edits connected to the appraisal store.
+
   const commit = (field, value) => {
     const current = isBlank(employee[field]) ? "" : String(employee[field]);
     if (current === (isBlank(value) ? "" : String(value))) return;
@@ -254,6 +1253,7 @@ export function DetailScreenPage() {
   const commitLinked = (fields) => {
     updateLinkedCells(employee.id, fields, "Detail screen edit");
   };
+
   const handleNewBasePayChange = (raw) => {
     const value = parseAmount(raw);
     // Cleared input clears the hike (same as the grid's blank hike cells).
@@ -264,12 +1264,65 @@ export function DetailScreenPage() {
       return;
     }
     if (value === derived.newBase) return;
-    const hike = value - (Number(employee.currentAnnualBasePay) || 0);
-    const pct = employee.currentAnnualBasePay
-      ? Number(((hike / employee.currentAnnualBasePay) * 100).toFixed(1))
-      : 0;
+    const hike = value - baseNow;
+    const pct = baseNow ? Number(((hike / baseNow) * 100).toFixed(1)) : 0;
     commitLinked({ hikeAmount: hike, hikePct: pct });
   };
+
+  /* Hike Amount and Hike% are linked inputs. Editing either one
+     recalculates the other off currentAnnualBasePay. */
+  const handleHikeAmountChange = (raw) => {
+    const hike = parseAmount(raw);
+    if (hike === "") return;
+    const base = baseNow;
+    if (base && (Number(hike) / base) * 100 > 100) {
+      setHikeErr(HIKE_MAX_MSG + " Not saved.");
+      return;
+    }
+    setHikeErr("");
+    const pct = base ? Number(((hike / base) * 100).toFixed(2)) : 0;
+    commitLinked({ hikeAmount: hike, hikePct: pct });
+  };
+  const handleHikePctChange = (raw) => {
+    const pctRaw = parseAmount(raw);
+    if (pctRaw === "") return;
+    if (Number(pctRaw) > 100) {
+      setHikeErr(HIKE_MAX_MSG + " Not saved.");
+      return;
+    }
+    setHikeErr("");
+    const base = baseNow;
+    const hike = Math.round((base * Number(pctRaw)) / 100);
+    commitLinked({
+      hikeAmount: hike,
+      hikePct: Number(Number(pctRaw).toFixed(2)),
+    });
+  };
+
+  /* Live linking while typing (display only) */
+  const HIKE_DRAFT_KEYS = ["baseStr", "hikeStr", "pctStr"];
+  const liveHikeAmount = (raw) => {
+    const hike = draftNum(raw);
+    const pct = baseNow ? (hike / baseNow) * 100 : 0;
+    setHikeErr(pct > 100 ? HIKE_MAX_MSG : "");
+    setDraft({
+      hikeStr: raw,
+      pctStr: pct.toFixed(2),
+      baseStr: fmt(baseNow + hike),
+    });
+  };
+  const liveHikePct = (raw) => {
+    const pct = draftNum(raw);
+    setHikeErr(pct > 100 ? HIKE_MAX_MSG : "");
+    const hike = Math.round((baseNow * pct) / 100);
+    setDraft({ pctStr: raw, hikeStr: fmt(hike), baseStr: fmt(baseNow + hike) });
+  };
+  const liveNewBasePay = (raw) => {
+    const hike = draftNum(raw) - baseNow;
+    const pct = baseNow ? (hike / baseNow) * 100 : 0;
+    setDraft({ baseStr: raw, hikeStr: fmt(hike), pctStr: pct.toFixed(2) });
+  };
+
   const handleNewTitleChange = (value) => {
     const changed = value !== employee.designation;
     // Same rule as the grid: promotion "No" clears New Title.
@@ -279,90 +1332,188 @@ export function DetailScreenPage() {
         : { eligibleForPromotion: "No", newTitle: null },
     );
   };
-  const hikeValue = Number(employee?.hikeAmount) || 0;
+
   const scopeLabel = isHR
     ? "All employees"
     : isScopedToTeam
       ? `${currentUser.name}'s team`
       : "No assigned team";
-  const teamMetrics = useMemo(() => {
-    const safeRows = Array.isArray(rows) ? rows : [];
-    const used = safeRows.reduce(
-      (sum, row) => sum + (Number(row?.hikeAmount) || 0),
-      0,
+
+  const handleViewBudget = () => {
+    if (typeof onViewBudget === "function") onViewBudget();
+    else {
+      // Same in-app navigation the top menu uses (no page reload).
+      window.history.pushState({}, "", BUDGET_PATH);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    }
+  };
+
+  // Blur first so the field being edited commits, then move.
+  const goTo = (next) => {
+    if (document.activeElement && document.activeElement.blur) {
+      document.activeElement.blur();
+    }
+    setTimeout(() => {
+      setIndex(() => Math.max(0, Math.min(rows.length - 1, next)));
+      setSearch("");
+    }, 0);
+  };
+  const safeIndex = Math.min(index, Math.max(rows.length - 1, 0));
+
+  const cols = [
+    "minmax(0,2.25fr)",
+    metricsOpen && "minmax(150px,0.6fr)",
+    cardOpen && `minmax(240px, ${feedbackWidth}px)`,
+    (!metricsOpen || !cardOpen) && "30px",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  // Title options: always include the current designation.
+  const titleOptions = useMemo(() => {
+    const list = Array.isArray(NEW_TITLES) ? [...NEW_TITLES] : [];
+    const names = list.map((t) =>
+      typeof t === "string" ? t : (t?.value ?? t?.label),
     );
-    const tpb = safeRows.reduce(
-      (sum, row) => sum + (Number(row?.targetPBAllocatedForMay) || 0),
-      0,
-    );
-    const pbPaid = safeRows.reduce(
-      (sum, row) => sum + (Number(row?.allocatedPBAmount) || 0),
-      0,
-    );
-    const pbTarget = safeRows.reduce(
-      (sum, row) => sum + (Number(row?.targetPBAllocatedForMay) || 0),
-      0,
-    );
-    const hikeRows = safeRows
-      .map((row) => ({ row, value: Number(row?.hikePct) }))
-      .filter((x) => Number.isFinite(x.value));
-    const mineValue = Number(employee?.hikePct);
-    const percentile =
-      hikeRows.length && Number.isFinite(mineValue)
-        ? Math.round(
-            (hikeRows.filter((x) => x.value <= mineValue).length /
-              hikeRows.length) *
-              100,
-          )
-        : null;
-    const sorted = hikeRows.map((x) => x.value).sort((a, b) => a - b);
-    const median = sorted.length
-      ? sorted.length % 2
-        ? sorted[Math.floor(sorted.length / 2)]
-        : (sorted[sorted.length / 2 - 1] + sorted[sorted.length / 2]) / 2
-      : null;
-    const topEntry = hikeRows.length
-      ? hikeRows.reduce((best, item) =>
-          item.value > best.value ? item : best,
-        )
+    if (employee?.designation && !names.includes(employee.designation)) {
+      list.unshift(employee.designation);
+    }
+    return list;
+  }, [employee?.designation]);
+
+  const targetPBCurrent =
+    employee?.currentTargetPB ??
+    baselineRef.current[employee?.id]?.targetPBNextYear;
+
+  /* ---- Team comparison (from the detailed-screen-update branch) ------- */
+  // Over the employees this login can see (HR: all; Tech-ED: their team).
+  const team = (() => {
+    const teamRows = Array.isArray(rows) ? rows : [];
+    const hikes = teamRows
+      .filter((row) => row?.hikePct !== "" && row?.hikePct !== null && row?.hikePct !== undefined)
+      .map((row) => ({ row, value: Number(row.hikePct) }))
+      .filter((item) => Number.isFinite(item.value));
+    const mine = Number(employee?.hikePct);
+    const sorted = hikes.map((item) => item.value).sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    const top = hikes.length
+      ? hikes.reduce((best, item) => (item.value > best.value ? item : best))
       : null;
     return {
-      used,
-      tpb,
-      pbPaid,
-      pbTarget,
-      cur: teamBudget ? (used / teamBudget) * 100 : null,
-      withT: teamBudget ? ((used + tpb) / teamBudget) * 100 : null,
-      percentile,
-      mine: { v: Number.isFinite(mineValue) ? mineValue : 0 },
-      top: topEntry
-        ? { v: topEntry.value, r: { name: topEntry.row?.name || "—" } }
-        : { v: 0, r: { name: "—" } },
-      median,
-      noHike: safeRows.filter((row) => !(Number(row?.hikeAmount) || 0)).length,
+      size: teamRows.length,
+      percentile:
+        hikes.length && Number.isFinite(mine)
+          ? Math.round((hikes.filter((item) => item.value <= mine).length / hikes.length) * 100)
+          : null,
+      median: sorted.length
+        ? sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+        : null,
+      top,
+      hikeUsed: teamRows.reduce((sum, row) => sum + (Number(row?.hikeAmount) || 0), 0),
+      pbPaid: teamRows.reduce((sum, row) => sum + (Number(row?.allocatedPBAmount) || 0), 0),
+      pbTarget: teamRows.reduce((sum, row) => sum + (Number(row?.targetPBAllocatedForMay) || 0), 0),
+      noHike: teamRows.filter((row) => !(Number(row?.hikeAmount) || 0)).length,
     };
-  }, [rows, employee]);
+  })();
+
+  /* ---- Metrics numbers ---------------------------------------------- */
+  const metrics = employee
+    ? [
+        [
+          "Hike %",
+          baseNow ? signedPct(((liveBase - baseNow) / baseNow) * 100) : "—",
+        ],
+        [
+          "Total CTC vs last cycle",
+          ctcCompare?.lastCtc ? signedPct(ctcCompare.pct) : "—",
+        ],
+        ["Total CTC", inr(liveCtc)],
+        [
+          "PB share of CTC",
+          liveCtc ? `${((livePB / liveCtc) * 100).toFixed(1)}%` : "—",
+        ],
+        [
+          "RB share of CTC",
+          liveCtc ? `${((liveRB / liveCtc) * 100).toFixed(1)}%` : "—",
+        ],
+        ["Total bonus", inr(liveHist?.bonus || 0)],
+        ...(team.size > 1
+          ? [
+              ["Team median hike %", team.median === null ? "—" : `${team.median.toFixed(1)}%`],
+              ["Hike % percentile in team", team.percentile === null ? "—" : `${team.percentile}th of ${team.size}`],
+              ["Top hike in team", team.top ? `${team.top.value.toFixed(1)}% · ${team.top.row?.name || "—"}` : "—"],
+              ["Team hike used", inr(team.hikeUsed)],
+              ["Team PB paid vs target", `${inr(team.pbPaid)} / ${inr(team.pbTarget)}`],
+              ["Team members without a hike", String(team.noHike)],
+            ]
+          : []),
+      ]
+    : [];
+
+  /* ---- Feedback timeline -------------------------------------------- */
+  const timeline = employee
+    ? [
+        {
+          year: CURRENT_CYCLE,
+          current: true,
+          title: dash(employee.designation),
+          rating: dash(employee.managerRating ?? employee.rating),
+          promo: dash(employee.eligibleForPromotion),
+          note: "Feedback captured during the review.",
+        },
+        ...priorCycles.map((p) => ({
+          year: p.year,
+          current: false,
+          title: p.designation,
+          rating: p.feedback !== "—" ? p.feedback : p.rating,
+          promo: null,
+          note: null,
+        })),
+      ]
+    : [];
+
   return (
     <div
-      className="h-screen w-full overflow-hidden"
-      style={{ fontFamily: FONT, background: "#eef2f6" }}
+      className="ds-root"
+      style={{
+        fontFamily: FONT,
+        background: "#F4F7F7",
+        color: "#1F2F3D",
+        fontSize: "13px",
+      }}
     >
-      <div
-        className="flex h-full min-h-0 flex-col"
-        style={{
-          color: "#0f1f33",
-          fontSize: "12.5px",
-        }}
-      >
-        <div className="mx-auto flex min-h-0 w-full max-w-[1480px] flex-1 flex-col gap-2 px-2.5 pb-1.5 pt-2">
-          {!employee ? (
-            <div className="rounded-[10px] border bg-white p-6 text-sm text-slate-500">
-              No employees are visible for this login.
-            </div>
-          ) : (
-            <>
-              <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 min-[1000px]:grid-cols-[minmax(0,1fr)_auto_minmax(320px,370px)]">
-                {/* LEFT COLUMN — Compensation Input Screen */}
+      <style>{DS_CSS}</style>
+
+      {/* ============ SCREEN 1 - fits one viewport, no scrolling ============ */}
+      <div className="ds-screen">
+        <div
+          className="flex flex-col gap-2"
+          style={{ padding: "6px 12px 2px", minWidth: 0 }}
+        >
+          <BudgetBanner
+            notice={budgetNotice}
+            open={noticeOpen}
+            onGotIt={() => setNoticeOpen(false)}
+            onShow={() => setNoticeOpen(true)}
+            onViewBudget={handleViewBudget}
+          />
+        </div>
+
+        {!employee ? (
+          <div className="p-6 text-sm text-slate-500">
+            No employees are visible for this login.
+          </div>
+        ) : (
+          <div className="ds-main" style={{ "--ds-cols": cols }}>
+            {/* LEFT - Compensation input */}
+            <section
+              className="ds-card ds-left"
+              aria-label="Compensation input"
+            >
+              <div
+                className="flex shrink-0 items-center justify-between gap-2 border-b px-2.5 py-1"
+                style={{ borderColor: NAVY, background: NAVY }}
+              >
                 <div
                   className="min-w-0 flex-1 text-[13.5px] leading-snug"
                   style={{ color: "#fff" }}
@@ -407,93 +1558,160 @@ export function DetailScreenPage() {
                     className="whitespace-nowrap rounded px-2 py-0.5 text-[12px] font-semibold"
                     style={{ background: "#E6F3F2", color: "#0B5F5B" }}
                   >
-                    Compensation Input Screen
-                  </div>
-                  <div
-                    className="flex items-center gap-2 border-b px-2.5 py-1.5"
-                    style={{ borderColor: "#e1e5eb" }}
-                  >
-                    <input
-                      type="text"
-                      value={search}
-                      onChange={(e) => handleSearch(e.target.value)}
-                      placeholder="Search your team by name or employee ID"
-                      className="h-7 flex-1 rounded border px-2 text-[12px] outline-none focus:border-[#2563eb]"
-                      style={{ borderColor: "#cbd3df" }}
-                    />
-                    <span
-                      className="whitespace-nowrap rounded border px-2 py-0.5 text-[11px]"
-                      style={{
-                        background: "#e6f0fb",
-                        borderColor: "#b6d0ef",
-                        color: "#1d4f8c",
-                      }}
-                    >
-                      Scope: {scopeLabel} · {rows.length}
-                    </span>
-                  </div>
-                  <div
-                    className="detail-scroll min-h-0 flex-1 overflow-auto"
-                    style={{ scrollbarWidth: "thin" }}
-                  >
-                    <div
-                      className="grid text-[11.5px]"
-                      style={{ gridTemplateColumns: "0.95fr 0.9fr 1.45fr 0.8fr" }}
-                    >
-                    <CompHead bg="#d6e0ec">Description</CompHead>
-                    <CompHead bg="#e3e7ed">Current</CompHead>
-                    <CompHead bg="#d3e3f6">Proposed</CompHead>
-                    <CompHead bg="#eef1f5" center>
-                      Diff
-                    </CompHead>
-                    <CompRow
-                      label="Base Pay"
-                      current={inr(employee.currentAnnualBasePay)}
-                      diff={`${hikeValue > 0 ? "+" : ""}${fmt(hikeValue)} / ${(Number(employee.hikePct) || 0).toFixed(1)}%`}
-                      diffPositive={hikeValue > 0}
-                    >
-                      <EditInput
-                        key={`${employee.id}-newBase`}
-                        defaultValue={fmt(derived.newBase)}
-                        onCommit={handleNewBasePayChange}
-                      />
-                    </CompRow>
-                    <CompRow
-                      label="Joining Bonus"
-                      current="0"
-                      diffText="n/a this cycle"
-                      muted
-                    >
-                      <ReadOnlyInput value="0" disabled />
-                    </CompRow>
-                    <CompRow
-                      label="Retention Bonus"
-                      current={inr(employee.newRB ?? 0)}
-                      diffText="—"
-                    >
-                      <EditInput
-                        key={`${employee.id}-newRB`}
-                        defaultValue={fmt(employee.newRB ?? 0)}
-                        onCommit={(v) =>
-                          commit(
-                            "newRB",
-                            Number(String(v).replace(/[^0-9.]/g, "")) || 0,
-                          )
-                        }
-                      />
-                    </CompRow>
-                    <CompRow
-                      label="PB Allotted / Instalments"
-                      current={`${inr(employee.targetPBAllocatedForMay)} / ${employee.pbInstallment ?? "—"}`}
-                      diffText="—"
-                    >
-                      <div className="flex w-full items-center gap-1.5">
-                        <EditInput
-                          key={`${employee.id}-allocatedPBAmount`}
-                          className="flex-1"
-                          defaultValue={fmtOrBlank(employee.allocatedPBAmount)}
-                          onCommit={(v) =>
-                            commit("allocatedPBAmount", parseAmount(v))
+                    {rows.length}
+                  </span>
+                  <NotesButton employee={employee} />
+                </div>
+              </div>
+
+              {/* Table area: takes all leftover height; content is scaled to fit it */}
+              <div
+                className="ds-panel-scroll"
+                ref={boxRef}
+                style={{
+                  overflow: scale <= FIT_MIN + 0.001 ? "auto" : "hidden",
+                }}
+              >
+                <div
+                  className="ds-fit"
+                  ref={fitRef}
+                  style={{
+                    transform: `scale(${scale})`,
+                    width: `${100 / scale}%`,
+                  }}
+                >
+                  {(() => {
+                    const last = priorCycles[0];
+                    const dashPrev = (v) => (last ? fmt(v) : "—");
+                    const lastHikePct =
+                      last && last.basePay
+                        ? ((last.hikeAmount / last.basePay) * 100).toFixed(1)
+                        : null;
+                    const prevTPB = Number(targetPBCurrent) || 0;
+                    const vsLast = (live, prev) => (last ? live - prev : null);
+                    const naBox = (
+                      <div
+                        style={{
+                          border: "1px dashed #B8C4CE",
+                          background: "#F3F6F7",
+                          color: MUTED,
+                          borderRadius: 4,
+                          padding: "4px 8px",
+                          fontSize: 13,
+                        }}
+                      >
+                        n/a this cycle
+                      </div>
+                    );
+                    const lab = { ...subNote, textAlign: "center" };
+                    return (
+                      <div
+                        className="grid text-[15px]"
+                        style={{ gridTemplateColumns: FIELD_COLS }}
+                      >
+                        <FieldHead>Description</FieldHead>
+                        <FieldHead>Previous Year</FieldHead>
+                        <FieldHead>This Year (Proposed)</FieldHead>
+                        <FieldHead right>Diff</FieldHead>
+
+                        {/* Base Pay */}
+                        <FieldRow
+                          label="Base Pay"
+                          prev={<ReadOnlyInput value={dashPrev(last?.basePay)} />}
+                        >
+                          <ReadOnlyInput value={inr(employee.currentAnnualBasePay)} />
+                        </FieldRow>
+
+                        {/* New Base Pay + hike inputs */}
+                        <FieldRow
+                          label="New Base Pay"
+                          prev={
+                            <>
+                              <div style={{ width: "62%", minWidth: 110 }}>
+                                <ReadOnlyInput value={dashPrev(last?.newBasePay)} />
+                              </div>
+                              {last && (
+                                <span style={subNote}>
+                                  Cycle hike {fmt(last.hikeAmount)}
+                                  {lastHikePct !== null ? ` · ${lastHikePct}%` : ""}
+                                </span>
+                              )}
+                            </>
+                          }
+                        >
+                          <div
+                            className="flex items-end gap-2"
+                            key={`${employee.id}-hike`}
+                          >
+                            <div style={{ width: "36%", minWidth: 100 }}>
+                              <ReadOnlyInput
+                                key={`${employee.id}-newBase`}
+                                value={draft.baseStr ?? fmt(derived.newBase)}
+                                bold
+                              />
+                            </div>
+                            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                              <span style={lab}>Hike Amount</span>
+                              <EditInput
+                                value={draft.hikeStr ?? fmt(employee.hikeAmount)}
+                                onLive={liveHikeAmount}
+                                onCommit={(v) => {
+                                  handleHikeAmountChange(v);
+                                  clearDraft(HIKE_DRAFT_KEYS);
+                                }}
+                                edited={isEdited("hikeAmount")}
+                                invalid={!!hikeErr}
+                              />
+                            </div>
+                            <div className="flex w-[30%] min-w-[64px] flex-col gap-0.5">
+                              <span style={lab}>Hike%</span>
+                              <EditInput
+                                value={
+                                  draft.pctStr ??
+                                  (Number(employee.hikePct) || 0).toFixed(2)
+                                }
+                                onLive={liveHikePct}
+                                onCommit={(v) => {
+                                  handleHikePctChange(v);
+                                  clearDraft(HIKE_DRAFT_KEYS);
+                                }}
+                                edited={isEdited("hikeAmount")}
+                                invalid={!!hikeErr}
+                              />
+                            </div>
+                          </div>
+                          {hikeErr && (
+                            <span
+                              role="alert"
+                              style={{ ...subNote, color: RED, fontWeight: 700 }}
+                            >
+                              {hikeErr}
+                            </span>
+                          )}
+                        </FieldRow>
+
+                        {/* Joining Bonus */}
+                        <FieldRow
+                          label="Joining Bonus"
+                          prev={<ReadOnlyInput value={dashPrev(last?.joiningBonus)} />}
+                        >
+                          {naBox}
+                        </FieldRow>
+
+                        {/* Performance Bonus / Instalment */}
+                        <FieldRow
+                          label="Performance Bonus (PB) / Instalment"
+                          prev={
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "minmax(0,1fr) 70px",
+                                gap: 6,
+                              }}
+                            >
+                              <ReadOnlyInput value={dashPrev(last?.performanceBonus)} />
+                              <ReadOnlyInput value={payFloors.pbMonth || "—"} />
+                            </div>
                           }
                           diff={
                             <DiffValue
@@ -743,23 +1961,82 @@ export function DetailScreenPage() {
                           />
                         </FieldRow>
                       </div>
-                    </CompRow>
-                    <CompRow
-                      label="Target PB"
-                      current={fmt(employee.targetPBAllocatedForMay)}
-                      diffText="next yr"
-                    >
-                      <EditInput
-                        key={`${employee.id}-targetPBNextYear`}
-                        defaultValue={fmtOrBlank(employee.targetPBNextYear)}
-                        onCommit={(v) =>
-                          commit("targetPBNextYear", parseAmount(v))
-                        }
-                      />
-                    </CompRow>
-                    {/* Target PB Criteria — full-width row, textareas */}
-                    <div
-                      className="col-span-4 p-2"
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Legend + counter + Previous / Save & next: normal flow, always visible */}
+              <div className="shrink-0 border-t px-3 py-1.5" style={{ borderColor: LINE }}>
+                <div
+                  className="flex flex-wrap items-center gap-3 text-[12.5px]"
+                  style={{ color: MUTED }}
+                >
+                  <span className="inline-flex items-center gap-1.5">
+                    <i
+                      className="inline-block h-[11px] w-[11px] rounded-[3px] border"
+                      style={{ background: "#F3F6F7", borderColor: "#D9E1E6" }}
+                    />
+                    Read-only
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <i
+                      className="inline-block h-[11px] w-[11px] rounded-[3px] border"
+                      style={{ background: EDITABLE_BG, borderColor: EDITABLE_BORDER }}
+                    />
+                    Editable
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <i
+                      className="inline-block h-[11px] w-[11px] rounded-[3px] border"
+                      style={{ background: EDITED_BG, borderColor: EDITED_BORDER }}
+                    />
+                    Edited this cycle
+                  </span>
+                </div>
+              </div>
+              <div className="ds-foot" style={{ borderTop: `1px solid ${LINE}` }}>
+                <div className="flex w-full items-center justify-between gap-3">
+                  <span className="text-[14px]" style={{ color: MUTED }}>
+                    <b style={{ color: INK }}>{safeIndex + 1}</b> of {rows.length} · {scopeLabel}
+                  </span>
+                  <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => goTo(safeIndex - 1)}
+                    disabled={safeIndex <= 0}
+                    className="rounded border px-3 py-1.5 text-[13.5px] font-semibold"
+                    style={{
+                      borderColor: LINE,
+                      background: "#fff",
+                      color: safeIndex <= 0 ? "#9AA7B4" : INK,
+                    }}
+                  >
+                    ‹ Previous
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => goTo(safeIndex + 1)}
+                    className="rounded px-4 py-1.5 text-[13.5px] font-bold"
+                    style={{ background: NAVY, color: "#fff" }}
+                  >
+                    Save &amp; next ›
+                  </button>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* METRICS */}
+            {metricsOpen && (
+            <aside className="ds-side" aria-label="Metrics">
+              <div className="ds-card">
+                {metricsOpen ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setMetricsOpen(false)}
+                      className="shrink-0 border-b px-3 py-2 text-left text-[12px] font-bold"
                       style={{
                         borderColor: LINE,
                         color: INK,
@@ -790,33 +2067,18 @@ export function DetailScreenPage() {
                         </div>
                       ))}
                     </div>
-                    <CompFullRow label="Target PB Criteria">
-                      <textarea
-                        key={`criteria-current-${employee.id}`}
-                        defaultValue={
-                          employee.targetPBCriteria ||
-                          "Client billability >= 85% for Q1-Q3"
-                        }
-                        rows={2}
-                        readOnly
-                        className="min-h-[34px] w-full resize-y rounded border px-2 py-1.5 text-[11.5px] leading-[1.3] outline-none"
-                        style={{
-                          borderColor: "#d0d5dd",
-                          background: "#eceef2",
-                          color: "#475569",
-                        }}
-                      />
-                      <EditTextarea
-                        key={`${employee.id}-targetPBCriteria`}
-                        defaultValue={
-                          employee.newTargetPBCriteria ||
-                          employee.targetPBCriteria ||
-                          ""
-                        }
-                        onCommit={(v) => commit("targetPBCriteria", v)}
-                      />
-                    </CompFullRow>
-                    {/* Designation / New Title / Promotion */}
+                  </>
+                ) : null}
+              </div>
+            </aside>
+            )}
+
+            {/* FEEDBACK */}
+            {cardOpen && (
+            <aside className="ds-side" aria-label="Feedback">
+              <div className="ds-card">
+                {cardOpen ? (
+                  <>
                     <div
                       className="flex shrink-0 items-center justify-between gap-2 px-3 py-2"
                       style={{ background: NAVY, color: "#fff" }}
@@ -870,19 +2132,96 @@ export function DetailScreenPage() {
                         ✕
                       </button>
                     </div>
-                    {/* Comp Manager Remarks */}
-                    <div
-                      className="p-2"
-                      style={{
-                        background: "#e8eef6",
-                        color: "#1e3a5f",
-                        fontWeight: 700,
-                        fontSize: "10.5px",
-                      }}
-                    >
-                      Description
+
+                    <div className="flex shrink-0 gap-2 px-3 py-2.5">
+                      {[
+                        ["manager", "Manager"],
+                        ["client", "Client"],
+                        ["other", "Other"],
+                      ].map(([k, l]) => (
+                        <button
+                          key={k}
+                          type="button"
+                          onClick={() => setFbTab(k)}
+                          className="rounded-full border px-3 py-1 text-[12px] font-semibold"
+                          style={{
+                            borderColor: fbTab === k ? "#9AA7B4" : LINE,
+                            background: fbTab === k ? SOFT : "#fff",
+                            color: INK,
+                          }}
+                        >
+                          {l}
+                        </button>
+                      ))}
                     </div>
-                    <CompFullRow label="Comp Manager Remarks">
+
+                    <div className="ds-scroll flex-1 px-4 pb-3">
+                      {timeline.map((t) => (
+                        <div key={t.year} className="mb-3 flex gap-2.5">
+                          <span
+                            className="mt-1.5 inline-block h-[11px] w-[11px] shrink-0 rounded-full border-2"
+                            style={{
+                              borderColor: t.current ? LTEAL : "#C4CED6",
+                              background: t.current ? LTEAL : "#fff",
+                            }}
+                          />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <b className="text-[14px]" style={{ color: INK }}>
+                                {t.year}
+                              </b>
+                              {t.current ? (
+                                <span
+                                  className="rounded px-2 py-0.5 text-[11px] font-semibold"
+                                  style={{ background: SOFT, color: INK }}
+                                >
+                                  This cycle
+                                </span>
+                              ) : null}
+                            </div>
+                            <div style={{ color: MUTED }}>{t.title}</div>
+                            <div className="mt-1 flex flex-wrap gap-1.5">
+                              <span
+                                className="rounded px-2 py-0.5 text-[11.5px]"
+                                style={{ background: SOFT, color: INK }}
+                              >
+                                {fbTab === "manager"
+                                  ? "Manager"
+                                  : fbTab === "client"
+                                    ? "Client"
+                                    : "Other"}{" "}
+                                rating{" "}
+                                <b>{fbTab === "manager" ? t.rating : "—"}</b>
+                                {t.current &&
+                                fbTab === "manager" &&
+                                t.rating !== "—"
+                                  ? " / 5"
+                                  : ""}
+                              </span>
+                              {t.promo ? (
+                                <span
+                                  className="rounded px-2 py-0.5 text-[11.5px]"
+                                  style={{ background: SOFT, color: INK }}
+                                >
+                                  Eligible for promotion: {t.promo}
+                                </span>
+                              ) : null}
+                            </div>
+                            {t.note ? (
+                              <div
+                                className="mt-1"
+                                style={{ color: "#3E4C59" }}
+                              >
+                                {t.note}
+                              </div>
+                            ) : fbTab === "manager" && t.rating !== "—" ? (
+                              <div className="mt-1" style={{ color: MUTED }}>
+                                {t.rating} / 5
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
                       <div
                         className="mt-2 text-[11.5px]"
                         style={{ color: MUTED }}
@@ -890,56 +2229,100 @@ export function DetailScreenPage() {
                         Client rating and past RR % are not in the sheet yet, so
                         they show “—”.
                       </div>
-                      <EditTextarea
-                        key={`${employee.id}-atRisk`}
-                        defaultValue={employee.atRisk || ""}
-                        placeholder="Add remarks"
-                        onCommit={(v) => commit("atRisk", v)}
-                      />
-                    </CompFullRow>
                     </div>
-                  </div>
-                  <div
-                    className="flex flex-wrap gap-3.5 px-2.5 py-1 text-[11px]"
-                    style={{ color: "#475569" }}
+                  </>
+                ) : null}
+              </div>
+            </aside>
+            )}
+
+            {/* Closed panels: dark tabs on the right edge, like Bulk Edit */}
+            {(!metricsOpen || !cardOpen) && (
+              <aside className="ds-rail" aria-label="Side panels">
+                {!metricsOpen && (
+                  <button
+                    type="button"
+                    className="ds-tab"
+                    onClick={() => setMetricsOpen(true)}
+                    aria-label="Open metrics"
                   >
-                    <Legend sw="#e8eef6" border="#b8c6d8" label="Description" />
-                    <Legend
-                      sw="#f6f7f9"
-                      border="#d0d5dd"
-                      label="Current (read-only)"
-                    />
-                    <Legend
-                      sw="#e6f0fb"
-                      border="#7fa9dc"
-                      label="Proposed (editable)"
-                    />
-                  </div>
-                  <div
-                    className="mt-auto flex items-center justify-between gap-3 border-t px-2.5 py-1.5"
-                    style={{ borderColor: "#e1e5eb" }}
+                    Metrics ›
+                  </button>
+                )}
+                {!cardOpen && (
+                  <button
+                    type="button"
+                    className="ds-tab"
+                    onClick={() => setCardOpen(true)}
+                    aria-label="Open feedback"
                   >
-                    <div>
+                    Feedback ‹
+                  </button>
+                )}
+              </aside>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ============ SCREEN 2 - scroll the page to reach history ============ */}
+      {employee ? (
+        <section className="ds-card ds-hist" aria-label="Employee history">
+          <div
+            className="shrink-0 px-4 py-2 text-[14px] font-extrabold"
+            style={{ background: NAVY, color: "#fff" }}
+          >
+            Employee History — {employee.name} · {priorCycles.length + 1} cycles
+          </div>
+
+          <div className="ds-scroll">
+            <div
+              className="grid text-[11.5px] font-bold"
+              style={{
+                gridTemplateColumns: HIST_GRID,
+                background: SOFT,
+                color: INK,
+                borderBottom: `1px solid ${LINE}`,
+              }}
+            >
+              <div style={{ padding: "6px 10px" }}>Year</div>
+              {HISTORY_COLUMNS.map((c) => (
+                <div
+                  key={c.key}
+                  style={{ padding: "6px 10px", textAlign: "right" }}
+                >
+                  {c.label}
+                </div>
+              ))}
+            </div>
+
+            {/* current cycle row */}
+            {liveHist
+              ? (() => {
+                  const last = priorCycles[0]
+                    ? priorVals(priorCycles[0])
+                    : null;
+                  const cur = [
+                    baseNow,
+                    0,
+                    liveHist.pbTotal,
+                    liveHist.rb,
+                    liveHist.bonus,
+                    liveHist.hike,
+                    liveCtc,
+                    liveHist.tpb,
+                    liveBase,
+                  ];
+                  return (
+                    <div
+                      className="grid items-center text-[12px]"
+                      style={{
+                        gridTemplateColumns: HIST_GRID,
+                        background: "#FFF8D6",
+                        borderBottom: `1px solid ${LINE}`,
+                      }}
+                    >
                       <div
-                        className="text-[11.5px] font-bold"
-                        style={{ color: "#334155" }}
-                      >
-                        {index + 1} of {rows.length} · {scopeLabel}
-                      </div>
-                      <div
-                        className="text-[10.5px]"
-                        style={{ color: "#64748b" }}
-                      >
-                        Previous and Next move only within the employees this
-                        login can see.
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setIndex((i) => Math.max(0, i - 1))}
-                        disabled={index === 0}
-                        className="rounded-[6px] border px-3 py-1.5 text-[12px] font-semibold disabled:opacity-45"
                         style={{
                           padding: "4px 10px",
                           color: LTEAL,
@@ -956,65 +2339,17 @@ export function DetailScreenPage() {
                         />
                       ))}
                     </div>
-                  </div>
-                </div>
-                {/* MIDDLE COLUMN — folded Metrics drawer / expanded Metrics panel */}
-                {metricsOpen ? (
-                  <section
-                    aria-label="Metrics"
-                    className="hidden min-h-0 w-[270px] overflow-auto rounded-[10px] border bg-white p-3 shadow-[0_1px_2px_rgba(18,48,79,0.06)] min-[1000px]:block"
-                    style={{ borderColor: LINE }}
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <b className="text-[13px]" style={{ color: INK }}>
-                        Metrics
-                      </b>
-                      <button
-                        type="button"
-                        onClick={() => setMetricsOpen(false)}
-                        className="rounded border px-2 py-1 text-[10.5px] font-semibold"
-                        style={{ borderColor: LINE, color: INK, background: "#fff" }}
-                        title="Fold metrics"
-                      >
-                        ‹ Fold
-                      </button>
-                    </div>
-                    <TeamMetrics
-                      employee={employee}
-                      metrics={teamMetrics}
-                      rowsCount={rows.length}
-                      scopeLabel={scopeLabel}
-                    />
-                  </section>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setMetricsOpen(true)}
-                    className="hidden min-h-0 w-[38px] items-center justify-center rounded-[10px] border bg-white shadow-[0_1px_2px_rgba(18,48,79,0.06)] min-[1000px]:flex"
-                    style={{ borderColor: LINE, color: INK }}
-                    title="Open metrics"
-                    aria-expanded="false"
-                  >
-                    <span className="[writing-mode:vertical-rl] rotate-180 text-[11px] font-bold">
-                      Metrics ›
-                    </span>
-                  </button>
-                )}
-                {/* RIGHT COLUMN — employee details + Feedback */}
-                <div className="relative min-h-0 min-w-0">
-                  <LeftPane
-                    employee={employee}
-                    priorCycles={priorCycles}
-                    loading={!!historyState?.loading}
-                    scopeLabel={scopeLabel}
-                  />
-                </div>
-              </div>
-              {/* Employee History — full width */}
-              <div
-                className="h-[190px] min-h-[150px] shrink-0 overflow-hidden rounded-[10px] border shadow-[0_1px_2px_rgba(18,48,79,0.06)]"
-                style={{ background: "#fff", borderColor: "#d3dbe6" }}
-              >
+                  );
+                })()
+              : null}
+
+            {/* prior cycles */}
+            {priorCycles.map((h, i) => {
+              const vals = priorVals(h);
+              const older = priorCycles[i + 1]
+                ? priorVals(priorCycles[i + 1])
+                : null;
+              return (
                 <div
                   key={normalizeYearKey(h.year)}
                   className="grid items-center text-[12px]"
@@ -1037,370 +2372,36 @@ export function DetailScreenPage() {
                     />
                   ))}
                 </div>
-                <div
-                  className="history-scroll min-w-0 h-[calc(190px-34px)] overflow-x-hidden overflow-y-auto [&::-webkit-scrollbar]:hidden"
-                  style={{ scrollbarWidth: "none" }}
-                >
-                  <table className="w-full table-fixed border-collapse text-[10px]">
-                    <thead>
-                      <tr>
-                        <HistHead width="62px">Year</HistHead>
-                        {HISTORY_COLUMNS.map((c) => (
-                          <HistHead key={c.key}>{c.label}</HistHead>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <HistRow
-                        year="Apr-26 ★"
-                        vals={[
-                          employee.currentAnnualBasePay,
-                          0,
-                          derived.totalPB,
-                          employee.newRB,
-                          derived.bonus,
-                          employee.hikeAmount,
-                          derived.totalCtc,
-                          employee.targetPBNextYear,
-                          derived.newBase,
-                        ]}
-                        current
-                      />
-                      {priorCycles.map((h, i) => {
-                        const tb =
-                          (h.performanceBonus || 0) + (h.retentionBonus || 0);
-                        return (
-                          <HistRow
-                            key={h.year ?? i}
-                            year={h.year}
-                            vals={[
-                              h.basePay,
-                              h.joiningBonus,
-                              h.performanceBonus,
-                              h.retentionBonus,
-                              tb,
-                              h.hikeAmount,
-                              (h.newBasePay || 0) + tb,
-                              h.targetPB,
-                              h.newBasePay,
-                            ]}
-                          />
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+              );
+            })}
+
+            {historyState?.loading ? (
+              <div className="px-4 py-3 text-[12px]" style={{ color: MUTED }}>
+                Loading history…
               </div>
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-/* ============================================================
-   LEFT PANE — employee details + Feedback
-   ============================================================ */
-/* ============================================================
-   LEFT PANE — employee details + feedback timeline
-   All displayed values come from the dynamic employee/history data.
-   ============================================================ */
-function LeftPane({
-  employee,
-  priorCycles,
-  loading,
-  scopeLabel,
-}) {
-  const initials = String(employee.name || "?")
-    .split(/\s+/)
-    .map((w) => w.charAt(0))
-    .slice(0, 2)
-    .join("")
-    .toUpperCase();
-  const facts = [
-    ["Manager rating", dash(employee.managerRating)],
-    ["RR", pctText(employee.rrPercent)],
-    [
-      "Experience",
-      `${yrs(employee.totalExperience)} · ${yrs(employee.wissenExperience)} here`,
-    ],
-    ["Interviews", dash(employee.interviewCount)],
-  ];
-  const items = [
-    {
-      year: CURRENT_CYCLE,
-      current: true,
-      designation: employee.designation,
-      client: employee.clientRating,
-      rr: employee.rrPercent,
-      rating: employee.managerRating,
-      feedback:
-        employee.feedback ||
-        employee.atRisk ||
-        "Feedback captured during the review.",
-    },
-    ...priorCycles.map((h) => ({
-      year: h.year,
-      designation: h.designation,
-      client: h.clientRating,
-      rr: h.rrPercent,
-      rating: h.rating,
-      feedback: h.feedback,
-    })),
-  ];
-  return (
-    <section
-      aria-label="Employee"
-      className="flex h-full min-h-0 flex-col overflow-hidden rounded-[10px] border bg-white"
-      style={{
-        borderColor: LINE,
-        boxShadow: "0 1px 2px rgba(16,42,67,.04)",
-      }}
-    >
-      {/* Who */}
-      <div className="flex shrink-0 items-center gap-3 px-3.5 pb-2.5 pt-3.5">
-        <div
-          aria-hidden="true"
-          className="grid h-[46px] w-[46px] shrink-0 place-items-center rounded-full text-[16px] font-extrabold"
-          style={{ background: "#E6F3F2", color: "#0B5F5B" }}
-        >
-          {initials}
-        </div>
-        <div className="min-w-0">
+            ) : null}
+            {historyState?.error ? (
+              <div className="px-4 py-3 text-[12px]" style={{ color: RED }}>
+                {historyState.error}
+              </div>
+            ) : null}
+            {!historyState?.loading &&
+            !historyState?.error &&
+            priorCycles.length === 0 ? (
+              <div className="px-4 py-3 text-[12px]" style={{ color: MUTED }}>
+                No earlier cycles on record.
+              </div>
+            ) : null}
+          </div>
+
           <div
-            className="text-[17px] font-extrabold leading-tight"
-            style={{ color: INK, letterSpacing: "-.01em" }}
+            className="flex shrink-0 flex-wrap items-center gap-4 border-t px-4 py-2 text-[11.5px]"
+            style={{ borderColor: LINE, color: MUTED }}
           >
-            {employee.name}
-          </div>
-          <div className="mt-0.5 truncate text-[12.5px]" style={{ color: MUTED }}>
-            <span className="font-bold" style={{ color: "#0B6A66" }}>
-              {employee.empId ?? "—"}
-            </span>{" "}
-            · {dash(employee.designation)}
-          </div>
-          <div className="truncate text-[12.5px]" style={{ color: MUTED }}>
-            Reports to {dash(employee.reportingManager)}
-          </div>
-        </div>
-      </div>
-      {/* Facts */}
-      <dl
-        className="mx-3.5 mb-3 grid shrink-0 grid-cols-2 gap-px overflow-hidden rounded-lg border"
-        style={{ background: SOFT, borderColor: SOFT }}
-      >
-        {facts.map(([label, value]) => (
-          <div key={label} className="bg-white px-2.5 py-[7px]">
-            <dt className="text-[11px]" style={{ color: MUTED }}>
-              {label}
-            </dt>
-            <dd
-              className="m-0 mt-px truncate text-[13px] font-bold"
-              style={{ color: INK }}
-              title={String(value)}
-            >
-              {value}
-            </dd>
-          </div>
-        ))}
-      </dl>
-      {/* Feedback */}
-      <div
-        className="flex shrink-0 border-b px-3.5"
-        style={{ borderColor: LINE }}
-        role="tablist"
-      >
-        <button
-          type="button"
-          role="tab"
-          aria-selected="true"
-          className="inline-flex items-center border-b-2 pb-[9px] pt-2.5 text-[13px]"
-          style={{
-            color: INK,
-            fontWeight: 700,
-            borderBottomColor: LTEAL,
-          }}
-        >
-          Feedback
-        </button>
-      </div>
-      <div
-        className="max-h-[420px] min-h-0 flex-1 overflow-auto px-3.5 pb-3.5 pt-3 min-[1000px]:max-h-none"
-        role="tabpanel"
-      >
-        {(
-          <>
-            <ol
-              className="m-0 list-none border-l-2 py-0 pl-3.5 pr-0"
-              style={{ borderColor: SOFT }}
-            >
-              {items.map((x, i) => (
-                <li key={`${x.year}-${i}`} className="relative pb-3.5 pl-1">
-                  <span
-                    aria-hidden="true"
-                    className="absolute top-1 h-2.5 w-2.5 rounded-full border-2"
-                    style={{
-                      left: -21,
-                      background: x.current ? LTEAL : "#fff",
-                      borderColor: x.current ? LTEAL : "#CBD5DA",
-                    }}
-                  />
-                  <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <b className="text-[13px]" style={{ color: INK }}>
-                      {x.year}
-                    </b>
-                    {x.current && (
-                      <span
-                        className="rounded-full px-[7px] py-px text-[10.5px] font-bold"
-                        style={{ background: "#E6F3F2", color: "#0B5F5B" }}
-                      >
-                        This cycle
-                      </span>
-                    )}
-                    <span
-                      className="basis-full text-[11.5px]"
-                      style={{ color: MUTED }}
-                    >
-                      {dash(x.designation)} · Manager {dash(x.rating)} · Client{" "}
-                      {dash(x.client)} · RR {pctText(x.rr)}
-                    </span>
-                  </div>
-                  <p
-                    className="m-0 mt-[5px] text-[12.5px] leading-normal"
-                    style={{ color: "#334E5C" }}
-                  >
-                    {dash(x.feedback)}
-                  </p>
-                </li>
-              ))}
-            </ol>
-            {!priorCycles.length && (
-              <div className="text-[12px]" style={{ color: "#9AACB6" }}>
-                {loading ? "Loading..." : "No prior cycles."}
-              </div>
-            )}
-            <div className="mt-2.5 text-[11.5px]" style={{ color: MUTED }}>
-              Client rating and past RR % are not in the sheet yet, so they show
-              “—”.
-            </div>
-          </>
-)}
-      </div>
-    </section>
-  );
-}
-function BarRow({ label, pct, sub }) {
-  const over = pct > 100;
-  return (
-    <>
-      <div
-        className="flex items-baseline justify-between gap-1.5 text-[12px]"
-        style={{ color: "#334E5C" }}
-      >
-        <span>{label}</span>
-        <b
-          className="text-[15px]"
-          style={{ color: over ? "#C0392B" : LTEAL }}
-        >
-          {pct.toFixed(0)}%
-        </b>
-      </div>
-      <div
-        className="my-1.5 h-1.5 overflow-hidden rounded-[3px]"
-        style={{ background: SOFT }}
-      >
-        <div
-          className="h-1.5"
-          style={{
-            width: `${Math.min(pct, 100)}%`,
-            background: over ? "#C0392B" : LTEAL,
-          }}
-        />
-      </div>
-      <div className="text-[11px]" style={{ color: MUTED }}>
-        {sub}
-      </div>
-    </>
-  );
-}
-function MetricBox({ title, tag, children }) {
-  return (
-    <div
-      className="mt-2 rounded-lg border px-[11px] py-2"
-      style={{ borderColor: LINE }}
-    >
-      <div
-        className="flex justify-between gap-1.5 text-[11px]"
-        style={{ color: MUTED }}
-      >
-        <span>{title}</span>
-        <i
-          className="whitespace-nowrap rounded-[3px] px-1 text-[9.5px] not-italic"
-          style={{ background: "#EEF2F7" }}
-        >
-          {tag}
-        </i>
-      </div>
-      {children}
-    </div>
-  );
-}
-/* ============================================================
-   TEAM METRICS
-   Metrics are derived only from the rows already loaded by useAppraisal().
-   No employee/budget values are hardcoded.
-   ============================================================ */
-function TeamMetrics({ employee, metrics: m, teamBudget, rowsCount, scopeLabel }) {
-  const left = teamBudget - m.used;
-  const leftT = teamBudget - m.used - m.tpb;
-  return (
-    <div>
-      <div className="mb-2.5 text-[11.5px]" style={{ color: MUTED }}>
-        {scopeLabel} · {CURRENT_CYCLE}
-      </div>
-      <div className="rounded-lg border px-[11px] py-[9px]" style={{ borderColor: LINE }}>
-        {m.cur !== null ? (
-          <>
-            <BarRow
-              label="Current consumption"
-              pct={m.cur}
-              sub={`${lakhs(m.used)} used · ${
-                left >= 0 ? `${lakhs(left)} left` : `${lakhs(-left)} over`
-              } of ${lakhs(teamBudget)}`}
-            />
-            <div className="h-2" />
-            <BarRow
-              label="Including Target PB"
-              pct={m.withT}
-              sub={`+${lakhs(m.tpb)} Target PB · ${
-                leftT >= 0 ? `${lakhs(leftT)} left` : `${lakhs(-leftT)} over`
-              }`}
-            />
-          </>
-        ) : (
-          <div className="text-[12px]" style={{ color: MUTED }}>
-            Team budget is not connected yet. Used so far: {lakhs(m.used)} of
-            hike, plus {lakhs(m.tpb)} Target PB.
-          </div>
-        )}
-      </div>
-      <MetricBox title="Hike % — percentile in team" tag="Metric 2">
-        {m.percentile !== null ? (
-          <>
-            <div className="mt-0.5 text-[16px] font-bold" style={{ color: INK }}>
-              {ordinal(m.percentile)}{" "}
-              <span className="text-[12px] font-normal" style={{ color: MUTED }}>
-                percentile · {String(employee.name).split(" ")[0]}{" "}
-                {signedPct(m.mine.v)}
-              </span>
-            </div>
-            <div
-              className="relative my-1.5 h-1.5 rounded-[3px]"
-              style={{ background: SOFT }}
-            >
-              <div
-                className="absolute -top-[3px] h-3 w-[3px] rounded-[1px]"
-                style={{ left: `${m.percentile}%`, background: "#B7791F" }}
+            <span className="inline-flex items-center gap-1.5">
+              <i
+                className="inline-block h-[12px] w-[12px] rounded-[3px] border"
+                style={{ background: "#FFF8D6", borderColor: "#E8D98A" }}
               />
               This cycle (not yet final)
             </span>
@@ -1419,219 +2420,10 @@ function TeamMetrics({ employee, metrics: m, teamBudget, rowsCount, scopeLabel }
               Decrease
             </span>
           </div>
-        )}
-      </MetricBox>
-      <MetricBox title="No hike this cycle" tag="Metric 3">
-        <div className="mt-0.5 text-[16px] font-bold" style={{ color: INK }}>
-          {m.noHike}{" "}
-          <span className="text-[12px] font-normal" style={{ color: MUTED }}>
-            of {rowsCount} employees
-          </span>
-        </div>
-      </MetricBox>
-      <MetricBox title="PB paid vs target" tag="Metric 4">
-        <div className="mt-0.5 text-[16px] font-bold" style={{ color: INK }}>
-          {m.pbTarget ? `${((m.pbPaid / m.pbTarget) * 100).toFixed(0)}%` : "—"}{" "}
-          <span className="text-[12px] font-normal" style={{ color: MUTED }}>
-            {lakhs(m.pbPaid)} of {lakhs(m.pbTarget)} target
-          </span>
-        </div>
-      </MetricBox>
-      <div className="mt-2.5 text-[11.5px]" style={{ color: MUTED }}>
-        Team only; org comparisons are HR-only.
-      </div>
+        </section>
+      ) : null}
     </div>
   );
 }
-/* ============================================================
-   Small display primitives for the right pane and history grid
-   ============================================================ */
-/* ============================================================
-   COMPENSATION GRID UI HELPERS
-   ============================================================ */
-function CompHead({ children, bg, center }) {
-  return (
-    <div
-      className={`flex items-center gap-1.5 border-b border-r px-2 py-1 text-[10.5px] font-bold ${
-        center ? "justify-center" : ""
-      }`}
-      style={{ borderColor: "#d7dce3", background: bg, color: "#1e3a5f" }}
-    >
-      {children}
-    </div>
-  );
-}
-function CompRow({
-  label,
-  current,
-  diff,
-  diffText,
-  diffPositive,
-  muted,
-  children,
-}) {
-  return (
-    <>
-      <div
-        className="flex items-center border-b border-r px-2 py-1 font-bold"
-        style={{
-          borderColor: "#d7dce3",
-          background: "#e8eef6",
-          color: "#1e3a5f",
-        }}
-      >
-        {label}
-      </div>
-      <div
-        className="flex items-center border-b border-r px-2 py-1"
-        style={{
-          borderColor: "#d7dce3",
-          background: "#f6f7f9",
-          color: "#475569",
-        }}
-      >
-        {current}
-      </div>
-      <div
-        className="flex items-center border-b border-r px-2 py-1"
-        style={{ borderColor: "#d7dce3", background: "#fff" }}
-      >
-        {children}
-      </div>
-      <div
-        className="flex items-center justify-center border-b px-2 py-1 text-center"
-        style={{
-          borderColor: "#d7dce3",
-          background: "#fff",
-          color: diffPositive ? "#13804a" : "#94a3b8",
-          fontWeight: diffPositive ? 700 : 400,
-        }}
-      >
-        {diff ??
-          (muted ? (
-            <span className="text-[11px] text-slate-400">{diffText}</span>
-          ) : (
-            diffText
-          ))}
-      </div>
-    </>
-  );
-}
-function CompFullRow({ children }) {
-  return (
-    <>
-      <div
-        className="col-span-2 flex items-stretch border-b border-r p-2"
-        style={{ borderColor: "#d7dce3", background: "#f6f7f9" }}
-      >
-        {children[0]}
-      </div>
-      <div
-        className="col-span-1 flex items-stretch border-b border-r p-2"
-        style={{ borderColor: "#d7dce3", background: "#fff" }}
-      >
-        {children[1]}
-      </div>
-      <div
-        className="border-b"
-        style={{ borderColor: "#d7dce3", background: "#fff" }}
-      />
-    </>
-  );
-}
-function EditInput({ defaultValue, onCommit, className = "" }) {
-  return (
-    <input
-      type="text"
-      defaultValue={defaultValue}
-      onBlur={(e) => onCommit(e.target.value)}
-      className={`w-full min-w-0 rounded border px-1.5 py-1 text-[11.5px] outline-none focus:border-[#2563eb] focus:bg-[#f3f8fe] ${className}`}
-      style={{
-        borderColor: "#7fa9dc",
-        background: "#e6f0fb",
-        color: "#0b2a4d",
-      }}
-    />
-  );
-}
-function EditTextarea({ defaultValue, placeholder, onCommit }) {
-  return (
-    <textarea
-      defaultValue={defaultValue}
-      placeholder={placeholder}
-      rows={2}
-      onBlur={(e) => onCommit(e.target.value)}
-      className="min-h-[34px] w-full resize-y rounded border px-2 py-1.5 text-[11.5px] leading-[1.3] outline-none focus:border-[#2563eb] focus:bg-[#f3f8fe]"
-      style={{
-        borderColor: "#7fa9dc",
-        background: "#e6f0fb",
-        color: "#0b2a4d",
-      }}
-    />
-  );
-}
-function ReadOnlyInput({ value, disabled }) {
-  return (
-    <input
-      type="text"
-      value={value}
-      disabled={disabled}
-      readOnly
-      className="w-full rounded border px-1.5 py-1 text-[11.5px] outline-none"
-      style={{
-        borderColor: "#7fa9dc",
-        background: "#e6f0fb",
-        color: "#0b2a4d",
-        opacity: disabled ? 0.6 : 1,
-      }}
-    />
-  );
-}
-function Legend({ sw, border, label }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <i
-        className="inline-block h-3 w-3 border"
-        style={{ background: sw, borderColor: border }}
-      />
-      {label}
-    </span>
-  );
-}
-function HistHead({ children, width }) {
-  return (
-    <th
-      className="break-words border-b px-1 py-1 text-center text-[9px] font-bold"
-      style={{
-        width,
-        borderColor: "#d7dce3",
-        background: "#eef2f7",
-        color: "#1e3a5f",
-        lineHeight: 1.2,
-      }}
-    >
-      {children}
-    </th>
-  );
-}
-function HistRow({ year, vals, current }) {
-  return (
-    <tr style={{ background: current ? "#fff9dc" : undefined }}>
-      <td
-        className="border-b px-1.5 py-1 text-center font-bold"
-        style={{ borderColor: "#eef1f5", color: "#1859a8" }}
-      >
-        {year}
-      </td>
-      {vals.map((v, i) => (
-        <td
-          key={i}
-          className="break-all border-b px-1 py-1 text-right text-[9px]"
-          style={{ borderColor: "#eef1f5" }}
-        >
-          {fmt(v)}
-        </td>
-      ))}
-    </tr>
-  );
-}
+
+export default DetailScreenPage;

@@ -5,16 +5,19 @@ import { BudgetProvider } from "@/lib/budget-store";
 import { Dashboard } from "@/routes/index";
 import { SheetPage } from "@/routes/sheet";
 import { EmployeeMaster } from "@/pages/EmployeeMaster";
+import { SettingsPage } from "@/pages/SettingsPage";
 
 //this might be remove later (detailscreen)
 import { DetailScreenPage } from "@/components/appraisal/DetailScreenPage";
 import { AppShell } from "./components/appraisal/AppShell";
-import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
+import { BudgetMasterPage } from "@/components/employee-master/BudgetMasterPage";
+import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
+import BulkEditScreen from "@/components/appraisal/BulkEditScreen";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 import { SettingsProvider } from "@/lib/settings-store";
 import { AccessProvider, HR_TAB_SCREENS, NoAccessPage, PATH_SCREENS, useAccess } from "@/lib/access-store";
 
-const TECH_ED_PATHS = ["/", "/employee-master", "/detail-screen", "/budget-allocation" ];
+const TECH_ED_PATHS = ["/", "/sheet", "/detail-screen", "/budget-distribution", "/settings"];
 
 // A crash in one screen shows a message instead of blanking the whole app.
 // It is keyed by path, so navigating to another screen clears the error.
@@ -62,13 +65,45 @@ class ScreenErrorBoundary extends Component {
   }
 }
 
+const FIRST_SCREEN_PATHS = [
+  ["dashboard", "/"],
+  ["appraisalSheet", "/sheet"],
+  ["detailScreen", "/detail-screen"],
+  ["budgetDistribution", "/budget-distribution"],
+];
+
+// With access rules (/me ok): the path to show, or null when nothing is allowed.
+function accessAllowedPath(path, access, isTechEd = false) {
+  const hrTabs = Object.keys(HR_TAB_SCREENS).filter((tab) => access.canScreen(HR_TAB_SCREENS[tab]));
+  if (isTechEd && path === "/employee-master") return "/";
+  if (isTechEd && TECH_ED_PATHS.includes(path)) return path;
+  const allowed =
+    path === "/bulk-edit"
+      ? access.canAction("bulkEdit")
+      : path === "/employee-master"
+        ? hrTabs.length > 0
+        : access.canScreen(PATH_SCREENS[path] || "dashboard");
+  if (allowed) return path;
+  const first = FIRST_SCREEN_PATHS.find(([key]) => access.canScreen(key));
+  if (first) return first[1];
+  if (hrTabs.length) return `/employee-master?tab=${hrTabs[0]}`;
+  return null;
+}
+
 // Rendered inside <CatalystAuthGate> so useCatalystUser() sees the signed-in user.
 function AppRoutes() {
   const [path, setPath] = useState(window.location.pathname);
   const user = useCatalystUser();
+  const access = useAccess();
   const role = String(user?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
-  const effectivePath = isTechEd && !TECH_ED_PATHS.includes(path) ? "/employee-master" : path;
+  // Access rules replace the hard-coded Tech-ED restriction only when /me answered.
+  const targetPath = access.ok
+    ? accessAllowedPath(path, access, isTechEd)
+    : isTechEd && !TECH_ED_PATHS.includes(path)
+      ? "/"
+      : path;
+  const effectivePath = targetPath === null ? path : targetPath.split("?")[0];
 
   useEffect(() => {
     const onPopState = () => {
@@ -82,7 +117,6 @@ function AppRoutes() {
     };
   }, []);
 
-  // Keep the URL (and nav highlighting) in sync when a Tech-ED is redirected.
   useEffect(() => {
     if (access.loading || targetPath === null) return;
     if (effectivePath !== path) {
@@ -116,22 +150,34 @@ function AppRoutes() {
   } else if (effectivePath === "/employee-master") {
     page = <EmployeeMaster />;
   } else if (effectivePath === "/detail-screen") {
-  page = (
-    <AppShell>
-      <DetailScreenPage />
-    </AppShell>
-  );
-} else if (effectivePath === "/budget-allocation") {
-  page = (
-    <AppShell>
-      <BudgetAllocationPage />
-    </AppShell>
-  );
-} else {
-  page = <Dashboard />;
-}
-
-
+    page = (
+      <AppShell>
+        <DetailScreenPage />
+      </AppShell>
+    );
+  } else if (effectivePath === "/budget-master") {
+    page = (
+      <AppShell>
+        <BudgetMasterPage />
+      </AppShell>
+    );
+  } else if (effectivePath === "/budget-distribution") {
+    page = (
+      <AppShell>
+        <BudgetDistributionPage />
+      </AppShell>
+    );
+  } else if (effectivePath === "/bulk-edit") {
+    page = (
+      <AppShell>
+        <BulkEditScreen />
+      </AppShell>
+    );
+  } else if (effectivePath === "/settings") {
+    page = <SettingsPage />;
+  } else {
+    page = <Dashboard />;
+  }
 
   return (
     <SettingsProvider>
