@@ -88,6 +88,17 @@ const sameIdentity = (a, b) => {
   const bs = identityForms(b);
   return identityForms(a).some((x) => bs.includes(x));
 };
+// "emp002" -> "EMP002 - Ashok Kumar" (same style as the Tech ED row). An id that
+// already comes as "id - name" only gets the id upper-cased; a plain name stays.
+const looksLikeId = (v) => /^[A-Za-z]{2,}\d+$/.test(String(v || "").trim());
+function cmDisplay(raw, nameById) {
+  const text = String(raw || "").trim();
+  const m = text.match(/^(\S+)\s*-\s*(.+)$/);
+  if (m) return (looksLikeId(m[1]) ? m[1].toUpperCase() : m[1]) + " - " + m[2];
+  if (!looksLikeId(text)) return text;
+  const name = nameById.get(normText(text));
+  return text.toUpperCase() + (name ? " - " + name : "");
+}
 const baseOf = (ids) => ids.reduce((s, id) => s + num(DEMO.employees[id]?.base), 0);
 const hikeOf = (ids) => ids.reduce((s, id) => s + num(DEMO.employees[id]?.hike), 0);
 const empBase = (id) => num(DEMO.employees[id]?.base);
@@ -248,6 +259,15 @@ export function TechEdBudgetDistribution() {
     );
   }, [appraisalRows, liveTech, myName, user]);
 
+  // Employee id -> name, so a Comp Manager id can be shown with the name.
+  const nameById = useMemo(() => {
+    const map = new Map();
+    (appraisalRows || []).forEach((r) => {
+      if (r.empId && r.name) map.set(normText(r.empId), String(r.name).trim());
+    });
+    return map;
+  }, [appraisalRows]);
+
   // Every Comp Manager under this Tech ED: those found in the appraisal rows
   // plus any that only have a budget record. Budget figures come from the
   // Comp Manager budget records where one exists.
@@ -274,6 +294,7 @@ export function TechEdBudgetDistribution() {
       const updated = live ? num(live.applied_budget) || (base * pct) / 100 : 0;
       return {
         name,
+        label: cmDisplay(name, nameById),
         pct,
         pct0: pct,
         base,
@@ -300,7 +321,7 @@ export function TechEdBudgetDistribution() {
       if (!used.has(l.id)) nodes.push(make(l.comp_manager || "Comp Manager", [], l));
     });
     return nodes.sort((x, y) => x.name.localeCompare(y.name));
-  }, [liveComps, liveTech, teamRows]);
+  }, [liveComps, liveTech, teamRows, nameById]);
 
   const allTeam0 = DEMO.compManagers.flatMap((c) => c.team0);
   const allTeam = DEMO.compManagers.flatMap((c) => c.team);
@@ -585,7 +606,7 @@ export function TechEdBudgetDistribution() {
                             {LEVELS[1]}
                           </td>
                           <td>
-                            <b>{n.name}</b>
+                            <b>{n.label || n.name}</b>
                           </td>
                           <td className="r">{lakh(n.original)}</td>
                           <td className="r">{lakh(n.updated)}</td>
