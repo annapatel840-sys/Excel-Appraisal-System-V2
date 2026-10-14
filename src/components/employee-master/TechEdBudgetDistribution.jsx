@@ -155,6 +155,27 @@ export function TechEdBudgetDistribution() {
       ].map(normalizeOwner).filter(Boolean),
     );
 
+    // Resolve the signed-in person against the complete Tech-Ed directory first.
+    // Do not depend on employeeRows containing the Tech-Ed's own employee row:
+    // Tech-Ed-scoped employee APIs may return only their reports.
+    const directoryOwner = techEdOwners.find((item) =>
+      [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name]
+        .filter(Boolean)
+        .some((alias) => ownerMatches(alias, Array.from(identities))),
+    );
+    if (directoryOwner) {
+      [
+        directoryOwner.employee_id,
+        directoryOwner.row_id,
+        directoryOwner.ROWID,
+        directoryOwner.assignment,
+        directoryOwner.name,
+      ].filter(Boolean).forEach((value) => {
+        identities.add(normalizeOwner(value));
+        ownerParts(value).forEach((part) => identities.add(normalizeOwner(part)));
+      });
+    }
+
     const employeeIdentityValues = (employee) => [
       employee.row_id, employee.ROWID, employee.ROW_ID, employee.id,
       employee.emp_id, employee.employee_id, employee.employeeId,
@@ -255,6 +276,16 @@ export function TechEdBudgetDistribution() {
       [user?.first_name, user?.last_name].filter(Boolean).join(" "),
       user?.email, user?.email_id, user?.empId, user?.employeeId, user?.employee_id,
     ].map(normalizeOwner).filter(Boolean);
+
+    // Prefer the authoritative Appraisal Sheet Tech-Ed directory. This works
+    // even if the employee endpoint only returns the Tech-Ed's reports.
+    const directoryOwner = techEdOwners.find((item) =>
+      [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name]
+        .filter(Boolean)
+        .some((alias) => ownerMatches(alias, identities)),
+    );
+    if (directoryOwner?.assignment) return String(directoryOwner.assignment).trim();
+
     const personValues = (e) => [
       e.row_id, e.ROWID, e.ROW_ID, e.id,
       e.emp_id, e.employee_id, e.employeeId, e.emp_name, e.employee_name, e.name,
