@@ -319,12 +319,16 @@ function HRApplyBudget() {
 
   useEffect(() => {
     const employeeCounts = new Map();
+    const employeeBases = new Map();
     const ownerValues = new Map();
     (Array.isArray(employeeRows) ? employeeRows : []).forEach((employee) => {
-      const assignedOwner = employee.appraiser_tech_ed || employee.tech_ed_id || employee.tech_ed || employee.appraiserTechEd || "";
+      const assignedOwner = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed_id || employee.tech_ed || employee.appraiserTechEd || "";
       const key = canonicalOwnerKey(assignedOwner, employeeRows);
       if (!key) return;
       employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
+      const base = amount(employee.current_annual_base_pay ?? employee.currentAnnualBasePay ?? employee.current_base_pay ?? employee.currentBasePay ?? employee.base_pay ?? employee.basePay) +
+        amount(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.pb_to_be_paid ?? employee.pbToBePaid ?? employee.target_pb_allocated_for_may ?? employee.allocated_pb ?? employee.total_pb);
+      employeeBases.set(key, (employeeBases.get(key) || 0) + base);
       if (!ownerValues.has(key)) ownerValues.set(key, assignedOwner);
     });
 
@@ -369,10 +373,10 @@ function HRApplyBudget() {
       nextRows.push({
         id: "tech-ed-" + key,
         name: label,
-        pct: 0,
-        base: 0,
-        original: 0,
-        updated: 0,
+        pct: amount(orgPct),
+        base: employeeBases.get(key) || 0,
+        original: ((employeeBases.get(key) || 0) * amount(selectedMaster?.budget_percentage ?? orgPct)) / 100,
+        updated: ((employeeBases.get(key) || 0) * amount(orgPct || selectedMaster?.budget_percentage)) / 100,
         team0: employeeCounts.get(key) || 0,
         team: employeeCounts.get(key) || 0,
         lastChanged: "—",
@@ -385,7 +389,7 @@ function HRApplyBudget() {
     if (selectedMaster && Number.isFinite(Number(selectedMaster.budget_percentage))) {
       setOrgPct(String(Number(selectedMaster.budget_percentage)));
     }
-  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, selectedCycle]);
+  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, selectedCycle, orgPct, selectedMaster?.budget_percentage]);
 
   const total = useMemo(
     () =>
