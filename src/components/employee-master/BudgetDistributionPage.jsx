@@ -334,12 +334,10 @@ export function BudgetDistributionPage() {
   const countForTechOwner = (raw) => {
     const record = resolveTechRecord(raw);
     if (!record) return 0;
+    const countedEligibleEmployees = new Set();
     return employeeRows.filter((employee) => {
       const assignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
       const resolved = resolveTechRecord(assignment);
-      // Match the Appraisal Sheet roster; Employee_Master-only records are
-      // not part of this appraisal cycle's team headcount.
-      if (employee.in_appraisal_sheet !== true) return false;
       const eligibility = String(
         [
           employee.eligibility,
@@ -351,7 +349,14 @@ export function BudgetDistributionPage() {
       // Count only an explicit eligibility decision. Active/Inactive is
       // separate from Eligible/Not Eligible and is not a fallback.
       const eligible = ["eligible", "yes", "true", "1"].includes(eligibility);
-      return resolved?.key === record.key && eligible;
+      if (resolved?.key !== record.key || !eligible) return false;
+      const employeeId = normalize(
+        employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text ||
+          employee.row_id || employee.ROWID || employee.id || "",
+      );
+      if (!employeeId || countedEligibleEmployees.has(employeeId)) return false;
+      countedEligibleEmployees.add(employeeId);
+      return true;
     }).length;
   };
 
