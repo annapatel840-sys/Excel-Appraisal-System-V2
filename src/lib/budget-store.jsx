@@ -228,8 +228,17 @@ export function BudgetProvider({ children }) {
         employeeById.set(id, {
           ...previous,
           ...employee,
+          // Preserve the resolved Appraisal Sheet assignment separately;
+          // the raw lookup FK may be a numeric Employee_Master ROWID.
+          appraiser_tech_ed_appraisal_sheet: String(
+            employee.appraiser_tech_ed_appraisal_sheet ||
+              previous.appraiser_tech_ed_appraisal_sheet ||
+              "",
+          ),
           appraiser_tech_ed: String(
-            employee.appraiser_tech_ed ||
+            employee.appraiser_tech_ed_appraisal_sheet ||
+              employee.appraiser_tech_ed ||
+              previous.appraiser_tech_ed_appraisal_sheet ||
               previous.appraiser_tech_ed ||
               previous.appraiser_tech_ed_id ||
               "",
