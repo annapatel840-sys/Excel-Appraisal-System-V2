@@ -345,9 +345,9 @@ export function BudgetDistributionPage() {
           employee.eligible,
         ].find((value) => value !== null && value !== undefined && String(value).trim() !== "") ?? "",
       ).trim().toLowerCase().replace(/[ _-]+/g, "");
-      const eligible = eligibility
-        ? ["eligible", "yes", "true", "1"].includes(eligibility)
-        : String(employee.status || employee.emp_status || "").trim().toLowerCase() === "active";
+      // Count only an explicit eligibility decision. Active/Inactive is
+      // separate from Eligible/Not Eligible and is not a fallback.
+      const eligible = ["eligible", "yes", "true", "1"].includes(eligibility);
       return resolved?.key === record.key && eligible;
     }).length;
   };
