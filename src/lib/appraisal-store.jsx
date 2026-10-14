@@ -228,7 +228,13 @@ const mapCatalystEmployee = (employee, index) => {
 
     reportingManager: String(employee.reporting_manager || ""),
     compManager: String(employee.comp_manager || ""),
-    appraiserTechED: String(employee.appraiser_tech_ed || ""),
+    // appraiser_tech_ed1 is a lookup FK in some API responses; prefer the
+    // resolved Appraisal Sheet assignment so the grid shows Employee ID - Name.
+    appraiserTechED: String(
+      employee.appraiser_tech_ed_appraisal_sheet ||
+      employee.appraiser_tech_ed ||
+      "",
+    ),
 
     wissenExperience: Number(employee.wissen_experience || 0),
     totalExperience: Number(employee.total_experience || 0),
