@@ -1437,7 +1437,7 @@ export function DetailScreenPage({
   const timeline = employee
     ? [
         {
-          year: CURRENT_CYCLE,
+          year: currentCycleName,
           current: true,
           title: dash(employee.designation),
           rating: dash(employee.managerRating ?? employee.rating),
