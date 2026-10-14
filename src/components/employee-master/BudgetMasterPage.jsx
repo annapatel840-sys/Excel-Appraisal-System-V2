@@ -349,7 +349,7 @@ function HRApplyBudget() {
       return canonicalOwnerKey(text, employeeRows);
     };
     (Array.isArray(employeeRows) ? employeeRows : []).forEach((employee) => {
-      const assignedOwner = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed_id || employee.tech_ed || employee.appraiserTechEd || "";
+      const assignedOwner = employee.appraiser_tech_ed_appraisal_sheet || "";
       const key = resolveTechOwnerKey(assignedOwner);
       if (!key) return;
       // Budget headcount follows appraisal eligibility, not the total Employee
