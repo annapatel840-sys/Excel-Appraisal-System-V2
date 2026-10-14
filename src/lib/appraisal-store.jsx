@@ -230,11 +230,11 @@ const mapCatalystEmployee = (employee, index) => {
     compManager: String(employee.comp_manager || ""),
     // appraiser_tech_ed1 is a lookup FK in some API responses; prefer the
     // resolved Appraisal Sheet assignment so the grid shows Employee ID - Name.
-    appraiserTechED: String(
-      employee.appraiser_tech_ed_appraisal_sheet ||
-      employee.appraiser_tech_ed ||
-      "",
-    ),
+    // Never show a bare Employee_Master ROWID (e.g. 74008000000027046) as the name.
+    appraiserTechED: [
+      employee.appraiser_tech_ed_appraisal_sheet,
+      employee.appraiser_tech_ed,
+    ].map((v) => String(v || "").trim()).find((v) => v && !/^[0-9]{6,}$/.test(v)) || "",
 
     wissenExperience: Number(employee.wissen_experience || 0),
     totalExperience: Number(employee.total_experience || 0),
