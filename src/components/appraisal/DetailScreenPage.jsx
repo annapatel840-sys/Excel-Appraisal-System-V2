@@ -946,8 +946,18 @@ export function DetailScreenPage({
     .replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
 
-  // The backend already scopes rows to what this login may see.
-  const rows = liveRows || [];
+  // The backend already scopes rows to what this login may see. Like the
+  // Appraisal Sheet, only Active + Eligible employees are listed here, so the
+  // count matches the sheet (not the whole employee master).
+  const rows = useMemo(
+    () =>
+      (liveRows || []).filter(
+        (row) =>
+          String(row.status || "").trim().toLowerCase() === "active" &&
+          String(row.eligibility || "").trim().toLowerCase() === "eligible",
+      ),
+    [liveRows],
+  );
   const isScopedToTeam = isTechEd || rows.length > 0;
 
   const [index, setIndex] = useState(0);
@@ -1385,37 +1395,6 @@ export function DetailScreenPage({
     employee?.currentTargetPB ??
     baselineRef.current[employee?.id]?.targetPBNextYear;
 
-  /* ---- Team comparison (from the detailed-screen-update branch) ------- */
-  // Over the employees this login can see (HR: all; Tech-ED: their team).
-  const team = (() => {
-    const teamRows = Array.isArray(rows) ? rows : [];
-    const hikes = teamRows
-      .filter((row) => row?.hikePct !== "" && row?.hikePct !== null && row?.hikePct !== undefined)
-      .map((row) => ({ row, value: Number(row.hikePct) }))
-      .filter((item) => Number.isFinite(item.value));
-    const mine = Number(employee?.hikePct);
-    const sorted = hikes.map((item) => item.value).sort((a, b) => a - b);
-    const mid = Math.floor(sorted.length / 2);
-    const top = hikes.length
-      ? hikes.reduce((best, item) => (item.value > best.value ? item : best))
-      : null;
-    return {
-      size: teamRows.length,
-      percentile:
-        hikes.length && Number.isFinite(mine)
-          ? Math.round((hikes.filter((item) => item.value <= mine).length / hikes.length) * 100)
-          : null,
-      median: sorted.length
-        ? sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
-        : null,
-      top,
-      hikeUsed: teamRows.reduce((sum, row) => sum + (Number(row?.hikeAmount) || 0), 0),
-      pbPaid: teamRows.reduce((sum, row) => sum + (Number(row?.allocatedPBAmount) || 0), 0),
-      pbTarget: teamRows.reduce((sum, row) => sum + (Number(row?.targetPBAllocatedForMay) || 0), 0),
-      noHike: teamRows.filter((row) => !(Number(row?.hikeAmount) || 0)).length,
-    };
-  })();
-
   /* ---- Metrics numbers ---------------------------------------------- */
   const metrics = employee
     ? [
@@ -1437,16 +1416,6 @@ export function DetailScreenPage({
           liveCtc ? `${((liveRB / liveCtc) * 100).toFixed(1)}%` : "—",
         ],
         ["Total bonus", inr(liveHist?.bonus || 0)],
-        ...(team.size > 1
-          ? [
-              ["Team median hike %", team.median === null ? "—" : `${team.median.toFixed(1)}%`],
-              ["Hike % percentile in team", team.percentile === null ? "—" : `${team.percentile}th of ${team.size}`],
-              ["Top hike in team", team.top ? `${team.top.value.toFixed(1)}% · ${team.top.row?.name || "—"}` : "—"],
-              ["Team hike used", inr(team.hikeUsed)],
-              ["Team PB paid vs target", `${inr(team.pbPaid)} / ${inr(team.pbTarget)}`],
-              ["Team members without a hike", String(team.noHike)],
-            ]
-          : []),
       ]
     : [];
 
