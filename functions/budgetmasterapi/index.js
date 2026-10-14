@@ -660,10 +660,20 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
 
   // Keep stable Employee IDs in varchar allocation columns. Display labels
   // (Employee ID - Name) are resolved by the frontend from Employee_Master.
+  // Build an alias index so legacy ROWID-backed allocation rows match the same
+  // canonical employee ID and do not create a second allocation for that person.
+  const techAliasToKey = new Map();
   techEdOwners.forEach((item) => {
-    const key = String(item.employee_id || ownerKey(item.assignment) || "").trim();
-    if (key && !techLabels.has(key.toLowerCase())) techLabels.set(key.toLowerCase(), key);
+    const key = String(item.employee_id || ownerKey(item.assignment) || "").trim().toLowerCase();
+    if (key && !techLabels.has(key)) techLabels.set(key, String(item.employee_id || item.assignment || key).trim());
+    [item.employee_id, item.row_id, item.ROWID, item.assignment, item.name].filter(Boolean).forEach((alias) => {
+      techAliasToKey.set(ownerKey(alias), key);
+    });
   });
+  const canonicalTechKey = (raw) => {
+    const key = ownerKey(raw);
+    return techAliasToKey.get(key) || key;
+  };
 
   const distributionTable = app.datastore().table(TABLES.distribution);
   const compTable = app.datastore().table(TABLES.comp);
@@ -717,7 +727,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     for (const [techKey, ownerName] of techLabels) {
       let row = bundle.techEd.find((item) =>
         String(item.appraisal_cycle_id) === cycleId &&
-        ownerKey(item.appraiser_tech_ed_id) === techKey
+        canonicalTechKey(item.appraiser_tech_ed_id) === techKey
       );
       if (!row) {
         const created = await distributionTable.insertRow({
