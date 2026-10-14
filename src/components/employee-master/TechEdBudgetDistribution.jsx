@@ -176,7 +176,7 @@ export function TechEdBudgetDistribution() {
     });
     const assignedOwners = Array.from(new Set(employeeRows
       .map((employee) => {
-        const raw = String(employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id ||
+        const raw = String(employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id ||
           employee.appraiser_tech_ed1 || employee.appraiser_teched || employee.appraiserTechED || employee.tech_ed || employee.tech_ed_id || "").trim();
         return ownerByForeignKey.get(normalizeOwner(raw)) || raw;
       })
@@ -261,7 +261,7 @@ export function TechEdBudgetDistribution() {
     const me = employeeRows.find((e) => personValues(e).some((v) => identities.includes(v)));
     if (me) identities.push(...personValues(me));
     for (const employee of employeeRows) {
-      const raw = String(employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 ||
+      const raw = String(employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 ||
         employee.appraiser_teched || employee.appraiserTechED || employee.tech_ed || employee.tech_ed_id || "").trim();
       if (!raw) continue;
       const linked = techEdOwners.find((item) =>
@@ -349,7 +349,7 @@ export function TechEdBudgetDistribution() {
       return String(linked?.assignment || text).trim();
     };
     employeeRows.forEach((employee) => {
-      const rawTechAssignment = employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
+      const rawTechAssignment = employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
       const techAssignment = resolveTechAssignment(rawTechAssignment);
       if (!currentTechOwner || ownerKey(techAssignment) !== currentTechOwner) return;
       const manager = String(employee.comp_manager || employee.comp_manager_id || employee.comp_manager_name || employee.compManager || "").trim();
@@ -393,7 +393,7 @@ export function TechEdBudgetDistribution() {
   }, [liveComps, employeeRows, techOwnerKey, log, techEdOwners]);
 
   const assignedTeam = useMemo(() => employeeRows.filter((employee) => {
-    const raw = employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
+    const raw = employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
     const linked = techEdOwners.find((item) =>
       [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name].filter(Boolean)
         .some((alias) => ownerMatches(alias, raw))
