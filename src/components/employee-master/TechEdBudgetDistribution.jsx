@@ -30,7 +30,10 @@ const ownerParts = (value) => {
   return separator.length > 1 ? [text, ...separator] : [text];
 };
 const ownerKey = (value) => ownerParts(value)[1] || ownerParts(value)[0] || "";
+// identities: a list of normalized values, or one owner value such as
+// "EMP0051 - Ashok Kumar" (compared by its parts, never as a substring).
 const ownerMatches = (owner, identities) => {
+  if (!Array.isArray(identities)) identities = ownerParts(identities);
   const parts = ownerParts(owner);
   const compactParts = parts.map((part) => part.replace(/[^a-z0-9]/g, ""));
   return parts.some((part) => identities.includes(part)) ||
@@ -242,6 +245,37 @@ export function TechEdBudgetDistribution() {
     activeCycleId,
   ]);
 
+  // The Tech-ED's Appraisal Sheet assignment (e.g. "EMP0051 - Ashok Kumar"),
+  // found from the login even when HR has not allocated a budget row yet, so
+  // the team and its Comp Managers can still be listed.
+  const loginTechOwner = useMemo(() => {
+    const identities = [
+      myName, user?.name, user?.display_name,
+      [user?.first_name, user?.last_name].filter(Boolean).join(" "),
+      user?.email, user?.email_id, user?.empId, user?.employeeId, user?.employee_id,
+    ].map(normalizeOwner).filter(Boolean);
+    const personValues = (e) => [
+      e.emp_id, e.employee_id, e.employeeId, e.emp_name, e.employee_name, e.name,
+      e.email, e.email_id, e.emailId,
+    ].map(normalizeOwner).filter(Boolean);
+    const me = employeeRows.find((e) => personValues(e).some((v) => identities.includes(v)));
+    if (me) identities.push(...personValues(me));
+    for (const employee of employeeRows) {
+      const raw = String(employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 ||
+        employee.appraiser_teched || employee.appraiserTechED || employee.tech_ed || employee.tech_ed_id || "").trim();
+      if (!raw) continue;
+      const linked = techEdOwners.find((item) =>
+        [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name].filter(Boolean)
+          .some((alias) => ownerMatches(alias, raw)),
+      );
+      const assignment = String(linked?.assignment || raw).trim();
+      if (ownerMatches(assignment, identities)) return assignment;
+    }
+    return "";
+  }, [employeeRows, techEdOwners, myName, user?.name, user?.display_name, user?.first_name, user?.last_name,
+    user?.email, user?.email_id, user?.empId, user?.employeeId, user?.employee_id]);
+  const techOwnerKey = ownerKey(liveTech?.appraiser_tech_ed_id) || ownerKey(loginTechOwner);
+
   const activeCycle = useMemo(
     () => cycleRows.find((cycle) => String(cycle.id ?? cycle.appraisal_cycle_id ?? cycle.cycle_id ?? cycle.ROWID) === String(liveTech?.appraisal_cycle_id || activeCycleId)) || null,
     [cycleRows, liveTech?.appraisal_cycle_id, activeCycleId],
@@ -300,7 +334,7 @@ export function TechEdBudgetDistribution() {
 
   const cmNodes = useMemo(() => {
     const managerStats = new Map();
-    const currentTechOwner = ownerKey(liveTech?.appraiser_tech_ed_id);
+    const currentTechOwner = techOwnerKey;
     const resolveTechAssignment = (raw) => {
       const text = String(raw || "").trim();
       const linked = techEdOwners.find((item) => {
@@ -356,7 +390,7 @@ export function TechEdBudgetDistribution() {
         history,
       };
     });
-  }, [liveComps, employeeRows, liveTech, log, techEdOwners]);
+  }, [liveComps, employeeRows, techOwnerKey, log, techEdOwners]);
 
   const assignedTeam = useMemo(() => employeeRows.filter((employee) => {
     const raw = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
@@ -365,14 +399,14 @@ export function TechEdBudgetDistribution() {
         .some((alias) => ownerMatches(alias, raw))
     );
     const assignment = String(linked?.assignment || raw).trim();
-    return ownerKey(assignment) === ownerKey(liveTech?.appraiser_tech_ed_id);
-  }), [employeeRows, liveTech, techEdOwners]);
+    return Boolean(techOwnerKey) && ownerKey(assignment) === techOwnerKey;
+  }), [employeeRows, techOwnerKey, techEdOwners]);
   const allTeam0 = assignedTeam;
   const allTeam = assignedTeam;
   const myPct = liveTech ? num(liveTech.percentage) : 0;
   const myOriginal = liveTech ? num(liveTech.calculated_budget) : 0;
   const myUpdated = liveTech ? num(liveTech.applied_budget) : 0;
-  const team0 = liveTech ? allTeam0.length : 0;
+  const team0 = allTeam0.length;
   const allotted = cmNodes.reduce((s, n) => s + n.updated, 0);
   const used = liveTech ? num(liveTech.total_utilization) : 0;
   const usedPct = myUpdated ? (used / myUpdated) * 100 : 0;
@@ -475,8 +509,9 @@ export function TechEdBudgetDistribution() {
       ) : null}
       {!cycleLoading && !liveTech ? (
         <div className="berr">
-          No matching Tech-Ed budget was found for this login in the active appraisal cycle.
-          Check that the signed-in account matches the Appraiser Tech-ED value in Appraisal Sheet.
+          {loginTechOwner
+            ? "HR has not allocated your budget for the active appraisal cycle yet. Your Comp Managers are listed below; Allot % can be set once HR applies the budget in Budget Master."
+            : "No matching Tech-Ed budget was found for this login in the active appraisal cycle. Check that the signed-in account matches the Appraiser Tech-ED value in Appraisal Sheet."}
         </div>
       ) : null}
       <div className="btop">
@@ -593,7 +628,7 @@ export function TechEdBudgetDistribution() {
                   <tr className="self">
                     <td className="first">{LEVELS[0]}</td>
                     <td>
-                      <b>{liveTech?.appraiser_tech_ed_id || myName}</b> <span className="muted-small">(you)</span>
+                      <b>{String(loginTechOwner).split(/\s+-\s+/)[1] || myName}</b> <span className="muted-small">(you)</span>
                     </td>
                     <td className="r">{lakh(myOriginal)}</td>
                     <td className="r">{lakh(myUpdated)}</td>
@@ -689,6 +724,8 @@ export function TechEdBudgetDistribution() {
                               max="100"
                               step="0.1"
                               aria-label={"Allot % for " + n.name}
+                              disabled={!liveTech}
+                              title={liveTech ? undefined : "Available once HR allocates your budget"}
                               value={drafts[n.name] ?? n.pct}
                               onChange={(e) => setDrafts((d) => ({ ...d, [n.name]: e.target.value }))}
                               onBlur={(e) => setPct(n.name, e.target.value)}
