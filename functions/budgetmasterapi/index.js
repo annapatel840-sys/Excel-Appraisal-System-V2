@@ -347,6 +347,7 @@ async function readTechEdOwners(app) {
       row_id: idOf(employee),
       employee_id: String(readField(employee, ["emp_id", "employee_id"]) || "").trim(),
       name: String(readField(employee, ["emp_name", "employee_name", "name"]) || "").trim(),
+      email: String(readField(employee, ["email_id", "email", "work_email"]) || "").trim().toLowerCase(),
     },
   ]));
   const zcql = app.zcql();
