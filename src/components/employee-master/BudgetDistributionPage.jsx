@@ -309,36 +309,54 @@ export function BudgetDistributionPage() {
     return () => { mounted = false; };
   }, [budgetMasterRows]);
 
-  const resolveTechOwner = (raw) => {
+  const resolveTechRecord = (raw) => {
     const text = String(raw || "").trim();
-    const linked = techEdOwners.find((item) =>
-      String(item?.row_id || item?.ROWID || "").trim() === text ||
-      String(item?.employee_id || "").trim().toLowerCase() === text.toLowerCase()
-    );
-    if (linked?.assignment) return String(linked.assignment).trim();
+    if (!text) return null;
+    const compact = normalize(text);
+    const linked = techEdOwners.find((item) => {
+      const aliases = [item?.row_id, item?.ROWID, item?.employee_id, item?.assignment, item?.name].filter(Boolean);
+      return aliases.some((alias) => normalize(alias) === compact || ownerKey(alias) === ownerKey(text));
+    });
+    if (linked) {
+      const id = String(linked.employee_id || "").trim();
+      const name = String(linked.name || "").trim();
+      return { key: normalize(id || linked.assignment || text), label: String(linked.assignment || (id && name ? id + " - " + name : id || name || text)).trim() };
+    }
     const employee = employeeRows.find((row) =>
-      String(row.emp_id || row.employee_id || "").trim().toLowerCase() === text.toLowerCase() ||
+      String(row.emp_id || row.employee_id || "").trim().toLowerCase() === compact ||
       String(row.row_id || row.ROWID || "").trim() === text
     );
     const id = String(employee?.emp_id || employee?.employee_id || "").trim();
     const name = String(employee?.name || employee?.emp_name || employee?.employee_name || "").trim();
-    return id && name ? id + " - " + name : text;
+    return { key: normalize(id || text), label: id && name ? id + " - " + name : text };
   };
+  const resolveTechOwner = (raw) => resolveTechRecord(raw)?.label || String(raw || "").trim();
   const countForTechOwner = (raw) => {
-    const key = ownerKey(resolveTechOwner(raw));
+    const record = resolveTechRecord(raw);
+    if (!record) return 0;
     return employeeRows.filter((employee) => {
       const assignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
-      return ownerKey(resolveTechOwner(assignment)) === key;
+      const resolved = resolveTechRecord(assignment);
+      return resolved?.key === record.key;
     }).length;
   };
 
-  const rows = useMemo(
-    () =>
-      [...budgetRows]
-        .filter((row) => !activeCycleId || String(row.appraisal_cycle_id || "") === activeCycleId)
-        .sort((a, b) => resolveTechOwner(a.tech_ed_id).localeCompare(resolveTechOwner(b.tech_ed_id))),
-    [budgetRows, techEdOwners, employeeRows, activeCycleId],
-  );
+  const rows = useMemo(() => {
+    const unique = new Map();
+    [...budgetRows]
+      .filter((row) => !activeCycleId || String(row.appraisal_cycle_id || "") === activeCycleId)
+      .forEach((row) => {
+        const identity = resolveTechRecord(row.tech_ed_id);
+        if (!identity) return;
+        const current = unique.get(identity.key);
+        // Keep the most recently updated record for a Tech-Ed/cycle and do not
+        // render legacy duplicate ROWID/employee-ID aliases as separate rows.
+        if (!current || String(row.modified_at || row.updated_at || "") >= String(current.modified_at || current.updated_at || "")) {
+          unique.set(identity.key, { ...row, tech_ed_id: identity.label, _ownerKey: identity.key });
+        }
+      });
+    return [...unique.values()].sort((a, b) => a.tech_ed_id.localeCompare(b.tech_ed_id));
+  }, [budgetRows, techEdOwners, employeeRows, activeCycleId]);
  
   const totalPercentage = useMemo(
     () => rows.reduce((sum, row) => sum + Number(row.budget_percentage || 0), 0),
