@@ -49,6 +49,7 @@ const CSS = `
 
   & *{box-sizing:border-box}
   .topbar{height:52px;flex:0 0 auto;background:var(--navy);color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 18px}
+  .tb-mock{margin-left:auto;font-size:14px;font-weight:700;letter-spacing:.04em;color:#fff;white-space:nowrap}
   .tb-l{display:flex;align-items:center}
   .title{font-size:17px;font-weight:800}
   .cycle{font-size:12px;color:#AAB4C0;margin-left:14px;padding-left:14px;border-left:1px solid rgba(255,255,255,.25)}
@@ -2700,6 +2701,7 @@ const BulkOperations = forwardRef(function BulkOperations(
             {kp(b0.utilT, bPv.utilT)}
           </div>
         </div>
+        <span className="tb-mock">Mock screen</span>
       </div>
 
       <div className="work">
