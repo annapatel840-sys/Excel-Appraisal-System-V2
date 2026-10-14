@@ -395,6 +395,7 @@ async function readTechEdOwners(app) {
           row_id: employee ? employee.row_id : "",
           employee_id: employee ? employee.employee_id : "",
           name: employee ? employee.name : "",
+          email: employee ? employee.email : "",
         });
       }
     });
