@@ -657,6 +657,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const rawCompManager = String(firstValue(row, [
       "comp_manager", "comp_manager_id", "comp_manager_name", "comp_manager_emp_id", "compManager", "compManagerId",
     ]) || firstValue(masterRow, ["comp_manager", "director"]) || "").trim();
+    // Keep the original value for budget aggregation/matching; display label is separate.
+    const compManager = rawCompManager;
     const managerLookup = rawCompManager.split(/\s+-\s+/)[0].trim();
     const managerRow = masterByRowId.get(rawCompManager) ||
       masterByEmployee.get(managerLookup.toLowerCase()) ||
