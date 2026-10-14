@@ -56,6 +56,13 @@ const isActiveAndEligible = (employee) => {
   return status === "active" && ["eligible", "yes", "true", "1"].includes(eligibility);
 };
 const employeeUtilized = (employee) => {
+  // Prefer the same Appraisal_Sheet-based calculation returned by budgetmasterapi.
+  // Fall back to the local calculation for older deployed API responses.
+  const serverAmount = Number(employee?.utilized_amount);
+  if (employee?.utilized_amount !== null && employee?.utilized_amount !== undefined &&
+      String(employee.utilized_amount).trim() !== "" && Number.isFinite(serverAmount) &&
+      serverAmount !== 0) return serverAmount;
+
   // Business rule: current-year awards minus previous-year awards.
   // Ignore zero-filled aliases so another populated field can supply the value.
   const amount = (keys) => {
@@ -424,11 +431,20 @@ export function TechEdBudgetDistribution() {
       const text = String(raw || "").trim();
       if (!text) return "";
       const parts = ownerParts(text);
+
+      // A Comp Manager often is not a member of their own Tech-Ed roster.
+      // Resolve the saved manager ID through any team row that already carries
+      // both the stored Comp Manager key and its Employee_Master display label.
+      const linkedManager = employeeRows.find((employee) =>
+        employee.comp_manager_display &&
+        ownerMatches(employee.comp_manager || employee.comp_manager_id || employee.compManager, parts)
+      );
+      if (linkedManager?.comp_manager_display) return String(linkedManager.comp_manager_display).trim();
+
       const manager = employeeRows.find((employee) => {
         const aliases = [
           employee.empId, employee.emp_id, employee.employee_id, employee.employeeId,
           employee.id, employee.ROWID, employee.row_id, employee.name, employee.employee_name,
-          employee.comp_manager_display,
         ].filter(Boolean);
         return aliases.some((alias) => ownerMatches(alias, parts));
       });
