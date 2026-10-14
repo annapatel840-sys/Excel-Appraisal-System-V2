@@ -49,8 +49,8 @@ function canonicalOwnerKey(value, employees = []) {
   const rawId = pair ? pair[1].trim() : "";
   const rawName = pair ? pair[2].trim() : raw;
   const valuesFor = (employee) => [
-    employee.emp_id, employee.employee_id, employee.name, employee.employee_name,
-    employee.emp_name, employee.email, employee.email_id,
+    employee.row_id, employee.ROWID, employee.emp_id, employee.employee_id,
+    employee.name, employee.employee_name, employee.emp_name, employee.email, employee.email_id,
   ].filter(Boolean).map(normalizeOwnerKey);
   const matched = employees.find((employee) => {
     const values = valuesFor(employee);
@@ -271,6 +271,7 @@ function HRApplyBudget() {
   const [pending, setPending] = useState({});
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
+  const [savingOrg, setSavingOrg] = useState(false);
   const [history, setHistory] = useState({});
   const [audit, setAudit] = useState([]);
   const [orgAudit, setOrgAudit] = useState([]);
@@ -318,12 +319,16 @@ function HRApplyBudget() {
 
   useEffect(() => {
     const employeeCounts = new Map();
+    const employeeBases = new Map();
     const ownerValues = new Map();
     (Array.isArray(employeeRows) ? employeeRows : []).forEach((employee) => {
-      const assignedOwner = employee.appraiser_tech_ed || employee.tech_ed_id || employee.tech_ed || employee.appraiserTechEd || "";
+      const assignedOwner = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed_id || employee.tech_ed || employee.appraiserTechEd || "";
       const key = canonicalOwnerKey(assignedOwner, employeeRows);
       if (!key) return;
       employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
+      const base = amount(employee.current_annual_base_pay ?? employee.currentAnnualBasePay ?? employee.current_base_pay ?? employee.currentBasePay ?? employee.base_pay ?? employee.basePay) +
+        amount(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.pb_to_be_paid ?? employee.pbToBePaid ?? employee.target_pb_allocated_for_may ?? employee.allocated_pb ?? employee.total_pb);
+      employeeBases.set(key, (employeeBases.get(key) || 0) + base);
       if (!ownerValues.has(key)) ownerValues.set(key, assignedOwner);
     });
 
@@ -368,10 +373,10 @@ function HRApplyBudget() {
       nextRows.push({
         id: "tech-ed-" + key,
         name: label,
-        pct: 0,
-        base: 0,
-        original: 0,
-        updated: 0,
+        pct: amount(selectedMaster?.budget_percentage),
+        base: employeeBases.get(key) || 0,
+        original: ((employeeBases.get(key) || 0) * amount(selectedMaster?.budget_percentage)) / 100,
+        updated: ((employeeBases.get(key) || 0) * amount(selectedMaster?.budget_percentage)) / 100,
         team0: employeeCounts.get(key) || 0,
         team: employeeCounts.get(key) || 0,
         lastChanged: "—",
@@ -384,7 +389,7 @@ function HRApplyBudget() {
     if (selectedMaster && Number.isFinite(Number(selectedMaster.budget_percentage))) {
       setOrgPct(String(Number(selectedMaster.budget_percentage)));
     }
-  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, selectedCycle]);
+  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, selectedCycle, selectedMaster?.budget_percentage]);
 
   const total = useMemo(
     () =>
@@ -414,6 +419,37 @@ function HRApplyBudget() {
   const pendingCount =
     changes.length || orgPending ? changes.length + (orgPending ? 1 : 0) : 0;
   const previewTotal = rows.reduce((s, r) => s + previewBudget(r), 0);
+
+  async function applyOrgPercentage() {
+    const org = Number(orgPct);
+    const cycleId = String(selectedCycle || activeCycle?.id || activeCycle?.appraisal_cycle_id || activeCycle?.ROWID || "").trim();
+    if (!cycleId) {
+      setError("Select an appraisal cycle before applying the Org %.");
+      return;
+    }
+    if (!Number.isFinite(org) || org < 0 || org > 100) {
+      setError("Enter a valid Org % between 0 and 100.");
+      return;
+    }
+    setSavingOrg(true);
+    setError("");
+    const orgBase = amount(selectedMaster?.org_budget_base) || total.base;
+    try {
+      await updateBudget(selectedMaster?.id || "", {
+        appraisal_cycle_id: cycleId,
+        budget_percentage: org,
+        org_budget_base: orgBase,
+        calculated_budget: orgBase * org / 100,
+        applied_budget: orgBase * org / 100,
+        budget_utilized: amount(selectedMaster?.budget_utilized),
+      }, "master", false);
+      await reloadBudget();
+    } catch (saveError) {
+      setError(saveError.message || "Org % and appraisal cycle could not be saved.");
+    } finally {
+      setSavingOrg(false);
+    }
+  }
 
   function setRowPct(name, value) {
     setPending((p) => ({ ...p, [name]: value }));
@@ -516,23 +552,32 @@ function HRApplyBudget() {
 
     try {
       const orgBase = amount(selectedMaster?.org_budget_base) || total.base;
+      const cycleId = String(selectedCycle || activeCycle?.id || activeCycle?.appraisal_cycle_id || activeCycle?.ROWID || "").trim();
+      if (!cycleId) throw new Error("Select an appraisal cycle before applying Tech-Ed budgets.");
+      // Persist every Appraisal Sheet Tech-Ed, including newly discovered rows.
+      // The API upserts by (appraisal_cycle_id, appraiser_tech_ed_id) and stores
+      // the business Employee ID in the varchar field, not a display label.
       await Promise.all([
-        ...rows.filter((r) => r.id && !String(r.id).startsWith("tech-ed-")).map((r) =>
-          updateBudget(r.id, {
+        ...rows.map((r) => updateBudget(
+          r.id && !String(r.id).startsWith("tech-ed-") ? r.id : "",
+          {
+            appraisal_cycle_id: cycleId,
+            appraiser_tech_ed_id: r.name,
             percentage: Number(previewPct(r)),
             budget_base: r.base,
-            calculated_budget: previewBudget(r),
+            calculated_budget: (r.base * org) / 100,
             applied_budget: previewBudget(r),
-          }, "distribution", false)
-        ),
-        ...(selectedMaster?.id
-          ? [updateBudget(selectedMaster.id, {
-              budget_percentage: org,
-              org_budget_base: orgBase,
-              calculated_budget: orgBase * org / 100,
-              applied_budget: orgBase * org / 100,
-            }, "master", false)]
-          : []),
+          },
+          "distribution",
+          false,
+        )),
+        updateBudget(selectedMaster?.id || "", {
+          appraisal_cycle_id: cycleId,
+          budget_percentage: org,
+          org_budget_base: orgBase,
+          calculated_budget: orgBase * org / 100,
+          applied_budget: orgBase * org / 100,
+        }, "master", false),
       ]);
       await reloadBudget();
     } catch (saveError) {
@@ -614,16 +659,27 @@ function HRApplyBudget() {
               <div className="text-[11px] font-medium text-[#5b6b80]">
                 Org % (default for all Tech EDs)
               </div>
-              <input
-                type="number"
-                min="0"
-                max="100"
-                step="0.1"
-                value={orgPct}
-                disabled={!canConfig}
-                onChange={(e) => setOrgPct(e.target.value)}
-                className="mt-1 h-[38px] w-[110px] rounded border border-[#14a3a3] px-2 text-right text-[18px] font-bold text-[#12304f] outline-none"
-              />
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  value={orgPct}
+                  disabled={!canConfig || savingOrg}
+                  onChange={(e) => setOrgPct(e.target.value)}
+                  className="h-[38px] w-[110px] rounded border border-[#14a3a3] px-2 text-right text-[18px] font-bold text-[#12304f] outline-none"
+                />
+                <button
+                  type="button"
+                  disabled={!canConfig || savingOrg || cycleLoading || !activeCycle}
+                  onClick={applyOrgPercentage}
+                  className="h-[38px] rounded-md px-3 text-[12px] font-semibold text-white disabled:opacity-50"
+                  style={{ background: TEAL }}
+                >
+                  {savingOrg ? "Saving…" : "Apply"}
+                </button>
+              </div>
               {orgPending ? (
                 <div className="text-[11px] text-slate-500">was 8%</div>
               ) : null}

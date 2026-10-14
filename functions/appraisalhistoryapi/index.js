@@ -569,7 +569,7 @@ const withHistoryAliases = (record) => {
     appraisal_year: pick("appraisal_year", "fy_year"),
     base_pay: pick("base_pay", "current_annual_base_pay"),
     new_ctc: pick("new_ctc", "total_CTC_with_rewards"),
-    target_performance_bonus: pick("target_performance_bonus","target_performance_agreed"),
+    target_performance_bonus: pick("target_performance_bonus","target_performance_agreed",),
     new_base_pay: record.new_base_pay,
     joining_bonus: record.joining_bonus,
     performance_bonus: record.performance_bonus,
@@ -1004,35 +1004,20 @@ module.exports = async (req, res) => {
       }
 
       /* ------------------------------------------------------
-      CREATE RECORD IF IT DOES NOT EXIST
+      NO EXISTING RECORD: DO NOT CREATE ONE
+      (CHANGED: creating a row here produced a duplicate "Apr-26" row in
+      the History panel. createHistoryRecord is kept above, unused.)
       ------------------------------------------------------ */
 
-      console.log("No Payroll_Data record found.");
-
-      console.log("Creating new history record for:", empId, appraisalYear);
-
-      // const createdRecord = await createHistoryRecord(
-      //   table,
-      //   empId,
-      //   appraisalYear,
-      //   updateData,
-      // );
-
-      const createdRecord = await createHistoryRecord(
-          app,
-          table,
-          empId,
-          appraisalYear,
-          updateData
-        );
+      console.log("No Payroll_Data record found; not creating one.");
 
       sendJson(res, 200, {
         success: true,
-        action: "created",
+        action: "skipped",
         emp_id: empId,
         appraisal_year: appraisalYear,
-        message: "Payroll_Data history created successfully.",
-        data: createdRecord,
+        message: "No matching history record; nothing created.",
+        data: null,
       });
 
       return;

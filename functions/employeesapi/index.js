@@ -540,12 +540,12 @@ function buildEmployeeMasterMap(masterRows) {
     const empId = String(row.emp_id || "")
       .trim()
       .toLowerCase();
+    const rowId = String(row.ROWID || row.rowid || row.id || "").trim();
 
-    if (!empId) {
-      return;
-    }
-
-    map.set(empId, row);
+    // Index by both the stable employee ID and Catalyst Row ID. The new
+    // Appraisal_Sheet.appraiser_tech_ed1 lookup stores Employee_Master.ROWID.
+    if (empId) map.set(empId, row);
+    if (rowId) map.set(rowId, row);
   });
 
   return map;
@@ -575,7 +575,29 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       // Appraisal_Sheet.comp_manager is the value users edit; Employee_Master
       // has no comp_manager column, so director is only a fallback.
       comp_manager: String(row.comp_manager || master.director || ""),
-      appraiser_tech_ed: String(row.appraiser_tech_ed || master.appraiser_tech_ed || ""),
+      // appraiser_tech_ed1 is a lookup to Employee_Master.ROWID. Resolve it
+      // to the actual Tech-Ed employee identity so the grid displays ID - Name
+      // and the backend's Tech-Ed access filter can match the signed-in user.
+      appraiser_tech_ed: (() => {
+        const techEdLookupId = String(
+          row.appraiser_tech_ed1 || row.appraiser_tech_ed || master.appraiser_tech_ed1 || master.appraiser_tech_ed || ""
+        ).trim();
+        const techEdEmployee = techEdLookupId
+          ? employeeMasterMap.get(techEdLookupId) ||
+            employeeMasterMap.get(techEdLookupId.toLowerCase())
+          : null;
+        if (techEdEmployee) {
+          const techEdEmpId = String(techEdEmployee.emp_id || "").trim();
+          const techEdName = String(techEdEmployee.emp_name || techEdEmployee.name || "").trim();
+          return techEdEmpId && techEdName
+            ? techEdEmpId + " - " + techEdName
+            : techEdName || techEdEmpId || techEdLookupId;
+        }
+        // Preserve legacy text assignments, but don't show a numeric FK as a name.
+        const legacy = String(row.appraiser_tech_ed || master.appraiser_tech_ed || "").trim();
+        if (legacy && !/^[0-9]+$/.test(legacy)) return legacy;
+        return "";
+      })(),
       department: String(master.department || row.department || ""),
       location: String(master.location || master.work_location || row.location || row.work_location || ""),
       wissen_experience: Number(master.wissen_experience || row.wissen_experience || 0),

@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { WalletCards, RefreshCw } from "lucide-react";
  
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { TechEdBudgetDistribution } from "./TechEdBudgetDistribution";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
  
 // Exact rupee amount with Indian grouping (no lakh rounding), e.g. ₹ 12,34,567.50
 const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
@@ -20,8 +21,13 @@ const normalize = (value) =>
  
 function ownerName(value) {
   const text = String(value || "").trim();
-  const match = text.match(/^\S+\s*-\s*(.+)$/);
-  return match ? match[1].trim() : text;
+  const match = text.split(/\s+-\s+/);
+  return match.length > 1 ? match.slice(1).join(" - ").trim() : text;
+}
+function ownerKey(value) {
+  const text = String(value || "").trim();
+  const match = text.split(/\s+-\s+/);
+  return normalize(match.length > 1 ? match[0] : text);
 }
  
 function dateText(value) {
@@ -244,6 +250,9 @@ export function BudgetDistributionPage() {
   const {
     budgetRows,
     employeeCounts,
+    employeeRows = [],
+    techEdOwners = [],
+    budgetMasterRows = [],
     totals,
     loading,
     error,
@@ -278,13 +287,57 @@ export function BudgetDistributionPage() {
   const [open, setOpen] = useState({});
   const [summaryOpen, setSummaryOpen] = useState(true);
   const [tableOpen, setTableOpen] = useState(true);
- 
+  const [cycleLabel, setCycleLabel] = useState("");
+  const [activeCycleId, setActiveCycleId] = useState("");
+  useEffect(() => {
+    let mounted = true;
+    payrollCycleRequest("cycles").then((cycles) => {
+      if (!mounted) return;
+      const all = Array.isArray(cycles) ? cycles : [];
+      const active = all.find((cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived);
+      const activeId = String(active?.id || active?.appraisal_cycle_id || active?.cycle_id || active?.ROWID || "");
+      setActiveCycleId(activeId);
+      const master = budgetMasterRows.find((row) => String(row.appraisal_cycle_id || "") === activeId);
+      setCycleLabel(String(active?.name || active?.cycle_name || master?.appraisal_cycle_name || master?.cycle_name || "Active cycle unavailable"));
+    }).catch((cycleError) => {
+      console.error("Failed to load Budget Distribution cycle:", cycleError);
+      if (mounted) {
+        setActiveCycleId(String(budgetMasterRows[0]?.appraisal_cycle_id || ""));
+        setCycleLabel(String(budgetMasterRows[0]?.appraisal_cycle_name || budgetMasterRows[0]?.cycle_name || "Cycle unavailable"));
+      }
+    });
+    return () => { mounted = false; };
+  }, [budgetMasterRows]);
+
+  const resolveTechOwner = (raw) => {
+    const text = String(raw || "").trim();
+    const linked = techEdOwners.find((item) =>
+      String(item?.row_id || item?.ROWID || "").trim() === text ||
+      String(item?.employee_id || "").trim().toLowerCase() === text.toLowerCase()
+    );
+    if (linked?.assignment) return String(linked.assignment).trim();
+    const employee = employeeRows.find((row) =>
+      String(row.emp_id || row.employee_id || "").trim().toLowerCase() === text.toLowerCase() ||
+      String(row.row_id || row.ROWID || "").trim() === text
+    );
+    const id = String(employee?.emp_id || employee?.employee_id || "").trim();
+    const name = String(employee?.name || employee?.emp_name || employee?.employee_name || "").trim();
+    return id && name ? id + " - " + name : text;
+  };
+  const countForTechOwner = (raw) => {
+    const key = ownerKey(resolveTechOwner(raw));
+    return employeeRows.filter((employee) => {
+      const assignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
+      return ownerKey(resolveTechOwner(assignment)) === key;
+    }).length;
+  };
+
   const rows = useMemo(
     () =>
-      [...budgetRows].sort((a, b) =>
-        ownerName(a.tech_ed_id).localeCompare(ownerName(b.tech_ed_id)),
-      ),
-    [budgetRows],
+      [...budgetRows]
+        .filter((row) => !activeCycleId || String(row.appraisal_cycle_id || "") === activeCycleId)
+        .sort((a, b) => resolveTechOwner(a.tech_ed_id).localeCompare(resolveTechOwner(b.tech_ed_id))),
+    [budgetRows, techEdOwners, employeeRows, activeCycleId],
   );
  
   const totalPercentage = useMemo(
@@ -319,7 +372,7 @@ export function BudgetDistributionPage() {
         </span>
         <span className="sep" />
         <span>
-          Appraisal cycle <b>Apr-26</b>
+          Appraisal cycle <b>{cycleLabel || "Loading cycle…"}</b>
         </span>
         <span className="sep" />
         <span>
@@ -436,7 +489,7 @@ export function BudgetDistributionPage() {
                 </thead>
                 <tbody>
                   {rows.map((row) => {
-                    const owner = ownerName(row.tech_ed_id);
+                    const owner = resolveTechOwner(row.tech_ed_id);
                     const key = row.id || row.tech_ed_id;
                     const expanded = Boolean(open[key]);
  
@@ -458,7 +511,7 @@ export function BudgetDistributionPage() {
                         <td className="num">{money(row.budget_utilized)}</td>
                         <td className="num">{money(row.budget_remaining)}</td>
                         <td className="num">{pct(row.utilization_percentage)}</td>
-                        <td>{employeeCounts[row.tech_ed_id] ?? "—"}</td>
+                        <td>{countForTechOwner(row.tech_ed_id) || employeeCounts[row.tech_ed_id] || 0}</td>
                         <td>
                           <span className="status">
                             {row.status || "Active"}
@@ -488,7 +541,7 @@ export function BudgetDistributionPage() {
               {rows.map((row) => {
                 const key = row.id || row.tech_ed_id;
                 if (!open[key]) return null;
-                const owner = ownerName(row.tech_ed_id);
+                const owner = resolveTechOwner(row.tech_ed_id);
                 return (
                   <div className="detail" key={"detail-" + key}>
                     <div className="detail-grid">

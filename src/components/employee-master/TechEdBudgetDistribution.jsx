@@ -21,16 +21,15 @@ const num = (v) => {
 const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 const lakh = (n) => "₹ " + INR.format(num(n));
 const normalizeOwner = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
-const ownerKey = (value) => {
-  const text = normalizeOwner(value);
-  const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
-  return pair ? pair[1] : text;
-};
+// Employee IDs can themselves contain hyphens (for example WIS-1234).
+// The owner separator is the spaced delimiter " - ", not every hyphen.
 const ownerParts = (value) => {
   const text = normalizeOwner(value);
-  const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
-  return pair ? [text, pair[1], pair[2]] : [text];
+  if (!text) return [];
+  const separator = text.split(/\s+-\s+/);
+  return separator.length > 1 ? [text, ...separator] : [text];
 };
+const ownerKey = (value) => ownerParts(value)[1] || ownerParts(value)[0] || "";
 const ownerMatches = (owner, identities) => {
   const parts = ownerParts(owner);
   const compactParts = parts.map((part) => part.replace(/[^a-z0-9]/g, ""));
@@ -107,6 +106,7 @@ export function TechEdBudgetDistribution() {
     budgetCompManagerRows,
     budgetMasterRows,
     employeeRows = [],
+    techEdOwners = [],
     updateBudget,
     loading: budgetLoading,
     error: budgetError,
@@ -126,7 +126,8 @@ export function TechEdBudgetDistribution() {
         const active = allCycles.find(
           (cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived,
         );
-        setActiveCycleId(active?.id ? String(active.id) : "");
+        const cycleId = active?.id ?? active?.appraisal_cycle_id ?? active?.cycle_id ?? active?.ROWID ?? "";
+        setActiveCycleId(cycleId ? String(cycleId) : "");
       })
       .catch((cycleError) => {
         console.error("Failed to load appraisal cycles for Budget Distribution:", cycleError);
@@ -143,35 +144,106 @@ export function TechEdBudgetDistribution() {
 
   const liveTech = useMemo(() => {
     const identities = new Set(
-      [myName, user?.email, user?.empId, user?.employeeId, user?.employee_id]
-        .map(normalizeOwner)
+      [
+        myName, user?.name, user?.display_name, user?.first_name, user?.last_name,
+        [user?.first_name, user?.last_name].filter(Boolean).join(" "),
+        user?.email, user?.email_id, user?.user_id, user?.empId, user?.employeeId, user?.employee_id,
+      ].map(normalizeOwner).filter(Boolean),
+    );
+
+    const employeeIdentityValues = (employee) => [
+      employee.row_id, employee.ROWID, employee.ROW_ID, employee.id,
+      employee.emp_id, employee.employee_id, employee.employeeId,
+      employee.emp_name, employee.employee_name, employee.name,
+      employee.email, employee.email_id, employee.emailId,
+    ].map(normalizeOwner).filter(Boolean);
+
+    // Resolve the logged-in account to an actual employee row where possible.
+    const loginEmployee = employeeRows.find((employee) =>
+      employeeIdentityValues(employee).some((value) => identities.has(value)),
+    );
+    if (loginEmployee) employeeIdentityValues(loginEmployee).forEach((value) => identities.add(value));
+
+    // Some session accounts are not employees. In that case, use the Appraisal
+    // Sheet assignment whose Tech-Ed owner contains the logged-in identity.
+    const ownerByForeignKey = new Map();
+    techEdOwners.forEach((item) => {
+      const fk = normalizeOwner(item?.row_id || item?.ROWID || "");
+      if (fk && item?.assignment) ownerByForeignKey.set(fk, String(item.assignment).trim());
+    });
+    const assignedOwners = Array.from(new Set(employeeRows
+      .map((employee) => {
+        const raw = String(employee.appraiser_tech_ed || employee.appraiser_tech_ed_id ||
+          employee.appraiser_tech_ed1 || employee.appraiser_teched || employee.appraiserTechED || employee.tech_ed || employee.tech_ed_id || "").trim();
+        return ownerByForeignKey.get(normalizeOwner(raw)) || raw;
+      })
+      .filter((owner) => owner && ownerMatches(owner, Array.from(identities)))));
+
+    const allRows = budgetDistributionRows.filter((row) =>
+      row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed || row.appraiser_tech_ed,
+    );
+    const ownerForBudgetRow = (row) => {
+      const raw = String(
+        row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed ||
+        row.appraiser_tech_ed || row.appraiser_tech_ed1 || ""
+      ).trim();
+      // Budget_Distribution may store Employee_Master.ROWID as its Tech-Ed FK.
+      // Convert that FK to the display assignment returned from Appraisal_Sheet.
+      return ownerByForeignKey.get(normalizeOwner(raw)) || raw;
+    };
+    const ownerMatchesLogin = (row) =>
+      ownerMatches(ownerForBudgetRow(row), Array.from(identities)) ||
+      Boolean(loginEmployee && normalizeOwner(row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed || row.appraiser_tech_ed || row.appraiser_tech_ed1) === normalizeOwner(loginEmployee.row_id || loginEmployee.ROWID));
+    const directMatches = allRows.filter(ownerMatchesLogin);
+    const assignmentMatches = allRows.filter((row) =>
+      assignedOwners.some((owner) => ownerKey(owner) === ownerKey(
+        row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed || row.appraiser_tech_ed,
+      )),
+    );
+    const candidates = directMatches.length ? directMatches : assignmentMatches;
+
+    // Cycle API and budget tables can refer to the same cycle through different
+    // ID aliases. Resolve the active cycle through Budget_Master's cycle name
+    // before concluding that the Tech-Ed has no matching allocation.
+    const activeCycle = cycleRows.find((cycle) =>
+      String(cycle.id ?? cycle.appraisal_cycle_id ?? cycle.cycle_id ?? cycle.ROWID) === String(activeCycleId),
+    );
+    const activeCycleName = normalizeOwner(
+      activeCycle?.name || activeCycle?.cycle_name || activeCycle?.appraisal_year || "",
+    );
+    const activeMasterCycleIds = new Set(
+      budgetMasterRows
+        .filter((master) => {
+          const masterCycleName = normalizeOwner(
+            master.appraisal_cycle_name || master.cycle_name || master.cycleName || master.appraisal_year || "",
+          );
+          return (
+            (activeCycleId && String(master.appraisal_cycle_id) === String(activeCycleId)) ||
+            (activeCycleName && masterCycleName === activeCycleName)
+          );
+        })
+        .map((master) => String(master.appraisal_cycle_id || ""))
         .filter(Boolean),
     );
-    // If the auth profile exposes an employee ID/email, enrich identity from the
-    // actual employee row before matching "EmployeeID - Full Name" owner cells.
-    const loginEmployee = employeeRows.find((employee) => {
-      const employeeIds = [
-        employee.emp_id, employee.employee_id, employee.employeeId,
-        employee.email, employee.email_id, employee.emailId,
-      ].map(normalizeOwner).filter(Boolean);
-      return employeeIds.some((value) => identities.has(value));
-    });
-    if (loginEmployee) {
-      [
-        loginEmployee.emp_id, loginEmployee.employee_id, loginEmployee.employeeId,
-        loginEmployee.emp_name, loginEmployee.employee_name, loginEmployee.name,
-        loginEmployee.email, loginEmployee.email_id,
-      ].map(normalizeOwner).filter(Boolean).forEach((value) => identities.add(value));
-    }
-    const cycleMatches = activeCycleId
-      ? budgetDistributionRows.filter((row) => String(row.appraisal_cycle_id) === String(activeCycleId))
-      : [];
-    const matches = cycleMatches.filter((row) => ownerMatches(row.appraiser_tech_ed_id, Array.from(identities)));
-    return matches.length === 1 ? matches[0] : null;
-  }, [budgetDistributionRows, employeeRows, myName, user?.email, user?.empId, user?.employeeId, user?.employee_id, activeCycleId]);
+    const cycleMatches = candidates.filter((row) =>
+      (activeCycleId && String(row.appraisal_cycle_id) === String(activeCycleId)) ||
+      activeMasterCycleIds.has(String(row.appraisal_cycle_id)),
+    );
+    if (cycleMatches.length === 1) return cycleMatches[0];
+    if (cycleMatches.length > 1) return null;
+
+    // Never guess between multiple cycles. A unique owner allocation is safe
+    // to show when cycle metadata has no matching alias.
+    return candidates.length === 1 ? candidates[0] : null;
+  }, [
+    budgetDistributionRows, budgetMasterRows, cycleRows, employeeRows, techEdOwners, myName,
+    user?.name, user?.display_name, user?.first_name, user?.last_name,
+    user?.email, user?.email_id, user?.user_id, user?.empId, user?.employeeId, user?.employee_id,
+    activeCycleId,
+  ]);
 
   const activeCycle = useMemo(
-    () => cycleRows.find((cycle) => String(cycle.id) === String(liveTech?.appraisal_cycle_id || activeCycleId)) || null,
+    () => cycleRows.find((cycle) => String(cycle.id ?? cycle.appraisal_cycle_id ?? cycle.cycle_id ?? cycle.ROWID) === String(liveTech?.appraisal_cycle_id || activeCycleId)) || null,
     [cycleRows, liveTech?.appraisal_cycle_id, activeCycleId],
   );
   const liveComps = useMemo(
@@ -230,7 +302,12 @@ export function TechEdBudgetDistribution() {
     const managerStats = new Map();
     const currentTechOwner = ownerKey(liveTech?.appraiser_tech_ed_id);
     employeeRows.forEach((employee) => {
-      const techAssignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.tech_ed || employee.tech_ed_id || "";
+      const rawTechAssignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.tech_ed || employee.tech_ed_id || "";
+      const linkedTech = techEdOwners.find((item) =>
+        String(item?.row_id || item?.ROWID || "").trim() === String(rawTechAssignment).trim() ||
+        String(item?.employee_id || "").trim().toLowerCase() === String(rawTechAssignment).trim().toLowerCase()
+      );
+      const techAssignment = String(linkedTech?.assignment || rawTechAssignment).trim();
       if (!currentTechOwner || ownerKey(techAssignment) !== currentTechOwner) return;
       const manager = String(employee.comp_manager || employee.comp_manager_id || employee.comp_manager_name || employee.compManager || "").trim();
       if (!manager) return;
@@ -241,7 +318,13 @@ export function TechEdBudgetDistribution() {
         + num(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.pb_to_be_paid ?? employee.target_pb_allocated_for_may ?? employee.allocated_pb ?? employee.total_pb);
       managerStats.set(key, stats);
     });
-    return liveComps.map((live) => {
+    // Comp Managers in the team that have no saved Budget_Distribution_Comp
+    // row yet are listed too (a row is created when their Allot % is saved).
+    const savedKeys = new Set(liveComps.map((live) => ownerKey(live.comp_manager)));
+    const unsaved = Array.from(managerStats.entries())
+      .filter(([key]) => key && !savedKeys.has(key))
+      .map(([, stats]) => ({ id: "", comp_manager: stats.name, percentage: 0, budget_base: stats.base, calculated_budget: 0, applied_budget: 0, total_utilization: 0 }));
+    return liveComps.concat(unsaved).map((live) => {
       const pct = num(live.percentage);
       const stats = managerStats.get(ownerKey(live.comp_manager)) || { count: 0, base: 0, name: live.comp_manager };
       const base = num(live.budget_base) || stats.base || (pct ? num(live.calculated_budget) * 100 / pct : 0);
@@ -264,12 +347,17 @@ export function TechEdBudgetDistribution() {
         history,
       };
     });
-  }, [liveComps, employeeRows, liveTech, log]);
+  }, [liveComps, employeeRows, liveTech, log, techEdOwners]);
 
   const assignedTeam = useMemo(() => employeeRows.filter((employee) => {
-    const assignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.tech_ed || employee.tech_ed_id || "";
+    const raw = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.tech_ed || employee.tech_ed_id || "";
+    const linked = techEdOwners.find((item) =>
+      String(item?.row_id || item?.ROWID || "").trim() === String(raw).trim() ||
+      String(item?.employee_id || "").trim().toLowerCase() === String(raw).trim().toLowerCase()
+    );
+    const assignment = String(linked?.assignment || raw).trim();
     return ownerKey(assignment) === ownerKey(liveTech?.appraiser_tech_ed_id);
-  }), [employeeRows, liveTech]);
+  }), [employeeRows, liveTech, techEdOwners]);
   const allTeam0 = assignedTeam;
   const allTeam = assignedTeam;
   const myPct = liveTech ? num(liveTech.percentage) : 0;
@@ -325,17 +413,18 @@ export function TechEdBudgetDistribution() {
       return;
     }
     const t = nowParts();
-    const live = liveComps.find((x) => String(x.id) === String(node.liveId));
-    if (!live || !node.liveId) {
-      setErr("This Comp Manager does not have a saved Data Store budget row yet.");
+    if (!liveTech?.id) {
+      setErr("Your Tech-Ed budget allocation is not saved yet, so Comp Manager budgets cannot be allotted.");
       return;
     }
     try {
-      await updateBudget(node.liveId, {
+      // No saved row yet: the API creates it under this Tech-ED's allocation.
+      await updateBudget(node.liveId || "", {
         percentage: to,
         budget_base: node.base,
         calculated_budget: newUpd,
         applied_budget: newUpd,
+        ...(node.liveId ? {} : { budget_distribution_id: liveTech.id, comp_manager: name }),
       }, "comp");
     } catch (error) {
       setErr(error.message || "Failed to save Comp Manager budget.");

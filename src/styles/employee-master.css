@@ -1,4 +1,3 @@
-
 /* ============================================================
    EMPLOYEE MASTER
    CLEAN FINAL CSS
@@ -358,7 +357,8 @@
 .employee-master-page .em-menu-wrapper {
   position: relative;
 
-  z-index: 1000;
+  /* Must stay below the app header (z-50) so the profile pop-up is never covered */
+  z-index: 10;
 }
 
 .employee-master-page .em-menu-dropdown {
