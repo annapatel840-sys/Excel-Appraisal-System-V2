@@ -605,12 +605,23 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       joining_date: String(master.date_of_join || row.joining_date || ""),
       status: active,
 
-      // No eligible_status column exists in the current Employee_Master /
-      // Appraisal_Sheet schema. Active employees are therefore eligible;
-      // inactive employees are not eligible.
-      eligible_status:
-        String(row.eligible_status || "").trim() ||
-        (active === "Active" ? "eligible" : "not eligible"),
+      // Eligibility is independent of Active/Inactive status. Appraisal
+      // data may use any of these legacy/current aliases, so preserve an
+      // explicit Eligible / Not Eligible value before applying the legacy
+      // Active-status fallback for rows with no eligibility field at all.
+      eligible_status: (() => {
+        const rawEligibility = String(
+          [
+            row.eligible_status,
+            row.eligibility,
+            row.eligibility_status,
+            row.eligible,
+          ].find((value) => value !== null && value !== undefined && String(value).trim() !== "") || "",
+        ).trim().toLowerCase().replace(/[ _-]+/g, "");
+        if (["eligible", "yes", "true", "1"].includes(rawEligibility)) return "eligible";
+        if (["noteligible", "no", "false", "0", "ineligible"].includes(rawEligibility)) return "not eligible";
+        return active === "Active" ? "eligible" : "not eligible";
+      })(),
 
       // Appraisal_Sheet is the source of truth for the current Apr-26 grid.
       // Do NOT map these fields from Payroll_Data aliases such as base_pay.
