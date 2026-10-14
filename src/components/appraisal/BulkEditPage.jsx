@@ -2701,7 +2701,7 @@ const BulkOperations = forwardRef(function BulkOperations(
             {kp(b0.utilT, bPv.utilT)}
           </div>
         </div>
-        <span className="tb-mock">Mock screen</span>
+        <span className="tb-mock">Mock Screen</span>
       </div>
 
       <div className="work">
