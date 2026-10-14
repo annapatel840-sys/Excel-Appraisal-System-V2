@@ -610,9 +610,22 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       name: String(master.emp_name || row.name || ""),
       designation: String(master.designation || row.designation || row.title || ""),
       reporting_manager: String(master.repo_manager || row.reporting_manager || ""),
-      // Appraisal_Sheet.comp_manager is the value users edit; Employee_Master
-      // has no comp_manager column, so director is only a fallback.
+      // Keep the stored Comp Manager key intact for existing matching/writes,
+      // and expose a separate resolved label for display in budget screens.
       comp_manager: String(row.comp_manager || master.director || ""),
+      comp_manager_display: (() => {
+        const raw = String(row.comp_manager || master.director || "").trim();
+        if (!raw) return "";
+        const key = raw.split(/\\s+-\\s+/)[0].trim();
+        const manager = employeeMasterMap.get(raw) ||
+          employeeMasterMap.get(raw.toLowerCase()) ||
+          employeeMasterMap.get(key) ||
+          employeeMasterMap.get(key.toLowerCase());
+        if (!manager) return raw;
+        const id = String(manager.emp_id || "").trim();
+        const name = String(manager.emp_name || manager.name || "").trim();
+        return id && name ? id + " - " + name : name || raw;
+      })(),
       // appraiser_tech_ed1 is a lookup to Employee_Master.ROWID. Resolve it
       // to the actual Tech-Ed employee identity so the grid displays ID - Name
       // and the backend's Tech-Ed access filter can match the signed-in user.
