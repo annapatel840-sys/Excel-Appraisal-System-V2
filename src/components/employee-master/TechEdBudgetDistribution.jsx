@@ -159,7 +159,7 @@ export function TechEdBudgetDistribution() {
     // Do not depend on employeeRows containing the Tech-Ed's own employee row:
     // Tech-Ed-scoped employee APIs may return only their reports.
     const directoryOwner = techEdOwners.find((item) =>
-      [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name]
+      [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name, item?.email, item?.email_id]
         .filter(Boolean)
         .some((alias) => ownerMatches(alias, Array.from(identities))),
     );
@@ -280,7 +280,7 @@ export function TechEdBudgetDistribution() {
     // Prefer the authoritative Appraisal Sheet Tech-Ed directory. This works
     // even if the employee endpoint only returns the Tech-Ed's reports.
     const directoryOwner = techEdOwners.find((item) =>
-      [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name]
+      [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name, item?.email, item?.email_id]
         .filter(Boolean)
         .some((alias) => ownerMatches(alias, identities)),
     );
@@ -298,7 +298,7 @@ export function TechEdBudgetDistribution() {
         employee.appraiser_teched || employee.appraiserTechED || employee.tech_ed || employee.tech_ed_id || "").trim();
       if (!raw) continue;
       const linked = techEdOwners.find((item) =>
-        [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name].filter(Boolean)
+        [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name, item?.email, item?.email_id].filter(Boolean)
           .some((alias) => ownerMatches(alias, raw)),
       );
       const assignment = String(linked?.assignment || raw).trim();
@@ -428,7 +428,7 @@ export function TechEdBudgetDistribution() {
   const assignedTeam = useMemo(() => employeeRows.filter((employee) => {
     const raw = employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
     const linked = techEdOwners.find((item) =>
-      [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name].filter(Boolean)
+      [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name, item?.email, item?.email_id].filter(Boolean)
         .some((alias) => ownerMatches(alias, raw))
     );
     const assignment = String(linked?.assignment || raw).trim();
