@@ -159,8 +159,12 @@ function requireAnyScreen(a, keys, level) {
   }
 }
 
-function requireInScope(a, empIds) {
+// owned: emp_ids (lower-case) the signed-in Tech-ED owns by Employee_Master
+// ROWID (see techEdOwnedEmpIds) — the same rule the list (GET) uses, so a
+// Tech-ED can save every row they can see even without Delegation rows.
+function requireInScope(a, empIds, owned) {
   const outside = empIds.filter(function (empId) {
+    if (owned && owned.has(String(empId || "").trim().toLowerCase())) return false;
     return !access.inScope(a, empId);
   });
 
@@ -340,6 +344,23 @@ function getCurrentUserMatchValues(user) {
   ]
     .map(normalizeText)
     .filter(Boolean);
+}
+
+async function techEdOwnedEmpIds(datastore, a) {
+  const owned = new Set();
+  if (!a || !a.enforced || (a.scope && a.scope.all) || a.role !== "techEd") return owned;
+  const [appraisalRows, masterRows] = await Promise.all([
+    getAllEmployees(datastore),
+    getAllEmployeeMaster(datastore),
+  ]);
+  const masterMap = buildEmployeeMasterMap(masterRows);
+  const myRowId = currentUserMasterRowId(a.user, masterRows);
+  mergeEmployeeMasterIntoAppraisal(appraisalRows, masterMap).forEach(function (employee) {
+    if (employeeBelongsToCurrentUser(employee, a.user, myRowId)) {
+      owned.add(String(employee.emp_id || "").trim().toLowerCase());
+    }
+  });
+  return owned;
 }
 
 /* Tech-ED ownership by Employee_Master ROWID.
@@ -1018,13 +1039,14 @@ async function getEmployees(req, res) {
     })
     .filter(Boolean);
 
+  const requestedOwned = requestedEmpIds.length ? await techEdOwnedEmpIds(datastore, a) : null;
   access.guard(a, function () {
     requireAnyScreen(a, READ_SCREENS, "view");
     // Roster / eligibility views list every employee — HR Operations only.
     if (requestedView === "master" || requestedView === "eligibility") {
       access.requireScreen(a, "employeeMaster", "view");
     }
-    requireInScope(a, requestedEmpIds);
+    requireInScope(a, requestedEmpIds, requestedOwned);
   });
 
   let currentUser = null;
@@ -1373,6 +1395,7 @@ async function createEmployees(req, res) {
   const columns = Array.from(touchedColumns);
   const masterImport = rowsToInsert.length > 0 || columns.some(isMasterColumn);
 
+  const importOwned = await techEdOwnedEmpIds(datastore, a);
   access.guard(a, function () {
     if (masterImport) {
       access.requireScreen(a, "employeeMaster", "edit");
@@ -1380,7 +1403,7 @@ async function createEmployees(req, res) {
     }
     access.requireAction(a, "importAppraisal");
     access.requireScreen(a, "appraisalSheet", "edit");
-    requireInScope(a, touchedEmpIds);
+    requireInScope(a, touchedEmpIds, importOwned);
     requireEditableColumns(a, columns);
   });
 
@@ -1461,6 +1484,7 @@ async function updateEmployee(req, res) {
       return column === "comp_manager" || column === "appraiser_tech_ed";
     });
 
+  const editOwned = await techEdOwnedEmpIds(datastore, a);
   access.guard(a, function () {
     if (isDelegationAssignmentChange) {
       // HR administrators manage delegation for the whole organization. Their
@@ -1469,12 +1493,12 @@ async function updateEmployee(req, res) {
       // and must remain within their assigned employee scope.
       if (a.role !== "hr") {
         access.requireScreen(a, "delegation", "edit");
-        requireInScope(a, [empId]);
+        requireInScope(a, [empId], editOwned);
       }
     } else {
       requireAnyScreen(a, EDIT_SCREENS, "edit");
       requireEditableColumns(a, changedColumns);
-      requireInScope(a, [empId]);
+      requireInScope(a, [empId], editOwned);
     }
   });
 
