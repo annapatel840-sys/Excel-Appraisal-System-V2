@@ -150,7 +150,8 @@ export function TechEdBudgetDistribution() {
       [
         myName, user?.name, user?.display_name, user?.first_name, user?.last_name,
         [user?.first_name, user?.last_name].filter(Boolean).join(" "),
-        user?.email, user?.email_id, user?.user_id, user?.empId, user?.employeeId, user?.employee_id,
+        user?.email, user?.email_id, user?.user_id, user?.row_id, user?.ROWID,
+        user?.empId, user?.employeeId, user?.employee_id,
       ].map(normalizeOwner).filter(Boolean),
     );
 
@@ -255,13 +256,14 @@ export function TechEdBudgetDistribution() {
       user?.email, user?.email_id, user?.empId, user?.employeeId, user?.employee_id,
     ].map(normalizeOwner).filter(Boolean);
     const personValues = (e) => [
+      e.row_id, e.ROWID, e.ROW_ID, e.id,
       e.emp_id, e.employee_id, e.employeeId, e.emp_name, e.employee_name, e.name,
       e.email, e.email_id, e.emailId,
     ].map(normalizeOwner).filter(Boolean);
     const me = employeeRows.find((e) => personValues(e).some((v) => identities.includes(v)));
     if (me) identities.push(...personValues(me));
     for (const employee of employeeRows) {
-      const raw = String(employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 ||
+      const raw = String(employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 ||
         employee.appraiser_teched || employee.appraiserTechED || employee.tech_ed || employee.tech_ed_id || "").trim();
       if (!raw) continue;
       const linked = techEdOwners.find((item) =>
