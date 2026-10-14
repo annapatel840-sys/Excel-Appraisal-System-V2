@@ -301,13 +301,22 @@ export function TechEdBudgetDistribution() {
   const cmNodes = useMemo(() => {
     const managerStats = new Map();
     const currentTechOwner = ownerKey(liveTech?.appraiser_tech_ed_id);
+    const resolveTechAssignment = (raw) => {
+      const text = String(raw || "").trim();
+      const linked = techEdOwners.find((item) => {
+        const id = String(item?.employee_id || "").trim();
+        const rowId = String(item?.row_id || item?.ROWID || "").trim();
+        const label = String(item?.assignment || "").trim();
+        const name = String(item?.name || "").trim();
+        return [id, rowId, label, name].filter(Boolean).some((alias) =>
+          ownerMatches(alias, text)
+        );
+      });
+      return String(linked?.assignment || text).trim();
+    };
     employeeRows.forEach((employee) => {
-      const rawTechAssignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.tech_ed || employee.tech_ed_id || "";
-      const linkedTech = techEdOwners.find((item) =>
-        String(item?.row_id || item?.ROWID || "").trim() === String(rawTechAssignment).trim() ||
-        String(item?.employee_id || "").trim().toLowerCase() === String(rawTechAssignment).trim().toLowerCase()
-      );
-      const techAssignment = String(linkedTech?.assignment || rawTechAssignment).trim();
+      const rawTechAssignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
+      const techAssignment = resolveTechAssignment(rawTechAssignment);
       if (!currentTechOwner || ownerKey(techAssignment) !== currentTechOwner) return;
       const manager = String(employee.comp_manager || employee.comp_manager_id || employee.comp_manager_name || employee.compManager || "").trim();
       if (!manager) return;
@@ -350,10 +359,10 @@ export function TechEdBudgetDistribution() {
   }, [liveComps, employeeRows, liveTech, log, techEdOwners]);
 
   const assignedTeam = useMemo(() => employeeRows.filter((employee) => {
-    const raw = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.tech_ed || employee.tech_ed_id || "";
+    const raw = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
     const linked = techEdOwners.find((item) =>
-      String(item?.row_id || item?.ROWID || "").trim() === String(raw).trim() ||
-      String(item?.employee_id || "").trim().toLowerCase() === String(raw).trim().toLowerCase()
+      [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name].filter(Boolean)
+        .some((alias) => ownerMatches(alias, raw))
     );
     const assignment = String(linked?.assignment || raw).trim();
     return ownerKey(assignment) === ownerKey(liveTech?.appraiser_tech_ed_id);
