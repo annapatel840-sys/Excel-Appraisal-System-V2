@@ -362,9 +362,9 @@ function HRApplyBudget() {
           employee.eligible,
         ].find((value) => value !== null && value !== undefined && String(value).trim() !== "") ?? "",
       ).trim().toLowerCase().replace(/[ _-]+/g, "");
-      const eligible = eligibility
-        ? ["eligible", "yes", "true", "1"].includes(eligibility)
-        : String(employee.status || employee.emp_status || "").trim().toLowerCase() === "active";
+      // Count only an explicit eligibility decision. Active/Inactive is
+      // a separate Employee Master field and must never imply eligibility.
+      const eligible = ["eligible", "yes", "true", "1"].includes(eligibility);
 
       if (eligible) employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
 
