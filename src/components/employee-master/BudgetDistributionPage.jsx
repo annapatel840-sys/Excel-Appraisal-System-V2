@@ -539,7 +539,7 @@ export function BudgetDistributionPage() {
                         <td className="num">{money(row.budget_utilized)}</td>
                         <td className="num">{money(row.budget_remaining)}</td>
                         <td className="num">{pct(row.utilization_percentage)}</td>
-                        <td>{countForTechOwner(row.tech_ed_id) || employeeCounts[row.tech_ed_id] || 0}</td>
+                        <td>{countForTechOwner(row.tech_ed_id)}</td>
                         <td>
                           <span className="status">
                             {row.status || "Active"}
