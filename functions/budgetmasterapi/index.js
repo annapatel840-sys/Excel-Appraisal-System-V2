@@ -547,7 +547,10 @@ function filterOwn(bundle, a, techEdOwners = []) {
   const master = bundle.master.filter((row) =>
     cycleIds.has(row.appraisal_cycle_id),
   );
-  return { master, techEd, compManager };
+  const employeeRoster = (bundle.employeeRoster || []).filter((employee) =>
+    matchesTechEdOwner(employee.appraiser_tech_ed, a, techEdOwners),
+  );
+  return { master, techEd, compManager, employeeRoster };
 }
 
 
@@ -563,6 +566,16 @@ function firstValue(row, names) {
     if (hit && row[hit] !== null && row[hit] !== undefined && String(row[hit]).trim() !== "") return row[hit];
   }
   return "";
+}
+
+function firstNonZeroValue(row, names) {
+  for (const name of names) {
+    const hit = Object.keys(row || {}).find((key) => key.toLowerCase() === name.toLowerCase());
+    if (!hit || row[hit] === null || row[hit] === undefined || String(row[hit]).trim() === "") continue;
+    const parsed = n(row[hit]);
+    if (parsed !== 0) return row[hit];
+  }
+  return firstValue(row, names);
 }
 
 function cycleDate(row) {
@@ -644,16 +657,22 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const rawCompManager = String(firstValue(row, [
       "comp_manager", "comp_manager_id", "comp_manager_name", "comp_manager_emp_id", "compManager", "compManagerId",
     ]) || firstValue(masterRow, ["comp_manager", "director"]) || "").trim();
-    const compManager = rawCompManager;
+    const managerLookup = rawCompManager.split(/\\s+-\\s+/)[0].trim();
+    const managerRow = masterByRowId.get(rawCompManager) ||
+      masterByEmployee.get(managerLookup.toLowerCase()) ||
+      masterByRowId.get(managerLookup) ||
+      masterByName.get(rawCompManager.toLowerCase());
+    const managerId = String(managerRow ? firstValue(managerRow, ["emp_id", "empId", "employee_id"]) : "").trim();
+    const managerName = String(managerRow ? firstValue(managerRow, ["emp_name", "employee_name", "name"]) : "").trim();
+    const compManagerDisplay = managerId && managerName
+      ? managerId + " - " + managerName
+      : managerName || rawCompManager;
     const basePay = n(firstValue(row, [
       "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "currentBasePay", "base_pay", "basePay", "annual_base_pay", "annualBasePay",
     ]));
     const allocatedPB = n(firstValue(row, [
       "allocated_pb_amount", "allocatedPBAmount", "pb_to_be_paid", "pbToBePaid", "target_pb_allocated_for_may", "targetPBAllocatedForMay", "allocated_pb", "allocatedPB", "total_pb", "totalPB",
     ]));
-    // Budget headcount requires BOTH Employee Master conditions:
-    // employee is Active and explicitly Eligible. Appraisal_Sheet eligibility
-    // is used only when Employee_Master has no eligibility value.
     const rawEligibility = String(
       firstValue(masterRow, ["eligibility", "eligible_status", "eligibility_status", "eligible"]) ||
       firstValue(row, ["eligibility", "eligible_status", "eligibility_status", "eligible"]) ||
@@ -666,17 +685,71 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     ).trim().toLowerCase();
     const eligible = rawStatus === "active" &&
       ["eligible", "yes", "true", "1"].includes(rawEligibility);
-    // Appraisal_Sheet can contain repeated employee records during imports.
-    // Keep one record per employee so the same salary is never summed twice.
+    const amount = (aliases) => n(firstNonZeroValue(row, aliases));
+    const currentHike = amount(["hike_amount", "hikeAmount", "current_hike_amount"]);
+    const currentPerformance = amount(["new_pb_to_be_offered", "newPBToBeOffered", "current_performance_bonus", "performance_bonus_current_year", "target_pb_allocated_for_may", "targetPBAllocatedForMay", "allocated_pb_amount", "allocatedPBAmount", "target_pb_next_year", "targetPBNextYear"]);
+    const currentRetention = amount(["new_rb", "newRB", "current_retention_bonus", "retention_bonus_current_year"]);
+    const currentJoining = amount(["joining_bonus", "joiningBonus", "current_joining_bonus"]);
+    const previousPerformance = amount(["previous_year_performance_bonus", "previous_year_pb", "previous_pb", "pb_to_be_paid", "pbToBePaid"]);
+    const previousRetention = amount(["previous_year_retention_bonus", "previous_year_rb", "previous_rb", "rb_to_be_paid", "rbToBePaid"]);
+    const previousJoining = amount(["previous_year_joining_bonus", "previous_year_jb", "previous_joining_bonus", "joining_bonus_previous_year"]);
+    const personName = String(firstValue(masterRow, ["emp_name", "employee_name", "name"]) || firstValue(row, ["name", "emp_name", "employee_name"]) || employeeId).trim();
+    // Keep one current Appraisal_Sheet row per employee and include only the
+    // fields the Tech-Ed budget page needs; this avoids a second full table scan
+    // and avoids relying on employee-screen field permissions for money fields.
     appraisalByEmployee.set(employeeId, {
       employeeId,
+      emp_id: String(firstValue(row, ["emp_id", "empId", "employee_id"]) || firstValue(masterRow, ["emp_id", "employee_id"]) || employeeId).trim(),
+      name: personName,
       techEd,
+      appraiser_tech_ed: techEd,
+      appraiser_tech_ed_appraisal_sheet: techEd,
       compManager,
+      comp_manager: rawCompManager,
+      comp_manager_display: compManagerDisplay,
       eligible,
+      status: rawStatus,
+      eligible_status: eligible ? "eligible" : "not eligible",
       base: basePay + allocatedPB,
+      hike_amount: currentHike,
+      new_pb_to_be_offered: currentPerformance,
+      current_performance_bonus: currentPerformance,
+      target_pb_allocated_for_may: amount(["target_pb_allocated_for_may", "targetPBAllocatedForMay"]),
+      allocated_pb_amount: amount(["allocated_pb_amount", "allocatedPBAmount"]),
+      target_pb_next_year: amount(["target_pb_next_year", "targetPBNextYear"]),
+      new_rb: currentRetention,
+      joining_bonus: currentJoining,
+      pb_to_be_paid: previousPerformance,
+      previous_year_performance_bonus: previousPerformance,
+      rb_to_be_paid: previousRetention,
+      previous_year_retention_bonus: previousRetention,
+      previous_year_joining_bonus: previousJoining,
     });
   });
   const employees = Array.from(appraisalByEmployee.values());
+  bundle.employeeRoster = employees.map((employee) => ({
+    emp_id: employee.emp_id,
+    name: employee.name,
+    appraiser_tech_ed: employee.appraiser_tech_ed,
+    appraiser_tech_ed_appraisal_sheet: employee.appraiser_tech_ed_appraisal_sheet,
+    comp_manager: employee.comp_manager,
+    comp_manager_display: employee.comp_manager_display,
+    status: employee.status,
+    eligible_status: employee.eligible_status,
+    hike_amount: employee.hike_amount,
+    new_pb_to_be_offered: employee.new_pb_to_be_offered,
+    current_performance_bonus: employee.current_performance_bonus,
+    target_pb_allocated_for_may: employee.target_pb_allocated_for_may,
+    allocated_pb_amount: employee.allocated_pb_amount,
+    target_pb_next_year: employee.target_pb_next_year,
+    new_rb: employee.new_rb,
+    joining_bonus: employee.joining_bonus,
+    pb_to_be_paid: employee.pb_to_be_paid,
+    previous_year_performance_bonus: employee.previous_year_performance_bonus,
+    rb_to_be_paid: employee.rb_to_be_paid,
+    previous_year_retention_bonus: employee.previous_year_retention_bonus,
+    previous_year_joining_bonus: employee.previous_year_joining_bonus,
+  }));
   const withBase = employees.filter((employee) => employee.base > 0).length;
   const withTechEd = employees.filter((employee) => employee.techEd).length;
   bundle.diagnostics = {
@@ -978,6 +1051,7 @@ module.exports = async function (req, res) {
         techEd: bundle.techEd,
         compManager: bundle.compManager,
         techEdOwners,
+        employeeRoster: bundle.employeeRoster || [],
         techEdCount: techEdOwners.length,
         diagnostics: calculatedBundle.diagnostics || null,
         more_records: false,
