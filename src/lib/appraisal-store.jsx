@@ -93,6 +93,11 @@ const REACT_TO_CATALYST_FIELD = {
   department: "department",
   targetPBCriteria: "target_PB_criteria",
   compManagerRewards: "comp_manager_rewards",
+  // CHANGED: the grid column key is compManagerRemarks; it is stored in the
+  // comp_manager_rewards column (the one employeesapi ALLOWED_FIELDS lists).
+  // If your Data Store column has a different name, change it here AND in
+  // employeesapi ALLOWED_FIELDS.
+  compManagerRemarks: "comp_manager_rewards",
 
   status: "status",
 };
@@ -274,6 +279,12 @@ const mapCatalystEmployee = (employee, index) => {
 
     newTitle: String(employee.new_title || ""),
     atRisk: String(employee.at_risk || ""),
+
+    // CHANGED: these two grid columns were never read back from the API.
+    targetPBCriteria: String(employee.target_PB_criteria || ""),
+    compManagerRemarks: String(
+      employee.comp_manager_rewards || employee.comp_manager_remarks || "",
+    ),
 
     manager: String(employee.manager || ""),
     department: String(employee.department || ""),

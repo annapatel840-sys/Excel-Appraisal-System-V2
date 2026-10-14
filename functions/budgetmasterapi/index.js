@@ -146,7 +146,8 @@ function getUserValues(user) {
 function matchesOwner(owner, a) {
   const text = String(owner || "")
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/\s+/g, " ");
   if (!text || !a || !a.user) return false;
   const empId = String(a.user.empId || "")
     .trim()
@@ -154,12 +155,22 @@ function matchesOwner(owner, a) {
   const email = String(a.user.email || "")
     .trim()
     .toLowerCase();
-  const parts = text.match(/^(\S+)\s*-\s*(.+)$/);
-  const ownerId = parts ? parts[1] : text;
+
+  // Appraiser values use "Employee ID - Full Name". Employee IDs may
+  // themselves contain hyphens (e.g. WIS-1234), so split only on the
+  // spaced separator, never on a hyphen inside the ID.
+  const parts = text.split(/\s+-\s+/);
+  const ownerId = parts.length > 1 ? parts[0].trim() : text;
+  const ownerName = parts.length > 1 ? parts.slice(1).join(" - ").trim() : "";
+  const userValues = getUserValues(a.user).map((value) =>
+    String(value || "").trim().toLowerCase().replace(/\s+/g, " "),
+  );
   return Boolean(
-    (empId && ownerId === empId) ||
-    (email && text === email) ||
-    getUserValues(a.user).some((v) => v === text || v === ownerId),
+    (empId && (ownerId === empId || text === empId)) ||
+    (email && (text === email || ownerId === email)) ||
+    userValues.some((value) =>
+      value === text || value === ownerId || (ownerName && value === ownerName),
+    ),
   );
 }
 
@@ -324,8 +335,20 @@ function readField(row, candidates) {
 }
 
 async function readTechEdOwners(app) {
-  // Read Appraisal_Sheet directly for the source-of-truth Tech-ED assignments.
-  // Do not scan Employee_Master or budget distribution to discover Tech-ED names.
+  // Appraisal_Sheet's Tech-Ed foreign key stores Employee_Master.ROWID.
+  // Resolve it to the stable Employee ID + name for display and roster deduplication.
+  const [employeeRows, unused] = await Promise.all([
+    getAllRows(app, "Employee_Master"),
+    Promise.resolve([]),
+  ]);
+  const employeeByRowId = new Map(employeeRows.map((employee) => [
+    idOf(employee),
+    {
+      row_id: idOf(employee),
+      employee_id: String(readField(employee, ["emp_id", "employee_id"]) || "").trim(),
+      name: String(readField(employee, ["emp_name", "employee_name", "name"]) || "").trim(),
+    },
+  ]));
   const zcql = app.zcql();
   const owners = new Map();
   let last = "0";
@@ -344,23 +367,35 @@ async function readTechEdOwners(app) {
     rows.forEach((row) => {
       const rowId = String(row.ROWID || "");
       try { if (BigInt(rowId) > BigInt(max)) max = rowId; } catch (_) {}
-      const assignment = String(
+      const rawAssignment = String(
         readField(row, [
           "appraiser_tech_ed",
           "appraiser_tech_ed_id",
+          "appraiser_tech_ed1",
           "appraiser_teched",
           "tech_ed",
           "tech_ed_id",
         ]) || "",
       ).trim();
-      if (!assignment) return;
-      // A cell may contain either "EMP005" or "EMP005 - Name".
-      // Deduplicate by the employee ID so both representations count once.
-      // Strip a prefix only when it looks like an employee ID (for example, EMP005 - Name).
-      // Do not split ordinary Tech-ED names at the hyphen, or distinct owners collapse into one.
-      const pair = assignment.match(/^([a-z]*\d+)\s*-/i);
-      const key = String(pair ? pair[1] : assignment).trim().toLowerCase();
-      if (!owners.has(key)) owners.set(key, { assignment });
+      if (!rawAssignment) return;
+
+      const employee = employeeByRowId.get(rawAssignment);
+      const assignment = employee
+        ? (employee.employee_id && employee.name
+            ? employee.employee_id + " - " + employee.name
+            : employee.employee_id || employee.name || rawAssignment)
+        : rawAssignment;
+      const key = employee
+        ? (employee.employee_id || employee.row_id).toLowerCase()
+        : rawAssignment.toLowerCase();
+      if (!owners.has(key)) {
+        owners.set(key, {
+          assignment,
+          row_id: employee ? employee.row_id : "",
+          employee_id: employee ? employee.employee_id : "",
+          name: employee ? employee.name : "",
+        });
+      }
     });
     if (rows.length < 300 || max === last) break;
     last = max;
@@ -384,6 +419,16 @@ async function readEmployeeRoster(app) {
       row,
     ]),
   );
+  const masterByRowId = new Map(masterRows.map((row) => [idOf(row), row]));
+  const formatTechEdAssignment = (raw) => {
+    const assignment = String(raw || "").trim();
+    if (!assignment) return "";
+    const linked = masterByRowId.get(assignment);
+    if (!linked) return assignment;
+    const linkedId = String(readField(linked, ["emp_id", "employee_id"]) || "").trim();
+    const linkedName = String(readField(linked, ["emp_name", "employee_name", "name"]) || "").trim();
+    return linkedId && linkedName ? linkedId + " - " + linkedName : linkedId || linkedName || assignment;
+  };
   const appraisalById = new Map(
     appraisalRows.map((row) => [
       String(readField(row, ["emp_id", "employee_id"]))
@@ -405,6 +450,7 @@ async function readEmployeeRoster(app) {
         readField(row, [
           "appraiser_tech_ed",
           "appraiser_tech_ed_id",
+          "appraiser_tech_ed1",
           "appraiser_teched",
           "tech_ed",
           "tech_ed_id",
@@ -412,18 +458,20 @@ async function readEmployeeRoster(app) {
         readField(master, [
           "appraiser_tech_ed",
           "appraiser_tech_ed_id",
+          "appraiser_tech_ed1",
           "appraiser_teched",
           "tech_ed",
           "tech_ed_id",
         ]);
       return {
+        row_id: idOf(master),
         emp_id: id,
         name: String(
           readField(master, ["emp_name", "employee_name", "name"]) ||
             readField(row, ["emp_name", "employee_name", "name"]) ||
             id,
         ),
-        appraiser_tech_ed: String(assignment).trim(),
+        appraiser_tech_ed: formatTechEdAssignment(assignment),
         status: String(
           readField(master, ["emp_status", "status"]) ||
             readField(row, ["emp_status", "status"]) ||
@@ -434,10 +482,20 @@ async function readEmployeeRoster(app) {
     .filter((row) => row.emp_id);
 }
 
-function filterOwn(bundle, a) {
+function matchesTechEdOwner(owner, a, techEdOwners = []) {
+  if (matchesOwner(owner, a)) return true;
+  const key = ownerKey(owner);
+  if (!key) return false;
+  return techEdOwners.some((item) => {
+    const employeeId = String(item.employee_id || "").trim();
+    return employeeId && ownerKey(employeeId) === key && matchesOwner(item.assignment, a);
+  });
+}
+
+function filterOwn(bundle, a, techEdOwners = []) {
   if (!a || !a.enforced || (a.scope && a.scope.all)) return bundle;
   const techEd = bundle.techEd.filter((row) =>
-    matchesOwner(row.appraiser_tech_ed_id, a),
+    matchesTechEdOwner(row.appraiser_tech_ed_id, a, techEdOwners),
   );
   const allowedDistributionIds = new Set(techEd.map((row) => row.id));
   const compManager = bundle.compManager.filter((row) =>
@@ -455,8 +513,8 @@ function filterOwn(bundle, a) {
 
 function ownerKey(raw) {
   const text = String(raw || "").trim().toLowerCase().replace(/\s+/g, " ");
-  const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
-  return pair ? pair[1].toLowerCase() : text;
+  const parts = text.split(/\s+-\s+/);
+  return (parts.length > 1 ? parts[0] : text).trim();
 }
 
 function firstValue(row, names) {
@@ -501,21 +559,52 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   // Appraisal_Sheet is the source of truth for employee base, allocated PB,
   // Tech-ED and Comp Manager assignments. Do not depend on Payroll_Data cycle
   // foreign keys: those IDs are not the budget calculation source.
-  const appraisalRows = await getAllRows(app, "Appraisal_Sheet");
+  const [appraisalRows, masterEmployeeRows] = await Promise.all([
+    getAllRows(app, "Appraisal_Sheet"),
+    getAllRows(app, "Employee_Master").catch(() => []),
+  ]);
   if (!appraisalRows.length) {
     throw new Error("Appraisal_Sheet returned no rows; cannot calculate budget bases.");
   }
+  // Same rule as employeesapi: Appraisal_Sheet first, Employee_Master as the
+  // fallback (Comp Manager = director when the sheet has no comp_manager).
+  const masterByEmployee = new Map();
+  const masterByRowId = new Map();
+  const masterByName = new Map();
+  masterEmployeeRows.forEach((row) => {
+    const empId = String(firstValue(row, ["emp_id", "empId", "employee_id"]) || "").trim();
+    const name = String(firstValue(row, ["emp_name", "employee_name", "name"]) || "").trim();
+    const rowId = idOf(row);
+    if (empId) masterByEmployee.set(empId.toLowerCase(), row);
+    if (rowId) masterByRowId.set(rowId, row);
+    if (name) masterByName.set(name.toLowerCase(), row);
+  });
+  // Appraisal_Sheet assignment columns can contain Employee_Master.ROWID
+  // foreign keys. Budget_Distribution stores stable business employee IDs.
+  const resolvePersonId = (raw) => {
+    const text = String(raw || "").trim();
+    if (!text) return "";
+    const split = text.split(/\s+-\s+/);
+    if (split.length > 1) return split[0].trim();
+    const person = masterByRowId.get(text) || masterByEmployee.get(text.toLowerCase()) || masterByName.get(text.toLowerCase());
+    return person
+      ? String(firstValue(person, ["emp_id", "empId", "employee_id"]) || idOf(person) || text).trim()
+      : text;
+  };
 
   const appraisalByEmployee = new Map();
   appraisalRows.forEach((row) => {
     const employeeId = String(firstValue(row, ["emp_id", "empId", "employee_id", "employeeId", "employee_id_text"]) || idOf(row)).trim().toLowerCase();
     if (!employeeId) return;
-    const techEd = String(firstValue(row, [
-      "appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_teched", "appraiserTechED", "appraiserTechEd", "tech_ed", "tech_ed_id", "techED", "techEd",
+    const rawTechEd = String(firstValue(row, [
+      "appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_tech_ed1", "appraiser_teched", "appraiserTechED", "appraiserTechEd", "tech_ed", "tech_ed_id", "techED", "techEd",
     ]) || "").trim();
-    const compManager = String(firstValue(row, [
+    const techEd = resolvePersonId(rawTechEd);
+    const masterRow = masterByEmployee.get(employeeId) || {};
+    const rawCompManager = String(firstValue(row, [
       "comp_manager", "comp_manager_id", "comp_manager_name", "comp_manager_emp_id", "compManager", "compManagerId",
-    ]) || "").trim();
+    ]) || firstValue(masterRow, ["comp_manager", "director"]) || "").trim();
+    const compManager = rawCompManager;
     const basePay = n(firstValue(row, [
       "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "currentBasePay", "base_pay", "basePay", "annual_base_pay", "annualBasePay",
     ]));
@@ -569,12 +658,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     }
   });
 
-  // Merge labels from the roster as well, so a Tech-ED with no assigned
-  // employees is still visible with a true zero base rather than disappearing.
+  // Keep stable Employee IDs in varchar allocation columns. Display labels
+  // (Employee ID - Name) are resolved by the frontend from Employee_Master.
   techEdOwners.forEach((item) => {
-    const label = String(item.assignment || "").trim();
-    const key = ownerKey(label);
-    if (key && !techLabels.has(key)) techLabels.set(key, label);
+    const key = String(item.employee_id || ownerKey(item.assignment) || "").trim();
+    if (key && !techLabels.has(key.toLowerCase())) techLabels.set(key.toLowerCase(), key);
   });
 
   const distributionTable = app.datastore().table(TABLES.distribution);
@@ -634,7 +722,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       if (!row) {
         const created = await distributionTable.insertRow({
           appraisal_cycle_id: cycleId,
-          appraiser_tech_ed_id: ownerName,
+          appraiser_tech_ed_id: String(ownerName || techKey).slice(0, 20),
           percentage: null,
           budget_base: 0,
           [distCalcField]: 0,
@@ -702,7 +790,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         const created = await compTable.insertRow({
           appraisal_cycle_id: cycleId,
           budget_distribution_id: String(parent.id),
-          comp_manager: details.name,
+          comp_manager: String(details.compKey || details.name).slice(0, 30),
           // A new Comp Manager inherits the Tech-Ed's effective percentage,
           // giving the assigned team an initial base-proportional allocation.
           percentage: n(parent.effective_percentage ?? parent.percentage ?? master.budget_percentage),
@@ -816,7 +904,7 @@ module.exports = async function (req, res) {
             String(calculationError && calculationError.message || calculationError),
         });
       }
-      const bundle = filterOwn(calculatedBundle, a);
+      const bundle = filterOwn(calculatedBundle, a, techEdOwners);
       return sendJson(res, 200, {
         success: true,
         data: bundle.techEd,
@@ -840,7 +928,104 @@ module.exports = async function (req, res) {
 
     const body = await parseBody(req);
     const resource = String(body.resource || "master").toLowerCase();
-    const id = String(body.id || "").trim();
+    let id = String(body.id || "").trim();
+
+    // Upsert cycle-scoped allocations using the actual foreign-key ROWIDs.
+    // Budget_Master.appraisal_cycle_id and both cycle/parent columns are Data Store
+    // foreign keys; the Tech-ED/Comp Manager varchar columns store business IDs.
+    if (!id && resource === "master" && String(body.appraisal_cycle_id || "").trim()) {
+      if (a.enforced && !Boolean(a.scope && a.scope.all) && !isHR(a.user)) {
+        throw new access.HttpError(403, "Only HR can update Budget Master.");
+      }
+      if (!a.enforced) {
+        const currentUser = await app.userManagement().getCurrentUser();
+        if (!currentUser || !isHR(currentUser)) {
+          return sendJson(res, 403, { success: false, message: "Only HR can update Budget Master." });
+        }
+      }
+      const cycleId = String(body.appraisal_cycle_id).trim();
+      const existing = (await getAllRows(app, "Budget_Master")).find(
+        (row) => String(value(row, "appraisal_cycle_id")) === cycleId,
+      );
+      if (existing) {
+        id = idOf(existing);
+      } else {
+        const masterTable = app.datastore().table(TABLES.master);
+        const created = await masterTable.insertRow({
+          appraisal_cycle_id: cycleId,
+          budget_percentage: n(body.budget_percentage),
+          budget_utilized: n(body.budget_utilized),
+          org_budget_base: n(body.org_budget_base),
+          calculated_budget: n(body.calculated_budget),
+          applied_budget: n(body.applied_budget),
+        });
+        id = idOf(created);
+      }
+    }
+
+    if (!id && resource === "distribution" && String(body.appraisal_cycle_id || "").trim() && String(body.appraiser_tech_ed_id || "").trim()) {
+      const cycleId = String(body.appraisal_cycle_id).trim();
+      const techEdId = String(body.appraiser_tech_ed_id).trim().split(/\s+-\s+/)[0].slice(0, 20);
+      if (a.enforced && !Boolean(a.scope && a.scope.all) && !matchesTechEdOwner(techEdId, a, await readTechEdOwners(app))) {
+        throw new access.HttpError(403, "You can only configure your own Tech-Ed budget.");
+      }
+      access.guard(a, () => access.requireAction(a, "changeBudgetConfig"));
+      const existing = (await getAllRows(app, "Budget_Distribution")).find((row) =>
+        String(value(row, "appraisal_cycle_id")) === cycleId &&
+        ownerKey(value(row, "appraiser_tech_ed_id")) === ownerKey(techEdId),
+      );
+      if (existing) {
+        id = idOf(existing);
+      } else {
+        const distTable = app.datastore().table(TABLES.distribution);
+        const calcField = pickColumn(await getColumnNames(distTable), ["calculated_budget", "claculated_budget"], "claculated_budget");
+        const created = await distTable.insertRow({
+          appraisal_cycle_id: cycleId,
+          appraiser_tech_ed_id: techEdId,
+          percentage: body.percentage === "" || body.percentage === undefined ? null : n(body.percentage),
+          budget_base: n(body.budget_base),
+          [calcField]: n(body.calculated_budget),
+          applied_budget: n(body.applied_budget),
+          total_utilization: n(body.total_utilization),
+        });
+        id = idOf(created);
+      }
+    }
+
+    // A Comp Manager in the Tech-ED's team may have no Budget_Distribution_Comp
+    // row yet: create it under the parent allocation, then update it below.
+    if (!id && (resource === "comp" || resource === "compmanager") && body.budget_distribution_id && String(body.comp_manager || "").trim()) {
+      const parentId = String(body.budget_distribution_id).trim();
+      const compName = String(body.comp_manager).trim();
+      const parent = (await getAllRows(app, "Budget_Distribution")).find((row) => idOf(row) === parentId);
+      if (!parent) {
+        return sendJson(res, 400, { success: false, message: "The parent Tech-Ed budget allocation was not found." });
+      }
+      const adminScope = Boolean(a && a.scope && a.scope.all);
+      if (a.enforced && !adminScope && !matchesTechEdOwner(value(parent, "appraiser_tech_ed_id"), a, await readTechEdOwners(app))) {
+        throw new access.HttpError(403, "You can only update Comp Manager budgets under your Tech-Ed.");
+      }
+      const existingComp = (await getAllRows(app, "Budget_Distribution_Comp")).find((row) =>
+        String(value(row, "budget_distribution_id")) === parentId && ownerKey(value(row, "comp_manager")) === ownerKey(compName),
+      );
+      if (existingComp) {
+        id = idOf(existingComp);
+      } else {
+        const compTable = app.datastore().table(TABLES.comp);
+        const calcField = pickColumn(await getColumnNames(compTable), ["calculated_budget", "claculated_budget"], "calculated_budget");
+        const created = await compTable.insertRow({
+          appraisal_cycle_id: String(value(parent, "appraisal_cycle_id")),
+          budget_distribution_id: parentId,
+          comp_manager: compName,
+          percentage: 0,
+          budget_base: n(body.budget_base),
+          [calcField]: 0,
+          applied_budget: 0,
+          total_utilization: 0,
+        });
+        id = idOf(created);
+      }
+    }
     if (!id)
       return sendJson(res, 400, {
         success: false,
@@ -936,7 +1121,7 @@ module.exports = async function (req, res) {
     if (a.enforced && !isAdminScope) {
       if (
         resource === "distribution" &&
-        !matchesOwner(value(current, "appraiser_tech_ed_id"), a)
+        !matchesTechEdOwner(value(current, "appraiser_tech_ed_id"), a, await readTechEdOwners(app))
       ) {
         throw new access.HttpError(
           403,
@@ -949,7 +1134,7 @@ module.exports = async function (req, res) {
         const parent = parents.find((row) => idOf(row) === parentId);
         if (
           !parent ||
-          !matchesOwner(value(parent, "appraiser_tech_ed_id"), a)
+          !matchesTechEdOwner(value(parent, "appraiser_tech_ed_id"), a, await readTechEdOwners(app))
         ) {
           throw new access.HttpError(
             403,
@@ -998,8 +1183,14 @@ module.exports = async function (req, res) {
     }
     const update = { ROWID: id };
     fields.forEach((key) => {
-      if (Object.prototype.hasOwnProperty.call(body, key))
+      if (Object.prototype.hasOwnProperty.call(body, key)) {
         update[key] = body[key];
+        // Store the stable business employee ID in the varchar Tech-Ed field,
+        // even when the UI submits the friendly "Employee ID - Name" label.
+        if (resource === "distribution" && key === "appraiser_tech_ed_id") {
+          update[key] = String(body[key] || "").trim().split(/\s+-\s+/)[0].slice(0, 20);
+        }
+      }
       // Frontend uses calculated_budget. Persist to whichever calculated
       // amount column actually exists in this Data Store table.
       if (
