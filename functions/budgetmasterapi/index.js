@@ -611,19 +611,14 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const allocatedPB = n(firstValue(row, [
       "allocated_pb_amount", "allocatedPBAmount", "pb_to_be_paid", "pbToBePaid", "target_pb_allocated_for_may", "targetPBAllocatedForMay", "allocated_pb", "allocatedPB", "total_pb", "totalPB",
     ]));
+    // Employee_Master is the eligibility source of truth; use the
+    // Appraisal_Sheet value only as a legacy fallback. Status is independent.
     const rawEligibility = String(
-      firstValue(row, ["eligibility", "eligible_status", "eligibility_status", "eligible"]) ||
       firstValue(masterRow, ["eligibility", "eligible_status", "eligibility_status", "eligible"]) ||
+      firstValue(row, ["eligibility", "eligible_status", "eligibility_status", "eligible"]) ||
       "",
     ).trim().toLowerCase().replace(/[ _-]+/g, "");
-    const status = String(
-      firstValue(masterRow, ["emp_status", "status"]) ||
-      firstValue(row, ["emp_status", "status"]) ||
-      "",
-    ).trim().toLowerCase();
-    const eligible = rawEligibility
-      ? ["eligible", "yes", "true", "1"].includes(rawEligibility)
-      : status === "active";
+    const eligible = ["eligible", "yes", "true", "1"].includes(rawEligibility);
     // Appraisal_Sheet can contain repeated employee records during imports.
     // Keep one record per employee so the same salary is never summed twice.
     appraisalByEmployee.set(employeeId, {
