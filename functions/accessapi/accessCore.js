@@ -139,6 +139,8 @@ const START_CATALOG = [
   fld('hikeAmount', 'Hike Amount', 'input'),
   fld('hikePct', 'Hike %', 'pair', { pairOf: 'hikeAmount' }),
   fld('targetPBNextYear', 'Target PB Next Year', 'input'),
+  fld('targetPBCriteria', 'Target PB Criteria', 'input'),
+  fld('compManagerRemarks', 'Comp. Manager Remarks', 'input'),
   fld('eligibleForPromotion', 'Eligible for Promotion', 'input'),
   fld('newTitle', 'New Title', 'input'),
   fld('atRisk', 'At Risk', 'input'),
@@ -161,7 +163,9 @@ const FIELD_COLUMNS = {
   targetPBAllocatedForMay: 'target_pb_allocated_for_may', rbToBePaid: 'rb_to_be_paid', monthRB: 'month_rb',
   pbToBePaid: 'pb_to_be_paid', monthPB: 'month_pb', allocatedPBAmount: 'allocated_pb_amount', pbInstallment: 'pb_installment',
   newPBToBeOffered: 'new_pb_to_be_offered', newPBInstallment: 'new_pb_installment', newRB: 'new_rb', hikeAmount: 'hike_amount',
-  hikePct: 'hike_pct', targetPBNextYear: 'target_pb_next_year', eligibleForPromotion: 'eligible_for_promotion',
+  hikePct: 'hike_pct', targetPBNextYear: 'target_pb_next_year',
+  targetPBCriteria: 'target_PB_criteria', compManagerRemarks: 'comp_manager_remarks',
+  eligibleForPromotion: 'eligible_for_promotion',
   newTitle: 'new_title', atRisk: 'at_risk'
 };
 const COLUMN_FIELDS = Object.fromEntries(Object.entries(FIELD_COLUMNS).map(([k, c]) => [c, k]));
@@ -240,7 +244,17 @@ function buildCatalog(src) {
 }
 async function loadCatalog(zcql) {
   const rows = await selectAll(zq(zcql), T.catalog);
-  const src = rows.length ? rows.filter((r) => bool(r.active)).map(catalogRow).sort((a, b) => a.sort - b.sort) : START_CATALOG;
+  let src;
+  if (rows.length) {
+    const knownKeys = new Set(rows.map((r) => String(r.item_type || '') + '|' + String(r.item_key || '')));
+    const activeRows = rows.filter((r) => bool(r.active)).map(catalogRow);
+    // Add newly introduced built-in fields when the catalogue was seeded earlier.
+    // Existing inactive entries stay inactive because their keys are still known.
+    const missingDefaults = START_CATALOG.filter((item) => !knownKeys.has(item.type + '|' + item.key));
+    src = activeRows.concat(missingDefaults).sort((a, b) => a.sort - b.sort);
+  } else {
+    src = START_CATALOG;
+  }
   return buildCatalog(src);
 }
 async function loadRoles(zcql) {
