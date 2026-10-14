@@ -472,6 +472,18 @@ async function readEmployeeRoster(app) {
       const managerId = managerRow ? String(readField(managerRow, ["emp_id", "employee_id"]) || "").trim() : "";
       const managerName = managerRow ? String(readField(managerRow, ["emp_name", "employee_name", "name"]) || "").trim() : "";
       const displayManager = managerId && managerName ? managerId + " - " + managerName : managerName || managerRaw;
+      const employeeStatus = String(readField(master, ["emp_status", "status"]) || readField(row, ["emp_status", "status"]) || "").trim();
+      const rawEligibility = String(
+        readField(master, ["eligible_status", "eligibility_status", "eligibility", "eligible"]) ||
+        readField(row, ["eligible_status", "eligibility_status", "eligibility", "eligible"]) || ""
+      ).trim().toLowerCase().replace(/[ _-]+/g, "");
+      // Preserve an explicit Eligible/Not Eligible decision. On older Employee_Master
+      // schemas with no eligibility field, use the established Active fallback.
+      const eligibleStatus = ["eligible", "yes", "true", "1"].includes(rawEligibility)
+        ? "eligible"
+        : ["noteligible", "no", "false", "0", "ineligible"].includes(rawEligibility)
+          ? "not eligible"
+          : normalizeStatus(employeeStatus) === "Active" ? "eligible" : "not eligible";
       return {
         row_id: idOf(master),
         emp_id: id,
@@ -493,12 +505,8 @@ async function readEmployeeRoster(app) {
         rb_to_be_paid: Number(readField(row, ["rb_to_be_paid", "previous_year_retention_bonus", "previous_year_rb", "previous_rb"]) || 0),
         previous_year_joining_bonus: Number(readField(row, ["previous_year_joining_bonus", "previous_year_jb", "previous_joining_bonus"]) || 0),
         appraiser_tech_ed_row_id: String(readField(row, ["appraiser_tech_ed1", "appraiser_tech_ed_row_id"]) || "").trim(),
-        status: String(
-          readField(master, ["emp_status", "status"]) ||
-            readField(row, ["emp_status", "status"]) ||
-            "",
-        ),
-        eligible_status: String(readField(master, ["eligible_status", "eligibility", "eligible"]) || readField(row, ["eligible_status", "eligibility", "eligible"]) || "").trim(),
+        status: employeeStatus,
+        eligible_status: eligibleStatus,
       };
     })
     .filter((row) => row.emp_id);
