@@ -497,6 +497,8 @@ function matchesTechEdOwner(owner, a, techEdOwners = []) {
       item.ROWID,
       item.assignment,
       item.name,
+      item.email,
+      item.email_id,
     ].map((value) => ownerKey(value)).filter(Boolean);
     return aliases.includes(key) && matchesOwner(item.assignment, a);
   });
