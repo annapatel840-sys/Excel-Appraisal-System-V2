@@ -336,7 +336,7 @@ export function BudgetDistributionPage() {
     if (!record) return 0;
     const countedEligibleEmployees = new Set();
     return employeeRows.filter((employee) => {
-      const assignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
+      const assignment = employee.appraiser_tech_ed_appraisal_sheet || "";
       const resolved = resolveTechRecord(assignment);
       const eligibility = String(
         [
