@@ -318,7 +318,45 @@ function getCurrentUserMatchValues(user) {
   ].map(normalizeText).filter(Boolean);
 }
 
-function employeeBelongsToCurrentUser(employee, user) {
+/* Tech-ED ownership by Employee_Master ROWID.
+   Appraisal_Sheet.appraiser_tech_ed1 (lookup) stores the Tech-ED's
+   Employee_Master ROWID. Older rows hold "EMPxxxx - Name" text, which is
+   resolved to the same ROWID through the employee ID. */
+function techEdOwnerRowId(row, master, employeeMasterMap) {
+  const candidates = [
+    row.appraiser_tech_ed1, row.appraiser_tech_ed,
+    master.appraiser_tech_ed1, master.appraiser_tech_ed,
+  ].map(function (value) { return String(value || "").trim(); }).filter(Boolean);
+  for (const value of candidates) {
+    if (/^[0-9]+$/.test(value)) return value; // already an Employee_Master ROWID
+    const empId = value.split(/\s+-\s+/)[0].trim().toLowerCase();
+    const owner = employeeMasterMap.get(empId);
+    const ownerRowId = owner && String(owner.ROWID || owner.rowid || "").trim();
+    if (ownerRowId) return ownerRowId;
+  }
+  return "";
+}
+
+// The signed-in user's Employee_Master ROWID (matched by email, else employee ID).
+function currentUserMasterRowId(user, employeeMasterRows) {
+  if (!user) return "";
+  const emails = [user.email_id, user.email].map(function (v) { return String(v || "").trim().toLowerCase(); }).filter(Boolean);
+  const empId = String(user.empId || user.emp_id || "").trim().toLowerCase();
+  const me = (employeeMasterRows || []).find(function (row) {
+    const rowEmail = String(row.email_id || row.email || "").trim().toLowerCase();
+    const rowEmpId = String(row.emp_id || "").trim().toLowerCase();
+    return (rowEmail && emails.includes(rowEmail)) || (empId && rowEmpId === empId);
+  });
+  return me ? String(me.ROWID || me.rowid || "").trim() : "";
+}
+
+function employeeBelongsToCurrentUser(employee, user, myRowId) {
+  // Row ID comparison is exact and decides whenever both IDs are known.
+  const ownerRowId = String(employee?.appraiser_tech_ed_owner_row_id || "").trim();
+  if (myRowId && ownerRowId) return ownerRowId === String(myRowId);
+  if (/^[0-9]+$/.test(String(employee?.appraiser_tech_ed_row_id || "").trim())) return false;
+
+  // Legacy text assignment ("EMPxxxx - Name") with no resolvable row ID.
   const assignedRaw = String(employee?.appraiser_tech_ed || "").trim();
   if (!assignedRaw) return false;
 
@@ -584,6 +622,9 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       // Keep the real Employee_Master ROWID for identity/authorization matching.
       // The UI must use the resolved label below, never this raw foreign key.
       appraiser_tech_ed_row_id: String(row.appraiser_tech_ed1 || "").trim(),
+      // Tech-ED owner as Employee_Master ROWID (lookup value, or resolved from
+      // legacy "EMPxxxx - Name" text). Used for Tech-ED access by row ID.
+      appraiser_tech_ed_owner_row_id: techEdOwnerRowId(row, master, employeeMasterMap),
       appraiser_tech_ed_appraisal_sheet: (() => {
         const techEdLookupId = String(row.appraiser_tech_ed1 || row.appraiser_tech_ed || "").trim();
         const techEdEmployee = techEdLookupId
@@ -939,6 +980,9 @@ async function getEmployees(req, res) {
    */
   // Enforced: access scope (Delegation of the Active cycle) + hidden columns
   // removed BEFORE counting / searching / paginating.
+  // Signed-in user's Employee_Master ROWID: a Tech-ED sees the employees
+  // whose Appraiser Tech-ED lookup points to this row.
+  const myMasterRowId = currentUserMasterRowId(enforced ? a.user : currentUser, employeeMasterRows);
   const scopedEmployees = enforced
     ? allEmployees
         // Tech-Ed roster ownership is maintained in Employee_Master.appraiser_tech_ed
@@ -948,7 +992,7 @@ async function getEmployees(req, res) {
         .filter(function (employee) {
           if (a.scope && a.scope.all) return true;
           if (a.role === "techEd") {
-            return employeeBelongsToCurrentUser(employee, a.user);
+            return employeeBelongsToCurrentUser(employee, a.user, myMasterRowId);
           }
           return access.inScope(a, employee);
         })
@@ -958,7 +1002,7 @@ async function getEmployees(req, res) {
     : hrUser
       ? allEmployees
       : allEmployees.filter(function (employee) {
-          return employeeBelongsToCurrentUser(employee, currentUser);
+          return employeeBelongsToCurrentUser(employee, currentUser, myMasterRowId);
         });
 
   const scopedTotalCount = scopedEmployees.length;
