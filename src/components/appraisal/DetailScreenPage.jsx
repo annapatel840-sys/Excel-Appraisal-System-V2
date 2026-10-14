@@ -1609,7 +1609,7 @@ export function DetailScreenPage({
                           }
                         >
                           <div
-                            className="flex items-end gap-2"
+                            className="flex items-start gap-2"
                             key={`${employee.id}-hike`}
                           >
                             <div style={{ width: "36%", minWidth: 100 }}>
@@ -1620,7 +1620,6 @@ export function DetailScreenPage({
                               />
                             </div>
                             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                              <span style={lab}>Hike Amount</span>
                               <EditInput
                                 value={draft.hikeStr ?? fmt(employee.hikeAmount)}
                                 onLive={liveHikeAmount}
@@ -1631,9 +1630,9 @@ export function DetailScreenPage({
                                 edited={isEdited("hikeAmount")}
                                 invalid={!!hikeErr}
                               />
+                              <span style={lab}>Hike Amount</span>
                             </div>
                             <div className="flex w-[30%] min-w-[64px] flex-col gap-0.5">
-                              <span style={lab}>Hike%</span>
                               <EditInput
                                 value={
                                   draft.pctStr ??
@@ -1647,6 +1646,7 @@ export function DetailScreenPage({
                                 edited={isEdited("hikeAmount")}
                                 invalid={!!hikeErr}
                               />
+                              <span style={lab}>Hike%</span>
                             </div>
                           </div>
                           {hikeErr && (
