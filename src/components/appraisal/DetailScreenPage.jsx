@@ -946,8 +946,18 @@ export function DetailScreenPage({
     .replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
 
-  // The backend already scopes rows to what this login may see.
-  const rows = liveRows || [];
+  // The backend already scopes rows to what this login may see. Like the
+  // Appraisal Sheet, only Active + Eligible employees are listed here, so the
+  // count matches the sheet (not the whole employee master).
+  const rows = useMemo(
+    () =>
+      (liveRows || []).filter(
+        (row) =>
+          String(row.status || "").trim().toLowerCase() === "active" &&
+          String(row.eligibility || "").trim().toLowerCase() === "eligible",
+      ),
+    [liveRows],
+  );
   const isScopedToTeam = isTechEd || rows.length > 0;
 
   const [index, setIndex] = useState(0);
