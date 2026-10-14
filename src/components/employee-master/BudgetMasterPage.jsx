@@ -320,6 +320,7 @@ function HRApplyBudget() {
   useEffect(() => {
     const employeeCounts = new Map();
     const employeeBases = new Map();
+    const countedEligibleEmployees = new Set();
     const ownerValues = new Map();
     const techOwnerByAlias = new Map();
     // Canonical Tech-Ed identity always comes from the Appraisal_Sheet-derived
@@ -351,10 +352,6 @@ function HRApplyBudget() {
       const assignedOwner = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed_id || employee.tech_ed || employee.appraiserTechEd || "";
       const key = resolveTechOwnerKey(assignedOwner);
       if (!key) return;
-      // Ignore Employee_Master-only rows that are not present in Appraisal Sheet.
-      // The budget headcount must match the actual appraisal roster.
-      if (employee.in_appraisal_sheet !== true) return;
-
       // Budget headcount follows appraisal eligibility, not the total Employee
       // Master roster. Keep status and eligibility independent when both exist.
       const eligibility = String(
@@ -369,7 +366,14 @@ function HRApplyBudget() {
       // a separate Employee Master field and must never imply eligibility.
       const eligible = ["eligible", "yes", "true", "1"].includes(eligibility);
 
-      if (eligible) employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
+      const employeeId = normalizeOwnerKey(
+        employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text || "",
+      );
+      const employeeCountKey = key + "::" + (employeeId || normalizeOwnerKey(employee.row_id || employee.ROWID || employee.id || ""));
+      if (eligible && !countedEligibleEmployees.has(employeeCountKey)) {
+        employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
+        countedEligibleEmployees.add(employeeCountKey);
+      }
 
       // Preserve the existing budget-base calculation; this change only fixes
       // the employee count shown for each Tech-Ed.
