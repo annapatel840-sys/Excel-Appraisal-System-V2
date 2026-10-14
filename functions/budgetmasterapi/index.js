@@ -611,12 +611,26 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const allocatedPB = n(firstValue(row, [
       "allocated_pb_amount", "allocatedPBAmount", "pb_to_be_paid", "pbToBePaid", "target_pb_allocated_for_may", "targetPBAllocatedForMay", "allocated_pb", "allocatedPB", "total_pb", "totalPB",
     ]));
+    const rawEligibility = String(
+      firstValue(row, ["eligibility", "eligible_status", "eligibility_status", "eligible"]) ||
+      firstValue(masterRow, ["eligibility", "eligible_status", "eligibility_status", "eligible"]) ||
+      "",
+    ).trim().toLowerCase().replace(/[ _-]+/g, "");
+    const status = String(
+      firstValue(masterRow, ["emp_status", "status"]) ||
+      firstValue(row, ["emp_status", "status"]) ||
+      "",
+    ).trim().toLowerCase();
+    const eligible = rawEligibility
+      ? ["eligible", "yes", "true", "1"].includes(rawEligibility)
+      : status === "active";
     // Appraisal_Sheet can contain repeated employee records during imports.
     // Keep one record per employee so the same salary is never summed twice.
     appraisalByEmployee.set(employeeId, {
       employeeId,
       techEd,
       compManager,
+      eligible,
       base: basePay + allocatedPB,
     });
   });
@@ -711,14 +725,14 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       if (techKey) {
         const tech = techBases.get(techKey) || { base: 0, count: 0 };
         tech.base += employee.base;
-        tech.count += 1;
+        if (employee.eligible) tech.count += 1;
         techBases.set(techKey, tech);
       }
       if (techKey && compKey) {
         const key = techKey + "::" + compKey;
         const comp = compBases.get(key) || { base: 0, count: 0 };
         comp.base += employee.base;
-        comp.count += 1;
+        if (employee.eligible) comp.count += 1;
         compBases.set(key, comp);
       }
     });
@@ -863,8 +877,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const currentCountField = ["current_headcount", "headcount"].find((key) => masterColumns.has(key));
       if (originalBaseField) orgFields[originalBaseField] = orgOriginalBase;
       if (currentBaseField) orgFields[currentBaseField] = orgBase;
-      if (originalCountField && !(n(master[originalCountField]) > 0)) orgFields[originalCountField] = employees.length;
-      if (currentCountField) orgFields[currentCountField] = employees.length;
+      if (originalCountField && !(n(master[originalCountField]) > 0)) orgFields[originalCountField] = employees.filter((employee) => employee.eligible).length;
+      if (currentCountField) orgFields[currentCountField] = employees.filter((employee) => employee.eligible).length;
     }
     await masterTable.updateRow(orgFields);
     Object.assign(master, {
@@ -872,7 +886,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       calculated_budget: orgOriginal || (orgOriginalBase * n(master.budget_percentage) / 100),
       applied_budget: orgUpdated || (orgBase * n(master.budget_percentage) / 100),
       current_budget_base: orgBase,
-      current_headcount: employees.length,
+      current_headcount: employees.filter((employee) => employee.eligible).length,
     });
   }
 
