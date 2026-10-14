@@ -574,7 +574,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   const resolvePersonId = (raw) => {
     const text = String(raw || "").trim();
     if (!text) return "";
-    const split = text.split(/\\s+-\\s+/);
+    const split = text.split(/\s+-\s+/);
     if (split.length > 1) return split[0].trim();
     const person = masterByRowId.get(text) || masterByEmployee.get(text.toLowerCase()) || masterByName.get(text.toLowerCase());
     return person
@@ -955,7 +955,7 @@ module.exports = async function (req, res) {
 
     if (!id && resource === "distribution" && String(body.appraisal_cycle_id || "").trim() && String(body.appraiser_tech_ed_id || "").trim()) {
       const cycleId = String(body.appraisal_cycle_id).trim();
-      const techEdId = String(body.appraiser_tech_ed_id).trim().split(/\\s+-\\s+/)[0].slice(0, 20);
+      const techEdId = String(body.appraiser_tech_ed_id).trim().split(/\s+-\s+/)[0].slice(0, 20);
       if (a.enforced && !Boolean(a.scope && a.scope.all) && !matchesOwner(techEdId, a)) {
         throw new access.HttpError(403, "You can only configure your own Tech-Ed budget.");
       }
