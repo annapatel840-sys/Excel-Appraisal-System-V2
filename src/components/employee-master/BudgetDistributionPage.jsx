@@ -337,7 +337,17 @@ export function BudgetDistributionPage() {
     return employeeRows.filter((employee) => {
       const assignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
       const resolved = resolveTechRecord(assignment);
-      return resolved?.key === record.key;
+      const eligibility = String(
+        employee.eligibility ??
+          employee.eligible_status ??
+          employee.eligibility_status ??
+          employee.eligible ??
+          "",
+      ).trim().toLowerCase().replace(/[ _-]+/g, "");
+      const eligible = eligibility
+        ? ["eligible", "yes", "true", "1"].includes(eligibility)
+        : String(employee.status || employee.emp_status || "").trim().toLowerCase() === "active";
+      return resolved?.key === record.key && eligible;
     }).length;
   };
 
@@ -529,7 +539,7 @@ export function BudgetDistributionPage() {
                         <td className="num">{money(row.budget_utilized)}</td>
                         <td className="num">{money(row.budget_remaining)}</td>
                         <td className="num">{pct(row.utilization_percentage)}</td>
-                        <td>{countForTechOwner(row.tech_ed_id) || employeeCounts[row.tech_ed_id] || 0}</td>
+                        <td>{countForTechOwner(row.tech_ed_id)}</td>
                         <td>
                           <span className="status">
                             {row.status || "Active"}
