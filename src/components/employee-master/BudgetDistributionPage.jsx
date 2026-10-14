@@ -1,26 +1,35 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { WalletCards, RefreshCw } from "lucide-react";
-
+ 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
-
-const money = (value) =>
-  "₹ " + ((Number(value) || 0) / 100000).toFixed(2) + " L";
-
+import { useAppraisal } from "@/lib/appraisal-store";
+import { TechEdBudgetDistribution } from "./TechEdBudgetDistribution";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+ 
+// Exact rupee amount with Indian grouping (no lakh rounding), e.g. ₹ 12,34,567.50
+const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const money = (value) => "₹ " + INR.format(Number(value) || 0);
+ 
 const pct = (value) => (Number(value) || 0).toFixed(1) + "%";
-
+ 
 const normalize = (value) =>
   String(value || "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, " ");
-
+ 
 function ownerName(value) {
   const text = String(value || "").trim();
-  const match = text.match(/^\S+\s*-\s*(.+)$/);
-  return match ? match[1].trim() : text;
+  const match = text.split(/\s+-\s+/);
+  return match.length > 1 ? match.slice(1).join(" - ").trim() : text;
 }
-
+function ownerKey(value) {
+  const text = String(value || "").trim();
+  const match = text.split(/\s+-\s+/);
+  return normalize(match.length > 1 ? match[0] : text);
+}
+ 
 function dateText(value) {
   if (!value) return "—";
   const date = new Date(value);
@@ -31,7 +40,7 @@ function dateText(value) {
     year: "numeric",
   });
 }
-
+ 
 const CSS = `
 .bd-root {
   max-width: 1320px;
@@ -101,6 +110,7 @@ const CSS = `
   color: #fff;
   border: 0;
   padding: 10px 16px;
+  font-family: inherit;
   font-size: 13.5px;
   font-weight: 600;
   cursor: pointer;
@@ -120,7 +130,15 @@ const CSS = `
   border-right: 1px solid #d7dce3;
   border-top: 3px solid transparent;
 }
-.bd-root .summary > div:nth-child(2) { border-top-color: #14a3a3; }
+.bd-root .summary > div:nth-child(2) {
+  background: #0e7c6b;
+  border-top-color: #0a5c4f;
+  border-right-color: #0e7c6b;
+}
+.bd-root .summary > div:nth-child(2) .label,
+.bd-root .summary > div:nth-child(2) .value,
+.bd-root .summary > div:nth-child(2) .sub { color: #fff; }
+.bd-root .summary > div:nth-child(2) .sub { opacity: 0.88; }
 .bd-root .summary > div:last-child { border-right: 0; }
 .bd-root .label {
   font-size: 11px;
@@ -226,43 +244,165 @@ const CSS = `
   padding: 8px 10px;
 }
 `;
-
+ 
 export function BudgetDistributionPage() {
   const user = useCatalystUser();
   const {
     budgetRows,
     employeeCounts,
+    employeeRows = [],
+    techEdOwners = [],
+    budgetMasterRows = [],
     totals,
     loading,
     error,
     reload,
     isHR,
   } = useBudget();
+ 
+  // Total utilised = the Appraisal Sheet's "Consumed (Hikes + Bonuses)": the
+  // Performance Bonus (PB), Retention Bonus (RB) and Hike Amount totals added
+  // together over the same (Active + Eligible) rows the sheet shows.
+  const { rows: appraisalAll } = useAppraisal();
+  const utilised = useMemo(
+    () =>
+      (appraisalAll || [])
+        .filter(
+          (row) =>
+            String(row.status || "").trim().toLowerCase() === "active" &&
+            String(row.eligibility || "").trim().toLowerCase() === "eligible",
+        )
+        .reduce(
+          (sum, row) =>
+            sum +
+            (Number(row.allocatedPBAmount) || 0) +
+            (Number(row.newRB) || 0) +
+            (Number(row.hikeAmount) || 0),
+          0,
+        ),
+    [appraisalAll],
+  );
+  const remaining = totals.updated - utilised;
 
   const [open, setOpen] = useState({});
+  const [summaryOpen, setSummaryOpen] = useState(true);
+  const [tableOpen, setTableOpen] = useState(true);
+  const [cycleLabel, setCycleLabel] = useState("");
+  const [activeCycleId, setActiveCycleId] = useState("");
+  useEffect(() => {
+    let mounted = true;
+    payrollCycleRequest("cycles").then((cycles) => {
+      if (!mounted) return;
+      const all = Array.isArray(cycles) ? cycles : [];
+      const active = all.find((cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived);
+      const activeId = String(active?.id || active?.appraisal_cycle_id || active?.cycle_id || active?.ROWID || "");
+      setActiveCycleId(activeId);
+      const master = budgetMasterRows.find((row) => String(row.appraisal_cycle_id || "") === activeId);
+      setCycleLabel(String(active?.name || active?.cycle_name || master?.appraisal_cycle_name || master?.cycle_name || "Active cycle unavailable"));
+    }).catch((cycleError) => {
+      console.error("Failed to load Budget Distribution cycle:", cycleError);
+      if (mounted) {
+        setActiveCycleId(String(budgetMasterRows[0]?.appraisal_cycle_id || ""));
+        setCycleLabel(String(budgetMasterRows[0]?.appraisal_cycle_name || budgetMasterRows[0]?.cycle_name || "Cycle unavailable"));
+      }
+    });
+    return () => { mounted = false; };
+  }, [budgetMasterRows]);
 
-  const rows = useMemo(
-    () =>
-      [...budgetRows].sort((a, b) =>
-        ownerName(a.tech_ed_id).localeCompare(ownerName(b.tech_ed_id)),
-      ),
-    [budgetRows],
-  );
+  const resolveTechRecord = (raw) => {
+    const text = String(raw || "").trim();
+    if (!text) return null;
+    const compact = normalize(text);
+    const linked = techEdOwners.find((item) => {
+      const aliases = [item?.row_id, item?.ROWID, item?.employee_id, item?.assignment, item?.name].filter(Boolean);
+      return aliases.some((alias) => normalize(alias) === compact || ownerKey(alias) === ownerKey(text));
+    });
+    if (linked) {
+      const id = String(linked.employee_id || "").trim();
+      const name = String(linked.name || "").trim();
+      return { key: normalize(id || linked.assignment || text), label: String(linked.assignment || (id && name ? id + " - " + name : id || name || text)).trim() };
+    }
+    const employee = employeeRows.find((row) =>
+      String(row.emp_id || row.employee_id || "").trim().toLowerCase() === compact ||
+      String(row.row_id || row.ROWID || "").trim() === text
+    );
+    const id = String(employee?.emp_id || employee?.employee_id || "").trim();
+    const name = String(employee?.name || employee?.emp_name || employee?.employee_name || "").trim();
+    return { key: normalize(id || text), label: id && name ? id + " - " + name : text };
+  };
+  const resolveTechOwner = (raw) => resolveTechRecord(raw)?.label || String(raw || "").trim();
+  const countForTechOwner = (raw) => {
+    const record = resolveTechRecord(raw);
+    if (!record) return 0;
+    const countedEligibleEmployees = new Set();
+    return employeeRows.filter((employee) => {
+      const assignment = employee.appraiser_tech_ed_appraisal_sheet || "";
+      const resolved = resolveTechRecord(assignment);
+      const eligibility = String(
+        [
+          employee.eligibility,
+          employee.eligible_status,
+          employee.eligibility_status,
+          employee.eligible,
+        ].find((value) => value !== null && value !== undefined && String(value).trim() !== "") ?? "",
+      ).trim().toLowerCase().replace(/[ _-]+/g, "");
+      // Match Budget Master: an employee counts only when both status
+      // and eligibility are explicitly Active + Eligible.
+      const status = String(employee.emp_status ?? employee.status ?? employee.employee_status ?? "")
+        .trim().toLowerCase();
+      const active = status === "active";
+      const eligible = ["eligible", "yes", "true", "1"].includes(eligibility);
+      if (resolved?.key !== record.key || !active || !eligible) return false;
+      const employeeId = normalize(
+        employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text ||
+          employee.row_id || employee.ROWID || employee.id || "",
+      );
+      if (!employeeId || countedEligibleEmployees.has(employeeId)) return false;
+      countedEligibleEmployees.add(employeeId);
+      return true;
+    }).length;
+  };
 
+  const rows = useMemo(() => {
+    const unique = new Map();
+    [...budgetRows]
+      .filter((row) => !activeCycleId || String(row.appraisal_cycle_id || "") === activeCycleId)
+      .forEach((row) => {
+        const identity = resolveTechRecord(row.tech_ed_id);
+        if (!identity) return;
+        const current = unique.get(identity.key);
+        // Keep the most recently updated record for a Tech-Ed/cycle and do not
+        // render legacy duplicate ROWID/employee-ID aliases as separate rows.
+        if (!current || String(row.modified_at || row.updated_at || "") >= String(current.modified_at || current.updated_at || "")) {
+          unique.set(identity.key, { ...row, tech_ed_id: identity.label, _ownerKey: identity.key });
+        }
+      });
+    return [...unique.values()].sort((a, b) => a.tech_ed_id.localeCompare(b.tech_ed_id));
+  }, [budgetRows, techEdOwners, employeeRows, activeCycleId]);
+ 
   const totalPercentage = useMemo(
     () => rows.reduce((sum, row) => sum + Number(row.budget_percentage || 0), 0),
     [rows],
   );
-
+ 
   const role = normalize(user?.role);
-  const canView = isHR || role === "hr" || role === "human resources";
-
+  // Tech-Ed may be returned as "Tech Ed", "Tech-Ed", or "teched".
+  // Budget Distribution is read-only for Tech-Ed, but it must remain visible.
+  const roleCompact = role.replace(/[^a-z0-9]/g, "");
+  const canView =
+    isHR ||
+    role === "hr" ||
+    role === "human resources" ||
+    roleCompact === "teched";
+ 
   if (!canView) return null;
-
+  // Tech-EDs get their own budget view: their budget, their Comp Managers and Allot %.
+  if (roleCompact === "teched" && !isHR) return <TechEdBudgetDistribution />;
+ 
   return (
     <div className="bd-root">
       <style>{CSS}</style>
-
+ 
       <div className="top">
         <span className="title">
           <span className="title-icon">
@@ -272,7 +412,7 @@ export function BudgetDistributionPage() {
         </span>
         <span className="sep" />
         <span>
-          Appraisal cycle <b>Apr-26</b>
+          Appraisal cycle <b>{cycleLabel || "Loading cycle…"}</b>
         </span>
         <span className="sep" />
         <span>
@@ -289,177 +429,192 @@ export function BudgetDistributionPage() {
           Refresh
         </button>
       </div>
-
+ 
       <section className="card">
-        <div className="pane-head">
+        <button
+          type="button"
+          className="pane-head"
+          onClick={() => setSummaryOpen((current) => !current)}
+          aria-expanded={summaryOpen}
+        >
           <span>Distribution Summary</span>
           <span className="muted-small" style={{ color: "#d6e4f5" }}>
             All Tech-Ed budgets
+            <span style={{ marginLeft: 10 }}>{summaryOpen ? "▾" : "▸"}</span>
           </span>
-        </div>
-
-        <div className="summary">
-          <div>
-            <div className="label">Tech-Ed count</div>
-            <div className="value">{rows.length}</div>
-            <div className="sub muted">Active budget records</div>
-          </div>
-          <div>
-            <div className="label">Total original budget</div>
-            <div className="value">{money(totals.base)}</div>
-            <div className="sub muted">Before additional budget</div>
-          </div>
-          <div>
-            <div className="label">Additional budget</div>
-            <div className="value">{money(totals.additional)}</div>
-            <div className="sub muted">Added to original</div>
-          </div>
-          <div>
-            <div className="label">Total updated budget</div>
-            <div className="value">{money(totals.updated)}</div>
-            <div className="sub muted">Current allocation</div>
-          </div>
-          <div>
-            <div className="label">Total utilised</div>
-            <div className="value">{money(totals.utilized)}</div>
-            <div className="sub muted">
-              {totals.updated
-                ? ((totals.utilized / totals.updated) * 100).toFixed(0) + "% utilised"
-                : "—"}
+        </button>
+ 
+        {summaryOpen && (
+          <div className="summary">
+            <div>
+              <div className="label">Tech-Ed count</div>
+              <div className="value">{rows.length}</div>
+              <div className="sub muted">Active budget records</div>
+            </div>
+            <div>
+              <div className="label">Total original budget</div>
+              <div className="value">{money(totals.base)}</div>
+              <div className="sub muted">Before additional budget</div>
+            </div>
+            <div>
+              <div className="label">Additional budget</div>
+              <div className="value">{money(totals.additional)}</div>
+              <div className="sub muted">Added to original</div>
+            </div>
+            <div>
+              <div className="label">Total updated budget</div>
+              <div className="value">{money(totals.updated)}</div>
+              <div className="sub muted">Current allocation</div>
+            </div>
+            <div>
+              <div className="label">Total utilised</div>
+              <div className="value">{money(utilised)}</div>
+              <div className="sub muted">
+                {totals.updated
+                  ? ((utilised / totals.updated) * 100).toFixed(0) + "% utilised"
+                  : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="label">Total remaining</div>
+              <div className="value">{money(remaining)}</div>
+              <div className="sub muted">Updated budget − utilised</div>
             </div>
           </div>
-          <div>
-            <div className="label">Total remaining</div>
-            <div className="value">{money(totals.remaining)}</div>
-            <div className="sub muted">Updated budget − utilised</div>
-          </div>
-        </div>
+        )}
       </section>
-
+ 
       <section className="card">
-        <div className="pane-head">
+        <button
+          type="button"
+          className="pane-head"
+          onClick={() => setTableOpen((current) => !current)}
+          aria-expanded={tableOpen}
+        >
           <span>
             Tech-Ed Budget Distribution
             <span className="cnt">{rows.length} records</span>
           </span>
           <span className="muted-small" style={{ color: "#d6e4f5" }}>
             Total %: {pct(totalPercentage)}
+            <span style={{ marginLeft: 10 }}>{tableOpen ? "▾" : "▸"}</span>
           </span>
-        </div>
-
-        {loading ? (
-          <div className="empty">Loading Tech-Ed budget distribution…</div>
-        ) : error ? (
-          <div className="error">{error}</div>
-        ) : rows.length === 0 ? (
-          <div className="empty">No active Tech-Ed budget records found.</div>
-        ) : (
-          <div className="scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Level</th>
-                  <th>Tech-Ed</th>
-                  <th className="num">Budget %</th>
-                  <th className="num">Original Budget</th>
-                  <th className="num">Additional Budget</th>
-                  <th className="num">Updated Budget</th>
-                  <th className="num">Utilised</th>
-                  <th className="num">Remaining</th>
-                  <th className="num">Utilisation %</th>
-                  <th>Team Count</th>
-                  <th>Status</th>
-                  <th>Access</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const owner = ownerName(row.tech_ed_id);
-                  const key = row.id || row.tech_ed_id;
-                  const expanded = Boolean(open[key]);
-
-                  return (
-                    <tr key={key} className="tech">
-                      <td>
-                        <b>Tech-Ed</b>
-                      </td>
-                      <td>
-                        <div className="owner">{owner || row.tech_ed_id || "—"}</div>
-                        {owner && owner !== row.tech_ed_id ? (
-                          <div className="muted-small">{row.tech_ed_id}</div>
-                        ) : null}
-                      </td>
-                      <td className="num">{pct(row.budget_percentage)}</td>
-                      <td className="num">{money(row.budget_amount)}</td>
-                      <td className="num">{money(row.additional_budget)}</td>
-                      <td className="num">{money(row.updated_budget)}</td>
-                      <td className="num">{money(row.budget_utilized)}</td>
-                      <td className="num">{money(row.budget_remaining)}</td>
-                      <td className="num">{pct(row.utilization_percentage)}</td>
-                      <td>{employeeCounts[row.tech_ed_id] ?? "—"}</td>
-                      <td>
-                        <span className="status">
-                          {row.status || "Active"}
-                        </span>
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="readonly"
-                          onClick={() =>
-                            setOpen((current) => ({
-                              ...current,
-                              [key]: !expanded,
-                            }))
-                          }
-                          aria-expanded={expanded}
-                        >
-                          {expanded ? "Hide details" : "View details"}
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-
-            {rows.map((row) => {
-              const key = row.id || row.tech_ed_id;
-              if (!open[key]) return null;
-              const owner = ownerName(row.tech_ed_id);
-              return (
-                <div className="detail" key={"detail-" + key}>
-                  <div className="detail-grid">
-                    <div className="detail-item">
-                      <div className="label">Tech-Ed</div>
-                      <b>{owner || row.tech_ed_id || "—"}</b>
-                    </div>
-                    <div className="detail-item">
-                      <div className="label">Budget percentage</div>
-                      <b>{pct(row.budget_percentage)}</b>
-                    </div>
-                    <div className="detail-item">
-                      <div className="label">Updated budget</div>
-                      <b>{money(row.updated_budget)}</b>
-                    </div>
-                    <div className="detail-item">
-                      <div className="label">Utilised</div>
-                      <b>{money(row.budget_utilized)}</b>
-                    </div>
-                    <div className="detail-item">
-                      <div className="label">Remaining</div>
-                      <b>{money(row.budget_remaining)}</b>
-                    </div>
-                    <div className="detail-item">
-                      <div className="label">Last updated</div>
-                      <b>{dateText(row.updated_at || row.modified_at)}</b>
+        </button>
+ 
+        {tableOpen &&
+          (loading ? (
+            <div className="empty">Loading Tech-Ed budget distribution…</div>
+          ) : error ? (
+            <div className="error">{error}</div>
+          ) : rows.length === 0 ? (
+            <div className="empty">No active Tech-Ed budget records found.</div>
+          ) : (
+            <div className="scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Level</th>
+                    <th>Tech-Ed</th>
+                    <th className="num">Budget %</th>
+                    <th className="num">Original Budget</th>
+                    <th className="num">Additional Budget</th>
+                    <th className="num">Updated Budget</th>
+                    <th className="num">Utilised</th>
+                    <th className="num">Remaining</th>
+                    <th className="num">Utilisation %</th>
+                    <th>Team Count</th>
+                    <th>Status</th>
+                    <th>Access</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => {
+                    const owner = resolveTechOwner(row.tech_ed_id);
+                    const key = row.id || row.tech_ed_id;
+                    const expanded = Boolean(open[key]);
+ 
+                    return (
+                      <tr key={key} className="tech">
+                        <td>
+                          <b>Tech-Ed</b>
+                        </td>
+                        <td>
+                          <div className="owner">{owner || row.tech_ed_id || "—"}</div>
+                          {owner && owner !== row.tech_ed_id ? (
+                            <div className="muted-small">{row.tech_ed_id}</div>
+                          ) : null}
+                        </td>
+                        <td className="num">{pct(row.budget_percentage)}</td>
+                        <td className="num">{money(row.budget_amount)}</td>
+                        <td className="num">{money(row.additional_budget)}</td>
+                        <td className="num">{money(row.updated_budget)}</td>
+                        <td className="num">{money(row.budget_utilized)}</td>
+                        <td className="num">{money(row.budget_remaining)}</td>
+                        <td className="num">{pct(row.utilization_percentage)}</td>
+                        <td>{countForTechOwner(row.tech_ed_id)}</td>
+                        <td>
+                          <span className="status">
+                            {row.status || "Active"}
+                          </span>
+                        </td>
+                        <td>
+                          <button
+                            type="button"
+                            className="readonly"
+                            onClick={() =>
+                              setOpen((current) => ({
+                                ...current,
+                                [key]: !expanded,
+                              }))
+                            }
+                            aria-expanded={expanded}
+                          >
+                            {expanded ? "Hide details" : "View details"}
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+ 
+              {rows.map((row) => {
+                const key = row.id || row.tech_ed_id;
+                if (!open[key]) return null;
+                const owner = resolveTechOwner(row.tech_ed_id);
+                return (
+                  <div className="detail" key={"detail-" + key}>
+                    <div className="detail-grid">
+                      <div className="detail-item">
+                        <div className="label">Tech-Ed</div>
+                        <b>{owner || row.tech_ed_id || "—"}</b>
+                      </div>
+                      <div className="detail-item">
+                        <div className="label">Budget percentage</div>
+                        <b>{pct(row.budget_percentage)}</b>
+                      </div>
+                      <div className="detail-item">
+                        <div className="label">Updated budget</div>
+                        <b>{money(row.updated_budget)}</b>
+                      </div>
+                      <div className="detail-item">
+                        <div className="label">Utilised</div>
+                        <b>{money(row.budget_utilized)}</b>
+                      </div>
+                      <div className="detail-item">
+                        <div className="label">Remaining</div>
+                        <b>{money(row.budget_remaining)}</b>
+                      </div>
+                      <div className="detail-item">
+                        <div className="label">Last updated</div>
+                        <b>{dateText(row.updated_at || row.modified_at)}</b>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          ))}
       </section>
     </div>
   );

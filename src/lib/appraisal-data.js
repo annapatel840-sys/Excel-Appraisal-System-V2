@@ -92,6 +92,15 @@ const LAST = [
 
 // ============================================================
 // CALCULATIONS
+//
+//   Total of PB            = Allocated PB + New PB
+//   Total Bonus            = Total of PB + New RB          (joining bonus is one-time, not here)
+//   New Base Salary        = Current Base + Hike Amount    (next year's base, also Total CTC)
+//   Total Rewards          = New Base Salary + Total Bonus (column "Total Rewards")
+//   Current Rewards        = RB to be paid + PB to be paid (what is being paid now)
+//   Total Bonus Hike       = Total Bonus - Current Rewards
+//   Total Rewards Hike     = Hike Amount + Total Bonus Hike
+//   Total Rewards Hike %   = Total Rewards Hike / (Current Base + Current Rewards)
 // ============================================================
 
 export const totalOfPB = (r) =>
@@ -138,8 +147,10 @@ export const totalBonusHikePct = (r) => {
 export const totalRewardsHikeAmount = (r) =>
   hikeAmount(r) + totalBonusHikeAmount(r);
 
+// FIX: the percentage is measured against the CURRENT total rewards
+// (base pay + rewards being paid now), not against base pay alone.
 export const totalRewardsHikePct = (r) => {
-  const current = Number(r.currentAnnualBasePay || 0);
+  const current = Number(r.currentAnnualBasePay || 0) + currentRewards(r);
 
   return current ? (totalRewardsHikeAmount(r) / current) * 100 : 0;
 };
@@ -178,67 +189,47 @@ export const totalPayout = (r) => totalBonus(r);
 
 export const COLUMNS = [
   {
-    key: "empId",
-    label: "EMP ID",
-    type: "text",
-    editable: false,
-    width: 100,
-  },
-  {
     key: "name",
-    label: "EMP Name",
+    label: "Employee Name",
     type: "text",
     editable: false,
     width: 190,
   },
-  {
-    key: "designation",
-    label: "Designation",
-    type: "text",
-    editable: false,
-    width: 170,
-  },
-  {
-    key: "reportingManager",
-    label: "Reporting Manager",
-    type: "text",
-    editable: false,
-    width: 170,
-  },
+  { key: "empId", label: "Emp ID", type: "text", editable: false, width: 90 },
   {
     key: "compManager",
     label: "Comp. Manager",
     type: "text",
     editable: false,
-    width: 150,
+    width: 125,
   },
   {
     key: "appraiserTechED",
-    label: "Appraiser Tech/ED",
+    label: "Appraiser Tech-ED",
     type: "text",
     editable: false,
-    width: 160,
+    width: 145,
   },
   {
     key: "wissenExperience",
-    label: "Organization Experience",
+    label: "Wissen Experience as on 1st Jan",
     type: "decimal",
     editable: false,
-    width: 150,
+    width: 145,
   },
   {
     key: "totalExperience",
-    label: "Total Experience",
+    label: "Total Experience as on 1st Jan",
     type: "decimal",
     editable: false,
-    width: 140,
+    width: 155,
   },
   {
     key: "lastAppraisalDate",
-    label: "Last Appraisal Date",
+    label: "Last Appraisal",
     type: "date",
     editable: false,
-    width: 160,
+    width: 130,
   },
   {
     key: "managerRating",
@@ -246,214 +237,63 @@ export const COLUMNS = [
     type: "enum",
     editable: false,
     options: MANAGER_RATINGS,
-    width: 210,
+    width: 150,
   },
   {
     key: "interviewCount",
     label: "Interview Count",
     type: "number",
     editable: false,
-    width: 140,
+    width: 110,
   },
   {
     key: "rrPercent",
-    label: "RR %",
+    label: "RR%",
     type: "percent",
     editable: false,
-    width: 100,
+    width: 90,
   },
   {
     key: "grossMargin",
     label: "Gross Margin",
     type: "decimal",
     editable: false,
-    width: 130,
+    width: 110,
   },
   {
     key: "rbToBePaid",
     label: "RB to be Paid",
     type: "currency",
     editable: false,
-    width: 140,
+    width: 120,
   },
   {
     key: "monthRB",
-    label: "Month RB",
+    label: "Month (RB)",
     type: "text",
     editable: false,
-    width: 120,
+    width: 95,
   },
   {
     key: "pbToBePaid",
     label: "PB to be Paid",
     type: "currency",
     editable: false,
-    width: 140,
+    width: 120,
   },
   {
     key: "monthPB",
-    label: "Month PB",
+    label: "Month (PB)",
     type: "text",
     editable: false,
-    width: 120,
+    width: 95,
   },
   {
     key: "currentAnnualBasePay",
     label: "Current Annual Base Pay",
     type: "currency",
     editable: false,
-    width: 180,
-  },
-  {
-    key: "targetPBAllocatedForMay",
-    label: "Target PB Allocated for May",
-    type: "currency",
-    editable: false,
-    width: 190,
-  },
-
-  // ==========================================================
-  // EDITABLE
-  // ==========================================================
-
-  {
-    key: "allocatedPBAmount",
-    label: "Allocated PB Amount",
-    type: "currency",
-    editable: true,
-    width: 170,
-  },
-  {
-    key: "pbInstallment",
-    label: "PB Installment",
-    type: "enum",
-    editable: true,
-    options: INSTALLMENT_OPTIONS,
-    width: 110,
-  },
-  {
-    key: "newPBToBeOffered",
-    label: "New PB to be Offered",
-    type: "currency",
-    editable: true,
-    width: 170,
-  },
-  {
-    key: "newPBInstallment",
-    label: "New PB Installment",
-    type: "enum",
-    editable: true,
-    options: INSTALLMENT_OPTIONS,
-    width: 110,
-  },
-
-  // ==========================================================
-  // COMPUTED
-  // ==========================================================
-
-  {
-    key: "totalOfPB",
-    label: "Total of PB",
-    type: "currency",
-    editable: false,
-    computed: true,
-    fn: totalOfPB,
-    width: 140,
-  },
-
-  // ==========================================================
-  // EDITABLE
-  // ==========================================================
-
-  {
-    key: "newRB",
-    label: "New RB",
-    type: "currency",
-    editable: true,
-    width: 120,
-  },
-
-  // ==========================================================
-  // COMPUTED
-  // ==========================================================
-
-  {
-    key: "totalBonus",
-    label: "Total Bonus",
-    type: "currency",
-    editable: false,
-    computed: true,
-    fn: totalBonus,
-    width: 190,
-  },
-
-  // ==========================================================
-  // EDITABLE
-  // ==========================================================
-
-  {
-    key: "hikeAmount",
-    label: "Hike Amount",
-    type: "currency",
-    editable: true,
-    width: 140,
-  },
-  {
-    key: "hikePct",
-    label: "Hike %",
-    type: "percent",
-    editable: true,
-    width: 100,
-  },
-
-  // ==========================================================
-  // COMPUTED
-  // ==========================================================
-
-  {
-    key: "totalCTCWithRewards",
-    label: "Total CTC with Rewards",
-    type: "currency",
-    editable: false,
-    computed: true,
-    fn: totalCTCWithRewards,
-    width: 190,
-  },
-  {
-    key: "totalBonusHikeAmount",
-    label: "Total Bonus Hike Amount",
-    type: "currency",
-    editable: false,
-    computed: true,
-    fn: totalBonusHikeAmount,
-    width: 190,
-  },
-  {
-    key: "totalBonusHikePct",
-    label: "Total Bonus Hike %",
-    type: "percent",
-    editable: false,
-    computed: true,
-    fn: totalBonusHikePct,
-    width: 160,
-  },
-  {
-    key: "totalRewardsHikeAmount",
-    label: "Total Rewards Hike Amount",
-    type: "currency",
-    editable: false,
-    computed: true,
-    fn: totalRewardsHikeAmount,
-    width: 200,
-  },
-  {
-    key: "totalRewardsHikePct",
-    label: "Total Rewards Hike %",
-    type: "percent",
-    editable: false,
-    computed: true,
-    fn: totalRewardsHikePct,
-    width: 170,
+    width: 125,
   },
   {
     key: "newBaseSalary",
@@ -462,19 +302,94 @@ export const COLUMNS = [
     editable: false,
     computed: true,
     fn: newBaseSalary,
-    width: 160,
+    width: 145,
   },
-
-  // ==========================================================
-  // EDITABLE
-  // ==========================================================
-
   {
-    key: "targetPBNextYear",
-    label: "Target PB Next Year",
+    key: "hikeAmount",
+    label: "Hike Amount",
     type: "currency",
     editable: true,
+    width: 125,
+  },
+  {
+    key: "hikePct",
+    label: "Hike%",
+    type: "percent",
+    editable: true,
+    width: 90,
+  },
+  {
+    key: "newRB",
+    label: "Retention Bonus (RB)",
+    type: "currency",
+    editable: true,
+    width: 145,
+  },
+  {
+    key: "allocatedPBAmount",
+    label: "Performance Bonus (PB)",
+    type: "currency",
+    editable: true,
+    width: 155,
+  },
+  {
+    key: "pbInstallment",
+    label: "Instalment",
+    type: "enum",
+    editable: true,
+    options: INSTALLMENT_OPTIONS,
+    width: 100,
+  },
+  {
+    key: "targetPBAllocatedForMay",
+    label: "Target PB Allocated",
+    type: "currency",
+    editable: false,
+    width: 145,
+  },
+  {
+    key: "totalBonus",
+    label: "Total Bonu - PB and RB",
+    type: "currency",
+    editable: false,
+    computed: true,
+    fn: totalBonus,
+    width: 170,
+  },
+  {
+    key: "totalBonusHikeAmount",
+    label: "Total Bonus Hike Amount",
+    type: "currency",
+    editable: false,
+    computed: true,
+    fn: totalBonusHikeAmount,
     width: 180,
+  },
+  {
+    key: "targetPBNextYear",
+    label: "Target PB for Next Year",
+    type: "currency",
+    editable: true,
+    width: 170,
+  },
+  {
+
+  key: "targetPBCriteria",
+  label: "Target PB Criteria",
+  type: "text",
+  editable: true,
+  width: 165,
+},
+
+  
+  {
+    
+  key: "compManagerRemarks",
+  label: "Comp. Manager Remarks",
+  type: "textarea",
+  editable: true,
+  width: 190,
+
   },
   {
     key: "eligibleForPromotion",
@@ -490,14 +405,78 @@ export const COLUMNS = [
     type: "enum",
     editable: true,
     options: NEW_TITLES,
+    width: 150,
+  },
+  {
+    key: "totalCTCWithRewards",
+    label: "Total CTC with Rewards",
+    type: "currency",
+    editable: false,
+    computed: true,
+    fn: totalCTCWithRewards,
     width: 170,
+  },
+  {
+    key: "totalBonusHikePct",
+    label: "Total Bonus Hike%",
+    type: "percent",
+    editable: false,
+    computed: true,
+    fn: totalBonusHikePct,
+    width: 150,
+  },
+  {
+    key: "totalRewardsHikeAmount",
+    label: "Total Rewards Hike Amount",
+    type: "currency",
+    editable: false,
+    computed: true,
+    fn: totalRewardsHikeAmount,
+    width: 190,
+  },
+  {
+    key: "totalRewardsHikePct",
+    label: "Total Rewards Hike%",
+    type: "percent",
+    editable: false,
+    computed: true,
+    fn: totalRewardsHikePct,
+    width: 150,
   },
   {
     key: "atRisk",
     label: "At Risk",
     type: "textarea",
     editable: true,
-    width: 220,
+    width: 140,
+  },
+  {
+    key: "yoeRatio",
+    label: "YoE Ratio",
+    type: "decimal",
+    editable: false,
+    width: 100,
+  },
+  {
+    key: "costCenterClient",
+    label: "Cost Center/Client",
+    type: "text",
+    editable: false,
+    width: 160,
+  },
+  {
+    key: "clientManager",
+    label: "Client Manager Feedback",
+    type: "text",
+    editable: false,
+    width: 140,
+  },
+  {
+    key: "clientRating",
+    label: "Client Rating",
+    type: "text",
+    editable: false,
+    width: 130,
   },
 ];
 
@@ -688,8 +667,7 @@ export function buildEmployees(count = 250) {
 // FORMATTING
 // ============================================================
 
-export const inr = (n) =>
-  "₹" + Math.round(Number(n) || 0).toLocaleString("en-IN");
+export const inr = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
 
 export const pct = (n) => `${Number(n || 0).toFixed(1)}%`;
 
@@ -705,7 +683,17 @@ export function formatValue(row, col) {
   }
 
   if (col.type === "decimal") {
-    return Number(value || 0).toFixed(2);
+    return Number(value || 0).toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  }
+
+  if (col.type === "number") {
+    const number = Number(value);
+    return value === "" || value === null || value === undefined || !Number.isFinite(number)
+      ? String(value ?? "")
+      : number.toLocaleString("en-IN");
   }
 
   return String(value ?? "");

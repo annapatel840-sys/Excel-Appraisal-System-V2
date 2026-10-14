@@ -1,8 +1,34 @@
 "use strict";
 
-const catalyst = require("zcatalyst-sdk-node");
+/* ACCESS CONTROL: ./accessCore.js is a byte-for-byte copy of
+   functions/accessapi/accessCore.js and MUST stay identical to it
+   (every Catalyst function deploys separately). Edit the accessapi copy,
+   then copy it here. See docs/ACCESS_SPEC.md. */
 
-const PAYROLL_DATA_TABLE_ID = "71873000000020833";
+const catalyst = require("zcatalyst-sdk-node");
+const access = require("./accessCore");
+
+const PAYROLL_DATA_TABLE_ID = "74008000000035326";
+const APPRAISAL_CYCLE_TABLE_ID = "74008000000034190";
+
+/*
+ * CHANGED: name of the parent (employee) table that Payroll_Data.emp_id
+ * points to. Used only to translate "EMP001" -> that row's ROWID, because a
+ * foreign-key column stores the ROWID and not the text id.
+ * If your table is named differently, change it here. If the lookup fails
+ * for any reason, the function falls back to plain emp_id matching.
+ */
+const EMPLOYEE_TABLE_CANDIDATES = [
+  process.env.EMPLOYEE_TABLE_NAME || "Employee_Master",
+  "Employee_Master",
+  "Employee",
+  "Employees",
+  "Employee_Details",
+  "Employee_Data",
+].filter((name, index, list) => name && list.indexOf(name) === index);
+
+// Text columns on the employee table that may hold "EMP001".
+const EMPLOYEE_ID_COLUMNS = ["emp_id", "employee_id", "emp_code"];
 
 const DATASTORE_PAGE_SIZE = 200;
 
@@ -84,15 +110,258 @@ const ALLOWED_FIELDS = [
   "hike_pct",
   "promotion",
   "title",
-  "target_performance_bonus",
+  "target_performance_agreed",
   "new_ctc",
   "manager_rating",
   "rating",
 ];
 
 /* ============================================================
+ACCESS CONTROL (docs/ACCESS_SPEC.md)
+
+GET   ?emp_id → view on appraisalSheet / detailScreen / dashboard, emp_id
+               in scope; enforced: history columns of hidden fields removed.
+PATCH        → edit on appraisalSheet / detailScreen, emp_id in scope and
+               every changed history column editable (see HISTORY_FIELDS).
+Dry run (ACCESS_ENFORCE != 'true'): legacy behaviour, refusals only logged.
+============================================================ */
+
+const READ_SCREENS = ["appraisalSheet", "detailScreen", "dashboard"];
+const EDIT_SCREENS = ["appraisalSheet", "detailScreen"];
+
+/*
+ * Payroll_Data (history) column → Appraisal grid field whose access limit
+ * applies. Same mapping the frontend uses to write history
+ * (src/lib/appraisal-store.jsx REACT_TO_HISTORY_FIELD, and DetailScreen's
+ * HISTORY_FIELD for new_ctc). Columns not listed (e.g. rating) only need
+ * appraisalSheet edit.
+ */
+const HISTORY_FIELDS = {
+  base_pay: "currentAnnualBasePay",
+  allocated_pb: "targetPBAllocatedForMay",
+  allocated_pb_installment: "pbInstallment",
+  performance_bonus: "pbToBePaid",
+  performance_bonus_installment: "newPBInstallment",
+  retention_bonus: "newRB",
+  total_pb: "totalOfPB",
+  total_bonus: "totalBonus",
+  hike_amount: "hikeAmount",
+  hike_pct: "hikePct",
+  promotion: "eligibleForPromotion",
+  title: "newTitle",
+  target_performance_agreed: "targetPBNextYear",
+  new_ctc: "totalCTCWithRewards",
+  manager_rating: "managerRating",
+};
+
+const FIELD_KIND = Object.fromEntries(
+  access.START_CATALOG.filter((c) => c.type === "field").map((c) => [
+    c.key,
+    c.kind,
+  ]),
+);
+
+async function checkAccess(req) {
+  const userApp = catalyst.initialize(req);
+  const adminApp = catalyst.initialize(req, { scope: "admin" });
+
+  try {
+    return await access.check(userApp, adminApp);
+  } catch (error) {
+    if (access.isEnforced()) throw error;
+    // Dry run must never change legacy behaviour, even if access data is unreadable.
+    console.log("ACCESS dry-run: access check failed:", error && error.message);
+    return { dryRun: true, enforced: false, denied: error };
+  }
+}
+
+function requireAnyScreen(a, keys, level) {
+  const ok = keys.some((key) => {
+    try {
+      access.requireScreen(a, key, level);
+      return true;
+    } catch (error) {
+      if (error instanceof access.HttpError) return false;
+      throw error;
+    }
+  });
+
+  if (!ok) {
+    throw new access.HttpError(403, "You do not have access to this screen.");
+  }
+}
+
+function requireInScope(a, empId, allowOwnRead = false) {
+  const requestedId = String(empId || "").trim().toUpperCase();
+  const signedInId = String(a?.user?.empId || "").trim().toUpperCase();
+
+  // A Tech-Ed user may read their own historical appraisal record, even though
+  // the team scope intentionally excludes the manager's own employee row.
+  // This exception is for GET only; PATCH still requires normal team scope.
+  if (allowOwnRead && requestedId && signedInId && requestedId === signedInId) {
+    return;
+  }
+
+  if (!access.inScope(a, empId)) {
+    throw new access.HttpError(
+      403,
+      "You do not have access to employee " + empId + ".",
+    );
+  }
+}
+
+/*
+ * input / pair field → must be 'edit';
+ * calc field (derived totals written with their inputs) → not hidden;
+ * master / upload field → HR master data (employeeMaster edit);
+ * unmapped column → appraisalSheet edit.
+ */
+function requireEditableHistoryColumns(a, columns) {
+  const bad = [];
+  let needsMaster = false;
+  let needsSheet = false;
+
+  columns.forEach((column) => {
+    const key = HISTORY_FIELDS[column];
+
+    if (!key) {
+      needsSheet = true;
+      return;
+    }
+
+    const kind = FIELD_KIND[key];
+    const limit = a.fields && a.fields[key];
+
+    if (kind === "calc") {
+      if (limit === "hidden") bad.push(column);
+      return;
+    }
+
+    if (kind === "master" || kind === "upload") {
+      needsMaster = true;
+      if (limit === "hidden") bad.push(column);
+      return;
+    }
+
+    if (limit !== "edit") bad.push(column);
+  });
+
+  if (bad.length) {
+    throw new access.HttpError(403, "You cannot edit: " + bad.join(", ") + ".");
+  }
+
+  if (needsSheet) access.requireScreen(a, "appraisalSheet", "edit");
+
+  if (needsMaster) {
+    try {
+      access.requireScreen(a, "employeeMaster", "edit");
+    } catch (error) {
+      if (!(error instanceof access.HttpError)) throw error;
+      throw new access.HttpError(
+        403,
+        "Only HR (Employee Master edit) can change: " +
+          columns
+            .filter((c) => {
+              const kind = FIELD_KIND[HISTORY_FIELDS[c]];
+              return kind === "master" || kind === "upload";
+            })
+            .join(", ") +
+          ".",
+      );
+    }
+  }
+}
+
+function shapeHistoryRow(a, row) {
+  const out = {};
+
+  Object.keys(row).forEach((column) => {
+    const key = HISTORY_FIELDS[column];
+    if (key && a.fields && a.fields[key] === "hidden") return;
+    out[column] = row[column];
+  });
+
+  return out;
+}
+
+/* ============================================================
 GET ALL PREVIOUS APPRAISAL RECORDS
 ============================================================ */
+
+const getAllRowsFromTable = async (table) => {
+  const allRows = [];
+  let nextToken;
+  while (true) {
+    const options = { maxRows: DATASTORE_PAGE_SIZE };
+    if (nextToken) options.nextToken = nextToken;
+    const result = await table.getPagedRows(options);
+    const rows = Array.isArray(result?.data) ? result.data : [];
+    allRows.push(...rows);
+    if (result?.more_records !== true || !result?.next_token) break;
+    nextToken = result.next_token;
+  }
+  return allRows;
+};
+
+const cycleLookupId = (value) => {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
+    return String(value.ROWID ?? value.rowid ?? value.id ?? value.value ?? "").trim();
+  }
+  return String(value).trim();
+};
+
+const withAppraisalCycleNames = async (app, records) => {
+  const cycleTable = app.datastore().table(APPRAISAL_CYCLE_TABLE_ID);
+  const cycleNames = new Map();
+
+  // Always read the Appraisal_Cycle_Master rows and build a ROWID -> cycle_name
+  // map. Payroll_Data.appraisal_cycle_name stores the master ROWID, not its name.
+  let cycleRows = [];
+  try {
+    cycleRows = await getAllRowsFromTable(cycleTable);
+  } catch (error) {
+    console.error("Could not read Appraisal Cycle Master rows:", error?.message || error);
+    return records;
+  }
+  for (const cycle of cycleRows) {
+    const id = String(cycle.ROWID ?? cycle.rowid ?? cycle.id ?? cycle.ID ?? "").trim();
+    const name = String(
+      cycle.cycle_name ?? cycle.cycleName ?? cycle.CYCLE_NAME ??
+      cycle.name ?? cycle.appraisal_year ?? cycle.appraisalYear ?? ""
+    ).trim();
+    if (id && name) cycleNames.set(id, name);
+  }
+
+  const getForeignKeyId = (value) => {
+    if (value === null || value === undefined) return "";
+    if (typeof value === "object") {
+      const directId = value.ROWID ?? value.rowid ?? value.id ?? value.ID;
+      if (directId !== undefined && directId !== null) return String(directId).trim();
+      for (const key of ["value", "appraisal_cycle_name", "cycle_name"]) {
+        const nested = getForeignKeyId(value[key]);
+        if (nested) return nested;
+      }
+      return "";
+    }
+    const text = String(value).trim();
+    return /^\d+$/.test(text) ? text : "";
+  };
+
+  return records.map((record) => {
+    const raw = record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name;
+    const id = getForeignKeyId(raw);
+    const resolvedName = id ? cycleNames.get(id) : "";
+    const rawText = typeof raw === "string" && !/^\d+$/.test(raw.trim())
+      ? raw.trim()
+      : "";
+    return {
+      ...record,
+      appraisal_cycle_name: resolvedName || rawText,
+      appraisalCycleName: resolvedName || rawText,
+    };
+  });
+};
 
 const getAllPreviousAppraisalRecords = async (table) => {
   let allRecords = [];
@@ -145,18 +414,228 @@ const getAllPreviousAppraisalRecords = async (table) => {
 GET HISTORY FOR EMPLOYEE
 ============================================================ */
 
-const getHistory = async (table, empId) => {
+// History imports may store either the bare employee ID (EMP001) or the
+// display value ("EMP001 - Employee Name"). Match on the stable ID portion.
+const normalizeHistoryEmpId = (value) =>
+  String(value == null ? "" : value)
+    .trim()
+    .split(/\s+-\s+/, 1)[0]
+    .trim()
+    .toUpperCase();
+
+// Catalyst foreign-key values can be returned as a ROWID string/number or
+// as an object containing the referenced row. Normalize all supported shapes.
+const historyEmployeeKeys = (value) => {
+  const keys = new Set();
+  const add = (candidate) => {
+    if (candidate === null || candidate === undefined || candidate === "") return;
+    if (typeof candidate === "string" || typeof candidate === "number") {
+      const key = normalizeHistoryEmpId(candidate);
+      if (key) keys.add(key);
+      return;
+    }
+    if (Array.isArray(candidate)) {
+      candidate.forEach(add);
+      return;
+    }
+    if (typeof candidate === "object") {
+      ["ROWID", "rowid", "emp_id", "employee_id", "id", "value"].forEach((key) => {
+        if (candidate[key] !== undefined) add(candidate[key]);
+      });
+    }
+  };
+  add(value);
+  return keys;
+};
+
+/*
+ * CHANGED (new): Payroll_Data.emp_id is a foreign key, so the stored value may
+ * be the parent row's ROWID instead of "EMP001". Build the set of values that
+ * identify this employee: the text id, plus the parent ROWID when it can be
+ * looked up. Never throws — falls back to the text id alone.
+ */
+// Remembers which employee table/column worked so later calls try it first.
+let knownEmployeeSource = null;
+let employeeLookup = { table: "", column: "", error: "" };
+
+const resolveEmpKeys = async (app, empId) => {
+  const keys = new Set([normalizeHistoryEmpId(empId)]);
+
+  const safeId = String(empId || "")
+    .trim()
+    .split(/\s+-\s+/, 1)[0]
+    .trim()
+    .replace(/'/g, "''");
+
+  const attempts = [];
+
+  if (knownEmployeeSource) attempts.push(knownEmployeeSource);
+
+  EMPLOYEE_TABLE_CANDIDATES.forEach((table) => {
+    EMPLOYEE_ID_COLUMNS.forEach((column) => {
+      attempts.push({ table, column });
+    });
+  });
+
+  const errors = [];
+  employeeLookup = { table: "", column: "", error: "" };
+
+  for (const attempt of attempts) {
+    try {
+      const result = await app
+        .zcql()
+        .executeZCQLQuery(
+          "SELECT ROWID FROM " +
+            attempt.table +
+            " WHERE " +
+            attempt.column +
+            " = '" +
+            safeId +
+            "'",
+        );
+
+      const list = Array.isArray(result) ? result : [];
+
+      list.forEach((item) => {
+        const row =
+          (item && item[attempt.table]) ||
+          (item && Object.values(item)[0]) ||
+          {};
+
+        if (row.ROWID) {
+          keys.add(normalizeHistoryEmpId(row.ROWID));
+        }
+      });
+
+      if (list.length) {
+        // Keep ROWIDs from every matching employee table. Payroll_Data.emp_id
+        // may reference Employees or Employee_Master depending on how the FK
+        // was configured; stopping at the first match can hide valid history.
+        knownEmployeeSource = attempt;
+        employeeLookup = {
+          table: employeeLookup.table
+            ? employeeLookup.table + ", " + attempt.table
+            : attempt.table,
+          column: employeeLookup.column
+            ? employeeLookup.column + ", " + attempt.column
+            : attempt.column,
+          error: "",
+        };
+      }
+    } catch (error) {
+      errors.push(
+        attempt.table +
+          "." +
+          attempt.column +
+          ": " +
+          String((error && error.message) || error).slice(0, 80),
+      );
+    }
+  }
+
+  if (!employeeLookup.table) {
+    employeeLookup.error =
+      errors.slice(0, 6).join(" | ") || "no employee row matched " + safeId;
+    console.warn("Employee ROWID lookup failed:", employeeLookup.error);
+  }
+
+  console.log(
+    "History emp keys for",
+    empId,
+    ":",
+    Array.from(keys),
+    "via",
+    employeeLookup.table || "(text id only)",
+  );
+
+  return keys;
+};
+
+/*
+ * CHANGED (new): older payroll rows may only have the original Payroll_Data
+ * column names. Fill the names the grid reads from them when the history
+ * columns are empty. Existing values are never overwritten.
+ */
+const withHistoryAliases = (record) => {
+  const pick = (primary, fallback) =>
+    record[primary] !== undefined &&
+    record[primary] !== null &&
+    record[primary] !== ""
+      ? record[primary]
+      : record[fallback];
+
+  return {
+    ...record,
+    appraisal_year: pick("appraisal_year", "fy_year"),
+    base_pay: pick("base_pay", "current_annual_base_pay"),
+    new_ctc: pick("new_ctc", "total_CTC_with_rewards"),
+    target_performance_bonus: pick("target_performance_bonus","target_performance_agreed",),
+    new_base_pay: record.new_base_pay,
+    joining_bonus: record.joining_bonus,
+    performance_bonus: record.performance_bonus,
+    retention_bonus: record.retention_bonus,
+    total_bonus: record.total_bonus,
+    hike_amount: record.hike_amount,
+    hike_pct: record.hike_pct,
+  };
+};
+
+const countBy = (records, fn) => {
+  const counts = {};
+
+  records.forEach((record) => {
+    const value = fn(record);
+    const key = String(value === null || value === undefined ? "" : value);
+    counts[key] = (counts[key] || 0) + 1;
+  });
+
+  return counts;
+};
+
+/*
+ * `diag` (optional object) is filled with what the table really contains, so
+ * a missing-history problem can be read straight from the normal response
+ * (meta field, HR / dry-run only). Safe to delete once history works.
+ */
+const getHistory = async (app, table, empId, diag) => {
   const allRecords = await getAllPreviousAppraisalRecords(table);
+  const wantedKeys = await resolveEmpKeys(app, empId);
 
   const history = allRecords
-    .filter((record) => String(record.emp_id || "").trim() === empId)
-    .sort((a, b) =>
-      String(b.appraisal_year || "").localeCompare(
-        String(a.appraisal_year || ""),
-      ),
-    );
+    .filter((record) => {
+      const recordKeys = historyEmployeeKeys(record.emp_id);
+      return Array.from(recordKeys).some((key) => wantedKeys.has(key));
+    })
+    .map(withHistoryAliases)
+    .sort((a, b) => {
+      const yearOrder = (value) => {
+        const year = String(value || "").trim();
+        const fiscal = year.match(/(\d{4})\s*[-/–]\s*(\d{2,4})/);
+        if (fiscal) return Number(fiscal[2].length === 2 ? `20${fiscal[2]}` : fiscal[2]);
+        const full = year.match(/(?:19|20)\d{2}/);
+        if (full) return Number(full[0]);
+        const short = year.match(/(?:Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar)[-\s](\d{2})/i);
+        return short ? Number(`20${short[1]}`) : 0;
+      };
+      return yearOrder(b.appraisal_year) - yearOrder(a.appraisal_year) ||
+        String(b.appraisal_year || "").localeCompare(String(a.appraisal_year || ""));
+    });
 
   console.log("History records for", empId, ":", history.length);
+
+  if (diag) {
+    diag.keysTriedForMatching = Array.from(wantedKeys);
+    diag.employeeLookup = employeeLookup;
+    diag.totalRowsInPayrollData = allRecords.length;
+    diag.matchedRows = history.length;
+    diag.matchedYears = history.map((r) => r.appraisal_year);
+    diag.columnsInFirstRow = allRecords[0] ? Object.keys(allRecords[0]) : [];
+    diag.rowsPerEmpIdValue = Object.fromEntries(
+      Object.entries(countBy(allRecords, (r) => r.emp_id)).slice(0, 40),
+    );
+    diag.rowsPerAppraisalYear = countBy(allRecords, (r) => r.appraisal_year);
+    diag.rowsPerFyYear = countBy(allRecords, (r) => r.fy_year);
+  }
 
   return history;
 };
@@ -181,13 +660,17 @@ const buildUpdateData = (body) => {
 FIND CURRENT YEAR RECORD
 ============================================================ */
 
-const findHistoryRecord = async (table, empId, appraisalYear) => {
+const findHistoryRecord = async (app, table, empId, appraisalYear) => {
   const allRecords = await getAllPreviousAppraisalRecords(table);
+
+  // CHANGED: match on the same employee keys as GET (text id or ROWID).
+  const wantedKeys = await resolveEmpKeys(app, empId);
 
   return allRecords.find(
     (item) =>
-      String(item.emp_id || "").trim() === empId &&
-      String(item.appraisal_year || "").trim() === appraisalYear,
+      wantedKeys.has(normalizeHistoryEmpId(item.emp_id)) &&
+      String(item.appraisal_year || item.fy_year || "").trim() ===
+        appraisalYear,
   );
 };
 
@@ -213,25 +696,104 @@ const updateExistingHistory = async (table, record, updateData) => {
 /* ============================================================
 CREATE HISTORY RECORD IF MISSING
 ============================================================ */
+const resolveEmployeeMasterRowId = async (app, empId) => {
+  const safeEmpId = String(empId || "")
+    .trim()
+    .split(/\s+-\s+/, 1)[0]
+    .trim()
+    .replace(/'/g, "''");
 
-const createHistoryRecord = async (table, empId, appraisalYear, updateData) => {
+  if (!safeEmpId) {
+    throw new Error("Employee ID is required to create history.");
+  }
+
+  const columns = ["emp_id", "employee_id", "emp_code"];
+
+  for (const column of columns) {
+    try {
+      const result = await app
+        .zcql()
+        .executeZCQLQuery(
+          "SELECT ROWID FROM Employee_Master WHERE " +
+            column +
+            " = '" +
+            safeEmpId +
+            "'"
+        );
+
+      const rows = Array.isArray(result) ? result : [];
+
+      for (const item of rows) {
+        const row =
+          item?.Employee_Master || Object.values(item || {})[0] || {};
+
+        const rowId = row.ROWID ?? row.rowid;
+
+        if (rowId !== undefined && rowId !== null) {
+          return String(rowId);
+        }
+      }
+    } catch (error) {
+      console.warn(
+        "Employee_Master lookup using " + column + " failed:",
+        error?.message || error
+      );
+    }
+  }
+
+  throw new Error(
+    "Could not find Employee_Master ROWID for employee " + safeEmpId
+  );
+};
+
+const createHistoryRecord = async (
+  app,
+  table,
+  empId,
+  appraisalYear,
+  updateData
+) => {
+  const employeeRowId = await resolveEmployeeMasterRowId(app, empId);
+
   const payload = {
-    emp_id: empId,
-    appraisal_year: appraisalYear,
+    emp_id: employeeRowId,
+    fy_year: appraisalYear,
     ...updateData,
   };
 
   console.log(
     "Payroll_Data insertRows payload:",
-    JSON.stringify(payload),
+    JSON.stringify(payload)
   );
 
   const result = await table.insertRows([payload]);
 
-  console.log("Payroll_Data insertRows result:", JSON.stringify(result));
+  console.log(
+    "Payroll_Data insertRows result:",
+    JSON.stringify(result)
+  );
 
   return Array.isArray(result) ? result[0] : result;
 };
+
+// const createHistoryRecord = async (table, empId, appraisalYear, updateData) => {
+//   const payload = {
+//     emp_id: empId,
+//     appraisal_year: appraisalYear,
+//     ...updateData,
+//   };
+
+//   console.log(
+//     "Payroll_Data insertRows payload:",
+//     JSON.stringify(payload),
+//   );
+
+//   const result = await table.insertRows([payload]);
+
+//   console.log("Payroll_Data insertRows result:", JSON.stringify(result));
+
+//   return Array.isArray(result) ? result[0] : result;
+// };
 
 /* ============================================================
 MAIN API
@@ -259,6 +821,12 @@ module.exports = async (req, res) => {
 
   try {
     /* --------------------------------------------------------
+    ACCESS (enforced → 401/403; dry run → never refuses)
+    -------------------------------------------------------- */
+
+    const a = await checkAccess(req);
+
+    /* --------------------------------------------------------
     INITIALIZE CATALYST
     -------------------------------------------------------- */
 
@@ -282,6 +850,8 @@ module.exports = async (req, res) => {
 
       console.log("GET emp_id:", empId);
 
+      access.guard(a, () => requireAnyScreen(a, READ_SCREENS, "view"));
+
       if (!empId) {
         sendJson(res, 400, {
           success: false,
@@ -290,13 +860,28 @@ module.exports = async (req, res) => {
         return;
       }
 
-      const history = await getHistory(table, empId);
+      access.guard(a, () => requireInScope(a, empId, true));
+
+      // HR / dry-run only: include what the table contains (see getHistory).
+      const diag = !a.enforced || a.role === "hr" ? {} : null;
+
+      const history = await getHistory(app, table, empId, diag);
+      const cycleLookupApp = catalyst.initialize(req, { scope: "admin" });
+      const namedHistory = await withAppraisalCycleNames(cycleLookupApp, history).catch((error) => {
+        console.error("Appraisal cycle-name lookup failed; returning history without cycle-name enrichment:", error?.message || error);
+        return history;
+      });
+
+      const data = a.enforced
+        ? namedHistory.map((row) => shapeHistoryRow(a, row))
+        : namedHistory;
 
       sendJson(res, 200, {
         success: true,
         emp_id: empId,
-        count: history.length,
-        data: history,
+        count: data.length,
+        data: data,
+        ...(diag ? { meta: diag } : {}),
       });
 
       return;
@@ -307,6 +892,8 @@ module.exports = async (req, res) => {
     ======================================================== */
 
     if (req.method === "PATCH") {
+      access.guard(a, () => requireAnyScreen(a, EDIT_SCREENS, "edit"));
+
       const body = await readRequestBody(req);
 
       console.log("PATCH BODY:", JSON.stringify(body));
@@ -370,6 +957,11 @@ module.exports = async (req, res) => {
         return;
       }
 
+      access.guard(a, () => {
+        requireInScope(a, empId);
+        requireEditableHistoryColumns(a, Object.keys(updateData));
+      });
+
       /* ------------------------------------------------------
       FIND EXISTING RECORD
       ------------------------------------------------------ */
@@ -377,6 +969,7 @@ module.exports = async (req, res) => {
       console.log("Searching Payroll_Data for:", empId, appraisalYear);
 
       const existingRecord = await findHistoryRecord(
+        app,
         table,
         empId,
         appraisalYear,
@@ -411,27 +1004,20 @@ module.exports = async (req, res) => {
       }
 
       /* ------------------------------------------------------
-      CREATE RECORD IF IT DOES NOT EXIST
+      NO EXISTING RECORD: DO NOT CREATE ONE
+      (CHANGED: creating a row here produced a duplicate "Apr-26" row in
+      the History panel. createHistoryRecord is kept above, unused.)
       ------------------------------------------------------ */
 
-      console.log("No Payroll_Data record found.");
-
-      console.log("Creating new history record for:", empId, appraisalYear);
-
-      const createdRecord = await createHistoryRecord(
-        table,
-        empId,
-        appraisalYear,
-        updateData,
-      );
+      console.log("No Payroll_Data record found; not creating one.");
 
       sendJson(res, 200, {
         success: true,
-        action: "created",
+        action: "skipped",
         emp_id: empId,
         appraisal_year: appraisalYear,
-        message: "Payroll_Data history created successfully.",
-        data: createdRecord,
+        message: "No matching history record; nothing created.",
+        data: null,
       });
 
       return;
@@ -446,6 +1032,15 @@ module.exports = async (req, res) => {
       message: "Only GET, PATCH and OPTIONS methods are allowed.",
     });
   } catch (error) {
+    if (error instanceof access.HttpError) {
+      sendJson(res, error.status || 403, {
+        success: false,
+        message: error.message,
+        enforced: true,
+      });
+      return;
+    }
+
     console.error("================================================");
 
     console.error("APPRAISAL HISTORY API ERROR");

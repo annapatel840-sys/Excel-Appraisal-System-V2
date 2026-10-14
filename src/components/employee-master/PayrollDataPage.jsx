@@ -1,117 +1,54 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { useAccess } from "@/lib/access-store";
 
-const COLS = [
-  { key: "empId", label: "Employee ID", type: "text", frozen: true },
-  { key: "cycle", label: "Cycle", type: "text" },
-  { key: "empName", label: "Employee Name", type: "text", cat: "master" },
-  { key: "designation", label: "Designation", type: "text", cat: "master" },
-  { key: "compManager", label: "Compensation Manager", type: "text", cat: "master" },
-  { key: "superManager", label: "Super Manager", type: "text", cat: "master" },
-  { key: "managerMail", label: "Manager Email", type: "text", cat: "master" },
-  {
-    key: "basePay",
-    label: "Base Pay",
-    type: "number",
-    cat: "master",
-    money: true,
-  },
-  {
-    key: "basePay_yoy",
-    label: "YoY %",
-    type: "number",
-    cat: "calc",
-    isYoy: true,
-    baseKey: "basePay",
-  },
-  {
-    key: "targetPB",
-    label: "Target PB",
-    type: "number",
-    cat: "master",
-    money: true,
-  },
-  {
-    key: "allocPB",
-    label: "Allocated PB",
-    type: "number",
-    cat: "input",
-    money: true,
-  },
-  {
-    key: "newPB",
-    label: "New PB",
-    type: "number",
-    cat: "input",
-    money: true,
-  },
-  { key: "newRB", label: "New Retention Bonus", type: "number", cat: "input", money: true },
-  {
-    key: "hikeAmt",
-    label: "Hike Amount",
-    type: "number",
-    cat: "input",
-    money: true,
-  },
-  { key: "promo", label: "Promotion", type: "text", cat: "input" },
-  { key: "newTitle", label: "New Title", type: "text", cat: "input" },
-  {
-    key: "totalPB",
-    label: "Total PB",
-    type: "number",
-    cat: "calc",
-    money: true,
-    computed: true,
-  },
-  {
-    key: "totalBonus",
-    label: "Total Bonus",
-    type: "number",
-    cat: "calc",
-    money: true,
-    computed: true,
-  },
-  {
-    key: "totalBonus_yoy",
-    label: "YoY %",
-    type: "number",
-    cat: "calc",
-    isYoy: true,
-    baseKey: "totalBonus",
-  },
-  {
-    key: "hikePct",
-    label: "Hike %",
-    type: "number",
-    cat: "calc",
-    pct: true,
-    computed: true,
-  },
-  {
-    key: "newBasePay",
-    label: "New Base Pay",
-    type: "number",
-    cat: "calc",
-    money: true,
-    computed: true,
-  },
-  {
-    key: "totalCtc",
-    label: "Total CTC",
-    type: "number",
-    cat: "calc",
-    money: true,
-    computed: true,
-  },
-  {
-    key: "totalCtc_yoy",
-    label: "YoY %",
-    type: "number",
-    cat: "calc",
-    isYoy: true,
-    baseKey: "totalCtc",
-  },
-];
+const STATIC_COL_META = {
+  emp_id: { label: "Employee ID", frozen: true },
+  emp_name: { label: "Employee Name" },
+  appraisal_cycle_name: { label: "Appraisal Cycle Name" },
+  fy_year: { label: "FY Year" },
+  basePay: { label: "Current Annual Base Pay", type: "number", money: true },
+  joiningBonus: { label: "Joining Bonus", type: "number", money: true },
+  performanceBonus: { label: "Performance Bonus", type: "number", money: true },
+  retentionBonus: { label: "Retention Bonus", type: "number", money: true },
+  hikePct: { label: "Hike%", type: "number", pct: true },
+  hikeAmt: { label: "Hike Amount", type: "number", money: true },
+  totalCtcRewards: { label: "Total CTC with Rewards", type: "number", money: true },
+  totalRewardHikeAmt: { label: "Total Reward Hike Amount", type: "number", money: true },
+  totalRewardHikePct: { label: "Total Reward Hike%", type: "number", pct: true },
+  targetPerformanceAgreed: { label: "Target Performance Agreed", type: "number", money: true },
+  totalBonus: { label: "Total Bonus", type: "number", money: true },
+  newBasePay: { label: "New Base Pay", type: "number", money: true },
+  rbPaid: { label: "RB to be paid", type: "number", money: true },
+  rbMonth: { label: "Month(RB)" },
+  pbPaid: { label: "PB to be paid", type: "number", money: true },
+  pbMonth: { label: "Month(PB)" },
+  tbPaid: { label: "TB to be paid", type: "number", money: true },
+  tbMonth: { label: "Month(TB)" },
+};
+
+function schemaLabel(name) {
+  return String(name || "").replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function buildColumnsFromSchema(schema) {
+  const hidden = new Set(["ROWID", "CREATORID", "CREATEDTIME", "MODIFIEDTIME", "appraisal_cycle_id", "source_batch", "source_file"]);
+  const schemaMap = new Map((schema?.columns || []).map((column) => [column.name, column]));
+  return Object.keys(STATIC_COL_META).map((key) => {
+    const column = schemaMap.get(key);
+    if (column && hidden.has(column.name)) return null;
+    const meta = STATIC_COL_META[key];
+    const type = column && /int|decimal|double|float|number|numeric|bigint/.test(column.type || "") ? "number" : "text";
+    return {
+      key,
+      label: meta.label,
+      type: meta.type || type,
+      frozen: meta.frozen,
+      money: meta.money,
+      pct: meta.pct,
+    };
+  }).filter(Boolean);
+}
 
 const NUMBER_OPS = [
   { v: "gt", l: "Greater than" },
@@ -158,7 +95,7 @@ function priorRecordFor(rec, priorMap) {
   return priorMap?.get(rec) || null;
 }
 function fmtMoney(v) {
-  return v == null ? "—" : "₹" + Math.round(v).toLocaleString("en-IN");
+  return v == null ? "—" : Math.round(v).toLocaleString("en-IN");
 }
 function yoyPctFor(r, baseKey, priorMap) {
   const prior = priorRecordFor(r, priorMap);
@@ -177,7 +114,7 @@ function displayValueFor(r, col, priorMap) {
   if (col.isYoy)
     return val == null ? "new" : (val >= 0 ? "+" : "") + val.toFixed(2) + "%";
   if (col.money) return fmtMoney(val);
-  if (col.pct) return val.toFixed(2) + "%";
+  if (col.pct) return val == null || val === "" || Number.isNaN(Number(val)) ? "—" : Number(val).toFixed(2) + "%";
   return val == null || val === "" ? "" : String(val);
 }
 
@@ -390,9 +327,11 @@ function ColumnFilterPopover({
    ============================================================ */
 
 export function PayrollDataPage() {
+  const canAudit = useAccess().canAction("viewAudit");
   const [stored, setStored] = useState([]);
   const [audit, setAudit] = useState([]);
   const [cycles, setCycles] = useState([]);
+  const [schema, setSchema] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [reloadToken, setReloadToken] = useState(0);
@@ -414,12 +353,15 @@ export function PayrollDataPage() {
       payrollCycleRequest("payroll"),
       payrollCycleRequest("audit"),
       payrollCycleRequest("cycles"),
+      payrollCycleRequest("schema"),
     ])
-      .then(([payroll, auditRows, cycleRows]) => {
+      .then(([payroll, auditRows, cycleRows, schemaData]) => {
         if (!active) return;
         setStored(payroll);
         setAudit(auditRows);
         setCycles(cycleRows);
+        const payrollSchema = Array.isArray(schemaData) ? schemaData.find((item) => String(item.name).toLowerCase() === "payroll") : null;
+        setSchema(payrollSchema || null);
         setLoadError("");
       })
       .catch((error) => {
@@ -448,6 +390,8 @@ export function PayrollDataPage() {
     () => Array.from(new Set(stored.map((r) => r.batch))),
     [stored],
   );
+
+  const COLS = useMemo(() => buildColumnsFromSchema(schema), [schema]);
 
   const colByKey = (key) => COLS.find((c) => c.key === key);
 
@@ -520,7 +464,7 @@ export function PayrollDataPage() {
       const vals = COLS.map((col) => {
         const val = rawValueFor(r, col, priorMap);
         if (col.money) return val == null ? "" : Math.round(val);
-        if (col.pct) return val == null ? "" : val.toFixed(2) + "%";
+        if (col.pct) return val == null || val === "" || Number.isNaN(Number(val)) ? "" : Number(val).toFixed(2) + "%";
         return val ?? "";
       });
       lines.push(vals.map(csvCell).join(","));
@@ -558,9 +502,9 @@ export function PayrollDataPage() {
 
       <div className="pd-topbar">
         <div>
-          <h1>Payroll Data</h1>
+          <h1>Payroll Master</h1>
           <p className="pd-sub">
-            Stored Master + Input data, plus derived Calculated fields and YoY.
+            Entry and calculated pay values only.
           </p>
         </div>
         <div className="pd-stat">
@@ -613,16 +557,18 @@ export function PayrollDataPage() {
               >
                 <span className="pd-menu-icon">↧</span>Export to CSV
               </button>
-              <button
-                className="pd-menu-item"
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  setAuditOpen(true);
-                }}
-              >
-                <span className="pd-menu-icon">⏱</span>Audit Trail
-              </button>
+              {canAudit && (
+                <button
+                  className="pd-menu-item"
+                  type="button"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setAuditOpen(true);
+                  }}
+                >
+                  <span className="pd-menu-icon">⏱</span>Audit Trail
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -694,7 +640,7 @@ export function PayrollDataPage() {
                   }
                   let display;
                   if (col.money) display = fmtMoney(val);
-                  else if (col.pct) display = val.toFixed(2) + "%";
+                  else if (col.pct) display = val == null || val === "" || Number.isNaN(Number(val)) ? "—" : Number(val).toFixed(2) + "%";
                   else display = val == null || val === "" ? "—" : val;
 
                   const cls =
@@ -776,7 +722,7 @@ export function PayrollDataPage() {
         >
           <div className="pd-modal" onClick={(e) => e.stopPropagation()}>
             <div className="pd-modal-head">
-              <h2>Audit Trail — Payroll Data</h2>
+              <h2>Audit Trail — Payroll Master</h2>
               <span className="pd-x" onClick={() => setAuditOpen(false)}>
                 ✕
               </span>

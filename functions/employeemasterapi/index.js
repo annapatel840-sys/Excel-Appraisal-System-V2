@@ -1,13 +1,19 @@
 "use strict";
 
+/* ACCESS CONTROL: ./accessCore.js is a byte-for-byte copy of
+   functions/accessapi/accessCore.js and MUST stay identical to it
+   (every Catalyst function deploys separately). Edit the accessapi copy,
+   then copy it here. See docs/ACCESS_SPEC.md. */
+
 const catalyst = require("zcatalyst-sdk-node");
+const access = require("./accessCore");
 
 // ============================================================
 // TABLE IDs
 // ============================================================
 
-const EMPLOYEE_MASTER_TABLE_ID = "71873000000020438";
-const EMPLOYEES_TABLE_ID = "71873000000020001";
+const EMPLOYEE_MASTER_TABLE_ID = "74008000000035727";
+const EMPLOYEES_TABLE_ID = "74008000000039094";
 // ============================================================
 // TABLE NAME
 // ============================================================
@@ -40,6 +46,42 @@ function sendJson(res, statusCode, payload) {
   res.statusCode = statusCode;
   res.setHeader("Content-Type", "application/json");
   res.end(JSON.stringify(payload));
+}
+
+// ============================================================
+// ACCESS CONTROL (docs/ACCESS_SPEC.md)
+//
+// Employee_Master is HR master data: GET = view, writes = edit on the
+// HR-only screen 'employeeMaster'. No non-HR screen in src/ calls this
+// function (the roster / eligibility pages read through employeesapi).
+// Dry run (ACCESS_ENFORCE != 'true'): legacy behaviour, refusals only logged.
+// Every write raises the access version (Employee_Master drives identity).
+// ============================================================
+
+async function checkAccess(req) {
+  const userApp = catalyst.initialize(req);
+  const adminApp = catalyst.initialize(req, { scope: "admin" });
+
+  try {
+    return await access.check(userApp, adminApp);
+  } catch (error) {
+    if (access.isEnforced()) throw error;
+    // Dry run must never change legacy behaviour, even if access data is unreadable.
+    console.log("ACCESS dry-run: access check failed:", error && error.message);
+    return { dryRun: true, enforced: false, denied: error };
+  }
+}
+
+async function bumpAccessVersion(req, a, why) {
+  try {
+    await access.bumpVersion(
+      catalyst.initialize(req, { scope: "admin" }),
+      (a && a.user && a.user.email) || "",
+      why,
+    );
+  } catch (error) {
+    console.error("ACCESS bumpVersion failed:", error && error.message);
+  }
 }
 
 // ============================================================
@@ -117,6 +159,111 @@ const ALLOWED_FIELDS = [
   "emp_id",
 ];
 
+const NUMERIC_FIELDS = new Set([
+  "wissen_experience",
+  "total_experience",
+  "current_salary",
+]);
+
+function normalizeEmployeeMasterDate(value) {
+  if (value === null || value === undefined) return null;
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+
+  const text = String(value).trim();
+  if (!text) return null;
+
+  // YYYY-MM-DD (optionally followed by a time).
+  let match = text.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})(?:[T\\s].*)?$/);
+  if (match) {
+    const y = Number(match[1]);
+    const m = Number(match[2]);
+    const d = Number(match[3]);
+    const date = new Date(y, m - 1, d);
+    if (
+      date.getFullYear() === y &&
+      date.getMonth() === m - 1 &&
+      date.getDate() === d
+    ) {
+      return date;
+    }
+  }
+
+  // DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY.
+  match = text.match(/^(\\d{1,2})[\\/.-](\\d{1,2})[\\/.-](\\d{4})(?:[T\\s].*)?$/);
+  if (match) {
+    const d = Number(match[1]);
+    const m = Number(match[2]);
+    const y = Number(match[3]);
+    const date = new Date(y, m - 1, d);
+    if (
+      date.getFullYear() === y &&
+      date.getMonth() === m - 1 &&
+      date.getDate() === d
+    ) {
+      return date;
+    }
+  }
+
+  // Excel serial date.
+  if (/^\\d+(?:\\.\\d+)?$/.test(text)) {
+    const serial = Number(text);
+    if (serial > 0 && serial < 2958466) {
+      const date = new Date(1899, 11, 30 + Math.floor(serial));
+      if (!Number.isNaN(date.getTime())) return date;
+    }
+  }
+
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function normalizeEmployeeMasterData(data) {
+  const normalized = {};
+
+  // Never pass undefined / empty values to Catalyst Data Store.
+  Object.keys(data || {}).forEach(function (field) {
+    const value = data[field];
+
+    if (value === undefined || value === null) return;
+    if (typeof value === "string" && value.trim() === "") return;
+
+    normalized[field] = value;
+  });
+
+  if (Object.prototype.hasOwnProperty.call(normalized, "date_of_join")) {
+    const normalizedDate = normalizeEmployeeMasterDate(
+      normalized.date_of_join,
+    );
+
+    if (normalizedDate) {
+      // Catalyst Node SDK Date columns require a JavaScript Date value.
+      normalized.date_of_join = normalizedDate;
+    } else {
+      delete normalized.date_of_join;
+    }
+  }
+
+  NUMERIC_FIELDS.forEach(function (field) {
+    if (!Object.prototype.hasOwnProperty.call(normalized, field)) return;
+
+    const value = normalized[field];
+    const number = Number(
+      String(value).replace(/[₹,%\\s,]/g, "").trim(),
+    );
+
+    if (!Number.isFinite(number)) {
+      throw new Error(field + " must be a number.");
+    }
+
+    normalized[field] = number;
+  });
+
+  return normalized;
+}
+
 function pickAllowedFields(body) {
   const data = {};
 
@@ -126,7 +273,7 @@ function pickAllowedFields(body) {
     }
   });
 
-  return data;
+  return normalizeEmployeeMasterData(data);
 }
 
 // ============================================================
@@ -500,7 +647,7 @@ async function getRoster(req, res, appInstance) {
 // CREATE / IMPORT EMPLOYEE MASTER
 // ============================================================
 
-async function createRoster(req, res, table, employeesTable) {
+async function createRoster(req, res, table, employeesTable, afterWrite) {
   const body = await readRequestBody(req);
 
   const incoming = Array.isArray(body.employees)
@@ -530,12 +677,16 @@ async function createRoster(req, res, table, employeesTable) {
     }
   });
 
+  // Employee Master is the source of truth for roster imports. A new
+  // Employee Master ID does not need to exist in Employees first; the
+  // corresponding Employees row is created automatically below.
   const employeeRows = await getAllEmployees(employeesTable);
 
   const employeeMap = buildEmployeeMap(employeeRows);
 
   const rowsToInsert = [];
   const rowsToUpdate = [];
+  const employeeRowsToInsert = [];
   const skipped = [];
   const statusChanges = [];
 
@@ -549,29 +700,6 @@ async function createRoster(req, res, table, employeesTable) {
         emp_id: "",
         reason: "emp_id is missing.",
       });
-
-      return;
-    }
-
-    const employee = findEmployeeByEmpId(employeeMap, empId);
-
-    if (!employee) {
-      skipped.push({
-        emp_id: empId,
-        reason: "Matching employee was not found in Employees table.",
-      });
-
-      return;
-    }
-
-    const employeeRowId = employee.ROWID || employee.rowid;
-
-    if (!employeeRowId) {
-      skipped.push({
-        emp_id: empId,
-        reason: "Employees ROWID was not found.",
-      });
-
       return;
     }
 
@@ -579,17 +707,12 @@ async function createRoster(req, res, table, employeesTable) {
 
     if (data.emp_status !== undefined) {
       const normalized = normalizeStatus(data.emp_status);
-
-      if (normalized) {
-        data.emp_status = normalized;
-      } else {
-        data.emp_status = "Active";
-      }
+      data.emp_status = normalized || "Active";
     }
 
     const masterStatus = data.emp_status || "Active";
-
     const existing = existingByEmpId.get(empId.toLowerCase());
+    const employee = findEmployeeByEmpId(employeeMap, empId);
 
     if (existing) {
       const masterRowId = existing.ROWID || existing.rowid;
@@ -599,7 +722,6 @@ async function createRoster(req, res, table, employeesTable) {
           emp_id: empId,
           reason: "Existing Employee_Master row has no ROWID.",
         });
-
         return;
       }
 
@@ -607,6 +729,17 @@ async function createRoster(req, res, table, employeesTable) {
         ROWID: masterRowId,
         ...data,
       });
+
+      if (!employee) {
+        employeeRowsToInsert.push({
+          emp_id: empId,
+          name: data.emp_name || "",
+          designation: data.designation || "",
+          department: data.department || "",
+          status: masterStatus,
+          emp_master_row_id: masterRowId,
+        });
+      }
 
       if (data.emp_status !== undefined) {
         statusChanges.push({
@@ -623,11 +756,6 @@ async function createRoster(req, res, table, employeesTable) {
       emp_status: masterStatus,
       ...data,
     });
-
-    statusChanges.push({
-      empId: empId,
-      status: masterStatus,
-    });
   });
 
   let insertedRows = [];
@@ -641,26 +769,86 @@ async function createRoster(req, res, table, employeesTable) {
     updatedRows = await table.updateRows(rowsToUpdate);
   }
 
-  const updatedMasterRows = rowsToInsert.length
-    ? await getAllRoster(table)
-    : existingRows;
+  // Build the latest master map so newly-created master rows can be linked
+  // to their corresponding Employees rows.
+  const updatedMasterRows = await getAllRoster(table);
   const masterByEmpId = new Map(
-    updatedMasterRows.map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]),
+    updatedMasterRows.map(function (row) {
+      return [
+        String(row.emp_id || "").trim().toLowerCase(),
+        row,
+      ];
+    }),
   );
-  const affectedEmpIds = new Set([
-    ...rowsToInsert.map((row) => row.emp_id),
-    ...rowsToUpdate.map((row) => existingRows.find((existing) =>
-      String(existing.ROWID || existing.rowid) === String(row.ROWID),
-    )?.emp_id).filter(Boolean),
-  ]);
+
+  // Create Employees rows for brand-new Employee Master IDs, and also repair
+  // an Employee Master record whose child Employees row was missing.
+  const newEmployeeRows = [];
+
+  rowsToInsert.forEach(function (row) {
+    const empId = String(row.emp_id || "").trim();
+    const master = masterByEmpId.get(empId.toLowerCase());
+
+    if (master) {
+      newEmployeeRows.push({
+        emp_id: empId,
+        name: row.emp_name || "",
+        designation: row.designation || "",
+        department: row.department || "",
+        status: row.emp_status || "Active",
+        emp_master_row_id: master.ROWID || master.rowid,
+      });
+    }
+  });
+
+  employeeRowsToInsert.forEach(function (row) {
+    newEmployeeRows.push(row);
+  });
+
+  let insertedEmployeeRows = [];
+
+  if (newEmployeeRows.length) {
+    insertedEmployeeRows = await employeesTable.insertRows(newEmployeeRows);
+  }
+
+  // Refresh the Employees map after inserts so status/reference
+  // synchronization works for both old and newly-created employees.
+  const latestEmployeeRows = await getAllEmployees(employeesTable);
+  const latestEmployeeMap = buildEmployeeMap(latestEmployeeRows);
+
+  const affectedEmpIds = new Set();
+
+  rowsToInsert.forEach(function (row) {
+    if (row.emp_id) affectedEmpIds.add(String(row.emp_id).trim());
+  });
+
+  rowsToUpdate.forEach(function (row) {
+    const existing = existingRows.find(function (item) {
+      return String(item.ROWID || item.rowid) === String(row.ROWID);
+    });
+
+    if (existing && existing.emp_id) {
+      affectedEmpIds.add(String(existing.emp_id).trim());
+    }
+  });
+
+  employeeRowsToInsert.forEach(function (row) {
+    if (row.emp_id) affectedEmpIds.add(String(row.emp_id).trim());
+  });
+
   for (const empId of affectedEmpIds) {
-    const master = masterByEmpId.get(String(empId).trim().toLowerCase());
-    const employee = findEmployeeByEmpId(employeeMap, empId);
+    const master = masterByEmpId.get(empId.toLowerCase());
+    const employee = findEmployeeByEmpId(latestEmployeeMap, empId);
+
     const parentRowId = master && (master.ROWID || master.rowid);
     const childRowId = employee && (employee.ROWID || employee.rowid);
+
     if (!parentRowId || !childRowId) {
-      throw new Error("Unable to synchronize Employee_Master reference for " + empId);
+      throw new Error(
+        "Unable to synchronize Employee_Master reference for " + empId,
+      );
     }
+
     await employeesTable.updateRow({
       ROWID: childRowId,
       emp_master_row_id: parentRowId,
@@ -672,18 +860,26 @@ async function createRoster(req, res, table, employeesTable) {
   for (const statusChange of statusChanges) {
     const master = masterByEmpId.get(statusChange.empId.toLowerCase());
     const masterRowId = master && (master.ROWID || master.rowid);
+
     if (!masterRowId) {
-      throw new Error("Employee_Master ROWID not found for " + statusChange.empId);
+      throw new Error(
+        "Employee_Master ROWID not found for " + statusChange.empId,
+      );
     }
+
     const result = await synchronizeEmployeeStatus(
       employeesTable,
-      employeeMap,
+      latestEmployeeMap,
       statusChange.empId,
       statusChange.status,
       masterRowId,
     );
 
     statusSyncResults.push(result);
+  }
+
+  if (afterWrite && (rowsToInsert.length || rowsToUpdate.length)) {
+    await afterWrite("Employee_Master import");
   }
 
   sendJson(res, 200, {
@@ -703,6 +899,7 @@ async function createRoster(req, res, table, employeesTable) {
       skippedRecords: skipped,
       insertedRows: insertedRows,
       updatedRows: updatedRows,
+      insertedEmployeeRows: insertedEmployeeRows,
       statusSyncResults: statusSyncResults,
     },
   });
@@ -712,7 +909,7 @@ async function createRoster(req, res, table, employeesTable) {
 // UPDATE EMPLOYEE MASTER EMPLOYEE
 // ============================================================
 
-async function updateRosterEmployee(req, res, table, employeesTable) {
+async function updateRosterEmployee(req, res, table, employeesTable, afterWrite) {
   const body = await readRequestBody(req);
 
   const empId = String(body.emp_id || "").trim();
@@ -794,6 +991,8 @@ async function updateRosterEmployee(req, res, table, employeesTable) {
       masterRowId,
     );
 
+    if (afterWrite) await afterWrite("Employee_Master status changed: " + empId);
+
     return sendJson(res, 200, {
       success: true,
 
@@ -833,6 +1032,8 @@ async function updateRosterEmployee(req, res, table, employeesTable) {
     emp_master_row_id: masterRowId,
   });
 
+  if (afterWrite) await afterWrite("Employee_Master updated: " + empId);
+
   sendJson(res, 200, {
     success: true,
     message: "Employee updated successfully.",
@@ -863,13 +1064,30 @@ module.exports = async function (req, res) {
   }
 
   try {
+    // Access first: enforced → 401/403 here; dry run → never refuses.
+    const a = await checkAccess(req);
+    const isRead = req.method === "GET";
+
+    access.guard(a, function () {
+      access.requireScreen(a, "employeeMaster", isRead ? "view" : "edit");
+    });
+
+    const afterWrite = function (why) {
+      return bumpAccessVersion(req, a, why);
+    };
+
     const appInstance = catalyst.initialize(req);
 
+    // Access control is enforced above using the authenticated user.
+    // Use the Catalyst admin datastore scope for the actual Employee Master
+    // write so Data Store "App User" table permissions cannot block a valid
+    // HR import with a 500 response.
+    const writeApp = catalyst.initialize(req, { scope: "admin" });
     const datastore = appInstance.datastore();
+    const writeDatastore = writeApp.datastore();
 
-    const table = datastore.table(EMPLOYEE_MASTER_TABLE_ID);
-
-    const employeesTable = datastore.table(EMPLOYEES_TABLE_ID);
+    const table = writeDatastore.table(EMPLOYEE_MASTER_TABLE_ID);
+    const employeesTable = writeDatastore.table(EMPLOYEES_TABLE_ID);
 
     // GET reads only from Employee_Master.
     if (req.method === "GET") {
@@ -879,13 +1097,13 @@ module.exports = async function (req, res) {
 
     // POST imports Employee_Master records.
     if (req.method === "POST") {
-      await createRoster(req, res, table, employeesTable);
+      await createRoster(req, res, table, employeesTable, afterWrite);
       return;
     }
 
     // PUT / PATCH updates Employee_Master.
     if (req.method === "PUT" || req.method === "PATCH") {
-      await updateRosterEmployee(req, res, table, employeesTable);
+      await updateRosterEmployee(req, res, table, employeesTable, afterWrite);
       return;
     }
 
@@ -894,6 +1112,15 @@ module.exports = async function (req, res) {
       message: "Method " + req.method + " not allowed.",
     });
   } catch (error) {
+    if (error instanceof access.HttpError) {
+      sendJson(res, error.status || 403, {
+        success: false,
+        message: error.message,
+        enforced: true,
+      });
+      return;
+    }
+
     console.error("employee-master-api ERROR:", error);
 
     sendJson(res, 500, {

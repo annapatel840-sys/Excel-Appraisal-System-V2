@@ -4,7 +4,9 @@ import { CheckCircle2, AlertCircle, X, History } from "lucide-react";
 import { AppShell } from "@/components/appraisal/AppShell";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
-
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { HrConfigPage } from "@/components/employee-master/HrConfigPage";
+import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
 import {
   FIELD_DEFS,
   fetchEmployeeMasterEmployees,
@@ -37,14 +39,25 @@ import { EligibilityModal } from "@/components/employee-master/EligibilityModal"
 import { ImportPreviewModal } from "@/components/employee-master/ImportPreviewModal";
 import { AppraisalCycleMasterPage } from "@/components/employee-master/AppraisalCycleMasterPage";
 import { PayrollDataPage } from "@/components/employee-master/PayrollDataPage";
-import { PayrollUploadPage } from "@/components/employee-master/PayrollUploadPage";
+import { UploadPage } from "@/components/employee-master/UploadPage";
 import { TeamChangesPage } from "@/components/employee-master/TeamChangesPage";
-import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
+import { BudgetMasterPage } from "@/components/employee-master/BudgetMasterPage";
 import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
+import DelegationScreen from "@/components/employee-master/DelegationScreen";
+import AccessPage from "@/components/employee-master/AccessPage";
+import { HrOperationsNav } from "@/components/employee-master/HrOperationsNav";
+import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
 
 import "@/styles/employee-master.css";
 
 const PAGE_SIZE = 20;
+const KNOWN_TABS = [
+  "roster",
+  "payroll-data",
+  "payroll-upload",
+  "eligibility",
+  "delegation",
+];
 
 const ROSTER_FIELD_TO_CATALYST = {
   name: "name",
@@ -572,15 +585,37 @@ function AuditHistoryPanel({ open, title, description, entries, onClose }) {
 
 export function EmployeeMaster() {
   const catalystUser = useCatalystUser();
-  const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const role = String(catalystUser?.role || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
   // UI gating only (the backend enforces authorization). Roster/status and
   // eligibility writes are for HR and App Administrator; others read only.
-  const canEditEmployees = role === "hr" || role === "appadministrator";
+  const access = useAccess();
+  const isRoleHR = role === "hr" || role === "appadministrator";
+  // With access rules (/me ok) a 'view' level makes the screen read-only.
+  const canEditEmployees =
+    isRoleHR && access.canScreen("employeeMaster", "edit");
   // Mirrors payrollcycleapi: payroll upload is allowed for HR and Comp. Manager.
   const canUploadPayroll = role === "hr" || role === "compmanager";
   // Mirrors payrollcycleapi canAccessPayroll (HR, Comp. Manager, Tech-Ed).
   const canViewPayroll = canUploadPayroll || isTechEd;
+  // Which HR Operations tabs to show: access rules when /me answered,
+  // otherwise the role-based rules used before access control.
+  const isTabVisible = (tab) => {
+    if (access.ok) {
+      if (tab === "location-master") return isRoleHR && access.canScreen("cycleMaster", "edit");
+      if (tab === "payroll-upload") return access.canScreen("payroll", "edit");
+      return access.canScreen(HR_TAB_SCREENS[tab] || "employeeMaster");
+    }
+    if (tab === "location-master") return isRoleHR;
+    if (tab === "roster" || tab === "eligibility") return true;
+    if (tab === "payroll-data") return canViewPayroll;
+    if (tab === "payroll-upload") return canUploadPayroll;
+    if (tab === "access") return isRoleHR;
+    return !isTechEd;
+  };
   const [allEmployees, setAllEmployees] = useState([]);
 
   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
@@ -592,31 +627,45 @@ export function EmployeeMaster() {
   const [statusActionLoading, setStatusActionLoading] = useState(false);
 
   const initialTab = new URLSearchParams(window.location.search).get("tab");
-  const allowedTabs = new Set([
-    "roster",
-    "eligibility",
-    "appraisal-cycle",
-    "payroll-data",
-    "payroll-upload",
-    "team-changes",
-    "budget-allocation",
-    "budget-distribution",
-  ]);
+  const allowedTabs = new Set(
+    [
+      "roster",
+      "eligibility",
+      "appraisal-cycle",
+      "location-master",
+      "payroll-data",
+      "payroll-upload",
+      "team-changes",
+      "budget-master",
+      "budget-distribution",
+      "delegation",
+      "access",
+    ].filter(isTabVisible),
+  );
+  // HR Operations opens on Access (when the user may see it).
+  const defaultTab = allowedTabs.has("access")
+    ? "access"
+    : allowedTabs.has("roster") || !allowedTabs.size
+      ? "roster"
+      : [...allowedTabs][0];
   const [activeTab, setActiveTab] = useState(
-    isTechEd
+    isTechEd && !access.ok
       ? "roster"
       : allowedTabs.has(initialTab)
         ? initialTab
-        : "roster",
+        : defaultTab,
   );
 
   const [search, setSearch] = useState("");
 
   const [statusFilter, setStatusFilter] = useState("All");
+  const [locationFilter, setLocationFilter] = useState("All");
 
   const [rosterFilters, setRosterFilters] = useState({});
 
   const [eligibilitySearch, setEligibilitySearch] = useState("");
+
+  const [eligibilityLocationFilter, setEligibilityLocationFilter] = useState("All");
 
   const [eligibilityFilters, setEligibilityFilters] = useState({});
 
@@ -665,12 +714,12 @@ export function EmployeeMaster() {
     const onPopState = () => {
       const tab = new URLSearchParams(window.location.search).get("tab");
 
-      if (isTechEd) {
+      if (isTechEd && !access.ok) {
         setActiveTab("roster");
         return;
       }
 
-      setActiveTab(allowedTabs.has(tab) ? tab : "roster");
+      setActiveTab(allowedTabs.has(tab) ? tab : defaultTab);
     };
 
     window.addEventListener("popstate", onPopState);
@@ -678,7 +727,7 @@ export function EmployeeMaster() {
     return () => {
       window.removeEventListener("popstate", onPopState);
     };
-  }, [isTechEd]);
+  }, [isTechEd, access.ok, defaultTab]);
 
   const eligibilityLoadedKeyRef = useRef(null);
 
@@ -855,6 +904,7 @@ export function EmployeeMaster() {
             statusFilter === "All"
               ? "all"
               : String(statusFilter || "").toLowerCase(),
+          location: locationFilter === "All" ? "" : locationFilter,
         });
 
         if (cancelled) {
@@ -935,7 +985,7 @@ export function EmployeeMaster() {
     return () => {
       cancelled = true;
     };
-  }, [currentPage, search, statusFilter, refreshKey]);
+  }, [currentPage, search, statusFilter, locationFilter, refreshKey]);
 
   /* ============================================================
      RESET PAGE WHEN SEARCH / STATUS FILTER CHANGES
@@ -943,13 +993,15 @@ export function EmployeeMaster() {
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [search, statusFilter]);
+  }, [search, statusFilter, locationFilter]);
 
   // Deep link from the Detail Screen's "View all changes" link.
   useEffect(() => {
     const tab = new URLSearchParams(window.location.search).get("tab");
-    if (tab === "teamChanges") setActiveTab("team-changes");
-    if (tab === "budgetAllocation") setActiveTab("budget-allocation");
+    if (tab === "teamChanges" && isTabVisible("team-changes"))
+      setActiveTab("team-changes");
+    if (tab === "budget-master" && isTabVisible("budget-master"))
+      setActiveTab("budget-master");
   }, []);
 
   /* ============================================================
@@ -1155,7 +1207,9 @@ export function EmployeeMaster() {
     const employeesByName = new Map();
 
     existingEmployees.forEach((employee) => {
-      const key = String(employee.name || "").trim().toLowerCase();
+      const key = String(employee.name || "")
+        .trim()
+        .toLowerCase();
 
       if (!key) {
         return;
@@ -1952,7 +2006,10 @@ export function EmployeeMaster() {
           return;
         }
 
-        if (!change.previousStatus || change.previousStatus === importedStatus) {
+        if (
+          !change.previousStatus ||
+          change.previousStatus === importedStatus
+        ) {
           return;
         }
 
@@ -2170,15 +2227,18 @@ export function EmployeeMaster() {
         newValue: normalizedEligible,
       });
 
-      applyLocalEligibilityChanges([
-        {
-          empId,
-          fields: {
-            Eligible: normalizedEligible,
-            Reason: eligibleReason || "",
+      applyLocalEligibilityChanges(
+        [
+          {
+            empId,
+            fields: {
+              Eligible: normalizedEligible,
+              Reason: eligibleReason || "",
+            },
           },
-        },
-      ], { manual: true });
+        ],
+        { manual: true },
+      );
 
       setEligibilityEmployee(null);
 
@@ -2204,91 +2264,15 @@ export function EmployeeMaster() {
   return (
     <AppShell>
       <div className="employee-master-page">
-        <div className="em-page-stats mb-2">
-          <div>
-            <span>Total</span>
-            <strong>{counts.total}</strong>
-          </div>
-
-          <div>
-            <span>Active</span>
-            <strong className="active">{counts.active}</strong>
-          </div>
-
-          <div>
-            <span>Inactive</span>
-            <strong className="inactive">{counts.inactive}</strong>
-          </div>
-        </div>
-
         {/* ======================================================
             TABS
             ====================================================== */}
 
-        <div className="em-tabs">
-          <button
-            type="button"
-            className={activeTab === "roster" ? "active" : ""}
-            onClick={() => setActiveTab("roster")}
-          >
-            Employee Master
-          </button>
-
-          <button
-            type="button"
-            className={activeTab === "eligibility" ? "active" : ""}
-            onClick={() => setActiveTab("eligibility")}
-          >
-            Eligibility List
-          </button>
-
-          {!isTechEd && <button
-            type="button"
-            className={activeTab === "appraisal-cycle" ? "active" : ""}
-            onClick={() => setActiveTab("appraisal-cycle")}
-          >
-            Appraisal Cycle Master
-          </button>}
-
-          {canViewPayroll && <button
-            type="button"
-            className={activeTab === "payroll-data" ? "active" : ""}
-            onClick={() => setActiveTab("payroll-data")}
-          >
-            Payroll Data
-          </button>}
-
-          {canUploadPayroll && <button
-            type="button"
-            className={activeTab === "payroll-upload" ? "active" : ""}
-            onClick={() => setActiveTab("payroll-upload")}
-          >
-            Payroll Upload
-          </button>}
-          {!isTechEd && <button
-            type="button"
-            className={activeTab === "team-changes" ? "active" : ""}
-            onClick={() => setActiveTab("team-changes")}
-          >
-            Team Changes
-          </button>}
-          {!isTechEd && <>
-            <button
-              type="button"
-              className={activeTab === "budget-allocation" ? "active" : ""}
-              onClick={() => setActiveTab("budget-allocation")}
-            >
-              Budget Allocation
-            </button>
-            <button
-              type="button"
-              className={activeTab === "budget-distribution" ? "active" : ""}
-              onClick={() => setActiveTab("budget-distribution")}
-            >
-              Budget Distribution
-            </button>
-          </>}
-        </div>
+        <HrOperationsNav
+          activeTab={activeTab}
+          isTabVisible={isTabVisible}
+          onSelect={setActiveTab}
+        />
 
         {/* ======================================================
             BANNER
@@ -2320,13 +2304,15 @@ export function EmployeeMaster() {
             EMPLOYEE MASTER TAB
             ====================================================== */}
 
-        {activeTab === "roster" && (
+        {isTabVisible("roster") && activeTab === "roster" && (
           <div className="em-tab-content">
             <EmployeeMasterToolbar
               search={search}
               setSearch={setSearch}
               statusFilter={statusFilter}
               setStatusFilter={setStatusFilter}
+              locationFilter={locationFilter}
+              setLocationFilter={setLocationFilter}
               onDownloadTemplate={downloadRosterTemplate}
               onUpload={
                 canEditEmployees && !importPreparing
@@ -2334,7 +2320,11 @@ export function EmployeeMaster() {
                   : undefined
               }
               onDownloadData={() => downloadRosterData(filteredRosterEmployees)}
-              onAuditHistory={() => openAuditHistory("status")}
+              onAuditHistory={
+                access.canAction("viewAudit")
+                  ? () => openAuditHistory("status")
+                  : undefined
+              }
             />
 
             {importPreparing && (
@@ -2376,7 +2366,6 @@ export function EmployeeMaster() {
                 canEdit={canEditEmployees}
               />
             )}
-
           </div>
         )}
 
@@ -2384,7 +2373,7 @@ export function EmployeeMaster() {
             ELIGIBILITY TAB
             ====================================================== */}
 
-        {activeTab === "eligibility" && (
+        {isTabVisible("eligibility") && activeTab === "eligibility" && (
           <div className="em-tab-content">
             {eligibilityLoading ? (
               <div className="em-empty">
@@ -2412,15 +2401,23 @@ export function EmployeeMaster() {
                   employees={eligibilityEmployees}
                   search={eligibilitySearch}
                   setSearch={setEligibilitySearch}
+                  locationFilter={eligibilityLocationFilter}
+                  setLocationFilter={setEligibilityLocationFilter}
                   filters={eligibilityFilters}
                   setFilters={setEligibilityFilters}
                   onChangeEligibility={
                     canEditEmployees ? setEligibilityEmployee : undefined
                   }
                   onDownloadTemplate={downloadEligibilityTemplate}
-                  onImport={canEditEmployees ? handleEligibilityFile : undefined}
+                  onImport={
+                    canEditEmployees ? handleEligibilityFile : undefined
+                  }
                   onExport={exportEligibilityData}
-                  onAuditHistory={() => openAuditHistory("eligibility")}
+                  onAuditHistory={
+                    access.canAction("viewAudit")
+                      ? () => openAuditHistory("eligibility")
+                      : undefined
+                  }
                 />
               </div>
             )}
@@ -2432,9 +2429,35 @@ export function EmployeeMaster() {
             NO AUDIT HISTORY HERE
             ====================================================== */}
 
-        {!isTechEd && activeTab === "appraisal-cycle" && (
+        {isTabVisible("appraisal-cycle") && activeTab === "appraisal-cycle" && (
           <div className="em-tab-content">
-            <AppraisalCycleMasterPage />
+            <HrConfigPage
+              canEdit={isRoleHR}
+              renderCycleScreen={(defaultProcess) => (
+                <AppraisalCycleMasterPage
+                  defaultProcess={defaultProcess}
+                  cycleStats={null}
+                  canNavigate={(tab) =>
+                    KNOWN_TABS.includes(tab) && isTabVisible(tab)
+                  }
+                  onNavigate={(tab) =>
+                    KNOWN_TABS.includes(tab) && isTabVisible(tab)
+                      ? setActiveTab(tab)
+                      : showBanner(
+                          "Not connected",
+                          "That screen is not available here yet.",
+                          true,
+                        )
+                  }
+                />
+              )}
+            />
+          </div>
+        )}
+
+        {isTabVisible("location-master") && activeTab === "location-master" && (
+          <div className="em-tab-content">
+            <LocationMasterControl managerOnly />
           </div>
         )}
 
@@ -2442,7 +2465,7 @@ export function EmployeeMaster() {
             PAYROLL DATA
             ====================================================== */}
 
-        {canViewPayroll && activeTab === "payroll-data" && (
+        {isTabVisible("payroll-data") && activeTab === "payroll-data" && (
           <div className="em-tab-content">
             <PayrollDataPage />
           </div>
@@ -2452,42 +2475,62 @@ export function EmployeeMaster() {
             PAYROLL UPLOAD
             ====================================================== */}
 
-        {canUploadPayroll && activeTab === "payroll-upload" && (
+        {isTabVisible("payroll-upload") && activeTab === "payroll-upload" && (
           <div
             className="em-tab-content"
             style={{
-              height: "calc(100vh - 180px)",
+              height: "calc(100vh - 140px)",
               overflowY: "auto",
               overflowX: "hidden",
             }}
           >
-            <PayrollUploadPage />
+            <UploadPage />
           </div>
         )}
-        {!isTechEd && activeTab === "team-changes" && <TeamChangesPage />}
-        {!isTechEd && activeTab === "budget-allocation" && (
+        {isTabVisible("team-changes") && activeTab === "team-changes" && (
+          <TeamChangesPage />
+        )}
+        {isTabVisible("budget-master") && activeTab === "budget-master" && (
           <div
             className="em-tab-content"
             style={{
-              height: "calc(100vh - 180px)",
+              height: "calc(100vh - 140px)",
               overflowY: "auto",
               overflowX: "hidden",
             }}
           >
-            <BudgetAllocationPage />
+            <BudgetMasterPage />
           </div>
         )}
 
-        {!isTechEd && activeTab === "budget-distribution" && (
+        {isTabVisible("budget-distribution") &&
+          activeTab === "budget-distribution" && (
+            <div
+              className="em-tab-content"
+              style={{
+                height: "calc(100vh - 140px)",
+                overflowY: "auto",
+                overflowX: "hidden",
+              }}
+            >
+              <BudgetDistributionPage />
+            </div>
+          )}
+        {isTabVisible("delegation") && activeTab === "delegation" && (
           <div
             className="em-tab-content"
             style={{
-              height: "calc(100vh - 180px)",
+              height: "calc(100vh - 140px)",
               overflowY: "auto",
               overflowX: "hidden",
             }}
           >
-            <BudgetDistributionPage />
+            <DelegationScreen showRoleSwitch={false} />
+          </div>
+        )}
+        {isTabVisible("access") && activeTab === "access" && (
+          <div className="em-tab-content">
+            <AccessPage />
           </div>
         )}
 

@@ -1,16 +1,158 @@
 "use strict";
 
+/* ACCESS CONTROL: ./accessCore.js is a byte-for-byte copy of
+   functions/accessapi/accessCore.js and MUST stay identical to it
+   (every Catalyst function deploys separately). Edit the accessapi copy,
+   then copy it here. See docs/ACCESS_SPEC.md. */
+
 const catalyst = require("zcatalyst-sdk-node");
+const access = require("./accessCore");
+
+/* CORS: Catalyst adds the CORS headers itself for the Authorized Domains
+   (Authentication > Authorized Domains). Do not set them here: two
+   Access-Control-Allow-Origin headers make the browser reject the response
+   ("Failed to fetch"). */
 
 const TABLES = {
-  employees: "71873000000020001",
-  employeeMaster: "71873000000020438",
-  payroll: "71873000000020833",
-  cycles: "71873000000030049",
-  audit: "71873000000021235",
+  employees: "74008000000039094",
+  employeeMaster: "74008000000035727",
+  payroll: "74008000000035326",
+  cycles: "74008000000034190",
+  audit: "74008000000034940",
+  feedback: "74008000000022041",
+  locations: "74008000000022481",
 };
 const PAGE_SIZE = 200;
+
+/* ---------- Appraisal cycles ---------- */
+const CYCLE_TYPES = ["Annual", "Mid-Year", "Exceptional", "New Joiner"];
+const CYCLE_PROCESSES = ["Annual", "Exceptional", "None"];
+// Default process when a cycle has none stored (same defaults as HR Config).
+const DEFAULT_CYCLE_PROCESS = { Annual: "Annual", "Mid-Year": "Annual", Exceptional: "Exceptional", "New Joiner": "None" };
+// Status moves HR may make: activate, close, reopen.
+const CYCLE_MOVES = { Upcoming: ["Active"], Active: ["Closed"], Closed: ["Active"] };
+// Optional Appraisal_Cycle_Master columns. Values are saved only when the
+// column exists, so the function works before and after they are added.
+const OPTIONAL_CYCLE_COLUMNS = ["cycle_type", "process", "effective_date", "cancel_reason"];
+const BUSINESS_TZ = "Asia/Kolkata";
+
+// "YYYY-MM-DD HH:mm:ss" in the project's time zone (IST), not UTC.
+function nowLocal(date = new Date()) {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: BUSINESS_TZ, year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+    }).formatToParts(date).map((x) => [x.type, x.value]),
+  );
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`;
+}
+const todayLocal = () => nowLocal().slice(0, 10);
+
+function cycleTypeOf(name) {
+  const lower = String(name || "").toLowerCase();
+  return CYCLE_TYPES.find((type) => lower.startsWith(type.toLowerCase())) || "Annual";
+}
+const cycleProcessOf = (cycle) => cycle.process || DEFAULT_CYCLE_PROCESS[cycle.type || cycleTypeOf(cycle.name)] || "Annual";
+
+let cycleColumnCache = { at: 0, names: null };
+async function cycleColumns(table) {
+  if (cycleColumnCache.names && Date.now() - cycleColumnCache.at < 5 * 60 * 1000) return cycleColumnCache.names;
+  try {
+    const columns = await table.getAllColumns();
+    cycleColumnCache = { at: Date.now(), names: new Set(columns.map((c) => c.column_name)) };
+  } catch (error) {
+    console.error("Appraisal_Cycle_Master columns could not be read:", error && error.message);
+    return new Set();
+  }
+  return cycleColumnCache.names;
+}
+function withOptionalColumns(columns, row, values) {
+  OPTIONAL_CYCLE_COLUMNS.forEach((key) => {
+    if (columns.has(key) && values[key] !== undefined) row[key] = values[key];
+  });
+  return row;
+}
 const MAX_UPLOAD_ROWS = 5000;
+
+const SCHEMA_SYSTEM_COLUMNS = new Set(["ROWID", "CREATORID", "CREATEDTIME", "MODIFIEDTIME"]);
+
+function schemaLabel(name) {
+  return String(name || "").replace(/_/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2").replace(/\s+/g, " ").trim().replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function normalizeSchemaTable(table) {
+  const columns = Array.isArray(table?.column_details) ? table.column_details.filter((column) => !SCHEMA_SYSTEM_COLUMNS.has(String(column.column_name || "").toUpperCase())).sort((a, b) => Number(a.column_sequence || 0) - Number(b.column_sequence || 0)).map((column) => ({
+    name: String(column.column_name || ""),
+    label: schemaLabel(column.column_name),
+    type: String(column.data_type || "varchar").toLowerCase(),
+    mandatory: Boolean(column.is_mandatory),
+    unique: Boolean(column.is_unique),
+    maxLength: column.max_length == null ? null : Number(column.max_length),
+    decimalDigits: column.decimal_digits == null ? null : Number(column.decimal_digits),
+  })) : [];
+  return { id: String(table.table_id || table.id || ""), name: String(table.table_name || table.name || ""), modifiedTime: table.modified_time || "", columns };
+}
+
+async function getProjectSchema(adminApp) {
+  // Keep schema metadata stable even when a payroll column is blank in every row.
+  // PayrollDataPage/UploadPage intentionally expose only pay entry/calculation fields.
+  const tables = [
+    { name: "Employees", id: TABLES.employees },
+    { name: "Employee_Master", id: TABLES.employeeMaster },
+    { name: "payroll", id: TABLES.payroll },
+    { name: "Feedback_And_Rating", id: TABLES.feedback },
+    { name: "Appraisal_Cycle", id: TABLES.cycles },
+    { name: "Appraisal_Audit", id: TABLES.audit },
+  ];
+  const datastore = adminApp.datastore();
+  const payrollColumns = [
+    ["appraisal_year", "Cycle", "text"],
+    ["emp_id", "Employee ID", "text"],
+    ["hike_pct", "Hike %", "number"],
+    ["total_bonus", "Total Bonus", "number"],
+    ["total_pb", "Total PB", "number"],
+    ["new_base_pay", "New Base Pay", "number"],
+    ["total_ctc", "Total CTC", "number"],
+    ["base_pay", "Current Annual Base Pay", "number"],
+    ["joining_bonus", "Joining Bonus", "number"],
+    ["target_pb", "Target PB Allocated for May", "number"],
+    ["rb_paid", "RB to be Paid", "number"],
+    ["pb_paid", "PB to be Paid", "number"],
+    ["alloc_pb", "Allocated PB Amount", "number"],
+    ["alloc_inst", "Inst. (Allocated PB)", "number"],
+    ["new_pb", "New PB to be Offered", "number"],
+    ["new_pb_inst", "Inst. (New PB)", "number"],
+    ["new_rb", "New RB", "number"],
+    ["hike_amt", "Hike Amount", "number"],
+    ["target_pb_next_year", "Target PB for Next Year", "number"],
+  ];
+
+  return Promise.all(tables.map(async (meta) => {
+    if (meta.name === "payroll") {
+      return {
+        id: String(meta.id),
+        name: meta.name,
+        columns: payrollColumns.map(([name, label, type]) => ({
+          name, label, type, mandatory: name === "emp_id",
+        })),
+      };
+    }
+    const table = datastore.table(meta.id);
+    const result = await table.getPagedRows({ maxRows: 1 });
+    const row = Array.isArray(result?.data) && result.data.length ? result.data[0] : {};
+    const columns = Object.keys(row)
+      .filter((name) => !SCHEMA_SYSTEM_COLUMNS.has(String(name).toUpperCase()))
+      .map((name) => {
+        const value = row[name];
+        let type = "text";
+        if (typeof value === "number") type = "number";
+        else if (typeof value === "boolean") type = "boolean";
+        else if (value instanceof Date) type = "date";
+        return { name, label: schemaLabel(name), type, mandatory: false };
+      });
+    return { id: String(meta.id), name: meta.name, columns };
+  }));
+}
 
 class ApiError extends Error {
   constructor(message, status = 400) {
@@ -20,63 +162,79 @@ class ApiError extends Error {
 }
 
 const PAYROLL_FIELDS = {
-  empName: "emp_name",
-  designation: "designation",
-  compManager: "comp_manager",
-  superManager: "super_manager",
-  managerMail: "manager_mail",
-  superManagerMail: "super_manager_mail",
-  appraiser: "appraiser",
-  basePay: "base_pay",
-  targetPB: "target_pb",
-  rbPaid: "rb_paid",
-  joiningBonus: "joining_bonus",
-  rbMonth: "rb_month",
-  pbPaid: "pb_paid",
-  pbMonth: "pb_month",
-  allocPB: "alloc_pb",
-  allocInst: "alloc_inst",
-  newPB: "new_pb",
-  newPBInst: "new_pb_inst",
-  newRB: "new_rb",
-  hikeAmt: "hike_amt",
-  tpbNext: "target_pb_next_year",
-  promo: "promo",
-  newTitle: "new_title",
-  remarks: "remarks",
+  empName: "emp_name", fyYear: "fy_year", basePay: "current_annual_base_pay",
+  joiningBonus: "joining_bonus", performanceBonus: "performance_bonus", retentionBonus: "retention_bonus",
+  hikePct: "hike_pct", hikeAmt: "hike_amount", totalCtcRewards: "total_CTC_with_rewards",
+  totalRewardHikeAmt: "total_rewards_hike_amount", totalRewardHikePct: "total_reward_hike_pct",
+  targetPerformanceAgreed: "target_performance_agreed", totalBonus: "total_bonus", newBasePay: "new_base_pay",
+  rbPaid: "rb_to_be_paid", rbMonth: "month_rb", pbPaid: "pb_to_be_paid", pbMonth: "month_pb",
+  tbPaid: "tb_to_be_paid", tbMonth: "month_tb",
 };
 const NUMERIC_FIELDS = new Set([
-  "basePay",
-  "targetPB",
-  "rbPaid",
-  "joiningBonus",
-  "pbPaid",
-  "allocPB",
-  "allocInst",
-  "newPB",
-  "newPBInst",
-  "newRB",
-  "hikeAmt",
-  "tpbNext",
+  "basePay","joiningBonus","performanceBonus","retentionBonus","hikePct","hikeAmt",
+  "totalCtcRewards","totalRewardHikeAmt","totalRewardHikePct","targetPerformanceAgreed",
+  "totalBonus","newBasePay","rbPaid","pbPaid","tbPaid",
 ]);
-const MAX_TEXT_LENGTH = {
-  empName: 100,
-  designation: 100,
-  compManager: 100,
-  superManager: 100,
-  managerMail: 255,
-  superManagerMail: 255,
-  appraiser: 100,
-  rbMonth: 20,
-  pbMonth: 20,
-  promo: 20,
-  newTitle: 100,
-  remarks: 10000,
-};
+const MAX_TEXT_LENGTH = { empName: 100, fyYear: 20, rbMonth: 30, pbMonth: 30, tbMonth: 30 };
 
 function sendJson(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
+}
+
+/* ============================================================
+   ACCESS CONTROL (docs/ACCESS_SPEC.md)
+
+   session, cycles (GET)                      → any signed-in user with a role
+   payroll / audit / history (GET)            → view on 'payroll'  (HR only)
+   validate / commit / undo (POST)            → edit on 'payroll'  (HR only)
+   cycles/<action>/<id> (POST)                → edit on 'cycleMaster' (HR only)
+   Dry run (ACCESS_ENFORCE != 'true'): legacy role checks (isHR /
+   canAccessPayroll / Tech-Ed read-only) apply; refusals only logged.
+   Enforced: the access object replaces those legacy checks.
+   ============================================================ */
+
+async function checkAccess(req) {
+  const userApp = catalyst.initialize(req);
+  const adminApp = catalyst.initialize(req, { scope: "admin" });
+
+  try {
+    return await access.check(userApp, adminApp);
+  } catch (error) {
+    if (access.isEnforced()) throw error;
+    // Dry run must never change legacy behaviour, even if access data is unreadable.
+    console.log("ACCESS dry-run: access check failed:", error && error.message);
+    return { dryRun: true, enforced: false, denied: error };
+  }
+}
+
+function requirePayrollAccess(a, resource, method) {
+  if (resource === "session") return;
+  if ((resource === "cycles" || resource === "schema" || resource === "locations") && method === "GET") return;
+  if (resource.startsWith("cycles/") || (resource === "locations" && method === "POST")) {
+    access.requireScreen(a, "cycleMaster", "edit");
+    return;
+  }
+  if (["payroll", "audit", "history"].includes(resource) && method === "GET") {
+    access.requireScreen(a, "payroll", "view");
+    return;
+  }
+  if (["validate", "commit", "undo"].includes(resource) && method === "POST") {
+    access.requireScreen(a, "payroll", "edit");
+  }
+}
+
+// The Active cycle decides everyone's Delegation-based access.
+async function bumpAccessVersion(req, a, why) {
+  try {
+    await access.bumpVersion(
+      catalyst.initialize(req, { scope: "admin" }),
+      (a && a.user && a.user.email) || "",
+      why,
+    );
+  } catch (error) {
+    console.error("ACCESS bumpVersion failed:", error && error.message);
+  }
 }
 
 function getQuery(req) {
@@ -135,17 +293,39 @@ async function getAllRows(table) {
   return rows;
 }
 
+// Without a cancel_reason column the reason is kept in the remarks.
+function cancelReasonFromRemarks(row) {
+  if (String(row.status || "") !== "Cancelled") return "";
+  const match = String(row.remarks || "").match(/(?:^|\| )Cancelled: ([^|]*)$/);
+  return match ? match[1].trim() : "";
+}
+
 function normalizeCycle(row) {
+  const sourceRowId = row.ROWID ?? row.rowid ?? row.id ?? row.ID ?? "";
+  const id = String(sourceRowId).trim();
+  const name = String(
+    row.cycle_name ||
+      row.cycleName ||
+      row.name ||
+      row.appraisal_year ||
+      row.appraisalYear ||
+      "",
+  ).trim();
   return {
-    id: rowId(row),
-    name: row.cycle_name || "",
-    start: row.start_date || "",
-    end: row.end_date || "",
+    id,
+    sourceRowId,
+    name,
+    effective: row.effective_date || row.effectiveDate || "",
+    start: row.start_date || row.startDate || "",
+    end: row.end_date || row.endDate || "",
     status: row.status || "Upcoming",
     remarks: row.remarks || "",
     changedBy: row.changed_by || "",
     changedAt: row.changed_at || "",
     archived: row.archived === true || row.archived === "true",
+    type: row.cycle_type || "",
+    process: row.process || "",
+    cancelReason: row.cancel_reason || cancelReasonFromRemarks(row),
   };
 }
 
@@ -219,39 +399,32 @@ function normalizeText(value, key) {
   return text;
 }
 
-function normalizeMoney(value, key) {
+function normalizeNumber(value, key) {
   if (value === undefined || value === null || value === "") return 0;
-  const number = typeof value === "number" ? value : Number(String(value).replace(/,/g, "").replace(/[₹$]/g, "").trim());
-  if (!Number.isFinite(number) || number < 0 || number > Number.MAX_SAFE_INTEGER) {
-    throw new ApiError(`${key} must be a non-negative number.`);
+  const number = typeof value === "number" ? value : Number(String(value).replace(/,/g, "").replace(/[₹$%]/g, "").trim());
+  // Payroll values can legitimately be negative (for example, a negative hike amount).
+  // Validate numeric input and magnitude, not its sign.
+  if (!Number.isFinite(number) || Math.abs(number) > Number.MAX_SAFE_INTEGER) {
+    throw new ApiError(`${key} must be a valid number.`);
   }
-  return Math.round(number);
+  return number;
 }
-
-function toPayrollRow(input, cycleId, batchId, fileName) {
+function toPayrollRow(input, cycle, master, batchId, fileName) {
   const empId = String(input.empId || "").trim();
   if (!empId) throw new ApiError("Employee ID is required.");
   if (empId.length > 50) throw new ApiError("Employee ID must be 50 characters or fewer.");
-
-  const row = {
-    emp_id: empId,
-    appraisal_cycle_id: cycleId,
-    source_batch: batchId,
-    source_file: fileName,
-  };
+  // These two payroll columns are BIGINT/foreign-key fields. Preserve the
+  // native Catalyst ROWID value instead of converting it to a string.
+  const employeeRowId = master?.ROWID ?? master?.rowid ?? "";
+  const cycleRowId = cycle?.sourceRowId ?? cycle?.id ?? "";
+  if (!employeeRowId) throw new ApiError(`Employee ${empId} has no valid Employee Master ROWID.`);
+  if (!cycleRowId) throw new ApiError("The selected appraisal cycle has no valid ROWID.");
+  // emp_id, emp_name and appraisal_cycle_name are BIGINT lookup/FK fields.
+  // The Excel Employee ID is only the business key used to find the master row.
+  const row = { emp_id: employeeRowId, emp_name: employeeRowId, appraisal_cycle_name: cycleRowId };
   Object.entries(PAYROLL_FIELDS).forEach(([key, column]) => {
-    if (NUMERIC_FIELDS.has(key)) {
-      row[column] = normalizeMoney(input[key], key);
-    } else {
-      row[column] = normalizeText(input[key], key);
-    }
+    row[column] = NUMERIC_FIELDS.has(key) ? normalizeNumber(input[key], key) : normalizeText(input[key], key);
   });
-
-  row.total_pb = row.alloc_pb + row.new_pb;
-  row.total_bonus = row.total_pb + row.new_rb;
-  row.hike_pct = row.base_pay > 0 ? Number(((row.hike_amt / row.base_pay) * 100).toFixed(4)) : 0;
-  row.new_base_pay = row.base_pay + row.hike_amt;
-  row.total_ctc = row.new_base_pay + row.total_bonus;
   return row;
 }
 
@@ -283,7 +456,7 @@ async function writeAudit(auditTable, {
     old_value: String(oldValue).slice(0, 50),
     new_value: String(newValue).slice(0, 50),
     changed_by: actor,
-    changed_at: new Date().toISOString().replace("T", " ").slice(0, 19),
+    changed_at: nowLocal(),
     source,
     batch_id: batchId || cycle?.id || "",
     appraisal_year: cycle?.name || "",
@@ -313,57 +486,45 @@ async function requirePayrollTables(adminApp) {
     payroll: datastore.table(TABLES.payroll),
     cycles: datastore.table(TABLES.cycles),
     audit: datastore.table(TABLES.audit),
+    feedback: datastore.table(TABLES.feedback),
+    locations: datastore.table(TABLES.locations),
   };
 }
 
-function mapPayroll(row, cycleById) {
-  const cycleId = String(row.appraisal_cycle_id || "");
+function mapPayroll(row, cycleById, employeeById = new Map()) {
+  const cycleId = String(row.appraisal_cycle_name || "").trim();
+  const cycle = cycleById.get(cycleId);
+  const employee = employeeById.get(String(row.emp_id || "").trim().toLowerCase());
+  const businessEmpId = employee?.emp_id ?? "";
+  const employeeName = employee?.emp_name || employee?.name || "";
+  const num = (key) => row[key] === undefined || row[key] === null || row[key] === "" ? 0 : Number(row[key]) || 0;
+  const text = (key) => row[key] === undefined || row[key] === null ? "" : String(row[key]);
   return {
-    id: rowId(row),
-    empId: row.emp_id || "",
-    cycleId,
-    cycle: cycleById.get(cycleId)?.name || "",
-    batch: row.source_batch || "",
-    empName: row.emp_name || "",
-    designation: row.designation || "",
-    compManager: row.comp_manager || "",
-    superManager: row.super_manager || "",
-    managerMail: row.manager_mail || "",
-    superManagerMail: row.super_manager_mail || "",
-    appraiser: row.appraiser || "",
-    basePay: Number(row.base_pay) || 0,
-    targetPB: Number(row.target_pb) || 0,
-    rbPaid: Number(row.rb_paid) || 0,
-    joiningBonus: Number(row.joining_bonus) || 0,
-    rbMonth: row.rb_month || "",
-    pbPaid: Number(row.pb_paid) || 0,
-    pbMonth: row.pb_month || "",
-    allocPB: Number(row.alloc_pb) || 0,
-    allocInst: Number(row.alloc_inst) || 0,
-    newPB: Number(row.new_pb) || 0,
-    newPBInst: Number(row.new_pb_inst) || 0,
-    newRB: Number(row.new_rb) || 0,
-    hikeAmt: Number(row.hike_amt ?? row.hike_amount) || 0,
-    hikePct: Number(row.hike_pct) || 0,
-    tpbNext: Number(row.target_pb_next_year) || 0,
-    promo: row.promo || "",
-    newTitle: row.new_title || "",
-    remarks: row.remarks || "",
-    sourceFile: row.source_file || "",
-    totalPB: Number(row.total_pb) || 0,
-    totalBonus: Number(row.total_bonus) || 0,
-    newBasePay: Number(row.new_base_pay) || 0,
-    totalCtc: Number(row.total_ctc) || 0,
-    createdTime: row.CREATEDTIME || "",
+    ...row, id: rowId(row),
+    // Payroll stores the Employee Master ROWID as the foreign key. Expose
+    // the human/business Employee ID to the UI instead of the internal ROWID.
+    emp_id: businessEmpId || text("emp_id"),
+    emp_name: employeeName || text("emp_name"),
+    appraisal_cycle_name: cycle?.name || text("appraisal_cycle_name"),
+    empId: businessEmpId || text("emp_id"), empName: employeeName || text("emp_name"),
+    appraisalCycleName: cycle?.name || text("appraisal_cycle_name"), fyYear: text("fy_year"),
+    basePay: num("current_annual_base_pay"), joiningBonus: num("joining_bonus"),
+    performanceBonus: num("performance_bonus"), retentionBonus: num("retention_bonus"),
+    hikePct: num("hike_pct"), hikeAmt: num("hike_amount"),
+    totalCtcRewards: num("total_CTC_with_rewards"), totalRewardHikeAmt: num("total_rewards_hike_amount"),
+    totalRewardHikePct: num("total_reward_hike_pct"), targetPerformanceAgreed: num("target_performance_agreed"),
+    totalBonus: num("total_bonus"), newBasePay: num("new_base_pay"), rbPaid: num("rb_to_be_paid"),
+    rbMonth: text("month_rb"), pbPaid: num("pb_to_be_paid"), pbMonth: text("month_pb"),
+    tbPaid: num("tb_to_be_paid"), tbMonth: text("month_tb"), cycleId, createdTime: text("CREATEDTIME"),
   };
 }
 
 async function validateUpload(tables, body) {
-  const cycleId = String(body.cycleId || "");
+  const selectedCycleId = String(body.cycleId || "").trim();
   const sourceBatch = String(body.batchId || "").trim();
   const sourceFile = String(body.fileName || "");
   const records = body.records;
-  if (!cycleId) throw new ApiError("An appraisal cycle is required.");
+  if (!selectedCycleId) throw new ApiError("An appraisal cycle is required.");
   if (!sourceBatch || sourceBatch.length > 80) throw new ApiError("A valid upload batch ID is required.");
   if (!Array.isArray(records) || records.length === 0 || records.length > MAX_UPLOAD_ROWS) {
     throw new ApiError(`Upload must contain between 1 and ${MAX_UPLOAD_ROWS} rows.`);
@@ -375,44 +536,79 @@ async function validateUpload(tables, body) {
     getAllRows(tables.employeeMaster),
     getAllRows(tables.payroll),
   ]);
-  const cycle = cycleRows.map(normalizeCycle).find((item) => item.id === cycleId);
-  if (!cycle) throw new ApiError("The selected appraisal cycle no longer exists.", 404);
-  if (cycle.archived) throw new ApiError("Payroll cannot be uploaded to an archived cycle.", 409);
+  const cycles = cycleRows.map(normalizeCycle);
+  const selectedCycle = cycles.find((item) => item.id === selectedCycleId);
+  if (!selectedCycle) throw new ApiError("The selected appraisal cycle no longer exists.", 404);
 
+  const cycleById = new Map(cycles.map((item) => [item.id, item]));
+  const cycleByName = new Map(cycles.map((item) => [item.name.toLowerCase(), item]));
   const masterByEmpId = new Map();
   masterRows.forEach((row) => {
     const key = String(row.emp_id || "").trim().toLowerCase();
     if (key) masterByEmpId.set(key, row);
   });
+
   const existingByKey = new Map();
+  const masterRowIdByEmpId = new Map(
+    masterRows
+      .map((row) => [
+        String(row.emp_id || "").trim().toLowerCase(),
+        String(row.ROWID ?? row.rowid ?? "").trim(),
+      ])
+      .filter(([empId, rowIdValue]) => empId && rowIdValue),
+  );
+  const employeeKey = (value) => {
+    const raw = String(value ?? "").trim().toLowerCase();
+    return masterRowIdByEmpId.get(raw) || raw;
+  };
   payrollRows.forEach((row) => {
-    const key = `${String(row.emp_id || "").trim().toLowerCase()}|${String(row.appraisal_cycle_id || "")}`;
+    const key = `${employeeKey(row.emp_id)}|${String(row.appraisal_cycle_name || "")}`;
     existingByKey.set(key, row);
   });
+
   const seen = new Set();
   const validated = records.map((record, index) => {
     const input = record && typeof record === "object" && !Array.isArray(record) ? record : {};
     const rowNumber = Number(input.row) || index + 2;
     const empId = String(input.empId || "").trim();
+    const requestedCycle = String(input.appraisalCycleName || "").trim();
+    const rowCycle = requestedCycle
+      ? (cycleById.get(requestedCycle) || cycleByName.get(requestedCycle.toLowerCase()) || null)
+      : selectedCycle;
     const errors = [];
+
     if (!record || typeof record !== "object" || Array.isArray(record)) {
       errors.push("Row data must be an object.");
     }
-    const key = `${empId.toLowerCase()}|${cycleId}`;
-    if (!empId) errors.push("Employee ID is required.");
-    else if (!masterByEmpId.has(empId.toLowerCase())) errors.push("Employee ID not found in Employee Master.");
-    if (seen.has(key)) errors.push("Duplicate Employee ID within this file for the selected cycle.");
+    if (!empId) {
+      errors.push("Employee ID is required.");
+    } else if (!masterByEmpId.has(empId.toLowerCase())) {
+      errors.push("Employee ID not found in Employee Master.");
+    }
+    if (requestedCycle && !rowCycle) {
+      errors.push(`Appraisal Cycle Name "${requestedCycle}" was not found. Create this cycle before uploading payroll.`);
+    }
+
+    const master = masterByEmpId.get(empId.toLowerCase());
+    const masterRowId = String(master?.ROWID ?? master?.rowid ?? "").trim();
+    const key = `${masterRowId || empId.toLowerCase()}|${rowCycle?.id || ""}`;
+    if (seen.has(key)) errors.push("Duplicate Employee ID within this file for the same appraisal cycle.");
     seen.add(key);
 
     let payrollRow;
     try {
-      payrollRow = toPayrollRow(input, cycleId, sourceBatch, sourceFile);
+      if (!rowCycle) throw new ApiError("A valid appraisal cycle is required.");
+      payrollRow = toPayrollRow(
+        input,
+        rowCycle,
+        master,
+        sourceBatch,
+        sourceFile,
+      );
     } catch (error) {
       errors.push(error.message);
     }
-    if (cycle.status === "Closed" && !existingByKey.has(key)) {
-      errors.push("New payroll rows cannot be added to a closed cycle.");
-    }
+
     return {
       row: rowNumber,
       ok: errors.length === 0,
@@ -420,6 +616,7 @@ async function validateUpload(tables, body) {
       badFields: errors.length
         ? Array.from(new Set(errors.flatMap((message) => {
             if (message.startsWith("Employee ID") || message.startsWith("Duplicate Employee ID")) return ["empId"];
+            if (message.startsWith("Appraisal Cycle Name")) return ["appraisalCycleName"];
             return Object.keys(PAYROLL_FIELDS).filter((field) =>
               message.startsWith(`${field} `) || message.startsWith(`${field} exceeds`),
             );
@@ -427,22 +624,273 @@ async function validateUpload(tables, body) {
         : [],
       payrollRow,
       operation: existingByKey.has(key) ? "update" : "insert",
+      cycleId: rowCycle?.id || "",
+      cycleName: rowCycle?.name || "",
     };
   });
-  return { cycle, rows: validated };
+  return { cycle: selectedCycle, rows: validated };
+}
+async function getImportColumnSet(table) {
+  const result = await table.getPagedRows({ maxRows: 1 });
+  const row = Array.isArray(result?.data) && result.data.length ? result.data[0] : {};
+  return new Set(Object.keys(row).filter((name) => !SCHEMA_SYSTEM_COLUMNS.has(String(name).toUpperCase())));
 }
 
-async function routeRequest(req, res, identity, resource) {
+const IMPORT_FIELD_MAP = {
+  fb: {
+    empId: "emp_ID",
+    empName: "emp_name",
+    designation: "designation",
+    lastAppraisal: "last_appraisal_date",
+    revenueReleased: "revenue_released",
+    grossMargin: "gross_margin",
+    managerFeedback: "manager_feedback",
+    managerRating: "manager_rating",
+    clientManager: "client_manager_feedback",
+    clientFeedback: "client_feedback",
+    clientRating: "client_rating",
+    interviewCount: "interview_count",
+    atRisk: "at_risk",
+    promo: "eligible_for_promotion",
+    newTitle: "new_title",
+    remarks: "remarks",
+    fyYear: "fy_year",
+    appraisalCycleName: "appraisal_cycle_name",
+  },
+  sheet: {
+    empId: "emp_id",
+    newRB: "retention_bonus",
+    rbMonth: "rb_month",
+    newPB: "performance_bonus",
+    pbMonth: "pb_month",
+    newPBInst: "performance_bonus_installment",
+    hikeAmt: "hike_amount",
+    hikePct: "hike_pct",
+    tpbNext: "target_performance_bonus",
+    promo: "promotion",
+    newTitle: "title",
+    remarks: "remarks",
+    criteria: "target_pb_criteria",
+  },
+};
+
+const IMPORT_NUMERIC_FIELDS = new Set([
+  "rrPercent", "revenueReleased", "grossMargin", "managerRating", "interviewCount",
+  "newRB", "newPB", "newPBInst", "hikeAmt", "hikePct", "tpbNext",
+]);
+
+function normalizeImportValue(key, value) {
+  if (value === undefined || value === null || value === "") return "";
+  if (IMPORT_NUMERIC_FIELDS.has(key)) {
+    const number = Number(String(value).replace(/,/g, "").replace(/[%$]/g, "").trim());
+    if (!Number.isFinite(number) || number < 0) {
+      throw new ApiError(key + " must be a non-negative number.");
+    }
+    return number;
+  }
+  return String(value).trim();
+}
+
+async function importRows(tables, body) {
+  const screen = String(body.screen || "").trim().toLowerCase();
+  if (!["fb", "sheet"].includes(screen)) throw new ApiError("Unsupported upload type.");
+  let cycleId = String(body.cycleId || "").trim();
+  const cycleRows = await getAllRows(tables.cycles);
+  const normalizedCycles = cycleRows.map(normalizeCycle);
+  let cycle = cycleId
+    ? normalizedCycles.find((item) => item.id === cycleId)
+    : null;
+
+  // Feedback uploads may carry the cycle name from the CSV instead of the
+  // selected ROWID. Resolve that name to the Appraisal Cycle ROWID.
+  if (screen === "fb" && !cycle) {
+    const requestedCycleName = String(
+      body.appraisalCycleName || body.cycleName || cycleId || ""
+    ).trim().toLowerCase();
+    if (requestedCycleName) {
+      cycle = normalizedCycles.find(
+        (item) =>
+          String(item.name || "").trim().toLowerCase() === requestedCycleName ||
+          String(item.id || "").trim().toLowerCase() === requestedCycleName
+      ) || null;
+      if (cycle) cycleId = cycle.id;
+    }
+  }
+  if (screen === "sheet" && !cycle) {
+    throw new ApiError("The selected appraisal cycle no longer exists.", 404);
+  }
+  if (cycle?.archived) throw new ApiError("The selected cycle is archived.", 409);
+
+  const targetTable = screen === "fb" ? tables.feedback : tables.payroll;
+  // Feedback & Rating may be empty before the first upload, so do not infer
+  // its schema from the first row. Use the exact database columns instead.
+  const columns = screen === "fb"
+    ? new Set([
+        "emp_ID", "emp_name", "designation", "last_appraisal_date",
+        "revenue_released", "gross_margin", "manager_feedback", "manager_rating",
+        "client_manager_feedback", "client_feedback", "client_rating", "interview_count",
+        "at_risk", "eligible_for_promotion", "new_title", "remarks", "fy_year",
+        "appraisal_cycle_name",
+      ])
+    : await getImportColumnSet(targetTable);
+  const fieldMap = IMPORT_FIELD_MAP[screen];
+  const records = Array.isArray(body.records) ? body.records : [];
+  if (!records.length || records.length > MAX_UPLOAD_ROWS) throw new ApiError("Upload must contain between 1 and " + MAX_UPLOAD_ROWS + " rows.");
+
+  const employeeRows = await getAllRows(tables.employeeMaster);
+  const employeeIds = new Set(employeeRows.map((row) => String(row.emp_id || "").trim().toLowerCase()).filter(Boolean));
+  const existingRows = await getAllRows(targetTable);
+
+  let succeeded = 0;
+  let failed = 0;
+  const rows = [];
+
+  for (const input of records) {
+    const rowNumber = Number(input?.row) || rows.length + 2;
+    const empId = String(input?.empId || "").trim();
+    const errors = [];
+    if (!empId) errors.push("Employee ID is required.");
+    else if (!employeeIds.has(empId.toLowerCase())) errors.push("Employee ID not found in Employee Master.");
+
+    // Feedback files can contain historical records for different cycles in
+    // the same upload. Resolve the cycle from each row's business name/ID,
+    // rather than trusting the selected UI cycle ROWID.
+    const requestedRowCycle = String(input?.appraisalCycleName || "").trim();
+    const rowCycle = screen === "fb"
+      ? (normalizedCycles.find((item) =>
+          String(item.id || "").trim() === requestedRowCycle ||
+          String(item.name || "").trim().toLowerCase() === requestedRowCycle.toLowerCase()
+        ) || cycle)
+      : cycle;
+
+    const payload = {};
+    const master = screen === "fb"
+      ? employeeRows.find((row) => String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase())
+      : null;
+    if (screen === "fb" && !master) errors.push("Employee ID not found in Employee Master.");
+    if (!errors.length) {
+      for (const [key, column] of Object.entries(fieldMap)) {
+        if (input[key] === undefined) continue;
+        if (!columns.has(column)) {
+          if (key !== "empId") errors.push("Database column " + column + " is not available for this upload.");
+          continue;
+        }
+        try {
+          // Excel serial dates are not valid Catalyst date values. Skip an
+          // invalid last-appraisal value instead of rejecting the whole row.
+          if (
+            screen === "fb" &&
+            key === "lastAppraisal" &&
+            (
+              typeof input[key] === "number" ||
+              !/^\d{4}-\d{2}-\d{2}$/.test(String(input[key]).trim())
+            )
+          ) {
+            continue;
+          }
+          payload[column] = normalizeImportValue(key, input[key]);
+        } catch (error) {
+          errors.push(error.message);
+        }
+      }
+      if (screen === "fb") {
+        // Feedback foreign-key columns require native Catalyst ROWID values.
+        // Do not stringify the BIGINT ROWIDs before insert/update.
+        const masterRowId = master?.ROWID ?? master?.rowid ?? "";
+        if (!masterRowId) {
+          errors.push("Employee Master ROWID is missing for " + empId + ".");
+        }
+        if (columns.has("emp_ID")) payload.emp_ID = masterRowId;
+        if (columns.has("emp_name")) payload.emp_name = masterRowId;
+        if (columns.has("designation")) payload.designation = masterRowId;
+        if (!rowCycle) {
+          errors.push(
+            requestedRowCycle
+              ? `Appraisal Cycle Name "${requestedRowCycle}" was not found.`
+              : "Appraisal Cycle is required for Feedback & Rating upload."
+          );
+        } else if (columns.has("appraisal_cycle_name")) {
+          const cycleRowId = rowCycle.sourceRowId ?? rowCycle.id ?? "";
+          if (!cycleRowId) {
+            errors.push("A valid Appraisal Cycle ROWID is required for Feedback & Rating upload.");
+          } else {
+            payload.appraisal_cycle_name = cycleRowId;
+          }
+        }
+      } else if (columns.has("emp_id")) payload.emp_id = empId;
+      if (screen === "sheet") {
+        if (columns.has("appraisal_year")) payload.appraisal_year = cycle.name;
+        if (columns.has("appraisal_cycle_name")) payload.appraisal_cycle_name = cycle.id;
+        if (columns.has("total_pb")) payload.total_pb = (Number(payload.performance_bonus) || 0) + (Number(input.allocatedPBAmount) || 0);
+        if (columns.has("total_bonus")) payload.total_bonus = (Number(payload.total_pb) || 0) + (Number(payload.retention_bonus) || 0);
+        if (columns.has("hike_pct") && payload.hike_amount !== undefined) {
+          const master = employeeRows.find((row) => String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase());
+          const base = Number(master?.current_salary || master?.base_pay || 0);
+          payload.hike_pct = base > 0 ? Number(((Number(payload.hike_amount) || 0) / base * 100).toFixed(4)) : Number(payload.hike_pct || 0);
+        }
+        if (columns.has("new_ctc") && (payload.hike_amount !== undefined || payload.total_bonus !== undefined)) {
+          const master = employeeRows.find((row) => String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase());
+          const base = Number(master?.current_salary || master?.base_pay || 0);
+          payload.new_ctc = base + (Number(payload.hike_amount) || 0) + (Number(payload.total_bonus) || 0);
+        }
+      }
+    }
+
+    if (errors.length) {
+      failed += 1;
+      rows.push({ row: rowNumber, ok: false, reason: errors.join(" "), badFields: [] });
+      continue;
+    }
+
+    const existing = existingRows.find((row) => {
+      const storedEmp = row.emp_ID ?? row.emp_id ?? "";
+      const sameEmp = screen === "fb"
+        ? String(storedEmp || "").trim() === String(master ? rowId(master) : "").trim()
+        : String(storedEmp || "").trim().toLowerCase() === empId.toLowerCase();
+      if (!sameEmp) return false;
+      if (screen === "fb") {
+        const storedCycle = String(row.appraisal_cycle_name || "").trim();
+        const targetCycleId = String(rowCycle?.id || rowCycle?.sourceRowId || cycleId || "").trim();
+        return storedCycle === targetCycleId;
+      }
+      if (screen !== "sheet") return true;
+      return !columns.has("appraisal_year") || String(row.appraisal_year || "").trim() === cycle.name;
+    });
+
+    try {
+      if (existing) {
+        await targetTable.updateRow({ ROWID: rowId(existing), ...payload });
+      } else {
+        await targetTable.insertRow(payload);
+      }
+      succeeded += 1;
+      rows.push({ row: rowNumber, ok: true, reason: "", badFields: [] });
+    } catch (error) {
+      failed += 1;
+      const reason = error?.message || "Feedback & Rating row could not be saved.";
+      console.error("Import row failed:", { screen, row: rowNumber, empId, reason });
+      rows.push({ row: rowNumber, ok: false, reason, badFields: [] });
+    }
+  }
+
+  return { succeeded, failed, total: records.length, batchId: String(body.batchId || ""), rows };
+}
+
+async function routeRequest(req, res, identity, resource, a) {
+  const enforced = Boolean(a && a.enforced);
+  access.guard(a, () => requirePayrollAccess(a, resource, req.method));
+
   const isCycleWrite = resource.startsWith("cycles/") && req.method !== "GET";
-  if (isCycleWrite && !isHR(identity.user)) {
+  if (!enforced && isCycleWrite && !isHR(identity.user)) {
     return sendJson(res, 403, { success: false, message: "HR role is required to administer appraisal cycles." });
   }
   if (resource === "session") {
     return sendJson(res, 200, { success: true, data: { id: identity.id, name: identity.name, email: identity.email, role: identity.role } });
   }
-  const techEdUser = isTechEd(identity.user);
+  const techEdUser = !enforced && isTechEd(identity.user);
 
   if (
+    !enforced &&
     !canAccessPayroll(identity.user) &&
     !resource.startsWith("cycles")
   ) {
@@ -458,9 +906,60 @@ async function routeRequest(req, res, identity, resource) {
   const query = getQuery(req);
   const actor = identity.name || identity.email;
 
+  if (resource === "schema" && req.method === "GET") {
+    const schema = await getProjectSchema(adminApp);
+    return sendJson(res, 200, { success: true, data: schema });
+  }
+
   if (resource === "cycles" && req.method === "GET") {
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
     return sendJson(res, 200, { success: true, data: cycles });
+  }
+
+  if (resource === "locations" && req.method === "GET") {
+    const rows = await getAllRows(tables.locations);
+    const locations = rows
+      .map((row) => ({
+        id: String(row.ROWID || row.rowid || row.id || ""),
+        location_name: String(row.location_name || "").trim(),
+        location_code: String(row.location_code || "").trim(),
+        address: String(row.address || "").trim(),
+        currency_code: String(row.currency_code || "").trim(),
+        status: String(row.status || "Active").trim() || "Active",
+      }))
+      .filter((location) => location.location_code)
+      .sort((a, b) => a.location_name.localeCompare(b.location_name));
+    return sendJson(res, 200, { success: true, data: locations });
+  }
+
+  if (resource === "locations" && req.method === "POST") {
+    const body = await readBody(req);
+    const locationId = String(body.id || "").trim();
+    const locationName = String(body.location_name || "").trim();
+    const locationCode = String(body.location_code || "").trim().toUpperCase();
+    const address = String(body.address || "").trim();
+    const currencyCode = String(body.currency_code || "").trim().toUpperCase();
+    if (!locationName || !locationCode) {
+      return sendJson(res, 400, { success: false, message: "Location Name and Location Code are required." });
+    }
+    const rows = await getAllRows(tables.locations);
+    const duplicate = rows.find((row) => {
+      const rowId = String(row.ROWID || row.rowid || row.id || "");
+      if (locationId && rowId === locationId) return false;
+      return String(row.location_code || "").trim().toLowerCase() === locationCode.toLowerCase() ||
+        String(row.location_name || "").trim().toLowerCase() === locationName.toLowerCase();
+    });
+    if (duplicate) return sendJson(res, 409, { success: false, message: "A location with this name or code already exists." });
+    const status = String(body.status || "Active").trim().toLowerCase() === "inactive" ? "Inactive" : "Active";
+    const payload = { location_name: locationName, location_code: locationCode, address, currency_code: currencyCode, status };
+    if (locationId) {
+      const existing = rows.find((row) => String(row.ROWID || row.rowid || row.id || "") === locationId);
+      if (!existing) return sendJson(res, 404, { success: false, message: "Location not found." });
+      await tables.locations.updateRow({ ROWID: locationId, ...payload });
+      return sendJson(res, 200, { success: true, data: { id: locationId, ...payload } });
+    }
+    const inserted = await tables.locations.insertRow(payload);
+    return sendJson(res, 201, { success: true, data: { id: String(inserted?.ROWID || inserted?.rowid || inserted?.id || ""), ...payload } });
   }
 
   if (resource === "audit" && req.method === "GET") {
@@ -530,6 +1029,13 @@ async function routeRequest(req, res, identity, resource) {
     ]);
 
     const cycleById = new Map(cycles.map((row) => [rowId(row), normalizeCycle(row)]));
+    const employeeById = new Map();
+  masterRows.forEach((row) => {
+    const businessEmpId = String(row.emp_id || "").trim().toLowerCase();
+    const masterRowId = String(row.ROWID ?? row.rowid ?? "").trim().toLowerCase();
+    if (businessEmpId) employeeById.set(businessEmpId, row);
+    if (masterRowId) employeeById.set(masterRowId, row);
+  });
     const assignedEmpIds = techEdUser
       ? new Set(
           masterRows
@@ -539,13 +1045,15 @@ async function routeRequest(req, res, identity, resource) {
         )
       : null;
 
-    const visibleRows = assignedEmpIds
-      ? rows.filter((row) => assignedEmpIds.has(String(row.emp_id || "").trim().toLowerCase()))
-      : rows;
+    const visibleRows = enforced
+      ? rows.filter((row) => access.inScope(a, row))
+      : assignedEmpIds
+        ? rows.filter((row) => assignedEmpIds.has(String(row.emp_id || "").trim().toLowerCase()))
+        : rows;
 
     return sendJson(res, 200, {
       success: true,
-      data: visibleRows.map((row) => mapPayroll(row, cycleById)),
+      data: visibleRows.map((row) => mapPayroll(row, cycleById, employeeById)),
     });
   }
 
@@ -559,17 +1067,16 @@ async function routeRequest(req, res, identity, resource) {
     const body = await readBody(req);
     const result = await validateUpload(tables, body);
     const batchId = String(body.batchId || "").trim();
-    const auditRows = await getAllRows(tables.audit);
-    if (auditRows.some((row) => String(row.batch_id || "") === batchId)) {
-      throw new ApiError("This batch ID has already been used. Revalidate the file to create a new batch.", 409);
-    }
+    // Commit is intentionally retry-safe. If the browser retries the same batch
+    // after a timeout, update/insert the same Employee + Cycle rows instead of
+    // returning 409 and making a successful upload look like it did nothing.
     const valid = result.rows.filter((row) => row.ok);
     const rejected = result.rows.filter((row) => !row.ok);
     const masterRows = await getAllRows(tables.employeeMaster);
     const masterByEmpId = new Map(masterRows.map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]));
     const existingRows = await getAllRows(tables.payroll);
     const existingByKey = new Map(existingRows.map((row) => [
-      `${String(row.emp_id || "").trim().toLowerCase()}|${String(row.appraisal_cycle_id || "")}`,
+      `${String(row.emp_id || "").trim()}|${String(row.appraisal_cycle_name || "").trim()}`,
       row,
     ]));
 
@@ -578,18 +1085,29 @@ async function routeRequest(req, res, identity, resource) {
     let updated = 0;
     for (const item of valid) {
       const payrollRow = item.payrollRow;
-      const master = masterByEmpId.get(String(payrollRow.emp_id).toLowerCase());
-      if (!master) throw new ApiError(`Employee ${payrollRow.emp_id} was removed during validation. Re-validate the file.`, 409);
-      const key = `${String(payrollRow.emp_id).toLowerCase()}|${String(payrollRow.appraisal_cycle_id)}`;
+      const master = masterByEmpId.get(String(item.empId || payrollRow.emp_id || "").trim().toLowerCase()) || masterRows.find(
+        (row) => String(row.ROWID ?? row.rowid ?? "").trim() === String(payrollRow.emp_id).trim(),
+      );
+      if (!master) throw new ApiError(`Employee ${item.empId || payrollRow.emp_id} was removed during validation. Re-validate the file.`, 409);
+      const masterRowId = String(master.ROWID ?? master.rowid ?? "").trim();
+      const cycleRowId = String(payrollRow.appraisal_cycle_name ?? "").trim();
+      const key = `${masterRowId}|${cycleRowId}`;
       const existing = existingByKey.get(key);
-      if (existing) {
-        await tables.payroll.updateRow({ ROWID: rowId(existing), ...payrollRow });
-        updated += 1;
-      } else {
-        await tables.payroll.insertRow(payrollRow);
-        inserted += 1;
+      try {
+        if (existing) {
+          await tables.payroll.updateRow({ ROWID: rowId(existing), ...payrollRow });
+          updated += 1;
+        } else {
+          await tables.payroll.insertRow(payrollRow);
+          inserted += 1;
+        }
+        succeeded += 1;
+      } catch (error) {
+        const reason = error?.message || "Payroll row could not be saved.";
+        item.ok = false;
+        item.reason = reason;
+        item.badFields = [];
       }
-      succeeded += 1;
     }
 
     await writeAudit(tables.audit, {
@@ -607,13 +1125,19 @@ async function routeRequest(req, res, identity, resource) {
         succeeded,
         inserted,
         updated,
-        failed: rejected.length,
+        failed: result.rows.filter((row) => !row.ok).length,
       },
     });
     return sendJson(res, 200, {
       success: true,
-      data: { succeeded, failed: rejected.length, total: result.rows.length, batchId: body.batchId, rows: result.rows },
+      data: { succeeded, failed: result.rows.filter((row) => !row.ok).length, total: result.rows.length, batchId: body.batchId, rows: result.rows },
     });
+  }
+
+  if (resource === "import" && req.method === "POST") {
+    const body = await readBody(req);
+    const result = await importRows(tables, body);
+    return sendJson(res, 200, { success: true, data: result });
   }
 
   if (resource === "undo" && req.method === "POST") {
@@ -665,7 +1189,7 @@ async function routeRequest(req, res, identity, resource) {
   }
 
   if (resource.startsWith("cycles/") && req.method === "POST") {
-    if (!isHR(identity.user)) {
+    if (!enforced && !isHR(identity.user)) {
       return sendJson(res, 403, { success: false, message: "HR role is required to administer appraisal cycles." });
     }
     const [, action, id] = resource.split("/");
@@ -678,96 +1202,174 @@ async function routeRequest(req, res, identity, resource) {
       const date = new Date(`${value}T00:00:00.000Z`);
       return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
     };
-    const validDates = (start, end) => validDate(start) && validDate(end) && end > start;
-    const now = new Date().toISOString().replace("T", " ").slice(0, 19);
+    const now = nowLocal();
+    const columns = await cycleColumns(tables.cycles);
+
+    // Cycle fields from the screen. Cycles on "No process" need only the
+    // effective date; the others need start < end (effective defaults to start).
+    const readCycleFields = (fallback = {}) => {
+      const name = String(body.name ?? fallback.name ?? "").trim();
+      const type = String(body.type ?? (fallback.type || cycleTypeOf(name))).trim();
+      const process = String(body.process ?? (fallback.process || DEFAULT_CYCLE_PROCESS[type] || "Annual")).trim();
+      const start = String(body.start ?? fallback.start ?? "").trim();
+      const end = String(body.end ?? fallback.end ?? "").trim();
+      const effective = String(body.effective ?? (fallback.effective || start)).trim();
+      let error = "";
+      if (!name || name.length > 100) error = "Provide a cycle name (up to 100 characters).";
+      else if (!CYCLE_TYPES.includes(type)) error = `Cycle type must be one of: ${CYCLE_TYPES.join(", ")}.`;
+      else if (!CYCLE_PROCESSES.includes(process)) error = "Process must be Annual, Exceptional or None.";
+      else if (process === "None") {
+        if (!validDate(effective)) error = "The effective date is required (YYYY-MM-DD).";
+        else if ((start || end) && !(validDate(start) && validDate(end) && end > start)) error = "If you give start and close dates, both must be valid and close must be after start.";
+      } else if (!(validDate(start) && validDate(end) && end > start)) error = "Provide valid start and close dates; close must be after start.";
+      else if (effective && !validDate(effective)) error = "The effective date must be a valid date (YYYY-MM-DD).";
+      return { name, type, process, start: start || null, end: end || null, effective: effective || start, error };
+    };
+    const optionalValues = (fields) => ({ cycle_type: fields.type, process: fields.process, effective_date: fields.effective || null });
+    // Until effective_date exists, a "No process" cycle keeps its effective
+    // date in start_date (the screen shows start as the effective date).
+    const storedStart = (fields) => fields.start || (!columns.has("effective_date") && fields.process === "None" ? fields.effective : null);
+    const appendRemark = (current, entry) => (current ? `${current} | ${entry}` : entry);
+    // Only one cycle may be Active: access scoping follows the Active cycle.
+    const otherActiveCycle = (id) => cycles.find((cycle) => cycle.status === "Active" && cycle.id !== id && !cycle.archived);
 
     if (action === "create") {
-      const name = String(body.name || "").trim();
-      const start = String(body.start || "");
-      const end = String(body.end || "");
+      const fields = readCycleFields();
       const remarks = String(body.remarks || "").trim();
-      if (!name || name.length > 100 || remarks.length > 10000 || !validDates(start, end)) {
-        return sendJson(res, 400, { success: false, message: "Provide a cycle name (up to 100 characters), remarks (up to 10,000 characters), and valid start/end dates; end date must be after start date." });
+      if (fields.error || remarks.length > 10000) {
+        return sendJson(res, 400, { success: false, message: fields.error || "Remarks cannot exceed 10,000 characters." });
       }
-      if (cycles.some((cycle) => cycle.name.toLowerCase() === name.toLowerCase())) {
-        return sendJson(res, 409, { success: false, message: "An appraisal cycle with that name already exists." });
+      // cycle_name is unique in the Data Store, cancelled cycles included.
+      const same = cycles.find((cycle) => cycle.name.toLowerCase() === fields.name.toLowerCase());
+      if (same) {
+        return sendJson(res, 409, { success: false, message: same.status === "Cancelled" ? `"${same.name}" was used by a cancelled cycle. Choose another name.` : "An appraisal cycle with that name already exists." });
       }
-      const created = await tables.cycles.insertRow({
-        cycle_name: name,
-        start_date: start,
-        end_date: end,
-        status: "Upcoming",
-        remarks,
-        changed_by: actor,
-        changed_at: now,
-        archived: false,
-      });
-      const cycle = normalizeCycle({ ...created, cycle_name: name, start_date: start, end_date: end, status: "Upcoming", remarks, changed_by: actor, changed_at: now, archived: false });
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle, action: "Created cycle", details: { kind: "cycle", action: "Created cycle", message: "Cycle created as Upcoming.", cycleName: cycle.name, newRemarks: cycle.remarks } });
+      const row = withOptionalColumns(columns, {
+        cycle_name: fields.name, start_date: storedStart(fields), end_date: fields.end, status: "Upcoming",
+        remarks, changed_by: actor, changed_at: now, archived: false,
+      }, optionalValues(fields));
+      const created = await tables.cycles.insertRow(row);
+      const cycle = normalizeCycle({ ...row, ...created });
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle, action: "Created cycle", details: { kind: "cycle", action: "Created cycle", message: `Cycle created as Upcoming (${fields.type}, ${fields.process === "None" ? "no process" : fields.process + " process"}).`, cycleName: cycle.name, newRemarks: cycle.remarks } });
       return sendJson(res, 201, { success: true, data: cycle });
     }
 
     if (!existing || !id) return sendJson(res, 404, { success: false, message: "Appraisal cycle not found." });
+    if (existing.status === "Cancelled" && action !== "remarks") {
+      return sendJson(res, 409, { success: false, message: "This cycle was cancelled and can no longer be changed." });
+    }
 
     if (action === "update") {
-      const name = String(body.name || "").trim();
-      const start = String(body.start || "");
-      const end = String(body.end || "");
-      if (!name || name.length > 100 || !validDates(start, end)) {
-        return sendJson(res, 400, { success: false, message: "Provide a cycle name (up to 100 characters) and valid start/end dates; end date must be after start date." });
-      }
-      if (cycles.some((cycle) => cycle.id !== id && cycle.name.toLowerCase() === name.toLowerCase())) {
+      if (existing.archived) return sendJson(res, 409, { success: false, message: "Archived cycles are read-only." });
+      const fields = readCycleFields({ ...existing, type: existing.type || cycleTypeOf(existing.name), process: cycleProcessOf(existing) });
+      if (fields.error) return sendJson(res, 400, { success: false, message: fields.error });
+      if (cycles.some((cycle) => cycle.id !== id && cycle.name.toLowerCase() === fields.name.toLowerCase())) {
         return sendJson(res, 409, { success: false, message: "An appraisal cycle with that name already exists." });
       }
-      await tables.cycles.updateRow({ ROWID: id, cycle_name: name, start_date: start, end_date: end, changed_by: actor, changed_at: now });
-      const updated = { ...existing, name, start, end, changedBy: actor, changedAt: now };
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Cycle edited", details: { kind: "cycle", action: "Cycle edited", message: "Cycle name or dates updated.", cycleName: name } });
+      // The process is fixed once the cycle has been activated.
+      if (existing.status !== "Upcoming" && fields.process !== cycleProcessOf(existing)) {
+        return sendJson(res, 409, { success: false, message: "The process can only be changed while the cycle is Upcoming." });
+      }
+      const row = withOptionalColumns(columns, {
+        ROWID: id, cycle_name: fields.name, start_date: storedStart(fields), end_date: fields.end, changed_by: actor, changed_at: now,
+      }, optionalValues(fields));
+      await tables.cycles.updateRow(row);
+      const updated = { ...existing, name: fields.name, start: storedStart(fields) || "", end: fields.end || "", changedBy: actor, changedAt: now };
+      if (columns.has("cycle_type")) updated.type = fields.type;
+      if (columns.has("process")) updated.process = fields.process;
+      if (columns.has("effective_date")) updated.effective = fields.effective || "";
+      const before = { name: existing.name, type: existing.type, process: existing.process, effective: existing.effective, start: existing.start, end: existing.end };
+      const after = { name: updated.name, type: updated.type, process: updated.process, effective: updated.effective, start: updated.start, end: updated.end };
+      const changed = Object.keys(before).filter((key) => String(before[key] || "") !== String(after[key] || ""));
+      const describe = (v) => changed.map((key) => `${key} ${v[key] || "—"}`).join(", ");
+      await writeAudit(tables.audit, {
+        actor, source: "cycle", cycle: updated, action: "Cycle edited",
+        oldValue: describe(before), newValue: describe(after),
+        details: { kind: "cycle", action: "Cycle edited", message: changed.length ? `Changed: ${changed.map((key) => `${key} ${before[key] || "—"} → ${after[key] || "—"}`).join("; ")}.` : "No values changed.", cycleName: updated.name, before, after },
+      });
       return sendJson(res, 200, { success: true, data: updated });
     }
 
     if (action === "remarks") {
-      const remarks = String(body.remarks || "");
+      // Remarks are a running log: a new remark is added, nothing is overwritten.
+      const remark = String(body.remark ?? body.remarks ?? "").trim();
+      if (!remark) return sendJson(res, 400, { success: false, message: "Enter a remark." });
+      const remarks = appendRemark(existing.remarks, remark);
       if (remarks.length > 10000) return sendJson(res, 400, { success: false, message: "Remarks exceed 10,000 characters." });
       await tables.cycles.updateRow({ ROWID: id, remarks, changed_by: actor, changed_at: now });
       const updated = { ...existing, remarks, changedBy: actor, changedAt: now };
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Remarks changed", details: { kind: "cycle", action: "Remarks changed", message: "Cycle remarks updated.", cycleName: updated.name, newRemarks: remarks } });
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Remarks changed", details: { kind: "cycle", action: "Remarks changed", message: "Remark added.", cycleName: updated.name, newRemarks: remark } });
       return sendJson(res, 200, { success: true, data: updated });
     }
 
     if (action === "status") {
       const status = String(body.status || "");
+      const remark = String(body.remark || "").trim();
       if (!["Upcoming", "Active", "Closed"].includes(status)) return sendJson(res, 400, { success: false, message: "Status must be Upcoming, Active, or Closed." });
-      if (existing.archived && status === "Active") return sendJson(res, 409, { success: false, message: "Unarchive the cycle before activating it." });
-      const otherActive = cycles.find((cycle) =>
-        cycle.status === "Active" && cycle.id !== id && !cycle.archived,
-      );
-      if (status === "Active" && otherActive) {
-        return sendJson(res, 409, { success: false, message: `Archive "${otherActive.name}" before activating another cycle.` });
+      if (existing.archived) return sendJson(res, 409, { success: false, message: "Archived cycles are read-only. Unarchive the cycle first." });
+      if (!(CYCLE_MOVES[existing.status] || []).includes(status)) {
+        return sendJson(res, 409, { success: false, message: `A cycle cannot move from ${existing.status} to ${status}.` });
       }
-      await tables.cycles.updateRow({ ROWID: id, status, changed_by: actor, changed_at: now });
-      const updated = { ...existing, status, changedBy: actor, changedAt: now };
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Status changed", details: { kind: "cycle", action: "Status changed", message: `Cycle status changed from ${existing.status} to ${status}.`, cycleName: updated.name } });
+      const otherActive = otherActiveCycle(id);
+      if (status === "Active" && otherActive) {
+        return sendJson(res, 409, { success: false, message: `Close or archive "${otherActive.name}" first. Only one cycle can be Active at a time.` });
+      }
+      const verb = existing.status === "Closed" ? "Reopen" : status === "Active" ? "Activate" : "Close";
+      const remarks = remark ? appendRemark(existing.remarks, `${verb}: ${remark}`) : existing.remarks;
+      if (remarks.length > 10000) return sendJson(res, 400, { success: false, message: "Remarks exceed 10,000 characters." });
+      const row = { ROWID: id, status, changed_by: actor, changed_at: now };
+      if (remark) row.remarks = remarks;
+      // The process is locked at activation: store the one in use.
+      if (status === "Active" && !existing.process) withOptionalColumns(columns, row, { process: cycleProcessOf(existing) });
+      await tables.cycles.updateRow(row);
+      await bumpAccessVersion(req, a, "Cycle status changed: " + existing.name);
+      const updated = { ...existing, status, remarks, changedBy: actor, changedAt: now };
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Status changed", details: { kind: "cycle", action: "Status changed", message: `Cycle status changed from ${existing.status} to ${status}.`, cycleName: updated.name, ...(remark ? { newRemarks: `${verb}: ${remark}` } : {}) } });
       return sendJson(res, 200, { success: true, data: updated });
     }
 
     if (action === "archive") {
       if (typeof body.archived !== "boolean") return sendJson(res, 400, { success: false, message: "Archived must be true or false." });
       const archived = body.archived;
-      const otherActive = cycles.find((cycle) => cycle.status === "Active" && cycle.id !== id && !cycle.archived);
+      const remark = String(body.remark || "").trim();
+      if (archived && existing.status !== "Closed") return sendJson(res, 409, { success: false, message: "Close the cycle before archiving it." });
+      const otherActive = otherActiveCycle(id);
       if (!archived && existing.status === "Active" && otherActive) {
-        return sendJson(res, 409, { success: false, message: `Archive "${otherActive.name}" before unarchiving this active cycle.` });
+        return sendJson(res, 409, { success: false, message: `Close or archive "${otherActive.name}" before unarchiving this active cycle.` });
       }
-      await tables.cycles.updateRow({ ROWID: id, archived, changed_by: actor, changed_at: now });
-      const updated = { ...existing, archived, changedBy: actor, changedAt: now };
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: archived ? "Cycle archived" : "Cycle unarchived", details: { kind: "cycle", action: archived ? "Cycle archived" : "Cycle unarchived", message: archived ? "Cycle archived." : "Cycle unarchived.", cycleName: updated.name } });
+      const remarks = remark ? appendRemark(existing.remarks, `${archived ? "Archive" : "Unarchive"}: ${remark}`) : existing.remarks;
+      if (remarks.length > 10000) return sendJson(res, 400, { success: false, message: "Remarks exceed 10,000 characters." });
+      const row = { ROWID: id, archived, changed_by: actor, changed_at: now };
+      if (remark) row.remarks = remarks;
+      await tables.cycles.updateRow(row);
+      const updated = { ...existing, archived, remarks, changedBy: actor, changedAt: now };
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: archived ? "Cycle archived" : "Cycle unarchived", details: { kind: "cycle", action: archived ? "Cycle archived" : "Cycle unarchived", message: archived ? "Cycle archived." : "Cycle unarchived.", cycleName: updated.name, ...(remark ? { newRemarks: `${archived ? "Archive" : "Unarchive"}: ${remark}` } : {}) } });
+      return sendJson(res, 200, { success: true, data: updated });
+    }
+
+    if (action === "cancel") {
+      const reason = String(body.reason || "").trim();
+      if (!reason || reason.length > 1000) return sendJson(res, 400, { success: false, message: "Give a reason for cancelling (up to 1,000 characters)." });
+      if (existing.archived || !["Upcoming", "Active"].includes(existing.status)) {
+        return sendJson(res, 409, { success: false, message: "Only Upcoming or Active cycles can be cancelled." });
+      }
+      const remarks = appendRemark(existing.remarks, `Cancelled: ${reason.replace(/\|/g, "/")}`);
+      if (remarks.length > 10000) return sendJson(res, 400, { success: false, message: "Remarks exceed 10,000 characters." });
+      const row = withOptionalColumns(columns, { ROWID: id, status: "Cancelled", remarks, changed_by: actor, changed_at: now }, { cancel_reason: reason });
+      await tables.cycles.updateRow(row);
+      if (existing.status === "Active") await bumpAccessVersion(req, a, "Active cycle cancelled: " + existing.name);
+      const updated = { ...existing, status: "Cancelled", remarks, cancelReason: reason, changedBy: actor, changedAt: now };
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Cycle cancelled", oldValue: existing.status, newValue: "Cancelled", details: { kind: "cycle", action: "Cycle cancelled", message: `Cycle cancelled (was ${existing.status}). Reason: ${reason}`, cycleName: updated.name, newRemarks: `Cancelled: ${reason}` } });
       return sendJson(res, 200, { success: true, data: updated });
     }
 
     if (action === "delete") {
-      if (new Date().toISOString().slice(0, 10) >= existing.start) {
+      // Compare dates in IST (the business time zone), not UTC.
+      if (existing.start && todayLocal() >= existing.start) {
         return sendJson(res, 409, { success: false, message: "A cycle can only be deleted before its start date." });
       }
-      const relatedPayroll = (await getAllRows(tables.payroll)).some((row) => String(row.appraisal_cycle_id || "") === id);
+      if (existing.status !== "Upcoming") return sendJson(res, 409, { success: false, message: "Only Upcoming cycles can be deleted." });
+      const relatedPayroll = (await getAllRows(tables.payroll)).some((row) => String(row.appraisal_cycle_name || "") === id);
       if (relatedPayroll) return sendJson(res, 409, { success: false, message: "Cycles with payroll records cannot be deleted." });
       await tables.cycles.deleteRow(id);
       await writeAudit(tables.audit, { actor, source: "cycle", cycle: existing, action: "Cycle deleted", details: { kind: "cycle", action: "Cycle deleted", message: "Cycle deleted before its start date.", cycleName: existing.name } });
@@ -779,22 +1381,48 @@ async function routeRequest(req, res, identity, resource) {
 }
 
 module.exports = async function payrollCycleApi(req, res) {
+  // A preflight that reaches the function is answered before any auth.
+  if (req.method === "OPTIONS") {
+    res.writeHead(204);
+    return res.end();
+  }
   try {
+    const resource = String(getQuery(req).resource || "");
+    const method = String(req.method || "GET").toUpperCase();
+    // These GET endpoints are deliberately readable by any authenticated app
+    // user (see requirePayrollAccess). Do not run delegation-based access checks
+    // before them: a valid Tech-Ed session with no current delegation must still
+    // be able to load the active cycle used to resolve its own budget.
+    const cycleMetadataRead =
+      method === "GET" &&
+      (resource === "schema" || resource === "cycles" || resource === "locations");
+    const publicSessionRead = resource === "session";
+    const a = cycleMetadataRead || publicSessionRead
+      ? { dryRun: true, enforced: false, scope: { all: false } }
+      : await checkAccess(req);
+
     const identity = await requireIdentity(req);
     if (!identity) return sendJson(res, 401, { success: false, message: "Sign in with a Catalyst app user account to continue." });
 
-    const resource = String(getQuery(req).resource || "");
-    if (resource === "session") return routeRequest(req, res, identity, resource);
-    if (resource === "cycles" && req.method === "GET") return routeRequest(req, res, identity, resource);
-    if (resource === "audit" && req.method === "GET") return routeRequest(req, res, identity, resource);
-    if (resource === "history" && req.method === "GET") return routeRequest(req, res, identity, resource);
-    if (resource === "payroll" && req.method === "GET") return routeRequest(req, res, identity, resource);
-    if (resource === "validate" && req.method === "POST") return routeRequest(req, res, identity, resource);
-    if (resource === "commit" && req.method === "POST") return routeRequest(req, res, identity, resource);
-    if (resource === "undo" && req.method === "POST") return routeRequest(req, res, identity, resource);
-    if (resource.startsWith("cycles/") && req.method === "POST") return routeRequest(req, res, identity, resource);
+    // `return await` so errors thrown inside routeRequest reach the catch below
+    // (a bare `return routeRequest(...)` left them as unhandled rejections).
+    if (resource === "session") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "schema" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "cycles" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "locations" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
+    if (resource === "audit" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "history" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "payroll" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "validate" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "commit" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "undo" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "import" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
+    if (resource.startsWith("cycles/") && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
     return sendJson(res, 404, { success: false, message: "The requested operation was not found." });
   } catch (error) {
+    if (error instanceof access.HttpError) {
+      return sendJson(res, error.status || 403, { success: false, message: error.message, enforced: true });
+    }
     console.error(JSON.stringify({
       function: "payrollcycleapi",
       error: error.message,

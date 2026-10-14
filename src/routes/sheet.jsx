@@ -3,7 +3,9 @@ import {
   ChevronDown,
   Download,
   History,
-  Layers,
+  WalletCards,
+  CircleDollarSign,
+  Percent,
   RotateCcw,
   Search,
   Upload,
@@ -13,7 +15,6 @@ import {
 import { AppShell } from "@/components/appraisal/AppShell";
 import { AppraisalGrid } from "@/components/appraisal/AppraisalGrid";
 import { AuditPanel } from "@/components/appraisal/AuditTrail";
-import { BulkEditDialog } from "@/components/appraisal/BulkEditDialog";
 import { useAppraisalImport } from "@/components/appraisal/ImportAppraisalButton"; // <-- update path if your file is named differently
 
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
+import { useCatalystUser } from "@/lib/catalyst-auth";
 
 import {
   applyFilters,
@@ -38,6 +40,9 @@ import {
 } from "@/lib/appraisal-filters";
 
 import { exportToExcel } from "@/lib/export-excel";
+import { useAccess } from "@/lib/access-store";
+import { useSettings } from "@/lib/settings-store";
+import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
 // ============================================================
 // BUDGET
@@ -50,6 +55,48 @@ const FALLBACK_BUDGET_ALLOCATED = 42500000; // ₹ 4.25 Cr (estimate)
 const ONE_CRORE = 10000000;
 
 const formatCrore = (amount) => `₹ ${(amount / ONE_CRORE).toFixed(2)} Cr`;
+
+// ============================================================
+// APPRAISAL SHEET BUDGET NOTICE
+// Same budget-change message used by Detailed Screen.
+// ============================================================
+const BUDGET_NOTICE_PLACEHOLDER = {
+  from: "10.41 L",
+  to: "9.79 L",
+  changes: 5,
+  since: "01-Sep-26",
+};
+
+function BudgetNotice({ notice, onGotIt }) {
+  if (!notice) return null;
+
+  const budgetNoticeText =
+    `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`;
+
+  return (
+    <div className="flex items-center gap-3 rounded-md border border-[#e3e9ec] bg-white px-3 py-1.5">
+      <span className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-[#102a43]">
+        <span className="text-[#b42318]">▲</span>
+        Budget changed
+      </span>
+      <span
+        className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[12px] text-[#3e4c59]"
+        aria-label={budgetNoticeText}
+      >
+        <span className="appraisal-budget-marquee inline-block min-w-max">
+          {budgetNoticeText}
+        </span>
+      </span>
+      <button
+        type="button"
+        onClick={onGotIt}
+        className="shrink-0 rounded border border-[#c4ced6] bg-[#eef3f3] px-3 py-1 text-[11px] font-semibold text-[#102a43] hover:bg-[#e4ecec]"
+      >
+        Got it
+      </button>
+    </div>
+  );
+}
 
 // ============================================================
 // HEADER COUNTER
@@ -95,17 +142,31 @@ export function SheetPage() {
     error: budgetError,
   } = useBudget();
   const { openImportPicker, importUi } = useAppraisalImport();
+  const catalystUser = useCatalystUser();
+  const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const isTechEd = role.includes("teched");
+  const isHR = role.includes("hr");
+  // Access rules (permissive when accessapi is unavailable).
+  const access = useAccess();
+  const { settings } = useSettings();
+  const sheetEditable = access.canScreen("appraisalSheet", "edit");
+  const canImport = sheetEditable && access.canAction("importAppraisal");
+  const canExport = access.canAction("exportGrid");
+  const canViewAudit = access.canAction("viewAudit");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({});
   const [selected, setSelected] = useState({});
-  const [bulkOpen, setBulkOpen] = useState(false);
 
-  const [showHistory, setShowHistory] = useState(true);
+  // History starts hidden; the user turns it on with the toggle when needed.
+  const [showHistory, setShowHistory] = useState(false);
+  const [showEditedOnly, setShowEditedOnly] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
   const [auditOpen, setAuditOpen] = useState(false);
+  const [lastEditedTarget, setLastEditedTarget] = useState("");
+  const [budgetNoticeOpen, setBudgetNoticeOpen] = useState(true);
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -121,15 +182,39 @@ export function SheetPage() {
     };
   }, []);
 
-  const filtered = useMemo(() => {
-    const appraisalRows = rows.filter(
-      (row) =>
-        String(row.status || "").trim().toLowerCase() === "active" &&
-        String(row.eligibility || "").trim().toLowerCase() === "eligible",
-    );
+  const appraisalRows = useMemo(
+    () =>
+      rows.filter(
+        (row) =>
+          String(row.status || "").trim().toLowerCase() === "active" &&
+          String(row.eligibility || "").trim().toLowerCase() === "eligible",
+      ),
+    [rows],
+  );
 
-    return applyFilters(appraisalRows, filters, search);
-  }, [rows, filters, search]);
+  const editedEmployeeIds = useMemo(
+    () =>
+      new Set(
+        audit
+          .filter(
+            (entry) =>
+              String(entry.appraisalYear || "Apr-26") === "Apr-26",
+          )
+          .map((entry) => String(entry.empId || "").trim())
+          .filter(Boolean),
+      ),
+    [audit],
+  );
+
+  const filtered = useMemo(() => {
+    const baseRows = showEditedOnly
+      ? appraisalRows.filter((row) =>
+          editedEmployeeIds.has(String(row.empId || "").trim()),
+        )
+      : appraisalRows;
+
+    return applyFilters(baseRows, filters, search);
+  }, [appraisalRows, editedEmployeeIds, filters, search, showEditedOnly]);
 
   const setFilter = (key, f) =>
     setFilters((prev) => {
@@ -144,36 +229,50 @@ export function SheetPage() {
       return next;
     });
 
-  const selectedIds = filtered.filter((r) => selected[r.id]).map((r) => r.id);
 
   const activeFilters = Object.entries(filters).filter(
     ([, filter]) => !isEmptyFilter(filter),
   );
 
+  const editedCount = useMemo(
+    () =>
+      appraisalRows.filter((row) =>
+        editedEmployeeIds.has(String(row.empId || "").trim()),
+      ).length,
+    [appraisalRows, editedEmployeeIds],
+  );
+
+  const lastEditedEntry =
+    audit.find(
+      (entry) =>
+        String(entry.appraisalYear || "Apr-26") === "Apr-26" &&
+        String(entry.empId || "").trim(),
+    ) || null;
+  const lastEditedRow = lastEditedEntry
+    ? rows.find(
+        (row) => String(row.empId).trim() === String(lastEditedEntry.empId).trim(),
+      )
+    : null;
+
   // ============================================================
   // BUDGET NUMBERS
-  // Consumed = Hike Amount + Total Bonus (Allocated PB + New PB + New RB)
-  // for every employee, independent of search / column filters.
+  // Consumed = the three totals in the grid's last (Total) row added
+  // together: Performance Bonus (PB) + Retention Bonus (RB) + Hike Amount.
+  // It sums the same rows the grid shows, so it always matches that row.
+  // Utilisation = Consumed as a percentage of Budget Allocated.
   // ============================================================
 
   const budgetConsumed = useMemo(
     () =>
-      rows
-        .filter(
-        (row) =>
-          String(row.status || "").trim().toLowerCase() === "active" &&
-          String(row.eligibility || "").trim().toLowerCase() === "eligible",
-      )
-        .reduce(
-          (sum, row) =>
-            sum +
-            (Number(row.hikeAmount) || 0) +
-            (Number(row.allocatedPBAmount) || 0) +
-            (Number(row.newPBToBeOffered) || 0) +
-            (Number(row.newRB) || 0),
-          0,
-        ),
-    [rows],
+      filtered.reduce(
+        (sum, row) =>
+          sum +
+          (Number(row.allocatedPBAmount) || 0) +
+          (Number(row.newRB) || 0) +
+          (Number(row.hikeAmount) || 0),
+        0,
+      ),
+    [filtered],
   );
 
   const realBudget =
@@ -198,33 +297,26 @@ export function SheetPage() {
   // HEADER: Show History + budget counters
   // ============================================================
 
-  const headerActions = (
-    <div className="flex min-w-0 items-center gap-4">
-      <button
-        type="button"
-        onClick={() => setShowHistory((previous) => !previous)}
-        aria-pressed={showHistory}
-        aria-label="Show History"
-        className="flex shrink-0 items-center gap-2 border-0 bg-transparent p-0 pr-1 outline-none"
-      >
-        <span className="whitespace-nowrap text-[12px] font-medium text-white/90">
-          Show History
-        </span>
+  const budgetVertical = settings.menuPosition === "left";
+  const budgetCollapsed = budgetVertical && settings.menuCollapsed;
 
-        <span
-          className={`relative block h-[22px] w-[42px] rounded-full transition-colors duration-200 ${
-            showHistory ? "bg-[#3fae6a]" : "bg-[#5c7396]"
-          }`}
-        >
-          <span
-            className="absolute top-[3px] left-[3px] h-[16px] w-[16px] rounded-full bg-white shadow-sm transition-transform duration-200"
-            style={{
-              transform: showHistory ? "translateX(20px)" : "translateX(0)",
-            }}
-          />
-        </span>
-      </button>
-
+  const headerActions = budgetCollapsed ? (
+    <div className="flex flex-col items-center gap-1">
+      <span title={`Budget Allocated: ${formatCrore(budgetAllocated)}`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
+        <WalletCards className="size-4" />
+      </span>
+      <span title={`Consumed (Hikes + Bonuses): ${formatCrore(budgetConsumed)}`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
+        <CircleDollarSign className="size-4" />
+      </span>
+      <span title={`Utilisation: ${budgetUtilisation.toFixed(1)}%`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
+        <Percent className="size-4" />
+      </span>
+    </div>
+  ) : (
+    <div className={cn(
+      "flex min-w-0",
+      budgetVertical ? "w-full flex-col gap-2" : "items-center gap-4",
+    )}>
       <BudgetCounter
         label={budgetIsEstimate ? "Budget Allocated (est.)" : "Budget Allocated"}
         title={
@@ -234,13 +326,11 @@ export function SheetPage() {
         }
         value={formatCrore(budgetAllocated)}
       />
-
       <BudgetCounter
         label="Consumed (Hikes + Bonuses)"
         title="Hike Amount + Total Bonus, this cycle"
         value={formatCrore(budgetConsumed)}
       />
-
       <BudgetCounter
         label="Utilisation"
         value={`${budgetUtilisation.toFixed(1)}%`}
@@ -251,8 +341,18 @@ export function SheetPage() {
 
   return (
     <>
+      <style>{`
+        .appraisal-budget-marquee{animation:appraisalBudgetMarquee 18s linear infinite}
+        .appraisal-budget-marquee:hover{animation-play-state:paused}
+        @keyframes appraisalBudgetMarquee{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+      `}</style>
       <AppShell headerActions={headerActions}>
-        <div className="space-y-2">
+        <div className={cn("flex min-h-0 flex-1 flex-col gap-2", budgetVertical && "pl-1 pr-0 pt-0")}>
+          <BudgetNotice
+            notice={budgetNoticeOpen ? BUDGET_NOTICE_PLACEHOLDER : null}
+            onGotIt={() => setBudgetNoticeOpen(false)}
+          />
+
           {(saveError || loadError) && (
             <div
               role="alert"
@@ -271,7 +371,7 @@ export function SheetPage() {
             </div>
           )}
 
-          {/* TOOLBAR: search on the left, reset + menu on the right */}
+          {/* TOOLBAR: search on the left; filters, My notes and Menu on the right */}
 
           <div className="flex items-center gap-2 rounded-md border border-[#d9dee7] bg-white px-3 py-2">
             <div className="relative w-[320px]">
@@ -293,12 +393,85 @@ export function SheetPage() {
                 onClick={() => {
                   setFilters({});
                   setSearch("");
+                  setShowEditedOnly(false);
                 }}
-                disabled={activeFilters.length === 0 && !search}
+                disabled={
+                  activeFilters.length === 0 && !search && !showEditedOnly
+                }
               >
                 <RotateCcw className="size-3.5" />
                 Reset
               </Button>
+
+              <button
+                type="button"
+                onClick={() => setShowHistory((previous) => !previous)}
+                aria-pressed={showHistory}
+                aria-label="Show History"
+                className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]"
+              >
+                <History className="size-3.5" />
+                <span>Show History</span>
+                <span
+                  className={cn(
+                    "relative block h-[16px] w-[30px] rounded-full transition-colors duration-200",
+                    showHistory ? "bg-[#3fae6a]" : "bg-[#5c7396]",
+                  )}
+                >
+                  <span
+                    className="absolute top-[2px] left-[2px] h-[12px] w-[12px] rounded-full bg-white shadow-sm transition-transform duration-200"
+                    style={{
+                      transform: showHistory
+                        ? "translateX(14px)"
+                        : "translateX(0)",
+                    }}
+                  />
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEditedOnly((previous) => !previous);
+                  setSearch("");
+                }}
+                aria-pressed={showEditedOnly}
+                className={cn(
+                  "flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium",
+                  showEditedOnly
+                    ? "border-[#17365d] bg-[#17365d] text-white"
+                    : "border-[#17365d] bg-white text-[#17365d] hover:bg-[#f1f5f9]",
+                )}
+                title="Filter to employees edited in this appraisal cycle"
+              >
+                <span>✎ Edited</span>
+                <strong>{editedCount}</strong>
+                <span
+                  className={
+                    showEditedOnly ? "text-white/70" : "text-slate-400"
+                  }
+                >
+                  of {appraisalRows.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!lastEditedRow) {
+                    return;
+                  }
+                  setFilters({});
+                  setSearch("");
+                  setShowHistory(true);
+                  setLastEditedTarget(String(lastEditedRow.empId).trim());
+                }}
+                className="flex h-9 min-w-0 max-w-[220px] shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]"
+                title={lastEditedRow ? "Last edited: " + lastEditedRow.name : "No edits recorded"}
+              >
+                <span>↪ Last edited:</span>
+                <span className="truncate">{lastEditedRow?.name || "—"}</span>
+              </button>
+              <div id="appraisal-my-notes-slot" className="relative shrink-0" />
 
               <div ref={menuRef} className="relative">
                 <button
@@ -322,63 +495,62 @@ export function SheetPage() {
                     className="absolute top-full right-0 z-50 mt-1.5 w-[200px] overflow-hidden rounded-md border border-[#cbd5e1] bg-white shadow-lg"
                     role="menu"
                   >
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9] disabled:cursor-not-allowed disabled:opacity-50"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setBulkOpen(true);
-                      }}
-                      disabled={selectedIds.length === 0}
-                    >
-                      <Layers className="size-4" />
-                      <span>Bulk Edit ({selectedIds.length})</span>
-                    </button>
+                    {canViewAudit && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setAuditOpen(true);
+                        }}
+                      >
+                        <History className="size-4" />
+                        <span>Audit ({audit.length})</span>
+                      </button>
+                    )}
+                    {canImport && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
+                        onClick={() => {
+                          setMenuOpen(false);
+                          openImportPicker();
+                        }}
+                      >
+                        <Upload className="size-4" />
+                        <span>Import</span>
+                      </button>
+                    )}
 
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setAuditOpen(true);
-                      }}
-                    >
-                      <History className="size-4" />
-                      <span>Audit ({audit.length})</span>
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
-                      onClick={() => {
-                        setMenuOpen(false);
-                        openImportPicker();
-                      }}
-                    >
-                      <Upload className="size-4" />
-                      <span>Import</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
-                      onClick={() => {
-                        exportToExcel(filtered).catch((error) => {
-                          console.error("Excel export failed:", error);
-                          window.alert(
-                            "Excel export failed: " +
-                              (error?.message || "unknown error"),
-                          );
-                        });
-                        setMenuOpen(false);
-                      }}
-                    >
-                      <Download className="size-4" />
-                      <span>Export</span>
-                    </button>
+                    {canExport && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
+                        onClick={() => {
+                          exportToExcel(filtered, undefined, {
+                            isHidden: access.isHidden,
+                          }).catch((error) => {
+                            console.error("Excel export failed:", error);
+                            window.alert(
+                              "Excel export failed: " +
+                                (error?.message || "unknown error"),
+                            );
+                          });
+                          setMenuOpen(false);
+                        }}
+                      >
+                        <Download className="size-4" />
+                        <span>Export</span>
+                      </button>
+                    )}
+                    {!canViewAudit && !canImport && !canExport && (
+                      <div className="px-3 py-2.5 text-[12px] text-slate-400">
+                        No actions available
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -400,7 +572,21 @@ export function SheetPage() {
             </div>
           )}
 
+          {showEditedOnly && (
+            <div className="flex flex-wrap items-center gap-1.5 px-0.5">
+              <button
+                type="button"
+                onClick={() => setShowEditedOnly(false)}
+                className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/20"
+              >
+                Edited employees: {editedCount}
+                <X className="size-3" />
+              </button>
+            </div>
+          )}
+
           <AppraisalGrid
+            verticalLayout={budgetVertical}
             rows={filtered}
             filters={filters}
             setFilter={setFilter}
@@ -438,11 +624,42 @@ export function SheetPage() {
             }
             showHistory={showHistory}
             setShowHistory={setShowHistory}
+            focusEmployeeId={lastEditedTarget}
+            onFocusEmployeeHandled={() => setLastEditedTarget("")}
+            isTechEd={isTechEd}
+            isHR={isHR}
+            onRequest={async (request) => {
+              const isScreenRequest = request.type === "screen";
+              try {
+                const response = await catalystFetch(catalystFunctionUrl("accessapi") + "delegation/requests", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Accept: "application/json" },
+                  body: JSON.stringify({
+                    action: "submit",
+                    requestType: isScreenRequest ? "screen" : "delegation",
+                    empId: request.employee?.empId || request.employee?.id || "",
+                    empName: request.employee?.name || "",
+                    field: isScreenRequest ? "screen" :
+                      request.field === "compManager" ? "comp" :
+                      request.field === "appraiserTechED" ? "app" : request.field,
+                    oldId: request.oldId || "",
+                    newId: request.newId || "",
+                    reason: request.reason || (isScreenRequest ? "Screen access requested from Appraisal Sheet" : "Requested from Appraisal Sheet"),
+                    byName: catalystUser?.name || catalystUser?.email || "Application user",
+                  }),
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to send request.");
+                window.alert(isScreenRequest ? "Screen request sent to HR for approval." : "Delegation request sent to HR for approval.");
+              } catch (error) {
+                window.alert(error?.message || "Unable to send request to HR.");
+              }
+            }}
           />
         </div>
       </AppShell>
 
-      <Dialog open={auditOpen} onOpenChange={setAuditOpen}>
+      <Dialog open={auditOpen && canViewAudit} onOpenChange={setAuditOpen}>
         <DialogContent
           className="flex max-h-[80vh] w-[90vw] max-w-3xl flex-col gap-0 overflow-hidden p-0"
           onPointerDownOutside={(event) => event.preventDefault()}
@@ -462,13 +679,6 @@ export function SheetPage() {
           </div>
         </DialogContent>
       </Dialog>
-
-      <BulkEditDialog
-        open={bulkOpen}
-        onOpenChange={setBulkOpen}
-        ids={selectedIds}
-        onDone={() => setSelected({})}
-      />
 
       {importUi}
     </>

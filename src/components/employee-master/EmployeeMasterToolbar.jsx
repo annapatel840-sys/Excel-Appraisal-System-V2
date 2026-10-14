@@ -3,16 +3,21 @@ import {
   Download,
   FileSpreadsheet,
   History,
-  Menu,
   Search,
   Upload,
 } from "lucide-react";
+
+import { usePanel } from "./panelStore";
+import { LocationMasterControl } from "./LocationMasterControl";
+import "./employee-master-ui.css";
 
 export function EmployeeMasterToolbar({
   search,
   setSearch,
   statusFilter,
   setStatusFilter,
+  locationFilter = "All",
+  setLocationFilter,
   onDownloadTemplate,
   onUpload,
   onDownloadData,
@@ -20,93 +25,56 @@ export function EmployeeMasterToolbar({
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const [panel, updatePanel] = usePanel("em");
 
-  // ============================================================
-  // CLOSE MENU WHEN CLICKING OUTSIDE
-  // ============================================================
   useEffect(() => {
-    const handleOutsideClick = (event) => {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
+    const outside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target))
         setMenuOpen(false);
-      }
     };
-
-    const handleEscape = (event) => {
-      if (event.key === "Escape") {
-        setMenuOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleOutsideClick);
-    document.addEventListener("keydown", handleEscape);
-
+    const esc = (event) => event.key === "Escape" && setMenuOpen(false);
+    document.addEventListener("mousedown", outside);
+    document.addEventListener("keydown", esc);
     return () => {
-      document.removeEventListener("mousedown", handleOutsideClick);
-      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("mousedown", outside);
+      document.removeEventListener("keydown", esc);
     };
   }, []);
 
-  // ============================================================
-  // SEARCH CHANGE
-  // ============================================================
-  const handleSearchChange = (event) => {
-    setSearch(event.target.value);
-    setMenuOpen(false);
-  };
+  // The panel is opened from the dark tab beside the table; keep handing it
+  // the full audit history link the old Panel button used to pass along.
+  useEffect(() => {
+    if (onAuditHistory && panel.fullAudit !== onAuditHistory) {
+      updatePanel({ fullAudit: onAuditHistory });
+    }
+  }, [onAuditHistory, panel.fullAudit]);
 
-  // ============================================================
-  // STATUS CHANGE
-  // ============================================================
-  const handleStatusChange = (event) => {
-    setStatusFilter(event.target.value);
+  const run = (fn) => () => {
     setMenuOpen(false);
-  };
-
-  // ============================================================
-  // MENU ITEM HANDLERS
-  // ============================================================
-  const handleDownloadTemplate = () => {
-    setMenuOpen(false);
-    onDownloadTemplate();
-  };
-
-  const handleUpload = () => {
-    setMenuOpen(false);
-    onUpload?.();
-  };
-
-  const handleDownloadData = () => {
-    setMenuOpen(false);
-    onDownloadData();
-  };
-
-  const handleAuditHistory = () => {
-    setMenuOpen(false);
-    onAuditHistory?.();
+    fn?.();
   };
 
   return (
     <div className="em-toolbar">
-      {/* ======================================================
-          SEARCH
-          ====================================================== */}
       <div className="em-search">
         <Search size={14} />
-
         <input
           value={search}
-          onChange={handleSearchChange}
-          placeholder="Search employee..."
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setMenuOpen(false);
+          }}
+          placeholder="Search name, ID, email, manager"
         />
       </div>
 
-      {/* ======================================================
-          STATUS FILTER
-          ====================================================== */}
       <select
         className="em-status-select"
         value={statusFilter}
-        onChange={handleStatusChange}
+        onChange={(event) => {
+          setStatusFilter(event.target.value);
+          setMenuOpen(false);
+        }}
       >
         <option value="All">All Status</option>
         <option value="Active">Active</option>
@@ -115,62 +83,70 @@ export function EmployeeMasterToolbar({
 
       <div className="em-toolbar-spacer" />
 
-      {/* ======================================================
-          MENU
-          ====================================================== */}
+      <LocationMasterControl
+        value={locationFilter}
+        onChange={(value) => {
+          setLocationFilter?.(value);
+          setMenuOpen(false);
+        }}
+        ariaLabel="Filter Employee Master by Location Master"
+      />
+
       <div className="em-menu-wrapper" ref={menuRef}>
         <button
           type="button"
-          className="em-btn em-btn-ghost"
+          className="em-btn em-btn-primary"
+          aria-label="Menu"
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
           onClick={(event) => {
             event.stopPropagation();
             setMenuOpen((current) => !current);
           }}
-          aria-label="Menu"
-          aria-expanded={menuOpen}
-          aria-haspopup="menu"
         >
-          <Menu size={18} />
+          Menu ▾
         </button>
 
         {menuOpen && (
           <div
             className="em-menu-dropdown"
             role="menu"
-            onMouseDown={(event) => {
-              event.stopPropagation();
-            }}
+            onMouseDown={(event) => event.stopPropagation()}
           >
-            {/* Download Template */}
             <button
               type="button"
               role="menuitem"
-              onClick={handleDownloadTemplate}
+              onClick={run(onDownloadTemplate)}
             >
               <FileSpreadsheet size={14} />
               <span>Download Template</span>
             </button>
 
-            {/* Upload Employee Data (only when the user may write) */}
             {onUpload && (
-              <button type="button" role="menuitem" onClick={handleUpload}>
+              <button type="button" role="menuitem" onClick={run(onUpload)}>
                 <Upload size={14} />
                 <span>Upload Employee Data</span>
               </button>
             )}
 
-            {/* Download Visible Data */}
-            <button type="button" role="menuitem" onClick={handleDownloadData}>
+            <button type="button" role="menuitem" onClick={run(onDownloadData)}>
               <Download size={14} />
-              <span>Download Visible Data</span>
+              <span>Export to Excel</span>
             </button>
 
-            {/* ==================================================
-                AUDIT HISTORY
-                ================================================== */}
-            <button type="button" role="menuitem" onClick={handleAuditHistory}>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={run(() =>
+                updatePanel({
+                  open: true,
+                  tab: "aud",
+                  fullAudit: onAuditHistory || null,
+                }),
+              )}
+            >
               <History size={14} />
-              <span>Audit History</span>
+              <span>Audit Trail</span>
             </button>
           </div>
         )}

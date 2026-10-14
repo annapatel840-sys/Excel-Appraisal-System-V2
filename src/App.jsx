@@ -11,6 +11,8 @@ import { DetailScreenPage } from "@/components/appraisal/DetailScreenPage";
 import { AppShell } from "./components/appraisal/AppShell";
 import { BudgetAllocationPage } from "@/components/employee-master/BudgetAllocationPage";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
+import { SettingsProvider } from "@/lib/settings-store";
+import { AccessProvider, HR_TAB_SCREENS, NoAccessPage, PATH_SCREENS, useAccess } from "@/lib/access-store";
 
 const TECH_ED_PATHS = ["/", "/employee-master", "/detail-screen", "/budget-allocation" ];
 
@@ -82,11 +84,30 @@ function AppRoutes() {
 
   // Keep the URL (and nav highlighting) in sync when a Tech-ED is redirected.
   useEffect(() => {
+    if (access.loading || targetPath === null) return;
     if (effectivePath !== path) {
-      window.history.replaceState({}, "", effectivePath);
+      window.history.replaceState({}, "", targetPath);
       setPath(effectivePath);
     }
-  }, [effectivePath, path]);
+  }, [access.loading, targetPath, effectivePath, path]);
+
+  if (access.loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background text-sm text-muted-foreground">
+        Loading…
+      </div>
+    );
+  }
+
+  if (access.denied) {
+    return <NoAccessPage message={access.error} />;
+  }
+
+  if (access.ok && targetPath === null) {
+    return (
+      <NoAccessPage message="You do not have access to any screen. Contact HR if you think this is wrong." />
+    );
+  }
 
   let page;
 
@@ -113,18 +134,22 @@ function AppRoutes() {
 
 
   return (
-    <AppraisalProvider>
-      <BudgetProvider>
-        <ScreenErrorBoundary key={effectivePath}>{page}</ScreenErrorBoundary>
-      </BudgetProvider>
-    </AppraisalProvider>
+    <SettingsProvider>
+      <AppraisalProvider>
+        <BudgetProvider>
+          <ScreenErrorBoundary key={effectivePath}>{page}</ScreenErrorBoundary>
+        </BudgetProvider>
+      </AppraisalProvider>
+    </SettingsProvider>
   );
 }
 
 export default function App() {
   return (
     <CatalystAuthGate>
-      <AppRoutes />
+      <AccessProvider>
+        <AppRoutes />
+      </AccessProvider>
     </CatalystAuthGate>
   );
 }

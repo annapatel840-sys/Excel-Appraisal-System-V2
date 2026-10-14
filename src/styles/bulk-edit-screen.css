@@ -1,0 +1,15 @@
+.bulk-edit-screen {
+  display: flex; flex-direction: column; gap: 8px; width: 100%;
+  height: calc(100vh - 72px); min-height: 440px; overflow: hidden;
+  color: var(--foreground, #172033);
+}
+.bulk-edit-screen-work { flex: 1 1 auto; min-height: 0; overflow: hidden; border-radius: 10px; }
+.bulk-edit-screen-work > .bo { height: 100%; min-height: 0; border-radius: 10px; }
+.bulk-edit-screen-error, .bulk-edit-screen-state {
+  flex: 0 0 auto; padding: 12px 14px; border: 1px solid var(--border, #dbe1ea);
+  border-radius: 8px; background: var(--card, #fff); font-size: 13px;
+}
+.bulk-edit-screen-error { border-color: #f0b7b7; color: #b42318; }
+@media (max-width: 680px) {
+  .bulk-edit-screen { height: calc(100vh - 64px); min-height: 400px; }
+}

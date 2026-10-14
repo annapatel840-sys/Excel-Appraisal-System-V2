@@ -1,20 +1,13 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { useEffect, useMemo, useState } from "react";
+import { DataGrid, useGridState, useGridView } from "./DataGrid";
+import { PanelTab, SidePanel } from "./SidePanel";
+import { InactiveModal, ChangeModal } from "./EmployeeMasterModal";
+import { usePanel } from "./panelStore";
+import { fmtDoj } from "@/lib/employee-master-utils";
+import "./employee-master-ui.css";
 
-const COLUMNS = [
-  { key: "status", label: "Status" },
-  { key: "designation", label: "Designation" },
-  { key: "organization", label: "Organization" },
-  { key: "doj", label: "Date of Joining" },
-  { key: "orgExp", label: "Org Exp" },
-  { key: "totalExp", label: "Total Exp" },
-  { key: "reportingManager", label: "Reporting Manager" },
-  { key: "compManager", label: "Comp Manager" },
-  { key: "superManager", label: "Super Manager" },
-  { key: "managerMail", label: "Manager Email" },
-  { key: "superManagerMail", label: "Super Manager Email" },
-];
-
+/* ---------- value helpers (same aliases as before) ---------- */
 function getEmployeeId(employee) {
   return String(
     employee?.empId ??
@@ -36,589 +29,389 @@ function getEmployeeName(employee) {
   );
 }
 
+function getDesignation(employee) {
+  return employee?.designation || employee?.rawEmployee?.designation || "-";
+}
+
 function getValue(employee, key) {
+  const raw = employee?.rawEmployee || {};
+  const aliases = {
+    type: ["emp_type", "employee_type", "employment_type", "type"],
+    dept: ["department", "organization", "orgtn"],
+    reportingManager: ["reporting_manager", "reportingManager", "manager"],
+    te: [
+      "tech_ed_bu_head_name",
+      "tech_ed_name",
+      "appraiser_tech_ed",
+      "super_manager",
+      "superManager",
+    ],
+    director: ["director", "director_name"],
+    appraiser: ["appraiser_tech_ed", "appraiser", "appraiser_name"],
+    totalExp: ["total_experience", "totalExp"],
+    orgExp: ["wissen_experience", "wissenExperience", "orgExp"],
+    email: ["email_id", "email", "emailId"],
+    location: ["location", "work_location"],
+    lastAppraisal: [
+      "last_appraisal_month_year",
+      "last_appraisal",
+      "lastAppraisal",
+    ],
+    recordOwner: ["record_owner_id", "record_owner", "owner_id"],
+    band: ["band", "employee_band"],
+    skillType: ["skill_type", "skill", "skillType"],
+    exitDate: ["exit_date", "exitDate", "resignation_date"],
+  };
   let value = employee?.[key];
-
-  if (key === "orgExp") {
-    value =
-      employee?.orgExp ??
-      employee?.wissen_experience ??
-      employee?.wissenExperience ??
-      "";
+  if (value === undefined || value === null || value === "") {
+    for (const alias of aliases[key] || []) {
+      if (
+        raw?.[alias] !== undefined &&
+        raw?.[alias] !== null &&
+        raw?.[alias] !== ""
+      ) {
+        value = raw[alias];
+        break;
+      }
+    }
   }
-
-  if (value === null || value === undefined || value === "") {
-    return "-";
-  }
-
+  if (key === "status") value = employee?.status ?? raw?.status ?? "";
+  if (value === null || value === undefined || value === "") return "-";
   return value;
 }
 
-function normalizeStatus(status) {
-  return String(status ?? "")
+const normalizeStatus = (s) =>
+  String(s ?? "")
     .trim()
     .toLowerCase();
+
+function cellText(employee, key) {
+  if (key === "status")
+    return normalizeStatus(employee?.status) === "active"
+      ? "Active"
+      : "Inactive";
+  if (key === "doj") {
+    const raw = getValue(employee, "doj");
+    if (raw === "-") return "-";
+    try {
+      return fmtDoj(raw) || String(raw);
+    } catch {
+      return String(raw);
+    }
+  }
+  return String(getValue(employee, key));
 }
 
-function StatusBadge({ status }) {
-  const isActive = normalizeStatus(status) === "active";
+/* ---------- column definitions (module level = stable) ---------- */
+const PLAIN = [
+  ["type", "Emp Type", 100],
+  ["dept", "Department", 140],
+  ["reportingManager", "Reporting Manager", 150],
+  ["te", "Tech-ED/BU Head Name", 160],
+  ["director", "Director", 130],
+  ["appraiser", "Appraiser Tech-ED", 150],
+  [
+    "totalExp",
+    "Total Experience",
+    120,
+    "As on the cut-off date set in HR Config",
+  ],
+  [
+    "orgExp",
+    "Wissen Experience",
+    120,
+    "As on the cut-off date set in HR Config",
+  ],
+  ["email", "Email ID", 220],
+  ["doj", "Date of Joining", 115],
+  ["status", "Employee Status", 120],
+  ["location", "Location", 90],
+  ["lastAppraisal", "Last Appraisal Month and Year", 140],
+  ["recordOwner", "Record Owner ID", 120],
+  ["band", "Band", 90],
+  ["skillType", "Skill Type", 110],
+  ["exitDate", "Exit date", 110],
+];
 
-  return (
-    <span
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        minWidth: "68px",
-        padding: "3px 9px",
-        borderRadius: "999px",
-        fontSize: "12px",
-        fontWeight: 600,
-        backgroundColor: isActive ? "#dcfce7" : "#fee2e2",
-        color: isActive ? "#15803d" : "#dc2626",
-        border: `1px solid ${isActive ? "#86efac" : "#fca5a5"}`,
-      }}
-    >
-      {isActive ? "Active" : "Inactive"}
-    </span>
-  );
-}
+const DEFS = [
+  {
+    key: "employee",
+    label: "Employee",
+    w: 260,
+    get: (e) =>
+      `${getEmployeeId(e) || "-"} - ${getEmployeeName(e)} · ${getDesignation(e)}`,
+    render: (e) => (
+      <>
+        <div className="emx-e1">
+          {getEmployeeId(e) || "-"} - {getEmployeeName(e)}
+        </div>
+        <div className="emx-e2">{getDesignation(e)}</div>
+      </>
+    ),
+  },
+  ...PLAIN.map(([key, label, w, info]) => ({
+    key,
+    label,
+    w,
+    info,
+    get: (e) => cellText(e, key),
+    render:
+      key === "status"
+        ? (e) => (
+            <span
+              className={`emx-tag ${normalizeStatus(e?.status) === "active" ? "ok" : "grey"}`}
+            >
+              {cellText(e, "status")}
+            </span>
+          )
+        : undefined,
+  })),
+];
+
+const LEGACY_KEYS = PLAIN.map((p) => p[0]);
 
 export function EmployeeRosterTable({
   rows = [],
-  filters = {},
-  setFilters,
+  filters = {}, // legacy string filters from the parent (still honoured)
   currentPage = 1,
   setCurrentPage,
   totalPages = 1,
   totalCount = 0,
   onToggleStatus,
-  onBulkStatusChange,
+  onBulkStatusChange, // (status, employees, { exitDate, remark }) => Promise
+  onBulkFieldChange, // optional: ({ field, value, remark }, employees) => Promise  -> shows "Change…"
   statusUpdatingIds = new Set(),
   bulkStatusUpdating = false,
   canEdit = true,
+  auditEntries, // optional: [{ title, meta, detail }]
 }) {
-  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState(new Set());
+  const grid = useGridState(DEFS);
+  const [panel, updatePanel] = usePanel("em");
+  const [selected, setSelected] = useState(new Set());
+  const [modal, setModal] = useState(null); // "inactive" | "change"
 
-  /*
-   * Existing filtering behaviour.
-   * Only the displayed rows on the current page are filtered.
-   */
-  const filteredRows = useMemo(() => {
-    if (!Array.isArray(rows)) {
-      return [];
-    }
+  const list = useMemo(() => (Array.isArray(rows) ? rows : []), [rows]);
 
-    return rows.filter((employee) => {
-      return COLUMNS.every((column) => {
-        const filterValue = String(filters?.[column.key] ?? "")
+  const legacy = useCallback(
+    (employee) =>
+      LEGACY_KEYS.every((key) => {
+        const f = String(filters?.[key] ?? "")
           .trim()
           .toLowerCase();
-
-        if (!filterValue) {
-          return true;
-        }
-
-        const employeeValue = String(getValue(employee, column.key))
-          .trim()
-          .toLowerCase();
-
-        return employeeValue.includes(filterValue);
-      });
-    });
-  }, [rows, filters]);
-
-  /*
-   * Keep selection only for employees currently visible.
-   */
-  useEffect(() => {
-    const visibleIds = new Set(
-      filteredRows.map((employee) => getEmployeeId(employee)).filter(Boolean),
-    );
-
-    setSelectedEmployeeIds((current) => {
-      const next = new Set([...current].filter((id) => visibleIds.has(id)));
-
-      if (next.size === current.size) {
-        return current;
-      }
-
-      return next;
-    });
-  }, [filteredRows]);
-
-  const visibleEmployeeIds = useMemo(() => {
-    return filteredRows
-      .map((employee) => getEmployeeId(employee))
-      .filter(Boolean);
-  }, [filteredRows]);
-
-  const allVisibleSelected =
-    visibleEmployeeIds.length > 0 &&
-    visibleEmployeeIds.every((id) => selectedEmployeeIds.has(id));
-
-  const someVisibleSelected = visibleEmployeeIds.some((id) =>
-    selectedEmployeeIds.has(id),
+        return !f || cellText(employee, key).toLowerCase().includes(f);
+      }),
+    [filters],
   );
 
-  /*
-   * Select / unselect one employee.
-   */
-  const toggleEmployeeSelection = (employeeId) => {
-    const normalizedId = String(employeeId ?? "").trim();
+  const view = useGridView(list, DEFS, grid, legacy);
 
-    if (!normalizedId) {
-      return;
-    }
+  /* drop selections that are no longer on this page */
+  useEffect(() => {
+    const ids = new Set(list.map(getEmployeeId));
+    setSelected((current) => {
+      const next = new Set([...current].filter((id) => ids.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [list]);
 
-    setSelectedEmployeeIds((current) => {
+  const viewIds = useMemo(
+    () => view.map(getEmployeeId).filter(Boolean),
+    [view],
+  );
+  const selectedRows = useMemo(
+    () => list.filter((e) => selected.has(getEmployeeId(e))),
+    [list, selected],
+  );
+  const viewSelected = viewIds.filter((id) => selected.has(id)).length;
+  const allSelected = viewIds.length > 0 && viewSelected === viewIds.length;
+
+  const toggleRow = (id) =>
+    setSelected((current) => {
       const next = new Set(current);
-
-      if (next.has(normalizedId)) {
-        next.delete(normalizedId);
-      } else {
-        next.add(normalizedId);
-      }
-
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
-  };
 
-  /*
-   * Select / unselect all employees currently visible
-   * on this page.
-   */
-  const toggleSelectAll = () => {
-    setSelectedEmployeeIds((current) => {
+  const toggleAll = () =>
+    setSelected((current) => {
       const next = new Set(current);
-
-      if (allVisibleSelected) {
-        visibleEmployeeIds.forEach((id) => {
-          next.delete(id);
-        });
-      } else {
-        visibleEmployeeIds.forEach((id) => {
-          next.add(id);
-        });
-      }
-
+      viewIds.forEach((id) => (allSelected ? next.delete(id) : next.add(id)));
       return next;
     });
+
+  const bulkStatus = async (status, extra = {}) => {
+    if (!selectedRows.length) return;
+    await onBulkStatusChange?.(status, selectedRows, extra);
+    setSelected(new Set());
+    setModal(null);
   };
 
-  /*
-   * Bulk Active / Inactive.
-   */
-  const handleBulkStatus = async (status) => {
-    const selectedEmployees = filteredRows.filter((employee) =>
-      selectedEmployeeIds.has(getEmployeeId(employee)),
-    );
-
-    if (selectedEmployees.length === 0) {
-      return;
-    }
-
-    await onBulkStatusChange?.(status, selectedEmployees);
-
-    setSelectedEmployeeIds(new Set());
+  const bulkField = async (change) => {
+    if (!selectedRows.length) return;
+    await onBulkFieldChange?.(change, selectedRows);
+    setSelected(new Set());
+    setModal(null);
   };
 
-  const handlePageChange = (page) => {
-    if (page < 1 || page > totalPages) {
-      return;
-    }
+  const suggestionsFor = (key) =>
+    [
+      ...new Set(
+        list.map((e) => String(getValue(e, key))).filter((v) => v && v !== "-"),
+      ),
+    ].sort();
 
+  const goTo = (page) => {
+    if (page < 1 || page > totalPages) return;
     setCurrentPage?.(page);
   };
 
   return (
-    <div
-      style={{
-        width: "100%",
-        overflowX: "auto",
-      }}
-    >
-      <table
-        className="em-table"
-        style={{
-          width: "100%",
-          borderCollapse: "collapse",
-        }}
-      >
-        <thead>
-          <tr>
-            {/* =====================================================
-                SELECTION COLUMN
-            ====================================================== */}
-            {canEdit && (
-            <th
-              style={{
-                whiteSpace: "nowrap",
-                width: "105px",
-                minWidth: "105px",
-              }}
+    <div className="emx-work">
+      <div className="emx-main">
+        {canEdit && selectedRows.length > 0 && (
+          <div className="emx-selbar">
+            <b>{selectedRows.length} selected</b>
+            <button
+              type="button"
+              className="emx-mini"
+              disabled={bulkStatusUpdating}
+              onClick={() => setModal("inactive")}
             >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={allVisibleSelected}
-                  ref={(element) => {
-                    if (element) {
-                      element.indeterminate =
-                        !allVisibleSelected && someVisibleSelected;
-                    }
-                  }}
-                  onChange={toggleSelectAll}
-                  disabled={filteredRows.length === 0 || bulkStatusUpdating}
-                  title="Select all"
-                  style={{
-                    width: "15px",
-                    height: "15px",
-                    cursor:
-                      filteredRows.length === 0 || bulkStatusUpdating
-                        ? "not-allowed"
-                        : "pointer",
-                  }}
-                />
-
-                <span>Select</span>
-              </div>
-
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                  marginTop: "5px",
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => handleBulkStatus("Active")}
-                  disabled={!someVisibleSelected || bulkStatusUpdating}
-                  style={{
-                    border: "1px solid #86efac",
-                    backgroundColor: "#dcfce7",
-                    color: "#15803d",
-                    borderRadius: "4px",
-                    padding: "2px 5px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor:
-                      !someVisibleSelected || bulkStatusUpdating
-                        ? "not-allowed"
-                        : "pointer",
-                    opacity:
-                      !someVisibleSelected || bulkStatusUpdating ? 0.5 : 1,
-                  }}
-                  title="Set selected employees Active"
-                >
-                  Active
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleBulkStatus("Inactive")}
-                  disabled={!someVisibleSelected || bulkStatusUpdating}
-                  style={{
-                    border: "1px solid #fca5a5",
-                    backgroundColor: "#fee2e2",
-                    color: "#dc2626",
-                    borderRadius: "4px",
-                    padding: "2px 5px",
-                    fontSize: "10px",
-                    fontWeight: 600,
-                    cursor:
-                      !someVisibleSelected || bulkStatusUpdating
-                        ? "not-allowed"
-                        : "pointer",
-                    opacity:
-                      !someVisibleSelected || bulkStatusUpdating ? 0.5 : 1,
-                  }}
-                  title="Set selected employees Inactive"
-                >
-                  Inactive
-                </button>
-              </div>
-            </th>
-            )}
-
-            {/* =====================================================
-                EMPLOYEE COLUMN
-                EMP ID + NAME remain together.
-            ====================================================== */}
-            <th
-              style={{
-                whiteSpace: "nowrap",
-                minWidth: "180px",
-              }}
+              Set Inactive
+            </button>
+            <button
+              type="button"
+              className="emx-mini"
+              disabled={bulkStatusUpdating}
+              onClick={() => bulkStatus("Active")}
             >
-              Employee
-            </th>
-
-            {/* =====================================================
-                EXISTING COLUMNS
-            ====================================================== */}
-            {COLUMNS.map((column) => (
-              <th
-                key={column.key}
-                style={{
-                  whiteSpace: "nowrap",
-                }}
+              Set Active
+            </button>
+            {onBulkFieldChange && (
+              <button
+                type="button"
+                className="emx-mini p"
+                onClick={() => setModal("change")}
               >
-                {column.label}
-              </th>
-            ))}
-
-            {/* =====================================================
-                ACTION COLUMN
-                ALWAYS LAST.
-            ====================================================== */}
-            {canEdit && (
-            <th
-              style={{
-                whiteSpace: "nowrap",
-                minWidth: "115px",
-              }}
+                Change…
+              </button>
+            )}
+            <button
+              type="button"
+              className="emx-mini"
+              onClick={() => setSelected(new Set())}
             >
-              Action
-            </th>
-            )}
-          </tr>
-        </thead>
+              Clear selection
+            </button>
+          </div>
+        )}
 
-        <tbody>
-          {filteredRows.length === 0 ? (
-            <tr>
-              <td
-                colSpan={COLUMNS.length + (canEdit ? 2 : 1)}
-                style={{
-                  textAlign: "center",
-                  padding: "24px",
-                }}
+        <DataGrid
+          defs={DEFS}
+          grid={grid}
+          allRows={list}
+          rows={view}
+          rowKey={(e) => getEmployeeId(e) || String(getEmployeeName(e))}
+          selectable={canEdit}
+          selected={selected}
+          onToggleRow={toggleRow}
+          onToggleAll={toggleAll}
+          allSelected={allSelected}
+          someSelected={viewSelected > 0}
+          rowClass={(e) =>
+            normalizeStatus(e?.status) === "active" ? "" : "emx-dim"
+          }
+          actionHeader={canEdit ? "Action" : null}
+          renderAction={(employee) => {
+            const id = getEmployeeId(employee);
+            const active = normalizeStatus(employee?.status) === "active";
+            const busy = statusUpdatingIds?.has?.(id) || bulkStatusUpdating;
+            return (
+              <button
+                type="button"
+                disabled={busy}
+                className={`emx-mini ${active ? "danger" : "good"}`}
+                onClick={() => onToggleStatus?.(employee)}
               >
-                No employees found.
-              </td>
-            </tr>
-          ) : (
-            filteredRows.map((employee) => {
-              const employeeId = getEmployeeId(employee);
-              const employeeName = getEmployeeName(employee);
-
-              const status = String(employee?.status ?? "Inactive").trim();
-
-              const isActive = normalizeStatus(status) === "active";
-
-              const isSelected = selectedEmployeeIds.has(employeeId);
-
-              const isUpdating =
-                statusUpdatingIds?.has?.(employeeId) || bulkStatusUpdating;
-
-              return (
-                <tr key={employeeId || employeeName}>
-                  {/* =================================================
-                      SELECTION CELL
-                  ================================================== */}
-            {canEdit && (
-                  <td
-                    style={{
-                      width: "105px",
-                      minWidth: "105px",
-                      textAlign: "center",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleEmployeeSelection(employeeId)}
-                      disabled={bulkStatusUpdating}
-                      title={`Select ${employeeName}`}
-                      style={{
-                        width: "15px",
-                        height: "15px",
-                        cursor: bulkStatusUpdating ? "not-allowed" : "pointer",
-                      }}
-                    />
-                  </td>
-            )}
-
-                  {/* =================================================
-                      EMPLOYEE CELL
-                      EMP ID + NAME
-                  ================================================== */}
-                  <td
-                    style={{
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "2px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontWeight: 600,
-                        }}
-                      >
-                        {employeeName}
-                      </span>
-
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          color: "#6b7280",
-                        }}
-                      >
-                        {employeeId || "-"}
-                      </span>
-                    </div>
-                  </td>
-
-                  {/* =================================================
-                      EXISTING COLUMNS
-                  ================================================== */}
-                  {COLUMNS.map((column) => (
-                    <td
-                      key={column.key}
-                      style={{
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {column.key === "status" ? (
-                        <StatusBadge status={status} />
-                      ) : (
-                        getValue(employee, column.key)
-                      )}
-                    </td>
-                  ))}
-
-                  {/* =================================================
-                      ACTION - LAST COLUMN
-                      NO CHECKBOX HERE.
-                  ================================================== */}
-            {canEdit && (
-                  <td>
-                    <button
-                      type="button"
-                      onClick={() => onToggleStatus?.(employee)}
-                      disabled={isUpdating}
-                      style={{
-                        border: `1px solid ${isActive ? "#fca5a5" : "#86efac"}`,
-                        backgroundColor: isActive ? "#fee2e2" : "#dcfce7",
-                        color: isActive ? "#dc2626" : "#15803d",
-                        borderRadius: "5px",
-                        padding: "5px 9px",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                        cursor: isUpdating ? "not-allowed" : "pointer",
-                        opacity: isUpdating ? 0.6 : 1,
-                        minWidth: "85px",
-                      }}
-                    >
-                      {isUpdating
-                        ? "Saving..."
-                        : isActive
-                          ? "Set Inactive"
-                          : "Set Active"}
-                    </button>
-                  </td>
-            )}
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
-
-      {/* ===========================================================
-          PAGINATION
-      ============================================================ */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "10px 0",
-        }}
-      >
-        <div
-          style={{
-            fontSize: "12px",
-            color: "#6b7280",
+                {busy ? "Saving..." : active ? "Set Inactive" : "Set Active"}
+              </button>
+            );
           }}
-        >
-          {totalCount > 0
-            ? `Showing page ${currentPage} of ${totalPages} • ${totalCount} employees`
-            : "No employees"}
-        </div>
+          emptyText="No employees found."
+        />
 
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => handlePageChange(currentPage - 1)}
-            disabled={currentPage <= 1 || bulkStatusUpdating}
-            style={{
-              border: "1px solid #d1d5db",
-              backgroundColor: "#ffffff",
-              borderRadius: "4px",
-              padding: "5px 10px",
-              cursor:
-                currentPage <= 1 || bulkStatusUpdating
-                  ? "not-allowed"
-                  : "pointer",
-              opacity: currentPage <= 1 || bulkStatusUpdating ? 0.5 : 1,
-            }}
-          >
-            Previous
-          </button>
-
-          <span
-            style={{
-              fontSize: "12px",
-              color: "#374151",
-              minWidth: "55px",
-              textAlign: "center",
-            }}
-          >
-            {currentPage} / {totalPages}
+        <div className="emx-pg">
+          <span>
+            {totalCount > 0
+              ? `Page ${currentPage} of ${totalPages} • ${totalCount} employees`
+              : "No employees"}
+            {view.length !== list.length &&
+              ` • showing ${view.length} of ${list.length} on this page`}
           </span>
 
-          <button
-            type="button"
-            onClick={() => handlePageChange(currentPage + 1)}
-            disabled={currentPage >= totalPages || bulkStatusUpdating}
-            style={{
-              border: "1px solid #d1d5db",
-              backgroundColor: "#ffffff",
-              borderRadius: "4px",
-              padding: "5px 10px",
-              cursor:
-                currentPage >= totalPages || bulkStatusUpdating
-                  ? "not-allowed"
-                  : "pointer",
-              opacity:
-                currentPage >= totalPages || bulkStatusUpdating ? 0.5 : 1,
-            }}
-          >
-            Next
-          </button>
+          {grid.filterCount > 0 && (
+            <span className="emx-chip">
+              Showing: {grid.filterCount} column filter
+              {grid.filterCount > 1 ? "s" : ""} (this page){" "}
+              <button type="button" onClick={grid.clearAll}>
+                ✕ Clear
+              </button>
+            </span>
+          )}
+
+          <span className="emx-pgs">
+            <button
+              type="button"
+              disabled={currentPage <= 1 || bulkStatusUpdating}
+              onClick={() => goTo(currentPage - 1)}
+            >
+              ‹ Previous
+            </button>
+            <span>
+              {currentPage} / {totalPages}
+            </span>
+            <button
+              type="button"
+              disabled={currentPage >= totalPages || bulkStatusUpdating}
+              onClick={() => goTo(currentPage + 1)}
+            >
+              Next ›
+            </button>
+          </span>
         </div>
+
       </div>
+
+      <SidePanel
+        open={panel.open}
+        title="Employee Master"
+        tab={panel.tab}
+        onTab={(tab) => updatePanel({ tab })}
+        onClose={() => updatePanel({ open: false })}
+        defs={DEFS}
+        grid={grid}
+        audit={auditEntries}
+        auditHint="Uploads and changes made on this screen: user, date and time, employee, previous and new value."
+        onFullAudit={panel.fullAudit}
+      />
+      <PanelTab open={panel.open} onOpen={() => updatePanel({ open: true })} />
+
+      {modal === "inactive" && (
+        <InactiveModal
+          count={selectedRows.length}
+          onClose={() => setModal(null)}
+          onApply={(extra) => bulkStatus("Inactive", extra)}
+        />
+      )}
+      {modal === "change" && (
+        <ChangeModal
+          count={selectedRows.length}
+          suggestionsFor={suggestionsFor}
+          onClose={() => setModal(null)}
+          onApply={bulkField}
+        />
+      )}
     </div>
   );
 }

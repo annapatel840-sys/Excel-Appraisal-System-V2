@@ -1,3 +1,4 @@
+
 import { createContext, useContext, useEffect, useState } from "react";
 
 import { CATALYST_SESSION_EXPIRED_EVENT } from "./catalyst-api";
@@ -141,7 +142,7 @@ export function CatalystAuthGate({ children }) {
 
     window.requestAnimationFrame(() => {
       auth.signIn("catalyst-login-container", {
-        service_url: window.location.origin + "/",
+        redirect_url: "/",
       });
     });
   };
@@ -186,18 +187,14 @@ export function CatalystAuthGate({ children }) {
           <div className="hidden bg-slate-900 p-10 text-white lg:flex lg:flex-col lg:justify-between">
             <div>
               <div className="mb-8 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-xl font-bold">
-                EA
+                CT
               </div>
               <p className="text-sm font-medium uppercase tracking-[0.2em] text-blue-300">
-                R2C Technologies
+                Wissen Technologies
               </p>
               <h1 className="mt-4 text-4xl font-semibold leading-tight">
-                Employee Appraisal Management
+                Compensation Tool
               </h1>
-              <p className="mt-5 max-w-sm text-sm leading-6 text-slate-300">
-                Secure access to appraisal, employee and compensation
-                management.
-              </p>
             </div>
             <p className="text-xs text-slate-400">
               Authorized users only • Secure Catalyst authentication
@@ -207,7 +204,7 @@ export function CatalystAuthGate({ children }) {
           <div className="p-6 sm:p-10">
             <div className="mx-auto w-full max-w-md">
               <div className="lg:hidden mb-6 flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">
-                EA
+                CT
               </div>
 
               {state === "loading" ? (

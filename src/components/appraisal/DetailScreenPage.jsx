@@ -9,6 +9,8 @@ import {
   newBaseSalary,
   totalCTCWithRewards,
 } from "@/lib/appraisal-data";
+import { createPortal } from "react-dom";
+import { Bell } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
@@ -362,17 +364,48 @@ export function DetailScreenPage() {
               <div className="grid min-h-0 flex-1 grid-cols-1 gap-2 min-[1000px]:grid-cols-[minmax(0,1fr)_auto_minmax(320px,370px)]">
                 {/* LEFT COLUMN — Compensation Input Screen */}
                 <div
-                  className="flex flex-col overflow-hidden rounded-[10px] border shadow-[0_1px_2px_rgba(18,48,79,0.06)]"
-                  style={{ background: "#fff", borderColor: "#d3dbe6" }}
+                  className="min-w-0 flex-1 text-[13.5px] leading-snug"
+                  style={{ color: "#fff" }}
                 >
-                  <div
-                    className="py-1.5 text-center text-[13px]"
+                  <div className="truncate">
+                    <b
+                      className="text-[14px]"
+                      style={{ color: "#fff", letterSpacing: "-.01em" }}
+                    >
+                      {employee.name}
+                    </b>{" "}
+                    ·{" "}
+                    <span className="font-bold" style={{ color: "#7CE0C3" }}>
+                      {employee.empId ?? "—"}
+                    </span>{" "}
+                    · {dash(employee.designation)}
+                    {employee.band ? ` · ${employee.band}` : ""}
+                  </div>
+                  <div className="truncate" style={{ color: "#BCCCDC" }}>
+                    {yrs(employee.totalExperience)} ·{" "}
+                    {yrs(employee.wissenExperience)} here · Reports to{" "}
+                    {dash(employee.reportingManager)}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <input
+                    type="text"
+                    value={search}
+                    onChange={(e) => handleSearch(e.target.value)}
+                    placeholder="Search name or ID"
+                    aria-label="Search your team"
+                    title="Search your team by name or employee ID"
+                    className="h-[30px] w-[210px] rounded-md border px-2.5 text-[13px] outline-none focus:border-[#7CE0C3]"
                     style={{
-                      background: NAVY,
-                      color: "#fff",
-                      fontWeight: 600,
-                      letterSpacing: ".15px",
+                      borderColor: "rgba(255,255,255,.35)",
+                      background: "rgba(255,255,255,.95)",
+                      color: INK,
                     }}
+                  />
+                  <span
+                    title={`Scope: ${scopeLabel}`}
+                    className="whitespace-nowrap rounded px-2 py-0.5 text-[12px] font-semibold"
+                    style={{ background: "#E6F3F2", color: "#0B5F5B" }}
                   >
                     Compensation Input Screen
                   </div>
@@ -462,29 +495,253 @@ export function DetailScreenPage() {
                           onCommit={(v) =>
                             commit("allocatedPBAmount", parseAmount(v))
                           }
-                        />
-                        <select
-                          key={`${employee.id}-pbInstallment`}
-                          value={
-                            isBlank(employee.pbInstallment)
-                              ? ""
-                              : String(employee.pbInstallment)
+                          diff={
+                            <DiffValue
+                              value={vsLast(livePB, last?.performanceBonus || 0)}
+                              caption="vs last year"
+                            />
                           }
-                          onChange={(e) =>
-                            commit("pbInstallment", e.target.value)
-                          }
-                          className="h-[26px] w-[50px] shrink-0 rounded border px-1.5 text-[11.5px] outline-none"
-                          style={{
-                            borderColor: "#7fa9dc",
-                            background: "#e6f0fb",
-                            color: "#0b2a4d",
-                          }}
                         >
-                          <option value="">—</option>
-                          {INSTALLMENT_OPTIONS.map((o) => (
-                            <option key={o}>{o}</option>
-                          ))}
-                        </select>
+                          <div className="flex items-center gap-1.5">
+                            <EditInput
+                              key={`${employee.id}-allocatedPBAmount-${payReset.pb}`}
+                              className="flex-1"
+                              defaultValue={fmtOrBlank(proposedPB)}
+                              edited={isEdited("allocatedPBAmount")}
+                              invalid={livePB < payFloors.pbFloor}
+                              onLive={(v) => {
+                                setDraft({ pbStr: v });
+                                if (payErr.pb) setPayErr((e) => ({ ...e, pb: "" }));
+                              }}
+                              onCommit={(v) => {
+                                const n = parseAmount(v);
+                                if ((Number(n) || 0) < payFloors.pbFloor) {
+                                  setPayErr((e) => ({
+                                    ...e,
+                                    pb: `PB can't be less than PB to be Paid (${fmt(payFloors.pbFloor)}). Not saved.`,
+                                  }));
+                                  setPayReset((r) => ({ ...r, pb: r.pb + 1 }));
+                                  clearDraft(["pbStr"]);
+                                  return;
+                                }
+                                setPayErr((e) => ({ ...e, pb: "" }));
+                                commit("allocatedPBAmount", n);
+                                clearDraft(["pbStr"]);
+                              }}
+                            />
+                            <select
+                              key={`${employee.id}-pbInstallment`}
+                              value={
+                                isBlank(employee.pbInstallment)
+                                  ? ""
+                                  : String(employee.pbInstallment)
+                              }
+                              onChange={(e) => commit("pbInstallment", e.target.value)}
+                              className="h-[36px] w-[64px] shrink-0 rounded border px-1 text-[14.5px] outline-none focus:border-[#0B7A75]"
+                              style={fieldStyle(isEdited("pbInstallment"))}
+                            >
+                              <option value="">—</option>
+                              {INSTALLMENT_OPTIONS.map((o) => (
+                                <option key={o}>{o}</option>
+                              ))}
+                            </select>
+                          </div>
+                          <span
+                            role={payErr.pb || livePB < payFloors.pbFloor ? "alert" : undefined}
+                            style={{
+                              ...subNote,
+                              color:
+                                payErr.pb || livePB < payFloors.pbFloor ? RED : MUTED,
+                              fontWeight:
+                                payErr.pb || livePB < payFloors.pbFloor ? 700 : 400,
+                            }}
+                          >
+                            {payErr.pb ||
+                              (livePB < payFloors.pbFloor
+                                ? `Below PB to be Paid (${fmt(payFloors.pbFloor)}) — not allowed`
+                                : `Preloaded · less than this → ${fmt(payFloors.pbFloor)} paid`)}
+                          </span>
+                        </FieldRow>
+
+                        {/* Retention Bonus */}
+                        <FieldRow
+                          label="Retention Bonus (RB)"
+                          prev={
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "minmax(0,1fr) 70px",
+                                gap: 6,
+                              }}
+                            >
+                              <ReadOnlyInput value={dashPrev(last?.retentionBonus)} />
+                              <ReadOnlyInput value={payFloors.rbMonth || "—"} />
+                            </div>
+                          }
+                          diff={
+                            <DiffValue
+                              value={vsLast(liveRB, last?.retentionBonus || 0)}
+                              caption="vs last year"
+                            />
+                          }
+                        >
+                          <EditInput
+                            key={`${employee.id}-newRB-${payReset.rb}`}
+                            defaultValue={fmt(proposedRB ?? 0)}
+                            edited={isEdited("newRB")}
+                            invalid={liveRB < payFloors.rbFloor}
+                            className="w-[75%]"
+                            onLive={(v) => {
+                              setDraft({ rbStr: v });
+                              if (payErr.rb) setPayErr((e) => ({ ...e, rb: "" }));
+                            }}
+                            onCommit={(v) => {
+                              const n = Number(String(v).replace(/[^0-9.]/g, "")) || 0;
+                              if (n < payFloors.rbFloor) {
+                                setPayErr((e) => ({
+                                  ...e,
+                                  rb: `RB can't be less than RB to be Paid (${fmt(payFloors.rbFloor)}). Not saved.`,
+                                }));
+                                setPayReset((r) => ({ ...r, rb: r.rb + 1 }));
+                                clearDraft(["rbStr"]);
+                                return;
+                              }
+                              setPayErr((e) => ({ ...e, rb: "" }));
+                              commit("newRB", n);
+                              clearDraft(["rbStr"]);
+                            }}
+                          />
+                          <span
+                            role={payErr.rb || liveRB < payFloors.rbFloor ? "alert" : undefined}
+                            style={{
+                              ...subNote,
+                              color:
+                                payErr.rb || liveRB < payFloors.rbFloor ? RED : MUTED,
+                              fontWeight:
+                                payErr.rb || liveRB < payFloors.rbFloor ? 700 : 400,
+                            }}
+                          >
+                            {payErr.rb ||
+                              (liveRB < payFloors.rbFloor
+                                ? `Below RB to be Paid (${fmt(payFloors.rbFloor)}) — not allowed`
+                                : `Preloaded · less than this → ${fmt(payFloors.rbFloor)} paid`)}
+                          </span>
+                        </FieldRow>
+
+                        {/* Total CTC with Rewards */}
+                        <FieldRow
+                          label="Total CTC with Rewards"
+                          prev={<ReadOnlyInput value={ctcCompare.lastCtc ? inr(ctcCompare.lastCtc) : "—"} />}
+                          diff={
+                            ctcCompare.lastCtc ? (
+                              <DiffValue
+                                value={liveCtc - ctcCompare.lastCtc}
+                                caption={`${Math.abs(ctcCompare.pct).toFixed(1)}%`}
+                              />
+                            ) : null
+                          }
+                        >
+                          <ReadOnlyInput value={inr(liveCtc)} bold />
+                        </FieldRow>
+
+                        {/* Target PB for Next Year */}
+                        <FieldRow
+                          label="Target PB for Next Year"
+                          prev={<ReadOnlyInput value={fmt(prevTPB)} />}
+                          diff={
+                            <DiffValue
+                              value={
+                                (liveHist?.tpb ?? Number(employee.targetPBNextYear) ?? 0) -
+                                prevTPB
+                              }
+                              caption="vs last year"
+                            />
+                          }
+                        >
+                          <EditInput
+                            key={`${employee.id}-targetPBNextYear`}
+                            defaultValue={fmtOrBlank(employee.targetPBNextYear)}
+                            edited={isEdited("targetPBNextYear")}
+                            onLive={(v) => setDraft({ tpbStr: v })}
+                            onCommit={(v) => {
+                              commit("targetPBNextYear", parseAmount(v));
+                              clearDraft(["tpbStr"]);
+                            }}
+                          />
+                        </FieldRow>
+
+                        {/* Target PB criteria */}
+                        <FieldRow
+                          label="Target PB criteria"
+                          prev={
+                            <ReadOnlyInput
+                              value={dash(
+                                employee.currentTargetPBCriteria ??
+                                  employee.targetPBCriteria,
+                              )}
+                            />
+                          }
+                        >
+                          <textarea
+                            key={`${employee.id}-targetPBCriteria`}
+                            defaultValue={blankStr(employee.targetPBCriteria)}
+                            onBlur={(e) => commit("targetPBCriteria", e.target.value)}
+                            rows={2}
+                            className="w-full min-w-0 resize-none rounded border px-2.5 py-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
+                            style={fieldStyle(isEdited("targetPBCriteria"))}
+                          />
+                        </FieldRow>
+
+                        {/* Designation / New Title */}
+                        <FieldRow
+                          label="Designation / New Title"
+                          prev={<ReadOnlyInput value={dash(employee.designation)} />}
+                          diff={
+                            <span style={{ ...subNote, fontWeight: 600 }}>
+                              Eligible: {dash(employee.eligibleForPromotion)}
+                            </span>
+                          }
+                        >
+                          <select
+                            key={`${employee.id}-newTitle`}
+                            value={employee.newTitle || employee.designation || ""}
+                            onChange={(e) => handleNewTitleChange(e.target.value)}
+                            className="h-[36px] w-full min-w-0 rounded border px-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
+                            style={fieldStyle(isEdited("newTitle"))}
+                          >
+                            {titleOptions.map((t) => {
+                              const v = typeof t === "string" ? t : (t?.value ?? t?.label);
+                              const l = typeof t === "string" ? t : (t?.label ?? t?.value);
+                              return (
+                                <option key={v} value={v}>
+                                  {l}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </FieldRow>
+
+                        {/* Comp Manager Remarks */}
+                        <FieldRow
+                          label="Comp Manager Remarks"
+                          prev={
+                            <ReadOnlyInput
+                              value={dash(
+                                baselineRef.current[employee.id]?.compManagerRemarks,
+                              )}
+                            />
+                          }
+                        >
+                          <textarea
+                            key={`${employee.id}-compManagerRemarks`}
+                            defaultValue={blankStr(employee.compManagerRemarks)}
+                            onBlur={(e) => commit("compManagerRemarks", e.target.value)}
+                            rows={2}
+                            placeholder="Add remarks for this cycle"
+                            className="w-full min-w-0 resize-none rounded border px-2.5 py-1.5 text-[15px] outline-none focus:border-[#0B7A75]"
+                            style={fieldStyle(isEdited("compManagerRemarks"))}
+                          />
+                        </FieldRow>
                       </div>
                     </CompRow>
                     <CompRow
@@ -504,13 +761,34 @@ export function DetailScreenPage() {
                     <div
                       className="col-span-4 p-2"
                       style={{
-                        background: "#e8eef6",
-                        color: "#1e3a5f",
-                        fontWeight: 700,
-                        fontSize: "10.5px",
+                        borderColor: LINE,
+                        color: INK,
+                        background: "#fff",
                       }}
                     >
-                      Description
+                      Metrics ‹
+                    </button>
+                    <div className="ds-scroll flex-1 p-3">
+                      {metrics.map(([k, v]) => (
+                        <div
+                          key={k}
+                          className="mb-2.5 rounded border px-2.5 py-2"
+                          style={{ borderColor: LINE, background: SOFT }}
+                        >
+                          <div
+                            className="text-[10.5px]"
+                            style={{ color: MUTED }}
+                          >
+                            {k}
+                          </div>
+                          <div
+                            className="text-[14px] font-extrabold"
+                            style={{ color: INK }}
+                          >
+                            {v}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                     <CompFullRow label="Target PB Criteria">
                       <textarea
@@ -540,60 +818,57 @@ export function DetailScreenPage() {
                     </CompFullRow>
                     {/* Designation / New Title / Promotion */}
                     <div
-                      className="grid col-span-4 border-b text-[11.5px]"
-                      style={{
-                        gridTemplateColumns: "0.95fr 0.9fr 1.45fr 0.8fr",
-                        borderColor: "#eceff3",
-                      }}
+                      className="flex shrink-0 items-center justify-between gap-2 px-3 py-2"
+                      style={{ background: NAVY, color: "#fff" }}
                     >
-                      <div
-                        className="p-1.5"
-                        style={{
-                          background: "#e8eef6",
-                          color: "#1e3a5f",
-                          fontWeight: 700,
-                        }}
-                      >
-                        Designation
-                      </div>
-                      <div
-                        className="p-1.5"
-                        style={{ background: "#f6f7f9", color: "#475569" }}
-                      >
-                        {employee.designation}
-                      </div>
-                      <div className="p-1.5" style={{ background: "#fff" }}>
-                        <select
-                          key={`${employee.id}-newTitle`}
-                          value={employee.newTitle || employee.designation || ""}
-                          onChange={(e) => handleNewTitleChange(e.target.value)}
-                          className="w-full rounded border px-1.5 py-1.5 text-[11.5px] outline-none"
+                      <span className="flex-1 text-center text-[14px] font-extrabold">
+                        Feedback
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFeedbackWidth((w) => Math.max(240, w - 40))
+                          }
+                          aria-label="Decrease feedback panel width"
+                          className="h-[28px] w-[28px] rounded border font-bold"
                           style={{
-                            borderColor: "#7fa9dc",
-                            background: "#e6f0fb",
-                            color: "#0b2a4d",
+                            borderColor: "#4A6580",
+                            color: "#fff",
+                            background: "transparent",
                           }}
                         >
-                          {NEW_TITLES.includes(employee.designation) ? null : (
-                            <option>{employee.designation}</option>
-                          )}
-                          {NEW_TITLES.map((d) => (
-                            <option key={d}>{d}</option>
-                          ))}
-                        </select>
+                          −
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFeedbackWidth((w) => Math.min(620, w + 40))
+                          }
+                          aria-label="Increase feedback panel width"
+                          className="h-[28px] w-[28px] rounded border font-bold"
+                          style={{
+                            borderColor: "#4A6580",
+                            color: "#fff",
+                            background: "transparent",
+                          }}
+                        >
+                          +
+                        </button>
                       </div>
-                      <div
-                        className="flex items-center justify-center p-1.5 text-center font-semibold"
+                      <button
+                        type="button"
+                        onClick={() => setCardOpen(false)}
+                        aria-label="Close feedback"
+                        className="h-[28px] w-[34px] rounded border"
                         style={{
-                          background: "#fff",
-                          color:
-                            employee.eligibleForPromotion === "Yes"
-                              ? "#13804a"
-                              : "#94a3b8",
+                          borderColor: "#4A6580",
+                          color: "#fff",
+                          background: "transparent",
                         }}
                       >
-                        {employee.eligibleForPromotion}
-                      </div>
+                        ✕
+                      </button>
                     </div>
                     {/* Comp Manager Remarks */}
                     <div
@@ -609,16 +884,11 @@ export function DetailScreenPage() {
                     </div>
                     <CompFullRow label="Comp Manager Remarks">
                       <div
-                        className={`ro min-h-[34px] w-full rounded border px-1.5 py-1 text-[11.5px] leading-[1.3] ${
-                          employee.prevRemarks ? "" : "opacity-70"
-                        }`}
-                        style={{
-                          borderColor: "#d0d5dd",
-                          background: "#eceef2",
-                          color: employee.prevRemarks ? "#475569" : "#94a3b8",
-                        }}
+                        className="mt-2 text-[11.5px]"
+                        style={{ color: MUTED }}
                       >
-                        {employee.prevRemarks || "No remarks last cycle"}
+                        Client rating and past RR % are not in the sheet yet, so
+                        they show “—”.
                       </div>
                       <EditTextarea
                         key={`${employee.id}-atRisk`}
@@ -671,23 +941,20 @@ export function DetailScreenPage() {
                         disabled={index === 0}
                         className="rounded-[6px] border px-3 py-1.5 text-[12px] font-semibold disabled:opacity-45"
                         style={{
-                          borderColor: "#c5d0dd",
-                          background: "#fff",
-                          color: NAVY,
+                          padding: "4px 10px",
+                          color: LTEAL,
+                          fontWeight: 800,
                         }}
                       >
-                        ← Previous
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setIndex((i) => Math.min(rows.length - 1, i + 1))
-                        }
-                        className="rounded-[6px] px-3 py-1.5 text-[12px] font-semibold"
-                        style={{ background: TEAL, color: "#fff" }}
-                      >
-                        {index === rows.length - 1 ? "Save" : "Save & Next →"}
-                      </button>
+                        {CURRENT_CYCLE} ★
+                      </div>
+                      {cur.map((v, i) => (
+                        <HistCell
+                          key={i}
+                          value={v}
+                          prev={last ? last[i] : null}
+                        />
+                      ))}
                     </div>
                   </div>
                 </div>
@@ -749,16 +1016,26 @@ export function DetailScreenPage() {
                 style={{ background: "#fff", borderColor: "#d3dbe6" }}
               >
                 <div
-                  className="px-3 py-1.5 text-left text-[12.5px]"
+                  key={normalizeYearKey(h.year)}
+                  className="grid items-center text-[12px]"
                   style={{
-                    background: NAVY,
-                    color: "#fff",
-                    fontWeight: 600,
-                    letterSpacing: ".15px",
+                    gridTemplateColumns: HIST_GRID,
+                    background: "#fff",
+                    borderBottom: `1px solid ${LINE}`,
                   }}
                 >
-                  Employee History — {employee.name} · {priorCycles.length + 1}{" "}
-                  cycles
+                  <div
+                    style={{ padding: "4px 10px", fontWeight: 700, color: INK }}
+                  >
+                    {h.year}
+                  </div>
+                  {vals.map((v, c) => (
+                    <HistCell
+                      key={c}
+                      value={v}
+                      prev={older ? older[c] : null}
+                    />
+                  ))}
                 </div>
                 <div
                   className="history-scroll min-w-0 h-[calc(190px-34px)] overflow-x-hidden overflow-y-auto [&::-webkit-scrollbar]:hidden"
@@ -1125,15 +1402,22 @@ function TeamMetrics({ employee, metrics: m, teamBudget, rowsCount, scopeLabel }
                 className="absolute -top-[3px] h-3 w-[3px] rounded-[1px]"
                 style={{ left: `${m.percentile}%`, background: "#B7791F" }}
               />
-            </div>
-            <div className="text-[11px]" style={{ color: MUTED }}>
-              Highest {signedPct(m.top.v)} ({m.top.r.name}) · median{" "}
-              {signedPct(m.median)}
-            </div>
-          </>
-        ) : (
-          <div className="text-[11px]" style={{ color: MUTED }}>
-            Not enough people in the team yet.
+              This cycle (not yet final)
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <i
+                className="inline-block h-[12px] w-[12px] rounded-[3px]"
+                style={{ background: GREEN }}
+              />
+              Increase vs previous cycle
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <i
+                className="inline-block h-[12px] w-[12px] rounded-[3px]"
+                style={{ background: RED }}
+              />
+              Decrease
+            </span>
           </div>
         )}
       </MetricBox>

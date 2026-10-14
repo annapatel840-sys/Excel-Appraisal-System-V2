@@ -1,7 +1,13 @@
 "use strict";
 
+/* ACCESS CONTROL: ./accessCore.js is a byte-for-byte copy of
+   functions/accessapi/accessCore.js and MUST stay identical to it
+   (every Catalyst function deploys separately). Edit the accessapi copy,
+   then copy it here. See docs/ACCESS_SPEC.md. */
+
 const express = require("express");
 const catalyst = require("zcatalyst-sdk-node");
+const access = require("./accessCore");
 
 const app = express();
 
@@ -9,8 +15,8 @@ const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 const DATASTORE_PAGE_SIZE = 200;
 
-const EMPLOYEES_TABLE_ID = "71873000000020001";
-const EMPLOYEE_MASTER_TABLE_ID = "71873000000020438";
+const EMPLOYEES_TABLE_ID = "74008000000039094";
+const EMPLOYEE_MASTER_TABLE_ID = "74008000000035727";
 
 /* ============================================================
    EXPRESS JSON BODY PARSER
@@ -52,6 +58,179 @@ app.use(function (req, res, next) {
   if (req.method === "OPTIONS") {
     return sendJson(res, 200, {
       success: true,
+    });
+  }
+
+  next();
+});
+
+/* ============================================================
+   ACCESS CONTROL (docs/ACCESS_SPEC.md)
+
+   Dry run (ACCESS_ENFORCE != 'true'): the legacy behaviour below is kept
+   unchanged; refusals are only logged ("ACCESS dry-run: would deny ...").
+   Enforced: the access object is the single source of truth (the legacy
+   isHRUser / employeeBelongsToCurrentUser scoping is not used).
+   ============================================================ */
+
+// Screens whose pages read Appraisal_Sheet rows through this function.
+const READ_SCREENS = [
+  "dashboard",
+  "appraisalSheet",
+  "detailScreen",
+  "budgetAllocation",
+  "budgetDistribution",
+  "teamChanges",
+  "delegation",
+  "employeeMaster",
+];
+const EDIT_SCREENS = ["appraisalSheet", "detailScreen"];
+
+// Field kind (input / pair / master / upload / calc) by field key.
+const FIELD_KIND = Object.fromEntries(
+  access.START_CATALOG.filter(function (c) {
+    return c.type === "field";
+  }).map(function (c) {
+    return [c.key, c.kind];
+  }),
+);
+
+// Columns whose change alters the hierarchy / identity used by access.
+const HIERARCHY_COLUMNS = new Set([
+  "status",
+  "eligible_status",
+  "reporting_manager",
+  "manager",
+  "comp_manager",
+  "appraiser_tech_ed",
+  "manager_email_id",
+  "super_man_email_id",
+  "name",
+  "designation",
+]);
+
+async function checkAccess(req) {
+  const userApp = catalyst.initialize(req);
+  const adminApp = catalyst.initialize(req, { scope: "admin" });
+
+  try {
+    return await access.check(userApp, adminApp);
+  } catch (error) {
+    if (access.isEnforced()) throw error;
+    // Dry run must never change legacy behaviour, even if access data is unreadable.
+    console.log("ACCESS dry-run: access check failed:", error && error.message);
+    return { dryRun: true, enforced: false, denied: error };
+  }
+}
+
+function requireAnyScreen(a, keys, level) {
+  const ok = keys.some(function (key) {
+    try {
+      access.requireScreen(a, key, level);
+      return true;
+    } catch (error) {
+      if (error instanceof access.HttpError) return false;
+      throw error;
+    }
+  });
+
+  if (!ok) {
+    throw new access.HttpError(403, "You do not have access to this screen.");
+  }
+}
+
+function requireInScope(a, empIds) {
+  const outside = empIds.filter(function (empId) {
+    return !access.inScope(a, empId);
+  });
+
+  if (outside.length) {
+    throw new access.HttpError(
+      403,
+      "You do not have access to employee(s): " + outside.join(", ") + ".",
+    );
+  }
+}
+
+/*
+ * Appraisal_Sheet columns a user may change:
+ *   - input / pair fields  → the field must be 'edit' for the user;
+ *   - master / upload fields and every non-field column (status,
+ *     eligible_status, manager_email_id, department, joining_date…)
+ *     → HR master data: edit on the employeeMaster screen.
+ */
+function isMasterColumn(column) {
+  const key = access.fieldOfColumn(column);
+  if (!key) return true;
+  const kind = FIELD_KIND[key];
+  return kind === "master" || kind === "upload";
+}
+
+function requireEditableColumns(a, columns) {
+  const masterColumns = columns.filter(isMasterColumn);
+  const fieldColumns = columns.filter(function (c) {
+    return !isMasterColumn(c);
+  });
+
+  if (masterColumns.length) {
+    try {
+      access.requireScreen(a, "employeeMaster", "edit");
+    } catch (error) {
+      if (!(error instanceof access.HttpError)) throw error;
+      throw new access.HttpError(
+        403,
+        "Only HR (Employee Master edit) can change: " +
+          masterColumns.join(", ") +
+          ".",
+      );
+    }
+  }
+
+  access.requireEditColumns(a, fieldColumns);
+}
+
+// Hidden columns removed; orgExp mirrors wissen_experience so it goes too.
+function shapeEmployee(a, row) {
+  const out = access.shapeRowByColumns(a, row);
+
+  if (a.fields && a.fields.wissenExperience === "hidden") {
+    delete out.orgExp;
+    delete out.wissen_experience;
+  }
+
+  return out;
+}
+
+async function bumpAccessVersion(req, a, why) {
+  try {
+    await access.bumpVersion(
+      catalyst.initialize(req, { scope: "admin" }),
+      (a && a.user && a.user.email) || "",
+      why,
+    );
+  } catch (error) {
+    console.error("ACCESS bumpVersion failed:", error && error.message);
+  }
+}
+
+function sendAccessError(res, error) {
+  return sendJson(res, error.status || 403, {
+    success: false,
+    message: error.message,
+    enforced: true,
+  });
+}
+
+app.use(async function (req, res, next) {
+  try {
+    req.access = await checkAccess(req);
+  } catch (error) {
+    if (error instanceof access.HttpError) return sendAccessError(res, error);
+
+    console.error("employeesapi ACCESS ERROR:", error);
+    return sendJson(res, 500, {
+      success: false,
+      message: error && error.message ? error.message : "Internal server error.",
     });
   }
 
@@ -128,6 +307,7 @@ function getCurrentUserMatchValues(user) {
 
   return [
     user?.user_id,
+    user?.empId,
     user?.email_id,
     user?.email,
     user?.display_name,
@@ -360,15 +540,128 @@ function buildEmployeeMasterMap(masterRows) {
     const empId = String(row.emp_id || "")
       .trim()
       .toLowerCase();
+    const rowId = String(row.ROWID || row.rowid || row.id || "").trim();
 
-    if (!empId) {
-      return;
-    }
-
-    map.set(empId, row);
+    // Index by both the stable employee ID and Catalyst Row ID. The new
+    // Appraisal_Sheet.appraiser_tech_ed1 lookup stores Employee_Master.ROWID.
+    if (empId) map.set(empId, row);
+    if (rowId) map.set(rowId, row);
   });
 
   return map;
+}
+
+/* ============================================================
+   APPRAISAL_SHEET + EMPLOYEE_MASTER → APPRAISAL API SHAPE
+
+   The new Data Store schema deliberately keeps employee master data
+   separate from appraisal values. The UI still consumes one employee
+   object, so join the two tables here instead of duplicating columns.
+   ============================================================ */
+
+function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
+  return (appraisalRows || []).map(function (row) {
+    const empId = String(row.emp_id || "").trim();
+    const master = employeeMasterMap.get(empId.toLowerCase()) || {};
+
+    const active = normalizeStatus(master.emp_status || "Active");
+
+    return {
+      ...row,
+
+      name: String(master.emp_name || row.name || ""),
+      designation: String(master.designation || row.designation || row.title || ""),
+      reporting_manager: String(master.repo_manager || row.reporting_manager || ""),
+      // Appraisal_Sheet.comp_manager is the value users edit; Employee_Master
+      // has no comp_manager column, so director is only a fallback.
+      comp_manager: String(row.comp_manager || master.director || ""),
+      // appraiser_tech_ed1 is a lookup to Employee_Master.ROWID. Resolve it
+      // to the actual Tech-Ed employee identity so the grid displays ID - Name
+      // and the backend's Tech-Ed access filter can match the signed-in user.
+      // Separate Appraisal_Sheet assignment for budget headcounts. Do not
+      // fall back to Employee_Master assignment: that can add an employee to
+      // a Tech-Ed count when the current appraisal row is unassigned/different.
+      appraiser_tech_ed_appraisal_sheet: (() => {
+        const techEdLookupId = String(row.appraiser_tech_ed1 || row.appraiser_tech_ed || "").trim();
+        const techEdEmployee = techEdLookupId
+          ? employeeMasterMap.get(techEdLookupId) || employeeMasterMap.get(techEdLookupId.toLowerCase())
+          : null;
+        if (techEdEmployee) {
+          const techEdEmpId = String(techEdEmployee.emp_id || "").trim();
+          const techEdName = String(techEdEmployee.emp_name || techEdEmployee.name || "").trim();
+          return techEdEmpId && techEdName ? techEdEmpId + " - " + techEdName : techEdName || techEdEmpId || "";
+        }
+        return techEdLookupId && !/^[0-9]+$/.test(techEdLookupId) ? techEdLookupId : "";
+      })(),
+      appraiser_tech_ed: (() => {
+        const techEdLookupId = String(
+          row.appraiser_tech_ed1 || row.appraiser_tech_ed || master.appraiser_tech_ed1 || master.appraiser_tech_ed || ""
+        ).trim();
+        const techEdEmployee = techEdLookupId
+          ? employeeMasterMap.get(techEdLookupId) ||
+            employeeMasterMap.get(techEdLookupId.toLowerCase())
+          : null;
+        if (techEdEmployee) {
+          const techEdEmpId = String(techEdEmployee.emp_id || "").trim();
+          const techEdName = String(techEdEmployee.emp_name || techEdEmployee.name || "").trim();
+          return techEdEmpId && techEdName
+            ? techEdEmpId + " - " + techEdName
+            : techEdName || techEdEmpId || techEdLookupId;
+        }
+        // Preserve legacy text assignments, but don't show a numeric FK as a name.
+        const legacy = String(row.appraiser_tech_ed || master.appraiser_tech_ed || "").trim();
+        if (legacy && !/^[0-9]+$/.test(legacy)) return legacy;
+        return "";
+      })(),
+      department: String(master.department || row.department || ""),
+      location: String(master.location || master.work_location || row.location || row.work_location || ""),
+      wissen_experience: Number(master.wissen_experience || row.wissen_experience || 0),
+      total_experience: Number(master.total_experience || row.total_experience || 0),
+      joining_date: String(master.date_of_join || row.joining_date || ""),
+      status: active,
+
+      // Employee_Master is the eligibility source of truth. Preserve an
+      // explicit master decision first, then the Appraisal_Sheet legacy value.
+      // Never derive eligibility from Active/Inactive status.
+      eligible_status: (() => {
+        const rawEligibility = String(
+          [
+            master.eligibility,
+            master.eligible_status,
+            master.eligibility_status,
+            master.eligible,
+            row.eligible_status,
+            row.eligibility,
+            row.eligibility_status,
+            row.eligible,
+          ].find((value) => value !== null && value !== undefined && String(value).trim() !== "") || "",
+        ).trim().toLowerCase().replace(/[ _-]+/g, "");
+        if (["eligible", "yes", "true", "1"].includes(rawEligibility)) return "eligible";
+        if (["noteligible", "no", "false", "0", "ineligible"].includes(rawEligibility)) return "not eligible";
+        return "not eligible";
+      })(),
+
+      // Appraisal_Sheet is the source of truth for the current Apr-26 grid.
+      // Do NOT map these fields from Payroll_Data aliases such as base_pay.
+      current_annual_base_pay: Number(row.current_annual_base_pay || 0),
+      target_pb_allocated_for_may: Number(row.target_pb_allocated_for_may || 0),
+      allocated_pb_amount: Number(row.allocated_pb_amount || 0),
+      pb_installment: String(row.pb_installment ?? ""),
+      pb_to_be_paid: Number(row.pb_to_be_paid || 0),
+      new_pb_to_be_offered: Number(row.new_pb_to_be_offered || 0),
+      new_pb_installment: String(row.new_pb_installment ?? ""),
+      new_rb: Number(row.new_rb || 0),
+      hike_amount: Number(row.hike_amount || 0),
+      hike_pct: Number(row.hike_pct || 0),
+      target_pb_next_year: Number(row.target_pb_next_year || 0),
+      eligible_for_promotion: String(row.eligible_for_promotion || "No"),
+      new_title: String(row.new_title || ""),
+      at_risk: String(row.at_risk || ""),
+      manager_rating: String(row.manager_rating || ""),
+      rating: Number(row.rating || 0),
+      joining_bonus: Number(row.joining_bonus || 0),
+    };
+  });
 }
 
 /* ============================================================
@@ -396,7 +689,11 @@ function isAppraisalEligible(employee, employeeMasterMap) {
     .trim()
     .toLowerCase();
 
-  return masterStatus === "Active" && eligibility === "eligible";
+  // Current Employee_Master schema has no eligible_status column. When it is
+  // absent, Active in Employee_Master is the eligibility source of truth.
+  const effectiveEligibility = eligibility || (masterStatus === "Active" ? "eligible" : "not eligible");
+
+  return masterStatus === "Active" && effectiveEligibility === "eligible";
 }
 
 /* ============================================================
@@ -410,6 +707,7 @@ function filterEmployees(
   status,
   eligible,
   view,
+  location,
 ) {
   let filtered = employees;
 
@@ -471,6 +769,17 @@ function filterEmployees(
   }
 
   /* ==========================================================
+     LOCATION FILTER
+     ========================================================== */
+
+  if (location) {
+    const locationValue = String(location).trim().toLowerCase();
+    filtered = filtered.filter(function (employee) {
+      return String(employee.location || employee.work_location || "").trim().toLowerCase() === locationValue;
+    });
+  }
+
+  /* ==========================================================
      ELIGIBILITY FILTER
      ========================================================== */
 
@@ -508,22 +817,50 @@ async function getEmployees(req, res) {
 
   const datastore = appInstance.datastore();
 
-  let currentUser = null;
-  try {
-    currentUser = await appInstance.userManagement().getCurrentUser();
-  } catch (error) {
-    console.warn("Unable to resolve current Catalyst user for role filtering:", error?.message);
-  }
-
-  if (!currentUser || !currentUser.user_id) {
-    return sendJson(res, 401, {
-      success: false,
-      message: "Authentication is required.",
-    });
-  }
-
-  const hrUser = isHRUser(currentUser);
+  const a = req.access;
+  const enforced = Boolean(a && a.enforced);
   const params = getQueryParams(req);
+
+  const requestedView = String(params.view || "")
+    .trim()
+    .toLowerCase();
+  const requestedEmpIds = String(params.emp_id || params.empId || "")
+    .split(",")
+    .map(function (value) {
+      return value.trim();
+    })
+    .filter(Boolean);
+
+  access.guard(a, function () {
+    requireAnyScreen(a, READ_SCREENS, "view");
+    // Roster / eligibility views list every employee — HR Operations only.
+    if (requestedView === "master" || requestedView === "eligibility") {
+      access.requireScreen(a, "employeeMaster", "view");
+    }
+    requireInScope(a, requestedEmpIds);
+  });
+
+  let currentUser = null;
+  let hrUser = false;
+
+  if (!enforced) {
+    try {
+      currentUser = await appInstance.userManagement().getCurrentUser();
+    } catch (error) {
+      console.warn("Unable to resolve current Catalyst user for role filtering:", error?.message);
+    }
+
+    if (!currentUser || !currentUser.user_id) {
+      return sendJson(res, 401, {
+        success: false,
+        message: "Authentication is required.",
+      });
+    }
+
+    hrUser = isHRUser(currentUser);
+  } else {
+    hrUser = Boolean(a.scope && a.scope.all);
+  }
 
   const requestedPage = getPositiveInteger(params.page, 1);
 
@@ -537,6 +874,8 @@ async function getEmployees(req, res) {
     .trim()
     .toLowerCase();
 
+  const location = String(params.location || "").trim();
+
   const eligibleParam = String(params.eligible || "")
     .trim()
     .toLowerCase();
@@ -549,7 +888,7 @@ async function getEmployees(req, res) {
      LOAD EMPLOYEES
      ========================================================== */
 
-  const allEmployees = await getAllEmployees(datastore);
+  const appraisalRows = await getAllEmployees(datastore);
 
   /* ==========================================================
      LOAD EMPLOYEE MASTER
@@ -558,6 +897,13 @@ async function getEmployees(req, res) {
   const employeeMasterRows = await getAllEmployeeMaster(datastore);
 
   const employeeMasterMap = buildEmployeeMasterMap(employeeMasterRows);
+
+  // Join the current Appraisal_Sheet schema with Employee_Master so the
+  // frontend receives one dynamic, consistent employee object.
+  const allEmployees = mergeEmployeeMasterIntoAppraisal(
+    appraisalRows,
+    employeeMasterMap,
+  );
 
   /* ==========================================================
      DOJ SOURCE
@@ -584,11 +930,29 @@ async function getEmployees(req, res) {
    * Counts must use this same scoped set so the dashboard reflects the
    * current user's visible Employee Master records, not the whole table.
    */
-  const scopedEmployees = hrUser
+  // Enforced: access scope (Delegation of the Active cycle) + hidden columns
+  // removed BEFORE counting / searching / paginating.
+  const scopedEmployees = enforced
     ? allEmployees
-    : allEmployees.filter(function (employee) {
-        return employeeBelongsToCurrentUser(employee, currentUser);
-      });
+        // Tech-Ed roster ownership is maintained in Employee_Master.appraiser_tech_ed
+        // (for example, "EMP002 - Ashok Kumar"). Use that assignment as the source
+        // of truth for the Tech-Ed's visible employees instead of requiring a
+        // separate Delegation row to duplicate the same assignment.
+        .filter(function (employee) {
+          if (a.scope && a.scope.all) return true;
+          if (a.role === "techEd") {
+            return employeeBelongsToCurrentUser(employee, a.user);
+          }
+          return access.inScope(a, employee);
+        })
+        .map(function (employee) {
+          return shapeEmployee(a, employee);
+        })
+    : hrUser
+      ? allEmployees
+      : allEmployees.filter(function (employee) {
+          return employeeBelongsToCurrentUser(employee, currentUser);
+        });
 
   const scopedTotalCount = scopedEmployees.length;
   const scopedActiveCount = scopedEmployees.filter(function (employee) {
@@ -605,6 +969,7 @@ async function getEmployees(req, res) {
     status === "all" ? "" : status,
     eligibleParam === "all" ? "" : eligibleParam,
     hrUser ? "master" : view,
+    location,
   );
 
   const userScopedEmployees = filteredEmployees;
@@ -624,7 +989,8 @@ async function getEmployees(req, res) {
   const data = userScopedEmployees
     .slice(offset, offset + limit)
     .map(function (employee) {
-      return normalizeEmployeeResponse(employee);
+      const normalized = normalizeEmployeeResponse(employee);
+      return enforced ? shapeEmployee(a, normalized) : normalized;
     });
 
   /* ==========================================================
@@ -768,6 +1134,43 @@ async function createEmployees(req, res) {
     });
   });
 
+  /* ==========================================================
+     ACCESS (checked before anything is written)
+     - only appraisal input columns of existing employees
+       → importAppraisal + appraisalSheet edit + rows in scope
+         + every column editable;
+     - roster / master columns or new employees → employeeMaster edit.
+     ========================================================== */
+
+  const a = req.access;
+  const touchedColumns = new Set();
+  const touchedEmpIds = [];
+
+  incoming.forEach(function (item) {
+    const record = item || {};
+    const empId = String(record.emp_id || record.empId || "").trim();
+    if (!empId) return;
+    touchedEmpIds.push(empId);
+    Object.keys(pickAllowedFields(record)).forEach(function (column) {
+      touchedColumns.add(column);
+    });
+  });
+
+  const columns = Array.from(touchedColumns);
+  const masterImport =
+    rowsToInsert.length > 0 || columns.some(isMasterColumn);
+
+  access.guard(a, function () {
+    if (masterImport) {
+      access.requireScreen(a, "employeeMaster", "edit");
+      return;
+    }
+    access.requireAction(a, "importAppraisal");
+    access.requireScreen(a, "appraisalSheet", "edit");
+    requireInScope(a, touchedEmpIds);
+    requireEditableColumns(a, columns);
+  });
+
   let insertedRows = [];
 
   if (rowsToInsert.length) {
@@ -778,6 +1181,15 @@ async function createEmployees(req, res) {
 
   if (rowsToUpdate.length) {
     updatedRows = await table.updateRows(rowsToUpdate);
+  }
+
+  if (
+    rowsToInsert.length ||
+    columns.some(function (column) {
+      return HIERARCHY_COLUMNS.has(column);
+    })
+  ) {
+    await bumpAccessVersion(req, a, "employeesapi import changed the roster");
   }
 
   return sendJson(res, 200, {
@@ -812,252 +1224,148 @@ async function createEmployees(req, res) {
 
 async function updateEmployee(req, res) {
   const appInstance = catalyst.initialize(req);
-
   const datastore = appInstance.datastore();
-
   const body = req.body || {};
 
-  console.log("==============================================");
-
-  console.log("EMPLOYEE UPDATE REQUEST");
-
-  console.log("METHOD:", req.method);
-
-  console.log("BODY:", JSON.stringify(body));
-
-  console.log("==============================================");
-
-  /* ==========================================================
-     EMPLOYEE ID
-     ========================================================== */
-
   const empId = String(body.emp_id || body.empId || "").trim();
-
   if (!empId) {
-    return sendJson(res, 400, {
-      success: false,
-      message: "emp_id is required.",
-    });
+    return sendJson(res, 400, { success: false, message: "emp_id is required." });
   }
 
-  /* ==========================================================
-     FIND EMPLOYEE
-     ========================================================== */
+  const a = req.access;
+  const changedColumns = Object.keys(pickAllowedFields(body));
 
-  const employeeTable = datastore.table(EMPLOYEES_TABLE_ID);
+  // Delegation assignments are changed only from the Delegation screen.
+  // Screen-level edit permission is the authorization source here. Requiring
+  // the separate delegateApprove action as well caused HR saves to fail when
+  // the action matrix was not seeded or had a stale value.
+  const isDelegationAssignmentChange =
+    changedColumns.length > 0 &&
+    changedColumns.every(function (column) {
+      return column === "comp_manager" || column === "appraiser_tech_ed";
+    });
 
-  const employeeRows = await employeeTable.getAllRows();
-
-  const existingEmployeeRow = (employeeRows || []).find(function (row) {
-    return (
-      String(row.emp_id || "")
-        .trim()
-        .toLowerCase() === empId.toLowerCase()
-    );
+  access.guard(a, function () {
+    if (isDelegationAssignmentChange) {
+      // HR administrators manage delegation for the whole organization. Their
+      // authorization must not depend on employee hierarchy scope or a stale
+      // per-screen matrix entry. Non-HR users still need delegation edit access
+      // and must remain within their assigned employee scope.
+      if (a.role !== "hr") {
+        access.requireScreen(a, "delegation", "edit");
+        requireInScope(a, [empId]);
+      }
+    } else {
+      requireAnyScreen(a, EDIT_SCREENS, "edit");
+      requireEditableColumns(a, changedColumns);
+      requireInScope(a, [empId]);
+    }
   });
 
-  if (!existingEmployeeRow) {
-    return sendJson(res, 404, {
-      success: false,
-      message: "Employee " + empId + " not found.",
-    });
+  const appraisalTable = datastore.table(EMPLOYEES_TABLE_ID);
+  const masterTable = datastore.table(EMPLOYEE_MASTER_TABLE_ID);
+
+  const [appraisalRows, masterRows] = await Promise.all([
+    appraisalTable.getAllRows(),
+    masterTable.getAllRows(),
+  ]);
+
+  const appraisalRow = (appraisalRows || []).find(function (row) {
+    return String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase();
+  });
+  const masterRow = (masterRows || []).find(function (row) {
+    return String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase();
+  });
+
+  if (!appraisalRow) {
+    return sendJson(res, 404, { success: false, message: "Appraisal record " + empId + " not found." });
+  }
+  if (!masterRow) {
+    return sendJson(res, 404, { success: false, message: "Employee Master record " + empId + " not found." });
   }
 
-  const employeeRowId = existingEmployeeRow.ROWID || existingEmployeeRow.rowid;
-
-  if (!employeeRowId) {
-    throw new Error("Employee ROWID not found for " + empId);
-  }
-
-  /* ==========================================================
-     STATUS UPDATE
-     ========================================================== */
-
-  if (Object.prototype.hasOwnProperty.call(body, "status")) {
-    const normalizedStatus = normalizeStatus(body.status);
-
-    if (!normalizedStatus) {
-      return sendJson(res, 400, {
-        success: false,
-        message: 'status must be either "Active" or "Inactive".',
-      });
-    }
-
-    console.log("STATUS UPDATE:", empId, "TO:", normalizedStatus);
-
-    const employeeMasterTable = datastore.table(EMPLOYEE_MASTER_TABLE_ID);
-
-    const employeeMasterRows = await employeeMasterTable.getAllRows();
-
-    const existingMasterRow = (employeeMasterRows || []).find(function (row) {
-      return (
-        String(row.emp_id || "")
-          .trim()
-          .toLowerCase() === empId.toLowerCase()
-      );
-    });
-
-    if (!existingMasterRow) {
-      return sendJson(res, 404, {
-        success: false,
-        message: "Employee Master record not found for employee " + empId + ".",
-      });
-    }
-
-    const masterRowId = existingMasterRow.ROWID || existingMasterRow.rowid;
-
-    if (!masterRowId) {
-      throw new Error("Employee Master ROWID not found for " + empId);
-    }
-
-    /* ========================================================
-       UPDATE EMPLOYEE MASTER
-       ======================================================== */
-
-    const masterUpdateRow = {
-      ROWID: masterRowId,
-      emp_status: normalizedStatus,
-    };
-
-    const masterUpdateResult =
-      await employeeMasterTable.updateRow(masterUpdateRow);
-
-    console.log(
-      "EMPLOYEE MASTER UPDATE RESULT:",
-      JSON.stringify(masterUpdateResult),
-    );
-
-    /* ========================================================
-       UPDATE EMPLOYEES
-       ======================================================== */
-
-    const employeeUpdateRow = {
-      ROWID: employeeRowId,
-      status: normalizedStatus,
-    };
-
-    const employeeUpdateResult =
-      await employeeTable.updateRow(employeeUpdateRow);
-
-    console.log(
-      "EMPLOYEES UPDATE RESULT:",
-      JSON.stringify(employeeUpdateResult),
-    );
-
-    /* ========================================================
-       VERIFY EMPLOYEE MASTER
-       ======================================================== */
-
-    const verifyMasterRows = await employeeMasterTable.getAllRows();
-
-    const verifiedMasterRow = (verifyMasterRows || []).find(function (row) {
-      return (
-        String(row.emp_id || "")
-          .trim()
-          .toLowerCase() === empId.toLowerCase()
-      );
-    });
-
-    const verifiedMasterStatus = normalizeStatus(
-      verifiedMasterRow && verifiedMasterRow.emp_status,
-    );
-
-    if (verifiedMasterStatus !== normalizedStatus) {
-      return sendJson(res, 500, {
-        success: false,
-        message: "Employee Master status update verification failed.",
-        data: {
-          emp_id: empId,
-          requestedStatus: normalizedStatus,
-          actualMasterStatus:
-            verifiedMasterRow && verifiedMasterRow.emp_status !== undefined
-              ? verifiedMasterRow.emp_status
-              : null,
-        },
-      });
-    }
-
-    /* ========================================================
-       VERIFY EMPLOYEES
-       ======================================================== */
-
-    const verifyEmployeeRows = await employeeTable.getAllRows();
-
-    const verifiedEmployeeRow = (verifyEmployeeRows || []).find(function (row) {
-      return (
-        String(row.emp_id || "")
-          .trim()
-          .toLowerCase() === empId.toLowerCase()
-      );
-    });
-
-    const verifiedEmployeeStatus = normalizeStatus(
-      verifiedEmployeeRow && verifiedEmployeeRow.status,
-    );
-
-    if (verifiedEmployeeStatus !== normalizedStatus) {
-      return sendJson(res, 500, {
-        success: false,
-        message: "Employees status update verification failed.",
-        data: {
-          emp_id: empId,
-          requestedStatus: normalizedStatus,
-          actualEmployeeStatus:
-            verifiedEmployeeRow && verifiedEmployeeRow.status !== undefined
-              ? verifiedEmployeeRow.status
-              : null,
-        },
-      });
-    }
-
-    return sendJson(res, 200, {
-      success: true,
-
-      message:
-        "Employee status updated successfully in Employee Master and Employees.",
-
-      data: normalizeEmployeeResponse(verifiedEmployeeRow),
-
-      employeeMaster: {
-        emp_id: empId,
-        emp_status: verifiedMasterStatus,
-      },
-    });
-  }
-
-  /* ==========================================================
-     GENERIC EMPLOYEE UPDATE
-     ========================================================== */
-
-  const updateData = pickAllowedFields(body);
-
-  if (Object.keys(updateData).length === 0) {
-    return sendJson(res, 400, {
-      success: false,
-      message: "No valid employee fields were provided.",
-    });
-  }
-
-  const updateRow = {
-    ROWID: employeeRowId,
-    ...updateData,
+  const masterFieldMap = {
+    name: "emp_name",
+    designation: "designation",
+    reporting_manager: "repo_manager",
+    appraiser_tech_ed: "appraiser_tech_ed",
+    department: "department",
+    wissen_experience: "wissen_experience",
+    total_experience: "total_experience",
+    joining_date: "date_of_join",
   };
 
-  console.log("GENERIC EMPLOYEE UPDATE:", JSON.stringify(updateRow));
+  // Every other editable field is an Appraisal_Sheet column of the same name
+  // (the names GET reads back). Payroll-style names such as base_pay do not
+  // exist on Appraisal_Sheet.
+  const appraisalFieldMap = {};
+  ALLOWED_FIELDS.forEach(function (field) {
+    if (field !== "status" && !masterFieldMap[field]) appraisalFieldMap[field] = field;
+  });
 
-  const updateResult = await employeeTable.updateRow(updateRow);
+  const masterUpdate = { ROWID: masterRow.ROWID };
+  const appraisalUpdate = { ROWID: appraisalRow.ROWID };
 
-  console.log("GENERIC UPDATE RESULT:", JSON.stringify(updateResult));
+  changedColumns.forEach(function (column) {
+    const value = body[column];
+
+    if (column === "status") {
+      const normalizedStatus = normalizeStatus(value);
+      if (!normalizedStatus) {
+        throw new access.HttpError(400, 'status must be either "Active" or "Inactive".');
+      }
+      masterUpdate.emp_status = normalizedStatus;
+      return;
+    }
+
+    const masterColumn = masterFieldMap[column];
+    if (masterColumn) {
+      masterUpdate[masterColumn] = value;
+      return;
+    }
+
+    const appraisalColumn = appraisalFieldMap[column];
+    if (appraisalColumn) {
+      appraisalUpdate[appraisalColumn] = value;
+    }
+  });
+
+  const masterChanged = Object.keys(masterUpdate).length > 1;
+  const appraisalChanged = Object.keys(appraisalUpdate).length > 1;
+
+  if (!masterChanged && !appraisalChanged) {
+    return sendJson(res, 400, {
+      success: false,
+      message: "No fields from the current Data Store schema can be updated.",
+    });
+  }
+
+  let updatedMaster = masterRow;
+  let updatedAppraisal = appraisalRow;
+
+  if (masterChanged) {
+    updatedMaster = await masterTable.updateRow(masterUpdate);
+  }
+
+  if (appraisalChanged) {
+    updatedAppraisal = await appraisalTable.updateRow(appraisalUpdate);
+  }
+
+  const merged = mergeEmployeeMasterIntoAppraisal(
+    [updatedAppraisal],
+    new Map([[empId.toLowerCase(), updatedMaster]]),
+  )[0];
+
+  if (changedColumns.some(function (column) {
+    return HIERARCHY_COLUMNS.has(column) || column === "status";
+  })) {
+    await bumpAccessVersion(req, a, "Employee hierarchy/status changed: " + empId);
+  }
 
   return sendJson(res, 200, {
     success: true,
-
     message: "Employee updated successfully.",
-
-    data: normalizeEmployeeResponse({
-      emp_id: empId,
-      ...updateData,
-    }),
+    data: a && a.enforced ? shapeEmployee(a, merged) : merged,
   });
 }
 
@@ -1069,6 +1377,8 @@ app.get("/", async function (req, res) {
   try {
     await getEmployees(req, res);
   } catch (error) {
+    if (error instanceof access.HttpError) return sendAccessError(res, error);
+
     console.error("employeesapi GET ERROR:", error);
 
     return sendJson(res, 500, {
@@ -1087,6 +1397,8 @@ app.post("/", async function (req, res) {
   try {
     await createEmployees(req, res);
   } catch (error) {
+    if (error instanceof access.HttpError) return sendAccessError(res, error);
+
     console.error("employeesapi POST ERROR:", error);
 
     return sendJson(res, 500, {
@@ -1105,6 +1417,8 @@ app.put("/", async function (req, res) {
   try {
     await updateEmployee(req, res);
   } catch (error) {
+    if (error instanceof access.HttpError) return sendAccessError(res, error);
+
     console.error("employeesapi PUT ERROR:", error);
 
     return sendJson(res, 500, {
@@ -1123,6 +1437,8 @@ app.patch("/", async function (req, res) {
   try {
     await updateEmployee(req, res);
   } catch (error) {
+    if (error instanceof access.HttpError) return sendAccessError(res, error);
+
     console.error("employeesapi PATCH ERROR:", error);
 
     return sendJson(res, 500, {

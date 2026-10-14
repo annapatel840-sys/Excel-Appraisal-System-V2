@@ -1,4 +1,3 @@
-
 /* ============================================================
    EMPLOYEE MASTER
    CLEAN FINAL CSS
@@ -358,7 +357,8 @@
 .employee-master-page .em-menu-wrapper {
   position: relative;
 
-  z-index: 1000;
+  /* Must stay below the app header (z-50) so the profile pop-up is never covered */
+  z-index: 10;
 }
 
 .employee-master-page .em-menu-dropdown {
@@ -906,6 +906,9 @@
 
   width: 100%;
   height: 100%;
+
+  display: flex;
+  flex-direction: column;
 
   border: 1px solid var(--em-border);
   border-radius: 6px;
@@ -1568,3 +1571,113 @@ body:has(.employee-master-page) {
     padding: 7px;
   }
 }
+
+
+/* ============================================================
+   EMPLOYEE MASTER / ELIGIBILITY — supplied reference layout
+   Visual-only additions; data and API behavior remain unchanged.
+   ============================================================ */
+.employee-master-page .em-reference-employee {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 180px;
+  line-height: 1.25;
+}
+.employee-master-page .em-reference-employee strong {
+  color: #1d4f91;
+  font-size: 12px;
+  font-weight: 700;
+}
+.employee-master-page .em-reference-employee span {
+  color: var(--em-muted);
+  font-size: 10px;
+}
+.employee-master-page .em-table th {
+  background: #e6eef8;
+  color: #243b53;
+}
+.employee-master-page .em-table td {
+  vertical-align: middle;
+}
+.employee-master-page .em-eligibility-list .em-grid-wrap {
+  min-height: 220px;
+}
+.employee-master-page .em-eligibility-list .em-table {
+  min-width: 1120px;
+}
+.employee-master-page .em-eligibility-list .em-table th,
+.employee-master-page .em-eligibility-list .em-table td {
+  padding: 8px 11px;
+  height: 38px;
+}
+.employee-master-page .em-eligibility-list .em-table tbody tr:hover {
+  background: #eef5ff;
+}
+.employee-master-page .em-eligibility-list .em-pagination {
+  border-top: 1px solid var(--em-border);
+  margin-top: 6px;
+  padding-top: 9px;
+}
+/* ============ Employee Master / Eligibility – additions ============ */
+.em-sel-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#DCEBFF;border:1px solid #B9D3F5;border-radius:8px;padding:7px 12px;margin-bottom:10px}
+.em-sel-bar b{color:#102A43}
+.em-mini-btn{border:1px solid #D1D5DB;background:#fff;border-radius:6px;padding:3px 9px;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap}
+.em-mini-btn:hover{background:#F7F9FC}
+.em-mini-btn:disabled{cursor:not-allowed;opacity:.55}
+.em-mini-btn.danger{border-color:#fca5a5;background:#fee2e2;color:#dc2626}
+.em-mini-btn.good{border-color:#86efac;background:#dcfce7;color:#15803d}
+
+.em-btn-dashed{border:1px dashed #CBD2DA !important;background:#fff}
+
+/* sticky first column + zebra rows */
+.em-sticky-first th:first-child,
+.em-sticky-first td:first-child{position:sticky;left:0;z-index:1;border-right:1px solid #C9D8EC;background:#EEF3FA}
+.em-sticky-first th:first-child{z-index:4;background:#DFE8F3}
+.em-sticky-first tbody tr:nth-child(odd) td:not(:first-child){background:#FBFCFE}
+.em-sticky-first tbody tr:nth-child(even) td:not(:first-child){background:#F2F5F9}
+.em-sticky-first tbody tr:hover td{background:#EAF2FF !important}
+.em-sticky-first tbody tr.em-row-sel td{background:#DCEBFF !important}
+.em-sticky-first tbody tr.em-row-dim td{color:#9AA3B0}
+.em-sticky-first th{white-space:normal;line-height:1.25}
+.em-th-inner{display:flex;align-items:center;gap:6px}
+
+.em-emp-cell{display:flex;align-items:center;gap:8px}
+.em-chk{width:14px;height:14px;margin:0;accent-color:#27548A;cursor:pointer;flex:none}
+
+/* tags */
+.em-tag{display:inline-block;border-radius:10px;padding:2px 9px;font-size:11px;font-weight:700}
+.em-tag.ok{background:#ECFDF3;color:#15803D}
+.em-tag.warn{background:#FEF6E7;color:#B7791F}
+.em-tag.grey{background:#F3F4F6;color:#6B7280}
+.em-tag.info{background:#DCEBFF;color:#1D4FA8}
+.em-tag.chg{background:#ECE7FB;color:#5B3FB0}
+
+/* pagination + notes for roster */
+.em-pg-row{display:flex;align-items:center;justify-content:space-between;padding:10px 0;flex-wrap:wrap;gap:8px}
+.em-pg-info{font-size:12px;color:#6b7280;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.em-pg-btns{display:flex;align-items:center;gap:6px}
+.em-pg-btns button{border:1px solid #d1d5db;background:#fff;border-radius:4px;padding:5px 10px;cursor:pointer}
+.em-pg-btns button:disabled{opacity:.5;cursor:not-allowed}
+.em-pg-cur{font-size:12px;color:#374151;min-width:55px;text-align:center}
+.em-showing{background:#DCEBFF;color:#1D4FA8;border-radius:10px;padding:2px 4px 2px 10px;font-weight:700}
+.em-showing button{border:none;background:none;cursor:pointer;color:#1D4FA8;font-weight:800}
+.em-note{color:#6B7280;font-size:11.5px;margin:8px 2px 0}
+.em-empty{text-align:center;padding:28px 20px;color:#6B7280}
+
+/* eligibility criteria pane */
+.em-crit-h{margin:12px 0 5px;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#102A43}
+.em-crit-h:first-child{margin-top:0}
+.em-chk-list{max-height:106px;overflow:auto;border:1px solid #E5E7EB;border-radius:6px;background:#fff;padding:3px 6px}
+.em-chk-list label{display:flex;gap:6px;align-items:center;padding:2px 0;font-weight:500;cursor:pointer}
+.em-hint{font-size:10.5px;color:#6B7280;margin:5px 0;line-height:1.45}
+.em-suggest{border:1px solid #E5E7EB;border-radius:6px;background:#fff;margin-top:3px;max-height:110px;overflow:auto}
+.em-suggest div{padding:5px 8px;cursor:pointer}
+.em-suggest div:hover{background:#EAF2FF}
+.em-apply-btn{width:100%;justify-content:center;margin-top:12px;text-transform:uppercase;letter-spacing:.03em;font-weight:800;background:#2F6FED;border-color:#2F6FED;color:#fff}
+.em-apply-btn:disabled{background:#A9C1F2;border-color:#A9C1F2;cursor:not-allowed}
+
+/* modal validation */
+.em-err{color:#C0392B;font-size:11.5px;margin-top:4px;font-weight:600}
+.em-bad{border-color:#C0392B !important}

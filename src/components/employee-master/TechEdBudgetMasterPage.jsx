@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
+import { useAccess } from "@/lib/access-store";
+import { useBudget } from "@/lib/budget-store";
 
 /* Add once in index.html <head> so the font matches the reference:
    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"> */
@@ -68,7 +70,9 @@ const COMP_MANAGERS = [
   },
 ];
 
-const money = (v) => "₹ " + ((Number(v) || 0) / 100000).toFixed(2) + " L";
+// Exact rupee amount with Indian grouping (no lakh rounding), e.g. ₹ 12,34,567.50
+const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const money = (v) => "₹ " + INR.format(Number(v) || 0);
 function dateText(iso) {
   const p = String(iso || "").split("-");
   const M = [
@@ -141,7 +145,17 @@ function AuditTable({ rows, showOwner = true }) {
     );
   return (
     <div className="bscroll">
-      <table className="trail">
+      <table className="trail trail-audit">
+        <colgroup>
+          <col className="c-date" />
+          {showOwner ? <col className="c-owner" /> : null}
+          <col className="c-num" />
+          <col className="c-num" />
+          <col className="c-money" />
+          <col className="c-money" />
+          <col className="c-by" />
+          <col className="c-reason" />
+        </colgroup>
         <thead>
           <tr>
             {heads.map(([h, n]) => (
@@ -237,25 +251,41 @@ const CSS = `
 .te-root .berr{margin:10px 16px 0;background:#fff;border:1px solid #e3e8ef;border-left:4px solid #c2410c;color:#7c2d12;border-radius:6px;padding:7px 10px;font-size:12px;display:flex;justify-content:space-between;gap:10px}
 .te-root .link{background:none;border:0;padding:0;color:#1859a8;font-size:11.5px;font-weight:700;cursor:pointer}
 .te-root .bscroll{overflow-x:auto}
-.te-root .bal{display:grid;min-width:1174px;font-size:12.5px}
-.te-root .bal>div{padding:5px 10px;min-height:40px;display:flex;align-items:center;gap:6px;border-right:1px solid #eef1f5;border-bottom:1px solid #e1e5eb;min-width:0}
+
+/* ---- allocation grid ---- */
+.te-root .bal{display:grid;width:100%;min-width:1080px;font-size:12.5px;align-items:stretch}
+.te-root .bal>div{height:52px;padding:8px 16px;display:flex;align-items:center;gap:8px;border-right:1px solid #eef1f5;border-bottom:1px solid #e1e5eb;min-width:0;overflow:hidden}
 .te-root .bal>div.last{border-right:0}
-.te-root .bal .h{min-height:36px;white-space:nowrap;background:#e8eef5;color:#12304f;font-weight:600;font-size:12px;border-bottom:2px solid #9fb3cf}
-.te-root .bal .r{justify-content:flex-end;text-align:right}
+.te-root .bal .h{height:46px;padding:9px 16px;white-space:nowrap;background:#e8eef5;color:#12304f;font-weight:600;font-size:12px;border-bottom:2px solid #9fb3cf}
+.te-root .bal .r{justify-content:flex-end;text-align:right;white-space:nowrap}
+.te-root .bal .ctr{justify-content:center;text-align:center;white-space:nowrap}
 .te-root .bal .self{background:#e9f4f4;font-weight:700}
 .te-root .bal .self.first{box-shadow:inset 4px 0 0 #14a3a3}
 .te-root .bal .grp{border-top:2px solid #9fb3cf}
-.te-root .bal .tr{grid-column:1/-1;display:block;background:#f7f9fc;border-top:1px solid #d7dce3;padding:8px 12px 12px 40px}
-.te-root .pct-in{width:58px;height:26px;border:1px solid #9fb3cf;border-radius:4px;text-align:right;padding:0 6px;font-size:12.5px;background:#fffef5}
-.te-root .trail{width:100%;border-collapse:collapse;font-size:12px}
-.te-root .trail th{text-align:left;font-weight:700;color:#1e3a5f;font-size:11px;padding:4px 8px;border-bottom:1px solid #d7dce3}
-.te-root .trail td{padding:4px 8px;border-bottom:1px solid #edf0f4}
+.te-root .bal .tr{grid-column:1/-1;display:block;height:auto;overflow-x:auto;background:#f7f9fc;border-top:1px solid #d7dce3;padding:8px 12px 12px 40px}
+.te-root .bal .pct-in{margin:0}
+.te-root .pct-in{width:64px;height:30px;border:1px solid #9fb3cf;border-radius:6px;text-align:center;padding:0 6px;font-size:12.5px;background:#fffef5}
+
+.te-root .trail{width:100%;border-collapse:collapse;table-layout:fixed;font-size:12px}
+.te-root .trail th{text-align:left;font-weight:700;color:#1e3a5f;font-size:11px;padding:7px 12px;border-bottom:1px solid #d7dce3;white-space:nowrap}
+.te-root .trail td{padding:7px 12px;border-bottom:1px solid #edf0f4;vertical-align:middle}
 .te-root .trail .n{text-align:right}
-.te-root .audit-wrap{padding:8px 14px 12px}
-.te-root .audit-wrap .trail td,.te-root .audit-wrap .trail th{padding:6px 8px}
+.te-root .trail-audit{min-width:900px}
+.te-root .trail-audit .c-date{width:105px}
+.te-root .trail-audit .c-owner{width:190px}
+.te-root .trail-audit .c-num{width:82px}
+.te-root .trail-audit .c-money{width:135px}
+.te-root .trail-audit .c-by{width:105px}
+.te-root .trail-audit .c-reason{width:190px}
+.te-root .trail-history{table-layout:fixed}
+.te-root .trail-history th,.te-root .trail-history td{padding:7px 12px}
+.te-root .audit-wrap{padding:10px 14px 14px}
+.te-root .audit-wrap .trail td,.te-root .audit-wrap .trail th{padding:7px 12px}
 `;
 
-const COLS = "150px minmax(180px,1fr) 124px 124px 170px 112px 108px 116px 90px";
+/* fluid columns: extra viewport width is shared proportionally */
+const COLS =
+  "130px minmax(200px,1.6fr) repeat(2,minmax(120px,1fr)) minmax(150px,1.1fr) repeat(2,minmax(100px,.9fr)) minmax(120px,.9fr) minmax(100px,.8fr)";
 const HEADS = [
   "Level",
   "Owner",
@@ -268,37 +298,75 @@ const HEADS = [
   "Allot %",
 ];
 
-export function TechEdBudgetAllocationPage() {
+export function TechEdBudgetMasterPage() {
   const user = useCatalystUser();
+  const { budgetDistributionRows, budgetCompManagerRows, updateBudget, loading: budgetLoading, error: budgetError } = useBudget();
+  // Access rules (permissive when accessapi is unavailable).
+  const access = useAccess();
+  const canAllot =
+    access.canScreen("budgetAllocation", "edit") &&
+    access.canAction("allotNextLevel");
+  const canAudit = access.canAction("viewAudit");
   const rawName = String(user?.name || user?.email || "").trim();
-  const me = TECH_EDS.find((r) => rawName.includes(r.name)) || TECH_EDS[0];
-  const kids0 = COMP_MANAGERS.filter((c) => c.parent === me.name);
+  const liveMe = budgetDistributionRows.find((r) => {
+    const owner = String(r.appraiser_tech_ed_id || "").toLowerCase();
+    const name = rawName.toLowerCase();
+    return owner === name || owner.includes(name) || name.includes(owner);
+  }) || budgetDistributionRows[0];
+  const me0 = TECH_EDS.find((r) => rawName.includes(r.name)) || null;
+  const me = liveMe && me0 ? {
+    ...me0,
+    id: liveMe.id,
+    pct: Number(liveMe.percentage) || me0.pct,
+    original: Number(liveMe.calculated_budget) || me0.original,
+    updated: Number(liveMe.applied_budget) || me0.updated,
+    utilised: Number(liveMe.total_utilization) || 0,
+  } : null;
+  const liveKids = liveMe ? budgetCompManagerRows.filter((r) => String(r.budget_distribution_id) === String(liveMe.id)) : [];
+  const kids0 = me0 ? COMP_MANAGERS.filter((c) => c.parent === me0.name).map((c, i) => {
+    const live = liveKids[i];
+    return live ? {
+      ...c,
+      id: live.id,
+      pct0: c.pct0,
+      pct: Number(live.percentage) || c.pct,
+      original: Number(live.calculated_budget) || c.original,
+      updated: Number(live.applied_budget) || c.updated,
+      utilised: Number(live.total_utilization) || c.utilised,
+      base: Number(live.percentage) ? (Number(live.calculated_budget) * 100) / Number(live.percentage) : c.base,
+    } : c;
+  }) : [];
 
   const [reports, setReports] = useState(kids0);
-  const [audit, setAudit] = useState(() => [
-    {
-      date: ALLOC_DATE,
-      owner: me.name,
-      from: null,
-      to: me.pct,
-      before: null,
-      after: me.original,
-      by: "HR Admin",
-      reason: "Initial allocation",
-      initial: true,
-    },
-    ...kids0.map((c) => ({
-      date: ALLOC_DATE,
-      owner: c.name,
-      from: null,
-      to: c.pct0,
-      before: null,
-      after: (c.base * c.pct0) / 100,
-      by: me.name,
-      reason: "Initial allocation",
-      initial: true,
-    })),
-  ]);
+  useEffect(() => {
+    setReports(kids0);
+  }, [liveMe?.id, liveKids.length]);
+  const [audit, setAudit] = useState(() =>
+    me ? [
+      {
+        date: ALLOC_DATE,
+        owner: me.name,
+        from: null,
+        to: me.pct,
+        before: null,
+        after: me.original,
+        by: "HR Admin",
+        reason: "Initial allocation",
+        initial: true,
+      },
+      ...kids0.map((c) => ({
+        date: ALLOC_DATE,
+        owner: c.name,
+        from: null,
+        to: c.pct0,
+        before: null,
+        after: (c.base * c.pct0) / 100,
+        by: me.name,
+        reason: "Initial allocation",
+        initial: true,
+      })),
+    ] : []
+  );
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [nonce, setNonce] = useState(0);
@@ -389,6 +457,11 @@ export function TechEdBudgetAllocationPage() {
     setReports((rs) =>
       rs.map((r) => (r.name === name ? { ...r, pct: to } : r)),
     );
+    const liveRow = kids0.find((r) => r.name === name && r.id);
+    if (liveRow?.id) {
+      updateBudget(liveRow.id, { percentage: to, applied_budget: newUpd }, "comp")
+        .catch((error) => setError(error.message || "Failed to save Comp Manager budget."));
+    }
     setReason("");
     setError("");
   }
@@ -417,13 +490,15 @@ export function TechEdBudgetAllocationPage() {
       [self && "self", grp && "grp", extra].filter(Boolean).join(" ");
     const shown = !!open[o.name];
     return (
-      <div key={o.name} style={{ display: "contents" }}>
+      <Fragment key={o.name}>
         <div className={k("first")}>
           <span style={{ width: self ? 0 : 18, flexShrink: 0 }} />
           {self ? "Tech ED" : "Comp Manager"}
         </div>
         <div className={k()}>
-          <span style={{ fontWeight: 700 }}>{o.name}</span>
+          <span style={{ fontWeight: 700, whiteSpace: "nowrap" }}>
+            {o.name}
+          </span>
           {self ? (
             <span className="muted-small" style={{ fontWeight: 400 }}>
               {" "}
@@ -438,8 +513,8 @@ export function TechEdBudgetAllocationPage() {
         </div>
         <div className={k("r")}>{self ? me.team0 : o.team0}</div>
         <div className={k("r")}>{self ? me.team : o.team}</div>
-        <div className={k()}>
-          {changed ? (
+        <div className={k("ctr")}>
+          {changed && canAudit ? (
             <button
               type="button"
               className="dd"
@@ -452,9 +527,11 @@ export function TechEdBudgetAllocationPage() {
             <span style={{ color: "#94a3b8", fontWeight: 400 }}>—</span>
           )}
         </div>
-        <div className={k("r last")}>
+        <div className={k("ctr last")}>
           {self ? (
             <span style={{ color: "#94a3b8" }}>{me.pct}%</span>
+          ) : !canAllot ? (
+            <span>{o.pct}%</span>
           ) : (
             <input
               key={o.name + o.pct + nonce}
@@ -471,12 +548,12 @@ export function TechEdBudgetAllocationPage() {
             />
           )}
         </div>
-        {shown && changed ? (
+        {shown && changed && canAudit ? (
           <div className="tr last">
             <Trail rows={h} roll={self} />
           </div>
         ) : null}
-      </div>
+      </Fragment>
     );
   }
 
@@ -519,17 +596,19 @@ export function TechEdBudgetAllocationPage() {
           Budget applied by HR: <b>{me.pct}%</b>{" "}
           <span className="muted-small">(org default)</span> ={" "}
           <b>{money(me.updated)}</b> updated · original {money(me.original)}
-          <button
-            type="button"
-            className="dd"
-            aria-expanded={applied}
-            onClick={() => setApplied((v) => !v)}
-          >
-            % history {applied ? "▴" : "▾"}
-          </button>
+          {canAudit && (
+            <button
+              type="button"
+              className="dd"
+              aria-expanded={applied}
+              onClick={() => setApplied((v) => !v)}
+            >
+              % history {applied ? "▴" : "▾"}
+            </button>
+          )}
         </span>
       </div>
-      {applied ? (
+      {applied && canAudit ? (
         <div className="apdrop">
           <AuditTable
             rows={sorted.filter((a) => a.owner === me.name)}
@@ -580,16 +659,18 @@ export function TechEdBudgetAllocationPage() {
         )}
         {pane.alloc ? (
           <>
-            <div className="reason">
-              <label htmlFor="te-reason">Reason for next % change</label>
-              <input
-                id="te-reason"
-                type="text"
-                value={reason}
-                onChange={(e) => setReason(e.target.value)}
-                placeholder="Optional — saved in the audit trail"
-              />
-            </div>
+            {canAllot && (
+              <div className="reason">
+                <label htmlFor="te-reason">Reason for next % change</label>
+                <input
+                  id="te-reason"
+                  type="text"
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="Optional — saved in the audit trail"
+                />
+              </div>
+            )}
             {error ? (
               <div className="berr" role="alert">
                 <span>{error}</span>
@@ -609,7 +690,8 @@ export function TechEdBudgetAllocationPage() {
                     key={x}
                     className={
                       "h" +
-                      ((i > 1 && i < 7) || i === 8 ? " r" : "") +
+                      (i > 1 && i < 7 ? " r" : "") +
+                      (i >= 7 ? " ctr" : "") +
                       (i === 8 ? " last" : "")
                     }
                   >
@@ -628,7 +710,7 @@ export function TechEdBudgetAllocationPage() {
         ) : null}
       </section>
 
-      <section className="card">
+      {canAudit && <section className="card">
         {head("audit", "% Applied — audit trail (you and your Comp Managers)")}
         {pane.audit ? (
           <>
@@ -653,7 +735,7 @@ export function TechEdBudgetAllocationPage() {
             </div>
           </>
         ) : null}
-      </section>
+      </section>}
     </div>
   );
 }
