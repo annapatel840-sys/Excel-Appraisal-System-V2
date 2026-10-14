@@ -230,7 +230,8 @@ app.use(async function (req, res, next) {
     console.error("employeesapi ACCESS ERROR:", error);
     return sendJson(res, 500, {
       success: false,
-      message: error && error.message ? error.message : "Internal server error.",
+      message:
+        error && error.message ? error.message : "Internal server error.",
     });
   }
 
@@ -277,9 +278,7 @@ function normalizeStatus(value) {
    ============================================================ */
 
 function isHRUser(user) {
-  const role = String(
-    user?.role_details?.role_name || user?.role_name || "",
-  )
+  const role = String(user?.role_details?.role_name || user?.role_name || "")
     .trim()
     .toLowerCase();
 
@@ -315,7 +314,9 @@ function getCurrentUserMatchValues(user) {
     firstName,
     lastName,
     [firstName, lastName].filter(Boolean).join(" "),
-  ].map(normalizeText).filter(Boolean);
+  ]
+    .map(normalizeText)
+    .filter(Boolean);
 }
 
 /* Tech-ED ownership by Employee_Master ROWID.
@@ -324,12 +325,21 @@ function getCurrentUserMatchValues(user) {
    resolved to the same ROWID through the employee ID. */
 function techEdOwnerRowId(row, master, employeeMasterMap) {
   const candidates = [
-    row.appraiser_tech_ed1, row.appraiser_tech_ed,
-    master.appraiser_tech_ed1, master.appraiser_tech_ed,
-  ].map(function (value) { return String(value || "").trim(); }).filter(Boolean);
+    row.appraiser_tech_ed1,
+    row.appraiser_tech_ed,
+    master.appraiser_tech_ed1,
+    master.appraiser_tech_ed,
+  ]
+    .map(function (value) {
+      return String(value || "").trim();
+    })
+    .filter(Boolean);
   for (const value of candidates) {
     if (/^[0-9]+$/.test(value)) return value; // already an Employee_Master ROWID
-    const empId = value.split(/\s+-\s+/)[0].trim().toLowerCase();
+    const empId = value
+      .split(/\s+-\s+/)[0]
+      .trim()
+      .toLowerCase();
     const owner = employeeMasterMap.get(empId);
     const ownerRowId = owner && String(owner.ROWID || owner.rowid || "").trim();
     if (ownerRowId) return ownerRowId;
@@ -340,21 +350,38 @@ function techEdOwnerRowId(row, master, employeeMasterMap) {
 // The signed-in user's Employee_Master ROWID (matched by email, else employee ID).
 function currentUserMasterRowId(user, employeeMasterRows) {
   if (!user) return "";
-  const emails = [user.email_id, user.email].map(function (v) { return String(v || "").trim().toLowerCase(); }).filter(Boolean);
-  const empId = String(user.empId || user.emp_id || "").trim().toLowerCase();
+  const emails = [user.email_id, user.email]
+    .map(function (v) {
+      return String(v || "")
+        .trim()
+        .toLowerCase();
+    })
+    .filter(Boolean);
+  const empId = String(user.empId || user.emp_id || "")
+    .trim()
+    .toLowerCase();
   const me = (employeeMasterRows || []).find(function (row) {
-    const rowEmail = String(row.email_id || row.email || "").trim().toLowerCase();
-    const rowEmpId = String(row.emp_id || "").trim().toLowerCase();
-    return (rowEmail && emails.includes(rowEmail)) || (empId && rowEmpId === empId);
+    const rowEmail = String(row.email_id || row.email || "")
+      .trim()
+      .toLowerCase();
+    const rowEmpId = String(row.emp_id || "")
+      .trim()
+      .toLowerCase();
+    return (
+      (rowEmail && emails.includes(rowEmail)) || (empId && rowEmpId === empId)
+    );
   });
   return me ? String(me.ROWID || me.rowid || "").trim() : "";
 }
 
 function employeeBelongsToCurrentUser(employee, user, myRowId) {
   // Row ID comparison is exact and decides whenever both IDs are known.
-  const ownerRowId = String(employee?.appraiser_tech_ed_owner_row_id || "").trim();
+  const ownerRowId = String(
+    employee?.appraiser_tech_ed_owner_row_id || "",
+  ).trim();
   if (myRowId && ownerRowId) return ownerRowId === String(myRowId);
-  if (/^[0-9]+$/.test(String(employee?.appraiser_tech_ed_row_id || "").trim())) return false;
+  if (/^[0-9]+$/.test(String(employee?.appraiser_tech_ed_row_id || "").trim()))
+    return false;
 
   // Legacy text assignment ("EMPxxxx - Name") with no resolvable row ID.
   const assignedRaw = String(employee?.appraiser_tech_ed || "").trim();
@@ -367,7 +394,9 @@ function employeeBelongsToCurrentUser(employee, user, myRowId) {
     getCurrentUserMatchValues(user).some(function (value) {
       return (
         value &&
-        (assigned === value || assigned.includes(value) || value.includes(assigned))
+        (assigned === value ||
+          assigned.includes(value) ||
+          value.includes(assigned))
       );
     })
   ) {
@@ -475,6 +504,8 @@ const ALLOWED_FIELDS = [
   "rating",
   "eligible_status",
   "joining_bonus",
+  "target_PB_criteria",
+  "comp_manager_rewards",
 ];
 
 function pickAllowedFields(body) {
@@ -608,8 +639,12 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       ...row,
 
       name: String(master.emp_name || row.name || ""),
-      designation: String(master.designation || row.designation || row.title || ""),
-      reporting_manager: String(master.repo_manager || row.reporting_manager || ""),
+      designation: String(
+        master.designation || row.designation || row.title || "",
+      ),
+      reporting_manager: String(
+        master.repo_manager || row.reporting_manager || "",
+      ),
       // Keep the stored Comp Manager key intact for existing matching/writes,
       // and expose a separate resolved label for display in budget screens.
       comp_manager: String(row.comp_manager || master.director || ""),
@@ -617,7 +652,8 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
         const raw = String(row.comp_manager || master.director || "").trim();
         if (!raw) return "";
         const key = raw.split(/\s+-\s+/)[0].trim();
-        const manager = employeeMasterMap.get(raw) ||
+        const manager =
+          employeeMasterMap.get(raw) ||
           employeeMasterMap.get(raw.toLowerCase()) ||
           employeeMasterMap.get(key) ||
           employeeMasterMap.get(key.toLowerCase());
@@ -637,22 +673,14 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       appraiser_tech_ed_row_id: String(row.appraiser_tech_ed1 || "").trim(),
       // Tech-ED owner as Employee_Master ROWID (lookup value, or resolved from
       // legacy "EMPxxxx - Name" text). Used for Tech-ED access by row ID.
-      appraiser_tech_ed_owner_row_id: techEdOwnerRowId(row, master, employeeMasterMap),
+      appraiser_tech_ed_owner_row_id: techEdOwnerRowId(
+        row,
+        master,
+        employeeMasterMap,
+      ),
       appraiser_tech_ed_appraisal_sheet: (() => {
-        const techEdLookupId = String(row.appraiser_tech_ed1 || row.appraiser_tech_ed || "").trim();
-        const techEdEmployee = techEdLookupId
-          ? employeeMasterMap.get(techEdLookupId) || employeeMasterMap.get(techEdLookupId.toLowerCase())
-          : null;
-        if (techEdEmployee) {
-          const techEdEmpId = String(techEdEmployee.emp_id || "").trim();
-          const techEdName = String(techEdEmployee.emp_name || techEdEmployee.name || "").trim();
-          return techEdEmpId && techEdName ? techEdEmpId + " - " + techEdName : techEdName || techEdEmpId || "";
-        }
-        return techEdLookupId && !/^[0-9]+$/.test(techEdLookupId) ? techEdLookupId : "";
-      })(),
-      appraiser_tech_ed: (() => {
         const techEdLookupId = String(
-          row.appraiser_tech_ed1 || row.appraiser_tech_ed || master.appraiser_tech_ed1 || master.appraiser_tech_ed || ""
+          row.appraiser_tech_ed1 || row.appraiser_tech_ed || "",
         ).trim();
         const techEdEmployee = techEdLookupId
           ? employeeMasterMap.get(techEdLookupId) ||
@@ -660,20 +688,59 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
           : null;
         if (techEdEmployee) {
           const techEdEmpId = String(techEdEmployee.emp_id || "").trim();
-          const techEdName = String(techEdEmployee.emp_name || techEdEmployee.name || "").trim();
+          const techEdName = String(
+            techEdEmployee.emp_name || techEdEmployee.name || "",
+          ).trim();
+          return techEdEmpId && techEdName
+            ? techEdEmpId + " - " + techEdName
+            : techEdName || techEdEmpId || "";
+        }
+        return techEdLookupId && !/^[0-9]+$/.test(techEdLookupId)
+          ? techEdLookupId
+          : "";
+      })(),
+      appraiser_tech_ed: (() => {
+        const techEdLookupId = String(
+          row.appraiser_tech_ed1 ||
+            row.appraiser_tech_ed ||
+            master.appraiser_tech_ed1 ||
+            master.appraiser_tech_ed ||
+            "",
+        ).trim();
+        const techEdEmployee = techEdLookupId
+          ? employeeMasterMap.get(techEdLookupId) ||
+            employeeMasterMap.get(techEdLookupId.toLowerCase())
+          : null;
+        if (techEdEmployee) {
+          const techEdEmpId = String(techEdEmployee.emp_id || "").trim();
+          const techEdName = String(
+            techEdEmployee.emp_name || techEdEmployee.name || "",
+          ).trim();
           return techEdEmpId && techEdName
             ? techEdEmpId + " - " + techEdName
             : techEdName || techEdEmpId || techEdLookupId;
         }
         // Preserve legacy text assignments, but don't show a numeric FK as a name.
-        const legacy = String(row.appraiser_tech_ed || master.appraiser_tech_ed || "").trim();
+        const legacy = String(
+          row.appraiser_tech_ed || master.appraiser_tech_ed || "",
+        ).trim();
         if (legacy && !/^[0-9]+$/.test(legacy)) return legacy;
         return "";
       })(),
       department: String(master.department || row.department || ""),
-      location: String(master.location || master.work_location || row.location || row.work_location || ""),
-      wissen_experience: Number(master.wissen_experience || row.wissen_experience || 0),
-      total_experience: Number(master.total_experience || row.total_experience || 0),
+      location: String(
+        master.location ||
+          master.work_location ||
+          row.location ||
+          row.work_location ||
+          "",
+      ),
+      wissen_experience: Number(
+        master.wissen_experience || row.wissen_experience || 0,
+      ),
+      total_experience: Number(
+        master.total_experience || row.total_experience || 0,
+      ),
       joining_date: String(master.date_of_join || row.joining_date || ""),
       status: active,
 
@@ -691,10 +758,24 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
             row.eligibility,
             row.eligibility_status,
             row.eligible,
-          ].find((value) => value !== null && value !== undefined && String(value).trim() !== "") || "",
-        ).trim().toLowerCase().replace(/[ _-]+/g, "");
-        if (["eligible", "yes", "true", "1"].includes(rawEligibility)) return "eligible";
-        if (["noteligible", "no", "false", "0", "ineligible"].includes(rawEligibility)) return "not eligible";
+          ].find(
+            (value) =>
+              value !== null &&
+              value !== undefined &&
+              String(value).trim() !== "",
+          ) || "",
+        )
+          .trim()
+          .toLowerCase()
+          .replace(/[ _-]+/g, "");
+        if (["eligible", "yes", "true", "1"].includes(rawEligibility))
+          return "eligible";
+        if (
+          ["noteligible", "no", "false", "0", "ineligible"].includes(
+            rawEligibility,
+          )
+        )
+          return "not eligible";
         return "not eligible";
       })(),
 
@@ -706,9 +787,24 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       pb_installment: String(row.pb_installment ?? ""),
       pb_to_be_paid: Number(row.pb_to_be_paid || 0),
       rb_to_be_paid: Number(row.rb_to_be_paid || 0),
-      previous_year_performance_bonus: Number(row.previous_year_performance_bonus || row.previous_year_pb || row.previous_pb || 0),
-      previous_year_retention_bonus: Number(row.previous_year_retention_bonus || row.previous_year_rb || row.previous_rb || 0),
-      previous_year_joining_bonus: Number(row.previous_year_joining_bonus || row.previous_year_jb || row.previous_joining_bonus || 0),
+      previous_year_performance_bonus: Number(
+        row.previous_year_performance_bonus ||
+          row.previous_year_pb ||
+          row.previous_pb ||
+          0,
+      ),
+      previous_year_retention_bonus: Number(
+        row.previous_year_retention_bonus ||
+          row.previous_year_rb ||
+          row.previous_rb ||
+          0,
+      ),
+      previous_year_joining_bonus: Number(
+        row.previous_year_joining_bonus ||
+          row.previous_year_jb ||
+          row.previous_joining_bonus ||
+          0,
+      ),
       new_pb_to_be_offered: Number(row.new_pb_to_be_offered || 0),
       new_pb_installment: String(row.new_pb_installment ?? ""),
       new_rb: Number(row.new_rb || 0),
@@ -752,7 +848,8 @@ function isAppraisalEligible(employee, employeeMasterMap) {
 
   // Current Employee_Master schema has no eligible_status column. When it is
   // absent, Active in Employee_Master is the eligibility source of truth.
-  const effectiveEligibility = eligibility || (masterStatus === "Active" ? "eligible" : "not eligible");
+  const effectiveEligibility =
+    eligibility || (masterStatus === "Active" ? "eligible" : "not eligible");
 
   return masterStatus === "Active" && effectiveEligibility === "eligible";
 }
@@ -836,7 +933,11 @@ function filterEmployees(
   if (location) {
     const locationValue = String(location).trim().toLowerCase();
     filtered = filtered.filter(function (employee) {
-      return String(employee.location || employee.work_location || "").trim().toLowerCase() === locationValue;
+      return (
+        String(employee.location || employee.work_location || "")
+          .trim()
+          .toLowerCase() === locationValue
+      );
     });
   }
 
@@ -908,7 +1009,10 @@ async function getEmployees(req, res) {
     try {
       currentUser = await appInstance.userManagement().getCurrentUser();
     } catch (error) {
-      console.warn("Unable to resolve current Catalyst user for role filtering:", error?.message);
+      console.warn(
+        "Unable to resolve current Catalyst user for role filtering:",
+        error?.message,
+      );
     }
 
     if (!currentUser || !currentUser.user_id) {
@@ -995,7 +1099,10 @@ async function getEmployees(req, res) {
   // removed BEFORE counting / searching / paginating.
   // Signed-in user's Employee_Master ROWID: a Tech-ED sees the employees
   // whose Appraiser Tech-ED lookup points to this row.
-  const myMasterRowId = currentUserMasterRowId(enforced ? a.user : currentUser, employeeMasterRows);
+  const myMasterRowId = currentUserMasterRowId(
+    enforced ? a.user : currentUser,
+    employeeMasterRows,
+  );
   const scopedEmployees = enforced
     ? allEmployees
         // Tech-Ed roster ownership is maintained in Employee_Master.appraiser_tech_ed
@@ -1005,7 +1112,11 @@ async function getEmployees(req, res) {
         .filter(function (employee) {
           if (a.scope && a.scope.all) return true;
           if (a.role === "techEd") {
-            return employeeBelongsToCurrentUser(employee, a.user, myMasterRowId);
+            return employeeBelongsToCurrentUser(
+              employee,
+              a.user,
+              myMasterRowId,
+            );
           }
           return access.inScope(a, employee);
         })
@@ -1015,15 +1126,27 @@ async function getEmployees(req, res) {
     : hrUser
       ? allEmployees
       : allEmployees.filter(function (employee) {
-          return employeeBelongsToCurrentUser(employee, currentUser, myMasterRowId);
+          return employeeBelongsToCurrentUser(
+            employee,
+            currentUser,
+            myMasterRowId,
+          );
         });
 
   const scopedTotalCount = scopedEmployees.length;
   const scopedActiveCount = scopedEmployees.filter(function (employee) {
-    return String(employee.status || "").trim().toLowerCase() === "active";
+    return (
+      String(employee.status || "")
+        .trim()
+        .toLowerCase() === "active"
+    );
   }).length;
   const scopedInactiveCount = scopedEmployees.filter(function (employee) {
-    return String(employee.status || "").trim().toLowerCase() === "inactive";
+    return (
+      String(employee.status || "")
+        .trim()
+        .toLowerCase() === "inactive"
+    );
   }).length;
 
   const filteredEmployees = filterEmployees(
@@ -1122,7 +1245,9 @@ async function createEmployees(req, res) {
   ]);
   const masterByEmpId = new Map();
   (masterRows || []).forEach(function (row) {
-    const key = String(row.emp_id || "").trim().toLowerCase();
+    const key = String(row.emp_id || "")
+      .trim()
+      .toLowerCase();
     const rowId = row.ROWID || row.rowid;
     if (key && rowId) masterByEmpId.set(key, String(rowId));
   });
@@ -1221,8 +1346,7 @@ async function createEmployees(req, res) {
   });
 
   const columns = Array.from(touchedColumns);
-  const masterImport =
-    rowsToInsert.length > 0 || columns.some(isMasterColumn);
+  const masterImport = rowsToInsert.length > 0 || columns.some(isMasterColumn);
 
   access.guard(a, function () {
     if (masterImport) {
@@ -1293,7 +1417,10 @@ async function updateEmployee(req, res) {
 
   const empId = String(body.emp_id || body.empId || "").trim();
   if (!empId) {
-    return sendJson(res, 400, { success: false, message: "emp_id is required." });
+    return sendJson(res, 400, {
+      success: false,
+      message: "emp_id is required.",
+    });
   }
 
   const a = req.access;
@@ -1335,17 +1462,31 @@ async function updateEmployee(req, res) {
   ]);
 
   const appraisalRow = (appraisalRows || []).find(function (row) {
-    return String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase();
+    return (
+      String(row.emp_id || "")
+        .trim()
+        .toLowerCase() === empId.toLowerCase()
+    );
   });
   const masterRow = (masterRows || []).find(function (row) {
-    return String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase();
+    return (
+      String(row.emp_id || "")
+        .trim()
+        .toLowerCase() === empId.toLowerCase()
+    );
   });
 
   if (!appraisalRow) {
-    return sendJson(res, 404, { success: false, message: "Appraisal record " + empId + " not found." });
+    return sendJson(res, 404, {
+      success: false,
+      message: "Appraisal record " + empId + " not found.",
+    });
   }
   if (!masterRow) {
-    return sendJson(res, 404, { success: false, message: "Employee Master record " + empId + " not found." });
+    return sendJson(res, 404, {
+      success: false,
+      message: "Employee Master record " + empId + " not found.",
+    });
   }
 
   const masterFieldMap = {
@@ -1364,7 +1505,8 @@ async function updateEmployee(req, res) {
   // exist on Appraisal_Sheet.
   const appraisalFieldMap = {};
   ALLOWED_FIELDS.forEach(function (field) {
-    if (field !== "status" && !masterFieldMap[field]) appraisalFieldMap[field] = field;
+    if (field !== "status" && !masterFieldMap[field])
+      appraisalFieldMap[field] = field;
   });
 
   const masterUpdate = { ROWID: masterRow.ROWID };
@@ -1376,7 +1518,10 @@ async function updateEmployee(req, res) {
     if (column === "status") {
       const normalizedStatus = normalizeStatus(value);
       if (!normalizedStatus) {
-        throw new access.HttpError(400, 'status must be either "Active" or "Inactive".');
+        throw new access.HttpError(
+          400,
+          'status must be either "Active" or "Inactive".',
+        );
       }
       masterUpdate.emp_status = normalizedStatus;
       return;
@@ -1420,10 +1565,16 @@ async function updateEmployee(req, res) {
     new Map([[empId.toLowerCase(), updatedMaster]]),
   )[0];
 
-  if (changedColumns.some(function (column) {
-    return HIERARCHY_COLUMNS.has(column) || column === "status";
-  })) {
-    await bumpAccessVersion(req, a, "Employee hierarchy/status changed: " + empId);
+  if (
+    changedColumns.some(function (column) {
+      return HIERARCHY_COLUMNS.has(column) || column === "status";
+    })
+  ) {
+    await bumpAccessVersion(
+      req,
+      a,
+      "Employee hierarchy/status changed: " + empId,
+    );
   }
 
   return sendJson(res, 200, {
