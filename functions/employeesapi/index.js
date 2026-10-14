@@ -605,13 +605,16 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       joining_date: String(master.date_of_join || row.joining_date || ""),
       status: active,
 
-      // Eligibility is independent of Active/Inactive status. Appraisal
-      // data may use any of these legacy/current aliases, so preserve an
-      // explicit Eligible / Not Eligible value before applying the legacy
-      // Active-status fallback for rows with no eligibility field at all.
+      // Employee_Master is the eligibility source of truth. Preserve an
+      // explicit master decision first, then the Appraisal_Sheet legacy value.
+      // Never derive eligibility from Active/Inactive status.
       eligible_status: (() => {
         const rawEligibility = String(
           [
+            master.eligibility,
+            master.eligible_status,
+            master.eligibility_status,
+            master.eligible,
             row.eligible_status,
             row.eligibility,
             row.eligibility_status,
@@ -620,7 +623,7 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
         ).trim().toLowerCase().replace(/[ _-]+/g, "");
         if (["eligible", "yes", "true", "1"].includes(rawEligibility)) return "eligible";
         if (["noteligible", "no", "false", "0", "ineligible"].includes(rawEligibility)) return "not eligible";
-        return active === "Active" ? "eligible" : "not eligible";
+        return "not eligible";
       })(),
 
       // Appraisal_Sheet is the source of truth for the current Apr-26 grid.
