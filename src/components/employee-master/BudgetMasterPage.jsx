@@ -321,23 +321,40 @@ function HRApplyBudget() {
     const employeeCounts = new Map();
     const employeeBases = new Map();
     const ownerValues = new Map();
+    const techOwnerByAlias = new Map();
+    // Canonical Tech-Ed identity always comes from the Appraisal_Sheet-derived
+    // roster returned by the API. Map the Employee_Master ROWID, employee ID,
+    // display label and name to one stable employee-ID key.
+    (Array.isArray(techEdOwners) ? techEdOwners : []).forEach((item) => {
+      const label = String(item?.assignment || "").trim();
+      const id = String(item?.employee_id || "").trim();
+      const rowId = String(item?.row_id || item?.ROWID || "").trim();
+      const key = normalizeOwnerKey(id || label);
+      if (!key) return;
+      ownerValues.set(key, label || id || rowId);
+      [id, label, rowId, item?.name].filter(Boolean).forEach((alias) => {
+        techOwnerByAlias.set(normalizeOwnerKey(alias), key);
+      });
+    });
+    const resolveTechOwnerKey = (raw) => {
+      const text = String(raw || "").trim();
+      if (!text) return "";
+      const pair = text.match(/^([a-z]*\\d+)\\s*-\\s*(.+)$/i);
+      const candidates = [text, pair?.[1], pair?.[2]].filter(Boolean);
+      for (const candidate of candidates) {
+        const resolved = techOwnerByAlias.get(normalizeOwnerKey(candidate));
+        if (resolved) return resolved;
+      }
+      return canonicalOwnerKey(text, employeeRows);
+    };
     (Array.isArray(employeeRows) ? employeeRows : []).forEach((employee) => {
       const assignedOwner = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed_id || employee.tech_ed || employee.appraiserTechEd || "";
-      const key = canonicalOwnerKey(assignedOwner, employeeRows);
+      const key = resolveTechOwnerKey(assignedOwner);
       if (!key) return;
       employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
       const base = amount(employee.current_annual_base_pay ?? employee.currentAnnualBasePay ?? employee.current_base_pay ?? employee.currentBasePay ?? employee.base_pay ?? employee.basePay) +
         amount(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.pb_to_be_paid ?? employee.pbToBePaid ?? employee.target_pb_allocated_for_may ?? employee.allocated_pb ?? employee.total_pb);
       employeeBases.set(key, (employeeBases.get(key) || 0) + base);
-      if (!ownerValues.has(key)) ownerValues.set(key, assignedOwner);
-    });
-
-    // The API returns distinct Appraisal Sheet Tech-ED assignments separately
-    // so they still render when there are no Budget_Distribution rows.
-    (Array.isArray(techEdOwners) ? techEdOwners : []).forEach((item) => {
-      const assignedOwner = String(item && item.assignment || "").trim();
-      const key = canonicalOwnerKey(assignedOwner, employeeRows);
-      if (key && !ownerValues.has(key)) ownerValues.set(key, assignedOwner);
     });
 
     const nextRows = [];
@@ -346,8 +363,8 @@ function HRApplyBudget() {
       .filter((row) => !selectedCycle || String(row.appraisal_cycle_id) === String(selectedCycle))
       .forEach((row) => {
       const owner = row.appraiser_tech_ed_id || "";
-      const key = canonicalOwnerKey(owner, employeeRows);
-      if (!key) return;
+      const key = resolveTechOwnerKey(owner);
+      if (!key || !ownerValues.has(key)) return;
       const calculated = amount(row.calculated_budget);
       const applied = amount(row.applied_budget) || calculated;
       const assignedCount = employeeCounts.get(key) || 0;
