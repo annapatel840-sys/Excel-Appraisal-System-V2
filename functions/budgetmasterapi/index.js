@@ -482,10 +482,20 @@ async function readEmployeeRoster(app) {
     .filter((row) => row.emp_id);
 }
 
-function filterOwn(bundle, a) {
+function matchesTechEdOwner(owner, a, techEdOwners = []) {
+  if (matchesOwner(owner, a)) return true;
+  const key = ownerKey(owner);
+  if (!key) return false;
+  return techEdOwners.some((item) => {
+    const employeeId = String(item.employee_id || "").trim();
+    return employeeId && ownerKey(employeeId) === key && matchesOwner(item.assignment, a);
+  });
+}
+
+function filterOwn(bundle, a, techEdOwners = []) {
   if (!a || !a.enforced || (a.scope && a.scope.all)) return bundle;
   const techEd = bundle.techEd.filter((row) =>
-    matchesOwner(row.appraiser_tech_ed_id, a),
+    matchesTechEdOwner(row.appraiser_tech_ed_id, a, techEdOwners),
   );
   const allowedDistributionIds = new Set(techEd.map((row) => row.id));
   const compManager = bundle.compManager.filter((row) =>
@@ -894,7 +904,7 @@ module.exports = async function (req, res) {
             String(calculationError && calculationError.message || calculationError),
         });
       }
-      const bundle = filterOwn(calculatedBundle, a);
+      const bundle = filterOwn(calculatedBundle, a, techEdOwners);
       return sendJson(res, 200, {
         success: true,
         data: bundle.techEd,
@@ -956,7 +966,7 @@ module.exports = async function (req, res) {
     if (!id && resource === "distribution" && String(body.appraisal_cycle_id || "").trim() && String(body.appraiser_tech_ed_id || "").trim()) {
       const cycleId = String(body.appraisal_cycle_id).trim();
       const techEdId = String(body.appraiser_tech_ed_id).trim().split(/\s+-\s+/)[0].slice(0, 20);
-      if (a.enforced && !Boolean(a.scope && a.scope.all) && !matchesOwner(techEdId, a)) {
+      if (a.enforced && !Boolean(a.scope && a.scope.all) && !matchesTechEdOwner(techEdId, a, await readTechEdOwners(app))) {
         throw new access.HttpError(403, "You can only configure your own Tech-Ed budget.");
       }
       access.guard(a, () => access.requireAction(a, "changeBudgetConfig"));
@@ -992,7 +1002,7 @@ module.exports = async function (req, res) {
         return sendJson(res, 400, { success: false, message: "The parent Tech-Ed budget allocation was not found." });
       }
       const adminScope = Boolean(a && a.scope && a.scope.all);
-      if (a.enforced && !adminScope && !matchesOwner(value(parent, "appraiser_tech_ed_id"), a)) {
+      if (a.enforced && !adminScope && !matchesTechEdOwner(value(parent, "appraiser_tech_ed_id"), a, await readTechEdOwners(app))) {
         throw new access.HttpError(403, "You can only update Comp Manager budgets under your Tech-Ed.");
       }
       const existingComp = (await getAllRows(app, "Budget_Distribution_Comp")).find((row) =>
@@ -1111,7 +1121,7 @@ module.exports = async function (req, res) {
     if (a.enforced && !isAdminScope) {
       if (
         resource === "distribution" &&
-        !matchesOwner(value(current, "appraiser_tech_ed_id"), a)
+        !matchesTechEdOwner(value(current, "appraiser_tech_ed_id"), a, await readTechEdOwners(app))
       ) {
         throw new access.HttpError(
           403,
@@ -1124,7 +1134,7 @@ module.exports = async function (req, res) {
         const parent = parents.find((row) => idOf(row) === parentId);
         if (
           !parent ||
-          !matchesOwner(value(parent, "appraiser_tech_ed_id"), a)
+          !matchesTechEdOwner(value(parent, "appraiser_tech_ed_id"), a, await readTechEdOwners(app))
         ) {
           throw new access.HttpError(
             403,
