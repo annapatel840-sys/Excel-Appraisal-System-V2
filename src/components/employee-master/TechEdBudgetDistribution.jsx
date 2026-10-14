@@ -48,8 +48,11 @@ const firstNonBlank = (object, keys) => {
   return 0;
 };
 const isActiveAndEligible = (employee) => {
-  const status = String(firstNonBlank(employee, ["emp_status", "status", "employee_status"]) || "").trim().toLowerCase();
-  const eligibility = String(firstNonBlank(employee, ["eligibility", "eligible_status", "eligibility_status", "eligible"]) || "").trim().toLowerCase().replace(/[ _-]+/g, "");
+  // employeesapi has already joined Employee_Master and exposes the master
+  // decision as status + eligible_status. Prefer those canonical fields over
+  // stale/legacy aliases carried on an Appraisal_Sheet row.
+  const status = String(firstNonBlank(employee, ["status", "emp_status", "employee_status"]) || "").trim().toLowerCase();
+  const eligibility = String(firstNonBlank(employee, ["eligible_status", "eligibility_status", "eligibility", "eligible"]) || "").trim().toLowerCase().replace(/[ _-]+/g, "");
   return status === "active" && ["eligible", "yes", "true", "1"].includes(eligibility);
 };
 const employeeUtilized = (employee) => {
