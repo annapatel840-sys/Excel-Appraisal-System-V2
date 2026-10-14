@@ -657,7 +657,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const rawCompManager = String(firstValue(row, [
       "comp_manager", "comp_manager_id", "comp_manager_name", "comp_manager_emp_id", "compManager", "compManagerId",
     ]) || firstValue(masterRow, ["comp_manager", "director"]) || "").trim();
-    const managerLookup = rawCompManager.split(/\\s+-\\s+/)[0].trim();
+    const managerLookup = rawCompManager.split(/\s+-\s+/)[0].trim();
     const managerRow = masterByRowId.get(rawCompManager) ||
       masterByEmployee.get(managerLookup.toLowerCase()) ||
       masterByRowId.get(managerLookup) ||
@@ -683,8 +683,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       firstValue(row, ["emp_status", "status", "employee_status"]) ||
       "",
     ).trim().toLowerCase();
+    const explicitEligible = ["eligible", "yes", "true", "1"].includes(rawEligibility);
+    const explicitNotEligible = ["noteligible", "no", "false", "0", "ineligible"].includes(rawEligibility);
     const eligible = rawStatus === "active" &&
-      ["eligible", "yes", "true", "1"].includes(rawEligibility);
+      (explicitNotEligible ? false : explicitEligible || !rawEligibility);
     const amount = (aliases) => n(firstNonZeroValue(row, aliases));
     const currentHike = amount(["hike_amount", "hikeAmount", "current_hike_amount"]);
     const currentPerformance = amount(["new_pb_to_be_offered", "newPBToBeOffered", "current_performance_bonus", "performance_bonus_current_year", "target_pb_allocated_for_may", "targetPBAllocatedForMay", "allocated_pb_amount", "allocatedPBAmount", "target_pb_next_year", "targetPBNextYear"]);
