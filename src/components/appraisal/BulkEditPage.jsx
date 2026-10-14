@@ -974,6 +974,25 @@ const BulkOperations = forwardRef(function BulkOperations(
   const [gb, setGb] = useState(() => lsGet(GB_KEY, "rating"));
   const [incTpb, setIncTpb] = useState(() => lsGet(TPB_KEY, "0") === "1");
   const [moreOpen, setMoreOpen] = useState(false);
+  // The More menu is drawn fixed to the screen (next to its button) so the
+  // panel around it can't cut it off; it closes when the page scrolls/resizes.
+  const moreBtnRef = useRef(null);
+  const [moreStyle, setMoreStyle] = useState({});
+  useEffect(() => {
+    if (!moreOpen) return undefined;
+    const close = () => setMoreOpen(false);
+    const closeOnScroll = (event) => {
+      // Scrolling inside the menu itself must not close it.
+      if (event.target?.closest?.(".menu")) return;
+      setMoreOpen(false);
+    };
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", closeOnScroll, true);
+    return () => {
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", closeOnScroll, true);
+    };
+  }, [moreOpen]);
   const [scnOpen, setScnOpen] = useState(false),
     [scnForm, setScnForm] = useState(null);
   const [scenarios, setScenarios] = useState(() => {
@@ -2723,14 +2742,29 @@ const BulkOperations = forwardRef(function BulkOperations(
                   <button
                     className="btn"
                     type="button"
+                    ref={moreBtnRef}
                     onClick={(ev) => {
                       ev.stopPropagation();
+                      if (!moreOpen && moreBtnRef.current) {
+                        const r = moreBtnRef.current.getBoundingClientRect();
+                        setMoreStyle({
+                          position: "fixed",
+                          top: r.bottom + 6,
+                          right: Math.max(8, window.innerWidth - r.right),
+                          maxHeight: `calc(100vh - ${r.bottom + 6}px - 12px)`,
+                          overflowY: "auto",
+                          zIndex: 100,
+                        });
+                      }
                       setMoreOpen((o) => !o);
                     }}
                   >
                     ⋯ More
                   </button>
-                  <div className={"menu" + (moreOpen ? " on" : "")}>
+                  <div
+                    className={"menu" + (moreOpen ? " on" : "")}
+                    style={moreStyle}
+                  >
                     <button
                       type="button"
                       disabled={!pv || locked}
