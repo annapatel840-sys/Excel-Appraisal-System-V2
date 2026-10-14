@@ -578,6 +578,21 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       // appraiser_tech_ed1 is a lookup to Employee_Master.ROWID. Resolve it
       // to the actual Tech-Ed employee identity so the grid displays ID - Name
       // and the backend's Tech-Ed access filter can match the signed-in user.
+      // Separate Appraisal_Sheet assignment for budget headcounts. Do not
+      // fall back to Employee_Master assignment: that can add an employee to
+      // a Tech-Ed count when the current appraisal row is unassigned/different.
+      appraiser_tech_ed_appraisal_sheet: (() => {
+        const techEdLookupId = String(row.appraiser_tech_ed1 || row.appraiser_tech_ed || "").trim();
+        const techEdEmployee = techEdLookupId
+          ? employeeMasterMap.get(techEdLookupId) || employeeMasterMap.get(techEdLookupId.toLowerCase())
+          : null;
+        if (techEdEmployee) {
+          const techEdEmpId = String(techEdEmployee.emp_id || "").trim();
+          const techEdName = String(techEdEmployee.emp_name || techEdEmployee.name || "").trim();
+          return techEdEmpId && techEdName ? techEdEmpId + " - " + techEdName : techEdName || techEdEmpId || "";
+        }
+        return techEdLookupId && !/^[0-9]+$/.test(techEdLookupId) ? techEdLookupId : "";
+      })(),
       appraiser_tech_ed: (() => {
         const techEdLookupId = String(
           row.appraiser_tech_ed1 || row.appraiser_tech_ed || master.appraiser_tech_ed1 || master.appraiser_tech_ed || ""
