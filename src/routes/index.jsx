@@ -218,6 +218,9 @@ export function Dashboard() {
               {appraisalRows.length} employees in the current cycle
             </p>
           </div>
+          <span className="shrink-0 text-sm font-semibold text-muted-foreground">
+            Placeholder
+          </span>
         </div>
 
         <Card className="gap-0 p-0">
