@@ -355,11 +355,12 @@ function HRApplyBudget() {
       // Budget headcount follows appraisal eligibility, not the total Employee
       // Master roster. Keep status and eligibility independent when both exist.
       const eligibility = String(
-        employee.eligibility ??
-          employee.eligible_status ??
-          employee.eligibility_status ??
-          employee.eligible ??
-          "",
+        [
+          employee.eligibility,
+          employee.eligible_status,
+          employee.eligibility_status,
+          employee.eligible,
+        ].find((value) => value !== null && value !== undefined && String(value).trim() !== "") ?? "",
       ).trim().toLowerCase().replace(/[ _-]+/g, "");
       const eligible = eligibility
         ? ["eligible", "yes", "true", "1"].includes(eligibility)
