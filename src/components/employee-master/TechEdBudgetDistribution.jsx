@@ -56,7 +56,17 @@ const employeeUtilized = (employee) => {
   // Current appraisal awards plus prior-year bonuses, when the source row has them.
   // Keep each category separate so a current and prior-year bonus are not lost
   // by choosing only the first alias for both periods.
-  const amount = (keys) => num(firstNonBlank(employee, keys));
+  const amount = (keys) => {
+    // API normalization may populate an unavailable optional field as 0.
+    // Continue through aliases until a real non-zero value is found.
+    for (const key of keys) {
+      const value = employee?.[key];
+      if (value === null || value === undefined || String(value).trim() === "") continue;
+      const parsed = num(value);
+      if (parsed !== 0) return parsed;
+    }
+    return 0;
+  };
   const currentPerformance = amount(["performance_bonus", "performanceBonus", "new_pb_to_be_offered", "newPBToBeOffered", "current_performance_bonus"]);
   const currentRetention = amount(["new_rb", "newRB", "retention_bonus", "retentionBonus", "current_retention_bonus"]);
   const currentJoining = amount(["joining_bonus", "joiningBonus", "current_joining_bonus"]);
