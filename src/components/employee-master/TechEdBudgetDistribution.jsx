@@ -1,41 +1,70 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
-import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { useAppraisal } from "@/lib/appraisal-store";
 
-/* Budget Distribution uses persisted Budget_Distribution and
-   Budget_Distribution_Comp rows. The prior UI-only sample allocations have
-   been removed so this screen never displays invented team budgets. */
+/* Budget Distribution as a Tech ED sees it (design: Budget Allocation view of
+   the "Detail Screen & Budget" prototype).
+
+   UI REVIEW BUILD: this screen uses the sample data below and makes no
+   backend calls. Allot % changes stay on screen until the page is reloaded.
+   To go live, replace DEMO with the Tech ED's Budget_Master row, their team
+   from the Appraisal Sheet and the allocation history. */
 
 const LEVELS = ["Tech ED", "Comp Manager"];
 const UTILISED_LABEL = "Hike Amount";
 
-const num = (v) => {
-  if (typeof v === "number") return Number.isFinite(v) ? v : 0;
-  if (v === null || v === undefined || v === "") return 0;
-  const parsed = Number(String(v).trim().replace(/[₹,\s]/g, "").replace(/^(?:INR|Rs\.?)/i, ""));
-  return Number.isFinite(parsed) ? parsed : 0;
+const DEMO = {
+  cycle: "Apr-26",
+  allocation: { date: "2026-09-01", by: "HR Admin" },
+  techEdPct: 8,
+  // Employees in the Tech ED's teams now and at allocation.
+  // base = Current Annual Base Pay + Allocated PB Amount; hike = Hike Amount.
+  employees: {
+    EMP00125: { name: "Rohan Kapoor", base: 2500000 + 300000, hike: 250000 },
+    EMP200: { name: "Aarav Iyer", base: 800000 + 86400, hike: 48000 },
+    EMP205: { name: "Sai Gupta", base: 1550000 + 167400, hike: 170500 },
+    EMP210: { name: "Ananya Bhatt", base: 2300000 + 248400, hike: 138000 },
+    EMP220: { name: "Rahul Iyer", base: 3800000 + 410400, hike: 228000 },
+    EMP225: { name: "Varun Gupta", base: 800000 + 86400, hike: 88000 },
+    EMP201: { name: "Vivaan Mehta", base: 950000 + 102600, hike: 66500 },
+    EMP206: { name: "Reyansh Reddy", base: 1700000 + 183600, hike: 204000 },
+    EMP202: { name: "Aditya Singh", base: 1100000 + 118800, hike: 88000 },
+    EMP290: { name: "Kiran Das", base: 1200000 + 130000, hike: 0 },
+    EMP211: { name: "Diya Sharma", base: 2450000 + 264600, hike: 0 },
+    EMP215: { name: "Myra Patel", base: 3050000 + 329400, hike: 0 },
+  },
+  compManagers: [
+    {
+      name: "Anita Sharma",
+      pct0: 7.5,
+      team0: ["EMP00125", "EMP200", "EMP205", "EMP210", "EMP215", "EMP290", "EMP202"],
+      team: ["EMP00125", "EMP200", "EMP205", "EMP210", "EMP220", "EMP225"],
+    },
+    {
+      name: "Raj Mehta",
+      pct0: 6,
+      team0: ["EMP201", "EMP206", "EMP211", "EMP220"],
+      team: ["EMP201", "EMP206"],
+    },
+  ],
+  // Team changes since allocation (eligibility list + appraisal grid).
+  events: [
+    { date: "2026-09-12", cm: "Anita Sharma", emp: "EMP290", sign: -1, text: "Resigned: Kiran Das" },
+    { date: "2026-09-15", cm: "Anita Sharma", emp: "EMP225", sign: 1, text: "Added: Varun Gupta" },
+    { date: "2026-09-18", cm: "Anita Sharma", emp: "EMP220", sign: 1, text: "Transferred in: Rahul Iyer (from Raj Mehta)" },
+    { date: "2026-09-18", cm: "Raj Mehta", emp: "EMP220", sign: -1, text: "Transferred out: Rahul Iyer (to Anita Sharma)" },
+    { date: "2026-09-20", cm: "Anita Sharma", emp: "EMP202", sign: -1, text: "Transferred out: Aditya Singh (to Suresh Iyer)" },
+    { date: "2026-09-21", cm: "Raj Mehta", emp: "EMP211", sign: -1, text: "Resigned: Diya Sharma" },
+    { date: "2026-09-22", cm: "Anita Sharma", emp: "EMP215", sign: -1, text: "Resigned: Myra Patel" },
+  ],
+  // % changes the Tech ED made after allocation.
+  pctLog: [{ name: "Raj Mehta", from: 6, to: 6.5, date: "2026-09-24", time: "11:20", reason: "Rahul Iyer moved out; keep Raj's budget steady" }],
 };
-// Exact rupee amount with Indian grouping (no lakh rounding), e.g. ₹ 12,34,567.50
-const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-const lakh = (n) => "₹ " + INR.format(num(n));
-const normalizeOwner = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
-// Employee IDs can themselves contain hyphens (for example WIS-1234).
-// The owner separator is the spaced delimiter " - ", not every hyphen.
-const ownerParts = (value) => {
-  const text = normalizeOwner(value);
-  if (!text) return [];
-  const separator = text.split(/\s+-\s+/);
-  return separator.length > 1 ? [text, ...separator] : [text];
-};
-const ownerKey = (value) => ownerParts(value)[1] || ownerParts(value)[0] || "";
-const ownerMatches = (owner, identities) => {
-  const parts = ownerParts(owner);
-  const compactParts = parts.map((part) => part.replace(/[^a-z0-9]/g, ""));
-  return parts.some((part) => identities.includes(part)) ||
-    compactParts.some((part) => identities.some((identity) => identity.replace(/[^a-z0-9]/g, "") === part));
-};
+
+const num = (v) => Number(v) || 0;
+const lakh = (n) => "₹ " + (num(n) / 1e5).toFixed(2) + " L";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function dateText(iso) {
   const p = String(iso || "").slice(0, 10).split("-");
@@ -46,7 +75,67 @@ function nowParts() {
   const pad = (n) => String(n).padStart(2, "0");
   return { date: d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()), time: pad(d.getHours()) + ":" + pad(d.getMinutes()) };
 }
+/* ---- Comp Managers under this Tech ED, from the appraisal rows ---- */
+const normText = (v) => String(v || "").trim().toLowerCase().replace(/\s+/g, " ");
+// "EMP001 - Jane Doe" -> ["emp001 - jane doe", "emp001", "jane doe"]
+const identityForms = (v) => {
+  const n = normText(v);
+  if (!n) return [];
+  const m = n.match(/^(\S+)\s*-\s*(.+)$/);
+  return m ? [n, m[1], m[2]] : [n];
+};
+const sameIdentity = (a, b) => {
+  const bs = identityForms(b);
+  return identityForms(a).some((x) => bs.includes(x));
+};
+const baseOf = (ids) => ids.reduce((s, id) => s + num(DEMO.employees[id]?.base), 0);
+const hikeOf = (ids) => ids.reduce((s, id) => s + num(DEMO.employees[id]?.hike), 0);
+const empBase = (id) => num(DEMO.employees[id]?.base);
 const byDate = (a, b) => String(a.date + (a.time || "")).localeCompare(String(b.date + (b.time || "")));
+
+/* One Comp Manager: budget at allocation, now, and a dated history. */
+function cmNode(cm, log) {
+  const changes = log.filter((l) => l.name === cm.name).sort(byDate);
+  const pct = changes.length ? changes[changes.length - 1].to : cm.pct0;
+  const base0 = baseOf(cm.team0);
+  const base = baseOf(cm.team);
+  const original = (base0 * cm.pct0) / 100;
+  const items = [{ date: DEMO.allocation.date, amount: original, team: cm.team0.length, pct: cm.pct0 }];
+  let amount = original;
+  let team = cm.team0.length;
+  let p = cm.pct0;
+  let b = base0;
+  const steps = [
+    ...DEMO.events.filter((e) => e.cm === cm.name).map((e) => ({ ...e, kind: "team" })),
+    ...changes.map((c) => ({ ...c, kind: "pct" })),
+  ].sort(byDate);
+  steps.forEach((s) => {
+    if (s.kind === "team") {
+      b += s.sign * empBase(s.emp);
+      team += s.sign;
+    } else {
+      p = s.to;
+    }
+    amount = (b * p) / 100;
+    const row = { date: s.date, amount, team, pct: p };
+    const last = items[items.length - 1];
+    if (last.date === s.date) items[items.length - 1] = row;
+    else items.push(row);
+  });
+  return {
+    name: cm.name,
+    pct,
+    pct0: cm.pct0,
+    base,
+    team0: cm.team0.length,
+    team: cm.team.length,
+    original,
+    updated: (base * pct) / 100,
+    history: items,
+    lastChanged: steps.length ? steps[steps.length - 1].date : "",
+  };
+}
+const asOf = (hist, date) => hist.reduce((r, x) => (x.date <= date ? x : r), hist[0]);
 
 function Chg({ d }) {
   if (Math.abs(d) < 1) return <span className="mut">No change</span>;
@@ -105,130 +194,19 @@ export function TechEdBudgetDistribution() {
     budgetDistributionRows,
     budgetCompManagerRows,
     budgetMasterRows,
-    employeeRows = [],
     updateBudget,
     loading: budgetLoading,
     error: budgetError,
   } = useBudget();
+  const { rows: appraisalRows } = useAppraisal();
   const myName = user?.name || "Unknown user";
-  const [cycleRows, setCycleRows] = useState([]);
-  const [activeCycleId, setActiveCycleId] = useState("");
-  const [cycleLoading, setCycleLoading] = useState(true);
-
-  useEffect(() => {
-    let mounted = true;
-    payrollCycleRequest("cycles")
-      .then((cycles) => {
-        if (!mounted) return;
-        const allCycles = Array.isArray(cycles) ? cycles : [];
-        setCycleRows(allCycles);
-        const active = allCycles.find(
-          (cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived,
-        );
-        const cycleId = active?.id ?? active?.appraisal_cycle_id ?? active?.cycle_id ?? active?.ROWID ?? "";
-        setActiveCycleId(cycleId ? String(cycleId) : "");
-      })
-      .catch((cycleError) => {
-        console.error("Failed to load appraisal cycles for Budget Distribution:", cycleError);
-        if (mounted) {
-          setCycleRows([]);
-          setActiveCycleId("");
-        }
-      })
-      .finally(() => {
-        if (mounted) setCycleLoading(false);
-      });
-    return () => { mounted = false; };
-  }, []);
-
   const liveTech = useMemo(() => {
-    const identities = new Set(
-      [
-        myName, user?.name, user?.display_name, user?.first_name, user?.last_name,
-        [user?.first_name, user?.last_name].filter(Boolean).join(" "),
-        user?.email, user?.email_id, user?.user_id, user?.empId, user?.employeeId, user?.employee_id,
-      ].map(normalizeOwner).filter(Boolean),
-    );
-
-    const employeeIdentityValues = (employee) => [
-      employee.emp_id, employee.employee_id, employee.employeeId,
-      employee.emp_name, employee.employee_name, employee.name,
-      employee.email, employee.email_id, employee.emailId,
-    ].map(normalizeOwner).filter(Boolean);
-
-    // Resolve the logged-in account to an actual employee row where possible.
-    const loginEmployee = employeeRows.find((employee) =>
-      employeeIdentityValues(employee).some((value) => identities.has(value)),
-    );
-    if (loginEmployee) employeeIdentityValues(loginEmployee).forEach((value) => identities.add(value));
-
-    // Some session accounts are not employees. In that case, use the Appraisal
-    // Sheet assignment whose Tech-Ed owner contains the logged-in identity.
-    const assignedOwners = Array.from(new Set(employeeRows
-      .map((employee) => employee.appraiser_tech_ed || employee.appraiser_tech_ed_id ||
-        employee.appraiser_teched || employee.appraiserTechED || employee.tech_ed || employee.tech_ed_id || "")
-      .map((value) => String(value || "").trim())
-      .filter((owner) => owner && ownerMatches(owner, Array.from(identities)))));
-
-    const allRows = budgetDistributionRows.filter((row) =>
-      row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed || row.appraiser_tech_ed,
-    );
-    const ownerMatchesLogin = (row) => ownerMatches(
-      row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed || row.appraiser_tech_ed,
-      Array.from(identities),
-    );
-    const directMatches = allRows.filter(ownerMatchesLogin);
-    const assignmentMatches = allRows.filter((row) =>
-      assignedOwners.some((owner) => ownerKey(owner) === ownerKey(
-        row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed || row.appraiser_tech_ed,
-      )),
-    );
-    const candidates = directMatches.length ? directMatches : assignmentMatches;
-
-    // Cycle API and budget tables can refer to the same cycle through different
-    // ID aliases. Resolve the active cycle through Budget_Master's cycle name
-    // before concluding that the Tech-Ed has no matching allocation.
-    const activeCycle = cycleRows.find((cycle) =>
-      String(cycle.id ?? cycle.appraisal_cycle_id ?? cycle.cycle_id ?? cycle.ROWID) === String(activeCycleId),
-    );
-    const activeCycleName = normalizeOwner(
-      activeCycle?.name || activeCycle?.cycle_name || activeCycle?.appraisal_year || "",
-    );
-    const activeMasterCycleIds = new Set(
-      budgetMasterRows
-        .filter((master) => {
-          const masterCycleName = normalizeOwner(
-            master.appraisal_cycle_name || master.cycle_name || master.cycleName || master.appraisal_year || "",
-          );
-          return (
-            (activeCycleId && String(master.appraisal_cycle_id) === String(activeCycleId)) ||
-            (activeCycleName && masterCycleName === activeCycleName)
-          );
-        })
-        .map((master) => String(master.appraisal_cycle_id || ""))
-        .filter(Boolean),
-    );
-    const cycleMatches = candidates.filter((row) =>
-      (activeCycleId && String(row.appraisal_cycle_id) === String(activeCycleId)) ||
-      activeMasterCycleIds.has(String(row.appraisal_cycle_id)),
-    );
-    if (cycleMatches.length === 1) return cycleMatches[0];
-    if (cycleMatches.length > 1) return null;
-
-    // Never guess between multiple cycles. A unique owner allocation is safe
-    // to show when cycle metadata has no matching alias.
-    return candidates.length === 1 ? candidates[0] : null;
-  }, [
-    budgetDistributionRows, budgetMasterRows, cycleRows, employeeRows, myName,
-    user?.name, user?.display_name, user?.first_name, user?.last_name,
-    user?.email, user?.email_id, user?.user_id, user?.empId, user?.employeeId, user?.employee_id,
-    activeCycleId,
-  ]);
-
-  const activeCycle = useMemo(
-    () => cycleRows.find((cycle) => String(cycle.id ?? cycle.appraisal_cycle_id ?? cycle.cycle_id ?? cycle.ROWID) === String(liveTech?.appraisal_cycle_id || activeCycleId)) || null,
-    [cycleRows, liveTech?.appraisal_cycle_id, activeCycleId],
-  );
+    const name = String(myName).trim().toLowerCase();
+    return budgetDistributionRows.find((r) => {
+      const owner = String(r.appraiser_tech_ed_id || "").trim().toLowerCase();
+      return owner && (owner === name || owner.includes(name) || name.includes(owner));
+    }) || budgetDistributionRows[0] || null;
+  }, [budgetDistributionRows, myName]);
   const liveComps = useMemo(
     () => liveTech
       ? budgetCompManagerRows.filter((r) => String(r.budget_distribution_id) === String(liveTech.id))
@@ -237,11 +215,10 @@ export function TechEdBudgetDistribution() {
   );
   const liveMaster = useMemo(
     () => liveTech
-      ? budgetMasterRows.find((r) => String(r.appraisal_cycle_id) === String(liveTech.appraisal_cycle_id)) || null
-      : null,
+      ? budgetMasterRows.find((r) => String(r.appraisal_cycle_id) === String(liveTech.appraisal_cycle_id)) || budgetMasterRows[0]
+      : budgetMasterRows[0],
     [budgetMasterRows, liveTech],
   );
-  const cycleLabel = String(activeCycle?.name || liveMaster?.appraisal_cycle_name || liveMaster?.cycle_name || "").trim();
 
   const [pane, setPane] = useState({ mine: true, alloc: true, audit: true });
   const [appliedOpen, setAppliedOpen] = useState(false);
@@ -250,89 +227,83 @@ export function TechEdBudgetDistribution() {
   const [err, setErr] = useState("");
   const [auditFilter, setAuditFilter] = useState("all");
   const [drafts, setDrafts] = useState({});
-  const auditStorageKey = liveTech
-    ? "appraisal-budget-audit:" + String(liveTech.appraisal_cycle_id) + ":" + ownerKey(liveTech.appraiser_tech_ed_id)
-    : "";
-  const [auditState, setAuditState] = useState({ key: "", entries: [] });
-  const log = auditState.key === auditStorageKey ? auditState.entries : [];
+  // Demo % log: sample entries plus whatever is changed during the review.
+  const [log, setLog] = useState(() =>
+    DEMO.pctLog.map((l) => {
+      const cm = DEMO.compManagers.find((c) => c.name === l.name);
+      const base = cm ? baseOf(cm.team) : 0;
+      return { ...l, by: myName, before: (base * l.from) / 100, after: (base * l.to) / 100 };
+    }),
+  );
 
-  useEffect(() => {
-    if (!auditStorageKey) {
-      setAuditState({ key: "", entries: [] });
-      return;
-    }
-    let entries = [];
-    try {
-      const saved = window.localStorage.getItem(auditStorageKey);
-      const parsed = saved ? JSON.parse(saved) : [];
-      entries = Array.isArray(parsed) ? parsed : [];
-    } catch (storageError) {
-      console.error("Could not read the Budget Distribution audit trail:", storageError);
-    }
-    setAuditState({ key: auditStorageKey, entries });
-  }, [auditStorageKey]);
+  // Appraisal rows (Active + Eligible) that belong to this Tech ED.
+  const teamRows = useMemo(() => {
+    if (!liveTech) return [];
+    const mine = [liveTech.tech_ed_id, liveTech.appraiser_tech_ed_id, myName, user?.email];
+    return (appraisalRows || []).filter(
+      (r) =>
+        normText(r.status) === "active" &&
+        normText(r.eligibility) === "eligible" &&
+        mine.some((id) => sameIdentity(r.appraiserTechED, id)),
+    );
+  }, [appraisalRows, liveTech, myName, user]);
 
-  useEffect(() => {
-    if (!auditStorageKey || auditState.key !== auditStorageKey) return;
-    try {
-      window.localStorage.setItem(auditStorageKey, JSON.stringify(auditState.entries));
-    } catch (storageError) {
-      console.error("Could not save the Budget Distribution audit trail:", storageError);
-    }
-  }, [auditStorageKey, auditState]);
-
+  // Every Comp Manager under this Tech ED: those found in the appraisal rows
+  // plus any that only have a budget record. Budget figures come from the
+  // Comp Manager budget records where one exists.
   const cmNodes = useMemo(() => {
-    const managerStats = new Map();
-    const currentTechOwner = ownerKey(liveTech?.appraiser_tech_ed_id);
-    employeeRows.forEach((employee) => {
-      const techAssignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.tech_ed || employee.tech_ed_id || "";
-      if (!currentTechOwner || ownerKey(techAssignment) !== currentTechOwner) return;
-      const manager = String(employee.comp_manager || employee.comp_manager_id || employee.comp_manager_name || employee.compManager || "").trim();
-      if (!manager) return;
-      const key = ownerKey(manager);
-      const stats = managerStats.get(key) || { count: 0, base: 0, name: manager };
-      stats.count += 1;
-      stats.base += num(employee.current_annual_base_pay ?? employee.currentAnnualBasePay ?? employee.current_base_pay ?? employee.base_pay ?? employee.basePay)
-        + num(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.pb_to_be_paid ?? employee.target_pb_allocated_for_may ?? employee.allocated_pb ?? employee.total_pb);
-      managerStats.set(key, stats);
+    if (!liveTech) return [];
+    const groups = new Map();
+    teamRows.forEach((r) => {
+      const name = String(r.compManager || "").trim();
+      if (!name) return;
+      const key = normText(name);
+      if (!groups.has(key)) groups.set(key, { name, rows: [] });
+      groups.get(key).rows.push(r);
     });
-    // Comp Managers in the team that have no saved Budget_Distribution_Comp
-    // row yet are listed too (a row is created when their Allot % is saved).
-    const savedKeys = new Set(liveComps.map((live) => ownerKey(live.comp_manager)));
-    const unsaved = Array.from(managerStats.entries())
-      .filter(([key]) => key && !savedKeys.has(key))
-      .map(([, stats]) => ({ id: "", comp_manager: stats.name, percentage: 0, budget_base: stats.base, calculated_budget: 0, applied_budget: 0, total_utilization: 0 }));
-    return liveComps.concat(unsaved).map((live) => {
-      const pct = num(live.percentage);
-      const stats = managerStats.get(ownerKey(live.comp_manager)) || { count: 0, base: 0, name: live.comp_manager };
-      const base = num(live.budget_base) || stats.base || (pct ? num(live.calculated_budget) * 100 / pct : 0);
-      const original = num(live.calculated_budget);
-      const updated = num(live.applied_budget);
-      const managerName = String(live.comp_manager || stats.name || "Unassigned Comp Manager").trim();
-      const managerLog = log.filter((entry) => ownerKey(entry.name) === ownerKey(managerName));
-      const history = [
-        { date: "", amount: original, team: num(live.original_headcount) || stats.count, pct },
-        ...managerLog.map((entry) => ({ date: entry.date, amount: num(entry.after), team: stats.count || num(live.current_headcount), pct: num(entry.to) })),
-      ];
-      return {
-        name: managerName,
-        pct, pct0: pct, base,
-        team0: num(live.original_headcount) || stats.count,
-        team: stats.count || num(live.current_headcount), original, updated, liveId: live.id,
-        liveCalculated: original, liveApplied: updated,
-        liveUtilized: num(live.total_utilization),
-        lastChanged: managerLog.length ? managerLog[managerLog.length - 1].date : "",
-        history,
-      };
-    });
-  }, [liveComps, employeeRows, liveTech, log]);
 
-  const assignedTeam = useMemo(() => employeeRows.filter((employee) => {
-    const assignment = employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.tech_ed || employee.tech_ed_id || "";
-    return ownerKey(assignment) === ownerKey(liveTech?.appraiser_tech_ed_id);
-  }), [employeeRows, liveTech]);
-  const allTeam0 = assignedTeam;
-  const allTeam = assignedTeam;
+    const used = new Set();
+    const make = (name, rows, live) => {
+      const pct = live ? num(live.percentage) : 0;
+      const original = live ? num(live.calculated_budget) : 0;
+      const teamBase = rows.reduce(
+        (sum, r) => sum + num(r.currentAnnualBasePay) + num(r.allocatedPBAmount),
+        0,
+      );
+      const base = teamBase || (pct ? (original * 100) / pct : 0);
+      const updated = live ? num(live.applied_budget) || (base * pct) / 100 : 0;
+      return {
+        name,
+        pct,
+        pct0: pct,
+        base,
+        team0: rows.length,
+        team: rows.length,
+        original,
+        updated,
+        history: [{ date: DEMO.allocation.date, amount: updated, team: rows.length, pct }],
+        lastChanged: "",
+        liveId: live ? live.id : "",
+        liveCalculated: original,
+        liveApplied: live ? num(live.applied_budget) : 0,
+        liveUtilized: live ? num(live.total_utilization) : 0,
+      };
+    };
+
+    const nodes = [];
+    groups.forEach((g) => {
+      const live = liveComps.find((l) => sameIdentity(l.comp_manager, g.name));
+      if (live) used.add(live.id);
+      nodes.push(make(g.name, g.rows, live));
+    });
+    liveComps.forEach((l) => {
+      if (!used.has(l.id)) nodes.push(make(l.comp_manager || "Comp Manager", [], l));
+    });
+    return nodes.sort((x, y) => x.name.localeCompare(y.name));
+  }, [liveComps, liveTech, teamRows]);
+
+  const allTeam0 = DEMO.compManagers.flatMap((c) => c.team0);
+  const allTeam = DEMO.compManagers.flatMap((c) => c.team);
   const myPct = liveTech ? num(liveTech.percentage) : 0;
   const myOriginal = liveTech ? num(liveTech.calculated_budget) : 0;
   const myUpdated = liveTech ? num(liveTech.applied_budget) : 0;
@@ -343,26 +314,40 @@ export function TechEdBudgetDistribution() {
   const over = usedPct > 100;
 
   // Tech ED history: own budget per date, rolled up with the Comp Managers.
-  const myHistory = useMemo(() => [{
-    date: "", allocated: myOriginal, updated: myUpdated, team: team0,
-    allotted, buffer: myUpdated - allotted,
-  }], [myOriginal, myUpdated, team0, allotted]);
+  const myHistory = useMemo(() => {
+    const dates = [...new Set([DEMO.allocation.date, ...cmNodes.flatMap((n) => n.history.map((h) => h.date))])].sort();
+    let base = baseOf([...new Set(allTeam0)]);
+    let team = team0;
+    // Moves between this Tech ED's own Comp Managers don't change their total.
+    const own = DEMO.events.filter((e) => !(e.sign > 0 && e.text.startsWith("Transferred in")) && !(e.sign < 0 && /\(to (Anita Sharma|Raj Mehta)\)/.test(e.text)));
+    return dates.map((d) => {
+      own.filter((e) => e.date === d).forEach((e) => {
+        base += e.sign * empBase(e.emp);
+        team += e.sign;
+      });
+      const allot = cmNodes.reduce((s, n) => s + asOf(n.history, d).amount, 0);
+      const updated = (base * myPct) / 100;
+      return { date: d, allocated: myOriginal, updated, team, allotted: allot, buffer: updated - allot };
+    });
+  }, [cmNodes, myOriginal, myPct, team0]);
 
   const auditFor = (names) => {
     const out = [];
-    names.forEach((name) => {
-      if (name === myName && liveTech) {
-        out.push({ date: "", time: "", name, from: null, to: myPct, before: null, after: myOriginal, by: "Data Store", reason: "Current saved allocation" });
+    names.forEach((n) => {
+      if (n === myName) {
+        out.push({ date: DEMO.allocation.date, time: "", name: n, from: null, to: myPct, before: null, after: myOriginal, by: DEMO.allocation.by, reason: "Initial allocation" });
         return;
       }
-      const node = cmNodes.find((item) => item.name === name);
-      if (node) out.push({ date: "", time: "", name, from: null, to: node.pct0, before: null, after: node.original, by: "Data Store", reason: "Current saved allocation" });
+      const c = cmNodes.find((x) => x.name === n);
+      if (c) out.push({ date: DEMO.allocation.date, time: "", name: n, from: null, to: c.pct0, before: null, after: c.original, by: myName, reason: "Initial allocation" });
     });
-    log.forEach((entry) => { if (names.includes(entry.name)) out.push(entry); });
+    log.forEach((l) => {
+      if (names.includes(l.name)) out.push(l);
+    });
     return out.sort((a, b) => byDate(b, a));
   };
 
-  async function setPct(name, raw) {
+  function setPct(name, raw) {
     const node = cmNodes.find((x) => x.name === name);
     setDrafts((d) => {
       const next = { ...d };
@@ -370,46 +355,31 @@ export function TechEdBudgetDistribution() {
       return next;
     });
     if (!node) return;
-    const to = Math.round(Number(raw) * 10) / 10;
-    if (!Number.isFinite(to) || to < 0 || to > 100) {
-      setErr("Enter an allotment percentage between 0 and 100 for " + name + ".");
+    if (!node.liveId) {
+      setErr("No budget record exists yet for " + name + ", so an Allot % can't be saved.");
       return;
     }
-    if (to === node.pct) return;
+    const to = Math.round(Number(raw) * 10) / 10;
+    if (!(to >= 0) || to === node.pct) return;
     const newUpd = (node.base * to) / 100;
     const sum = allotted - node.updated + newUpd;
     if (sum > myUpdated + 0.5) {
       setErr(
         "Blocked: " + to + "% for " + name + " would take total allotted to " + lakh(sum) + ", which is " +
-          lakh(sum - myUpdated) + " more than your available Tech-Ed budget of " + lakh(myUpdated) + ".",
+          lakh(sum - myUpdated) + " more than your updated budget of " + lakh(myUpdated) + ".",
       );
       return;
     }
     const t = nowParts();
-    if (!liveTech?.id) {
-      setErr("Your Tech-Ed budget allocation is not saved yet, so Comp Manager budgets cannot be allotted.");
-      return;
-    }
-    try {
-      // No saved row yet: the API creates it under this Tech-ED's allocation.
-      await updateBudget(node.liveId || "", {
+    const live = liveComps.find((x) => String(x.id) === String(node.liveId));
+    if (live && node.liveId) {
+      updateBudget(node.liveId, {
         percentage: to,
-        budget_base: node.base,
-        calculated_budget: newUpd,
+        calculated_budget: node.liveCalculated || newUpd,
         applied_budget: newUpd,
-        ...(node.liveId ? {} : { budget_distribution_id: liveTech.id, comp_manager: name }),
-      }, "comp");
-    } catch (error) {
-      setErr(error.message || "Failed to save Comp Manager budget.");
-      return;
+      }, "comp").catch((error) => setErr(error.message || "Failed to save Comp Manager budget."));
     }
-    setAuditState((state) => ({
-      key: auditStorageKey,
-      entries: [
-        ...(state.key === auditStorageKey ? state.entries : []),
-        { name, from: node.pct, to, by: myName, date: t.date, time: t.time, before: node.updated, after: newUpd, reason: reason.trim() },
-      ],
-    }));
+    setLog((l) => [...l, { name, from: node.pct, to, by: myName, date: t.date, time: t.time, before: node.updated, after: newUpd, reason: reason.trim() }]);
     setReason("");
     setErr("");
   }
@@ -434,22 +404,16 @@ export function TechEdBudgetDistribution() {
     <div className="tbd-root">
       <style>{CSS}</style>
 
-      {cycleLoading ? (
-        <div className="berr">Loading active appraisal cycle and Tech-Ed allocation…</div>
-      ) : null}
-      {!cycleLoading && !liveTech ? (
-        <div className="berr">
-          No matching Tech-Ed budget was found for this login in the active appraisal cycle.
-          Check that the signed-in account matches the Appraiser Tech-ED value in Appraisal Sheet.
-        </div>
+      {!liveTech ? (
+        <div className="berr">No Budget Distribution record is available for the signed-in Tech-Ed.</div>
       ) : null}
       <div className="btop">
         <span>
-          Appraisal cycle <b>{cycleLabel || "Cycle name unavailable"}</b>
+          Appraisal cycle <b>{liveTech?.appraisal_cycle_id || "—"}</b>
         </span>
         <span className="sep" />
         <span>
-          Tech-Ed allocation from Budget Master · updated {lakh(myUpdated)}
+          Allocated from Budget Master · applied {liveMaster ? lakh(liveMaster.applied_budget) : "—"}
         </span>
         <span className="sep" />
         <span>
@@ -457,7 +421,7 @@ export function TechEdBudgetDistribution() {
         </span>
         <span className="sep" />
         <span className="applied">
-          Budget applied by HR: <b>{myPct}%</b> = <b>{lakh(myUpdated)}</b> updated · original{" "}
+          Budget applied by HR: <b>{liveMaster ? num(liveMaster.budget_percentage) : myPct}%</b> = <b>{lakh(myUpdated)}</b> updated · original{" "}
           {lakh(myOriginal)}
           <button type="button" className="dd" aria-expanded={appliedOpen} onClick={() => setAppliedOpen((v) => !v)}>
             % history {appliedOpen ? "▴" : "▾"}
@@ -557,7 +521,7 @@ export function TechEdBudgetDistribution() {
                   <tr className="self">
                     <td className="first">{LEVELS[0]}</td>
                     <td>
-                      <b>{liveTech?.appraiser_tech_ed_id || myName}</b> <span className="muted-small">(you)</span>
+                      <b>{myName}</b> <span className="muted-small">(you)</span>
                     </td>
                     <td className="r">{lakh(myOriginal)}</td>
                     <td className="r">{lakh(myUpdated)}</td>
@@ -650,9 +614,10 @@ export function TechEdBudgetDistribution() {
                               className="pct-in"
                               type="number"
                               min="0"
-                              max="100"
                               step="0.1"
                               aria-label={"Allot % for " + n.name}
+                              disabled={!n.liveId}
+                              title={n.liveId ? undefined : "No budget record yet for this Comp Manager"}
                               value={drafts[n.name] ?? n.pct}
                               onChange={(e) => setDrafts((d) => ({ ...d, [n.name]: e.target.value }))}
                               onBlur={(e) => setPct(n.name, e.target.value)}
@@ -750,11 +715,7 @@ const CSS = `
 .tbd-root .pane-head .chev { font-size: 12px; }
 .tbd-root .bsum { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .tbd-root .bsum > div { padding: 12px 16px; border-right: 1px solid #d7dce3; border-top: 3px solid transparent; }
-.tbd-root .bsum > div:nth-child(2) { background: #0e7c6b; border-top-color: #0a5c4f; border-right-color: #0e7c6b; }
-.tbd-root .bsum > div:nth-child(2) .f-label,
-.tbd-root .bsum > div:nth-child(2) .v,
-.tbd-root .bsum > div:nth-child(2) .d { color: #fff; }
-.tbd-root .bsum > div:nth-child(2) .d { opacity: .88; }
+.tbd-root .bsum > div:nth-child(2) { border-top-color: #14a3a3; }
 .tbd-root .bsum > div:last-child { border-right: 0; }
 .tbd-root .f-label { font-size: 11px; color: #5b6b80; font-weight: 500; }
 .tbd-root .bsum .v { font-size: 18px; font-weight: 600; color: #12304f; margin-top: 2px; }
