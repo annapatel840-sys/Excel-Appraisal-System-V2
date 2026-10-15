@@ -487,9 +487,6 @@ async function readEmployeeRoster(app) {
       return {
         row_id: idOf(master),
         emp_id: id,
-        // Distinguish actual Appraisal_Sheet rows from Employee_Master-only records.
-        // Team-size counts on budget screens must come from the active sheet roster.
-        in_appraisal_sheet: appraisalById.has(key),
         name: String(
           readField(master, ["emp_name", "employee_name", "name"]) ||
             readField(row, ["emp_name", "employee_name", "name"]) ||
