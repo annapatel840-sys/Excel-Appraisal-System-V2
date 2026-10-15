@@ -362,10 +362,41 @@ async function loadDelegation(zcql, cycleId) {
     const emp = String(r[e.empId] || '').trim();
     if (!emp) return;
     const existing = out.byEmp[norm(emp)] || { empId: emp, techEd: '', compMgr: '' };
-    // Employee_Master is the source of truth for current manager assignment.
-    // Prefer the explicit employee fields over any stale Delegation row.
+    // Employee_Master remains the preferred source; normalize IDs, names and emails
+    // to stable employee IDs before constructing manager team scope.
     const t = resolveManager(r.appraiser_tech_ed) || existing.techEd;
     const c = resolveManager(r.comp_manager) || existing.compMgr;
+    out.byEmp[norm(emp)] = { empId: emp, techEd: t, compMgr: c };
+    if (t && !(out.teamTechEd[t] || []).some((id) => norm(id) === norm(emp))) {
+      out.teamTechEd[t] = out.teamTechEd[t] || [];
+      out.teamTechEd[t].push(emp);
+      out.techEd[t] = (out.techEd[t] || 0) + 1;
+    }
+    if (c && !(out.teamCompMgr[c] || []).some((id) => norm(id) === norm(emp))) {
+      out.teamCompMgr[c] = out.teamCompMgr[c] || [];
+      out.teamCompMgr[c].push(emp);
+      out.compMgr[c] = (out.compMgr[c] || 0) + 1;
+    }
+  });
+
+  // FIX 1 — AUDIT/SHEET SCOPE CONSISTENCY:
+  // An employee can have a current Tech-Ed assignment on Appraisal_Sheet while
+  // Employee_Master/Delegation contains a missing or stale assignment. Use the
+  // sheet assignment as a fallback so audit authorization follows the employee
+  // assignment used by the appraisal workflow. Never broaden access to all rows.
+  const sheetRows = await selectAll(z, SETTINGS.appraisalSheet.table);
+  sheetRows.forEach((r) => {
+    const emp = String(r.emp_id || r.empId || '').trim();
+    if (!emp) return;
+    const existing = out.byEmp[norm(emp)] || { empId: emp, techEd: '', compMgr: '' };
+    const sheetTechEd = resolveManager(
+      r.appraiser_tech_ed || r.appraiser_tech_ed1 || r.appraiserTechED
+    );
+    const sheetCompMgr = resolveManager(
+      r.comp_manager || r.comp_manager_id || r.compManager
+    );
+    const t = sheetTechEd || existing.techEd;
+    const c = sheetCompMgr || existing.compMgr;
     out.byEmp[norm(emp)] = { empId: emp, techEd: t, compMgr: c };
     if (t && !(out.teamTechEd[t] || []).some((id) => norm(id) === norm(emp))) {
       out.teamTechEd[t] = out.teamTechEd[t] || [];
