@@ -454,6 +454,9 @@ export function TechEdBudgetDistribution() {
       return id && name ? id + " - " + name : name || text;
     };
     employeeRows.forEach((employee) => {
+      // This page's team and Comp Manager list must be driven only by current
+      // Appraisal_Sheet rows, not Employee_Master-only employees.
+      if (employee.in_appraisal_sheet !== true) return;
       const rawTechAssignment = employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
       const techAssignment = resolveTechAssignment(rawTechAssignment);
       if (!currentTechOwner || ownerKey(techAssignment) !== currentTechOwner) return;
@@ -501,6 +504,7 @@ export function TechEdBudgetDistribution() {
   }, [liveComps, employeeRows, techOwnerKey, log, techEdOwners]);
 
   const assignedTeam = useMemo(() => employeeRows.filter((employee) => {
+    if (employee.in_appraisal_sheet !== true) return false;
     const raw = employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
     const linked = techEdOwners.find((item) =>
       [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name, item?.email, item?.email_id].filter(Boolean)
