@@ -686,6 +686,40 @@ export async function updateEmployeeEligibility(
   };
 }
 
+export async function updateEligibilityRecords(records, cycleId, source = "Criteria") {
+  if (!cycleId) throw new Error("Select an appraisal cycle before saving eligibility.");
+  if (!Array.isArray(records) || !records.length) {
+    return { saved: 0, failed: 0, total: 0, rows: [] };
+  }
+
+  const rows = [];
+  const batchSize = 100;
+  for (let index = 0; index < records.length; index += batchSize) {
+    const batch = records.slice(index, index + batchSize);
+    const result = await payrollCycleRequest("eligibility", {
+      method: "POST",
+      body: {
+        cycleId,
+        source,
+        records: batch.map((record) => ({
+          empId: record.empId || record.emp_id,
+          eligible_status: record.eligible_status || record.eligible,
+          reason: record.reason || record.eligibleReason || "",
+          source: record.source || source,
+        })),
+      },
+    });
+    rows.push(...(Array.isArray(result?.rows) ? result.rows : []));
+  }
+
+  return {
+    saved: rows.filter((row) => row.ok).length,
+    failed: rows.filter((row) => !row.ok).length,
+    total: records.length,
+    rows,
+  };
+}
+
 /* ============================================================
    CREATE / IMPORT EMPLOYEES
    ============================================================ */
