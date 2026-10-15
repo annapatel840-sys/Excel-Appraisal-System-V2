@@ -622,6 +622,8 @@ export function EmployeeMaster() {
 
   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
 
+  const [eligibilityCycle, setEligibilityCycle] = useState({ cycleId: "", cycleName: "", total: 0 });
+
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
 
   const [loading, setLoading] = useState(true);
@@ -1107,6 +1109,11 @@ export function EmployeeMaster() {
         finished = true;
 
         setEligibilityEmployees(all);
+        setEligibilityCycle(firstPage?.cycle || {
+          cycleId: all[0]?.appraisalCycleId || "",
+          cycleName: "",
+          total: all.length,
+        });
       } catch (error) {
         if (cancelled) {
           return;
@@ -1853,7 +1860,13 @@ export function EmployeeMaster() {
 
     const eligibleReason = change.fields?.Reason || "";
 
-    await updateEmployeeEligibility(change.empId, eligible, eligibleReason);
+    await updateEmployeeEligibility(
+      change.empId,
+      eligible,
+      eligibleReason,
+      eligibilityCycle.cycleId,
+      "Criteria",
+    );
 
     return {
       empId: change.empId,
@@ -2222,6 +2235,8 @@ export function EmployeeMaster() {
         empId,
         normalizedEligible,
         eligibleReason || "",
+        eligibilityCycle.cycleId,
+        "Manual",
       );
 
       addEligibilityAudit({
