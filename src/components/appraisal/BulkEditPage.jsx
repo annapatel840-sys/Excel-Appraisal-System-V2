@@ -242,12 +242,9 @@ const CSS = `
   &:not(.impOpen) #imp{display:none}
   &.impOpen #impBar{display:none}
   &.impOpen #cardsWrap:not(:has(#scnCard:not(.hide))){display:none}
-  /* Impact bar (white, blue left border): hidden on open, shown only once the Bulk operations card is folded */
+  /* Impact bar (white, blue left border) is never shown; the area collapses unless Scenarios is open */
   #impBar{display:none}
-  &.folded:not(.impOpen) #impBar{display:flex}
-  &.folded #cardsWrap{max-height:none;opacity:1;margin-bottom:0}
-  &.folded #scnCard{display:none}
-  &:not(.folded):not(:has(#scnCard:not(.hide))) #cardsWrap{display:none}
+  #cardsWrap:not(:has(#scnCard:not(.hide))){display:none}
   #mainCol{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px;overflow:auto}
   #metPanel{flex:0 0 340px;width:340px;background:#fff;border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;min-height:0}
   &:not(.impOpen) #metPanel{display:none}
