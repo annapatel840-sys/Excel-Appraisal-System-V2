@@ -2055,7 +2055,7 @@ export function AppraisalCycleMasterPage({
               </>
             );
           })()}
-          <label className="acx-fl">Effective date</label>
+          <label className="acx-fl">Effective Date</label>
           <input
             type="date"
             style={{ width: "100%" }}
@@ -2067,7 +2067,7 @@ export function AppraisalCycleMasterPage({
           />
           <div className="acx-row2">
             <div>
-              <label className="acx-fl">Start date</label>
+              <label className="acx-fl">Start Date</label>
               <input
                 type="date"
                 disabled={saving}
@@ -2078,7 +2078,7 @@ export function AppraisalCycleMasterPage({
               />
             </div>
             <div>
-              <label className="acx-fl">Close date</label>
+              <label className="acx-fl">Close Date</label>
               <input
                 type="date"
                 disabled={saving}
@@ -2264,13 +2264,13 @@ export function AppraisalCycleMasterPage({
               </select>
             </div>
             <div>
-              <label className="acx-fl">Cycle name</label>
+              <label className="acx-fl">Cycle Name</label>
               <input type="text" disabled value={newName(newForm)} />
             </div>
           </div>
           <div className="acx-hint">{setupHint[newForm.process]}</div>
           <label className="acx-fl">
-            Effective date{" "}
+            Effective Date{" "}
             <span
               style={{ color: "#DC2626", fontWeight: 800 }}
               aria-hidden="true"
