@@ -2214,7 +2214,7 @@ export function AppraisalCycleMasterPage({
         >
           <div className="acx-row2">
             <div>
-              <label className="acx-fl">Cycle type</label>
+              <label className="acx-fl">Cycle Type</label>
               <select
                 disabled={saving}
                 value={newForm.type}
@@ -2292,7 +2292,7 @@ export function AppraisalCycleMasterPage({
           <div className="acx-hint">Picked by HR; there is no default.</div>
           <div className="acx-row2">
             <div>
-              <label className="acx-fl">Start date</label>
+              <label className="acx-fl">Start Date</label>
               <input
                 type="date"
                 disabled={saving}
@@ -2303,7 +2303,7 @@ export function AppraisalCycleMasterPage({
               />
             </div>
             <div>
-              <label className="acx-fl">Close date</label>
+              <label className="acx-fl">Close Date</label>
               <input
                 type="date"
                 disabled={saving}
