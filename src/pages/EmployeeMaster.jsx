@@ -2444,15 +2444,20 @@ export function EmployeeMaster() {
                   canNavigate={(tab) =>
                     KNOWN_TABS.includes(tab) && isTabVisible(tab)
                   }
-                  onNavigate={(tab) =>
-                    KNOWN_TABS.includes(tab) && isTabVisible(tab)
-                      ? setActiveTab(tab)
-                      : showBanner(
-                          "Not connected",
-                          "That screen is not available here yet.",
-                          true,
-                        )
-                  }
+                  onNavigate={(tab, uploadScreen) => {
+                    if (KNOWN_TABS.includes(tab) && isTabVisible(tab)) {
+                      if (tab === "payroll-upload") {
+                        setUploadInitialScreen(uploadScreen || "emp");
+                      }
+                      setActiveTab(tab);
+                    } else {
+                      showBanner(
+                        "Not connected",
+                        "That screen is not available here yet.",
+                        true,
+                      );
+                    }
+                  }}
                 />
               )}
             />
@@ -2498,7 +2503,7 @@ export function EmployeeMaster() {
               overflowX: "hidden",
             }}
           >
-            <UploadPage />
+            <UploadPage initialScreen={uploadInitialScreen} />
           </div>
         )}
         {isTabVisible("team-changes") && activeTab === "team-changes" && (
