@@ -371,27 +371,32 @@ export function TechEdBudgetMasterPage() {
     team: liveTeamCount,
   } : null;
   const liveKids = liveMe ? budgetCompManagerRows.filter((r) => String(r.budget_distribution_id) === String(liveMe.id)) : [];
-  const kids0 = me0 ? COMP_MANAGERS.filter((c) => c.parent === me0.name).map((c, i) => {
-    const live = liveKids.find((row) =>
-      ownerTokens(row.comp_manager).some((token) => ownerTokens(c.name).includes(token)),
-    ) || liveKids[i];
-    const currentCount = currentTeamCount(live?.comp_manager || c.name, "comp");
-    const originalCount = Number(live?.original_headcount ?? live?.allocation_headcount);
-    return live ? {
-      ...c,
+  const kids0 = liveKids.map((live, i) => {
+    const template = COMP_MANAGERS.find((c) =>
+      ownerTokens(live.comp_manager).some((token) => ownerTokens(c.name).includes(token)) &&
+      (!me0 || c.parent === me0.name),
+    ) || null;
+    const currentCount = currentTeamCount(live.comp_manager, "comp");
+    const originalCount = Number(live.original_headcount ?? live.allocation_headcount);
+    const ownerLabel = String(live.comp_manager || "").trim().split(/\\s+-\\s+/).pop() || "Unassigned Comp Manager";
+    const pct = live.percentage == null ? (template?.pct ?? 0) : Number(live.percentage);
+    const originalBudget = Number(live.calculated_budget);
+    const updatedBudget = Number(live.applied_budget);
+    return {
+      ...(template || {}),
       id: live.id,
-      pct0: c.pct0,
-      pct: live.percentage == null ? c.pct : Number(live.percentage),
-      original: Number(live.calculated_budget) || c.original,
-      updated: Number(live.applied_budget) || c.updated,
-      utilised: Number(live.total_utilization) || c.utilised,
+      name: template?.name || ownerLabel,
+      parent: me?.name || template?.parent || "",
+      pct0: template?.pct0 ?? pct,
+      pct,
+      original: Number.isFinite(originalBudget) ? originalBudget : (template?.original ?? 0),
+      updated: Number.isFinite(updatedBudget) ? updatedBudget : (template?.updated ?? 0),
+      utilised: Number(live.total_utilization) || 0,
       team0: originalCount > 0 ? originalCount : currentCount,
       team: currentCount,
-      base: Number(live.percentage) ? (Number(live.calculated_budget) * 100) / Number(live.percentage) : c.base,
-    } : { ...c, team0: currentCount, team: currentCount };
-  }) : [];
-
-  const [reports, setReports] = useState(kids0);
+      base: Number(live.budget_base) || (pct ? (originalBudget * 100) / pct : (template?.base ?? 0)),
+    };
+  });  const [reports, setReports] = useState(kids0);
   useEffect(() => {
     setReports(kids0);
   }, [liveMe?.id, liveKids.length]);
