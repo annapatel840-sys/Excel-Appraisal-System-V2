@@ -542,9 +542,9 @@ async function syncEligibilityRows(tables, cycle, actor = "") {
       appraisal_cycle_id: String(cycle.id),
       employee_master_id: masterId,
       emp_id: empId,
-      eligibility_status: "Eligible",
+      eligibility_status: "Pending",
       eligibility_reason: "",
-      eligibility_source: "Criteria",
+      eligibility_source: "System",
       change_tag: "New",
       evaluated_at: now,
       updated_by: String(actor || "System").slice(0, 60),
@@ -657,9 +657,22 @@ async function generateAppraisalSheet(tables, cycle, actor) {
   if (!cycle?.id) throw new ApiError("Select an appraisal cycle before generating the sheet.", 400);
   if (cycle.archived) throw new ApiError("Archived cycles cannot generate an Appraisal Sheet.", 409);
 
-  const eligibleRows = (await getEligibilityRows(tables, cycle, actor)).filter(
+  const cycleEligibilityRows = await getEligibilityRows(tables, cycle, actor);
+  const pendingCount = cycleEligibilityRows.filter(
+    (row) => String(row.eligibility_status || "").trim().toLowerCase() === "pending",
+  ).length;
+  if (pendingCount) {
+    throw new ApiError(
+      `Apply eligibility criteria for this cycle before generating the Appraisal Sheet. ${pendingCount} active employee(s) still need evaluation.`,
+      409,
+    );
+  }
+  const eligibleRows = cycleEligibilityRows.filter(
     (row) => String(row.eligibility_status || "").toLowerCase() === "eligible",
   );
+  if (!eligibleRows.length) {
+    throw new ApiError("No eligible active employees were found for this cycle. Check the Eligibility List and criteria.", 409);
+  }
   const sheetRows = await getAllRows(tables.employees);
   const byKey = new Map();
   sheetRows.forEach((row) => {
