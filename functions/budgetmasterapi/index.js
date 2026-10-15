@@ -82,6 +82,8 @@ function mapDistribution(row) {
     calculated_budget: calculated,
     total_utilization: utilized,
     applied_budget: applied,
+    original_headcount: n(value(row, "original_headcount") || value(row, "allocation_headcount")),
+    current_headcount: n(value(row, "current_headcount") || value(row, "headcount")),
     utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
   };
 }
@@ -487,6 +489,9 @@ async function readEmployeeRoster(app) {
       return {
         row_id: idOf(master),
         emp_id: id,
+        // Distinguish actual Appraisal_Sheet rows from Employee_Master-only records.
+        // Team-size counts on budget screens must come from the active sheet roster.
+        in_appraisal_sheet: appraisalById.has(key),
         name: String(
           readField(master, ["emp_name", "employee_name", "name"]) ||
             readField(row, ["emp_name", "employee_name", "name"]) ||
