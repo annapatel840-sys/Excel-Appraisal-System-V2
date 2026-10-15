@@ -6,8 +6,8 @@ import {
   ChevronDown,
   WalletCards,
   SlidersHorizontal,
-  Pin,
-  PinOff,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
 
 import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
@@ -259,19 +259,16 @@ export function AppShell({ children, headerActions }) {
                 saveSettings({ ...settings, menuPinned: !isPinned })
               }
               aria-pressed={isPinned}
-              aria-label={isPinned ? "Unpin sidebar" : "Keep sidebar expanded"}
-              title={isPinned ? "Unpin sidebar" : "Keep sidebar expanded"}
+              aria-label={isPinned ? "Collapse sidebar to icons" : "Keep sidebar expanded"}
+              title={isPinned ? "Collapse sidebar to icons" : "Keep sidebar expanded"}
               className={cn(
-                "flex min-h-8 items-center gap-2 rounded-md text-white/80 transition-colors hover:bg-white/10",
-                isCollapsed
-                  ? "justify-center px-0 group-hover/nav:justify-start group-hover/nav:px-2.5"
-                  : "justify-end px-2",
+                "flex size-8 shrink-0 items-center justify-center rounded-md text-white/80 transition-colors hover:bg-white/10",
+                isCollapsed && "mx-auto group-hover/nav:mx-0",
               )}
             >
-              {isPinned ? <Pin className="size-4 shrink-0" /> : <PinOff className="size-4 shrink-0" />}
-              <span className={cn(isCollapsed && "hidden group-hover/nav:inline")}>
-                {isPinned ? "Pinned" : "Keep expanded"}
-              </span>
+              {isPinned
+                ? <PanelLeftClose className="size-4" />
+                : <PanelLeftOpen className="size-4" />}
             </button>
           )}
 
