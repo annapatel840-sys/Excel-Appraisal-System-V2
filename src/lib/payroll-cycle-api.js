@@ -1,9 +1,17 @@
 import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 
-export async function payrollCycleRequest(resource, { method = "GET", body } = {}) {
+export async function payrollCycleRequest(
+  resource,
+  { method = "GET", body, query = {} } = {},
+) {
   // Advanced I/O function URLs do not include /execute.
   const url = new URL(catalystFunctionUrl("payrollcycleapi"));
   url.searchParams.set("resource", resource);
+  Object.entries(query || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value) !== "") {
+      url.searchParams.set(key, String(value));
+    }
+  });
 
   const response = await catalystFetch(url, {
     method,
