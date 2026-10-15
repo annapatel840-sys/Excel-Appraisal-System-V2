@@ -89,7 +89,8 @@ const COLS = [
 ];
 const PER = 20;
 const VIEW_KEY = "fbo_view_v2";
-const NOTES_KEY = "feedbackRatingMaster.notes";
+const NOTES_KEY = "feedbackRatingMaster.notes.v2";
+const NOTE_DRAFT_KEY = "feedbackRatingMaster.noteDraft";
 const RPW_KEY = "feedbackRatingMaster.panelWidth";
 
 /* ============================== DEMO data (remove when wired) ============================== */
@@ -305,7 +306,16 @@ export function FeedbackRatingMasterPage({
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [notesOpen, setNotesOpen] = useState(false);
-  const [notes, setNotes] = useState(() => lsGet(NOTES_KEY, ""));
+  const [notes, setNotes] = useState(() => {
+    try {
+      const v = JSON.parse(lsGet(NOTES_KEY, "[]"));
+      return Array.isArray(v) ? v : [];
+    } catch (e) {
+      return [];
+    }
+  });
+  const [noteText, setNoteText] = useState(() => lsGet(NOTE_DRAFT_KEY, ""));
+  const [noteTie, setNoteTie] = useState(true);
   const [panelOpen, setPanelOpen] = useState(false);
   const [panelW, setPanelW] = useState(() => {
     const w = parseInt(lsGet(RPW_KEY, "0"), 10) || 0;
@@ -322,8 +332,20 @@ export function FeedbackRatingMasterPage({
     lsSet(VIEW_KEY, JSON.stringify({ sort, dir, cf, wrap, width, hidden, dens }));
   }, [sort, dir, cf, wrap, width, hidden, dens]);
   useEffect(() => {
-    lsSet(NOTES_KEY, notes);
+    lsSet(NOTES_KEY, JSON.stringify(notes));
   }, [notes]);
+  useEffect(() => {
+    lsSet(NOTE_DRAFT_KEY, noteText);
+  }, [noteText]);
+  const saveNote = () => {
+    const t = noteText.trim();
+    if (!t) return;
+    const d = new Date();
+    const p2 = (n) => String(n).padStart(2, "0");
+    const at = `${p2(d.getDate())} ${d.toLocaleString("en-GB", { month: "short" })} ${d.getFullYear()} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    setNotes((prev) => [...prev, { id: String(Date.now()), at, text: t, ctx: noteTie ? `Feedback & Rating · ${cycName(cid)}` : "" }]);
+    setNoteText("");
+  };
   useEffect(() => {
     if (cid == null && CYCLES[0]) setCid(CYCLES[0].id);
   }, [CYCLES, cid]);
@@ -616,9 +638,39 @@ export function FeedbackRatingMasterPage({
             </button>
             {notesOpen && (
               <div className="pop notes open">
-                <h4>My notes</h4>
-                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Write your notes here" />
-                <small>Saved in this browser</small>
+                <div className="nt-head">
+                  <h4>My notes</h4>
+                  <span>Saved in this browser only · not shared</span>
+                </div>
+                <textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Write a note…" />
+                <div className="nt-row">
+                  <label className="nt-tie">
+                    <input type="checkbox" checked={noteTie} onChange={(e) => setNoteTie(e.target.checked)} />
+                    <span>Mention the employee on screen</span>
+                  </label>
+                  <button type="button" className="btn" onClick={() => setNoteText("")}>
+                    Clear
+                  </button>
+                  <button type="button" className="btn pri" onClick={saveNote}>
+                    Save note
+                  </button>
+                </div>
+                <div className="nt-list">
+                  {notes.length === 0 ? (
+                    <div className="nt-empty">No saved notes yet.</div>
+                  ) : (
+                    [...notes].reverse().map((n) => (
+                      <div className="nt-item" key={n.id}>
+                        <button type="button" className="btn" onClick={() => setNotes((prev) => prev.filter((x) => x.id !== n.id))}>
+                          Delete
+                        </button>
+                        <b>{n.at}</b>
+                        {n.ctx && <span className="nt-ctx">About: <b>{n.ctx}</b></span>}
+                        <p>{n.text}</p>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             )}
           </div>
@@ -1012,8 +1064,23 @@ const FB_CSS = `
 .fb-root .menuwrap{position:relative}
 .fb-root .pop{position:absolute;right:0;top:36px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(16,42,67,.16);z-index:60;min-width:200px;padding:6px}
 .fb-root .pop button.item{display:block;width:100%;text-align:left;background:none;border:0;padding:8px 10px;border-radius:6px;cursor:pointer;font-weight:600}.fb-root .pop button.item:hover{background:var(--row-hover)}
-.fb-root .notes{width:340px;padding:12px}.fb-root .notes h4{margin:0 0 6px;font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:800}
-.fb-root .notes textarea{width:100%;height:150px;border:1px solid #D1D5DB;border-radius:6px;padding:8px;resize:vertical}.fb-root .notes small{color:var(--muted)}
+.fb-root .pop.notes{width:420px;max-width:92vw;padding:16px 18px;border-radius:12px;font-weight:500}
+.fb-root .nt-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:10px}
+.fb-root .nt-head h4{margin:0;font-size:17px;font-weight:800;color:var(--navy);text-transform:none;letter-spacing:0}
+.fb-root .nt-head span{font-size:12.5px;color:var(--muted);font-weight:600}
+.fb-root .notes textarea{width:100%;height:112px;border:1px solid #D1D5DB;border-radius:6px;padding:10px;resize:vertical;font:inherit;font-size:14px;box-sizing:border-box}
+.fb-root .notes textarea:focus{outline:none;border-color:var(--navy)}
+.fb-root .nt-row{display:flex;align-items:center;gap:10px;margin-top:14px}
+.fb-root .nt-tie{display:flex;align-items:center;gap:8px;flex:1;font-weight:700;font-size:14px;color:#1F2937;cursor:pointer}
+.fb-root .nt-tie input{width:16px;height:16px;accent-color:var(--navy)}
+.fb-root .nt-row .btn{padding:9px 16px;font-size:14px}
+.fb-root .nt-row .btn.pri{padding:11px 20px;border-radius:8px}
+.fb-root .nt-list{margin-top:14px;max-height:240px;overflow:auto}
+.fb-root .nt-empty{color:var(--muted);font-size:14px;padding:6px 0}
+.fb-root .nt-item{border-top:1px solid #F0F1F3;padding:9px 0;font-size:13px}
+.fb-root .nt-item .btn{float:right;padding:2px 8px;font-size:12px}
+.fb-root .nt-item b{color:var(--link)}.fb-root .nt-ctx{display:block;color:var(--muted);font-size:12px}
+.fb-root .nt-item p{margin:3px 0 0;white-space:pre-wrap;color:#374151}
 .fb-root .fb-gutter{background:var(--gutter);margin:10px 0 12px;border-radius:14px;padding:12px;flex:1;display:flex;gap:12px;align-items:flex-start;min-height:0}
 .fb-root .fb-pane{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;flex:1;min-width:0}
 .fb-root .fb-toolbar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}

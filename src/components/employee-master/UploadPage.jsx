@@ -107,7 +107,6 @@ const FB_FIELDS = [
   { key: "department", label: "Department", column: "department" },
   { key: "band", label: "Band", column: "band" },
   { key: "lastAppraisal", label: "Last Appraisal Date", column: "last_appraisal_date" },
-  { key: "revenueReleased", label: "Revenue Released", column: "revenue_released" },
   { key: "grossMargin", label: "Gross Margin", column: "gross_margin" },
   { key: "managerFeedback", label: "Manager Feedback", column: "manager_feedback" },
   { key: "managerRating", label: "Manager Rating", column: "manager_rating" },
@@ -182,7 +181,9 @@ const UPLOADS = {
       "Employee ID must exist in the Employee Master.",
       "Ratings are numbers between 0 and 5 (decimals allowed).",
       "RR%, Interview Count and Gross Margin must be numbers.",
-      "Skip a field to leave it as it is. One row per employee.",
+      "Same employee + same appraisal cycle: the existing record is updated. Same employee + a different cycle: a new record is created.",
+      "Designation and Remarks are saved with the first letter capitalised.",
+      "Skip a field to leave it as it is.",
     ],
   },
   sheet: {
@@ -348,10 +349,7 @@ const downloadErrorLog = (errors, name) =>
    checked but cannot be saved.
    ============================================================ */
 
-export function UploadPage({
-  handlers = {},
-  initialScreen = "emp",
-}) {
+export function UploadPage({ handlers = {} }) {
   const user = useCatalystUser();
   const role = String(user?.role || "")
     .trim()
@@ -620,6 +618,15 @@ export function UploadPage({
 
         if (idx >= 0) {
           record[f.key] = normalizeCell(f.key, cells[idx]);
+        }
+      });
+
+      // Designation and Remarks always start with a capital letter.
+      ["designation", "remarks"].forEach((k) => {
+        const v = record[k];
+        if (typeof v === "string" && v.trim() !== "") {
+          const t = v.trim();
+          record[k] = t.charAt(0).toUpperCase() + t.slice(1);
         }
       });
 
