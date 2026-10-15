@@ -8,11 +8,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
  * can be reviewed:
  *
  *   cycles   [{ id, name, type, status }]
- *   rows     [{ cid, id, name, desig, dept, band, eff, mr, mf, rr, ic, gm,
+ *   rows     [{ cid, id, name, desig, dept, band, eff, mr, mf, rr, yoe, ic, gm,
  *               client, cm, cr, cf, risk, ccm, te, batch }]
  *              cid  = cycle id            eff = effective date "YYYY-MM-DD"
  *              mr   = manager rating      mf  = manager feedback
  *              rr   = RR %                ic  = interview count
+ *              yoe  = YoE Ratio (base pay in lakhs / total experience; computed by the backend)
  *              gm   = gross margin        client = cost centre / client
  *              cm   = client manager      cr  = client rating
  *              cf   = client feedback     risk = "Yes" | "No"
@@ -76,6 +77,7 @@ const COLS = [
   { k: "mr", h: "Manager Rating", t: "num", w: 92, dp: 1 },
   { k: "mf", h: "Manager Feedback", t: "text", w: 250 },
   { k: "rr", h: "RR%", t: "num", w: 82, dp: 2, pct: 1 },
+  { k: "yoe", h: "YoE Ratio", t: "num", w: 92, dp: 2 },
   { k: "ic", h: "Interview Count", t: "num", w: 92, dp: 0 },
   { k: "gm", h: "Gross Margin", t: "num", w: 104, dp: 2 },
   { k: "client", h: "Cost Center/Client", t: "text", w: 140 },
@@ -139,6 +141,7 @@ function buildDemoRows() {
         mf: MFB[Math.floor(r1 * 6)],
         rr: Math.round((70 + r2 * 30) * 100) / 100,
         ic: Math.floor(r3 * 12),
+        yoe: Math.round((2 + r2 * 18) * 100) / 100,
         gm: Math.round((18 + r2 * 40) * 100) / 100,
         client: CLIENTS[Math.floor(r3 * 5)],
         cm: CMGR[Math.floor(r2 * 5)],
@@ -832,7 +835,7 @@ export function FeedbackRatingMasterPage({
                         let v = "";
                         if (c.fz) v = `Total / Average · ${filtered.length} rows`;
                         else if (c.k === "ic") v = inr(filtered.reduce((s, r) => s + r.ic, 0), 0);
-                        else if (["mr", "cr", "rr", "gm"].includes(c.k)) v = inr(avg(filtered, c.k), c.dp) + (c.pct ? "%" : "");
+                        else if (["mr", "cr", "rr", "yoe", "gm"].includes(c.k)) v = inr(avg(filtered, c.k), c.dp) + (c.pct ? "%" : "");
                         else if (c.k === "risk") v = `${atRisk} Yes`;
                         return (
                           <td key={c.k} className={(c.fz ? "fz " : "") + (c.t === "num" ? "n" : "")}>

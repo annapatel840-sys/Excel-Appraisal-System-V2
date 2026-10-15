@@ -103,7 +103,7 @@ const PAY_FIELDS = [
 const FB_FIELDS = [
   { key: "empId", label: "Employee ID", column: "emp_ID", required: true },
   { key: "empName", label: "Employee Name", column: "emp_name" },
-  { key: "designation", label: "designation", column: "designation" },
+  { key: "designation", label: "Designation", column: "designation" },
   { key: "department", label: "Department", column: "department" },
   { key: "band", label: "Band", column: "band" },
   { key: "lastAppraisal", label: "Last Appraisal Date", column: "last_appraisal_date" },
@@ -111,6 +111,7 @@ const FB_FIELDS = [
   { key: "managerFeedback", label: "Manager Feedback", column: "manager_feedback" },
   { key: "managerRating", label: "Manager Rating", column: "manager_rating" },
   { key: "rrPercent", label: "RR%", column: "rr_percent", uploadHeaders: ["RR %", "RR Percent"] },
+  { key: "yoeRatio", label: "YoE Ratio", column: "yoe_ratio", uploadHeaders: ["YOE Ratio", "YoE", "YOE"] },
   { key: "costCenterClient", label: "Cost Center/Client", column: "cost_center_client", uploadHeaders: ["Cost Center", "Client", "Cost Centre/Client"] },
   { key: "clientManagerName", label: "Client Manager", column: "client_manager_name", uploadHeaders: ["Client Manager Name"] },
   { key: "clientManager", label: "Client Manager Feedback", column: "client_manager_feedback" },
@@ -122,7 +123,7 @@ const FB_FIELDS = [
   { key: "techEd", label: "Tech ED", column: "tech_ed", uploadHeaders: ["Tech-ED", "Tech Ed"] },
   { key: "promo", label: "Eligible for Promotion", column: "eligible_for_promotion" },
   { key: "newTitle", label: "New Title", column: "new_title" },
-  { key: "remarks", label: "remarks", column: "remarks" },
+  { key: "remarks", label: "Remarks", column: "remarks" },
   { key: "fyYear", label: "FY Year", column: "fy_year" },
   { key: "appraisalCycleName", label: "Appraisal Cycle", column: "appraisal_cycle_name" },
   { key: "effectiveDate", label: "Effective Date", column: "effective_date", uploadHeaders: ["Effective From"] },
@@ -180,7 +181,7 @@ const UPLOADS = {
     rules: [
       "Employee ID must exist in the Employee Master.",
       "Ratings are numbers between 0 and 5 (decimals allowed).",
-      "RR%, Interview Count and Gross Margin must be numbers.",
+      "RR%, YoE Ratio, Interview Count and Gross Margin must be numbers.",
       "Same employee + same appraisal cycle: the existing record is updated. Same employee + a different cycle: a new record is created.",
       "Designation and Remarks are saved with the first letter capitalised.",
       "Skip a field to leave it as it is.",
@@ -694,7 +695,7 @@ export function UploadPage({ handlers = {} }) {
             else if (toNum(r[k]) < 0 || toNum(r[k]) > 5)
               E(r, labelOf(k), "Rating must be between 0 and 5");
           });
-          ["rrPercent", "interviewCount", "grossMargin"].forEach((k) => {
+          ["rrPercent", "yoeRatio", "interviewCount", "grossMargin"].forEach((k) => {
             if (sv(r[k]) !== "" && !isNum(r[k]))
               E(r, labelOf(k), "Must be a number");
           });
