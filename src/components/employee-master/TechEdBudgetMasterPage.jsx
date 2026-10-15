@@ -300,7 +300,7 @@ const HEADS = [
 
 export function TechEdBudgetMasterPage() {
   const user = useCatalystUser();
-  const { budgetDistributionRows, budgetCompManagerRows, updateBudget, loading: budgetLoading, error: budgetError } = useBudget();
+  const { budgetDistributionRows, budgetCompManagerRows, employeeRows = [], techEdOwners = [], updateBudget, loading: budgetLoading, error: budgetError } = useBudget();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const canAllot =
@@ -308,33 +308,79 @@ export function TechEdBudgetMasterPage() {
     access.canAction("allotNextLevel");
   const canAudit = access.canAction("viewAudit");
   const rawName = String(user?.name || user?.email || "").trim();
+  const ownerTokens = (value) => {
+    const raw = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+    if (!raw) return [];
+    const pair = raw.match(/^(.+?)\s+-\s+(.+)$/);
+    return [...new Set([raw, ...(pair ? [pair[1].trim(), pair[2].trim()] : [])])];
+  };
+  const expandedTechOwnerTokens = (raw) => {
+    const tokens = new Set(ownerTokens(raw));
+    techEdOwners.forEach((person) => {
+      const aliases = [person?.row_id, person?.ROWID, person?.employee_id, person?.emp_id, person?.assignment, person?.name, person?.email]
+        .flatMap(ownerTokens);
+      if (aliases.some((alias) => tokens.has(alias))) aliases.forEach((alias) => tokens.add(alias));
+    });
+    return tokens;
+  };
+  const currentTeamCount = (owner, level = "tech") => {
+    const tokens = level === "tech" ? expandedTechOwnerTokens(owner) : new Set(ownerTokens(owner));
+    if (!tokens.size) return 0;
+    const seen = new Set();
+    employeeRows.forEach((employee) => {
+      if (employee.in_appraisal_sheet !== true) return;
+      const status = String(employee.status || employee.emp_status || "").trim().toLowerCase();
+      const eligibility = String(employee.eligible_status || employee.eligibility_status || employee.eligibility || "").trim().toLowerCase().replace(/[ _-]+/g, "");
+      if (status !== "active" || !["eligible", "yes", "true", "1"].includes(eligibility)) return;
+      const assignedValues = level === "tech"
+        ? [employee.appraiser_tech_ed_appraisal_sheet, employee.appraiser_tech_ed]
+        : [employee.comp_manager_display, employee.comp_manager];
+      const assignedTokens = assignedValues.flatMap(ownerTokens);
+      if (!assignedTokens.some((token) => tokens.has(token))) return;
+      const id = String(employee.emp_id || employee.employee_id || employee.row_id || "").trim().toLowerCase();
+      if (id) seen.add(id);
+    });
+    return seen.size;
+  };
   const liveMe = budgetDistributionRows.find((r) => {
-    const owner = String(r.appraiser_tech_ed_id || "").toLowerCase();
-    const name = rawName.toLowerCase();
-    return owner === name || owner.includes(name) || name.includes(owner);
-  }) || budgetDistributionRows[0];
-  const me0 = TECH_EDS.find((r) => rawName.includes(r.name)) || null;
+    const ownerTokensForRow = expandedTechOwnerTokens(r.appraiser_tech_ed_id);
+    return ownerTokens(rawName).some((token) => ownerTokensForRow.has(token));
+  }) || (budgetDistributionRows.length === 1 ? budgetDistributionRows[0] : null);
+  const me0 = TECH_EDS.find((r) => rawName.includes(r.name)) || TECH_EDS.find((r) =>
+    ownerTokens(liveMe?.appraiser_tech_ed_id).some((token) => ownerTokens(r.name).includes(token)),
+  ) || null;
+  const liveTechOwner = liveMe?.appraiser_tech_ed_id || rawName;
+  const liveTeamCount = currentTeamCount(liveTechOwner, "tech");
+  const storedOriginalTeamCount = Number(liveMe?.original_headcount ?? liveMe?.allocation_headcount);
   const me = liveMe && me0 ? {
     ...me0,
     id: liveMe.id,
-    pct: Number(liveMe.percentage) || me0.pct,
+    pct: liveMe.percentage == null ? me0.pct : Number(liveMe.percentage),
     original: Number(liveMe.calculated_budget) || me0.original,
     updated: Number(liveMe.applied_budget) || me0.updated,
     utilised: Number(liveMe.total_utilization) || 0,
+    team0: storedOriginalTeamCount > 0 ? storedOriginalTeamCount : liveTeamCount,
+    team: liveTeamCount,
   } : null;
   const liveKids = liveMe ? budgetCompManagerRows.filter((r) => String(r.budget_distribution_id) === String(liveMe.id)) : [];
   const kids0 = me0 ? COMP_MANAGERS.filter((c) => c.parent === me0.name).map((c, i) => {
-    const live = liveKids[i];
+    const live = liveKids.find((row) =>
+      ownerTokens(row.comp_manager).some((token) => ownerTokens(c.name).includes(token)),
+    ) || liveKids[i];
+    const currentCount = currentTeamCount(live?.comp_manager || c.name, "comp");
+    const originalCount = Number(live?.original_headcount ?? live?.allocation_headcount);
     return live ? {
       ...c,
       id: live.id,
       pct0: c.pct0,
-      pct: Number(live.percentage) || c.pct,
+      pct: live.percentage == null ? c.pct : Number(live.percentage),
       original: Number(live.calculated_budget) || c.original,
       updated: Number(live.applied_budget) || c.updated,
       utilised: Number(live.total_utilization) || c.utilised,
+      team0: originalCount > 0 ? originalCount : currentCount,
+      team: currentCount,
       base: Number(live.percentage) ? (Number(live.calculated_budget) * 100) / Number(live.percentage) : c.base,
-    } : c;
+    } : { ...c, team0: currentCount, team: currentCount };
   }) : [];
 
   const [reports, setReports] = useState(kids0);
