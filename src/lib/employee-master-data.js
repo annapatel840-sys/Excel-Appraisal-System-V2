@@ -361,7 +361,15 @@ export function mapEmployeeFromApi(employee) {
       row.eligibleReason || row.eligible_reason || "",
     ).trim(),
 
-    manualOverride: Boolean(row.manualOverride || row.manual_override || false),
+    manualOverride: Boolean(
+      row.manualOverride ||
+      row.manual_override ||
+      String(row.eligibility_source || "").trim().toLowerCase() === "manual",
+    ),
+    changeTag: String(row.changeTag || row.change_tag || "").trim(),
+    eligibilityUpdatedAt: String(
+      row.eligibilityUpdatedAt || row.eligibility_updated_at || row.MODIFIEDTIME || "",
+    ).trim(),
 
     catalystRowId: String(row.ROWID || row.rowid || ""),
 
