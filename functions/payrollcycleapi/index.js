@@ -778,6 +778,33 @@ async function saveEligibilityRowsBatch(tables, body, actor) {
   return { cycleId, saved, failed: rows.length - saved, total: rows.length, rows };
 }
 
+function toCatalystDate(value) {
+  if (value === null || value === undefined || value === "") return "";
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  const raw = String(value).trim();
+  if (!raw) return "";
+
+  // Catalyst Date columns expect YYYY-MM-DD, not an empty string or timestamp.
+  const iso = raw.match(/^(\d{4}-\d{2}-\d{2})(?:[T ].*)?$/);
+  if (iso) return iso[1];
+
+  const dmy = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  if (dmy) {
+    const day = Number(dmy[1]);
+    const month = Number(dmy[2]);
+    const year = Number(dmy[3]);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+}
+
 async function generateAppraisalSheet(tables, cycle, actor) {
   if (!cycle?.id) throw new ApiError("Select an appraisal cycle before generating the sheet.", 400);
   if (cycle.archived) throw new ApiError("Archived cycles cannot generate an Appraisal Sheet.", 409);
@@ -822,12 +849,17 @@ async function generateAppraisalSheet(tables, cycle, actor) {
       name: String(employee.name || ""),
       designation: String(employee.designation || ""),
       department: String(employee.department || ""),
-      joining_date: employee.joining_date || "",
       emp_master_row_id: masterId,
       cycle_id: String(cycle.id),
       status: "Active",
       eligible_status: "Eligible",
     };
+    const joiningDate = toCatalystDate(
+      employee.joining_date || employee.date_of_join || employee.date_of_joining || employee.doj,
+    );
+    // Don't send "" to Catalyst Date columns; it rejects empty strings as invalid dates.
+    // Omitting an absent/invalid optional date also preserves the existing value on updates.
+    if (joiningDate) payload.joining_date = joiningDate;
     if (employee.appraiser_tech_ed) payload.appraiser_tech_ed = employee.appraiser_tech_ed;
     if (employee.comp_manager) payload.comp_manager = employee.comp_manager;
     if (existing) {
