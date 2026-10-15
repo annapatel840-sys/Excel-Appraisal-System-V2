@@ -103,6 +103,7 @@ async function getProjectSchema(adminApp) {
     { name: "payroll", id: TABLES.payroll },
     { name: "Feedback_And_Rating", id: TABLES.feedback },
     { name: "Appraisal_Cycle", id: TABLES.cycles },
+    { name: "Eligibility_List", id: TABLES.eligibility },
     { name: "Appraisal_Audit", id: TABLES.audit },
   ];
   const datastore = adminApp.datastore();
