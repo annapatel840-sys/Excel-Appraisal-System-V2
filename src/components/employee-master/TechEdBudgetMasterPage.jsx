@@ -378,7 +378,7 @@ export function TechEdBudgetMasterPage() {
     ) || null;
     const currentCount = currentTeamCount(live.comp_manager, "comp");
     const originalCount = Number(live.original_headcount ?? live.allocation_headcount);
-    const ownerLabel = String(live.comp_manager || "").trim().split(/\\s+-\\s+/).pop() || "Unassigned Comp Manager";
+    const ownerLabel = String(live.comp_manager || "").trim().split(/\s+-\s+/).pop() || "Unassigned Comp Manager";
     const pct = live.percentage == null ? (template?.pct ?? 0) : Number(live.percentage);
     const originalBudget = Number(live.calculated_budget);
     const updatedBudget = Number(live.applied_budget);
@@ -399,7 +399,7 @@ export function TechEdBudgetMasterPage() {
   });  const [reports, setReports] = useState(kids0);
   useEffect(() => {
     setReports(kids0);
-  }, [liveMe?.id, liveKids.length]);
+  }, [liveMe?.id, liveKids.length, budgetCompManagerRows, employeeRows]);
   const [audit, setAudit] = useState(() =>
     me ? [
       {
