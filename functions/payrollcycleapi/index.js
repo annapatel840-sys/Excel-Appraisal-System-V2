@@ -583,7 +583,9 @@ function shapeEligibilityRow(row, master) {
 }
 
 async function getEligibilityRows(tables, cycle, actor = "") {
-  await syncEligibilityRows(tables, cycle, actor);
+  if (cycle.status === "Active" && !cycle.archived) {
+    await syncEligibilityRows(tables, cycle, actor);
+  }
   const [masterRows, eligibilityRows] = await Promise.all([
     getAllRows(tables.employeeMaster),
     getAllRows(tables.eligibility),
