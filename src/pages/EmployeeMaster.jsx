@@ -2441,6 +2441,12 @@ export function EmployeeMaster() {
                     : { gridTemplateColumns: "minmax(0, 1fr)" }
                 }
               >
+                <div style={{ marginBottom: 10, padding: "8px 12px", border: "1px solid #e5e7eb", borderRadius: 8, fontSize: 12, color: "#475569" }}>
+                  <strong>Eligibility List cycle:</strong>{" "}
+                  {eligibilityCycle.cycleName || "No active appraisal cycle"}
+                  {eligibilityCycle.cycleName ? ` · ${eligibilityEmployees.length} active employee record(s)` : ""}
+                </div>
+
                 {canEditEmployees && (
                   <EligibilityCriteria
                     employees={eligibilityEmployees}
