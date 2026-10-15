@@ -6,8 +6,6 @@ import {
   useMemo,
   useState,
 } from "react";
-import { useRef } from "react";   // or add useRef to the existing "react" import list
-import { useViewAs } from "@/lib/view-as-store";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
@@ -125,9 +123,6 @@ export function BudgetProvider({ children }) {
     roleText === "hr" ||
     roleText === "humanresources" ||
     roleText === "hroperation";
-  const asCompManager = effectiveId === "compmanager";    // ← ADD
-  const loadSeq = useRef(0);                              // ← ADD
-  const [compViewRows, setCompViewRows] = useState([]); 
   const [budgetRows, setBudgetRows] = useState([]);
   const [budgetMasterRows, setBudgetMasterRows] = useState([]);
   const [budgetDistributionRows, setBudgetDistributionRows] = useState([]);
@@ -140,23 +135,9 @@ export function BudgetProvider({ children }) {
   const [error, setError] = useState("");
 
   const load = useCallback(async () => {
-    const seq = ++loadSeq.current; 
     setLoading(true);
     setError("");
     try {
-         if (asCompManager) {
-          setBudgetRows([]); setBudgetMasterRows([]); setBudgetDistributionRows([]);
-          setBudgetCompManagerRows([]); setEmployeeRows([]); setTechEdOwners([]);
-          const url = new URL(catalystFunctionUrl("budgetmasterapi"));
-          url.searchParams.set("viewAs", "compmanager");
-          const response = await catalystFetch(url.toString());
-          const json = await response.json().catch(() => ({}));
-          if (seq !== loadSeq.current) return;
-          if (!response.ok) throw new Error((json && json.message) || `Failed to load budget (${response.status}).`);
-          setCompViewRows(Array.isArray(json?.compView?.rows) ? json.compView.rows : []);
-          return;
-      }
-      setCompViewRows([]);  
       const [budgetResponse, employeeResult] = await Promise.all([
         catalystFetch(catalystFunctionUrl("budgetmasterapi")),
         fetchAllEligibleEmployees().then(
@@ -326,12 +307,11 @@ export function BudgetProvider({ children }) {
       setBudgetCompManagerRows([]);
       setEmployeeRows([]);
       setTechEdOwners([]);
-      setCompViewRows([]); 
       setError((e && e.message) || "Failed to load Budget Master.");
     } finally {
       setLoading(false);
     }
-  }, [asCompManager]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -422,7 +402,6 @@ export function BudgetProvider({ children }) {
         budgetMasterRows,
         budgetDistributionRows,
         budgetCompManagerRows,
-        compViewRows,
         employeeRows,
         techEdOwners,
         budgetWarning,

@@ -1015,78 +1015,6 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   return bundle;
 }
 
-function buildCompManagerView(bundle, techEdOwners, a) {
-  const empty = {
-    success: true,
-    compView: { rows: [] },
-    data: [],
-    master: [],
-    techEd: [],
-    compManager: [],
-    techEdOwners: [],
-    employeeRoster: [],
-    techEdCount: 0,
-    diagnostics: null,
-    more_records: false,
-    next_token: null,
-  };
-
-  // The logged-in person's employee ID (e.g. EMP001).
-  const myId = String((a.user && a.user.empId) || "").trim().toLowerCase();
-  if (!myId) return empty;
-
-  const roster = bundle.employeeRoster || [];
-  const distById = new Map((bundle.techEd || []).map((r) => [String(r.id), r]));
-
-  // Only the Comp Manager rows that belong to this person.
-  const mine = (bundle.compManager || []).filter(
-    (r) => ownerKey(r.comp_manager) === myId || matchesOwner(r.comp_manager, a),
-  );
-
-  const rows = mine.map((row) => {
-    // Which Tech-ED allotted this row (looked up for the name only).
-    const parent = distById.get(String(row.budget_distribution_id));
-    const techKey = ownerKey(parent && parent.appraiser_tech_ed_id);
-    const owner =
-      techKey &&
-      techEdOwners.find((item) =>
-        [item.employee_id, item.row_id, item.ROWID, item.assignment]
-          .map(ownerKey)
-          .filter(Boolean)
-          .includes(techKey),
-      );
-    const techId = owner ? ownerKey(owner.employee_id || owner.assignment) : techKey;
-
-    // Team = employees of this Comp Manager, under this Tech-ED, Active + Eligible.
-    const team = roster.filter(
-      (emp) =>
-        ownerKey(emp.comp_manager_display || emp.comp_manager) === myId &&
-        ownerKey(emp.appraiser_tech_ed) === techId &&
-        String(emp.status || "").trim().toLowerCase() === "active" &&
-        emp.eligible_status === "eligible",
-    );
-
-    // Utilised = sum of each team member's utilized_amount
-    // (same figure the Tech-ED screen uses).
-    const utilised = team.reduce((sum, e) => sum + (Number(e.utilized_amount) || 0), 0);
-
-    return {
-      id: row.id,
-      appraisal_cycle_id: row.appraisal_cycle_id,
-      comp_manager: (team[0] && team[0].comp_manager_display) || row.comp_manager,
-      tech_ed_name: owner ? owner.name || owner.assignment : "", // name only, no Tech-ED budget numbers
-      percentage: row.percentage,
-      original_budget: row.calculated_budget,
-      updated_budget: row.applied_budget,
-      original_headcount: row.original_headcount || team.length,
-      current_headcount: team.length,
-      utilised,
-    };
-  });
-
-  return { ...empty, compView: { rows } };
-}
-
 module.exports = async function (req, res) {
   try {
     const method = String(req.method || "GET").toUpperCase();
@@ -1102,9 +1030,6 @@ module.exports = async function (req, res) {
     const app = catalyst.initialize(req, { scope: "admin" });
 
     if (method === "GET") {
-       const queryParams = req.queryParams || req.query || {};                      // ← ADD
-      const wantsCompView = String(queryParams.viewAs || "").trim().toLowerCase() === "compmanager";   // ← ADD
-      const compView = a.enforced && (a.role === "compMgr" || (wantsCompView && (a.role === "hr" || a.role === "techEd")));  
       // Keep this endpoint limited to the three budget tables. The frontend
       // already loads the full employee roster through employeesapi; scanning
       // both employee tables again here caused Catalyst's execution timeout.
@@ -1125,8 +1050,6 @@ module.exports = async function (req, res) {
             String(calculationError && calculationError.message || calculationError),
         });
       }
-      if (compView) return sendJson(res, 200, buildCompManagerView(calculatedBundle, techEdOwners, a));
-
       const bundle = filterOwn(calculatedBundle, a, techEdOwners);
       return sendJson(res, 200, {
         success: true,
