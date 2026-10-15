@@ -461,6 +461,38 @@ app.post(
             "Employee " + empId + " was not found in Appraisal_Sheet.",
           );
         const datastore = ap.admin.datastore();
+        // Appraisal_Sheet.appraiser_tech_ed is a bigint lookup to Employee_Master.
+        // Delegation UI stores the selected person's employee ID/name, so resolve
+        // it to Employee_Master.ROWID before writing the lookup field.
+        let storedValue = newId;
+        if (field === "app") {
+          const masterRows = await selectAll(ap.admin.zcql(), SETTINGS.employeeMaster.table);
+          const normalizePerson = (value) =>
+            String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+          const selectedKey = normalizePerson(newId);
+          const selectedEmpId = newId.split(/\\s+-\\s+/)[0].trim();
+          const master = masterRows.find((person) => {
+            const rowId = String(person.ROWID || person.rowid || "").trim();
+            const empIdValue = String(person[SETTINGS.employeeMaster.empId] || "").trim();
+            const nameValue = String(person[SETTINGS.employeeMaster.name] || "").trim();
+            const emailValue = String(person[SETTINGS.employeeMaster.email] || "").trim();
+            return (
+              rowId === newId ||
+              normalizePerson(empIdValue) === selectedKey ||
+              normalizePerson(nameValue) === selectedKey ||
+              normalizePerson(emailValue) === selectedKey ||
+              normalizePerson(empIdValue) === normalizePerson(selectedEmpId)
+            );
+          });
+          const masterRowId = String(master && (master.ROWID || master.rowid) || "").trim();
+          if (!masterRowId || !/^\\d+$/.test(masterRowId)) {
+            throw new HttpError(
+              422,
+              "The selected Tech-Ed appraiser could not be matched to an Employee Master record. Check the employee ID/name and try again.",
+            );
+          }
+          storedValue = masterRowId;
+        }
         // Catalyst Data Store writes must use the stable table ID. The logical
         // table name works for ZCQL reads but can fail on updateRow with
         // "No privileges to perform this action".
@@ -468,7 +500,7 @@ app.post(
         for (const row of found) {
           await appraisalTable.updateRow({
             ROWID: row.ROWID,
-            [column]: newId,
+            [column]: storedValue,
           });
         }
         // Version invalidation is helpful but must not turn a successful
