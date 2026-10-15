@@ -655,6 +655,7 @@ export function EmployeeMaster() {
         ? initialTab
         : defaultTab,
   );
+  const [uploadInitialScreen, setUploadInitialScreen] = useState("emp");
 
   const [search, setSearch] = useState("");
 
