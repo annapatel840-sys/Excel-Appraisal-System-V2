@@ -642,9 +642,7 @@ export async function updateEmployeeMasterEmployee(empId, data = {}) {
    UPDATE EMPLOYEE ELIGIBILITY
    ============================================================
  *
- * Source of truth:
- * Employees.eligible_status
- *
+ * Saves the selected cycle's eligibility decision in Eligibility_List.
  * Yes -> Eligible
  * No  -> Not Eligible
  */
