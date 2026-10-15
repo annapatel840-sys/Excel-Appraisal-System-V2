@@ -519,9 +519,6 @@ export function BudgetDistributionPage() {
     if (!record) return 0;
     const countedEligibleEmployees = new Set();
     return employeeRows.filter((employee) => {
-      // Budget Distribution headcount must come from actual Appraisal_Sheet rows,
-      // not Employee_Master-only roster entries.
-      if (employee.in_appraisal_sheet !== true) return false;
       const assignment = employee.appraiser_tech_ed_appraisal_sheet || "";
       const resolved = resolveTechRecord(assignment);
       const eligibility = String(
