@@ -59,17 +59,9 @@ const EMP_FIELDS = [
   { key: "name", label: "Employee Name", column: "emp_name" },
   { key: "designation", label: "Designation", column: "designation" },
   { key: "organization", label: "Department", column: "department" },
-  {
-    key: "reportingManager",
-    label: "Reporting Manager",
-    column: "repo_manager",
-  },
+  { key: "reportingManager", label: "Reporting Manager", column: "repo_manager" },
   { key: "compManager", label: "Director", column: "director" },
-  {
-    key: "appraiser",
-    label: "Appraiser / Tech ED",
-    column: "appraiser_tech_ed",
-  },
+  { key: "appraiser", label: "Appraiser / Tech ED", column: "appraiser_tech_ed" },
   { key: "managerMail", label: "Email ID", column: "email_id" },
   { key: "doj", label: "Date of Joining", column: "date_of_join" },
   { key: "status", label: "Status", column: "emp_status" },
@@ -79,11 +71,7 @@ const EMP_FIELDS = [
   { key: "costCenter", label: "Cost Center", column: "cost_center" },
   { key: "currentSalary", label: "Current Salary", column: "current_salary" },
   { key: "location", label: "location", column: "location" },
-  {
-    key: "lastAppraisal",
-    label: "Last Appraisal (Month/Year)",
-    column: "last_appraisal_month_year",
-  },
+  { key: "lastAppraisal", label: "Last Appraisal (Month/Year)", column: "last_appraisal_month_year" },
 ];
 
 // Keys must stay the same: the payroll backend validates these. the payroll backend validates these.
@@ -116,53 +104,29 @@ const FB_FIELDS = [
   { key: "empId", label: "Employee ID", column: "emp_ID", required: true },
   { key: "empName", label: "Employee Name", column: "emp_name" },
   { key: "designation", label: "designation", column: "designation" },
-  {
-    key: "lastAppraisal",
-    label: "Last Appraisal Date",
-    column: "last_appraisal_date",
-  },
-  {
-    key: "revenueReleased",
-    label: "Revenue Released",
-    column: "revenue_released",
-  },
+  { key: "department", label: "Department", column: "department" },
+  { key: "band", label: "Band", column: "band" },
+  { key: "lastAppraisal", label: "Last Appraisal Date", column: "last_appraisal_date" },
+  { key: "revenueReleased", label: "Revenue Released", column: "revenue_released" },
   { key: "grossMargin", label: "Gross Margin", column: "gross_margin" },
-  {
-    key: "managerFeedback",
-    label: "Manager Feedback",
-    column: "manager_feedback",
-  },
+  { key: "managerFeedback", label: "Manager Feedback", column: "manager_feedback" },
   { key: "managerRating", label: "Manager Rating", column: "manager_rating" },
-  {
-    key: "clientManager",
-    label: "Client Manager Feedback",
-    column: "client_manager_feedback",
-  },
-  {
-    key: "clientFeedback",
-    label: "Client Feedback",
-    column: "client_feedback",
-  },
+  { key: "rrPercent", label: "RR%", column: "rr_percent", uploadHeaders: ["RR %", "RR Percent"] },
+  { key: "costCenterClient", label: "Cost Center/Client", column: "cost_center_client", uploadHeaders: ["Cost Center", "Client", "Cost Centre/Client"] },
+  { key: "clientManagerName", label: "Client Manager", column: "client_manager_name", uploadHeaders: ["Client Manager Name"] },
+  { key: "clientManager", label: "Client Manager Feedback", column: "client_manager_feedback" },
+  { key: "clientFeedback", label: "Client Feedback", column: "client_feedback" },
   { key: "clientRating", label: "Client Rating", column: "client_rating" },
-  {
-    key: "interviewCount",
-    label: "Interview Count",
-    column: "interview_count",
-  },
+  { key: "interviewCount", label: "Interview Count", column: "interview_count" },
   { key: "atRisk", label: "At Risk", column: "at_risk" },
-  {
-    key: "promo",
-    label: "Eligible for Promotion",
-    column: "eligible_for_promotion",
-  },
+  { key: "compManagerName", label: "Comp Manager", column: "comp_manager", uploadHeaders: ["Compensation Manager"] },
+  { key: "techEd", label: "Tech ED", column: "tech_ed", uploadHeaders: ["Tech-ED", "Tech Ed"] },
+  { key: "promo", label: "Eligible for Promotion", column: "eligible_for_promotion" },
   { key: "newTitle", label: "New Title", column: "new_title" },
   { key: "remarks", label: "remarks", column: "remarks" },
   { key: "fyYear", label: "FY Year", column: "fy_year" },
-  {
-    key: "appraisalCycleName",
-    label: "Appraisal Cycle",
-    column: "appraisal_cycle_name",
-  },
+  { key: "appraisalCycleName", label: "Appraisal Cycle", column: "appraisal_cycle_name" },
+  { key: "effectiveDate", label: "Effective Date", column: "effective_date", uploadHeaders: ["Effective From"] },
 ];
 
 const SHEET_FIELDS = [
@@ -405,7 +369,7 @@ export function UploadPage({
   const [loadToken, setLoadToken] = useState(0);
 
   const [cycleId, setCycleId] = useState("");
-  const [screen, setScreen] = useState(initialScreen);
+  const [screen, setScreen] = useState("");
   const [file, setFile] = useState(null); // { name, headers, rows:[{row,cells}] }
   const [map, setMap] = useState({});
   const [res, setRes] = useState(null); // { errors, nw, rep, headerError }
@@ -492,17 +456,8 @@ export function UploadPage({
   const def = screen ? UPLOADS[screen] : null;
 
   const schemaTable = useMemo(() => {
-    const wanted =
-      screen === "emp"
-        ? "Employee_Master"
-        : screen === "pay"
-          ? "payroll"
-          : "Employees";
-    return (
-      schemaTables.find(
-        (table) => String(table.name).toLowerCase() === wanted.toLowerCase(),
-      ) || null
-    );
+    const wanted = screen === "emp" ? "Employee_Master" : screen === "pay" ? "payroll" : "Employees";
+    return schemaTables.find((table) => String(table.name).toLowerCase() === wanted.toLowerCase()) || null;
   }, [schemaTables, screen]);
 
   const fields = useMemo(() => {
@@ -511,33 +466,15 @@ export function UploadPage({
     // database-mapped fields. Do not append arbitrary Data Store columns here.
     if (screen === "pay" || screen === "fb") return base;
     if (!schemaTable?.columns?.length) return base;
-    const knownColumns = new Set(
-      base.map(
-        (field) => field.column || EM_TO_CATALYST[field.key] || field.key,
-      ),
-    );
-    const hidden = new Set([
-      "ROWID",
-      "CREATORID",
-      "CREATEDTIME",
-      "MODIFIEDTIME",
-      "appraisal_cycle_id",
-      "source_batch",
-      "source_file",
-      "emp_master_row_id",
-      "emp_row_id",
-    ]);
-    const extras = schemaTable.columns
-      .filter(
-        (column) => !hidden.has(column.name) && !knownColumns.has(column.name),
-      )
-      .map((column) => ({
-        key: column.name,
-        column: column.name,
-        label: column.label || column.name,
-        required: column.mandatory === true,
-        schemaType: column.type,
-      }));
+    const knownColumns = new Set(base.map((field) => field.column || EM_TO_CATALYST[field.key] || field.key));
+    const hidden = new Set(["ROWID", "CREATORID", "CREATEDTIME", "MODIFIEDTIME", "appraisal_cycle_id", "source_batch", "source_file", "emp_master_row_id", "emp_row_id"]);
+    const extras = schemaTable.columns.filter((column) => !hidden.has(column.name) && !knownColumns.has(column.name)).map((column) => ({
+      key: column.name,
+      column: column.name,
+      label: column.label || column.name,
+      required: column.mandatory === true,
+      schemaType: column.type,
+    }));
     return [...base, ...extras];
   }, [def, schemaTable]);
   const labelOf = (key) => fields.find((f) => f.key === key)?.label || key;
@@ -618,7 +555,9 @@ export function UploadPage({
       const record = { row };
 
       const resolvedMap =
-        screen === "emp" ? autoMap("emp", fields, file.headers) : { ...map };
+        screen === "emp"
+          ? autoMap("emp", fields, file.headers)
+          : { ...map };
 
       // Keep explicit user selections, but never allow an old/empty mapping
       // to remove the Employee Master key fields.
@@ -662,7 +601,10 @@ export function UploadPage({
 
       fields.forEach((f) => {
         // These two fields were resolved explicitly above for Employee Master.
-        if (screen === "emp" && (f.key === "empId" || f.key === "name")) {
+        if (
+          screen === "emp" &&
+          (f.key === "empId" || f.key === "name")
+        ) {
           return;
         }
 
@@ -879,53 +821,26 @@ export function UploadPage({
 
     const aliases = {
       empId: ["Employee ID", "Emp ID", "EmpID", "EmployeeID", "emp_id"],
-      name: [
-        "Employee Name",
-        "Emp Name",
-        "EmpName",
-        "EmployeeName",
-        "Name",
-        "emp_name",
-      ],
+      name: ["Employee Name", "Emp Name", "EmpName", "EmployeeName", "Name", "emp_name"],
       designation: ["Designation", "designation"],
       organization: ["Department", "Organization", "department"],
-      reportingManager: [
-        "Reporting Manager",
-        "ReportingManager",
-        "repo_manager",
-      ],
+      reportingManager: ["Reporting Manager", "ReportingManager", "repo_manager"],
       compManager: ["Director", "Comp Manager", "director"],
-      appraiser: [
-        "Appraiser / Tech ED",
-        "Appraiser",
-        "Tech ED",
-        "appraiser_tech_ed",
-      ],
+      appraiser: ["Appraiser / Tech ED", "Appraiser", "Tech ED", "appraiser_tech_ed"],
       managerMail: ["Email ID", "Manager Mail", "email_id"],
       doj: ["Date of Joining", "DOJ", "date_of_join"],
       status: ["Status", "emp_status"],
       empType: ["Employee Type", "Emp Type", "emp_type"],
-      orgExp: [
-        "Wissen Experience",
-        "Organization Experience",
-        "wissen_experience",
-      ],
+      orgExp: ["Wissen Experience", "Organization Experience", "wissen_experience"],
       totalExp: ["Total Experience", "total_experience"],
       costCenter: ["Cost Center", "cost_center"],
       currentSalary: ["Current Salary", "current_salary"],
       location: ["Location", "location"],
-      lastAppraisal: [
-        "Last Appraisal (Month/Year)",
-        "Last Appraisal",
-        "last_appraisal_month_year",
-      ],
+      lastAppraisal: ["Last Appraisal (Month/Year)", "Last Appraisal", "last_appraisal_month_year"],
     };
 
     const indexes = Object.fromEntries(
-      Object.entries(aliases).map(([key, names]) => [
-        key,
-        findHeaderIndex(names),
-      ]),
+      Object.entries(aliases).map(([key, names]) => [key, findHeaderIndex(names)]),
     );
 
     return records.map((r) => {
@@ -949,10 +864,7 @@ export function UploadPage({
           value = sv(value).toLowerCase() === "active" ? "Active" : "Inactive";
         }
 
-        if (
-          f.key === "appraiser" &&
-          !/^\s*[A-Za-z]*\d+\s+-\s+\S/.test(sv(value))
-        ) {
+        if (f.key === "appraiser" && !/^\s*[A-Za-z]*\d+\s+-\s+\S/.test(sv(value))) {
           const matches = byName.get(sv(value).toLowerCase()) || [];
           if (matches.length === 1) {
             value = matches[0].empId + " - " + matches[0].name;
@@ -1046,9 +958,7 @@ export function UploadPage({
         payrollCycleRequest("history")
           .then((data) => setHistory(Array.isArray(data) ? data : []))
           .catch((e) => {
-            setError(
-              `Upload succeeded, but upload history could not be refreshed: ${e.message}`,
-            );
+            setError(`Upload succeeded, but upload history could not be refreshed: ${e.message}`);
           });
       }
       if (screen !== "pay") {
