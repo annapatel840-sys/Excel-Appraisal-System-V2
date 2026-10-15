@@ -214,13 +214,28 @@ export function AppShell({ children, headerActions }) {
   return (
     <div
       className={cn(
-        "min-h-screen bg-background",
+        "app-shell-layout min-h-screen bg-background",
+        isVertical && !isPinned && "app-shell-layout--auto-collapse",
         isVertical && (isPinned ? "lg:pl-56" : "lg:pl-14"),
       )}
     >
+      <style>{`
+        /* FIX: budget KPI strip must not overflow beside the collapsed rail.
+           It reappears on sidebar hover; pinned navigation keeps it visible. */
+        @media (min-width: 1024px) {
+          .app-shell-layout--auto-collapse:has(> .app-shell-sidebar:not(:hover))
+            .bd-root .summary,
+          .app-shell-layout--auto-collapse:has(> .app-shell-sidebar:not(:hover))
+            .tbd-root .bsum,
+          .app-shell-layout--auto-collapse:has(> .app-shell-sidebar:not(:hover))
+            .te-root .bsum {
+            display: none !important;
+          }
+        }
+      `}</style>
       <header
         className={cn(
-          "z-50 border-border bg-[var(--app-brand)]",
+          "app-shell-sidebar z-50 border-border bg-[var(--app-brand)]",
           isVertical
             ? "group/nav fixed inset-y-0 left-0 hidden border-r lg:flex lg:transition-[width] lg:duration-200"
             : "sticky top-0 border-b",
