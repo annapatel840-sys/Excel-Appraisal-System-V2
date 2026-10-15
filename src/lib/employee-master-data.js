@@ -1,4 +1,5 @@
 import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
+import { payrollCycleRequest } from "./payroll-cycle-api";
 
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
 const EMPLOYEE_MASTER_API_URL = catalystFunctionUrl("employeemasterapi");
@@ -506,90 +507,44 @@ export async function fetchEligibilityEmployees({
   page = 1,
   limit = 20,
   search = "",
+  cycleId = "",
 } = {}) {
-  const url = new URL(EMPLOYEE_API_URL);
-
-  url.searchParams.set("view", "eligibility");
-  url.searchParams.set("page", String(page));
-  url.searchParams.set("limit", String(limit));
-
-  const normalizedSearch = String(search || "").trim();
-
-  if (normalizedSearch) {
-    url.searchParams.set("search", normalizedSearch);
-  }
-
-  const response = await catalystFetch(url.toString(), {
+  const result = await payrollCycleRequest("eligibility", {
     method: "GET",
-
-    headers: {
-      Accept: "application/json",
-    },
+    query: { cycleId },
   });
-
-  if (!response.ok) {
-    throw new Error(
-      `Eligibility Employee API failed with status ${response.status}`,
+  const payload = result && !Array.isArray(result) ? result : {};
+  const records = Array.isArray(payload.records) ? payload.records : [];
+  const term = String(search || "").trim().toLowerCase();
+  const employees = records
+    .map(mapEmployeeFromApi)
+    .filter((employee) =>
+      !term ||
+      employee.empId.toLowerCase().includes(term) ||
+      employee.name.toLowerCase().includes(term),
     );
-  }
-
-  const result = await response.json();
-
-  if (!result.success) {
-    throw new Error(
-      result.message || "Failed to load Eligibility List employees.",
-    );
-  }
-
-  const employees = Array.isArray(result.data)
-    ? result.data.map(mapEmployeeFromApi)
-    : [];
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeLimit = Math.max(1, Number(limit) || 20);
+  const paged = employees.slice((safePage - 1) * safeLimit, safePage * safeLimit);
 
   return {
-    data: employees,
-
-    pagination: {
-      page:
-        result.pagination && result.pagination.page !== undefined
-          ? result.pagination.page
-          : page,
-
-      limit:
-        result.pagination && result.pagination.limit !== undefined
-          ? result.pagination.limit
-          : limit,
-
-      totalCount:
-        result.pagination && result.pagination.totalCount !== undefined
-          ? result.pagination.totalCount
-          : employees.length,
-
-      totalPages:
-        result.pagination && result.pagination.totalPages !== undefined
-          ? result.pagination.totalPages
-          : 1,
-
-      returnedCount:
-        result.pagination && result.pagination.returnedCount !== undefined
-          ? result.pagination.returnedCount
-          : employees.length,
+    data: paged,
+    cycle: payload.meta || {
+      cycleId: records[0]?.appraisal_cycle_id || "",
+      cycleName: "",
+      total: employees.length,
     },
-
+    pagination: {
+      page: safePage,
+      limit: safeLimit,
+      totalCount: employees.length,
+      totalPages: Math.max(1, Math.ceil(employees.length / safeLimit)),
+      returnedCount: paged.length,
+    },
     counts: {
-      total:
-        result.counts && result.counts.total !== undefined
-          ? result.counts.total
-          : 0,
-
-      active:
-        result.counts && result.counts.active !== undefined
-          ? result.counts.active
-          : 0,
-
-      inactive:
-        result.counts && result.counts.inactive !== undefined
-          ? result.counts.inactive
-          : 0,
+      total: employees.length,
+      eligible: employees.filter((employee) => employee.eligible === "Yes").length,
+      notEligible: employees.filter((employee) => employee.eligible !== "Yes").length,
     },
   };
 }
@@ -690,85 +645,35 @@ export async function updateEmployeeEligibility(
   empId,
   eligible,
   eligibleReason = "",
+  cycleId = "",
+  source = "Manual",
 ) {
   const normalizedEmpId = String(empId || "").trim();
+  if (!normalizedEmpId) throw new Error("Employee ID is required.");
+  if (!cycleId) throw new Error("Select an appraisal cycle before saving eligibility.");
 
-  if (!normalizedEmpId) {
-    throw new Error("Employee ID is required.");
-  }
+  const normalizedEligible = String(eligible || "").trim().toLowerCase();
+  const eligibleStatus = ["yes", "eligible"].includes(normalizedEligible)
+    ? "Eligible"
+    : ["no", "not eligible", "noteligible"].includes(normalizedEligible)
+      ? "Not Eligible"
+      : "";
+  if (!eligibleStatus) throw new Error("Eligibility must be Eligible or Not Eligible.");
 
-  const normalizedEligible = String(eligible || "")
-    .trim()
-    .toLowerCase();
-
-  let eligibleStatus = "";
-
-  if (normalizedEligible === "yes" || normalizedEligible === "eligible") {
-    eligibleStatus = "Eligible";
-  } else if (
-    normalizedEligible === "no" ||
-    normalizedEligible === "not eligible" ||
-    normalizedEligible === "noteligible"
-  ) {
-    eligibleStatus = "Not Eligible";
-  } else {
-    throw new Error("Eligibility must be Eligible or Not Eligible.");
-  }
-
-  const payload = {
-    emp_id: normalizedEmpId,
-    eligible_status: eligibleStatus,
-  };
-
-  console.log("[Eligibility List] Updating eligibility:", payload);
-
-  const response = await catalystFetch(EMPLOYEE_API_URL, {
-    method: "PATCH",
-
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
+  const result = await payrollCycleRequest("eligibility", {
+    method: "POST",
+    body: {
+      cycleId,
+      empId: normalizedEmpId,
+      eligible_status: eligibleStatus,
+      reason: String(eligibleReason || "").trim(),
+      source,
     },
-
-    body: JSON.stringify(payload),
   });
-
-  const responseText = await response.text();
-
-  let result = null;
-
-  try {
-    result = responseText ? JSON.parse(responseText) : null;
-  } catch {
-    result = null;
-  }
-
-  console.log("[Eligibility List] Update response:", response.status, result);
-
-  if (!response.ok) {
-    throw new Error(
-      (result && result.message) ||
-        (result && result.error) ||
-        responseText ||
-        `Eligibility update failed with status ${response.status}`,
-    );
-  }
-
-  if (!result || !result.success) {
-    throw new Error(
-      (result && result.message) ||
-        (result && result.error) ||
-        "Failed to update employee eligibility.",
-    );
-  }
-
   return {
-    ...result,
-
-    data: result.data ? mapEmployeeFromApi(result.data) : null,
-
-    eligibleStatus: eligibleStatus,
-
+    success: true,
+    data: result ? mapEmployeeFromApi(result) : null,
+    eligibleStatus,
     eligibleReason: String(eligibleReason || "").trim(),
   };
 }
