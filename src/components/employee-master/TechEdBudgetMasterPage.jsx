@@ -352,12 +352,20 @@ export function TechEdBudgetMasterPage() {
   const liveTechOwner = liveMe?.appraiser_tech_ed_id || rawName;
   const liveTeamCount = currentTeamCount(liveTechOwner, "tech");
   const storedOriginalTeamCount = Number(liveMe?.original_headcount ?? liveMe?.allocation_headcount);
-  const me = liveMe && me0 ? {
-    ...me0,
+  const liveOwnerPerson = techEdOwners.find((person) =>
+    ownerTokens(liveMe?.appraiser_tech_ed_id).some((token) =>
+      [person?.row_id, person?.ROWID, person?.employee_id, person?.emp_id, person?.assignment, person?.name, person?.email]
+        .flatMap(ownerTokens)
+        .includes(token),
+    ),
+  );
+  const me = liveMe ? {
+    ...(me0 || {}),
+    name: me0?.name || liveOwnerPerson?.assignment || liveOwnerPerson?.name || liveMe.appraiser_tech_ed_id || rawName,
     id: liveMe.id,
-    pct: liveMe.percentage == null ? me0.pct : Number(liveMe.percentage),
-    original: Number(liveMe.calculated_budget) || me0.original,
-    updated: Number(liveMe.applied_budget) || me0.updated,
+    pct: liveMe.percentage == null ? (me0?.pct ?? 0) : Number(liveMe.percentage),
+    original: Number(liveMe.calculated_budget) || (me0?.original ?? 0),
+    updated: Number(liveMe.applied_budget) || (me0?.updated ?? 0),
     utilised: Number(liveMe.total_utilization) || 0,
     team0: storedOriginalTeamCount > 0 ? storedOriginalTeamCount : liveTeamCount,
     team: liveTeamCount,
