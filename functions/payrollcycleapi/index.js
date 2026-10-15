@@ -530,16 +530,15 @@ async function syncEligibilityRows(tables, cycle, actor = "") {
     );
   }
 
-  let created = 0;
+  const rowsToInsert = [];
   const now = nowLocal();
   for (const employee of activeMasters) {
     const masterId = String(employee.ROWID || employee.rowid || "");
     const empId = String(employee.emp_id || "").trim();
     if (!masterId || !empId) continue;
-    const existing = existingByMasterId.get(masterId);
-    if (existing) continue;
+    if (existingByMasterId.has(masterId)) continue;
 
-    await tables.eligibility.insertRow({
+    rowsToInsert.push({
       appraisal_cycle_id: String(cycle.id),
       employee_master_id: masterId,
       emp_id: empId,
@@ -551,9 +550,11 @@ async function syncEligibilityRows(tables, cycle, actor = "") {
       updated_by: String(actor || "System").slice(0, 60),
       eligibility_updated_at: now,
     });
-    created += 1;
   }
-  return { created, removed: toDelete.length, activeEmployees: activeMasters.length };
+  for (let index = 0; index < rowsToInsert.length; index += 100) {
+    await tables.eligibility.insertRows(rowsToInsert.slice(index, index + 100));
+  }
+  return { created: rowsToInsert.length, removed: toDelete.length, activeEmployees: activeMasters.length };
 }
 
 function shapeEligibilityRow(row, master) {
