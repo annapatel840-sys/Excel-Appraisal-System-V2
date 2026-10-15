@@ -7,7 +7,9 @@
       "employeemasterapi",
       "payrollcycleapi",
       "budgetmasterapi",
-      "accessapi"
+      "accessapi",
+      "feedbackratingapi",
+      "demo_seed"
     ],
     "ignore": [],
     "source": "functions"

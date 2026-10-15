@@ -15,7 +15,6 @@ import {
   fetchEligibilityEmployees,
   updateEmployeeMasterEmployee,
   updateEmployeeEligibility,
-  updateEligibilityRecords,
   createEmployeeMasterEmployees,
 } from "@/lib/employee-master-data";
 
@@ -41,7 +40,7 @@ import { EligibilityModal } from "@/components/employee-master/EligibilityModal"
 import { ImportPreviewModal } from "@/components/employee-master/ImportPreviewModal";
 import { AppraisalCycleMasterPage } from "@/components/employee-master/AppraisalCycleMasterPage";
 import { PayrollDataPage } from "@/components/employee-master/PayrollDataPage";
-import { FeedbackRatingMasterPage } from "@/components/employee-master/FeedbackRatingMasterPage";
+import { FeedbackRatingMasterContainer } from "@/components/employee-master/FeedbackRatingMasterContainer";
 import { UploadPage } from "@/components/employee-master/UploadPage";
 import { TeamChangesPage } from "@/components/employee-master/TeamChangesPage";
 import { BudgetMasterPage } from "@/components/employee-master/BudgetMasterPage";
@@ -623,8 +622,6 @@ export function EmployeeMaster() {
 
   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
 
-  const [eligibilityCycle, setEligibilityCycle] = useState({ cycleId: "", cycleName: "", total: 0 });
-
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
 
   const [loading, setLoading] = useState(true);
@@ -661,7 +658,6 @@ export function EmployeeMaster() {
         ? initialTab
         : defaultTab,
   );
-  const [uploadInitialScreen, setUploadInitialScreen] = useState("emp");
 
   const [search, setSearch] = useState("");
 
@@ -1079,25 +1075,37 @@ export function EmployeeMaster() {
       try {
         setEligibilityLoading(true);
 
-        const result = await fetchEligibilityEmployees({
+        const firstPage = await fetchEligibilityEmployees({
           page: 1,
-          limit: 5000,
+          limit: 100,
           search: "",
         });
+
+        let all = Array.isArray(firstPage?.data) ? firstPage.data : [];
+
+        const totalPages = Number(firstPage?.pagination?.totalPages) || 1;
+
+        for (let page = 2; page <= totalPages; page += 1) {
+          if (cancelled) {
+            return;
+          }
+
+          const result = await fetchEligibilityEmployees({
+            page,
+            limit: 100,
+            search: "",
+          });
+
+          all = all.concat(Array.isArray(result?.data) ? result.data : []);
+        }
 
         if (cancelled) {
           return;
         }
 
-        const all = Array.isArray(result?.data) ? result.data : [];
         finished = true;
 
         setEligibilityEmployees(all);
-        setEligibilityCycle(result?.cycle || {
-          cycleId: all[0]?.appraisalCycleId || "",
-          cycleName: "",
-          total: all.length,
-        });
       } catch (error) {
         if (cancelled) {
           return;
@@ -1839,18 +1847,12 @@ export function EmployeeMaster() {
      SAVE ELIGIBILITY TO CATALYST
      ============================================================ */
 
-  const persistEligibilityChange = async (change, source = "Criteria") => {
+  const persistEligibilityChange = async (change) => {
     const eligible = change.fields?.Eligible === "Yes" ? "Yes" : "No";
 
     const eligibleReason = change.fields?.Reason || "";
 
-    await updateEmployeeEligibility(
-      change.empId,
-      eligible,
-      eligibleReason,
-      eligibilityCycle.cycleId,
-      source,
-    );
+    await updateEmployeeEligibility(change.empId, eligible, eligibleReason);
 
     return {
       empId: change.empId,
@@ -1901,40 +1903,23 @@ export function EmployeeMaster() {
 
     if (pendingImportType === "eligibility") {
       try {
-        const batchResult = await updateEligibilityRecords(
-          previewChanges.map((change) => ({
-            empId: change.empId,
-            eligible: change.fields?.Eligible,
-            reason: change.fields?.Reason || "",
-            source: "Manual",
-          })),
-          eligibilityCycle.cycleId,
-          "Manual",
+        const results = await Promise.allSettled(
+          previewChanges.map(async (change) => {
+            const oldEmployee = eligibilityEmployees.find(
+              (employee) =>
+                normalizeEmpId(employee.empId) === normalizeEmpId(change.empId),
+            );
+
+            const oldEligible = oldEmployee?.eligible;
+
+            const result = await persistEligibilityChange(change);
+
+            return {
+              ...result,
+              oldEligible,
+            };
+          }),
         );
-        const results = previewChanges.map((change, index) => {
-          const row = batchResult.rows[index];
-          const oldEmployee = eligibilityEmployees.find(
-            (employee) =>
-              normalizeEmpId(employee.empId) === normalizeEmpId(change.empId),
-          );
-          return row?.ok
-            ? {
-                status: "fulfilled",
-                value: {
-                  empId: change.empId,
-                  name: change.name || oldEmployee?.name || "",
-                  fields: {
-                    Eligible: change.fields?.Eligible === "Yes" ? "Yes" : "No",
-                    Reason: change.fields?.Reason || "",
-                  },
-                  oldEligible: oldEmployee?.eligible,
-                },
-              }
-            : {
-                status: "rejected",
-                reason: new Error(row?.reason || "Eligibility save failed."),
-              };
-        });
 
         const successfulChanges = [];
         let failedCount = 0;
@@ -1971,7 +1956,7 @@ export function EmployeeMaster() {
         } else {
           showBanner(
             "Eligibility imported",
-            `${successfulChanges.length} employee record(s) updated in Eligibility_List for this cycle. Active/Inactive status was not changed.`,
+            `${successfulChanges.length} employee record(s) updated in Employees table. Active/Inactive status was not changed.`,
           );
         }
       } catch (error) {
@@ -2127,8 +2112,8 @@ export function EmployeeMaster() {
 
       const nextReason = reasons.join(", ");
 
-      // Eligibility status and reason are both persisted to Eligibility_List
-      // for the selected appraisal cycle. Manual overrides remain untouched.
+      // Only eligible_status is persisted; a differing (derived) reason is
+      // refreshed locally without a PATCH.
       if (employee.eligible === nextEligible) {
         if (employee.eligibleReason !== nextReason) {
           reasonOnlyChanges.push({
@@ -2151,56 +2136,23 @@ export function EmployeeMaster() {
       });
     });
 
-    if (changes.length === 0 && reasonOnlyChanges.length === 0) {
+    if (reasonOnlyChanges.length > 0) {
+      applyLocalEligibilityChanges(reasonOnlyChanges);
+    }
+
+    if (changes.length === 0) {
       showBanner(
         "Criteria applied",
         `${evaluated} employee(s) evaluated. No eligibility changes were required.`,
       );
+
       return;
     }
 
-    const reasonChangesWithNames = reasonOnlyChanges.map((change) => {
-      const employee = eligibilityEmployees.find(
-        (item) => normalizeEmpId(item.empId) === normalizeEmpId(change.empId),
-      );
-      return {
-        ...change,
-        name: employee?.name || "",
-        oldEligible: change.fields?.Eligible,
-      };
-    });
-    const changesToPersist = [...changes, ...reasonChangesWithNames];
-
     try {
-      const batchResult = await updateEligibilityRecords(
-        changesToPersist.map((change) => ({
-          empId: change.empId,
-          eligible: change.fields?.Eligible,
-          reason: change.fields?.Reason || "",
-          source: "Criteria",
-        })),
-        eligibilityCycle.cycleId,
-        "Criteria",
+      const results = await Promise.allSettled(
+        changes.map((change) => persistEligibilityChange(change)),
       );
-      const results = changesToPersist.map((change, index) => {
-        const row = batchResult.rows[index];
-        return row?.ok
-          ? {
-              status: "fulfilled",
-              value: {
-                empId: change.empId,
-                name: change.name || "",
-                fields: {
-                  Eligible: change.fields?.Eligible === "Yes" ? "Yes" : "No",
-                  Reason: change.fields?.Reason || "",
-                },
-              },
-            }
-          : {
-              status: "rejected",
-              reason: new Error(row?.reason || "Eligibility save failed."),
-            };
-      });
 
       const successfulChanges = [];
       let failedCount = 0;
@@ -2212,7 +2164,7 @@ export function EmployeeMaster() {
           addEligibilityAudit({
             empId: result.value.empId,
             employeeName: result.value.name,
-            oldValue: changesToPersist[index].oldEligible,
+            oldValue: changes[index].oldEligible,
             newValue: result.value.fields?.Eligible,
           });
         } else {
@@ -2269,8 +2221,6 @@ export function EmployeeMaster() {
         empId,
         normalizedEligible,
         eligibleReason || "",
-        eligibilityCycle.cycleId,
-        "Manual",
       );
 
       addEligibilityAudit({
@@ -2299,7 +2249,7 @@ export function EmployeeMaster() {
         "Eligibility updated",
         `${empId} is now ${
           normalizedEligible === "Yes" ? "Eligible" : "Not Eligible"
-        }. Saved to Eligibility_List for the selected appraisal cycle. Active/Inactive status was not changed.`,
+        }. Saved to Employees table. Active/Inactive status was not changed.`,
       );
     } catch (error) {
       showBanner(
@@ -2489,32 +2439,19 @@ export function EmployeeMaster() {
               renderCycleScreen={(defaultProcess) => (
                 <AppraisalCycleMasterPage
                   defaultProcess={defaultProcess}
-                  onGenerateSheet={async (cycle) => {
-                    const result = await payrollCycleRequest("generate-sheet", {
-                      method: "POST",
-                      body: { cycleId: cycle.id },
-                    });
-                    invalidateEligibilityList();
-                    return result;
-                  }}
                   cycleStats={null}
                   canNavigate={(tab) =>
                     KNOWN_TABS.includes(tab) && isTabVisible(tab)
                   }
-                  onNavigate={(tab, uploadScreen) => {
-                    if (KNOWN_TABS.includes(tab) && isTabVisible(tab)) {
-                      if (tab === "payroll-upload") {
-                        setUploadInitialScreen(uploadScreen || "emp");
-                      }
-                      setActiveTab(tab);
-                    } else {
-                      showBanner(
-                        "Not connected",
-                        "That screen is not available here yet.",
-                        true,
-                      );
-                    }
-                  }}
+                  onNavigate={(tab) =>
+                    KNOWN_TABS.includes(tab) && isTabVisible(tab)
+                      ? setActiveTab(tab)
+                      : showBanner(
+                          "Not connected",
+                          "That screen is not available here yet.",
+                          true,
+                        )
+                  }
                 />
               )}
             />
@@ -2543,7 +2480,7 @@ export function EmployeeMaster() {
 
         {isTabVisible("feedback-rating") && activeTab === "feedback-rating" && (
           <div className="em-tab-content">
-            <FeedbackRatingMasterPage />
+            <FeedbackRatingMasterContainer />
           </div>
         )}
 
@@ -2560,7 +2497,7 @@ export function EmployeeMaster() {
               overflowX: "hidden",
             }}
           >
-            <UploadPage initialScreen={uploadInitialScreen} />
+            <UploadPage />
           </div>
         )}
         {isTabVisible("team-changes") && activeTab === "team-changes" && (
