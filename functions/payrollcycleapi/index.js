@@ -805,6 +805,27 @@ function toCatalystDate(value) {
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
 }
 
+function normalizePersonKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+}
+
+function resolveEmployeeReference(value, masterRows) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const exactRowId = masterRows.find((row) => String(row.ROWID || row.rowid || "") === raw);
+  if (exactRowId) return String(exactRowId.ROWID || exactRowId.rowid);
+
+  const key = normalizePersonKey(raw);
+  const matched = masterRows.find((row) => {
+    const candidates = [
+      row.emp_id, row.employee_id, row.name, row.emp_name, row.full_name,
+      row.email_id, row.email, row.appraiser_tech_ed,
+    ];
+    return candidates.some((candidate) => normalizePersonKey(candidate) === key);
+  });
+  return matched ? String(matched.ROWID || matched.rowid || "") : "";
+}
+
 async function generateAppraisalSheet(tables, cycle, actor) {
   if (!cycle?.id) throw new ApiError("Select an appraisal cycle before generating the sheet.", 400);
   if (cycle.archived) throw new ApiError("Archived cycles cannot generate an Appraisal Sheet.", 409);
@@ -825,7 +846,10 @@ async function generateAppraisalSheet(tables, cycle, actor) {
   if (!eligibleRows.length) {
     throw new ApiError("No eligible active employees were found for this cycle. Check the Eligibility List and criteria.", 409);
   }
-  const sheetRows = await getAllRows(tables.employees);
+  const [sheetRows, employeeMasterRows] = await Promise.all([
+    getAllRows(tables.employees),
+    getAllRows(tables.employeeMaster),
+  ]);
   const byKey = new Map();
   sheetRows.forEach((row) => {
     const rowCycle = String(row.cycle_id || "");
@@ -860,8 +884,18 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     // Don't send "" to Catalyst Date columns; it rejects empty strings as invalid dates.
     // Omitting an absent/invalid optional date also preserves the existing value on updates.
     if (joiningDate) payload.joining_date = joiningDate;
-    if (employee.appraiser_tech_ed) payload.appraiser_tech_ed = employee.appraiser_tech_ed;
-    if (employee.comp_manager) payload.comp_manager = employee.comp_manager;
+    // Appraisal_Sheet.appraiser_tech_ed is a bigint lookup/reference, not a display name.
+    // Resolve imported names/employee IDs to the matching Employee_Master ROWID.
+    const appraiserReference = resolveEmployeeReference(
+      employee.appraiser_tech_ed,
+      employeeMasterRows,
+    );
+    if (appraiserReference && /^\\d+$/.test(appraiserReference)) {
+      payload.appraiser_tech_ed = appraiserReference;
+    }
+    // Keep manager only when it is already a valid numeric reference.
+    const compManagerReference = String(employee.comp_manager ?? "").trim();
+    if (/^\\d+$/.test(compManagerReference)) payload.comp_manager = compManagerReference;
     if (existing) {
       await tables.employees.updateRow(payload);
       updated += 1;
