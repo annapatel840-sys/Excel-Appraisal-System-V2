@@ -809,8 +809,16 @@ export function AppraisalCycleMasterPage({
 
   const navTo = (id) => {
     const tabKey = NAV_TAB[id];
-    const uploadScreen= id === "go-up-em" || id === "go-up-pay" || id === "go-up-fr";
-    if (tabKey && onNavigate) return onNavigate(tabKey,uploadScreen);
+    const uploadScreen =
+      id === "go-up-em"
+        ? "emp"
+        : id === "go-up-pay"
+          ? "pay"
+          : id === "go-up-fr"
+            ? "fb"
+            : undefined;
+
+    if (tabKey && onNavigate) return onNavigate(tabKey, uploadScreen);
     showBanner("Not connected", "This step is not linked to a screen yet.");
   };
 
