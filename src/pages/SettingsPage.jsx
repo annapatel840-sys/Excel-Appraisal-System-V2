@@ -67,10 +67,9 @@ export function SettingsPage() {
             ))}
           </div>
           {draft.menuPosition === "left" && (
-            <label className="mt-4 flex cursor-pointer items-center justify-between rounded-lg border border-border p-3">
-              <span><span className="block text-sm font-medium">Collapse navigation labels</span><span className="block text-xs text-muted-foreground">Show only navigation icons in the vertical sidebar.</span></span>
-              <input type="checkbox" checked={draft.menuCollapsed} onChange={(e) => update("menuCollapsed", e.target.checked)} className="size-4 accent-[var(--app-brand)]" />
-            </label>
+            <p className="mt-4 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
+              The vertical sidebar starts collapsed to preserve screen space. Hover over it to reveal labels, or use the pin control to keep it permanently expanded.
+            </p>
           )}
         </section>
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card p-3">
