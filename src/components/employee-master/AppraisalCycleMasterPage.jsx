@@ -94,7 +94,7 @@ const BTN = {
 // Step / pending buttons -> tab key passed to onNavigate (EmployeeMaster decides what exists).
 const NAV_TAB = {
   "go-em": "roster",
-  "go-up-em": "roster",
+  "go-up-em": "payroll-upload",
   "go-pay": "payroll-data",
   "go-up-pay": "payroll-upload",
   "go-el": "eligibility",
@@ -148,9 +148,12 @@ function Modal({ title, onClose, children, footer, error, wideModal }) {
   }, [onClose]);
 
   return (
-    <div className="acx-ov" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) onClose?.();
-    }}>
+    <div
+      className="acx-ov"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose?.();
+      }}
+    >
       <div className="acx-md" style={wideModal ? { width: 560 } : undefined}>
         <div className="mh">
           <b>{title}</b>
@@ -1349,15 +1352,15 @@ export function AppraisalCycleMasterPage({
                     {r.acts
                       .filter((a) => a.id === "gen" || canGo(a.id))
                       .map((a) => (
-                      <button
-                        key={a.id}
-                        type="button"
-                        className={a.link ? "acx-btn link" : "acx-btn sm"}
-                        onClick={() => checkAct(a.id, c)}
-                      >
-                        {a.l}
-                      </button>
-                    ))}
+                        <button
+                          key={a.id}
+                          type="button"
+                          className={a.link ? "acx-btn link" : "acx-btn sm"}
+                          onClick={() => checkAct(a.id, c)}
+                        >
+                          {a.l}
+                        </button>
+                      ))}
                   </span>
                 </div>
               </div>
@@ -2256,7 +2259,15 @@ export function AppraisalCycleMasterPage({
             </div>
           </div>
           <div className="acx-hint">{setupHint[newForm.process]}</div>
-          <label className="acx-fl">Effective date <span style={{ color: "#DC2626", fontWeight: 800 }} aria-hidden="true">*</span></label>
+          <label className="acx-fl">
+            Effective date{" "}
+            <span
+              style={{ color: "#DC2626", fontWeight: 800 }}
+              aria-hidden="true"
+            >
+              *
+            </span>
+          </label>
           <input
             type="date"
             style={{ width: "100%" }}
