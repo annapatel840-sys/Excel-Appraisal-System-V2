@@ -1161,8 +1161,10 @@ async function routeRequest(req, res, identity, resource, a) {
     const data = await getEligibilityRows(tables, cycle, actor);
     return sendJson(res, 200, {
       success: true,
-      data,
-      meta: { cycleId: cycle.id, cycleName: cycle.name, total: data.length },
+      data: {
+        records: data,
+        meta: { cycleId: cycle.id, cycleName: cycle.name, total: data.length },
+      },
     });
   }
 
