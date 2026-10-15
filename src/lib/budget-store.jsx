@@ -31,8 +31,6 @@ function normalizeRow(row) {
     id: String(row.id || ""),
     appraisal_cycle_id: String(row.appraisal_cycle_id || ""),
     tech_ed_id: String(row.tech_ed_id || row.appraiser_tech_ed_id || ""),
-    original_headcount: number(row.original_headcount ?? row.allocation_headcount),
-    current_headcount: number(row.current_headcount ?? row.headcount),
     budget_percentage: number(row.budget_percentage ?? row.percentage),
     budget_amount: calculated,
     additional_budget: 0,
@@ -206,8 +204,6 @@ export function BudgetProvider({ children }) {
         appraisal_cycle_id: String(row.appraisal_cycle_id || ""),
         budget_distribution_id: String(row.budget_distribution_id || ""),
         comp_manager: String(row.comp_manager || ""),
-        original_headcount: number(row.original_headcount ?? row.allocation_headcount),
-        current_headcount: number(row.current_headcount ?? row.headcount),
         percentage: number(row.percentage),
         calculated_budget: number(row.calculated_budget),
         total_utilization: number(row.total_utilization),
@@ -251,6 +247,7 @@ export function BudgetProvider({ children }) {
         employeeById.set(id, {
           ...previous,
           ...employee,
+          in_appraisal_sheet: true,
           // Preserve the resolved Appraisal Sheet assignment separately;
           // the raw lookup FK may be a numeric Employee_Master ROWID.
           appraiser_tech_ed_row_id: String(
