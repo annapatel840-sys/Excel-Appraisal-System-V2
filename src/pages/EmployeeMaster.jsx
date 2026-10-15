@@ -2172,9 +2172,35 @@ export function EmployeeMaster() {
     const changesToPersist = [...changes, ...reasonChangesWithNames];
 
     try {
-      const results = await Promise.allSettled(
-        changesToPersist.map((change) => persistEligibilityChange(change)),
+      const batchResult = await updateEligibilityRecords(
+        changesToPersist.map((change) => ({
+          empId: change.empId,
+          eligible: change.fields?.Eligible,
+          reason: change.fields?.Reason || "",
+          source: "Criteria",
+        })),
+        eligibilityCycle.cycleId,
+        "Criteria",
       );
+      const results = changesToPersist.map((change, index) => {
+        const row = batchResult.rows[index];
+        return row?.ok
+          ? {
+              status: "fulfilled",
+              value: {
+                empId: change.empId,
+                name: change.name || "",
+                fields: {
+                  Eligible: change.fields?.Eligible === "Yes" ? "Yes" : "No",
+                  Reason: change.fields?.Reason || "",
+                },
+              },
+            }
+          : {
+              status: "rejected",
+              reason: new Error(row?.reason || "Eligibility save failed."),
+            };
+      });
 
       const successfulChanges = [];
       let failedCount = 0;
