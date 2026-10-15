@@ -679,10 +679,11 @@ async function saveEligibilityRowsBatch(tables, body, actor) {
       .filter((row) => String(row.appraisal_cycle_id || "") === cycleId)
       .map((row) => [String(row.employee_master_id || ""), row]),
   );
+  const results = new Array(records.length);
+  const inserts = [];
+  const updates = [];
 
-  let saved = 0;
-  const rows = [];
-  for (const record of records) {
+  records.forEach((record, index) => {
     const empId = String(record.empId || record.emp_id || "").trim();
     try {
       if (!empId) throw new ApiError("Employee ID is required.", 400);
@@ -717,17 +718,63 @@ async function saveEligibilityRowsBatch(tables, body, actor) {
         updated_by: String(actor || "Unknown user").slice(0, 60),
         eligibility_updated_at: now,
       };
-      const stored = existing
-        ? await tables.eligibility.updateRow(row)
-        : await tables.eligibility.insertRow(row);
-      const shaped = shapeEligibilityRow({ ...row, ...(stored || {}) }, master);
-      rows.push({ empId, ok: true, data: shaped });
-      saved += 1;
-      existingByMasterId.set(masterId, { ...row, ...(stored || {}) });
+      const item = { index, empId, master, row, existing };
+      if (existing) updates.push(item);
+      else inserts.push(item);
     } catch (error) {
-      rows.push({ empId, ok: false, reason: error?.message || "Eligibility save failed." });
+      results[index] = { empId, ok: false, reason: error?.message || "Eligibility save failed." };
     }
-  }
+  });
+
+  const writeBatches = async (items, mode) => {
+    for (let start = 0; start < items.length; start += 100) {
+      const batch = items.slice(start, start + 100);
+      try {
+        const rows = batch.map((item) => item.row);
+        const stored = mode === "update"
+          ? await tables.eligibility.updateRows(rows)
+          : await tables.eligibility.insertRows(rows);
+        batch.forEach((item, index) => {
+          results[item.index] = {
+            empId: item.empId,
+            ok: true,
+            data: shapeEligibilityRow(
+              { ...item.row, ...(Array.isArray(stored) ? (stored[index] || {}) : {}) },
+              item.master,
+            ),
+          };
+        });
+      } catch (batchError) {
+        // If Catalyst rejects a batch, retry rows individually so the caller
+        // still receives exact per-employee success/failure information.
+        for (const item of batch) {
+          try {
+            const stored = mode === "update"
+              ? await tables.eligibility.updateRow(item.row)
+              : await tables.eligibility.insertRow(item.row);
+            results[item.index] = {
+              empId: item.empId,
+              ok: true,
+              data: shapeEligibilityRow({ ...item.row, ...(stored || {}) }, item.master),
+            };
+          } catch (error) {
+            results[item.index] = {
+              empId: item.empId,
+              ok: false,
+              reason: error?.message || batchError?.message || "Eligibility save failed.",
+            };
+          }
+        }
+      }
+    }
+  };
+
+  await writeBatches(inserts, "insert");
+  await writeBatches(updates, "update");
+  const rows = results.map((row, index) =>
+    row || { empId: String(records[index]?.empId || records[index]?.emp_id || ""), ok: false, reason: "Eligibility record was not processed." },
+  );
+  const saved = rows.filter((row) => row.ok).length;
   return { cycleId, saved, failed: rows.length - saved, total: rows.length, rows };
 }
 
