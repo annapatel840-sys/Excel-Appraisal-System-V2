@@ -39,6 +39,7 @@ const HR_MENU_ITEMS = [
     "/employee-master?tab=appraisal-cycle",
   ],
   ["Payroll Master", "payroll-data", "/employee-master?tab=payroll-data"],
+  ["Feedback & Rating Master", "feedback-rating", "/employee-master?tab=feedback-rating"],
   ["Upload", "payroll-upload", "/employee-master?tab=payroll-upload"],
   ["Team Changes", "team-changes", "/employee-master?tab=team-changes"],
   ["Budget Master", "budget-master", "/employee-master?tab=budget-master"],
