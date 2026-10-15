@@ -298,24 +298,14 @@ export function SheetPage() {
   // ============================================================
 
   const budgetVertical = settings.menuPosition === "left";
-  const budgetCollapsed = budgetVertical && settings.menuCollapsed;
+  // The sidebar now auto-collapses unless explicitly pinned open.
+  const budgetCollapsed = budgetVertical && !settings.menuPinned;
 
-  const headerActions = budgetCollapsed ? (
-    <div className="flex flex-col items-center gap-1">
-      <span title={`Budget Allocated: ${formatCrore(budgetAllocated)}`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
-        <WalletCards className="size-4" />
-      </span>
-      <span title={`Consumed (Hikes + Bonuses): ${formatCrore(budgetConsumed)}`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
-        <CircleDollarSign className="size-4" />
-      </span>
-      <span title={`Utilisation: ${budgetUtilisation.toFixed(1)}%`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
-        <Percent className="size-4" />
-      </span>
-    </div>
-  ) : (
+  const fullBudgetCounters = (
     <div className={cn(
       "flex min-w-0",
       budgetVertical ? "w-full flex-col gap-2" : "items-center gap-4",
+      budgetCollapsed && "hidden group-hover/nav:flex",
     )}>
       <BudgetCounter
         label={budgetIsEstimate ? "Budget Allocated (est.)" : "Budget Allocated"}
@@ -338,6 +328,23 @@ export function SheetPage() {
       />
     </div>
   );
+
+  const headerActions = budgetCollapsed ? (
+    <>
+      <div className="flex flex-col items-center gap-1 group-hover/nav:hidden">
+        <span title={`Budget Allocated: ${formatCrore(budgetAllocated)}`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
+          <WalletCards className="size-4" />
+        </span>
+        <span title={`Consumed (Hikes + Bonuses): ${formatCrore(budgetConsumed)}`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
+          <CircleDollarSign className="size-4" />
+        </span>
+        <span title={`Utilisation: ${budgetUtilisation.toFixed(1)}%`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
+          <Percent className="size-4" />
+        </span>
+      </div>
+      {fullBudgetCounters}
+    </>
+  ) : fullBudgetCounters;
 
   return (
     <>
