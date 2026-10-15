@@ -103,7 +103,7 @@ const NAV_TAB = {
   "go-mm": "change-list",
   "go-ap": "appraisal-sheet",
   "go-lt": "letters",
-  "go-up-fr": "feedback-upload",
+  "go-up-fr": "payroll-upload",
 };
 const PEND_NAV = {
   rt: "go-ap",
@@ -809,8 +809,9 @@ export function AppraisalCycleMasterPage({
 
   const navTo = (id) => {
     const tabKey = NAV_TAB[id];
-    const uploadScreen= id === "go-up-em" || id === "go-up-pay" || id === "go-up-fr";
-    if (tabKey && onNavigate) return onNavigate(tabKey,uploadScreen);
+    const uploadScreen =
+      id === "go-up-em" || id === "go-up-pay" || id === "go-up-fr";
+    if (tabKey && onNavigate) return onNavigate(tabKey, uploadScreen);
     showBanner("Not connected", "This step is not linked to a screen yet.");
   };
 
@@ -908,7 +909,8 @@ export function AppraisalCycleMasterPage({
           ? "Upload as the data comes in · repeat any time · not required for any other step"
           : "Available after Activate",
         act ? "pd" : "lk",
-        act ? [{ l: "Upload ›", id: "go-up-fr" }] : [],
+        // act ? [{ l: "Upload ›", id: "go-up-fr" }] : [],
+         [{ l: "Upload ›", id: "go-up-fr" }] ,
       ),
       row(
         "Active",
