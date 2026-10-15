@@ -55,7 +55,7 @@ export function AppShell({ children, headerActions }) {
   const pathname = window.location.pathname;
   const user = useCatalystUser();
   const access = useAccess();
-  const { settings } = useSettings();
+  const { settings, saveSettings } = useSettings();
   const { effectiveId, preview } = useViewAs();
   const cycleName = useCurrentCycleName();
 
