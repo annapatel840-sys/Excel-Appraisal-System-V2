@@ -2265,7 +2265,7 @@ export function EmployeeMaster() {
         "Eligibility updated",
         `${empId} is now ${
           normalizedEligible === "Yes" ? "Eligible" : "Not Eligible"
-        }. Saved to Employees table. Active/Inactive status was not changed.`,
+        }. Saved to Eligibility_List for the selected appraisal cycle. Active/Inactive status was not changed.`,
       );
     } catch (error) {
       showBanner(
@@ -2455,6 +2455,18 @@ export function EmployeeMaster() {
               renderCycleScreen={(defaultProcess) => (
                 <AppraisalCycleMasterPage
                   defaultProcess={defaultProcess}
+                  onGenerateSheet={async (cycle) => {
+                    const result = await payrollCycleRequest("generate-sheet", {
+                      method: "POST",
+                      body: { cycleId: cycle.id },
+                    });
+                    invalidateEligibilityList();
+                    showBanner(
+                      "Appraisal Sheet generated",
+                      `${cycle.name}: ${Number(result?.created) || 0} new and ${Number(result?.updated) || 0} existing rows refreshed from Eligibility_List.`,
+                    );
+                    return result;
+                  }}
                   cycleStats={null}
                   canNavigate={(tab) =>
                     KNOWN_TABS.includes(tab) && isTabVisible(tab)
