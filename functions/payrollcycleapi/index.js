@@ -1598,8 +1598,12 @@ async function routeRequest(req, res, identity, resource, a) {
       await tables.cycles.updateRow(row);
       await bumpAccessVersion(req, a, "Cycle status changed: " + existing.name);
       const updated = { ...existing, status, remarks, changedBy: actor, changedAt: now };
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Status changed", details: { kind: "cycle", action: "Status changed", message: `Cycle status changed from ${existing.status} to ${status}.`, cycleName: updated.name, ...(remark ? { newRemarks: `${verb}: ${remark}` } : {}) } });
-      return sendJson(res, 200, { success: true, data: updated });
+      let eligibilitySync = null;
+      if (status === "Active") {
+        eligibilitySync = await syncEligibilityRows(tables, updated, actor);
+      }
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Status changed", details: { kind: "cycle", action: "Status changed", message: `Cycle status changed from ${existing.status} to ${status}.`, cycleName: updated.name, ...(eligibilitySync ? { eligibilityCreated: eligibilitySync.created, inactiveRemoved: eligibilitySync.removed } : {}), ...(remark ? { newRemarks: `${verb}: ${remark}` } : {}) } });
+      return sendJson(res, 200, { success: true, data: { ...updated, eligibilitySync } });
     }
 
     if (action === "archive") {
