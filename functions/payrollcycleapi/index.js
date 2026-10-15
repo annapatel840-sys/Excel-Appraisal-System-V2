@@ -764,7 +764,6 @@ async function generateAppraisalSheet(tables, cycle, actor) {
 
   let created = 0;
   let updated = 0;
-  const now = nowLocal();
   for (const employee of eligibleRows) {
     const masterId = String(employee.employeeMasterRowId || "");
     const empId = String(employee.empId || "").trim();
