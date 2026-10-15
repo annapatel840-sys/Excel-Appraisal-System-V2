@@ -654,6 +654,80 @@ async function saveEligibilityRow(tables, body, actor) {
   return shapeEligibilityRow({ ...row, ...(saved || {}) }, master);
 }
 
+async function saveEligibilityRowsBatch(tables, body, actor) {
+  const cycleId = String(body.cycleId || body.appraisal_cycle_id || "").trim();
+  const records = Array.isArray(body.records) ? body.records : [];
+  if (!cycleId || !records.length) throw new ApiError("Appraisal cycle and eligibility records are required.", 400);
+
+  const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
+  const cycle = cycles.find((item) => item.id === cycleId);
+  if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
+  if (cycle.archived) throw new ApiError("Archived cycles are read-only.", 409);
+
+  const [masters, allEligibility] = await Promise.all([
+    getAllRows(tables.employeeMaster),
+    getAllRows(tables.eligibility),
+  ]);
+  const masterByEmpId = new Map(
+    masters.map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]),
+  );
+  const existingByMasterId = new Map(
+    allEligibility
+      .filter((row) => String(row.appraisal_cycle_id || "") === cycleId)
+      .map((row) => [String(row.employee_master_id || ""), row]),
+  );
+
+  let saved = 0;
+  const rows = [];
+  for (const record of records) {
+    const empId = String(record.empId || record.emp_id || "").trim();
+    try {
+      if (!empId) throw new ApiError("Employee ID is required.", 400);
+      const master = masterByEmpId.get(empId.toLowerCase());
+      if (!master) throw new ApiError(`Employee ${empId} was not found in Employee Master.`, 404);
+      if (String(master.emp_status || master.status || "Active").trim().toLowerCase() !== "active") {
+        throw new ApiError("Only Active employees can be saved in Eligibility List.", 409);
+      }
+      const rawEligible = String(record.eligible_status || record.eligible || "").trim().toLowerCase();
+      const eligible = ["eligible", "yes", "true"].includes(rawEligible)
+        ? "Eligible"
+        : ["not eligible", "noteligible", "no", "false"].includes(rawEligible)
+          ? "Not Eligible"
+          : "";
+      if (!eligible) throw new ApiError("Eligibility must be Eligible or Not Eligible.", 400);
+
+      const masterId = String(master.ROWID || master.rowid || "");
+      const existing = existingByMasterId.get(masterId);
+      const sourceValue = String(record.source || body.source || "Manual").trim().toLowerCase();
+      const source = sourceValue === "criteria" ? "Criteria" : sourceValue === "system" ? "System" : "Manual";
+      const now = nowLocal();
+      const row = {
+        ...(existing ? { ROWID: rowId(existing) } : {}),
+        appraisal_cycle_id: cycleId,
+        employee_master_id: masterId,
+        emp_id: empId,
+        eligibility_status: eligible,
+        eligibility_reason: String(record.reason || record.eligibility_reason || "").trim().slice(0, 50),
+        eligibility_source: source,
+        change_tag: existing ? "Changed" : "New",
+        evaluated_at: now,
+        updated_by: String(actor || "Unknown user").slice(0, 60),
+        eligibility_updated_at: now,
+      };
+      const stored = existing
+        ? await tables.eligibility.updateRow(row)
+        : await tables.eligibility.insertRow(row);
+      const shaped = shapeEligibilityRow({ ...row, ...(stored || {}) }, master);
+      rows.push({ empId, ok: true, data: shaped });
+      saved += 1;
+      existingByMasterId.set(masterId, { ...row, ...(stored || {}) });
+    } catch (error) {
+      rows.push({ empId, ok: false, reason: error?.message || "Eligibility save failed." });
+    }
+  }
+  return { cycleId, saved, failed: rows.length - saved, total: rows.length, rows };
+}
+
 async function generateAppraisalSheet(tables, cycle, actor) {
   if (!cycle?.id) throw new ApiError("Select an appraisal cycle before generating the sheet.", 400);
   if (cycle.archived) throw new ApiError("Archived cycles cannot generate an Appraisal Sheet.", 409);
@@ -1185,11 +1259,8 @@ async function routeRequest(req, res, identity, resource, a) {
   if (resource === "eligibility" && req.method === "POST") {
     const body = await readBody(req);
     if (Array.isArray(body.records)) {
-      const saved = [];
-      for (const record of body.records) {
-        saved.push(await saveEligibilityRow(tables, { ...record, cycleId: record.cycleId || body.cycleId }, actor));
-      }
-      return sendJson(res, 200, { success: true, data: saved });
+      const result = await saveEligibilityRowsBatch(tables, body, actor);
+      return sendJson(res, 200, { success: true, data: result });
     }
     const saved = await saveEligibilityRow(tables, body, actor);
     return sendJson(res, 200, { success: true, data: saved });
