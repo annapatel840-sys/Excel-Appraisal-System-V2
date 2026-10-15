@@ -1689,6 +1689,8 @@ module.exports = async function payrollCycleApi(req, res) {
     if (resource === "session") return await routeRequest(req, res, identity, resource, a);
     if (resource === "schema" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "cycles" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "eligibility" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
+    if (resource === "generate-sheet" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
     if (resource === "locations" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
     if (resource === "audit" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "history" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
