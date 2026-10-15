@@ -219,20 +219,6 @@ export function AppShell({ children, headerActions }) {
         isVertical && (isPinned ? "lg:pl-56" : "lg:pl-14"),
       )}
     >
-      <style>{`
-        /* FIX: budget KPI strip must not overflow beside the collapsed rail.
-           It reappears on sidebar hover; pinned navigation keeps it visible. */
-        @media (min-width: 1024px) {
-          .app-shell-layout--auto-collapse:has(> .app-shell-sidebar:not(:hover))
-            .bd-root .summary,
-          .app-shell-layout--auto-collapse:has(> .app-shell-sidebar:not(:hover))
-            .tbd-root .bsum,
-          .app-shell-layout--auto-collapse:has(> .app-shell-sidebar:not(:hover))
-            .te-root .bsum {
-            display: none !important;
-          }
-        }
-      `}</style>
       <header
         className={cn(
           "app-shell-sidebar z-50 border-border bg-[var(--app-brand)]",
