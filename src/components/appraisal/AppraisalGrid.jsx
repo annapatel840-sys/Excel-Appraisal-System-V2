@@ -55,7 +55,6 @@ const WIDTHS = {
   appraiserTechED: 130,
   wissenExperience: 100,
   totalExperience: 96,
-  basePayPerExpYear: 150,
   lastAppraisalDate: 140,
   managerRating: 140,
   interviewCount: 86,
@@ -88,47 +87,8 @@ const WIDTHS = {
   atRisk: 140,
 };
 
-// Calculated: Current Annual Base Pay (in lakhs) per year of total experience.
-// = if(Total_Experience == 0, 0, ((Current_Annual_Base_Pay / 100000) / Total_Experience).round(2))
-const basePayPerExpYear = (row) => {
-  const exp = Number(row.totalExperience) || 0;
-
-  if (exp === 0) {
-    return 0;
-  }
-
-  const lakhs = (Number(row.currentAnnualBasePay) || 0) / 100000;
-
-  return Math.round((lakhs / exp) * 100) / 100;
-};
-
-const BASE_PAY_PER_EXP_COLUMN = {
-  key: "basePayPerExpYear",
-  label: "Base Pay per Exp. Year (₹ L)",
-  type: "decimal",
-  editable: false,
-  computed: true,
-  fn: basePayPerExpYear,
-  width: 150,
-};
-
-// Used for lookups (sorting, grouping, bulk edit ...) — still has every column,
-// plus the calculated column placed right after Current Annual Base Pay.
-const GRID_COLUMNS = (() => {
-  const index = COLUMNS.findIndex(
-    (column) => column.key === "currentAnnualBasePay",
-  );
-
-  if (index < 0) {
-    return [...COLUMNS, BASE_PAY_PER_EXP_COLUMN];
-  }
-
-  return [
-    ...COLUMNS.slice(0, index + 1),
-    BASE_PAY_PER_EXP_COLUMN,
-    ...COLUMNS.slice(index + 1),
-  ];
-})();
+// Used for lookups (sorting, grouping, bulk edit ...) — still has every column.
+const GRID_COLUMNS = COLUMNS;
 
 // empId is merged into the "name" column, so it is not drawn separately.
 const FROZEN_KEYS = new Set(["name"]);
@@ -136,7 +96,7 @@ const FROZEN_KEYS = new Set(["name"]);
 const DEFAULT_COLUMN_ORDER = [
   "name",
   "designation",
-  ...GRID_COLUMNS.map((column) => column.key).filter(
+  ...COLUMNS.map((column) => column.key).filter(
     (key) => key !== "empId" && !FROZEN_KEYS.has(key),
   ),
 ];

@@ -131,6 +131,20 @@ export const hikePct = (r) => {
 export const newBaseSalary = (r) =>
   Number(r.currentAnnualBasePay || 0) + hikeAmount(r);
 
+// YoE Ratio (auto-calculated):
+// if(Total_Experience == 0, 0, ((Current_Annual_Base_Pay / 100000) / Total_Experience).round(2))
+export const yoeRatio = (r) => {
+  const exp = Number(r.totalExperience) || 0;
+
+  if (exp === 0) {
+    return 0;
+  }
+
+  const lakhs = (Number(r.currentAnnualBasePay) || 0) / 100000;
+
+  return Math.round((lakhs / exp) * 100) / 100;
+};
+
 export const totalCTCWithRewards = (r) => newBaseSalary(r) + totalBonus(r);
 
 export const currentRewards = (r) =>
@@ -455,6 +469,8 @@ export const COLUMNS = [
     label: "YoE Ratio",
     type: "decimal",
     editable: false,
+    computed: true,
+    fn: yoeRatio,
     width: 100,
   },
   {
