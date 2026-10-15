@@ -6,6 +6,8 @@ import {
   ChevronDown,
   WalletCards,
   SlidersHorizontal,
+  Pin,
+  PinOff,
 } from "lucide-react";
 
 import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
@@ -74,7 +76,9 @@ export function AppShell({ children, headerActions }) {
     role === "hroperations";
 
   const isVertical = settings.menuPosition === "left";
-  const isCollapsed = isVertical && settings.menuCollapsed;
+  // FIX: vertical navigation auto-collapses by default; pinning keeps it open.
+  const isPinned = isVertical && Boolean(settings.menuPinned);
+  const isCollapsed = isVertical && !isPinned;
 
   const allNav = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -185,21 +189,25 @@ export function AppShell({ children, headerActions }) {
       className={cn(
         "flex shrink-0 items-center justify-center gap-2 text-center",
         isVertical && "px-1",
+        isCollapsed && "group-hover/nav:justify-start",
       )}
     >
       <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-[10px] font-bold text-primary-foreground">
         Wissen
       </span>
-      {!isCollapsed && (
-        <div className={cn(!isVertical && "hidden xl:block")}>
-          <h1 className="text-xs font-semibold leading-tight text-white">
-            Compensation Tool
-          </h1>
-          {cycleName && (
-            <p className="text-[9px] text-white/70">{cycleName}</p>
-          )}
-        </div>
-      )}
+      <div
+        className={cn(
+          !isVertical && "hidden xl:block",
+          isCollapsed && "hidden group-hover/nav:block",
+        )}
+      >
+        <h1 className="text-xs font-semibold leading-tight text-white">
+          Compensation Tool
+        </h1>
+        {cycleName && (
+          <p className="text-[9px] text-white/70">{cycleName}</p>
+        )}
+      </div>
     </div>
   );
 
@@ -207,17 +215,16 @@ export function AppShell({ children, headerActions }) {
     <div
       className={cn(
         "min-h-screen bg-background",
-        isVertical && "lg:pl-44",
-        isCollapsed && "lg:pl-16",
+        isVertical && (isPinned ? "lg:pl-56" : "lg:pl-14"),
       )}
     >
       <header
         className={cn(
           "z-50 border-border bg-[var(--app-brand)]",
           isVertical
-            ? "fixed inset-y-0 left-0 hidden w-56 border-r lg:flex"
+            ? "group/nav fixed inset-y-0 left-0 hidden border-r lg:flex lg:transition-[width] lg:duration-200"
             : "sticky top-0 border-b",
-          isCollapsed && "lg:w-14",
+          isVertical && (isPinned ? "lg:w-56" : "lg:w-14 lg:hover:w-56"),
         )}
       >
         <div
@@ -229,6 +236,29 @@ export function AppShell({ children, headerActions }) {
           )}
         >
           {projectHeading}
+
+          {isVertical && (
+            <button
+              type="button"
+              onClick={() =>
+                saveSettings({ ...settings, menuPinned: !isPinned })
+              }
+              aria-pressed={isPinned}
+              aria-label={isPinned ? "Unpin sidebar" : "Keep sidebar expanded"}
+              title={isPinned ? "Unpin sidebar" : "Keep sidebar expanded"}
+              className={cn(
+                "flex min-h-8 items-center gap-2 rounded-md text-white/80 transition-colors hover:bg-white/10",
+                isCollapsed
+                  ? "justify-center px-0 group-hover/nav:justify-start group-hover/nav:px-2.5"
+                  : "justify-end px-2",
+              )}
+            >
+              {isPinned ? <Pin className="size-4 shrink-0" /> : <PinOff className="size-4 shrink-0" />}
+              <span className={cn(isCollapsed && "hidden group-hover/nav:inline")}>
+                {isPinned ? "Pinned" : "Keep expanded"}
+              </span>
+            </button>
+          )}
 
           <nav
             className={cn(
@@ -255,7 +285,7 @@ export function AppShell({ children, headerActions }) {
                       isVertical
                         ? "min-h-9 items-center gap-2 px-2.5 text-xs"
                         : "h-7 items-center gap-1.5 px-2 text-[11px]",
-                      isCollapsed && "justify-center px-0",
+                      isCollapsed && "justify-center px-0 group-hover/nav:justify-start group-hover/nav:px-2.5",
                       (
                         item.to === "/"
                           ? pathname === "/"
@@ -273,7 +303,9 @@ export function AppShell({ children, headerActions }) {
                         "shrink-0",
                       )}
                     />
-                    {!isCollapsed && <span>{item.label}</span>}
+                    <span className={cn(isCollapsed && "hidden group-hover/nav:inline")}>
+                      {item.label}
+                    </span>
                     {isHrMenu && !isCollapsed && (
                       <ChevronDown className="size-3" />
                     )}
@@ -318,7 +350,9 @@ export function AppShell({ children, headerActions }) {
           >
             {!isVertical && headerActions}
             {isVertical && headerActions}
-            {!isCollapsed && <ViewAsSwitcher isVertical={isVertical} />}
+            <div className={cn(isCollapsed && "hidden group-hover/nav:block")}>
+              <ViewAsSwitcher isVertical={isVertical} />
+            </div>
             <ProfileMenu
               isVertical={isVertical}
               isCollapsed={isCollapsed}
@@ -334,7 +368,7 @@ export function AppShell({ children, headerActions }) {
 
       <main
         className={cn(
-          "mx-auto w-full max-w-[1600px] min-w-0 overflow-x-hidden px-3 py-3",
+          "mx-auto w-full max-w-[1600px] min-w-0 px-3 py-3",
           isVertical && "lg:mx-0 lg:max-w-none lg:px-4",
         )}
       >
