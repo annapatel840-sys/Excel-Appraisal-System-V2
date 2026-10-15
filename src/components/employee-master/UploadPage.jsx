@@ -898,6 +898,7 @@ export function UploadPage({ handlers = {} }) {
     try {
       const records = buildRecords();
       let out;
+      let uploadErrors = [...(res?.errors || [])];
 
       if (screen === "pay") {
         const result = await payrollCycleRequest("commit", {
@@ -962,14 +963,15 @@ export function UploadPage({ handlers = {} }) {
             msg: row.reason || "The backend rejected this row without a reason.",
           }));
         const combinedErrors = [...res.errors, ...serverErrors];
-        if (r.failed > 0 && serverErrors.length === 0) {
+        if ((Number(r.failed) || 0) > serverErrors.length) {
           combinedErrors.push({
             row: "—",
             id: "",
             col: "Upload",
-            msg: `${r.failed} row(s) failed in the backend, but no row-level reason was returned. Check the server logs.`,
+            msg: `${Number(r.failed) - serverErrors.length} backend failure(s) did not include a row-level reason. Check the server logs.`,
           });
         }
+        uploadErrors = combinedErrors;
         setRes((previous) => ({
           ...(previous || {}),
           errors: combinedErrors,
@@ -977,8 +979,9 @@ export function UploadPage({ handlers = {} }) {
         }));
         out = {
           batchId: r.batchId || batchId,
-          total: Number(r.total) || records.length,
-          succeeded: r.succeeded ?? records.length - clientFailedRows.size,
+          // Backend total excludes rows rejected by client-side validation.
+          total: records.length,
+          succeeded: Number(r.succeeded) || 0,
           failed: (Number(r.failed) || 0) + clientFailedRows.size,
         };
       }
@@ -1027,9 +1030,7 @@ export function UploadPage({ handlers = {} }) {
             by: roleName,
             at: new Date().toLocaleString("en-IN"),
             status: "Rejected",
-            errors: (res?.errors || []).concat(
-              (Array.isArray(out.rows) ? out.rows : []).filter((row) => row?.ok === false),
-            ),
+            errors: uploadErrors,
           },
           ...items,
         ]);
