@@ -242,6 +242,12 @@ const CSS = `
   &:not(.impOpen) #imp{display:none}
   &.impOpen #impBar{display:none}
   &.impOpen #cardsWrap:not(:has(#scnCard:not(.hide))){display:none}
+  /* Impact bar (white, blue left border): hidden on open, shown only once the Bulk operations card is folded */
+  #impBar{display:none}
+  &.folded:not(.impOpen) #impBar{display:flex}
+  &.folded #cardsWrap{max-height:none;opacity:1;margin-bottom:0}
+  &.folded #scnCard{display:none}
+  &:not(.folded):not(:has(#scnCard:not(.hide))) #cardsWrap{display:none}
   #mainCol{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px;overflow:auto}
   #metPanel{flex:0 0 340px;width:340px;background:#fff;border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;min-height:0}
   &:not(.impOpen) #metPanel{display:none}
@@ -965,7 +971,8 @@ const BulkOperations = forwardRef(function BulkOperations(
 
   /* panels */
   const [fold, setFoldS] = useState(false);
-  const [impOpen, setImpOpenS] = useState(() => lsGet(IMP_KEY, "1") !== "0");
+  // Metrics panel is closed whenever the page opens; the user opens it by hand.
+  const [impOpen, setImpOpenS] = useState(false);
   const [pt, setPt] = useState(() => {
     // The Budget tab was removed (the budget already sits in the header),
     // so any saved "budget" / "spread" choice opens Checks instead.
@@ -2701,7 +2708,7 @@ const BulkOperations = forwardRef(function BulkOperations(
             {kp(b0.utilT, bPv.utilT)}
           </div>
         </div>
-        <span className="tb-mock">Mock Screen</span>
+        <span className="tb-mock">Mock screen</span>
       </div>
 
       <div className="work">
