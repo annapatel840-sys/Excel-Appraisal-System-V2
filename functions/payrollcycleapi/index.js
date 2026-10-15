@@ -20,6 +20,7 @@ const TABLES = {
   cycles: "74008000000034190",
   audit: "74008000000034940",
   feedback: "74008000000022041",
+  eligibility: "74008000000057046",
   locations: "74008000000022481",
 };
 const PAGE_SIZE = 200;
@@ -217,6 +218,14 @@ function requirePayrollAccess(a, resource, method) {
   }
   if (["payroll", "audit", "history"].includes(resource) && method === "GET") {
     access.requireScreen(a, "payroll", "view");
+    return;
+  }
+  if (resource === "eligibility" && method === "GET") {
+    access.requireScreen(a, "employeeMaster", "view");
+    return;
+  }
+  if (["eligibility", "generate-sheet"].includes(resource) && method === "POST") {
+    access.requireScreen(a, resource === "eligibility" ? "employeeMaster" : "cycleMaster", "edit");
     return;
   }
   if (["validate", "commit", "undo"].includes(resource) && method === "POST") {
@@ -487,8 +496,228 @@ async function requirePayrollTables(adminApp) {
     cycles: datastore.table(TABLES.cycles),
     audit: datastore.table(TABLES.audit),
     feedback: datastore.table(TABLES.feedback),
+    eligibility: datastore.table(TABLES.eligibility),
     locations: datastore.table(TABLES.locations),
   };
+}
+
+async function syncEligibilityRows(tables, cycle, actor = "") {
+  if (!cycle?.id) throw new ApiError("Select an appraisal cycle before loading eligibility.", 400);
+
+  const [masterRows, existingRows] = await Promise.all([
+    getAllRows(tables.employeeMaster),
+    getAllRows(tables.eligibility),
+  ]);
+  const cycleRows = existingRows.filter(
+    (row) => String(row.appraisal_cycle_id || "") === String(cycle.id),
+  );
+  const activeMasters = masterRows.filter((row) =>
+    String(row.emp_status || row.status || "Active").trim().toLowerCase() === "active"
+  );
+  const activeByRowId = new Map(
+    activeMasters.map((row) => [String(row.ROWID || row.rowid || ""), row]),
+  );
+  const existingByMasterId = new Map(
+    cycleRows.map((row) => [String(row.employee_master_id || ""), row]),
+  );
+  const toDelete = cycleRows.filter(
+    (row) => !activeByRowId.has(String(row.employee_master_id || "")),
+  );
+  if (toDelete.length) {
+    await tables.eligibility.deleteRows(
+      toDelete.map((row) => rowId(row)).filter(Boolean),
+    );
+  }
+
+  let created = 0;
+  const now = nowLocal();
+  for (const employee of activeMasters) {
+    const masterId = String(employee.ROWID || employee.rowid || "");
+    const empId = String(employee.emp_id || "").trim();
+    if (!masterId || !empId) continue;
+    const existing = existingByMasterId.get(masterId);
+    if (existing) continue;
+
+    await tables.eligibility.insertRow({
+      appraisal_cycle_id: String(cycle.id),
+      employee_master_id: masterId,
+      emp_id: empId,
+      eligibility_status: "Eligible",
+      eligibility_reason: "",
+      eligibility_source: "Criteria",
+      change_tag: "New",
+      evaluated_at: now,
+      updated_by: String(actor || "System").slice(0, 60),
+      eligibility_updated_at: now,
+    });
+    created += 1;
+  }
+  return { created, removed: toDelete.length, activeEmployees: activeMasters.length };
+}
+
+function shapeEligibilityRow(row, master) {
+  return {
+    ...master,
+    ...row,
+    emp_id: String(master.emp_id || row.emp_id || ""),
+    empId: String(master.emp_id || row.emp_id || ""),
+    name: String(master.emp_name || master.name || ""),
+    designation: String(master.designation || ""),
+    department: String(master.department || ""),
+    organization: String(master.department || ""),
+    doj: master.joining_date || master.date_of_join || "",
+    joining_date: master.joining_date || "",
+    status: String(master.emp_status || master.status || "Active"),
+    eligible_status: String(row.eligibility_status || "Eligible"),
+    eligibleReason: String(row.eligibility_reason || ""),
+    eligible_reason: String(row.eligibility_reason || ""),
+    eligibilitySource: String(row.eligibility_source || "Criteria"),
+    changeTag: String(row.change_tag || ""),
+    eligibilityUpdatedAt: row.eligibility_updated_at || row.MODIFIEDTIME || "",
+    manualOverride: String(row.eligibility_source || "").toLowerCase() === "manual",
+    eligibilityRowId: rowId(row),
+    employeeMasterRowId: String(master.ROWID || master.rowid || ""),
+    appraisalCycleId: String(row.appraisal_cycle_id || ""),
+  };
+}
+
+async function getEligibilityRows(tables, cycle, actor = "") {
+  await syncEligibilityRows(tables, cycle, actor);
+  const [masterRows, eligibilityRows] = await Promise.all([
+    getAllRows(tables.employeeMaster),
+    getAllRows(tables.eligibility),
+  ]);
+  const masterById = new Map(
+    masterRows.map((row) => [String(row.ROWID || row.rowid || ""), row]),
+  );
+  return eligibilityRows
+    .filter((row) => String(row.appraisal_cycle_id || "") === String(cycle.id))
+    .map((row) => {
+      const master = masterById.get(String(row.employee_master_id || ""));
+      return master ? shapeEligibilityRow(row, master) : null;
+    })
+    .filter(Boolean);
+}
+
+async function saveEligibilityRow(tables, body, actor) {
+  const cycleId = String(body.cycleId || body.appraisal_cycle_id || "").trim();
+  const empId = String(body.empId || body.emp_id || "").trim();
+  if (!cycleId || !empId) throw new ApiError("Appraisal cycle and employee ID are required.", 400);
+
+  const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
+  const cycle = cycles.find((item) => item.id === cycleId);
+  if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
+  if (cycle.archived) throw new ApiError("Archived cycles are read-only.", 409);
+
+  const masters = await getAllRows(tables.employeeMaster);
+  const master = masters.find((row) => String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase());
+  if (!master) throw new ApiError(`Employee ${empId} was not found in Employee Master.`, 404);
+  if (String(master.emp_status || master.status || "Active").trim().toLowerCase() !== "active") {
+    throw new ApiError("Only Active employees can be saved in Eligibility List.", 409);
+  }
+
+  const masterId = String(master.ROWID || master.rowid || "");
+  const rows = await getAllRows(tables.eligibility);
+  const existing = rows.find((row) =>
+    String(row.appraisal_cycle_id || "") === cycleId &&
+    String(row.employee_master_id || "") === masterId
+  );
+  const rawEligible = String(body.eligible_status || body.eligible || "").trim().toLowerCase();
+  const eligible = ["eligible", "yes", "true"].includes(rawEligible)
+    ? "Eligible"
+    : ["not eligible", "noteligible", "no", "false"].includes(rawEligible)
+      ? "Not Eligible"
+      : "";
+  if (!eligible) throw new ApiError("Eligibility must be Eligible or Not Eligible.", 400);
+
+  const source = String(body.source || body.eligibility_source || "Manual").trim().toLowerCase() === "criteria"
+    ? "Criteria"
+    : "Manual";
+  const now = nowLocal();
+  const row = {
+    ...(existing ? { ROWID: rowId(existing) } : {}),
+    appraisal_cycle_id: cycleId,
+    employee_master_id: masterId,
+    emp_id: empId,
+    eligibility_status: eligible,
+    eligibility_reason: String(body.reason || body.eligibility_reason || "").trim().slice(0, 50),
+    eligibility_source: source,
+    change_tag: existing ? "Changed" : "New",
+    evaluated_at: now,
+    updated_by: String(actor || "Unknown user").slice(0, 60),
+    eligibility_updated_at: now,
+  };
+  const saved = existing
+    ? await tables.eligibility.updateRow(row)
+    : await tables.eligibility.insertRow(row);
+  return shapeEligibilityRow({ ...row, ...(saved || {}) }, master);
+}
+
+async function generateAppraisalSheet(tables, cycle, actor) {
+  if (!cycle?.id) throw new ApiError("Select an appraisal cycle before generating the sheet.", 400);
+  if (cycle.archived) throw new ApiError("Archived cycles cannot generate an Appraisal Sheet.", 409);
+
+  const eligibleRows = (await getEligibilityRows(tables, cycle, actor)).filter(
+    (row) => String(row.eligibility_status || "").toLowerCase() === "eligible",
+  );
+  const sheetRows = await getAllRows(tables.employees);
+  const byKey = new Map();
+  sheetRows.forEach((row) => {
+    const rowCycle = String(row.cycle_id || "");
+    const rowMaster = String(row.emp_master_row_id || "");
+    const rowEmpId = String(row.emp_id || "").trim().toLowerCase();
+    if (rowCycle === String(cycle.id)) {
+      if (rowMaster) byKey.set(`master:${rowMaster}`, row);
+      if (rowEmpId) byKey.set(`emp:${rowEmpId}`, row);
+    }
+  });
+
+  let created = 0;
+  let updated = 0;
+  const now = nowLocal();
+  for (const employee of eligibleRows) {
+    const masterId = String(employee.employeeMasterRowId || "");
+    const empId = String(employee.empId || "").trim();
+    const existing = byKey.get(`master:${masterId}`) || byKey.get(`emp:${empId.toLowerCase()}`);
+    const payload = {
+      ...(existing ? { ROWID: rowId(existing) } : {}),
+      emp_id: empId,
+      name: String(employee.name || ""),
+      designation: String(employee.designation || ""),
+      department: String(employee.department || ""),
+      joining_date: employee.joining_date || "",
+      emp_master_row_id: masterId,
+      cycle_id: String(cycle.id),
+      status: "Active",
+      eligible_status: "Eligible",
+    };
+    if (employee.appraiser_tech_ed) payload.appraiser_tech_ed = employee.appraiser_tech_ed;
+    if (employee.comp_manager) payload.comp_manager = employee.comp_manager;
+    if (existing) {
+      await tables.employees.updateRow(payload);
+      updated += 1;
+    } else {
+      await tables.employees.insertRow(payload);
+      created += 1;
+    }
+  }
+
+  await writeAudit(tables.audit, {
+    actor,
+    source: "cycle",
+    cycle,
+    action: "Appraisal Sheet generated",
+    details: {
+      kind: "cycle",
+      action: "Appraisal Sheet generated",
+      message: `Generated ${created} new and refreshed ${updated} existing Appraisal Sheet rows from Eligibility List.`,
+      cycleName: cycle.name,
+      created,
+      updated,
+      eligible: eligibleRows.length,
+    },
+  });
+  return { cycleId: cycle.id, cycleName: cycle.name, created, updated, eligible: eligibleRows.length };
 }
 
 function mapPayroll(row, cycleById, employeeById = new Map()) {
@@ -914,6 +1143,51 @@ async function routeRequest(req, res, identity, resource, a) {
   if (resource === "cycles" && req.method === "GET") {
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
     return sendJson(res, 200, { success: true, data: cycles });
+  }
+
+  if (resource === "eligibility" && req.method === "GET") {
+    const queryCycleId = String(query.cycleId || query.cycle_id || "").trim();
+    const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
+    const cycle = queryCycleId
+      ? cycles.find((item) => item.id === queryCycleId)
+      : cycles.find((item) => item.status === "Active" && !item.archived);
+    if (!cycle) {
+      return sendJson(res, 200, {
+        success: true,
+        data: [],
+        meta: { cycleId: "", cycleName: "", message: "No active appraisal cycle is available." },
+      });
+    }
+    const data = await getEligibilityRows(tables, cycle, actor);
+    return sendJson(res, 200, {
+      success: true,
+      data,
+      meta: { cycleId: cycle.id, cycleName: cycle.name, total: data.length },
+    });
+  }
+
+  if (resource === "eligibility" && req.method === "POST") {
+    const body = await readBody(req);
+    if (Array.isArray(body.records)) {
+      const saved = [];
+      for (const record of body.records) {
+        saved.push(await saveEligibilityRow(tables, { ...record, cycleId: record.cycleId || body.cycleId }, actor));
+      }
+      return sendJson(res, 200, { success: true, data: saved });
+    }
+    const saved = await saveEligibilityRow(tables, body, actor);
+    return sendJson(res, 200, { success: true, data: saved });
+  }
+
+  if (resource === "generate-sheet" && req.method === "POST") {
+    const body = await readBody(req);
+    const cycleId = String(body.cycleId || body.cycle_id || "").trim();
+    if (!cycleId) throw new ApiError("Appraisal cycle ID is required.", 400);
+    const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
+    const cycle = cycles.find((item) => item.id === cycleId);
+    if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
+    const result = await generateAppraisalSheet(tables, cycle, actor);
+    return sendJson(res, 200, { success: true, data: result });
   }
 
   if (resource === "locations" && req.method === "GET") {
