@@ -1078,38 +1078,21 @@ export function EmployeeMaster() {
       try {
         setEligibilityLoading(true);
 
-        const firstPage = await fetchEligibilityEmployees({
+        const result = await fetchEligibilityEmployees({
           page: 1,
-          limit: 100,
+          limit: 5000,
           search: "",
         });
-
-        let all = Array.isArray(firstPage?.data) ? firstPage.data : [];
-
-        const totalPages = Number(firstPage?.pagination?.totalPages) || 1;
-
-        for (let page = 2; page <= totalPages; page += 1) {
-          if (cancelled) {
-            return;
-          }
-
-          const result = await fetchEligibilityEmployees({
-            page,
-            limit: 100,
-            search: "",
-          });
-
-          all = all.concat(Array.isArray(result?.data) ? result.data : []);
-        }
 
         if (cancelled) {
           return;
         }
 
+        const all = Array.isArray(result?.data) ? result.data : [];
         finished = true;
 
         setEligibilityEmployees(all);
-        setEligibilityCycle(firstPage?.cycle || {
+        setEligibilityCycle(result?.cycle || {
           cycleId: all[0]?.appraisalCycleId || "",
           cycleName: "",
           total: all.length,
@@ -2150,22 +2133,29 @@ export function EmployeeMaster() {
       });
     });
 
-    if (reasonOnlyChanges.length > 0) {
-      applyLocalEligibilityChanges(reasonOnlyChanges);
-    }
-
-    if (changes.length === 0) {
+    if (changes.length === 0 && reasonOnlyChanges.length === 0) {
       showBanner(
         "Criteria applied",
         `${evaluated} employee(s) evaluated. No eligibility changes were required.`,
       );
-
       return;
     }
 
+    const reasonChangesWithNames = reasonOnlyChanges.map((change) => {
+      const employee = eligibilityEmployees.find(
+        (item) => normalizeEmpId(item.empId) === normalizeEmpId(change.empId),
+      );
+      return {
+        ...change,
+        name: employee?.name || "",
+        oldEligible: change.fields?.Eligible,
+      };
+    });
+    const changesToPersist = [...changes, ...reasonChangesWithNames];
+
     try {
       const results = await Promise.allSettled(
-        changes.map((change) => persistEligibilityChange(change)),
+        changesToPersist.map((change) => persistEligibilityChange(change)),
       );
 
       const successfulChanges = [];
