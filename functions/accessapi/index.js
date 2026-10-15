@@ -466,11 +466,21 @@ app.post(
         // it to Employee_Master.ROWID before writing the lookup field.
         let storedValue = newId;
         if (field === "app") {
-          const masterRows = await selectAll(ap.admin.zcql(), SETTINGS.employeeMaster.table);
+          const masterRows = await selectAll(
+            ap.admin.zcql(),
+            SETTINGS.employeeMaster.table,
+          );
           const normalizePerson = (value) =>
-            String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+            String(value || "")
+              .trim()
+              .toLowerCase()
+              .replace(/\s+/g, " ")
+              .replace(/[^a-z0-9@._ -]/g, "");
           const selectedKey = normalizePerson(newId);
-          const selectedEmpId = newId.split(/\\s+-\\s+/)[0].trim();
+          // Dropdown values are commonly formatted as "EMP001 - Prabhuprasad Parida".
+          const parts = newId.match(/^\s*(.*?)\s+-\s+(.*?)\s*$/);
+          const selectedEmpId = parts ? parts[1].trim() : newId.trim();
+          const selectedName = parts ? parts[2].trim() : newId.trim();
           const master = masterRows.find((person) => {
             const rowId = String(person.ROWID || person.rowid || "").trim();
             const empIdValue = String(person[SETTINGS.employeeMaster.empId] || "").trim();
@@ -478,14 +488,16 @@ app.post(
             const emailValue = String(person[SETTINGS.employeeMaster.email] || "").trim();
             return (
               rowId === newId ||
+              normalizePerson(rowId) === selectedKey ||
               normalizePerson(empIdValue) === selectedKey ||
               normalizePerson(nameValue) === selectedKey ||
               normalizePerson(emailValue) === selectedKey ||
-              normalizePerson(empIdValue) === normalizePerson(selectedEmpId)
+              normalizePerson(empIdValue) === normalizePerson(selectedEmpId) ||
+              normalizePerson(nameValue) === normalizePerson(selectedName)
             );
           });
-          const masterRowId = String(master && (master.ROWID || master.rowid) || "").trim();
-          if (!masterRowId || !/^\\d+$/.test(masterRowId)) {
+          const masterRowId = String((master && (master.ROWID || master.rowid)) || "").trim();
+          if (!masterRowId || !/^\d+$/.test(masterRowId)) {
             throw new HttpError(
               422,
               "The selected Tech-Ed appraiser could not be matched to an Employee Master record. Check the employee ID/name and try again.",
