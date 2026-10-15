@@ -1838,7 +1838,7 @@ export function EmployeeMaster() {
      SAVE ELIGIBILITY TO CATALYST
      ============================================================ */
 
-  const persistEligibilityChange = async (change) => {
+  const persistEligibilityChange = async (change, source = "Criteria") => {
     const eligible = change.fields?.Eligible === "Yes" ? "Yes" : "No";
 
     const eligibleReason = change.fields?.Reason || "";
@@ -1848,7 +1848,7 @@ export function EmployeeMaster() {
       eligible,
       eligibleReason,
       eligibilityCycle.cycleId,
-      "Criteria",
+      source,
     );
 
     return {
@@ -1909,7 +1909,7 @@ export function EmployeeMaster() {
 
             const oldEligible = oldEmployee?.eligible;
 
-            const result = await persistEligibilityChange(change);
+            const result = await persistEligibilityChange(change, "Manual");
 
             return {
               ...result,
