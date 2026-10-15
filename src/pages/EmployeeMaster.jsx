@@ -2127,8 +2127,8 @@ export function EmployeeMaster() {
 
       const nextReason = reasons.join(", ");
 
-      // Only eligible_status is persisted; a differing (derived) reason is
-      // refreshed locally without a PATCH.
+      // Eligibility status and reason are both persisted to Eligibility_List
+      // for the selected appraisal cycle. Manual overrides remain untouched.
       if (employee.eligible === nextEligible) {
         if (employee.eligibleReason !== nextReason) {
           reasonOnlyChanges.push({
