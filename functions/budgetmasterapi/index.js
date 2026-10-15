@@ -82,8 +82,6 @@ function mapDistribution(row) {
     calculated_budget: calculated,
     total_utilization: utilized,
     applied_budget: applied,
-    original_headcount: n(value(row, "original_headcount") || value(row, "allocation_headcount")),
-    current_headcount: n(value(row, "current_headcount") || value(row, "headcount")),
     utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
   };
 }
