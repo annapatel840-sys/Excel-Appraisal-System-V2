@@ -12,6 +12,7 @@ import {
 import { COLUMNS } from "./appraisal-data";
 import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 import { useCatalystUser } from "./catalyst-auth";
+import { getViewAsSelected, useViewAs } from "./view-as-store";
 
 const CURRENT_USER = "Unknown user";
 const APPRAISAL_YEAR = "Apr-26";
@@ -357,6 +358,9 @@ const fetchEmployeePageFromCatalyst = async (
 
   url.searchParams.set("page", String(page));
   url.searchParams.set("limit", String(limit));
+
+  const viewAs = getViewAsSelected();
+  if (viewAs) url.searchParams.set("viewAs", viewAs);
 
   if (status) {
     url.searchParams.set("status", status);
@@ -924,6 +928,8 @@ export function AppraisalProvider({ children }) {
   const currentUserName =
     authenticatedUser?.name || authenticatedUser?.email || CURRENT_USER;
 
+    const { effectiveId: viewAsId } = useViewAs();
+
   // HR users have universal appraisal visibility:
   // no status/eligibility restriction is applied to their employee data.
   const isHRUser =
@@ -1032,7 +1038,8 @@ export function AppraisalProvider({ children }) {
         setLoading(false);
       }
     }
-  }, [isHRUser, updateRows]);
+  // }, [isHRUser, updateRows]);
+  }, [isHRUser, updateRows, viewAsId]);
 
   /* ==========================================================
   INITIAL EMPLOYEE LOAD

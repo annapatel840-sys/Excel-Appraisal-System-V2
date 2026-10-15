@@ -1150,6 +1150,12 @@ async function getEmployees(req, res) {
     enforced ? a.user : currentUser,
     employeeMasterRows,
   );
+
+  const viewAsParam = String(params.viewAs || "").trim().toLowerCase();
+  const asCompMgr = enforced && viewAsParam === "compmanager" && (a.role === "hr" || a.role === "techEd");
+  const myEmpIdLower = String((a.user && a.user.empId) || "").trim().toLowerCase();
+
+
   const scopedEmployees = enforced
     ? allEmployees
         // Tech-Ed roster ownership is maintained in Employee_Master.appraiser_tech_ed
@@ -1157,6 +1163,14 @@ async function getEmployees(req, res) {
         // of truth for the Tech-Ed's visible employees instead of requiring a
         // separate Delegation row to duplicate the same assignment.
         .filter(function (employee) {
+
+          if (asCompMgr) {
+            const compMgrId = String(employee.comp_manager || "").split("-")[0].trim().toLowerCase();
+            return !!myEmpIdLower && compMgrId === myEmpIdLower;
+          }
+
+
+
           if (a.scope && a.scope.all) return true;
           if (a.role === "techEd") {
             return employeeBelongsToCurrentUser(

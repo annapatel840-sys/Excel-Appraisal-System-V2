@@ -98,3 +98,4 @@ export function useViewAs() {
     setViewAs: (id) => writeSelected(id === actualId ? "" : id),
   };
 }
+export const getViewAsSelected = () => selected;
