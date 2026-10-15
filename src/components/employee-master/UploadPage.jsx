@@ -937,7 +937,7 @@ export function UploadPage({ handlers = {} }) {
           failed: records.length - created - updated,
         };
       } else {
-        const failedRows = new Set(res.errors.map((e) => e.row));
+        const clientFailedRows = new Set(res.errors.map((e) => e.row));
         const response = await payrollCycleRequest("import", {
           method: "POST",
           body: {
@@ -945,15 +945,41 @@ export function UploadPage({ handlers = {} }) {
             cycleId,
             batchId,
             fileName: file.name,
-            records: records.filter((x) => !failedRows.has(x.row)),
+            records: records.filter((x) => !clientFailedRows.has(x.row)),
           },
         });
         const r = response || {};
+        const responseRows = Array.isArray(r.rows) ? r.rows : [];
+        const recordByRow = new Map(records.map((record) => [Number(record.row), record]));
+        const serverErrors = responseRows
+          .filter((row) => row && row.ok === false)
+          .map((row) => ({
+            row: Number(row.row) || 0,
+            id: sv(recordByRow.get(Number(row.row))?.empId),
+            col: Array.isArray(row.badFields) && row.badFields.length
+              ? row.badFields.map(labelOf).join(", ")
+              : "Upload",
+            msg: row.reason || "The backend rejected this row without a reason.",
+          }));
+        const combinedErrors = [...res.errors, ...serverErrors];
+        if (r.failed > 0 && serverErrors.length === 0) {
+          combinedErrors.push({
+            row: "—",
+            id: "",
+            col: "Upload",
+            msg: `${r.failed} row(s) failed in the backend, but no row-level reason was returned. Check the server logs.`,
+          });
+        }
+        setRes((previous) => ({
+          ...(previous || {}),
+          errors: combinedErrors,
+          headerError: false,
+        }));
         out = {
           batchId: r.batchId || batchId,
-          total: records.length,
-          succeeded: r.succeeded ?? records.length - failedRows.size,
-          failed: r.failed ?? failedRows.size,
+          total: Number(r.total) || records.length,
+          succeeded: r.succeeded ?? records.length - clientFailedRows.size,
+          failed: (Number(r.failed) || 0) + clientFailedRows.size,
         };
       }
 
@@ -984,8 +1010,30 @@ export function UploadPage({ handlers = {} }) {
           ...l,
         ]);
       }
-      setTab("hist");
-      say(`Uploaded ${out.succeeded} of ${out.total} rows`);
+      if (out.failed === 0) {
+        setTab("hist");
+        say(`Uploaded ${out.succeeded} of ${out.total} rows`);
+      } else {
+        // Keep the upload workspace open so backend row errors remain visible
+        // and can be downloaded instead of sending the user to History.
+        setTab("rules");
+        setError(`${out.failed} row(s) failed during upload. See the error log below and download it before retrying.`);
+        setLocal((items) => [
+          {
+            id: out.batchId,
+            screen,
+            cycle: cycle?.name || "",
+            file: file.name,
+            by: roleName,
+            at: new Date().toLocaleString("en-IN"),
+            status: "Rejected",
+            errors: (res?.errors || []).concat(
+              (Array.isArray(out.rows) ? out.rows : []).filter((row) => row?.ok === false),
+            ),
+          },
+          ...items,
+        ]);
+      }
     } catch (e) {
       setError(e.message || "The upload failed.");
     } finally {
