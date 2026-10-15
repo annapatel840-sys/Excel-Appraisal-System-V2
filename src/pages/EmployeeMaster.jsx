@@ -15,6 +15,7 @@ import {
   fetchEligibilityEmployees,
   updateEmployeeMasterEmployee,
   updateEmployeeEligibility,
+  updateEligibilityRecords,
   createEmployeeMasterEmployees,
 } from "@/lib/employee-master-data";
 
@@ -1900,23 +1901,40 @@ export function EmployeeMaster() {
 
     if (pendingImportType === "eligibility") {
       try {
-        const results = await Promise.allSettled(
-          previewChanges.map(async (change) => {
-            const oldEmployee = eligibilityEmployees.find(
-              (employee) =>
-                normalizeEmpId(employee.empId) === normalizeEmpId(change.empId),
-            );
-
-            const oldEligible = oldEmployee?.eligible;
-
-            const result = await persistEligibilityChange(change, "Manual");
-
-            return {
-              ...result,
-              oldEligible,
-            };
-          }),
+        const batchResult = await updateEligibilityRecords(
+          previewChanges.map((change) => ({
+            empId: change.empId,
+            eligible: change.fields?.Eligible,
+            reason: change.fields?.Reason || "",
+            source: "Manual",
+          })),
+          eligibilityCycle.cycleId,
+          "Manual",
         );
+        const results = previewChanges.map((change, index) => {
+          const row = batchResult.rows[index];
+          const oldEmployee = eligibilityEmployees.find(
+            (employee) =>
+              normalizeEmpId(employee.empId) === normalizeEmpId(change.empId),
+          );
+          return row?.ok
+            ? {
+                status: "fulfilled",
+                value: {
+                  empId: change.empId,
+                  name: change.name || oldEmployee?.name || "",
+                  fields: {
+                    Eligible: change.fields?.Eligible === "Yes" ? "Yes" : "No",
+                    Reason: change.fields?.Reason || "",
+                  },
+                  oldEligible: oldEmployee?.eligible,
+                },
+              }
+            : {
+                status: "rejected",
+                reason: new Error(row?.reason || "Eligibility save failed."),
+              };
+        });
 
         const successfulChanges = [];
         let failedCount = 0;
@@ -1953,7 +1971,7 @@ export function EmployeeMaster() {
         } else {
           showBanner(
             "Eligibility imported",
-            `${successfulChanges.length} employee record(s) updated in Employees table. Active/Inactive status was not changed.`,
+            `${successfulChanges.length} employee record(s) updated in Eligibility_List for this cycle. Active/Inactive status was not changed.`,
           );
         }
       } catch (error) {
