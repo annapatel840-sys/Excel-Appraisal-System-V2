@@ -2168,7 +2168,7 @@ export function EmployeeMaster() {
           addEligibilityAudit({
             empId: result.value.empId,
             employeeName: result.value.name,
-            oldValue: changes[index].oldEligible,
+            oldValue: changesToPersist[index].oldEligible,
             newValue: result.value.fields?.Eligible,
           });
         } else {
