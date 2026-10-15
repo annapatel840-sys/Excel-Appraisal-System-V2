@@ -18,6 +18,7 @@ export const HR_TAB_SCREENS = {
   "appraisal-cycle": "cycleMaster",
   "location-master": "cycleMaster",
   "payroll-data": "payroll",
+  "feedback-rating": "employeeMaster",
   "payroll-upload": "payroll",
   "team-changes": "teamChanges",
   "budget-master": "budgetAllocation",

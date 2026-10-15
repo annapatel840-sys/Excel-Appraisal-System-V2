@@ -7,6 +7,7 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { HrConfigPage } from "@/components/employee-master/HrConfigPage";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
+
 import {
   FIELD_DEFS,
   fetchEmployeeMasterEmployees,
@@ -39,6 +40,7 @@ import { EligibilityModal } from "@/components/employee-master/EligibilityModal"
 import { ImportPreviewModal } from "@/components/employee-master/ImportPreviewModal";
 import { AppraisalCycleMasterPage } from "@/components/employee-master/AppraisalCycleMasterPage";
 import { PayrollDataPage } from "@/components/employee-master/PayrollDataPage";
+import { FeedbackRatingMasterPage } from "@/components/employee-master/FeedbackRatingMasterPage";
 import { UploadPage } from "@/components/employee-master/UploadPage";
 import { TeamChangesPage } from "@/components/employee-master/TeamChangesPage";
 import { BudgetMasterPage } from "@/components/employee-master/BudgetMasterPage";
@@ -634,6 +636,7 @@ export function EmployeeMaster() {
       "appraisal-cycle",
       "location-master",
       "payroll-data",
+      "feedback-rating",
       "payroll-upload",
       "team-changes",
       "budget-master",
@@ -2441,15 +2444,20 @@ export function EmployeeMaster() {
                   canNavigate={(tab) =>
                     KNOWN_TABS.includes(tab) && isTabVisible(tab)
                   }
-                  onNavigate={(tab) =>
-                    KNOWN_TABS.includes(tab) && isTabVisible(tab)
-                      ? setActiveTab(tab)
-                      : showBanner(
-                          "Not connected",
-                          "That screen is not available here yet.",
-                          true,
-                        )
-                  }
+                  onNavigate={(tab, uploadScreen) => {
+                    if (KNOWN_TABS.includes(tab) && isTabVisible(tab)) {
+                      if (tab === "payroll-upload") {
+                        setUploadInitialScreen(uploadScreen || "emp");
+                      }
+                      setActiveTab(tab);
+                    } else {
+                      showBanner(
+                        "Not connected",
+                        "That screen is not available here yet.",
+                        true,
+                      );
+                    }
+                  }}
                 />
               )}
             />
@@ -2473,6 +2481,16 @@ export function EmployeeMaster() {
         )}
 
         {/* ======================================================
+            Feedback rating
+            ====================================================== */}
+
+        {isTabVisible("feedback-rating") && activeTab === "feedback-rating" && (
+          <div className="em-tab-content">
+            <FeedbackRatingMasterPage />
+          </div>
+        )}
+
+        {/* ======================================================
             PAYROLL UPLOAD
             ====================================================== */}
 
@@ -2485,7 +2503,7 @@ export function EmployeeMaster() {
               overflowX: "hidden",
             }}
           >
-            <UploadPage />
+            <UploadPage initialScreen={uploadInitialScreen} />
           </div>
         )}
         {isTabVisible("team-changes") && activeTab === "team-changes" && (
