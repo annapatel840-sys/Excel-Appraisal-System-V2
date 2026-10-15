@@ -110,22 +110,21 @@ export function ProfileMenu({ isVertical, isCollapsed, showSettings }) {
           isVertical
             ? "w-full gap-2 px-2 py-1.5"
             : "flex-col justify-center gap-0.5 px-2 py-0.5",
-          isCollapsed && "justify-center px-0",
+          isCollapsed && "justify-center px-0 group-hover/nav:justify-start group-hover/nav:px-2",
         )}
       >
         <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-white text-[10px] font-bold text-[var(--app-brand)]">
           {initials}
         </span>
-        {!isCollapsed && (
-          <span
-            className={cn(
-              "truncate leading-none text-white/80",
-              isVertical ? "text-xs" : "max-w-[64px] text-[9px]",
-            )}
-          >
-            {isVertical ? name : firstName}
-          </span>
-        )}
+        <span
+          className={cn(
+            "truncate leading-none text-white/80",
+            isVertical ? "text-xs" : "max-w-[64px] text-[9px]",
+            isCollapsed && "hidden group-hover/nav:block",
+          )}
+        >
+          {isVertical ? name : firstName}
+        </span>
       </button>
 
       {open && (
@@ -230,24 +229,10 @@ export function ProfileMenu({ isVertical, isCollapsed, showSettings }) {
                   ))}
                 </div>
                 {draft.menuPosition === "left" && (
-                  <label className="mt-2 flex cursor-pointer items-center justify-between gap-2 rounded-lg border border-[#e3e9ec] px-2.5 py-2">
-                    <span>
-                      <span className="block text-xs font-medium">
-                        Collapse navigation labels
-                      </span>
-                      <span className="block text-[10px] text-slate-500">
-                        Show only icons in the sidebar.
-                      </span>
-                    </span>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(draft.menuCollapsed)}
-                      onChange={(event) =>
-                        update("menuCollapsed", event.target.checked)
-                      }
-                      className="size-4 shrink-0 accent-[var(--app-brand)]"
-                    />
-                  </label>
+                  <p className="mt-2 rounded-lg bg-slate-50 px-2.5 py-2 text-[10px] leading-relaxed text-slate-500">
+                    The vertical sidebar collapses automatically. Hover over it to
+                    reveal labels, or use the pin control to keep it expanded.
+                  </p>
                 )}
               </section>
 
