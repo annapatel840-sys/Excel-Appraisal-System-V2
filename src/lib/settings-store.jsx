@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-export const DEFAULT_SETTINGS = { theme: "navy", menuPosition: "top", menuCollapsed: false };
+export const DEFAULT_SETTINGS = { theme: "navy", menuPosition: "top", menuPinned: false };
 const STORAGE_KEY = "employee-appraisal-settings";
 function readSettings() {
   try {
