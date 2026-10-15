@@ -2495,10 +2495,6 @@ export function EmployeeMaster() {
                       body: { cycleId: cycle.id },
                     });
                     invalidateEligibilityList();
-                    showBanner(
-                      "Appraisal Sheet generated",
-                      `${cycle.name}: ${Number(result?.created) || 0} new and ${Number(result?.updated) || 0} existing rows refreshed from Eligibility_List.`,
-                    );
                     return result;
                   }}
                   cycleStats={null}
