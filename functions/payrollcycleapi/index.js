@@ -544,7 +544,7 @@ async function syncEligibilityRows(tables, cycle, actor = "") {
       employee_master_id: masterId,
       emp_id: empId,
       eligibility_status: "Pending",
-      eligibility_reason: "",
+      eligibility_reason: "Awaiting criteria",
       eligibility_source: "System",
       change_tag: "New",
       evaluated_at: now,
