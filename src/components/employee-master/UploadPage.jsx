@@ -1036,7 +1036,19 @@ export function UploadPage({ handlers = {} }) {
         ]);
       }
     } catch (e) {
-      setError(e.message || "The upload failed.");
+      const message = e?.message || "The upload failed.";
+      setError(message);
+      // A request-level failure has no row response, so add it to the same
+      // visible/downloadable error log and keep the selected file in place.
+      setRes((previous) => ({
+        ...(previous || {}),
+        headerError: false,
+        errors: [
+          ...(previous?.errors || []),
+          { row: "—", id: "", col: "Upload", msg: message },
+        ],
+      }));
+      setOutcome(null);
     } finally {
       setBusy("");
     }
