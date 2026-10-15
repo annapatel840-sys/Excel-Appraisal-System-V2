@@ -384,7 +384,10 @@ const downloadErrorLog = (errors, name) =>
    checked but cannot be saved.
    ============================================================ */
 
-export function UploadPage({ handlers = {} }) {
+export function UploadPage({
+  handlers = {},
+  initialScreen = "emp",
+}) {
   const user = useCatalystUser();
   const role = String(user?.role || "")
     .trim()
@@ -402,7 +405,7 @@ export function UploadPage({ handlers = {} }) {
   const [loadToken, setLoadToken] = useState(0);
 
   const [cycleId, setCycleId] = useState("");
-  const [screen, setScreen] = useState("emp");
+  const [screen, setScreen] = useState(initialScreen);
   const [file, setFile] = useState(null); // { name, headers, rows:[{row,cells}] }
   const [map, setMap] = useState({});
   const [res, setRes] = useState(null); // { errors, nw, rep, headerError }
