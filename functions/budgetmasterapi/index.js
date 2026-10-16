@@ -670,6 +670,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       ? managerId + " - " + managerName
       : managerName || rawCompManager;
     const basePay = n(firstValue(row, [
+      "previous_year_base_pay", "previousYearBasePay", "last_year_base_pay", "lastYearBasePay",
+      "previous_annual_base_pay", "previousAnnualBasePay",
       "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "currentBasePay", "base_pay", "basePay", "annual_base_pay", "annualBasePay",
     ]));
     const allocatedPB = n(firstValue(row, [
@@ -691,12 +693,14 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       (explicitNotEligible ? false : explicitEligible || !rawEligibility);
     const amount = (aliases) => n(firstNonZeroValue(row, aliases));
     const currentHike = amount(["hike_amount", "hikeAmount", "current_hike_amount"]);
+    const previousHike = amount(["previous_year_hike_amount", "previousYearHikeAmount", "previous_hike_amount", "last_year_hike_amount"]);
     const currentPerformance = amount(["new_pb_to_be_offered", "newPBToBeOffered", "current_performance_bonus", "performance_bonus_current_year", "target_pb_allocated_for_may", "targetPBAllocatedForMay", "allocated_pb_amount", "allocatedPBAmount", "target_pb_next_year", "targetPBNextYear"]);
     const currentRetention = amount(["new_rb", "newRB", "current_retention_bonus", "retention_bonus_current_year"]);
     const currentJoining = amount(["joining_bonus", "joiningBonus", "current_joining_bonus"]);
     const previousPerformance = amount(["previous_year_performance_bonus", "previous_year_pb", "previous_pb", "pb_to_be_paid", "pbToBePaid"]);
     const previousRetention = amount(["previous_year_retention_bonus", "previous_year_rb", "previous_rb", "rb_to_be_paid", "rbToBePaid"]);
     const previousJoining = amount(["previous_year_joining_bonus", "previous_year_jb", "previous_joining_bonus", "joining_bonus_previous_year"]);
+    const lastYearExpenses = basePay + previousHike + previousPerformance + previousRetention + previousJoining;
     const personName = String(firstValue(masterRow, ["emp_name", "employee_name", "name"]) || firstValue(row, ["name", "emp_name", "employee_name"]) || employeeId).trim();
     // Keep one current Appraisal_Sheet row per employee and include only the
     // fields the Tech-Ed budget page needs; this avoids a second full table scan
@@ -714,7 +718,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       eligible,
       status: rawStatus,
       eligible_status: eligible ? "eligible" : "not eligible",
-      base: basePay + allocatedPB,
+      base: lastYearExpenses,
       hike_amount: currentHike,
       new_pb_to_be_offered: currentPerformance,
       current_performance_bonus: currentPerformance,
@@ -742,6 +746,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     comp_manager_display: employee.comp_manager_display,
     status: employee.status,
     eligible_status: employee.eligible_status,
+    budget_base: employee.base,
     hike_amount: employee.hike_amount,
     new_pb_to_be_offered: employee.new_pb_to_be_offered,
     current_performance_bonus: employee.current_performance_bonus,
@@ -883,8 +888,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const orgPct = n(master.budget_percentage);
       const effectivePct = rawPct === null || rawPct === orgPct ? orgPct : rawPct;
       const originalBase = n(row.original_budget_base || row.original_base || row.budget_base) || stats.base;
-      const originalBudget = n(row.calculated_budget) || (originalBase * orgPct / 100);
-      const updatedBudget = stats.base * effectivePct / 100;
+      const originalBudget = n(row.calculated_budget) || (originalBase * (1 + effectivePct / 100));
+      const updatedBudget = stats.base * (1 + effectivePct / 100);
 
       const update = {
         ROWID: row.id,
@@ -892,9 +897,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         [distCalcField]: originalBudget,
         applied_budget: updatedBudget,
       };
-      // A Tech-ED at the Org % inherits the default. Store null in the
-      // override field so future Org % changes flow through automatically.
-      if (rawPct === null || rawPct === orgPct) update.percentage = null;
+      // First allocation stores the initial Org %; future Org changes do not
+      // overwrite this saved Tech-Ed percentage.
+      if (rawPct === null) update.percentage = effectivePct;
       if (distributionColumns) {
         const originalBaseField = ["original_budget_base", "original_base"].find((key) => distributionColumns.has(key));
         const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => distributionColumns.has(key));
@@ -905,13 +910,13 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         if (originalCountField && !(n(row[originalCountField]) > 0)) update[originalCountField] = stats.count;
         if (currentCountField) update[currentCountField] = stats.count;
         if (currentBaseField) update[currentBaseField] = stats.base;
-        if (overrideField && (rawPct === null || rawPct === orgPct)) update[overrideField] = null;
+        if (overrideField && rawPct === null) update[overrideField] = effectivePct;
       }
       await distributionTable.updateRow(update);
       Object.assign(row, {
         budget_base: stats.base,
         percentage: effectivePct,
-        override_percentage: rawPct === null || rawPct === orgPct ? null : rawPct,
+        override_percentage: rawPct === null ? effectivePct : rawPct,
         calculated_budget: originalBudget,
         applied_budget: updatedBudget,
         effective_percentage: effectivePct,
@@ -951,8 +956,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const stats = compBases.get(pairKey) || { base: 0, count: 0 };
       const pct = n(row.percentage);
       const originalBase = n(row.original_budget_base || row.original_base || row.budget_base) || stats.base;
-      const originalBudget = n(row.calculated_budget) || (originalBase * pct / 100);
-      const updatedBudget = stats.base * pct / 100;
+      const originalBudget = n(row.calculated_budget) || (originalBase * (1 + pct / 100));
+      const updatedBudget = stats.base * (1 + pct / 100);
       const update = {
         ROWID: row.id,
         budget_base: stats.base,
@@ -982,15 +987,16 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // Org totals are the roll-up of the Tech-ED allocations. Preserve the
     // original budget once captured; refresh the current/applied total each read.
     const cycleTech = bundle.techEd.filter((row) => String(row.appraisal_cycle_id) === cycleId);
-    const orgOriginal = cycleTech.reduce((sum, row) => sum + n(row.calculated_budget), 0);
-    const orgUpdated = cycleTech.reduce((sum, row) => sum + n(row.applied_budget), 0);
     const previousOrgBase = n(master.org_budget_base);
     const orgOriginalBase = previousOrgBase || orgBase;
+    const orgPct = n(master.budget_percentage);
+    const orgOriginal = n(master.calculated_budget) || (orgOriginalBase * (1 + orgPct / 100));
+    const orgUpdated = orgBase * (1 + orgPct / 100);
     const orgFields = {
       ROWID: master.id,
       org_budget_base: orgOriginalBase,
-      [masterCalcField]: orgOriginal || (orgOriginalBase * n(master.budget_percentage) / 100),
-      applied_budget: orgUpdated || (orgBase * n(master.budget_percentage) / 100),
+      [masterCalcField]: orgOriginal,
+      applied_budget: orgUpdated,
     };
     if (masterColumns) {
       const originalBaseField = ["original_budget_base", "original_base"].find((key) => masterColumns.has(key));
@@ -1005,8 +1011,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     await masterTable.updateRow(orgFields);
     Object.assign(master, {
       org_budget_base: orgOriginalBase,
-      calculated_budget: orgOriginal || (orgOriginalBase * n(master.budget_percentage) / 100),
-      applied_budget: orgUpdated || (orgBase * n(master.budget_percentage) / 100),
+      calculated_budget: orgOriginal,
+      applied_budget: orgUpdated,
       current_budget_base: orgBase,
       current_headcount: employees.filter((employee) => employee.eligible).length,
     });
