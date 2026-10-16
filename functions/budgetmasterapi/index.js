@@ -887,8 +887,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const rawPct = row.percentage === null || row.percentage === undefined || row.percentage === "" ? null : n(row.percentage);
       const orgPct = n(master.budget_percentage);
       const effectivePct = rawPct === null ? orgPct : rawPct;
-      const originalBase = n(row.original_budget_base || row.original_base || row.budget_base) || stats.base;
-      const originalBudget = n(row.calculated_budget) || (originalBase * (1 + effectivePct / 100));
+      const savedOriginalBase = n(row.original_budget_base || row.original_base);
+      const originalBase = savedOriginalBase > 0 ? savedOriginalBase : stats.base;
+      const savedOriginalBudget = n(row.calculated_budget);
+      const originalBudget = savedOriginalBudget >= originalBase && savedOriginalBudget > 0
+        ? savedOriginalBudget
+        : (originalBase * (1 + effectivePct / 100));
       const updatedBudget = stats.base * (1 + effectivePct / 100);
 
       const update = {
@@ -988,9 +992,16 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // original budget once captured; refresh the current/applied total each read.
     const cycleTech = bundle.techEd.filter((row) => String(row.appraisal_cycle_id) === cycleId);
     const previousOrgBase = n(master.org_budget_base);
-    const orgOriginalBase = previousOrgBase || orgBase;
+    const previousOrgOriginal = n(master.calculated_budget);
+    // If an old snapshot is below the corrected prior-year base, it came from
+    // the broken calculation and must be rebuilt once.
+    const orgOriginalBase = previousOrgBase >= orgBase && previousOrgBase > 0
+      ? previousOrgBase
+      : orgBase;
     const orgPct = n(master.budget_percentage);
-    const orgOriginal = n(master.calculated_budget) || (orgOriginalBase * (1 + orgPct / 100));
+    const orgOriginal = previousOrgOriginal >= orgOriginalBase && previousOrgOriginal > 0
+      ? previousOrgOriginal
+      : (orgOriginalBase * (1 + orgPct / 100));
     const orgUpdated = orgBase * (1 + orgPct / 100);
     const orgFields = {
       ROWID: master.id,
