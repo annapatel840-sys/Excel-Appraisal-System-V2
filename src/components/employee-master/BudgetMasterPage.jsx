@@ -485,7 +485,7 @@ function HRApplyBudget() {
   // prior-year expense base. A valid first-save snapshot is preserved thereafter.
   const savedOrgBase = amount(selectedMaster?.org_budget_base);
   const savedOrgOriginal = amount(selectedMaster?.calculated_budget);
-  const hasValidOrgSnapshot = savedOrgBase >= total.base && savedOrgOriginal >= savedOrgBase && savedOrgBase > 0;
+  const hasValidOrgSnapshot = savedOrgBase >= total.base && savedOrgOriginal > savedOrgBase && savedOrgBase > 0;
   const orgBase = hasValidOrgSnapshot ? savedOrgBase : total.base;
   const effectiveOrgPct = orgPct === "" ? amount(selectedMaster?.budget_percentage) : amount(orgPct);
   const previewOrgBudget = orgBase * (1 + effectiveOrgPct / 100);
