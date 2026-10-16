@@ -640,7 +640,9 @@ function HRApplyBudget() {
             appraiser_tech_ed_id: String(r.canonicalKey || r.name || "").trim().split(/\s+-\s+/)[0].slice(0, 20),
             percentage: Number(previewPct(r)),
             budget_base: r.base,
-            calculated_budget: r.original || (r.base * (1 + Number(previewPct(r)) / 100)),
+            calculated_budget: String(r.id || "").startsWith("tech-ed-")
+              ? r.base * (1 + Number(previewPct(r)) / 100)
+              : (r.original || (r.base * (1 + Number(previewPct(r)) / 100))),
             applied_budget: previewBudget(r),
           },
           "distribution",
