@@ -45,7 +45,7 @@ const MAX_WIDTH = 260;
 
 // Right panel sizes
 const PANEL_WIDTH = 320;
-const PANEL_WIDE_WIDTH = 640;
+const PANEL_STEP = 40; // each − / + click
 const PANEL_MIN_WIDTH = 280;
 const PANEL_MAX_WIDTH = 720;
 
@@ -869,7 +869,6 @@ function EmployeePanel({
   const feedbackData = useEmployeeFeedback(employee.empId);
   const [tab, setTab] = useState("feedback");
   const [subs, setSubs] = useState({ feedback: "manager" });
-  const [wide, setWide] = useState(false);
   const [width, setWidth] = useState(PANEL_WIDTH);
   const [dragging, setDragging] = useState(false);
 
@@ -897,7 +896,7 @@ function EmployeePanel({
   const subList = PANEL_SUBS[activeTab] || [];
   const sub = subs[activeTab];
 
-  const panelWidth = wide ? PANEL_WIDE_WIDTH : width;
+  const panelWidth = width;
 
   const currentAssignee = String(employee?.[reqField] ?? "").trim();
 
@@ -967,7 +966,6 @@ function EmployeePanel({
           Math.min(PANEL_MAX_WIDTH, startWidth + (startX - moveEvent.clientX)),
         );
 
-        setWide(false);
         setWidth(next);
       };
 
@@ -1476,12 +1474,28 @@ function EmployeePanel({
 
         <button
           type="button"
-          onClick={() => setWide((previous) => !previous)}
-          title={wide ? "Normal width" : "Expand"}
-          aria-pressed={wide}
-          className="h-[26px] min-w-[26px] shrink-0 rounded-md border border-[#d1d5db] bg-white px-1.5 text-[13px] text-[#374151] hover:border-[#102a43] hover:text-[#102a43]"
+          onClick={() =>
+            setWidth((w) => Math.max(PANEL_MIN_WIDTH, w - PANEL_STEP))
+          }
+          disabled={width <= PANEL_MIN_WIDTH}
+          title="Decrease panel width"
+          aria-label="Decrease panel width"
+          className="h-[26px] min-w-[26px] shrink-0 rounded-md border border-[#d1d5db] bg-white px-1.5 text-[14px] font-bold leading-none text-[#374151] hover:border-[#102a43] hover:text-[#102a43] disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {wide ? "⤡" : "⤢"}
+          −
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            setWidth((w) => Math.min(PANEL_MAX_WIDTH, w + PANEL_STEP))
+          }
+          disabled={width >= PANEL_MAX_WIDTH}
+          title="Increase panel width"
+          aria-label="Increase panel width"
+          className="h-[26px] min-w-[26px] shrink-0 rounded-md border border-[#d1d5db] bg-white px-1.5 text-[14px] font-bold leading-none text-[#374151] hover:border-[#102a43] hover:text-[#102a43] disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          +
         </button>
 
         <button
