@@ -217,6 +217,10 @@ function requirePayrollAccess(a, resource, method) {
     access.requireScreen(a, "cycleMaster", "edit");
     return;
   }
+  if (resource === "feedback" && method === "GET") {
+    access.requireScreen(a, "employeeMaster", "view");
+    return;
+  }
   if (["payroll", "audit", "history"].includes(resource) && method === "GET") {
     access.requireScreen(a, "payroll", "view");
     return;
@@ -1308,6 +1312,120 @@ async function importRows(tables, body) {
   return { succeeded, failed, total: records.length, batchId: String(body.batchId || ""), rows };
 }
 
+/* ---------- Feedback & Rating screen ---------- */
+const fbText = (v) => (v === undefined || v === null ? "" : String(v).trim());
+const fbNum = (v) => {
+  if (v === undefined || v === null || v === "") return 0;
+  const n = Number(String(v).replace(/,/g, "").replace(/[%₹$]/g, "").trim());
+  return Number.isFinite(n) ? n : 0;
+};
+const fbDate = (v) => {
+  const s = fbText(v);
+  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : "";
+};
+
+// Case-insensitive column lookup (the table mixes emp_ID, Department, Tech_ED ...)
+function fbCol(row, ...names) {
+  if (!row) return undefined;
+  const keys = Object.keys(row);
+  for (const name of names) {
+    const key = keys.find((k) => k.toLowerCase() === name.toLowerCase());
+    if (key !== undefined && row[key] !== null && row[key] !== undefined && row[key] !== "") return row[key];
+  }
+  return undefined;
+}
+
+function shapeFeedbackCycle(cycle) {
+  return {
+    id: cycle.id,
+    name: cycle.name,
+    type: cycle.type || cycleTypeOf(cycle.name),
+    status: cycle.archived ? "Archived" : cycle.status || "Upcoming",
+    effective: fbDate(cycle.effective || cycle.start),
+  };
+}
+
+function shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById) {
+  const empKey = fbText(fbCol(row, "emp_ID"));
+  const master = masterByRowId.get(empKey) || masterByEmpId.get(empKey.toLowerCase()) || {};
+  const cycleId = fbText(fbCol(row, "appraisal_cycle_name"));
+  const cycle = cycleById.get(cycleId);
+  const yesNo = fbText(fbCol(row, "at_risk")).toLowerCase();
+
+  const basePay = fbNum(fbCol(master, "current_annual_base_pay", "base_pay", "current_salary"));
+  const experience = fbNum(fbCol(master, "total_experience", "total_exp", "experience"));
+  const yoe = basePay > 0 && experience > 0 ? Math.round((basePay / 100000 / experience) * 100) / 100 : 0;
+
+  return {
+    rowId: rowId(row),
+    cid: cycleId,
+    id: fbText(master.emp_id) || empKey,
+    name: fbText(master.emp_name || master.name),
+    desig: fbText(fbCol(row, "designation")) || fbText(master.designation),
+    dept: fbText(fbCol(row, "Department")) || fbText(master.department),
+    band: fbText(fbCol(row, "Band")) || fbText(master.band),
+    eff: fbDate(fbCol(row, "Effective_Date")) || (cycle ? cycle.effective : ""),
+    mr: fbNum(fbCol(row, "manager_rating")),
+    mf: fbText(fbCol(row, "manager_feedback")),
+    rr: fbNum(fbCol(master, "rr_percent", "rr")),
+    yoe,
+    ic: fbNum(fbCol(row, "interview_count")),
+    gm: fbNum(fbCol(row, "gross_margin")),
+    client: fbText(fbCol(row, "CostCenter_Client")),
+    cm: fbText(fbCol(row, "Client_Manager")),
+    cr: fbNum(fbCol(row, "client_rating")),
+    cf: fbText(fbCol(row, "client_feedback")),
+    risk: ["yes", "y", "true", "1"].includes(yesNo) ? "Yes" : "No",
+    ccm: fbText(fbCol(row, "Comp_Manager")) || fbText(master.comp_manager),
+    te: fbText(fbCol(row, "Tech_ED")) || fbText(master.appraiser_tech_ed),
+    batch: fbText(fbCol(row, "Upload_Batch")),
+  };
+}
+
+function shapeFeedbackBatches(auditRows) {
+  return auditRows
+    .filter((row) => row.source === "feedback_upload")
+    .map((row) => {
+      const d = auditDetails(row);
+      return {
+        id: fbText(row.batch_id),
+        cid: fbText(d.cycleId),
+        file: fbText(d.fileName),
+        by: fbText(row.changed_by),
+        at: fbText(row.changed_at || row.CREATEDTIME),
+        rows: Number(d.total) || 0,
+        nw: Number(d.inserted) || 0,
+        rep: Number(d.updated) || 0,
+        eff: fbDate(d.effectiveDate),
+      };
+    })
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
+}
+
+async function getFeedbackData(tables, query) {
+  const [feedbackRows, masterRows, cycleRows, auditRows] = await Promise.all([
+    getAllRows(tables.feedback),
+    getAllRows(tables.employeeMaster),
+    getAllRows(tables.cycles),
+    getAllRows(tables.audit),
+  ]);
+  const masterByRowId = new Map();
+  const masterByEmpId = new Map();
+  masterRows.forEach((row) => {
+    if (rowId(row)) masterByRowId.set(rowId(row), row);
+    const business = fbText(row.emp_id).toLowerCase();
+    if (business) masterByEmpId.set(business, row);
+  });
+  const cycles = cycleRows.map(normalizeCycle).filter((c) => c.status !== "Cancelled").map(shapeFeedbackCycle);
+  const cycleById = new Map(cycles.map((c) => [c.id, c]));
+  const onlyCycle = fbText(query.cycleId || query.cycle_id);
+  const rows = feedbackRows
+    .map((row) => shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById))
+    .filter((row) => row.cid && (!onlyCycle || row.cid === onlyCycle));
+  const batches = shapeFeedbackBatches(auditRows).filter((b) => !onlyCycle || b.cid === onlyCycle);
+  return { cycles, rows, batches };
+}
+
 async function routeRequest(req, res, identity, resource, a) {
   const enforced = Boolean(a && a.enforced);
   access.guard(a, () => requirePayrollAccess(a, resource, req.method));
@@ -1436,6 +1554,11 @@ async function routeRequest(req, res, identity, resource, a) {
     }
     const inserted = await tables.locations.insertRow(payload);
     return sendJson(res, 201, { success: true, data: { id: String(inserted?.ROWID || inserted?.rowid || inserted?.id || ""), ...payload } });
+  }
+
+  if (resource === "feedback" && req.method === "GET") {
+    const data = await getFeedbackData(tables, query);
+    return sendJson(res, 200, { success: true, data });
   }
 
   if (resource === "audit" && req.method === "GET") {
@@ -1892,6 +2015,7 @@ module.exports = async function payrollCycleApi(req, res) {
     if (resource === "eligibility" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
     if (resource === "generate-sheet" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
     if (resource === "locations" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
+    if (resource === "feedback" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "audit" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "history" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "payroll" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
