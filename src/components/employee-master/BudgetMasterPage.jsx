@@ -332,7 +332,7 @@ function HRApplyBudget() {
       const rowId = String(item?.row_id || item?.ROWID || "").trim();
       const key = normalizeOwnerKey(id || label);
       if (!key) return;
-      ownerValues.set(key, label || id || rowId);
+      ownerValues.set(key, String(item?.name || label || id || rowId).trim());
       [id, label, rowId, item?.name].filter(Boolean).forEach((alias) => {
         techOwnerByAlias.set(normalizeOwnerKey(alias), key);
       });
