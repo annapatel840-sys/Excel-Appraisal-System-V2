@@ -331,8 +331,11 @@ function HRApplyBudget() {
       const rowId = String(item?.row_id || item?.ROWID || "").trim();
       const key = normalizeOwnerKey(id || label);
       if (!key) return;
-      ownerValues.set(key, String(item?.name || label || id || rowId).trim());
-      [id, label, rowId, item?.name].filter(Boolean).forEach((alias) => {
+      // Resolve an ID-only Tech-Ed entry back to Employee_Master for display.
+      const displayName = String(item?.name || "").trim() ||
+        ownerName(label || id || rowId, employeeRows);
+      ownerValues.set(key, displayName || label || id || rowId);
+      [id, label, rowId, item?.name, displayName].filter(Boolean).forEach((alias) => {
         techOwnerByAlias.set(normalizeOwnerKey(alias), key);
       });
     });
