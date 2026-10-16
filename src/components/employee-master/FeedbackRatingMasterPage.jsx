@@ -299,8 +299,9 @@ export function FeedbackRatingMasterPage({
   const [ccm, setCcm] = useState("");
   const [risk, setRisk] = useState("");
   const [page, setPage] = useState(1);
-  const [sort, setSort] = useState(saved.sort || "emp");
-  const [dir, setDir] = useState(saved.dir || 1);
+  // Always open in Employee ID order (EMP001, EMP002 ...); click a header to re-sort.
+  const [sort, setSort] = useState("emp");
+  const [dir, setDir] = useState(1);
   const [cf, setCf] = useState(saved.cf || {});
   const [wrap, setWrap] = useState(saved.wrap || {});
   const [width, setWidth] = useState(saved.width || {});
@@ -415,16 +416,21 @@ export function FeedbackRatingMasterPage({
   const colWidth = (c) => width[c.k] || c.w;
   const cols = COLS.filter((c) => c.fz || !hidden[c.k]);
 
+  // Effective dates are compared as yyyy-mm-dd, whatever the backend sends.
+  const dayOf = (v) => String(v == null ? "" : v).slice(0, 10);
+  const sameCycle = (r) => String(r.cid) === String(cid);
   const scope = useMemo(
-    () => ROWS.filter((r) => r.cid === cid && (!eff || r.eff === eff)),
+    () => ROWS.filter((r) => sameCycle(r) && (!eff || dayOf(r.eff) === eff)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [ROWS, cid, eff],
   );
   const effList = useMemo(() => {
     const m = {};
     ROWS.forEach((r) => {
-      if (r.cid === cid) m[r.eff] = 1;
+      if (sameCycle(r) && dayOf(r.eff)) m[dayOf(r.eff)] = 1;
     });
-    return Object.keys(m).sort();
+    return Object.keys(m).sort().reverse(); // newest first
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ROWS, cid]);
   const teList = useMemo(() => Array.from(new Set(scope.map((r) => r.te))).sort(), [scope]);
   const ccmList = useMemo(() => Array.from(new Set(scope.map((r) => r.ccm))).sort(), [scope]);
@@ -481,8 +487,11 @@ export function FeedbackRatingMasterPage({
     f.sort((a, b) => {
       const x = rawOf(a, sort);
       const y = rawOf(b, sort);
-      if (c.t === "num") return (x - y) * dir;
-      return String(x).localeCompare(String(y), undefined, { numeric: true }) * dir;
+      let result;
+      if (c.t === "num") result = (x - y) * dir;
+      else result = String(x).localeCompare(String(y), undefined, { numeric: true }) * dir;
+      // same value -> keep employees in ID order
+      return result || String(a.id).localeCompare(String(b.id), undefined, { numeric: true });
     });
     return f;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -591,7 +600,7 @@ export function FeedbackRatingMasterPage({
   /* ---------- render ---------- */
   const cmCol = colMenu ? colOf(colMenu.k) : null;
   const effLabel = eff ? fmtDate(eff) : "all dates";
-  const batchesForCycle = BATCHES.filter((b) => b.cid === cid);
+  const batchesForCycle = BATCHES.filter((b) => String(b.cid) === String(cid));
 
   return (
     <div className="fb-root" onContextMenu={(e) => e.preventDefault()}>
@@ -1086,7 +1095,7 @@ const FB_CSS = `
 .fb-root .nt-item .btn{float:right;padding:2px 8px;font-size:12px}
 .fb-root .nt-item b{color:var(--link)}.fb-root .nt-ctx{display:block;color:var(--muted);font-size:12px}
 .fb-root .nt-item p{margin:3px 0 0;white-space:pre-wrap;color:#374151}
-.fb-root .fb-gutter{background:var(--gutter);margin:10px 0 12px;border-radius:14px;padding:12px;flex:1;display:flex;gap:12px;align-items:flex-start;min-height:0}
+.fb-root .fb-gutter{background:var(--gutter);margin:10px 0 12px;border-radius:14px;padding:12px;flex:1 0 auto;display:flex;gap:12px;align-items:flex-start;min-height:0}
 .fb-root .fb-pane{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;flex:1;min-width:0}
 .fb-root .fb-toolbar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .fb-root .fb-toolbar .sp{margin-left:auto}
