@@ -770,7 +770,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     employeesWithBase: withBase,
     employeesWithTechEd: withTechEd,
     budgetMasterCycles: bundle.master.filter((m) => String(m.appraisal_cycle_id || "").trim()).length,
-    baseColumns: "current_annual_base_pay + allocated_pb_amount",
+    baseColumns: "prior-year salary/expenses and prior-year bonus fields, with current salary fallback",
   };
   if (!bundle.diagnostics.budgetMasterCycles) {
     bundle.diagnostics.warning = "No Budget_Master row has an appraisal cycle, so no budget base was calculated. Add a Budget_Master row for the cycle (appraisal_cycle_id) first.";
@@ -886,7 +886,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const stats = techBases.get(techKey) || { base: 0, count: 0 };
       const rawPct = row.percentage === null || row.percentage === undefined || row.percentage === "" ? null : n(row.percentage);
       const orgPct = n(master.budget_percentage);
-      const effectivePct = rawPct === null || rawPct === orgPct ? orgPct : rawPct;
+      const effectivePct = rawPct === null ? orgPct : rawPct;
       const originalBase = n(row.original_budget_base || row.original_base || row.budget_base) || stats.base;
       const originalBudget = n(row.calculated_budget) || (originalBase * (1 + effectivePct / 100));
       const updatedBudget = stats.base * (1 + effectivePct / 100);
