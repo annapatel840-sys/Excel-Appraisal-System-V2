@@ -1079,6 +1079,7 @@ const IMPORT_FIELD_MAP = {
     designation: "designation",
     lastAppraisal: "last_appraisal_date",
     revenueReleased: "revenue_released",
+    rrPercent: "revenue_released", // the screen's RR% is stored in revenue_released
     grossMargin: "gross_margin",
     managerFeedback: "manager_feedback",
     managerRating: "manager_rating",
@@ -1087,6 +1088,13 @@ const IMPORT_FIELD_MAP = {
     clientRating: "client_rating",
     interviewCount: "interview_count",
     atRisk: "at_risk",
+    department: "Department",
+    band: "Band",
+    effectiveDate: "Effective_Date",
+    costCenterClient: "CostCenter_Client",
+    clientManagerName: "Client_Manager",
+    compManagerName: "Comp_Manager",
+    techEd: "Tech_ED",
     promo: "eligible_for_promotion",
     newTitle: "new_title",
     remarks: "remarks",
@@ -1127,7 +1135,7 @@ function normalizeImportValue(key, value) {
   return String(value).trim();
 }
 
-async function importRows(tables, body) {
+async function importRows(tables, body, actor = "") {
   const screen = String(body.screen || "").trim().toLowerCase();
   if (!["fb", "sheet"].includes(screen)) throw new ApiError("Unsupported upload type.");
   let cycleId = String(body.cycleId || "").trim();
@@ -1167,6 +1175,8 @@ async function importRows(tables, body) {
         "client_manager_feedback", "client_feedback", "client_rating", "interview_count",
         "at_risk", "eligible_for_promotion", "new_title", "remarks", "fy_year",
         "appraisal_cycle_name",
+        "Department", "Band", "Effective_Date", "CostCenter_Client", "Client_Manager",
+        "Comp_Manager", "Tech_ED", "Upload_Batch",
       ])
     : await getImportColumnSet(targetTable);
   const fieldMap = IMPORT_FIELD_MAP[screen];
@@ -1179,6 +1189,9 @@ async function importRows(tables, body) {
 
   let succeeded = 0;
   let failed = 0;
+  let insertedCount = 0;
+  let updatedCount = 0;
+  let firstEffective = "";
   const rows = [];
 
   for (const input of records) {
@@ -1216,7 +1229,7 @@ async function importRows(tables, body) {
           // invalid last-appraisal value instead of rejecting the whole row.
           if (
             screen === "fb" &&
-            key === "lastAppraisal" &&
+            (key === "lastAppraisal" || key === "effectiveDate") &&
             (
               typeof input[key] === "number" ||
               !/^\d{4}-\d{2}-\d{2}$/.test(String(input[key]).trim())
@@ -1238,7 +1251,9 @@ async function importRows(tables, body) {
         }
         if (columns.has("emp_ID")) payload.emp_ID = masterRowId;
         if (columns.has("emp_name")) payload.emp_name = masterRowId;
-        if (columns.has("designation")) payload.designation = masterRowId;
+        // designation is a plain text column: keep the uploaded text, else use the master's.
+        if (columns.has("designation") && !payload.designation && master?.designation) payload.designation = String(master.designation);
+        if (columns.has("Upload_Batch")) payload.Upload_Batch = String(body.batchId || "").slice(0, 80);
         if (!rowCycle) {
           errors.push(
             requestedRowCycle
@@ -1296,16 +1311,47 @@ async function importRows(tables, body) {
     try {
       if (existing) {
         await targetTable.updateRow({ ROWID: rowId(existing), ...payload });
+        updatedCount += 1;
       } else {
         await targetTable.insertRow(payload);
+        insertedCount += 1;
       }
       succeeded += 1;
+      if (!firstEffective && payload.Effective_Date) firstEffective = String(payload.Effective_Date);
       rows.push({ row: rowNumber, ok: true, reason: "", badFields: [] });
     } catch (error) {
       failed += 1;
       const reason = error?.message || "Feedback & Rating row could not be saved.";
       console.error("Import row failed:", { screen, row: rowNumber, empId, reason });
       rows.push({ row: rowNumber, ok: false, reason, badFields: [] });
+    }
+  }
+
+  if (screen === "fb" && succeeded > 0) {
+    try {
+      await writeAudit(tables.audit, {
+        actor: actor || "System",
+        source: "feedback_upload",
+        batchId: String(body.batchId || ""),
+        cycle: { id: String(body.batchId || ""), name: cycle?.name || "" },
+        action: "Feedback upload",
+        details: {
+          kind: "upload",
+          action: "Feedback upload",
+          message: "Feedback & Rating file uploaded.",
+          fileName: String(body.fileName || ""),
+          cycleId: String(cycle?.id || cycleId || ""),
+          cycleName: cycle?.name || "",
+          effectiveDate: firstEffective,
+          total: records.length,
+          succeeded,
+          failed,
+          inserted: insertedCount,
+          updated: updatedCount,
+        },
+      });
+    } catch (auditError) {
+      console.error("Feedback upload audit failed:", auditError && auditError.message);
     }
   }
 
@@ -1367,7 +1413,7 @@ function shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById) {
     eff: fbDate(fbCol(row, "Effective_Date")) || (cycle ? cycle.effective : ""),
     mr: fbNum(fbCol(row, "manager_rating")),
     mf: fbText(fbCol(row, "manager_feedback")),
-    rr: fbNum(fbCol(master, "rr_percent", "rr")),
+    rr: fbNum(fbCol(row, "revenue_released", "rr_percent")),
     yoe,
     ic: fbNum(fbCol(row, "interview_count")),
     gm: fbNum(fbCol(row, "gross_margin")),
@@ -1735,7 +1781,7 @@ async function routeRequest(req, res, identity, resource, a) {
 
   if (resource === "import" && req.method === "POST") {
     const body = await readBody(req);
-    const result = await importRows(tables, body);
+    const result = await importRows(tables, body, actor);
     return sendJson(res, 200, { success: true, data: result });
   }
 
