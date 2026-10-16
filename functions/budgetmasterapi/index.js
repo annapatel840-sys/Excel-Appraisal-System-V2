@@ -890,7 +890,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const savedOriginalBase = n(row.original_budget_base || row.original_base);
       const originalBase = savedOriginalBase > 0 ? savedOriginalBase : stats.base;
       const savedOriginalBudget = n(row.calculated_budget);
-      const originalBudget = savedOriginalBudget >= originalBase && savedOriginalBudget > 0
+      const originalBudget = savedOriginalBudget > originalBase && savedOriginalBudget > 0
         ? savedOriginalBudget
         : (originalBase * (1 + effectivePct / 100));
       const updatedBudget = stats.base * (1 + effectivePct / 100);
@@ -999,7 +999,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       ? previousOrgBase
       : orgBase;
     const orgPct = n(master.budget_percentage);
-    const orgOriginal = previousOrgOriginal >= orgOriginalBase && previousOrgOriginal > 0
+    const orgOriginal = previousOrgOriginal > orgOriginalBase && previousOrgOriginal > 0
       ? previousOrgOriginal
       : (orgOriginalBase * (1 + orgPct / 100));
     const orgUpdated = orgBase * (1 + orgPct / 100);
