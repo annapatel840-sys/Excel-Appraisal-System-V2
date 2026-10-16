@@ -250,7 +250,6 @@ const HR_COLS = [
   ["Budget base", true],
   ["% applied", true],
   ["Source", false],
-  ["Budget", true],
   ["Original Budget", true],
   ["Updated Budget", true],
   ["Original Count", true],
@@ -332,7 +331,7 @@ function HRApplyBudget() {
       const rowId = String(item?.row_id || item?.ROWID || "").trim();
       const key = normalizeOwnerKey(id || label);
       if (!key) return;
-      ownerValues.set(key, label || id || rowId);
+      ownerValues.set(key, String(item?.name || label || id || rowId).trim());
       [id, label, rowId, item?.name].filter(Boolean).forEach((alias) => {
         techOwnerByAlias.set(normalizeOwnerKey(alias), key);
       });
@@ -435,8 +434,8 @@ function HRApplyBudget() {
         name: label,
         pct: amount(selectedMaster?.budget_percentage),
         base: employeeBases.get(key) || 0,
-        original: ((employeeBases.get(key) || 0) * amount(selectedMaster?.budget_percentage)) / 100,
-        updated: ((employeeBases.get(key) || 0) * amount(selectedMaster?.budget_percentage)) / 100,
+        original: (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100),
+        updated: (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100),
         team0: employeeCounts.get(key) || 0,
         team: employeeCounts.get(key) || 0,
         lastChanged: "—",
@@ -466,14 +465,16 @@ function HRApplyBudget() {
     [rows],
   );
 
+  // Saved Tech-Ed percentages remain independent of future Org % changes.
   const previewPct = (row) =>
     Object.prototype.hasOwnProperty.call(pending, row.name)
       ? Number(pending[row.name])
-      : overrides[row.name]
-        ? row.pct
-        : (orgPct === "" ? amount(row.pct || 0) : amount(orgPct));
+      : amount(row.pct || 0);
 
-  const previewBudget = (row) => (row.base * previewPct(row)) / 100;
+  const previewBudget = (row) => row.base * (1 + previewPct(row) / 100);
+  const orgBase = amount(selectedMaster?.org_budget_base) || total.base;
+  const effectiveOrgPct = orgPct === "" ? amount(selectedMaster?.budget_percentage) : amount(orgPct);
+  const previewOrgBudget = orgBase * (1 + effectiveOrgPct / 100);
   const changes = rows.filter((r) => Number(previewPct(r)) !== r.pct);
   const orgPending = orgPct !== "" && !!selectedMaster && amount(orgPct) !== Number(selectedMaster.budget_percentage || 0);
   const pendingCount =
@@ -494,15 +495,27 @@ function HRApplyBudget() {
     setSavingOrg(true);
     setError("");
     const orgBase = amount(selectedMaster?.org_budget_base) || total.base;
+    const originalBudget = amount(selectedMaster?.calculated_budget) || orgBase * (1 + org / 100);
+    const updatedBudget = orgBase * (1 + org / 100);
     try {
       await updateBudget(selectedMaster?.id || "", {
         appraisal_cycle_id: cycleId,
         budget_percentage: org,
         org_budget_base: orgBase,
-        calculated_budget: orgBase * org / 100,
-        applied_budget: orgBase * org / 100,
+        calculated_budget: originalBudget,
+        applied_budget: updatedBudget,
         budget_utilized: amount(selectedMaster?.budget_utilized),
       }, "master", false);
+      await Promise.all(rows
+        .filter((row) => String(row.id || "").startsWith("tech-ed-"))
+        .map((row) => updateBudget("", {
+          appraisal_cycle_id: cycleId,
+          appraiser_tech_ed_id: String(row.canonicalKey || row.name || "").trim().split(/\s+-\s+/)[0].slice(0, 20),
+          percentage: org,
+          budget_base: row.base,
+          calculated_budget: row.base * (1 + org / 100),
+          applied_budget: row.base * (1 + org / 100),
+        }, "distribution", false)));
       await reloadBudget();
     } catch (saveError) {
       setError(saveError.message || "Org % and appraisal cycle could not be saved.");
@@ -559,11 +572,11 @@ function HRApplyBudget() {
     }
 
     const orgBaseForCycle = amount(selectedMaster?.org_budget_base) || total.base;
-    const orgOriginalBudget = orgBaseForCycle * org / 100;
-    if (previewTotal > orgOriginalBudget + 0.5) {
+    const orgAvailableBudget = orgBaseForCycle * (1 + org / 100);
+    if (previewTotal > orgAvailableBudget + 0.5) {
       setError(
-        "Not applied. Tech-Ed Original Budgets total " + money(previewTotal) +
-        ", which exceeds the Org Original Budget of " + money(orgOriginalBudget) + ". Reduce one or more Tech-Ed percentages.",
+        "Not applied. Tech-Ed Updated Budgets total " + money(previewTotal) +
+        ", which exceeds the Org Updated Budget of " + money(orgAvailableBudget) + ". Reduce one or more Tech-Ed percentages.",
       );
       return;
     }
@@ -577,7 +590,7 @@ function HRApplyBudget() {
         : {
             ...r,
             pct: to,
-            original: (r.base * to) / 100,
+            updated: previewBudget(r),
             lastChanged: dateText(now),
           };
     });
@@ -612,6 +625,8 @@ function HRApplyBudget() {
 
     try {
       const orgBase = amount(selectedMaster?.org_budget_base) || total.base;
+      const originalOrgBudget = amount(selectedMaster?.calculated_budget) || orgBase * (1 + org / 100);
+      const updatedOrgBudget = orgBase * (1 + org / 100);
       const cycleId = String(selectedCycle || activeCycle?.id || activeCycle?.appraisal_cycle_id || activeCycle?.ROWID || "").trim();
       if (!cycleId) throw new Error("Select an appraisal cycle before applying Tech-Ed budgets.");
       // Persist every Appraisal Sheet Tech-Ed, including newly discovered rows.
@@ -622,10 +637,12 @@ function HRApplyBudget() {
           r.id && !String(r.id).startsWith("tech-ed-") ? r.id : "",
           {
             appraisal_cycle_id: cycleId,
-            appraiser_tech_ed_id: String(r.name || r.canonicalKey || "").trim().split(/\s+-\s+/)[0].slice(0, 20),
+            appraiser_tech_ed_id: String(r.canonicalKey || r.name || "").trim().split(/\s+-\s+/)[0].slice(0, 20),
             percentage: Number(previewPct(r)),
             budget_base: r.base,
-            calculated_budget: (r.base * org) / 100,
+            calculated_budget: String(r.id || "").startsWith("tech-ed-")
+              ? r.base * (1 + Number(previewPct(r)) / 100)
+              : (r.original || (r.base * (1 + Number(previewPct(r)) / 100))),
             applied_budget: previewBudget(r),
           },
           "distribution",
@@ -635,8 +652,8 @@ function HRApplyBudget() {
           appraisal_cycle_id: cycleId,
           budget_percentage: org,
           org_budget_base: orgBase,
-          calculated_budget: orgBase * org / 100,
-          applied_budget: orgBase * org / 100,
+          calculated_budget: originalOrgBudget,
+          applied_budget: updatedOrgBudget,
         }, "master", false),
       ]);
       await reloadBudget();
@@ -747,21 +764,19 @@ function HRApplyBudget() {
             <div className={orgCell}>
               <div className="text-[11px] text-[#5b6b80]">Org budget base</div>
               <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
-                {money(amount(selectedMaster?.org_budget_base) || total.base)}
+                {money(orgBase)}
               </div>
             </div>
             <div className={orgCell}>
               <div className="text-[11px] text-[#5b6b80]">Original budget</div>
               <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
-                {money(total.original)}
+                {money(amount(selectedMaster?.calculated_budget) || orgBase * (1 + amount(selectedMaster?.budget_percentage) / 100))}
               </div>
             </div>
             <div className={orgCell}>
               <div className="text-[11px] text-[#5b6b80]">Updated budget</div>
               <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
-                {money(
-                  orgPending || changes.length ? previewTotal : total.updated,
-                )}
+                {money(orgPending ? previewOrgBudget : amount(selectedMaster?.applied_budget) || previewOrgBudget)}
               </div>
             </div>
             <div className="shrink-0 min-w-[150px] rounded-md border border-[#d7dce3] bg-[#f8fafc] px-[22px] py-4">
@@ -866,14 +881,6 @@ function HRApplyBudget() {
                             Org default
                           </span>
                         )}
-                      </td>
-                      <td
-                        className={
-                          td +
-                          "whitespace-nowrap text-right font-bold text-[#17365d]"
-                        }
-                      >
-                        {money((r.base * p) / 100)}
                       </td>
                       <td className={td + "whitespace-nowrap text-right"}>
                         {money(r.original)}
