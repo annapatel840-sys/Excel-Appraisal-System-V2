@@ -17,6 +17,7 @@ import { useAppraisal } from "@/lib/appraisal-store";
 import { useAccess } from "@/lib/access-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
+import { buildFeedbackEntries, cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
 
 // ============================================================
 // API
@@ -860,7 +861,9 @@ function EmployeePanel({
   onRequest,
   onClose,
   view,
+  currentCycleName,
 }) {
+  const feedbackData = useEmployeeFeedback(employee.empId);
   const [tab, setTab] = useState("feedback");
   const [subs, setSubs] = useState({ feedback: "manager" });
   const [wide, setWide] = useState(false);
@@ -1030,8 +1033,86 @@ function EmployeePanel({
     />
   );
 
+  // Timeline built from the Feedback & Rating table (one entry per cycle).
+  const renderFeedbackEntries = (entries, promoOf) => (
+    <ul className="relative m-0 mt-1 list-none p-0 pl-[18px]">
+      <span className="absolute bottom-2 left-[5px] top-2 w-px bg-[#e0e4ea]" />
+
+      {entries.map((entry, index) => {
+        const promotion = promoOf ? promoOf(entry) : "";
+
+        return (
+          <li key={entry.key} className="relative pb-2.5 pt-1.5">
+            {renderTimelineDot(index)}
+
+            <span className="font-extrabold text-[#102a43]">{entry.cycle}</span>
+
+            {entry.current && <PanelChip tone="now">This cycle</PanelChip>}
+
+            {entry.title ? <div className="text-[#6b7280]">{entry.title}</div> : null}
+
+            {entry.sub ? (
+              <div className="text-[11.5px] text-[#6b7280]">{entry.sub}</div>
+            ) : null}
+
+            {entry.chips.map((chip) => (
+              <PanelChip key={chip.label}>
+                {chip.label} <b>{chip.value}</b>
+              </PanelChip>
+            ))}
+
+            {promotion ? (
+              <PanelChip tone={/^y/i.test(promotion) ? "good" : undefined}>
+                {/^y/i.test(promotion) ? "Promoted" : `Promotion: ${promotion}`}
+              </PanelChip>
+            ) : null}
+
+            {entry.text ? (
+              <div className="mt-1 leading-[1.45] text-[#1f2937]">{entry.text}</div>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+
   const renderFeedback = () => {
     const stateNode = renderHistoryState();
+
+    // Feedback & Rating table data (when this login may read it).
+    if (feedbackData.items.length) {
+      const historyEntries = history.rows.map((item, index) => ({
+        key: `history-${index}`,
+        cycleKey: cycleKey(item.cycleName || item.year),
+        cycle: item.cycleName || item.year,
+        current: index === 0,
+        title: item.designation !== "—" ? item.designation : "",
+        sub: "",
+        chips:
+          item.rating && String(item.rating).trim() !== "" && item.rating !== "—"
+            ? [{ label: "Manager rating", value: `${item.rating} / 5` }]
+            : [],
+        text: item.feedback && item.feedback !== "—" ? item.feedback : "",
+      }));
+      const promotionByCycle = new Map(
+        history.rows.map((item) => [
+          cycleKey(item.cycleName || item.year),
+          item.promotion && item.promotion !== "—" ? item.promotion : "",
+        ]),
+      );
+
+      const entries = buildFeedbackEntries(sub, feedbackData.items, {
+        currentCycleName,
+        fallback: sub === "manager" ? historyEntries : [],
+      });
+
+      if (entries.length) {
+        return renderFeedbackEntries(
+          entries,
+          sub === "manager" ? (entry) => promotionByCycle.get(entry.cycleKey) || "" : undefined,
+        );
+      }
+    }
 
     if (sub === "manager") {
       if (stateNode) {
@@ -4333,6 +4414,7 @@ export function AppraisalGrid({
           onRequest={onRequest}
           onClose={closeDetailPanel}
           view={viewForPanel}
+          currentCycleName={currentCycleName}
           history={{
             loading: historyLoading,
             error: historyError,

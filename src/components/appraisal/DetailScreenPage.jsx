@@ -22,6 +22,7 @@ import { useBudget } from "@/lib/budget-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
+import { buildFeedbackEntries, cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
 
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#12304f";
@@ -1000,6 +1001,7 @@ export function DetailScreenPage({
   }, [currentUser.name]);
 
   const employee = rows[Math.min(index, rows.length - 1)] || rows[0];
+  const feedbackData = useEmployeeFeedback(employee?.empId);
 
   const noticeSignature = employee
     ? JSON.stringify({
@@ -1453,6 +1455,30 @@ export function DetailScreenPage({
           note: null,
         })),
       ]
+    : [];
+
+  // Feedback & Rating table entries for the active tab (empty = use the old view).
+  const feedbackEntries = feedbackData.items.length
+    ? buildFeedbackEntries(fbTab, feedbackData.items, {
+        currentCycleName,
+        fallback:
+          fbTab === "manager"
+            ? timeline.map((t) => ({
+                key: `sheet-${t.year}`,
+                cycleKey: cycleKey(t.year),
+                cycle: t.year,
+                current: t.current,
+                title: t.title,
+                sub: "",
+                chips:
+                  t.rating !== "—"
+                    ? [{ label: "Manager rating", value: `${t.rating}${t.current ? " / 5" : ""}` }]
+                    : [],
+                promo: t.promo,
+                text: "",
+              }))
+            : [],
+      })
     : [];
 
   return (
@@ -2139,6 +2165,73 @@ export function DetailScreenPage({
                     </div>
 
                     <div className="ds-scroll flex-1 px-4 pb-3">
+                      {feedbackEntries.length ? (
+                        <>
+                          {feedbackEntries.map((t) => (
+                            <div key={t.key} className="mb-3 flex gap-2.5">
+                              <span
+                                className="mt-1.5 inline-block h-[11px] w-[11px] shrink-0 rounded-full border-2"
+                                style={{
+                                  borderColor: t.current ? LTEAL : "#C4CED6",
+                                  background: t.current ? LTEAL : "#fff",
+                                }}
+                              />
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <b className="text-[14px]" style={{ color: INK }}>
+                                    {t.cycle}
+                                  </b>
+                                  {t.current ? (
+                                    <span
+                                      className="rounded px-2 py-0.5 text-[11px] font-semibold"
+                                      style={{ background: SOFT, color: INK }}
+                                    >
+                                      This cycle
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {t.title ? (
+                                  <div style={{ color: MUTED }}>{t.title}</div>
+                                ) : null}
+                                {t.sub ? (
+                                  <div className="text-[11.5px]" style={{ color: MUTED }}>
+                                    {t.sub}
+                                  </div>
+                                ) : null}
+                                <div className="mt-1 flex flex-wrap gap-1.5">
+                                  {t.chips.map((chip) => (
+                                    <span
+                                      key={chip.label}
+                                      className="rounded px-2 py-0.5 text-[11.5px]"
+                                      style={{ background: SOFT, color: INK }}
+                                    >
+                                      {chip.label} <b>{chip.value}</b>
+                                    </span>
+                                  ))}
+                                  {t.promo && t.promo !== "—" ? (
+                                    <span
+                                      className="rounded px-2 py-0.5 text-[11.5px]"
+                                      style={{ background: SOFT, color: INK }}
+                                    >
+                                      Eligible for promotion: {t.promo}
+                                    </span>
+                                  ) : null}
+                                </div>
+                                {t.text ? (
+                                  <div className="mt-1" style={{ color: "#3E4C59" }}>
+                                    {t.text}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      ) : fbTab !== "manager" && feedbackData.items.length ? (
+                        <div className="mt-1" style={{ color: MUTED }}>
+                          No {fbTab === "client" ? "client" : "other"} feedback recorded.
+                        </div>
+                      ) : (
+                        <>
                       {timeline.map((t) => (
                         <div key={t.year} className="mb-3 flex gap-2.5">
                           <span
@@ -2212,6 +2305,8 @@ export function DetailScreenPage({
                         Client rating and past RR % are not in the sheet yet, so
                         they show “—”.
                       </div>
+                        </>
+                      )}
                     </div>
                   </>
                 ) : null}
