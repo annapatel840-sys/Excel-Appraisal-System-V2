@@ -257,6 +257,7 @@ const DS_CSS = `
 .ds-panel-scroll{position:relative;flex:1 1 0;min-width:0;min-height:0;overflow:hidden}
 .ds-fit{position:absolute;top:0;left:0;transform-origin:top left}
 .ds-foot{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:6px 12px;border-top:1px solid #E3E9EC;background:#fff}
+.ds-side,.ds-side *{font-family:"Manrope","Segoe UI",system-ui,Arial,sans-serif}
 .ds-side{position:relative;min-width:0;min-height:0;overflow:hidden}
 .ds-side>.ds-card{width:100%;height:100%}
 .ds-scroll{min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}

@@ -27,6 +27,8 @@ const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const CURRENT_APPRAISAL_YEAR = "Apr-26"; // fallback while cycle master is loading
 
 const APPRAISAL_FONT = "Arial, Helvetica, sans-serif";
+// Right feedback panel: Manrope only.
+const PANEL_FONT = '"Manrope", "Segoe UI", system-ui, sans-serif';
 
 // ============================================================
 // GRID SETTINGS
@@ -42,9 +44,9 @@ const MIN_WIDTH = 60;
 const MAX_WIDTH = 260;
 
 // Right panel sizes
-const PANEL_WIDTH = 360;
+const PANEL_WIDTH = 320;
 const PANEL_WIDE_WIDTH = 640;
-const PANEL_MIN_WIDTH = 300;
+const PANEL_MIN_WIDTH = 280;
 const PANEL_MAX_WIDTH = 720;
 
 const WIDTHS = {
@@ -125,6 +127,7 @@ const SUM_COLUMN_KEYS = new Set([
 ]);
 
 const GRID_STYLES = `
+.appraisal-side, .appraisal-side * { font-family: "Manrope", "Segoe UI", system-ui, sans-serif !important; }
 @keyframes appraisalCellBlink {
   0%, 100% { box-shadow: 0 0 0 0 rgba(201,164,0,0); }
   50% { box-shadow: 0 0 0 3px rgba(201,164,0,.55); }
@@ -1444,8 +1447,8 @@ function EmployeePanel({
 
   return (
     <aside
-      className="relative flex shrink-0 flex-col border-l border-[#d5dce5] bg-white text-[12.5px] text-[#111827]"
-      style={{ width: panelWidth, fontFamily: APPRAISAL_FONT }}
+      className="appraisal-side relative flex shrink-0 flex-col border-l border-[#d5dce5] bg-white text-[12.5px] text-[#111827]"
+      style={{ width: panelWidth, fontFamily: PANEL_FONT }}
     >
       {/* drag grip (left edge) */}
       <div
@@ -2975,18 +2978,33 @@ export function AppraisalGrid({
 
       event.preventDefault();
 
+      // Enter works like Tab: next editable cell to the right (Shift+Enter: left),
+      // continuing on the next (previous) row. Same order as the columns on screen.
       const direction = event.shiftKey ? -1 : 1;
-      let nextRowIndex = rowIndex + direction;
+      const tabColumnsOf = (row) =>
+        orderedColumns.filter(
+          (column) => !FROZEN_KEYS.has(column.key) && isColumnEditable(row, column),
+        );
 
-      while (nextRowIndex >= 0 && nextRowIndex <= maxRow) {
-        const nextRow = displayRows[nextRowIndex];
+      let navRow = rowIndex;
+      let navColumns = tabColumnsOf(currentRow);
+      let navIndex =
+        navColumns.findIndex((column) => column.key === columnKey) + direction;
 
-        if (nextRow && isColumnEditable(nextRow, columnDef)) {
-          focusCell(nextRowIndex, columnKey);
+      while (navRow >= 0 && navRow <= maxRow) {
+        if (navIndex >= 0 && navIndex < navColumns.length) {
+          focusCell(navRow, navColumns[navIndex].key);
           return;
         }
 
-        nextRowIndex += direction;
+        navRow += direction;
+
+        if (navRow < 0 || navRow > maxRow) {
+          break;
+        }
+
+        navColumns = tabColumnsOf(displayRows[navRow]);
+        navIndex = direction === 1 ? 0 : navColumns.length - 1;
       }
 
       // No next editable cell: still commit this one.
