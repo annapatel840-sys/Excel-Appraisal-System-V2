@@ -2,7 +2,7 @@ import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 
 // GET feedbackratingapi/?resource=feedback  ->  { cycles, rows, batches }
 export async function loadFeedbackRating({ cycleId } = {}) {
-  const url = new URL(catalystFunctionUrl("feedbackratingapi"));
+  const url = new URL(catalystFunctionUrl("payrollcycleapi"));
   url.searchParams.set("resource", "feedback");
   if (cycleId) url.searchParams.set("cycleId", String(cycleId));
 
