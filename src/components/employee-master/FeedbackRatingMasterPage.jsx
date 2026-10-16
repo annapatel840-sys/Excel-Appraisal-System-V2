@@ -506,7 +506,9 @@ export function FeedbackRatingMasterPage({
     setPage(1);
   };
   const onCycle = (v) => {
-    setCid(+v);
+    // Keep the id's original type: real cycle ids are long ROWID strings; +v would break the match.
+    const picked = CYCLES.find((c) => String(c.id) === String(v));
+    setCid(picked ? picked.id : v);
     setEff("");
     setTe("");
     setCcm("");
