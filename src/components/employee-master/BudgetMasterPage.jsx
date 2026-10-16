@@ -97,7 +97,7 @@ function amount(value) {
 }
 
 // Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
-const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 function money(value) {
   return INR.format(amount(value));
 }
@@ -402,6 +402,8 @@ function HRApplyBudget() {
           existing.base = amount(row.budget_base) || existing.base;
           existing.original = amount(row.calculated_budget);
           existing.updated = amount(row.applied_budget) || existing.original;
+          existing.team0 = amount(row.original_headcount ?? row.allocation_headcount) || existing.team0 || (employeeCounts.get(key) || 0);
+          existing.team = employeeCounts.get(key) || 0;
           existing.id = row.id || existing.id;
         }
         return;
@@ -417,7 +419,7 @@ function HRApplyBudget() {
         base: employeeBases.get(key) || amount(row.budget_base) || (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated),
         original: calculated,
         updated: applied,
-        team0: assignedCount,
+        team0: amount(row.original_headcount ?? row.allocation_headcount) || assignedCount,
         team: assignedCount,
         lastChanged: "—",
       });

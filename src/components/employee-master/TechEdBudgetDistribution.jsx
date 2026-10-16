@@ -18,7 +18,7 @@ const num = (v) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 // Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
-const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const lakh = (n) => INR.format(num(n));
 const normalizeOwner = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 // Employee IDs can themselves contain hyphens (for example WIS-1234).
@@ -486,13 +486,13 @@ export function TechEdBudgetDistribution() {
       const managerName = String(stats.name || resolvedName || "Unassigned Comp Manager").trim();
       const managerLog = log.filter((entry) => ownerKey(resolveManager(entry.name)) === ownerKey(managerName));
       const history = [
-        { date: "", amount: original, team: num(live.original_headcount) || stats.count, pct },
-        ...managerLog.map((entry) => ({ date: entry.date, amount: num(entry.after), team: stats.count || num(live.current_headcount), pct: num(entry.to) })),
+        { date: "", amount: original, team: live.original_headcount ?? live.allocation_headcount ?? stats.count, pct },
+        ...managerLog.map((entry) => ({ date: entry.date, amount: num(entry.after), team: stats.count, pct: num(entry.to) })),
       ];
       return {
         name: managerName,
         pct, pct0: pct, base,
-        team0: num(live.original_headcount) || stats.count,
+        team0: live.original_headcount ?? live.allocation_headcount ?? stats.count,
         team: stats.count,
         original, updated, liveId: live.id,
         liveCalculated: original, liveApplied: updated,
@@ -520,8 +520,9 @@ export function TechEdBudgetDistribution() {
   // Original headcount is the allocation-time snapshot stored by HR; current
   // headcount is always recomputed from the current Appraisal Sheet roster.
   const currentTeamCount = allTeam.length;
-  const team0 = liveTech
-    ? (num(liveTech.original_headcount ?? liveTech.allocation_headcount) || currentTeamCount)
+  const savedTeamCount = liveTech?.original_headcount ?? liveTech?.allocation_headcount;
+  const team0 = savedTeamCount !== null && savedTeamCount !== undefined && String(savedTeamCount).trim() !== ""
+    ? num(savedTeamCount)
     : currentTeamCount;
   const allotted = cmNodes.reduce((s, n) => s + n.updated, 0);
   const used = assignedTeam.reduce((sum, employee) => sum + employeeUtilized(employee), 0);
