@@ -20,6 +20,7 @@ const TABLES = {
   cycles: "74008000000034190",
   audit: "74008000000034940",
   feedback: "74008000000022041",
+  eligibility: "74008000000057046",
   locations: "74008000000022481",
 };
 const PAGE_SIZE = 200;
@@ -102,6 +103,7 @@ async function getProjectSchema(adminApp) {
     { name: "payroll", id: TABLES.payroll },
     { name: "Feedback_And_Rating", id: TABLES.feedback },
     { name: "Appraisal_Cycle", id: TABLES.cycles },
+    { name: "Eligibility_List", id: TABLES.eligibility },
     { name: "Appraisal_Audit", id: TABLES.audit },
   ];
   const datastore = adminApp.datastore();
@@ -215,12 +217,16 @@ function requirePayrollAccess(a, resource, method) {
     access.requireScreen(a, "cycleMaster", "edit");
     return;
   }
-  if (resource === "feedback" && method === "GET") {
+  if (["payroll", "audit", "history"].includes(resource) && method === "GET") {
+    access.requireScreen(a, "payroll", "view");
+    return;
+  }
+  if (resource === "eligibility" && method === "GET") {
     access.requireScreen(a, "employeeMaster", "view");
     return;
   }
-  if (["payroll", "audit", "history"].includes(resource) && method === "GET") {
-    access.requireScreen(a, "payroll", "view");
+  if (["eligibility", "generate-sheet"].includes(resource) && method === "POST") {
+    access.requireScreen(a, resource === "eligibility" ? "employeeMaster" : "cycleMaster", "edit");
     return;
   }
   if (["validate", "commit", "undo"].includes(resource) && method === "POST") {
@@ -406,7 +412,11 @@ function normalizeText(value, key) {
 function normalizeNumber(value, key) {
   if (value === undefined || value === null || value === "") return 0;
   const number = typeof value === "number" ? value : Number(String(value).replace(/,/g, "").replace(/[₹$%]/g, "").trim());
-  if (!Number.isFinite(number) || number < 0 || number > Number.MAX_SAFE_INTEGER) throw new ApiError(`${key} must be a non-negative number.`);
+  // Payroll values can legitimately be negative (for example, a negative hike amount).
+  // Validate numeric input and magnitude, not its sign.
+  if (!Number.isFinite(number) || Math.abs(number) > Number.MAX_SAFE_INTEGER) {
+    throw new ApiError(`${key} must be a valid number.`);
+  }
   return number;
 }
 function toPayrollRow(input, cycle, master, batchId, fileName) {
@@ -487,8 +497,430 @@ async function requirePayrollTables(adminApp) {
     cycles: datastore.table(TABLES.cycles),
     audit: datastore.table(TABLES.audit),
     feedback: datastore.table(TABLES.feedback),
+    eligibility: datastore.table(TABLES.eligibility),
     locations: datastore.table(TABLES.locations),
   };
+}
+
+async function syncEligibilityRows(tables, cycle, actor = "") {
+  if (!cycle?.id) throw new ApiError("Select an appraisal cycle before loading eligibility.", 400);
+
+  const [masterRows, existingRows] = await Promise.all([
+    getAllRows(tables.employeeMaster),
+    getAllRows(tables.eligibility),
+  ]);
+  const cycleRows = existingRows.filter(
+    (row) => String(row.appraisal_cycle_id || "") === String(cycle.id),
+  );
+  const activeMasters = masterRows.filter((row) =>
+    String(row.emp_status || row.status || "Active").trim().toLowerCase() === "active"
+  );
+  const activeByRowId = new Map(
+    activeMasters.map((row) => [String(row.ROWID || row.rowid || ""), row]),
+  );
+  const existingByMasterId = new Map(
+    cycleRows.map((row) => [String(row.employee_master_id || ""), row]),
+  );
+  const toDelete = cycleRows.filter(
+    (row) => !activeByRowId.has(String(row.employee_master_id || "")),
+  );
+  if (toDelete.length) {
+    await tables.eligibility.deleteRows(
+      toDelete.map((row) => rowId(row)).filter(Boolean),
+    );
+  }
+
+  const rowsToInsert = [];
+  const now = nowLocal();
+  for (const employee of activeMasters) {
+    const masterId = String(employee.ROWID || employee.rowid || "");
+    const empId = String(employee.emp_id || "").trim();
+    if (!masterId || !empId) continue;
+    if (existingByMasterId.has(masterId)) continue;
+
+    rowsToInsert.push({
+      appraisal_cycle_id: String(cycle.id),
+      employee_master_id: masterId,
+      emp_id: empId,
+      eligibility_status: "Pending",
+      eligibility_reason: "Awaiting criteria",
+      eligibility_source: "System",
+      change_tag: "New",
+      evaluated_at: now,
+      updated_by: String(actor || "System").slice(0, 60),
+      eligibility_updated_at: now,
+    });
+  }
+  for (let index = 0; index < rowsToInsert.length; index += 100) {
+    await tables.eligibility.insertRows(rowsToInsert.slice(index, index + 100));
+  }
+  return { created: rowsToInsert.length, removed: toDelete.length, activeEmployees: activeMasters.length };
+}
+
+function shapeEligibilityRow(row, master) {
+  return {
+    ...master,
+    ...row,
+    emp_id: String(master.emp_id || row.emp_id || ""),
+    empId: String(master.emp_id || row.emp_id || ""),
+    name: String(master.emp_name || master.name || ""),
+    designation: String(master.designation || ""),
+    department: String(master.department || ""),
+    organization: String(master.department || ""),
+    doj: master.joining_date || master.date_of_join || "",
+    joining_date: master.joining_date || "",
+    status: String(master.emp_status || master.status || "Active"),
+    eligible_status: String(row.eligibility_status || "Eligible"),
+    eligibleReason: String(row.eligibility_reason || ""),
+    eligible_reason: String(row.eligibility_reason || ""),
+    eligibilitySource: String(row.eligibility_source || "Criteria"),
+    changeTag: String(row.change_tag || ""),
+    eligibilityUpdatedAt: row.eligibility_updated_at || row.MODIFIEDTIME || "",
+    manualOverride: String(row.eligibility_source || "").toLowerCase() === "manual",
+    eligibilityRowId: rowId(row),
+    employeeMasterRowId: String(master.ROWID || master.rowid || ""),
+    appraisalCycleId: String(row.appraisal_cycle_id || ""),
+  };
+}
+
+async function getEligibilityRows(tables, cycle, actor = "") {
+  if (cycle.status === "Active" && !cycle.archived) {
+    await syncEligibilityRows(tables, cycle, actor);
+  }
+  const [masterRows, eligibilityRows] = await Promise.all([
+    getAllRows(tables.employeeMaster),
+    getAllRows(tables.eligibility),
+  ]);
+  const masterById = new Map(
+    masterRows.map((row) => [String(row.ROWID || row.rowid || ""), row]),
+  );
+  return eligibilityRows
+    .filter((row) => String(row.appraisal_cycle_id || "") === String(cycle.id))
+    .map((row) => {
+      const master = masterById.get(String(row.employee_master_id || ""));
+      return master ? shapeEligibilityRow(row, master) : null;
+    })
+    .filter(Boolean);
+}
+
+async function saveEligibilityRow(tables, body, actor) {
+  const cycleId = String(body.cycleId || body.appraisal_cycle_id || "").trim();
+  const empId = String(body.empId || body.emp_id || "").trim();
+  if (!cycleId || !empId) throw new ApiError("Appraisal cycle and employee ID are required.", 400);
+
+  const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
+  const cycle = cycles.find((item) => item.id === cycleId);
+  if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
+  if (cycle.archived) throw new ApiError("Archived cycles are read-only.", 409);
+
+  const masters = await getAllRows(tables.employeeMaster);
+  const master = masters.find((row) => String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase());
+  if (!master) throw new ApiError(`Employee ${empId} was not found in Employee Master.`, 404);
+  if (String(master.emp_status || master.status || "Active").trim().toLowerCase() !== "active") {
+    throw new ApiError("Only Active employees can be saved in Eligibility List.", 409);
+  }
+
+  const masterId = String(master.ROWID || master.rowid || "");
+  const rows = await getAllRows(tables.eligibility);
+  const existing = rows.find((row) =>
+    String(row.appraisal_cycle_id || "") === cycleId &&
+    String(row.employee_master_id || "") === masterId
+  );
+  const rawEligible = String(body.eligible_status || body.eligible || "").trim().toLowerCase();
+  const eligible = ["eligible", "yes", "true"].includes(rawEligible)
+    ? "Eligible"
+    : ["not eligible", "noteligible", "no", "false"].includes(rawEligible)
+      ? "Not Eligible"
+      : "";
+  if (!eligible) throw new ApiError("Eligibility must be Eligible or Not Eligible.", 400);
+
+  const source = String(body.source || body.eligibility_source || "Manual").trim().toLowerCase() === "criteria"
+    ? "Criteria"
+    : "Manual";
+  const now = nowLocal();
+  const row = {
+    ...(existing ? { ROWID: rowId(existing) } : {}),
+    appraisal_cycle_id: cycleId,
+    employee_master_id: masterId,
+    emp_id: empId,
+    eligibility_status: eligible,
+    eligibility_reason: String(body.reason || body.eligibility_reason || "").trim().slice(0, 50),
+    eligibility_source: source,
+    change_tag: existing ? "Changed" : "New",
+    evaluated_at: now,
+    updated_by: String(actor || "Unknown user").slice(0, 60),
+    eligibility_updated_at: now,
+  };
+  const saved = existing
+    ? await tables.eligibility.updateRow(row)
+    : await tables.eligibility.insertRow(row);
+  return shapeEligibilityRow({ ...row, ...(saved || {}) }, master);
+}
+
+async function saveEligibilityRowsBatch(tables, body, actor) {
+  const cycleId = String(body.cycleId || body.appraisal_cycle_id || "").trim();
+  const records = Array.isArray(body.records) ? body.records : [];
+  if (!cycleId || !records.length) throw new ApiError("Appraisal cycle and eligibility records are required.", 400);
+
+  const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
+  const cycle = cycles.find((item) => item.id === cycleId);
+  if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
+  if (cycle.archived) throw new ApiError("Archived cycles are read-only.", 409);
+
+  const [masters, allEligibility] = await Promise.all([
+    getAllRows(tables.employeeMaster),
+    getAllRows(tables.eligibility),
+  ]);
+  const masterByEmpId = new Map(
+    masters.map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]),
+  );
+  const existingByMasterId = new Map(
+    allEligibility
+      .filter((row) => String(row.appraisal_cycle_id || "") === cycleId)
+      .map((row) => [String(row.employee_master_id || ""), row]),
+  );
+  const results = new Array(records.length);
+  const inserts = [];
+  const updates = [];
+
+  records.forEach((record, index) => {
+    const empId = String(record.empId || record.emp_id || "").trim();
+    try {
+      if (!empId) throw new ApiError("Employee ID is required.", 400);
+      const master = masterByEmpId.get(empId.toLowerCase());
+      if (!master) throw new ApiError(`Employee ${empId} was not found in Employee Master.`, 404);
+      if (String(master.emp_status || master.status || "Active").trim().toLowerCase() !== "active") {
+        throw new ApiError("Only Active employees can be saved in Eligibility List.", 409);
+      }
+      const rawEligible = String(record.eligible_status || record.eligible || "").trim().toLowerCase();
+      const eligible = ["eligible", "yes", "true"].includes(rawEligible)
+        ? "Eligible"
+        : ["not eligible", "noteligible", "no", "false"].includes(rawEligible)
+          ? "Not Eligible"
+          : "";
+      if (!eligible) throw new ApiError("Eligibility must be Eligible or Not Eligible.", 400);
+
+      const masterId = String(master.ROWID || master.rowid || "");
+      const existing = existingByMasterId.get(masterId);
+      const sourceValue = String(record.source || body.source || "Manual").trim().toLowerCase();
+      const source = sourceValue === "criteria" ? "Criteria" : sourceValue === "system" ? "System" : "Manual";
+      const now = nowLocal();
+      const row = {
+        ...(existing ? { ROWID: rowId(existing) } : {}),
+        appraisal_cycle_id: cycleId,
+        employee_master_id: masterId,
+        emp_id: empId,
+        eligibility_status: eligible,
+        eligibility_reason: String(record.reason || record.eligibility_reason || "").trim().slice(0, 50),
+        eligibility_source: source,
+        change_tag: existing ? "Changed" : "New",
+        evaluated_at: now,
+        updated_by: String(actor || "Unknown user").slice(0, 60),
+        eligibility_updated_at: now,
+      };
+      const item = { index, empId, master, row, existing };
+      if (existing) updates.push(item);
+      else inserts.push(item);
+    } catch (error) {
+      results[index] = { empId, ok: false, reason: error?.message || "Eligibility save failed." };
+    }
+  });
+
+  const writeBatches = async (items, mode) => {
+    for (let start = 0; start < items.length; start += 100) {
+      const batch = items.slice(start, start + 100);
+      try {
+        const rows = batch.map((item) => item.row);
+        const stored = mode === "update"
+          ? await tables.eligibility.updateRows(rows)
+          : await tables.eligibility.insertRows(rows);
+        batch.forEach((item, index) => {
+          results[item.index] = {
+            empId: item.empId,
+            ok: true,
+            data: shapeEligibilityRow(
+              { ...item.row, ...(Array.isArray(stored) ? (stored[index] || {}) : {}) },
+              item.master,
+            ),
+          };
+        });
+      } catch (batchError) {
+        // If Catalyst rejects a batch, retry rows individually so the caller
+        // still receives exact per-employee success/failure information.
+        for (const item of batch) {
+          try {
+            const stored = mode === "update"
+              ? await tables.eligibility.updateRow(item.row)
+              : await tables.eligibility.insertRow(item.row);
+            results[item.index] = {
+              empId: item.empId,
+              ok: true,
+              data: shapeEligibilityRow({ ...item.row, ...(stored || {}) }, item.master),
+            };
+          } catch (error) {
+            results[item.index] = {
+              empId: item.empId,
+              ok: false,
+              reason: error?.message || batchError?.message || "Eligibility save failed.",
+            };
+          }
+        }
+      }
+    }
+  };
+
+  await writeBatches(inserts, "insert");
+  await writeBatches(updates, "update");
+  const rows = results.map((row, index) =>
+    row || { empId: String(records[index]?.empId || records[index]?.emp_id || ""), ok: false, reason: "Eligibility record was not processed." },
+  );
+  const saved = rows.filter((row) => row.ok).length;
+  return { cycleId, saved, failed: rows.length - saved, total: rows.length, rows };
+}
+
+function toCatalystDate(value) {
+  if (value === null || value === undefined || value === "") return "";
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value.toISOString().slice(0, 10);
+  }
+  const raw = String(value).trim();
+  if (!raw) return "";
+
+  // Catalyst Date columns expect YYYY-MM-DD, not an empty string or timestamp.
+  const iso = raw.match(/^(\d{4}-\d{2}-\d{2})(?:[T ].*)?$/);
+  if (iso) return iso[1];
+
+  const dmy = raw.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
+  if (dmy) {
+    const day = Number(dmy[1]);
+    const month = Number(dmy[2]);
+    const year = Number(dmy[3]);
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day) {
+      return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    }
+  }
+
+  const parsed = new Date(raw);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
+}
+
+function normalizePersonKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+}
+
+function resolveEmployeeReference(value, masterRows) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const exactRowId = masterRows.find((row) => String(row.ROWID || row.rowid || "") === raw);
+  if (exactRowId) return String(exactRowId.ROWID || exactRowId.rowid);
+
+  const key = normalizePersonKey(raw);
+  const matched = masterRows.find((row) => {
+    const candidates = [
+      row.emp_id, row.employee_id, row.name, row.emp_name, row.full_name,
+      row.email_id, row.email, row.appraiser_tech_ed,
+    ];
+    return candidates.some((candidate) => normalizePersonKey(candidate) === key);
+  });
+  return matched ? String(matched.ROWID || matched.rowid || "") : "";
+}
+
+async function generateAppraisalSheet(tables, cycle, actor) {
+  if (!cycle?.id) throw new ApiError("Select an appraisal cycle before generating the sheet.", 400);
+  if (cycle.archived) throw new ApiError("Archived cycles cannot generate an Appraisal Sheet.", 409);
+
+  const cycleEligibilityRows = await getEligibilityRows(tables, cycle, actor);
+  const pendingCount = cycleEligibilityRows.filter(
+    (row) => String(row.eligibility_status || "").trim().toLowerCase() === "pending",
+  ).length;
+  if (pendingCount) {
+    throw new ApiError(
+      `Apply eligibility criteria for this cycle before generating the Appraisal Sheet. ${pendingCount} active employee(s) still need evaluation.`,
+      409,
+    );
+  }
+  const eligibleRows = cycleEligibilityRows.filter(
+    (row) => String(row.eligibility_status || "").toLowerCase() === "eligible",
+  );
+  if (!eligibleRows.length) {
+    throw new ApiError("No eligible active employees were found for this cycle. Check the Eligibility List and criteria.", 409);
+  }
+  const [sheetRows, employeeMasterRows] = await Promise.all([
+    getAllRows(tables.employees),
+    getAllRows(tables.employeeMaster),
+  ]);
+  const byKey = new Map();
+  sheetRows.forEach((row) => {
+    const rowCycle = String(row.cycle_id || "");
+    const rowMaster = String(row.emp_master_row_id || "");
+    const rowEmpId = String(row.emp_id || "").trim().toLowerCase();
+    if (rowCycle === String(cycle.id)) {
+      if (rowMaster) byKey.set(`master:${rowMaster}`, row);
+      if (rowEmpId) byKey.set(`emp:${rowEmpId}`, row);
+    }
+  });
+
+  let created = 0;
+  let updated = 0;
+  for (const employee of eligibleRows) {
+    const masterId = String(employee.employeeMasterRowId || "");
+    const empId = String(employee.empId || "").trim();
+    const existing = byKey.get(`master:${masterId}`) || byKey.get(`emp:${empId.toLowerCase()}`);
+    const payload = {
+      ...(existing ? { ROWID: rowId(existing) } : {}),
+      emp_id: empId,
+      name: String(employee.name || ""),
+      designation: String(employee.designation || ""),
+      department: String(employee.department || ""),
+      emp_master_row_id: masterId,
+      cycle_id: String(cycle.id),
+      status: "Active",
+      eligible_status: "Eligible",
+    };
+    const joiningDate = toCatalystDate(
+      employee.joining_date || employee.date_of_join || employee.date_of_joining || employee.doj,
+    );
+    // Don't send "" to Catalyst Date columns; it rejects empty strings as invalid dates.
+    // Omitting an absent/invalid optional date also preserves the existing value on updates.
+    if (joiningDate) payload.joining_date = joiningDate;
+    // Appraisal_Sheet.appraiser_tech_ed is a bigint lookup/reference, not a display name.
+    // Resolve imported names/employee IDs to the matching Employee_Master ROWID.
+    const appraiserReference = resolveEmployeeReference(
+      employee.appraiser_tech_ed,
+      employeeMasterRows,
+    );
+    if (appraiserReference && /^\\d+$/.test(appraiserReference)) {
+      payload.appraiser_tech_ed = appraiserReference;
+    }
+    // Keep manager only when it is already a valid numeric reference.
+    const compManagerReference = String(employee.comp_manager ?? "").trim();
+    if (/^\\d+$/.test(compManagerReference)) payload.comp_manager = compManagerReference;
+    if (existing) {
+      await tables.employees.updateRow(payload);
+      updated += 1;
+    } else {
+      await tables.employees.insertRow(payload);
+      created += 1;
+    }
+  }
+
+  await writeAudit(tables.audit, {
+    actor,
+    source: "cycle",
+    cycle,
+    action: "Appraisal Sheet generated",
+    details: {
+      kind: "cycle",
+      action: "Appraisal Sheet generated",
+      message: `Generated ${created} new and refreshed ${updated} existing Appraisal Sheet rows from Eligibility List.`,
+      cycleName: cycle.name,
+      created,
+      updated,
+      eligible: eligibleRows.length,
+    },
+  });
+  return { cycleId: cycle.id, cycleName: cycle.name, created, updated, eligible: eligibleRows.length };
 }
 
 function mapPayroll(row, cycleById, employeeById = new Map()) {
@@ -875,119 +1307,6 @@ async function importRows(tables, body) {
 
   return { succeeded, failed, total: records.length, batchId: String(body.batchId || ""), rows };
 }
-/* ---------- Feedback & Rating screen ---------- */
-const fbText = (v) => (v === undefined || v === null ? "" : String(v).trim());
-const fbNum = (v) => {
-  if (v === undefined || v === null || v === "") return 0;
-  const n = Number(String(v).replace(/,/g, "").replace(/[%₹$]/g, "").trim());
-  return Number.isFinite(n) ? n : 0;
-};
-const fbDate = (v) => {
-  const s = fbText(v);
-  return /^\d{4}-\d{2}-\d{2}/.test(s) ? s.slice(0, 10) : "";
-};
-
-// Case-insensitive column lookup (the table mixes emp_ID, Department, Tech_ED ...)
-function fbCol(row, ...names) {
-  if (!row) return undefined;
-  const keys = Object.keys(row);
-  for (const name of names) {
-    const key = keys.find((k) => k.toLowerCase() === name.toLowerCase());
-    if (key !== undefined && row[key] !== null && row[key] !== undefined && row[key] !== "") return row[key];
-  }
-  return undefined;
-}
-
-function shapeFeedbackCycle(cycle) {
-  return {
-    id: cycle.id,
-    name: cycle.name,
-    type: cycle.type || cycleTypeOf(cycle.name),
-    status: cycle.archived ? "Archived" : cycle.status || "Upcoming",
-    effective: fbDate(cycle.effective || cycle.start),
-  };
-}
-
-function shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById) {
-  const empKey = fbText(fbCol(row, "emp_ID"));
-  const master = masterByRowId.get(empKey) || masterByEmpId.get(empKey.toLowerCase()) || {};
-  const cycleId = fbText(fbCol(row, "appraisal_cycle_name"));
-  const cycle = cycleById.get(cycleId);
-  const yesNo = fbText(fbCol(row, "at_risk")).toLowerCase();
-
-  const basePay = fbNum(fbCol(master, "current_annual_base_pay", "base_pay", "current_salary"));
-  const experience = fbNum(fbCol(master, "total_experience", "total_exp", "experience"));
-  const yoe = basePay > 0 && experience > 0 ? Math.round((basePay / 100000 / experience) * 100) / 100 : 0;
-
-  return {
-    rowId: rowId(row),
-    cid: cycleId,
-    id: fbText(master.emp_id) || empKey,
-    name: fbText(master.emp_name || master.name),
-    desig: fbText(fbCol(row, "designation")) || fbText(master.designation),
-    dept: fbText(fbCol(row, "Department")) || fbText(master.department),
-    band: fbText(fbCol(row, "Band")) || fbText(master.band),
-    eff: fbDate(fbCol(row, "Effective_Date")) || (cycle ? cycle.effective : ""),
-    mr: fbNum(fbCol(row, "manager_rating")),
-    mf: fbText(fbCol(row, "manager_feedback")),
-    rr: fbNum(fbCol(master, "rr_percent", "rr")),
-    yoe,
-    ic: fbNum(fbCol(row, "interview_count")),
-    gm: fbNum(fbCol(row, "gross_margin")),
-    client: fbText(fbCol(row, "CostCenter_Client")),
-    cm: fbText(fbCol(row, "Client_Manager")),
-    cr: fbNum(fbCol(row, "client_rating")),
-    cf: fbText(fbCol(row, "client_feedback")),
-    risk: ["yes", "y", "true", "1"].includes(yesNo) ? "Yes" : "No",
-    ccm: fbText(fbCol(row, "Comp_Manager")) || fbText(master.comp_manager),
-    te: fbText(fbCol(row, "Tech_ED")) || fbText(master.appraiser_tech_ed),
-    batch: fbText(fbCol(row, "Upload_Batch")),
-  };
-}
-
-function shapeFeedbackBatches(auditRows) {
-  return auditRows
-    .filter((row) => row.source === "feedback_upload")
-    .map((row) => {
-      const d = auditDetails(row);
-      return {
-        id: fbText(row.batch_id),
-        cid: fbText(d.cycleId),
-        file: fbText(d.fileName),
-        by: fbText(row.changed_by),
-        at: fbText(row.changed_at || row.CREATEDTIME),
-        rows: Number(d.total) || 0,
-        nw: Number(d.inserted) || 0,
-        rep: Number(d.updated) || 0,
-        eff: fbDate(d.effectiveDate),
-      };
-    })
-    .sort((a, b) => String(b.at).localeCompare(String(a.at)));
-}
-
-async function getFeedbackData(tables, query) {
-  const [feedbackRows, masterRows, cycleRows, auditRows] = await Promise.all([
-    getAllRows(tables.feedback),
-    getAllRows(tables.employeeMaster),
-    getAllRows(tables.cycles),
-    getAllRows(tables.audit),
-  ]);
-  const masterByRowId = new Map();
-  const masterByEmpId = new Map();
-  masterRows.forEach((row) => {
-    if (rowId(row)) masterByRowId.set(rowId(row), row);
-    const business = fbText(row.emp_id).toLowerCase();
-    if (business) masterByEmpId.set(business, row);
-  });
-  const cycles = cycleRows.map(normalizeCycle).filter((c) => c.status !== "Cancelled").map(shapeFeedbackCycle);
-  const cycleById = new Map(cycles.map((c) => [c.id, c]));
-  const onlyCycle = fbText(query.cycleId || query.cycle_id);
-  const rows = feedbackRows
-    .map((row) => shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById))
-    .filter((row) => row.cid && (!onlyCycle || row.cid === onlyCycle));
-  const batches = shapeFeedbackBatches(auditRows).filter((b) => !onlyCycle || b.cid === onlyCycle);
-  return { cycles, rows, batches };
-}
 
 async function routeRequest(req, res, identity, resource, a) {
   const enforced = Boolean(a && a.enforced);
@@ -1027,6 +1346,50 @@ async function routeRequest(req, res, identity, resource, a) {
   if (resource === "cycles" && req.method === "GET") {
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
     return sendJson(res, 200, { success: true, data: cycles });
+  }
+
+  if (resource === "eligibility" && req.method === "GET") {
+    const queryCycleId = String(query.cycleId || query.cycle_id || "").trim();
+    const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
+    const cycle = queryCycleId
+      ? cycles.find((item) => item.id === queryCycleId)
+      : cycles.find((item) => item.status === "Active" && !item.archived);
+    if (!cycle) {
+      return sendJson(res, 200, {
+        success: true,
+        data: [],
+        meta: { cycleId: "", cycleName: "", message: "No active appraisal cycle is available." },
+      });
+    }
+    const data = await getEligibilityRows(tables, cycle, actor);
+    return sendJson(res, 200, {
+      success: true,
+      data: {
+        records: data,
+        meta: { cycleId: cycle.id, cycleName: cycle.name, total: data.length },
+      },
+    });
+  }
+
+  if (resource === "eligibility" && req.method === "POST") {
+    const body = await readBody(req);
+    if (Array.isArray(body.records)) {
+      const result = await saveEligibilityRowsBatch(tables, body, actor);
+      return sendJson(res, 200, { success: true, data: result });
+    }
+    const saved = await saveEligibilityRow(tables, body, actor);
+    return sendJson(res, 200, { success: true, data: saved });
+  }
+
+  if (resource === "generate-sheet" && req.method === "POST") {
+    const body = await readBody(req);
+    const cycleId = String(body.cycleId || body.cycle_id || "").trim();
+    if (!cycleId) throw new ApiError("Appraisal cycle ID is required.", 400);
+    const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
+    const cycle = cycles.find((item) => item.id === cycleId);
+    if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
+    const result = await generateAppraisalSheet(tables, cycle, actor);
+    return sendJson(res, 200, { success: true, data: result });
   }
 
   if (resource === "locations" && req.method === "GET") {
@@ -1074,10 +1437,7 @@ async function routeRequest(req, res, identity, resource, a) {
     const inserted = await tables.locations.insertRow(payload);
     return sendJson(res, 201, { success: true, data: { id: String(inserted?.ROWID || inserted?.rowid || inserted?.id || ""), ...payload } });
   }
-  if (resource === "feedback" && req.method === "GET") {
-    const data = await getFeedbackData(tables, query);
-    return sendJson(res, 200, { success: true, data });
-  }
+
   if (resource === "audit" && req.method === "GET") {
     const auditRows = await getAllRows(tables.audit);
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
@@ -1440,8 +1800,12 @@ async function routeRequest(req, res, identity, resource, a) {
       await tables.cycles.updateRow(row);
       await bumpAccessVersion(req, a, "Cycle status changed: " + existing.name);
       const updated = { ...existing, status, remarks, changedBy: actor, changedAt: now };
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Status changed", details: { kind: "cycle", action: "Status changed", message: `Cycle status changed from ${existing.status} to ${status}.`, cycleName: updated.name, ...(remark ? { newRemarks: `${verb}: ${remark}` } : {}) } });
-      return sendJson(res, 200, { success: true, data: updated });
+      let eligibilitySync = null;
+      if (status === "Active") {
+        eligibilitySync = await syncEligibilityRows(tables, updated, actor);
+      }
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Status changed", details: { kind: "cycle", action: "Status changed", message: `Cycle status changed from ${existing.status} to ${status}.`, cycleName: updated.name, ...(eligibilitySync ? { eligibilityCreated: eligibilitySync.created, inactiveRemoved: eligibilitySync.removed } : {}), ...(remark ? { newRemarks: `${verb}: ${remark}` } : {}) } });
+      return sendJson(res, 200, { success: true, data: { ...updated, eligibilitySync } });
     }
 
     if (action === "archive") {
@@ -1503,20 +1867,31 @@ module.exports = async function payrollCycleApi(req, res) {
     return res.end();
   }
   try {
-    // Access first: enforced → 401/403 (via catch); dry run → never refuses.
-    const a = await checkAccess(req);
+    const resource = String(getQuery(req).resource || "");
+    const method = String(req.method || "GET").toUpperCase();
+    // These GET endpoints are deliberately readable by any authenticated app
+    // user (see requirePayrollAccess). Do not run delegation-based access checks
+    // before them: a valid Tech-Ed session with no current delegation must still
+    // be able to load the active cycle used to resolve its own budget.
+    const cycleMetadataRead =
+      method === "GET" &&
+      (resource === "schema" || resource === "cycles" || resource === "locations");
+    const publicSessionRead = resource === "session";
+    const a = cycleMetadataRead || publicSessionRead
+      ? { dryRun: true, enforced: false, scope: { all: false } }
+      : await checkAccess(req);
 
     const identity = await requireIdentity(req);
     if (!identity) return sendJson(res, 401, { success: false, message: "Sign in with a Catalyst app user account to continue." });
 
     // `return await` so errors thrown inside routeRequest reach the catch below
     // (a bare `return routeRequest(...)` left them as unhandled rejections).
-    const resource = String(getQuery(req).resource || "");
     if (resource === "session") return await routeRequest(req, res, identity, resource, a);
     if (resource === "schema" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "cycles" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "eligibility" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
+    if (resource === "generate-sheet" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
     if (resource === "locations" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
-    if (resource === "feedback" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "audit" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "history" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "payroll" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
