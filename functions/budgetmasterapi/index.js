@@ -608,6 +608,35 @@ function pickColumn(columns, candidates, fallback) {
   return candidates.find((name) => columns.has(name)) || fallback;
 }
 
+// Self-check for the budget base: sums previous_year_CTC_with_rewards (employee.base)
+// for the whole org and per Tech-ED, so the numbers can be compared with the screen.
+function checkCtcBase(employees) {
+  const byTech = new Map();
+  const missing = [];
+  let unassigned = 0;
+  let withCtc = 0;
+  employees.forEach((employee) => {
+    if (employee.base > 0) withCtc += 1;
+    else missing.push(employee.emp_id);
+    const key = ownerKey(employee.techEd);
+    if (key) byTech.set(key, (byTech.get(key) || 0) + employee.base);
+    else unassigned += employee.base;
+  });
+  const orgTotal = employees.reduce((sum, employee) => sum + employee.base, 0);
+  const techSum = Array.from(byTech.values()).reduce((sum, value) => sum + value, 0);
+  return {
+    source: "Appraisal_Sheet.previous_year_CTC_with_rewards",
+    employees: employees.length,
+    withCtc,
+    missingCtcCount: missing.length,
+    missingCtcEmpIds: missing.slice(0, 20),
+    orgTotal,
+    techTotals: Object.fromEntries(byTech),
+    unassignedTotal: unassigned,
+    techTotalsAddUpToOrg: techSum + unassigned === orgTotal,
+  };
+}
+
 async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   // Appraisal_Sheet is the source of truth for employee base, allocated PB,
   // Tech-ED and Comp Manager assignments. Do not depend on Payroll_Data cycle
@@ -701,6 +730,13 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const previousRetention = amount(["previous_year_retention_bonus", "previous_year_rb", "previous_rb", "rb_to_be_paid", "rbToBePaid"]);
     const previousJoining = amount(["previous_year_joining_bonus", "previous_year_jb", "previous_joining_bonus", "joining_bonus_previous_year"]);
     const lastYearExpenses = basePay + previousHike + previousPerformance + previousRetention + previousJoining;
+
+    // Total CTC with rewards of the previous appraisal cycle (Appraisal_Sheet column
+    // previous_year_CTC_with_rewards). This is the budget base; firstValue() is case-insensitive.
+    const previousYearCtc = n(firstValue(row, [
+      "previous_year_CTC_with_rewards", "previousYearCtcWithRewards",]));
+    
+
     const personName = String(firstValue(masterRow, ["emp_name", "employee_name", "name"]) || firstValue(row, ["name", "emp_name", "employee_name"]) || employeeId).trim();
     // Keep one current Appraisal_Sheet row per employee and include only the
     // fields the Tech-Ed budget page needs; this avoids a second full table scan
@@ -718,7 +754,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       eligible,
       status: rawStatus,
       eligible_status: eligible ? "eligible" : "not eligible",
-      base: lastYearExpenses,
+      base:previousYearCtc,
       hike_amount: currentHike,
       new_pb_to_be_offered: currentPerformance,
       current_performance_bonus: currentPerformance,
@@ -772,6 +808,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     budgetMasterCycles: bundle.master.filter((m) => String(m.appraisal_cycle_id || "").trim()).length,
     baseColumns: "prior-year salary/expenses and prior-year bonus fields, with current salary fallback",
   };
+   bundle.diagnostics.ctcCheck = checkCtcBase(employees);
+  console.log("CTC base check:", JSON.stringify(bundle.diagnostics.ctcCheck));
+
   if (!bundle.diagnostics.budgetMasterCycles) {
     bundle.diagnostics.warning = "No Budget_Master row has an appraisal cycle, so no budget base was calculated. Add a Budget_Master row for the cycle (appraisal_cycle_id) first.";
   } else if (!withBase) {
