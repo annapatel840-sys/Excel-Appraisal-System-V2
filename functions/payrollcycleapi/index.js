@@ -810,7 +810,7 @@ function toCatalystDate(value) {
 }
 
 function normalizePersonKey(value) {
-  return String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function resolveEmployeeReference(value, masterRows) {
@@ -965,12 +965,12 @@ async function generateAppraisalSheet(tables, cycle, actor) {
       employee.appraiser_tech_ed,
       employeeMasterRows,
     );
-    if (appraiserReference && /^\\d+$/.test(appraiserReference)) {
+    if (appraiserReference && /^\d+$/.test(appraiserReference)) {
       payload.appraiser_tech_ed = appraiserReference;
     }
     // Keep manager only when it is already a valid numeric reference.
     const compManagerReference = String(employee.comp_manager ?? "").trim();
-    if (/^\\d+$/.test(compManagerReference)) payload.comp_manager = compManagerReference;
+    if (/^\d+$/.test(compManagerReference)) payload.comp_manager = compManagerReference;
     if (existing) {
       await tables.employees.updateRow(payload);
       updated += 1;

@@ -300,7 +300,8 @@ const HEADS = [
 
 export function TechEdBudgetMasterPage() {
   const user = useCatalystUser();
-  const { budgetDistributionRows, budgetCompManagerRows, updateBudget, loading: budgetLoading, error: budgetError } = useBudget();
+  // const { budgetDistributionRows, budgetCompManagerRows, updateBudget, loading: budgetLoading, error: budgetError } = useBudget();
+    const { budgetDistributionRows, budgetCompManagerRows, employeeRows = [], updateBudget, loading: budgetLoading, error: budgetError } = useBudget();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const canAllot =
@@ -556,7 +557,18 @@ export function TechEdBudgetMasterPage() {
     );
   }
 
-  const cells = [
+  // const cells = [
+  //   [
+  //     "Original allotted",
+  //     money(me.original),
+  //     <span className="muted">Fixed at allocation</span>,
+  //   ]
+    const cells = [
+    [
+      "Budget base",
+      money(Number(liveMe?.budget_base) || 0),
+      <span className="muted">Previous-year CTC of your team</span>,
+    ],
     [
       "Original allotted",
       money(me.original),
