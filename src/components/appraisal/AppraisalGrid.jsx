@@ -3026,7 +3026,7 @@ export function AppraisalGrid({
 
     //   return;
     // }
-     if (target instanceof HTMLTextAreaElement && !event.shiftKey) {
+    if (target instanceof HTMLTextAreaElement && !event.shiftKey) {
         return;
       }
 
@@ -3047,11 +3047,11 @@ export function AppraisalGrid({
         }
       }
 
-      // No next editable row: blur commits this cell.
+      // No next editable row: blur commits through the existing onBlur handler.
       target.blur();
       return;
     }
-
+     
 
 
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -3534,7 +3534,7 @@ export function AppraisalGrid({
 
     return (
       <div className="relative flex min-h-[38px] w-full items-center px-1.5 py-1">
-        <input
+        {/* <input
           ref={(element) => {
             cellRefs.current[`${rowIndex}:${col.key}`] = element;
           }}
@@ -3576,7 +3576,55 @@ export function AppraisalGrid({
                 }
               });
             }
+          }} */}
+
+                  <input
+          ref={(element) => {
+            cellRefs.current[`${rowIndex}:${col.key}`] = element;
           }}
+          type={col.type === "date" ? "date" : "text"}
+          inputMode={isNumericType(col.type) ? "decimal" : undefined}
+          value={
+            isNumericType(col.type) && editingValues[cellKey] === undefined
+              ? formatEditableNumeric(storedValue, col.type)
+              : draftValue
+          }
+          onMouseDown={(event) => {
+            const input = event.currentTarget;
+
+            if (document.activeElement !== input) {
+              input.dataset.selectOnMouseUp = "true";
+            }
+          }}
+          onMouseUp={(event) => {
+            const input = event.currentTarget;
+
+            if (input.dataset.selectOnMouseUp === "true") {
+              delete input.dataset.selectOnMouseUp;
+              event.preventDefault();
+              input.select();
+            }
+          }}
+          onFocus={(event) => {
+            const input = event.currentTarget;
+
+            setActive(`${rowIndex}:${col.key}`);
+            selectRowForEdit(row);
+
+            setEditingValues((previous) => ({
+              ...previous,
+              [cellKey]: storedValue,
+            }));
+
+            if (col.type !== "date") {
+              requestAnimationFrame(() => {
+                if (document.activeElement === input) {
+                  input.select();
+                }
+              });
+            }
+          }}
+        
           onChange={(event) => {
             const value = event.target.value;
             setEditingValue(cellKey, value);
