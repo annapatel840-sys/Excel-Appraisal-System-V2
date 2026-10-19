@@ -3545,6 +3545,21 @@ export function AppraisalGrid({
               ? formatEditableNumeric(storedValue, col.type)
               : draftValue
           }
+
+          onMouseDown={(event) => {
+            const input = event.currentTarget;
+            if (document.activeElement !== input) {
+            input.dataset.selectOnMouseUp = "true";
+          }
+        }}
+          onMouseUp={(event) => {
+            const input = event.currentTarget;
+            if (input.dataset.selectOnMouseUp === "true") {
+            delete input.dataset.selectOnMouseUp;
+            event.preventDefault();
+            input.select();
+          }
+        }}
           onFocus={(event) => {
             setActive(`${rowIndex}:${col.key}`);
             selectRowForEdit(row);
