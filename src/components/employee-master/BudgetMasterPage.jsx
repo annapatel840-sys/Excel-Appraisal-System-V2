@@ -393,7 +393,7 @@ function HRApplyBudget() {
     //       amount(employee.previous_year_joining_bonus ?? employee.previous_year_jb ?? employee.previous_joining_bonus ?? employee.joining_bonus_previous_year)
     //     );
     //   employeeBases.set(key, (employeeBases.get(key) || 0) + base);
-    // });
+    });
 
           // Budget base = previous_year_CTC_with_rewards, calculated by the Budget Master API.
       const base = amount(employee.budget_base ?? employee.budgetBase);
