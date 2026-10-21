@@ -948,35 +948,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     }
     return null;
   };
-  bundle.employeeRoster = employees.map((employee) => ({
-    emp_id: employee.emp_id,
-    name: employee.name,
-    appraiser_tech_ed: employee.appraiser_tech_ed,
-    appraiser_tech_ed_appraisal_sheet: employee.appraiser_tech_ed_appraisal_sheet,
-    comp_manager: employee.comp_manager,
-    comp_manager_display: employee.comp_manager_display,
-    status: employee.status,
-    eligible_status: employee.eligible_status,
-    budget_base: employee.base,
-    previous_appraisal_total_ctc_with_rewards: employee.previous_appraisal_total_ctc_with_rewards,
-    Previous_Appraisal_total_CTC_with_rewards: employee.Previous_Appraisal_total_CTC_with_rewards,
-    last_appraisal_date: employee.last_appraisal_date,
-    last_appraisal_cycle_name: employee.last_appraisal_cycle_name,
-    hike_amount: employee.hike_amount,
-    new_pb_to_be_offered: employee.new_pb_to_be_offered,
-    current_performance_bonus: employee.current_performance_bonus,
-    target_pb_allocated_for_may: employee.target_pb_allocated_for_may,
-    allocated_pb_amount: employee.allocated_pb_amount,
-    target_pb_next_year: employee.target_pb_next_year,
-    new_rb: employee.new_rb,
-    joining_bonus: employee.joining_bonus,
-    pb_to_be_paid: employee.pb_to_be_paid,
-    previous_year_performance_bonus: employee.previous_year_performance_bonus,
-    rb_to_be_paid: employee.rb_to_be_paid,
-    previous_year_retention_bonus: employee.previous_year_retention_bonus,
-    previous_year_joining_bonus: employee.previous_year_joining_bonus,
-    utilized_amount: employee.utilized_amount,
-  }));
+
   const withBase = employees.filter((employee) => employee.base > 0).length;
   const withTechEd = employees.filter((employee) => employee.techEd).length;
   bundle.diagnostics = {
@@ -1098,6 +1070,47 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       };
     });
   };
+  // The UI headcount roster must use the same cycle-scoped Eligibility_List
+// decision as budget aggregation, not stale Employee_Master eligibility aliases.
+const activeRosterCycle = cycleRows.find((cycle) =>
+  String(firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "").trim().toLowerCase() === "active" &&
+  cycle.archived !== true && String(cycle.archived || "").toLowerCase() !== "true"
+);
+const rosterCycleId = cycleIdOf(activeRosterCycle) || String(bundle.master[0]?.appraisal_cycle_id || "");
+const rosterForCycle = rosterCycleId ? employeesForBudgetCycle(rosterCycleId) : employees;
+bundle.employeeRoster = rosterForCycle.map((employee) => ({
+  emp_id: employee.emp_id,
+  name: employee.name,
+  appraiser_tech_ed: employee.appraiser_tech_ed,
+  appraiser_tech_ed_appraisal_sheet: employee.appraiser_tech_ed_appraisal_sheet,
+  comp_manager: employee.comp_manager,
+  comp_manager_display: employee.comp_manager_display,
+  status: employee.status,
+  eligible: employee.eligible,
+  eligibility: employee.eligible_status,
+  eligible_status: employee.eligible_status,
+  in_appraisal_sheet: true,
+  budget_base: employee.base,
+  previous_appraisal_total_ctc_with_rewards: employee.previous_appraisal_total_ctc_with_rewards,
+  Previous_Appraisal_total_CTC_with_rewards: employee.Previous_Appraisal_total_CTC_with_rewards,
+  last_appraisal_date: employee.last_appraisal_date,
+  last_appraisal_cycle_name: employee.last_appraisal_cycle_name,
+  hike_amount: employee.hike_amount,
+  new_pb_to_be_offered: employee.new_pb_to_be_offered,
+  current_performance_bonus: employee.current_performance_bonus,
+  target_pb_allocated_for_may: employee.target_pb_allocated_for_may,
+  allocated_pb_amount: employee.allocated_pb_amount,
+  target_pb_next_year: employee.target_pb_next_year,
+  new_rb: employee.new_rb,
+  joining_bonus: employee.joining_bonus,
+  pb_to_be_paid: employee.pb_to_be_paid,
+  previous_year_performance_bonus: employee.previous_year_performance_bonus,
+  rb_to_be_paid: employee.rb_to_be_paid,
+  previous_year_retention_bonus: employee.previous_year_retention_bonus,
+  previous_year_joining_bonus: employee.previous_year_joining_bonus,
+  utilized_amount: employee.utilized_amount,
+}));
+
   for (const master of bundle.master) {
     const cycleId = String(master.appraisal_cycle_id || "").trim();
     if (!cycleId) continue;
@@ -1105,7 +1118,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // Only employees eligible in THIS appraisal cycle participate in the
     // Appraisal Sheet and organization/Tech-ED budget bases. Changes in the
     // Eligibility List are picked up on the next calculation/read.
-    const eligibleEmployees = employees.filter((employee) => employee.eligible);
+
+
+  const eligibleEmployees = employees.filter((employee) => employee.eligible);
     const orgBase = eligibleEmployees.reduce((sum, employee) => sum + employee.base, 0);
     const techBases = new Map(Array.from(techLabels.keys(), (key) => [key, { base: 0, count: 0, utilized: 0 }]));
     const compBases = new Map(Array.from(compLabels.keys(), (key) => [key, { base: 0, count: 0, utilized: 0 }]));

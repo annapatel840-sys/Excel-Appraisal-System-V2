@@ -352,7 +352,10 @@ export function BudgetDistributionPage() {
         .trim().toLowerCase();
       const active = status === "active";
       const eligible = ["eligible", "yes", "true", "1"].includes(eligibility);
-      if (resolved?.key !== record.key || !active || !eligible) return false;
+      const inAppraisalSheet = employee.in_appraisal_sheet === true ||
+        String(employee.in_appraisal_sheet ?? "").trim().toLowerCase() === "true" ||
+        String(employee.in_appraisal_sheet ?? "").trim() === "1";
+      if (resolved?.key !== record.key || !active || !eligible || !inAppraisalSheet) return false;
       const employeeId = normalize(
         employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text ||
           employee.row_id || employee.ROWID || employee.id || "",
