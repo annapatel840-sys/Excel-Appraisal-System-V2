@@ -1057,7 +1057,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       }
       const base = priorCtc === null ? employee.current_ctc : priorCtc;
       const cycleEligibility = cycleEligibilityFor(employee, targetCycleId);
-      const eligible = cycleEligibility ? cycleEligibility.eligible : employee.eligible;
+      // Eligibility_List is the source of truth for each appraisal cycle.
+      // Missing/Pending rows are not eligible, matching Appraisal Sheet's
+      // explicit eligible filter instead of falling back to stale master data.
+      const eligible = Boolean(cycleEligibility && cycleEligibility.eligible);
       return {
         ...employee,
         eligible,
