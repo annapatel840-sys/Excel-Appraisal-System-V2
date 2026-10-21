@@ -840,6 +840,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       status: rawStatus,
       eligible_status: eligible ? "eligible" : "not eligible",
       base: previousAppraisalCtc,
+      current_ctc: currentCtcValue,
       previous_appraisal_total_ctc_with_rewards: previousAppraisalCtc,
       Previous_Appraisal_total_CTC_with_rewards: previousAppraisalCtc,
       last_appraisal_date: lastAppraisalLabel,
@@ -964,11 +965,26 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     await table.updateRow({ ROWID: rowId, [field]: val });
   };
 
-  // Appraisal_Sheet supplies current team assignments; each employee base is
-    // the resolved prior-cycle total CTC, not a sum of salary/bonus aliases.
+  // Resolve each Budget_Master row against its own immediately preceding cycle.
+  // The active-cycle roster remains the API display roster, but historical budget
+  // rows must not accidentally reuse the active cycle's prior-CTC values.
+  const employeesForBudgetCycle = (targetCycleId) => {
+    const previousCycle = previousCycleFor(targetCycleId);
+    const previousId = previousCycle ? (cycleIdOf(previousCycle) || cycleNameOf(previousCycle).toLowerCase()) : "";
+    return employees.map((employee) => {
+      const employeeKey = String(employee.employeeId || employee.emp_id || "").trim().toLowerCase();
+      const historyKey = previousId + "::" + employeeKey;
+      const previousRecord = previousCycle
+        ? historyRowsByCycleAndEmployee.get(historyKey) || historyRowsByCycleAndEmployee.get(cycleNameOf(previousCycle).toLowerCase() + "::" + employeeKey)
+        : null;
+      const priorCtc = previousCtc(previousRecord);
+      return { ...employee, base: priorCtc === null ? employee.current_ctc : priorCtc };
+    });
+  };
   for (const master of bundle.master) {
     const cycleId = String(master.appraisal_cycle_id || "").trim();
     if (!cycleId) continue;
+    const employees = employeesForBudgetCycle(cycleId);
     const orgBase = employees.reduce((sum, employee) => sum + employee.base, 0);
     const techBases = new Map(Array.from(techLabels.keys(), (key) => [key, { base: 0, count: 0 }]));
     const compBases = new Map(Array.from(compLabels.keys(), (key) => [key, { base: 0, count: 0 }]));
