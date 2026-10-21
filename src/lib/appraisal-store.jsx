@@ -16,6 +16,49 @@ import { getViewAsSelected, useViewAs } from "./view-as-store";
 
 const CURRENT_USER = "Unknown user";
 const APPRAISAL_YEAR = "Apr-26";
+const AUDIT_LOCAL_STORAGE_KEY = "appraisal.auditTrail.v1";
+const AUDIT_LOCAL_STORAGE_LIMIT = 5000;
+
+const readLocalAuditTrail = () => {
+  try {
+    if (typeof window === "undefined") return [];
+    const raw = window.localStorage.getItem(AUDIT_LOCAL_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed)
+      ? parsed.filter((entry) => entry && entry.empId && entry.field).slice(0, AUDIT_LOCAL_STORAGE_LIMIT)
+      : [];
+  } catch (_) {
+    return [];
+  }
+};
+
+const writeLocalAuditTrail = (entries) => {
+  try {
+    if (typeof window === "undefined") return;
+    const safeEntries = (Array.isArray(entries) ? entries : []).slice(0, AUDIT_LOCAL_STORAGE_LIMIT);
+    window.localStorage.setItem(AUDIT_LOCAL_STORAGE_KEY, JSON.stringify(safeEntries));
+  } catch (error) {
+    // Keep the in-memory audit trail alive if browser storage is disabled/full.
+    console.warn("Could not persist the appraisal audit trail in localStorage:", error);
+  }
+};
+
+const mergeAuditEntries = (serverEntries, localEntries) => {
+  const merged = new Map();
+  // Add local-only records first, then let the server's canonical record
+  // replace it when the same ID exists.
+  [...(localEntries || []), ...(serverEntries || [])].forEach((entry) => {
+    if (!entry || !entry.id) return;
+    const id = String(entry.id);
+    if (!merged.has(id)) merged.set(id, entry);
+    else merged.set(id, { ...merged.get(id), ...entry });
+  });
+  return Array.from(merged.values()).sort((a, b) => {
+    const at = new Date(a.at).getTime();
+    const bt = new Date(b.at).getTime();
+    return (Number.isFinite(bt) ? bt : 0) - (Number.isFinite(at) ? at : 0);
+  }).slice(0, AUDIT_LOCAL_STORAGE_LIMIT);
+};
 
 // CHANGED: grid edits no longer write to Payroll_Data (history). The current
 // cycle row in the History panel is computed live from the sheet, and writing
@@ -962,7 +1005,14 @@ export function AppraisalProvider({ children }) {
 
   const loadSeqRef = useRef(0);
 
-  const [audit, setAudit] = useState([]);
+  const [audit, setAudit] = useState(() => readLocalAuditTrail());
+
+  // Browser-local fallback makes the audit trail survive refreshes even when
+  // appraisalauditapi or its backing table is unavailable. Remote records are
+  // merged with these entries instead of erasing locally retained history.
+  useEffect(() => {
+    writeLocalAuditTrail(audit);
+  }, [audit]);
 
   const [modified, setModified] = useState({});
 
@@ -997,9 +1047,11 @@ export function AppraisalProvider({ children }) {
       setLoading(true);
       setError("");
 
-      const result = isHRUser
-        ? await fetchAllEmployeesFromCatalyst()
-        : await fetchAllEmployeesFromCatalyst("active", "eligible");
+      // The Appraisal Sheet contains active employees explicitly marked
+      // Eligible in the current cycle for both HR and Tech-ED. HR still sees
+      // every eligible employee; Employee Master/Eligibility screens keep
+      // their separate full-roster views.
+      const result = await fetchAllEmployeesFromCatalyst("active", "eligible");
 
       if (requestId !== loadSeqRef.current) {
         return;
@@ -1065,28 +1117,16 @@ export function AppraisalProvider({ children }) {
 
       setAudit((previous) => {
         if (!String(empId).trim()) {
-          const serverIds = new Set(records.map((item) => String(item.id)));
-
-          const unsavedLocal = previous.filter(
-            (item) => !item.saved && !serverIds.has(String(item.id)),
-          );
-
-          return [...records, ...unsavedLocal].sort(
-            (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
-          );
+          return mergeAuditEntries(records, previous);
         }
 
         const otherEmployees = previous.filter(
           (item) => String(item.empId) !== String(empId),
         );
-
-        const unsavedLocal = previous.filter(
-          (item) => String(item.empId) === String(empId) && !item.saved,
-        );
-
-        return [...records, ...unsavedLocal, ...otherEmployees].sort(
-          (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
-        );
+        return mergeAuditEntries(records, [
+          ...otherEmployees,
+          ...previous.filter((item) => String(item.empId) === String(empId)),
+        ]);
       });
 
       return records;
@@ -1119,15 +1159,7 @@ export function AppraisalProvider({ children }) {
         }
 
         setAudit((previous) => {
-          const serverIds = new Set(records.map((item) => String(item.id)));
-
-          const unsavedLocal = previous.filter(
-            (item) => !item.saved && !serverIds.has(String(item.id)),
-          );
-
-          return [...records, ...unsavedLocal].sort(
-            (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
-          );
+          return mergeAuditEntries(records, previous);
         });
       } catch (err) {
         console.error("Initial audit history load failed:", err);
@@ -1146,17 +1178,7 @@ export function AppraisalProvider({ children }) {
               }
 
               setAudit((previous) => {
-                const serverIds = new Set(
-                  retryRecords.map((item) => String(item.id)),
-                );
-
-                const unsavedLocal = previous.filter(
-                  (item) => !item.saved && !serverIds.has(String(item.id)),
-                );
-
-                return [...retryRecords, ...unsavedLocal].sort(
-                  (a, b) => new Date(b.at).getTime() - new Date(a.at).getTime(),
-                );
+                return mergeAuditEntries(retryRecords, previous);
               });
             } catch (retryError) {
               console.error("Audit history retry failed:", retryError);

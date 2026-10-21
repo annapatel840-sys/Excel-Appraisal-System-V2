@@ -2217,10 +2217,21 @@ export function EmployeeMaster() {
 
       const oldEligible = existingEmployee?.eligible;
 
+      const eligibilityCycleId = String(
+        existingEmployee?.appraisalCycleId ||
+        existingEmployee?.rawEmployee?.appraisal_cycle_id ||
+        existingEmployee?.rawEmployee?.appraisalCycleId ||
+        "",
+      ).trim();
+      if (!eligibilityCycleId) {
+        throw new Error("Could not identify the selected appraisal cycle. Refresh the Eligibility List and try again.");
+      }
+
       await updateEmployeeEligibility(
         empId,
         normalizedEligible,
         eligibleReason || "",
+        eligibilityCycleId,
       );
 
       addEligibilityAudit({
