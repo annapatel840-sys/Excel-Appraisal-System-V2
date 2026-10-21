@@ -778,8 +778,10 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     if (String(record?.appraisal_cycle_id ?? "") !== currentCycleId) return;
     const masterId = String(record?.employee_master_id ?? "").trim();
     const empId = String(record?.emp_id ?? "").trim().toLowerCase();
-    const status = String(record?.eligibility_status ?? record?.eligible_status ?? "").trim().toLowerCase();
-    if (!["eligible", "not eligible", "noteligible", "yes", "no", "true", "false", "1", "0"].includes(status)) return;
+    const status = String(record?.eligibility_status ?? record?.eligible_status ?? "").trim().toLowerCase().replace(/[ _-]+/g, "");
+    if (!status) return;
+    // Only an explicit Eligible decision should enter the Appraisal Sheet.
+    // Pending / Awaiting criteria must not fall back to a stale Employee_Master value.
     const normalized = ["eligible", "yes", "true", "1"].includes(status) ? "eligible" : "not eligible";
     if (masterId) eligibilityByEmployee.set("row:" + masterId, { status: normalized, record });
     if (empId) eligibilityByEmployee.set("emp:" + empId, { status: normalized, record });
