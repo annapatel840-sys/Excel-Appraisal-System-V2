@@ -582,7 +582,8 @@ export function TechEdBudgetDistribution() {
       await updateBudget(node.liveId || "", {
         percentage: to,
         budget_base: node.base,
-        calculated_budget: newUpd,
+        // Keep the initial Comp Manager allocation frozen after the first save.
+        calculated_budget: node.liveId ? node.original : newUpd,
         applied_budget: newUpd,
         comp_manager: name,
         ...(node.liveId ? {} : { budget_distribution_id: liveTech.id }),
