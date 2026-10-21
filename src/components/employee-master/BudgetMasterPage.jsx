@@ -386,7 +386,7 @@ function HRApplyBudget() {
         const existing = nextRows.find((item) => item.canonicalKey === key);
         if (existing) {
           existing.pct = amount(row.percentage);
-          existing.base = amount(row.budget_base) || existing.base;
+          existing.base = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== "" ? amount(row.budget_base) : existing.base;
           existing.original = amount(row.calculated_budget);
           existing.updated = amount(row.applied_budget) || existing.original;
           existing.team0 = amount(row.original_headcount ?? row.allocation_headcount) || existing.team0 || (employeeCounts.get(key) || 0);
@@ -404,7 +404,7 @@ function HRApplyBudget() {
         name: ownerValues.get(key) || ownerName(owner, employeeRows),
         pct: amount(row.percentage),
         pctSet: row.percentage !== null && row.percentage !== undefined && String(row.percentage).trim() !== "",
-        base: employeeBases.get(key) ?? amount(row.budget_base) ?? (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated),
+        base: employeeBases.has(key) ? employeeBases.get(key) : (row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== "" ? amount(row.budget_base) : (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated)),
         original: calculated,
         updated: applied,
         team0: amount(row.original_headcount ?? row.allocation_headcount) || assignedCount,
