@@ -373,11 +373,15 @@ function currentCtc(row) {
   // current Appraisal Sheet components rather than treating invalid text as 0.
   // The current Appraisal Sheet computes Total CTC with Rewards as next-year
   // base salary plus total bonus: (current base + hike) + (allocated PB + new PB + new RB).
-  return n(firstValue(row, ["current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "base_pay"])) +
-    n(firstValue(row, ["hike_amount", "hikeAmount", "current_hike_amount"])) +
-    n(firstValue(row, ["allocated_pb_amount", "allocatedPBAmount", "target_pb_allocated_for_may", "targetPBAllocatedForMay"])) +
-    n(firstValue(row, ["new_pb_to_be_offered", "newPBToBeOffered", "current_performance_bonus"])) +
-    n(firstValue(row, ["new_rb", "newRB", "current_retention_bonus"]));
+  const base = n(firstValue(row, ["current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "base_pay"]));
+  const hike = n(firstValue(row, ["hike_amount", "hikeAmount", "current_hike_amount"]));
+  const storedTotalPb = firstValue(row, ["total_pb", "totalPB"]);
+  const pb = storedTotalPb !== "" && storedTotalPb !== null && storedTotalPb !== undefined
+    ? n(storedTotalPb)
+    : n(firstValue(row, ["allocated_pb_amount", "allocatedPBAmount", "target_pb_allocated_for_may", "targetPBAllocatedForMay"])) +
+      n(firstValue(row, ["new_pb_to_be_offered", "newPBToBeOffered", "current_performance_bonus"]));
+  const retention = n(firstValue(row, ["new_rb", "newRB", "current_retention_bonus"]));
+  return base + hike + pb + retention;
 }
 
 function previousCtc(record) {
