@@ -1341,7 +1341,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const currentBaseField = ["current_budget_base", "current_base"].find((key) => masterColumns.has(key));
       const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => masterColumns.has(key));
       const currentCountField = ["current_headcount", "headcount"].find((key) => masterColumns.has(key));
-      if (originalBaseField && orgPctSet && !hasOrgOriginalSnapshot) orgFields[originalBaseField] = orgBase;
+      if (originalBaseField && orgPctSet && !hasOrgOriginalSnapshot) orgFields[originalBaseField] = orgOriginalBase;
       if (currentBaseField) orgFields[currentBaseField] = orgBase;
       const savedOrgOriginalCount = n(master.original_headcount || master.allocation_headcount);
       if (originalCountField && savedOrgOriginalCount <= 0 && eligibleEmployees.length > 0) {
