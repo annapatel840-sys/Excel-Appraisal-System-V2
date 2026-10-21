@@ -117,8 +117,14 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     store.tables.Payroll_Data.push({
       ROWID: '99991',
       emp_id: existingEmployeeRowId,
-      appraisal_cycle_id: previousCycleId,
-      total_ctc_with_rewards: '25,00,000',
+      // Payroll_Data.appraisal_cycle_name stores Appraisal_Cycle_Master.ROWID.
+      // The historical CTC total is computed from the prior-cycle pay/bonus columns.
+      appraisal_cycle_name: previousCycleId,
+      base_pay: '23,00,000',
+      hike_amount: '1,00,000',
+      allocated_pb: '50,000',
+      performance_bonus: '25,000',
+      retention_bonus: '25,000',
     });
 
     const r = await get(load(store));
