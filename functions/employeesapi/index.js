@@ -842,7 +842,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const previousCycleName = prior ? historyCycleName(prior.cycle) : "";
     const label = prior ? previousCycleName : "New - " + currentYear;
     const master = empKey ? employeeMasterMap.get(empKey) : null;
-    const masterId = String(master?.ROWID ?? master?.rowid ?? master?.id ?? "").trim();
+    const masterId = String(master?.ROWID ?? master?.rowid ?? master?.id ?? "").trim().toLowerCase();
     const cycleEligibility = (masterId ? eligibilityByEmployee.get("row:" + masterId) : null) ||
       (empKey ? eligibilityByEmployee.get("emp:" + empKey) : null);
     return {
