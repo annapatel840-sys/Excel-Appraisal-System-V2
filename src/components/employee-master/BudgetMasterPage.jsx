@@ -633,7 +633,6 @@ function HRApplyBudget() {
   const originalOrgBudget = hasValidOrgSnapshot
     ? savedOrgOriginal
     : (orgPctEntered ? orgBase * (1 + effectiveOrgPct / 100) : 0);
-  const changes = rows.filter((r) => Number(previewPct(r)) !== r.pct);
   const orgPending = orgPct !== "" && !!selectedMaster && amount(orgPct) !== Number(selectedMaster.budget_percentage || 0);
   const draftCount = rows.filter((row) =>
     Object.prototype.hasOwnProperty.call(pending, row.name) &&
@@ -643,7 +642,7 @@ function HRApplyBudget() {
     Object.prototype.hasOwnProperty.call(staged, row.name) &&
     Number(staged[row.name]) !== Number(row.pct),
   ).length;
-  const pendingCount = changes.length || orgPending ? changes.length + (orgPending ? 1 : 0) : 0;
+  const pendingCount = draftCount + (orgPending ? 1 : 0);
   const previewTotal = rows.reduce((s, r) => s + previewBudget(r), 0);
 
   async function applyOrgPercentage() {
@@ -716,134 +715,129 @@ function HRApplyBudget() {
 
   function discard() {
     setPending({});
+    setStaged({});
+    setStagedReasons({});
     setReason("");
     setError("");
   }
 
   async function apply() {
-    const org = amount(orgPct);
-    if (!(org >= 0 && org <= 100)) {
-      setError("Enter a valid org % between 0 and 100.");
+    if (!draftCount) {
+      setError("Make a Tech-Ed percentage change before selecting Apply changes.");
       return;
     }
-
-    const invalid = rows.find((r) => {
-      const value = previewPct(r);
-      return !(value >= 0 && value <= 100);
+    const invalid = rows.find((row) => {
+      const value = previewPct(row);
+      return !Number.isFinite(value) || value < 0 || value > 100;
     });
     if (invalid) {
-      setError(
-        "Not applied. " + invalid.name + ": enter a valid % between 0 and 100.",
-      );
+      setError("Not applied. " + invalid.name + ": enter a valid percentage between 0 and 100.");
       return;
     }
 
-    const orgBaseForCycle = orgBaseFromRoster;
-    const orgAvailableBudget = orgBaseForCycle * (1 + org / 100);
-    if (previewTotal > orgAvailableBudget + 0.5) {
+    const org = orgPct !== "" ? amount(orgPct) : amount(selectedMaster?.budget_percentage);
+    const available = orgBaseFromRoster * (1 + org / 100);
+    if (previewTotal > available + 0.5) {
       setError(
         "Not applied. Tech-Ed Updated Budgets total " + money(previewTotal) +
-        ", which exceeds the Org Updated Budget of " + money(orgAvailableBudget) + ". Reduce one or more Tech-Ed percentages.",
+        ", which exceeds the Org Updated Budget of " + money(available) + ". Reduce one or more Tech-Ed percentages.",
       );
       return;
     }
 
     const now = new Date().toISOString().slice(0, 10);
-    const changedRows = rows.filter((r) => Number(previewPct(r)) !== r.pct);
-    const next = rows.map((r) => {
-      const to = Number(previewPct(r));
-      return to === r.pct
-        ? r
-        : {
-            ...r,
-            pct: to,
-            updated: previewBudget(r),
-            lastChanged: dateText(now),
-          };
+    const updates = rows.filter((row) => Object.prototype.hasOwnProperty.call(pending, row.name));
+    setStaged((previous) => {
+      const next = { ...previous };
+      updates.forEach((row) => { next[row.name] = Number(pending[row.name]); });
+      return next;
     });
+    setStagedReasons((previous) => {
+      const next = { ...previous };
+      updates.forEach((row) => {
+        next[row.name] = reason.trim() || (Number(pending[row.name]) === org ? "Reset to org %" : "Override");
+      });
+      return next;
+    });
+    setAudit((previous) => {
+      const byOwner = new Map(previous.map((item) => [item.owner, item]));
+      updates.forEach((row) => byOwner.set(row.name, {
+        date: now,
+        owner: row.name,
+        from: row.pct,
+        to: Number(pending[row.name]),
+        before: row.updated,
+        after: row.base * (1 + Number(pending[row.name]) / 100),
+        by: "HR",
+        reason: reason.trim() || (Number(pending[row.name]) === org ? "Reset to org %" : "Override"),
+      }));
+      return Array.from(byOwner.values());
+    });
+    setPending({});
+    setReason("");
+    setError("");
+    // Apply is intentionally a staging step; the database changes only on Publish.
+    // Reload server data after Apply as requested, without dropping the staged preview.
+    await reloadBudget();
+  }
 
-    const newAudit = changedRows.map((r) => ({
-      date: now,
-      owner: r.name,
-      from: r.pct,
-      to: Number(previewPct(r)),
-      before: r.updated,
-      after: previewBudget(r),
-      by: "HR",
-      reason:
-        reason.trim() ||
-        (Number(previewPct(r)) === org ? "Reset to org %" : "Override"),
-    }));
-
-    if (orgPending) {
-      setOrgAudit((a) => [
-        {
-          date: now,
-          from: 8,
-          to: org,
-          before: total.updated,
-          after: previewTotal,
-          by: "HR",
-          reason: reason.trim() || "Org budget percentage change",
-        },
-        ...a,
-      ]);
+  async function publishChanges() {
+    if (!stagedCount) {
+      setError("Apply at least one percentage change before publishing.");
+      return;
     }
-
+    if (draftCount) {
+      setError("Apply pending edits before publishing staged changes.");
+      return;
+    }
+    const cycleId = String(selectedCycle || activeCycle?.id || activeCycle?.appraisal_cycle_id || activeCycle?.ROWID || "").trim();
+    if (!cycleId) {
+      setError("Select an appraisal cycle before publishing budget changes.");
+      return;
+    }
+    setSavingOrg(true);
+    setError("");
     try {
-      const orgBase = orgBaseFromRoster;
-      const originalOrgBudget = hasValidOrgSnapshot
-        ? savedOrgOriginal
-        : orgBase * (1 + org / 100);
-      const updatedOrgBudget = orgBase * (1 + org / 100);
-      const cycleId = String(selectedCycle || activeCycle?.id || activeCycle?.appraisal_cycle_id || activeCycle?.ROWID || "").trim();
-      if (!cycleId) throw new Error("Select an appraisal cycle before applying Tech-Ed budgets.");
-      // Persist every Appraisal Sheet Tech-Ed, including newly discovered rows.
-      // The API upserts by (appraisal_cycle_id, appraiser_tech_ed_id) and stores
-      // the business Employee ID in the varchar field, not a display label.
-      await Promise.all([
-        ...rows.map((r) => updateBudget(
-          r.id && !String(r.id).startsWith("tech-ed-") ? r.id : "",
+      const toPublish = rows.filter((row) => Object.prototype.hasOwnProperty.call(staged, row.name));
+      await Promise.all(toPublish.map((row) => {
+        const pct = Number(staged[row.name]);
+        const budget = row.base * (1 + pct / 100);
+        return updateBudget(
+          row.id && !String(row.id).startsWith("tech-ed-") ? row.id : "",
           {
             appraisal_cycle_id: cycleId,
-            appraiser_tech_ed_id: String(r.canonicalKey || r.name || "").trim().split(/\s+-\s+/)[0].slice(0, 20),
-            percentage: Number(previewPct(r)),
-            budget_base: r.base,
-            calculated_budget: String(r.id || "").startsWith("tech-ed-")
-              ? r.base * (1 + Number(previewPct(r)) / 100)
-              : (r.original || (r.base * (1 + Number(previewPct(r)) / 100))),
-            applied_budget: previewBudget(r),
+            appraiser_tech_ed_id: String(row.canonicalKey || row.name || "").trim().split(/\\s+-\\s+/)[0].slice(0, 20),
+            percentage: pct,
+            budget_base: row.base,
+            calculated_budget: String(row.id || "").startsWith("tech-ed-")
+              ? budget
+              : (row.original || budget),
+            applied_budget: budget,
+            change_reason: stagedReasons[row.name] || "Budget percentage published",
           },
           "distribution",
           false,
-        )),
-        updateBudget(selectedMaster?.id || "", {
-          appraisal_cycle_id: cycleId,
-          budget_percentage: org,
-          org_budget_base: orgBase,
-          calculated_budget: originalOrgBudget,
-          applied_budget: updatedOrgBudget,
-        }, "master", false),
-      ]);
+        );
+      }));
       await reloadBudget();
-    } catch (saveError) {
-      setError(saveError.message || "Budget changes could not be saved.");
-      return;
-    }
-
-    setRows(next);
-    setAudit((a) => [...newAudit, ...a]);
-    setPending({});
-    setOverrides((o) => {
-      const nextOverrides = { ...o };
-      next.forEach((r) => {
-        if (r.pct === org) delete nextOverrides[r.name];
-        else nextOverrides[r.name] = true;
+      setOverrides((previous) => {
+        const next = { ...previous };
+        toPublish.forEach((row) => {
+          if (Number(staged[row.name]) === amount(orgPct !== "" ? orgPct : selectedMaster?.budget_percentage)) delete next[row.name];
+          else next[row.name] = true;
+        });
+        return next;
       });
-      return nextOverrides;
-    });
-    setReason("");
-    setError("");
+      setStaged({});
+      setStagedReasons({});
+      setPending({});
+      setReason("");
+      setError("");
+    } catch (saveError) {
+      setError(saveError.message || "Budget changes could not be published.");
+    } finally {
+      setSavingOrg(false);
+    }
   }
 
   const displayedOrgUpdated = orgPending
@@ -1025,7 +1019,7 @@ function HRApplyBudget() {
                     <tr className={tdClass}>
                       <td className="bm-owner-cell">
                         <strong>{r.name}</strong>
-                        {changing ? <small>Pending change</small> : null}
+                        {changing ? <small>{Object.prototype.hasOwnProperty.call(pending, r.name) ? "Pending edit" : "Applied · not published"}</small> : null}
                       </td>
                       <td className="bm-align-right bm-number">{money(r.base)}</td>
                       <td className="bm-percent-cell">
@@ -1088,8 +1082,8 @@ function HRApplyBudget() {
         </div>
         <div className="bm-action-bar">
           <div className="bm-pending-status">
-            <span className={pendingCount ? "bm-status-dot bm-status-dot-pending" : "bm-status-dot"} />
-            <span>{pendingCount ? pendingCount + " change" + (pendingCount === 1 ? "" : "s") + " pending" : "No pending changes"}</span>
+            <span className={pendingCount || stagedCount ? "bm-status-dot bm-status-dot-pending" : "bm-status-dot"} />
+            <span>{pendingCount ? pendingCount + " pending edit" + (pendingCount === 1 ? "" : "s") : stagedCount ? stagedCount + " applied, not published" : "No pending changes"}</span>
           </div>
           {canConfig ? (
             <div className="bm-action-controls">
@@ -1100,13 +1094,14 @@ function HRApplyBudget() {
                 placeholder="Reason for change (optional)"
                 aria-label="Reason for budget changes"
               />
-              <button type="button" className="bm-btn bm-btn-secondary" disabled={!pendingCount} onClick={discard}>Discard</button>
-              <button type="button" className="bm-btn bm-btn-primary" disabled={!pendingCount} onClick={apply}>Apply changes</button>
+              <button type="button" className="bm-btn bm-btn-secondary" disabled={!pendingCount && !stagedCount} onClick={discard}>Discard</button>
+              <button type="button" className="bm-btn bm-btn-secondary" disabled={!draftCount || savingOrg} onClick={apply}>Apply changes</button>
+              <button type="button" className="bm-btn bm-btn-primary" disabled={!stagedCount || draftCount > 0 || savingOrg} onClick={publishChanges}>{savingOrg ? "Publishing…" : "Publish all"}</button>
             </div>
           ) : null}
         </div>
       </section>
-      <div className="bm-footer-note">Budget values shown here are sourced from the existing Budget Master API. This redesign does not change the calculation or saving workflow.</div>
+      <div className="bm-footer-note">Apply stages Tech-Ed percentage changes for review. Publish all saves staged changes to the Budget Master API. Data refreshes after Apply, Publish, and when this screen is reopened.</div>
     </div>
   );
 }
