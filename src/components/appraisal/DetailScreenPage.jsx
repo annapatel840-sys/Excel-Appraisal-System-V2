@@ -543,6 +543,11 @@ function NotesButton({ employee }) {
   const [anchor, setAnchor] = useState({ top: 0, right: 0 });
   const btnRef = useRef(null);
 
+  const notesCount = useMemo(() => {
+    const saved = readStore(NOTES_KEY, []);
+    return Array.isArray(saved) ? saved.length : 0;
+  }, [notesOpen]);
+
   useEffect(() => {
     if (!notesOpen) return undefined;
     const handleOutside = (event) => {
@@ -574,6 +579,11 @@ function NotesButton({ employee }) {
         style={{ fontFamily: FONT }}
       >
         ✎ My notes
+        {notesCount > 0 && (
+          <span className="ml-1.5 rounded-[9px] bg-white px-1.5 text-[10.5px] font-extrabold text-[#102a43]">
+            {notesCount}
+          </span>
+        )}
       </button>
       {notesOpen &&
         createPortal(
@@ -1613,13 +1623,6 @@ export function DetailScreenPage({
                       color: INK,
                     }}
                   />
-                  <span
-                    title={`Scope: ${scopeLabel}`}
-                    className="whitespace-nowrap rounded px-2 py-0.5 text-[12px] font-semibold"
-                    style={{ background: "#E6F3F2", color: "#0B5F5B" }}
-                  >
-                    {rows.length}
-                  </span>
                   <NotesButton employee={employee} />
                 </div>
               </div>
