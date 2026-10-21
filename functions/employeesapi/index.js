@@ -829,9 +829,17 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       ? Number(String(storedValue).replace(/[₹,\s]/g, ""))
       : ctcFromComponents(record);
     if (parsedValue === null || parsedValue === undefined || !Number.isFinite(parsedValue)) return;
-    const item = { cycle, rank, value: parsedValue, row: record };
+    const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
+    const item = { cycle, rank, value: parsedValue, row: record, rowTime };
     const current = historyByEmployee.get(empKey);
-    if (!current || item.rank > current.rank) historyByEmployee.set(empKey, item);
+    // Payroll uploads can add or correct a row for the same employee/cycle.
+    // Pick the newest valid row within the newest closed cycle, so Appraisal
+    // Sheet refreshes to the uploaded value instead of retaining an older row.
+    if (
+      !current ||
+      item.rank > current.rank ||
+      (item.rank === current.rank && item.rowTime.localeCompare(current.rowTime, undefined, { numeric: true }) > 0)
+    ) historyByEmployee.set(empKey, item);
   });
 
   return (employees || []).map((employee) => {
