@@ -467,9 +467,8 @@ export function TechEdBudgetDistribution() {
       const key = ownerKey(manager);
       const stats = managerStats.get(key) || { count: 0, base: 0, utilized: 0, name: manager };
       stats.count += 1;
-      // stats.base += num(employee.current_annual_base_pay ?? employee.currentAnnualBasePay ?? employee.current_base_pay ?? employee.base_pay ?? employee.basePay)
-      //   + num(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.pb_to_be_paid ?? employee.target_pb_allocated_for_may ?? employee.allocated_pb ?? employee.total_pb);
-      stats.base += num(employee.budget_base ?? employee.budgetBase);
+      stats.base += num(employee.current_annual_base_pay ?? employee.currentAnnualBasePay ?? employee.current_base_pay ?? employee.base_pay ?? employee.basePay)
+        + num(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.pb_to_be_paid ?? employee.target_pb_allocated_for_may ?? employee.allocated_pb ?? employee.total_pb);
       stats.utilized += employeeUtilized(employee);
       managerStats.set(key, stats);
     });
@@ -698,25 +697,11 @@ export function TechEdBudgetDistribution() {
                 <div className={"v" + (over ? " over" : "")}>
                   {lakh(used)} ({usedPct.toFixed(0)}%)
                 </div>
-                {/* <div className="d">
+                <div className="d">
                   {over ? <span className="over">▲ {lakh(used - myUpdated)} over</span> : <span className="mut">Remaining {lakh(myUpdated - used)}</span>}
                 </div>
               </div>
-            </div> */}
-            <div className="d">
-                {over ? <span className="over">▲ {lakh(used - myUpdated)} over</span> : <span className="mut">Remaining {lakh(myUpdated - used)}</span>}
-              </div>
-              </div>
-              <div>
-                <div className="f-label">Budget base</div>
-                <div className="v">{lakh(liveTech?.budget_base)}</div>
-                <div className="d mut">Previous-year CTC of your team</div>
-              </div>
             </div>
-
-
-
-
             <div className="ubar-wide">
               <div className={"ubar" + (over ? " over" : "")}>
                 <span style={{ width: Math.min(usedPct, 100) + "%" }} />
@@ -903,8 +888,7 @@ export function TechEdBudgetDistribution() {
               </table>
             </div>
             <div className="note">
-              {/* Budget base = Current Annual Base Pay + Allocated PB Amount of each {LEVELS[1]}'s team · Utilised = {UTILISED_LABEL} */}
-                  Budget base = Previous-year CTC with rewards of each {LEVELS[1]}'s team · Utilised = {UTILISED_LABEL}
+              Budget base = Current Annual Base Pay + Allocated PB Amount of each {LEVELS[1]}'s team · Utilised = {UTILISED_LABEL}
             </div>
           </>
         )}

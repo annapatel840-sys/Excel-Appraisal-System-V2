@@ -384,22 +384,16 @@ function HRApplyBudget() {
       // Budget Master must use the prior-year expense base calculated by the
       // Budget Master API (previous base pay + previous hike/PB/RB/JB).
       // Do not rebuild it from current annual pay + allocated PB.
-    //   const base = amount(employee.budget_base ?? employee.budgetBase) ||
-    //     (
-    //       amount(employee.previous_year_base_pay ?? employee.previousYearBasePay ?? employee.last_year_base_pay ?? employee.lastYearBasePay ?? employee.previous_annual_base_pay) +
-    //       amount(employee.previous_year_hike_amount ?? employee.previousYearHikeAmount ?? employee.previous_hike_amount ?? employee.last_year_hike_amount) +
-    //       amount(employee.previous_year_performance_bonus ?? employee.previous_year_pb ?? employee.previous_pb ?? employee.pb_to_be_paid ?? employee.pbToBePaid) +
-    //       amount(employee.previous_year_retention_bonus ?? employee.previous_year_rb ?? employee.previous_rb ?? employee.rb_to_be_paid ?? employee.rbToBePaid) +
-    //       amount(employee.previous_year_joining_bonus ?? employee.previous_year_jb ?? employee.previous_joining_bonus ?? employee.joining_bonus_previous_year)
-    //     );
-    //   employeeBases.set(key, (employeeBases.get(key) || 0) + base);
-    });
-
-          // Budget base = previous_year_CTC_with_rewards, calculated by the Budget Master API.
-      const base = amount(employee.budget_base ?? employee.budgetBase);
+      const base = amount(employee.budget_base ?? employee.budgetBase) ||
+        (
+          amount(employee.previous_year_base_pay ?? employee.previousYearBasePay ?? employee.last_year_base_pay ?? employee.lastYearBasePay ?? employee.previous_annual_base_pay) +
+          amount(employee.previous_year_hike_amount ?? employee.previousYearHikeAmount ?? employee.previous_hike_amount ?? employee.last_year_hike_amount) +
+          amount(employee.previous_year_performance_bonus ?? employee.previous_year_pb ?? employee.previous_pb ?? employee.pb_to_be_paid ?? employee.pbToBePaid) +
+          amount(employee.previous_year_retention_bonus ?? employee.previous_year_rb ?? employee.previous_rb ?? employee.rb_to_be_paid ?? employee.rbToBePaid) +
+          amount(employee.previous_year_joining_bonus ?? employee.previous_year_jb ?? employee.previous_joining_bonus ?? employee.joining_bonus_previous_year)
+        );
       employeeBases.set(key, (employeeBases.get(key) || 0) + base);
-
-
+    });
 
     const nextRows = [];
     const seenOwners = new Set();
@@ -492,17 +486,10 @@ function HRApplyBudget() {
   const previewBudget = (row) => row.base * (1 + previewPct(row) / 100);
   // Reject the previous broken snapshot when it is smaller than the corrected
   // prior-year expense base. A valid first-save snapshot is preserved thereafter.
-  // const savedOrgBase = amount(selectedMaster?.org_budget_base);
-  // const savedOrgOriginal = amount(selectedMaster?.calculated_budget);
-  // const hasValidOrgSnapshot = savedOrgBase >= total.base && savedOrgOriginal > savedOrgBase && savedOrgBase > 0;
-  // const orgBase = hasValidOrgSnapshot ? savedOrgBase : total.base;
-
-    const savedOrgBase = amount(selectedMaster?.org_budget_base);
+  const savedOrgBase = amount(selectedMaster?.org_budget_base);
   const savedOrgOriginal = amount(selectedMaster?.calculated_budget);
-  const hasValidOrgSnapshot = savedOrgBase > 0 && savedOrgOriginal > savedOrgBase;
-  const orgBase = savedOrgBase > 0 ? savedOrgBase : total.base;
-
-
+  const hasValidOrgSnapshot = savedOrgBase >= total.base && savedOrgOriginal > savedOrgBase && savedOrgBase > 0;
+  const orgBase = hasValidOrgSnapshot ? savedOrgBase : total.base;
   const effectiveOrgPct = orgPct === "" ? amount(selectedMaster?.budget_percentage) : amount(orgPct);
   const previewOrgBudget = orgBase * (1 + effectiveOrgPct / 100);
   const originalOrgBudget = hasValidOrgSnapshot
@@ -527,8 +514,7 @@ function HRApplyBudget() {
     }
     setSavingOrg(true);
     setError("");
-    // const orgBase = hasValidOrgSnapshot ? savedOrgBase : total.base;
-    const orgBase = savedOrgBase > 0 ? savedOrgBase : total.base;
+    const orgBase = hasValidOrgSnapshot ? savedOrgBase : total.base;
     const originalBudget = hasValidOrgSnapshot
       ? savedOrgOriginal
       : orgBase * (1 + org / 100);

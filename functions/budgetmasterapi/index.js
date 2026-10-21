@@ -532,28 +532,6 @@ function matchesTechEdOwner(owner, a, techEdOwners = []) {
   });
 }
 
-// function filterOwn(bundle, a, techEdOwners = []) {
-//   if (!a || !a.enforced || (a.scope && a.scope.all)) return bundle;
-//   const techEd = bundle.techEd.filter((row) =>
-//     matchesTechEdOwner(row.appraiser_tech_ed_id, a, techEdOwners),
-//   );
-//   const allowedDistributionIds = new Set(techEd.map((row) => row.id));
-//   const compManager = bundle.compManager.filter((row) =>
-//     allowedDistributionIds.has(String(row.budget_distribution_id)),
-//   );
-//   // Budget_Master is org-level and has no owner column, so a non-HR user gets
-//   // only the master row for the cycle represented by their Tech-Ed allocation.
-//   const cycleIds = new Set(techEd.map((row) => row.appraisal_cycle_id));
-//   const master = bundle.master.filter((row) =>
-//     cycleIds.has(row.appraisal_cycle_id),
-//   );
-//   const employeeRoster = (bundle.employeeRoster || []).filter((employee) =>
-//     matchesTechEdOwner(employee.appraiser_tech_ed, a, techEdOwners),
-//   );
-//   return { master, techEd, compManager, employeeRoster };
-// }
-
-
 function filterOwn(bundle, a, techEdOwners = []) {
   if (!a || !a.enforced || (a.scope && a.scope.all)) return bundle;
   const techEd = bundle.techEd.filter((row) =>
@@ -563,18 +541,18 @@ function filterOwn(bundle, a, techEdOwners = []) {
   const compManager = bundle.compManager.filter((row) =>
     allowedDistributionIds.has(String(row.budget_distribution_id)),
   );
+  // Budget_Master is org-level and has no owner column, so a non-HR user gets
+  // only the master row for the cycle represented by their Tech-Ed allocation.
   const cycleIds = new Set(techEd.map((row) => row.appraisal_cycle_id));
+  const master = bundle.master.filter((row) =>
+    cycleIds.has(row.appraisal_cycle_id),
+  );
   const employeeRoster = (bundle.employeeRoster || []).filter((employee) =>
     matchesTechEdOwner(employee.appraiser_tech_ed, a, techEdOwners),
   );
-  // A Tech-ED sees only the previous-year CTC total of their own team,
-  // not the whole organization's Org Budget Base.
-  const ownBase = employeeRoster.reduce((sum, employee) => sum + n(employee.budget_base), 0);
-  const master = bundle.master
-    .filter((row) => cycleIds.has(row.appraisal_cycle_id))
-    .map((row) => ({ ...row, org_budget_base: ownBase, current_budget_base: ownBase }));
   return { master, techEd, compManager, employeeRoster };
 }
+
 
 function ownerKey(raw) {
   const text = String(raw || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -755,7 +733,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
 
     // Total CTC with rewards of the previous appraisal cycle (Appraisal_Sheet column
     // previous_year_CTC_with_rewards). This is the budget base; firstValue() is case-insensitive.
-    const previousYearCtc = n(firstValue(row, [  "previous_CTC_with_rewards","previousCtcWithRewards","previous_year_CTC_with_rewards","previousYearCtcWithRewards"]));
+    const previousYearCtc = n(firstValue(row, [
+      "previous_year_CTC_with_rewards", "previousYearCtcWithRewards",]));
     
 
     const personName = String(firstValue(masterRow, ["emp_name", "employee_name", "name"]) || firstValue(row, ["name", "emp_name", "employee_name"]) || employeeId).trim();
@@ -1048,23 +1027,16 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       });
     }
 
-    // // Org totals are the roll-up of the Tech-ED allocations. Preserve the
-    // // original budget once captured; refresh the current/applied total each read.
-    // const cycleTech = bundle.techEd.filter((row) => String(row.appraisal_cycle_id) === cycleId);
-    // const previousOrgBase = n(master.org_budget_base);
-    // const previousOrgOriginal = n(master.calculated_budget);
-    // // If an old snapshot is below the corrected prior-year base, it came from
-    // // the broken calculation and must be rebuilt once.
-    // const orgOriginalBase = previousOrgBase >= orgBase && previousOrgBase > 0
-    //   ? previousOrgBase
-    //   : orgBase;
-    // const orgPct = n(master.budget_percentage);
-
+    // Org totals are the roll-up of the Tech-ED allocations. Preserve the
+    // original budget once captured; refresh the current/applied total each read.
     const cycleTech = bundle.techEd.filter((row) => String(row.appraisal_cycle_id) === cycleId);
     const previousOrgBase = n(master.org_budget_base);
     const previousOrgOriginal = n(master.calculated_budget);
-    // Org Budget Base is always the sum of previous_year_CTC_with_rewards.
-    const orgOriginalBase = orgBase;
+    // If an old snapshot is below the corrected prior-year base, it came from
+    // the broken calculation and must be rebuilt once.
+    const orgOriginalBase = previousOrgBase >= orgBase && previousOrgBase > 0
+      ? previousOrgBase
+      : orgBase;
     const orgPct = n(master.budget_percentage);
     const orgOriginal = previousOrgOriginal > orgOriginalBase && previousOrgOriginal > 0
       ? previousOrgOriginal
