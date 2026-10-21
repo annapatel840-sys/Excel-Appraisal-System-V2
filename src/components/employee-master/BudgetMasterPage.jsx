@@ -962,14 +962,9 @@ function HRApplyBudget() {
           <small>{orgPending ? "Preview — not yet saved" : "Current organization allocation"}</small>
         </div>
         <div className="bm-metric">
-          <span>Tech-Ed budgets</span>
-          <strong>{money(previewTotal)}</strong>
-          <small>Combined updated allocations</small>
-        </div>
-        <div className={"bm-metric" + (availableAfterAllocation < -0.5 ? " bm-metric-warning" : "")}>
-          <span>{availableAfterAllocation < -0.5 ? "Over allocation" : "Unallocated balance"}</span>
-          <strong>{money(Math.abs(availableAfterAllocation))}</strong>
-          <small>{availableAfterAllocation < -0.5 ? "Tech-Ed allocations exceed org budget" : "After Tech-Ed allocations"}</small>
+          <span>Allotted to Tech EDs</span>
+          <strong>{displayedOrgUpdated > 0 ? percent((previewTotal / displayedOrgUpdated) * 100) : "—"}</strong>
+          <small>{money(previewTotal)} allotted · {availableAfterAllocation < -0.5 ? "Over by " : "Balance "}{money(Math.abs(availableAfterAllocation))}</small>
         </div>
         <div className="bm-metric">
           <span>Team count</span>
@@ -977,9 +972,9 @@ function HRApplyBudget() {
           <small>Original to current eligible employees</small>
         </div>
         <div className="bm-metric">
-          <span>Budget utilized</span>
-          <strong>{money(displayedUtilized)}</strong>
-          <small>Reported by Budget Master API</small>
+          <span>Budget utilised</span>
+          <strong>{displayedOrgUpdated > 0 ? percent((displayedUtilized / displayedOrgUpdated) * 100) : "—"}</strong>
+          <small>{money(displayedUtilized)} used of {money(displayedOrgUpdated)}</small>
         </div>
       </section>
 
