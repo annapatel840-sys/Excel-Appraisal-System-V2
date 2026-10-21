@@ -770,6 +770,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   const shortYearMatch = currentCycleName.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*(\d{2})/i);
   const currentYear = yearMatch ? yearMatch[0] : shortYearMatch ? "20" + shortYearMatch[1] : currentCycleName || "current cycle";
   const priorValues = new Map();
+  const priorValueTimes = new Map();
   const previousCycleEmployees = new Set();
   payrollRows.forEach((record) => {
     const empKey = rowEmployeeKey(record.emp_id ?? record.employee_id, employeeMasterMap);
@@ -783,7 +784,14 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const value = record.total_CTC_with_rewards ?? record.total_ctc_with_rewards ?? record.new_ctc ?? record.newCTC;
     if (value === null || value === undefined || String(value).trim() === "") return;
     const parsed = Number(String(value).replace(/[₹,\s]/g, ""));
-    if (Number.isFinite(parsed)) priorValues.set(empKey, parsed);
+    if (Number.isFinite(parsed)) {
+      const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
+      const priorTime = priorValueTimes.get(empKey) || "";
+      if (!priorValues.has(empKey) || rowTime.localeCompare(priorTime, undefined, { numeric: true }) >= 0) {
+        priorValues.set(empKey, parsed);
+        priorValueTimes.set(empKey, rowTime);
+      }
+    }
   });
   return (employees || []).map((employee) => {
     const empKey = rowEmployeeKey(employee.emp_id ?? employee.employee_id, employeeMasterMap);
