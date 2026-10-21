@@ -9,30 +9,6 @@ const NAVY = "#12304f";
 const TEAL = "#14a3a3";
 const BORDER = "#d3dbe6";
 
-/* Sample data. Replace with the budgetmaster API response when it is wired. */
-const TECH_ED_DATA = [
-  {
-    name: "Prabhu Prasad Parida",
-    pct: 8,
-    base: 42500000,
-    original: 3400000,
-    updated: 3400000,
-    team0: 48,
-    team: 48,
-    lastChanged: "01-Sep-26",
-  },
-  {
-    name: "Ashok Kumar",
-    pct: 8,
-    base: 38000000,
-    original: 3040000,
-    updated: 3040000,
-    team0: 42,
-    team: 42,
-    lastChanged: "01-Sep-26",
-  },
-];
-
 /* ---------- helpers ---------- */
 function normalizeOwnerKey(value) {
   const text = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -1106,7 +1082,7 @@ function HRAuditTrail() {
               className="ml-2 h-7 rounded border border-[#cbd3df] px-2"
             >
               <option value="all">All</option>
-              {TECH_ED_DATA.map((r) => (
+              {rows.map((r) => (
                 <option key={r.name} value={r.name}>
                   {r.name}
                 </option>
