@@ -469,7 +469,8 @@ function HRApplyBudget() {
         amount(employee.previous_year_retention_bonus ?? employee.previous_year_rb ?? employee.previous_rb ?? employee.rb_to_be_paid ?? employee.rbToBePaid) +
         amount(employee.previous_year_joining_bonus ?? employee.previous_year_jb ?? employee.previous_joining_bonus ?? employee.joining_bonus_previous_year)
       );
-      employeeBases.set(key, (employeeBases.get(key) || 0) + base);
+      // Only eligible, active employees contribute to fallback team bases.
+      if (eligible) employeeBases.set(key, (employeeBases.get(key) || 0) + base);
     });
 
     const nextRows = [];
@@ -489,8 +490,14 @@ function HRApplyBudget() {
           existing.base = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== "" ? amount(row.budget_base) : existing.base;
           existing.original = amount(row.calculated_budget);
           existing.updated = amount(row.applied_budget) || existing.original;
-          existing.team0 = amount(row.original_headcount ?? row.allocation_headcount) || existing.team0 || (employeeCounts.get(key) || 0);
-          existing.team = employeeCounts.get(key) || 0;
+          const originalCountValue = row.original_headcount ?? row.allocation_headcount;
+          const currentCountValue = row.current_headcount ?? row.headcount;
+          existing.team0 = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== ""
+            ? amount(originalCountValue)
+            : (existing.team0 ?? (employeeCounts.get(key) || 0));
+          existing.team = currentCountValue !== null && currentCountValue !== undefined && String(currentCountValue).trim() !== ""
+            ? amount(currentCountValue)
+            : (employeeCounts.get(key) || 0);
           existing.id = row.id || existing.id;
         }
         return;
@@ -498,17 +505,30 @@ function HRApplyBudget() {
       const calculated = amount(row.calculated_budget);
       const applied = amount(row.applied_budget) || calculated;
       const assignedCount = employeeCounts.get(key) || 0;
+      const originalCountValue = row.original_headcount ?? row.allocation_headcount;
+      const currentCountValue = row.current_headcount ?? row.headcount;
+      const originalCount = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== ""
+        ? amount(originalCountValue)
+        : assignedCount;
+      const currentCount = currentCountValue !== null && currentCountValue !== undefined && String(currentCountValue).trim() !== ""
+        ? amount(currentCountValue)
+        : assignedCount;
+      const storedBase = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== ""
+        ? amount(row.budget_base)
+        : null;
       nextRows.push({
         id: row.id || "tech-ed-" + key,
         canonicalKey: key,
         name: ownerValues.get(key) || ownerName(owner, employeeRows),
         pct: amount(row.percentage),
         pctSet: row.percentage !== null && row.percentage !== undefined && String(row.percentage).trim() !== "",
-        base: employeeBases.has(key) ? employeeBases.get(key) : (row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== "" ? amount(row.budget_base) : (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated)),
+        // budgetmasterapi calculates this base from the cycle's eligible roster;
+        // prefer it over the all-employee API roster to avoid inflating Org Base.
+        base: storedBase !== null ? storedBase : (employeeBases.get(key) || (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated)),
         original: calculated,
         updated: applied,
-        team0: amount(row.original_headcount ?? row.allocation_headcount) || assignedCount,
-        team: assignedCount,
+        team0: originalCount,
+        team: currentCount,
         lastChanged: "—",
       });
       seenOwners.add(key);
@@ -544,16 +564,13 @@ function HRApplyBudget() {
     }
   }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, selectedCycle, selectedMaster?.budget_percentage]);
 
-  const orgBaseFromRoster = useMemo(() => {
-    const byEmployee = new Map();
-    (Array.isArray(employeeRows) ? employeeRows : []).forEach((employee) => {
-      const id = normalizeOwnerKey(employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text || employee.row_id || employee.ROWID || employee.id);
-      if (!id) return;
-      const base = amount(employee.previous_appraisal_total_ctc_with_rewards ?? employee.Previous_Appraisal_total_CTC_with_rewards ?? employee.budget_base ?? employee.budgetBase);
-      if (!byEmployee.has(id)) byEmployee.set(id, base);
-    });
-    return Array.from(byEmployee.values()).reduce((sum, base) => sum + base, 0);
-  }, [employeeRows]);
+  // The distribution API already calculates each Tech-Ed base from the
+  // selected cycle's eligible employees. Sum those unique Tech-Ed rows instead
+  // of summing the full Employee_Master roster (which includes ineligible staff).
+  const orgBaseFromRoster = useMemo(
+    () => rows.reduce((sum, row) => sum + amount(row.base), 0),
+    [rows],
+  );
 
   const total = useMemo(
     () =>
@@ -1070,6 +1087,21 @@ function FragmentRow({ children }) {
 }
 
 function HRAuditTrail() {
+  const { techEdOwners = [], employeeRows = [] } = useBudget();
+  // The Tech-Ed filter must come from the budget roster. The old screen
+  // referenced an undefined local variable named "rows" and crashed on mount.
+  const rows = useMemo(() => {
+    const seen = new Set();
+    return techEdOwners.map((item) => {
+      const value = ownerName(item.assignment || item.name || item.employee_id || item.row_id, employeeRows);
+      return { name: value };
+    }).filter((item) => {
+      const key = normalizeOwnerKey(item.name);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).sort((a, b) => a.name.localeCompare(b.name));
+  }, [techEdOwners, employeeRows]);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [filter, setFilter] = useState("all");
