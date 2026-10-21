@@ -23,6 +23,7 @@ import {
   BudgetStatsBar,
   resolveBudgetAllocated,
   sumBudgetConsumed,
+  sumTargetPB,
 } from "./BudgetStatsBar";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
@@ -989,6 +990,7 @@ export function DetailScreenPage({
 
   // Budget summary shown beside the notice (same numbers as the Appraisal Sheet).
   const budgetConsumed = useMemo(() => sumBudgetConsumed(rows), [rows]);
+  const budgetTargetPB = useMemo(() => sumTargetPB(rows), [rows]);
   const { allocated: budgetAllocated, isEstimate: budgetIsEstimate } =
     resolveBudgetAllocated({
       totals: budgetMasterTotals,
@@ -1537,6 +1539,7 @@ export function DetailScreenPage({
               className="ml-auto w-[calc(50%-4px)]"
               allocated={budgetAllocated}
               consumed={budgetConsumed}
+              targetPB={budgetTargetPB}
               isEstimate={budgetIsEstimate}
             />
             {budgetNotice && !noticeOpen && (

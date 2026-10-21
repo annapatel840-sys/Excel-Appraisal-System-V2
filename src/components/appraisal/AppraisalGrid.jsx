@@ -3631,8 +3631,7 @@ export function AppraisalGrid({
                   input.select();
                 }
               });
-            }
-          }}
+            }}}
           onChange={(event) => {
             const value = event.target.value;
             setEditingValue(cellKey, value);

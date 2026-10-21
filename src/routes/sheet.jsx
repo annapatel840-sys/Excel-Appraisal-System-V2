@@ -16,6 +16,7 @@ import {
   BudgetStatsBar,
   resolveBudgetAllocated,
   sumBudgetConsumed,
+  sumTargetPB,
 } from "@/components/appraisal/BudgetStatsBar";
 import { useAppraisalImport } from "@/components/appraisal/ImportAppraisalButton"; // <-- update path if your file is named differently
 
@@ -227,6 +228,7 @@ export function SheetPage() {
   // ============================================================
 
   const budgetConsumed = useMemo(() => sumBudgetConsumed(filtered), [filtered]);
+  const budgetTargetPB = useMemo(() => sumTargetPB(filtered), [filtered]);
 
   const { allocated: budgetAllocated, isEstimate: budgetIsEstimate } =
     resolveBudgetAllocated({
@@ -262,6 +264,7 @@ export function SheetPage() {
               className="ml-auto w-[calc(50%-4px)]"
               allocated={budgetAllocated}
               consumed={budgetConsumed}
+              targetPB={budgetTargetPB}
               isEstimate={budgetIsEstimate}
             />
           </div>

@@ -55,11 +55,11 @@ const formulaFor = (rowNumber, col) => {
 
     /* ========================================================
        TOTAL BONUS
-       totalOfPB + newRB
+       allocatedPBAmount + newRB  (PB + RB)
        ======================================================== */
 
     case "totalBonus":
-      return `=${cell("totalOfPB")}+${cell("newRB")}`;
+      return `=${cell("allocatedPBAmount")}+${cell("newRB")}`;
 
     /* ========================================================
        NEW BASE SALARY
