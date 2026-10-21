@@ -706,19 +706,19 @@ function historyCycleRank(cycle) {
     if (Number.isFinite(timestamp)) return timestamp;
   }
   const name = historyCycleName(cycle);
-  const monthYear = name.match(/\\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\\s,]*(\\d{2,4})\\b/i);
+  const monthYear = name.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s,]*(\d{2,4})\b/i);
   if (monthYear) {
     const month = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(monthYear[1].slice(0,3).toLowerCase());
     let year = Number(monthYear[2]);
     if (year < 100) year += 2000;
     return new Date(year, month, 1).getTime();
   }
-  const year = name.match(/(?:19|20)\\d{2}/);
+  const year = name.match(/(?:19|20)\d{2}/);
   return year ? new Date(Number(year[0]), 0, 1).getTime() : 0;
 }
 
 function rowEmployeeKey(raw, employeeMasterMap) {
-  const identity = historyReference(raw).split(/\\s+-\\s+/)[0].trim();
+  const identity = historyReference(raw).split(/\s+-\s+/)[0].trim();
   if (!identity) return "";
   const master = employeeMasterMap.get(identity) || employeeMasterMap.get(identity.toLowerCase());
   return String(master?.emp_id || identity).trim().toLowerCase();
@@ -727,12 +727,12 @@ function rowEmployeeKey(raw, employeeMasterMap) {
 function currentTotalCtc(row) {
   const stored = row?.total_ctc_with_rewards ?? row?.total_CTC_with_rewards ?? row?.total_ctc ?? row?.new_ctc;
   if (stored !== undefined && stored !== null && String(stored).trim() !== "") {
-    const parsed = Number(String(stored).replace(/[₹,\\s]/g, ""));
+    const parsed = Number(String(stored).replace(/[₹,\s]/g, ""));
     if (Number.isFinite(parsed)) return parsed;
   }
   // Same formula as Total CTC with Rewards in the appraisal grid.
   const num = (value) => {
-    const parsed = Number(String(value ?? 0).replace(/[₹,\\s]/g, ""));
+    const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
     return Number.isFinite(parsed) ? parsed : 0;
   };
   return num(row?.current_annual_base_pay) + num(row?.hike_amount) +
@@ -766,8 +766,8 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   const previousCycleId = previousCycle ? String(previousCycle.ROWID ?? previousCycle.rowid ?? previousCycle.id ?? "").trim() : "";
   const previousCycleName = previousCycle ? historyCycleName(previousCycle) : "";
   const currentCycleName = currentCycle ? historyCycleName(currentCycle) : "";
-  const yearMatch = currentCycleName.match(/(?:19|20)\\d{2}/);
-  const shortYearMatch = currentCycleName.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\\s]*(\\d{2})/i);
+  const yearMatch = currentCycleName.match(/(?:19|20)\d{2}/);
+  const shortYearMatch = currentCycleName.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*(\d{2})/i);
   const currentYear = yearMatch ? yearMatch[0] : shortYearMatch ? "20" + shortYearMatch[1] : currentCycleName || "current cycle";
   const priorValues = new Map();
   payrollRows.forEach((record) => {
@@ -780,7 +780,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     if (!empKey || !belongsToPrevious) return;
     const value = record.total_CTC_with_rewards ?? record.total_ctc_with_rewards ?? record.new_ctc ?? record.newCTC;
     if (value === null || value === undefined || String(value).trim() === "") return;
-    const parsed = Number(String(value).replace(/[₹,\\s]/g, ""));
+    const parsed = Number(String(value).replace(/[₹,\s]/g, ""));
     if (Number.isFinite(parsed)) priorValues.set(empKey, parsed);
   });
   return (employees || []).map((employee) => {
