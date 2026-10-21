@@ -1175,7 +1175,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       );
       const originalBase = hasOriginalSnapshot
         ? (savedOriginalBase > 0 ? savedOriginalBase : stats.base)
-        : (savedOriginalBase > 0 && savedOriginalBudget > 0 ? savedOriginalBase : stats.base);
+        : (originalBasePlausible && savedOriginalBase > 0 ? savedOriginalBase : stats.base);
       const originalBudget = hasOriginalSnapshot
         ? savedOriginalBudget
         : (canCreateOriginal ? (originalBase * (1 + effectivePct / 100)) : 0);
@@ -1266,7 +1266,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         (comparisonBase <= 0 || savedOriginalBudget >= comparisonBase * 0.001) &&
         (comparisonBase <= 0 || savedOriginalBudget <= comparisonBase);
       const hasOriginalSnapshot = snapshotLooksValid;
-      const originalBase = hasOriginalSnapshot ? savedOriginalBase : (savedOriginalBase > 0 ? savedOriginalBase : stats.base);
+      const originalBase = hasOriginalSnapshot
+        ? savedOriginalBase
+        : (originalBasePlausible && savedOriginalBase > 0 ? savedOriginalBase : stats.base);
       // Comp Manager % is an allocation share of the team CTC base, not an extra hike on top of that base.
       const originalBudget = hasOriginalSnapshot ? savedOriginalBudget : (originalBase * pct / 100);
       const updatedBudget = stats.base * pct / 100;
@@ -1323,7 +1325,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     );
     const orgOriginalBase = hasOrgOriginalSnapshot
       ? orgOriginalBaseCandidate
-      : (savedOrgOriginalBase > 0 && previousOrgOriginal > 0 ? savedOrgOriginalBase : orgBase);
+      : (orgOriginalBasePlausible && savedOrgOriginalBase > 0 && previousOrgOriginal > 0
+          ? savedOrgOriginalBase
+          : orgBase);
     const orgOriginal = hasOrgOriginalSnapshot
       ? previousOrgOriginal
       : (orgPctSet ? (orgOriginalBase * (1 + orgPct / 100)) : 0);
