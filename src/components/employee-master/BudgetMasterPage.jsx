@@ -656,6 +656,10 @@ function HRApplyBudget() {
       setError("Enter a valid Org % between 0 and 100.");
       return;
     }
+    if (draftCount || stagedCount) {
+      setError("Apply, publish, or discard Tech-Ed edits before changing the organization percentage.");
+      return;
+    }
     setSavingOrg(true);
     setError("");
     const orgBase = orgBaseFromRoster;
@@ -663,6 +667,7 @@ function HRApplyBudget() {
       ? savedOrgOriginal
       : orgBase * (1 + org / 100);
     const updatedBudget = orgBase * (1 + org / 100);
+    const previousOrgPct = amount(selectedMaster?.budget_percentage);
     try {
       await updateBudget(selectedMaster?.id || "", {
         appraisal_cycle_id: cycleId,
@@ -672,16 +677,24 @@ function HRApplyBudget() {
         applied_budget: updatedBudget,
         budget_utilized: amount(selectedMaster?.budget_utilized),
       }, "master", false);
-      await Promise.all(rows
-        .filter((row) => String(row.id || "").startsWith("tech-ed-"))
-        .map((row) => updateBudget("", {
+      // Update inherited Tech-Ed rows only. A separately configured override must
+      // remain untouched when HR changes the organization default.
+      const inheritedRows = rows.filter((row) =>
+        !row.pctSet || Math.abs(amount(row.pct) - previousOrgPct) < 0.0001,
+      );
+      await Promise.all(inheritedRows.map((row) => updateBudget(
+        row.id && !String(row.id).startsWith("tech-ed-") ? row.id : "",
+        {
           appraisal_cycle_id: cycleId,
           appraiser_tech_ed_id: String(row.canonicalKey || row.name || "").trim().split(/\s+-\s+/)[0].slice(0, 20),
           percentage: org,
           budget_base: row.base,
-          calculated_budget: row.base * (1 + org / 100),
+          calculated_budget: row.original || row.base * (1 + org / 100),
           applied_budget: row.base * (1 + org / 100),
-        }, "distribution", false)));
+        },
+        "distribution",
+        false,
+      )));
       await reloadBudget();
     } catch (saveError) {
       setError(saveError.message || "Org % and appraisal cycle could not be saved.");
