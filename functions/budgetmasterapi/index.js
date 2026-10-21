@@ -1114,7 +1114,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     eligibleEmployees.forEach((employee) => {
       const techKey = ownerKey(employee.techEd);
       const compKey = ownerKey(employee.compManager);
-      const consumed = n(employee.utilized_amount);
+      // Match Budget Distribution's "Consumed (Hikes + Bonuses)" calculation.
+      const consumed = n(employee.hike_amount) + n(employee.allocated_pb_amount) + n(employee.new_rb);
       orgUtilized += consumed;
       if (techKey) {
         const tech = techBases.get(techKey) || { base: 0, count: 0, utilized: 0 };
@@ -1199,7 +1200,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         // original count after delegation changes. Current count tracks the
         // current eligible Appraisal Sheet assignments (updated on approval).
         const savedOriginalCount = n(row.original_headcount || row.allocation_headcount);
-        if (originalCountField && canCreateOriginal && savedOriginalCount <= 0 && stats.count > 0) update[originalCountField] = stats.count;
+        if (originalCountField && savedOriginalCount <= 0 && stats.count > 0) update[originalCountField] = stats.count;
         if (currentCountField) update[currentCountField] = stats.count;
         if (currentBaseField) update[currentBaseField] = stats.base;
         if (overrideField && rawPct === null) update[overrideField] = effectivePct;
@@ -1214,7 +1215,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         applied_budget: updatedBudget,
         effective_percentage: effectivePct,
         current_headcount: stats.count,
-        original_headcount: (n(row.original_headcount || row.allocation_headcount) > 0 || !canCreateOriginal) ? n(row.original_headcount || row.allocation_headcount) : stats.count,
+        total_utilization: stats.utilized,
+        original_headcount: n(row.original_headcount || row.allocation_headcount) > 0
+          ? n(row.original_headcount || row.allocation_headcount)
+          : stats.count,
       });
     }
 
@@ -1285,6 +1289,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         calculated_budget: originalBudget,
         applied_budget: updatedBudget,
         current_headcount: stats.count,
+        total_utilization: stats.utilized,
         original_headcount: n(row.original_headcount || row.allocation_headcount) > 0 ? n(row.original_headcount || row.allocation_headcount) : stats.count,
       });
     }
@@ -1335,7 +1340,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const savedOrgOriginalCount = n(master.original_headcount || master.allocation_headcount);
       // A zero baseline with currently eligible staff is legacy bad data. Repair
       // it once; after that, keep the original baseline stable across delegation.
-      if (originalCountField && orgPctSet && savedOrgOriginalCount <= 0 && eligibleEmployees.length > 0) {
+      if (originalCountField && savedOrgOriginalCount <= 0 && eligibleEmployees.length > 0) {
         orgFields[originalCountField] = eligibleEmployees.length;
       }
       if (currentCountField) orgFields[currentCountField] = eligibleEmployees.length;
@@ -1351,7 +1356,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       current_headcount: eligibleEmployees.length,
       original_headcount: n(master.original_headcount || master.allocation_headcount) > 0
         ? n(master.original_headcount || master.allocation_headcount)
-        : (orgPctSet ? eligibleEmployees.length : n(master.original_headcount || master.allocation_headcount)),
+        : eligibleEmployees.length,
     });
   }
 
