@@ -5,9 +5,9 @@ import { useBudget } from "@/lib/budget-store";
 import { TechEdBudgetMasterPage } from "./TechEdBudgetMasterPage";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
-const NAVY = "#12304f";
-const TEAL = "#14a3a3";
-const BORDER = "#d3dbe6";
+const NAVY = "#102A43";
+const TEAL = "#2F6FED";
+const BORDER = "#D5DFEB";
 
 /* ---------- helpers ---------- */
 function normalizeOwnerKey(value) {
@@ -235,22 +235,22 @@ const HR_COLS = [
 
 
 const BUDGET_MASTER_CSS = `
-.bm-root{--bm-navy:#12304f;--bm-teal:#14a3a3;--bm-border:#d3dbe6;--bm-muted:#64748b;width:100%;display:flex;flex-direction:column;gap:12px;color:#0f1f33;font-family:"IBM Plex Sans","Segoe UI",Arial,sans-serif;font-size:12.5px;font-variant-numeric:tabular-nums}
+.bm-root{--bm-navy:#102A43;--bm-teal:#2F6FED;--bm-border:#D5DFEB;--bm-muted:#6B7280;width:100%;display:flex;flex-direction:column;gap:12px;padding:12px;background:#F3F4F6;border-radius:10px;color:#111827;font-family:"Manrope","Segoe UI",Arial,sans-serif;font-size:12.5px;font-variant-numeric:tabular-nums}
 .bm-root *{box-sizing:border-box}
 .bm-root button,.bm-root input{font:inherit}
 .bm-root button:focus-visible,.bm-root input:focus-visible{outline:2px solid #14a3a3;outline-offset:2px}
 .bm-page-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;padding:2px 2px 4px}
 .bm-eyebrow,.bm-section-kicker{font-size:10px;letter-spacing:.09em;font-weight:800;color:#64748b}
-.bm-page-head h2{margin:3px 0 4px;color:#12304f;font-size:23px;line-height:1.2;font-weight:750}
+.bm-page-head h2{margin:3px 0 4px;color:#102A43;font-size:23px;line-height:1.2;font-weight:800}
 .bm-page-head p{margin:0;color:#64748b;font-size:12px;line-height:1.5}
 .bm-head-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.bm-cycle-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid #cbd9e8;background:#f3f7fb;color:#12304f;border-radius:999px;padding:7px 11px;font-weight:700;white-space:nowrap}
+.bm-cycle-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid #C9D8EC;background:#E6EEF8;color:#102A43;border-radius:999px;padding:7px 11px;font-weight:700;white-space:nowrap}
 .bm-status-dot{display:inline-block;width:7px;height:7px;flex:none;border-radius:50%;background:#159b79}
 .bm-status-dot-pending{background:#d97706}
 .bm-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid transparent;border-radius:6px;padding:8px 13px;font-weight:700;white-space:nowrap;cursor:pointer;transition:background .15s,border-color .15s}
 .bm-btn:disabled{opacity:.45;cursor:not-allowed}
-.bm-btn-primary{background:#14a3a3;color:#fff;border-color:#14a3a3}
-.bm-btn-primary:hover:not(:disabled){background:#0f8585;border-color:#0f8585}
+.bm-btn-primary{background:#2F6FED;color:#fff;border-color:#2F6FED}
+.bm-btn-primary:hover:not(:disabled){background:#2459C5;border-color:#2459C5}
 .bm-btn-secondary{background:#fff;color:#12304f;border-color:#c5d0dd}
 .bm-btn-secondary:hover:not(:disabled){background:#f4f7fa}
 .bm-alert{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border:1px solid;border-radius:7px;padding:10px 12px;line-height:1.5}
@@ -258,7 +258,7 @@ const BUDGET_MASTER_CSS = `
 .bm-alert-error{border-color:#e7b5ad;background:#fff5f3;color:#7c2d12}
 .bm-alert button{border:0;background:none;font-weight:700;cursor:pointer}
 .bm-control-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:12px}
-.bm-control-card{min-width:0;border:1px solid #d3dbe6;border-top:3px solid #14a3a3;border-radius:10px;background:#fff;padding:15px 16px;box-shadow:0 1px 2px rgba(18,48,79,.04)}
+.bm-control-card{min-width:0;border:1px solid #D5DFEB;border-top:3px solid #2F6FED;border-radius:10px;background:#fff;padding:15px 16px;box-shadow:0 1px 2px rgba(16,42,67,.04)}
 .bm-tech-control-card{border-top-color:#9fb3cf}
 .bm-card-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:13px}
 .bm-card-heading h3,.bm-table-heading h3{margin:3px 0 0;font-size:15px;font-weight:750;color:#12304f}
@@ -270,7 +270,7 @@ const BUDGET_MASTER_CSS = `
 .bm-cycle-field{flex:1 1 180px}
 .bm-cycle-value{display:flex;align-items:center;min-height:38px;border:1px solid #d7e0eb;background:#f6f8fb;border-radius:5px;padding:0 10px;color:#12304f;font-weight:700}
 .bm-percent-field{flex:0 0 112px}
-.bm-percent-control{display:flex;align-items:center;border:1px solid #14a3a3;border-radius:5px;height:38px;padding:0 9px;background:#fff}
+.bm-percent-control{display:flex;align-items:center;border:1px solid #2F6FED;border-radius:5px;height:38px;padding:0 9px;background:#fff}
 .bm-percent-control input{width:100%;min-width:0;border:0;outline:0;text-align:right;font-size:17px;font-weight:800;color:#12304f;background:transparent}
 .bm-percent-control input:focus-visible{outline:0}
 .bm-percent-control span{padding-left:5px;color:#64748b;font-weight:700}
@@ -281,13 +281,13 @@ const BUDGET_MASTER_CSS = `
 .bm-tech-summary span{color:#64748b;font-size:11px}
 .bm-tech-summary strong{color:#12304f;font-size:17px}
 .bm-pending-value{color:#b45309!important}
-.bm-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.bm-metric{min-width:0;display:flex;flex-direction:column;gap:5px;border:1px solid #d3dbe6;border-radius:9px;background:#fff;padding:13px 14px;box-shadow:0 1px 2px rgba(18,48,79,.04)}
+.bm-metrics{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.bm-metric{min-width:0;display:flex;flex-direction:column;gap:5px;border:1px solid #D5DFEB;border-radius:9px;background:#fff;padding:10px 10px;box-shadow:0 1px 2px rgba(16,42,67,.04)}
 .bm-metric>span{font-size:10.5px;font-weight:750;letter-spacing:.025em;color:#64748b}
-.bm-metric>strong{font-size:clamp(16px,1.45vw,21px);line-height:1.25;color:#12304f;font-weight:800;overflow-wrap:anywhere}
+.bm-metric>strong{font-size:clamp(13px,1.12vw,18px);line-height:1.25;color:#102A43;font-weight:800;overflow-wrap:anywhere}
 .bm-metric>strong i{font-size:12px;color:#64748b;font-style:normal;margin:0 3px}
 .bm-metric>small{font-size:10.5px;line-height:1.35;color:#64748b}
-.bm-metric-highlight{border-color:#a9dddd;background:#f2fbfb;box-shadow:inset 0 3px 0 #14a3a3}
+.bm-metric-highlight{border-color:#B9D3F5;background:#DCEBFF;box-shadow:inset 0 3px 0 #2F6FED}
 .bm-metric-warning{border-color:#f0c9a2;background:#fff9f1}
 .bm-metric-warning>strong{color:#b45309}
 .bm-table-card{border:1px solid #d3dbe6;border-radius:10px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(18,48,79,.05)}
@@ -299,11 +299,11 @@ const BUDGET_MASTER_CSS = `
 .bm-legend-default{background:#14a3a3}.bm-legend-override{background:#d97706}
 .bm-table-scroll{width:100%;max-height:58vh;overflow:auto}
 .bm-table{width:100%;min-width:1100px;border-collapse:separate;border-spacing:0;font-size:12px}
-.bm-table thead th{position:sticky;top:0;z-index:2;background:#e8eef5;color:#12304f;font-weight:800;font-size:11px;letter-spacing:.01em;padding:11px 12px;border-bottom:2px solid #9fb3cf;text-align:left;white-space:nowrap}
+.bm-table thead th{position:sticky;top:0;z-index:2;background:#E6EEF8;color:#102A43;font-weight:800;font-size:11px;letter-spacing:.01em;padding:11px 12px;border-bottom:2px solid #C9D8EC;text-align:left;white-space:nowrap}
 .bm-table thead th.bm-align-right{text-align:right}
 .bm-table tbody td{padding:10px 12px;border-bottom:1px solid #e8edf3;vertical-align:middle;background:#fff}
 .bm-table tbody tr:nth-child(even) td{background:#fafbfd}
-.bm-table tbody tr:hover td{background:#f0f7fb}
+.bm-table tbody tr:hover td{background:#EAF2FF}
 .bm-table tbody tr.bm-pending-row td{background:#fff9e9}
 .bm-table .bm-align-right{text-align:right;font-variant-numeric:tabular-nums}
 .bm-table .bm-number{white-space:nowrap}
@@ -328,9 +328,9 @@ const BUDGET_MASTER_CSS = `
 .bm-action-controls input{height:35px;min-width:190px;max-width:420px;flex:1;border:1px solid #cbd3df;border-radius:5px;padding:0 10px;font-size:12px}
 .bm-footer-note{font-size:10.5px;color:#64748b;padding:0 2px 4px}
 .bm-root .bm-audit-row .w-full{min-width:900px}
-@media(max-width:1100px){.bm-control-grid{grid-template-columns:1fr}.bm-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:1050px){.bm-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}.bm-control-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.bm-page-head h2{font-size:20px}.bm-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.bm-control-card{padding:12px}.bm-action-bar{align-items:flex-start}.bm-action-controls{justify-content:flex-start}.bm-action-controls input{flex-basis:100%;max-width:none}}
-@media(max-width:420px){.bm-metrics{grid-template-columns:1fr}.bm-table-heading{align-items:flex-start}.bm-tech-summary{grid-template-columns:1fr 1fr}}
+@media(max-width:420px){.bm-root{padding:8px}.bm-metrics{grid-template-columns:1fr}.bm-table-heading{align-items:flex-start}.bm-tech-summary{grid-template-columns:1fr 1fr}}
 `;
 
 function HRApplyBudget() {
@@ -344,6 +344,8 @@ function HRApplyBudget() {
   const [rows, setRows] = useState([]);
   const [orgPct, setOrgPct] = useState("");
   const [pending, setPending] = useState({});
+  const [staged, setStaged] = useState({});
+  const [stagedReasons, setStagedReasons] = useState({});
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [savingOrg, setSavingOrg] = useState(false);
@@ -364,6 +366,11 @@ function HRApplyBudget() {
   const selectedMaster = budgetMasterRows.find(
     (row) => String(row.appraisal_cycle_id) === String(selectedCycle),
   ) || null;
+
+  // Re-read the backend whenever Budget Master is opened, not only when the app provider first mounts.
+  useEffect(() => {
+    reloadBudget();
+  }, [reloadBudget]);
 
   useEffect(() => {
     let mounted = true;
@@ -605,6 +612,7 @@ function HRApplyBudget() {
   // Saved Tech-Ed percentages remain independent of future Org % changes.
   const previewPct = (row) => {
     if (Object.prototype.hasOwnProperty.call(pending, row.name)) return Number(pending[row.name]);
+    if (Object.prototype.hasOwnProperty.call(staged, row.name)) return Number(staged[row.name]);
     // An unset Tech-Ed percentage inherits the Org % on first allocation.
     if (!row.pctSet) return orgPct !== "" ? amount(orgPct) : amount(selectedMaster?.budget_percentage);
     return amount(row.pct);
@@ -627,8 +635,15 @@ function HRApplyBudget() {
     : (orgPctEntered ? orgBase * (1 + effectiveOrgPct / 100) : 0);
   const changes = rows.filter((r) => Number(previewPct(r)) !== r.pct);
   const orgPending = orgPct !== "" && !!selectedMaster && amount(orgPct) !== Number(selectedMaster.budget_percentage || 0);
-  const pendingCount =
-    changes.length || orgPending ? changes.length + (orgPending ? 1 : 0) : 0;
+  const draftCount = rows.filter((row) =>
+    Object.prototype.hasOwnProperty.call(pending, row.name) &&
+    Number(pending[row.name]) !== Number(staged[row.name] ?? row.pct),
+  ).length;
+  const stagedCount = rows.filter((row) =>
+    Object.prototype.hasOwnProperty.call(staged, row.name) &&
+    Number(staged[row.name]) !== Number(row.pct),
+  ).length;
+  const pendingCount = changes.length || orgPending ? changes.length + (orgPending ? 1 : 0) : 0;
   const previewTotal = rows.reduce((s, r) => s + previewBudget(r), 0);
 
   async function applyOrgPercentage() {
