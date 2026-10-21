@@ -725,7 +725,7 @@ function rowEmployeeKey(raw, employeeMasterMap) {
 }
 
 function currentTotalCtc(row) {
-  const stored = row?.total_ctc_with_rewards ?? row?.total_CTC_with_rewards ?? row?.total_ctc ?? row?.new_ctc;
+  const stored = row?.total_ctc_with_rewards ?? row?.total_CTC_with_rewards ?? row?.totalCTCWithRewards ?? row?.total_ctc ?? row?.new_ctc;
   if (stored !== undefined && stored !== null && String(stored).trim() !== "") {
     const parsed = Number(String(stored).replace(/[₹,\s]/g, ""));
     if (Number.isFinite(parsed)) return parsed;
@@ -768,14 +768,16 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   const previousCycleEmployees = new Set();
   payrollRows.forEach((record) => {
     const empKey = rowEmployeeKey(record.emp_id ?? record.employee_id, employeeMasterMap);
-    const rawCycle = historyReference(record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name);
+    const rawCycle = historyReference(record.appraisal_cycle_id ?? record.appraisalCycleId ?? record.cycle_id ?? record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name);
     const resolvedCycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
     const cycleId = resolvedCycle ? String(resolvedCycle.ROWID ?? resolvedCycle.rowid ?? resolvedCycle.id ?? "").trim() : rawCycle;
-    const belongsToPrevious = (previousCycleId && cycleId === previousCycleId) ||
-      (previousCycleName && rawCycle.toLowerCase() === previousCycleName.toLowerCase());
+    const belongsToPrevious = Boolean(rawCycle) && (
+      (previousCycleId && cycleId === previousCycleId) ||
+      (previousCycleName && rawCycle.toLowerCase() === previousCycleName.toLowerCase())
+    );
     if (!empKey || !belongsToPrevious) return;
     previousCycleEmployees.add(empKey);
-    const value = record.total_CTC_with_rewards ?? record.total_ctc_with_rewards ?? record.new_ctc ?? record.newCTC;
+    const value = record.total_ctc_with_rewards ?? record.total_CTC_with_rewards ?? record.totalCTCWithRewards ?? record.total_ctc ?? record.new_ctc ?? record.newCTC;
     if (value === null || value === undefined || String(value).trim() === "") return;
     const parsed = Number(String(value).replace(/[₹,\s]/g, ""));
     if (Number.isFinite(parsed)) {
