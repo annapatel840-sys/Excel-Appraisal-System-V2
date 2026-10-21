@@ -45,7 +45,9 @@ const writeLocalAuditTrail = (entries) => {
 
 const mergeAuditEntries = (serverEntries, localEntries) => {
   const merged = new Map();
-  [...(serverEntries || []), ...(localEntries || [])].forEach((entry) => {
+  // Add local-only records first, then let the server's canonical record
+  // replace it when the same ID exists.
+  [...(localEntries || []), ...(serverEntries || [])].forEach((entry) => {
     if (!entry || !entry.id) return;
     const id = String(entry.id);
     if (!merged.has(id)) merged.set(id, entry);
