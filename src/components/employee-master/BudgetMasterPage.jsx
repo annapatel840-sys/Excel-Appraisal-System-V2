@@ -709,6 +709,19 @@ function HRApplyBudget() {
         applied_budget: updatedBudget,
         budget_utilized: amount(selectedMaster?.budget_utilized),
       }, "master", false);
+      recordBudgetAudit("org", [{
+        date: new Date().toISOString().slice(0, 10),
+        time: new Date().toLocaleTimeString(),
+        owner: "Org",
+        from: previousOrgPct,
+        to: org,
+        before: previousOrgBudget,
+        after: updatedBudget,
+        by: actor,
+        reason,
+        cycleId,
+      }]);
+
       // Update inherited Tech-Ed rows only. A separately configured override must
       // remain untouched when HR changes the organization default.
       const inheritedRows = rows.filter((row) =>
@@ -727,18 +740,6 @@ function HRApplyBudget() {
         "distribution",
         false,
       )));
-      recordBudgetAudit("org", [{
-        date: new Date().toISOString().slice(0, 10),
-        time: new Date().toLocaleTimeString(),
-        owner: "Org",
-        from: previousOrgPct,
-        to: org,
-        before: previousOrgBudget,
-        after: updatedBudget,
-        by: actor,
-        reason,
-        cycleId,
-      }]);
       await reloadBudget();
       setOrgReason("");
     } catch (saveError) {
