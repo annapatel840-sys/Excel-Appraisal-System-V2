@@ -449,8 +449,8 @@ function HRApplyBudget() {
         pct: amount(selectedMaster?.budget_percentage),
         pctSet: false,
         base: employeeBases.get(key) || 0,
-        original: (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100),
-        updated: (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100),
+        original: selectedMaster?.budget_percentage_is_set ? (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100) : 0,
+        updated: selectedMaster?.budget_percentage_is_set ? (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100) : 0,
         team0: employeeCounts.get(key) || 0,
         team: employeeCounts.get(key) || 0,
         lastChanged: "—",
@@ -460,8 +460,10 @@ function HRApplyBudget() {
 
     nextRows.sort((a, b) => a.name.localeCompare(b.name));
     setRows(nextRows);
-    if (selectedMaster && Number.isFinite(Number(selectedMaster.budget_percentage))) {
+    if (selectedMaster?.budget_percentage_is_set) {
       setOrgPct(String(Number(selectedMaster.budget_percentage)));
+    } else {
+      setOrgPct("");
     }
   }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, selectedCycle, selectedMaster?.budget_percentage]);
 
@@ -507,10 +509,11 @@ function HRApplyBudget() {
     (savedOrgBase > 0 || orgBaseFromRoster === 0);
   const orgBase = orgBaseFromRoster;
   const effectiveOrgPct = orgPct === "" ? amount(selectedMaster?.budget_percentage) : amount(orgPct);
-  const previewOrgBudget = orgBase * (1 + effectiveOrgPct / 100);
+  const orgPctEntered = Boolean(selectedMaster?.budget_percentage_is_set) || orgPct !== "";
+  const previewOrgBudget = orgPctEntered ? orgBase * (1 + effectiveOrgPct / 100) : 0;
   const originalOrgBudget = hasValidOrgSnapshot
     ? savedOrgOriginal
-    : orgBase * (1 + effectiveOrgPct / 100);
+    : (orgPctEntered ? orgBase * (1 + effectiveOrgPct / 100) : 0);
   const changes = rows.filter((r) => Number(previewPct(r)) !== r.pct);
   const orgPending = orgPct !== "" && !!selectedMaster && amount(orgPct) !== Number(selectedMaster.budget_percentage || 0);
   const pendingCount =
