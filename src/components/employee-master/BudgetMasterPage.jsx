@@ -5,9 +5,9 @@ import { useBudget } from "@/lib/budget-store";
 import { TechEdBudgetMasterPage } from "./TechEdBudgetMasterPage";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
-const NAVY = "#12304f";
-const TEAL = "#14a3a3";
-const BORDER = "#d3dbe6";
+const NAVY = "#102A43";
+const TEAL = "#2F6FED";
+const BORDER = "#D5DFEB";
 
 /* ---------- helpers ---------- */
 function normalizeOwnerKey(value) {
@@ -235,91 +235,91 @@ const HR_COLS = [
 
 
 const BUDGET_MASTER_CSS = `
-.bm-root{--bm-navy:#12304f;--bm-teal:#14a3a3;--bm-border:#d3dbe6;--bm-muted:#64748b;width:100%;display:flex;flex-direction:column;gap:12px;color:#0f1f33;font-family:"IBM Plex Sans","Segoe UI",Arial,sans-serif;font-size:12.5px;font-variant-numeric:tabular-nums}
+.bm-root{--bm-navy:#102A43;--bm-teal:#2F6FED;--bm-border:#D5DFEB;--bm-muted:#6B7280;width:100%;display:flex;flex-direction:column;gap:12px;padding:12px;background:#F3F4F6;border-radius:10px;color:#111827;font-family:"Manrope","Segoe UI",Arial,sans-serif;font-size:12.5px;font-variant-numeric:tabular-nums}
 .bm-root *{box-sizing:border-box}
 .bm-root button,.bm-root input{font:inherit}
-.bm-root button:focus-visible,.bm-root input:focus-visible{outline:2px solid #14a3a3;outline-offset:2px}
+.bm-root button:focus-visible,.bm-root input:focus-visible{outline:2px solid #2F6FED;outline-offset:2px}
 .bm-page-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;padding:2px 2px 4px}
 .bm-eyebrow,.bm-section-kicker{font-size:10px;letter-spacing:.09em;font-weight:800;color:#64748b}
-.bm-page-head h2{margin:3px 0 4px;color:#12304f;font-size:23px;line-height:1.2;font-weight:750}
+.bm-page-head h2{margin:3px 0 4px;color:#102A43;font-size:23px;line-height:1.2;font-weight:800}
 .bm-page-head p{margin:0;color:#64748b;font-size:12px;line-height:1.5}
 .bm-head-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.bm-cycle-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid #cbd9e8;background:#f3f7fb;color:#12304f;border-radius:999px;padding:7px 11px;font-weight:700;white-space:nowrap}
+.bm-cycle-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid #C9D8EC;background:#E6EEF8;color:#102A43;border-radius:999px;padding:7px 11px;font-weight:700;white-space:nowrap}
 .bm-status-dot{display:inline-block;width:7px;height:7px;flex:none;border-radius:50%;background:#159b79}
 .bm-status-dot-pending{background:#d97706}
 .bm-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid transparent;border-radius:6px;padding:8px 13px;font-weight:700;white-space:nowrap;cursor:pointer;transition:background .15s,border-color .15s}
 .bm-btn:disabled{opacity:.45;cursor:not-allowed}
-.bm-btn-primary{background:#14a3a3;color:#fff;border-color:#14a3a3}
-.bm-btn-primary:hover:not(:disabled){background:#0f8585;border-color:#0f8585}
-.bm-btn-secondary{background:#fff;color:#12304f;border-color:#c5d0dd}
+.bm-btn-primary{background:#2F6FED;color:#fff;border-color:#2F6FED}
+.bm-btn-primary:hover:not(:disabled){background:#2459C5;border-color:#2459C5}
+.bm-btn-secondary{background:#fff;color:#102A43;border-color:#CBD5E1}
 .bm-btn-secondary:hover:not(:disabled){background:#f4f7fa}
 .bm-alert{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border:1px solid;border-radius:7px;padding:10px 12px;line-height:1.5}
 .bm-alert-warning{border-color:#f2d27a;background:#fff8e1;color:#7a4b00}
 .bm-alert-error{border-color:#e7b5ad;background:#fff5f3;color:#7c2d12}
 .bm-alert button{border:0;background:none;font-weight:700;cursor:pointer}
 .bm-control-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:12px}
-.bm-control-card{min-width:0;border:1px solid #d3dbe6;border-top:3px solid #14a3a3;border-radius:10px;background:#fff;padding:15px 16px;box-shadow:0 1px 2px rgba(18,48,79,.04)}
-.bm-tech-control-card{border-top-color:#9fb3cf}
+.bm-control-card{min-width:0;border:1px solid #D5DFEB;border-top:3px solid #2F6FED;border-radius:10px;background:#fff;padding:15px 16px;box-shadow:0 1px 2px rgba(16,42,67,.04)}
+.bm-tech-control-card{border-top-color:#C9D8EC}
 .bm-card-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:13px}
-.bm-card-heading h3,.bm-table-heading h3{margin:3px 0 0;font-size:15px;font-weight:750;color:#12304f}
+.bm-card-heading h3,.bm-table-heading h3{margin:3px 0 0;font-size:15px;font-weight:750;color:#102A43}
 .bm-card-subtitle{color:#64748b;font-size:11px}
-.bm-count-chip{border-radius:999px;background:#edf3f9;color:#12304f;font-weight:800;padding:5px 9px;white-space:nowrap}
+.bm-count-chip{border-radius:999px;background:#EEF3FA;color:#102A43;font-weight:800;padding:5px 9px;white-space:nowrap}
 .bm-control-row{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
 .bm-field{display:flex;flex-direction:column;gap:5px;min-width:0}
 .bm-field>span{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#64748b}
 .bm-cycle-field{flex:1 1 180px}
-.bm-cycle-value{display:flex;align-items:center;min-height:38px;border:1px solid #d7e0eb;background:#f6f8fb;border-radius:5px;padding:0 10px;color:#12304f;font-weight:700}
+.bm-cycle-value{display:flex;align-items:center;min-height:38px;border:1px solid #d7e0eb;background:#f6f8fb;border-radius:5px;padding:0 10px;color:#102A43;font-weight:700}
 .bm-percent-field{flex:0 0 112px}
-.bm-percent-control{display:flex;align-items:center;border:1px solid #14a3a3;border-radius:5px;height:38px;padding:0 9px;background:#fff}
-.bm-percent-control input{width:100%;min-width:0;border:0;outline:0;text-align:right;font-size:17px;font-weight:800;color:#12304f;background:transparent}
+.bm-percent-control{display:flex;align-items:center;border:1px solid #2F6FED;border-radius:5px;height:38px;padding:0 9px;background:#fff}
+.bm-percent-control input{width:100%;min-width:0;border:0;outline:0;text-align:right;font-size:17px;font-weight:800;color:#102A43;background:transparent}
 .bm-percent-control input:focus-visible{outline:0}
 .bm-percent-control span{padding-left:5px;color:#64748b;font-weight:700}
 .bm-org-apply{height:38px}
 .bm-helper{margin:12px 0 0;color:#64748b;font-size:11.5px;line-height:1.5}
 .bm-tech-summary{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.bm-tech-summary>div{display:flex;flex-direction:column;gap:5px;padding:10px 11px;border:1px solid #e1e7ef;border-radius:7px;background:#f8fafc}
+.bm-tech-summary>div{display:flex;flex-direction:column;gap:5px;padding:10px 11px;border:1px solid #e1e7ef;border-radius:7px;background:#F9FAFB}
 .bm-tech-summary span{color:#64748b;font-size:11px}
-.bm-tech-summary strong{color:#12304f;font-size:17px}
+.bm-tech-summary strong{color:#102A43;font-size:17px}
 .bm-pending-value{color:#b45309!important}
-.bm-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
-.bm-metric{min-width:0;display:flex;flex-direction:column;gap:5px;border:1px solid #d3dbe6;border-radius:9px;background:#fff;padding:13px 14px;box-shadow:0 1px 2px rgba(18,48,79,.04)}
+.bm-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
+.bm-metric{min-width:0;display:flex;flex-direction:column;gap:5px;border:1px solid #D5DFEB;border-radius:9px;background:#fff;padding:10px 10px;box-shadow:0 1px 2px rgba(16,42,67,.04)}
 .bm-metric>span{font-size:10.5px;font-weight:750;letter-spacing:.025em;color:#64748b}
-.bm-metric>strong{font-size:clamp(16px,1.45vw,21px);line-height:1.25;color:#12304f;font-weight:800;overflow-wrap:anywhere}
+.bm-metric>strong{font-size:clamp(13px,1.12vw,18px);line-height:1.25;color:#102A43;font-weight:800;overflow-wrap:anywhere}
 .bm-metric>strong i{font-size:12px;color:#64748b;font-style:normal;margin:0 3px}
 .bm-metric>small{font-size:10.5px;line-height:1.35;color:#64748b}
-.bm-metric-highlight{border-color:#a9dddd;background:#f2fbfb;box-shadow:inset 0 3px 0 #14a3a3}
+.bm-metric-highlight{border-color:#B9D3F5;background:#DCEBFF;box-shadow:inset 0 3px 0 #2F6FED}
 .bm-metric-warning{border-color:#f0c9a2;background:#fff9f1}
 .bm-metric-warning>strong{color:#b45309}
-.bm-table-card{border:1px solid #d3dbe6;border-radius:10px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(18,48,79,.05)}
+.bm-table-card{border:1px solid #D5DFEB;border-radius:10px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(18,48,79,.05)}
 .bm-table-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 16px;border-bottom:1px solid #e1e7ef}
-.bm-table-heading h3 span{display:inline-flex;vertical-align:middle;align-items:center;justify-content:center;min-width:22px;height:22px;margin-left:5px;border-radius:999px;background:#edf3f9;color:#12304f;font-size:11px}
+.bm-table-heading h3 span{display:inline-flex;vertical-align:middle;align-items:center;justify-content:center;min-width:22px;height:22px;margin-left:5px;border-radius:999px;background:#EEF3FA;color:#102A43;font-size:11px}
 .bm-table-legend{display:flex;gap:13px;align-items:center;color:#64748b;font-size:11px}
 .bm-table-legend span{display:flex;align-items:center;gap:6px}
 .bm-table-legend i{width:8px;height:8px;border-radius:50%;display:inline-block}
-.bm-legend-default{background:#14a3a3}.bm-legend-override{background:#d97706}
+.bm-legend-default{background:#2F6FED}.bm-legend-override{background:#d97706}
 .bm-table-scroll{width:100%;max-height:58vh;overflow:auto}
 .bm-table{width:100%;min-width:1100px;border-collapse:separate;border-spacing:0;font-size:12px}
-.bm-table thead th{position:sticky;top:0;z-index:2;background:#e8eef5;color:#12304f;font-weight:800;font-size:11px;letter-spacing:.01em;padding:11px 12px;border-bottom:2px solid #9fb3cf;text-align:left;white-space:nowrap}
+.bm-table thead th{position:sticky;top:0;z-index:2;background:#E6EEF8;color:#102A43;font-weight:800;font-size:11px;letter-spacing:.01em;padding:11px 12px;border-bottom:2px solid #C9D8EC;text-align:left;white-space:nowrap}
 .bm-table thead th.bm-align-right{text-align:right}
-.bm-table tbody td{padding:10px 12px;border-bottom:1px solid #e8edf3;vertical-align:middle;background:#fff}
-.bm-table tbody tr:nth-child(even) td{background:#fafbfd}
-.bm-table tbody tr:hover td{background:#f0f7fb}
+.bm-table tbody td{padding:10px 12px;border-bottom:1px solid #E5E7EB;vertical-align:middle;background:#fff}
+.bm-table tbody tr:nth-child(even) td{background:#F2F5F9}
+.bm-table tbody tr:hover td{background:#EAF2FF}
 .bm-table tbody tr.bm-pending-row td{background:#fff9e9}
 .bm-table .bm-align-right{text-align:right;font-variant-numeric:tabular-nums}
 .bm-table .bm-number{white-space:nowrap}
-.bm-owner-cell strong{display:block;color:#12304f;font-weight:750;white-space:nowrap}
+.bm-owner-cell strong{display:block;color:#102A43;font-weight:750;white-space:nowrap}
 .bm-owner-cell small,.bm-percent-cell small{display:block;margin-top:3px;color:#a16207;font-size:10px}
 .bm-percent-cell>div{display:flex;align-items:center;justify-content:flex-end;gap:4px}
-.bm-percent-cell input{width:78px;height:32px;border:1px solid #9fb3cf;border-radius:5px;padding:0 7px;text-align:right;font-weight:800;color:#12304f;background:#fff}
+.bm-percent-cell input{width:78px;height:32px;border:1px solid #C9D8EC;border-radius:5px;padding:0 7px;text-align:right;font-weight:800;color:#102A43;background:#fff}
 .bm-percent-cell input:disabled{background:#f3f5f8;color:#64748b}
 .bm-percent-cell span{color:#64748b;font-weight:700}
-.bm-updated-cell{font-weight:800;color:#0f6d6d}
+.bm-updated-cell{font-weight:800;color:#1559A6}
 .bm-source{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .bm-source-default,.bm-source-override{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800;white-space:nowrap}
-.bm-source-default{background:#e6f4f4;color:#0f6d6d}
+.bm-source-default{background:#e6f4f4;color:#1559A6}
 .bm-source-override{background:#fff1d2;color:#8a5a00}
-.bm-text-action{border:0;background:none;color:#1859a8;font-size:10.5px;font-weight:800;cursor:pointer;padding:3px}
-.bm-history-btn{border:1px solid #c5d0dd;background:#fff;color:#17365d;border-radius:5px;padding:5px 7px;font-size:11px;font-weight:750;white-space:nowrap}
+.bm-text-action{border:0;background:none;color:#1559A6;font-size:10.5px;font-weight:800;cursor:pointer;padding:3px}
+.bm-history-btn{border:1px solid #CBD5E1;background:#fff;color:#17365d;border-radius:5px;padding:5px 7px;font-size:11px;font-weight:750;white-space:nowrap}
 .bm-audit-row{background:#f7f9fc!important;padding:12px 20px!important}
 .bm-empty-row{text-align:center;color:#64748b;padding:35px 14px!important}
 .bm-action-bar{position:sticky;bottom:0;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:rgba(255,255,255,.97);backdrop-filter:blur(8px);padding:12px 15px;border-top:1px solid #dbe3ec}
@@ -328,9 +328,9 @@ const BUDGET_MASTER_CSS = `
 .bm-action-controls input{height:35px;min-width:190px;max-width:420px;flex:1;border:1px solid #cbd3df;border-radius:5px;padding:0 10px;font-size:12px}
 .bm-footer-note{font-size:10.5px;color:#64748b;padding:0 2px 4px}
 .bm-root .bm-audit-row .w-full{min-width:900px}
-@media(max-width:1100px){.bm-control-grid{grid-template-columns:1fr}.bm-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:1050px){.bm-control-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.bm-page-head h2{font-size:20px}.bm-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.bm-control-card{padding:12px}.bm-action-bar{align-items:flex-start}.bm-action-controls{justify-content:flex-start}.bm-action-controls input{flex-basis:100%;max-width:none}}
-@media(max-width:420px){.bm-metrics{grid-template-columns:1fr}.bm-table-heading{align-items:flex-start}.bm-tech-summary{grid-template-columns:1fr 1fr}}
+@media(max-width:420px){.bm-root{padding:8px}.bm-metrics{grid-template-columns:1fr}.bm-table-heading{align-items:flex-start}.bm-tech-summary{grid-template-columns:1fr 1fr}}
 `;
 
 function HRApplyBudget() {
@@ -344,6 +344,8 @@ function HRApplyBudget() {
   const [rows, setRows] = useState([]);
   const [orgPct, setOrgPct] = useState("");
   const [pending, setPending] = useState({});
+  const [staged, setStaged] = useState({});
+  const [stagedReasons, setStagedReasons] = useState({});
   const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [savingOrg, setSavingOrg] = useState(false);
@@ -364,6 +366,11 @@ function HRApplyBudget() {
   const selectedMaster = budgetMasterRows.find(
     (row) => String(row.appraisal_cycle_id) === String(selectedCycle),
   ) || null;
+
+  // Re-read the backend whenever Budget Master is opened, not only when the app provider first mounts.
+  useEffect(() => {
+    reloadBudget();
+  }, [reloadBudget]);
 
   useEffect(() => {
     let mounted = true;
@@ -605,6 +612,7 @@ function HRApplyBudget() {
   // Saved Tech-Ed percentages remain independent of future Org % changes.
   const previewPct = (row) => {
     if (Object.prototype.hasOwnProperty.call(pending, row.name)) return Number(pending[row.name]);
+    if (Object.prototype.hasOwnProperty.call(staged, row.name)) return Number(staged[row.name]);
     // An unset Tech-Ed percentage inherits the Org % on first allocation.
     if (!row.pctSet) return orgPct !== "" ? amount(orgPct) : amount(selectedMaster?.budget_percentage);
     return amount(row.pct);
@@ -625,10 +633,16 @@ function HRApplyBudget() {
   const originalOrgBudget = hasValidOrgSnapshot
     ? savedOrgOriginal
     : (orgPctEntered ? orgBase * (1 + effectiveOrgPct / 100) : 0);
-  const changes = rows.filter((r) => Number(previewPct(r)) !== r.pct);
   const orgPending = orgPct !== "" && !!selectedMaster && amount(orgPct) !== Number(selectedMaster.budget_percentage || 0);
-  const pendingCount =
-    changes.length || orgPending ? changes.length + (orgPending ? 1 : 0) : 0;
+  const draftCount = rows.filter((row) =>
+    Object.prototype.hasOwnProperty.call(pending, row.name) &&
+    Number(pending[row.name]) !== Number(staged[row.name] ?? row.pct),
+  ).length;
+  const stagedCount = rows.filter((row) =>
+    Object.prototype.hasOwnProperty.call(staged, row.name) &&
+    Number(staged[row.name]) !== Number(row.pct),
+  ).length;
+  const pendingCount = draftCount + (orgPending ? 1 : 0);
   const previewTotal = rows.reduce((s, r) => s + previewBudget(r), 0);
 
   async function applyOrgPercentage() {
@@ -642,6 +656,10 @@ function HRApplyBudget() {
       setError("Enter a valid Org % between 0 and 100.");
       return;
     }
+    if (draftCount || stagedCount) {
+      setError("Apply, publish, or discard Tech-Ed edits before changing the organization percentage.");
+      return;
+    }
     setSavingOrg(true);
     setError("");
     const orgBase = orgBaseFromRoster;
@@ -649,6 +667,7 @@ function HRApplyBudget() {
       ? savedOrgOriginal
       : orgBase * (1 + org / 100);
     const updatedBudget = orgBase * (1 + org / 100);
+    const previousOrgPct = amount(selectedMaster?.budget_percentage);
     try {
       await updateBudget(selectedMaster?.id || "", {
         appraisal_cycle_id: cycleId,
@@ -658,16 +677,24 @@ function HRApplyBudget() {
         applied_budget: updatedBudget,
         budget_utilized: amount(selectedMaster?.budget_utilized),
       }, "master", false);
-      await Promise.all(rows
-        .filter((row) => String(row.id || "").startsWith("tech-ed-"))
-        .map((row) => updateBudget("", {
+      // Update inherited Tech-Ed rows only. A separately configured override must
+      // remain untouched when HR changes the organization default.
+      const inheritedRows = rows.filter((row) =>
+        !row.pctSet || Math.abs(amount(row.pct) - previousOrgPct) < 0.0001,
+      );
+      await Promise.all(inheritedRows.map((row) => updateBudget(
+        row.id && !String(row.id).startsWith("tech-ed-") ? row.id : "",
+        {
           appraisal_cycle_id: cycleId,
           appraiser_tech_ed_id: String(row.canonicalKey || row.name || "").trim().split(/\s+-\s+/)[0].slice(0, 20),
           percentage: org,
           budget_base: row.base,
-          calculated_budget: row.base * (1 + org / 100),
+          calculated_budget: row.original || row.base * (1 + org / 100),
           applied_budget: row.base * (1 + org / 100),
-        }, "distribution", false)));
+        },
+        "distribution",
+        false,
+      )));
       await reloadBudget();
     } catch (saveError) {
       setError(saveError.message || "Org % and appraisal cycle could not be saved.");
@@ -701,134 +728,129 @@ function HRApplyBudget() {
 
   function discard() {
     setPending({});
+    setStaged({});
+    setStagedReasons({});
     setReason("");
     setError("");
   }
 
   async function apply() {
-    const org = amount(orgPct);
-    if (!(org >= 0 && org <= 100)) {
-      setError("Enter a valid org % between 0 and 100.");
+    if (!draftCount) {
+      setError("Make a Tech-Ed percentage change before selecting Apply changes.");
       return;
     }
-
-    const invalid = rows.find((r) => {
-      const value = previewPct(r);
-      return !(value >= 0 && value <= 100);
+    const invalid = rows.find((row) => {
+      const value = previewPct(row);
+      return !Number.isFinite(value) || value < 0 || value > 100;
     });
     if (invalid) {
-      setError(
-        "Not applied. " + invalid.name + ": enter a valid % between 0 and 100.",
-      );
+      setError("Not applied. " + invalid.name + ": enter a valid percentage between 0 and 100.");
       return;
     }
 
-    const orgBaseForCycle = orgBaseFromRoster;
-    const orgAvailableBudget = orgBaseForCycle * (1 + org / 100);
-    if (previewTotal > orgAvailableBudget + 0.5) {
+    const org = orgPct !== "" ? amount(orgPct) : amount(selectedMaster?.budget_percentage);
+    const available = orgBaseFromRoster * (1 + org / 100);
+    if (previewTotal > available + 0.5) {
       setError(
         "Not applied. Tech-Ed Updated Budgets total " + money(previewTotal) +
-        ", which exceeds the Org Updated Budget of " + money(orgAvailableBudget) + ". Reduce one or more Tech-Ed percentages.",
+        ", which exceeds the Org Updated Budget of " + money(available) + ". Reduce one or more Tech-Ed percentages.",
       );
       return;
     }
 
     const now = new Date().toISOString().slice(0, 10);
-    const changedRows = rows.filter((r) => Number(previewPct(r)) !== r.pct);
-    const next = rows.map((r) => {
-      const to = Number(previewPct(r));
-      return to === r.pct
-        ? r
-        : {
-            ...r,
-            pct: to,
-            updated: previewBudget(r),
-            lastChanged: dateText(now),
-          };
+    const updates = rows.filter((row) => Object.prototype.hasOwnProperty.call(pending, row.name));
+    setStaged((previous) => {
+      const next = { ...previous };
+      updates.forEach((row) => { next[row.name] = Number(pending[row.name]); });
+      return next;
     });
+    setStagedReasons((previous) => {
+      const next = { ...previous };
+      updates.forEach((row) => {
+        next[row.name] = reason.trim() || (Number(pending[row.name]) === org ? "Reset to org %" : "Override");
+      });
+      return next;
+    });
+    setAudit((previous) => {
+      const byOwner = new Map(previous.map((item) => [item.owner, item]));
+      updates.forEach((row) => byOwner.set(row.name, {
+        date: now,
+        owner: row.name,
+        from: row.pct,
+        to: Number(pending[row.name]),
+        before: row.updated,
+        after: row.base * (1 + Number(pending[row.name]) / 100),
+        by: "HR",
+        reason: reason.trim() || (Number(pending[row.name]) === org ? "Reset to org %" : "Override"),
+      }));
+      return Array.from(byOwner.values());
+    });
+    setPending({});
+    setReason("");
+    setError("");
+    // Apply is intentionally a staging step; the database changes only on Publish.
+    // Reload server data after Apply as requested, without dropping the staged preview.
+    await reloadBudget();
+  }
 
-    const newAudit = changedRows.map((r) => ({
-      date: now,
-      owner: r.name,
-      from: r.pct,
-      to: Number(previewPct(r)),
-      before: r.updated,
-      after: previewBudget(r),
-      by: "HR",
-      reason:
-        reason.trim() ||
-        (Number(previewPct(r)) === org ? "Reset to org %" : "Override"),
-    }));
-
-    if (orgPending) {
-      setOrgAudit((a) => [
-        {
-          date: now,
-          from: 8,
-          to: org,
-          before: total.updated,
-          after: previewTotal,
-          by: "HR",
-          reason: reason.trim() || "Org budget percentage change",
-        },
-        ...a,
-      ]);
+  async function publishChanges() {
+    if (!stagedCount) {
+      setError("Apply at least one percentage change before publishing.");
+      return;
     }
-
+    if (draftCount) {
+      setError("Apply pending edits before publishing staged changes.");
+      return;
+    }
+    const cycleId = String(selectedCycle || activeCycle?.id || activeCycle?.appraisal_cycle_id || activeCycle?.ROWID || "").trim();
+    if (!cycleId) {
+      setError("Select an appraisal cycle before publishing budget changes.");
+      return;
+    }
+    setSavingOrg(true);
+    setError("");
     try {
-      const orgBase = orgBaseFromRoster;
-      const originalOrgBudget = hasValidOrgSnapshot
-        ? savedOrgOriginal
-        : orgBase * (1 + org / 100);
-      const updatedOrgBudget = orgBase * (1 + org / 100);
-      const cycleId = String(selectedCycle || activeCycle?.id || activeCycle?.appraisal_cycle_id || activeCycle?.ROWID || "").trim();
-      if (!cycleId) throw new Error("Select an appraisal cycle before applying Tech-Ed budgets.");
-      // Persist every Appraisal Sheet Tech-Ed, including newly discovered rows.
-      // The API upserts by (appraisal_cycle_id, appraiser_tech_ed_id) and stores
-      // the business Employee ID in the varchar field, not a display label.
-      await Promise.all([
-        ...rows.map((r) => updateBudget(
-          r.id && !String(r.id).startsWith("tech-ed-") ? r.id : "",
+      const toPublish = rows.filter((row) => Object.prototype.hasOwnProperty.call(staged, row.name));
+      await Promise.all(toPublish.map((row) => {
+        const pct = Number(staged[row.name]);
+        const budget = row.base * (1 + pct / 100);
+        return updateBudget(
+          row.id && !String(row.id).startsWith("tech-ed-") ? row.id : "",
           {
             appraisal_cycle_id: cycleId,
-            appraiser_tech_ed_id: String(r.canonicalKey || r.name || "").trim().split(/\s+-\s+/)[0].slice(0, 20),
-            percentage: Number(previewPct(r)),
-            budget_base: r.base,
-            calculated_budget: String(r.id || "").startsWith("tech-ed-")
-              ? r.base * (1 + Number(previewPct(r)) / 100)
-              : (r.original || (r.base * (1 + Number(previewPct(r)) / 100))),
-            applied_budget: previewBudget(r),
+            appraiser_tech_ed_id: String(row.canonicalKey || row.name || "").trim().split(/\\s+-\\s+/)[0].slice(0, 20),
+            percentage: pct,
+            budget_base: row.base,
+            calculated_budget: String(row.id || "").startsWith("tech-ed-")
+              ? budget
+              : (row.original || budget),
+            applied_budget: budget,
+            change_reason: stagedReasons[row.name] || "Budget percentage published",
           },
           "distribution",
           false,
-        )),
-        updateBudget(selectedMaster?.id || "", {
-          appraisal_cycle_id: cycleId,
-          budget_percentage: org,
-          org_budget_base: orgBase,
-          calculated_budget: originalOrgBudget,
-          applied_budget: updatedOrgBudget,
-        }, "master", false),
-      ]);
+        );
+      }));
       await reloadBudget();
-    } catch (saveError) {
-      setError(saveError.message || "Budget changes could not be saved.");
-      return;
-    }
-
-    setRows(next);
-    setAudit((a) => [...newAudit, ...a]);
-    setPending({});
-    setOverrides((o) => {
-      const nextOverrides = { ...o };
-      next.forEach((r) => {
-        if (r.pct === org) delete nextOverrides[r.name];
-        else nextOverrides[r.name] = true;
+      setOverrides((previous) => {
+        const next = { ...previous };
+        toPublish.forEach((row) => {
+          if (Number(staged[row.name]) === amount(orgPct !== "" ? orgPct : selectedMaster?.budget_percentage)) delete next[row.name];
+          else next[row.name] = true;
+        });
+        return next;
       });
-      return nextOverrides;
-    });
-    setReason("");
-    setError("");
+      setStaged({});
+      setStagedReasons({});
+      setPending({});
+      setReason("");
+      setError("");
+    } catch (saveError) {
+      setError(saveError.message || "Budget changes could not be published.");
+    } finally {
+      setSavingOrg(false);
+    }
   }
 
   const displayedOrgUpdated = orgPending
@@ -953,14 +975,9 @@ function HRApplyBudget() {
           <small>{orgPending ? "Preview — not yet saved" : "Current organization allocation"}</small>
         </div>
         <div className="bm-metric">
-          <span>Tech-Ed budgets</span>
-          <strong>{money(previewTotal)}</strong>
-          <small>Combined updated allocations</small>
-        </div>
-        <div className={"bm-metric" + (availableAfterAllocation < -0.5 ? " bm-metric-warning" : "")}>
-          <span>{availableAfterAllocation < -0.5 ? "Over allocation" : "Unallocated balance"}</span>
-          <strong>{money(Math.abs(availableAfterAllocation))}</strong>
-          <small>{availableAfterAllocation < -0.5 ? "Tech-Ed allocations exceed org budget" : "After Tech-Ed allocations"}</small>
+          <span>Allotted to Tech EDs</span>
+          <strong>{displayedOrgUpdated > 0 ? percent((previewTotal / displayedOrgUpdated) * 100) : "—"}</strong>
+          <small>{money(previewTotal)} allotted · {availableAfterAllocation < -0.5 ? "Over by " : "Balance "}{money(Math.abs(availableAfterAllocation))}</small>
         </div>
         <div className="bm-metric">
           <span>Team count</span>
@@ -968,9 +985,9 @@ function HRApplyBudget() {
           <small>Original to current eligible employees</small>
         </div>
         <div className="bm-metric">
-          <span>Budget utilized</span>
-          <strong>{money(displayedUtilized)}</strong>
-          <small>Reported by Budget Master API</small>
+          <span>Budget utilised</span>
+          <strong>{displayedOrgUpdated > 0 ? percent((displayedUtilized / displayedOrgUpdated) * 100) : "—"}</strong>
+          <small>{money(displayedUtilized)} used of {money(displayedOrgUpdated)}</small>
         </div>
       </section>
 
@@ -1010,7 +1027,7 @@ function HRApplyBudget() {
                     <tr className={tdClass}>
                       <td className="bm-owner-cell">
                         <strong>{r.name}</strong>
-                        {changing ? <small>Pending change</small> : null}
+                        {changing ? <small>{Object.prototype.hasOwnProperty.call(pending, r.name) ? "Pending edit" : "Applied · not published"}</small> : null}
                       </td>
                       <td className="bm-align-right bm-number">{money(r.base)}</td>
                       <td className="bm-percent-cell">
@@ -1073,8 +1090,8 @@ function HRApplyBudget() {
         </div>
         <div className="bm-action-bar">
           <div className="bm-pending-status">
-            <span className={pendingCount ? "bm-status-dot bm-status-dot-pending" : "bm-status-dot"} />
-            <span>{pendingCount ? pendingCount + " change" + (pendingCount === 1 ? "" : "s") + " pending" : "No pending changes"}</span>
+            <span className={pendingCount || stagedCount ? "bm-status-dot bm-status-dot-pending" : "bm-status-dot"} />
+            <span>{pendingCount ? pendingCount + " pending edit" + (pendingCount === 1 ? "" : "s") : stagedCount ? stagedCount + " applied, not published" : "No pending changes"}</span>
           </div>
           {canConfig ? (
             <div className="bm-action-controls">
@@ -1085,13 +1102,14 @@ function HRApplyBudget() {
                 placeholder="Reason for change (optional)"
                 aria-label="Reason for budget changes"
               />
-              <button type="button" className="bm-btn bm-btn-secondary" disabled={!pendingCount} onClick={discard}>Discard</button>
-              <button type="button" className="bm-btn bm-btn-primary" disabled={!pendingCount} onClick={apply}>Apply changes</button>
+              <button type="button" className="bm-btn bm-btn-secondary" disabled={!pendingCount && !stagedCount} onClick={discard}>Discard</button>
+              <button type="button" className="bm-btn bm-btn-secondary" disabled={!draftCount || savingOrg} onClick={apply}>Apply changes</button>
+              <button type="button" className="bm-btn bm-btn-primary" disabled={!stagedCount || draftCount > 0 || savingOrg} onClick={publishChanges}>{savingOrg ? "Publishing…" : "Publish all"}</button>
             </div>
           ) : null}
         </div>
       </section>
-      <div className="bm-footer-note">Budget values shown here are sourced from the existing Budget Master API. This redesign does not change the calculation or saving workflow.</div>
+      <div className="bm-footer-note">Apply stages Tech-Ed percentage changes for review. Publish all saves staged changes to the Budget Master API. Data refreshes after Apply, Publish, and when this screen is reopened.</div>
     </div>
   );
 }
@@ -1248,7 +1266,7 @@ export function BudgetMasterPage() {
               className={
                 "rounded-2xl border px-4 py-1.5 text-[12px] font-medium " +
                 (tab === "apply"
-                  ? "border-[#14a3a3] bg-[#14a3a3] font-semibold text-white"
+                  ? "border-[#2F6FED] bg-[#2F6FED] font-semibold text-white"
                   : "bg-white text-[#334155]")
               }
             >
@@ -1260,7 +1278,7 @@ export function BudgetMasterPage() {
               className={
                 "rounded-2xl border px-4 py-1.5 text-[12px] font-medium " +
                 (tab === "audit"
-                  ? "border-[#14a3a3] bg-[#14a3a3] font-semibold text-white"
+                  ? "border-[#2F6FED] bg-[#2F6FED] font-semibold text-white"
                   : "bg-white text-[#334155]")
               }
             >
