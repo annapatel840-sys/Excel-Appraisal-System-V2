@@ -500,8 +500,11 @@ function HRApplyBudget() {
       const employeeId = normalizeOwnerKey(
         employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text || "",
       );
+      const inAppraisalSheet = employee.in_appraisal_sheet === true ||
+        String(employee.in_appraisal_sheet ?? "").trim().toLowerCase() === "true" ||
+        String(employee.in_appraisal_sheet ?? "").trim() === "1";
       const employeeCountKey = key + "::" + (employeeId || normalizeOwnerKey(employee.row_id || employee.ROWID || employee.id || ""));
-      if (eligible && !countedEligibleEmployees.has(employeeCountKey)) {
+      if (eligible && inAppraisalSheet && !countedEligibleEmployees.has(employeeCountKey)) {
         employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
         countedEligibleEmployees.add(employeeCountKey);
       }
@@ -544,9 +547,8 @@ function HRApplyBudget() {
           existing.team0 = amount(originalCountValue) > 0
             ? amount(originalCountValue)
             : (existing.team0 || employeeCounts.get(key) || 0);
-          existing.team = amount(currentCountValue) > 0
-            ? amount(currentCountValue)
-            : (employeeCounts.get(key) || 0);
+          // Current count is live, not a potentially stale saved count.
+          existing.team = employeeCounts.get(key) || 0;
           existing.id = row.id || existing.id;
         }
         return;
@@ -557,7 +559,7 @@ function HRApplyBudget() {
       const originalCountValue = row.original_headcount ?? row.allocation_headcount;
       const currentCountValue = row.current_headcount ?? row.headcount;
       const originalCount = amount(originalCountValue) > 0 ? amount(originalCountValue) : assignedCount;
-      const currentCount = amount(currentCountValue) > 0 ? amount(currentCountValue) : assignedCount;
+      const currentCount = assignedCount;
       const storedBase = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== ""
         ? amount(row.budget_base)
         : null;
