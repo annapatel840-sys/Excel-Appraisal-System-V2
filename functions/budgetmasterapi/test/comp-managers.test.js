@@ -94,6 +94,17 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.deepStrictEqual(names, ['Anita Sharma', 'Raj Mehta']); // sheet value wins for E3
     const anita = r.json.compManager.find((c) => c.comp_manager === 'Anita Sharma');
     assert.strictEqual(anita.budget_base, 1500000);
+    assert.strictEqual(anita.calculated_budget, 150000, 'original Comp Manager budget = team CTC base × initial %');
+    assert.strictEqual(anita.applied_budget, 150000);
+
+    // A later percentage edit changes only the updated allocation.
+    const savedAnita = store.tables.Budget_Distribution_Comp.find((row) => row.comp_manager === 'Anita Sharma');
+    savedAnita.percentage = 8;
+    const changed = await call(load(store), 'GET');
+    assert.strictEqual(changed.status, 200, JSON.stringify(changed.json));
+    const changedAnita = changed.json.compManager.find((c) => c.comp_manager === 'Anita Sharma');
+    assert.strictEqual(changedAnita.calculated_budget, 150000, 'original allocation must remain frozen');
+    assert.strictEqual(changedAnita.applied_budget, 120000, 'updated allocation uses the new percentage');
   });
 
   await t('PUT without id creates the Comp Manager row under the Tech-ED and saves the %', async () => {

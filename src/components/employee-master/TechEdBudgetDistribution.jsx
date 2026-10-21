@@ -467,8 +467,15 @@ export function TechEdBudgetDistribution() {
       const key = ownerKey(manager);
       const stats = managerStats.get(key) || { count: 0, base: 0, utilized: 0, name: manager };
       stats.count += 1;
-      stats.base += num(employee.current_annual_base_pay ?? employee.currentAnnualBasePay ?? employee.current_base_pay ?? employee.base_pay ?? employee.basePay)
-        + num(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.pb_to_be_paid ?? employee.target_pb_allocated_for_may ?? employee.allocated_pb ?? employee.total_pb);
+      const previousCtcValue = employee.previous_appraisal_total_ctc_with_rewards ?? employee.Previous_Appraisal_total_CTC_with_rewards ?? employee.budget_base;
+      const hasPreviousCtc = previousCtcValue !== null && previousCtcValue !== undefined && String(previousCtcValue).trim() !== "";
+      stats.base += hasPreviousCtc
+        ? num(previousCtcValue)
+        : num(employee.current_annual_base_pay ?? employee.currentAnnualBasePay ?? employee.current_base_pay ?? employee.base_pay ?? employee.basePay)
+          + num(employee.hike_amount ?? employee.hikeAmount ?? employee.current_hike_amount)
+          + num(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.allocated_pb ?? 0)
+          + num(employee.new_pb_to_be_offered ?? employee.newPBToBeOffered ?? employee.current_performance_bonus ?? 0)
+          + num(employee.new_rb ?? employee.newRB ?? employee.current_retention_bonus ?? 0);
       stats.utilized += employeeUtilized(employee);
       managerStats.set(key, stats);
     });
@@ -582,7 +589,8 @@ export function TechEdBudgetDistribution() {
       await updateBudget(node.liveId || "", {
         percentage: to,
         budget_base: node.base,
-        calculated_budget: newUpd,
+        // Keep the initial Comp Manager allocation frozen after the first save.
+        calculated_budget: node.liveId ? node.original : newUpd,
         applied_budget: newUpd,
         comp_manager: name,
         ...(node.liveId ? {} : { budget_distribution_id: liveTech.id }),

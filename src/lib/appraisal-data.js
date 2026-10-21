@@ -241,9 +241,16 @@ export const COLUMNS = [
   {
     key: "lastAppraisalDate",
     label: "Last Appraisal",
-    type: "date",
+    type: "text",
     editable: false,
-    width: 130,
+    width: 150,
+  },
+  {
+    key: "previousAppraisalTotalCtcWithRewards",
+    label: "Previous Appraisal Total CTC with Rewards",
+    type: "currency",
+    editable: false,
+    width: 210,
   },
   {
     key: "managerRating",
@@ -602,12 +609,9 @@ export function buildEmployees(count = 250) {
 
       totalExperience: Number((1 + rand() * 10).toFixed(1)),
 
-      lastAppraisalDate: `${2025 + (rand() > 0.5 ? 0 : -1)}-${String(
-        1 + Math.floor(rand() * 12),
-      ).padStart(2, "0")}-${String(1 + Math.floor(rand() * 28)).padStart(
-        2,
-        "0",
-      )}`,
+      // Do not fabricate a Last Appraisal value in demo/fallback rows.
+      // The live employeesapi derives this from the actual previous cycle.
+      lastAppraisalDate: "",
 
       managerRating: rating,
 

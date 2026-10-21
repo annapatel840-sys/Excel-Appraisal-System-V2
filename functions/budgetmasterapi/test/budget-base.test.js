@@ -6,7 +6,7 @@ const assert = require('assert');
 const Module = require('module');
 const path = require('path');
 
-const TABLE_IDS = { '74008000000034565': 'Budget_Master', '74008000000033809': 'Budget_Distribution', '74008000000023149': 'Budget_Distribution_Comp' };
+const TABLE_IDS = { '74008000000034565': 'Budget_Master', '74008000000033809': 'Budget_Distribution', '74008000000023149': 'Budget_Distribution_Comp', '74008000000035326': 'Payroll_Data', '74008000000034190': 'Appraisal_Cycle_Master' };
 
 function makeStore(data) {
   let seq = 5000;
@@ -90,6 +90,65 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(prabhu.budget_base, 1650000);
     assert.strictEqual(r.json.diagnostics.employeesWithBase, 3);
     assert.strictEqual(r.json.diagnostics.warning, undefined);
+  });
+
+  await t('prior-cycle total CTC is the budget base and new employees fall back to current CTC', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
+      Budget_Distribution: [], Budget_Distribution_Comp: [],
+      Employee_Master: [
+        { emp_id: 'E1', emp_name: 'Existing Employee', emp_status: 'Active', eligibility: 'Eligible' },
+        { emp_id: 'E2', emp_name: 'New Employee', emp_status: 'Active', eligibility: 'Eligible' },
+      ],
+      Payroll_Data: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Apr-25', start_date: '2025-04-01', status: 'Closed' },
+        { cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' },
+      ],
+      Appraisal_Sheet: [
+        { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: 1000000, hike_amount: 100000, allocated_pb_amount: 50000, new_pb_to_be_offered: 20000, new_rb: 10000 },
+        { emp_id: 'E2', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: 800000, hike_amount: 50000, allocated_pb_amount: 40000, new_pb_to_be_offered: 10000, new_rb: 5000 },
+      ],
+    });
+    const previousCycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    const currentCycleId = store.tables.Appraisal_Cycle_Master[1].ROWID;
+    const existingEmployeeRowId = store.tables.Employee_Master.find((row) => row.emp_id === 'E1').ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = currentCycleId;
+    store.tables.Payroll_Data.push({
+      ROWID: '99991',
+      emp_id: existingEmployeeRowId,
+      appraisal_cycle_name: previousCycleId,
+      total_CTC_with_rewards: '25,00,000',
+    });
+
+    const r = await get(load(store));
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(r.json.master[0].org_budget_base, 2500000 + 905000);
+    const existing = r.json.employeeRoster.find((employee) => employee.emp_id === 'E1');
+    const fresh = r.json.employeeRoster.find((employee) => employee.emp_id === 'E2');
+    assert.strictEqual(existing.previous_appraisal_total_ctc_with_rewards, 2500000);
+    assert.strictEqual(existing.last_appraisal_date, 'Apr-25');
+    assert.strictEqual(fresh.previous_appraisal_total_ctc_with_rewards, 905000);
+    assert.strictEqual(fresh.last_appraisal_date, 'New - 2026');
+    const orgBase = 2500000 + 905000;
+    const orgOriginal = orgBase * 1.08;
+    assert.strictEqual(r.json.master[0].calculated_budget, orgOriginal);
+    const techRow = r.json.techEd[0];
+    const techBase = techRow.budget_base;
+    const techOriginal = techRow.calculated_budget;
+    assert.strictEqual(techOriginal, techBase * 1.08);
+
+    // Changing Org and Tech-Ed percentages must change updated budgets only.
+    store.tables.Budget_Master[0].budget_percentage = 10;
+    const savedTech = store.tables.Budget_Distribution.find((row) => String(row.ROWID) === String(techRow.id));
+    savedTech.percentage = 10;
+    const changed = await call(load(store), 'GET');
+    assert.strictEqual(changed.status, 200, JSON.stringify(changed.json));
+    assert.strictEqual(changed.json.master[0].calculated_budget, orgOriginal);
+    assert.strictEqual(changed.json.master[0].applied_budget, orgBase * 1.10);
+    const changedTech = changed.json.techEd.find((row) => String(row.id) === String(techRow.id));
+    assert.strictEqual(changedTech.calculated_budget, techOriginal);
+    assert.strictEqual(changedTech.applied_budget, techBase * 1.10);
   });
 
   await t('empty pay columns: base 0 with a clear warning', async () => {

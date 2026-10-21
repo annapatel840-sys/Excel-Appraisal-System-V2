@@ -9,30 +9,6 @@ const NAVY = "#12304f";
 const TEAL = "#14a3a3";
 const BORDER = "#d3dbe6";
 
-/* Sample data. Replace with the budgetmaster API response when it is wired. */
-const TECH_ED_DATA = [
-  {
-    name: "Prabhu Prasad Parida",
-    pct: 8,
-    base: 42500000,
-    original: 3400000,
-    updated: 3400000,
-    team0: 48,
-    team: 48,
-    lastChanged: "01-Sep-26",
-  },
-  {
-    name: "Ashok Kumar",
-    pct: 8,
-    base: 38000000,
-    original: 3040000,
-    updated: 3040000,
-    team0: 42,
-    team: 42,
-    lastChanged: "01-Sep-26",
-  },
-];
-
 /* ---------- helpers ---------- */
 function normalizeOwnerKey(value) {
   const text = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -384,14 +360,15 @@ function HRApplyBudget() {
       // Budget Master must use the prior-year expense base calculated by the
       // Budget Master API (previous base pay + previous hike/PB/RB/JB).
       // Do not rebuild it from current annual pay + allocated PB.
-      const base = amount(employee.budget_base ?? employee.budgetBase) ||
-        (
-          amount(employee.previous_year_base_pay ?? employee.previousYearBasePay ?? employee.last_year_base_pay ?? employee.lastYearBasePay ?? employee.previous_annual_base_pay) +
-          amount(employee.previous_year_hike_amount ?? employee.previousYearHikeAmount ?? employee.previous_hike_amount ?? employee.last_year_hike_amount) +
-          amount(employee.previous_year_performance_bonus ?? employee.previous_year_pb ?? employee.previous_pb ?? employee.pb_to_be_paid ?? employee.pbToBePaid) +
-          amount(employee.previous_year_retention_bonus ?? employee.previous_year_rb ?? employee.previous_rb ?? employee.rb_to_be_paid ?? employee.rbToBePaid) +
-          amount(employee.previous_year_joining_bonus ?? employee.previous_year_jb ?? employee.previous_joining_bonus ?? employee.joining_bonus_previous_year)
-        );
+      const serverBase = employee.budget_base ?? employee.budgetBase;
+      const hasServerBase = serverBase !== null && serverBase !== undefined && String(serverBase).trim() !== "";
+      const base = hasServerBase ? amount(serverBase) : (
+        amount(employee.previous_year_base_pay ?? employee.previousYearBasePay ?? employee.last_year_base_pay ?? employee.lastYearBasePay ?? employee.previous_annual_base_pay) +
+        amount(employee.previous_year_hike_amount ?? employee.previousYearHikeAmount ?? employee.previous_hike_amount ?? employee.last_year_hike_amount) +
+        amount(employee.previous_year_performance_bonus ?? employee.previous_year_pb ?? employee.previous_pb ?? employee.pb_to_be_paid ?? employee.pbToBePaid) +
+        amount(employee.previous_year_retention_bonus ?? employee.previous_year_rb ?? employee.previous_rb ?? employee.rb_to_be_paid ?? employee.rbToBePaid) +
+        amount(employee.previous_year_joining_bonus ?? employee.previous_year_jb ?? employee.previous_joining_bonus ?? employee.joining_bonus_previous_year)
+      );
       employeeBases.set(key, (employeeBases.get(key) || 0) + base);
     });
 
@@ -409,7 +386,7 @@ function HRApplyBudget() {
         const existing = nextRows.find((item) => item.canonicalKey === key);
         if (existing) {
           existing.pct = amount(row.percentage);
-          existing.base = amount(row.budget_base) || existing.base;
+          existing.base = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== "" ? amount(row.budget_base) : existing.base;
           existing.original = amount(row.calculated_budget);
           existing.updated = amount(row.applied_budget) || existing.original;
           existing.team0 = amount(row.original_headcount ?? row.allocation_headcount) || existing.team0 || (employeeCounts.get(key) || 0);
@@ -426,7 +403,8 @@ function HRApplyBudget() {
         canonicalKey: key,
         name: ownerValues.get(key) || ownerName(owner, employeeRows),
         pct: amount(row.percentage),
-        base: employeeBases.get(key) || amount(row.budget_base) || (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated),
+        pctSet: row.percentage !== null && row.percentage !== undefined && String(row.percentage).trim() !== "",
+        base: employeeBases.has(key) ? employeeBases.get(key) : (row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== "" ? amount(row.budget_base) : (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated)),
         original: calculated,
         updated: applied,
         team0: amount(row.original_headcount ?? row.allocation_headcount) || assignedCount,
@@ -443,11 +421,13 @@ function HRApplyBudget() {
       const label = ownerName(owner, employeeRows);
       nextRows.push({
         id: "tech-ed-" + key,
+        canonicalKey: key,
         name: label,
         pct: amount(selectedMaster?.budget_percentage),
+        pctSet: false,
         base: employeeBases.get(key) || 0,
-        original: (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100),
-        updated: (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100),
+        original: selectedMaster?.budget_percentage_is_set ? (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100) : 0,
+        updated: selectedMaster?.budget_percentage_is_set ? (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100) : 0,
         team0: employeeCounts.get(key) || 0,
         team: employeeCounts.get(key) || 0,
         lastChanged: "—",
@@ -457,10 +437,23 @@ function HRApplyBudget() {
 
     nextRows.sort((a, b) => a.name.localeCompare(b.name));
     setRows(nextRows);
-    if (selectedMaster && Number.isFinite(Number(selectedMaster.budget_percentage))) {
+    if (selectedMaster?.budget_percentage_is_set) {
       setOrgPct(String(Number(selectedMaster.budget_percentage)));
+    } else {
+      setOrgPct("");
     }
   }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, selectedCycle, selectedMaster?.budget_percentage]);
+
+  const orgBaseFromRoster = useMemo(() => {
+    const byEmployee = new Map();
+    (Array.isArray(employeeRows) ? employeeRows : []).forEach((employee) => {
+      const id = normalizeOwnerKey(employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text || employee.row_id || employee.ROWID || employee.id);
+      if (!id) return;
+      const base = amount(employee.previous_appraisal_total_ctc_with_rewards ?? employee.Previous_Appraisal_total_CTC_with_rewards ?? employee.budget_base ?? employee.budgetBase);
+      if (!byEmployee.has(id)) byEmployee.set(id, base);
+    });
+    return Array.from(byEmployee.values()).reduce((sum, base) => sum + base, 0);
+  }, [employeeRows]);
 
   const total = useMemo(
     () =>
@@ -478,23 +471,28 @@ function HRApplyBudget() {
   );
 
   // Saved Tech-Ed percentages remain independent of future Org % changes.
-  const previewPct = (row) =>
-    Object.prototype.hasOwnProperty.call(pending, row.name)
-      ? Number(pending[row.name])
-      : amount(row.pct || 0);
+  const previewPct = (row) => {
+    if (Object.prototype.hasOwnProperty.call(pending, row.name)) return Number(pending[row.name]);
+    // An unset Tech-Ed percentage inherits the Org % on first allocation.
+    if (!row.pctSet) return orgPct !== "" ? amount(orgPct) : amount(selectedMaster?.budget_percentage);
+    return amount(row.pct);
+  };
 
   const previewBudget = (row) => row.base * (1 + previewPct(row) / 100);
   // Reject the previous broken snapshot when it is smaller than the corrected
   // prior-year expense base. A valid first-save snapshot is preserved thereafter.
   const savedOrgBase = amount(selectedMaster?.org_budget_base);
   const savedOrgOriginal = amount(selectedMaster?.calculated_budget);
-  const hasValidOrgSnapshot = savedOrgBase >= total.base && savedOrgOriginal > savedOrgBase && savedOrgBase > 0;
-  const orgBase = hasValidOrgSnapshot ? savedOrgBase : total.base;
+  const hasValidOrgSnapshot = Math.abs(savedOrgBase - orgBaseFromRoster) < 0.5 &&
+    savedOrgBase >= 0 && savedOrgOriginal >= savedOrgBase &&
+    (savedOrgBase > 0 || orgBaseFromRoster === 0);
+  const orgBase = orgBaseFromRoster;
   const effectiveOrgPct = orgPct === "" ? amount(selectedMaster?.budget_percentage) : amount(orgPct);
-  const previewOrgBudget = orgBase * (1 + effectiveOrgPct / 100);
+  const orgPctEntered = Boolean(selectedMaster?.budget_percentage_is_set) || orgPct !== "";
+  const previewOrgBudget = orgPctEntered ? orgBase * (1 + effectiveOrgPct / 100) : 0;
   const originalOrgBudget = hasValidOrgSnapshot
     ? savedOrgOriginal
-    : orgBase * (1 + effectiveOrgPct / 100);
+    : (orgPctEntered ? orgBase * (1 + effectiveOrgPct / 100) : 0);
   const changes = rows.filter((r) => Number(previewPct(r)) !== r.pct);
   const orgPending = orgPct !== "" && !!selectedMaster && amount(orgPct) !== Number(selectedMaster.budget_percentage || 0);
   const pendingCount =
@@ -514,7 +512,7 @@ function HRApplyBudget() {
     }
     setSavingOrg(true);
     setError("");
-    const orgBase = hasValidOrgSnapshot ? savedOrgBase : total.base;
+    const orgBase = orgBaseFromRoster;
     const originalBudget = hasValidOrgSnapshot
       ? savedOrgOriginal
       : orgBase * (1 + org / 100);
@@ -593,7 +591,7 @@ function HRApplyBudget() {
       return;
     }
 
-    const orgBaseForCycle = amount(selectedMaster?.org_budget_base) || total.base;
+    const orgBaseForCycle = orgBaseFromRoster;
     const orgAvailableBudget = orgBaseForCycle * (1 + org / 100);
     if (previewTotal > orgAvailableBudget + 0.5) {
       setError(
@@ -646,7 +644,7 @@ function HRApplyBudget() {
     }
 
     try {
-      const orgBase = hasValidOrgSnapshot ? savedOrgBase : total.base;
+      const orgBase = orgBaseFromRoster;
       const originalOrgBudget = hasValidOrgSnapshot
         ? savedOrgOriginal
         : orgBase * (1 + org / 100);
@@ -1087,7 +1085,7 @@ function HRAuditTrail() {
               className="ml-2 h-7 rounded border border-[#cbd3df] px-2"
             >
               <option value="all">All</option>
-              {TECH_ED_DATA.map((r) => (
+              {rows.map((r) => (
                 <option key={r.name} value={r.name}>
                   {r.name}
                 </option>

@@ -17,6 +17,8 @@ const DATASTORE_PAGE_SIZE = 200;
 
 const EMPLOYEES_TABLE_ID = "74008000000039094";
 const EMPLOYEE_MASTER_TABLE_ID = "74008000000035727";
+const PAYROLL_DATA_TABLE_ID = "74008000000035326";
+const APPRAISAL_CYCLE_TABLE_ID = "74008000000034190";
 
 /* ============================================================
    EXPRESS JSON BODY PARSER
@@ -672,6 +674,133 @@ function buildEmployeeMasterMap(masterRows) {
    object, so join the two tables here instead of duplicating columns.
    ============================================================ */
 
+
+async function readAllDataStoreRows(table) {
+  const rows = [];
+  let nextToken = null;
+  for (let guard = 0; guard < 10000; guard += 1) {
+    const options = { maxRows: DATASTORE_PAGE_SIZE };
+    if (nextToken) options.nextToken = nextToken;
+    const page = await table.getPagedRows(options);
+    rows.push(...(Array.isArray(page?.data) ? page.data : []));
+    if (page?.more_records !== true || !page?.next_token) break;
+    nextToken = page.next_token;
+  }
+  return rows;
+}
+
+function historyReference(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return String(value.ROWID ?? value.rowid ?? value.id ?? value.ID ?? value.value ?? value.appraisal_cycle_name ?? value.cycle_name ?? "").trim();
+  return String(value).trim();
+}
+
+function historyCycleName(cycle) {
+  return String(cycle?.cycle_name ?? cycle?.cycleName ?? cycle?.name ?? cycle?.appraisal_year ?? cycle?.appraisalYear ?? "").trim();
+}
+
+function historyCycleRank(cycle) {
+  const date = cycle?.start_date ?? cycle?.effective_date ?? cycle?.startDate ?? "";
+  if (date) {
+    const timestamp = Date.parse(String(date));
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+  const name = historyCycleName(cycle);
+  const monthYear = name.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s,]*(\d{2,4})\b/i);
+  if (monthYear) {
+    const month = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(monthYear[1].slice(0,3).toLowerCase());
+    let year = Number(monthYear[2]);
+    if (year < 100) year += 2000;
+    return new Date(year, month, 1).getTime();
+  }
+  const year = name.match(/(?:19|20)\d{2}/);
+  return year ? new Date(Number(year[0]), 0, 1).getTime() : 0;
+}
+
+function rowEmployeeKey(raw, employeeMasterMap) {
+  const identity = historyReference(raw).split(/\s+-\s+/)[0].trim();
+  if (!identity) return "";
+  const master = employeeMasterMap.get(identity) || employeeMasterMap.get(identity.toLowerCase());
+  return String(master?.emp_id || identity).trim().toLowerCase();
+}
+
+function currentTotalCtc(row) {
+  const stored = row?.total_ctc_with_rewards ?? row?.total_CTC_with_rewards ?? row?.total_ctc ?? row?.new_ctc;
+  if (stored !== undefined && stored !== null && String(stored).trim() !== "") {
+    const parsed = Number(String(stored).replace(/[₹,\s]/g, ""));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  // Same formula as Total CTC with Rewards in the appraisal grid.
+  const num = (value) => {
+    const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  return num(row?.current_annual_base_pay) + num(row?.hike_amount) +
+    num(row?.allocated_pb_amount) + num(row?.new_pb_to_be_offered) + num(row?.new_rb);
+}
+
+async function enrichPreviousAppraisalValues(datastore, employees, employeeMasterMap) {
+  const [payrollRows, cycleRows] = await Promise.all([
+    readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
+    readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
+  ]);
+  const cycleById = new Map(cycleRows.map((cycle) => [
+    String(cycle.ROWID ?? cycle.rowid ?? cycle.id ?? "").trim(), cycle,
+  ]).filter(([id]) => id));
+  const cycleByName = new Map(cycleRows.map((cycle) => [
+    historyCycleName(cycle).toLowerCase(), cycle,
+  ]).filter(([name]) => name));
+  const currentCycle = cycleRows.find((cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && cycle.archived !== true && cycle.archived !== "true") ||
+    cycleRows.slice().sort((a, b) => historyCycleRank(b) - historyCycleRank(a))[0];
+  const currentRank = currentCycle ? historyCycleRank(currentCycle) : 0;
+  const previousCycle = currentRank > 0
+    ? cycleRows.filter((cycle) => historyCycleRank(cycle) > 0 && historyCycleRank(cycle) < currentRank)
+      .sort((a, b) => historyCycleRank(b) - historyCycleRank(a))[0]
+    : null;
+  const previousCycleId = previousCycle ? String(previousCycle.ROWID ?? previousCycle.rowid ?? previousCycle.id ?? "").trim() : "";
+  const previousCycleName = previousCycle ? historyCycleName(previousCycle) : "";
+  const currentCycleName = currentCycle ? historyCycleName(currentCycle) : "";
+  const yearMatch = currentCycleName.match(/(?:19|20)\d{2}/);
+  const shortYearMatch = currentCycleName.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*(\d{2})/i);
+  const currentYear = yearMatch ? yearMatch[0] : shortYearMatch ? "20" + shortYearMatch[1] : currentCycleName || "current cycle";
+  const priorValues = new Map();
+  const priorValueTimes = new Map();
+  const previousCycleEmployees = new Set();
+  payrollRows.forEach((record) => {
+    const empKey = rowEmployeeKey(record.emp_id ?? record.employee_id, employeeMasterMap);
+    const rawCycle = historyReference(record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name);
+    const resolvedCycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
+    const cycleId = resolvedCycle ? String(resolvedCycle.ROWID ?? resolvedCycle.rowid ?? resolvedCycle.id ?? "").trim() : rawCycle;
+    const belongsToPrevious = (previousCycleId && cycleId === previousCycleId) ||
+      (previousCycleName && rawCycle.toLowerCase() === previousCycleName.toLowerCase());
+    if (!empKey || !belongsToPrevious) return;
+    previousCycleEmployees.add(empKey);
+    const value = record.total_CTC_with_rewards ?? record.total_ctc_with_rewards ?? record.new_ctc ?? record.newCTC;
+    if (value === null || value === undefined || String(value).trim() === "") return;
+    const parsed = Number(String(value).replace(/[₹,\s]/g, ""));
+    if (Number.isFinite(parsed)) {
+      const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
+      const priorTime = priorValueTimes.get(empKey) || "";
+      if (!priorValues.has(empKey) || rowTime.localeCompare(priorTime, undefined, { numeric: true }) >= 0) {
+        priorValues.set(empKey, parsed);
+        priorValueTimes.set(empKey, rowTime);
+      }
+    }
+  });
+  return (employees || []).map((employee) => {
+    const empKey = rowEmployeeKey(employee.emp_id ?? employee.employee_id, employeeMasterMap);
+    const hasPreviousCycleRow = empKey && previousCycleEmployees.has(empKey);
+    const previousCtc = empKey && priorValues.has(empKey) ? priorValues.get(empKey) : currentTotalCtc(employee);
+    return {
+      ...employee,
+      previous_appraisal_total_ctc_with_rewards: previousCtc,
+      Previous_Appraisal_total_CTC_with_rewards: previousCtc,
+      last_appraisal_date: hasPreviousCycleRow ? previousCycleName : "New - " + currentYear,
+      last_appraisal_cycle_name: hasPreviousCycleRow ? previousCycleName : "New - " + currentYear,
+    };
+  });
+}
+
 function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
   return (appraisalRows || []).map(function (row) {
     const empId = String(row.emp_id || "").trim();
@@ -1112,8 +1241,14 @@ async function getEmployees(req, res) {
 
   // Join the current Appraisal_Sheet schema with Employee_Master so the
   // frontend receives one dynamic, consistent employee object.
-  const allEmployees = mergeEmployeeMasterIntoAppraisal(
+  const mergedEmployees = mergeEmployeeMasterIntoAppraisal(
     appraisalRows,
+    employeeMasterMap,
+  );
+  const historyDatastore = catalyst.initialize(req, { scope: "admin" }).datastore();
+  const allEmployees = await enrichPreviousAppraisalValues(
+    historyDatastore,
+    mergedEmployees,
     employeeMasterMap,
   );
 
