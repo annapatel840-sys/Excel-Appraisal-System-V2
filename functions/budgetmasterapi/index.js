@@ -383,10 +383,11 @@ function currentCtc(row) {
 }
 
 function previousCtc(record) {
-  return n(firstValue(record, [
+  const raw = firstValue(record, [
     "total_CTC_with_rewards", "total_ctc_with_rewards", "new_ctc", "newCTC",
     "total_ctc", "totalCTCWithRewards",
-  ]));
+  ]);
+  return raw === "" || raw === null || raw === undefined ? null : n(raw);
 }
 
 function readField(row, candidates) {
@@ -799,7 +800,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const historyKey = previousCycleId + "::" + employeeId;
     const previousRecord = previousCycle ? historyRowsByCycleAndEmployee.get(historyKey) || historyRowsByCycleAndEmployee.get(cycleNameOf(previousCycle).toLowerCase() + "::" + employeeId) : null;
     const currentCtcValue = currentCtc(row);
-    const previousAppraisalCtc = previousRecord ? previousCtc(previousRecord) : currentCtcValue;
+    const storedPreviousCtc = previousRecord ? previousCtc(previousRecord) : null;
+    const previousAppraisalCtc = storedPreviousCtc === null ? currentCtcValue : storedPreviousCtc;
     const currentCycle = currentCycleFor(currentCycleId);
     const currentCycleName = cycleNameOf(currentCycle) || currentCycleId;
     const currentYearFull = currentCycleName.match(/(?:19|20)\d{2}/);
