@@ -373,9 +373,27 @@ function currentCtc(row) {
 function previousCtc(record) {
   const raw = firstValue(record, [
     "total_ctc_with_rewards", "total_CTC_with_rewards", "totalCTCWithRewards", "total_ctc", "new_ctc", "newCTC",
-    "total_ctc", "totalCTCWithRewards",
   ]);
-  return raw === "" || raw === null || raw === undefined ? null : n(raw);
+  if (raw !== "" && raw !== null && raw !== undefined) return n(raw);
+
+  // Payroll rows may not persist the computed total column. Recreate the same
+  // Total CTC with Rewards formula from that historical row's own values.
+  const componentFields = [
+    "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay",
+    "hike_amount", "hikeAmount", "current_hike_amount",
+    "allocated_pb_amount", "allocatedPBAmount", "new_pb_to_be_offered",
+    "newPBToBeOffered", "new_rb", "newRB",
+  ];
+  const hasComponents = componentFields.some((name) => {
+    const rawValue = firstValue(record, [name]);
+    return rawValue !== "" && rawValue !== null && rawValue !== undefined;
+  });
+  if (!hasComponents) return null;
+  return n(firstValue(record, ["current_annual_base_pay", "currentAnnualBasePay", "current_base_pay"])) +
+    n(firstValue(record, ["hike_amount", "hikeAmount", "current_hike_amount"])) +
+    n(firstValue(record, ["allocated_pb_amount", "allocatedPBAmount"])) +
+    n(firstValue(record, ["new_pb_to_be_offered", "newPBToBeOffered"])) +
+    n(firstValue(record, ["new_rb", "newRB"]));
 }
 
 function readField(row, candidates) {
