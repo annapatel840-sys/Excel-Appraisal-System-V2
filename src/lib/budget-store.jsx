@@ -78,6 +78,7 @@ async function fetchAllEligibleEmployees() {
     url.searchParams.set("view", "master");
     url.searchParams.set("status", "all");
     url.searchParams.set("eligible", "all");
+    url.searchParams.set("_ts", String(Date.now()));
     const response = await catalystFetch(url.toString());
     let json = {};
     try {
@@ -321,6 +322,22 @@ export function BudgetProvider({ children }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const refreshBudgetAfterPayrollUpload = () => {
+      load();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("appraisal:payroll-data-updated", refreshBudgetAfterPayrollUpload);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("appraisal:payroll-data-updated", refreshBudgetAfterPayrollUpload);
+      }
+    };
+  }, [load]);
+
+
 
   const rows = useMemo(
     () =>
