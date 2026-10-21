@@ -48,7 +48,7 @@ function idOf(row) {
 function mapMaster(row) {
   const calculated = n(value(row, "calculated_budget"));
   const applied = n(value(row, "applied_budget"));
-  const utilized = n(value(row, "budget_utilized"));
+  const utilized = n(firstNonZeroValue(row, ["budget_utilized", "total_utilization", "utilized_amount", "utilized"]));
   return {
     id: idOf(row),
     appraisal_cycle_id: cycleReference(value(row, "appraisal_cycle_id")),
@@ -78,7 +78,7 @@ function mapMaster(row) {
 function mapDistribution(row) {
   const calculated = n(value(row, "calculated_budget") || value(row, "claculated_budget"));
   const applied = n(value(row, "applied_budget"));
-  const utilized = n(value(row, "total_utilization"));
+  const utilized = n(firstNonZeroValue(row, ["total_utilization", "budget_utilized", "utilized_amount", "utilized"]));
   return {
     id: idOf(row),
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
@@ -105,7 +105,7 @@ function mapDistribution(row) {
 
 function mapComp(row) {
   const applied = n(value(row, "applied_budget"));
-  const utilized = n(value(row, "total_utilization"));
+  const utilized = n(firstNonZeroValue(row, ["total_utilization", "budget_utilized", "utilized_amount", "utilized"]));
   return {
     id: idOf(row),
     comp_manager: String(value(row, "comp_manager")),
@@ -1154,14 +1154,23 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const effectivePct = rawPct === null ? orgPct : rawPct;
       const savedOriginalBase = n(row.original_budget_base || row.original_base);
       const savedOriginalBudget = n(row.calculated_budget);
-      // Original allocation is a one-time snapshot. Eligibility and payroll changes
-      // update the live base and Updated Budget, not the captured Original Budget.
+      // A stale/broken snapshot (e.g. an "Original Budget" of 2 for a large
+      // team base) is not a valid allocation. Validate it against its saved base;
+      // retain a genuine baseline, but repair implausibly small old values.
       const canCreateOriginal = rawPct !== null || orgPctSet;
-      const hasOriginalSnapshot = canCreateOriginal && (savedOriginalBudget > 0 || (stats.base === 0 && savedOriginalBase === 0));
-      const originalBase = hasOriginalSnapshot ? savedOriginalBase : stats.base;
+      const comparisonBase = savedOriginalBase > 0 ? savedOriginalBase : stats.base;
+      const snapshotLooksValid = savedOriginalBudget > 0 &&
+        (comparisonBase <= 0 || savedOriginalBudget >= comparisonBase * 0.5) &&
+        (comparisonBase <= 0 || savedOriginalBudget <= comparisonBase * 2.5);
+      const hasOriginalSnapshot = canCreateOriginal && (
+        snapshotLooksValid || (stats.base === 0 && savedOriginalBase === 0 && savedOriginalBudget === 0)
+      );
+      const originalBase = hasOriginalSnapshot
+        ? (savedOriginalBase > 0 ? savedOriginalBase : stats.base)
+        : (savedOriginalBase > 0 && savedOriginalBudget > 0 ? savedOriginalBase : stats.base);
       const originalBudget = hasOriginalSnapshot
         ? savedOriginalBudget
-        : (canCreateOriginal ? (stats.base * (1 + effectivePct / 100)) : 0);
+        : (canCreateOriginal ? (originalBase * (1 + effectivePct / 100)) : 0);
       const updatedBudget = (rawPct !== null || orgPctSet) ? stats.base * (1 + effectivePct / 100) : 0;
 
       const update = {
@@ -1180,7 +1189,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         const currentBaseField = ["current_budget_base", "current_base"].find((key) => distributionColumns.has(key));
         const overrideField = ["override_percentage", "allocation_percentage"].find((key) => distributionColumns.has(key));
         if (originalBaseField && canCreateOriginal && !hasOriginalSnapshot) update[originalBaseField] = stats.base;
-        if (originalCountField && canCreateOriginal && !hasOriginalSnapshot) update[originalCountField] = stats.count;
+        // Repair the legacy zero baseline once, but do not overwrite a valid
+        // original count after delegation changes. Current count tracks the
+        // current eligible Appraisal Sheet assignments (updated on approval).
+        const savedOriginalCount = n(row.original_headcount || row.allocation_headcount);
+        if (originalCountField && canCreateOriginal && savedOriginalCount <= 0 && stats.count > 0) update[originalCountField] = stats.count;
         if (currentCountField) update[currentCountField] = stats.count;
         if (currentBaseField) update[currentBaseField] = stats.base;
         if (overrideField && rawPct === null) update[overrideField] = effectivePct;
@@ -1195,7 +1208,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         applied_budget: updatedBudget,
         effective_percentage: effectivePct,
         current_headcount: stats.count,
-        original_headcount: hasOriginalSnapshot ? n(row.original_headcount || row.allocation_headcount) : (canCreateOriginal ? stats.count : n(row.original_headcount || row.allocation_headcount)),
+        original_headcount: (n(row.original_headcount || row.allocation_headcount) > 0 || !canCreateOriginal) ? n(row.original_headcount || row.allocation_headcount) : stats.count,
       });
     }
 
@@ -1230,11 +1243,17 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const stats = compBases.get(pairKey) || { base: 0, count: 0 };
       const pct = n(row.percentage);
       const savedOriginalBase = n(row.original_budget_base || row.original_base);
-      // Keep the Comp Manager original base stable after its first calculated allocation.
-      const hasOriginalSnapshot = Boolean(row.calculated_budget_is_set) && savedOriginalBase > 0;
-      const originalBase = hasOriginalSnapshot ? savedOriginalBase : stats.base;
+      const savedOriginalBudget = n(row.calculated_budget);
+      // Repair legacy tiny/invalid calculated amounts while preserving a valid
+      // original CTC base and allocation share.
+      const comparisonBase = savedOriginalBase > 0 ? savedOriginalBase : stats.base;
+      const snapshotLooksValid = Boolean(row.calculated_budget_is_set) && savedOriginalBudget > 0 &&
+        (comparisonBase <= 0 || savedOriginalBudget >= comparisonBase * 0.001) &&
+        (comparisonBase <= 0 || savedOriginalBudget <= comparisonBase);
+      const hasOriginalSnapshot = snapshotLooksValid;
+      const originalBase = hasOriginalSnapshot ? savedOriginalBase : (savedOriginalBase > 0 ? savedOriginalBase : stats.base);
       // Comp Manager % is an allocation share of the team CTC base, not an extra hike on top of that base.
-      const originalBudget = hasOriginalSnapshot ? n(row.calculated_budget) : (originalBase * pct / 100);
+      const originalBudget = hasOriginalSnapshot ? savedOriginalBudget : (originalBase * pct / 100);
       const updatedBudget = stats.base * pct / 100;
       const update = {
         ROWID: row.id,
@@ -1248,7 +1267,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         const currentCountField = ["current_headcount", "headcount"].find((key) => compColumns.has(key));
         const currentBaseField = ["current_budget_base", "current_base"].find((key) => compColumns.has(key));
         if (originalBaseField && !hasOriginalSnapshot) update[originalBaseField] = stats.base;
-        if (originalCountField && !hasOriginalSnapshot) update[originalCountField] = stats.count;
+        const savedOriginalCount = n(row.original_headcount || row.allocation_headcount);
+        if (originalCountField && savedOriginalCount <= 0 && stats.count > 0) update[originalCountField] = stats.count;
         if (currentCountField) update[currentCountField] = stats.count;
         if (currentBaseField) update[currentBaseField] = stats.base;
       }
@@ -1258,7 +1278,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         calculated_budget: originalBudget,
         applied_budget: updatedBudget,
         current_headcount: stats.count,
-        original_headcount: n(row.original_headcount) || stats.count,
+        original_headcount: n(row.original_headcount || row.allocation_headcount) > 0 ? n(row.original_headcount || row.allocation_headcount) : stats.count,
       });
     }
 
@@ -1271,10 +1291,20 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const orgPctSet = Boolean(master.budget_percentage_is_set);
     // Once the first Org % captures Original Budget, changes to eligibility/payroll
     // update the live base and Updated Budget only; preserve the original snapshot.
-    const hasOrgOriginalSnapshot = orgPctSet && (previousOrgOriginal > 0 || (orgBase === 0 && previousOrgBase === 0));
+    const savedOrgOriginalBase = n(master.original_budget_base || master.original_base);
+    const orgOriginalBaseCandidate = savedOrgOriginalBase > 0 ? savedOrgOriginalBase : orgBase;
+    // Old code treated any positive calculated_budget as a valid snapshot; a
+    // bad value like 2 therefore survived every refresh. Check that it is in
+    // the expected range for a budget derived from the saved original CTC base.
+    const orgSnapshotLooksValid = previousOrgOriginal > 0 &&
+      (orgOriginalBaseCandidate <= 0 || previousOrgOriginal >= orgOriginalBaseCandidate * 0.5) &&
+      (orgOriginalBaseCandidate <= 0 || previousOrgOriginal <= orgOriginalBaseCandidate * 2.5);
+    const hasOrgOriginalSnapshot = orgPctSet && (
+      orgSnapshotLooksValid || (orgBase === 0 && previousOrgBase === 0 && previousOrgOriginal === 0)
+    );
     const orgOriginalBase = hasOrgOriginalSnapshot
-      ? n(master.original_budget_base || master.original_base || previousOrgBase)
-      : orgBase;
+      ? orgOriginalBaseCandidate
+      : (savedOrgOriginalBase > 0 && previousOrgOriginal > 0 ? savedOrgOriginalBase : orgBase);
     const orgOriginal = hasOrgOriginalSnapshot
       ? previousOrgOriginal
       : (orgPctSet ? (orgOriginalBase * (1 + orgPct / 100)) : 0);
@@ -1294,7 +1324,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const currentCountField = ["current_headcount", "headcount"].find((key) => masterColumns.has(key));
       if (originalBaseField && orgPctSet && !hasOrgOriginalSnapshot) orgFields[originalBaseField] = orgBase;
       if (currentBaseField) orgFields[currentBaseField] = orgBase;
-      if (originalCountField && orgPctSet && !hasOrgOriginalSnapshot) orgFields[originalCountField] = eligibleEmployees.length;
+      const savedOrgOriginalCount = n(master.original_headcount || master.allocation_headcount);
+      // A zero baseline with currently eligible staff is legacy bad data. Repair
+      // it once; after that, keep the original baseline stable across delegation.
+      if (originalCountField && orgPctSet && savedOrgOriginalCount <= 0 && eligibleEmployees.length > 0) {
+        orgFields[originalCountField] = eligibleEmployees.length;
+      }
       if (currentCountField) orgFields[currentCountField] = eligibleEmployees.length;
     }
     await masterTable.updateRow(orgFields);
@@ -1305,7 +1340,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       applied_budget: orgUpdated,
       current_budget_base: orgBase,
       current_headcount: eligibleEmployees.length,
-      original_headcount: hasOrgOriginalSnapshot ? n(master.original_headcount || master.allocation_headcount) : (orgPctSet ? eligibleEmployees.length : n(master.original_headcount || master.allocation_headcount)),
+      original_headcount: n(master.original_headcount || master.allocation_headcount) > 0
+        ? n(master.original_headcount || master.allocation_headcount)
+        : (orgPctSet ? eligibleEmployees.length : n(master.original_headcount || master.allocation_headcount)),
     });
   }
 
