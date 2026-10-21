@@ -25,11 +25,16 @@ function readBudgetAudit() {
 
 function recordBudgetAudit(kind, entries) {
   if (typeof window === "undefined" || !Array.isArray(entries) || !entries.length) return;
-  const current = readBudgetAudit();
-  const key = kind === "org" ? "org" : "techEd";
-  current[key] = [...entries, ...current[key]].slice(0, 2000);
-  window.localStorage.setItem(BUDGET_AUDIT_STORAGE_KEY, JSON.stringify(current));
-  window.dispatchEvent(new CustomEvent("appraisal:budget-audit-updated"));
+  try {
+    const current = readBudgetAudit();
+    const key = kind === "org" ? "org" : "techEd";
+    current[key] = [...entries, ...current[key]].slice(0, 2000);
+    window.localStorage.setItem(BUDGET_AUDIT_STORAGE_KEY, JSON.stringify(current));
+    window.dispatchEvent(new CustomEvent("appraisal:budget-audit-updated"));
+  } catch (error) {
+    // Audit-storage restrictions must not misreport a successfully saved budget as failed.
+    console.error("Could not persist local budget audit history:", error);
+  }
 }
 
 /* ---------- helpers ---------- */
