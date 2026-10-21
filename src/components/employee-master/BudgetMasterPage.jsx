@@ -564,13 +564,17 @@ function HRApplyBudget() {
     }
   }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, selectedCycle, selectedMaster?.budget_percentage]);
 
-  // The distribution API already calculates each Tech-Ed base from the
-  // selected cycle's eligible employees. Sum those unique Tech-Ed rows instead
-  // of summing the full Employee_Master roster (which includes ineligible staff).
-  const orgBaseFromRoster = useMemo(
-    () => rows.reduce((sum, row) => sum + amount(row.base), 0),
-    [rows],
-  );
+  // budgetmasterapi calculates this cycle's Org Base from the explicit
+  // Eligibility_List decisions. Prefer that authoritative total over the full
+  // employee roster or a roll-up that could omit eligible employees without a
+  // Tech-Ed assignment. Fall back to unique Tech-Ed bases only if absent.
+  const orgBaseFromRoster = useMemo(() => {
+    const savedBase = selectedMaster?.org_budget_base;
+    if (savedBase !== null && savedBase !== undefined && String(savedBase).trim() !== "") {
+      return amount(savedBase);
+    }
+    return rows.reduce((sum, row) => sum + amount(row.base), 0);
+  }, [selectedMaster?.org_budget_base, rows]);
 
   const total = useMemo(
     () =>
