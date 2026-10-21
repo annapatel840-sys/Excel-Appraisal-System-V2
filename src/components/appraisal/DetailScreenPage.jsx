@@ -1595,6 +1595,24 @@ export function DetailScreenPage({
                     type="text"
                     value={search}
                     onChange={(e) => handleSearch(e.target.value)}
+                    onKeyDown={(e) => {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  // Move the cursor to the first editable cell of the
+  // (now selected) employee once the panel has rendered.
+  setTimeout(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    const first = box.querySelector(
+      "input:not([disabled]):not([readonly]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]):not([readonly])",
+    );
+    if (first) {
+      first.focus();
+      if (typeof first.select === "function" && first.tagName !== "SELECT")
+        first.select();
+    }
+  }, 60);
+}}
                     placeholder="Search name or ID"
                     aria-label="Search your team"
                     title="Search your team by name or employee ID"
