@@ -679,9 +679,8 @@ function pickColumn(columns, candidates, fallback) {
 }
 
 async function calculateBudgetBases(app, bundle, techEdOwners = []) {
-  // Appraisal_Sheet is the source of truth for employee base, allocated PB,
-  // Tech-ED and Comp Manager assignments. Do not depend on Payroll_Data cycle
-  // foreign keys: those IDs are not the budget calculation source.
+  // Appraisal_Sheet provides the current roster and team assignments.
+  // Payroll_Data + Appraisal_Cycle_Master provide prior-cycle CTC values.
   const [appraisalRows, masterEmployeeRows, payrollRows, cycleRows] = await Promise.all([
     getAllRows(app, "Appraisal_Sheet"),
     getAllRows(app, "Employee_Master").catch(() => []),
@@ -905,9 +904,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   if (!bundle.diagnostics.budgetMasterCycles) {
     bundle.diagnostics.warning = "No Budget_Master row has an appraisal cycle, so no budget base was calculated. Add a Budget_Master row for the cycle (appraisal_cycle_id) first.";
   } else if (!withBase) {
-    bundle.diagnostics.warning = `None of the ${employees.length} employees in Appraisal_Sheet has Current Annual Base Pay or Allocated PB Amount, so the budget base is 0. Fill these columns (or re-upload the Appraisal Sheet).`;
+    bundle.diagnostics.warning = `None of the ${employees.length} employees has a previous-cycle Total CTC with Rewards or a usable current-cycle CTC fallback, so the budget base is 0. Check Payroll_Data and Appraisal_Sheet.`;
   } else if (withBase < employees.length) {
-    bundle.diagnostics.warning = `${employees.length - withBase} of ${employees.length} employees have no Current Annual Base Pay / Allocated PB Amount and add 0 to the budget base.`;
+    bundle.diagnostics.warning = `${employees.length - withBase} of ${employees.length} employees have no usable previous-cycle or current-cycle Total CTC with Rewards and add 0 to the budget base.`;
   }
   if (!withTechEd) {
     bundle.diagnostics.warning = (bundle.diagnostics.warning ? bundle.diagnostics.warning + " " : "") + "No employee in Appraisal_Sheet has an Appraiser Tech-ED, so no Tech-ED gets a base.";
