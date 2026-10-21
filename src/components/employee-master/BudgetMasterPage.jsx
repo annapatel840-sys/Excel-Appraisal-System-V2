@@ -643,7 +643,9 @@ function HRApplyBudget() {
   const orgOriginalCountValue = selectedMaster?.original_headcount ?? selectedMaster?.allocation_headcount;
   const orgCurrentCountValue = selectedMaster?.current_headcount ?? selectedMaster?.headcount;
   const orgOriginalCount = amount(orgOriginalCountValue) > 0 ? amount(orgOriginalCountValue) : total.team0;
-  const orgCurrentCount = amount(orgCurrentCountValue) > 0 ? amount(orgCurrentCountValue) : total.team;
+  // Current headcount must always reflect the live eligible Appraisal Sheet roster;
+  // persisted current_headcount may be stale until the next backend calculation.
+  const orgCurrentCount = total.team;
 
   // Saved Tech-Ed percentages remain independent of future Org % changes.
   const previewPct = (row) => {
