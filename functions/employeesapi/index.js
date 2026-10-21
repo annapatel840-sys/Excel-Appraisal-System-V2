@@ -726,10 +726,11 @@ function rowEmployeeKey(raw, employeeMasterMap) {
 
 function ctcFromComponents(row) {
   const fields = [
-    "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay",
+    "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "base_pay", "basePay",
     "hike_amount", "hikeAmount", "current_hike_amount",
-    "allocated_pb_amount", "allocatedPBAmount", "new_pb_to_be_offered",
-    "newPBToBeOffered", "new_rb", "newRB",
+    "allocated_pb_amount", "allocatedPBAmount", "allocated_pb", "allocatedPB", "target_pb_allocated_for_may",
+    "new_pb_to_be_offered", "newPBToBeOffered", "performance_bonus", "total_pb",
+    "new_rb", "newRB", "retention_bonus",
   ];
   const hasComponents = fields.some((key) => row?.[key] !== undefined && row?.[key] !== null && String(row[key]).trim() !== "");
   if (!hasComponents) return null;
@@ -737,11 +738,11 @@ function ctcFromComponents(row) {
     const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
     return Number.isFinite(parsed) ? parsed : 0;
   };
-  return num(row?.current_annual_base_pay ?? row?.currentAnnualBasePay ?? row?.current_base_pay) +
+  return num(row?.current_annual_base_pay ?? row?.currentAnnualBasePay ?? row?.current_base_pay ?? row?.base_pay ?? row?.basePay) +
     num(row?.hike_amount ?? row?.hikeAmount ?? row?.current_hike_amount) +
-    num(row?.allocated_pb_amount ?? row?.allocatedPBAmount) +
-    num(row?.new_pb_to_be_offered ?? row?.newPBToBeOffered) +
-    num(row?.new_rb ?? row?.newRB);
+    num(row?.allocated_pb_amount ?? row?.allocatedPBAmount ?? row?.allocated_pb ?? row?.target_pb_allocated_for_may) +
+    num(row?.new_pb_to_be_offered ?? row?.newPBToBeOffered ?? row?.performance_bonus ?? row?.total_pb) +
+    num(row?.new_rb ?? row?.newRB ?? row?.retention_bonus);
 }
 
 function currentTotalCtc(row) {
