@@ -742,19 +742,20 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const master = masterByRowId.get(identity) || masterByEmployee.get(identity) || masterByName.get(identity);
     return String(master ? firstValue(master, ["emp_id", "empId", "employee_id"]) || idOf(master) : identity).trim().toLowerCase();
   };
-  const cycleReferenceForRow = (row) => cycleReference(firstValue(row, ["appraisal_cycle_id", "appraisalCycleId", "cycle_id", "appraisal_cycle_name", "appraisalCycleName", "cycle_name"]));
+  const cycleReferenceForRow = (row) => cycleReference(firstValue(row, ["appraisal_cycle_name", "appraisal_cycle_id", "appraisalCycleId", "cycle_id", "appraisalCycleName", "cycle_name"]));
   const currentCycleFor = (cycleId) => cycleById.get(String(cycleId)) || cycleByName.get(String(cycleId).toLowerCase()) || null;
   const previousCycleFor = (cycleId) => {
     const current = currentCycleFor(cycleId);
     const currentRank = current ? cycleRank(current) : cycleRank({ cycle_name: cycleId });
     const earlier = cycleRows
+      .filter((cycle) => String(firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "").trim().toLowerCase() === "closed")
       .filter((cycle) => cycleRank(cycle) > 0 && currentRank > 0 && cycleRank(cycle) < currentRank)
       .sort((a, b) => cycleRank(b) - cycleRank(a));
     return earlier[0] || null;
   };
   const historyRowsByCycleAndEmployee = new Map();
   payrollRows.forEach((historyRow) => {
-    const employeeKey = employeeKeyFor(firstValue(historyRow, ["emp_id", "employee_id", "empId"]));
+    const employeeKey = employeeKeyFor(firstValue(historyRow, ["emp_id", "employee_id", "emp_code", "empId"]));
     const cycleRef = cycleReferenceForRow(historyRow);
     const referencedCycle = cycleById.get(cycleRef) || cycleByName.get(cycleRef.toLowerCase());
     const cycleKey = referencedCycle ? (cycleIdOf(referencedCycle) || cycleNameOf(referencedCycle).toLowerCase()) : cycleRef.toLowerCase();
