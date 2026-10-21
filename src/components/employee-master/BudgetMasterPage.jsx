@@ -822,7 +822,6 @@ function HRApplyBudget() {
       return;
     }
 
-    const now = new Date().toISOString().slice(0, 10);
     const updates = rows.filter((row) =>
       Object.prototype.hasOwnProperty.call(pending, row.name) && (!target || row.name === target),
     );
