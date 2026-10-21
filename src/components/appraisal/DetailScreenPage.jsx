@@ -543,11 +543,6 @@ function NotesButton({ employee }) {
   const [anchor, setAnchor] = useState({ top: 0, right: 0 });
   const btnRef = useRef(null);
 
-  const notesCount = useMemo(() => {
-    const saved = readStore(NOTES_KEY, []);
-    return Array.isArray(saved) ? saved.length : 0;
-  }, [notesOpen]);
-
   useEffect(() => {
     if (!notesOpen) return undefined;
     const handleOutside = (event) => {
@@ -579,11 +574,6 @@ function NotesButton({ employee }) {
         style={{ fontFamily: FONT }}
       >
         ✎ My notes
-        {notesCount > 0 && (
-          <span className="ml-1.5 rounded-[9px] bg-white px-1.5 text-[10.5px] font-extrabold text-[#102a43]">
-            {notesCount}
-          </span>
-        )}
       </button>
       {notesOpen &&
         createPortal(
@@ -1596,23 +1586,23 @@ export function DetailScreenPage({
                     value={search}
                     onChange={(e) => handleSearch(e.target.value)}
                     onKeyDown={(e) => {
-  if (e.key !== "Enter") return;
-  e.preventDefault();
-  // Move the cursor to the first editable cell of the
-  // (now selected) employee once the panel has rendered.
-  setTimeout(() => {
-    const box = boxRef.current;
-    if (!box) return;
-    const first = box.querySelector(
-      "input:not([disabled]):not([readonly]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]):not([readonly])",
-    );
-    if (first) {
-      first.focus();
-      if (typeof first.select === "function" && first.tagName !== "SELECT")
-        first.select();
-    }
-  }, 60);
-}}
+                      if (e.key !== "Enter") return;
+                      e.preventDefault();
+                      // Move the cursor to the first editable cell of the
+                      // (now selected) employee once the panel has rendered.
+                      setTimeout(() => {
+                        const box = boxRef.current;
+                        if (!box) return;
+                        const first = box.querySelector(
+                          "input:not([disabled]):not([readonly]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]):not([readonly])",
+                        );
+                        if (first) {
+                          first.focus();
+                          if (typeof first.select === "function" && first.tagName !== "SELECT")
+                            first.select();
+                        }
+                      }, 60);
+                    }}
                     placeholder="Search name or ID"
                     aria-label="Search your team"
                     title="Search your team by name or employee ID"
