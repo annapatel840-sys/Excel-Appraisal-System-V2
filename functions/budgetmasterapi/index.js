@@ -700,14 +700,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   const [appraisalRows, masterEmployeeRows, payrollRows, cycleRows] = await Promise.all([
     getAllRows(app, "Appraisal_Sheet"),
     getAllRows(app, "Employee_Master").catch(() => []),
-    readTableById(app, TABLES.payroll).catch((error) => {
-      console.error("Could not read Payroll_Data for prior-cycle CTC:", error && error.message);
-      return [];
-    }),
-    readTableById(app, TABLES.cycles).catch((error) => {
-      console.error("Could not read Appraisal_Cycle_Master:", error && error.message);
-      return [];
-    }),
+    readTableById(app, TABLES.payroll),
+    readTableById(app, TABLES.cycles),
   ]);
   if (!appraisalRows.length) {
     throw new Error("Appraisal_Sheet returned no rows; cannot calculate budget bases.");
@@ -985,10 +979,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     await table.updateRow({ ROWID: rowId, [field]: val });
   };
 
-  // Appraisal_Sheet is the current appraisal roster. If a future schema adds
-  // an appraisal-cycle field, cycle scoping can be applied without relying on
-  // unrelated Payroll_Data foreign keys. For now each saved budget cycle uses
-  // this sheet's employee assignments and pay/PB values.
+  // Appraisal_Sheet supplies current team assignments; each employee base is
+    // the resolved prior-cycle total CTC, not a sum of salary/bonus aliases.
   for (const master of bundle.master) {
     const cycleId = String(master.appraisal_cycle_id || "").trim();
     if (!cycleId) continue;
