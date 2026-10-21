@@ -7,11 +7,11 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 /* Add once in index.html <head> so the font matches the reference:
    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"> */
 
-const normalizeIdentity = (value) => String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+const normalizeIdentity = (value) => String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 const ownerParts = (value) => {
   const text = normalizeIdentity(value);
   if (!text) return [];
-  const parts = text.split(/\\s+-\\s+/);
+  const parts = text.split(/\s+-\s+/);
   return parts.length > 1 ? [text, ...parts] : [text];
 };
 const ownerKey = (value) => ownerParts(value)[1] || ownerParts(value)[0] || "";
