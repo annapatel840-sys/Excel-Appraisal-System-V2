@@ -500,10 +500,10 @@ function HRApplyBudget() {
           existing.updated = amount(row.applied_budget) || existing.original;
           const originalCountValue = row.original_headcount ?? row.allocation_headcount;
           const currentCountValue = row.current_headcount ?? row.headcount;
-          existing.team0 = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== ""
+          existing.team0 = amount(originalCountValue) > 0
             ? amount(originalCountValue)
-            : (existing.team0 ?? (employeeCounts.get(key) || 0));
-          existing.team = currentCountValue !== null && currentCountValue !== undefined && String(currentCountValue).trim() !== ""
+            : (existing.team0 || employeeCounts.get(key) || 0);
+          existing.team = amount(currentCountValue) > 0
             ? amount(currentCountValue)
             : (employeeCounts.get(key) || 0);
           existing.id = row.id || existing.id;
@@ -515,12 +515,8 @@ function HRApplyBudget() {
       const assignedCount = employeeCounts.get(key) || 0;
       const originalCountValue = row.original_headcount ?? row.allocation_headcount;
       const currentCountValue = row.current_headcount ?? row.headcount;
-      const originalCount = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== ""
-        ? amount(originalCountValue)
-        : assignedCount;
-      const currentCount = currentCountValue !== null && currentCountValue !== undefined && String(currentCountValue).trim() !== ""
-        ? amount(currentCountValue)
-        : assignedCount;
+      const originalCount = amount(originalCountValue) > 0 ? amount(originalCountValue) : assignedCount;
+      const currentCount = amount(currentCountValue) > 0 ? amount(currentCountValue) : assignedCount;
       const storedBase = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== ""
         ? amount(row.budget_base)
         : null;
@@ -603,12 +599,8 @@ function HRApplyBudget() {
   // Org Budget Base. Fall back to the Tech-Ed roll-up only for older schemas.
   const orgOriginalCountValue = selectedMaster?.original_headcount ?? selectedMaster?.allocation_headcount;
   const orgCurrentCountValue = selectedMaster?.current_headcount ?? selectedMaster?.headcount;
-  const orgOriginalCount = orgOriginalCountValue !== null && orgOriginalCountValue !== undefined && String(orgOriginalCountValue).trim() !== ""
-    ? amount(orgOriginalCountValue)
-    : total.team0;
-  const orgCurrentCount = orgCurrentCountValue !== null && orgCurrentCountValue !== undefined && String(orgCurrentCountValue).trim() !== ""
-    ? amount(orgCurrentCountValue)
-    : total.team;
+  const orgOriginalCount = amount(orgOriginalCountValue) > 0 ? amount(orgOriginalCountValue) : total.team0;
+  const orgCurrentCount = amount(orgCurrentCountValue) > 0 ? amount(orgCurrentCountValue) : total.team;
 
   // Saved Tech-Ed percentages remain independent of future Org % changes.
   const previewPct = (row) => {
