@@ -117,8 +117,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     store.tables.Payroll_Data.push({
       ROWID: '99991',
       emp_id: existingEmployeeRowId,
-      appraisal_cycle_name: previousCycleId,
-      total_CTC_with_rewards: '25,00,000',
+      appraisal_cycle_id: previousCycleId,
+      total_ctc_with_rewards: '25,00,000',
     });
 
     const r = await get(load(store));
@@ -142,7 +142,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     store.tables.Budget_Master[0].budget_percentage = 10;
     const savedTech = store.tables.Budget_Distribution.find((row) => String(row.ROWID) === String(techRow.id));
     savedTech.percentage = 10;
-    const changed = await call(load(store), 'GET');
+    const changed = await get(load(store));
     assert.strictEqual(changed.status, 200, JSON.stringify(changed.json));
     assert.strictEqual(changed.json.master[0].calculated_budget, orgOriginal);
     assert.strictEqual(changed.json.master[0].applied_budget, orgBase * 1.10);

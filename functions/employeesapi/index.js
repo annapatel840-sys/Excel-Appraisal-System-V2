@@ -724,19 +724,34 @@ function rowEmployeeKey(raw, employeeMasterMap) {
   return String(master?.emp_id || identity).trim().toLowerCase();
 }
 
+function ctcFromComponents(row) {
+  const fields = [
+    "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay",
+    "hike_amount", "hikeAmount", "current_hike_amount",
+    "allocated_pb_amount", "allocatedPBAmount", "new_pb_to_be_offered",
+    "newPBToBeOffered", "new_rb", "newRB",
+  ];
+  const hasComponents = fields.some((key) => row?.[key] !== undefined && row?.[key] !== null && String(row[key]).trim() !== "");
+  if (!hasComponents) return null;
+  const num = (value) => {
+    const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+  return num(row?.current_annual_base_pay ?? row?.currentAnnualBasePay ?? row?.current_base_pay) +
+    num(row?.hike_amount ?? row?.hikeAmount ?? row?.current_hike_amount) +
+    num(row?.allocated_pb_amount ?? row?.allocatedPBAmount) +
+    num(row?.new_pb_to_be_offered ?? row?.newPBToBeOffered) +
+    num(row?.new_rb ?? row?.newRB);
+}
+
 function currentTotalCtc(row) {
-  const stored = row?.total_ctc_with_rewards ?? row?.total_CTC_with_rewards ?? row?.total_ctc ?? row?.new_ctc;
+  const stored = row?.total_ctc_with_rewards ?? row?.total_CTC_with_rewards ?? row?.totalCTCWithRewards ?? row?.total_ctc ?? row?.new_ctc;
   if (stored !== undefined && stored !== null && String(stored).trim() !== "") {
     const parsed = Number(String(stored).replace(/[₹,\s]/g, ""));
     if (Number.isFinite(parsed)) return parsed;
   }
   // Same formula as Total CTC with Rewards in the appraisal grid.
-  const num = (value) => {
-    const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
-    return Number.isFinite(parsed) ? parsed : 0;
-  };
-  return num(row?.current_annual_base_pay) + num(row?.hike_amount) +
-    num(row?.allocated_pb_amount) + num(row?.new_pb_to_be_offered) + num(row?.new_rb);
+  return ctcFromComponents(row) ?? 0;
 }
 
 async function enrichPreviousAppraisalValues(datastore, employees, employeeMasterMap) {
@@ -768,14 +783,19 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   const previousCycleEmployees = new Set();
   payrollRows.forEach((record) => {
     const empKey = rowEmployeeKey(record.emp_id ?? record.employee_id, employeeMasterMap);
-    const rawCycle = historyReference(record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name);
+    const rawCycle = historyReference(record.appraisal_cycle_id ?? record.appraisalCycleId ?? record.cycle_id ?? record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name);
     const resolvedCycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
     const cycleId = resolvedCycle ? String(resolvedCycle.ROWID ?? resolvedCycle.rowid ?? resolvedCycle.id ?? "").trim() : rawCycle;
-    const belongsToPrevious = (previousCycleId && cycleId === previousCycleId) ||
-      (previousCycleName && rawCycle.toLowerCase() === previousCycleName.toLowerCase());
+    const belongsToPrevious = Boolean(rawCycle) && (
+      (previousCycleId && cycleId === previousCycleId) ||
+      (previousCycleName && rawCycle.toLowerCase() === previousCycleName.toLowerCase())
+    );
     if (!empKey || !belongsToPrevious) return;
     previousCycleEmployees.add(empKey);
-    const value = record.total_CTC_with_rewards ?? record.total_ctc_with_rewards ?? record.new_ctc ?? record.newCTC;
+    const storedValue = record.total_ctc_with_rewards ?? record.total_CTC_with_rewards ?? record.totalCTCWithRewards ?? record.total_ctc ?? record.new_ctc ?? record.newCTC;
+    const value = storedValue === null || storedValue === undefined || String(storedValue).trim() === ""
+      ? ctcFromComponents(record)
+      : storedValue;
     if (value === null || value === undefined || String(value).trim() === "") return;
     const parsed = Number(String(value).replace(/[₹,\s]/g, ""));
     if (Number.isFinite(parsed)) {
