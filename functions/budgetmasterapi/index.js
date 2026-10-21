@@ -82,6 +82,14 @@ function mapDistribution(row) {
       ? null
       : n(value(row, "percentage")),
     budget_base: n(value(row, "budget_base")),
+    original_budget_base: n(value(row, "original_budget_base")),
+    original_base: n(value(row, "original_base")),
+    current_budget_base: n(value(row, "current_budget_base")),
+    current_base: n(value(row, "current_base")),
+    original_headcount: value(row, "original_headcount"),
+    allocation_headcount: value(row, "allocation_headcount"),
+    current_headcount: value(row, "current_headcount"),
+    headcount: value(row, "headcount"),
     calculated_budget: calculated,
     total_utilization: utilized,
     applied_budget: applied,
@@ -792,8 +800,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const previousAppraisalCtc = previousRecord ? previousCtc(previousRecord) : currentCtcValue;
     const currentCycle = currentCycleFor(currentCycleId);
     const currentCycleName = cycleNameOf(currentCycle) || currentCycleId;
-    const currentYearMatch = currentCycleName.match(/(?:19|20)\\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\\s]*(\\d{2})/i);
-    const currentYear = currentYearMatch ? (currentYearMatch[1] ? "20" + currentYearMatch[1] : currentYearMatch[0]) : currentCycleName;
+    const currentYearFull = currentCycleName.match(/(?:19|20)\\d{2}/);
+    const currentYearShort = currentCycleName.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\\s]*(\\d{2})/i);
+    const currentYear = currentYearFull ? currentYearFull[0] : currentYearShort ? "20" + currentYearShort[1] : currentCycleName;
     const lastAppraisalLabel = previousRecord ? cycleNameOf(previousCycle) : "New - " + currentYear;
     const basePay = n(firstValue(row, [
       "previous_year_base_pay", "previousYearBasePay", "last_year_base_pay", "lastYearBasePay",
