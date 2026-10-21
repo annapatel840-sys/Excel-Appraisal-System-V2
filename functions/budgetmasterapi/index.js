@@ -76,7 +76,7 @@ function mapMaster(row) {
 }
 
 function mapDistribution(row) {
-  const calculated = n(value(row, "calculated_budget") || value(row, "claculated_budget"));
+  const calculated = n(firstNonZeroValue(row, ["calculated_budget", "claculated_budget"]));
   const applied = n(value(row, "applied_budget"));
   const utilized = n(firstNonZeroValue(row, ["total_utilization", "budget_utilized", "utilized_amount", "utilized"]));
   return {
@@ -112,7 +112,7 @@ function mapComp(row) {
     percentage: n(value(row, "percentage")),
     percentage_is_set: value(row, "percentage") !== "" && value(row, "percentage") !== null && value(row, "percentage") !== undefined,
     budget_base: n(value(row, "budget_base")),
-    calculated_budget: n(value(row, "calculated_budget") || value(row, "claculated_budget")),
+    calculated_budget: n(firstNonZeroValue(row, ["calculated_budget", "claculated_budget"])),
     calculated_budget_is_set: (value(row, "calculated_budget") !== "" && value(row, "calculated_budget") !== null && value(row, "calculated_budget") !== undefined) || (value(row, "claculated_budget") !== "" && value(row, "claculated_budget") !== null && value(row, "claculated_budget") !== undefined),
     total_utilization: utilized,
     applied_budget: applied,
@@ -1107,23 +1107,28 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // Eligibility List are picked up on the next calculation/read.
     const eligibleEmployees = employees.filter((employee) => employee.eligible);
     const orgBase = eligibleEmployees.reduce((sum, employee) => sum + employee.base, 0);
-    const techBases = new Map(Array.from(techLabels.keys(), (key) => [key, { base: 0, count: 0 }]));
-    const compBases = new Map(Array.from(compLabels.keys(), (key) => [key, { base: 0, count: 0 }]));
+    const techBases = new Map(Array.from(techLabels.keys(), (key) => [key, { base: 0, count: 0, utilized: 0 }]));
+    const compBases = new Map(Array.from(compLabels.keys(), (key) => [key, { base: 0, count: 0, utilized: 0 }]));
+    let orgUtilized = 0;
 
     eligibleEmployees.forEach((employee) => {
       const techKey = ownerKey(employee.techEd);
       const compKey = ownerKey(employee.compManager);
+      const consumed = n(employee.utilized_amount);
+      orgUtilized += consumed;
       if (techKey) {
-        const tech = techBases.get(techKey) || { base: 0, count: 0 };
+        const tech = techBases.get(techKey) || { base: 0, count: 0, utilized: 0 };
         tech.base += employee.base;
         tech.count += 1;
+        tech.utilized += consumed;
         techBases.set(techKey, tech);
       }
       if (techKey && compKey) {
         const key = techKey + "::" + compKey;
-        const comp = compBases.get(key) || { base: 0, count: 0 };
+        const comp = compBases.get(key) || { base: 0, count: 0, utilized: 0 };
         comp.base += employee.base;
         comp.count += 1;
+        comp.utilized += consumed;
         compBases.set(key, comp);
       }
     });
@@ -1147,7 +1152,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         row = mapDistribution(created);
         bundle.techEd.push(row);
       }
-      const stats = techBases.get(techKey) || { base: 0, count: 0 };
+      const stats = techBases.get(techKey) || { base: 0, count: 0, utilized: 0 };
       const rawPct = row.percentage === null || row.percentage === undefined || row.percentage === "" ? null : n(row.percentage);
       const orgPct = n(master.budget_percentage);
       const orgPctSet = Boolean(master.budget_percentage_is_set);
@@ -1178,6 +1183,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         budget_base: stats.base,
         [distCalcField]: originalBudget,
         applied_budget: updatedBudget,
+        total_utilization: stats.utilized,
       };
       // Capture the initial Tech-Ed percentage only after HR has set the Org %.
       // Once the original budget is saved, later percentage edits affect only applied_budget.
@@ -1240,7 +1246,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         row = mapComp(created);
         bundle.compManager.push(row);
       }
-      const stats = compBases.get(pairKey) || { base: 0, count: 0 };
+      const stats = compBases.get(pairKey) || { base: 0, count: 0, utilized: 0 };
       const pct = n(row.percentage);
       const savedOriginalBase = n(row.original_budget_base || row.original_base);
       const savedOriginalBudget = n(row.calculated_budget);
@@ -1260,6 +1266,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         budget_base: stats.base,
         [compCalcField]: originalBudget,
         applied_budget: updatedBudget,
+        total_utilization: stats.utilized,
       };
       if (compColumns) {
         const originalBaseField = ["original_budget_base", "original_base"].find((key) => compColumns.has(key));
@@ -1316,6 +1323,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       org_budget_base: orgBase,
       [masterCalcField]: orgOriginal,
       applied_budget: orgUpdated,
+      budget_utilized: orgUtilized,
     };
     if (masterColumns) {
       const originalBaseField = ["original_budget_base", "original_base"].find((key) => masterColumns.has(key));
@@ -1338,6 +1346,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       original_budget_base: orgOriginalBase,
       calculated_budget: orgOriginal,
       applied_budget: orgUpdated,
+      budget_utilized: orgUtilized,
       current_budget_base: orgBase,
       current_headcount: eligibleEmployees.length,
       original_headcount: n(master.original_headcount || master.allocation_headcount) > 0
