@@ -471,10 +471,12 @@ function HRApplyBudget() {
   );
 
   // Saved Tech-Ed percentages remain independent of future Org % changes.
-  const previewPct = (row) =>
-    Object.prototype.hasOwnProperty.call(pending, row.name)
-      ? Number(pending[row.name])
-      : amount(row.pct || 0);
+  const previewPct = (row) => {
+    if (Object.prototype.hasOwnProperty.call(pending, row.name)) return Number(pending[row.name]);
+    // An unset Tech-Ed percentage inherits the Org % on first allocation.
+    if (!row.pctSet) return orgPct !== "" ? amount(orgPct) : amount(selectedMaster?.budget_percentage);
+    return amount(row.pct);
+  };
 
   const previewBudget = (row) => row.base * (1 + previewPct(row) / 100);
   // Reject the previous broken snapshot when it is smaller than the corrected
