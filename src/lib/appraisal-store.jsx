@@ -402,6 +402,9 @@ const fetchEmployeePageFromCatalyst = async (
 
   url.searchParams.set("page", String(page));
   url.searchParams.set("limit", String(limit));
+  // Re-read cycle-specific payroll history after a payroll upload instead of
+  // allowing an intermediary/browser cache to reuse the previous appraisal row.
+  url.searchParams.set("_ts", String(Date.now()));
 
   const viewAs = getViewAsSelected();
   if (viewAs) url.searchParams.set("viewAs", viewAs);
@@ -1106,6 +1109,22 @@ export function AppraisalProvider({ children }) {
       loadSeqRef.current += 1;
     };
   }, [loadEmployees]);
+
+  useEffect(() => {
+    const refreshAfterPayrollUpload = () => {
+      loadEmployees();
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("appraisal:payroll-data-updated", refreshAfterPayrollUpload);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("appraisal:payroll-data-updated", refreshAfterPayrollUpload);
+      }
+    };
+  }, [loadEmployees]);
+
+
 
   /* ==========================================================
   REFRESH AUDIT HISTORY
