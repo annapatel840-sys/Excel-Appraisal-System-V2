@@ -1062,6 +1062,7 @@ function HRApplyBudget() {
       <div className="bm-footer-note">Budget values shown here are sourced from the existing Budget Master API. This redesign does not change the calculation or saving workflow.</div>
     </div>
   );
+}
 
 /* tbody can hold several <tr> per item; a fragment keeps the table valid. */
 function FragmentRow({ children }) {
