@@ -374,8 +374,21 @@ function HRApplyBudget() {
   const [error, setError] = useState("");
   const [savingOrg, setSavingOrg] = useState(false);
   const [history, setHistory] = useState({});
-  const [audit, setAudit] = useState([]);
-  const [orgAudit, setOrgAudit] = useState([]);
+  const [auditState, setAuditState] = useState(() => readBudgetAudit());
+  useEffect(() => {
+    const refreshAudit = () => setAuditState(readBudgetAudit());
+    refreshAudit();
+    if (typeof window !== "undefined") {
+      window.addEventListener("appraisal:budget-audit-updated", refreshAudit);
+      window.addEventListener("storage", refreshAudit);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("appraisal:budget-audit-updated", refreshAudit);
+        window.removeEventListener("storage", refreshAudit);
+      }
+    };
+  }, []);
   const [overrides, setOverrides] = useState({});
   const [activeCycle, setActiveCycle] = useState(null);
   const [cycleLoading, setCycleLoading] = useState(true);
@@ -828,20 +841,6 @@ function HRApplyBudget() {
       });
       return next;
     });
-    setAudit((previous) => {
-      const byOwner = new Map(previous.map((item) => [item.owner, item]));
-      updates.forEach((row) => byOwner.set(row.name, {
-        date: now,
-        owner: row.name,
-        from: row.pct,
-        to: Number(pending[row.name]),
-        before: row.updated,
-        after: row.base * (1 + Number(pending[row.name]) / 100),
-        by: "HR",
-        reason: reasonFor(row),
-      }));
-      return Array.from(byOwner.values());
-    });
     setPending((previous) => {
       if (!target) return {};
       const next = { ...previous };
@@ -1134,7 +1133,7 @@ function HRApplyBudget() {
                 const hasStaged = Object.prototype.hasOwnProperty.call(staged, r.name) &&
                   Number(staged[r.name]) !== Number(r.pct);
                 const open = !!history[r.name];
-                const rowAudit = audit.filter((a) => a.owner === r.name);
+                const rowAudit = auditState.techEd.filter((a) => a.owner === r.name);
                 const sourceOverride =
                   overrides[r.name] ||
                   (hasPending && Number(p) !== amount(orgPct));
