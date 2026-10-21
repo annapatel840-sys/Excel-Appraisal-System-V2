@@ -23,7 +23,10 @@ function number(value) {
 function normalizeRow(row) {
   const calculated = number(row.calculated_budget);
   const applied = number(row.applied_budget);
-  const utilized = number(row.budget_utilized ?? row.total_utilization);
+  // A stored zero in the first alias must not mask a populated legacy/current
+  // utilization column returned by the budget API.
+  const utilized = number(row.budget_utilized) || number(row.total_utilization) ||
+    number(row.utilized_amount) || number(row.utilized);
   return {
     ...row,
     id: String(row.id || ""),
@@ -38,7 +41,8 @@ function normalizeRow(row) {
     updated_budget: applied,
     calculated_budget: calculated,
     applied_budget: applied,
-    total_utilization: number(row.total_utilization ?? row.budget_utilized),
+    total_utilization: number(row.total_utilization) || number(row.budget_utilized) ||
+      number(row.utilized_amount) || number(row.utilized),
     utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
   };
 }
