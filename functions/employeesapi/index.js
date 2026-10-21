@@ -741,14 +741,8 @@ function currentTotalCtc(row) {
 
 async function enrichPreviousAppraisalValues(datastore, employees, employeeMasterMap) {
   const [payrollRows, cycleRows] = await Promise.all([
-    readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)).catch((error) => {
-      console.error("Could not load prior appraisal compensation:", error?.message || error);
-      return [];
-    }),
-    readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)).catch((error) => {
-      console.error("Could not load appraisal cycle names:", error?.message || error);
-      return [];
-    }),
+    readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
+    readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
   ]);
   const cycleById = new Map(cycleRows.map((cycle) => [
     String(cycle.ROWID ?? cycle.rowid ?? cycle.id ?? "").trim(), cycle,
