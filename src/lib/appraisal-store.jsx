@@ -1045,9 +1045,11 @@ export function AppraisalProvider({ children }) {
       setLoading(true);
       setError("");
 
-      const result = isHRUser
-        ? await fetchAllEmployeesFromCatalyst()
-        : await fetchAllEmployeesFromCatalyst("active", "eligible");
+      // The Appraisal Sheet contains active employees explicitly marked
+      // Eligible in the current cycle for both HR and Tech-ED. HR still sees
+      // every eligible employee; Employee Master/Eligibility screens keep
+      // their separate full-roster views.
+      const result = await fetchAllEmployeesFromCatalyst("active", "eligible");
 
       if (requestId !== loadSeqRef.current) {
         return;
