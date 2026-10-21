@@ -107,8 +107,6 @@ function mapComp(row) {
     percentage: n(value(row, "percentage")),
     percentage_is_set: value(row, "percentage") !== "" && value(row, "percentage") !== null && value(row, "percentage") !== undefined,
     budget_base: n(value(row, "budget_base")),
-    original_budget_base: n(value(row, "original_budget_base")),
-    original_base: n(value(row, "original_base")),
     calculated_budget: n(value(row, "calculated_budget") || value(row, "claculated_budget")),
     calculated_budget_is_set: (value(row, "calculated_budget") !== "" && value(row, "calculated_budget") !== null && value(row, "calculated_budget") !== undefined) || (value(row, "claculated_budget") !== "" && value(row, "claculated_budget") !== null && value(row, "claculated_budget") !== undefined),
     total_utilization: utilized,
