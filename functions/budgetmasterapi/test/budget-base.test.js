@@ -73,7 +73,11 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
   await t('formatted amounts (commas, ₹, lakh) give the right org and Tech-ED base', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
-      Budget_Distribution: [], Budget_Distribution_Comp: [], Employee_Master: [],
+      Budget_Distribution: [], Budget_Distribution_Comp: [], Employee_Master: [], Eligibility_List: [
+        { appraisal_cycle_id: 'Apr-26', emp_id: 'E1', eligibility_status: 'Eligible' },
+        { appraisal_cycle_id: 'Apr-26', emp_id: 'E2', eligibility_status: 'Eligible' },
+        { appraisal_cycle_id: 'Apr-26', emp_id: 'E3', eligibility_status: 'Eligible' },
+      ],
       Appraisal_Sheet: [
         sheet('E1', 'EMP0051 - Ashok Kumar', 'Anita', '12,00,000', '1,00,000'),
         sheet('E2', 'EMP0051 - Ashok Kumar', 'Anita', '₹ 8,00,000', '50000'),
@@ -100,6 +104,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
         { emp_id: 'E1', emp_name: 'Existing Employee', emp_status: 'Active', eligibility: 'Eligible' },
         { emp_id: 'E2', emp_name: 'New Employee', emp_status: 'Active', eligibility: 'Eligible' },
       ],
+      Eligibility_List: [],
       Payroll_Data: [],
       Appraisal_Cycle_Master: [
         { cycle_name: 'Apr-25', start_date: '2025-04-01', status: 'Closed' },
@@ -114,6 +119,10 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const currentCycleId = store.tables.Appraisal_Cycle_Master[1].ROWID;
     const existingEmployeeRowId = store.tables.Employee_Master.find((row) => row.emp_id === 'E1').ROWID;
     store.tables.Budget_Master[0].appraisal_cycle_id = currentCycleId;
+    store.tables.Eligibility_List.push(
+      { ROWID: '99881', appraisal_cycle_id: currentCycleId, emp_id: 'E1', eligibility_status: 'Eligible' },
+      { ROWID: '99882', appraisal_cycle_id: currentCycleId, emp_id: 'E2', eligibility_status: 'Eligible' },
+    );
     store.tables.Payroll_Data.push({
       ROWID: '99991',
       emp_id: existingEmployeeRowId,
@@ -157,10 +166,63 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(changedTech.applied_budget, techBase * 1.10);
   });
 
+  await t('cycle-ineligible employees are excluded from org and Tech-ED bases', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
+      Budget_Distribution: [], Budget_Distribution_Comp: [],
+      Employee_Master: [
+        { emp_id: 'E1', emp_name: 'Eligible Employee', emp_status: 'Active', eligibility: 'Eligible' },
+        { emp_id: 'E2', emp_name: 'Not Eligible Employee', emp_status: 'Active', eligibility: 'Eligible' },
+      ],
+      Eligibility_List: [],
+      Payroll_Data: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' },
+      ],
+      Appraisal_Sheet: [
+        { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: 1000000, hike_amount: 100000 },
+        { emp_id: 'E2', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: 2000000, hike_amount: 200000 },
+      ],
+    });
+    const currentCycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = currentCycleId;
+    store.tables.Eligibility_List.push(
+      { ROWID: '99771', appraisal_cycle_id: currentCycleId, emp_id: 'E1', eligibility_status: 'Eligible' },
+      { ROWID: '99772', appraisal_cycle_id: currentCycleId, emp_id: 'E2', eligibility_status: 'Not Eligible' },
+    );
+    const r = await get(load(store));
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(r.json.master[0].org_budget_base, 1100000);
+    const team = r.json.techEd.find((row) => /T1/.test(row.appraiser_tech_ed_id));
+    assert.strictEqual(team.budget_base, 1100000);
+    assert.strictEqual(Number(team.current_headcount), 1);
+  });
+
+  await t('stale Tech-ED original budget smaller than the base is recalculated', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 10 }],
+      Budget_Distribution: [{
+        appraisal_cycle_id: 'Apr-26', appraiser_tech_ed_id: 'T1', percentage: 10,
+        budget_base: 1000000, original_budget_base: 1000000, calculated_budget: 2, applied_budget: 1100000,
+      }],
+      Budget_Distribution_Comp: [], Employee_Master: [],
+      Eligibility_List: [{ appraisal_cycle_id: 'Apr-26', emp_id: 'E1', eligibility_status: 'Eligible' }],
+      Appraisal_Sheet: [sheet('E1', 'T1', 'C1', 1000000, 0)],
+    });
+    const r = await get(load(store));
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    const team = r.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1');
+    assert.strictEqual(team.calculated_budget, 1100000);
+  });
+
   await t('empty pay columns: base 0 with a clear warning', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
       Budget_Distribution: [], Budget_Distribution_Comp: [], Employee_Master: [],
+      Eligibility_List: [
+        { appraisal_cycle_id: 'Apr-26', emp_id: 'E1', eligibility_status: 'Eligible' },
+        { appraisal_cycle_id: 'Apr-26', emp_id: 'E2', eligibility_status: 'Eligible' },
+      ],
       Appraisal_Sheet: [sheet('E1', 'EMP0051 - Ashok Kumar', 'Anita', '', ''), sheet('E2', 'EMP0051 - Ashok Kumar', 'Anita', null, null)],
     });
     const r = await get(load(store));
@@ -173,6 +235,10 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
       Budget_Distribution: [], Budget_Distribution_Comp: [], Employee_Master: [],
+      Eligibility_List: [
+        { appraisal_cycle_id: 'Apr-26', emp_id: 'E1', eligibility_status: 'Eligible' },
+        { appraisal_cycle_id: 'Apr-26', emp_id: 'E2', eligibility_status: 'Eligible' },
+      ],
       Appraisal_Sheet: [sheet('E1', 'T1', 'C1', '1000000', '0'), sheet('E2', 'T1', 'C1', '', '')],
     });
     const r = await get(load(store));
@@ -182,7 +248,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
 
   await t('no Budget_Master cycle: nothing calculated, warning says so', async () => {
     const store = makeStore({
-      Budget_Master: [], Budget_Distribution: [], Budget_Distribution_Comp: [], Employee_Master: [],
+      Budget_Master: [], Budget_Distribution: [], Budget_Distribution_Comp: [], Employee_Master: [], Eligibility_List: [],
       Appraisal_Sheet: [sheet('E1', 'T1', 'C1', '1000000', '0')],
     });
     const r = await get(load(store));
