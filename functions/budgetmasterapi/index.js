@@ -1195,7 +1195,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         const currentCountField = ["current_headcount", "headcount"].find((key) => distributionColumns.has(key));
         const currentBaseField = ["current_budget_base", "current_base"].find((key) => distributionColumns.has(key));
         const overrideField = ["override_percentage", "allocation_percentage"].find((key) => distributionColumns.has(key));
-        if (originalBaseField && canCreateOriginal && !hasOriginalSnapshot) update[originalBaseField] = originalBase;
+        if (originalBaseField && canCreateOriginal && (!hasOriginalSnapshot || savedOriginalBase <= 0)) {
+          update[originalBaseField] = originalBase;
+        }
         const savedOriginalCount = n(row.original_headcount || row.allocation_headcount);
         if (originalCountField && savedOriginalCount <= 0 && stats.count > 0) update[originalCountField] = stats.count;
         if (currentCountField) update[currentCountField] = stats.count;
@@ -1276,7 +1278,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => compColumns.has(key));
         const currentCountField = ["current_headcount", "headcount"].find((key) => compColumns.has(key));
         const currentBaseField = ["current_budget_base", "current_base"].find((key) => compColumns.has(key));
-        if (originalBaseField && !hasOriginalSnapshot) update[originalBaseField] = originalBase;
+        if (originalBaseField && (!hasOriginalSnapshot || savedOriginalBase <= 0)) {
+          update[originalBaseField] = originalBase;
+        }
         const savedOriginalCount = n(row.original_headcount || row.allocation_headcount);
         if (originalCountField && savedOriginalCount <= 0 && stats.count > 0) update[originalCountField] = stats.count;
         if (currentCountField) update[currentCountField] = stats.count;
@@ -1335,7 +1339,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const currentBaseField = ["current_budget_base", "current_base"].find((key) => masterColumns.has(key));
       const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => masterColumns.has(key));
       const currentCountField = ["current_headcount", "headcount"].find((key) => masterColumns.has(key));
-      if (originalBaseField && orgPctSet && !hasOrgOriginalSnapshot) orgFields[originalBaseField] = orgOriginalBase;
+      if (originalBaseField && orgPctSet && (!hasOrgOriginalSnapshot || savedOrgOriginalBase <= 0)) {
+        orgFields[originalBaseField] = orgOriginalBase;
+      }
       if (currentBaseField) orgFields[currentBaseField] = orgBase;
       const savedOrgOriginalCount = n(master.original_headcount || master.allocation_headcount);
       if (originalCountField && savedOrgOriginalCount <= 0 && eligibleEmployees.length > 0) {
