@@ -124,6 +124,7 @@ const SUM_COLUMN_KEYS = new Set([
   "totalBonusHikeAmount",
   "targetPBNextYear",
   "totalCTCWithRewards",
+  "previousAppraisalTotalCtcWithRewards",
   "totalRewardsHikeAmount",
 ]);
 
