@@ -390,11 +390,15 @@ function previousCtc(record) {
     return rawValue !== "" && rawValue !== null && rawValue !== undefined;
   });
   if (!hasComponents) return null;
-  return n(firstValue(record, ["current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "base_pay", "basePay"])) +
-    n(firstValue(record, ["hike_amount", "hikeAmount", "current_hike_amount"])) +
-    n(firstValue(record, ["allocated_pb_amount", "allocatedPBAmount", "allocated_pb", "target_pb_allocated_for_may"])) +
-    n(firstValue(record, ["new_pb_to_be_offered", "newPBToBeOffered", "performance_bonus", "total_pb"])) +
-    n(firstValue(record, ["new_rb", "newRB", "retention_bonus"]));
+  const base = n(firstValue(record, ["current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "base_pay", "basePay"]));
+  const hike = n(firstValue(record, ["hike_amount", "hikeAmount", "current_hike_amount"]));
+  const storedTotalPb = firstValue(record, ["total_pb", "totalPB"]);
+  const pb = storedTotalPb !== "" && storedTotalPb !== null && storedTotalPb !== undefined
+    ? n(storedTotalPb)
+    : n(firstValue(record, ["allocated_pb_amount", "allocatedPBAmount", "allocated_pb", "target_pb_allocated_for_may"])) +
+      n(firstValue(record, ["new_pb_to_be_offered", "newPBToBeOffered", "performance_bonus"]));
+  const retention = n(firstValue(record, ["new_rb", "newRB", "retention_bonus"]));
+  return base + hike + pb + retention;
 }
 
 function readField(row, candidates) {
