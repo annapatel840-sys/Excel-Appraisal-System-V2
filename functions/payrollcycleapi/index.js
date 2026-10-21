@@ -830,77 +830,6 @@ function resolveEmployeeReference(value, masterRows) {
   return matched ? String(matched.ROWID || matched.rowid || "") : "";
 }
 
-/* ---------- Previous-cycle CTC -> Appraisal_Sheet.previous_year_CTC_with_rewards ---------- */
-// Sortable YYYY-MM-DD for a cycle: effective date, else start date, else the year in its name.
-function cycleDateKey(cycle) {
-  const date = String(cycle.effective || cycle.start || "").slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) return date;
-  const year = String(cycle.name || "").match(/(?:19|20)\d{2}/);
-  return year ? `${year[0]}-01-01` : "";
-}
-
-// Previous cycle = latest cycle of the same type that starts before this one.
-function findPreviousCycle(cycles, cycle) {
-  const type = cycle.type || cycleTypeOf(cycle.name);
-  const current = cycleDateKey(cycle);
-  if (!current) return null;
-  return cycles
-    .filter((item) =>
-      item.id !== cycle.id &&
-      !String(item.status || "").toLowerCase().startsWith("cancel") &&
-      (item.type || cycleTypeOf(item.name)) === type &&
-      cycleDateKey(item) && cycleDateKey(item) < current)
-    .sort((a, b) => cycleDateKey(b).localeCompare(cycleDateKey(a)))[0] || null;
-}
-
-// Payroll_Data.total_CTC_with_rewards of the previous cycle, keyed by Employee_Master ROWID.
-// Match on appraisal_cycle_name (foreign key to the cycle). Rows with no cycle
-// link are matched on fy_year containing the previous cycle's year. Latest row wins.
-async function previousCtcByEmployee(tables, cycle) {
-  const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
-  const previous = findPreviousCycle(cycles, cycle);
-  if (!previous) return { previous: null, byEmployee: new Map() };
-  const previousYear = cycleDateKey(previous).slice(0, 4);
-  const byEmployee = new Map();
-  (await getAllRows(tables.payroll)).forEach((row) => {
-    const empKey = String(row.emp_id || "").trim();
-    const raw = row.total_CTC_with_rewards;
-    if (!empKey || raw === null || raw === undefined || String(raw).trim() === "") return;
-    const rowCycle = String(row.appraisal_cycle_name || "").trim();
-    const inPreviousCycle = rowCycle
-      ? rowCycle === String(previous.id)
-      : Boolean(previousYear) && String(row.fy_year || "").includes(previousYear);
-    const ctc = Number(raw);
-    if (!inPreviousCycle || !Number.isFinite(ctc)) return;
-    let rowKey = 0n;
-    try { rowKey = BigInt(String(row.ROWID || row.rowid || "0")); } catch (_) { /* keep 0 */ }
-    const hit = byEmployee.get(empKey);
-    if (!hit || rowKey > hit.rowKey) byEmployee.set(empKey, { ctc, rowKey });
-  });
-  return { previous, byEmployee };
-}
-
-// Writes previous_year_CTC_with_rewards on every Appraisal_Sheet row of this cycle
-// (including employees who have since left). Employees with no previous-cycle
-// payroll row are left unchanged.
-async function backfillPreviousCtc(tables, cycle) {
-  const { previous, byEmployee } = await previousCtcByEmployee(tables, cycle);
-  if (!previous) return { previousCycle: null, updated: 0, withoutPayroll: 0 };
-  const sheetRows = (await getAllRows(tables.employees))
-    .filter((row) => String(row.cycle_id || "") === String(cycle.id));
-  let updated = 0;
-  let withoutPayroll = 0;
-  for (const row of sheetRows) {
-    const hit = byEmployee.get(String(row.emp_master_row_id || "").trim());
-    if (!hit) { withoutPayroll += 1; continue; }
-    const value = Math.round(hit.ctc);
-    if (Number(row.previous_year_CTC_with_rewards) === value) continue;
-    await tables.employees.updateRow({ ROWID: rowId(row), previous_year_CTC_with_rewards: value });
-    updated += 1;
-  }
-  return { previousCycle: previous.name, updated, withoutPayroll };
-}
-
 async function generateAppraisalSheet(tables, cycle, actor) {
   if (!cycle?.id) throw new ApiError("Select an appraisal cycle before generating the sheet.", 400);
   if (cycle.archived) throw new ApiError("Archived cycles cannot generate an Appraisal Sheet.", 409);
@@ -980,17 +909,6 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     }
   }
 
-  // Fill previous_year_CTC_with_rewards from the previous cycle's Payroll_Data.
-  let previousCtc = null;
-  try {
-    previousCtc = await backfillPreviousCtc(tables, cycle);
-  } catch (error) {
-    console.error("previous_year_CTC_with_rewards backfill failed:", error);
-    previousCtc = { error: String((error && error.message) || error) };
-  }
-
-
-
   await writeAudit(tables.audit, {
     actor,
     source: "cycle",
@@ -1006,7 +924,7 @@ async function generateAppraisalSheet(tables, cycle, actor) {
       eligible: eligibleRows.length,
     },
   });
-  return { cycleId: cycle.id, cycleName: cycle.name, created, updated, eligible: eligibleRows.length, previousCtc };
+  return { cycleId: cycle.id, cycleName: cycle.name, created, updated, eligible: eligibleRows.length };
 }
 
 function mapPayroll(row, cycleById, employeeById = new Map()) {
