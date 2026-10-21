@@ -3015,75 +3015,53 @@ export function AppraisalGrid({
         (target.value !== undefined ? target.value.length : 0);
 
     if (event.key === "Enter") {
-    //   if (target instanceof HTMLTextAreaElement && !event.shiftKey) {
-    //     return;
-    //   }
-
-    //   event.preventDefault();
-
-    //   // Enter works like Tab: next editable cell to the right (Shift+Enter: left),
-    //   // continuing on the next (previous) row. Same order as the columns on screen.
-    //   const direction = event.shiftKey ? -1 : 1;
-    //   const tabColumnsOf = (row) =>
-    //     orderedColumns.filter(
-    //       (column) => !FROZEN_KEYS.has(column.key) && isColumnEditable(row, column),
-    //     );
-
-    //   let navRow = rowIndex;
-    //   let navColumns = tabColumnsOf(currentRow);
-    //   let navIndex =
-    //     navColumns.findIndex((column) => column.key === columnKey) + direction;
-
-    //   while (navRow >= 0 && navRow <= maxRow) {
-    //     if (navIndex >= 0 && navIndex < navColumns.length) {
-    //       focusCell(navRow, navColumns[navIndex].key);
-    //       return;
-    //     }
-
-    //     navRow += direction;
-
-    //     if (navRow < 0 || navRow > maxRow) {
-    //       break;
-    //     }
-
-    //     navColumns = tabColumnsOf(displayRows[navRow]);
-    //     navIndex = direction === 1 ? 0 : navColumns.length - 1;
-    //   }
-
-    //   // No next editable cell: still commit this one.
-    //   target.blur();
-
-    //   return;
-    // }
-    if (target instanceof HTMLTextAreaElement && !event.shiftKey) {
+      if (target instanceof HTMLTextAreaElement && !event.shiftKey) {
         return;
       }
 
       event.preventDefault();
 
-
+      // Enter works like Tab: next editable cell to the right in the same row
+      // (Shift+Enter: left). At the end of a row it continues on the next
+      // (previous) row, in the same column order shown on screen.
       const direction = event.shiftKey ? -1 : 1;
+      const tabColumnsOf = (row) =>
+        orderedColumns.filter(
+          (column) =>
+            !FROZEN_KEYS.has(column.key) && isColumnEditable(row, column),
+        );
+      const canFocus = (targetRow, key) =>
+        Boolean(cellRefs.current[`${targetRow}:${key}`]);
 
-      for (
-        let nextRowIndex = rowIndex + direction;
-        nextRowIndex >= 0 && nextRowIndex <= maxRow;
-        nextRowIndex += direction
-      ) {
-        const nextRow = displayRows[nextRowIndex];
+      let navRow = rowIndex;
+      let navColumns = tabColumnsOf(currentRow);
+      let navIndex =
+        navColumns.findIndex((column) => column.key === columnKey) + direction;
 
+      while (navRow >= 0 && navRow <= maxRow) {
+        while (navIndex >= 0 && navIndex < navColumns.length) {
+          if (canFocus(navRow, navColumns[navIndex].key)) {
+            focusCell(navRow, navColumns[navIndex].key);
+            return;
+          }
 
-        if (nextRow && isColumnEditable(nextRow, columnDef)) {
-          focusCell(nextRowIndex, columnKey);
-          return;
+          navIndex += direction;
         }
+
+        navRow += direction;
+
+        if (navRow < 0 || navRow > maxRow) {
+          break;
+        }
+
+        navColumns = tabColumnsOf(displayRows[navRow]);
+        navIndex = direction === 1 ? 0 : navColumns.length - 1;
       }
 
-      // No next editable row: blur commits through the existing onBlur handler.
+      // No next editable cell: blur commits through the existing onBlur handler.
       target.blur();
       return;
     }
-     
-
 
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
