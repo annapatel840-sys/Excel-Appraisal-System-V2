@@ -759,64 +759,67 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
     readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
   ]);
-  const cycleById = new Map(cycleRows.map((cycle) => [
-    String(cycle.ROWID ?? cycle.rowid ?? cycle.id ?? "").trim(), cycle,
-  ]).filter(([id]) => id));
-  const cycleByName = new Map(cycleRows.map((cycle) => [
-    historyCycleName(cycle).toLowerCase(), cycle,
-  ]).filter(([name]) => name));
-  const currentCycle = cycleRows.find((cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && cycle.archived !== true && cycle.archived !== "true") ||
-    cycleRows.slice().sort((a, b) => historyCycleRank(b) - historyCycleRank(a))[0];
+  const cycleIdOf = (cycle) => String(cycle?.ROWID ?? cycle?.rowid ?? cycle?.id ?? cycle?.ID ?? "").trim();
+  const cycleStatusOf = (cycle) => String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "").trim().toLowerCase();
+  const cycleById = new Map(cycleRows.map((cycle) => [cycleIdOf(cycle), cycle]).filter(([id]) => id));
+  const cycleByName = new Map(cycleRows.map((cycle) => [historyCycleName(cycle).toLowerCase(), cycle]).filter(([name]) => name));
+  const currentCycle = cycleRows.find((cycle) => cycleStatusOf(cycle) === "active" && cycle.archived !== true && cycle.archived !== "true") ||
+    cycleRows.slice().sort((a, b) => historyCycleRank(b) - historyCycleRank(a))[0] || null;
   const currentRank = currentCycle ? historyCycleRank(currentCycle) : 0;
-  const previousCycle = currentRank > 0
-    ? cycleRows.filter((cycle) => historyCycleRank(cycle) > 0 && historyCycleRank(cycle) < currentRank)
-      .sort((a, b) => historyCycleRank(b) - historyCycleRank(a))[0]
-    : null;
-  const previousCycleId = previousCycle ? String(previousCycle.ROWID ?? previousCycle.rowid ?? previousCycle.id ?? "").trim() : "";
-  const previousCycleName = previousCycle ? historyCycleName(previousCycle) : "";
   const currentCycleName = currentCycle ? historyCycleName(currentCycle) : "";
   const yearMatch = currentCycleName.match(/(?:19|20)\d{2}/);
   const shortYearMatch = currentCycleName.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*(\d{2})/i);
-  const currentYear = yearMatch ? yearMatch[0] : shortYearMatch ? "20" + shortYearMatch[1] : currentCycleName || "current cycle";
-  const priorValues = new Map();
-  const priorValueTimes = new Map();
-  const previousCycleEmployees = new Set();
-  payrollRows.forEach((record) => {
-    const empKey = rowEmployeeKey(record.emp_id ?? record.employee_id, employeeMasterMap);
-    const rawCycle = historyReference(record.appraisal_cycle_id ?? record.appraisalCycleId ?? record.cycle_id ?? record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name);
-    const resolvedCycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
-    const cycleId = resolvedCycle ? String(resolvedCycle.ROWID ?? resolvedCycle.rowid ?? resolvedCycle.id ?? "").trim() : rawCycle;
-    const belongsToPrevious = Boolean(rawCycle) && (
-      (previousCycleId && cycleId === previousCycleId) ||
-      (previousCycleName && rawCycle.toLowerCase() === previousCycleName.toLowerCase())
-    );
-    if (!empKey || !belongsToPrevious) return;
-    previousCycleEmployees.add(empKey);
-    const storedValue = record.total_ctc_with_rewards ?? record.total_CTC_with_rewards ?? record.totalCTCWithRewards ?? record.total_ctc ?? record.new_ctc ?? record.newCTC;
-    const value = storedValue === null || storedValue === undefined || String(storedValue).trim() === ""
-      ? ctcFromComponents(record)
-      : storedValue;
-    if (value === null || value === undefined || String(value).trim() === "") return;
-    const parsed = Number(String(value).replace(/[₹,\s]/g, ""));
-    if (Number.isFinite(parsed)) {
-      const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
-      const priorTime = priorValueTimes.get(empKey) || "";
-      if (!priorValues.has(empKey) || rowTime.localeCompare(priorTime, undefined, { numeric: true }) >= 0) {
-        priorValues.set(empKey, parsed);
-        priorValueTimes.set(empKey, rowTime);
-      }
+  const currentYear = yearMatch ? yearMatch[0] : shortYearMatch ? "20" + shortYearMatch[1] : currentCycleName || String(new Date().getFullYear());
+
+  const firstNonEmpty = (row, keys) => {
+    for (const key of keys) {
+      const value = row?.[key];
+      if (value !== undefined && value !== null && String(historyReference(value)).trim() !== "") return value;
     }
+    return "";
+  };
+  const historyByEmployee = new Map();
+  payrollRows.forEach((record) => {
+    const empRaw = firstNonEmpty(record, ["emp_id", "employee_id", "emp_code", "empId"]);
+    const empKey = rowEmployeeKey(empRaw, employeeMasterMap);
+    const rawCycle = historyReference(firstNonEmpty(record, [
+      "appraisal_cycle_name", "appraisal_cycle_id", "appraisalCycleId", "cycle_id",
+      "appraisalCycleName", "cycle_name",
+    ]));
+    if (!empKey || !rawCycle) return;
+    const cycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
+    if (!cycle) return;
+    const rank = historyCycleRank(cycle);
+    // Only a closed cycle that predates the active cycle qualifies as the last appraisal.
+    if (cycleStatusOf(cycle) !== "closed" || (currentRank > 0 && rank >= currentRank)) return;
+    const storedValue = firstNonEmpty(record, [
+      "total_ctc_with_rewards", "total_CTC_with_rewards", "totalCTCWithRewards",
+      "total_ctc", "new_ctc", "newCTC",
+    ]);
+    const parsedValue = storedValue !== ""
+      ? Number(String(storedValue).replace(/[₹,\s]/g, ""))
+      : ctcFromComponents(record);
+    if (parsedValue === null || parsedValue === undefined || !Number.isFinite(parsedValue)) return;
+    const item = { cycle, rank, value: parsedValue, row: record };
+    const current = historyByEmployee.get(empKey);
+    if (!current || item.rank > current.rank) historyByEmployee.set(empKey, item);
   });
+
   return (employees || []).map((employee) => {
-    const empKey = rowEmployeeKey(employee.emp_id ?? employee.employee_id, employeeMasterMap);
-    const hasPreviousCycleRow = empKey && previousCycleEmployees.has(empKey);
-    const previousCtc = empKey && priorValues.has(empKey) ? priorValues.get(empKey) : currentTotalCtc(employee);
+    const empRaw = firstNonEmpty(employee, ["emp_id", "employee_id", "emp_code", "empId"]);
+    const empKey = rowEmployeeKey(empRaw, employeeMasterMap);
+    const prior = empKey ? historyByEmployee.get(empKey) : null;
+    const previousCtc = prior ? prior.value : currentTotalCtc(employee);
+    const previousCycleName = prior ? historyCycleName(prior.cycle) : "";
+    const label = prior ? previousCycleName : "New - " + currentYear;
     return {
       ...employee,
       previous_appraisal_total_ctc_with_rewards: previousCtc,
       Previous_Appraisal_total_CTC_with_rewards: previousCtc,
-      last_appraisal_date: hasPreviousCycleRow ? previousCycleName : "New - " + currentYear,
-      last_appraisal_cycle_name: hasPreviousCycleRow ? previousCycleName : "New - " + currentYear,
+      previousAppraisalTotalCtcWithRewards: previousCtc,
+      last_appraisal_date: label,
+      lastAppraisalDate: label,
+      last_appraisal_cycle_name: label,
     };
   });
 }
