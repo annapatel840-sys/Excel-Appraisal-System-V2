@@ -233,6 +233,106 @@ const HR_COLS = [
   ["Last Changed", false],
 ];
 
+
+const BUDGET_MASTER_CSS = `
+.bm-root{--bm-navy:#12304f;--bm-teal:#14a3a3;--bm-border:#d3dbe6;--bm-muted:#64748b;width:100%;display:flex;flex-direction:column;gap:12px;color:#0f1f33;font-family:"IBM Plex Sans","Segoe UI",Arial,sans-serif;font-size:12.5px;font-variant-numeric:tabular-nums}
+.bm-root *{box-sizing:border-box}
+.bm-root button,.bm-root input{font:inherit}
+.bm-root button:focus-visible,.bm-root input:focus-visible{outline:2px solid #14a3a3;outline-offset:2px}
+.bm-page-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;padding:2px 2px 4px}
+.bm-eyebrow,.bm-section-kicker{font-size:10px;letter-spacing:.09em;font-weight:800;color:#64748b}
+.bm-page-head h2{margin:3px 0 4px;color:#12304f;font-size:23px;line-height:1.2;font-weight:750}
+.bm-page-head p{margin:0;color:#64748b;font-size:12px;line-height:1.5}
+.bm-head-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.bm-cycle-chip{display:inline-flex;align-items:center;gap:7px;border:1px solid #cbd9e8;background:#f3f7fb;color:#12304f;border-radius:999px;padding:7px 11px;font-weight:700;white-space:nowrap}
+.bm-status-dot{display:inline-block;width:7px;height:7px;flex:none;border-radius:50%;background:#159b79}
+.bm-status-dot-pending{background:#d97706}
+.bm-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid transparent;border-radius:6px;padding:8px 13px;font-weight:700;white-space:nowrap;cursor:pointer;transition:background .15s,border-color .15s}
+.bm-btn:disabled{opacity:.45;cursor:not-allowed}
+.bm-btn-primary{background:#14a3a3;color:#fff;border-color:#14a3a3}
+.bm-btn-primary:hover:not(:disabled){background:#0f8585;border-color:#0f8585}
+.bm-btn-secondary{background:#fff;color:#12304f;border-color:#c5d0dd}
+.bm-btn-secondary:hover:not(:disabled){background:#f4f7fa}
+.bm-alert{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border:1px solid;border-radius:7px;padding:10px 12px;line-height:1.5}
+.bm-alert-warning{border-color:#f2d27a;background:#fff8e1;color:#7a4b00}
+.bm-alert-error{border-color:#e7b5ad;background:#fff5f3;color:#7c2d12}
+.bm-alert button{border:0;background:none;font-weight:700;cursor:pointer}
+.bm-control-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:12px}
+.bm-control-card{min-width:0;border:1px solid #d3dbe6;border-top:3px solid #14a3a3;border-radius:10px;background:#fff;padding:15px 16px;box-shadow:0 1px 2px rgba(18,48,79,.04)}
+.bm-tech-control-card{border-top-color:#9fb3cf}
+.bm-card-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:13px}
+.bm-card-heading h3,.bm-table-heading h3{margin:3px 0 0;font-size:15px;font-weight:750;color:#12304f}
+.bm-card-subtitle{color:#64748b;font-size:11px}
+.bm-count-chip{border-radius:999px;background:#edf3f9;color:#12304f;font-weight:800;padding:5px 9px;white-space:nowrap}
+.bm-control-row{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.bm-field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.bm-field>span{font-size:10.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#64748b}
+.bm-cycle-field{flex:1 1 180px}
+.bm-cycle-value{display:flex;align-items:center;min-height:38px;border:1px solid #d7e0eb;background:#f6f8fb;border-radius:5px;padding:0 10px;color:#12304f;font-weight:700}
+.bm-percent-field{flex:0 0 112px}
+.bm-percent-control{display:flex;align-items:center;border:1px solid #14a3a3;border-radius:5px;height:38px;padding:0 9px;background:#fff}
+.bm-percent-control input{width:100%;min-width:0;border:0;outline:0;text-align:right;font-size:17px;font-weight:800;color:#12304f;background:transparent}
+.bm-percent-control input:focus-visible{outline:0}
+.bm-percent-control span{padding-left:5px;color:#64748b;font-weight:700}
+.bm-org-apply{height:38px}
+.bm-helper{margin:12px 0 0;color:#64748b;font-size:11.5px;line-height:1.5}
+.bm-tech-summary{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.bm-tech-summary>div{display:flex;flex-direction:column;gap:5px;padding:10px 11px;border:1px solid #e1e7ef;border-radius:7px;background:#f8fafc}
+.bm-tech-summary span{color:#64748b;font-size:11px}
+.bm-tech-summary strong{color:#12304f;font-size:17px}
+.bm-pending-value{color:#b45309!important}
+.bm-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.bm-metric{min-width:0;display:flex;flex-direction:column;gap:5px;border:1px solid #d3dbe6;border-radius:9px;background:#fff;padding:13px 14px;box-shadow:0 1px 2px rgba(18,48,79,.04)}
+.bm-metric>span{font-size:10.5px;font-weight:750;letter-spacing:.025em;color:#64748b}
+.bm-metric>strong{font-size:clamp(16px,1.45vw,21px);line-height:1.25;color:#12304f;font-weight:800;overflow-wrap:anywhere}
+.bm-metric>strong i{font-size:12px;color:#64748b;font-style:normal;margin:0 3px}
+.bm-metric>small{font-size:10.5px;line-height:1.35;color:#64748b}
+.bm-metric-highlight{border-color:#a9dddd;background:#f2fbfb;box-shadow:inset 0 3px 0 #14a3a3}
+.bm-metric-warning{border-color:#f0c9a2;background:#fff9f1}
+.bm-metric-warning>strong{color:#b45309}
+.bm-table-card{border:1px solid #d3dbe6;border-radius:10px;background:#fff;overflow:hidden;box-shadow:0 1px 3px rgba(18,48,79,.05)}
+.bm-table-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 16px;border-bottom:1px solid #e1e7ef}
+.bm-table-heading h3 span{display:inline-flex;vertical-align:middle;align-items:center;justify-content:center;min-width:22px;height:22px;margin-left:5px;border-radius:999px;background:#edf3f9;color:#12304f;font-size:11px}
+.bm-table-legend{display:flex;gap:13px;align-items:center;color:#64748b;font-size:11px}
+.bm-table-legend span{display:flex;align-items:center;gap:6px}
+.bm-table-legend i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.bm-legend-default{background:#14a3a3}.bm-legend-override{background:#d97706}
+.bm-table-scroll{width:100%;max-height:58vh;overflow:auto}
+.bm-table{width:100%;min-width:1100px;border-collapse:separate;border-spacing:0;font-size:12px}
+.bm-table thead th{position:sticky;top:0;z-index:2;background:#e8eef5;color:#12304f;font-weight:800;font-size:11px;letter-spacing:.01em;padding:11px 12px;border-bottom:2px solid #9fb3cf;text-align:left;white-space:nowrap}
+.bm-table thead th.bm-align-right{text-align:right}
+.bm-table tbody td{padding:10px 12px;border-bottom:1px solid #e8edf3;vertical-align:middle;background:#fff}
+.bm-table tbody tr:nth-child(even) td{background:#fafbfd}
+.bm-table tbody tr:hover td{background:#f0f7fb}
+.bm-table tbody tr.bm-pending-row td{background:#fff9e9}
+.bm-table .bm-align-right{text-align:right;font-variant-numeric:tabular-nums}
+.bm-table .bm-number{white-space:nowrap}
+.bm-owner-cell strong{display:block;color:#12304f;font-weight:750;white-space:nowrap}
+.bm-owner-cell small,.bm-percent-cell small{display:block;margin-top:3px;color:#a16207;font-size:10px}
+.bm-percent-cell>div{display:flex;align-items:center;justify-content:flex-end;gap:4px}
+.bm-percent-cell input{width:78px;height:32px;border:1px solid #9fb3cf;border-radius:5px;padding:0 7px;text-align:right;font-weight:800;color:#12304f;background:#fff}
+.bm-percent-cell input:disabled{background:#f3f5f8;color:#64748b}
+.bm-percent-cell span{color:#64748b;font-weight:700}
+.bm-updated-cell{font-weight:800;color:#0f6d6d}
+.bm-source{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.bm-source-default,.bm-source-override{display:inline-flex;align-items:center;border-radius:999px;padding:4px 8px;font-size:10px;font-weight:800;white-space:nowrap}
+.bm-source-default{background:#e6f4f4;color:#0f6d6d}
+.bm-source-override{background:#fff1d2;color:#8a5a00}
+.bm-text-action{border:0;background:none;color:#1859a8;font-size:10.5px;font-weight:800;cursor:pointer;padding:3px}
+.bm-history-btn{border:1px solid #c5d0dd;background:#fff;color:#17365d;border-radius:5px;padding:5px 7px;font-size:11px;font-weight:750;white-space:nowrap}
+.bm-audit-row{background:#f7f9fc!important;padding:12px 20px!important}
+.bm-empty-row{text-align:center;color:#64748b;padding:35px 14px!important}
+.bm-action-bar{position:sticky;bottom:0;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:rgba(255,255,255,.97);backdrop-filter:blur(8px);padding:12px 15px;border-top:1px solid #dbe3ec}
+.bm-pending-status{display:flex;align-items:center;gap:8px;color:#64748b;font-size:12px}
+.bm-action-controls{display:flex;align-items:center;gap:8px;flex:1;justify-content:flex-end;flex-wrap:wrap}
+.bm-action-controls input{height:35px;min-width:190px;max-width:420px;flex:1;border:1px solid #cbd3df;border-radius:5px;padding:0 10px;font-size:12px}
+.bm-footer-note{font-size:10.5px;color:#64748b;padding:0 2px 4px}
+.bm-root .bm-audit-row .w-full{min-width:900px}
+@media(max-width:1100px){.bm-control-grid{grid-template-columns:1fr}.bm-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.bm-page-head h2{font-size:20px}.bm-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.bm-control-card{padding:12px}.bm-action-bar{align-items:flex-start}.bm-action-controls{justify-content:flex-start}.bm-action-controls input{flex-basis:100%;max-width:none}}
+@media(max-width:420px){.bm-metrics{grid-template-columns:1fr}.bm-table-heading{align-items:flex-start}.bm-tech-summary{grid-template-columns:1fr 1fr}}
+`;
+
 function HRApplyBudget() {
   const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], techEdOwners = [], updateBudget, reload: reloadBudget, loading: budgetLoading, error: budgetError = "", budgetWarning = "" } = useBudget();
   // Access rules (permissive when accessapi is unavailable).
@@ -699,66 +799,64 @@ function HRApplyBudget() {
     setError("");
   }
 
-  const orgCell = "shrink-0 min-w-[170px] border-r border-[#d7dce3] px-[22px] py-4";
-
+  const displayedOrgUpdated = orgPending
+    ? previewOrgBudget
+    : amount(selectedMaster?.applied_budget) || previewOrgBudget;
+  const displayedUtilized = amount(selectedMaster?.budget_utilized ?? selectedMaster?.total_utilization);
+  const availableAfterAllocation = displayedOrgUpdated - previewTotal;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="bm-root">
+      <style>{BUDGET_MASTER_CSS}</style>
+      <div className="bm-page-head">
+        <div>
+          <div className="bm-eyebrow">COMPENSATION MANAGEMENT</div>
+          <h2>Budget Master</h2>
+          <p>Review the organization budget and manage Tech-Ed allocations for the active appraisal cycle.</p>
+        </div>
+        <div className="bm-head-actions">
+          <span className="bm-cycle-chip">
+            <span className="bm-status-dot" />
+            {cycleLoading ? "Loading cycle…" : activeCycle?.name || selectedMaster?.appraisal_cycle_name || "No active cycle"}
+          </span>
+          <button type="button" className="bm-btn bm-btn-secondary" onClick={() => reloadBudget()} disabled={budgetLoading}>
+            {budgetLoading ? "Refreshing…" : "↻ Refresh"}
+          </button>
+        </div>
+      </div>
+
       {budgetError || budgetWarning ? (
-        <div
-          role="alert"
-          className="rounded-[8px] border border-[#f2d27a] bg-[#fff8e1] px-3 py-2 text-[12px] text-[#7a4b00]"
-        >
+        <div role="alert" className="bm-alert bm-alert-warning">
           {budgetError ? <div><b>Budget data could not be loaded:</b> {budgetError}</div> : null}
           {budgetWarning ? <div><b>Budget base:</b> {budgetWarning}</div> : null}
         </div>
       ) : null}
       {error ? (
-        <div className="flex justify-between gap-2 rounded-md border border-[#e3e8ef] border-l-4 border-l-[#c2410c] bg-white px-3 py-2 text-[12px] text-[#7c2d12]">
+        <div role="alert" className="bm-alert bm-alert-error">
           <span>{error}</span>
-          <button
-            type="button"
-            className="font-bold"
-            onClick={() => setError("")}
-          >
-            Dismiss
-          </button>
+          <button type="button" onClick={() => setError("")}>Dismiss ×</button>
         </div>
       ) : null}
 
-      <section
-        className={
-          "overflow-hidden rounded-[10px] border bg-white " +
-          (orgPending ? "bg-[#fdf8e7]" : "")
-        }
-        style={{ borderColor: BORDER }}
-      >
-        <div
-          className="px-3 py-1.5 text-left text-[12.5px] font-semibold text-white"
-          style={{ background: NAVY }}
-        >
-          Org Budget %
-        </div>
-        <div className="overflow-x-auto">
-          <div className="flex items-stretch gap-3 px-3 py-1">
-            <div className={orgCell}>
-              <div className="text-[11px] font-medium text-[#5b6b80]">
-                Active Appraisal Cycle
-              </div>
-
-              <div
-                className="mt-1 flex h-[38px] min-w-[180px] items-center rounded border border-[#14a3a3] bg-[#f4f7fa] px-3 text-[13px] font-bold text-[#12304f]"
-                aria-label="Currently active appraisal cycle"
-                title={activeCycle?.name || "No active cycle"}            
-              >
-                {cycleLoading ? "Loading active cycle…" : activeCycle?.name || "No active cycle"}
-              </div>
+      <div className="bm-control-grid">
+        <section className={"bm-control-card" + (orgPending ? " bm-card-pending" : "")}>
+          <div className="bm-card-heading">
+            <div>
+              <span className="bm-section-kicker">ORGANIZATION</span>
+              <h3>Org budget</h3>
             </div>
-            <div className={orgCell}>
-              <div className="text-[11px] font-medium text-[#5b6b80]">
-                Org % (default for all Tech EDs)
+            <span className="bm-card-subtitle">Applies the default percentage</span>
+          </div>
+          <div className="bm-control-row">
+            <label className="bm-field bm-cycle-field">
+              <span>Appraisal cycle</span>
+              <div className="bm-cycle-value" title={activeCycle?.name || "No active cycle"}>
+                {cycleLoading ? "Loading…" : activeCycle?.name || selectedMaster?.appraisal_cycle_name || "No active cycle"}
               </div>
-              <div className="mt-1 flex items-center gap-2">
+            </label>
+            <label className="bm-field bm-percent-field">
+              <span>Org %</span>
+              <div className="bm-percent-control">
                 <input
                   type="number"
                   min="0"
@@ -767,106 +865,124 @@ function HRApplyBudget() {
                   value={orgPct}
                   disabled={!canConfig || savingOrg}
                   onChange={(e) => setOrgPct(e.target.value)}
-                  className="h-[38px] w-[110px] rounded border border-[#14a3a3] px-2 text-right text-[18px] font-bold text-[#12304f] outline-none"
+                  aria-label="Organization budget percentage"
                 />
-                <button
-                  type="button"
-                  disabled={!canConfig || savingOrg || cycleLoading || !activeCycle}
-                  onClick={applyOrgPercentage}
-                  className="h-[38px] rounded-md px-3 text-[12px] font-semibold text-white disabled:opacity-50"
-                  style={{ background: TEAL }}
-                >
-                  {savingOrg ? "Saving…" : "Apply"}
-                </button>
+                <span>%</span>
               </div>
-              {orgPending ? (
-                <div className="text-[11px] text-slate-500">was 8%</div>
-              ) : null}
+            </label>
+            <button
+              type="button"
+              className="bm-btn bm-btn-primary bm-org-apply"
+              disabled={!canConfig || savingOrg || cycleLoading || !activeCycle}
+              onClick={applyOrgPercentage}
+            >
+              {savingOrg ? "Saving…" : "Apply org %"}
+            </button>
+          </div>
+          <p className="bm-helper">The original budget is captured on the first valid percentage. Later percentage changes update the updated-budget value.</p>
+        </section>
+
+        <section className="bm-control-card bm-tech-control-card">
+          <div className="bm-card-heading">
+            <div>
+              <span className="bm-section-kicker">TECH-ED ALLOCATION</span>
+              <h3>Team percentages</h3>
             </div>
-            <div className={orgCell}>
-              <div className="text-[11px] text-[#5b6b80]">Org budget base</div>
-              <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
-                {money(orgBase)}
-              </div>
+            <span className="bm-count-chip">{rows.length} Tech-Ed{rows.length === 1 ? "" : "s"}</span>
+          </div>
+          <div className="bm-tech-summary">
+            <div>
+              <span>Pending changes</span>
+              <strong className={pendingCount ? "bm-pending-value" : ""}>{pendingCount}</strong>
             </div>
-            <div className={orgCell}>
-              <div className="text-[11px] text-[#5b6b80]">Original budget</div>
-              <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
-                {money(originalOrgBudget)}
-              </div>
-            </div>
-            <div className={orgCell}>
-              <div className="text-[11px] text-[#5b6b80]">Updated budget</div>
-              <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
-                {money(orgPending ? previewOrgBudget : amount(selectedMaster?.applied_budget) || previewOrgBudget)}
-              </div>
-            </div>
-            <div className="shrink-0 min-w-[150px] rounded-md border border-[#d7dce3] bg-[#f8fafc] px-[22px] py-4">
-              <div className="text-[11px] text-[#5b6b80]">Team count</div>
-              <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
-                {total.team0} → {total.team}
-              </div>
+            <div>
+              <span>Default percentage</span>
+              <strong>{orgPct === "" ? "Not set" : percent(orgPct)}</strong>
             </div>
           </div>
+          <p className="bm-helper">A Tech-Ed can inherit the organization percentage or use an override. Use the action bar below to save pending changes.</p>
+        </section>
+      </div>
+
+      <section className="bm-metrics" aria-label="Organization budget summary">
+        <div className="bm-metric">
+          <span>Org budget base</span>
+          <strong>{money(orgBase)}</strong>
+          <small>Eligible employees’ previous appraisal CTC</small>
         </div>
-        <div className="px-[18px] pb-2.5 text-[11.5px] text-slate-500">
-          Changing the org % updates every Tech ED on the org default. Tech EDs
-          with an override keep their own %.
+        <div className="bm-metric">
+          <span>Original budget</span>
+          <strong>{money(originalOrgBudget)}</strong>
+          <small>First applied percentage</small>
+        </div>
+        <div className="bm-metric bm-metric-highlight">
+          <span>Updated budget</span>
+          <strong>{money(displayedOrgUpdated)}</strong>
+          <small>{orgPending ? "Preview — not yet saved" : "Current organization allocation"}</small>
+        </div>
+        <div className="bm-metric">
+          <span>Tech-Ed budgets</span>
+          <strong>{money(previewTotal)}</strong>
+          <small>Combined updated allocations</small>
+        </div>
+        <div className={"bm-metric" + (availableAfterAllocation < -0.5 ? " bm-metric-warning" : "")}>
+          <span>{availableAfterAllocation < -0.5 ? "Over allocation" : "Unallocated balance"}</span>
+          <strong>{money(Math.abs(availableAfterAllocation))}</strong>
+          <small>{availableAfterAllocation < -0.5 ? "Tech-Ed allocations exceed org budget" : "After Tech-Ed allocations"}</small>
+        </div>
+        <div className="bm-metric">
+          <span>Team count</span>
+          <strong>{total.team0} <i>→</i> {total.team}</strong>
+          <small>Original to current eligible count</small>
+        </div>
+        <div className="bm-metric">
+          <span>Budget utilized</span>
+          <strong>{money(displayedUtilized)}</strong>
+          <small>Reported by Budget Master API</small>
         </div>
       </section>
 
-      <section
-        className="overflow-hidden rounded-[10px] border bg-white shadow-[0_1px_2px_rgba(18,48,79,.06)]"
-        style={{ borderColor: BORDER }}
-      >
-        <div
-          className="px-3 py-1.5 text-left text-[12.5px] font-semibold text-white"
-          style={{ background: NAVY }}
-        >
-          Tech EDs — {rows.length}
+      <section className="bm-table-card">
+        <div className="bm-table-heading">
+          <div>
+            <span className="bm-section-kicker">BUDGET DISTRIBUTION</span>
+            <h3>Tech-Ed budgets <span>{rows.length}</span></h3>
+          </div>
+          <div className="bm-table-legend">
+            <span><i className="bm-legend-default" /> Org default</span>
+            <span><i className="bm-legend-override" /> Override</span>
+          </div>
         </div>
-        <div className="max-h-[58vh] overflow-auto">
-          <table className="w-full min-w-[1180px] border-collapse text-[12.5px] tabular-nums">
+        <div className="bm-table-scroll">
+          <table className="bm-table">
             <thead>
               <tr>
                 {HR_COLS.map(([h, right]) => (
-                  <th
-                    key={h}
-                    className={
-                      "sticky top-0 whitespace-nowrap border-b-2 border-[#9fb3cf] bg-[#e8eef5] px-2.5 py-2 text-[12px] font-semibold text-[#12304f] " +
-                      (right ? "text-right" : "text-left")
-                    }
-                  >
-                    {h}
-                  </th>
+                  <th key={h} className={right ? "bm-align-right" : ""}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
+              {rows.length ? rows.map((r) => {
                 const p = previewPct(r);
                 const changing = Number(p) !== r.pct;
                 const open = !!history[r.name];
+                const rowAudit = audit.filter((a) => a.owner === r.name);
                 const sourceOverride =
                   overrides[r.name] ||
                   (Object.prototype.hasOwnProperty.call(pending, r.name) &&
                     Number(p) !== amount(orgPct));
-                const td =
-                  "border-b border-[#e1e5eb] px-2.5 py-2 align-middle " +
-                  (changing ? "bg-[#fdf8e7] " : "bg-white ");
+                const tdClass = changing ? "bm-pending-row" : "";
                 return (
                   <FragmentRow key={r.name}>
-                    <tr>
-                      <td
-                        className={td + "whitespace-nowrap text-left font-bold"}
-                      >
-                        {r.name}
+                    <tr className={tdClass}>
+                      <td className="bm-owner-cell">
+                        <strong>{r.name}</strong>
+                        {changing ? <small>Pending change</small> : null}
                       </td>
-                      <td className={td + "whitespace-nowrap text-right"}>
-                        {money(r.base)}
-                      </td>
-                      <td className={td + "text-right"}>
-                        <div className="flex flex-col items-end">
+                      <td className="bm-align-right bm-number">{money(r.base)}</td>
+                      <td className="bm-percent-cell">
+                        <div>
                           <input
                             type="number"
                             min="0"
@@ -875,123 +991,75 @@ function HRApplyBudget() {
                             value={p}
                             disabled={!canConfig}
                             onChange={(e) => setRowPct(r.name, e.target.value)}
-                            className="h-8 w-[84px] rounded border border-[#14a3a3] bg-white px-2 text-right text-[14px] font-bold text-[#12304f]"
+                            aria-label={"Percentage for " + r.name}
                           />
-                          {changing ? (
-                            <div className="whitespace-nowrap text-[11px] text-slate-500">
-                              was {r.pct}%
-                            </div>
-                          ) : null}
+                          <span>%</span>
                         </div>
+                        {changing ? <small>was {r.pct}%</small> : null}
                       </td>
-                      <td className={td + "text-left"}>
+                      <td>
                         {sourceOverride ? (
-                          <div className="flex flex-wrap items-center gap-1">
-                            <span className="whitespace-nowrap rounded-full bg-[#fff4d6] px-2 py-0.5 text-[11px] font-bold text-[#8a5a00]">
-                              Override
-                            </span>
-                            <button
-                              type="button"
-                              className="whitespace-nowrap text-[11.5px] font-bold text-[#1859a8]"
-                              onClick={() => resetRow(r.name)}
-                            >
-                              Reset to org %
-                            </button>
+                          <div className="bm-source">
+                            <span className="bm-source-override">Override</span>
+                            <button type="button" className="bm-text-action" onClick={() => resetRow(r.name)}>Reset to org %</button>
                           </div>
-                        ) : (
-                          <span className="whitespace-nowrap rounded-full bg-[#e6f4f4] px-2 py-0.5 text-[11px] font-bold text-[#0f6d6d]">
-                            Org default
-                          </span>
-                        )}
+                        ) : <span className="bm-source-default">Org default</span>}
                       </td>
-                      <td className={td + "whitespace-nowrap text-right"}>
-                        {money(r.original)}
-                      </td>
-                      <td className={td + "whitespace-nowrap text-right"}>
-                        {money(r.updated)}
-                      </td>
-                      <td className={td + "text-right"}>{r.team0}</td>
-                      <td className={td + "text-right"}>{r.team}</td>
-                      <td className={td + "text-left"}>
-                        {canAudit && (open || r.lastChanged !== "01-Sep-26") ? (
+                      <td className="bm-align-right bm-number">{money(r.original)}</td>
+                      <td className="bm-align-right bm-number bm-updated-cell">{money(r.updated)}</td>
+                      <td className="bm-align-right bm-number">{r.team0}</td>
+                      <td className="bm-align-right bm-number">{r.team}</td>
+                      <td>
+                        {canAudit && (open || rowAudit.length > 0) ? (
                           <button
                             type="button"
-                            className="whitespace-nowrap rounded border border-[#c5d0dd] bg-white px-2 py-1 text-[12px] font-bold text-[#17365d]"
-                            onClick={() =>
-                              setHistory((x) => ({
-                                ...x,
-                                [r.name]: !x[r.name],
-                              }))
-                            }
+                            className="bm-history-btn"
+                            aria-expanded={open}
+                            onClick={() => setHistory((x) => ({ ...x, [r.name]: !x[r.name] }))}
                           >
                             {r.lastChanged} {open ? "▴" : "▾"}
                           </button>
-                        ) : (
-                          <span className="text-[#94a3b8]">—</span>
-                        )}
+                        ) : <span className="bm-muted">—</span>}
                       </td>
                     </tr>
                     {open && canAudit ? (
                       <tr>
-                        <td
-                          colSpan={HR_COLS.length}
-                          className="border-b border-[#d7dce3] bg-[#f7f9fc] px-10 py-3"
-                        >
-                          <AuditTable
-                            rows={audit.filter((a) => a.owner === r.name)}
-                          />
+                        <td colSpan={HR_COLS.length} className="bm-audit-row">
+                          <AuditTable rows={rowAudit} />
                         </td>
                       </tr>
                     ) : null}
                   </FragmentRow>
                 );
-              })}
+              }) : (
+                <tr><td colSpan={HR_COLS.length} className="bm-empty-row">
+                  {budgetLoading ? "Loading Tech-Ed budget rows…" : "No Tech-Ed assignments were found for this appraisal cycle."}
+                </td></tr>
+              )}
             </tbody>
           </table>
         </div>
-        <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t border-[#d4dbe5] bg-white px-3.5 py-2.5">
-          <span
-            className={
-              pendingCount ? "font-bold text-[#c2410c]" : "text-slate-500"
-            }
-          >
-            {pendingCount
-              ? pendingCount +
-                " change" +
-                (pendingCount === 1 ? "" : "s") +
-                " pending"
-              : "No pending changes"}
-          </span>
-          {canConfig && (
-            <>
+        <div className="bm-action-bar">
+          <div className="bm-pending-status">
+            <span className={pendingCount ? "bm-status-dot bm-status-dot-pending" : "bm-status-dot"} />
+            <span>{pendingCount ? pendingCount + " change" + (pendingCount === 1 ? "" : "s") + " pending" : "No pending changes"}</span>
+          </div>
+          {canConfig ? (
+            <div className="bm-action-controls">
               <input
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 disabled={!pendingCount}
-                placeholder="Reason (saved in the audit trail)"
-                className="h-[30px] min-w-[200px] max-w-[460px] flex-1 rounded border border-[#cbd3df] px-2 text-[12.5px]"
+                placeholder="Reason for change (optional)"
+                aria-label="Reason for budget changes"
               />
-              <button
-                type="button"
-                disabled={!pendingCount}
-                onClick={discard}
-                className="rounded-md border border-[#c5d0dd] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#12304f] disabled:opacity-40"
-              >
-                Discard
-              </button>
-              <button
-                type="button"
-                disabled={!pendingCount}
-                onClick={apply}
-                className="rounded-md px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
-                style={{ background: TEAL }}
-              >
-                Apply
-              </button>
-            </>
-          )}
+              <button type="button" className="bm-btn bm-btn-secondary" disabled={!pendingCount} onClick={discard}>Discard</button>
+              <button type="button" className="bm-btn bm-btn-primary" disabled={!pendingCount} onClick={apply}>Apply changes</button>
+            </div>
+          ) : null}
         </div>
       </section>
+      <div className="bm-footer-note">Budget values shown here are sourced from the existing Budget Master API. This redesign does not change the calculation or saving workflow.</div>
     </div>
   );
 }
