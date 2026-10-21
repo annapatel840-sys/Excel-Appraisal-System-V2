@@ -791,9 +791,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const compManagerDisplay = managerId && managerName
       ? managerId + " - " + managerName
       : managerName || rawCompManager;
-    const currentCycle = cycleRows.find((cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && cycle.archived !== true && cycle.archived !== "true") ||
+    const activeCycleRow = cycleRows.find((cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && cycle.archived !== true && cycle.archived !== "true") ||
       cycleRows.slice().sort((a, b) => cycleRank(b) - cycleRank(a))[0] || null;
-    const currentCycleId = cycleIdOf(currentCycle) || String(bundle.master[0]?.appraisal_cycle_id || "");
+    const currentCycleId = cycleIdOf(activeCycleRow) || String(bundle.master[0]?.appraisal_cycle_id || "");
     const previousCycle = previousCycleFor(currentCycleId);
     const previousCycleId = previousCycle ? (cycleIdOf(previousCycle) || cycleNameOf(previousCycle).toLowerCase()) : "";
     const historyKey = previousCycleId + "::" + employeeId;
