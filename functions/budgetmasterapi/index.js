@@ -379,21 +379,26 @@ function previousCtc(record) {
   // Payroll rows may not persist the computed total column. Recreate the same
   // Total CTC with Rewards formula from that historical row's own values.
   const componentFields = [
-    "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay",
+    "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "base_pay", "basePay",
     "hike_amount", "hikeAmount", "current_hike_amount",
-    "allocated_pb_amount", "allocatedPBAmount", "new_pb_to_be_offered",
-    "newPBToBeOffered", "new_rb", "newRB",
+    "allocated_pb_amount", "allocatedPBAmount", "allocated_pb", "target_pb_allocated_for_may",
+    "new_pb_to_be_offered", "newPBToBeOffered", "performance_bonus", "total_pb",
+    "new_rb", "newRB", "retention_bonus",
   ];
   const hasComponents = componentFields.some((name) => {
     const rawValue = firstValue(record, [name]);
     return rawValue !== "" && rawValue !== null && rawValue !== undefined;
   });
   if (!hasComponents) return null;
-  return n(firstValue(record, ["current_annual_base_pay", "currentAnnualBasePay", "current_base_pay"])) +
-    n(firstValue(record, ["hike_amount", "hikeAmount", "current_hike_amount"])) +
-    n(firstValue(record, ["allocated_pb_amount", "allocatedPBAmount"])) +
-    n(firstValue(record, ["new_pb_to_be_offered", "newPBToBeOffered"])) +
-    n(firstValue(record, ["new_rb", "newRB"]));
+  const base = n(firstValue(record, ["current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "base_pay", "basePay"]));
+  const hike = n(firstValue(record, ["hike_amount", "hikeAmount", "current_hike_amount"]));
+  const storedTotalPb = firstValue(record, ["total_pb", "totalPB"]);
+  const pb = storedTotalPb !== "" && storedTotalPb !== null && storedTotalPb !== undefined
+    ? n(storedTotalPb)
+    : n(firstValue(record, ["allocated_pb_amount", "allocatedPBAmount", "allocated_pb", "target_pb_allocated_for_may"])) +
+      n(firstValue(record, ["new_pb_to_be_offered", "newPBToBeOffered", "performance_bonus"]));
+  const retention = n(firstValue(record, ["new_rb", "newRB", "retention_bonus"]));
+  return base + hike + pb + retention;
 }
 
 function readField(row, candidates) {
@@ -742,19 +747,20 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const master = masterByRowId.get(identity) || masterByEmployee.get(identity) || masterByName.get(identity);
     return String(master ? firstValue(master, ["emp_id", "empId", "employee_id"]) || idOf(master) : identity).trim().toLowerCase();
   };
-  const cycleReferenceForRow = (row) => cycleReference(firstValue(row, ["appraisal_cycle_id", "appraisalCycleId", "cycle_id", "appraisal_cycle_name", "appraisalCycleName", "cycle_name"]));
+  const cycleReferenceForRow = (row) => cycleReference(firstValue(row, ["appraisal_cycle_name", "appraisal_cycle_id", "appraisalCycleId", "cycle_id", "appraisalCycleName", "cycle_name"]));
   const currentCycleFor = (cycleId) => cycleById.get(String(cycleId)) || cycleByName.get(String(cycleId).toLowerCase()) || null;
   const previousCycleFor = (cycleId) => {
     const current = currentCycleFor(cycleId);
     const currentRank = current ? cycleRank(current) : cycleRank({ cycle_name: cycleId });
     const earlier = cycleRows
+      .filter((cycle) => String(firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "").trim().toLowerCase() === "closed")
       .filter((cycle) => cycleRank(cycle) > 0 && currentRank > 0 && cycleRank(cycle) < currentRank)
       .sort((a, b) => cycleRank(b) - cycleRank(a));
     return earlier[0] || null;
   };
   const historyRowsByCycleAndEmployee = new Map();
   payrollRows.forEach((historyRow) => {
-    const employeeKey = employeeKeyFor(firstValue(historyRow, ["emp_id", "employee_id", "empId"]));
+    const employeeKey = employeeKeyFor(firstValue(historyRow, ["emp_id", "employee_id", "emp_code", "empId"]));
     const cycleRef = cycleReferenceForRow(historyRow);
     const referencedCycle = cycleById.get(cycleRef) || cycleByName.get(cycleRef.toLowerCase());
     const cycleKey = referencedCycle ? (cycleIdOf(referencedCycle) || cycleNameOf(referencedCycle).toLowerCase()) : cycleRef.toLowerCase();
@@ -986,16 +992,38 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   // The active-cycle roster remains the API display roster, but historical budget
   // rows must not accidentally reuse the active cycle's prior-CTC values.
   const employeesForBudgetCycle = (targetCycleId) => {
-    const previousCycle = previousCycleFor(targetCycleId);
-    const previousId = previousCycle ? (cycleIdOf(previousCycle) || cycleNameOf(previousCycle).toLowerCase()) : "";
+    const currentCycle = currentCycleFor(targetCycleId);
+    const currentRank = currentCycle ? cycleRank(currentCycle) : cycleRank({ cycle_name: targetCycleId });
+    const closedCycles = cycleRows
+      .filter((cycle) => String(firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "").trim().toLowerCase() === "closed")
+      .filter((cycle) => cycleRank(cycle) > 0 && currentRank > 0 && cycleRank(cycle) < currentRank)
+      .sort((a, b) => cycleRank(b) - cycleRank(a));
     return employees.map((employee) => {
       const employeeKey = String(employee.employeeId || employee.emp_id || "").trim().toLowerCase();
-      const historyKey = previousId + "::" + employeeKey;
-      const previousRecord = previousCycle
-        ? historyRowsByCycleAndEmployee.get(historyKey) || historyRowsByCycleAndEmployee.get(cycleNameOf(previousCycle).toLowerCase() + "::" + employeeKey)
-        : null;
-      const priorCtc = previousCtc(previousRecord);
-      return { ...employee, base: priorCtc === null ? employee.current_ctc : priorCtc };
+      let priorCtc = null;
+      let priorCycleName = "";
+      for (const closedCycle of closedCycles) {
+        const cycleId = cycleIdOf(closedCycle);
+        const cycleName = cycleNameOf(closedCycle);
+        const historyKey = (cycleId || cycleName.toLowerCase()) + "::" + employeeKey;
+        const previousRecord = historyRowsByCycleAndEmployee.get(historyKey) ||
+          historyRowsByCycleAndEmployee.get(cycleName.toLowerCase() + "::" + employeeKey);
+        if (!previousRecord) continue;
+        const value = previousCtc(previousRecord);
+        if (value === null) continue;
+        priorCtc = value;
+        priorCycleName = cycleName;
+        break;
+      }
+      const base = priorCtc === null ? employee.current_ctc : priorCtc;
+      return {
+        ...employee,
+        base,
+        previous_appraisal_total_ctc_with_rewards: base,
+        Previous_Appraisal_total_CTC_with_rewards: base,
+        last_appraisal_date: priorCycleName || employee.last_appraisal_date,
+        last_appraisal_cycle_name: priorCycleName || employee.last_appraisal_cycle_name,
+      };
     });
   };
   for (const master of bundle.master) {
