@@ -472,7 +472,10 @@ export function TechEdBudgetDistribution() {
       stats.base += hasPreviousCtc
         ? num(previousCtcValue)
         : num(employee.current_annual_base_pay ?? employee.currentAnnualBasePay ?? employee.current_base_pay ?? employee.base_pay ?? employee.basePay)
-          + num(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.pb_to_be_paid ?? employee.target_pb_allocated_for_may ?? employee.allocated_pb ?? employee.total_pb);
+          + num(employee.hike_amount ?? employee.hikeAmount ?? employee.current_hike_amount)
+          + num(employee.allocated_pb_amount ?? employee.allocatedPBAmount ?? employee.allocated_pb ?? 0)
+          + num(employee.new_pb_to_be_offered ?? employee.newPBToBeOffered ?? employee.current_performance_bonus ?? 0)
+          + num(employee.new_rb ?? employee.newRB ?? employee.current_retention_bonus ?? 0);
       stats.utilized += employeeUtilized(employee);
       managerStats.set(key, stats);
     });
