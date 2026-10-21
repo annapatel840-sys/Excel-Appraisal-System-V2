@@ -987,6 +987,16 @@ export function UploadPage({ handlers = {} }) {
         };
       }
 
+      // Payroll_Data is read dynamically by employeesapi when it enriches
+      // the Appraisal Sheet's previous-cycle CTC and Last Appraisal fields.
+      // Notify the shared appraisal store after successful payroll rows commit,
+      // so a mounted Appraisal Sheet refreshes without requiring a full sign-in.
+      if (screen === "pay" && Number(out?.succeeded) > 0 && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("appraisal:payroll-data-updated", {
+          detail: { cycleId, batchId: out.batchId, succeeded: Number(out.succeeded) },
+        }));
+      }
+
       // Show the upload result immediately after the commit/import finishes.
       // History is refreshed separately so a slow history query cannot make
       // a successful upload look like the Upload button did nothing.
