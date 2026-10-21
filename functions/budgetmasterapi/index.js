@@ -372,7 +372,7 @@ function currentCtc(row) {
 
 function previousCtc(record) {
   const raw = firstValue(record, [
-    "total_CTC_with_rewards", "total_ctc_with_rewards", "new_ctc", "newCTC",
+    "total_ctc_with_rewards", "total_CTC_with_rewards", "totalCTCWithRewards", "total_ctc", "new_ctc", "newCTC",
     "total_ctc", "totalCTCWithRewards",
   ]);
   return raw === "" || raw === null || raw === undefined ? null : n(raw);
@@ -724,7 +724,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const master = masterByRowId.get(identity) || masterByEmployee.get(identity) || masterByName.get(identity);
     return String(master ? firstValue(master, ["emp_id", "empId", "employee_id"]) || idOf(master) : identity).trim().toLowerCase();
   };
-  const cycleReferenceForRow = (row) => cycleReference(firstValue(row, ["appraisal_cycle_name", "appraisalCycleName", "cycle_name", "cycle_id"]));
+  const cycleReferenceForRow = (row) => cycleReference(firstValue(row, ["appraisal_cycle_id", "appraisalCycleId", "cycle_id", "appraisal_cycle_name", "appraisalCycleName", "cycle_name"]));
   const currentCycleFor = (cycleId) => cycleById.get(String(cycleId)) || cycleByName.get(String(cycleId).toLowerCase()) || null;
   const previousCycleFor = (cycleId) => {
     const current = currentCycleFor(cycleId);
