@@ -81,6 +81,7 @@ function mapDistribution(row) {
     percentage: value(row, "percentage") === "" || value(row, "percentage") === null || value(row, "percentage") === undefined
       ? null
       : n(value(row, "percentage")),
+    percentage_is_set: value(row, "percentage") !== "" && value(row, "percentage") !== null && value(row, "percentage") !== undefined,
     budget_base: n(value(row, "budget_base")),
     original_budget_base: n(value(row, "original_budget_base")),
     original_base: n(value(row, "original_base")),
@@ -104,8 +105,12 @@ function mapComp(row) {
     id: idOf(row),
     comp_manager: String(value(row, "comp_manager")),
     percentage: n(value(row, "percentage")),
+    percentage_is_set: value(row, "percentage") !== "" && value(row, "percentage") !== null && value(row, "percentage") !== undefined,
     budget_base: n(value(row, "budget_base")),
+    original_budget_base: n(value(row, "original_budget_base")),
+    original_base: n(value(row, "original_base")),
     calculated_budget: n(value(row, "calculated_budget") || value(row, "claculated_budget")),
+    calculated_budget_is_set: (value(row, "calculated_budget") !== "" && value(row, "calculated_budget") !== null && value(row, "calculated_budget") !== undefined) || (value(row, "claculated_budget") !== "" && value(row, "claculated_budget") !== null && value(row, "claculated_budget") !== undefined),
     total_utilization: utilized,
     applied_budget: applied,
     budget_distribution_id: String(value(row, "budget_distribution_id")),
@@ -1110,9 +1115,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       }
       const stats = compBases.get(pairKey) || { base: 0, count: 0 };
       const pct = n(row.percentage);
-      const originalBase = n(row.original_budget_base || row.original_base || row.budget_base) || stats.base;
-      const originalBudget = n(row.calculated_budget) || (originalBase * (1 + pct / 100));
-      const updatedBudget = stats.base * (1 + pct / 100);
+      const savedOriginalBase = n(row.original_budget_base || row.original_base || row.budget_base);
+      const hasOriginalSnapshot = savedOriginalBase > 0 && Math.abs(savedOriginalBase - stats.base) < 0.5 && Boolean(row.calculated_budget_is_set);
+      const originalBase = hasOriginalSnapshot ? savedOriginalBase : stats.base;
+      // Comp Manager % is an allocation share of the team CTC base, not an extra hike on top of that base.
+      const originalBudget = hasOriginalSnapshot ? n(row.calculated_budget) : (originalBase * pct / 100);
+      const updatedBudget = stats.base * pct / 100;
       const update = {
         ROWID: row.id,
         budget_base: stats.base,
