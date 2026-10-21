@@ -224,7 +224,7 @@ function AuditTable({
 const HR_COLS = [
   ["Tech ED", false],
   ["Budget base", true],
-  ["% applied", true],
+  ["% applied", false],
   ["Budget", true],
   ["Original", true],
   ["Updated", true],
@@ -236,104 +236,100 @@ const HR_COLS = [
 ];
 
 const BUDGET_MASTER_CSS = `
-.bm-root{width:100%;padding:16px;background:#D6DFEB;border-radius:16px;color:#111827;font-family:"Manrope","Segoe UI",Arial,sans-serif;font-size:13px;font-variant-numeric:tabular-nums}
+.bm-root{--ink:#111827;--muted:#6B7280;--navy:#102A43;--link:#1559A6;--line:#E5E7EB;--th-bg:#E6EEF8;--th-line:#C9D8EC;--row-odd:#FBFCFE;--row-even:#F2F5F9;--row-hover:#EAF2FF;--rl-bg:#EEF3FA;--info-bg:#DCEBFF;--info-border:#B9D3F5;--info:#1D4FA8;--main:#2F6FED;--edited:#FFE066;--edited-border:#C9A400;--err:#C0392B;--ok:#15803D;width:100%;padding:12px;background:#D5DFEB;border-radius:14px;color:var(--ink);font-family:"Manrope","Segoe UI",Arial,sans-serif;font-size:12.5px;font-variant-numeric:tabular-nums}
 .bm-root *{box-sizing:border-box}
-.bm-root button,.bm-root input{font:inherit}
+.bm-root button,.bm-root input{font:inherit;color:inherit}
 .bm-root button:focus-visible,.bm-root input:focus-visible{outline:2px solid #2F6FED;outline-offset:2px}
 .bm-root input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .bm-root input[type=number]::-webkit-outer-spin-button,.bm-root input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
-.bm-sheet{display:flex;flex-direction:column;gap:12px;background:#fff;border-radius:14px;padding:16px 16px 0;overflow:hidden}
+.bm-sheet{display:flex;flex-direction:column;gap:12px;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px 0;overflow:hidden}
+.bm-mut{color:var(--muted)}.bm-dn{color:var(--err)}.bm-up{color:var(--ok)}
 
-.bm-alert{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border:1px solid;border-radius:7px;padding:10px 12px;line-height:1.5}
+.bm-alert{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;border:1px solid;border-radius:8px;padding:9px 12px;line-height:1.45;font-weight:600}
 .bm-alert-warning{border-color:#f2d27a;background:#fff8e1;color:#7a4b00}
 .bm-alert-error{border-color:#e7b5ad;background:#fff5f3;color:#7c2d12}
 .bm-alert button{border:0;background:none;font-weight:700;cursor:pointer}
 
-.bm-control-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
-.bm-card{min-width:0;border:1px solid #D5DFEB;border-radius:10px;background:#fff;padding:14px 16px 16px}
-.bm-card-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:10px}
-.bm-card-head h3{margin:0;font-size:17px;font-weight:700;color:#111827}
-.bm-card-note{color:#64748b;font-size:14px;text-align:right}
-.bm-card-note b{color:#111827;font-weight:700}
-.bm-row{display:flex;align-items:flex-end;gap:12px}
-.bm-field{display:flex;flex-direction:column;gap:6px;min-width:0}
-.bm-field>span{font-size:11.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#475569}
-.bm-pct-field{flex:0 0 105px}
-.bm-reason-field{flex:1 1 0}
-.bm-input{height:43px;width:100%;min-width:0;border:1px solid #CBD5E1;border-radius:6px;padding:0 12px;font-size:15px;color:#111827;background:#fff}
-.bm-input::placeholder{color:#94a3b8}
-.bm-input:disabled{background:#f3f5f8;color:#94a3b8;cursor:not-allowed}
-.bm-pct-box{display:flex;align-items:center;height:43px;border:1px solid #CBD5E1;border-radius:6px;padding:0 12px;background:#fff}
-.bm-pct-box:focus-within{border-color:#2F6FED}
-.bm-pct-box input{flex:1;min-width:0;width:100%;border:0;outline:0;background:transparent;text-align:right;font-size:20px;font-weight:700;color:#111827}
-.bm-pct-box input::placeholder{color:#111827;opacity:.85}
-.bm-pct-box input:focus-visible{outline:0}
-.bm-pct-box b{margin-left:6px;color:#475569;font-size:18px;font-weight:700}
-.bm-pct-box.is-disabled{background:#f3f5f8}
-.bm-pct-box.is-disabled input{color:#94a3b8}
-.bm-row-hint{flex:1 1 auto;min-width:0;display:flex;align-items:center;height:43px;color:#64748b;font-size:13.5px}
+.bm-pans{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.bm-pan{min-width:0;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff}
+.bm-pan-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:8px;font-size:12.5px}
+.bm-pan-head b{color:var(--navy);font-size:13px}
+.bm-pan-row{display:flex;align-items:flex-end;gap:10px}
+.bm-pan-row label{display:block}
+.bm-pan-row label.bm-grow{flex:1;min-width:0}
+.bm-pan-row small{display:block;margin-bottom:3px;color:var(--muted);font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.bm-hint{flex:1 1 auto;min-width:0;padding-bottom:9px;color:var(--muted);font-size:11.5px}
 
-.bm-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid transparent;border-radius:6px;font-weight:700;white-space:nowrap;cursor:pointer;transition:background .15s,border-color .15s}
+.bm-pin{width:84px;border:1px solid #9CA3AF;border-radius:5px;padding:5px 8px;background:#fff;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
+.bm-pin:disabled{background:#F3F4F6;color:#9CA3AF;cursor:not-allowed}
+.bm-pin-big{height:34px;width:84px;font-size:16px;font-weight:800;color:var(--navy)}
+.bm-pin::placeholder{color:#9CA3AF;font-weight:600}
+.bm-pin.ed{background:var(--edited);border-color:var(--edited-border)}
+.bm-txt{width:100%;min-width:0;height:34px;border:1px solid #D1D5DB;border-radius:6px;padding:6px 10px;background:#fff}
+.bm-txt:disabled{background:#F3F4F6;color:#9CA3AF;cursor:not-allowed}
+.bm-txt::placeholder{color:#9CA3AF}
+
+.bm-btn{display:inline-flex;align-items:center;justify-content:center;height:34px;border:1px solid #D1D5DB;background:#fff;border-radius:6px;padding:6px 12px;font-weight:700;white-space:nowrap;cursor:pointer}
+.bm-btn:hover:not(:disabled){background:#F9FAFB}
 .bm-btn:disabled{opacity:.45;cursor:not-allowed}
-.bm-btn-lg{height:43px;padding:0 22px;font-size:14px;font-weight:800;letter-spacing:.03em;text-transform:uppercase}
-.bm-btn-primary{background:#2F6FED;color:#fff;border-color:#2F6FED}
-.bm-btn-primary:hover:not(:disabled){background:#2459C5;border-color:#2459C5}
-.bm-btn-ghost{background:#fff;color:#64748b;border-color:#D5DFEB;font-weight:500;text-transform:none;letter-spacing:0;font-size:15px}
-.bm-btn-ghost:hover:not(:disabled){background:#f4f7fa}
-.bm-btn-sm{height:32px;padding:0 12px;font-size:12px;background:#fff;color:#102A43;border-color:#CBD5E1}
-.bm-btn-sm:hover:not(:disabled){background:#f4f7fa}
-.bm-apply-org{flex:1.1 1 0}
+.bm-btn-main{background:var(--main);border-color:var(--main);color:#fff;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
+.bm-btn-main:hover:not(:disabled){background:#2560d4}
 
-.bm-metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
-.bm-metric{min-width:0;display:flex;flex-direction:column;gap:8px;border:1px solid #D5DFEB;border-radius:8px;background:#fff;padding:10px 14px 12px}
-.bm-metric>span{font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#475569}
-.bm-metric>strong{font-size:20px;line-height:1.2;color:#111827;font-weight:800;overflow-wrap:anywhere}
-.bm-metric>strong i{font-size:14px;color:#64748b;font-style:normal;margin:0 3px}
-.bm-metric-highlight{border-color:#B9D3F5;background:#DCEBFF}
+.bm-tiles{display:flex;gap:8px;flex-wrap:wrap}
+.bm-tile{flex:1;min-width:110px;border:1px solid var(--line);border-radius:10px;padding:7px 10px;background:#fff}
+.bm-tile small{display:block;color:var(--muted);font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.bm-tile b{display:block;margin-top:2px;color:var(--navy);font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
+.bm-tile em{display:block;margin-top:2px;font-style:normal;font-size:10.5px;font-weight:700}
+.bm-tile-hl{background:var(--info-bg);border-color:var(--info-border)}
 
-.bm-section-chip{align-self:flex-start;display:inline-flex;align-items:center;border:1px solid #D5DFEB;background:#EEF3FA;color:#102A43;border-radius:6px;padding:5px 11px;font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.bm-chip{align-self:flex-start;display:inline-block;background:var(--th-bg);color:var(--navy);border:1px solid var(--th-line);border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
 
-.bm-table-card{border:1px solid #D5DFEB;border-radius:10px;background:#fff;overflow:hidden}
-.bm-table-scroll{width:100%;max-height:58vh;overflow:auto}
-.bm-table{width:100%;min-width:1180px;border-collapse:separate;border-spacing:0;font-size:13px}
-.bm-table thead th{position:sticky;top:0;z-index:2;background:#EAF0F7;color:#1E293B;font-weight:700;font-size:13px;padding:13px 14px;border-bottom:1px solid #D5DFEB;text-align:left;white-space:nowrap}
-.bm-table thead th.bm-align-right{text-align:right}
-.bm-table tbody td{padding:10px 14px;border-bottom:1px solid #E5E9EF;vertical-align:middle;background:#fff}
-.bm-table tbody tr:last-child td{border-bottom:0}
-.bm-table tbody tr:hover td{background:#F4F8FE}
-.bm-table tbody tr.bm-pending-row td{background:#fff9e9}
-.bm-table .bm-align-right{text-align:right}
-.bm-table .bm-number{white-space:nowrap}
-.bm-owner-cell strong{display:block;color:#102A43;font-weight:750;white-space:nowrap}
-.bm-owner-cell small,.bm-percent-cell small{display:block;margin-top:3px;color:#a16207;font-size:10.5px}
-.bm-percent-cell>div:first-child{display:flex;align-items:center;justify-content:flex-end;gap:4px}
-.bm-percent-cell input{width:78px;height:32px;border:1px solid #C9D8EC;border-radius:5px;padding:0 7px;text-align:right;font-weight:800;color:#102A43;background:#fff}
-.bm-percent-cell input:disabled{background:#f3f5f8;color:#64748b}
-.bm-percent-cell .bm-pct-suffix{color:#64748b;font-weight:700}
-.bm-percent-cell small{text-align:right}
-.bm-updated-cell{font-weight:800;color:#1559A6}
-.bm-source{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-top:4px}
-.bm-source-override{display:inline-flex;align-items:center;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:800;white-space:nowrap;background:#fff1d2;color:#8a5a00}
-.bm-text-action{border:0;background:none;color:#1559A6;font-size:10.5px;font-weight:800;cursor:pointer;padding:3px}
-.bm-row-reason{width:100%;min-width:150px;height:32px;border:1px solid #C9D8EC;border-radius:5px;padding:0 9px;font-size:12.5px;color:#102A43;background:#fff}
-.bm-row-reason:disabled{background:#f3f5f8;color:#94a3b8;cursor:not-allowed}
-.bm-history-btn{border:1px solid #CBD5E1;background:#fff;color:#17365d;border-radius:5px;padding:5px 7px;font-size:11px;font-weight:750;white-space:nowrap}
-.bm-audit-row{background:#f7f9fc!important;padding:12px 20px!important}
-.bm-empty-row{text-align:left;color:#64748b;font-size:15px;padding:22px 20px!important}
-.bm-muted{color:#64748b}
-.bm-root .bm-audit-row .w-full{min-width:900px}
+.bm-tw{border:1px solid var(--th-line);border-radius:8px;overflow:auto;max-height:58vh}
+.bm-table{width:100%;border-collapse:collapse}
+.bm-table th{position:sticky;top:0;z-index:2;background:var(--th-bg);color:var(--navy);font-size:10.5px;font-weight:700;text-align:left;padding:9px 11px;border-bottom:1px solid var(--th-line);vertical-align:bottom;line-height:1.25;white-space:normal}
+.bm-table td{padding:8px 11px;border-bottom:1px solid #F0F1F3;white-space:nowrap;font-variant-numeric:tabular-nums}
+.bm-table .bm-n{text-align:right}
+.bm-table tbody tr:nth-child(odd) td{background:var(--row-odd)}
+.bm-table tbody tr:nth-child(even) td{background:var(--row-even)}
+.bm-table tbody tr.bm-data:hover td{background:var(--row-hover)}
+.bm-table td.bm-rl{background:var(--rl-bg)!important;color:var(--navy);font-weight:700;border-right:1px solid var(--th-line)}
+.bm-table td.bm-in{background:#FFF9DC!important}
+.bm-table tr.bm-edrow td.bm-rl{box-shadow:inset 4px 0 0 var(--edited-border)}
+.bm-table tr.bm-sub>td{background:#fff!important;padding:0}
+.bm-table tr.bm-tot td{background:var(--th-bg)!important;color:var(--navy);font-weight:800;border-top:1px solid var(--th-line)}
+.bm-table td.bm-calc{font-weight:800;color:var(--info)}
+.bm-tag{color:var(--muted);font-weight:500}
+.bm-empty{padding:16px!important;color:var(--muted);text-align:left}
+.bm-pin-cell{display:flex;align-items:center}
+.bm-table .bm-pin{width:84px}
+.bm-table .bm-pin.bad{border-color:var(--err);outline:1px solid var(--err)}
+.bm-reason{width:150px;height:28px;font-size:12px}
+.bm-ract{white-space:nowrap}
+.bm-hbtn{border:1px solid #D1D5DB;border-radius:12px;padding:2px 9px;font-size:11px;color:#4B5563;background:#fff;cursor:pointer}
+.bm-hbtn:disabled{opacity:.4;cursor:default}
+.bm-hbtn-pub:not(:disabled){background:var(--navy);color:#fff;border-color:var(--navy)}
+.bm-source{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px}
+.bm-source-override{display:inline-flex;align-items:center;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;background:#FEF6E7;color:#B7791F}
+.bm-text-action{border:0;background:none;color:var(--link);font-size:11px;font-weight:600;cursor:pointer;padding:0 0 0 2px}
+.bm-hist{padding:10px 14px;background:#fff}
+.bm-root .bm-hist .w-full{min-width:900px}
 
-.bm-strip{display:flex;align-items:center;gap:10px;margin:4px -16px 0;padding:16px 20px;background:#DCE9FB;color:#1B4F9C;font-size:15px;font-weight:700}
-.bm-strip-idle{background:#EEF3FA;color:#475569;font-weight:600;font-size:13.5px}
-.bm-strip-warn{background:#FFF4DB;color:#8A5A00;font-size:13.5px}
-.bm-status-dot{display:inline-block;width:8px;height:8px;flex:none;border-radius:50%;background:#159b79}
-.bm-status-dot-pending{background:#d97706}
+.bm-foot{margin:0 -16px;padding:12px 16px;border-top:1px solid var(--info-border);background:var(--info-bg);color:var(--info);font-weight:700}
 
-@media(max-width:1200px){.bm-metrics{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:1050px){.bm-control-grid{grid-template-columns:1fr}}
-@media(max-width:760px){.bm-root{padding:10px}.bm-sheet{padding:12px 12px 0}.bm-strip{margin:4px -12px 0}.bm-row{flex-wrap:wrap}.bm-apply-org{flex-basis:100%}.bm-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:420px){.bm-metrics{grid-template-columns:1fr}}
+@media(max-width:1050px){.bm-pans{grid-template-columns:1fr}}
+@media(max-width:760px){.bm-root{padding:8px}.bm-sheet{padding:12px 12px 0}.bm-foot{margin:0 -12px}.bm-pan-row{flex-wrap:wrap}}
 `;
+
+function deltaNode(from, to) {
+  const d = to - from;
+  if (Math.round(d) === 0) return <em className="bm-mut">no change</em>;
+  const down = d < 0;
+  return (
+    <em className={down ? "bm-dn" : "bm-up"}>
+      {down ? "▼" : "▲"} {money(Math.abs(d))} ({(Math.abs(d) / (from || 1) * 100).toFixed(2)}%)
+    </em>
+  );
+}
 
 function HRApplyBudget() {
   const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], techEdOwners = [], updateBudget, reload: reloadBudget, loading: budgetLoading, error: budgetError = "", budgetWarning = "" } = useBudget();
@@ -835,12 +831,15 @@ function HRApplyBudget() {
     await reloadBudget();
   }
 
-  async function publishChanges() {
+  // publishChanges()          -> "Publish all": publish every staged Tech-Ed edit.
+  // publishChanges("<name>")  -> row "Publish": publish just that Tech-Ed's edit.
+  async function publishChanges(onlyName) {
+    const target = typeof onlyName === "string" ? onlyName : null;
     if (!stagedCount) {
       setError("Apply at least one percentage change before publishing.");
       return;
     }
-    if (draftCount) {
+    if (target ? Object.prototype.hasOwnProperty.call(pending, target) : draftCount) {
       setError("Apply pending edits before publishing staged changes.");
       return;
     }
@@ -852,7 +851,9 @@ function HRApplyBudget() {
     setSavingOrg(true);
     setError("");
     try {
-      const toPublish = rows.filter((row) => Object.prototype.hasOwnProperty.call(staged, row.name));
+      const toPublish = rows.filter((row) =>
+        Object.prototype.hasOwnProperty.call(staged, row.name) && (!target || row.name === target),
+      );
       await Promise.all(toPublish.map((row) => {
         const pct = Number(staged[row.name]);
         const budget = row.base * (1 + pct / 100);
@@ -882,11 +883,16 @@ function HRApplyBudget() {
         });
         return next;
       });
-      setStaged({});
-      setStagedReasons({});
-      setPending({});
-      setRowReasons({});
-      setAllPct("");
+      if (target) {
+        setStaged((previous) => { const next = { ...previous }; delete next[target]; return next; });
+        setStagedReasons((previous) => { const next = { ...previous }; delete next[target]; return next; });
+      } else {
+        setStaged({});
+        setStagedReasons({});
+        setPending({});
+        setRowReasons({});
+        setAllPct("");
+      }
       setError("");
     } catch (saveError) {
       setError(saveError.message || "Budget changes could not be published.");
@@ -907,6 +913,14 @@ function HRApplyBudget() {
     ? "Loading…"
     : activeCycle?.name || selectedMaster?.appraisal_cycle_name || "No active cycle";
 
+  const totalsBudget = previewTotal;
+  const notPublishedCount = rows.filter((row) => !row.pctSet).length;
+  const stripMessage = orgPending
+    ? "Org % change not applied yet (use Apply org %)"
+    : draftCount
+      ? draftCount + " pending change" + (draftCount > 1 ? "s" : "")
+      : "No pending changes";
+
   return (
     <div className="bm-root">
       <style>{BUDGET_MASTER_CSS}</style>
@@ -924,33 +938,32 @@ function HRApplyBudget() {
           </div>
         ) : null}
 
-        <div className="bm-control-grid">
-          <section className="bm-card">
-            <div className="bm-card-head">
-              <h3>Org budget</h3>
-              <span className="bm-card-note">Cycle: <b>{cycleLabel}</b></span>
+        <div className="bm-pans">
+          <div className="bm-pan">
+            <div className="bm-pan-head">
+              <b>Org budget</b>
+              <span className="bm-mut">Cycle: <b>{cycleLabel}</b></span>
             </div>
-            <div className="bm-row">
-              <label className="bm-field bm-pct-field">
-                <span>Org %</span>
-                <div className={"bm-pct-box" + (!canConfig || savingOrg ? " is-disabled" : "")}>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    placeholder="0.00"
-                    value={orgPct}
-                    disabled={!canConfig || savingOrg}
-                    onChange={(e) => setOrgPct(e.target.value)}
-                    aria-label="Organization budget percentage"
-                  />
-                </div>
-              </label>
-              <label className="bm-field bm-reason-field">
-                <span>Reason</span>
+            <div className="bm-pan-row">
+              <label>
+                <small>Org %</small>
                 <input
-                  className="bm-input"
+                  className={"bm-pin bm-pin-big" + (orgPending ? " ed" : "")}
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  placeholder="0.00"
+                  value={orgPct}
+                  disabled={!canConfig || savingOrg}
+                  onChange={(e) => setOrgPct(e.target.value)}
+                  aria-label="Organization budget percentage"
+                />
+              </label>
+              <label className="bm-grow">
+                <small>Reason</small>
+                <input
+                  className="bm-txt"
                   type="text"
                   placeholder="Reason"
                   value={orgReason}
@@ -961,41 +974,40 @@ function HRApplyBudget() {
               </label>
               <button
                 type="button"
-                className="bm-btn bm-btn-primary bm-btn-lg bm-apply-org"
+                className="bm-btn bm-btn-main"
                 disabled={!canConfig || savingOrg || cycleLoading || !activeCycle}
                 onClick={applyOrgPercentage}
               >
                 {savingOrg ? "Saving…" : "Apply org %"}
               </button>
             </div>
-          </section>
+          </div>
 
-          <section className="bm-card">
-            <div className="bm-card-head">
-              <h3>Tech ED budget</h3>
-              <span className="bm-card-note">Same % for every Tech ED</span>
+          <div className="bm-pan">
+            <div className="bm-pan-head">
+              <b>Tech ED budget</b>
+              <span className="bm-mut">Same % for every Tech ED</span>
             </div>
-            <div className="bm-row">
-              <label className="bm-field bm-pct-field">
-                <span>% for all</span>
-                <div className={"bm-pct-box" + (!canConfig || !orgApplied || savingOrg ? " is-disabled" : "")}>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.1"
-                    value={allPct}
-                    disabled={!canConfig || !orgApplied || savingOrg}
-                    onChange={(e) => applyPctToAll(e.target.value)}
-                    aria-label="Percentage for all Tech EDs"
-                  />
-                  <b>%</b>
-                </div>
+            <div className="bm-pan-row">
+              <label>
+                <small>% for all</small>
+                <input
+                  className="bm-pin bm-pin-big"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.1"
+                  placeholder="%"
+                  value={allPct}
+                  disabled={!canConfig || !orgApplied || savingOrg}
+                  onChange={(e) => applyPctToAll(e.target.value)}
+                  aria-label="Percentage for all Tech EDs"
+                />
               </label>
-              <span className="bm-row-hint">Enter the reason on each Tech ED row</span>
+              <span className="bm-hint">Enter the reason on each Tech ED row</span>
               <button
                 type="button"
-                className="bm-btn bm-btn-ghost bm-btn-lg"
+                className="bm-btn"
                 disabled={!canConfig || (!pendingCount && !stagedCount)}
                 onClick={discard}
               >
@@ -1003,183 +1015,208 @@ function HRApplyBudget() {
               </button>
               <button
                 type="button"
-                className="bm-btn bm-btn-primary bm-btn-lg"
-                disabled={!canConfig || !draftCount || savingOrg}
+                className="bm-btn bm-btn-main"
+                disabled={!canConfig || !orgApplied || !draftCount || savingOrg}
                 onClick={() => apply()}
               >
                 Apply all
               </button>
               <button
                 type="button"
-                className="bm-btn bm-btn-primary bm-btn-lg"
-                disabled={!canConfig || !stagedCount || draftCount > 0 || savingOrg}
-                onClick={publishChanges}
+                className="bm-btn bm-btn-main"
+                disabled={!canConfig || !orgApplied || !stagedCount || draftCount > 0 || savingOrg}
+                onClick={() => publishChanges()}
               >
                 {savingOrg ? "Publishing…" : "Publish all"}
               </button>
             </div>
-          </section>
+          </div>
         </div>
 
-        <section className="bm-metrics" aria-label="Organization budget summary">
-          <div className="bm-metric">
-            <span>Org budget base</span>
-            <strong>{money(orgBase)}</strong>
+        <div className="bm-tiles" aria-label="Organization budget summary">
+          <div className="bm-tile">
+            <small>Org budget base</small>
+            <b>{money(orgBase)}</b>
           </div>
-          <div className="bm-metric">
-            <span>Original budget</span>
-            <strong>{orgPctEntered ? money(originalOrgBudget) : "—"}</strong>
+          <div className="bm-tile">
+            <small>Original budget</small>
+            <b>{orgPctEntered ? money(originalOrgBudget) : "—"}</b>
           </div>
-          <div
-            className="bm-metric bm-metric-highlight"
-            title={orgPending ? "Preview — not yet saved" : undefined}
-          >
-            <span>Updated budget</span>
-            <strong>{orgPctEntered ? money(displayedOrgUpdated) : "—"}</strong>
+          <div className="bm-tile bm-tile-hl">
+            <small>Updated budget</small>
+            <b>{orgPctEntered ? money(displayedOrgUpdated) : "—"}</b>
+            {orgPctEntered ? (orgPending ? <em className="bm-mut">Preview — not yet saved</em> : deltaNode(originalOrgBudget, displayedOrgUpdated)) : null}
           </div>
-          <div
-            className="bm-metric"
-            title={orgApplied ? money(previewTotal) + " allotted · " + (availableAfterAllocation < -0.5 ? "Over by " : "Balance ") + money(Math.abs(availableAfterAllocation)) : undefined}
-          >
-            <span>Allotted to Tech EDs</span>
-            <strong>{orgApplied && displayedOrgUpdated > 0 ? percent((previewTotal / displayedOrgUpdated) * 100) : "—"}</strong>
+          <div className="bm-tile">
+            <small>Allotted to Tech EDs</small>
+            <b>{orgApplied && displayedOrgUpdated > 0 ? percent((previewTotal / displayedOrgUpdated) * 100) : "—"}</b>
+            {orgApplied ? (
+              <em className="bm-mut">
+                {money(previewTotal)} of {money(displayedOrgUpdated)}
+                {availableAfterAllocation < -0.5 ? " · over by " + money(-availableAfterAllocation) : ""}
+              </em>
+            ) : null}
           </div>
-          <div
-            className="bm-metric"
-            title={orgApplied ? money(displayedUtilized) + " used of " + money(displayedOrgUpdated) : undefined}
-          >
-            <span>Budget utilised</span>
-            <strong>{orgApplied && displayedOrgUpdated > 0 ? percent((displayedUtilized / displayedOrgUpdated) * 100) : "—"}</strong>
+          <div className="bm-tile">
+            <small>Budget utilised</small>
+            <b>{orgApplied && displayedOrgUpdated > 0 ? percent((displayedUtilized / displayedOrgUpdated) * 100) : "—"}</b>
+            {orgApplied && displayedOrgUpdated > 0 ? <em className="bm-mut">{money(displayedUtilized)} of {money(displayedOrgUpdated)}</em> : null}
           </div>
-          <div className="bm-metric" title={orgApplied ? "Original to current eligible employees" : undefined}>
-            <span>Team count</span>
-            <strong>{orgApplied ? <>{orgOriginalCount} <i>→</i> {orgCurrentCount}</> : "—"}</strong>
+          <div className="bm-tile">
+            <small>Team count</small>
+            <b>{orgApplied ? <>{orgOriginalCount} → {orgCurrentCount}</> : "—"}</b>
           </div>
-        </section>
+        </div>
 
-        <span className="bm-section-chip">Tech EDs</span>
+        <span className="bm-chip">Tech EDs</span>
 
-        <section className="bm-table-card">
-          <div className="bm-table-scroll">
-            <table className="bm-table">
-              <thead>
-                <tr>
-                  {HR_COLS.map(([h, right]) => (
-                    <th key={h} className={right ? "bm-align-right" : ""}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {orgApplied && rows.length ? rows.map((r) => {
-                  const p = previewPct(r);
-                  const changing = Number(p) !== r.pct;
-                  const hasPending = Object.prototype.hasOwnProperty.call(pending, r.name);
-                  const open = !!history[r.name];
-                  const rowAudit = audit.filter((a) => a.owner === r.name);
-                  const sourceOverride =
-                    overrides[r.name] ||
-                    (hasPending && Number(p) !== amount(orgPct));
-                  const tdClass = changing ? "bm-pending-row" : "";
-                  return (
-                    <FragmentRow key={r.name}>
-                      <tr className={tdClass}>
-                        <td className="bm-owner-cell">
-                          <strong>{r.name}</strong>
-                          {changing ? <small>{hasPending ? "Pending edit" : "Applied · not published"}</small> : null}
-                        </td>
-                        <td className="bm-align-right bm-number">{money(r.base)}</td>
-                        <td className="bm-percent-cell">
-                          <div>
-                            <input
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="0.1"
-                              value={p}
-                              disabled={!canConfig}
-                              onChange={(e) => setRowPct(r.name, e.target.value)}
-                              aria-label={"Percentage for " + r.name}
-                            />
-                            <span className="bm-pct-suffix">%</span>
-                          </div>
-                          {changing ? <small>was {r.pct}%</small> : null}
-                          {sourceOverride ? (
-                            <div className="bm-source">
-                              <span className="bm-source-override">Override</span>
-                              <button type="button" className="bm-text-action" onClick={() => resetRow(r.name)}>Reset to org %</button>
-                            </div>
-                          ) : null}
-                        </td>
-                        <td className="bm-align-right bm-number">{money(previewBudget(r))}</td>
-                        <td className="bm-align-right bm-number">{money(r.original)}</td>
-                        <td className="bm-align-right bm-number bm-updated-cell">{money(r.updated)}</td>
-                        <td className="bm-align-right bm-number">{r.team0}</td>
-                        <td className="bm-align-right bm-number">{r.team}</td>
-                        <td>
+        <div className="bm-tw">
+          <table className="bm-table">
+            <thead>
+              <tr>
+                {HR_COLS.map(([h, right]) => (
+                  <th key={h} className={right ? "bm-n" : ""}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {orgApplied && rows.length ? rows.map((r) => {
+                const p = previewPct(r);
+                const changing = Number(p) !== r.pct;
+                const hasPending = Object.prototype.hasOwnProperty.call(pending, r.name);
+                const hasStaged = Object.prototype.hasOwnProperty.call(staged, r.name) &&
+                  Number(staged[r.name]) !== Number(r.pct);
+                const open = !!history[r.name];
+                const rowAudit = audit.filter((a) => a.owner === r.name);
+                const sourceOverride =
+                  overrides[r.name] ||
+                  (hasPending && Number(p) !== amount(orgPct));
+                const tag = hasStaged
+                  ? (r.pctSet ? "Change applied · not published (live " + Number(r.pct).toFixed(2) + ")" : "Applied · not published")
+                  : (!r.pctSet ? "No % yet" : "");
+                return (
+                  <FragmentRow key={r.name}>
+                    <tr className={"bm-data" + (hasPending ? " bm-edrow" : "")}>
+                      <td className="bm-rl">
+                        {r.name}
+                        {tag ? <> <span className="bm-tag">{tag}</span></> : null}
+                      </td>
+                      <td className="bm-n">{money(r.base)}</td>
+                      <td className="bm-in">
+                        <div className="bm-pin-cell">
                           <input
-                            type="text"
-                            className="bm-row-reason"
-                            placeholder="Reason"
-                            value={rowReasons[r.name] ?? stagedReasons[r.name] ?? ""}
-                            disabled={!canConfig || !hasPending}
-                            onChange={(e) => setRowReasons((x) => ({ ...x, [r.name]: e.target.value }))}
-                            aria-label={"Reason for " + r.name}
+                            className={"bm-pin" + (hasPending ? " ed" : "")}
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            placeholder="Enter %"
+                            value={p}
+                            disabled={!canConfig}
+                            title={changing ? Number(r.pct).toFixed(2) + " → " + Number(p).toFixed(2) + " (not applied yet)" : undefined}
+                            onChange={(e) => setRowPct(r.name, e.target.value)}
+                            aria-label={"Percentage for " + r.name}
                           />
-                        </td>
-                        <td>
+                        </div>
+                        {sourceOverride ? (
+                          <div className="bm-source">
+                            <span className="bm-source-override">Override</span>
+                            <button type="button" className="bm-text-action" onClick={() => resetRow(r.name)}>Reset to org %</button>
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="bm-n bm-calc">{money(previewBudget(r))}</td>
+                      <td className="bm-n">{money(r.original)}</td>
+                      <td className="bm-n">{money(r.updated)}</td>
+                      <td className="bm-n">{r.team0}</td>
+                      <td className="bm-n">{r.team}</td>
+                      <td>
+                        <input
+                          type="text"
+                          className="bm-txt bm-reason"
+                          placeholder="Reason (optional)"
+                          value={rowReasons[r.name] ?? stagedReasons[r.name] ?? ""}
+                          disabled={!canConfig || (!hasPending && !hasStaged)}
+                          readOnly={!hasPending && hasStaged}
+                          onChange={(e) => setRowReasons((x) => ({ ...x, [r.name]: e.target.value }))}
+                          aria-label={"Reason for " + r.name}
+                        />
+                      </td>
+                      <td className="bm-ract">
+                        <button
+                          type="button"
+                          className="bm-hbtn"
+                          disabled={!canConfig || !hasPending || savingOrg}
+                          onClick={() => apply(r.name)}
+                        >
+                          Apply
+                        </button>{" "}
+                        <button
+                          type="button"
+                          className="bm-hbtn bm-hbtn-pub"
+                          disabled={!canConfig || !hasStaged || hasPending || savingOrg}
+                          onClick={() => publishChanges(r.name)}
+                        >
+                          Publish
+                        </button>
+                      </td>
+                      <td>
+                        {canAudit ? (
                           <button
                             type="button"
-                            className="bm-btn bm-btn-sm"
-                            disabled={!canConfig || !hasPending || savingOrg}
-                            onClick={() => apply(r.name)}
+                            className="bm-hbtn"
+                            aria-expanded={open}
+                            onClick={() => setHistory((x) => ({ ...x, [r.name]: !x[r.name] }))}
                           >
-                            Update
+                            History {open ? "▴" : "▾"}
                           </button>
-                        </td>
-                        <td>
-                          {canAudit && (open || rowAudit.length > 0) ? (
-                            <button
-                              type="button"
-                              className="bm-history-btn"
-                              aria-expanded={open}
-                              onClick={() => setHistory((x) => ({ ...x, [r.name]: !x[r.name] }))}
-                            >
-                              {r.lastChanged} {open ? "▴" : "▾"}
-                            </button>
-                          ) : <span className="bm-muted">—</span>}
+                        ) : <span className="bm-mut">—</span>}
+                      </td>
+                    </tr>
+                    {open && canAudit ? (
+                      <tr className="bm-sub">
+                        <td colSpan={HR_COLS.length}>
+                          <div className="bm-hist"><AuditTable rows={rowAudit} /></div>
                         </td>
                       </tr>
-                      {open && canAudit ? (
-                        <tr>
-                          <td colSpan={HR_COLS.length} className="bm-audit-row">
-                            <AuditTable rows={rowAudit} />
-                          </td>
-                        </tr>
-                      ) : null}
-                    </FragmentRow>
-                  );
-                }) : (
-                  <tr><td colSpan={HR_COLS.length} className="bm-empty-row">
-                    {!orgApplied
-                      ? "Press Apply org % to load the Tech ED list from the Appraisal Sheet."
-                      : budgetLoading
-                        ? "Loading Tech ED budget rows…"
-                        : "No Tech ED assignments were found for this appraisal cycle."}
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                    ) : null}
+                  </FragmentRow>
+                );
+              }) : (
+                <tr><td colSpan={HR_COLS.length} className="bm-empty">
+                  {!orgApplied
+                    ? "Press Apply org % to load the Tech ED list from the Appraisal Sheet."
+                    : budgetLoading
+                      ? "Loading Tech ED budget rows…"
+                      : "No Tech ED assignments were found for this appraisal cycle."}
+                </td></tr>
+              )}
+              {orgApplied && rows.length ? (
+                <tr className="bm-tot">
+                  <td>Total</td>
+                  <td className="bm-n">{money(total.base)}</td>
+                  <td></td>
+                  <td className="bm-n">{money(totalsBudget)}</td>
+                  <td className="bm-n">{money(total.original)}</td>
+                  <td className="bm-n">{money(total.updated)}</td>
+                  <td className="bm-n">{total.team0}</td>
+                  <td className="bm-n">{total.team}</td>
+                  <td></td>
+                  <td></td>
+                  <td></td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
 
-        {!orgApplied ? (
-          <div className="bm-strip">Apply org % first to load the Tech ED list</div>
-        ) : (
-          <div className={"bm-strip " + (pendingCount ? "bm-strip-warn" : "bm-strip-idle")}>
-            <span className={pendingCount || stagedCount ? "bm-status-dot bm-status-dot-pending" : "bm-status-dot"} />
-            <span>{pendingCount ? pendingCount + " pending edit" + (pendingCount === 1 ? "" : "s") : stagedCount ? stagedCount + " applied, not published" : "No pending changes"}</span>
-          </div>
-        )}
+        <div className="bm-foot">
+          {!orgApplied
+            ? "Apply org % first to load the Tech ED list"
+            : stripMessage +
+              (stagedCount ? " · " + stagedCount + " applied, not published" : "") +
+              (notPublishedCount ? " · " + notPublishedCount + " Tech ED" + (notPublishedCount > 1 ? "s" : "") + " not published" : "")}
+        </div>
       </div>
     </div>
   );
@@ -1320,16 +1357,16 @@ export function BudgetMasterPage() {
   const [tab, setTab] = useState("apply");
 
   const tabClass = (active) =>
-    "-mb-px border-b-2 px-4 py-3 text-[17px] transition-colors " +
+    "h-11 border-b-2 px-1.5 text-[14px] transition-colors " +
     (active
       ? "border-[#102A43] font-extrabold text-[#102A43]"
-      : "border-transparent font-medium text-[#334E68] hover:text-[#102A43]");
+      : "border-transparent font-semibold text-[#4B5563] hover:text-[#102A43]");
 
   return (
     <div
       className="w-full"
       style={{
-        fontFamily: '"IBM Plex Sans", "Segoe UI", Arial, Helvetica, sans-serif',
+        fontFamily: '"Manrope", ui-sans-serif, system-ui, sans-serif',
         fontVariantNumeric: "tabular-nums",
         color: "#0f1f33",
       }}
@@ -1338,7 +1375,7 @@ export function BudgetMasterPage() {
         <>
           <div
             role="tablist"
-            className="mb-3 flex gap-2 border-b border-[#E3E9EF] bg-white px-2"
+            className="mb-2.5 flex items-center gap-5 border-b border-[#E5E7EB] bg-white px-5"
           >
             <button
               type="button"
