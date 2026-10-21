@@ -1245,8 +1245,9 @@ async function getEmployees(req, res) {
     appraisalRows,
     employeeMasterMap,
   );
+  const historyDatastore = catalyst.initialize(req, { scope: "admin" }).datastore();
   const allEmployees = await enrichPreviousAppraisalValues(
-    datastore,
+    historyDatastore,
     mergedEmployees,
     employeeMasterMap,
   );
