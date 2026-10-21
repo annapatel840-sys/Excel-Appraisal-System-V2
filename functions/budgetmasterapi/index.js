@@ -10,6 +10,7 @@ const TABLES = {
   comp: "74008000000023149", // Budget_Distribution_Comp
   payroll: "74008000000035326", // Payroll_Data
   cycles: "74008000000034190", // Appraisal_Cycle_Master
+  eligibility: "74008000000057046", // Eligibility_List
 };
 
 // CORS headers come from Catalyst (Authorized Domains); setting them here too
@@ -704,11 +705,12 @@ function pickColumn(columns, candidates, fallback) {
 async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   // Appraisal_Sheet provides the current roster and team assignments.
   // Payroll_Data + Appraisal_Cycle_Master provide prior-cycle CTC values.
-  const [appraisalRows, masterEmployeeRows, payrollRows, cycleRows] = await Promise.all([
+  const [appraisalRows, masterEmployeeRows, payrollRows, cycleRows, eligibilityRows] = await Promise.all([
     getAllRows(app, "Appraisal_Sheet"),
     getAllRows(app, "Employee_Master").catch(() => []),
     getAllRows(app, "Payroll_Data"),
     getAllRows(app, "Appraisal_Cycle_Master"),
+    getAllRows(app, "Eligibility_List").catch(() => []),
   ]);
   if (!appraisalRows.length) {
     throw new Error("Appraisal_Sheet returned no rows; cannot calculate budget bases.");
@@ -851,6 +853,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // and avoids relying on employee-screen field permissions for money fields.
     appraisalByEmployee.set(employeeId, {
       employeeId,
+      employee_master_row_id: idOf(masterRow),
       emp_id: String(firstValue(row, ["emp_id", "empId", "employee_id"]) || firstValue(masterRow, ["emp_id", "employee_id"]) || employeeId).trim(),
       name: personName,
       techEd,
@@ -886,6 +889,25 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     });
   });
   const employees = Array.from(appraisalByEmployee.values());
+  // Eligibility_List is cycle-scoped. Key by both Employee_Master ROWID and
+  // business Employee ID so foreign-key and legacy rows resolve consistently.
+  const eligibilityByCycleAndEmployee = new Map();
+  eligibilityRows.forEach((record) => {
+    const cycleId = String(firstValue(record, ["appraisal_cycle_id", "cycle_id"]) || "").trim();
+    const masterId = String(firstValue(record, ["employee_master_id", "employee_master_row_id"]) || "").trim();
+    const empId = employeeKeyFor(firstValue(record, ["emp_id", "employee_id", "emp_code"]));
+    const raw = String(firstValue(record, ["eligibility_status", "eligible_status", "eligibility"]) || "").trim().toLowerCase().replace(/[ _-]+/g, "");
+    if (!cycleId || !["eligible", "noteligible", "yes", "no", "true", "false", "1", "0", "ineligible"].includes(raw)) return;
+    const eligible = ["eligible", "yes", "true", "1"].includes(raw);
+    if (masterId) eligibilityByCycleAndEmployee.set(cycleId + "::row:" + masterId, { eligible, status: eligible ? "eligible" : "not eligible", record });
+    if (empId) eligibilityByCycleAndEmployee.set(cycleId + "::emp:" + empId, { eligible, status: eligible ? "eligible" : "not eligible", record });
+  });
+  const cycleEligibilityFor = (employee, cycleId) => {
+    const id = String(cycleId || "").trim();
+    return eligibilityByCycleAndEmployee.get(id + "::row:" + String(employee.employee_master_row_id || "").trim()) ||
+      eligibilityByCycleAndEmployee.get(id + "::emp:" + String(employee.employeeId || employee.emp_id || "").trim().toLowerCase()) ||
+      null;
+  };
   bundle.employeeRoster = employees.map((employee) => ({
     emp_id: employee.emp_id,
     name: employee.name,
@@ -1016,8 +1038,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         break;
       }
       const base = priorCtc === null ? employee.current_ctc : priorCtc;
+      const cycleEligibility = cycleEligibilityFor(employee, targetCycleId);
+      const eligible = cycleEligibility ? cycleEligibility.eligible : employee.eligible;
       return {
         ...employee,
+        eligible,
+        eligible_status: cycleEligibility ? cycleEligibility.status : employee.eligible_status,
         base,
         previous_appraisal_total_ctc_with_rewards: base,
         Previous_Appraisal_total_CTC_with_rewards: base,
@@ -1030,24 +1056,28 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const cycleId = String(master.appraisal_cycle_id || "").trim();
     if (!cycleId) continue;
     const employees = employeesForBudgetCycle(cycleId);
-    const orgBase = employees.reduce((sum, employee) => sum + employee.base, 0);
+    // Only employees eligible in THIS appraisal cycle participate in the
+    // Appraisal Sheet and organization/Tech-ED budget bases. Changes in the
+    // Eligibility List are picked up on the next calculation/read.
+    const eligibleEmployees = employees.filter((employee) => employee.eligible);
+    const orgBase = eligibleEmployees.reduce((sum, employee) => sum + employee.base, 0);
     const techBases = new Map(Array.from(techLabels.keys(), (key) => [key, { base: 0, count: 0 }]));
     const compBases = new Map(Array.from(compLabels.keys(), (key) => [key, { base: 0, count: 0 }]));
 
-    employees.forEach((employee) => {
+    eligibleEmployees.forEach((employee) => {
       const techKey = ownerKey(employee.techEd);
       const compKey = ownerKey(employee.compManager);
       if (techKey) {
         const tech = techBases.get(techKey) || { base: 0, count: 0 };
         tech.base += employee.base;
-        if (employee.eligible) tech.count += 1;
+        tech.count += 1;
         techBases.set(techKey, tech);
       }
       if (techKey && compKey) {
         const key = techKey + "::" + compKey;
         const comp = compBases.get(key) || { base: 0, count: 0 };
         comp.base += employee.base;
-        if (employee.eligible) comp.count += 1;
+        comp.count += 1;
         compBases.set(key, comp);
       }
     });
@@ -1079,7 +1109,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const savedOriginalBase = n(row.original_budget_base || row.original_base || row.budget_base);
       const savedOriginalBudget = n(row.calculated_budget);
       const savedBaseMatches = savedOriginalBase > 0 && Math.abs(savedOriginalBase - stats.base) < 0.5;
-      const hasOriginalSnapshot = savedOriginalBudget > 0 && savedBaseMatches;
+      const hasOriginalSnapshot = savedOriginalBudget >= stats.base - 0.5 && savedBaseMatches;
       const originalBase = hasOriginalSnapshot ? savedOriginalBase : stats.base;
       const canCreateOriginal = rawPct !== null || orgPctSet;
       const originalBudget = hasOriginalSnapshot
@@ -1192,7 +1222,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const orgPctSet = Boolean(master.budget_percentage_is_set);
     // A snapshot is valid only when it was calculated from the current source base.
     // >= (rather than >) is intentional: a legitimate initial 0% budget equals its base.
-    const hasOrgOriginalSnapshot = previousOrgOriginal > 0 && previousOrgBase > 0 &&
+    const hasOrgOriginalSnapshot = previousOrgOriginal >= orgBase - 0.5 && previousOrgBase > 0 &&
       Math.abs(previousOrgBase - orgBase) < 0.5;
     const orgOriginalBase = orgBase;
     const orgOriginal = hasOrgOriginalSnapshot
@@ -1212,7 +1242,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const currentCountField = ["current_headcount", "headcount"].find((key) => masterColumns.has(key));
       if (originalBaseField) orgFields[originalBaseField] = orgOriginalBase;
       if (currentBaseField) orgFields[currentBaseField] = orgBase;
-      if (originalCountField && !(n(master[originalCountField]) > 0)) orgFields[originalCountField] = employees.filter((employee) => employee.eligible).length;
+      if (originalCountField && !(n(master[originalCountField]) > 0)) orgFields[originalCountField] = eligibleEmployees.length;
       if (currentCountField) orgFields[currentCountField] = employees.filter((employee) => employee.eligible).length;
     }
     await masterTable.updateRow(orgFields);
