@@ -600,13 +600,13 @@ function HRApplyBudget() {
   };
 
   const previewBudget = (row) => row.base * (1 + previewPct(row) / 100);
-  // Reject the previous broken snapshot when it is smaller than the corrected
-  // prior-year expense base. A valid first-save snapshot is preserved thereafter.
+  // The API exposes org_budget_base as the LIVE eligible prior-cycle CTC sum.
+  // calculated_budget is the original budget captured on the first applied Org %;
+  // do not invalidate that snapshot just because payroll/eligibility changed later.
   const savedOrgBase = amount(selectedMaster?.org_budget_base);
   const savedOrgOriginal = amount(selectedMaster?.calculated_budget);
-  const hasValidOrgSnapshot = Math.abs(savedOrgBase - orgBaseFromRoster) < 0.5 &&
-    savedOrgBase >= 0 && savedOrgOriginal >= savedOrgBase &&
-    (savedOrgBase > 0 || orgBaseFromRoster === 0);
+  const hasValidOrgSnapshot = Boolean(selectedMaster?.budget_percentage_is_set) &&
+    savedOrgOriginal >= 0;
   const orgBase = orgBaseFromRoster;
   const effectiveOrgPct = orgPct === "" ? amount(selectedMaster?.budget_percentage) : amount(orgPct);
   const orgPctEntered = Boolean(selectedMaster?.budget_percentage_is_set) || orgPct !== "";
