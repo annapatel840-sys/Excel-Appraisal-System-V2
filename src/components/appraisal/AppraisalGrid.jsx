@@ -59,6 +59,7 @@ const WIDTHS = {
   wissenExperience: 100,
   totalExperience: 96,
   lastAppraisalDate: 140,
+  previousAppraisalTotalCtcWithRewards: 210,
   managerRating: 140,
   interviewCount: 86,
   rrPercent: 76,
