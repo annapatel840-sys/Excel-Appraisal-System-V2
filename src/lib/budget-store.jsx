@@ -138,8 +138,13 @@ export function BudgetProvider({ children }) {
     setLoading(true);
     setError("");
     try {
+      const budgetUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
+      budgetUrl.searchParams.set("_ts", String(Date.now()));
       const [budgetResponse, employeeResult] = await Promise.all([
-        catalystFetch(catalystFunctionUrl("budgetmasterapi")),
+        catalystFetch(budgetUrl.toString(), {
+          cache: "no-store",
+          headers: { Accept: "application/json", "Cache-Control": "no-cache", Pragma: "no-cache" },
+        }),
         fetchAllEligibleEmployees().then(
           (employees) => ({ employees }),
           (employeeError) => ({ employees: [], employeeError }),
