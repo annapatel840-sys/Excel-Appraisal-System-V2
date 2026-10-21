@@ -241,9 +241,16 @@ export const COLUMNS = [
   {
     key: "lastAppraisalDate",
     label: "Last Appraisal",
-    type: "date",
+    type: "text",
     editable: false,
-    width: 130,
+    width: 150,
+  },
+  {
+    key: "previousAppraisalTotalCtcWithRewards",
+    label: "Previous Appraisal Total CTC with Rewards",
+    type: "currency",
+    editable: false,
+    width: 210,
   },
   {
     key: "managerRating",
