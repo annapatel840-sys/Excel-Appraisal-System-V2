@@ -79,7 +79,14 @@ async function fetchAllEligibleEmployees() {
     url.searchParams.set("status", "all");
     url.searchParams.set("eligible", "all");
     url.searchParams.set("_ts", String(Date.now()));
-    const response = await catalystFetch(url.toString());
+    const response = await catalystFetch(url.toString(), {
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        "Cache-Control": "no-cache",
+        Pragma: "no-cache",
+      },
+    });
     let json = {};
     try {
       json = await response.json();
