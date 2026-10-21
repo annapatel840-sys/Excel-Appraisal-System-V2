@@ -1165,7 +1165,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       // retain a genuine baseline, but repair implausibly small old values.
       const canCreateOriginal = rawPct !== null || orgPctSet;
       const comparisonBase = savedOriginalBase > 0 ? savedOriginalBase : stats.base;
-      const snapshotLooksValid = savedOriginalBudget > 0 &&
+      const originalBasePlausible = savedOriginalBase <= 0 || stats.base <= 0 ||
+        savedOriginalBase >= stats.base * 0.01;
+      const snapshotLooksValid = savedOriginalBudget > 0 && originalBasePlausible &&
         (comparisonBase <= 0 || savedOriginalBudget >= comparisonBase * 0.5) &&
         (comparisonBase <= 0 || savedOriginalBudget <= comparisonBase * 2.5);
       const hasOriginalSnapshot = canCreateOriginal && (
@@ -1257,7 +1259,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       // Repair legacy tiny/invalid calculated amounts while preserving a valid
       // original CTC base and allocation share.
       const comparisonBase = savedOriginalBase > 0 ? savedOriginalBase : stats.base;
+      const originalBasePlausible = savedOriginalBase <= 0 || stats.base <= 0 ||
+        savedOriginalBase >= stats.base * 0.01;
       const snapshotLooksValid = Boolean(row.calculated_budget_is_set) && savedOriginalBudget > 0 &&
+        originalBasePlausible &&
         (comparisonBase <= 0 || savedOriginalBudget >= comparisonBase * 0.001) &&
         (comparisonBase <= 0 || savedOriginalBudget <= comparisonBase);
       const hasOriginalSnapshot = snapshotLooksValid;
@@ -1308,7 +1313,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // Old code treated any positive calculated_budget as a valid snapshot; a
     // bad value like 2 therefore survived every refresh. Check that it is in
     // the expected range for a budget derived from the saved original CTC base.
-    const orgSnapshotLooksValid = previousOrgOriginal > 0 &&
+    const orgOriginalBasePlausible = savedOrgOriginalBase <= 0 || orgBase <= 0 ||
+      savedOrgOriginalBase >= orgBase * 0.01;
+    const orgSnapshotLooksValid = previousOrgOriginal > 0 && orgOriginalBasePlausible &&
       (orgOriginalBaseCandidate <= 0 || previousOrgOriginal >= orgOriginalBaseCandidate * 0.5) &&
       (orgOriginalBaseCandidate <= 0 || previousOrgOriginal <= orgOriginalBaseCandidate * 2.5);
     const hasOrgOriginalSnapshot = orgPctSet && (
