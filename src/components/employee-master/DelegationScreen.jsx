@@ -476,6 +476,11 @@ export default function DelegationScreen({
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.ok)
       throw new Error(payload.error || "Unable to update delegation request.");
+    // A decision may change an employee's Tech-Ed/Comp Manager assignment.
+    // Refresh budget counts and utilization immediately after approval/rejection.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("appraisal:budget-data-updated"));
+    }
     return payload;
   };
 
