@@ -476,6 +476,10 @@ export default function DelegationScreen({
     const payload = await response.json().catch(() => ({}));
     if (!response.ok || !payload.ok)
       throw new Error(payload.error || "Unable to update delegation request.");
+    // Refresh budget counts after a delegation is approved or rejected.
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("appraisal:budget-data-updated"));
+    }
     return payload;
   };
 
