@@ -988,16 +988,38 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   // The active-cycle roster remains the API display roster, but historical budget
   // rows must not accidentally reuse the active cycle's prior-CTC values.
   const employeesForBudgetCycle = (targetCycleId) => {
-    const previousCycle = previousCycleFor(targetCycleId);
-    const previousId = previousCycle ? (cycleIdOf(previousCycle) || cycleNameOf(previousCycle).toLowerCase()) : "";
+    const currentCycle = currentCycleFor(targetCycleId);
+    const currentRank = currentCycle ? cycleRank(currentCycle) : cycleRank({ cycle_name: targetCycleId });
+    const closedCycles = cycleRows
+      .filter((cycle) => String(firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "").trim().toLowerCase() === "closed")
+      .filter((cycle) => cycleRank(cycle) > 0 && currentRank > 0 && cycleRank(cycle) < currentRank)
+      .sort((a, b) => cycleRank(b) - cycleRank(a));
     return employees.map((employee) => {
       const employeeKey = String(employee.employeeId || employee.emp_id || "").trim().toLowerCase();
-      const historyKey = previousId + "::" + employeeKey;
-      const previousRecord = previousCycle
-        ? historyRowsByCycleAndEmployee.get(historyKey) || historyRowsByCycleAndEmployee.get(cycleNameOf(previousCycle).toLowerCase() + "::" + employeeKey)
-        : null;
-      const priorCtc = previousCtc(previousRecord);
-      return { ...employee, base: priorCtc === null ? employee.current_ctc : priorCtc };
+      let priorCtc = null;
+      let priorCycleName = "";
+      for (const closedCycle of closedCycles) {
+        const cycleId = cycleIdOf(closedCycle);
+        const cycleName = cycleNameOf(closedCycle);
+        const historyKey = (cycleId || cycleName.toLowerCase()) + "::" + employeeKey;
+        const previousRecord = historyRowsByCycleAndEmployee.get(historyKey) ||
+          historyRowsByCycleAndEmployee.get(cycleName.toLowerCase() + "::" + employeeKey);
+        if (!previousRecord) continue;
+        const value = previousCtc(previousRecord);
+        if (value === null) continue;
+        priorCtc = value;
+        priorCycleName = cycleName;
+        break;
+      }
+      const base = priorCtc === null ? employee.current_ctc : priorCtc;
+      return {
+        ...employee,
+        base,
+        previous_appraisal_total_ctc_with_rewards: base,
+        Previous_Appraisal_total_CTC_with_rewards: base,
+        last_appraisal_date: priorCycleName || employee.last_appraisal_date,
+        last_appraisal_cycle_name: priorCycleName || employee.last_appraisal_cycle_name,
+      };
     });
   };
   for (const master of bundle.master) {
