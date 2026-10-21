@@ -591,6 +591,17 @@ function HRApplyBudget() {
     [rows],
   );
 
+  // Org headcount comes from the same cycle-scoped eligibility calculation as
+  // Org Budget Base. Fall back to the Tech-Ed roll-up only for older schemas.
+  const orgOriginalCountValue = selectedMaster?.original_headcount ?? selectedMaster?.allocation_headcount;
+  const orgCurrentCountValue = selectedMaster?.current_headcount ?? selectedMaster?.headcount;
+  const orgOriginalCount = orgOriginalCountValue !== null && orgOriginalCountValue !== undefined && String(orgOriginalCountValue).trim() !== ""
+    ? amount(orgOriginalCountValue)
+    : total.team0;
+  const orgCurrentCount = orgCurrentCountValue !== null && orgCurrentCountValue !== undefined && String(orgCurrentCountValue).trim() !== ""
+    ? amount(orgCurrentCountValue)
+    : total.team;
+
   // Saved Tech-Ed percentages remain independent of future Org % changes.
   const previewPct = (row) => {
     if (Object.prototype.hasOwnProperty.call(pending, row.name)) return Number(pending[row.name]);
@@ -600,13 +611,13 @@ function HRApplyBudget() {
   };
 
   const previewBudget = (row) => row.base * (1 + previewPct(row) / 100);
-  // Reject the previous broken snapshot when it is smaller than the corrected
-  // prior-year expense base. A valid first-save snapshot is preserved thereafter.
+  // The API exposes org_budget_base as the LIVE eligible prior-cycle CTC sum.
+  // calculated_budget is the original budget captured on the first applied Org %;
+  // do not invalidate that snapshot just because payroll/eligibility changed later.
   const savedOrgBase = amount(selectedMaster?.org_budget_base);
   const savedOrgOriginal = amount(selectedMaster?.calculated_budget);
-  const hasValidOrgSnapshot = Math.abs(savedOrgBase - orgBaseFromRoster) < 0.5 &&
-    savedOrgBase >= 0 && savedOrgOriginal >= savedOrgBase &&
-    (savedOrgBase > 0 || orgBaseFromRoster === 0);
+  const hasValidOrgSnapshot = Boolean(selectedMaster?.budget_percentage_is_set) &&
+    savedOrgOriginal >= 0;
   const orgBase = orgBaseFromRoster;
   const effectiveOrgPct = orgPct === "" ? amount(selectedMaster?.budget_percentage) : amount(orgPct);
   const orgPctEntered = Boolean(selectedMaster?.budget_percentage_is_set) || orgPct !== "";
@@ -953,8 +964,8 @@ function HRApplyBudget() {
         </div>
         <div className="bm-metric">
           <span>Team count</span>
-          <strong>{total.team0} <i>→</i> {total.team}</strong>
-          <small>Original to current eligible count</small>
+          <strong>{orgOriginalCount} <i>→</i> {orgCurrentCount}</strong>
+          <small>Original to current eligible employees</small>
         </div>
         <div className="bm-metric">
           <span>Budget utilized</span>

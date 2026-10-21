@@ -775,9 +775,17 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   const currentCycleId = currentCycle ? cycleIdOf(currentCycle) : "";
   const eligibilityByEmployee = new Map();
   eligibilityRows.forEach((record) => {
-    if (String(record?.appraisal_cycle_id ?? "") !== currentCycleId) return;
-    const masterId = String(record?.employee_master_id ?? "").trim();
-    const empId = String(record?.emp_id ?? "").trim().toLowerCase();
+    // Lookup columns may be returned as foreign-key objects, not plain strings.
+    const rawCycle = historyReference(record?.appraisal_cycle_id ?? record?.cycle_id ?? record?.cycleId);
+    const referencedCycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
+    const cycleAliases = [
+      rawCycle,
+      referencedCycle ? cycleIdOf(referencedCycle) : "",
+      referencedCycle ? historyCycleName(referencedCycle) : "",
+    ].filter(Boolean).map((value) => String(value).trim().toLowerCase());
+    if (!cycleAliases.includes(String(currentCycleId).toLowerCase())) return;
+    const masterId = historyReference(record?.employee_master_id ?? record?.employee_master_row_id).toLowerCase();
+    const empId = rowEmployeeKey(record?.emp_id ?? record?.employee_id ?? record?.emp_code, employeeMasterMap);
     const status = String(record?.eligibility_status ?? record?.eligible_status ?? "").trim().toLowerCase().replace(/[ _-]+/g, "");
     if (!status) return;
     // Only an explicit Eligible decision should enter the Appraisal Sheet.
@@ -834,7 +842,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const previousCycleName = prior ? historyCycleName(prior.cycle) : "";
     const label = prior ? previousCycleName : "New - " + currentYear;
     const master = empKey ? employeeMasterMap.get(empKey) : null;
-    const masterId = String(master?.ROWID ?? master?.rowid ?? master?.id ?? "").trim();
+    const masterId = String(master?.ROWID ?? master?.rowid ?? master?.id ?? "").trim().toLowerCase();
     const cycleEligibility = (masterId ? eligibilityByEmployee.get("row:" + masterId) : null) ||
       (empKey ? eligibilityByEmployee.get("emp:" + empKey) : null);
     return {

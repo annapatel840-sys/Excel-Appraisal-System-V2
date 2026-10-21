@@ -51,10 +51,14 @@ function mapMaster(row) {
   const utilized = n(value(row, "budget_utilized"));
   return {
     id: idOf(row),
-    appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
+    appraisal_cycle_id: cycleReference(value(row, "appraisal_cycle_id")),
     budget_percentage: n(value(row, "budget_percentage")),
     budget_percentage_is_set: value(row, "budget_percentage") !== "" && value(row, "budget_percentage") !== null && value(row, "budget_percentage") !== undefined,
     org_budget_base: n(value(row, "org_budget_base")),
+    original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
+    current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
+    original_headcount: value(row, "original_headcount") ?? value(row, "allocation_headcount"),
+    current_headcount: value(row, "current_headcount") ?? value(row, "headcount"),
     budget_utilized: utilized,
     calculated_budget: calculated,
     applied_budget: applied,
@@ -893,14 +897,14 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   // business Employee ID so foreign-key and legacy rows resolve consistently.
   const eligibilityByCycleAndEmployee = new Map();
   eligibilityRows.forEach((record) => {
-    const rawCycleId = String(firstValue(record, ["appraisal_cycle_id", "cycle_id", "cycleId"]) || "").trim();
+    const rawCycleId = cycleReference(firstValue(record, ["appraisal_cycle_id", "cycle_id", "cycleId"]));
     const referencedCycle = cycleById.get(rawCycleId) || cycleByName.get(rawCycleId.toLowerCase());
     const cycleAliases = [
       rawCycleId,
       referencedCycle ? cycleIdOf(referencedCycle) : "",
-      referencedCycle ? cycleNameOf(referencedCycle).toLowerCase() : "",
-    ].filter(Boolean);
-    const masterId = String(firstValue(record, ["employee_master_id", "employee_master_row_id", "employeeMasterRowId"]) || "").trim();
+      referencedCycle ? cycleNameOf(referencedCycle) : "",
+    ].filter(Boolean).map((alias) => String(alias).trim().toLowerCase());
+    const masterId = cycleReference(firstValue(record, ["employee_master_id", "employee_master_row_id", "employeeMasterRowId"])).toLowerCase();
     const empId = employeeKeyFor(firstValue(record, ["emp_id", "employee_id", "emp_code", "empId"]));
     const raw = String(firstValue(record, ["eligibility_status", "eligible_status", "eligibility"]) || "").trim().toLowerCase().replace(/[ _-]+/g, "");
     if (!rawCycleId || !raw) return;
@@ -914,10 +918,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     });
   });
   const cycleEligibilityFor = (employee, cycleId) => {
-    const rawId = String(cycleId || "").trim();
+    const rawId = cycleReference(cycleId);
     const cycle = currentCycleFor(rawId);
-    const aliases = [rawId, cycle ? cycleIdOf(cycle) : "", cycle ? cycleNameOf(cycle).toLowerCase() : ""].filter(Boolean);
-    const masterId = String(employee.employee_master_row_id || "").trim();
+    const aliases = [rawId, cycle ? cycleIdOf(cycle) : "", cycle ? cycleNameOf(cycle) : ""]
+      .filter(Boolean).map((alias) => String(alias).trim().toLowerCase());
+    const masterId = String(employee.employee_master_row_id || "").trim().toLowerCase();
     const empId = String(employee.employeeId || employee.emp_id || "").trim().toLowerCase();
     for (const alias of aliases) {
       const match = (masterId ? eligibilityByCycleAndEmployee.get(alias + "::row:" + masterId) : null) ||
@@ -1060,7 +1065,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       // Eligibility_List is the source of truth for each appraisal cycle.
       // Missing/Pending rows are not eligible, matching Appraisal Sheet's
       // explicit eligible filter instead of falling back to stale master data.
-      const eligible = Boolean(cycleEligibility && cycleEligibility.eligible);
+      // Match the Appraisal Sheet filter exactly: a cycle-specific Eligibility_List
+      // decision wins; when no decision exists, use the same Active + explicit/fallback
+      // eligibility rule as employeesapi so Org Base includes exactly displayed staff.
+      const eligible = cycleEligibility ? cycleEligibility.eligible : employee.eligible;
       return {
         ...employee,
         eligible,
@@ -1127,12 +1135,13 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const orgPct = n(master.budget_percentage);
       const orgPctSet = Boolean(master.budget_percentage_is_set);
       const effectivePct = rawPct === null ? orgPct : rawPct;
-      const savedOriginalBase = n(row.original_budget_base || row.original_base || row.budget_base);
+      const savedOriginalBase = n(row.original_budget_base || row.original_base);
       const savedOriginalBudget = n(row.calculated_budget);
-      const savedBaseMatches = savedOriginalBase > 0 && Math.abs(savedOriginalBase - stats.base) < 0.5;
-      const hasOriginalSnapshot = savedOriginalBudget >= stats.base - 0.5 && savedBaseMatches;
-      const originalBase = hasOriginalSnapshot ? savedOriginalBase : stats.base;
+      // Original allocation is a one-time snapshot. Eligibility and payroll changes
+      // update the live base and Updated Budget, not the captured Original Budget.
       const canCreateOriginal = rawPct !== null || orgPctSet;
+      const hasOriginalSnapshot = canCreateOriginal && (savedOriginalBudget > 0 || (stats.base === 0 && savedOriginalBase === 0));
+      const originalBase = hasOriginalSnapshot ? savedOriginalBase : stats.base;
       const originalBudget = hasOriginalSnapshot
         ? savedOriginalBudget
         : (canCreateOriginal ? (stats.base * (1 + effectivePct / 100)) : 0);
@@ -1153,8 +1162,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         const currentCountField = ["current_headcount", "headcount"].find((key) => distributionColumns.has(key));
         const currentBaseField = ["current_budget_base", "current_base"].find((key) => distributionColumns.has(key));
         const overrideField = ["override_percentage", "allocation_percentage"].find((key) => distributionColumns.has(key));
-        if (originalBaseField) update[originalBaseField] = originalBase;
-        if (originalCountField && !(n(row[originalCountField]) > 0)) update[originalCountField] = stats.count;
+        if (originalBaseField && canCreateOriginal && !hasOriginalSnapshot) update[originalBaseField] = stats.base;
+        if (originalCountField && canCreateOriginal && !hasOriginalSnapshot) update[originalCountField] = stats.count;
         if (currentCountField) update[currentCountField] = stats.count;
         if (currentBaseField) update[currentBaseField] = stats.base;
         if (overrideField && rawPct === null) update[overrideField] = effectivePct;
@@ -1162,13 +1171,14 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       await distributionTable.updateRow(update);
       Object.assign(row, {
         budget_base: stats.base,
+        original_budget_base: originalBase,
         percentage: rawPct === null && !orgPctSet ? null : effectivePct,
         override_percentage: rawPct === null && !orgPctSet ? null : (rawPct === null ? effectivePct : rawPct),
         calculated_budget: originalBudget,
         applied_budget: updatedBudget,
         effective_percentage: effectivePct,
         current_headcount: stats.count,
-        original_headcount: n(row.original_headcount) || stats.count,
+        original_headcount: hasOriginalSnapshot ? n(row.original_headcount || row.allocation_headcount) : (canCreateOriginal ? stats.count : n(row.original_headcount || row.allocation_headcount)),
       });
     }
 
@@ -1202,8 +1212,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       }
       const stats = compBases.get(pairKey) || { base: 0, count: 0 };
       const pct = n(row.percentage);
-      const savedOriginalBase = n(row.original_budget_base || row.original_base || row.budget_base);
-      const hasOriginalSnapshot = savedOriginalBase > 0 && Math.abs(savedOriginalBase - stats.base) < 0.5 && Boolean(row.calculated_budget_is_set);
+      const savedOriginalBase = n(row.original_budget_base || row.original_base);
+      // Keep the Comp Manager original base stable after its first calculated allocation.
+      const hasOriginalSnapshot = Boolean(row.calculated_budget_is_set) && savedOriginalBase > 0;
       const originalBase = hasOriginalSnapshot ? savedOriginalBase : stats.base;
       // Comp Manager % is an allocation share of the team CTC base, not an extra hike on top of that base.
       const originalBudget = hasOriginalSnapshot ? n(row.calculated_budget) : (originalBase * pct / 100);
@@ -1219,8 +1230,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => compColumns.has(key));
         const currentCountField = ["current_headcount", "headcount"].find((key) => compColumns.has(key));
         const currentBaseField = ["current_budget_base", "current_base"].find((key) => compColumns.has(key));
-        if (originalBaseField) update[originalBaseField] = originalBase;
-        if (originalCountField && !(n(row[originalCountField]) > 0)) update[originalCountField] = stats.count;
+        if (originalBaseField && !hasOriginalSnapshot) update[originalBaseField] = stats.base;
+        if (originalCountField && !hasOriginalSnapshot) update[originalCountField] = stats.count;
         if (currentCountField) update[currentCountField] = stats.count;
         if (currentBaseField) update[currentBaseField] = stats.base;
       }
@@ -1241,11 +1252,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const previousOrgOriginal = n(master.calculated_budget);
     const orgPct = n(master.budget_percentage);
     const orgPctSet = Boolean(master.budget_percentage_is_set);
-    // A snapshot is valid only when it was calculated from the current source base.
-    // >= (rather than >) is intentional: a legitimate initial 0% budget equals its base.
-    const hasOrgOriginalSnapshot = previousOrgOriginal >= orgBase - 0.5 && previousOrgBase > 0 &&
-      Math.abs(previousOrgBase - orgBase) < 0.5;
-    const orgOriginalBase = orgBase;
+    // Once the first Org % captures Original Budget, changes to eligibility/payroll
+    // update the live base and Updated Budget only; preserve the original snapshot.
+    const hasOrgOriginalSnapshot = orgPctSet && (previousOrgOriginal > 0 || (orgBase === 0 && previousOrgBase === 0));
+    const orgOriginalBase = hasOrgOriginalSnapshot
+      ? n(master.original_budget_base || master.original_base || previousOrgBase)
+      : orgBase;
     const orgOriginal = hasOrgOriginalSnapshot
       ? previousOrgOriginal
       : (orgPctSet ? (orgOriginalBase * (1 + orgPct / 100)) : 0);
@@ -1261,18 +1273,20 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const currentBaseField = ["current_budget_base", "current_base"].find((key) => masterColumns.has(key));
       const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => masterColumns.has(key));
       const currentCountField = ["current_headcount", "headcount"].find((key) => masterColumns.has(key));
-      if (originalBaseField) orgFields[originalBaseField] = orgOriginalBase;
+      if (originalBaseField && orgPctSet && !hasOrgOriginalSnapshot) orgFields[originalBaseField] = orgBase;
       if (currentBaseField) orgFields[currentBaseField] = orgBase;
-      if (originalCountField && !(n(master[originalCountField]) > 0)) orgFields[originalCountField] = eligibleEmployees.length;
-      if (currentCountField) orgFields[currentCountField] = employees.filter((employee) => employee.eligible).length;
+      if (originalCountField && orgPctSet && !hasOrgOriginalSnapshot) orgFields[originalCountField] = eligibleEmployees.length;
+      if (currentCountField) orgFields[currentCountField] = eligibleEmployees.length;
     }
     await masterTable.updateRow(orgFields);
     Object.assign(master, {
-      org_budget_base: orgOriginalBase,
+      org_budget_base: orgBase,
+      original_budget_base: orgOriginalBase,
       calculated_budget: orgOriginal,
       applied_budget: orgUpdated,
       current_budget_base: orgBase,
-      current_headcount: employees.filter((employee) => employee.eligible).length,
+      current_headcount: eligibleEmployees.length,
+      original_headcount: hasOrgOriginalSnapshot ? n(master.original_headcount || master.allocation_headcount) : (orgPctSet ? eligibleEmployees.length : n(master.original_headcount || master.allocation_headcount)),
     });
   }
 
