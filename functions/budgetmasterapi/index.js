@@ -330,7 +330,7 @@ function normalizedIdentity(raw) {
     }
     return "";
   }
-  return String(raw).trim().split(/\\s+-\\s+/)[0].trim().toLowerCase();
+  return String(raw).trim().split(/\s+-\s+/)[0].trim().toLowerCase();
 }
 
 function cycleNameOf(cycle) {
@@ -348,14 +348,14 @@ function cycleRank(cycle) {
     if (Number.isFinite(timestamp)) return timestamp;
   }
   const name = cycleNameOf(cycle);
-  const monthYear = name.match(/\\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\\s,]*(\\d{2,4})\\b/i);
+  const monthYear = name.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s,]*(\d{2,4})\b/i);
   if (monthYear) {
     const month = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(monthYear[1].slice(0,3).toLowerCase());
     let year = Number(monthYear[2]);
     if (year < 100) year += 2000;
     return new Date(year, month, 1).getTime();
   }
-  const yearMatch = name.match(/(?:19|20)\\d{2}/);
+  const yearMatch = name.match(/(?:19|20)\d{2}/);
   return yearMatch ? new Date(Number(yearMatch[0]), 0, 1).getTime() : 0;
 }
 
@@ -802,8 +802,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const previousAppraisalCtc = previousRecord ? previousCtc(previousRecord) : currentCtcValue;
     const currentCycle = currentCycleFor(currentCycleId);
     const currentCycleName = cycleNameOf(currentCycle) || currentCycleId;
-    const currentYearFull = currentCycleName.match(/(?:19|20)\\d{2}/);
-    const currentYearShort = currentCycleName.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\\s]*(\\d{2})/i);
+    const currentYearFull = currentCycleName.match(/(?:19|20)\d{2}/);
+    const currentYearShort = currentCycleName.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*(\d{2})/i);
     const currentYear = currentYearFull ? currentYearFull[0] : currentYearShort ? "20" + currentYearShort[1] : currentCycleName;
     const lastAppraisalLabel = previousRecord ? cycleNameOf(previousCycle) : "New - " + currentYear;
     const basePay = n(firstValue(row, [
