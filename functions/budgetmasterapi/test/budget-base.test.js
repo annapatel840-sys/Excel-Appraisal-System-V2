@@ -130,7 +130,25 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(existing.last_appraisal_date, 'Apr-25');
     assert.strictEqual(fresh.previous_appraisal_total_ctc_with_rewards, 905000);
     assert.strictEqual(fresh.last_appraisal_date, 'New - 2026');
-    assert.strictEqual(r.json.master[0].calculated_budget, (2500000 + 905000) * 1.08);
+    const orgBase = 2500000 + 905000;
+    const orgOriginal = orgBase * 1.08;
+    assert.strictEqual(r.json.master[0].calculated_budget, orgOriginal);
+    const techRow = r.json.techEd[0];
+    const techBase = techRow.budget_base;
+    const techOriginal = techRow.calculated_budget;
+    assert.strictEqual(techOriginal, techBase * 1.08);
+
+    // Changing Org and Tech-Ed percentages must change updated budgets only.
+    store.tables.Budget_Master[0].budget_percentage = 10;
+    const savedTech = store.tables.Budget_Distribution.find((row) => String(row.ROWID) === String(techRow.id));
+    savedTech.percentage = 10;
+    const changed = await call(load(store), 'GET');
+    assert.strictEqual(changed.status, 200, JSON.stringify(changed.json));
+    assert.strictEqual(changed.json.master[0].calculated_budget, orgOriginal);
+    assert.strictEqual(changed.json.master[0].applied_budget, orgBase * 1.10);
+    const changedTech = changed.json.techEd.find((row) => String(row.id) === String(techRow.id));
+    assert.strictEqual(changedTech.calculated_budget, techOriginal);
+    assert.strictEqual(changedTech.applied_budget, techBase * 1.10);
   });
 
   await t('empty pay columns: base 0 with a clear warning', async () => {
