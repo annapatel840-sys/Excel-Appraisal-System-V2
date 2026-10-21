@@ -591,6 +591,17 @@ function HRApplyBudget() {
     [rows],
   );
 
+  // Org headcount comes from the same cycle-scoped eligibility calculation as
+  // Org Budget Base. Fall back to the Tech-Ed roll-up only for older schemas.
+  const orgOriginalCountValue = selectedMaster?.original_headcount ?? selectedMaster?.allocation_headcount;
+  const orgCurrentCountValue = selectedMaster?.current_headcount ?? selectedMaster?.headcount;
+  const orgOriginalCount = orgOriginalCountValue !== null && orgOriginalCountValue !== undefined && String(orgOriginalCountValue).trim() !== ""
+    ? amount(orgOriginalCountValue)
+    : total.team0;
+  const orgCurrentCount = orgCurrentCountValue !== null && orgCurrentCountValue !== undefined && String(orgCurrentCountValue).trim() !== ""
+    ? amount(orgCurrentCountValue)
+    : total.team;
+
   // Saved Tech-Ed percentages remain independent of future Org % changes.
   const previewPct = (row) => {
     if (Object.prototype.hasOwnProperty.call(pending, row.name)) return Number(pending[row.name]);
@@ -953,8 +964,8 @@ function HRApplyBudget() {
         </div>
         <div className="bm-metric">
           <span>Team count</span>
-          <strong>{total.team0} <i>→</i> {total.team}</strong>
-          <small>Original to current eligible count</small>
+          <strong>{orgOriginalCount} <i>→</i> {orgCurrentCount}</strong>
+          <small>Original to current eligible employees</small>
         </div>
         <div className="bm-metric">
           <span>Budget utilized</span>
