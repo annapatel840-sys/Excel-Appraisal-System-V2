@@ -335,15 +335,15 @@ export function BudgetProvider({ children }) {
   }, [load]);
 
   useEffect(() => {
-    const refreshBudgetAfterPayrollUpload = () => {
-      load();
-    };
+    const refreshBudget = () => { load(); };
     if (typeof window !== "undefined") {
-      window.addEventListener("appraisal:payroll-data-updated", refreshBudgetAfterPayrollUpload);
+      window.addEventListener("appraisal:payroll-data-updated", refreshBudget);
+      window.addEventListener("appraisal:budget-data-updated", refreshBudget);
     }
     return () => {
       if (typeof window !== "undefined") {
-        window.removeEventListener("appraisal:payroll-data-updated", refreshBudgetAfterPayrollUpload);
+        window.removeEventListener("appraisal:payroll-data-updated", refreshBudget);
+        window.removeEventListener("appraisal:budget-data-updated", refreshBudget);
       }
     };
   }, [load]);
