@@ -365,7 +365,12 @@ function currentCtc(row) {
     "total_ctc_with_rewards", "total_CTC_with_rewards", "total_ctc", "new_ctc", "newCTC",
     "totalCTCWithRewards", "total_ctc_with_rewards_current",
   ]);
-  if (stored !== "" && stored !== null && stored !== undefined) return n(stored);
+  if (stored !== "" && stored !== null && stored !== undefined) {
+    const parsed = Number(String(stored).replace(/[₹,\s]/g, ""));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  // Match employeesapi: if the stored total is blank/invalid, reconstruct from
+  // current Appraisal Sheet components rather than treating invalid text as 0.
   // The current Appraisal Sheet computes Total CTC with Rewards as next-year
   // base salary plus total bonus: (current base + hike) + (allocated PB + new PB + new RB).
   return n(firstValue(row, ["current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "base_pay"])) +
@@ -379,7 +384,12 @@ function previousCtc(record) {
   const raw = firstValue(record, [
     "total_ctc_with_rewards", "total_CTC_with_rewards", "totalCTCWithRewards", "total_ctc", "new_ctc", "newCTC",
   ]);
-  if (raw !== "" && raw !== null && raw !== undefined) return n(raw);
+  if (raw !== "" && raw !== null && raw !== undefined) {
+    const parsed = Number(String(raw).replace(/[₹,\s]/g, ""));
+    // employeesapi ignores a payroll row with a non-numeric stored total too.
+    if (Number.isFinite(parsed)) return parsed;
+    return null;
+  }
 
   // Payroll rows may not persist the computed total column. Recreate the same
   // Total CTC with Rewards formula from that historical row's own values.
