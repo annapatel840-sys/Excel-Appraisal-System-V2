@@ -23,7 +23,9 @@ function number(value) {
 function normalizeRow(row) {
   const calculated = number(row.calculated_budget);
   const applied = number(row.applied_budget);
-  const utilized = number(row.budget_utilized ?? row.total_utilization);
+  // A zero in one alias must not mask a populated utilization field.
+  const utilized = number(row.budget_utilized) || number(row.total_utilization) ||
+    number(row.utilized_amount) || number(row.utilized);
   return {
     ...row,
     id: String(row.id || ""),
@@ -38,7 +40,8 @@ function normalizeRow(row) {
     updated_budget: applied,
     calculated_budget: calculated,
     applied_budget: applied,
-    total_utilization: number(row.total_utilization ?? row.budget_utilized),
+    total_utilization: number(row.total_utilization) || number(row.budget_utilized) ||
+      number(row.utilized_amount) || number(row.utilized),
     utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
   };
 }
@@ -331,15 +334,15 @@ export function BudgetProvider({ children }) {
   }, [load]);
 
   useEffect(() => {
-    const refreshBudgetAfterPayrollUpload = () => {
-      load();
-    };
+    const refreshBudget = () => { load(); };
     if (typeof window !== "undefined") {
-      window.addEventListener("appraisal:payroll-data-updated", refreshBudgetAfterPayrollUpload);
+      window.addEventListener("appraisal:payroll-data-updated", refreshBudget);
+      window.addEventListener("appraisal:budget-data-updated", refreshBudget);
     }
     return () => {
       if (typeof window !== "undefined") {
-        window.removeEventListener("appraisal:payroll-data-updated", refreshBudgetAfterPayrollUpload);
+        window.removeEventListener("appraisal:payroll-data-updated", refreshBudget);
+        window.removeEventListener("appraisal:budget-data-updated", refreshBudget);
       }
     };
   }, [load]);
