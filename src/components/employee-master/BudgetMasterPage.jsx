@@ -328,7 +328,7 @@ const BUDGET_MASTER_CSS = `
 .bm-action-controls input{height:35px;min-width:190px;max-width:420px;flex:1;border:1px solid #cbd3df;border-radius:5px;padding:0 10px;font-size:12px}
 .bm-footer-note{font-size:10.5px;color:#64748b;padding:0 2px 4px}
 .bm-root .bm-audit-row .w-full{min-width:900px}
-@media(max-width:1050px){.bm-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}.bm-control-grid{grid-template-columns:1fr}}
+@media(max-width:1050px){.bm-control-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.bm-page-head h2{font-size:20px}.bm-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.bm-control-card{padding:12px}.bm-action-bar{align-items:flex-start}.bm-action-controls{justify-content:flex-start}.bm-action-controls input{flex-basis:100%;max-width:none}}
 @media(max-width:420px){.bm-root{padding:8px}.bm-metrics{grid-template-columns:1fr}.bm-table-heading{align-items:flex-start}.bm-tech-summary{grid-template-columns:1fr 1fr}}
 `;
