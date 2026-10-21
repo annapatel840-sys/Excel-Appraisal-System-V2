@@ -49,6 +49,13 @@ const PANEL_STEP = 40; // each − / + click
 const PANEL_MIN_WIDTH = 280;
 const PANEL_MAX_WIDTH = 720;
 
+// PB / RB entered on the sheet cannot be lower than the "to be Paid" amounts
+// (last annual cycle), the same rule the Detail screen applies.
+const PAY_FLOOR_FIELDS = {
+  allocatedPBAmount: { floorKey: "pbToBePaid", floorLabel: "PB to be Paid" },
+  newRB: { floorKey: "rbToBePaid", floorLabel: "RB to be Paid" },
+};
+
 const WIDTHS = {
   empId: 84,
   name: 190, // combined Employee column (id - name on top, designation below)
@@ -2742,6 +2749,25 @@ export function AppraisalGrid({
         return;
       }
 
+      const payFloor = PAY_FLOOR_FIELDS[col.key];
+
+      if (payFloor && isNumericType(col.type)) {
+        const floor = Number(row[payFloor.floorKey]) || 0;
+        const entered = raw === "" ? 0 : Number(numericValue(raw)) || 0;
+        const stored = Number(row[col.key]) || 0;
+
+        // A cell left as it was is not an edit, so it is never rejected.
+        if (floor > 0 && entered !== stored && entered < floor) {
+          showToast({
+            mode: "error",
+            label: col.label,
+            message: `${col.label} can't be less than ${payFloor.floorLabel} (${formatHistoryNumber(floor)}). Not saved.`,
+            ...(anchor ? toastPosition(anchor) : { left: 8, top: 8 }),
+          });
+          return;
+        }
+      }
+
       if (col.key === "hikePct" || col.key === "hikeAmount") {
         const outcome =
           col.key === "hikePct"
@@ -2817,6 +2843,7 @@ export function AppraisalGrid({
       flashHistoryFields,
       showYoyToast,
       showChangeToast,
+      showToast,
     ],
   );
 
@@ -3034,6 +3061,7 @@ export function AppraisalGrid({
 
       event.preventDefault();
 
+
       const direction = event.shiftKey ? -1 : 1;
 
       for (
@@ -3042,6 +3070,7 @@ export function AppraisalGrid({
         nextRowIndex += direction
       ) {
         const nextRow = displayRows[nextRowIndex];
+
 
         if (nextRow && isColumnEditable(nextRow, columnDef)) {
           focusCell(nextRowIndex, columnKey);
@@ -3626,7 +3655,6 @@ export function AppraisalGrid({
               });
             }
           }}
-        
           onChange={(event) => {
             const value = event.target.value;
             setEditingValue(cellKey, value);
@@ -3927,6 +3955,10 @@ export function AppraisalGrid({
 
   const toastParts = cellToast
     ? (() => {
+        if (cellToast.mode === "error") {
+          return { error: true, message: cellToast.message };
+        }
+
         const diff = cellToast.currentValue - cellToast.priorValue;
         const change = computeHistoryChange(
           cellToast.currentValue,
@@ -4550,7 +4582,21 @@ export function AppraisalGrid({
 
       {/* CHANGE TOAST */}
 
-      {cellToast && toastParts && (
+      {cellToast && toastParts?.error && (
+        <div
+          role="alert"
+          className="pointer-events-none fixed z-[10000] max-w-[300px] rounded-md bg-[#b42318] px-3 py-2 text-[12px] font-semibold leading-snug text-white shadow-[0_6px_18px_rgba(20,30,50,.28)]"
+          style={{
+            left: cellToast.left,
+            top: cellToast.top,
+            fontFamily: APPRAISAL_FONT,
+          }}
+        >
+          {toastParts.message}
+        </div>
+      )}
+
+      {cellToast && toastParts && !toastParts.error && (
         <div
           className="pointer-events-none fixed z-[10000] max-w-[280px] rounded-md bg-[#17365d] px-3 py-2 text-[12px] leading-snug text-white shadow-[0_6px_18px_rgba(20,30,50,.28)]"
           style={{

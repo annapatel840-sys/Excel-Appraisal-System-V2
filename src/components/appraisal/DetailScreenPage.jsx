@@ -19,6 +19,11 @@ import {
 import { createPortal } from "react-dom";
 import { Bell } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
+import {
+  BudgetStatsBar,
+  resolveBudgetAllocated,
+  sumBudgetConsumed,
+} from "./BudgetStatsBar";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
@@ -510,7 +515,7 @@ function BudgetBanner({ notice, open, onGotIt, onShow, onViewBudget }) {
 
   // Same size and look as the notice on the Appraisal Sheet.
   return (
-    <div className="flex items-center gap-3 rounded-md border border-[#e3e9ec] bg-white px-3 py-1.5">
+    <div className="flex h-full items-center gap-3 rounded-md border border-[#e3e9ec] bg-white px-3 py-1.5">
       <span className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-[#102a43]">
         <span className="text-[#b42318]">▲</span>
         Budget changed
@@ -954,7 +959,13 @@ export function DetailScreenPage({
 } = {}) {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
   const currentCycleName = useCurrentCycleName() || CURRENT_CYCLE;
-  const { currentUser, isHR } = useBudget();
+  const {
+    currentUser,
+    isHR,
+    totals: budgetMasterTotals,
+    loading: budgetLoading,
+    error: budgetError,
+  } = useBudget();
   const catalystUser = useCatalystUser();
   const role = String(catalystUser?.role || "")
     .trim()
@@ -975,6 +986,15 @@ export function DetailScreenPage({
     [liveRows],
   );
   const isScopedToTeam = isTechEd || rows.length > 0;
+
+  // Budget summary shown beside the notice (same numbers as the Appraisal Sheet).
+  const budgetConsumed = useMemo(() => sumBudgetConsumed(rows), [rows]);
+  const { allocated: budgetAllocated, isEstimate: budgetIsEstimate } =
+    resolveBudgetAllocated({
+      totals: budgetMasterTotals,
+      loading: budgetLoading,
+      error: budgetError,
+    });
 
   const [index, setIndex] = useState(0);
   const [search, setSearch] = useState("");
@@ -1500,13 +1520,35 @@ export function DetailScreenPage({
           className="flex flex-col gap-2"
           style={{ padding: "6px 12px 2px", minWidth: 0 }}
         >
-          <BudgetBanner
-            notice={budgetNotice}
-            open={noticeOpen}
-            onGotIt={() => setNoticeOpen(false)}
-            onShow={() => setNoticeOpen(true)}
-            onViewBudget={handleViewBudget}
-          />
+          {/* Notice (half width) + budget summary bar beside it */}
+          <div className="flex items-stretch gap-2">
+            {budgetNotice && noticeOpen && (
+              <div className="w-[calc(50%-4px)] min-w-0">
+                <BudgetBanner
+                  notice={budgetNotice}
+                  open
+                  onGotIt={() => setNoticeOpen(false)}
+                  onShow={() => setNoticeOpen(true)}
+                  onViewBudget={handleViewBudget}
+                />
+              </div>
+            )}
+            <BudgetStatsBar
+              className="ml-auto w-[calc(50%-4px)]"
+              allocated={budgetAllocated}
+              consumed={budgetConsumed}
+              isEstimate={budgetIsEstimate}
+            />
+            {budgetNotice && !noticeOpen && (
+              <BudgetBanner
+                notice={budgetNotice}
+                open={false}
+                onGotIt={() => setNoticeOpen(false)}
+                onShow={() => setNoticeOpen(true)}
+                onViewBudget={handleViewBudget}
+              />
+            )}
+          </div>
         </div>
 
         {!employee ? (

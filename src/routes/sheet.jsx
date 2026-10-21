@@ -3,9 +3,6 @@ import {
   ChevronDown,
   Download,
   History,
-  WalletCards,
-  CircleDollarSign,
-  Percent,
   RotateCcw,
   Search,
   Upload,
@@ -15,6 +12,11 @@ import {
 import { AppShell } from "@/components/appraisal/AppShell";
 import { AppraisalGrid } from "@/components/appraisal/AppraisalGrid";
 import { AuditPanel } from "@/components/appraisal/AuditTrail";
+import {
+  BudgetStatsBar,
+  resolveBudgetAllocated,
+  sumBudgetConsumed,
+} from "@/components/appraisal/BudgetStatsBar";
 import { useAppraisalImport } from "@/components/appraisal/ImportAppraisalButton"; // <-- update path if your file is named differently
 
 import { Button } from "@/components/ui/button";
@@ -45,18 +47,6 @@ import { useSettings } from "@/lib/settings-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
 // ============================================================
-// BUDGET
-// The real total comes from Budget Master (budget store). This demo
-// value is only a fallback when that data is unavailable, and is
-// labelled as an estimate in the header.
-// ============================================================
-
-const FALLBACK_BUDGET_ALLOCATED = 42500000; // ₹ 4.25 Cr (estimate)
-const ONE_CRORE = 10000000;
-
-const formatCrore = (amount) => `₹ ${(amount / ONE_CRORE).toFixed(2)} Cr`;
-
-// ============================================================
 // APPRAISAL SHEET BUDGET NOTICE
 // Same budget-change message used by Detailed Screen.
 // ============================================================
@@ -74,7 +64,7 @@ function BudgetNotice({ notice, onGotIt }) {
     `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`;
 
   return (
-    <div className="flex items-center gap-3 rounded-md border border-[#e3e9ec] bg-white px-3 py-1.5">
+    <div className="flex h-full items-center gap-3 rounded-md border border-[#e3e9ec] bg-white px-3 py-1.5">
       <span className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-[#102a43]">
         <span className="text-[#b42318]">▲</span>
         Budget changed
@@ -94,32 +84,6 @@ function BudgetNotice({ notice, onGotIt }) {
       >
         Got it
       </button>
-    </div>
-  );
-}
-
-// ============================================================
-// HEADER COUNTER
-// ============================================================
-
-function BudgetCounter({ label, value, valueClassName, title }) {
-  return (
-    <div
-      className="shrink-0 border-l border-white/25 pl-4 text-right"
-      title={title}
-    >
-      <span className="block whitespace-nowrap text-[10px] leading-tight text-white/75">
-        {label}
-      </span>
-
-      <strong
-        className={cn(
-          "block whitespace-nowrap text-[15px] font-bold leading-tight text-white",
-          valueClassName,
-        )}
-      >
-        {value}
-      </strong>
     </div>
   );
 }
@@ -262,89 +226,18 @@ export function SheetPage() {
   // Utilisation = Consumed as a percentage of Budget Allocated.
   // ============================================================
 
-  const budgetConsumed = useMemo(
-    () =>
-      filtered.reduce(
-        (sum, row) =>
-          sum +
-          (Number(row.allocatedPBAmount) || 0) +
-          (Number(row.newRB) || 0) +
-          (Number(row.hikeAmount) || 0),
-        0,
-      ),
-    [filtered],
-  );
+  const budgetConsumed = useMemo(() => sumBudgetConsumed(filtered), [filtered]);
 
-  const realBudget =
-    !budgetLoading && !budgetError ? Number(budgetMasterTotals?.updated) || 0 : 0;
-  const budgetIsEstimate = realBudget <= 0;
-  const budgetAllocated = budgetIsEstimate
-    ? FALLBACK_BUDGET_ALLOCATED
-    : realBudget;
+  const { allocated: budgetAllocated, isEstimate: budgetIsEstimate } =
+    resolveBudgetAllocated({
+      totals: budgetMasterTotals,
+      loading: budgetLoading,
+      error: budgetError,
+    });
 
-  const budgetUtilisation = budgetAllocated
-    ? (budgetConsumed / budgetAllocated) * 100
-    : 0;
-
-  const utilisationTone =
-    budgetUtilisation > 100
-      ? "text-[#ff9a8a]"
-      : budgetUtilisation > 85
-        ? "text-[#ffcf70]"
-        : "";
-
-  // ============================================================
-  // HEADER: Show History + budget counters
-  // ============================================================
-
+  // The three budget values now sit beside the budget notice (see below),
+  // no longer in the top nav.
   const budgetVertical = settings.menuPosition === "left";
-  // The sidebar now auto-collapses unless explicitly pinned open.
-  const budgetCollapsed = budgetVertical && !settings.menuPinned;
-
-  const fullBudgetCounters = (
-    <div className={cn(
-      "flex min-w-0",
-      budgetVertical ? "w-full flex-col gap-2" : "items-center gap-4",
-      budgetCollapsed && "hidden group-hover/nav:flex",
-    )}>
-      <BudgetCounter
-        label={budgetIsEstimate ? "Budget Allocated (est.)" : "Budget Allocated"}
-        title={
-          budgetIsEstimate
-            ? "Estimate — Budget Master data is unavailable"
-            : "Total from Budget Master"
-        }
-        value={formatCrore(budgetAllocated)}
-      />
-      <BudgetCounter
-        label="Consumed (Hikes + Bonuses)"
-        title="Hike Amount + Total Bonus, this cycle"
-        value={formatCrore(budgetConsumed)}
-      />
-      <BudgetCounter
-        label="Utilisation"
-        value={`${budgetUtilisation.toFixed(1)}%`}
-        valueClassName={utilisationTone}
-      />
-    </div>
-  );
-
-  const headerActions = budgetCollapsed ? (
-    <>
-      <div className="flex flex-col items-center gap-1 group-hover/nav:hidden">
-        <span title={`Budget Allocated: ${formatCrore(budgetAllocated)}`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
-          <WalletCards className="size-4" />
-        </span>
-        <span title={`Consumed (Hikes + Bonuses): ${formatCrore(budgetConsumed)}`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
-          <CircleDollarSign className="size-4" />
-        </span>
-        <span title={`Utilisation: ${budgetUtilisation.toFixed(1)}%`} className="flex size-7 items-center justify-center rounded-md text-white/85 hover:bg-white/10">
-          <Percent className="size-4" />
-        </span>
-      </div>
-      {fullBudgetCounters}
-    </>
-  ) : fullBudgetCounters;
 
   return (
     <>
@@ -353,12 +246,25 @@ export function SheetPage() {
         .appraisal-budget-marquee:hover{animation-play-state:paused}
         @keyframes appraisalBudgetMarquee{from{transform:translateX(0)}to{transform:translateX(-100%)}}
       `}</style>
-      <AppShell headerActions={headerActions}>
+      <AppShell>
         <div className={cn("flex min-h-0 flex-1 flex-col gap-2", budgetVertical && "pl-1 pr-0 pt-0")}>
-          <BudgetNotice
-            notice={budgetNoticeOpen ? BUDGET_NOTICE_PLACEHOLDER : null}
-            onGotIt={() => setBudgetNoticeOpen(false)}
-          />
+          {/* Notice (half width) + budget summary bar beside it */}
+          <div className="flex items-stretch gap-2">
+            {budgetNoticeOpen && (
+              <div className="w-[calc(50%-4px)] min-w-0">
+                <BudgetNotice
+                  notice={BUDGET_NOTICE_PLACEHOLDER}
+                  onGotIt={() => setBudgetNoticeOpen(false)}
+                />
+              </div>
+            )}
+            <BudgetStatsBar
+              className="ml-auto w-[calc(50%-4px)]"
+              allocated={budgetAllocated}
+              consumed={budgetConsumed}
+              isEstimate={budgetIsEstimate}
+            />
+          </div>
 
           {(saveError || loadError) && (
             <div
