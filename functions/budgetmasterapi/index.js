@@ -893,20 +893,38 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   // business Employee ID so foreign-key and legacy rows resolve consistently.
   const eligibilityByCycleAndEmployee = new Map();
   eligibilityRows.forEach((record) => {
-    const cycleId = String(firstValue(record, ["appraisal_cycle_id", "cycle_id"]) || "").trim();
-    const masterId = String(firstValue(record, ["employee_master_id", "employee_master_row_id"]) || "").trim();
-    const empId = employeeKeyFor(firstValue(record, ["emp_id", "employee_id", "emp_code"]));
+    const rawCycleId = String(firstValue(record, ["appraisal_cycle_id", "cycle_id", "cycleId"]) || "").trim();
+    const referencedCycle = cycleById.get(rawCycleId) || cycleByName.get(rawCycleId.toLowerCase());
+    const cycleAliases = [
+      rawCycleId,
+      referencedCycle ? cycleIdOf(referencedCycle) : "",
+      referencedCycle ? cycleNameOf(referencedCycle).toLowerCase() : "",
+    ].filter(Boolean);
+    const masterId = String(firstValue(record, ["employee_master_id", "employee_master_row_id", "employeeMasterRowId"]) || "").trim();
+    const empId = employeeKeyFor(firstValue(record, ["emp_id", "employee_id", "emp_code", "empId"]));
     const raw = String(firstValue(record, ["eligibility_status", "eligible_status", "eligibility"]) || "").trim().toLowerCase().replace(/[ _-]+/g, "");
-    if (!cycleId || !["eligible", "noteligible", "yes", "no", "true", "false", "1", "0", "ineligible"].includes(raw)) return;
+    if (!rawCycleId || !raw) return;
+    // Pending/awaiting-criteria records must not silently fall back to the
+    // Employee_Master value; only an explicit Eligible decision participates.
     const eligible = ["eligible", "yes", "true", "1"].includes(raw);
-    if (masterId) eligibilityByCycleAndEmployee.set(cycleId + "::row:" + masterId, { eligible, status: eligible ? "eligible" : "not eligible", record });
-    if (empId) eligibilityByCycleAndEmployee.set(cycleId + "::emp:" + empId, { eligible, status: eligible ? "eligible" : "not eligible", record });
+    const status = eligible ? "eligible" : "not eligible";
+    cycleAliases.forEach((cycleAlias) => {
+      if (masterId) eligibilityByCycleAndEmployee.set(cycleAlias + "::row:" + masterId, { eligible, status, record });
+      if (empId) eligibilityByCycleAndEmployee.set(cycleAlias + "::emp:" + empId, { eligible, status, record });
+    });
   });
   const cycleEligibilityFor = (employee, cycleId) => {
-    const id = String(cycleId || "").trim();
-    return eligibilityByCycleAndEmployee.get(id + "::row:" + String(employee.employee_master_row_id || "").trim()) ||
-      eligibilityByCycleAndEmployee.get(id + "::emp:" + String(employee.employeeId || employee.emp_id || "").trim().toLowerCase()) ||
-      null;
+    const rawId = String(cycleId || "").trim();
+    const cycle = currentCycleFor(rawId);
+    const aliases = [rawId, cycle ? cycleIdOf(cycle) : "", cycle ? cycleNameOf(cycle).toLowerCase() : ""].filter(Boolean);
+    const masterId = String(employee.employee_master_row_id || "").trim();
+    const empId = String(employee.employeeId || employee.emp_id || "").trim().toLowerCase();
+    for (const alias of aliases) {
+      const match = (masterId ? eligibilityByCycleAndEmployee.get(alias + "::row:" + masterId) : null) ||
+        (empId ? eligibilityByCycleAndEmployee.get(alias + "::emp:" + empId) : null);
+      if (match) return match;
+    }
+    return null;
   };
   bundle.employeeRoster = employees.map((employee) => ({
     emp_id: employee.emp_id,
