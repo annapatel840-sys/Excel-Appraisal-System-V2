@@ -1040,7 +1040,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const originalBudget = hasOriginalSnapshot
         ? savedOriginalBudget
         : (canCreateOriginal ? (stats.base * (1 + effectivePct / 100)) : 0);
-      const updatedBudget = stats.base * (1 + effectivePct / 100);
+      const updatedBudget = (rawPct !== null || orgPctSet) ? stats.base * (1 + effectivePct / 100) : 0;
 
       const update = {
         ROWID: row.id,
@@ -1150,7 +1150,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const orgOriginal = hasOrgOriginalSnapshot
       ? previousOrgOriginal
       : (orgPctSet ? (orgOriginalBase * (1 + orgPct / 100)) : 0);
-    const orgUpdated = orgBase * (1 + orgPct / 100);
+    const orgUpdated = orgPctSet ? orgBase * (1 + orgPct / 100) : 0;
     const orgFields = {
       ROWID: master.id,
       org_budget_base: orgOriginalBase,
