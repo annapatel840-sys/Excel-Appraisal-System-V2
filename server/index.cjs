@@ -18,7 +18,7 @@ app.use(express.static(distPath, {
   index: false,
   setHeaders(res, filePath) {
     const name = path.basename(filePath);
-    const isHashedAsset = /-[A-Za-z0-9_-]{8,}\\.(?:js|css|woff2?|svg|png|jpe?g|webp)$/i.test(name);
+    const isHashedAsset = /-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|svg|png|jpe?g|webp)$/i.test(name);
     if (name === 'index.html') {
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
