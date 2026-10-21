@@ -426,7 +426,8 @@ function HRApplyBudget() {
         canonicalKey: key,
         name: ownerValues.get(key) || ownerName(owner, employeeRows),
         pct: amount(row.percentage),
-        base: employeeBases.get(key) || amount(row.budget_base) || (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated),
+        pctSet: row.percentage !== null && row.percentage !== undefined && String(row.percentage).trim() !== "",
+        base: employeeBases.get(key) ?? amount(row.budget_base) ?? (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated),
         original: calculated,
         updated: applied,
         team0: amount(row.original_headcount ?? row.allocation_headcount) || assignedCount,
@@ -443,8 +444,10 @@ function HRApplyBudget() {
       const label = ownerName(owner, employeeRows);
       nextRows.push({
         id: "tech-ed-" + key,
+        canonicalKey: key,
         name: label,
         pct: amount(selectedMaster?.budget_percentage),
+        pctSet: false,
         base: employeeBases.get(key) || 0,
         original: (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100),
         updated: (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100),
@@ -461,6 +464,17 @@ function HRApplyBudget() {
       setOrgPct(String(Number(selectedMaster.budget_percentage)));
     }
   }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, selectedCycle, selectedMaster?.budget_percentage]);
+
+  const orgBaseFromRoster = useMemo(() => {
+    const byEmployee = new Map();
+    (Array.isArray(employeeRows) ? employeeRows : []).forEach((employee) => {
+      const id = normalizeOwnerKey(employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text || employee.row_id || employee.ROWID || employee.id);
+      if (!id) return;
+      const base = amount(employee.previous_appraisal_total_ctc_with_rewards ?? employee.Previous_Appraisal_total_CTC_with_rewards ?? employee.budget_base ?? employee.budgetBase);
+      if (!byEmployee.has(id)) byEmployee.set(id, base);
+    });
+    return Array.from(byEmployee.values()).reduce((sum, base) => sum + base, 0);
+  }, [employeeRows]);
 
   const total = useMemo(
     () =>
@@ -488,8 +502,10 @@ function HRApplyBudget() {
   // prior-year expense base. A valid first-save snapshot is preserved thereafter.
   const savedOrgBase = amount(selectedMaster?.org_budget_base);
   const savedOrgOriginal = amount(selectedMaster?.calculated_budget);
-  const hasValidOrgSnapshot = savedOrgBase >= total.base && savedOrgOriginal > savedOrgBase && savedOrgBase > 0;
-  const orgBase = hasValidOrgSnapshot ? savedOrgBase : total.base;
+  const hasValidOrgSnapshot = Math.abs(savedOrgBase - orgBaseFromRoster) < 0.5 &&
+    savedOrgBase >= 0 && savedOrgOriginal >= savedOrgBase &&
+    (savedOrgBase > 0 || orgBaseFromRoster === 0);
+  const orgBase = orgBaseFromRoster;
   const effectiveOrgPct = orgPct === "" ? amount(selectedMaster?.budget_percentage) : amount(orgPct);
   const previewOrgBudget = orgBase * (1 + effectiveOrgPct / 100);
   const originalOrgBudget = hasValidOrgSnapshot
@@ -514,7 +530,7 @@ function HRApplyBudget() {
     }
     setSavingOrg(true);
     setError("");
-    const orgBase = hasValidOrgSnapshot ? savedOrgBase : total.base;
+    const orgBase = orgBaseFromRoster;
     const originalBudget = hasValidOrgSnapshot
       ? savedOrgOriginal
       : orgBase * (1 + org / 100);
@@ -593,7 +609,7 @@ function HRApplyBudget() {
       return;
     }
 
-    const orgBaseForCycle = amount(selectedMaster?.org_budget_base) || total.base;
+    const orgBaseForCycle = orgBaseFromRoster;
     const orgAvailableBudget = orgBaseForCycle * (1 + org / 100);
     if (previewTotal > orgAvailableBudget + 0.5) {
       setError(
@@ -646,7 +662,7 @@ function HRApplyBudget() {
     }
 
     try {
-      const orgBase = hasValidOrgSnapshot ? savedOrgBase : total.base;
+      const orgBase = orgBaseFromRoster;
       const originalOrgBudget = hasValidOrgSnapshot
         ? savedOrgOriginal
         : orgBase * (1 + org / 100);
