@@ -770,6 +770,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   const shortYearMatch = currentCycleName.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*(\d{2})/i);
   const currentYear = yearMatch ? yearMatch[0] : shortYearMatch ? "20" + shortYearMatch[1] : currentCycleName || "current cycle";
   const priorValues = new Map();
+  const previousCycleEmployees = new Set();
   payrollRows.forEach((record) => {
     const empKey = rowEmployeeKey(record.emp_id ?? record.employee_id, employeeMasterMap);
     const rawCycle = historyReference(record.appraisal_cycle_name ?? record.appraisalCycleName ?? record.cycle_name);
@@ -778,6 +779,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const belongsToPrevious = (previousCycleId && cycleId === previousCycleId) ||
       (previousCycleName && rawCycle.toLowerCase() === previousCycleName.toLowerCase());
     if (!empKey || !belongsToPrevious) return;
+    previousCycleEmployees.add(empKey);
     const value = record.total_CTC_with_rewards ?? record.total_ctc_with_rewards ?? record.new_ctc ?? record.newCTC;
     if (value === null || value === undefined || String(value).trim() === "") return;
     const parsed = Number(String(value).replace(/[₹,\s]/g, ""));
@@ -785,13 +787,14 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   });
   return (employees || []).map((employee) => {
     const empKey = rowEmployeeKey(employee.emp_id ?? employee.employee_id, employeeMasterMap);
-    const hasPrevious = empKey && priorValues.has(empKey);
+    const hasPreviousCycleRow = empKey && previousCycleEmployees.has(empKey);
+    const previousCtc = empKey && priorValues.has(empKey) ? priorValues.get(empKey) : currentTotalCtc(employee);
     return {
       ...employee,
-      previous_appraisal_total_ctc_with_rewards: hasPrevious ? priorValues.get(empKey) : currentTotalCtc(employee),
-      Previous_Appraisal_total_CTC_with_rewards: hasPrevious ? priorValues.get(empKey) : currentTotalCtc(employee),
-      last_appraisal_date: hasPrevious ? previousCycleName : "New - " + currentYear,
-      last_appraisal_cycle_name: hasPrevious ? previousCycleName : "New - " + currentYear,
+      previous_appraisal_total_ctc_with_rewards: previousCtc,
+      Previous_Appraisal_total_CTC_with_rewards: previousCtc,
+      last_appraisal_date: hasPreviousCycleRow ? previousCycleName : "New - " + currentYear,
+      last_appraisal_cycle_name: hasPreviousCycleRow ? previousCycleName : "New - " + currentYear,
     };
   });
 }
