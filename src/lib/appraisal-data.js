@@ -246,13 +246,6 @@ export const COLUMNS = [
     width: 150,
   },
   {
-    key: "previousAppraisalTotalCtcWithRewards",
-    label: "Previous Appraisal Total CTC with Rewards",
-    type: "currency",
-    editable: false,
-    width: 210,
-  },
-  {
     key: "managerRating",
     label: "Manager Rating",
     type: "enum",
@@ -500,6 +493,13 @@ export const COLUMNS = [
     type: "text",
     editable: false,
     width: 130,
+  },
+  {
+    key: "previousAppraisalTotalCtcWithRewards",
+    label: "Previous Appraisal Total CTC with Rewards",
+    type: "currency",
+    editable: false,
+    width: 210,
   },
 ];
 
