@@ -772,6 +772,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const cycleKey = referencedCycle ? (cycleIdOf(referencedCycle) || cycleNameOf(referencedCycle).toLowerCase()) : cycleRef.toLowerCase();
     if (!employeeKey || !cycleKey) return;
     const key = cycleKey + "::" + employeeKey;
+    // Match Appraisal Sheet enrichment: a newer blank/invalid payroll row must
+    // not hide an older usable Total CTC with Rewards for the same employee/cycle.
+    if (previousCtc(historyRow) === null) return;
     const previous = historyRowsByCycleAndEmployee.get(key);
     const rowTime = String(historyRow.MODIFIEDTIME || historyRow.CREATEDTIME || historyRow.ROWID || "");
     const previousTime = previous ? String(previous.MODIFIEDTIME || previous.CREATEDTIME || previous.ROWID || "") : "";
@@ -838,9 +841,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       "",
     ).trim().toLowerCase();
     const explicitEligible = ["eligible", "yes", "true", "1"].includes(rawEligibility);
-    const explicitNotEligible = ["noteligible", "no", "false", "0", "ineligible"].includes(rawEligibility);
-    const eligible = rawStatus === "active" &&
-      (explicitNotEligible ? false : explicitEligible || !rawEligibility);
+    // Match employeesapi/Appraisal Sheet: Active AND explicitly Eligible.
+    // Blank eligibility is not an implicit yes.
+    const eligible = rawStatus === "active" && explicitEligible;
     const amount = (aliases) => n(firstNonZeroValue(row, aliases));
     const currentHike = amount(["hike_amount", "hikeAmount", "current_hike_amount"]);
     const previousHike = amount(["previous_year_hike_amount", "previousYearHikeAmount", "previous_hike_amount", "last_year_hike_amount"]);
@@ -1264,7 +1267,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const orgUpdated = orgPctSet ? orgBase * (1 + orgPct / 100) : 0;
     const orgFields = {
       ROWID: master.id,
-      org_budget_base: orgOriginalBase,
+      // Live sum of previous-appraisal CTC for eligible employees in this cycle.
+      // The original snapshot belongs in original_budget_base/original_base.
+      org_budget_base: orgBase,
       [masterCalcField]: orgOriginal,
       applied_budget: orgUpdated,
     };
