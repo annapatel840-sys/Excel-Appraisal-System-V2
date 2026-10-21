@@ -8,6 +8,8 @@ const TABLES = {
   master: "74008000000034565", // Budget_Master
   distribution: "74008000000033809", // Budget_Distribution
   comp: "74008000000023149", // Budget_Distribution_Comp
+  payroll: "74008000000035326", // Payroll_Data
+  cycles: "74008000000034190", // Appraisal_Cycle_Master
 };
 
 // CORS headers come from Catalyst (Authorized Domains); setting them here too
@@ -50,6 +52,7 @@ function mapMaster(row) {
     id: idOf(row),
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
     budget_percentage: n(value(row, "budget_percentage")),
+    budget_percentage_is_set: value(row, "budget_percentage") !== "" && value(row, "budget_percentage") !== null && value(row, "budget_percentage") !== undefined,
     org_budget_base: n(value(row, "org_budget_base")),
     budget_utilized: utilized,
     calculated_budget: calculated,
@@ -306,6 +309,76 @@ async function readTableById(app, tableId) {
     nextToken = page.next_token;
   }
   return rows;
+}
+
+function normalizedIdentity(raw) {
+  if (raw === null || raw === undefined) return "";
+  if (typeof raw === "object") {
+    for (const key of ["emp_id", "employee_id", "ROWID", "rowid", "id", "value", "name"]) {
+      if (raw[key] !== undefined && raw[key] !== null) {
+        const found = normalizedIdentity(raw[key]);
+        if (found) return found;
+      }
+    }
+    return "";
+  }
+  return String(raw).trim().split(/\\s+-\\s+/)[0].trim().toLowerCase();
+}
+
+function cycleNameOf(cycle) {
+  return String(firstValue(cycle, ["cycle_name", "cycleName", "name", "appraisal_year", "appraisalYear"]) || "").trim();
+}
+
+function cycleIdOf(cycle) {
+  return String(firstValue(cycle, ["ROWID", "rowid", "id", "ID"]) || "").trim();
+}
+
+function cycleRank(cycle) {
+  const dateValue = firstValue(cycle, ["start_date", "startDate", "effective_date", "effectiveDate"]);
+  if (dateValue) {
+    const timestamp = Date.parse(String(dateValue));
+    if (Number.isFinite(timestamp)) return timestamp;
+  }
+  const name = cycleNameOf(cycle);
+  const monthYear = name.match(/\\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\\s,]*(\\d{2,4})\\b/i);
+  if (monthYear) {
+    const month = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(monthYear[1].slice(0,3).toLowerCase());
+    let year = Number(monthYear[2]);
+    if (year < 100) year += 2000;
+    return new Date(year, month, 1).getTime();
+  }
+  const yearMatch = name.match(/(?:19|20)\\d{2}/);
+  return yearMatch ? new Date(Number(yearMatch[0]), 0, 1).getTime() : 0;
+}
+
+function cycleReference(raw) {
+  if (raw === null || raw === undefined) return "";
+  if (typeof raw === "object") {
+    return String(raw.ROWID ?? raw.rowid ?? raw.id ?? raw.ID ?? raw.value ?? raw.appraisal_cycle_name ?? raw.cycle_name ?? "").trim();
+  }
+  return String(raw).trim();
+}
+
+function currentCtc(row) {
+  const stored = firstValue(row, [
+    "total_ctc_with_rewards", "total_CTC_with_rewards", "total_ctc", "new_ctc", "newCTC",
+    "totalCTCWithRewards", "total_ctc_with_rewards_current",
+  ]);
+  if (stored !== "" && stored !== null && stored !== undefined) return n(stored);
+  // The current Appraisal Sheet computes Total CTC with Rewards as next-year
+  // base salary plus total bonus: (current base + hike) + (allocated PB + new PB + new RB).
+  return n(firstValue(row, ["current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "base_pay"])) +
+    n(firstValue(row, ["hike_amount", "hikeAmount", "current_hike_amount"])) +
+    n(firstValue(row, ["allocated_pb_amount", "allocatedPBAmount", "target_pb_allocated_for_may", "targetPBAllocatedForMay"])) +
+    n(firstValue(row, ["new_pb_to_be_offered", "newPBToBeOffered", "current_performance_bonus"])) +
+    n(firstValue(row, ["new_rb", "newRB", "current_retention_bonus"]));
+}
+
+function previousCtc(record) {
+  return n(firstValue(record, [
+    "total_CTC_with_rewards", "total_ctc_with_rewards", "new_ctc", "newCTC",
+    "total_ctc", "totalCTCWithRewards",
+  ]));
 }
 
 function readField(row, candidates) {
@@ -612,9 +685,17 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   // Appraisal_Sheet is the source of truth for employee base, allocated PB,
   // Tech-ED and Comp Manager assignments. Do not depend on Payroll_Data cycle
   // foreign keys: those IDs are not the budget calculation source.
-  const [appraisalRows, masterEmployeeRows] = await Promise.all([
+  const [appraisalRows, masterEmployeeRows, payrollRows, cycleRows] = await Promise.all([
     getAllRows(app, "Appraisal_Sheet"),
     getAllRows(app, "Employee_Master").catch(() => []),
+    readTableById(app, TABLES.payroll).catch((error) => {
+      console.error("Could not read Payroll_Data for prior-cycle CTC:", error && error.message);
+      return [];
+    }),
+    readTableById(app, TABLES.cycles).catch((error) => {
+      console.error("Could not read Appraisal_Cycle_Master:", error && error.message);
+      return [];
+    }),
   ]);
   if (!appraisalRows.length) {
     throw new Error("Appraisal_Sheet returned no rows; cannot calculate budget bases.");
@@ -645,9 +726,42 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       : text;
   };
 
+  const cycleById = new Map(cycleRows.map((cycle) => [cycleIdOf(cycle), cycle]).filter(([id]) => id));
+  const cycleByName = new Map(cycleRows.map((cycle) => [cycleNameOf(cycle).toLowerCase(), cycle]).filter(([name]) => name));
+  const employeeKeyFor = (raw) => {
+    const identity = normalizedIdentity(raw);
+    if (!identity) return "";
+    const master = masterByRowId.get(identity) || masterByEmployee.get(identity) || masterByName.get(identity);
+    return String(master ? firstValue(master, ["emp_id", "empId", "employee_id"]) || idOf(master) : identity).trim().toLowerCase();
+  };
+  const cycleReferenceForRow = (row) => cycleReference(firstValue(row, ["appraisal_cycle_name", "appraisalCycleName", "cycle_name", "cycle_id"]));
+  const currentCycleFor = (cycleId) => cycleById.get(String(cycleId)) || cycleByName.get(String(cycleId).toLowerCase()) || null;
+  const previousCycleFor = (cycleId) => {
+    const current = currentCycleFor(cycleId);
+    const currentRank = current ? cycleRank(current) : cycleRank({ cycle_name: cycleId });
+    const earlier = cycleRows
+      .filter((cycle) => cycleRank(cycle) > 0 && currentRank > 0 && cycleRank(cycle) < currentRank)
+      .sort((a, b) => cycleRank(b) - cycleRank(a));
+    return earlier[0] || null;
+  };
+  const historyRowsByCycleAndEmployee = new Map();
+  payrollRows.forEach((historyRow) => {
+    const employeeKey = employeeKeyFor(firstValue(historyRow, ["emp_id", "employee_id", "empId"]));
+    const cycleRef = cycleReferenceForRow(historyRow);
+    const referencedCycle = cycleById.get(cycleRef) || cycleByName.get(cycleRef.toLowerCase());
+    const cycleKey = referencedCycle ? (cycleIdOf(referencedCycle) || cycleNameOf(referencedCycle).toLowerCase()) : cycleRef.toLowerCase();
+    if (!employeeKey || !cycleKey) return;
+    const key = cycleKey + "::" + employeeKey;
+    const previous = historyRowsByCycleAndEmployee.get(key);
+    const rowTime = String(historyRow.MODIFIEDTIME || historyRow.CREATEDTIME || historyRow.ROWID || "");
+    const previousTime = previous ? String(previous.MODIFIEDTIME || previous.CREATEDTIME || previous.ROWID || "") : "";
+    if (!previous || rowTime.localeCompare(previousTime, undefined, { numeric: true }) >= 0) historyRowsByCycleAndEmployee.set(key, historyRow);
+  });
+
   const appraisalByEmployee = new Map();
   appraisalRows.forEach((row) => {
-    const employeeId = String(firstValue(row, ["emp_id", "empId", "employee_id", "employeeId", "employee_id_text"]) || idOf(row)).trim().toLowerCase();
+    const rawEmployeeId = String(firstValue(row, ["emp_id", "empId", "employee_id", "employeeId", "employee_id_text"]) || idOf(row)).trim();
+    const employeeId = employeeKeyFor(rawEmployeeId);
     if (!employeeId) return;
     const rawTechEd = String(firstValue(row, [
       "appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_tech_ed1", "appraiser_teched", "appraiserTechED", "appraiserTechEd", "tech_ed", "tech_ed_id", "techED", "techEd",
@@ -669,6 +783,18 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const compManagerDisplay = managerId && managerName
       ? managerId + " - " + managerName
       : managerName || rawCompManager;
+    const currentCycleId = String(firstValue(bundle.master.find((item) => String(item.appraisal_cycle_id || "") === String(cycleId)), ["appraisal_cycle_id"]) || cycleId);
+    const previousCycle = previousCycleFor(currentCycleId);
+    const previousCycleId = previousCycle ? (cycleIdOf(previousCycle) || cycleNameOf(previousCycle).toLowerCase()) : "";
+    const historyKey = previousCycleId + "::" + employeeId;
+    const previousRecord = previousCycle ? historyRowsByCycleAndEmployee.get(historyKey) || historyRowsByCycleAndEmployee.get(cycleNameOf(previousCycle).toLowerCase() + "::" + employeeId) : null;
+    const currentCtcValue = currentCtc(row);
+    const previousAppraisalCtc = previousRecord ? previousCtc(previousRecord) : currentCtcValue;
+    const currentCycle = currentCycleFor(currentCycleId);
+    const currentCycleName = cycleNameOf(currentCycle) || currentCycleId;
+    const currentYearMatch = currentCycleName.match(/(?:19|20)\\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\\s]*(\\d{2})/i);
+    const currentYear = currentYearMatch ? (currentYearMatch[1] ? "20" + currentYearMatch[1] : currentYearMatch[0]) : currentCycleName;
+    const lastAppraisalLabel = previousRecord ? cycleNameOf(previousCycle) : "New - " + currentYear;
     const basePay = n(firstValue(row, [
       "previous_year_base_pay", "previousYearBasePay", "last_year_base_pay", "lastYearBasePay",
       "previous_annual_base_pay", "previousAnnualBasePay",
@@ -718,7 +844,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       eligible,
       status: rawStatus,
       eligible_status: eligible ? "eligible" : "not eligible",
-      base: lastYearExpenses,
+      base: previousAppraisalCtc,
+      previous_appraisal_total_ctc_with_rewards: previousAppraisalCtc,
+      Previous_Appraisal_total_CTC_with_rewards: previousAppraisalCtc,
+      last_appraisal_date: lastAppraisalLabel,
+      last_appraisal_cycle_name: lastAppraisalLabel,
       hike_amount: currentHike,
       new_pb_to_be_offered: currentPerformance,
       current_performance_bonus: currentPerformance,
@@ -747,6 +877,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     status: employee.status,
     eligible_status: employee.eligible_status,
     budget_base: employee.base,
+    previous_appraisal_total_ctc_with_rewards: employee.previous_appraisal_total_ctc_with_rewards,
+    Previous_Appraisal_total_CTC_with_rewards: employee.Previous_Appraisal_total_CTC_with_rewards,
+    last_appraisal_date: employee.last_appraisal_date,
+    last_appraisal_cycle_name: employee.last_appraisal_cycle_name,
     hike_amount: employee.hike_amount,
     new_pb_to_be_offered: employee.new_pb_to_be_offered,
     current_performance_bonus: employee.current_performance_bonus,
@@ -770,7 +904,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     employeesWithBase: withBase,
     employeesWithTechEd: withTechEd,
     budgetMasterCycles: bundle.master.filter((m) => String(m.appraisal_cycle_id || "").trim()).length,
-    baseColumns: "prior-year salary/expenses and prior-year bonus fields, with current salary fallback",
+    baseColumns: "Payroll_Data.total_CTC_with_rewards from the immediately previous appraisal cycle; current total_ctc_with_rewards for employees not present in that cycle",
   };
   if (!bundle.diagnostics.budgetMasterCycles) {
     bundle.diagnostics.warning = "No Budget_Master row has an appraisal cycle, so no budget base was calculated. Add a Budget_Master row for the cycle (appraisal_cycle_id) first.";
@@ -886,13 +1020,17 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const stats = techBases.get(techKey) || { base: 0, count: 0 };
       const rawPct = row.percentage === null || row.percentage === undefined || row.percentage === "" ? null : n(row.percentage);
       const orgPct = n(master.budget_percentage);
+      const orgPctSet = Boolean(master.budget_percentage_is_set);
       const effectivePct = rawPct === null ? orgPct : rawPct;
       const savedOriginalBase = n(row.original_budget_base || row.original_base);
-      const originalBase = savedOriginalBase > 0 ? savedOriginalBase : stats.base;
       const savedOriginalBudget = n(row.calculated_budget);
-      const originalBudget = savedOriginalBudget > originalBase && savedOriginalBudget > 0
+      const savedBaseMatches = savedOriginalBase > 0 && Math.abs(savedOriginalBase - stats.base) < 0.5;
+      const hasOriginalSnapshot = savedOriginalBudget > 0 && savedBaseMatches;
+      const originalBase = hasOriginalSnapshot ? savedOriginalBase : stats.base;
+      const canCreateOriginal = rawPct !== null || orgPctSet;
+      const originalBudget = hasOriginalSnapshot
         ? savedOriginalBudget
-        : (originalBase * (1 + effectivePct / 100));
+        : (canCreateOriginal ? (stats.base * (1 + effectivePct / 100)) : 0);
       const updatedBudget = stats.base * (1 + effectivePct / 100);
 
       const update = {
@@ -901,9 +1039,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         [distCalcField]: originalBudget,
         applied_budget: updatedBudget,
       };
-      // First allocation stores the initial Org %; future Org changes do not
-      // overwrite this saved Tech-Ed percentage.
-      if (rawPct === null) update.percentage = effectivePct;
+      // Capture the initial Tech-Ed percentage only after HR has set the Org %.
+      // Once the original budget is saved, later percentage edits affect only applied_budget.
+      if (rawPct === null && orgPctSet) update.percentage = effectivePct;
       if (distributionColumns) {
         const originalBaseField = ["original_budget_base", "original_base"].find((key) => distributionColumns.has(key));
         const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => distributionColumns.has(key));
@@ -919,8 +1057,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       await distributionTable.updateRow(update);
       Object.assign(row, {
         budget_base: stats.base,
-        percentage: effectivePct,
-        override_percentage: rawPct === null ? effectivePct : rawPct,
+        percentage: rawPct === null && !orgPctSet ? null : effectivePct,
+        override_percentage: rawPct === null && !orgPctSet ? null : (rawPct === null ? effectivePct : rawPct),
         calculated_budget: originalBudget,
         applied_budget: updatedBudget,
         effective_percentage: effectivePct,
@@ -993,15 +1131,16 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const cycleTech = bundle.techEd.filter((row) => String(row.appraisal_cycle_id) === cycleId);
     const previousOrgBase = n(master.org_budget_base);
     const previousOrgOriginal = n(master.calculated_budget);
-    // If an old snapshot is below the corrected prior-year base, it came from
-    // the broken calculation and must be rebuilt once.
-    const orgOriginalBase = previousOrgBase >= orgBase && previousOrgBase > 0
-      ? previousOrgBase
-      : orgBase;
     const orgPct = n(master.budget_percentage);
-    const orgOriginal = previousOrgOriginal > orgOriginalBase && previousOrgOriginal > 0
+    const orgPctSet = Boolean(master.budget_percentage_is_set);
+    // A snapshot is valid only when it was calculated from the current source base.
+    // >= (rather than >) is intentional: a legitimate initial 0% budget equals its base.
+    const hasOrgOriginalSnapshot = previousOrgOriginal > 0 && previousOrgBase > 0 &&
+      Math.abs(previousOrgBase - orgBase) < 0.5;
+    const orgOriginalBase = orgBase;
+    const orgOriginal = hasOrgOriginalSnapshot
       ? previousOrgOriginal
-      : (orgOriginalBase * (1 + orgPct / 100));
+      : (orgPctSet ? (orgOriginalBase * (1 + orgPct / 100)) : 0);
     const orgUpdated = orgBase * (1 + orgPct / 100);
     const orgFields = {
       ROWID: master.id,
