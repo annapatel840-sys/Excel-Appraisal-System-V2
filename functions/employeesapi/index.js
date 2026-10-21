@@ -738,11 +738,15 @@ function ctcFromComponents(row) {
     const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
     return Number.isFinite(parsed) ? parsed : 0;
   };
-  return num(row?.current_annual_base_pay ?? row?.currentAnnualBasePay ?? row?.current_base_pay ?? row?.base_pay ?? row?.basePay) +
-    num(row?.hike_amount ?? row?.hikeAmount ?? row?.current_hike_amount) +
-    num(row?.allocated_pb_amount ?? row?.allocatedPBAmount ?? row?.allocated_pb ?? row?.target_pb_allocated_for_may) +
-    num(row?.new_pb_to_be_offered ?? row?.newPBToBeOffered ?? row?.performance_bonus ?? row?.total_pb) +
-    num(row?.new_rb ?? row?.newRB ?? row?.retention_bonus);
+  const base = num(row?.current_annual_base_pay ?? row?.currentAnnualBasePay ?? row?.current_base_pay ?? row?.base_pay ?? row?.basePay);
+  const hike = num(row?.hike_amount ?? row?.hikeAmount ?? row?.current_hike_amount);
+  const storedTotalPb = row?.total_pb ?? row?.totalPB;
+  const pb = storedTotalPb !== undefined && storedTotalPb !== null && String(storedTotalPb).trim() !== ""
+    ? num(storedTotalPb)
+    : num(row?.allocated_pb_amount ?? row?.allocatedPBAmount ?? row?.allocated_pb ?? row?.target_pb_allocated_for_may) +
+      num(row?.new_pb_to_be_offered ?? row?.newPBToBeOffered ?? row?.performance_bonus);
+  const retention = num(row?.new_rb ?? row?.newRB ?? row?.retention_bonus);
+  return base + hike + pb + retention;
 }
 
 function currentTotalCtc(row) {
