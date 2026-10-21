@@ -8,6 +8,34 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 const NAVY = "#102A43";
 const TEAL = "#2F6FED";
 const BORDER = "#D5DFEB";
+const BUDGET_AUDIT_STORAGE_KEY = "excel-appraisal-budget-audit-v1";
+
+function readBudgetAudit() {
+  if (typeof window === "undefined") return { org: [], techEd: [] };
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(BUDGET_AUDIT_STORAGE_KEY) || "{}");
+    return {
+      org: Array.isArray(parsed.org) ? parsed.org : [],
+      techEd: Array.isArray(parsed.techEd) ? parsed.techEd : [],
+    };
+  } catch (_) {
+    return { org: [], techEd: [] };
+  }
+}
+
+function recordBudgetAudit(kind, entries) {
+  if (typeof window === "undefined" || !Array.isArray(entries) || !entries.length) return;
+  try {
+    const current = readBudgetAudit();
+    const key = kind === "org" ? "org" : "techEd";
+    current[key] = [...entries, ...current[key]].slice(0, 2000);
+    window.localStorage.setItem(BUDGET_AUDIT_STORAGE_KEY, JSON.stringify(current));
+    window.dispatchEvent(new CustomEvent("appraisal:budget-audit-updated"));
+  } catch (error) {
+    // Audit-storage restrictions must not misreport a successfully saved budget as failed.
+    console.error("Could not persist local budget audit history:", error);
+  }
+}
 
 /* ---------- helpers ---------- */
 function normalizeOwnerKey(value) {
@@ -332,7 +360,7 @@ function deltaNode(from, to) {
 }
 
 function HRApplyBudget() {
-  const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], techEdOwners = [], updateBudget, reload: reloadBudget, loading: budgetLoading, error: budgetError = "", budgetWarning = "" } = useBudget();
+  const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], techEdOwners = [], currentUser = {}, updateBudget, reload: reloadBudget, loading: budgetLoading, error: budgetError = "", budgetWarning = "" } = useBudget();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const canConfig =
@@ -351,8 +379,21 @@ function HRApplyBudget() {
   const [error, setError] = useState("");
   const [savingOrg, setSavingOrg] = useState(false);
   const [history, setHistory] = useState({});
-  const [audit, setAudit] = useState([]);
-  const [orgAudit, setOrgAudit] = useState([]);
+  const [auditState, setAuditState] = useState(() => readBudgetAudit());
+  useEffect(() => {
+    const refreshAudit = () => setAuditState(readBudgetAudit());
+    refreshAudit();
+    if (typeof window !== "undefined") {
+      window.addEventListener("appraisal:budget-audit-updated", refreshAudit);
+      window.addEventListener("storage", refreshAudit);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("appraisal:budget-audit-updated", refreshAudit);
+        window.removeEventListener("storage", refreshAudit);
+      }
+    };
+  }, []);
   const [overrides, setOverrides] = useState({});
   const [activeCycle, setActiveCycle] = useState(null);
   const [cycleLoading, setCycleLoading] = useState(true);
@@ -661,6 +702,9 @@ function HRApplyBudget() {
       : orgBase * (1 + org / 100);
     const updatedBudget = orgBase * (1 + org / 100);
     const previousOrgPct = amount(selectedMaster?.budget_percentage);
+    const previousOrgBudget = amount(selectedMaster?.applied_budget);
+    const actor = String(currentUser.name || currentUser.email || "Unknown user");
+    const reason = String(orgReason || "").trim() || "Org budget percentage updated";
     try {
       await updateBudget(selectedMaster?.id || "", {
         appraisal_cycle_id: cycleId,
@@ -670,6 +714,19 @@ function HRApplyBudget() {
         applied_budget: updatedBudget,
         budget_utilized: amount(selectedMaster?.budget_utilized),
       }, "master", false);
+      recordBudgetAudit("org", [{
+        date: new Date().toISOString().slice(0, 10),
+        time: new Date().toLocaleTimeString(),
+        owner: "Org",
+        from: previousOrgPct,
+        to: org,
+        before: previousOrgBudget,
+        after: updatedBudget,
+        by: actor,
+        reason,
+        cycleId,
+      }]);
+
       // Update inherited Tech-Ed rows only. A separately configured override must
       // remain untouched when HR changes the organization default.
       const inheritedRows = rows.filter((row) =>
@@ -771,7 +828,6 @@ function HRApplyBudget() {
       return;
     }
 
-    const now = new Date().toISOString().slice(0, 10);
     const updates = rows.filter((row) =>
       Object.prototype.hasOwnProperty.call(pending, row.name) && (!target || row.name === target),
     );
@@ -789,20 +845,6 @@ function HRApplyBudget() {
         next[row.name] = reasonFor(row);
       });
       return next;
-    });
-    setAudit((previous) => {
-      const byOwner = new Map(previous.map((item) => [item.owner, item]));
-      updates.forEach((row) => byOwner.set(row.name, {
-        date: now,
-        owner: row.name,
-        from: row.pct,
-        to: Number(pending[row.name]),
-        before: row.updated,
-        after: row.base * (1 + Number(pending[row.name]) / 100),
-        by: "HR",
-        reason: reasonFor(row),
-      }));
-      return Array.from(byOwner.values());
     });
     setPending((previous) => {
       if (!target) return {};
@@ -846,6 +888,8 @@ function HRApplyBudget() {
       const toPublish = rows.filter((row) =>
         Object.prototype.hasOwnProperty.call(staged, row.name) && (!target || row.name === target),
       );
+      const actor = String(currentUser.name || currentUser.email || "Unknown user");
+      const publishedAt = new Date();
       await Promise.all(toPublish.map((row) => {
         const pct = Number(staged[row.name]);
         const budget = row.base * (1 + pct / 100);
@@ -865,6 +909,21 @@ function HRApplyBudget() {
           "distribution",
           false,
         );
+      }));
+      recordBudgetAudit("techEd", toPublish.map((row) => {
+        const pct = Number(staged[row.name]);
+        return {
+          date: publishedAt.toISOString().slice(0, 10),
+          time: publishedAt.toLocaleTimeString(),
+          owner: row.name,
+          from: amount(row.pct),
+          to: pct,
+          before: amount(row.updated),
+          after: row.base * (1 + pct / 100),
+          by: actor,
+          reason: stagedReasons[row.name] || "Budget percentage published",
+          cycleId,
+        };
       }));
       await reloadBudget();
       setOverrides((previous) => {
@@ -1079,7 +1138,7 @@ function HRApplyBudget() {
                 const hasStaged = Object.prototype.hasOwnProperty.call(staged, r.name) &&
                   Number(staged[r.name]) !== Number(r.pct);
                 const open = !!history[r.name];
-                const rowAudit = audit.filter((a) => a.owner === r.name);
+                const rowAudit = auditState.techEd.filter((a) => a.owner === r.name);
                 const sourceOverride =
                   overrides[r.name] ||
                   (hasPending && Number(p) !== amount(orgPct));
@@ -1238,13 +1297,27 @@ function HRAuditTrail() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [filter, setFilter] = useState("all");
-  const [audit] = useState([]);
-  const [orgAudit] = useState([]);
+  const [auditState, setAuditState] = useState(() => readBudgetAudit());
 
-  const orgRows = orgAudit.filter(
+  useEffect(() => {
+    const refreshAudit = () => setAuditState(readBudgetAudit());
+    refreshAudit();
+    if (typeof window !== "undefined") {
+      window.addEventListener("appraisal:budget-audit-updated", refreshAudit);
+      window.addEventListener("storage", refreshAudit);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("appraisal:budget-audit-updated", refreshAudit);
+        window.removeEventListener("storage", refreshAudit);
+      }
+    };
+  }, []);
+
+  const orgRows = auditState.org.filter(
     (r) => (!from || r.date >= from) && (!to || r.date <= to),
   );
-  const tedRows = audit.filter(
+  const tedRows = auditState.techEd.filter(
     (r) =>
       (!from || r.date >= from) &&
       (!to || r.date <= to) &&

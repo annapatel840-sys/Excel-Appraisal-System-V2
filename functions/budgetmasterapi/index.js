@@ -1162,13 +1162,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const savedOriginalBase = n(row.original_budget_base || row.original_base);
       const savedOriginalBudget = n(row.calculated_budget);
       const canCreateOriginal = rawPct !== null || orgPctSet;
+      // Validate the saved snapshot against its OWN captured base, never the live
+      // base. Payroll/eligibility changes must not recalculate Original Budget.
       const comparisonBase = savedOriginalBase > 0 ? savedOriginalBase : stats.base;
-      // Treat tiny/corrupt legacy snapshots as invalid (e.g. Original Budget=2
-      // while the eligible team CTC base is in the millions). Preserve plausible
-      // original snapshots; otherwise rebuild from the valid CTC base.
-      const originalBasePlausible = savedOriginalBase <= 0 || stats.base <= 0 ||
-        savedOriginalBase >= stats.base * 0.01;
-      const snapshotLooksValid = savedOriginalBudget > 0 && originalBasePlausible &&
+      const looksLikeCorruptTinySnapshot = savedOriginalBudget > 0 &&
+        savedOriginalBudget < 1000 && stats.base >= 100000;
+      const snapshotLooksValid = savedOriginalBudget > 0 && !looksLikeCorruptTinySnapshot &&
         (comparisonBase <= 0 || savedOriginalBudget >= comparisonBase * 0.5) &&
         (comparisonBase <= 0 || savedOriginalBudget <= comparisonBase * 2.5);
       const hasOriginalSnapshot = canCreateOriginal && (
@@ -1176,7 +1175,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       );
       const originalBase = hasOriginalSnapshot
         ? (savedOriginalBase > 0 ? savedOriginalBase : stats.base)
-        : (originalBasePlausible && savedOriginalBase > 0 ? savedOriginalBase : stats.base);
+        : stats.base;
       const originalBudget = hasOriginalSnapshot
         ? savedOriginalBudget
         : (canCreateOriginal ? (originalBase * (1 + effectivePct / 100)) : 0);
@@ -1198,7 +1197,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         const currentCountField = ["current_headcount", "headcount"].find((key) => distributionColumns.has(key));
         const currentBaseField = ["current_budget_base", "current_base"].find((key) => distributionColumns.has(key));
         const overrideField = ["override_percentage", "allocation_percentage"].find((key) => distributionColumns.has(key));
-        if (originalBaseField && canCreateOriginal && !hasOriginalSnapshot) update[originalBaseField] = originalBase;
+        if (originalBaseField && canCreateOriginal && (!hasOriginalSnapshot || savedOriginalBase <= 0)) {
+          update[originalBaseField] = originalBase;
+        }
         const savedOriginalCount = n(row.original_headcount || row.allocation_headcount);
         if (originalCountField && savedOriginalCount <= 0 && stats.count > 0) update[originalCountField] = stats.count;
         if (currentCountField) update[currentCountField] = stats.count;
@@ -1254,17 +1255,16 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const pct = n(row.percentage);
       const savedOriginalBase = n(row.original_budget_base || row.original_base);
       const savedOriginalBudget = n(row.calculated_budget);
+      // The Comp Manager original is immutable after first capture. Compare it
+      // with its saved base, not today's live eligible CTC sum.
       const comparisonBase = savedOriginalBase > 0 ? savedOriginalBase : stats.base;
-      const originalBasePlausible = savedOriginalBase <= 0 || stats.base <= 0 ||
-        savedOriginalBase >= stats.base * 0.01;
       const snapshotLooksValid = Boolean(row.calculated_budget_is_set) && savedOriginalBudget > 0 &&
-        originalBasePlausible &&
         (comparisonBase <= 0 || savedOriginalBudget >= comparisonBase * 0.001) &&
         (comparisonBase <= 0 || savedOriginalBudget <= comparisonBase);
       const hasOriginalSnapshot = snapshotLooksValid;
       const originalBase = hasOriginalSnapshot
         ? savedOriginalBase
-        : (originalBasePlausible && savedOriginalBase > 0 ? savedOriginalBase : stats.base);
+        : stats.base;
       // Comp Manager % is an allocation share of the team CTC base, not an extra hike on top of that base.
       const originalBudget = hasOriginalSnapshot ? savedOriginalBudget : (originalBase * pct / 100);
       const updatedBudget = stats.base * pct / 100;
@@ -1280,7 +1280,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => compColumns.has(key));
         const currentCountField = ["current_headcount", "headcount"].find((key) => compColumns.has(key));
         const currentBaseField = ["current_budget_base", "current_base"].find((key) => compColumns.has(key));
-        if (originalBaseField && !hasOriginalSnapshot) update[originalBaseField] = originalBase;
+        if (originalBaseField && (!hasOriginalSnapshot || savedOriginalBase <= 0)) {
+          update[originalBaseField] = originalBase;
+        }
         const savedOriginalCount = n(row.original_headcount || row.allocation_headcount);
         if (originalCountField && savedOriginalCount <= 0 && stats.count > 0) update[originalCountField] = stats.count;
         if (currentCountField) update[currentCountField] = stats.count;
@@ -1309,10 +1311,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // Once the first Org % captures Original Budget, changes to eligibility/payroll
     // update the live base and Updated Budget only; preserve the original snapshot.
     const savedOrgOriginalBase = n(master.original_budget_base || master.original_base);
+    // A captured Org snapshot is validated only against its own saved base.
+    // Changes to the live eligible CTC sum or Org % affect Updated Budget only.
     const orgOriginalBaseCandidate = savedOrgOriginalBase > 0 ? savedOrgOriginalBase : orgBase;
-    const orgOriginalBasePlausible = savedOrgOriginalBase <= 0 || orgBase <= 0 ||
-      savedOrgOriginalBase >= orgBase * 0.01;
-    const orgSnapshotLooksValid = previousOrgOriginal > 0 && orgOriginalBasePlausible &&
+    const looksLikeCorruptTinyOrgSnapshot = previousOrgOriginal > 0 &&
+      previousOrgOriginal < 1000 && orgBase >= 100000;
+    const orgSnapshotLooksValid = previousOrgOriginal > 0 && !looksLikeCorruptTinyOrgSnapshot &&
       (orgOriginalBaseCandidate <= 0 || previousOrgOriginal >= orgOriginalBaseCandidate * 0.5) &&
       (orgOriginalBaseCandidate <= 0 || previousOrgOriginal <= orgOriginalBaseCandidate * 2.5);
     const hasOrgOriginalSnapshot = orgPctSet && (
@@ -1320,9 +1324,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     );
     const orgOriginalBase = hasOrgOriginalSnapshot
       ? orgOriginalBaseCandidate
-      : (orgOriginalBasePlausible && savedOrgOriginalBase > 0 && previousOrgOriginal > 0
-          ? savedOrgOriginalBase
-          : orgBase);
+      : orgBase;
     const orgOriginal = hasOrgOriginalSnapshot
       ? previousOrgOriginal
       : (orgPctSet ? (orgOriginalBase * (1 + orgPct / 100)) : 0);
@@ -1341,7 +1343,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const currentBaseField = ["current_budget_base", "current_base"].find((key) => masterColumns.has(key));
       const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => masterColumns.has(key));
       const currentCountField = ["current_headcount", "headcount"].find((key) => masterColumns.has(key));
-      if (originalBaseField && orgPctSet && !hasOrgOriginalSnapshot) orgFields[originalBaseField] = orgOriginalBase;
+      if (originalBaseField && orgPctSet && (!hasOrgOriginalSnapshot || savedOrgOriginalBase <= 0)) {
+        orgFields[originalBaseField] = orgOriginalBase;
+      }
       if (currentBaseField) orgFields[currentBaseField] = orgBase;
       const savedOrgOriginalCount = n(master.original_headcount || master.allocation_headcount);
       if (originalCountField && savedOrgOriginalCount <= 0 && eligibleEmployees.length > 0) {
