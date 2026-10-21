@@ -1165,7 +1165,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       // Validate the saved snapshot against its OWN captured base, never the live
       // base. Payroll/eligibility changes must not recalculate Original Budget.
       const comparisonBase = savedOriginalBase > 0 ? savedOriginalBase : stats.base;
-      const snapshotLooksValid = savedOriginalBudget > 0 &&
+      const looksLikeCorruptTinySnapshot = savedOriginalBudget > 0 &&
+        savedOriginalBudget < 1000 && stats.base >= 100000;
+      const snapshotLooksValid = savedOriginalBudget > 0 && !looksLikeCorruptTinySnapshot &&
         (comparisonBase <= 0 || savedOriginalBudget >= comparisonBase * 0.5) &&
         (comparisonBase <= 0 || savedOriginalBudget <= comparisonBase * 2.5);
       const hasOriginalSnapshot = canCreateOriginal && (
@@ -1312,7 +1314,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // A captured Org snapshot is validated only against its own saved base.
     // Changes to the live eligible CTC sum or Org % affect Updated Budget only.
     const orgOriginalBaseCandidate = savedOrgOriginalBase > 0 ? savedOrgOriginalBase : orgBase;
-    const orgSnapshotLooksValid = previousOrgOriginal > 0 &&
+    const looksLikeCorruptTinyOrgSnapshot = previousOrgOriginal > 0 &&
+      previousOrgOriginal < 1000 && orgBase >= 100000;
+    const orgSnapshotLooksValid = previousOrgOriginal > 0 && !looksLikeCorruptTinyOrgSnapshot &&
       (orgOriginalBaseCandidate <= 0 || previousOrgOriginal >= orgOriginalBaseCandidate * 0.5) &&
       (orgOriginalBaseCandidate <= 0 || previousOrgOriginal <= orgOriginalBaseCandidate * 2.5);
     const hasOrgOriginalSnapshot = orgPctSet && (
