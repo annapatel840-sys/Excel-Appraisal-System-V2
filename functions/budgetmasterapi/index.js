@@ -1254,8 +1254,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       // with its saved base, not today's live eligible CTC sum.
       const comparisonBase = savedOriginalBase > 0 ? savedOriginalBase : stats.base;
       const baseChanged = savedOriginalBase > 0 && Math.abs(savedOriginalBase - stats.base) >= 0.5;
+      const looksLikeCorruptTinySnapshot = savedOriginalBudget > 0 &&
+        savedOriginalBudget < 1000 && stats.base >= 100000;
       const hasOriginalSnapshot = Boolean(row.calculated_budget_is_set) &&
-        savedOriginalBudget > 0 && savedOriginalBase > 0 && !baseChanged;
+        savedOriginalBudget > 0 && savedOriginalBase > 0 && !baseChanged &&
+        !looksLikeCorruptTinySnapshot;
       const originalBase = hasOriginalSnapshot ? savedOriginalBase : stats.base;
       // Comp Manager % is an allocation share of the team CTC base, not an extra hike on top of that base.
       const originalBudget = hasOriginalSnapshot ? savedOriginalBudget : (originalBase * pct / 100);
