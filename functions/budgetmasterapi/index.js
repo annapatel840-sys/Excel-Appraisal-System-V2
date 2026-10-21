@@ -365,21 +365,35 @@ function currentCtc(row) {
     "total_ctc_with_rewards", "total_CTC_with_rewards", "total_ctc", "new_ctc", "newCTC",
     "totalCTCWithRewards", "total_ctc_with_rewards_current",
   ]);
-  if (stored !== "" && stored !== null && stored !== undefined) return n(stored);
+  if (stored !== "" && stored !== null && stored !== undefined) {
+    const parsed = Number(String(stored).replace(/[₹,\s]/g, ""));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  // Match employeesapi: if the stored total is blank/invalid, reconstruct from
+  // current Appraisal Sheet components rather than treating invalid text as 0.
   // The current Appraisal Sheet computes Total CTC with Rewards as next-year
   // base salary plus total bonus: (current base + hike) + (allocated PB + new PB + new RB).
-  return n(firstValue(row, ["current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "base_pay"])) +
-    n(firstValue(row, ["hike_amount", "hikeAmount", "current_hike_amount"])) +
-    n(firstValue(row, ["allocated_pb_amount", "allocatedPBAmount", "target_pb_allocated_for_may", "targetPBAllocatedForMay"])) +
-    n(firstValue(row, ["new_pb_to_be_offered", "newPBToBeOffered", "current_performance_bonus"])) +
-    n(firstValue(row, ["new_rb", "newRB", "current_retention_bonus"]));
+  const base = n(firstValue(row, ["current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "base_pay"]));
+  const hike = n(firstValue(row, ["hike_amount", "hikeAmount", "current_hike_amount"]));
+  const storedTotalPb = firstValue(row, ["total_pb", "totalPB"]);
+  const pb = storedTotalPb !== "" && storedTotalPb !== null && storedTotalPb !== undefined
+    ? n(storedTotalPb)
+    : n(firstValue(row, ["allocated_pb_amount", "allocatedPBAmount", "target_pb_allocated_for_may", "targetPBAllocatedForMay"])) +
+      n(firstValue(row, ["new_pb_to_be_offered", "newPBToBeOffered", "current_performance_bonus"]));
+  const retention = n(firstValue(row, ["new_rb", "newRB", "current_retention_bonus"]));
+  return base + hike + pb + retention;
 }
 
 function previousCtc(record) {
   const raw = firstValue(record, [
     "total_ctc_with_rewards", "total_CTC_with_rewards", "totalCTCWithRewards", "total_ctc", "new_ctc", "newCTC",
   ]);
-  if (raw !== "" && raw !== null && raw !== undefined) return n(raw);
+  if (raw !== "" && raw !== null && raw !== undefined) {
+    const parsed = Number(String(raw).replace(/[₹,\s]/g, ""));
+    // employeesapi ignores a payroll row with a non-numeric stored total too.
+    if (Number.isFinite(parsed)) return parsed;
+    return null;
+  }
 
   // Payroll rows may not persist the computed total column. Recreate the same
   // Total CTC with Rewards formula from that historical row's own values.
@@ -772,6 +786,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const cycleKey = referencedCycle ? (cycleIdOf(referencedCycle) || cycleNameOf(referencedCycle).toLowerCase()) : cycleRef.toLowerCase();
     if (!employeeKey || !cycleKey) return;
     const key = cycleKey + "::" + employeeKey;
+    // Match Appraisal Sheet enrichment: a newer blank/invalid payroll row must
+    // not hide an older usable Total CTC with Rewards for the same employee/cycle.
+    if (previousCtc(historyRow) === null) return;
     const previous = historyRowsByCycleAndEmployee.get(key);
     const rowTime = String(historyRow.MODIFIEDTIME || historyRow.CREATEDTIME || historyRow.ROWID || "");
     const previousTime = previous ? String(previous.MODIFIEDTIME || previous.CREATEDTIME || previous.ROWID || "") : "";
@@ -838,9 +855,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       "",
     ).trim().toLowerCase();
     const explicitEligible = ["eligible", "yes", "true", "1"].includes(rawEligibility);
-    const explicitNotEligible = ["noteligible", "no", "false", "0", "ineligible"].includes(rawEligibility);
-    const eligible = rawStatus === "active" &&
-      (explicitNotEligible ? false : explicitEligible || !rawEligibility);
+    // Match employeesapi/Appraisal Sheet: Active AND explicitly Eligible.
+    // Blank eligibility is not an implicit yes.
+    const eligible = rawStatus === "active" && explicitEligible;
     const amount = (aliases) => n(firstNonZeroValue(row, aliases));
     const currentHike = amount(["hike_amount", "hikeAmount", "current_hike_amount"]);
     const previousHike = amount(["previous_year_hike_amount", "previousYearHikeAmount", "previous_hike_amount", "last_year_hike_amount"]);
@@ -1264,7 +1281,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const orgUpdated = orgPctSet ? orgBase * (1 + orgPct / 100) : 0;
     const orgFields = {
       ROWID: master.id,
-      org_budget_base: orgOriginalBase,
+      // Live sum of previous-appraisal CTC for eligible employees in this cycle.
+      // The original snapshot belongs in original_budget_base/original_base.
+      org_budget_base: orgBase,
       [masterCalcField]: orgOriginal,
       applied_budget: orgUpdated,
     };
