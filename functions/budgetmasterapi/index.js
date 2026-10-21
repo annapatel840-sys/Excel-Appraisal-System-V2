@@ -1031,7 +1031,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const orgPct = n(master.budget_percentage);
       const orgPctSet = Boolean(master.budget_percentage_is_set);
       const effectivePct = rawPct === null ? orgPct : rawPct;
-      const savedOriginalBase = n(row.original_budget_base || row.original_base);
+      const savedOriginalBase = n(row.original_budget_base || row.original_base || row.budget_base);
       const savedOriginalBudget = n(row.calculated_budget);
       const savedBaseMatches = savedOriginalBase > 0 && Math.abs(savedOriginalBase - stats.base) < 0.5;
       const hasOriginalSnapshot = savedOriginalBudget > 0 && savedBaseMatches;
