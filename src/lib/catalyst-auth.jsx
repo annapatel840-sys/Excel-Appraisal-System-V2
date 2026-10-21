@@ -204,7 +204,7 @@ export function CatalystAuthGate({ children }) {
           <div className="p-6 sm:p-10">
             <div className="mx-auto w-full max-w-md">
               <div className="lg:hidden mb-6 flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600 text-sm font-bold text-white">
-                <img src="/wissen_technology_logo.jpg" alt="Wissen Technology Logo" />
+                CT
               </div>
 
               {state === "loading" ? (
