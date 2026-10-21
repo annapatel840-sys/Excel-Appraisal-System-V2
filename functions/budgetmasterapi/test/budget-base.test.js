@@ -117,8 +117,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     store.tables.Payroll_Data.push({
       ROWID: '99991',
       emp_id: existingEmployeeRowId,
-      appraisal_cycle_name: previousCycleId,
-      total_CTC_with_rewards: '25,00,000',
+      appraisal_cycle_id: previousCycleId,
+      total_ctc_with_rewards: '25,00,000',
     });
 
     const r = await get(load(store));
