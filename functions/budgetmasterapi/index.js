@@ -307,21 +307,6 @@ async function readBundle(app) {
   };
 }
 
-async function readTableById(app, tableId) {
-  const table = app.datastore().table(tableId);
-  const rows = [];
-  let nextToken = null;
-  for (let guard = 0; guard < 10000; guard += 1) {
-    const options = { maxRows: 200 };
-    if (nextToken) options.nextToken = nextToken;
-    const page = await table.getPagedRows(options);
-    rows.push(...(Array.isArray(page && page.data) ? page.data : []));
-    if (!(page && page.more_records === true) || !page.next_token) break;
-    nextToken = page.next_token;
-  }
-  return rows;
-}
-
 function normalizedIdentity(raw) {
   if (raw === null || raw === undefined) return "";
   if (typeof raw === "object") {
@@ -700,8 +685,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   const [appraisalRows, masterEmployeeRows, payrollRows, cycleRows] = await Promise.all([
     getAllRows(app, "Appraisal_Sheet"),
     getAllRows(app, "Employee_Master").catch(() => []),
-    readTableById(app, TABLES.payroll),
-    readTableById(app, TABLES.cycles),
+    getAllRows(app, "Payroll_Data"),
+    getAllRows(app, "Appraisal_Cycle_Master"),
   ]);
   if (!appraisalRows.length) {
     throw new Error("Appraisal_Sheet returned no rows; cannot calculate budget bases.");
