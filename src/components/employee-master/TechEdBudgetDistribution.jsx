@@ -487,7 +487,13 @@ export function TechEdBudgetDistribution() {
       const pct = num(live.percentage);
       const resolvedName = resolveManager(live.comp_manager);
       const stats = managerStats.get(ownerKey(resolvedName)) || { count: 0, base: 0, utilized: 0, name: resolvedName || live.comp_manager };
-      const base = num(live.budget_base) || stats.base || (pct ? num(live.calculated_budget) * 100 / pct : 0);
+      // When the manager exists in the current eligible Appraisal Sheet roster,
+      // its CTC base must come from that live roster, even when the saved row has
+      // a non-zero but stale budget_base. Keep saved fallback only for orphan rows.
+      const hasCurrentRoster = managerStats.has(ownerKey(resolvedName));
+      const base = hasCurrentRoster
+        ? stats.base
+        : (num(live.budget_base) || (pct ? num(live.calculated_budget) * 100 / pct : 0));
       const original = num(live.calculated_budget);
       const updated = num(live.applied_budget);
       const managerName = String(stats.name || resolvedName || "Unassigned Comp Manager").trim();
