@@ -19,6 +19,7 @@ const EMPLOYEES_TABLE_ID = "74008000000039094";
 const EMPLOYEE_MASTER_TABLE_ID = "74008000000035727";
 const PAYROLL_DATA_TABLE_ID = "74008000000035326";
 const APPRAISAL_CYCLE_TABLE_ID = "74008000000034190";
+const ELIGIBILITY_TABLE_ID = "74008000000057046";
 
 /* ============================================================
    EXPRESS JSON BODY PARSER
@@ -760,9 +761,10 @@ function currentTotalCtc(row) {
 }
 
 async function enrichPreviousAppraisalValues(datastore, employees, employeeMasterMap) {
-  const [payrollRows, cycleRows] = await Promise.all([
+  const [payrollRows, cycleRows, eligibilityRows] = await Promise.all([
     readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
     readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
+    readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)).catch(() => []),
   ]);
   const cycleIdOf = (cycle) => String(cycle?.ROWID ?? cycle?.rowid ?? cycle?.id ?? cycle?.ID ?? "").trim();
   const cycleStatusOf = (cycle) => String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "").trim().toLowerCase();
@@ -770,6 +772,18 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   const cycleByName = new Map(cycleRows.map((cycle) => [historyCycleName(cycle).toLowerCase(), cycle]).filter(([name]) => name));
   const currentCycle = cycleRows.find((cycle) => cycleStatusOf(cycle) === "active" && cycle.archived !== true && cycle.archived !== "true") ||
     cycleRows.slice().sort((a, b) => historyCycleRank(b) - historyCycleRank(a))[0] || null;
+  const currentCycleId = currentCycle ? cycleIdOf(currentCycle) : "";
+  const eligibilityByEmployee = new Map();
+  eligibilityRows.forEach((record) => {
+    if (String(record?.appraisal_cycle_id ?? "") !== currentCycleId) return;
+    const masterId = String(record?.employee_master_id ?? "").trim();
+    const empId = String(record?.emp_id ?? "").trim().toLowerCase();
+    const status = String(record?.eligibility_status ?? record?.eligible_status ?? "").trim().toLowerCase();
+    if (!["eligible", "not eligible", "noteligible", "yes", "no", "true", "false", "1", "0"].includes(status)) return;
+    const normalized = ["eligible", "yes", "true", "1"].includes(status) ? "eligible" : "not eligible";
+    if (masterId) eligibilityByEmployee.set("row:" + masterId, { status: normalized, record });
+    if (empId) eligibilityByEmployee.set("emp:" + empId, { status: normalized, record });
+  });
   const currentRank = currentCycle ? historyCycleRank(currentCycle) : 0;
   const currentCycleName = currentCycle ? historyCycleName(currentCycle) : "";
   const yearMatch = currentCycleName.match(/(?:19|20)\d{2}/);
@@ -817,8 +831,19 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const previousCtc = prior ? prior.value : currentTotalCtc(employee);
     const previousCycleName = prior ? historyCycleName(prior.cycle) : "";
     const label = prior ? previousCycleName : "New - " + currentYear;
+    const master = empKey ? employeeMasterMap.get(empKey) : null;
+    const masterId = String(master?.ROWID ?? master?.rowid ?? master?.id ?? "").trim();
+    const cycleEligibility = (masterId ? eligibilityByEmployee.get("row:" + masterId) : null) ||
+      (empKey ? eligibilityByEmployee.get("emp:" + empKey) : null);
     return {
       ...employee,
+      ...(cycleEligibility ? {
+        eligible_status: cycleEligibility.status,
+        eligibility_reason: String(cycleEligibility.record?.eligibility_reason || ""),
+        eligibleReason: String(cycleEligibility.record?.eligibility_reason || ""),
+        eligibility_source: String(cycleEligibility.record?.eligibility_source || ""),
+        eligibility_updated_at: String(cycleEligibility.record?.eligibility_updated_at || ""),
+      } : {}),
       previous_appraisal_total_ctc_with_rewards: previousCtc,
       Previous_Appraisal_total_CTC_with_rewards: previousCtc,
       previousAppraisalTotalCtcWithRewards: previousCtc,
@@ -1379,7 +1404,7 @@ async function getEmployees(req, res) {
     search,
     status === "all" ? "" : status,
     eligibleParam === "all" ? "" : eligibleParam,
-    hrUser ? "master" : view,
+    view,
     location,
   );
 
