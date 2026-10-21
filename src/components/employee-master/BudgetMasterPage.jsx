@@ -699,66 +699,63 @@ function HRApplyBudget() {
     setError("");
   }
 
-  const orgCell = "shrink-0 min-w-[170px] border-r border-[#d7dce3] px-[22px] py-4";
-
+  const displayedOrgUpdated = orgPending
+    ? previewOrgBudget
+    : amount(selectedMaster?.applied_budget) || previewOrgBudget;
+  const displayedUtilized = amount(selectedMaster?.budget_utilized ?? selectedMaster?.total_utilization);
+  const availableAfterAllocation = displayedOrgUpdated - previewTotal;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="bm-root">
+      <div className="bm-page-head">
+        <div>
+          <div className="bm-eyebrow">COMPENSATION MANAGEMENT</div>
+          <h2>Budget Master</h2>
+          <p>Review the organization budget and manage Tech-Ed allocations for the active appraisal cycle.</p>
+        </div>
+        <div className="bm-head-actions">
+          <span className="bm-cycle-chip">
+            <span className="bm-status-dot" />
+            {cycleLoading ? "Loading cycle…" : activeCycle?.name || selectedMaster?.appraisal_cycle_name || "No active cycle"}
+          </span>
+          <button type="button" className="bm-btn bm-btn-secondary" onClick={() => reloadBudget()} disabled={budgetLoading}>
+            {budgetLoading ? "Refreshing…" : "↻ Refresh"}
+          </button>
+        </div>
+      </div>
+
       {budgetError || budgetWarning ? (
-        <div
-          role="alert"
-          className="rounded-[8px] border border-[#f2d27a] bg-[#fff8e1] px-3 py-2 text-[12px] text-[#7a4b00]"
-        >
+        <div role="alert" className="bm-alert bm-alert-warning">
           {budgetError ? <div><b>Budget data could not be loaded:</b> {budgetError}</div> : null}
           {budgetWarning ? <div><b>Budget base:</b> {budgetWarning}</div> : null}
         </div>
       ) : null}
       {error ? (
-        <div className="flex justify-between gap-2 rounded-md border border-[#e3e8ef] border-l-4 border-l-[#c2410c] bg-white px-3 py-2 text-[12px] text-[#7c2d12]">
+        <div role="alert" className="bm-alert bm-alert-error">
           <span>{error}</span>
-          <button
-            type="button"
-            className="font-bold"
-            onClick={() => setError("")}
-          >
-            Dismiss
-          </button>
+          <button type="button" onClick={() => setError("")}>Dismiss ×</button>
         </div>
       ) : null}
 
-      <section
-        className={
-          "overflow-hidden rounded-[10px] border bg-white " +
-          (orgPending ? "bg-[#fdf8e7]" : "")
-        }
-        style={{ borderColor: BORDER }}
-      >
-        <div
-          className="px-3 py-1.5 text-left text-[12.5px] font-semibold text-white"
-          style={{ background: NAVY }}
-        >
-          Org Budget %
-        </div>
-        <div className="overflow-x-auto">
-          <div className="flex items-stretch gap-3 px-3 py-1">
-            <div className={orgCell}>
-              <div className="text-[11px] font-medium text-[#5b6b80]">
-                Active Appraisal Cycle
-              </div>
-
-              <div
-                className="mt-1 flex h-[38px] min-w-[180px] items-center rounded border border-[#14a3a3] bg-[#f4f7fa] px-3 text-[13px] font-bold text-[#12304f]"
-                aria-label="Currently active appraisal cycle"
-                title={activeCycle?.name || "No active cycle"}            
-              >
-                {cycleLoading ? "Loading active cycle…" : activeCycle?.name || "No active cycle"}
-              </div>
+      <div className="bm-control-grid">
+        <section className={"bm-control-card" + (orgPending ? " bm-card-pending" : "")}>
+          <div className="bm-card-heading">
+            <div>
+              <span className="bm-section-kicker">ORGANIZATION</span>
+              <h3>Org budget</h3>
             </div>
-            <div className={orgCell}>
-              <div className="text-[11px] font-medium text-[#5b6b80]">
-                Org % (default for all Tech EDs)
+            <span className="bm-card-subtitle">Applies the default percentage</span>
+          </div>
+          <div className="bm-control-row">
+            <label className="bm-field bm-cycle-field">
+              <span>Appraisal cycle</span>
+              <div className="bm-cycle-value" title={activeCycle?.name || "No active cycle"}>
+                {cycleLoading ? "Loading…" : activeCycle?.name || selectedMaster?.appraisal_cycle_name || "No active cycle"}
               </div>
-              <div className="mt-1 flex items-center gap-2">
+            </label>
+            <label className="bm-field bm-percent-field">
+              <span>Org %</span>
+              <div className="bm-percent-control">
                 <input
                   type="number"
                   min="0"
@@ -767,106 +764,124 @@ function HRApplyBudget() {
                   value={orgPct}
                   disabled={!canConfig || savingOrg}
                   onChange={(e) => setOrgPct(e.target.value)}
-                  className="h-[38px] w-[110px] rounded border border-[#14a3a3] px-2 text-right text-[18px] font-bold text-[#12304f] outline-none"
+                  aria-label="Organization budget percentage"
                 />
-                <button
-                  type="button"
-                  disabled={!canConfig || savingOrg || cycleLoading || !activeCycle}
-                  onClick={applyOrgPercentage}
-                  className="h-[38px] rounded-md px-3 text-[12px] font-semibold text-white disabled:opacity-50"
-                  style={{ background: TEAL }}
-                >
-                  {savingOrg ? "Saving…" : "Apply"}
-                </button>
+                <span>%</span>
               </div>
-              {orgPending ? (
-                <div className="text-[11px] text-slate-500">was 8%</div>
-              ) : null}
+            </label>
+            <button
+              type="button"
+              className="bm-btn bm-btn-primary bm-org-apply"
+              disabled={!canConfig || savingOrg || cycleLoading || !activeCycle}
+              onClick={applyOrgPercentage}
+            >
+              {savingOrg ? "Saving…" : "Apply org %"}
+            </button>
+          </div>
+          <p className="bm-helper">The original budget is captured on the first valid percentage. Later percentage changes update the updated-budget value.</p>
+        </section>
+
+        <section className="bm-control-card bm-tech-control-card">
+          <div className="bm-card-heading">
+            <div>
+              <span className="bm-section-kicker">TECH-ED ALLOCATION</span>
+              <h3>Team percentages</h3>
             </div>
-            <div className={orgCell}>
-              <div className="text-[11px] text-[#5b6b80]">Org budget base</div>
-              <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
-                {money(orgBase)}
-              </div>
+            <span className="bm-count-chip">{rows.length} Tech-Ed{rows.length === 1 ? "" : "s"}</span>
+          </div>
+          <div className="bm-tech-summary">
+            <div>
+              <span>Pending changes</span>
+              <strong className={pendingCount ? "bm-pending-value" : ""}>{pendingCount}</strong>
             </div>
-            <div className={orgCell}>
-              <div className="text-[11px] text-[#5b6b80]">Original budget</div>
-              <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
-                {money(originalOrgBudget)}
-              </div>
-            </div>
-            <div className={orgCell}>
-              <div className="text-[11px] text-[#5b6b80]">Updated budget</div>
-              <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
-                {money(orgPending ? previewOrgBudget : amount(selectedMaster?.applied_budget) || previewOrgBudget)}
-              </div>
-            </div>
-            <div className="shrink-0 min-w-[150px] rounded-md border border-[#d7dce3] bg-[#f8fafc] px-[22px] py-4">
-              <div className="text-[11px] text-[#5b6b80]">Team count</div>
-              <div className="mt-1 text-[18px] font-semibold text-[#12304f]">
-                {total.team0} → {total.team}
-              </div>
+            <div>
+              <span>Default percentage</span>
+              <strong>{orgPct === "" ? "Not set" : percent(orgPct)}</strong>
             </div>
           </div>
+          <p className="bm-helper">A Tech-Ed can inherit the organization percentage or use an override. Use the action bar below to save pending changes.</p>
+        </section>
+      </div>
+
+      <section className="bm-metrics" aria-label="Organization budget summary">
+        <div className="bm-metric">
+          <span>Org budget base</span>
+          <strong>{money(orgBase)}</strong>
+          <small>Eligible employees’ previous appraisal CTC</small>
         </div>
-        <div className="px-[18px] pb-2.5 text-[11.5px] text-slate-500">
-          Changing the org % updates every Tech ED on the org default. Tech EDs
-          with an override keep their own %.
+        <div className="bm-metric">
+          <span>Original budget</span>
+          <strong>{money(originalOrgBudget)}</strong>
+          <small>First applied percentage</small>
+        </div>
+        <div className="bm-metric bm-metric-highlight">
+          <span>Updated budget</span>
+          <strong>{money(displayedOrgUpdated)}</strong>
+          <small>{orgPending ? "Preview — not yet saved" : "Current organization allocation"}</small>
+        </div>
+        <div className="bm-metric">
+          <span>Tech-Ed budgets</span>
+          <strong>{money(previewTotal)}</strong>
+          <small>Combined updated allocations</small>
+        </div>
+        <div className={"bm-metric" + (availableAfterAllocation < -0.5 ? " bm-metric-warning" : "")}>
+          <span>{availableAfterAllocation < -0.5 ? "Over allocation" : "Unallocated balance"}</span>
+          <strong>{money(Math.abs(availableAfterAllocation))}</strong>
+          <small>{availableAfterAllocation < -0.5 ? "Tech-Ed allocations exceed org budget" : "After Tech-Ed allocations"}</small>
+        </div>
+        <div className="bm-metric">
+          <span>Team count</span>
+          <strong>{total.team0} <i>→</i> {total.team}</strong>
+          <small>Original to current eligible count</small>
+        </div>
+        <div className="bm-metric">
+          <span>Budget utilized</span>
+          <strong>{money(displayedUtilized)}</strong>
+          <small>Reported by Budget Master API</small>
         </div>
       </section>
 
-      <section
-        className="overflow-hidden rounded-[10px] border bg-white shadow-[0_1px_2px_rgba(18,48,79,.06)]"
-        style={{ borderColor: BORDER }}
-      >
-        <div
-          className="px-3 py-1.5 text-left text-[12.5px] font-semibold text-white"
-          style={{ background: NAVY }}
-        >
-          Tech EDs — {rows.length}
+      <section className="bm-table-card">
+        <div className="bm-table-heading">
+          <div>
+            <span className="bm-section-kicker">BUDGET DISTRIBUTION</span>
+            <h3>Tech-Ed budgets <span>{rows.length}</span></h3>
+          </div>
+          <div className="bm-table-legend">
+            <span><i className="bm-legend-default" /> Org default</span>
+            <span><i className="bm-legend-override" /> Override</span>
+          </div>
         </div>
-        <div className="max-h-[58vh] overflow-auto">
-          <table className="w-full min-w-[1180px] border-collapse text-[12.5px] tabular-nums">
+        <div className="bm-table-scroll">
+          <table className="bm-table">
             <thead>
               <tr>
                 {HR_COLS.map(([h, right]) => (
-                  <th
-                    key={h}
-                    className={
-                      "sticky top-0 whitespace-nowrap border-b-2 border-[#9fb3cf] bg-[#e8eef5] px-2.5 py-2 text-[12px] font-semibold text-[#12304f] " +
-                      (right ? "text-right" : "text-left")
-                    }
-                  >
-                    {h}
-                  </th>
+                  <th key={h} className={right ? "bm-align-right" : ""}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
+              {rows.length ? rows.map((r) => {
                 const p = previewPct(r);
                 const changing = Number(p) !== r.pct;
                 const open = !!history[r.name];
+                const rowAudit = audit.filter((a) => a.owner === r.name);
                 const sourceOverride =
                   overrides[r.name] ||
                   (Object.prototype.hasOwnProperty.call(pending, r.name) &&
                     Number(p) !== amount(orgPct));
-                const td =
-                  "border-b border-[#e1e5eb] px-2.5 py-2 align-middle " +
-                  (changing ? "bg-[#fdf8e7] " : "bg-white ");
+                const tdClass = changing ? "bm-pending-row" : "";
                 return (
                   <FragmentRow key={r.name}>
-                    <tr>
-                      <td
-                        className={td + "whitespace-nowrap text-left font-bold"}
-                      >
-                        {r.name}
+                    <tr className={tdClass}>
+                      <td className="bm-owner-cell">
+                        <strong>{r.name}</strong>
+                        {changing ? <small>Pending change</small> : null}
                       </td>
-                      <td className={td + "whitespace-nowrap text-right"}>
-                        {money(r.base)}
-                      </td>
-                      <td className={td + "text-right"}>
-                        <div className="flex flex-col items-end">
+                      <td className="bm-align-right bm-number">{money(r.base)}</td>
+                      <td className="bm-percent-cell">
+                        <div>
                           <input
                             type="number"
                             min="0"
@@ -875,126 +890,77 @@ function HRApplyBudget() {
                             value={p}
                             disabled={!canConfig}
                             onChange={(e) => setRowPct(r.name, e.target.value)}
-                            className="h-8 w-[84px] rounded border border-[#14a3a3] bg-white px-2 text-right text-[14px] font-bold text-[#12304f]"
+                            aria-label={"Percentage for " + r.name}
                           />
-                          {changing ? (
-                            <div className="whitespace-nowrap text-[11px] text-slate-500">
-                              was {r.pct}%
-                            </div>
-                          ) : null}
+                          <span>%</span>
                         </div>
+                        {changing ? <small>was {r.pct}%</small> : null}
                       </td>
-                      <td className={td + "text-left"}>
+                      <td>
                         {sourceOverride ? (
-                          <div className="flex flex-wrap items-center gap-1">
-                            <span className="whitespace-nowrap rounded-full bg-[#fff4d6] px-2 py-0.5 text-[11px] font-bold text-[#8a5a00]">
-                              Override
-                            </span>
-                            <button
-                              type="button"
-                              className="whitespace-nowrap text-[11.5px] font-bold text-[#1859a8]"
-                              onClick={() => resetRow(r.name)}
-                            >
-                              Reset to org %
-                            </button>
+                          <div className="bm-source">
+                            <span className="bm-source-override">Override</span>
+                            <button type="button" className="bm-text-action" onClick={() => resetRow(r.name)}>Reset to org %</button>
                           </div>
-                        ) : (
-                          <span className="whitespace-nowrap rounded-full bg-[#e6f4f4] px-2 py-0.5 text-[11px] font-bold text-[#0f6d6d]">
-                            Org default
-                          </span>
-                        )}
+                        ) : <span className="bm-source-default">Org default</span>}
                       </td>
-                      <td className={td + "whitespace-nowrap text-right"}>
-                        {money(r.original)}
-                      </td>
-                      <td className={td + "whitespace-nowrap text-right"}>
-                        {money(r.updated)}
-                      </td>
-                      <td className={td + "text-right"}>{r.team0}</td>
-                      <td className={td + "text-right"}>{r.team}</td>
-                      <td className={td + "text-left"}>
-                        {canAudit && (open || r.lastChanged !== "01-Sep-26") ? (
+                      <td className="bm-align-right bm-number">{money(r.original)}</td>
+                      <td className="bm-align-right bm-number bm-updated-cell">{money(r.updated)}</td>
+                      <td className="bm-align-right bm-number">{r.team0}</td>
+                      <td className="bm-align-right bm-number">{r.team}</td>
+                      <td>
+                        {canAudit && (open || rowAudit.length > 0) ? (
                           <button
                             type="button"
-                            className="whitespace-nowrap rounded border border-[#c5d0dd] bg-white px-2 py-1 text-[12px] font-bold text-[#17365d]"
-                            onClick={() =>
-                              setHistory((x) => ({
-                                ...x,
-                                [r.name]: !x[r.name],
-                              }))
-                            }
+                            className="bm-history-btn"
+                            aria-expanded={open}
+                            onClick={() => setHistory((x) => ({ ...x, [r.name]: !x[r.name] }))}
                           >
                             {r.lastChanged} {open ? "▴" : "▾"}
                           </button>
-                        ) : (
-                          <span className="text-[#94a3b8]">—</span>
-                        )}
+                        ) : <span className="bm-muted">—</span>}
                       </td>
                     </tr>
                     {open && canAudit ? (
                       <tr>
-                        <td
-                          colSpan={HR_COLS.length}
-                          className="border-b border-[#d7dce3] bg-[#f7f9fc] px-10 py-3"
-                        >
-                          <AuditTable
-                            rows={audit.filter((a) => a.owner === r.name)}
-                          />
+                        <td colSpan={HR_COLS.length} className="bm-audit-row">
+                          <AuditTable rows={rowAudit} />
                         </td>
                       </tr>
                     ) : null}
                   </FragmentRow>
                 );
-              })}
+              }) : (
+                <tr><td colSpan={HR_COLS.length} className="bm-empty-row">
+                  {budgetLoading ? "Loading Tech-Ed budget rows…" : "No Tech-Ed assignments were found for this appraisal cycle."}
+                </td></tr>
+              )}
             </tbody>
           </table>
         </div>
-        <div className="sticky bottom-0 flex flex-wrap items-center gap-2 border-t border-[#d4dbe5] bg-white px-3.5 py-2.5">
-          <span
-            className={
-              pendingCount ? "font-bold text-[#c2410c]" : "text-slate-500"
-            }
-          >
-            {pendingCount
-              ? pendingCount +
-                " change" +
-                (pendingCount === 1 ? "" : "s") +
-                " pending"
-              : "No pending changes"}
-          </span>
-          {canConfig && (
-            <>
+        <div className="bm-action-bar">
+          <div className="bm-pending-status">
+            <span className={pendingCount ? "bm-status-dot bm-status-dot-pending" : "bm-status-dot"} />
+            <span>{pendingCount ? pendingCount + " change" + (pendingCount === 1 ? "" : "s") + " pending" : "No pending changes"}</span>
+          </div>
+          {canConfig ? (
+            <div className="bm-action-controls">
               <input
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}
                 disabled={!pendingCount}
-                placeholder="Reason (saved in the audit trail)"
-                className="h-[30px] min-w-[200px] max-w-[460px] flex-1 rounded border border-[#cbd3df] px-2 text-[12.5px]"
+                placeholder="Reason for change (optional)"
+                aria-label="Reason for budget changes"
               />
-              <button
-                type="button"
-                disabled={!pendingCount}
-                onClick={discard}
-                className="rounded-md border border-[#c5d0dd] bg-white px-3 py-1.5 text-[12px] font-semibold text-[#12304f] disabled:opacity-40"
-              >
-                Discard
-              </button>
-              <button
-                type="button"
-                disabled={!pendingCount}
-                onClick={apply}
-                className="rounded-md px-3 py-1.5 text-[12px] font-semibold text-white disabled:opacity-40"
-                style={{ background: TEAL }}
-              >
-                Apply
-              </button>
-            </>
-          )}
+              <button type="button" className="bm-btn bm-btn-secondary" disabled={!pendingCount} onClick={discard}>Discard</button>
+              <button type="button" className="bm-btn bm-btn-primary" disabled={!pendingCount} onClick={apply}>Apply changes</button>
+            </div>
+          ) : null}
         </div>
       </section>
+      <div className="bm-footer-note">Budget values shown here are sourced from the existing Budget Master API. This redesign does not change the calculation or saving workflow.</div>
     </div>
   );
-}
 
 /* tbody can hold several <tr> per item; a fragment keeps the table valid. */
 function FragmentRow({ children }) {
