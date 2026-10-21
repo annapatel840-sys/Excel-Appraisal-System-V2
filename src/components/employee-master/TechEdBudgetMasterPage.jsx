@@ -15,6 +15,10 @@ const ownerParts = (value) => {
   return parts.length > 1 ? [text, ...parts] : [text];
 };
 const ownerKey = (value) => ownerParts(value)[1] || ownerParts(value)[0] || "";
+const ownerName = (value) => {
+  const parts = ownerParts(value);
+  return parts.length > 1 ? parts.slice(1).join(" - ") : parts[0] || "";
+};
 
 // Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
 const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
