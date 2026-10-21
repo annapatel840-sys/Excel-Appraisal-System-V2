@@ -1065,7 +1065,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       // Eligibility_List is the source of truth for each appraisal cycle.
       // Missing/Pending rows are not eligible, matching Appraisal Sheet's
       // explicit eligible filter instead of falling back to stale master data.
-      const eligible = Boolean(cycleEligibility && cycleEligibility.eligible);
+      // Match the Appraisal Sheet filter exactly: a cycle-specific Eligibility_List
+      // decision wins; when no decision exists, use the same Active + explicit/fallback
+      // eligibility rule as employeesapi so Org Base includes exactly displayed staff.
+      const eligible = cycleEligibility ? cycleEligibility.eligible : employee.eligible;
       return {
         ...employee,
         eligible,
