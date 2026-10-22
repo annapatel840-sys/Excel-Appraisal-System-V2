@@ -382,10 +382,28 @@ export function BudgetProvider({ children }) {
   }, [rows, employeeRows]);
 
   const totals = useMemo(() => {
+    const detectedIdentities = [currentUser.name, currentUser.email].map(normalizeOwner).filter(Boolean);
+    const detectedDirectoryOwner = techEdOwners.find((item) =>
+      [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name, item?.email, item?.email_id]
+        .filter(Boolean).some((alias) => ownerMatches(alias, detectedIdentities)),
+    );
+    const detectedOwnerAliases = [
+      ...detectedIdentities,
+      detectedDirectoryOwner?.employee_id, detectedDirectoryOwner?.row_id,
+      detectedDirectoryOwner?.ROWID, detectedDirectoryOwner?.assignment,
+      detectedDirectoryOwner?.name, detectedDirectoryOwner?.email,
+    ].map(normalizeOwner).filter(Boolean);
+    const hasTechEdAllocationForLogin = budgetDistributionRows.some((row) => {
+      const raw = row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed ||
+        row.appraiser_tech_ed || row.appraiser_tech_ed1 || "";
+      return ownerMatches(raw, detectedOwnerAliases) || detectedOwnerAliases.includes(normalizeOwner(raw));
+    });
+    const isTechEdBudgetView = roleText.includes("teched") || (!isHR && hasTechEdAllocationForLogin);
+
     // A Tech-Ed login must see their own Budget_Distribution allocation,
     // not the organisation-wide Budget_Master total. Dashboard, Appraisal Sheet,
     // and Detail Screen all consume this shared role-aware total.
-    if (roleText.includes("teched")) {
+    if (isTechEdBudgetView) {
       const identities = [currentUser.name, currentUser.email]
         .map(normalizeOwner).filter(Boolean);
       const directoryOwner = techEdOwners.find((item) =>
