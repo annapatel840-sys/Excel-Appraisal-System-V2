@@ -1265,7 +1265,11 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       const legacyOwnerCount = legacyEligibleEmployees.filter((employee) => ownerKey(employee.techEd) === techKey).length;
       const repairInflatedSnapshot = hasSavedOriginalCount &&
         legacyEligibleEmployees.length > eligibleEmployees.length &&
-        savedOriginalCountNumber > stats.count && savedOriginalCountNumber === legacyOwnerCount;
+        savedOriginalCountNumber > stats.count &&
+        // Repair both team-specific legacy snapshots and old builds that copied
+        // the whole eligible-list count into every allocation row.
+        (savedOriginalCountNumber === legacyOwnerCount ||
+          savedOriginalCountNumber === legacyEligibleEmployees.length);
       const originalCountIsSet = hasSavedOriginalCount && !repairInflatedSnapshot;
       const savedOriginalCount = originalCountIsSet ? savedOriginalCountNumber : stats.count;
       const update = {
@@ -1360,7 +1364,11 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       ).length;
       const repairInflatedSnapshot = hasSavedOriginalCount &&
         legacyEligibleEmployees.length > eligibleEmployees.length &&
-        savedOriginalCountNumber > stats.count && savedOriginalCountNumber === legacyOwnerCount;
+        savedOriginalCountNumber > stats.count &&
+        // Repair both team-specific legacy snapshots and old builds that copied
+        // the whole eligible-list count into every allocation row.
+        (savedOriginalCountNumber === legacyOwnerCount ||
+          savedOriginalCountNumber === legacyEligibleEmployees.length);
       const originalCountIsSet = hasSavedOriginalCount && !repairInflatedSnapshot;
       const savedOriginalCount = originalCountIsSet ? savedOriginalCountNumber : stats.count;
       const update = {
