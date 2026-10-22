@@ -820,7 +820,9 @@ function HRApplyBudget() {
         base: employeeBases.get(key) || 0,
         original: selectedMaster?.budget_percentage_is_set ? bud(employeeBases.get(key) || 0, selectedMaster?.budget_percentage) : 0,
         updated: selectedMaster?.budget_percentage_is_set ? bud(employeeBases.get(key) || 0, selectedMaster?.budget_percentage) : 0,
-        team0: employeeCounts.get(key) || 0,
+        // This is only a provisional row; Original Count must come from the
+        // backend's first saved allocation snapshot, not today's live count.
+        team0: 0,
          team: employeeCounts.get(key) || 0,
          originalCountIsSet: false,
          lastChanged: "—",
