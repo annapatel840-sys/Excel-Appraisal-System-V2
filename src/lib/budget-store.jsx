@@ -387,11 +387,23 @@ export function BudgetProvider({ children }) {
       [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name, item?.email, item?.email_id]
         .filter(Boolean).some((alias) => ownerMatches(alias, detectedIdentities)),
     );
+    const detectedLoginEmployee = employeeRows.find((employee) =>
+      [
+        employee?.row_id, employee?.ROWID, employee?.ROW_ID, employee?.id,
+        employee?.emp_id, employee?.employee_id, employee?.employeeId,
+        employee?.emp_name, employee?.employee_name, employee?.name,
+        employee?.email, employee?.email_id, employee?.emailId,
+      ].filter(Boolean).some((alias) => detectedIdentities.includes(normalizeOwner(alias))),
+    );
     const detectedOwnerAliases = [
       ...detectedIdentities,
       detectedDirectoryOwner?.employee_id, detectedDirectoryOwner?.row_id,
       detectedDirectoryOwner?.ROWID, detectedDirectoryOwner?.assignment,
       detectedDirectoryOwner?.name, detectedDirectoryOwner?.email,
+      detectedLoginEmployee?.row_id, detectedLoginEmployee?.ROWID,
+      detectedLoginEmployee?.emp_id, detectedLoginEmployee?.employee_id,
+      detectedLoginEmployee?.employeeId, detectedLoginEmployee?.name,
+      detectedLoginEmployee?.emp_name, detectedLoginEmployee?.employee_name,
     ].map(normalizeOwner).filter(Boolean);
     const hasTechEdAllocationForLogin = budgetDistributionRows.some((row) => {
       const raw = row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed ||
@@ -411,6 +423,7 @@ export function BudgetProvider({ children }) {
           .filter(Boolean).some((alias) => ownerMatches(alias, identities)),
       );
       const ownerAliases = [
+        ...detectedOwnerAliases,
         ...identities,
         directoryOwner?.employee_id, directoryOwner?.row_id, directoryOwner?.ROWID,
         directoryOwner?.assignment, directoryOwner?.name, directoryOwner?.email,
