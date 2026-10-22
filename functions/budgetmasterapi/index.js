@@ -1034,23 +1034,15 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
 
   const persistOptional = async (table, rowId, columns, candidates, val) => {
     if (!rowId) return false;
-    // Prefer confirmed schema metadata, but do not silently skip writes when
-    // Catalyst getAllColumns is unavailable or returns unexpected names.
-    const knownField = columns ? candidates.find((candidate) => columns.has(candidate)) : "";
-    const fieldsToTry = knownField
-      ? [knownField, ...candidates.filter((candidate) => candidate !== knownField)]
-      : candidates;
-    let lastError = null;
-    for (const field of fieldsToTry) {
-      try {
-        await table.updateRow({ ROWID: rowId, [field]: val });
-        return true;
-      } catch (error) {
-        lastError = error;
-      }
-    }
-    if (lastError) throw lastError;
-    return false;
+    // Never send a guessed field name to Catalyst: a missing column makes the
+    // whole budget calculation return HTTP 500. Use a confirmed schema field;
+    // if metadata is unavailable, try only the canonical first candidate.
+    const knownField = columns
+      ? candidates.find((candidate) => columns.has(candidate))
+      : candidates[0];
+    if (!knownField) return false;
+    await table.updateRow({ ROWID: rowId, [knownField]: val });
+    return true;
   };
 
   // Resolve each Budget_Master row against its own immediately preceding cycle.
@@ -1249,10 +1241,10 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       await distributionTable.updateRow(update);
       // Save the initial count once. Every subsequent refresh only updates Current Count.
       if (!originalCountIsSet) {
-        await persistOptional(distributionTable, row.id, distributionColumns, ["original_headcount", "allocation_headcount"], stats.count);
+        await persistOptional(distributionTable, row.id, distributionColumns, ["original_headcount"], stats.count);
       }
-      await persistOptional(distributionTable, row.id, distributionColumns, ["current_headcount", "headcount"], stats.count);
-      await persistOptional(distributionTable, row.id, distributionColumns, ["current_budget_base", "current_base"], stats.base);
+      await persistOptional(distributionTable, row.id, distributionColumns, ["current_headcount"], stats.count);
+      await persistOptional(distributionTable, row.id, distributionColumns, ["current_budget_base"], stats.base);
       Object.assign(row, {
         budget_base: stats.base,
         original_budget_base: originalBase,
@@ -1333,10 +1325,10 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       }
       await compTable.updateRow(update);
       if (!originalCountIsSet) {
-        await persistOptional(compTable, row.id, compColumns, ["original_headcount", "allocation_headcount"], stats.count);
+        await persistOptional(compTable, row.id, compColumns, ["original_headcount"], stats.count);
       }
-      await persistOptional(compTable, row.id, compColumns, ["current_headcount", "headcount"], stats.count);
-      await persistOptional(compTable, row.id, compColumns, ["current_budget_base", "current_base"], stats.base);
+      await persistOptional(compTable, row.id, compColumns, ["current_headcount"], stats.count);
+      await persistOptional(compTable, row.id, compColumns, ["current_budget_base"], stats.base);
       Object.assign(row, {
         budget_base: stats.base,
         calculated_budget: originalBudget,
@@ -1393,10 +1385,10 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
     }
     await masterTable.updateRow(orgFields);
     if (!orgOriginalCountIsSet) {
-      await persistOptional(masterTable, master.id, masterColumns, ["original_headcount", "allocation_headcount"], eligibleEmployees.length);
+      await persistOptional(masterTable, master.id, masterColumns, ["original_headcount"], eligibleEmployees.length);
     }
-    await persistOptional(masterTable, master.id, masterColumns, ["current_headcount", "headcount"], eligibleEmployees.length);
-    await persistOptional(masterTable, master.id, masterColumns, ["current_budget_base", "current_base"], orgBase);
+    await persistOptional(masterTable, master.id, masterColumns, ["current_headcount"], eligibleEmployees.length);
+    await persistOptional(masterTable, master.id, masterColumns, ["current_budget_base"], orgBase);
     Object.assign(master, {
       org_budget_base: orgBase,
       original_budget_base: orgOriginalBase,
