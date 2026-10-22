@@ -166,6 +166,47 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(changedTech.applied_budget, techBase * 1.10);
   });
 
+  await t('original counts remain fixed while current counts follow eligibility changes', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
+      Budget_Distribution: [], Budget_Distribution_Comp: [],
+      Employee_Master: [], Eligibility_List: [], Payroll_Data: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' },
+      ],
+      Appraisal_Sheet: [
+        sheet('E1', 'T1', 'C1', 1000000, 0),
+        sheet('E2', 'T1', 'C1', 2000000, 0),
+      ],
+    });
+    const cycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = cycleId;
+    store.tables.Eligibility_List.push(
+      { ROWID: '99001', appraisal_cycle_id: cycleId, emp_id: 'E1', eligibility_status: 'Eligible' },
+      { ROWID: '99002', appraisal_cycle_id: cycleId, emp_id: 'E2', eligibility_status: 'Eligible' },
+    );
+    const api = load(store);
+    const initial = await get(api);
+    assert.strictEqual(initial.status, 200, JSON.stringify(initial.json));
+    assert.strictEqual(Number(initial.json.master[0].original_headcount), 2);
+    const initialTeam = initial.json.techEd.find((row) => /T1/.test(row.appraiser_tech_ed_id));
+    assert.strictEqual(Number(initialTeam.original_headcount), 2);
+    const initialComp = initial.json.compManager.find((row) => row.comp_manager === 'C1');
+    assert.strictEqual(Number(initialComp.original_headcount), 2);
+
+    store.tables.Eligibility_List.find((row) => row.emp_id === 'E2').eligibility_status = 'Not Eligible';
+    const changed = await get(api);
+    assert.strictEqual(changed.status, 200, JSON.stringify(changed.json));
+    assert.strictEqual(Number(changed.json.master[0].original_headcount), 2);
+    assert.strictEqual(Number(changed.json.master[0].current_headcount), 1);
+    const changedTeam = changed.json.techEd.find((row) => /T1/.test(row.appraiser_tech_ed_id));
+    assert.strictEqual(Number(changedTeam.original_headcount), 2);
+    assert.strictEqual(Number(changedTeam.current_headcount), 1);
+    const changedComp = changed.json.compManager.find((row) => row.comp_manager === 'C1');
+    assert.strictEqual(Number(changedComp.original_headcount), 2);
+    assert.strictEqual(Number(changedComp.current_headcount), 1);
+  });
+
   await t('cycle-ineligible employees are excluded from org and Tech-ED bases', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
