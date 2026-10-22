@@ -537,7 +537,7 @@ export function BudgetDistributionPage() {
                     const key = row.id || row.tech_ed_id;
                     const expanded = Boolean(open[key]);
                     const liveCount = countForTechOwner(row.tech_ed_id);
-                    const savedOriginalCount = row.original_headcount;
+                    const savedOriginalCount = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== "" ? row.original_headcount : row.headcount;
                     const originalCount = savedOriginalCount !== null && savedOriginalCount !== undefined && String(savedOriginalCount).trim() !== ""
                       ? Number(savedOriginalCount) || 0
                       : liveCount;
@@ -607,7 +607,7 @@ export function BudgetDistributionPage() {
                         <div className="label">Original team count</div>
                         <b>{row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
                           ? Number(row.original_headcount) || 0
-                          : countForTechOwner(row.tech_ed_id)}</b>
+                          : (row.headcount !== null && row.headcount !== undefined && String(row.headcount).trim() !== "" ? Number(row.headcount) || 0 : countForTechOwner(row.tech_ed_id))}</b>
                       </div>
                       <div className="detail-item">
                         <div className="label">Current team count</div>
