@@ -125,8 +125,18 @@ function bud(base, pct) {
 // the older base x (1 + %) rule are larger than the base, so they are ignored.
 function deriveRowBudgets(base, pct, pctSet, calculated) {
   const updated = pctSet ? bud(base, pct) : 0;
-  const original = calculated > 0 && calculated <= amount(base) + 0.5 ? calculated : updated;
+  const original = snapshotBudget(calculated, base) || updated;
   return { original, updated };
+}
+
+// The "original" snapshot is the budget captured the first time a % was applied.
+// Snapshots saved under the older base x (1 + %) rule are above the base; taking
+// the base off gives the same figure under base x % / 100.
+function snapshotBudget(calculated, base) {
+  const value = amount(calculated);
+  const b = amount(base);
+  if (value <= 0) return 0;
+  return value > b + 0.5 ? Math.max(value - b, 0) : value;
 }
 
 function dateText(value) {
@@ -286,7 +296,7 @@ const HR_COLS = [
 const BUDGET_MASTER_CSS = `
 .bm-root{--ink:#111827;--muted:#6B7280;--navy:#102A43;--link:#1559A6;--line:#E5E7EB;--th-bg:#E6EEF8;--th-line:#C9D8EC;--row-odd:#FBFCFE;--row-even:#F2F5F9;--row-hover:#EAF2FF;--rl-bg:#EEF3FA;--info-bg:#DCEBFF;--info-border:#B9D3F5;--info:#1D4FA8;--main:#2F6FED;--edited:#FFE066;--edited-border:#C9A400;--err:#C0392B;--ok:#15803D;width:100%;padding:12px;background:#D5DFEB;border-radius:14px;color:var(--ink);font-family:"Manrope","Segoe UI",Arial,sans-serif;font-size:12.5px;font-variant-numeric:tabular-nums}
 .bm-root *{box-sizing:border-box}
-.bm-root button,.bm-root input{font:inherit;color:inherit}
+.bm-root :where(button,input,select){font:inherit;color:inherit}
 .bm-root button:focus-visible,.bm-root input:focus-visible{outline:2px solid #2F6FED;outline-offset:2px}
 .bm-root input[type=number]{-moz-appearance:textfield;appearance:textfield}
 .bm-root input[type=number]::-webkit-outer-spin-button,.bm-root input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
@@ -822,7 +832,7 @@ function HRApplyBudget() {
   // The API exposes org_budget_base as the LIVE eligible prior-cycle CTC sum.
   // calculated_budget is the original budget captured on the first applied Org %;
   // do not invalidate that snapshot just because payroll/eligibility changed later.
-  const savedOrgOriginal = amount(selectedMaster?.calculated_budget);
+  const savedOrgOriginal = snapshotBudget(selectedMaster?.calculated_budget, orgBaseFromRoster);
   const orgApplied = Boolean(selectedMaster?.budget_percentage_is_set);
   const savedOrgPct = amount(selectedMaster?.budget_percentage);
   const orgBase = orgBaseFromRoster;
@@ -831,9 +841,8 @@ function HRApplyBudget() {
   // Org budget = org base x Org % / 100.
   const previewOrgBudget = orgPctEntered ? bud(orgBase, effectiveOrgPct) : 0;
   const savedOrgUpdated = orgApplied ? bud(orgBase, savedOrgPct) : 0;
-  // Original = snapshot from the first applied Org %. Figures saved under the
-  // older base x (1 + %) rule are above the base and are not used.
-  const hasValidOrgSnapshot = orgApplied && savedOrgOriginal > 0 && savedOrgOriginal <= orgBase + 0.5;
+  // Original = snapshot from the first applied Org %.
+  const hasValidOrgSnapshot = orgApplied && savedOrgOriginal > 0;
   const originalOrgBudget = hasValidOrgSnapshot
     ? savedOrgOriginal
     : (orgApplied ? savedOrgUpdated : previewOrgBudget);
@@ -1213,7 +1222,7 @@ function HRApplyBudget() {
         <div className="bm-pans">
           <div className="bm-pan">
             <div className="bm-pan-head">
-              <b>Org budget</b>
+              <b>Org Budget</b>
               <span className="bm-mut">Cycle: <b>{cycleLabel}</b></span>
             </div>
             <div className="bm-pan-row">
@@ -1257,7 +1266,7 @@ function HRApplyBudget() {
 
           <div className="bm-pan">
             <div className="bm-pan-head">
-              <b>Tech ED budget</b>
+              <b>Tech-ED Budget</b>
               <span className="bm-mut">Same % for every Tech ED</span>
             </div>
             <div className="bm-pan-row">
