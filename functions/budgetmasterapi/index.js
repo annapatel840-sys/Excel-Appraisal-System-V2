@@ -57,12 +57,7 @@ function mapMaster(row) {
     org_budget_base: n(value(row, "org_budget_base")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
-    // allocation_headcount is the legacy allocation-time snapshot. Prefer it
-    // when present so a previously overwritten original_headcount can recover
-    // the stable baseline instead of perpetuating the live count.
-    original_headcount: value(row, "allocation_headcount") !== "" && value(row, "allocation_headcount") !== null && value(row, "allocation_headcount") !== undefined
-      ? value(row, "allocation_headcount")
-      : value(row, "original_headcount"),
+    original_headcount: value(row, "original_headcount"),
     current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
       ? value(row, "current_headcount")
       : value(row, "headcount"),
@@ -99,12 +94,7 @@ function mapDistribution(row) {
     original_base: n(value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base")),
     current_base: n(value(row, "current_base")),
-    // Prefer the legacy allocation-time snapshot if it exists, because
-    // original_headcount may already have been overwritten by older code.
-    original_headcount: value(row, "allocation_headcount") !== "" && value(row, "allocation_headcount") !== null && value(row, "allocation_headcount") !== undefined
-      ? value(row, "allocation_headcount")
-      : value(row, "original_headcount"),
-    allocation_headcount: value(row, "allocation_headcount"),
+    original_headcount: value(row, "original_headcount"),
     current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
       ? value(row, "current_headcount")
       : value(row, "headcount"),
@@ -133,9 +123,7 @@ function mapComp(row) {
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
-    original_headcount: value(row, "allocation_headcount") !== "" && value(row, "allocation_headcount") !== null && value(row, "allocation_headcount") !== undefined
-      ? n(value(row, "allocation_headcount"))
-      : n(value(row, "original_headcount")),
+    original_headcount: n(value(row, "original_headcount")),
     current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
       ? n(value(row, "current_headcount"))
       : n(value(row, "headcount")),
@@ -1214,9 +1202,7 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         : (canCreateOriginal ? originalBase * (1 + effectivePct / 100) : 0);
       const updatedBudget = (rawPct !== null || orgPctSet) ? stats.base * (1 + effectivePct / 100) : 0;
 
-      const savedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
-        ? row.original_headcount
-        : row.allocation_headcount;
+      const savedOriginalCountValue = row.original_headcount;
       const originalCountIsSet = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
         String(savedOriginalCountValue).trim() !== "";
       const savedOriginalCount = originalCountIsSet ? n(savedOriginalCountValue) : stats.count;
@@ -1304,9 +1290,7 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       // Comp Manager % is an allocation share of the team CTC base, not an extra hike on top of that base.
       const originalBudget = hasOriginalSnapshot ? savedOriginalBudget : (originalBase * pct / 100);
       const updatedBudget = stats.base * pct / 100;
-      const savedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
-        ? row.original_headcount
-        : row.allocation_headcount;
+      const savedOriginalCountValue = row.original_headcount;
       const originalCountIsSet = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
         String(savedOriginalCountValue).trim() !== "";
       const savedOriginalCount = originalCountIsSet ? n(savedOriginalCountValue) : stats.count;
@@ -1362,9 +1346,7 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       ? previousOrgOriginal
       : (orgPctSet ? orgOriginalBase * (1 + orgPct / 100) : 0);
     const orgUpdated = orgPctSet ? orgBase * (1 + orgPct / 100) : 0;
-    const savedOrgOriginalCountValue = master.original_headcount !== null && master.original_headcount !== undefined && String(master.original_headcount).trim() !== ""
-      ? master.original_headcount
-      : master.allocation_headcount;
+    const savedOrgOriginalCountValue = master.original_headcount;
     const orgOriginalCountIsSet = savedOrgOriginalCountValue !== null && savedOrgOriginalCountValue !== undefined &&
       String(savedOrgOriginalCountValue).trim() !== "";
     const savedOrgOriginalCount = orgOriginalCountIsSet ? n(savedOrgOriginalCountValue) : eligibleEmployees.length;
