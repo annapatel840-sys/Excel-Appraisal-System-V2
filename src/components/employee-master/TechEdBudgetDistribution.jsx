@@ -507,7 +507,11 @@ export function TechEdBudgetDistribution() {
         pct, pct0: pct, base,
         // Keep the baseline count fixed only as historical reference; the current
         // count always reflects the current eligible Appraisal Sheet roster.
-        team0: num(live.original_headcount ?? live.allocation_headcount) || stats.count,
+        team0: live.original_headcount !== null && live.original_headcount !== undefined && String(live.original_headcount).trim() !== ""
+          ? num(live.original_headcount)
+          : live.allocation_headcount !== null && live.allocation_headcount !== undefined && String(live.allocation_headcount).trim() !== ""
+            ? num(live.allocation_headcount)
+            : stats.count,
         team: stats.count,
         original, updated, liveId: live.id,
         liveCalculated: original, liveApplied: updated,
@@ -536,7 +540,9 @@ export function TechEdBudgetDistribution() {
   // headcount is always recomputed from the current Appraisal Sheet roster.
   const currentTeamCount = allTeam.length;
   const savedTeamCount = liveTech?.original_headcount ?? liveTech?.allocation_headcount;
-  const team0 = num(savedTeamCount) || currentTeamCount;
+  const team0 = savedTeamCount !== null && savedTeamCount !== undefined && String(savedTeamCount).trim() !== ""
+    ? num(savedTeamCount)
+    : currentTeamCount;
   const allotted = cmNodes.reduce((s, n) => s + n.updated, 0);
   const used = assignedTeam.reduce((sum, employee) => sum + employeeUtilized(employee), 0);
   const usedPct = myUpdated ? (used / myUpdated) * 100 : 0;
