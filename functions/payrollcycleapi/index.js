@@ -927,11 +927,11 @@ async function generateAppraisalSheet(tables, cycle, actor) {
   return { cycleId: cycle.id, cycleName: cycle.name, created, updated, eligible: eligibleRows.length };
 }
 
-function mapPayroll(row, cycleByName, employeeById = new Map()) {
-  const cycleId = String(row.appraisal_cycle_name || "").trim();
-  // Payroll rows identify their appraisal cycle by its exact cycle name. Use
-  // that name to resolve the effective date from Appraisal_Cycle_Master.
-  const cycle = cycleByName.get(cycleId.toLowerCase());
+function mapPayroll(row, cycleByName, cycleById, employeeById = new Map()) {
+  const cycleKey = String(row.appraisal_cycle_name || "").trim();
+  // Legacy payroll rows may store either the cycle name or Appraisal_Cycle_Master ROWID.
+  // Resolve by name first, then by ROWID, and normalize the displayed value back to the cycle name.
+  const cycle = cycleByName.get(cycleKey.toLowerCase()) || cycleById.get(cycleKey);
   const employee = employeeById.get(String(row.emp_id || "").trim().toLowerCase());
   const businessEmpId = employee?.emp_id ?? "";
   const employeeName = employee?.emp_name || employee?.name || "";
@@ -1677,11 +1677,16 @@ async function routeRequest(req, res, identity, resource, a) {
       getAllRows(tables.employeeMaster),
     ]);
 
+    const normalizedCycles = cycles.map((row) => normalizeCycle(row));
     const cycleByName = new Map(
-      cycles
-        .map((row) => normalizeCycle(row))
+      normalizedCycles
         .filter((cycle) => cycle.name)
         .map((cycle) => [cycle.name.trim().toLowerCase(), cycle]),
+    );
+    const cycleById = new Map(
+      normalizedCycles
+        .filter((cycle) => cycle.id)
+        .map((cycle) => [String(cycle.id).trim(), cycle]),
     );
     const employeeById = new Map();
   masterRows.forEach((row) => {
@@ -1707,7 +1712,7 @@ async function routeRequest(req, res, identity, resource, a) {
 
     return sendJson(res, 200, {
       success: true,
-      data: visibleRows.map((row) => mapPayroll(row, cycleByName, employeeById)),
+      data: visibleRows.map((row) => mapPayroll(row, cycleByName, cycleById, employeeById)),
     });
   }
 
