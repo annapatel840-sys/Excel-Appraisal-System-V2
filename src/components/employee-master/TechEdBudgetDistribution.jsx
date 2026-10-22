@@ -161,6 +161,7 @@ export function TechEdBudgetDistribution() {
     budgetMasterRows,
     employeeRows = [],
     techEdOwners = [],
+    totals: sharedBudgetTotals,
     updateBudget,
     loading: budgetLoading,
     error: budgetError,
@@ -534,8 +535,14 @@ export function TechEdBudgetDistribution() {
   }), [employeeRows, techOwnerKey, techEdOwners]);
   const allTeam = assignedTeam;
   const myPct = liveTech ? num(liveTech.percentage) : 0;
-  const myOriginal = liveTech ? num(liveTech.calculated_budget) : 0;
-  const myUpdated = liveTech ? num(liveTech.applied_budget) : 0;
+  // Use the same selected allocation row/value as Dashboard, Appraisal Sheet,
+  // and Detail Screen so the Tech-Ed allocation cannot drift across screens.
+  const myOriginal = sharedBudgetTotals?.budgetScope === "teched"
+    ? num(sharedBudgetTotals.base)
+    : (liveTech ? num(liveTech.calculated_budget) : 0);
+  const myUpdated = sharedBudgetTotals?.budgetScope === "teched"
+    ? num(sharedBudgetTotals.updated)
+    : (liveTech ? num(liveTech.applied_budget) : 0);
   // Backend counts are calculated from the cycle-scoped eligible Appraisal Sheet
   // roster and persisted by budgetmasterapi. Prefer them so every screen agrees.
   // The rendered eligible Appraisal Sheet roster is the live source of truth.
