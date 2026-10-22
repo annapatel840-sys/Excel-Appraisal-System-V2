@@ -752,9 +752,12 @@ function HRApplyBudget() {
                : row.headcount;
            const currentCountValue = employeeCounts.get(key) || 0;
            const hasSavedOriginalCount = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
+           // Original Count is a saved baseline, never a live roster fallback.
+           // If the API has not persisted a baseline, keep it unset rather than
+           // silently changing it whenever eligibility changes.
            existing.team0 = hasSavedOriginalCount
              ? amount(originalCountValue)
-             : (existing.originalCountIsSet ? existing.team0 : (employeeCounts.get(key) || 0));
+             : (existing.originalCountIsSet ? existing.team0 : 0);
            existing.originalCountIsSet = Boolean(existing.originalCountIsSet || hasSavedOriginalCount);
            existing.team = currentCountValue !== null && currentCountValue !== undefined && String(currentCountValue).trim() !== ""
              ? amount(currentCountValue)
@@ -773,7 +776,10 @@ function HRApplyBudget() {
        // may be stale if a legacy schema lacks that column or a delegation just changed.
        const currentCountValue = assignedCount;
        const originalCountIsSet = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
-       const originalCount = originalCountIsSet ? amount(originalCountValue) : assignedCount;
+       // Do not initialize Original Count from today's Current Count in the UI.
+       // The backend persists the baseline; a missing value must remain visible
+       // as missing instead of being recalculated after every eligibility edit.
+       const originalCount = originalCountIsSet ? amount(originalCountValue) : 0;
        const currentCount = currentCountValue !== null && currentCountValue !== undefined && String(currentCountValue).trim() !== ""
          ? amount(currentCountValue)
          : assignedCount;
