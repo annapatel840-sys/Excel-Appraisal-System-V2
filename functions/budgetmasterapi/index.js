@@ -1208,20 +1208,24 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       const effectivePct = rawPct === null ? orgPct : rawPct;
       const savedOriginalBase = n(row.original_budget_base || row.original_base);
       const savedOriginalBudget = n(row.calculated_budget);
+      // Older API builds saved base * (1 + percentage / 100). Normalize those
+      // legacy snapshots to the Budget Master formula: base * percentage / 100.
+      const snapshotBase = savedOriginalBase > 0 ? savedOriginalBase : stats.base;
+      const normalizedOriginalBudget = savedOriginalBudget > snapshotBase + 0.5
+        ? savedOriginalBudget - snapshotBase
+        : savedOriginalBudget;
       const canCreateOriginal = rawPct !== null || orgPctSet;
-      const looksLikeCorruptTinySnapshot = savedOriginalBudget > 0 &&
-        savedOriginalBudget < 1000 && stats.base >= 100000;
+      const looksLikeCorruptTinySnapshot = normalizedOriginalBudget > 0 &&
+        normalizedOriginalBudget < 1000 && stats.base >= 100000;
       // Original allocation is an immutable snapshot after first capture.
       // Eligibility, assignment, payroll and delegation changes affect only Updated Budget.
       const hasOriginalSnapshot = canCreateOriginal && !looksLikeCorruptTinySnapshot &&
-        savedOriginalBudget > 0;
-      const originalBase = hasOriginalSnapshot
-        ? (savedOriginalBase > 0 ? savedOriginalBase : stats.base)
-        : stats.base;
+        normalizedOriginalBudget > 0;
+      const originalBase = hasOriginalSnapshot ? snapshotBase : stats.base;
       const originalBudget = hasOriginalSnapshot
-        ? savedOriginalBudget
-        : (canCreateOriginal ? originalBase * (1 + effectivePct / 100) : 0);
-      const updatedBudget = (rawPct !== null || orgPctSet) ? stats.base * (1 + effectivePct / 100) : 0;
+        ? normalizedOriginalBudget
+        : (canCreateOriginal ? originalBase * effectivePct / 100 : 0);
+      const updatedBudget = (rawPct !== null || orgPctSet) ? stats.base * effectivePct / 100 : 0;
 
       const savedOriginalCountValue = row.original_headcount;
       const hasSavedOriginalCount = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
@@ -1359,12 +1363,16 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
     // original budget once captured; refresh the current/applied total each read.
     const cycleTech = bundle.techEd.filter((row) => String(row.appraisal_cycle_id) === cycleId);
     const previousOrgBase = n(master.org_budget_base);
-    const previousOrgOriginal = n(master.calculated_budget);
+    const previousOrgOriginalRaw = n(master.calculated_budget);
     const orgPct = n(master.budget_percentage);
     const orgPctSet = Boolean(master.budget_percentage_is_set);
-    // Once the first Org % captures Original Budget, changes to eligibility/payroll
-    // update the live base and Updated Budget only; preserve the original snapshot.
+    // Normalize legacy snapshots from base * (1 + %) to the canonical
+    // Budget Master calculation base * percentage / 100.
     const savedOrgOriginalBase = n(master.original_budget_base || master.original_base);
+    const orgSnapshotBase = savedOrgOriginalBase > 0 ? savedOrgOriginalBase : orgBase;
+    const previousOrgOriginal = previousOrgOriginalRaw > orgSnapshotBase + 0.5
+      ? previousOrgOriginalRaw - orgSnapshotBase
+      : previousOrgOriginalRaw;
     const looksLikeCorruptTinyOrgSnapshot = previousOrgOriginal > 0 &&
       previousOrgOriginal < 1000 && orgBase >= 100000;
     // Keep the original amount captured at first allocation. Eligibility and
@@ -1376,8 +1384,8 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       : orgBase;
     const orgOriginal = hasOrgOriginalSnapshot
       ? previousOrgOriginal
-      : (orgPctSet ? orgOriginalBase * (1 + orgPct / 100) : 0);
-    const orgUpdated = orgPctSet ? orgBase * (1 + orgPct / 100) : 0;
+      : (orgPctSet ? orgOriginalBase * orgPct / 100 : 0);
+    const orgUpdated = orgPctSet ? orgBase * orgPct / 100 : 0;
     const savedOrgOriginalCountValue = master.original_headcount;
     const hasSavedOrgOriginalCount = savedOrgOriginalCountValue !== null && savedOrgOriginalCountValue !== undefined &&
       String(savedOrgOriginalCountValue).trim() !== "";
