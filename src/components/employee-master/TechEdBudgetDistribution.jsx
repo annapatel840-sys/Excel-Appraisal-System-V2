@@ -510,7 +510,9 @@ export function TechEdBudgetDistribution() {
         team0: live.original_headcount !== null && live.original_headcount !== undefined && String(live.original_headcount).trim() !== ""
           ? num(live.original_headcount)
           : (live.headcount !== null && live.headcount !== undefined && String(live.headcount).trim() !== "" ? num(live.headcount) : stats.count),
-        team: stats.count,
+        team: live.current_headcount !== null && live.current_headcount !== undefined && String(live.current_headcount).trim() !== ""
+          ? num(live.current_headcount)
+          : stats.count,
         original, updated, liveId: live.id,
         liveCalculated: original, liveApplied: updated,
         liveUtilized: stats.utilized,
@@ -534,9 +536,12 @@ export function TechEdBudgetDistribution() {
   const myPct = liveTech ? num(liveTech.percentage) : 0;
   const myOriginal = liveTech ? num(liveTech.calculated_budget) : 0;
   const myUpdated = liveTech ? num(liveTech.applied_budget) : 0;
-  // Original headcount is the allocation-time snapshot stored by HR; current
-  // headcount is always recomputed from the current Appraisal Sheet roster.
-  const currentTeamCount = allTeam.length;
+  // Backend counts are calculated from the cycle-scoped eligible Appraisal Sheet
+  // roster and persisted by budgetmasterapi. Prefer them so every screen agrees.
+  const currentTeamCount = liveTech?.current_headcount !== null && liveTech?.current_headcount !== undefined &&
+    String(liveTech.current_headcount).trim() !== ""
+      ? num(liveTech.current_headcount)
+      : allTeam.length;
   const savedTeamCount = liveTech?.original_headcount !== null && liveTech?.original_headcount !== undefined && String(liveTech.original_headcount).trim() !== "" ? liveTech.original_headcount : liveTech?.headcount;
   const team0 = savedTeamCount !== null && savedTeamCount !== undefined && String(savedTeamCount).trim() !== ""
     ? num(savedTeamCount)
