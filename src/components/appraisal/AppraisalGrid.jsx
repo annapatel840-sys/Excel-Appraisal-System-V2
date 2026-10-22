@@ -56,6 +56,20 @@ const PAY_FLOOR_FIELDS = {
   newRB: { floorKey: "rbToBePaid", floorLabel: "RB to be Paid" },
 };
 
+// Message for a PB / RB value below its floor, or "" when it is allowed.
+const payFloorMessage = (row, colKey, raw, colLabel) => {
+  const payFloor = PAY_FLOOR_FIELDS[colKey];
+  if (!payFloor) return "";
+  const floor = Number(row[payFloor.floorKey]) || 0;
+  if (!(floor > 0) || !isValidNumericInput(raw)) return "";
+  const entered = raw === "" ? 0 : Number(numericValue(raw)) || 0;
+  const stored = Number(row[colKey]) || 0;
+  // A cell left as it was is not an edit, so it is never rejected.
+  return entered !== stored && entered < floor
+    ? `${colLabel} can't be less than ${payFloor.floorLabel} (${formatHistoryNumber(floor)}). Not saved.`
+    : "";
+};
+
 const WIDTHS = {
   empId: 84,
   name: 190, // combined Employee column (id - name on top, designation below)
@@ -1728,6 +1742,23 @@ export function AppraisalGrid({
 
   const [editingValues, setEditingValues] = useState({});
 
+  // PB / RB below their "to be Paid" floor: message per cell, shown in red
+  // under the field (same look as the Detailed Screen).
+  const [payErrors, setPayErrors] = useState({});
+  const setPayError = useCallback((cellKey, message) => {
+    setPayErrors((previous) => {
+      if (message) {
+        return previous[cellKey] === message
+          ? previous
+          : { ...previous, [cellKey]: message };
+      }
+      if (!(cellKey in previous)) return previous;
+      const next = { ...previous };
+      delete next[cellKey];
+      return next;
+    });
+  }, []);
+
   const setEditingValue = useCallback((cellKey, value) => {
     setEditingValues((previous) => ({ ...previous, [cellKey]: value }));
   }, []);
@@ -2749,23 +2780,12 @@ export function AppraisalGrid({
         return;
       }
 
-      const payFloor = PAY_FLOOR_FIELDS[col.key];
+      if (PAY_FLOOR_FIELDS[col.key] && isNumericType(col.type)) {
+        const message = payFloorMessage(row, col.key, raw, col.label);
+        setPayError(`${row.id}:${col.key}`, message);
 
-      if (payFloor && isNumericType(col.type)) {
-        const floor = Number(row[payFloor.floorKey]) || 0;
-        const entered = raw === "" ? 0 : Number(numericValue(raw)) || 0;
-        const stored = Number(row[col.key]) || 0;
-
-        // A cell left as it was is not an edit, so it is never rejected.
-        if (floor > 0 && entered !== stored && entered < floor) {
-          showToast({
-            mode: "error",
-            label: col.label,
-            message: `${col.label} can't be less than ${payFloor.floorLabel} (${formatHistoryNumber(floor)}). Not saved.`,
-            ...(anchor ? toastPosition(anchor) : { left: 8, top: 8 }),
-          });
-          return;
-        }
+        // Not saved: the field keeps its old value and shows the red message.
+        if (message) return;
       }
 
       if (col.key === "hikePct" || col.key === "hikeAmount") {
@@ -2843,7 +2863,7 @@ export function AppraisalGrid({
       flashHistoryFields,
       showYoyToast,
       showChangeToast,
-      showToast,
+      setPayError,
     ],
   );
 
@@ -3540,9 +3560,26 @@ export function AppraisalGrid({
         : storedValue;
 
     const isMonthColumn = col.key === "monthRB" || col.key === "monthPB";
+    const payError = payErrors[cellKey] || "";
+    // PB / RB: muted "Preloaded" note under the field (as on the Detailed
+    // Screen); replaced by the red message when the value is not allowed.
+    const payFloorCfg = PAY_FLOOR_FIELDS[col.key];
+    const payFloorValue = payFloorCfg
+      ? Number(row[payFloorCfg.floorKey]) || 0
+      : 0;
+    const payNote =
+      payError ||
+      (payFloorValue > 0
+        ? `Preloaded · less than this → ${formatHistoryNumber(payFloorValue)} paid`
+        : "");
 
     return (
-      <div className="relative flex min-h-[38px] w-full items-center px-1.5 py-1">
+      <div
+        className={cn(
+          "relative flex min-h-[38px] w-full px-1.5 py-1",
+          payNote ? "flex-col justify-center gap-0.5" : "items-center",
+        )}
+      >
         {/* <input
           ref={(element) => {
             cellRefs.current[`${rowIndex}:${col.key}`] = element;
@@ -3631,12 +3668,18 @@ export function AppraisalGrid({
                   input.select();
                 }
               });
-            }}}
+            }
+          }}
           onChange={(event) => {
             const value = event.target.value;
             setEditingValue(cellKey, value);
 
             pendingDraftRef.current = { row, col, raw: value };
+
+            // PB / RB: show the red field + message live while typing.
+            if (PAY_FLOOR_FIELDS[col.key]) {
+              setPayError(cellKey, payFloorMessage(row, col.key, value, col.label));
+            }
 
             if (
               !liveToastCellsRef.current.has(cellKey) &&
@@ -3697,8 +3740,23 @@ export function AppraisalGrid({
             draftClass(cellKey, isBlinking),
             isNumericType(col.type) && "text-right font-medium tabular-nums",
             isMonthColumn && "text-center",
+            payError &&
+              "border-[#f1a9a0] bg-[#ffe9e7] text-[#b42318] focus:border-[#d92d20] focus:bg-[#ffe9e7] focus:ring-[#d92d20]/30",
           )}
+          aria-invalid={payError ? true : undefined}
         />
+
+        {payNote && (
+          <span
+            role={payError ? "alert" : undefined}
+            className={cn(
+              "block text-[10.5px] leading-tight",
+              payError ? "font-bold text-[#b42318]" : "text-[#6b7a88]",
+            )}
+          >
+            {payNote}
+          </span>
+        )}
 
         {saving[cellKey] !== undefined && (
           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#16803c]">
