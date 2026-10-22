@@ -750,10 +750,7 @@ function HRApplyBudget() {
              row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
                ? row.original_headcount
                : row.headcount;
-           const currentCountValue =
-             row.current_headcount !== null && row.current_headcount !== undefined && String(row.current_headcount).trim() !== ""
-               ? row.current_headcount
-               : (employeeCounts.get(key) || 0);
+           const currentCountValue = employeeCounts.get(key) || 0;
            const hasSavedOriginalCount = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
            existing.team0 = hasSavedOriginalCount
              ? amount(originalCountValue)
@@ -772,10 +769,9 @@ function HRApplyBudget() {
          row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
            ? row.original_headcount
            : row.headcount;
-       const currentCountValue =
-         row.current_headcount !== null && row.current_headcount !== undefined && String(row.current_headcount).trim() !== ""
-           ? row.current_headcount
-           : assignedCount;
+       // Always show the live eligible Appraisal Sheet count. Saved current_headcount
+       // may be stale if a legacy schema lacks that column or a delegation just changed.
+       const currentCountValue = assignedCount;
        const originalCountIsSet = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
        const originalCount = originalCountIsSet ? amount(originalCountValue) : assignedCount;
        const currentCount = currentCountValue !== null && currentCountValue !== undefined && String(currentCountValue).trim() !== ""
@@ -872,12 +868,27 @@ function HRApplyBudget() {
     selectedMaster?.current_headcount !== null && selectedMaster?.current_headcount !== undefined && String(selectedMaster.current_headcount).trim() !== ""
       ? selectedMaster.current_headcount
       : total.team;
+  const orgRosterCurrentCount = useMemo(() => {
+    const ids = new Set();
+    (Array.isArray(employeeRows) ? employeeRows : []).forEach((employee) => {
+      const inSheet = employee.in_appraisal_sheet === true ||
+        String(employee.in_appraisal_sheet ?? "").trim().toLowerCase() === "true" ||
+        String(employee.in_appraisal_sheet ?? "").trim() === "1";
+      const status = String(employee.emp_status ?? employee.status ?? employee.employee_status ?? "").trim().toLowerCase();
+      const eligibility = String([
+        employee.eligibility, employee.eligible_status, employee.eligibility_status, employee.eligible,
+      ].find((value) => value !== null && value !== undefined && String(value).trim() !== "") ?? "")
+        .trim().toLowerCase().replace(/[ _-]+/g, "");
+      if (!inSheet || status !== "active" || !["eligible", "yes", "true", "1"].includes(eligibility)) return;
+      const id = normalizeOwnerKey(employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text || "");
+      if (id) ids.add(id);
+    });
+    return ids.size;
+  }, [employeeRows]);
   const orgOriginalCount = orgOriginalCountValue !== null && orgOriginalCountValue !== undefined && String(orgOriginalCountValue).trim() !== ""
     ? amount(orgOriginalCountValue)
     : total.team0;
-  const orgCurrentCount = orgCurrentCountValue !== null && orgCurrentCountValue !== undefined && String(orgCurrentCountValue).trim() !== ""
-    ? amount(orgCurrentCountValue)
-    : total.team;
+  const orgCurrentCount = employeeRows.length ? orgRosterCurrentCount : amount(orgCurrentCountValue || total.team);
 
   // Saved Tech-Ed percentages remain independent of future Org % changes.
   const previewPct = (row) => {
