@@ -767,10 +767,9 @@ function HRApplyBudget() {
       }
       const calculated = amount(row.calculated_budget);
       const assignedCount = employeeCounts.get(key) || 0;
-      const originalCountValue =
-         row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
-           ? row.original_headcount
-           : row.headcount;
+      // The API resolves legacy baseline columns. The UI must never fall
+      // back to headcount because that field may track the changing team.
+      const originalCountValue = row.original_headcount;
        // Always show the live eligible Appraisal Sheet count. Saved current_headcount
        // may be stale if a legacy schema lacks that column or a delegation just changed.
        const currentCountValue = assignedCount;
