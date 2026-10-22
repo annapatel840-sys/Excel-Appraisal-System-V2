@@ -1207,10 +1207,11 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       // Original allocation is stable while its CTC base is stable. If the
       // underlying eligible Appraisal Sheet CTC sum changes, rebase the original
       // amount using the currently effective percentage and capture the new base.
-      const baseChanged = savedOriginalBase > 0 && Math.abs(savedOriginalBase - stats.base) >= 0.5;
       const hasOriginalSnapshot = canCreateOriginal && !looksLikeCorruptTinySnapshot &&
-        savedOriginalBudget > 0 && savedOriginalBase > 0 && !baseChanged;
-      const originalBase = hasOriginalSnapshot ? savedOriginalBase : stats.base;
+        savedOriginalBudget > 0;
+      const originalBase = hasOriginalSnapshot
+        ? (savedOriginalBase > 0 ? savedOriginalBase : stats.base)
+        : stats.base;
       const originalBudget = hasOriginalSnapshot
         ? savedOriginalBudget
         : (canCreateOriginal ? originalBase * (1 + effectivePct / 100) : 0);
@@ -1298,14 +1299,13 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       const savedOriginalBudget = n(row.calculated_budget);
       // The Comp Manager original is immutable after first capture. Compare it
       // with its saved base, not today's live eligible CTC sum.
-      const comparisonBase = savedOriginalBase > 0 ? savedOriginalBase : stats.base;
-      const baseChanged = savedOriginalBase > 0 && Math.abs(savedOriginalBase - stats.base) >= 0.5;
       const looksLikeCorruptTinySnapshot = savedOriginalBudget > 0 &&
         savedOriginalBudget < 1000 && stats.base >= 100000;
       const hasOriginalSnapshot = Boolean(row.calculated_budget_is_set) &&
-        savedOriginalBudget > 0 && savedOriginalBase > 0 && !baseChanged &&
-        !looksLikeCorruptTinySnapshot;
-      const originalBase = hasOriginalSnapshot ? savedOriginalBase : stats.base;
+        savedOriginalBudget > 0 && !looksLikeCorruptTinySnapshot;
+      const originalBase = hasOriginalSnapshot
+        ? (savedOriginalBase > 0 ? savedOriginalBase : stats.base)
+        : stats.base;
       // Comp Manager % is an allocation share of the team CTC base, not an extra hike on top of that base.
       const originalBudget = hasOriginalSnapshot ? savedOriginalBudget : (originalBase * pct / 100);
       const updatedBudget = stats.base * pct / 100;
@@ -1361,13 +1361,13 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
     const savedOrgOriginalBase = n(master.original_budget_base || master.original_base);
     const looksLikeCorruptTinyOrgSnapshot = previousOrgOriginal > 0 &&
       previousOrgOriginal < 1000 && orgBase >= 100000;
-    // Keep Original Budget fixed for percentage-only edits. If the eligible
-    // previous-cycle CTC base changes, recalculate Original Budget once against
-    // the new base and persist that base as the next snapshot.
-    const orgBaseChanged = savedOrgOriginalBase > 0 && Math.abs(savedOrgOriginalBase - orgBase) >= 0.5;
+    // Keep the original amount captured at first allocation. Eligibility and
+    // assignment changes affect the live base and Updated Budget only.
     const hasOrgOriginalSnapshot = orgPctSet && !looksLikeCorruptTinyOrgSnapshot &&
-      previousOrgOriginal > 0 && savedOrgOriginalBase > 0 && !orgBaseChanged;
-    const orgOriginalBase = hasOrgOriginalSnapshot ? savedOrgOriginalBase : orgBase;
+      previousOrgOriginal > 0;
+    const orgOriginalBase = hasOrgOriginalSnapshot
+      ? (savedOrgOriginalBase > 0 ? savedOrgOriginalBase : orgBase)
+      : orgBase;
     const orgOriginal = hasOrgOriginalSnapshot
       ? previousOrgOriginal
       : (orgPctSet ? orgOriginalBase * (1 + orgPct / 100) : 0);
