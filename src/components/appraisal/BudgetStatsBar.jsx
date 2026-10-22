@@ -43,8 +43,9 @@ export function resolveBudgetAllocated({ totals, loading, error }) {
   // A saved Budget_Master row is authoritative even when its Updated Budget
   // is zero (for example, before HR applies a percentage). Do not replace that
   // real value with the demo estimate, which makes screens disagree.
-  const hasMasterValue = !loading && !error && totals?.hasBudgetMaster === true;
-  return hasMasterValue || real > 0
+  const hasAuthoritativeValue = !loading && !error &&
+    (totals?.hasBudgetMaster === true || totals?.hasAuthoritativeBudget === true);
+  return hasAuthoritativeValue || real > 0
     ? { allocated: real, isEstimate: false }
     : { allocated: FALLBACK_BUDGET_ALLOCATED, isEstimate: true };
 }
