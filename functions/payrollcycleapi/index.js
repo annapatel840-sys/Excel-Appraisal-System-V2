@@ -955,7 +955,7 @@ function mapPayroll(row, cycleByName, cycleById, employeeById = new Map()) {
     totalRewardHikePct: num("total_reward_hike_pct"), targetPerformanceAgreed: num("target_performance_agreed"),
     totalBonus: num("total_bonus"), newBasePay: num("new_base_pay"), rbPaid: num("rb_to_be_paid"),
     rbMonth: text("month_rb"), pbPaid: num("pb_to_be_paid"), pbMonth: text("month_pb"),
-    tbPaid: num("tb_to_be_paid"), tbMonth: text("month_tb"), cycleId, createdTime: text("CREATEDTIME"),
+    tbPaid: num("tb_to_be_paid"), tbMonth: text("month_tb"), cycleId: cycle?.id || "", createdTime: text("CREATEDTIME"),
   };
 }
 
