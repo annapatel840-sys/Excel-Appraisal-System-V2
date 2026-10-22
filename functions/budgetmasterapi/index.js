@@ -959,6 +959,34 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     return null;
   };
 
+  // Count the cycle's actual eligible Eligibility_List records separately from
+  // Employee_Master. Older builds used this larger list count for allocations.
+  const eligibleListCountForCycle = (targetCycleId) => {
+    const targetCycle = currentCycleFor(cycleReference(targetCycleId));
+    const targetAliases = new Set([
+      cycleReference(targetCycleId),
+      targetCycle ? cycleIdOf(targetCycle) : "",
+      targetCycle ? cycleNameOf(targetCycle) : "",
+    ].filter(Boolean).map((alias) => String(alias).trim().toLowerCase()));
+    const employeeIds = new Set();
+    eligibilityRows.forEach((record) => {
+      const rawCycle = cycleReference(firstValue(record, ["appraisal_cycle_id", "cycle_id", "cycleId"]));
+      const referencedCycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
+      const recordAliases = [
+        rawCycle,
+        referencedCycle ? cycleIdOf(referencedCycle) : "",
+        referencedCycle ? cycleNameOf(referencedCycle) : "",
+      ].filter(Boolean).map((alias) => String(alias).trim().toLowerCase());
+      if (!recordAliases.some((alias) => targetAliases.has(alias))) return;
+      const rawEligibility = String(firstValue(record, ["eligibility_status", "eligible_status", "eligibility"]) || "")
+        .trim().toLowerCase().replace(/[ _-]+/g, "");
+      if (!["eligible", "yes", "true", "1"].includes(rawEligibility)) return;
+      const employeeId = employeeKeyFor(firstValue(record, ["emp_id", "employee_id", "emp_code", "empId"]));
+      if (employeeId) employeeIds.add(employeeId);
+    });
+    return employeeIds.size;
+  };
+
   const appraisalEmployees = employees.filter((employee) => employee.in_appraisal_sheet);
   const withBase = appraisalEmployees.filter((employee) => employee.base > 0).length;
   const withTechEd = appraisalEmployees.filter((employee) => employee.techEd).length;
@@ -1142,6 +1170,18 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
   utilized_amount: employee.utilized_amount,
 }));
 
+  // Normalize every returned allocation row to the cycle's canonical ROWID.
+  // Budget tables may contain cycle names while the active-cycle API returns ROWIDs;
+  // mismatched aliases made the dashboard sum all cycles or select the wrong budget.
+  const canonicalizeCycle = (row) => {
+    const raw = String(row.appraisal_cycle_id || "").trim();
+    const cycle = currentCycleFor(raw);
+    if (cycle) row.appraisal_cycle_id = cycleIdOf(cycle) || raw;
+  };
+  bundle.master.forEach(canonicalizeCycle);
+  bundle.techEd.forEach(canonicalizeCycle);
+  bundle.compManager.forEach(canonicalizeCycle);
+
   for (const master of bundle.master) {
     const cycleId = String(master.appraisal_cycle_id || "").trim();
     if (!cycleId) continue;
@@ -1184,6 +1224,7 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
     };
   }).filter((employee) => employee && employee.eligible);
   const eligibleEmployees = employees.filter((employee) => employee.eligible && employee.in_appraisal_sheet);
+    const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
     const orgBase = eligibleEmployees.reduce((sum, employee) => sum + employee.base, 0);
     const techBases = new Map(Array.from(techLabels.keys(), (key) => [key, { base: 0, count: 0, utilized: 0 }]));
     const compBases = new Map(Array.from(compLabels.keys(), (key) => [key, { base: 0, count: 0, utilized: 0 }]));
@@ -1269,7 +1310,8 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
         // Repair both team-specific legacy snapshots and old builds that copied
         // the whole eligible-list count into every allocation row.
         (savedOriginalCountNumber === legacyOwnerCount ||
-          savedOriginalCountNumber === legacyEligibleEmployees.length);
+          savedOriginalCountNumber === legacyEligibleEmployees.length ||
+          savedOriginalCountNumber === legacyEligibilityCount);
       const originalCountIsSet = hasSavedOriginalCount && !repairInflatedSnapshot;
       const savedOriginalCount = originalCountIsSet ? savedOriginalCountNumber : stats.count;
       const update = {
@@ -1368,7 +1410,8 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
         // Repair both team-specific legacy snapshots and old builds that copied
         // the whole eligible-list count into every allocation row.
         (savedOriginalCountNumber === legacyOwnerCount ||
-          savedOriginalCountNumber === legacyEligibleEmployees.length);
+          savedOriginalCountNumber === legacyEligibleEmployees.length ||
+          savedOriginalCountNumber === legacyEligibilityCount);
       const originalCountIsSet = hasSavedOriginalCount && !repairInflatedSnapshot;
       const savedOriginalCount = originalCountIsSet ? savedOriginalCountNumber : stats.count;
       const update = {
@@ -1433,7 +1476,8 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
     const savedOrgOriginalCountNumber = hasSavedOrgOriginalCount ? n(savedOrgOriginalCountValue) : eligibleEmployees.length;
     const repairInflatedOrgSnapshot = hasSavedOrgOriginalCount &&
       savedOrgOriginalCountNumber > eligibleEmployees.length &&
-      savedOrgOriginalCountNumber === legacyEligibleEmployees.length;
+      (savedOrgOriginalCountNumber === legacyEligibleEmployees.length ||
+        savedOrgOriginalCountNumber === legacyEligibilityCount);
     const orgOriginalCountIsSet = hasSavedOrgOriginalCount && !repairInflatedOrgSnapshot;
     const savedOrgOriginalCount = orgOriginalCountIsSet ? savedOrgOriginalCountNumber : eligibleEmployees.length;
     const orgFields = {
