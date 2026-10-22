@@ -166,6 +166,47 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(changedTech.applied_budget, techBase * 1.10);
   });
 
+  await t('Appraisal Sheet roster (23) wins over a larger eligible master/list (30)', async () => {
+    const employeeMaster = Array.from({ length: 30 }, (_, i) => ({
+      emp_id: 'E' + (i + 1),
+      emp_name: 'Employee ' + (i + 1),
+      emp_status: 'Active',
+      eligibility: 'Eligible',
+      appraiser_tech_ed: 'T1',
+      comp_manager: 'C1',
+      current_annual_base_pay: 1000000,
+    }));
+    const appraisalRows = Array.from({ length: 23 }, (_, i) =>
+      sheet('E' + (i + 1), 'T1', 'C1', 1000000, 0)
+    );
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
+      Budget_Distribution: [], Budget_Distribution_Comp: [],
+      Employee_Master: employeeMaster,
+      Eligibility_List: Array.from({ length: 30 }, (_, i) => ({
+        appraisal_cycle_id: 'Apr-26', emp_id: 'E' + (i + 1), eligibility_status: 'Eligible',
+      })),
+      Payroll_Data: [],
+      Appraisal_Cycle_Master: [{ cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' }],
+      Appraisal_Sheet: appraisalRows,
+    });
+    const cycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = cycleId;
+    store.tables.Eligibility_List.forEach((row) => { row.appraisal_cycle_id = cycleId; });
+
+    const r = await get(load(store));
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(r.json.employeeRoster.length, 23, 'only generated Appraisal Sheet rows are returned');
+    assert.strictEqual(Number(r.json.master[0].original_headcount), 23);
+    assert.strictEqual(Number(r.json.master[0].current_headcount), 23);
+    const tech = r.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1');
+    assert.strictEqual(Number(tech.original_headcount), 23);
+    assert.strictEqual(Number(tech.current_headcount), 23);
+    const comp = r.json.compManager.find((row) => row.comp_manager === 'C1');
+    assert.strictEqual(Number(comp.original_headcount), 23);
+    assert.strictEqual(Number(comp.current_headcount), 23);
+  });
+
   await t('original counts remain fixed while current counts follow eligibility changes', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
