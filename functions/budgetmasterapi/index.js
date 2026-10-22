@@ -1325,10 +1325,10 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       }
       await compTable.updateRow(update);
       if (!originalCountIsSet) {
-        await persistOptional(compTable, row.id, compColumns, ["original_headcount", "allocation_headcount"], stats.count);
+        await persistOptional(compTable, row.id, compColumns, ["original_headcount"], stats.count);
       }
-      await persistOptional(compTable, row.id, compColumns, ["current_headcount", "headcount"], stats.count);
-      await persistOptional(compTable, row.id, compColumns, ["current_budget_base", "current_base"], stats.base);
+      await persistOptional(compTable, row.id, compColumns, ["current_headcount"], stats.count);
+      await persistOptional(compTable, row.id, compColumns, ["current_budget_base"], stats.base);
       Object.assign(row, {
         budget_base: stats.base,
         calculated_budget: originalBudget,
@@ -1385,10 +1385,10 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
     }
     await masterTable.updateRow(orgFields);
     if (!orgOriginalCountIsSet) {
-      await persistOptional(masterTable, master.id, masterColumns, ["original_headcount", "allocation_headcount"], eligibleEmployees.length);
+      await persistOptional(masterTable, master.id, masterColumns, ["original_headcount"], eligibleEmployees.length);
     }
-    await persistOptional(masterTable, master.id, masterColumns, ["current_headcount", "headcount"], eligibleEmployees.length);
-    await persistOptional(masterTable, master.id, masterColumns, ["current_budget_base", "current_base"], orgBase);
+    await persistOptional(masterTable, master.id, masterColumns, ["current_headcount"], eligibleEmployees.length);
+    await persistOptional(masterTable, master.id, masterColumns, ["current_budget_base"], orgBase);
     Object.assign(master, {
       org_budget_base: orgBase,
       original_budget_base: orgOriginalBase,
