@@ -136,6 +136,7 @@ export function BudgetProvider({ children }) {
     roleText === "hroperation";
   const [budgetRows, setBudgetRows] = useState([]);
   const [budgetMasterRows, setBudgetMasterRows] = useState([]);
+  const [activeBudgetCycleId, setActiveBudgetCycleId] = useState("");
   const [budgetDistributionRows, setBudgetDistributionRows] = useState([]);
   const [budgetCompManagerRows, setBudgetCompManagerRows] = useState([]);
   const [employeeRows, setEmployeeRows] = useState([]);
@@ -190,6 +191,7 @@ export function BudgetProvider({ children }) {
       const masterRows = Array.isArray(budgetJson && budgetJson.master)
         ? budgetJson.master
         : [];
+      setActiveBudgetCycleId(String(budgetJson?.active_appraisal_cycle_id || ""));
       const compRows = Array.isArray(budgetJson && budgetJson.compManager)
         ? budgetJson.compManager
         : [];
@@ -319,6 +321,7 @@ export function BudgetProvider({ children }) {
       console.error("Failed to load Budget Master:", e);
       setBudgetRows([]);
       setBudgetMasterRows([]);
+      setActiveBudgetCycleId("");
       setBudgetDistributionRows([]);
       setBudgetCompManagerRows([]);
       setEmployeeRows([]);
@@ -378,20 +381,38 @@ export function BudgetProvider({ children }) {
     }, {});
   }, [rows, employeeRows]);
 
-  const totals = useMemo(
-    () =>
-      rows.reduce(
-        (sum, row) => ({
-          base: sum.base + row.budget_amount,
-          additional: sum.additional + row.additional_budget,
-          updated: sum.updated + row.updated_budget,
-          utilized: sum.utilized + row.budget_utilized,
-          remaining: sum.remaining + row.budget_remaining,
-        }),
-        { base: 0, additional: 0, updated: 0, utilized: 0, remaining: 0 },
-      ),
-    [rows],
-  );
+  const totals = useMemo(() => {
+    // Org-level displays (Dashboard, Appraisal Sheet, Detail Screen, and HR
+    // Budget Distribution summary) all use Budget_Master for the active cycle.
+    // Summing every Tech-Ed row can double-count history or diverge when an
+    // individual Tech-Ed percentage is overridden.
+    const master = budgetMasterRows.find((row) =>
+      activeBudgetCycleId && String(row.appraisal_cycle_id || "") === activeBudgetCycleId
+    ) || budgetMasterRows[0];
+    if (master) {
+      const original = number(master.calculated_budget);
+      const updated = number(master.applied_budget);
+      const utilized = number(master.budget_utilized ?? master.total_utilization);
+      return {
+        base: original,
+        additional: 0,
+        updated,
+        utilized,
+        remaining: updated - utilized,
+      };
+    }
+    // Backwards-compatible fallback for installations without a Budget_Master row.
+    return rows.reduce(
+      (sum, row) => ({
+        base: sum.base + row.budget_amount,
+        additional: sum.additional + row.additional_budget,
+        updated: sum.updated + row.updated_budget,
+        utilized: sum.utilized + row.budget_utilized,
+        remaining: sum.remaining + row.budget_remaining,
+      }),
+      { base: 0, additional: 0, updated: 0, utilized: 0, remaining: 0 },
+    );
+  }, [rows, budgetMasterRows, activeBudgetCycleId]);
 
   const hierarchy = useMemo(() => {
     const next = {};
@@ -432,6 +453,7 @@ export function BudgetProvider({ children }) {
         isHR,
         budgetRows: rows,
         budgetMasterRows,
+        activeBudgetCycleId,
         budgetDistributionRows,
         budgetCompManagerRows,
         employeeRows,

@@ -699,7 +699,10 @@ function HRApplyBudget() {
         .trim().toLowerCase();
       const isActive = status === "active";
       const isEligible = ["eligible", "yes", "true", "1"].includes(eligibility);
-      const eligible = isActive && isEligible;
+      const inAppraisalSheet = employee.in_appraisal_sheet === true ||
+        String(employee.in_appraisal_sheet ?? "").trim().toLowerCase() === "true" ||
+        String(employee.in_appraisal_sheet ?? "").trim() === "1";
+      const eligible = isActive && isEligible && inAppraisalSheet;
 
       const employeeId = normalizeOwnerKey(
         employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text || "",

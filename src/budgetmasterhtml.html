@@ -181,7 +181,7 @@ td.calc{font-weight:800;color:var(--info)}
         </div>
         <div id="hrAlert"></div>
         <span class="chip">Tech EDs</span>
-        <div class="tw"><table><thead><tr><th>Tech ED</th><th class="n">Budget base</th><th>% applied</th><th class="n">Budget</th><th class="n">Original</th><th class="n">Updated</th><th class="n">Original count</th><th class="n">Current count</th><th>Reason</th><th>Update</th><th>Last changed</th></tr></thead><tbody id="teBody"></tbody></table></div>
+        <div class="tw"><table><thead><tr><th>Tech ED</th><th class="n">Budget base</th><th>% applied</th><th class="n">Original</th><th class="n">Updated</th><th class="n">Original count</th><th class="n">Current count</th><th>Reason</th><th>Update</th><th>Last changed</th></tr></thead><tbody id="teBody"></tbody></table></div>
       </div>
       <div class="foot"><span class="msg" id="pendMsg">No pending changes</span><span class="err" id="errMsg"></span></div>
     </section>
@@ -346,22 +346,22 @@ function renderApply(){
  $("tUtil").textContent=ap&&upd?pf(util/upd*100)+"%":"—";
  $("tUtilCh").innerHTML=!ap?"":(upd?fmt(util)+" of "+fmt(upd)+" · Appraisal Sheet":"");
  $("tCount").textContent=ap?cO+" → "+cN:"—";
- var h="",tb=0,tbud=0,to=0,tu=0,tcO=0,tcN=0;
+ var h="",tb=0,to=0,tu=0,tcO=0,tcN=0;
  listTe().forEach(function(t){
   if(q&&(t.name.toLowerCase().indexOf(q)<0&&t.id.toLowerCase().indexOf(q)<0))return;
   var p=newPct(t),ov=isOverride(t),ed=pend.te[t.id]!==undefined,b=bud(t.bN,p),o=origBud(t),u=bud(t.bN,appliedPct(t));
-  tb+=t.bN;tbud+=b;to+=o;tu+=u;tcO+=t.cO;tcN+=t.cN;
+  tb+=t.bN;to+=o;tu+=u;tcO+=t.cO;tcN+=t.cN;
   h+='<tr class="data'+(sel===t.id?" sel":"")+(ed?" edrow":"")+'" data-id="'+t.id+'"><td class="rl">'+esc(t.name)+(!t.pub?(t.draft!==undefined?' <span class="mut">Applied · not published</span>':' <span class="mut">No % yet</span>'):(t.draft!==undefined?' <span class="mut">Change applied · not published (live '+pf(t.pct)+')</span>':''))+'</td><td class="n">'+fmt(t.bN)+'</td>'+
   '<td class="in-col"><input class="pin'+(ed?" ed":"")+'" data-pct="'+t.id+'" value="'+((ed||hasApplied(t))?pf(p):"")+'" placeholder="Enter %" inputmode="decimal" aria-label="Percent applied for '+esc(t.name)+'"'+(ed?' title="'+pf(appliedPct(t))+' → '+pf(p)+' (not applied yet)"':'')+'></td>'+
-  '<td class="n calc">'+fmt(b)+'</td><td class="n">'+fmt(o)+'</td><td class="n">'+fmt(u)+'</td><td class="n">'+t.cO+'</td><td class="n">'+t.cN+'</td>'+
+  '<td class="n">'+fmt(o)+'</td><td class="n">'+fmt(u)+'</td><td class="n">'+t.cO+'</td><td class="n">'+t.cN+'</td>'+
   '<td class="rcol"><input class="txt rr" data-rr="'+t.id+'" value="'+esc(pendR[t.id]!==undefined?pendR[t.id]:(t.draft!==undefined?(t.dreason||""):""))+'" placeholder="'+(t.pub?"Reason (required)":"Reason (optional)")+'"'+(ed?'':(t.draft!==undefined?' readonly':' disabled'))+'></td>'+
   '<td class="ract"><button class="hbtn rb" data-rapply="'+t.id+'" type="button"'+(ed?'':' disabled')+'>Apply</button> <button class="hbtn rb pb" data-rpub="'+t.id+'" type="button"'+(t.draft!==undefined&&!ed?'':' disabled')+'>Publish</button></td>'+
   '<td><button class="hbtn" data-hist="'+t.id+'" type="button">History '+(open[t.id]?"▴":"▾")+'</button> <button class="hbtn" data-alloc="'+t.id+'" type="button">Allocation '+(open["a"+t.id]?"▴":"▾")+'</button></td></tr>';
-  if(open["a"+t.id])h+='<tr class="sub"><td colspan="11"><div class="hist">'+hrAlloc(t,b)+'</div></td></tr>';
-  if(open[t.id])h+='<tr class="sub"><td colspan="11"><div class="hist">'+histTable(S.teAudit.filter(function(a){return a.id===t.id;}),t.bN)+'</div></td></tr>';
+  if(open["a"+t.id])h+='<tr class="sub"><td colspan="10"><div class="hist">'+hrAlloc(t,b)+'</div></td></tr>';
+  if(open[t.id])h+='<tr class="sub"><td colspan="10"><div class="hist">'+histTable(S.teAudit.filter(function(a){return a.id===t.id;}),t.bN)+'</div></td></tr>';
  });
- if(!h)h='<tr><td colspan="11" class="mut" style="padding:16px">'+(S.org.applied?"No Tech EDs.":"Press Apply org % to load the Tech ED list from the Appraisal Sheet.")+'</td></tr>';
- else h+='<tr class="tot"><td>Total</td><td class="n">'+fmt(tb)+'</td><td></td><td class="n">'+fmt(tbud)+'</td><td class="n">'+fmt(to)+'</td><td class="n">'+fmt(tu)+'</td><td class="n">'+tcO+'</td><td class="n">'+tcN+'</td><td></td><td></td><td></td></tr>';
+ if(!h)h='<tr><td colspan="10" class="mut" style="padding:16px">'+(S.org.applied?"No Tech EDs.":"Press Apply org % to load the Tech ED list from the Appraisal Sheet.")+'</td></tr>';
+ else h+='<tr class="tot"><td>Total</td><td class="n">'+fmt(tb)+'</td><td></td><td class="n">'+fmt(to)+'</td><td class="n">'+fmt(tu)+'</td><td class="n">'+tcO+'</td><td class="n">'+tcN+'</td><td></td><td></td><td></td></tr>';
  var act=document.activeElement,ka=act&&act.getAttribute&&act.getAttribute("data-rr")?"data-rr":(act&&act.getAttribute&&act.getAttribute("data-hcpct")?"data-hcpct":"data-pct"),keep=act&&act.getAttribute&&act.getAttribute(ka);var pos=act&&act.selectionStart;
  $("teBody").innerHTML=h;
  if(keep){var el=document.querySelector('['+ka+'="'+keep+'"]');if(el){el.focus();try{el.setSelectionRange(pos,pos);}catch(e){}}}
@@ -608,7 +608,7 @@ function xlsDown(head,rows,name,edIdx){
  t+='</table></body></html>';
  var a=document.createElement("a");a.href=URL.createObjectURL(new Blob([t],{type:"application/vnd.ms-excel"}));a.download=name;document.body.appendChild(a);a.click();document.body.removeChild(a);}
 $("miExport").onclick=function(){closePops();
- if(role.type==="HR"){var rows=[],ed=[];S.te.forEach(function(t,i){var p=newPct(t);rows.push([t.name,fmt(t.bN),pf(p),fmt(bud(t.bN,p)),fmt(origBud(t)),fmt(bud(t.bN,appliedPct(t))),t.cO,t.cN]);ed.push(pend.te[t.id]!==undefined?[2]:[]);});xlsDown(["Tech ED","Budget base","% applied","Budget","Original","Updated","Original count","Current count"],rows,"Apply_budget.xls",ed);}
+ if(role.type==="HR"){var rows=[],ed=[];S.te.forEach(function(t,i){var p=newPct(t);rows.push([t.name,fmt(t.bN),pf(p),fmt(origBud(t)),fmt(bud(t.bN,appliedPct(t))),t.cO,t.cN]);ed.push(pend.te[t.id]!==undefined?[2]:[]);});xlsDown(["Tech ED","Budget base","% applied","Original","Updated","Original count","Current count"],rows,"Apply_budget.xls",ed);}
  else{var r2=[],ed2=[];
   if(role.type==="TE"){var me=tOf(role.id);r2.push(["Tech ED",me.name,fmt(origBud(me)),fmt(bud(me.bN,savedPct(me))),me.cO,me.cN,pf(savedPct(me))]);ed2.push([]);me.cms.forEach(function(c){r2.push(["Comp Manager",c.name,fmt(cmOrig(c)),fmt(cmUpd(c)),c.cO,c.cN,pf(pendCM[c.id]!==undefined?pendCM[c.id]:c.pct)]);ed2.push(pendCM[c.id]!==undefined?[6]:[]);});}
   else{var c=cmOf(role.id);r2.push(["Comp Manager",c.name,fmt(cmOrig(c)),fmt(cmUpd(c)),c.cO,c.cN,pf(c.pct)]);ed2.push([]);}

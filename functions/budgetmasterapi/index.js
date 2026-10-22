@@ -876,6 +876,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // and avoids relying on employee-screen field permissions for money fields.
     appraisalByEmployee.set(employeeId, {
       employeeId,
+      in_appraisal_sheet: appraisalById.has(String(employeeId).trim().toLowerCase()),
       employee_master_row_id: idOf(masterRow),
       emp_id: String(firstValue(row, ["emp_id", "empId", "employee_id"]) || firstValue(masterRow, ["emp_id", "employee_id"]) || employeeId).trim(),
       name: personName,
@@ -951,11 +952,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     return null;
   };
 
-  const withBase = employees.filter((employee) => employee.base > 0).length;
-  const withTechEd = employees.filter((employee) => employee.techEd).length;
+  const appraisalEmployees = employees.filter((employee) => employee.in_appraisal_sheet);
+  const withBase = appraisalEmployees.filter((employee) => employee.base > 0).length;
+  const withTechEd = appraisalEmployees.filter((employee) => employee.techEd).length;
   bundle.diagnostics = {
     appraisalRows: appraisalRows.length,
-    employees: employees.length,
+    employees: appraisalEmployees.length,
     employeesWithBase: withBase,
     employeesWithTechEd: withTechEd,
     budgetMasterCycles: bundle.master.filter((m) => String(m.appraisal_cycle_id || "").trim()).length,
@@ -964,9 +966,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   if (!bundle.diagnostics.budgetMasterCycles) {
     bundle.diagnostics.warning = "No Budget_Master row has an appraisal cycle, so no budget base was calculated. Add a Budget_Master row for the cycle (appraisal_cycle_id) first.";
   } else if (!withBase) {
-    bundle.diagnostics.warning = `None of the ${employees.length} employees has a previous-cycle Total CTC with Rewards or a usable current-cycle CTC fallback, so the budget base is 0. Check Payroll_Data and Appraisal_Sheet.`;
-  } else if (withBase < employees.length) {
-    bundle.diagnostics.warning = `${employees.length - withBase} of ${employees.length} employees have no usable previous-cycle or current-cycle Total CTC with Rewards and add 0 to the budget base.`;
+    bundle.diagnostics.warning = `None of the ${appraisalEmployees.length} Appraisal Sheet employees has a previous-cycle Total CTC with Rewards or a usable current-cycle CTC fallback, so the budget base is 0. Check Payroll_Data and Appraisal_Sheet.`;
+  } else if (withBase < appraisalEmployees.length) {
+    bundle.diagnostics.warning = `${appraisalEmployees.length - withBase} of ${appraisalEmployees.length} Appraisal Sheet employees have no usable previous-cycle or current-cycle Total CTC with Rewards and add 0 to the budget base.`;
   }
   if (!withTechEd) {
     bundle.diagnostics.warning = (bundle.diagnostics.warning ? bundle.diagnostics.warning + " " : "") + "No employee in Appraisal_Sheet has an Appraiser Tech-ED, so no Tech-ED gets a base.";
@@ -1098,8 +1100,9 @@ const activeRosterCycle = cycleRows.find((cycle) =>
   cycle.archived !== true && String(cycle.archived || "").toLowerCase() !== "true"
 );
 const rosterCycleId = cycleIdOf(activeRosterCycle) || String(bundle.master[0]?.appraisal_cycle_id || "");
+bundle.active_appraisal_cycle_id = rosterCycleId;
 const rosterForCycle = rosterCycleId ? employeesForBudgetCycle(rosterCycleId) : employees;
-bundle.employeeRoster = rosterForCycle.map((employee) => ({
+bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisal_sheet).map((employee) => ({
   emp_id: employee.emp_id,
   name: employee.name,
   appraiser_tech_ed: employee.appraiser_tech_ed,
@@ -1110,7 +1113,7 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
   eligible: employee.eligible,
   eligibility: employee.eligible_status,
   eligible_status: employee.eligible_status,
-  in_appraisal_sheet: true,
+  in_appraisal_sheet: Boolean(employee.in_appraisal_sheet),
   budget_base: employee.base,
   previous_appraisal_total_ctc_with_rewards: employee.previous_appraisal_total_ctc_with_rewards,
   Previous_Appraisal_total_CTC_with_rewards: employee.Previous_Appraisal_total_CTC_with_rewards,
@@ -1141,7 +1144,8 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
     // Eligibility List are picked up on the next calculation/read.
 
 
-  const eligibleEmployees = employees.filter((employee) => employee.eligible);
+  const legacyEligibleEmployees = employees.filter((employee) => employee.eligible);
+  const eligibleEmployees = employees.filter((employee) => employee.eligible && employee.in_appraisal_sheet);
     const orgBase = eligibleEmployees.reduce((sum, employee) => sum + employee.base, 0);
     const techBases = new Map(Array.from(techLabels.keys(), (key) => [key, { base: 0, count: 0, utilized: 0 }]));
     const compBases = new Map(Array.from(compLabels.keys(), (key) => [key, { base: 0, count: 0, utilized: 0 }]));
@@ -1200,22 +1204,27 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       const canCreateOriginal = rawPct !== null || orgPctSet;
       const looksLikeCorruptTinySnapshot = savedOriginalBudget > 0 &&
         savedOriginalBudget < 1000 && stats.base >= 100000;
-      // Original allocation is stable while its CTC base is stable. If the
-      // underlying eligible Appraisal Sheet CTC sum changes, rebase the original
-      // amount using the currently effective percentage and capture the new base.
-      const baseChanged = savedOriginalBase > 0 && Math.abs(savedOriginalBase - stats.base) >= 0.5;
+      // Original allocation is an immutable snapshot after first capture.
+      // Eligibility, assignment, payroll and delegation changes affect only Updated Budget.
       const hasOriginalSnapshot = canCreateOriginal && !looksLikeCorruptTinySnapshot &&
-        savedOriginalBudget > 0 && savedOriginalBase > 0 && !baseChanged;
-      const originalBase = hasOriginalSnapshot ? savedOriginalBase : stats.base;
+        savedOriginalBudget > 0;
+      const originalBase = hasOriginalSnapshot
+        ? (savedOriginalBase > 0 ? savedOriginalBase : stats.base)
+        : stats.base;
       const originalBudget = hasOriginalSnapshot
         ? savedOriginalBudget
         : (canCreateOriginal ? originalBase * (1 + effectivePct / 100) : 0);
       const updatedBudget = (rawPct !== null || orgPctSet) ? stats.base * (1 + effectivePct / 100) : 0;
 
       const savedOriginalCountValue = row.original_headcount;
-      const originalCountIsSet = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
+      const hasSavedOriginalCount = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
         String(savedOriginalCountValue).trim() !== "";
-      const savedOriginalCount = originalCountIsSet ? n(savedOriginalCountValue) : stats.count;
+      const savedOriginalCountNumber = hasSavedOriginalCount ? n(savedOriginalCountValue) : stats.count;
+      const legacyOwnerCount = legacyEligibleEmployees.filter((employee) => ownerKey(employee.techEd) === techKey).length;
+      const repairInflatedSnapshot = hasSavedOriginalCount &&
+        savedOriginalCountNumber > stats.count && savedOriginalCountNumber === legacyOwnerCount;
+      const originalCountIsSet = hasSavedOriginalCount && !repairInflatedSnapshot;
+      const savedOriginalCount = originalCountIsSet ? savedOriginalCountNumber : stats.count;
       const update = {
         ROWID: row.id,
         budget_base: stats.base,
@@ -1287,23 +1296,29 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       const pct = n(row.percentage);
       const savedOriginalBase = n(row.original_budget_base || row.original_base);
       const savedOriginalBudget = n(row.calculated_budget);
-      // The Comp Manager original is immutable after first capture. Compare it
-      // with its saved base, not today's live eligible CTC sum.
-      const comparisonBase = savedOriginalBase > 0 ? savedOriginalBase : stats.base;
-      const baseChanged = savedOriginalBase > 0 && Math.abs(savedOriginalBase - stats.base) >= 0.5;
+      // The Comp Manager original is immutable after first capture; current
+      // eligibility and assignment changes update only its live allocation.
       const looksLikeCorruptTinySnapshot = savedOriginalBudget > 0 &&
         savedOriginalBudget < 1000 && stats.base >= 100000;
       const hasOriginalSnapshot = Boolean(row.calculated_budget_is_set) &&
-        savedOriginalBudget > 0 && savedOriginalBase > 0 && !baseChanged &&
-        !looksLikeCorruptTinySnapshot;
-      const originalBase = hasOriginalSnapshot ? savedOriginalBase : stats.base;
+        savedOriginalBudget > 0 && !looksLikeCorruptTinySnapshot;
+      const originalBase = hasOriginalSnapshot
+        ? (savedOriginalBase > 0 ? savedOriginalBase : stats.base)
+        : stats.base;
       // Comp Manager % is an allocation share of the team CTC base, not an extra hike on top of that base.
       const originalBudget = hasOriginalSnapshot ? savedOriginalBudget : (originalBase * pct / 100);
       const updatedBudget = stats.base * pct / 100;
       const savedOriginalCountValue = row.original_headcount;
-      const originalCountIsSet = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
+      const hasSavedOriginalCount = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
         String(savedOriginalCountValue).trim() !== "";
-      const savedOriginalCount = originalCountIsSet ? n(savedOriginalCountValue) : stats.count;
+      const savedOriginalCountNumber = hasSavedOriginalCount ? n(savedOriginalCountValue) : stats.count;
+      const legacyOwnerCount = legacyEligibleEmployees.filter((employee) =>
+        ownerKey(employee.techEd) === details.techEdKey && ownerKey(employee.compManager) === details.compKey
+      ).length;
+      const repairInflatedSnapshot = hasSavedOriginalCount &&
+        savedOriginalCountNumber > stats.count && savedOriginalCountNumber === legacyOwnerCount;
+      const originalCountIsSet = hasSavedOriginalCount && !repairInflatedSnapshot;
+      const savedOriginalCount = originalCountIsSet ? savedOriginalCountNumber : stats.count;
       const update = {
         ROWID: row.id,
         budget_base: stats.base,
@@ -1345,21 +1360,26 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
     const savedOrgOriginalBase = n(master.original_budget_base || master.original_base);
     const looksLikeCorruptTinyOrgSnapshot = previousOrgOriginal > 0 &&
       previousOrgOriginal < 1000 && orgBase >= 100000;
-    // Keep Original Budget fixed for percentage-only edits. If the eligible
-    // previous-cycle CTC base changes, recalculate Original Budget once against
-    // the new base and persist that base as the next snapshot.
-    const orgBaseChanged = savedOrgOriginalBase > 0 && Math.abs(savedOrgOriginalBase - orgBase) >= 0.5;
+    // Keep the original amount captured at first allocation. Eligibility and
+    // assignment changes affect the live base and Updated Budget only.
     const hasOrgOriginalSnapshot = orgPctSet && !looksLikeCorruptTinyOrgSnapshot &&
-      previousOrgOriginal > 0 && savedOrgOriginalBase > 0 && !orgBaseChanged;
-    const orgOriginalBase = hasOrgOriginalSnapshot ? savedOrgOriginalBase : orgBase;
+      previousOrgOriginal > 0;
+    const orgOriginalBase = hasOrgOriginalSnapshot
+      ? (savedOrgOriginalBase > 0 ? savedOrgOriginalBase : orgBase)
+      : orgBase;
     const orgOriginal = hasOrgOriginalSnapshot
       ? previousOrgOriginal
       : (orgPctSet ? orgOriginalBase * (1 + orgPct / 100) : 0);
     const orgUpdated = orgPctSet ? orgBase * (1 + orgPct / 100) : 0;
     const savedOrgOriginalCountValue = master.original_headcount;
-    const orgOriginalCountIsSet = savedOrgOriginalCountValue !== null && savedOrgOriginalCountValue !== undefined &&
+    const hasSavedOrgOriginalCount = savedOrgOriginalCountValue !== null && savedOrgOriginalCountValue !== undefined &&
       String(savedOrgOriginalCountValue).trim() !== "";
-    const savedOrgOriginalCount = orgOriginalCountIsSet ? n(savedOrgOriginalCountValue) : eligibleEmployees.length;
+    const savedOrgOriginalCountNumber = hasSavedOrgOriginalCount ? n(savedOrgOriginalCountValue) : eligibleEmployees.length;
+    const repairInflatedOrgSnapshot = hasSavedOrgOriginalCount &&
+      savedOrgOriginalCountNumber > eligibleEmployees.length &&
+      savedOrgOriginalCountNumber === legacyEligibleEmployees.length;
+    const orgOriginalCountIsSet = hasSavedOrgOriginalCount && !repairInflatedOrgSnapshot;
+    const savedOrgOriginalCount = orgOriginalCountIsSet ? savedOrgOriginalCountNumber : eligibleEmployees.length;
     const orgFields = {
       ROWID: master.id,
       // Live sum of previous-appraisal CTC for eligible employees in this cycle.
@@ -1442,6 +1462,7 @@ module.exports = async function (req, res) {
         employeeRoster: bundle.employeeRoster || [],
         techEdCount: techEdOwners.length,
         diagnostics: calculatedBundle.diagnostics || null,
+        active_appraisal_cycle_id: calculatedBundle.active_appraisal_cycle_id || "",
         more_records: false,
         next_token: null,
       });

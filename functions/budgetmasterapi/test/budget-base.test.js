@@ -166,6 +166,47 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(changedTech.applied_budget, techBase * 1.10);
   });
 
+  await t('Appraisal Sheet roster (23) wins over a larger eligible master/list (30)', async () => {
+    const employeeMaster = Array.from({ length: 30 }, (_, i) => ({
+      emp_id: 'E' + (i + 1),
+      emp_name: 'Employee ' + (i + 1),
+      emp_status: 'Active',
+      eligibility: 'Eligible',
+      appraiser_tech_ed: 'T1',
+      comp_manager: 'C1',
+      current_annual_base_pay: 1000000,
+    }));
+    const appraisalRows = Array.from({ length: 23 }, (_, i) =>
+      sheet('E' + (i + 1), 'T1', 'C1', 1000000, 0)
+    );
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
+      Budget_Distribution: [], Budget_Distribution_Comp: [],
+      Employee_Master: employeeMaster,
+      Eligibility_List: Array.from({ length: 30 }, (_, i) => ({
+        appraisal_cycle_id: 'Apr-26', emp_id: 'E' + (i + 1), eligibility_status: 'Eligible',
+      })),
+      Payroll_Data: [],
+      Appraisal_Cycle_Master: [{ cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' }],
+      Appraisal_Sheet: appraisalRows,
+    });
+    const cycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = cycleId;
+    store.tables.Eligibility_List.forEach((row) => { row.appraisal_cycle_id = cycleId; });
+
+    const r = await get(load(store));
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(r.json.employeeRoster.length, 23, 'only generated Appraisal Sheet rows are returned');
+    assert.strictEqual(Number(r.json.master[0].original_headcount), 23);
+    assert.strictEqual(Number(r.json.master[0].current_headcount), 23);
+    const tech = r.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1');
+    assert.strictEqual(Number(tech.original_headcount), 23);
+    assert.strictEqual(Number(tech.current_headcount), 23);
+    const comp = r.json.compManager.find((row) => row.comp_manager === 'C1');
+    assert.strictEqual(Number(comp.original_headcount), 23);
+    assert.strictEqual(Number(comp.current_headcount), 23);
+  });
+
   await t('original counts remain fixed while current counts follow eligibility changes', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
@@ -193,6 +234,9 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(Number(initialTeam.original_headcount), 2);
     const initialComp = initial.json.compManager.find((row) => row.comp_manager === 'C1');
     assert.strictEqual(Number(initialComp.original_headcount), 2);
+    const originalOrgBudget = initial.json.master[0].calculated_budget;
+    const originalTechBudget = initialTeam.calculated_budget;
+    const originalCompBudget = initialComp.calculated_budget;
 
     store.tables.Eligibility_List.find((row) => row.emp_id === 'E2').eligibility_status = 'Not Eligible';
     const changed = await get(api);
@@ -205,6 +249,12 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const changedComp = changed.json.compManager.find((row) => row.comp_manager === 'C1');
     assert.strictEqual(Number(changedComp.original_headcount), 2);
     assert.strictEqual(Number(changedComp.current_headcount), 1);
+    assert.strictEqual(changed.json.master[0].calculated_budget, originalOrgBudget, 'Org Original Budget remains fixed when the roster changes');
+    assert.strictEqual(changed.json.master[0].applied_budget, 1080000, 'Org Updated Budget follows the current eligible roster');
+    assert.strictEqual(changedTeam.calculated_budget, originalTechBudget, 'Tech-Ed Original Budget remains fixed');
+    assert.strictEqual(changedTeam.applied_budget, 1080000, 'Tech-Ed Updated Budget follows the current eligible roster');
+    assert.strictEqual(changedComp.calculated_budget, originalCompBudget, 'Comp Manager Original Budget remains fixed');
+    assert.strictEqual(changedComp.applied_budget, 80000, 'Comp Manager Updated Budget follows the current eligible roster');
   });
 
   await t('cycle-ineligible employees are excluded from org and Tech-ED bases', async () => {
