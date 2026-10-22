@@ -38,14 +38,14 @@ export function orgAllocated(rows) {
 
 // realAllocated: the Budget Master total (from the budget store). When it
 // is missing, fall back to the placeholder estimate and flag it.
-export function budgetTotals(rows, realAllocated) {
+export function budgetTotals(rows, realAllocated, hasAuthoritativeAllocation = Number(realAllocated) > 0) {
   const hike = sum(rows, calcHikeAmount);
   const pb = sum(rows, totalOfPB);
   const rb = sum(rows, (r) => r.newRB);
   const budgetPb = sum(rows, consumedPB);
   const consumed = hike + budgetPb + rb;
-  const hasReal = Number(realAllocated) > 0;
-  const allocated = hasReal ? Number(realAllocated) : orgAllocated(rows);
+  const hasReal = Boolean(hasAuthoritativeAllocation) || Number(realAllocated) > 0;
+  const allocated = hasReal ? (Number(realAllocated) || 0) : orgAllocated(rows);
 
   return {
     hike,
