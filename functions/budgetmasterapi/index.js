@@ -876,6 +876,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // and avoids relying on employee-screen field permissions for money fields.
     appraisalByEmployee.set(employeeId, {
       employeeId,
+      in_appraisal_sheet: appraisalById.has(String(employeeId).trim().toLowerCase()),
       employee_master_row_id: idOf(masterRow),
       emp_id: String(firstValue(row, ["emp_id", "empId", "employee_id"]) || firstValue(masterRow, ["emp_id", "employee_id"]) || employeeId).trim(),
       name: personName,
