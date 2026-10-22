@@ -2,6 +2,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -4032,17 +4033,57 @@ export function AppraisalGrid({
     : `Appraisal Sheet · ${CURRENT_APPRAISAL_YEAR}`;
 
   // ============================================================
+  // FIT TO SCREEN
+  // The grid takes exactly the room left under the budget bar / toolbar, so
+  // the footer (Showing ... / pagination) always stays on screen.
+  // ============================================================
+
+  const gridRootRef = useRef(null);
+  const [fitHeight, setFitHeight] = useState(null);
+
+  useLayoutEffect(() => {
+    const el = gridRootRef.current;
+    if (!el) return undefined;
+
+    const BOTTOM_GAP = 12; // matches the page's bottom padding
+    const measure = () => {
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const next = Math.max(360, Math.floor(window.innerHeight - top - BOTTOM_GAP));
+      setFitHeight((previous) =>
+        previous !== null && Math.abs(previous - next) < 2 ? previous : next,
+      );
+    };
+
+    measure();
+    window.addEventListener("resize", measure);
+
+    // Content above the grid can change height (budget notice dismissed,
+    // filter chips added), which moves the grid's top edge.
+    let observer = null;
+    if (typeof ResizeObserver !== "undefined") {
+      observer = new ResizeObserver(measure);
+      observer.observe(document.body);
+    }
+
+    return () => {
+      window.removeEventListener("resize", measure);
+      if (observer) observer.disconnect();
+    };
+  }, []);
+
+  // ============================================================
   // MAIN UI
   // ============================================================
 
   return (
     <div
+      ref={gridRootRef}
       className={cn(
         "relative flex min-h-0 w-full flex-row overflow-hidden rounded-md border border-[#d5dce5] bg-white",
         viewPrefs.density === "compact" && "appraisal-compact",
       )}
       style={{
-        height: "calc(100vh - 126px)",
+        height: fitHeight ? `${fitHeight}px` : "calc(100vh - 126px)",
         isolation: "isolate",
         fontFamily: APPRAISAL_FONT,
       }}
