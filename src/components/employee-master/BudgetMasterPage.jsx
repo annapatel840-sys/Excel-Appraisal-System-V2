@@ -37,6 +37,29 @@ function recordBudgetAudit(kind, entries) {
   }
 }
 
+// "Original" budgets are captured the first time a budget is marked and kept
+// in this browser, so later % changes only move the Updated figures.
+const ORIGINAL_SNAPSHOT_KEY = "excel-appraisal-budget-original-v1";
+
+function readOriginalSnapshots() {
+  if (typeof window === "undefined") return {};
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(ORIGINAL_SNAPSHOT_KEY) || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function writeOriginalSnapshots(value) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(ORIGINAL_SNAPSHOT_KEY, JSON.stringify(value));
+  } catch (_) {
+    // Storage may be blocked; the screen still works from server values.
+  }
+}
+
 /* ---------- helpers ---------- */
 function normalizeOwnerKey(value) {
   const text = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -280,7 +303,7 @@ function AuditTable({
    ===================================================================== */
 // [label, right-aligned, has column menu]
 const HR_COLS = [
-  ["Tech ED", false, true],
+  ["Tech-ED", false, true],
   ["Budget Base", true, true],
   ["% Applied", false, true],
   ["Budget", true, true],
@@ -540,6 +563,7 @@ function HRApplyBudget() {
   const [allPct, setAllPct] = useState("");
   const [error, setError] = useState("");
   const [savingOrg, setSavingOrg] = useState(false);
+  const [origSnap, setOrigSnap] = useState(() => readOriginalSnapshots());
   // Column menu state: filters / sort / wrap per column index.
   const [gridFilters, setGridFilters] = useState({});
   const [gridSort, setGridSort] = useState(null);
@@ -843,9 +867,38 @@ function HRApplyBudget() {
   const savedOrgUpdated = orgApplied ? bud(orgBase, savedOrgPct) : 0;
   // Original = snapshot from the first applied Org %.
   const hasValidOrgSnapshot = orgApplied && savedOrgOriginal > 0;
-  const originalOrgBudget = hasValidOrgSnapshot
+  const derivedOrgOriginal = hasValidOrgSnapshot
     ? savedOrgOriginal
     : (orgApplied ? savedOrgUpdated : previewOrgBudget);
+  // First-marked budgets kept in this browser win over server recalculations.
+  const cycleSnap = origSnap[selectedCycle] || {};
+  const originalOrgBudget = orgApplied && cycleSnap.org > 0 ? cycleSnap.org : derivedOrgOriginal;
+  const rowOriginal = (row) => {
+    const kept = cycleSnap.te && cycleSnap.te[row.canonicalKey];
+    return kept > 0 ? kept : row.original;
+  };
+  // Capture anything not yet kept (first time it is seen with a % applied).
+  useEffect(() => {
+    if (!selectedCycle || !orgApplied) return;
+    const current = origSnap[selectedCycle] || {};
+    const next = { org: current.org, te: { ...(current.te || {}) } };
+    let changed = false;
+    if (!(next.org > 0) && derivedOrgOriginal > 0) {
+      next.org = derivedOrgOriginal;
+      changed = true;
+    }
+    rows.forEach((row) => {
+      if (row.pctSet && !(next.te[row.canonicalKey] > 0) && row.original > 0) {
+        next.te[row.canonicalKey] = row.original;
+        changed = true;
+      }
+    });
+    if (changed) {
+      const all = { ...origSnap, [selectedCycle]: next };
+      setOrigSnap(all);
+      writeOriginalSnapshots(all);
+    }
+  }, [selectedCycle, orgApplied, derivedOrgOriginal, rows, origSnap]);
   const orgPending = orgPct !== "" && !!selectedMaster && amount(orgPct) !== Number(selectedMaster.budget_percentage || 0);
   const draftCount = rows.filter((row) =>
     Object.prototype.hasOwnProperty.call(pending, row.name) &&
@@ -876,9 +929,9 @@ function HRApplyBudget() {
     setSavingOrg(true);
     setError("");
     const orgBase = orgBaseFromRoster;
-    const originalBudget = hasValidOrgSnapshot
-      ? savedOrgOriginal
-      : bud(orgBase, org);
+    const originalBudget = orgApplied && cycleSnap.org > 0
+      ? cycleSnap.org
+      : (hasValidOrgSnapshot ? savedOrgOriginal : bud(orgBase, org));
     const updatedBudget = bud(orgBase, org);
     const previousOrgPct = amount(selectedMaster?.budget_percentage);
     const previousOrgBudget = amount(selectedMaster?.applied_budget);
@@ -918,7 +971,7 @@ function HRApplyBudget() {
           appraiser_tech_ed_id: String(row.canonicalKey || row.name || "").trim().split(/\s+-\s+/)[0].slice(0, 20),
           percentage: org,
           budget_base: row.base,
-          calculated_budget: row.original || bud(row.base, org),
+          calculated_budget: rowOriginal(row) || bud(row.base, org),
           applied_budget: bud(row.base, org),
         },
         "distribution",
@@ -1081,7 +1134,7 @@ function HRApplyBudget() {
             budget_base: row.base,
             calculated_budget: String(row.id || "").startsWith("tech-ed-")
               ? budget
-              : (row.original || budget),
+              : (rowOriginal(row) || budget),
             applied_budget: budget,
             change_reason: stagedReasons[row.name] || "Budget percentage published",
           },
@@ -1140,7 +1193,7 @@ function HRApplyBudget() {
       case 1: return money(row.base);
       case 2: return String(previewPct(row));
       case 3: return money(previewBudget(row));
-      case 4: return money(row.original);
+      case 4: return money(rowOriginal(row));
       case 5: return money(row.updated);
       case 6: return String(row.team0);
       case 7: return String(row.team);
@@ -1163,7 +1216,7 @@ function HRApplyBudget() {
     (s2, r) => ({
       base: s2.base + r.base,
       budget: s2.budget + previewBudget(r),
-      original: s2.original + r.original,
+      original: s2.original + rowOriginal(r),
       updated: s2.updated + r.updated,
       team0: s2.team0 + r.team0,
       team: s2.team + r.team,
@@ -1355,7 +1408,7 @@ function HRApplyBudget() {
           </div>
         </div>
 
-        <span className="bm-chip">Tech EDs</span>
+        <span className="bm-chip">Tech-EDs</span>
 
         <div className="bm-tw">
           <table className="bm-table">
@@ -1425,7 +1478,7 @@ function HRApplyBudget() {
                         ) : null}
                       </td>
                       <td className="bm-n bm-calc" style={wrapStyle(3)}>{money(previewBudget(r))}</td>
-                      <td className="bm-n" style={wrapStyle(4)}>{money(r.original)}</td>
+                      <td className="bm-n" style={wrapStyle(4)}>{money(rowOriginal(r))}</td>
                       <td className="bm-n" style={wrapStyle(5)}>{money(r.updated)}</td>
                       <td className="bm-n" style={wrapStyle(6)}>{r.team0}</td>
                       <td className="bm-n" style={wrapStyle(7)}>{r.team}</td>
