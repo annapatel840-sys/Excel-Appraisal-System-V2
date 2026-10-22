@@ -57,13 +57,9 @@ function mapMaster(row) {
     org_budget_base: n(value(row, "org_budget_base")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
-    original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
-      ? value(row, "original_headcount")
-      : value(row, "headcount"),
-    headcount: value(row, "headcount"),
-    current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
-      ? value(row, "current_headcount")
-      : value(row, "headcount"),
+    original_headcount: firstValue(row, ["original_headcount", "headcount"]),
+    headcount: firstValue(row, ["headcount"]),
+    current_headcount: firstValue(row, ["current_headcount"]),
     budget_utilized: utilized,
     calculated_budget: calculated,
     applied_budget: applied,
@@ -97,13 +93,9 @@ function mapDistribution(row) {
     original_base: n(value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base")),
     current_base: n(value(row, "current_base")),
-    original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
-      ? value(row, "original_headcount")
-      : value(row, "headcount"),
-    current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
-      ? value(row, "current_headcount")
-      : value(row, "headcount"),
-    headcount: value(row, "headcount"),
+    original_headcount: firstValue(row, ["original_headcount", "headcount"]),
+    current_headcount: firstValue(row, ["current_headcount"]),
+    headcount: firstValue(row, ["headcount"]),
     calculated_budget: calculated,
     total_utilization: utilized,
     applied_budget: applied,
@@ -128,13 +120,9 @@ function mapComp(row) {
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
-    original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
-      ? n(value(row, "original_headcount"))
-      : n(value(row, "headcount")),
-    headcount: n(value(row, "headcount")),
-    current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
-      ? n(value(row, "current_headcount"))
-      : n(value(row, "headcount")),
+    original_headcount: n(firstValue(row, ["original_headcount", "headcount"])),
+    headcount: n(firstValue(row, ["headcount"])),
+    current_headcount: firstValue(row, ["current_headcount"]),
     utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
   };
 }
@@ -722,7 +710,8 @@ function cycleDate(row) {
 async function getColumnNames(table) {
   try {
     const columns = await table.getAllColumns();
-    return new Set((columns || []).map((column) => String(column.column_name || column.name || "").trim()).filter(Boolean));
+    const names = new Set((columns || []).map((column) => String(column.column_name || column.name || "").trim()).filter(Boolean));
+    return names.size ? names : null;
   } catch (_) {
     return null;
   }
@@ -1033,12 +1022,25 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // Never send a guessed field name to Catalyst: a missing column makes the
     // whole budget calculation return HTTP 500. Use a confirmed schema field;
     // if metadata is unavailable, try only the canonical first candidate.
-    const knownField = columns
-      ? candidates.find((candidate) => columns.has(candidate))
-      : candidates[0];
-    if (!knownField) return false;
-    await table.updateRow({ ROWID: rowId, [knownField]: val });
-    return true;
+    if (columns && columns.size) {
+      const knownField = candidates
+        .map((candidate) => Array.from(columns).find((column) => column.toLowerCase() === candidate.toLowerCase()))
+        .find(Boolean);
+      if (!knownField) return false;
+      await table.updateRow({ ROWID: rowId, [knownField]: val });
+      return true;
+    }
+    // Empty schema metadata means "unknown", not "no columns". Probe the
+    // dedicated snapshot first, then the legacy field without failing the API.
+    for (const candidate of candidates) {
+      try {
+        await table.updateRow({ ROWID: rowId, [candidate]: val });
+        return true;
+      } catch (_) {
+        // Continue to the next candidate supported by this Data Store table.
+      }
+    }
+    return false;
   };
 
   // Resolve each Budget_Master row against its own immediately preceding cycle.
