@@ -1513,7 +1513,7 @@ const BulkOperations = forwardRef(function BulkOperations(
     };
   };
   const b0 = hdrOf(null) || b0Raw,
-    bPv = (pv && hdrOf(pv.delta)) || bPvRaw;
+    bPv = pv ? hdrOf(pv.delta) || bPvRaw : b0;
 
   /* ---------- grid data ---------- */
   const colVal = (e, k) => {
