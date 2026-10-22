@@ -508,9 +508,11 @@ export function TechEdBudgetDistribution() {
         pct, pct0: pct, base,
         // Keep the baseline count fixed only as historical reference; the current
         // count always reflects the current eligible Appraisal Sheet roster.
+        // Original Count is the saved baseline only; never fill a missing
+        // value from today's team size, which changes with eligibility/delegation.
         team0: live.original_headcount !== null && live.original_headcount !== undefined && String(live.original_headcount).trim() !== ""
           ? num(live.original_headcount)
-          : (live.headcount !== null && live.headcount !== undefined && String(live.headcount).trim() !== "" ? num(live.headcount) : stats.count),
+          : (live.headcount !== null && live.headcount !== undefined && String(live.headcount).trim() !== "" ? num(live.headcount) : 0),
         // Current count follows the live eligible Appraisal Sheet roster;
         // persisted current_headcount can be stale after a delegation change.
         team: stats.count,
