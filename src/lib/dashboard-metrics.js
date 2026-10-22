@@ -100,8 +100,7 @@ export function byManager(rows) {
 //       targetPB,
 //       avgHike,
 //     };
-//   });
-// }
+
 
     const hike = sum(list, calcHikeAmount);
     const pb = sum(list, totalOfPB);
@@ -125,6 +124,8 @@ export function byManager(rows) {
       targetPB,
       avgHike,
     };
+   });
+}
 
 export function byDesignation(rows) {
   const groups = groupBy(rows, (r) => r.designation);
