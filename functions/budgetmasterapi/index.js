@@ -1203,6 +1203,12 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         : (canCreateOriginal ? originalBase * (1 + effectivePct / 100) : 0);
       const updatedBudget = (rawPct !== null || orgPctSet) ? stats.base * (1 + effectivePct / 100) : 0;
 
+      const savedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
+        ? row.original_headcount
+        : row.allocation_headcount;
+      const originalCountIsSet = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
+        String(savedOriginalCountValue).trim() !== "";
+      const savedOriginalCount = originalCountIsSet ? n(savedOriginalCountValue) : stats.count;
       const update = {
         ROWID: row.id,
         budget_base: stats.base,
@@ -1222,13 +1228,7 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         if (originalBaseField && canCreateOriginal && (!hasOriginalSnapshot || savedOriginalBase <= 0)) {
           update[originalBaseField] = originalBase;
         }
-        const savedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
-          ? row.original_headcount
-          : row.allocation_headcount;
-        const originalCountIsSet = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
-          String(savedOriginalCountValue).trim() !== "";
-        const savedOriginalCount = originalCountIsSet ? n(savedOriginalCountValue) : stats.count;
-        if (originalCountField && !originalCountIsSet) update[originalCountField] = stats.count;
+if (originalCountField && !originalCountIsSet) update[originalCountField] = stats.count;
         if (currentCountField) update[currentCountField] = stats.count;
         if (currentBaseField) update[currentBaseField] = stats.base;
         if (overrideField && rawPct === null) update[overrideField] = effectivePct;
@@ -1293,6 +1293,12 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       // Comp Manager % is an allocation share of the team CTC base, not an extra hike on top of that base.
       const originalBudget = hasOriginalSnapshot ? savedOriginalBudget : (originalBase * pct / 100);
       const updatedBudget = stats.base * pct / 100;
+      const savedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
+        ? row.original_headcount
+        : row.allocation_headcount;
+      const originalCountIsSet = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
+        String(savedOriginalCountValue).trim() !== "";
+      const savedOriginalCount = originalCountIsSet ? n(savedOriginalCountValue) : stats.count;
       const update = {
         ROWID: row.id,
         budget_base: stats.base,
@@ -1308,13 +1314,7 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         if (originalBaseField && (!hasOriginalSnapshot || savedOriginalBase <= 0)) {
           update[originalBaseField] = originalBase;
         }
-        const savedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
-          ? row.original_headcount
-          : row.allocation_headcount;
-        const originalCountIsSet = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
-          String(savedOriginalCountValue).trim() !== "";
-        const savedOriginalCount = originalCountIsSet ? n(savedOriginalCountValue) : stats.count;
-        if (originalCountField && !originalCountIsSet) update[originalCountField] = stats.count;
+if (originalCountField && !originalCountIsSet) update[originalCountField] = stats.count;
         if (currentCountField) update[currentCountField] = stats.count;
         if (currentBaseField) update[currentBaseField] = stats.base;
       }
@@ -1352,6 +1352,12 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       ? previousOrgOriginal
       : (orgPctSet ? orgOriginalBase * (1 + orgPct / 100) : 0);
     const orgUpdated = orgPctSet ? orgBase * (1 + orgPct / 100) : 0;
+    const savedOrgOriginalCountValue = master.original_headcount !== null && master.original_headcount !== undefined && String(master.original_headcount).trim() !== ""
+      ? master.original_headcount
+      : master.allocation_headcount;
+    const orgOriginalCountIsSet = savedOrgOriginalCountValue !== null && savedOrgOriginalCountValue !== undefined &&
+      String(savedOrgOriginalCountValue).trim() !== "";
+    const savedOrgOriginalCount = orgOriginalCountIsSet ? n(savedOrgOriginalCountValue) : eligibleEmployees.length;
     const orgFields = {
       ROWID: master.id,
       // Live sum of previous-appraisal CTC for eligible employees in this cycle.
@@ -1375,12 +1381,6 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       }
       if (currentCountField) orgFields[currentCountField] = eligibleEmployees.length;
     }
-    const savedOrgOriginalCountValue = master.original_headcount !== null && master.original_headcount !== undefined && String(master.original_headcount).trim() !== ""
-      ? master.original_headcount
-      : master.allocation_headcount;
-    const orgOriginalCountIsSet = savedOrgOriginalCountValue !== null && savedOrgOriginalCountValue !== undefined &&
-      String(savedOrgOriginalCountValue).trim() !== "";
-    const savedOrgOriginalCount = orgOriginalCountIsSet ? n(savedOrgOriginalCountValue) : eligibleEmployees.length;
     await masterTable.updateRow(orgFields);
     Object.assign(master, {
       org_budget_base: orgBase,
