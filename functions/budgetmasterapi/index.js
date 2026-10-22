@@ -1305,7 +1305,7 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       const savedOriginalCountNumber = hasSavedOriginalCount ? n(savedOriginalCountValue) : stats.count;
       const legacyOwnerCount = legacyEligibleEmployees.filter((employee) => ownerKey(employee.techEd) === techKey).length;
       const repairInflatedSnapshot = hasSavedOriginalCount &&
-        legacyEligibleEmployees.length > eligibleEmployees.length &&
+        Math.max(legacyEligibleEmployees.length, legacyEligibilityCount) > eligibleEmployees.length &&
         savedOriginalCountNumber > stats.count &&
         // Repair both team-specific legacy snapshots and old builds that copied
         // the whole eligible-list count into every allocation row.
@@ -1405,7 +1405,7 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
         ownerKey(employee.techEd) === details.techEdKey && ownerKey(employee.compManager) === details.compKey
       ).length;
       const repairInflatedSnapshot = hasSavedOriginalCount &&
-        legacyEligibleEmployees.length > eligibleEmployees.length &&
+        Math.max(legacyEligibleEmployees.length, legacyEligibilityCount) > eligibleEmployees.length &&
         savedOriginalCountNumber > stats.count &&
         // Repair both team-specific legacy snapshots and old builds that copied
         // the whole eligible-list count into every allocation row.
@@ -1475,6 +1475,7 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       String(savedOrgOriginalCountValue).trim() !== "";
     const savedOrgOriginalCountNumber = hasSavedOrgOriginalCount ? n(savedOrgOriginalCountValue) : eligibleEmployees.length;
     const repairInflatedOrgSnapshot = hasSavedOrgOriginalCount &&
+      Math.max(legacyEligibleEmployees.length, legacyEligibilityCount) > eligibleEmployees.length &&
       savedOrgOriginalCountNumber > eligibleEmployees.length &&
       (savedOrgOriginalCountNumber === legacyEligibleEmployees.length ||
         savedOrgOriginalCountNumber === legacyEligibilityCount);
