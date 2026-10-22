@@ -275,6 +275,28 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(changedTeam.applied_budget, 80000, 'Tech-Ed Updated Budget follows the current eligible roster and Budget Master percentage formula');
     assert.strictEqual(changedComp.calculated_budget, originalCompBudget, 'Comp Manager Original Budget remains fixed');
     assert.strictEqual(changedComp.applied_budget, 80000, 'Comp Manager Updated Budget follows the current eligible roster');
+
+    // A delegation changes team membership, not the original allocated count.
+    store.tables.Eligibility_List.find((row) => row.emp_id === 'E2').eligibility_status = 'Eligible';
+    const delegatedEmployee = store.tables.Appraisal_Sheet.find((row) => row.emp_id === 'E2');
+    delegatedEmployee.appraiser_tech_ed = 'T2';
+    delegatedEmployee.comp_manager = 'C2';
+    const delegated = await get(api);
+    assert.strictEqual(delegated.status, 200, JSON.stringify(delegated.json));
+    assert.strictEqual(Number(delegated.json.master[0].original_headcount), 2, 'Org Original Count stays fixed after delegation');
+    assert.strictEqual(Number(delegated.json.master[0].current_headcount), 2, 'Org Current Count follows the eligible roster');
+    const delegatedT1 = delegated.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1');
+    const delegatedT2 = delegated.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T2');
+    assert.strictEqual(Number(delegatedT1.original_headcount), 2, 'previous Tech-Ed baseline is not reset by delegation');
+    assert.strictEqual(Number(delegatedT1.current_headcount), 1, 'previous Tech-Ed Current Count falls after delegation');
+    assert.strictEqual(Number(delegatedT2.original_headcount), 1, 'new Tech-Ed baseline starts from its generated roster');
+    assert.strictEqual(Number(delegatedT2.current_headcount), 1, 'new Tech-Ed Current Count uses the generated roster');
+    const delegatedC1 = delegated.json.compManager.find((row) => row.comp_manager === 'C1');
+    const delegatedC2 = delegated.json.compManager.find((row) => row.comp_manager === 'C2');
+    assert.strictEqual(Number(delegatedC1.original_headcount), 2, 'previous Comp Manager baseline is not reset');
+    assert.strictEqual(Number(delegatedC1.current_headcount), 1, 'previous Comp Manager Current Count falls after delegation');
+    assert.strictEqual(Number(delegatedC2.original_headcount), 1, 'new Comp Manager baseline starts from its generated roster');
+    assert.strictEqual(Number(delegatedC2.current_headcount), 1, 'new Comp Manager Current Count uses the generated roster');
   });
 
   await t('cycle-ineligible employees are excluded from org and Tech-ED bases', async () => {
