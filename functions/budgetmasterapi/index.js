@@ -1151,7 +1151,34 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
     // Eligibility List are picked up on the next calculation/read.
 
 
-  const legacyEligibleEmployees = employees.filter((employee) => employee.eligible);
+  // Reconstruct the legacy pre-fix count from Employee_Master + this cycle's
+  // Eligibility_List. The current roster is strictly Appraisal_Sheet rows; the
+  // legacy count is used ONLY to recognize and repair an inflated old snapshot.
+  const currentEmployeeById = new Map(employees.map((employee) => [
+    String(employee.employeeId || employee.emp_id || "").trim().toLowerCase(), employee,
+  ]));
+  const legacyEligibleEmployees = masterEmployeeRows.map((masterRow) => {
+    const empId = String(firstValue(masterRow, ["emp_id", "empId", "employee_id"]) || "").trim();
+    if (!empId) return null;
+    const sheetEmployee = currentEmployeeById.get(empId.toLowerCase());
+    const candidate = sheetEmployee || {
+      employee_master_row_id: idOf(masterRow),
+      employeeId: empId,
+      emp_id: empId,
+    };
+    const cycleEligibility = cycleEligibilityFor(candidate, cycleId);
+    const rawEligibility = String(firstValue(masterRow, ["eligibility", "eligible_status", "eligibility_status", "eligible"]) || "").trim().toLowerCase().replace(/[ _-]+/g, "");
+    const rawStatus = String(firstValue(masterRow, ["emp_status", "status", "employee_status"]) || "").trim().toLowerCase();
+    const explicitlyEligible = ["eligible", "yes", "true", "1"].includes(rawEligibility);
+    const eligible = cycleEligibility ? cycleEligibility.eligible : rawStatus === "active" && explicitlyEligible;
+    const rawTech = firstValue(masterRow, ["appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_tech_ed1", "appraiser_teched", "tech_ed", "tech_ed_id"]);
+    const rawComp = firstValue(masterRow, ["comp_manager", "comp_manager_id", "comp_manager_name", "director"]);
+    return {
+      eligible,
+      techEd: sheetEmployee?.techEd || resolvePersonId(rawTech),
+      compManager: sheetEmployee?.compManager || String(rawComp || "").trim(),
+    };
+  }).filter((employee) => employee && employee.eligible);
   const eligibleEmployees = employees.filter((employee) => employee.eligible && employee.in_appraisal_sheet);
     const orgBase = eligibleEmployees.reduce((sum, employee) => sum + employee.base, 0);
     const techBases = new Map(Array.from(techLabels.keys(), (key) => [key, { base: 0, count: 0, utilized: 0 }]));
