@@ -205,6 +205,26 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const comp = r.json.compManager.find((row) => row.comp_manager === 'C1');
     assert.strictEqual(Number(comp.original_headcount), 23);
     assert.strictEqual(Number(comp.current_headcount), 23);
+
+    // Simulate the legacy bug: all 30 eligible master/list employees were
+    // captured as the original count even though only 23 were generated.
+    store.tables.Budget_Master[0].original_headcount = 30;
+    const savedTech = store.tables.Budget_Distribution.find((row) => row.appraiser_tech_ed_id === 'T1');
+    const savedComp = store.tables.Budget_Distribution_Comp.find((row) => row.comp_manager === 'C1');
+    assert.ok(savedTech, 'Tech-Ed allocation row exists for the active cycle');
+    assert.ok(savedComp, 'Comp Manager allocation row exists for the active cycle');
+    savedTech.original_headcount = 30;
+    savedComp.original_headcount = 30;
+
+    const repaired = await get(load(store));
+    assert.strictEqual(repaired.status, 200, JSON.stringify(repaired.json));
+    assert.strictEqual(Number(repaired.json.master[0].original_headcount), 23, 'inflated Org Original Count is repaired');
+    const repairedTech = repaired.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1');
+    const repairedComp = repaired.json.compManager.find((row) => row.comp_manager === 'C1');
+    assert.strictEqual(Number(repairedTech.original_headcount), 23, 'inflated Tech-Ed Original Count is repaired');
+    assert.strictEqual(Number(repairedTech.current_headcount), 23, 'Tech-Ed Current Count is persisted from the generated roster');
+    assert.strictEqual(Number(repairedComp.original_headcount), 23, 'inflated Comp Manager Original Count is repaired');
+    assert.strictEqual(Number(repairedComp.current_headcount), 23, 'Comp Manager Current Count is persisted from the generated roster');
   });
 
   await t('original counts remain fixed while current counts follow eligibility changes', async () => {
