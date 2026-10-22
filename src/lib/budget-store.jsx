@@ -308,13 +308,12 @@ export function BudgetProvider({ children }) {
           "Appraisal Sheet roster could not be read: " + budgetJson.rosterError,
         );
       } else if (employeeResult.employeeError) {
-        console.error(
-          "Failed to load employees for budget counts:",
+        // Budget Master API already returns its cycle-scoped employeeRoster.
+        // employeesapi is an auxiliary detail source; its failure must not mark
+        // an otherwise authoritative budget total as failed or trigger a demo value.
+        console.warn(
+          "Supplementary employee details could not be loaded; using Budget Master roster:",
           employeeResult.employeeError,
-        );
-        setError(
-          employeeResult.employeeError.message ||
-            "Failed to load employee counts.",
         );
       }
     } catch (e) {
