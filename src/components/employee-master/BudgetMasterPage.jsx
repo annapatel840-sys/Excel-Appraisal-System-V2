@@ -13,9 +13,7 @@ const BUDGET_AUDIT_STORAGE_KEY = "excel-appraisal-budget-audit-v1";
 function readBudgetAudit() {
   if (typeof window === "undefined") return { org: [], techEd: [] };
   try {
-    const parsed = JSON.parse(
-      window.localStorage.getItem(BUDGET_AUDIT_STORAGE_KEY) || "{}",
-    );
+    const parsed = JSON.parse(window.localStorage.getItem(BUDGET_AUDIT_STORAGE_KEY) || "{}");
     return {
       org: Array.isArray(parsed.org) ? parsed.org : [],
       techEd: Array.isArray(parsed.techEd) ? parsed.techEd : [],
@@ -26,20 +24,12 @@ function readBudgetAudit() {
 }
 
 function recordBudgetAudit(kind, entries) {
-  if (
-    typeof window === "undefined" ||
-    !Array.isArray(entries) ||
-    !entries.length
-  )
-    return;
+  if (typeof window === "undefined" || !Array.isArray(entries) || !entries.length) return;
   try {
     const current = readBudgetAudit();
     const key = kind === "org" ? "org" : "techEd";
     current[key] = [...entries, ...current[key]].slice(0, 2000);
-    window.localStorage.setItem(
-      BUDGET_AUDIT_STORAGE_KEY,
-      JSON.stringify(current),
-    );
+    window.localStorage.setItem(BUDGET_AUDIT_STORAGE_KEY, JSON.stringify(current));
     window.dispatchEvent(new CustomEvent("appraisal:budget-audit-updated"));
   } catch (error) {
     // Audit-storage restrictions must not misreport a successfully saved budget as failed.
@@ -49,10 +39,7 @@ function recordBudgetAudit(kind, entries) {
 
 /* ---------- helpers ---------- */
 function normalizeOwnerKey(value) {
-  const text = String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
+  const text = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
   // Only treat an ID-looking prefix as an ID. A plain name (including names
   // containing hyphens) must remain a searchable owner value.
   const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
@@ -65,33 +52,19 @@ function canonicalOwnerKey(value, employees = []) {
   const pair = raw.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
   const rawId = pair ? pair[1].trim() : "";
   const rawName = pair ? pair[2].trim() : raw;
-  const valuesFor = (employee) =>
-    [
-      employee.row_id,
-      employee.ROWID,
-      employee.emp_id,
-      employee.employee_id,
-      employee.name,
-      employee.employee_name,
-      employee.emp_name,
-      employee.email,
-      employee.email_id,
-    ]
-      .filter(Boolean)
-      .map(normalizeOwnerKey);
+  const valuesFor = (employee) => [
+    employee.row_id, employee.ROWID, employee.emp_id, employee.employee_id,
+    employee.name, employee.employee_name, employee.emp_name, employee.email, employee.email_id,
+  ].filter(Boolean).map(normalizeOwnerKey);
   const matched = employees.find((employee) => {
     const values = valuesFor(employee);
-    return (
-      values.includes(normalizeOwnerKey(raw)) ||
+    return values.includes(normalizeOwnerKey(raw)) ||
       (rawId && values.includes(normalizeOwnerKey(rawId))) ||
-      (rawName && values.includes(normalizeOwnerKey(rawName)))
-    );
+      (rawName && values.includes(normalizeOwnerKey(rawName)));
   });
   if (matched) {
     const id = String(matched.emp_id || matched.employee_id || "").trim();
-    const name = String(
-      matched.name || matched.employee_name || matched.emp_name || "",
-    ).trim();
+    const name = String(matched.name || matched.employee_name || matched.emp_name || "").trim();
     return normalizeOwnerKey(id || name || raw);
   }
   return normalizeOwnerKey(rawId || raw);
@@ -105,27 +78,16 @@ function ownerName(value, employees = []) {
   const rawName = pair ? pair[2].trim() : raw;
   const person = employees.find((employee) => {
     const id = String(employee.emp_id || employee.employee_id || "").trim();
-    const name = String(
-      employee.name || employee.employee_name || employee.emp_name || "",
-    ).trim();
+    const name = String(employee.name || employee.employee_name || employee.emp_name || "").trim();
     const email = String(employee.email || employee.email_id || "").trim();
-    return [id, name, email].some(
-      (candidate) =>
-        candidate &&
-        [
-          normalizeOwnerKey(raw),
-          normalizeOwnerKey(rawId),
-          normalizeOwnerKey(rawName),
-        ]
-          .filter(Boolean)
-          .includes(normalizeOwnerKey(candidate)),
+    return [id, name, email].some((candidate) =>
+      candidate && [normalizeOwnerKey(raw), normalizeOwnerKey(rawId), normalizeOwnerKey(rawName)]
+        .filter(Boolean).includes(normalizeOwnerKey(candidate)),
     );
   });
   if (person) {
     const id = String(person.emp_id || person.employee_id || "").trim();
-    const name = String(
-      person.name || person.employee_name || person.emp_name || "",
-    ).trim();
+    const name = String(person.name || person.employee_name || person.emp_name || "").trim();
     return id && name ? id + " - " + name : name || id || raw;
   }
   return pair ? pair[2].trim() : raw;
@@ -134,20 +96,12 @@ function ownerName(value, employees = []) {
 function amount(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (value === null || value === undefined || value === "") return 0;
-  const n = Number(
-    String(value)
-      .trim()
-      .replace(/[₹,\s]/g, "")
-      .replace(/^(?:INR|Rs\.?)/i, ""),
-  );
+  const n = Number(String(value).trim().replace(/[₹,\s]/g, "").replace(/^(?:INR|Rs\.?)/i, ""));
   return Number.isFinite(n) ? n : 0;
 }
 
 // Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
-const INR = new Intl.NumberFormat("en-IN", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 0,
-});
+const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 function money(value) {
   return INR.format(amount(value));
 }
@@ -240,11 +194,7 @@ function AuditTable({
   return (
     <div className="w-full overflow-x-auto">
       <table className="w-full min-w-[980px] table-fixed border-collapse text-[12px] tabular-nums">
-        <colgroup>
-          {cols.map(([h]) => (
-            <col key={h} />
-          ))}
-        </colgroup>
+        <colgroup>{cols.map(([h]) => <col key={h} />)}</colgroup>
         <thead>
           <tr>
             {cols.map(([h, right]) => (
@@ -404,25 +354,13 @@ function deltaNode(from, to) {
   const down = d < 0;
   return (
     <em className={down ? "bm-dn" : "bm-up"}>
-      {down ? "▼" : "▲"} {money(Math.abs(d))} (
-      {((Math.abs(d) / (from || 1)) * 100).toFixed(2)}%)
+      {down ? "▼" : "▲"} {money(Math.abs(d))} ({(Math.abs(d) / (from || 1) * 100).toFixed(2)}%)
     </em>
   );
 }
 
 function HRApplyBudget() {
-  const {
-    budgetMasterRows = [],
-    budgetDistributionRows = [],
-    employeeRows = [],
-    techEdOwners = [],
-    currentUser = {},
-    updateBudget,
-    reload: reloadBudget,
-    loading: budgetLoading,
-    error: budgetError = "",
-    budgetWarning = "",
-  } = useBudget();
+  const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], techEdOwners = [], currentUser = {}, updateBudget, reload: reloadBudget, loading: budgetLoading, error: budgetError = "", budgetWarning = "" } = useBudget();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const canConfig =
@@ -451,10 +389,7 @@ function HRApplyBudget() {
     }
     return () => {
       if (typeof window !== "undefined") {
-        window.removeEventListener(
-          "appraisal:budget-audit-updated",
-          refreshAudit,
-        );
+        window.removeEventListener("appraisal:budget-audit-updated", refreshAudit);
         window.removeEventListener("storage", refreshAudit);
       }
     };
@@ -463,24 +398,16 @@ function HRApplyBudget() {
   const [activeCycle, setActiveCycle] = useState(null);
   const [cycleLoading, setCycleLoading] = useState(true);
   const appraisalCycles = useMemo(
-    () =>
-      budgetMasterRows
-        .map((row) => ({
-          id: String(row.appraisal_cycle_id || ""),
-          label: String(
-            row.appraisal_cycle_name ||
-              row.appraisal_cycle_id ||
-              "Unknown cycle",
-          ),
-        }))
-        .filter((cycle) => cycle.id),
+    () => budgetMasterRows.map((row) => ({
+      id: String(row.appraisal_cycle_id || ""),
+      label: String(row.appraisal_cycle_name || row.appraisal_cycle_id || "Unknown cycle"),
+    })).filter((cycle) => cycle.id),
     [budgetMasterRows],
   );
   const [selectedCycle, setSelectedCycle] = useState("");
-  const selectedMaster =
-    budgetMasterRows.find(
-      (row) => String(row.appraisal_cycle_id) === String(selectedCycle),
-    ) || null;
+  const selectedMaster = budgetMasterRows.find(
+    (row) => String(row.appraisal_cycle_id) === String(selectedCycle),
+  ) || null;
 
   // Re-read the backend whenever Budget Master is opened, not only when the app provider first mounts.
   useEffect(() => {
@@ -493,10 +420,7 @@ function HRApplyBudget() {
       .then((cycles) => {
         if (!mounted) return;
         const active = (Array.isArray(cycles) ? cycles : []).find(
-          (cycle) =>
-            String(cycle.status || "")
-              .trim()
-              .toLowerCase() === "active" && !cycle.archived,
+          (cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived,
         );
         setActiveCycle(active || null);
       })
@@ -533,15 +457,12 @@ function HRApplyBudget() {
       const key = normalizeOwnerKey(id || label);
       if (!key) return;
       // Resolve an ID-only Tech-Ed entry back to Employee_Master for display.
-      const displayName =
-        String(item?.name || "").trim() ||
+      const displayName = String(item?.name || "").trim() ||
         ownerName(label || id || rowId, employeeRows);
       ownerValues.set(key, displayName || label || id || rowId);
-      [id, label, rowId, item?.name, displayName]
-        .filter(Boolean)
-        .forEach((alias) => {
-          techOwnerByAlias.set(normalizeOwnerKey(alias), key);
-        });
+      [id, label, rowId, item?.name, displayName].filter(Boolean).forEach((alias) => {
+        techOwnerByAlias.set(normalizeOwnerKey(alias), key);
+      });
     });
     const resolveTechOwnerKey = (raw) => {
       const text = String(raw || "").trim();
@@ -566,55 +487,24 @@ function HRApplyBudget() {
           employee.eligible_status,
           employee.eligibility_status,
           employee.eligible,
-        ].find(
-          (value) =>
-            value !== null &&
-            value !== undefined &&
-            String(value).trim() !== "",
-        ) ?? "",
-      )
-        .trim()
-        .toLowerCase()
-        .replace(/[ _-]+/g, "");
+        ].find((value) => value !== null && value !== undefined && String(value).trim() !== "") ?? "",
+      ).trim().toLowerCase().replace(/[ _-]+/g, "");
       // Budget headcount includes employees only when BOTH Employee Master
       // conditions are satisfied: Active status and Eligible eligibility.
-      const status = String(
-        employee.emp_status ??
-          employee.status ??
-          employee.employee_status ??
-          "",
-      )
-        .trim()
-        .toLowerCase();
+      const status = String(employee.emp_status ?? employee.status ?? employee.employee_status ?? "")
+        .trim().toLowerCase();
       const isActive = status === "active";
       const isEligible = ["eligible", "yes", "true", "1"].includes(eligibility);
       const eligible = isActive && isEligible;
 
       const employeeId = normalizeOwnerKey(
-        employee.emp_id ||
-          employee.employee_id ||
-          employee.employeeId ||
-          employee.employee_id_text ||
-          "",
+        employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text || "",
       );
-      const inAppraisalSheet =
-        employee.in_appraisal_sheet === true ||
-        String(employee.in_appraisal_sheet ?? "")
-          .trim()
-          .toLowerCase() === "true" ||
+      const inAppraisalSheet = employee.in_appraisal_sheet === true ||
+        String(employee.in_appraisal_sheet ?? "").trim().toLowerCase() === "true" ||
         String(employee.in_appraisal_sheet ?? "").trim() === "1";
-      const employeeCountKey =
-        key +
-        "::" +
-        (employeeId ||
-          normalizeOwnerKey(
-            employee.row_id || employee.ROWID || employee.id || "",
-          ));
-      if (
-        eligible &&
-        inAppraisalSheet &&
-        !countedEligibleEmployees.has(employeeCountKey)
-      ) {
+      const employeeCountKey = key + "::" + (employeeId || normalizeOwnerKey(employee.row_id || employee.ROWID || employee.id || ""));
+      if (eligible && inAppraisalSheet && !countedEligibleEmployees.has(employeeCountKey)) {
         employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
         countedEligibleEmployees.add(employeeCountKey);
       }
@@ -623,132 +513,73 @@ function HRApplyBudget() {
       // Budget Master API (previous base pay + previous hike/PB/RB/JB).
       // Do not rebuild it from current annual pay + allocated PB.
       const serverBase = employee.budget_base ?? employee.budgetBase;
-      const hasServerBase =
-        serverBase !== null &&
-        serverBase !== undefined &&
-        String(serverBase).trim() !== "";
-      const base = hasServerBase
-        ? amount(serverBase)
-        : amount(
-            employee.previous_year_base_pay ??
-              employee.previousYearBasePay ??
-              employee.last_year_base_pay ??
-              employee.lastYearBasePay ??
-              employee.previous_annual_base_pay,
-          ) +
-          amount(
-            employee.previous_year_hike_amount ??
-              employee.previousYearHikeAmount ??
-              employee.previous_hike_amount ??
-              employee.last_year_hike_amount,
-          ) +
-          amount(
-            employee.previous_year_performance_bonus ??
-              employee.previous_year_pb ??
-              employee.previous_pb ??
-              employee.pb_to_be_paid ??
-              employee.pbToBePaid,
-          ) +
-          amount(
-            employee.previous_year_retention_bonus ??
-              employee.previous_year_rb ??
-              employee.previous_rb ??
-              employee.rb_to_be_paid ??
-              employee.rbToBePaid,
-          ) +
-          amount(
-            employee.previous_year_joining_bonus ??
-              employee.previous_year_jb ??
-              employee.previous_joining_bonus ??
-              employee.joining_bonus_previous_year,
-          );
+      const hasServerBase = serverBase !== null && serverBase !== undefined && String(serverBase).trim() !== "";
+      const base = hasServerBase ? amount(serverBase) : (
+        amount(employee.previous_year_base_pay ?? employee.previousYearBasePay ?? employee.last_year_base_pay ?? employee.lastYearBasePay ?? employee.previous_annual_base_pay) +
+        amount(employee.previous_year_hike_amount ?? employee.previousYearHikeAmount ?? employee.previous_hike_amount ?? employee.last_year_hike_amount) +
+        amount(employee.previous_year_performance_bonus ?? employee.previous_year_pb ?? employee.previous_pb ?? employee.pb_to_be_paid ?? employee.pbToBePaid) +
+        amount(employee.previous_year_retention_bonus ?? employee.previous_year_rb ?? employee.previous_rb ?? employee.rb_to_be_paid ?? employee.rbToBePaid) +
+        amount(employee.previous_year_joining_bonus ?? employee.previous_year_jb ?? employee.previous_joining_bonus ?? employee.joining_bonus_previous_year)
+      );
       // Only eligible, active employees contribute to fallback team bases.
-      if (eligible)
-        employeeBases.set(key, (employeeBases.get(key) || 0) + base);
+      if (eligible) employeeBases.set(key, (employeeBases.get(key) || 0) + base);
     });
 
     const nextRows = [];
     const seenOwners = new Set();
     (Array.isArray(budgetDistributionRows) ? budgetDistributionRows : [])
-      .filter(
-        (row) =>
-          !selectedCycle ||
-          String(row.appraisal_cycle_id) === String(selectedCycle),
-      )
+      .filter((row) => !selectedCycle || String(row.appraisal_cycle_id) === String(selectedCycle))
       .forEach((row) => {
-        const owner = row.appraiser_tech_ed_id || "";
-        const key = resolveTechOwnerKey(owner);
-        if (!key || !ownerValues.has(key)) return;
-        // Multiple legacy records may point to the same Tech-Ed using ROWID,
-        // employee ID, or label. Keep one display row per canonical roster key.
-        if (seenOwners.has(key)) {
-          const existing = nextRows.find((item) => item.canonicalKey === key);
-          if (existing) {
-            existing.pct = amount(row.percentage);
-            existing.base =
-              row.budget_base !== null &&
-              row.budget_base !== undefined &&
-              String(row.budget_base).trim() !== ""
-                ? amount(row.budget_base)
-                : existing.base;
-            existing.original = amount(row.calculated_budget);
-            existing.updated = amount(row.applied_budget) || existing.original;
-            const originalCountValue =
-              row.original_headcount ?? row.allocation_headcount;
-            const currentCountValue = row.current_headcount ?? row.headcount;
-            existing.team0 =
-              amount(originalCountValue) > 0
-                ? amount(originalCountValue)
-                : existing.team0 || employeeCounts.get(key) || 0;
-            // Current count is live, not a potentially stale saved count.
-            existing.team = employeeCounts.get(key) || 0;
-            existing.id = row.id || existing.id;
-          }
-          return;
-        }
-        const calculated = amount(row.calculated_budget);
-        const applied = amount(row.applied_budget) || calculated;
-        const assignedCount = employeeCounts.get(key) || 0;
-        const originalCountValue =
-          row.original_headcount ?? row.allocation_headcount;
-        const currentCountValue = row.current_headcount ?? row.headcount;
-        const originalCount =
-          amount(originalCountValue) > 0
+      const owner = row.appraiser_tech_ed_id || "";
+      const key = resolveTechOwnerKey(owner);
+      if (!key || !ownerValues.has(key)) return;
+      // Multiple legacy records may point to the same Tech-Ed using ROWID,
+      // employee ID, or label. Keep one display row per canonical roster key.
+      if (seenOwners.has(key)) {
+        const existing = nextRows.find((item) => item.canonicalKey === key);
+        if (existing) {
+          existing.pct = amount(row.percentage);
+          existing.base = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== "" ? amount(row.budget_base) : existing.base;
+          existing.original = amount(row.calculated_budget);
+          existing.updated = amount(row.applied_budget) || existing.original;
+          const originalCountValue = row.original_headcount ?? row.allocation_headcount;
+          const currentCountValue = row.current_headcount ?? row.headcount;
+          existing.team0 = amount(originalCountValue) > 0
             ? amount(originalCountValue)
-            : assignedCount;
-        const currentCount = assignedCount;
-        const storedBase =
-          row.budget_base !== null &&
-          row.budget_base !== undefined &&
-          String(row.budget_base).trim() !== ""
-            ? amount(row.budget_base)
-            : null;
-        nextRows.push({
-          id: row.id || "tech-ed-" + key,
-          canonicalKey: key,
-          name: ownerValues.get(key) || ownerName(owner, employeeRows),
-          pct: amount(row.percentage),
-          pctSet:
-            row.percentage !== null &&
-            row.percentage !== undefined &&
-            String(row.percentage).trim() !== "",
-          // budgetmasterapi calculates this base from the cycle's eligible roster;
-          // prefer it over the all-employee API roster to avoid inflating Org Base.
-          base:
-            storedBase !== null
-              ? storedBase
-              : employeeBases.get(key) ||
-                (Number(row.percentage)
-                  ? (calculated * 100) / Number(row.percentage)
-                  : calculated),
-          original: calculated,
-          updated: applied,
-          team0: originalCount,
-          team: currentCount,
-          lastChanged: "—",
-        });
-        seenOwners.add(key);
+            : (existing.team0 || employeeCounts.get(key) || 0);
+          // Current count is live, not a potentially stale saved count.
+          existing.team = employeeCounts.get(key) || 0;
+          existing.id = row.id || existing.id;
+        }
+        return;
+      }
+      const calculated = amount(row.calculated_budget);
+      const applied = amount(row.applied_budget) || calculated;
+      const assignedCount = employeeCounts.get(key) || 0;
+      const originalCountValue = row.original_headcount ?? row.allocation_headcount;
+      const currentCountValue = row.current_headcount ?? row.headcount;
+      const originalCount = amount(originalCountValue) > 0 ? amount(originalCountValue) : assignedCount;
+      const currentCount = assignedCount;
+      const storedBase = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== ""
+        ? amount(row.budget_base)
+        : null;
+      nextRows.push({
+        id: row.id || "tech-ed-" + key,
+        canonicalKey: key,
+        name: ownerValues.get(key) || ownerName(owner, employeeRows),
+        pct: amount(row.percentage),
+        pctSet: row.percentage !== null && row.percentage !== undefined && String(row.percentage).trim() !== "",
+        // budgetmasterapi calculates this base from the cycle's eligible roster;
+        // prefer it over the all-employee API roster to avoid inflating Org Base.
+        base: storedBase !== null ? storedBase : (employeeBases.get(key) || (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated)),
+        original: calculated,
+        updated: applied,
+        team0: originalCount,
+        team: currentCount,
+        lastChanged: "—",
       });
+      seenOwners.add(key);
+    });
 
     // Appraisal Sheet is the source of truth for the Tech-ED assignments.
     // Include every assigned Tech-ED even if no Budget_Distribution row exists yet.
@@ -762,14 +593,8 @@ function HRApplyBudget() {
         pct: amount(selectedMaster?.budget_percentage),
         pctSet: false,
         base: employeeBases.get(key) || 0,
-        original: selectedMaster?.budget_percentage_is_set
-          ? (employeeBases.get(key) || 0) *
-            (1 + amount(selectedMaster?.budget_percentage) / 100)
-          : 0,
-        updated: selectedMaster?.budget_percentage_is_set
-          ? (employeeBases.get(key) || 0) *
-            (1 + amount(selectedMaster?.budget_percentage) / 100)
-          : 0,
+        original: selectedMaster?.budget_percentage_is_set ? (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100) : 0,
+        updated: selectedMaster?.budget_percentage_is_set ? (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100) : 0,
         team0: employeeCounts.get(key) || 0,
         team: employeeCounts.get(key) || 0,
         lastChanged: "—",
@@ -784,14 +609,7 @@ function HRApplyBudget() {
     } else {
       setOrgPct("");
     }
-  }, [
-    budgetDistributionRows,
-    budgetMasterRows,
-    employeeRows,
-    techEdOwners,
-    selectedCycle,
-    selectedMaster?.budget_percentage,
-  ]);
+  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, selectedCycle, selectedMaster?.budget_percentage]);
 
   // budgetmasterapi calculates this cycle's Org Base from the explicit
   // Eligibility_List decisions. Prefer that authoritative total over the full
@@ -799,11 +617,7 @@ function HRApplyBudget() {
   // Tech-Ed assignment. Fall back to unique Tech-Ed bases only if absent.
   const orgBaseFromRoster = useMemo(() => {
     const savedBase = selectedMaster?.org_budget_base;
-    if (
-      savedBase !== null &&
-      savedBase !== undefined &&
-      String(savedBase).trim() !== ""
-    ) {
+    if (savedBase !== null && savedBase !== undefined && String(savedBase).trim() !== "") {
       return amount(savedBase);
     }
     return rows.reduce((sum, row) => sum + amount(row.base), 0);
@@ -826,29 +640,19 @@ function HRApplyBudget() {
 
   // Org headcount comes from the same cycle-scoped eligibility calculation as
   // Org Budget Base. Fall back to the Tech-Ed roll-up only for older schemas.
-  const orgOriginalCountValue =
-    selectedMaster?.original_headcount ?? selectedMaster?.allocation_headcount;
-  const orgCurrentCountValue =
-    selectedMaster?.current_headcount ?? selectedMaster?.headcount;
-  const orgOriginalCount =
-    amount(orgOriginalCountValue) > 0
-      ? amount(orgOriginalCountValue)
-      : total.team0;
+  const orgOriginalCountValue = selectedMaster?.original_headcount ?? selectedMaster?.allocation_headcount;
+  const orgCurrentCountValue = selectedMaster?.current_headcount ?? selectedMaster?.headcount;
+  const orgOriginalCount = amount(orgOriginalCountValue) > 0 ? amount(orgOriginalCountValue) : total.team0;
   // Current headcount must always reflect the live eligible Appraisal Sheet roster;
   // persisted current_headcount may be stale until the next backend calculation.
   const orgCurrentCount = total.team;
 
   // Saved Tech-Ed percentages remain independent of future Org % changes.
   const previewPct = (row) => {
-    if (Object.prototype.hasOwnProperty.call(pending, row.name))
-      return Number(pending[row.name]);
-    if (Object.prototype.hasOwnProperty.call(staged, row.name))
-      return Number(staged[row.name]);
+    if (Object.prototype.hasOwnProperty.call(pending, row.name)) return Number(pending[row.name]);
+    if (Object.prototype.hasOwnProperty.call(staged, row.name)) return Number(staged[row.name]);
     // An unset Tech-Ed percentage inherits the Org % on first allocation.
-    if (!row.pctSet)
-      return orgPct !== ""
-        ? amount(orgPct)
-        : amount(selectedMaster?.budget_percentage);
+    if (!row.pctSet) return orgPct !== "" ? amount(orgPct) : amount(selectedMaster?.budget_percentage);
     return amount(row.pct);
   };
 
@@ -858,47 +662,30 @@ function HRApplyBudget() {
   // do not invalidate that snapshot just because payroll/eligibility changed later.
   const savedOrgBase = amount(selectedMaster?.org_budget_base);
   const savedOrgOriginal = amount(selectedMaster?.calculated_budget);
-  const hasValidOrgSnapshot =
-    Boolean(selectedMaster?.budget_percentage_is_set) && savedOrgOriginal >= 0;
+  const hasValidOrgSnapshot = Boolean(selectedMaster?.budget_percentage_is_set) &&
+    savedOrgOriginal >= 0;
   const orgBase = orgBaseFromRoster;
-  const effectiveOrgPct =
-    orgPct === "" ? amount(selectedMaster?.budget_percentage) : amount(orgPct);
-  const orgPctEntered =
-    Boolean(selectedMaster?.budget_percentage_is_set) || orgPct !== "";
-  const previewOrgBudget = orgPctEntered
-    ? orgBase * (1 + effectiveOrgPct / 100)
-    : 0;
+  const effectiveOrgPct = orgPct === "" ? amount(selectedMaster?.budget_percentage) : amount(orgPct);
+  const orgPctEntered = Boolean(selectedMaster?.budget_percentage_is_set) || orgPct !== "";
+  const previewOrgBudget = orgPctEntered ? orgBase * (1 + effectiveOrgPct / 100) : 0;
   const originalOrgBudget = hasValidOrgSnapshot
     ? savedOrgOriginal
-    : orgPctEntered
-      ? orgBase * (1 + effectiveOrgPct / 100)
-      : 0;
-  const orgPending =
-    orgPct !== "" &&
-    !!selectedMaster &&
-    amount(orgPct) !== Number(selectedMaster.budget_percentage || 0);
-  const draftCount = rows.filter(
-    (row) =>
-      Object.prototype.hasOwnProperty.call(pending, row.name) &&
-      Number(pending[row.name]) !== Number(staged[row.name] ?? row.pct),
+    : (orgPctEntered ? orgBase * (1 + effectiveOrgPct / 100) : 0);
+  const orgPending = orgPct !== "" && !!selectedMaster && amount(orgPct) !== Number(selectedMaster.budget_percentage || 0);
+  const draftCount = rows.filter((row) =>
+    Object.prototype.hasOwnProperty.call(pending, row.name) &&
+    Number(pending[row.name]) !== Number(staged[row.name] ?? row.pct),
   ).length;
-  const stagedCount = rows.filter(
-    (row) =>
-      Object.prototype.hasOwnProperty.call(staged, row.name) &&
-      Number(staged[row.name]) !== Number(row.pct),
+  const stagedCount = rows.filter((row) =>
+    Object.prototype.hasOwnProperty.call(staged, row.name) &&
+    Number(staged[row.name]) !== Number(row.pct),
   ).length;
   const pendingCount = draftCount + (orgPending ? 1 : 0);
   const previewTotal = rows.reduce((s, r) => s + previewBudget(r), 0);
 
   async function applyOrgPercentage() {
     const org = Number(orgPct);
-    const cycleId = String(
-      selectedCycle ||
-        activeCycle?.id ||
-        activeCycle?.appraisal_cycle_id ||
-        activeCycle?.ROWID ||
-        "",
-    ).trim();
+    const cycleId = String(selectedCycle || activeCycle?.id || activeCycle?.appraisal_cycle_id || activeCycle?.ROWID || "").trim();
     if (!cycleId) {
       setError("Select an appraisal cycle before applying the Org %.");
       return;
@@ -908,9 +695,7 @@ function HRApplyBudget() {
       return;
     }
     if (draftCount || stagedCount) {
-      setError(
-        "Apply, publish, or discard Tech-Ed edits before changing the organization percentage.",
-      );
+      setError("Apply, publish, or discard Tech-Ed edits before changing the organization percentage.");
       return;
     }
     setSavingOrg(true);
@@ -922,72 +707,52 @@ function HRApplyBudget() {
     const updatedBudget = orgBase * (1 + org / 100);
     const previousOrgPct = amount(selectedMaster?.budget_percentage);
     const previousOrgBudget = amount(selectedMaster?.applied_budget);
-    const actor = String(
-      currentUser.name || currentUser.email || "Unknown user",
-    );
-    const reason =
-      String(orgReason || "").trim() || "Org budget percentage updated";
+    const actor = String(currentUser.name || currentUser.email || "Unknown user");
+    const reason = String(orgReason || "").trim() || "Org budget percentage updated";
     try {
-      await updateBudget(
-        selectedMaster?.id || "",
-        {
-          appraisal_cycle_id: cycleId,
-          budget_percentage: org,
-          org_budget_base: orgBase,
-          calculated_budget: originalBudget,
-          applied_budget: updatedBudget,
-          budget_utilized: amount(selectedMaster?.budget_utilized),
-        },
-        "master",
-        false,
-      );
-      recordBudgetAudit("org", [
-        {
-          date: new Date().toISOString().slice(0, 10),
-          time: new Date().toLocaleTimeString(),
-          owner: "Org",
-          from: previousOrgPct,
-          to: org,
-          before: previousOrgBudget,
-          after: updatedBudget,
-          by: actor,
-          reason,
-          cycleId,
-        },
-      ]);
+      await updateBudget(selectedMaster?.id || "", {
+        appraisal_cycle_id: cycleId,
+        budget_percentage: org,
+        org_budget_base: orgBase,
+        calculated_budget: originalBudget,
+        applied_budget: updatedBudget,
+        budget_utilized: amount(selectedMaster?.budget_utilized),
+      }, "master", false);
+      recordBudgetAudit("org", [{
+        date: new Date().toISOString().slice(0, 10),
+        time: new Date().toLocaleTimeString(),
+        owner: "Org",
+        from: previousOrgPct,
+        to: org,
+        before: previousOrgBudget,
+        after: updatedBudget,
+        by: actor,
+        reason,
+        cycleId,
+      }]);
 
       // Update inherited Tech-Ed rows only. A separately configured override must
       // remain untouched when HR changes the organization default.
-      const inheritedRows = rows.filter(
-        (row) =>
-          !row.pctSet || Math.abs(amount(row.pct) - previousOrgPct) < 0.0001,
+      const inheritedRows = rows.filter((row) =>
+        !row.pctSet || Math.abs(amount(row.pct) - previousOrgPct) < 0.0001,
       );
-      await Promise.all(
-        inheritedRows.map((row) =>
-          updateBudget(
-            row.id && !String(row.id).startsWith("tech-ed-") ? row.id : "",
-            {
-              appraisal_cycle_id: cycleId,
-              appraiser_tech_ed_id: String(row.canonicalKey || row.name || "")
-                .trim()
-                .split(/\s+-\s+/)[0]
-                .slice(0, 20),
-              percentage: org,
-              budget_base: row.base,
-              calculated_budget: row.original || row.base * (1 + org / 100),
-              applied_budget: row.base * (1 + org / 100),
-            },
-            "distribution",
-            false,
-          ),
-        ),
-      );
+      await Promise.all(inheritedRows.map((row) => updateBudget(
+        row.id && !String(row.id).startsWith("tech-ed-") ? row.id : "",
+        {
+          appraisal_cycle_id: cycleId,
+          appraiser_tech_ed_id: String(row.canonicalKey || row.name || "").trim().split(/\s+-\s+/)[0].slice(0, 20),
+          percentage: org,
+          budget_base: row.base,
+          calculated_budget: row.original || row.base * (1 + org / 100),
+          applied_budget: row.base * (1 + org / 100),
+        },
+        "distribution",
+        false,
+      )));
       await reloadBudget();
       setOrgReason("");
     } catch (saveError) {
-      setError(
-        saveError.message || "Org % and appraisal cycle could not be saved.",
-      );
+      setError(saveError.message || "Org % and appraisal cycle could not be saved.");
     } finally {
       setSavingOrg(false);
     }
@@ -1007,8 +772,7 @@ function HRApplyBudget() {
     }
     const next = {};
     rows.forEach((row) => {
-      if (Number(value) !== Number(staged[row.name] ?? row.pct))
-        next[row.name] = value;
+      if (Number(value) !== Number(staged[row.name] ?? row.pct)) next[row.name] = value;
     });
     setPending(next);
   }
@@ -1045,13 +809,8 @@ function HRApplyBudget() {
   // apply("<name>")  -> row "Update": stage just that Tech-Ed's edit.
   async function apply(onlyName) {
     const target = typeof onlyName === "string" ? onlyName : null;
-    if (
-      !draftCount ||
-      (target && !Object.prototype.hasOwnProperty.call(pending, target))
-    ) {
-      setError(
-        "Make a Tech-Ed percentage change before selecting Apply changes.",
-      );
+    if (!draftCount || (target && !Object.prototype.hasOwnProperty.call(pending, target))) {
+      setError("Make a Tech-Ed percentage change before selecting Apply changes.");
       return;
     }
     const invalid = rows.find((row) => {
@@ -1059,43 +818,29 @@ function HRApplyBudget() {
       return !Number.isFinite(value) || value < 0 || value > 100;
     });
     if (invalid) {
-      setError(
-        "Not applied. " +
-          invalid.name +
-          ": enter a valid percentage between 0 and 100.",
-      );
+      setError("Not applied. " + invalid.name + ": enter a valid percentage between 0 and 100.");
       return;
     }
 
-    const org =
-      orgPct !== ""
-        ? amount(orgPct)
-        : amount(selectedMaster?.budget_percentage);
+    const org = orgPct !== "" ? amount(orgPct) : amount(selectedMaster?.budget_percentage);
     const available = orgBaseFromRoster * (1 + org / 100);
     if (previewTotal > available + 0.5) {
       setError(
-        "Not applied. Tech-Ed Updated Budgets total " +
-          money(previewTotal) +
-          ", which exceeds the Org Updated Budget of " +
-          money(available) +
-          ". Reduce one or more Tech-Ed percentages.",
+        "Not applied. Tech-Ed Updated Budgets total " + money(previewTotal) +
+        ", which exceeds the Org Updated Budget of " + money(available) + ". Reduce one or more Tech-Ed percentages.",
       );
       return;
     }
 
-    const updates = rows.filter(
-      (row) =>
-        Object.prototype.hasOwnProperty.call(pending, row.name) &&
-        (!target || row.name === target),
+    const updates = rows.filter((row) =>
+      Object.prototype.hasOwnProperty.call(pending, row.name) && (!target || row.name === target),
     );
     const reasonFor = (row) =>
       String(rowReasons[row.name] || "").trim() ||
       (Number(pending[row.name]) === org ? "Reset to org %" : "Override");
     setStaged((previous) => {
       const next = { ...previous };
-      updates.forEach((row) => {
-        next[row.name] = Number(pending[row.name]);
-      });
+      updates.forEach((row) => { next[row.name] = Number(pending[row.name]); });
       return next;
     });
     setStagedReasons((previous) => {
@@ -1132,21 +877,11 @@ function HRApplyBudget() {
       setError("Apply at least one percentage change before publishing.");
       return;
     }
-    if (
-      target
-        ? Object.prototype.hasOwnProperty.call(pending, target)
-        : draftCount
-    ) {
+    if (target ? Object.prototype.hasOwnProperty.call(pending, target) : draftCount) {
       setError("Apply pending edits before publishing staged changes.");
       return;
     }
-    const cycleId = String(
-      selectedCycle ||
-        activeCycle?.id ||
-        activeCycle?.appraisal_cycle_id ||
-        activeCycle?.ROWID ||
-        "",
-    ).trim();
+    const cycleId = String(selectedCycle || activeCycle?.id || activeCycle?.appraisal_cycle_id || activeCycle?.ROWID || "").trim();
     if (!cycleId) {
       setError("Select an appraisal cycle before publishing budget changes.");
       return;
@@ -1154,83 +889,58 @@ function HRApplyBudget() {
     setSavingOrg(true);
     setError("");
     try {
-      const toPublish = rows.filter(
-        (row) =>
-          Object.prototype.hasOwnProperty.call(staged, row.name) &&
-          (!target || row.name === target),
+      const toPublish = rows.filter((row) =>
+        Object.prototype.hasOwnProperty.call(staged, row.name) && (!target || row.name === target),
       );
-      const actor = String(
-        currentUser.name || currentUser.email || "Unknown user",
-      );
+      const actor = String(currentUser.name || currentUser.email || "Unknown user");
       const publishedAt = new Date();
-      await Promise.all(
-        toPublish.map((row) => {
-          const pct = Number(staged[row.name]);
-          const budget = row.base * (1 + pct / 100);
-          return updateBudget(
-            row.id && !String(row.id).startsWith("tech-ed-") ? row.id : "",
-            {
-              appraisal_cycle_id: cycleId,
-              appraiser_tech_ed_id: String(row.canonicalKey || row.name || "")
-                .trim()
-                .split(/\\s+-\\s+/)[0]
-                .slice(0, 20),
-              percentage: pct,
-              budget_base: row.base,
-              calculated_budget: String(row.id || "").startsWith("tech-ed-")
-                ? budget
-                : row.original || budget,
-              applied_budget: budget,
-              change_reason:
-                stagedReasons[row.name] || "Budget percentage published",
-            },
-            "distribution",
-            false,
-          );
-        }),
-      );
-      recordBudgetAudit(
-        "techEd",
-        toPublish.map((row) => {
-          const pct = Number(staged[row.name]);
-          return {
-            date: publishedAt.toISOString().slice(0, 10),
-            time: publishedAt.toLocaleTimeString(),
-            owner: row.name,
-            from: amount(row.pct),
-            to: pct,
-            before: amount(row.updated),
-            after: row.base * (1 + pct / 100),
-            by: actor,
-            reason: stagedReasons[row.name] || "Budget percentage published",
-            cycleId,
-          };
-        }),
-      );
+      await Promise.all(toPublish.map((row) => {
+        const pct = Number(staged[row.name]);
+        const budget = row.base * (1 + pct / 100);
+        return updateBudget(
+          row.id && !String(row.id).startsWith("tech-ed-") ? row.id : "",
+          {
+            appraisal_cycle_id: cycleId,
+            appraiser_tech_ed_id: String(row.canonicalKey || row.name || "").trim().split(/\\s+-\\s+/)[0].slice(0, 20),
+            percentage: pct,
+            budget_base: row.base,
+            calculated_budget: String(row.id || "").startsWith("tech-ed-")
+              ? budget
+              : (row.original || budget),
+            applied_budget: budget,
+            change_reason: stagedReasons[row.name] || "Budget percentage published",
+          },
+          "distribution",
+          false,
+        );
+      }));
+      recordBudgetAudit("techEd", toPublish.map((row) => {
+        const pct = Number(staged[row.name]);
+        return {
+          date: publishedAt.toISOString().slice(0, 10),
+          time: publishedAt.toLocaleTimeString(),
+          owner: row.name,
+          from: amount(row.pct),
+          to: pct,
+          before: amount(row.updated),
+          after: row.base * (1 + pct / 100),
+          by: actor,
+          reason: stagedReasons[row.name] || "Budget percentage published",
+          cycleId,
+        };
+      }));
       await reloadBudget();
       setOverrides((previous) => {
         const next = { ...previous };
         toPublish.forEach((row) => {
-          if (
-            Number(staged[row.name]) ===
-            amount(orgPct !== "" ? orgPct : selectedMaster?.budget_percentage)
-          )
-            delete next[row.name];
+          if (Number(staged[row.name]) === amount(orgPct !== "" ? orgPct : selectedMaster?.budget_percentage)) delete next[row.name];
           else next[row.name] = true;
         });
         return next;
       });
       if (target) {
-        setStaged((previous) => {
-          const next = { ...previous };
-          delete next[target];
-          return next;
-        });
-        setStagedReasons((previous) => {
-          const next = { ...previous };
-          delete next[target];
-          return next;
-        });
+        setStaged((previous) => { const next = { ...previous }; delete next[target]; return next; });
+        setStagedReasons((previous) => { const next = { ...previous }; delete next[target]; return next; });
       } else {
         setStaged({});
         setStagedReasons({});
@@ -1249,18 +959,14 @@ function HRApplyBudget() {
   const displayedOrgUpdated = orgPending
     ? previewOrgBudget
     : amount(selectedMaster?.applied_budget) || previewOrgBudget;
-  const displayedUtilized = amount(
-    selectedMaster?.budget_utilized ?? selectedMaster?.total_utilization,
-  );
+  const displayedUtilized = amount(selectedMaster?.budget_utilized ?? selectedMaster?.total_utilization);
   const availableAfterAllocation = displayedOrgUpdated - previewTotal;
 
   // Presentation-only flags. The Tech-Ed list is shown once an Org % has been saved.
   const orgApplied = Boolean(selectedMaster?.budget_percentage_is_set);
   const cycleLabel = cycleLoading
     ? "Loading…"
-    : activeCycle?.name ||
-      selectedMaster?.appraisal_cycle_name ||
-      "No active cycle";
+    : activeCycle?.name || selectedMaster?.appraisal_cycle_name || "No active cycle";
 
   const totalsBudget = previewTotal;
   const notPublishedCount = rows.filter((row) => !row.pctSet).length;
@@ -1276,24 +982,14 @@ function HRApplyBudget() {
       <div className="bm-sheet">
         {budgetError || budgetWarning ? (
           <div role="alert" className="bm-alert bm-alert-warning">
-            {budgetError ? (
-              <div>
-                <b>Budget data could not be loaded:</b> {budgetError}
-              </div>
-            ) : null}
-            {budgetWarning ? (
-              <div>
-                <b>Budget base:</b> {budgetWarning}
-              </div>
-            ) : null}
+            {budgetError ? <div><b>Budget data could not be loaded:</b> {budgetError}</div> : null}
+            {budgetWarning ? <div><b>Budget base:</b> {budgetWarning}</div> : null}
           </div>
         ) : null}
         {error ? (
           <div role="alert" className="bm-alert bm-alert-error">
             <span>{error}</span>
-            <button type="button" onClick={() => setError("")}>
-              Dismiss ×
-            </button>
+            <button type="button" onClick={() => setError("")}>Dismiss ×</button>
           </div>
         ) : null}
 
@@ -1301,9 +997,7 @@ function HRApplyBudget() {
           <div className="bm-pan">
             <div className="bm-pan-head">
               <b>Org budget</b>
-              <span className="bm-mut">
-                Cycle: <b>{cycleLabel}</b>
-              </span>
+              <span className="bm-mut">Cycle: <b>{cycleLabel}</b></span>
             </div>
             <div className="bm-pan-row">
               <label>
@@ -1336,9 +1030,7 @@ function HRApplyBudget() {
               <button
                 type="button"
                 className="bm-btn bm-btn-main"
-                disabled={
-                  !canConfig || savingOrg || cycleLoading || !activeCycle
-                }
+                disabled={!canConfig || savingOrg || cycleLoading || !activeCycle}
                 onClick={applyOrgPercentage}
               >
                 {savingOrg ? "Saving…" : "Apply org %"}
@@ -1387,13 +1079,7 @@ function HRApplyBudget() {
               <button
                 type="button"
                 className="bm-btn bm-btn-main"
-                disabled={
-                  !canConfig ||
-                  !orgApplied ||
-                  !stagedCount ||
-                  draftCount > 0 ||
-                  savingOrg
-                }
+                disabled={!canConfig || !orgApplied || !stagedCount || draftCount > 0 || savingOrg}
                 onClick={() => publishChanges()}
               >
                 {savingOrg ? "Publishing…" : "Publish all"}
@@ -1414,54 +1100,26 @@ function HRApplyBudget() {
           <div className="bm-tile bm-tile-hl">
             <small>Updated budget</small>
             <b>{orgPctEntered ? money(displayedOrgUpdated) : "—"}</b>
-            {orgPctEntered ? (
-              orgPending ? (
-                <em className="bm-mut">Preview — not yet saved</em>
-              ) : (
-                deltaNode(originalOrgBudget, displayedOrgUpdated)
-              )
-            ) : null}
+            {orgPctEntered ? (orgPending ? <em className="bm-mut">Preview — not yet saved</em> : deltaNode(originalOrgBudget, displayedOrgUpdated)) : null}
           </div>
           <div className="bm-tile">
             <small>Allotted to Tech EDs</small>
-            <b>
-              {orgApplied && displayedOrgUpdated > 0
-                ? percent((previewTotal / displayedOrgUpdated) * 100)
-                : "—"}
-            </b>
+            <b>{orgApplied && displayedOrgUpdated > 0 ? percent((previewTotal / displayedOrgUpdated) * 100) : "—"}</b>
             {orgApplied ? (
               <em className="bm-mut">
                 {money(previewTotal)} of {money(displayedOrgUpdated)}
-                {availableAfterAllocation < -0.5
-                  ? " · over by " + money(-availableAfterAllocation)
-                  : ""}
+                {availableAfterAllocation < -0.5 ? " · over by " + money(-availableAfterAllocation) : ""}
               </em>
             ) : null}
           </div>
           <div className="bm-tile">
             <small>Budget utilised</small>
-            <b>
-              {orgApplied && displayedOrgUpdated > 0
-                ? percent((displayedUtilized / displayedOrgUpdated) * 100)
-                : "—"}
-            </b>
-            {orgApplied && displayedOrgUpdated > 0 ? (
-              <em className="bm-mut">
-                {money(displayedUtilized)} of {money(displayedOrgUpdated)}
-              </em>
-            ) : null}
+            <b>{orgApplied && displayedOrgUpdated > 0 ? percent((displayedUtilized / displayedOrgUpdated) * 100) : "—"}</b>
+            {orgApplied && displayedOrgUpdated > 0 ? <em className="bm-mut">{money(displayedUtilized)} of {money(displayedOrgUpdated)}</em> : null}
           </div>
           <div className="bm-tile">
             <small>Team count</small>
-            <b>
-              {orgApplied ? (
-                <>
-                  {orgOriginalCount} → {orgCurrentCount}
-                </>
-              ) : (
-                "—"
-              )}
-            </b>
+            <b>{orgApplied ? <>{orgOriginalCount} → {orgCurrentCount}</> : "—"}</b>
           </div>
         </div>
 
@@ -1472,186 +1130,121 @@ function HRApplyBudget() {
             <thead>
               <tr>
                 {HR_COLS.map(([h, right]) => (
-                  <th key={h} className={right ? "bm-n" : ""}>
-                    {h}
-                  </th>
+                  <th key={h} className={right ? "bm-n" : ""}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {orgApplied && rows.length ? (
-                rows.map((r) => {
-                  const p = previewPct(r);
-                  const changing = Number(p) !== r.pct;
-                  const hasPending = Object.prototype.hasOwnProperty.call(
-                    pending,
-                    r.name,
-                  );
-                  const hasStaged =
-                    Object.prototype.hasOwnProperty.call(staged, r.name) &&
-                    Number(staged[r.name]) !== Number(r.pct);
-                  const open = !!history[r.name];
-                  const rowAudit = auditState.techEd.filter(
-                    (a) => a.owner === r.name,
-                  );
-                  const sourceOverride =
-                    overrides[r.name] ||
-                    (hasPending && Number(p) !== amount(orgPct));
-                  const tag = hasStaged
-                    ? r.pctSet
-                      ? "Change applied · not published (live " +
-                        Number(r.pct).toFixed(2) +
-                        ")"
-                      : "Applied · not published"
-                    : !r.pctSet
-                      ? "No % yet"
-                      : "";
-                  return (
-                    <FragmentRow key={r.name}>
-                      <tr
-                        className={"bm-data" + (hasPending ? " bm-edrow" : "")}
-                      >
-                        <td className="bm-rl">
-                          {r.name}
-                          {tag ? (
-                            <>
-                              {" "}
-                              <span className="bm-tag">{tag}</span>
-                            </>
-                          ) : null}
-                        </td>
-                        <td className="bm-n">{money(r.base)}</td>
-                        <td className="bm-in">
-                          <div className="bm-pin-cell">
-                            <input
-                              className={"bm-pin" + (hasPending ? " ed" : "")}
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="0.1"
-                              placeholder="Enter %"
-                              value={p}
-                              disabled={!canConfig}
-                              title={
-                                changing
-                                  ? Number(r.pct).toFixed(2) +
-                                    " → " +
-                                    Number(p).toFixed(2) +
-                                    " (not applied yet)"
-                                  : undefined
-                              }
-                              onChange={(e) =>
-                                setRowPct(r.name, e.target.value)
-                              }
-                              aria-label={"Percentage for " + r.name}
-                            />
-                          </div>
-                          {sourceOverride ? (
-                            <div className="bm-source">
-                              <span className="bm-source-override">
-                                Override
-                              </span>
-                              <button
-                                type="button"
-                                className="bm-text-action"
-                                onClick={() => resetRow(r.name)}
-                              >
-                                Reset to org %
-                              </button>
-                            </div>
-                          ) : null}
-                        </td>
-                        <td className="bm-n bm-calc">
-                          {money(previewBudget(r))}
-                        </td>
-                        <td className="bm-n">{money(r.original)}</td>
-                        <td className="bm-n">{money(r.updated)}</td>
-                        <td className="bm-n">{r.team0}</td>
-                        <td className="bm-n">{r.team}</td>
-                        <td>
+              {orgApplied && rows.length ? rows.map((r) => {
+                const p = previewPct(r);
+                const changing = Number(p) !== r.pct;
+                const hasPending = Object.prototype.hasOwnProperty.call(pending, r.name);
+                const hasStaged = Object.prototype.hasOwnProperty.call(staged, r.name) &&
+                  Number(staged[r.name]) !== Number(r.pct);
+                const open = !!history[r.name];
+                const rowAudit = auditState.techEd.filter((a) => a.owner === r.name);
+                const sourceOverride =
+                  overrides[r.name] ||
+                  (hasPending && Number(p) !== amount(orgPct));
+                const tag = hasStaged
+                  ? (r.pctSet ? "Change applied · not published (live " + Number(r.pct).toFixed(2) + ")" : "Applied · not published")
+                  : (!r.pctSet ? "No % yet" : "");
+                return (
+                  <FragmentRow key={r.name}>
+                    <tr className={"bm-data" + (hasPending ? " bm-edrow" : "")}>
+                      <td className="bm-rl">
+                        {r.name}
+                        {tag ? <> <span className="bm-tag">{tag}</span></> : null}
+                      </td>
+                      <td className="bm-n">{money(r.base)}</td>
+                      <td className="bm-in">
+                        <div className="bm-pin-cell">
                           <input
-                            type="text"
-                            className="bm-txt bm-reason"
-                            placeholder="Reason (optional)"
-                            value={
-                              rowReasons[r.name] ?? stagedReasons[r.name] ?? ""
-                            }
-                            disabled={!canConfig || (!hasPending && !hasStaged)}
-                            readOnly={!hasPending && hasStaged}
-                            onChange={(e) =>
-                              setRowReasons((x) => ({
-                                ...x,
-                                [r.name]: e.target.value,
-                              }))
-                            }
-                            aria-label={"Reason for " + r.name}
+                            className={"bm-pin" + (hasPending ? " ed" : "")}
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="0.1"
+                            placeholder="Enter %"
+                            value={p}
+                            disabled={!canConfig}
+                            title={changing ? Number(r.pct).toFixed(2) + " → " + Number(p).toFixed(2) + " (not applied yet)" : undefined}
+                            onChange={(e) => setRowPct(r.name, e.target.value)}
+                            aria-label={"Percentage for " + r.name}
                           />
-                        </td>
-                        <td className="bm-ract">
+                        </div>
+                        {sourceOverride ? (
+                          <div className="bm-source">
+                            <span className="bm-source-override">Override</span>
+                            <button type="button" className="bm-text-action" onClick={() => resetRow(r.name)}>Reset to org %</button>
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="bm-n bm-calc">{money(previewBudget(r))}</td>
+                      <td className="bm-n">{money(r.original)}</td>
+                      <td className="bm-n">{money(r.updated)}</td>
+                      <td className="bm-n">{r.team0}</td>
+                      <td className="bm-n">{r.team}</td>
+                      <td>
+                        <input
+                          type="text"
+                          className="bm-txt bm-reason"
+                          placeholder="Reason (optional)"
+                          value={rowReasons[r.name] ?? stagedReasons[r.name] ?? ""}
+                          disabled={!canConfig || (!hasPending && !hasStaged)}
+                          readOnly={!hasPending && hasStaged}
+                          onChange={(e) => setRowReasons((x) => ({ ...x, [r.name]: e.target.value }))}
+                          aria-label={"Reason for " + r.name}
+                        />
+                      </td>
+                      <td className="bm-ract">
+                        <button
+                          type="button"
+                          className="bm-hbtn"
+                          disabled={!canConfig || !hasPending || savingOrg}
+                          onClick={() => apply(r.name)}
+                        >
+                          Apply
+                        </button>{" "}
+                        <button
+                          type="button"
+                          className="bm-hbtn bm-hbtn-pub"
+                          disabled={!canConfig || !hasStaged || hasPending || savingOrg}
+                          onClick={() => publishChanges(r.name)}
+                        >
+                          Publish
+                        </button>
+                      </td>
+                      <td>
+                        {canAudit ? (
                           <button
                             type="button"
                             className="bm-hbtn"
-                            disabled={!canConfig || !hasPending || savingOrg}
-                            onClick={() => apply(r.name)}
+                            aria-expanded={open}
+                            onClick={() => setHistory((x) => ({ ...x, [r.name]: !x[r.name] }))}
                           >
-                            Apply
-                          </button>{" "}
-                          <button
-                            type="button"
-                            className="bm-hbtn bm-hbtn-pub"
-                            disabled={
-                              !canConfig ||
-                              !hasStaged ||
-                              hasPending ||
-                              savingOrg
-                            }
-                            onClick={() => publishChanges(r.name)}
-                          >
-                            Publish
+                            History {open ? "▴" : "▾"}
                           </button>
-                        </td>
-                        <td>
-                          {canAudit ? (
-                            <button
-                              type="button"
-                              className="bm-hbtn"
-                              aria-expanded={open}
-                              onClick={() =>
-                                setHistory((x) => ({
-                                  ...x,
-                                  [r.name]: !x[r.name],
-                                }))
-                              }
-                            >
-                              History {open ? "▴" : "▾"}
-                            </button>
-                          ) : (
-                            <span className="bm-mut">—</span>
-                          )}
+                        ) : <span className="bm-mut">—</span>}
+                      </td>
+                    </tr>
+                    {open && canAudit ? (
+                      <tr className="bm-sub">
+                        <td colSpan={HR_COLS.length}>
+                          <div className="bm-hist"><AuditTable rows={rowAudit} /></div>
                         </td>
                       </tr>
-                      {open && canAudit ? (
-                        <tr className="bm-sub">
-                          <td colSpan={HR_COLS.length}>
-                            <div className="bm-hist">
-                              <AuditTable rows={rowAudit} />
-                            </div>
-                          </td>
-                        </tr>
-                      ) : null}
-                    </FragmentRow>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={HR_COLS.length} className="bm-empty">
-                    {!orgApplied
-                      ? "Press Apply org % to load the Tech ED list from the Appraisal Sheet."
-                      : budgetLoading
-                        ? "Loading Tech ED budget rows…"
-                        : "No Tech ED assignments were found for this appraisal cycle."}
-                  </td>
-                </tr>
+                    ) : null}
+                  </FragmentRow>
+                );
+              }) : (
+                <tr><td colSpan={HR_COLS.length} className="bm-empty">
+                  {!orgApplied
+                    ? "Press Apply org % to load the Tech ED list from the Appraisal Sheet."
+                    : budgetLoading
+                      ? "Loading Tech ED budget rows…"
+                      : "No Tech ED assignments were found for this appraisal cycle."}
+                </td></tr>
               )}
               {orgApplied && rows.length ? (
                 <tr className="bm-tot">
@@ -1676,16 +1269,8 @@ function HRApplyBudget() {
           {!orgApplied
             ? "Apply org % first to load the Tech ED list"
             : stripMessage +
-              (stagedCount
-                ? " · " + stagedCount + " applied, not published"
-                : "") +
-              (notPublishedCount
-                ? " · " +
-                  notPublishedCount +
-                  " Tech ED" +
-                  (notPublishedCount > 1 ? "s" : "") +
-                  " not published"
-                : "")}
+              (stagedCount ? " · " + stagedCount + " applied, not published" : "") +
+              (notPublishedCount ? " · " + notPublishedCount + " Tech ED" + (notPublishedCount > 1 ? "s" : "") + " not published" : "")}
         </div>
       </div>
     </div>
@@ -1703,21 +1288,15 @@ function HRAuditTrail() {
   // referenced an undefined local variable named "rows" and crashed on mount.
   const rows = useMemo(() => {
     const seen = new Set();
-    return techEdOwners
-      .map((item) => {
-        const value = ownerName(
-          item.assignment || item.name || item.employee_id || item.row_id,
-          employeeRows,
-        );
-        return { name: value };
-      })
-      .filter((item) => {
-        const key = normalizeOwnerKey(item.name);
-        if (!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      })
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return techEdOwners.map((item) => {
+      const value = ownerName(item.assignment || item.name || item.employee_id || item.row_id, employeeRows);
+      return { name: value };
+    }).filter((item) => {
+      const key = normalizeOwnerKey(item.name);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).sort((a, b) => a.name.localeCompare(b.name));
   }, [techEdOwners, employeeRows]);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -1733,10 +1312,7 @@ function HRAuditTrail() {
     }
     return () => {
       if (typeof window !== "undefined") {
-        window.removeEventListener(
-          "appraisal:budget-audit-updated",
-          refreshAudit,
-        );
+        window.removeEventListener("appraisal:budget-audit-updated", refreshAudit);
         window.removeEventListener("storage", refreshAudit);
       }
     };
