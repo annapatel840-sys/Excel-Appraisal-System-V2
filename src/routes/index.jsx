@@ -320,7 +320,8 @@ export function Dashboard() {
                         total: m.consumed,
                         segments: [
                           { value: m.hike, color: COLORS.hike, label: "H" },
-                          { value: m.pb, color: COLORS.pb, label: "PB" },
+                          // { value: m.pb, color: COLORS.pb, label: "PB" },
+                          { value: m.consumedPB, color: COLORS.pb, label: "PB" },
                           {
                             value: m.rb,
                             color: COLORS.rb,
@@ -368,7 +369,8 @@ export function Dashboard() {
                         total: d.consumed,
                         segments: [
                           { value: d.hike, color: COLORS.hike, label: "H" },
-                          { value: d.pb, color: COLORS.pb, label: "PB" },
+                          // { value: d.pb, color: COLORS.pb, label: "PB" },
+                          { value: d.consumedPB, color: COLORS.pb, label: "PB" },
                           {
                             value: d.rb,
                             color: COLORS.rb,

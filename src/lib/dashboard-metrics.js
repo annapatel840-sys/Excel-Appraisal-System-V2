@@ -9,6 +9,9 @@ import {
 // per-manager / per-designation splits, which Budget Master doesn't provide.
 const PLACEHOLDER_BUDGET_PCT = 0.08;
 
+// PB counted towards "Consumed" - identical to the Appraisal Sheet's
+// budget bar (Allocated PB Amount only, NOT New PB to be Offered).
+const consumedPBOf = (r) => Number(r.allocatedPBAmount) || 0;
 export function groupBy(rows, keyFn) {
   const map = new Map();
 
@@ -33,17 +36,38 @@ export function orgAllocated(rows) {
 
 // realAllocated: the Budget Master total (from the budget store). When it
 // is missing, fall back to the placeholder estimate and flag it.
+// export function budgetTotals(rows, realAllocated) {
+//   const hike = sum(rows, calcHikeAmount);
+//   const pb = sum(rows, totalOfPB);
+//   const rb = sum(rows, (r) => r.newRB);
+//   const consumed = hike + pb + rb;
+//   const hasReal = Number(realAllocated) > 0;
+//   const allocated = hasReal ? Number(realAllocated) : orgAllocated(rows);
+
+//   return {
+//     hike,
+//     pb,
+//     rb,
+//     consumed,
+//     allocated,
+//     allocatedIsEstimate: !hasReal,
+//     utilisation: allocated ? (consumed / allocated) * 100 : 0,
+//   };
+// }
+
 export function budgetTotals(rows, realAllocated) {
   const hike = sum(rows, calcHikeAmount);
   const pb = sum(rows, totalOfPB);
+  const consumedPB = sum(rows, consumedPBOf);
   const rb = sum(rows, (r) => r.newRB);
-  const consumed = hike + pb + rb;
+  const consumed = hike + consumedPB + rb;
   const hasReal = Number(realAllocated) > 0;
   const allocated = hasReal ? Number(realAllocated) : orgAllocated(rows);
 
   return {
     hike,
     pb,
+    consumedPB,
     rb,
     consumed,
     allocated,
@@ -56,10 +80,34 @@ export function byManager(rows) {
   const groups = groupBy(rows, (r) => r.compManager || r.reportingManager);
 
   return Array.from(groups.entries()).map(([name, list]) => {
+//     const hike = sum(list, calcHikeAmount);
+//     const pb = sum(list, totalOfPB);
+//     const rb = sum(list, (r) => r.newRB);
+//     const consumed = hike + pb + rb;
+//     const allocated = orgAllocated(list);
+//     const targetPB = sum(list, (r) => r.targetPBAllocatedForMay);
+//     const avgHike = list.length ? sum(list, calcHikePct) / list.length : 0;
+
+//     return {
+//       name,
+//       headcount: list.length,
+//       hike,
+//       pb,
+//       rb,
+//       consumed,
+//       allocated,
+//       utilisation: allocated ? (consumed / allocated) * 100 : 0,
+//       targetPB,
+//       avgHike,
+//     };
+//   });
+// }
+
     const hike = sum(list, calcHikeAmount);
     const pb = sum(list, totalOfPB);
+    const consumedPB = sum(list, consumedPBOf);
     const rb = sum(list, (r) => r.newRB);
-    const consumed = hike + pb + rb;
+    const consumed = hike + consumedPB + rb;
     const allocated = orgAllocated(list);
     const targetPB = sum(list, (r) => r.targetPBAllocatedForMay);
     const avgHike = list.length ? sum(list, calcHikePct) / list.length : 0;
@@ -69,6 +117,7 @@ export function byManager(rows) {
       headcount: list.length,
       hike,
       pb,
+      consumedPB,
       rb,
       consumed,
       allocated,
@@ -76,34 +125,55 @@ export function byManager(rows) {
       targetPB,
       avgHike,
     };
-  });
-}
 
 export function byDesignation(rows) {
   const groups = groupBy(rows, (r) => r.designation);
 
   return Array.from(groups.entries())
     .map(([name, list]) => {
+    //   const hike = sum(list, calcHikeAmount);
+    //   const pb = sum(list, totalOfPB);
+    //   const rb = sum(list, (r) => r.newRB);
+    //   const consumed = hike + pb + rb;
+    //   const allocated = orgAllocated(list);
+    //   const targetPB = sum(list, (r) => r.targetPBAllocatedForMay);
+    //   const targetNext = sum(list, (r) => r.targetPBNextYear);
+    //   const avgBase = list.length
+    //     ? sum(list, (r) => r.currentAnnualBasePay) / list.length
+    //     : 0;
+    //   const avgHike = list.length ? sum(list, calcHikePct) / list.length : 0;
+    //   const promotions = list.filter(
+    //     (r) => r.eligibleForPromotion === "Yes",
+    //   ).length;
+
+    //   return {
+    //     name,
+    //     headcount: list.length,
+    //     hike,
+    //     pb,
+    //     rb,
+    //     consumed,
+    //     allocated,
+    //     targetPB,
+    //     targetNext,
+    //     avgBase,
+    //     avgHike,
+    //     promotions,
+    //   };
       const hike = sum(list, calcHikeAmount);
       const pb = sum(list, totalOfPB);
+      const consumedPB = sum(list, consumedPBOf);
       const rb = sum(list, (r) => r.newRB);
-      const consumed = hike + pb + rb;
+      const consumed = hike + consumedPB + rb;
       const allocated = orgAllocated(list);
-      const targetPB = sum(list, (r) => r.targetPBAllocatedForMay);
-      const targetNext = sum(list, (r) => r.targetPBNextYear);
-      const avgBase = list.length
-        ? sum(list, (r) => r.currentAnnualBasePay) / list.length
-        : 0;
-      const avgHike = list.length ? sum(list, calcHikePct) / list.length : 0;
-      const promotions = list.filter(
-        (r) => r.eligibleForPromotion === "Yes",
-      ).length;
+      // ...rest of the existing lines stay the same...
 
       return {
         name,
         headcount: list.length,
         hike,
         pb,
+        consumedPB,   // <-- add this line
         rb,
         consumed,
         allocated,
