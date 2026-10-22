@@ -82,7 +82,7 @@ function mapDistribution(row) {
   const utilized = n(firstNonZeroValue(row, ["total_utilization", "budget_utilized", "utilized_amount", "utilized"]));
   return {
     id: idOf(row),
-    appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
+    appraisal_cycle_id: cycleReference(value(row, "appraisal_cycle_id")),
     appraiser_tech_ed_id: String(value(row, "appraiser_tech_ed_id")),
     percentage: value(row, "percentage") === "" || value(row, "percentage") === null || value(row, "percentage") === undefined
       ? null
@@ -117,7 +117,7 @@ function mapComp(row) {
     total_utilization: utilized,
     applied_budget: applied,
     budget_distribution_id: String(value(row, "budget_distribution_id")),
-    appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
+    appraisal_cycle_id: cycleReference(value(row, "appraisal_cycle_id")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
     original_headcount: n(firstValue(row, ["original_headcount", "headcount"])),
