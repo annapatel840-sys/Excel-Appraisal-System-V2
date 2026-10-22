@@ -24,6 +24,18 @@ function value(row, key) {
   return row && row[key] !== undefined && row[key] !== null ? row[key] : "";
 }
 
+// Prefer the dedicated Original Count column even when it is blank. Only
+// fall back to the legacy headcount column when original_headcount is absent
+// from the row schema entirely; otherwise a changing headcount can overwrite
+// the immutable original baseline.
+function originalHeadcountValue(row) {
+  const keys = Object.keys(row || {});
+  const originalKey = keys.find((key) => key.toLowerCase() === "original_headcount");
+  if (originalKey) return row[originalKey];
+  const legacyKey = keys.find((key) => key.toLowerCase() === "headcount");
+  return legacyKey ? row[legacyKey] : "";
+}
+
 function n(v) {
   if (typeof v === "number") return Number.isFinite(v) ? v : 0;
   if (v === null || v === undefined || v === "") return 0;
@@ -57,7 +69,7 @@ function mapMaster(row) {
     org_budget_base: n(value(row, "org_budget_base")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
-    original_headcount: firstValue(row, ["original_headcount", "headcount"]),
+    original_headcount: originalHeadcountValue(row),
     headcount: firstValue(row, ["headcount"]),
     current_headcount: firstValue(row, ["current_headcount"]),
     budget_utilized: utilized,
@@ -93,7 +105,7 @@ function mapDistribution(row) {
     original_base: n(value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base")),
     current_base: n(value(row, "current_base")),
-    original_headcount: firstValue(row, ["original_headcount", "headcount"]),
+    original_headcount: originalHeadcountValue(row),
     current_headcount: firstValue(row, ["current_headcount"]),
     headcount: firstValue(row, ["headcount"]),
     calculated_budget: calculated,
@@ -120,7 +132,7 @@ function mapComp(row) {
     appraisal_cycle_id: cycleReference(value(row, "appraisal_cycle_id")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
-    original_headcount: n(firstValue(row, ["original_headcount", "headcount"])),
+    original_headcount: n(originalHeadcountValue(row)),
     headcount: n(firstValue(row, ["headcount"])),
     current_headcount: firstValue(row, ["current_headcount"]),
     utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
