@@ -769,6 +769,13 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const master = masterByRowId.get(identity) || masterByEmployee.get(identity) || masterByName.get(identity);
     return String(master ? firstValue(master, ["emp_id", "empId", "employee_id"]) || idOf(master) : identity).trim().toLowerCase();
   };
+  // Scope roster membership to this function's Appraisal_Sheet read. The
+  // similarly named appraisalById map belongs to readEmployeeRoster and is
+  // not in scope here.
+  const appraisalEmployeeIds = new Set(appraisalRows.map((row) => {
+    const rawId = String(firstValue(row, ["emp_id", "empId", "employee_id", "employeeId", "employee_id_text"]) || idOf(row)).trim();
+    return employeeKeyFor(rawId);
+  }).filter(Boolean));
   const cycleReferenceForRow = (row) => cycleReference(firstValue(row, ["appraisal_cycle_name", "appraisal_cycle_id", "appraisalCycleId", "cycle_id", "appraisalCycleName", "cycle_name"]));
   const currentCycleFor = (cycleId) => cycleById.get(String(cycleId)) || cycleByName.get(String(cycleId).toLowerCase()) || null;
   const previousCycleFor = (cycleId) => {
@@ -876,7 +883,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // and avoids relying on employee-screen field permissions for money fields.
     appraisalByEmployee.set(employeeId, {
       employeeId,
-      in_appraisal_sheet: appraisalById.has(String(employeeId).trim().toLowerCase()),
+      in_appraisal_sheet: appraisalEmployeeIds.has(String(employeeId).trim().toLowerCase()),
       employee_master_row_id: idOf(masterRow),
       emp_id: String(firstValue(row, ["emp_id", "empId", "employee_id"]) || firstValue(masterRow, ["emp_id", "employee_id"]) || employeeId).trim(),
       name: personName,
