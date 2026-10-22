@@ -57,8 +57,12 @@ function mapMaster(row) {
     org_budget_base: n(value(row, "org_budget_base")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
-    original_headcount: value(row, "original_headcount") ?? value(row, "allocation_headcount"),
-    current_headcount: value(row, "current_headcount") ?? value(row, "headcount"),
+    original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
+      ? value(row, "original_headcount")
+      : value(row, "allocation_headcount"),
+    current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
+      ? value(row, "current_headcount")
+      : value(row, "headcount"),
     budget_utilized: utilized,
     calculated_budget: calculated,
     applied_budget: applied,
@@ -92,9 +96,13 @@ function mapDistribution(row) {
     original_base: n(value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base")),
     current_base: n(value(row, "current_base")),
-    original_headcount: value(row, "original_headcount"),
+    original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
+      ? value(row, "original_headcount")
+      : value(row, "allocation_headcount"),
     allocation_headcount: value(row, "allocation_headcount"),
-    current_headcount: value(row, "current_headcount"),
+    current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
+      ? value(row, "current_headcount")
+      : value(row, "headcount"),
     headcount: value(row, "headcount"),
     calculated_budget: calculated,
     total_utilization: utilized,
@@ -120,12 +128,12 @@ function mapComp(row) {
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
-    original_headcount: n(value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
-      ? value(row, "original_headcount")
-      : value(row, "allocation_headcount")),
-    current_headcount: n(value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
-      ? value(row, "current_headcount")
-      : value(row, "headcount")),
+    original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
+      ? n(value(row, "original_headcount"))
+      : n(value(row, "allocation_headcount")),
+    current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
+      ? n(value(row, "current_headcount"))
+      : n(value(row, "headcount")),
     utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
   };
 }
