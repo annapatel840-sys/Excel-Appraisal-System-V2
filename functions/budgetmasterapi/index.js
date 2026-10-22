@@ -1204,9 +1204,8 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       const canCreateOriginal = rawPct !== null || orgPctSet;
       const looksLikeCorruptTinySnapshot = savedOriginalBudget > 0 &&
         savedOriginalBudget < 1000 && stats.base >= 100000;
-      // Original allocation is stable while its CTC base is stable. If the
-      // underlying eligible Appraisal Sheet CTC sum changes, rebase the original
-      // amount using the currently effective percentage and capture the new base.
+      // Original allocation is an immutable snapshot after first capture.
+      // Eligibility, assignment, payroll and delegation changes affect only Updated Budget.
       const hasOriginalSnapshot = canCreateOriginal && !looksLikeCorruptTinySnapshot &&
         savedOriginalBudget > 0;
       const originalBase = hasOriginalSnapshot
@@ -1297,8 +1296,8 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       const pct = n(row.percentage);
       const savedOriginalBase = n(row.original_budget_base || row.original_base);
       const savedOriginalBudget = n(row.calculated_budget);
-      // The Comp Manager original is immutable after first capture. Compare it
-      // with its saved base, not today's live eligible CTC sum.
+      // The Comp Manager original is immutable after first capture; current
+      // eligibility and assignment changes update only its live allocation.
       const looksLikeCorruptTinySnapshot = savedOriginalBudget > 0 &&
         savedOriginalBudget < 1000 && stats.base >= 100000;
       const hasOriginalSnapshot = Boolean(row.calculated_budget_is_set) &&
