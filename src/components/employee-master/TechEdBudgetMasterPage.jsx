@@ -332,7 +332,7 @@ export function TechEdBudgetMasterPage() {
     original: Number(liveMe.calculated_budget) || 0,
     updated: Number(liveMe.applied_budget) || 0,
     team0: Number(liveMe.original_headcount ?? liveMe.allocation_headcount) || 0,
-    team: Number(liveMe.current_headcount ?? liveMe.headcount) || 0,
+    team: Number(liveMe.current_headcount) || 0,
     utilised: Number(liveMe.total_utilization ?? liveMe.budget_utilized) || 0,
   } : {
     id: "",
@@ -368,7 +368,7 @@ export function TechEdBudgetMasterPage() {
       original,
       updated: Number(live.applied_budget) || 0,
       team0: Number(live.original_headcount ?? live.allocation_headcount) || 0,
-      team: Number(live.current_headcount ?? live.headcount) || 0,
+      team: Number(live.current_headcount) || 0,
       utilised: Number(live.total_utilization) || 0,
     };
   });
