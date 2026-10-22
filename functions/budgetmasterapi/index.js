@@ -57,7 +57,9 @@ function mapMaster(row) {
     org_budget_base: n(value(row, "org_budget_base")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
-    original_headcount: value(row, "original_headcount"),
+    original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
+      ? value(row, "original_headcount")
+      : value(row, "headcount"),
     current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
       ? value(row, "current_headcount")
       : value(row, "headcount"),
@@ -94,7 +96,9 @@ function mapDistribution(row) {
     original_base: n(value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base")),
     current_base: n(value(row, "current_base")),
-    original_headcount: value(row, "original_headcount"),
+    original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
+      ? value(row, "original_headcount")
+      : value(row, "headcount"),
     current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
       ? value(row, "current_headcount")
       : value(row, "headcount"),
@@ -123,7 +127,9 @@ function mapComp(row) {
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
-    original_headcount: n(value(row, "original_headcount")),
+    original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
+      ? n(value(row, "original_headcount"))
+      : n(value(row, "headcount")),
     current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
       ? n(value(row, "current_headcount"))
       : n(value(row, "headcount")),
@@ -1227,7 +1233,7 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       await distributionTable.updateRow(update);
       // Save the initial count once. Every subsequent refresh only updates Current Count.
       if (!originalCountIsSet) {
-        await persistOptional(distributionTable, row.id, distributionColumns, ["original_headcount"], stats.count);
+        await persistOptional(distributionTable, row.id, distributionColumns, ["original_headcount", "headcount"], stats.count);
       }
       await persistOptional(distributionTable, row.id, distributionColumns, ["current_headcount"], stats.count);
       await persistOptional(distributionTable, row.id, distributionColumns, ["current_budget_base"], stats.base);
@@ -1309,7 +1315,7 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       }
       await compTable.updateRow(update);
       if (!originalCountIsSet) {
-        await persistOptional(compTable, row.id, compColumns, ["original_headcount"], stats.count);
+        await persistOptional(compTable, row.id, compColumns, ["original_headcount", "headcount"], stats.count);
       }
       await persistOptional(compTable, row.id, compColumns, ["current_headcount"], stats.count);
       await persistOptional(compTable, row.id, compColumns, ["current_budget_base"], stats.base);
@@ -1367,7 +1373,7 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
     }
     await masterTable.updateRow(orgFields);
     if (!orgOriginalCountIsSet) {
-      await persistOptional(masterTable, master.id, masterColumns, ["original_headcount"], eligibleEmployees.length);
+      await persistOptional(masterTable, master.id, masterColumns, ["original_headcount", "headcount"], eligibleEmployees.length);
     }
     await persistOptional(masterTable, master.id, masterColumns, ["current_headcount"], eligibleEmployees.length);
     await persistOptional(masterTable, master.id, masterColumns, ["current_budget_base"], orgBase);
