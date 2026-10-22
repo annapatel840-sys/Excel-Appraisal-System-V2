@@ -1195,6 +1195,11 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         : (canCreateOriginal ? originalBase * (1 + effectivePct / 100) : 0);
       const updatedBudget = (rawPct !== null || orgPctSet) ? stats.base * (1 + effectivePct / 100) : 0;
 
+      const resolvedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
+        ? row.original_headcount
+        : row.allocation_headcount;
+      const resolvedOriginalCount = resolvedOriginalCountValue !== null && resolvedOriginalCountValue !== undefined &&
+        String(resolvedOriginalCountValue).trim() !== "" ? n(resolvedOriginalCountValue) : stats.count;
       const update = {
         ROWID: row.id,
         budget_base: stats.base,
@@ -1285,6 +1290,11 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       // Comp Manager % is an allocation share of the team CTC base, not an extra hike on top of that base.
       const originalBudget = hasOriginalSnapshot ? savedOriginalBudget : (originalBase * pct / 100);
       const updatedBudget = stats.base * pct / 100;
+      const resolvedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
+        ? row.original_headcount
+        : row.allocation_headcount;
+      const resolvedOriginalCount = resolvedOriginalCountValue !== null && resolvedOriginalCountValue !== undefined &&
+        String(resolvedOriginalCountValue).trim() !== "" ? n(resolvedOriginalCountValue) : stats.count;
       const update = {
         ROWID: row.id,
         budget_base: stats.base,
@@ -1317,9 +1327,7 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         applied_budget: updatedBudget,
         current_headcount: stats.count,
         total_utilization: stats.utilized,
-        original_headcount: n(row.original_headcount || row.allocation_headcount) > 0
-          ? n(row.original_headcount || row.allocation_headcount)
-          : stats.count,
+        original_headcount: resolvedOriginalCount,
       });
     }
 
