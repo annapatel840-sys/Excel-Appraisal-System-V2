@@ -1100,6 +1100,7 @@ const activeRosterCycle = cycleRows.find((cycle) =>
   cycle.archived !== true && String(cycle.archived || "").toLowerCase() !== "true"
 );
 const rosterCycleId = cycleIdOf(activeRosterCycle) || String(bundle.master[0]?.appraisal_cycle_id || "");
+bundle.active_appraisal_cycle_id = rosterCycleId;
 const rosterForCycle = rosterCycleId ? employeesForBudgetCycle(rosterCycleId) : employees;
 bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisal_sheet).map((employee) => ({
   emp_id: employee.emp_id,
@@ -1462,6 +1463,7 @@ module.exports = async function (req, res) {
         employeeRoster: bundle.employeeRoster || [],
         techEdCount: techEdOwners.length,
         diagnostics: calculatedBundle.diagnostics || null,
+        active_appraisal_cycle_id: calculatedBundle.active_appraisal_cycle_id || "",
         more_records: false,
         next_token: null,
       });
