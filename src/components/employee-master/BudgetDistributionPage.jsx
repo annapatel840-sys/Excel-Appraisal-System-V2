@@ -525,7 +525,8 @@ export function BudgetDistributionPage() {
                     <th className="num">Utilised</th>
                     <th className="num">Remaining</th>
                     <th className="num">Utilisation %</th>
-                    <th>Team Count</th>
+                    <th>Original Count</th>
+                    <th>Current Count</th>
                     <th>Status</th>
                     <th>Access</th>
                   </tr>
@@ -535,6 +536,12 @@ export function BudgetDistributionPage() {
                     const owner = resolveTechOwner(row.tech_ed_id);
                     const key = row.id || row.tech_ed_id;
                     const expanded = Boolean(open[key]);
+                    const liveCount = countForTechOwner(row.tech_ed_id);
+                    const savedOriginalCount = row.original_headcount ?? row.allocation_headcount;
+                    const originalCount = savedOriginalCount !== null && savedOriginalCount !== undefined &&
+                      String(savedOriginalCount).trim() !== ""
+                      ? Number(savedOriginalCount) || 0
+                      : liveCount;
  
                     return (
                       <tr key={key} className="tech">
@@ -554,7 +561,8 @@ export function BudgetDistributionPage() {
                         <td className="num">{money(row.budget_utilized)}</td>
                         <td className="num">{money(row.budget_remaining)}</td>
                         <td className="num">{pct(row.utilization_percentage)}</td>
-                        <td>{countForTechOwner(row.tech_ed_id)}</td>
+                        <td>{originalCount}</td>
+                        <td>{liveCount}</td>
                         <td>
                           <span className="status">
                             {row.status || "Active"}
@@ -595,6 +603,18 @@ export function BudgetDistributionPage() {
                       <div className="detail-item">
                         <div className="label">Budget percentage</div>
                         <b>{pct(row.budget_percentage)}</b>
+                      </div>
+                      <div className="detail-item">
+                        <div className="label">Original team count</div>
+                        <b>{row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
+                          ? Number(row.original_headcount) || 0
+                          : row.allocation_headcount !== null && row.allocation_headcount !== undefined && String(row.allocation_headcount).trim() !== ""
+                            ? Number(row.allocation_headcount) || 0
+                            : countForTechOwner(row.tech_ed_id)}</b>
+                      </div>
+                      <div className="detail-item">
+                        <div className="label">Current team count</div>
+                        <b>{countForTechOwner(row.tech_ed_id)}</b>
                       </div>
                       <div className="detail-item">
                         <div className="label">Updated budget</div>
