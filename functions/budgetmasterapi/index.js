@@ -1359,6 +1359,7 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
         ownerKey(employee.techEd) === details.techEdKey && ownerKey(employee.compManager) === details.compKey
       ).length;
       const repairInflatedSnapshot = hasSavedOriginalCount &&
+        legacyEligibleEmployees.length > eligibleEmployees.length &&
         savedOriginalCountNumber > stats.count && savedOriginalCountNumber === legacyOwnerCount;
       const originalCountIsSet = hasSavedOriginalCount && !repairInflatedSnapshot;
       const savedOriginalCount = originalCountIsSet ? savedOriginalCountNumber : stats.count;
