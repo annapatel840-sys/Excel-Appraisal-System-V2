@@ -1195,11 +1195,6 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         : (canCreateOriginal ? originalBase * (1 + effectivePct / 100) : 0);
       const updatedBudget = (rawPct !== null || orgPctSet) ? stats.base * (1 + effectivePct / 100) : 0;
 
-      const resolvedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
-        ? row.original_headcount
-        : row.allocation_headcount;
-      const resolvedOriginalCount = resolvedOriginalCountValue !== null && resolvedOriginalCountValue !== undefined &&
-        String(resolvedOriginalCountValue).trim() !== "" ? n(resolvedOriginalCountValue) : stats.count;
       const update = {
         ROWID: row.id,
         budget_base: stats.base,
@@ -1290,11 +1285,6 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       // Comp Manager % is an allocation share of the team CTC base, not an extra hike on top of that base.
       const originalBudget = hasOriginalSnapshot ? savedOriginalBudget : (originalBase * pct / 100);
       const updatedBudget = stats.base * pct / 100;
-      const resolvedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
-        ? row.original_headcount
-        : row.allocation_headcount;
-      const resolvedOriginalCount = resolvedOriginalCountValue !== null && resolvedOriginalCountValue !== undefined &&
-        String(resolvedOriginalCountValue).trim() !== "" ? n(resolvedOriginalCountValue) : stats.count;
       const update = {
         ROWID: row.id,
         budget_base: stats.base,
@@ -1327,7 +1317,7 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         applied_budget: updatedBudget,
         current_headcount: stats.count,
         total_utilization: stats.utilized,
-        original_headcount: resolvedOriginalCount,
+        original_headcount: savedOriginalCount,
       });
     }
 
@@ -1372,17 +1362,17 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         orgFields[originalBaseField] = orgOriginalBase;
       }
       if (currentBaseField) orgFields[currentBaseField] = orgBase;
-      const savedOrgOriginalCountValue = master.original_headcount !== null && master.original_headcount !== undefined && String(master.original_headcount).trim() !== ""
-        ? master.original_headcount
-        : master.allocation_headcount;
-      const orgOriginalCountIsSet = savedOrgOriginalCountValue !== null && savedOrgOriginalCountValue !== undefined &&
-        String(savedOrgOriginalCountValue).trim() !== "";
-      const savedOrgOriginalCount = orgOriginalCountIsSet ? n(savedOrgOriginalCountValue) : eligibleEmployees.length;
       if (originalCountField && !orgOriginalCountIsSet) {
         orgFields[originalCountField] = eligibleEmployees.length;
       }
       if (currentCountField) orgFields[currentCountField] = eligibleEmployees.length;
     }
+    const savedOrgOriginalCountValue = master.original_headcount !== null && master.original_headcount !== undefined && String(master.original_headcount).trim() !== ""
+      ? master.original_headcount
+      : master.allocation_headcount;
+    const orgOriginalCountIsSet = savedOrgOriginalCountValue !== null && savedOrgOriginalCountValue !== undefined &&
+      String(savedOrgOriginalCountValue).trim() !== "";
+    const savedOrgOriginalCount = orgOriginalCountIsSet ? n(savedOrgOriginalCountValue) : eligibleEmployees.length;
     await masterTable.updateRow(orgFields);
     Object.assign(master, {
       org_budget_base: orgBase,
