@@ -57,9 +57,12 @@ function mapMaster(row) {
     org_budget_base: n(value(row, "org_budget_base")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
-    original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
-      ? value(row, "original_headcount")
-      : value(row, "allocation_headcount"),
+    // allocation_headcount is the legacy allocation-time snapshot. Prefer it
+    // when present so a previously overwritten original_headcount can recover
+    // the stable baseline instead of perpetuating the live count.
+    original_headcount: value(row, "allocation_headcount") !== "" && value(row, "allocation_headcount") !== null && value(row, "allocation_headcount") !== undefined
+      ? value(row, "allocation_headcount")
+      : value(row, "original_headcount"),
     current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
       ? value(row, "current_headcount")
       : value(row, "headcount"),
@@ -128,9 +131,9 @@ function mapComp(row) {
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
-    original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
-      ? n(value(row, "original_headcount"))
-      : n(value(row, "allocation_headcount")),
+    original_headcount: value(row, "allocation_headcount") !== "" && value(row, "allocation_headcount") !== null && value(row, "allocation_headcount") !== undefined
+      ? n(value(row, "allocation_headcount"))
+      : n(value(row, "original_headcount")),
     current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
       ? n(value(row, "current_headcount"))
       : n(value(row, "headcount")),
