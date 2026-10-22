@@ -746,11 +746,11 @@ function HRApplyBudget() {
           const originalCountValue =
              row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
                ? row.original_headcount
-               : row.allocation_headcount;
+               : row.headcount;
            const currentCountValue =
              row.current_headcount !== null && row.current_headcount !== undefined && String(row.current_headcount).trim() !== ""
                ? row.current_headcount
-               : row.headcount;
+               : (employeeCounts.get(key) || 0);
            const hasSavedOriginalCount = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
            existing.team0 = hasSavedOriginalCount
              ? amount(originalCountValue)
@@ -768,11 +768,11 @@ function HRApplyBudget() {
       const originalCountValue =
          row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
            ? row.original_headcount
-           : row.allocation_headcount;
+           : row.headcount;
        const currentCountValue =
          row.current_headcount !== null && row.current_headcount !== undefined && String(row.current_headcount).trim() !== ""
            ? row.current_headcount
-           : row.headcount;
+           : assignedCount;
        const originalCountIsSet = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
        const originalCount = originalCountIsSet ? amount(originalCountValue) : assignedCount;
        const currentCount = currentCountValue !== null && currentCountValue !== undefined && String(currentCountValue).trim() !== ""
@@ -864,11 +864,11 @@ function HRApplyBudget() {
   const orgOriginalCountValue =
     selectedMaster?.original_headcount !== null && selectedMaster?.original_headcount !== undefined && String(selectedMaster.original_headcount).trim() !== ""
       ? selectedMaster.original_headcount
-      : selectedMaster?.allocation_headcount;
+      : selectedMaster?.headcount;
   const orgCurrentCountValue =
     selectedMaster?.current_headcount !== null && selectedMaster?.current_headcount !== undefined && String(selectedMaster.current_headcount).trim() !== ""
       ? selectedMaster.current_headcount
-      : selectedMaster?.headcount;
+      : total.team;
   const orgOriginalCount = orgOriginalCountValue !== null && orgOriginalCountValue !== undefined && String(orgOriginalCountValue).trim() !== ""
     ? amount(orgOriginalCountValue)
     : total.team0;
