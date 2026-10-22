@@ -1059,7 +1059,7 @@ function HRApplyBudget() {
                   aria-label="Percentage for all Tech EDs"
                 />
               </label>
-              <span className="bm-hint">Enter the reason on each Tech ED row</span>
+                
               <button
                 type="button"
                 className="bm-btn"
