@@ -40,7 +40,11 @@ export const sumTargetPB = (rows) =>
 // Real total from Budget Master, else the labelled estimate.
 export function resolveBudgetAllocated({ totals, loading, error }) {
   const real = !loading && !error ? Number(totals?.updated) || 0 : 0;
-  return real > 0
+  // A saved Budget_Master row is authoritative even when its Updated Budget
+  // is zero (for example, before HR applies a percentage). Do not replace that
+  // real value with the demo estimate, which makes screens disagree.
+  const hasMasterValue = !loading && !error && totals?.hasBudgetMaster === true;
+  return hasMasterValue || real > 0
     ? { allocated: real, isEstimate: false }
     : { allocated: FALLBACK_BUDGET_ALLOCATED, isEstimate: true };
 }
