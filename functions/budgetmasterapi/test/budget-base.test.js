@@ -146,12 +146,12 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(fresh.previous_appraisal_total_ctc_with_rewards, 905000);
     assert.strictEqual(fresh.last_appraisal_date, 'New - 2026');
     const orgBase = 2500000 + 905000;
-    const orgOriginal = orgBase * 1.08;
+    const orgOriginal = orgBase * 0.08;
     assert.strictEqual(r.json.master[0].calculated_budget, orgOriginal);
     const techRow = r.json.techEd[0];
     const techBase = techRow.budget_base;
     const techOriginal = techRow.calculated_budget;
-    assert.strictEqual(techOriginal, techBase * 1.08);
+    assert.strictEqual(techOriginal, techBase * 0.08);
 
     // Changing Org and Tech-Ed percentages must change updated budgets only.
     store.tables.Budget_Master[0].budget_percentage = 10;
@@ -160,10 +160,10 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const changed = await get(load(store));
     assert.strictEqual(changed.status, 200, JSON.stringify(changed.json));
     assert.strictEqual(changed.json.master[0].calculated_budget, orgOriginal);
-    assert.strictEqual(changed.json.master[0].applied_budget, orgBase * 1.10);
+    assert.strictEqual(changed.json.master[0].applied_budget, orgBase * 0.10);
     const changedTech = changed.json.techEd.find((row) => String(row.id) === String(techRow.id));
     assert.strictEqual(changedTech.calculated_budget, techOriginal);
-    assert.strictEqual(changedTech.applied_budget, techBase * 1.10);
+    assert.strictEqual(changedTech.applied_budget, techBase * 0.10);
   });
 
   await t('Appraisal Sheet roster (23) wins over a larger eligible master/list (30)', async () => {
@@ -250,9 +250,9 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(Number(changedComp.original_headcount), 2);
     assert.strictEqual(Number(changedComp.current_headcount), 1);
     assert.strictEqual(changed.json.master[0].calculated_budget, originalOrgBudget, 'Org Original Budget remains fixed when the roster changes');
-    assert.strictEqual(changed.json.master[0].applied_budget, 1080000, 'Org Updated Budget follows the current eligible roster');
+    assert.strictEqual(changed.json.master[0].applied_budget, 80000, 'Org Updated Budget follows the current eligible roster and Budget Master percentage formula');
     assert.strictEqual(changedTeam.calculated_budget, originalTechBudget, 'Tech-Ed Original Budget remains fixed');
-    assert.strictEqual(changedTeam.applied_budget, 1080000, 'Tech-Ed Updated Budget follows the current eligible roster');
+    assert.strictEqual(changedTeam.applied_budget, 80000, 'Tech-Ed Updated Budget follows the current eligible roster and Budget Master percentage formula');
     assert.strictEqual(changedComp.calculated_budget, originalCompBudget, 'Comp Manager Original Budget remains fixed');
     assert.strictEqual(changedComp.applied_budget, 80000, 'Comp Manager Updated Budget follows the current eligible roster');
   });
