@@ -1309,9 +1309,11 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
         savedOriginalCountNumber > stats.count &&
         // Repair both team-specific legacy snapshots and old builds that copied
         // the whole eligible-list count into every allocation row.
-        (savedOriginalCountNumber === legacyOwnerCount ||
-          savedOriginalCountNumber === legacyEligibleEmployees.length ||
-          savedOriginalCountNumber === legacyEligibilityCount);
+        // Only repair the known legacy case where Original Count was copied
+        // from the entire cycle Eligibility List. Never infer corruption from a
+        // team-specific count: that can equal a valid baseline and would reset it
+        // when an employee becomes ineligible or changes assignment.
+        savedOriginalCountNumber === legacyEligibilityCount;
       const originalCountIsSet = hasSavedOriginalCount && !repairInflatedSnapshot;
       const savedOriginalCount = originalCountIsSet ? savedOriginalCountNumber : stats.count;
       const update = {
@@ -1409,9 +1411,11 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
         savedOriginalCountNumber > stats.count &&
         // Repair both team-specific legacy snapshots and old builds that copied
         // the whole eligible-list count into every allocation row.
-        (savedOriginalCountNumber === legacyOwnerCount ||
-          savedOriginalCountNumber === legacyEligibleEmployees.length ||
-          savedOriginalCountNumber === legacyEligibilityCount);
+        // Only repair the known legacy case where Original Count was copied
+        // from the entire cycle Eligibility List. Never infer corruption from a
+        // team-specific count: that can equal a valid baseline and would reset it
+        // when an employee becomes ineligible or changes assignment.
+        savedOriginalCountNumber === legacyEligibilityCount;
       const originalCountIsSet = hasSavedOriginalCount && !repairInflatedSnapshot;
       const savedOriginalCount = originalCountIsSet ? savedOriginalCountNumber : stats.count;
       const update = {
@@ -1477,8 +1481,9 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
     const repairInflatedOrgSnapshot = hasSavedOrgOriginalCount &&
       Math.max(legacyEligibleEmployees.length, legacyEligibilityCount) > eligibleEmployees.length &&
       savedOrgOriginalCountNumber > eligibleEmployees.length &&
-      (savedOrgOriginalCountNumber === legacyEligibleEmployees.length ||
-        savedOrgOriginalCountNumber === legacyEligibilityCount);
+      // Repair only the known inflated Eligibility List snapshot, not a
+      // valid saved baseline that happens to equal the legacy Employee Master count.
+      savedOrgOriginalCountNumber === legacyEligibilityCount;
     const orgOriginalCountIsSet = hasSavedOrgOriginalCount && !repairInflatedOrgSnapshot;
     const savedOrgOriginalCount = orgOriginalCountIsSet ? savedOrgOriginalCountNumber : eligibleEmployees.length;
     const orgFields = {
