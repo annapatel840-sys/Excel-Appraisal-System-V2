@@ -382,13 +382,62 @@ export function BudgetProvider({ children }) {
   }, [rows, employeeRows]);
 
   const totals = useMemo(() => {
-    // Org-level displays (Dashboard, Appraisal Sheet, Detail Screen, and HR
-    // Budget Distribution summary) all use Budget_Master for the active cycle.
-    // Summing every Tech-Ed row can double-count history or diverge when an
-    // individual Tech-Ed percentage is overridden.
+    // A Tech-Ed login must see their own Budget_Distribution allocation,
+    // not the organisation-wide Budget_Master total. Dashboard, Appraisal Sheet,
+    // and Detail Screen all consume this shared role-aware total.
+    if (roleText.includes("teched")) {
+      const identities = [currentUser.name, currentUser.email]
+        .map(normalizeOwner).filter(Boolean);
+      const directoryOwner = techEdOwners.find((item) =>
+        [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name, item?.email, item?.email_id]
+          .filter(Boolean).some((alias) => ownerMatches(alias, identities)),
+      );
+      const ownerAliases = [
+        ...identities,
+        directoryOwner?.employee_id, directoryOwner?.row_id, directoryOwner?.ROWID,
+        directoryOwner?.assignment, directoryOwner?.name, directoryOwner?.email,
+      ].map(normalizeOwner).filter(Boolean);
+      const ownsRow = (row) => {
+        const raw = row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed ||
+          row.appraiser_tech_ed || row.appraiser_tech_ed1 || "";
+        return ownerMatches(raw, ownerAliases) ||
+          ownerAliases.includes(normalizeOwner(raw));
+      };
+      const ownedRows = budgetDistributionRows.filter(ownsRow);
+      const cycleRows = activeBudgetCycleId
+        ? ownedRows.filter((row) => String(row.appraisal_cycle_id || "") === activeBudgetCycleId)
+        : ownedRows;
+      // If cycle IDs differ between APIs, only fall back when ownership has one
+      // unambiguous allocation; never substitute the organisation-wide amount.
+      const candidates = cycleRows.length ? cycleRows : ownedRows.length === 1 ? ownedRows : [];
+      const own = candidates.length === 1 ? candidates[0] : null;
+      if (own) {
+        const updated = number(own.applied_budget ?? own.updated_budget);
+        const original = number(own.calculated_budget ?? own.budget_amount);
+        const utilized = number(own.total_utilization ?? own.budget_utilized);
+        return {
+          base: original,
+          additional: 0,
+          updated,
+          utilized,
+          remaining: updated - utilized,
+          hasBudgetMaster: false,
+          hasAuthoritativeBudget: true,
+          budgetScope: "teched",
+        };
+      }
+      // A Tech-Ed with no unique allocation has no safely attributable budget.
+      // Return zero rather than displaying another role's/org-wide budget.
+      return {
+        base: 0, additional: 0, updated: 0, utilized: 0, remaining: 0,
+        hasBudgetMaster: false, hasAuthoritativeBudget: true, budgetScope: "teched",
+      };
+    }
+
+    // HR and other organisation-wide views use the active cycle's Budget_Master.
     const master = budgetMasterRows.find((row) =>
       activeBudgetCycleId && String(row.appraisal_cycle_id || "") === activeBudgetCycleId
-    ) || budgetMasterRows[0];
+    ) || (!activeBudgetCycleId && budgetMasterRows.length === 1 ? budgetMasterRows[0] : null);
     if (master) {
       const original = number(master.calculated_budget);
       const updated = number(master.applied_budget);
@@ -400,9 +449,11 @@ export function BudgetProvider({ children }) {
         utilized,
         remaining: updated - utilized,
         hasBudgetMaster: true,
+        hasAuthoritativeBudget: true,
+        budgetScope: "org",
       };
     }
-    // Backwards-compatible fallback for installations without a Budget_Master row.
+    // Backwards-compatible fallback only when there is no authoritative row.
     return rows.reduce(
       (sum, row) => ({
         base: sum.base + row.budget_amount,
@@ -411,9 +462,9 @@ export function BudgetProvider({ children }) {
         utilized: sum.utilized + row.budget_utilized,
         remaining: sum.remaining + row.budget_remaining,
       }),
-      { base: 0, additional: 0, updated: 0, utilized: 0, remaining: 0, hasBudgetMaster: false },
+      { base: 0, additional: 0, updated: 0, utilized: 0, remaining: 0, hasBudgetMaster: false, hasAuthoritativeBudget: false },
     );
-  }, [rows, budgetMasterRows, activeBudgetCycleId]);
+  }, [rows, budgetMasterRows, budgetDistributionRows, techEdOwners, currentUser, roleText, activeBudgetCycleId]);
 
   const hierarchy = useMemo(() => {
     const next = {};
