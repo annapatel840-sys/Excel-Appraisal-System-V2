@@ -510,9 +510,10 @@ export function TechEdBudgetDistribution() {
         // count always reflects the current eligible Appraisal Sheet roster.
         // Original Count is the saved baseline only; never fill a missing
         // value from today's team size, which changes with eligibility/delegation.
+        // The API handles legacy schemas. Never substitute a live/current count.
         team0: live.original_headcount !== null && live.original_headcount !== undefined && String(live.original_headcount).trim() !== ""
           ? num(live.original_headcount)
-          : (live.headcount !== null && live.headcount !== undefined && String(live.headcount).trim() !== "" ? num(live.headcount) : 0),
+          : 0,
         // Current count follows the live eligible Appraisal Sheet roster;
         // persisted current_headcount can be stale after a delegation change.
         team: stats.count,
@@ -549,7 +550,9 @@ export function TechEdBudgetDistribution() {
   // roster and persisted by budgetmasterapi. Prefer them so every screen agrees.
   // The rendered eligible Appraisal Sheet roster is the live source of truth.
   const currentTeamCount = allTeam.length;
-  const savedTeamCount = liveTech?.original_headcount !== null && liveTech?.original_headcount !== undefined && String(liveTech.original_headcount).trim() !== "" ? liveTech.original_headcount : liveTech?.headcount;
+  // Use only the immutable baseline returned by the API; headcount may
+  // be a legacy/current field and must not replace Original Count here.
+  const savedTeamCount = liveTech?.original_headcount;
   // Original Count is a persisted baseline. Never replace a missing baseline
   // with today's roster count, or it will appear to change with eligibility.
   const team0 = savedTeamCount !== null && savedTeamCount !== undefined && String(savedTeamCount).trim() !== ""
