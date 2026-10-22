@@ -927,9 +927,11 @@ async function generateAppraisalSheet(tables, cycle, actor) {
   return { cycleId: cycle.id, cycleName: cycle.name, created, updated, eligible: eligibleRows.length };
 }
 
-function mapPayroll(row, cycleById, employeeById = new Map()) {
+function mapPayroll(row, cycleByName, employeeById = new Map()) {
   const cycleId = String(row.appraisal_cycle_name || "").trim();
-  const cycle = cycleById.get(cycleId);
+  // Payroll rows identify their appraisal cycle by its exact cycle name. Use
+  // that name to resolve the effective date from Appraisal_Cycle_Master.
+  const cycle = cycleByName.get(cycleId.toLowerCase());
   const employee = employeeById.get(String(row.emp_id || "").trim().toLowerCase());
   const businessEmpId = employee?.emp_id ?? "";
   const employeeName = employee?.emp_name || employee?.name || "";
@@ -943,7 +945,9 @@ function mapPayroll(row, cycleById, employeeById = new Map()) {
     emp_name: employeeName || text("emp_name"),
     appraisal_cycle_name: cycle?.name || text("appraisal_cycle_name"),
     empId: businessEmpId || text("emp_id"), empName: employeeName || text("emp_name"),
-    appraisalCycleName: cycle?.name || text("appraisal_cycle_name"), fyYear: text("fy_year"),
+    appraisalCycleName: cycle?.name || text("appraisal_cycle_name"),
+    effectiveDate: cycle?.effective || "",
+    fyYear: text("fy_year"),
     basePay: num("current_annual_base_pay"), joiningBonus: num("joining_bonus"),
     performanceBonus: num("performance_bonus"), retentionBonus: num("retention_bonus"),
     hikePct: num("hike_pct"), hikeAmt: num("hike_amount"),
@@ -1673,7 +1677,12 @@ async function routeRequest(req, res, identity, resource, a) {
       getAllRows(tables.employeeMaster),
     ]);
 
-    const cycleById = new Map(cycles.map((row) => [rowId(row), normalizeCycle(row)]));
+    const cycleByName = new Map(
+      cycles
+        .map((row) => normalizeCycle(row))
+        .filter((cycle) => cycle.name)
+        .map((cycle) => [cycle.name.trim().toLowerCase(), cycle]),
+    );
     const employeeById = new Map();
   masterRows.forEach((row) => {
     const businessEmpId = String(row.emp_id || "").trim().toLowerCase();
@@ -1698,7 +1707,7 @@ async function routeRequest(req, res, identity, resource, a) {
 
     return sendJson(res, 200, {
       success: true,
-      data: visibleRows.map((row) => mapPayroll(row, cycleById, employeeById)),
+      data: visibleRows.map((row) => mapPayroll(row, cycleByName, employeeById)),
     });
   }
 

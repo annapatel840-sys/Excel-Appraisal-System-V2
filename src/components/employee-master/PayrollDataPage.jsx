@@ -6,6 +6,7 @@ const STATIC_COL_META = {
   emp_id: { label: "Employee ID", frozen: true },
   emp_name: { label: "Employee Name" },
   appraisal_cycle_name: { label: "Appraisal Cycle Name" },
+  effectiveDate: { label: "Effective Date" },
   fy_year: { label: "FY Year" },
   basePay: { label: "Current Annual Base Pay", type: "number", money: true },
   joiningBonus: { label: "Joining Bonus", type: "number", money: true },
