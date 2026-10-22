@@ -303,7 +303,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const r = await get(load(store));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     const team = r.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1');
-    assert.strictEqual(team.calculated_budget, 1100000);
+    assert.strictEqual(team.calculated_budget, 100000, 'legacy tiny snapshot is repaired using base × percentage / 100');
   });
 
   await t('empty pay columns: base 0 with a clear warning', async () => {
