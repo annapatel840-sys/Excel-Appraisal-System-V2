@@ -30,6 +30,13 @@ import React, {
   useImperativeHandle,
 } from "react";
 import { useAppraisal } from "@/lib/appraisal-store";
+import { useBudget } from "@/lib/budget-store";
+import { useCatalystUser } from "@/lib/catalyst-auth";
+import {
+  resolveBudgetAllocated,
+  sumBudgetConsumed,
+  sumTargetPB,
+} from "@/components/appraisal/BudgetStatsBar";
 
 /* ============================== styles ============================== */
 const CSS = `
@@ -1024,6 +1031,44 @@ const BulkOperations = forwardRef(function BulkOperations(
     });
     return m;
   }, [sheetRows]);
+  /* ---------- HR header budget (same numbers as the Appraisal Sheet) ---------- */
+  let budgetCtx = null,
+    catalystUser = null;
+  try {
+    budgetCtx = useBudget();
+  } catch (x) {
+    budgetCtx = null;
+  }
+  try {
+    catalystUser = useCatalystUser();
+  } catch (x) {
+    catalystUser = null;
+  }
+  const isHrUser = String(catalystUser?.role || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .includes("hr");
+  const sheetHdr = useMemo(() => {
+    if (!isHrUser || !budgetCtx || !sheetRows.length) return null;
+    // Same scope as the Appraisal Sheet: Active + Eligible employees.
+    const live = sheetRows.filter(
+      (r) =>
+        String(r.status || "").trim().toLowerCase() === "active" &&
+        String(r.eligibility || "").trim().toLowerCase() === "eligible",
+    );
+    const { allocated } = resolveBudgetAllocated({
+      totals: budgetCtx.totals,
+      loading: budgetCtx.loading,
+      error: budgetCtx.error,
+    });
+    return {
+      allocated,
+      used: sumBudgetConsumed(live),
+      tpb: sumTargetPB(live),
+    };
+  }, [isHrUser, budgetCtx, sheetRows]);
+
   // Value of a filter field: the bulk row first, then the appraisal sheet row.
   const fVal = (e, field) => {
     const own = filterVal(e, field);
@@ -1437,8 +1482,26 @@ const BulkOperations = forwardRef(function BulkOperations(
   );
   /* eslint-enable react-hooks/exhaustive-deps */
 
-  const b0 = budgetOf(scope, null),
-    bPv = pv ? pv.after : b0;
+  const b0Raw = budgetOf(scope, null),
+    bPvRaw = pv ? pv.after : b0Raw;
+  // HR: header = the Appraisal Sheet's Budget Allocated / Utilisation /
+  // Utilisation incl. Target PB. A preview moves them by the change it makes.
+  const hdrOf = (raw) => {
+    if (!sheetHdr) return raw;
+    const used = sheetHdr.used + (raw.used - b0Raw.used);
+    const tpb = sheetHdr.tpb + (raw.tpb - b0Raw.tpb);
+    const bud = sheetHdr.allocated;
+    return {
+      ...raw,
+      budget: bud,
+      used,
+      tpb,
+      util: bud ? (used / bud) * 100 : 0,
+      utilT: bud ? ((used + tpb) / bud) * 100 : 0,
+    };
+  };
+  const b0 = hdrOf(b0Raw),
+    bPv = hdrOf(bPvRaw);
 
   /* ---------- grid data ---------- */
   const colVal = (e, k) => {
@@ -2350,8 +2413,8 @@ const BulkOperations = forwardRef(function BulkOperations(
         })
       : [],
     scope,
-    before: pv ? pv.before : b0,
-    after: pv ? pv.after : b0,
+    before: pv ? pv.before : b0Raw,
+    after: pv ? pv.after : b0Raw,
   };
   const sumCols = (cols2, after) => {
     let v = 0;
@@ -2694,7 +2757,11 @@ const BulkOperations = forwardRef(function BulkOperations(
         <div className="tb-r">
           <div className="tk">
             <span>Budget Allocated</span>
-            <strong>{big(bPv.budget)}</strong>
+            <strong>
+              {sheetHdr
+                ? Math.round(bPv.budget).toLocaleString("en-IN")
+                : big(bPv.budget)}
+            </strong>
           </div>
           <div className="tk">
             <span>Utilisation</span>
