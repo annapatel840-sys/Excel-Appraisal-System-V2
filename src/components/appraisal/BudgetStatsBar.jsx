@@ -7,8 +7,9 @@ import { cn } from "@/lib/utils";
 // beside the budget notice, in a white bar matching the notice (marquee) box.
 // ============================================================
 
-// Demo value, only used when Budget Master data is unavailable.
-export const FALLBACK_BUDGET_ALLOCATED = 42500000; // ₹ 4.25 Cr (estimate)
+// Kept for compatibility with older imports only. Live screens must never
+// present this demo amount as if it were a real allocation.
+export const FALLBACK_BUDGET_ALLOCATED = 0;
 
 
 const ONE_CRORE = 10000000;
@@ -37,17 +38,21 @@ export const sumBudgetConsumed = (rows) =>
 export const sumTargetPB = (rows) =>
   (rows || []).reduce((sum, row) => sum + (Number(row.targetPBNextYear) || 0), 0);
 
-// Real total from Budget Master, else the labelled estimate.
+// All screens must display the same saved allocation, even if the separate
+// employee-roster request failed. A demo number must never masquerade as budget.
 export function resolveBudgetAllocated({ totals, loading, error }) {
-  const real = !loading && !error ? Number(totals?.updated) || 0 : 0;
-  // A saved Budget_Master row is authoritative even when its Updated Budget
-  // is zero (for example, before HR applies a percentage). Do not replace that
-  // real value with the demo estimate, which makes screens disagree.
-  const hasAuthoritativeValue = !loading && !error &&
-    (totals?.hasBudgetMaster === true || totals?.hasAuthoritativeBudget === true);
-  return hasAuthoritativeValue || real > 0
-    ? { allocated: real, isEstimate: false }
-    : { allocated: FALLBACK_BUDGET_ALLOCATED, isEstimate: true };
+  const hasAuthoritativeValue =
+    totals?.hasBudgetMaster === true || totals?.hasAuthoritativeBudget === true;
+  if (hasAuthoritativeValue) {
+    return { allocated: Number(totals?.updated) || 0, isEstimate: false };
+  }
+  const real = Number(totals?.updated) || 0;
+  if (!loading && !error && real > 0) {
+    return { allocated: real, isEstimate: false };
+  }
+  // No authoritative data is available. Display zero rather than an invented
+  // ₹4.25 Cr value; the loading/error state can explain why data is missing.
+  return { allocated: 0, isEstimate: false };
 }
 
 function Stat({ label, value, title, valueClassName, first }) {
