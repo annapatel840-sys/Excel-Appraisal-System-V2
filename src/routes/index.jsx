@@ -28,10 +28,10 @@ const COLORS = {
   bar: "#2f6db5",
 };
 
-const fmtCr = (v) => `₹ ${(v / 1e7).toFixed(2)} Cr`;
+const fmtCr = (v) => ` ${(v / 1e7).toFixed(2)} Cr`;
 // Full amount in Indian grouping, e.g. ₹ 1,57,00,000 (used for the budget cards).
-const fmtFull = (v) => `₹ ${Math.round(Number(v) || 0).toLocaleString("en-IN")}`;
-const fmtL = (v) => `₹ ${(v / 1e5).toFixed(2)} L`;
+const fmtFull = (v) => ` ${Math.round(Number(v) || 0).toLocaleString("en-IN")}`;
+const fmtL = (v) => ` ${(v / 1e5).toFixed(2)} L`;
 const utilColor = (u) => (u > 100 ? "#cf1322" : u > 90 ? "#d46b08" : "#389e0d");
 
 const TABS = [

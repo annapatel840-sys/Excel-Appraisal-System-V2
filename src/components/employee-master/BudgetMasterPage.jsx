@@ -530,6 +530,7 @@ function HRApplyBudget() {
     (Array.isArray(budgetDistributionRows) ? budgetDistributionRows : [])
       .filter((row) => !selectedCycle || String(row.appraisal_cycle_id) === String(selectedCycle))
       .forEach((row) => {
+<<<<<<< HEAD
       const owner = row.appraiser_tech_ed_id || "";
       const key = resolveTechOwnerKey(owner);
       if (!key || !ownerValues.has(key)) return;
@@ -577,6 +578,90 @@ function HRApplyBudget() {
         team0: originalCount,
         team: currentCount,
         lastChanged: "—",
+=======
+        const owner = row.appraiser_tech_ed_id || "";
+        const key = resolveTechOwnerKey(owner);
+        if (!key || !ownerValues.has(key)) return;
+        // Multiple legacy records may point to the same Tech-Ed using ROWID,
+        // employee ID, or label. Keep one display row per canonical roster key.
+        if (seenOwners.has(key)) {
+          const existing = nextRows.find((item) => item.canonicalKey === key);
+          if (existing) {
+            existing.pct = amount(row.percentage);
+            existing.base =
+              row.budget_base !== null &&
+              row.budget_base !== undefined &&
+              String(row.budget_base).trim() !== ""
+                ? amount(row.budget_base)
+                : existing.base;
+            existing.original = amount(row.calculated_budget);
+            existing.updated = amount(row.applied_budget) || existing.original;
+            const originalCountValue =
+              row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
+                ? row.original_headcount
+                : row.allocation_headcount;
+            const currentCountValue =
+              row.current_headcount !== null && row.current_headcount !== undefined && String(row.current_headcount).trim() !== ""
+                ? row.current_headcount
+                : row.headcount;
+            const rowHasOriginalCount = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
+            existing.team0 = rowHasOriginalCount
+              ? amount(originalCountValue)
+              : (existing.originalCountIsSet ? existing.team0 : (existing.team0 || employeeCounts.get(key) || 0));
+            existing.originalCountIsSet = Boolean(existing.originalCountIsSet || rowHasOriginalCount);
+            // Current count is live, not a potentially stale saved count.
+            existing.team = employeeCounts.get(key) || 0;
+            existing.id = row.id || existing.id;
+          }
+          return;
+        }
+        const calculated = amount(row.calculated_budget);
+        const applied = amount(row.applied_budget) || calculated;
+        const assignedCount = employeeCounts.get(key) || 0;
+        const originalCountValue =
+          row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
+            ? row.original_headcount
+            : row.allocation_headcount;
+        const currentCountValue =
+          row.current_headcount !== null && row.current_headcount !== undefined && String(row.current_headcount).trim() !== ""
+            ? row.current_headcount
+            : row.headcount;
+        const originalCountIsSet = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
+        const originalCount = originalCountIsSet ? amount(originalCountValue) : assignedCount;
+        const currentCount = assignedCount;
+        const storedBase =
+          row.budget_base !== null &&
+          row.budget_base !== undefined &&
+          String(row.budget_base).trim() !== ""
+            ? amount(row.budget_base)
+            : null;
+        nextRows.push({
+          id: row.id || "tech-ed-" + key,
+          canonicalKey: key,
+          name: ownerValues.get(key) || ownerName(owner, employeeRows),
+          pct: amount(row.percentage),
+          pctSet:
+            row.percentage !== null &&
+            row.percentage !== undefined &&
+            String(row.percentage).trim() !== "",
+          // budgetmasterapi calculates this base from the cycle's eligible roster;
+          // prefer it over the all-employee API roster to avoid inflating Org Base.
+          base:
+            storedBase !== null
+              ? storedBase
+              : employeeBases.get(key) ||
+                (Number(row.percentage)
+                  ? (calculated * 100) / Number(row.percentage)
+                  : calculated),
+          original: calculated,
+          updated: applied,
+          team0: originalCount,
+          team: currentCount,
+          originalCountIsSet,
+          lastChanged: "—",
+        });
+        seenOwners.add(key);
+>>>>>>> 72746be884e8b92ef0ce2183a22cd19b3acac9b4
       });
       seenOwners.add(key);
     });
@@ -640,9 +725,24 @@ function HRApplyBudget() {
 
   // Org headcount comes from the same cycle-scoped eligibility calculation as
   // Org Budget Base. Fall back to the Tech-Ed roll-up only for older schemas.
+<<<<<<< HEAD
   const orgOriginalCountValue = selectedMaster?.original_headcount ?? selectedMaster?.allocation_headcount;
   const orgCurrentCountValue = selectedMaster?.current_headcount ?? selectedMaster?.headcount;
   const orgOriginalCount = amount(orgOriginalCountValue) > 0 ? amount(orgOriginalCountValue) : total.team0;
+=======
+  const orgOriginalCountValue =
+    selectedMaster?.original_headcount !== null && selectedMaster?.original_headcount !== undefined && String(selectedMaster.original_headcount).trim() !== ""
+      ? selectedMaster.original_headcount
+      : selectedMaster?.allocation_headcount;
+  const orgCurrentCountValue =
+    selectedMaster?.current_headcount !== null && selectedMaster?.current_headcount !== undefined && String(selectedMaster.current_headcount).trim() !== ""
+      ? selectedMaster.current_headcount
+      : selectedMaster?.headcount;
+  const orgOriginalCount =
+    orgOriginalCountValue !== null && orgOriginalCountValue !== undefined && String(orgOriginalCountValue).trim() !== ""
+      ? amount(orgOriginalCountValue)
+      : total.team0;
+>>>>>>> 72746be884e8b92ef0ce2183a22cd19b3acac9b4
   // Current headcount must always reflect the live eligible Appraisal Sheet roster;
   // persisted current_headcount may be stale until the next backend calculation.
   const orgCurrentCount = total.team;
