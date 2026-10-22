@@ -10,16 +10,16 @@ import { cn } from "@/lib/utils";
 // Demo value, only used when Budget Master data is unavailable.
 export const FALLBACK_BUDGET_ALLOCATED = 42500000; // ₹ 4.25 Cr (estimate)
 
-<<<<<<< HEAD
+
 const ONE_CRORE = 10000000;
 
 export const formatCrore = (amount) =>
   `₹ ${(amount / ONE_CRORE).toFixed(2)} Cr`;
-=======
+
 // Full amount in Indian digit grouping, e.g. ₹ 1,57,00,000 (no Cr / L rounding).
 export const formatRupees = (amount) =>
   `₹ ${Math.round(Number(amount) || 0).toLocaleString("en-IN")}`;
->>>>>>> dc2eb66 (Display Full Budget Amount)
+
 
 // Consumed = Performance Bonus (PB) + Retention Bonus (RB) + Hike Amount,
 // the same three totals the Appraisal Sheet's Total row adds together.
@@ -100,20 +100,20 @@ export function BudgetStatsBar({
             ? "Estimate — Budget Master data is unavailable"
             : "Total from Budget Master"
         }
-<<<<<<< HEAD
+
         value={formatCrore(allocated)}
-=======
+
         value={formatRupees(allocated)}
->>>>>>> dc2eb66 (Display Full Budget Amount)
+
       />
       <Stat
         label="Consumed (Hikes + Bonuses)"
         title="Hike Amount + Total Bonus, this cycle"
-<<<<<<< HEAD
+
         value={formatCrore(consumed)}
-=======
+
         value={formatRupees(consumed)}
->>>>>>> dc2eb66 (Display Full Budget Amount)
+
       />
       <Stat
         label="Utilisation"
