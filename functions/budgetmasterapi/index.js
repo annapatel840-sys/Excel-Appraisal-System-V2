@@ -60,6 +60,7 @@ function mapMaster(row) {
     original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
       ? value(row, "original_headcount")
       : value(row, "headcount"),
+    headcount: value(row, "headcount"),
     current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
       ? value(row, "current_headcount")
       : value(row, "headcount"),
@@ -130,6 +131,7 @@ function mapComp(row) {
     original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
       ? n(value(row, "original_headcount"))
       : n(value(row, "headcount")),
+    headcount: n(value(row, "headcount")),
     current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
       ? n(value(row, "current_headcount"))
       : n(value(row, "headcount")),
