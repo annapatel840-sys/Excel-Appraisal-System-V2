@@ -120,8 +120,12 @@ function mapComp(row) {
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
-    original_headcount: n(value(row, "original_headcount") ?? value(row, "allocation_headcount")),
-    current_headcount: n(value(row, "current_headcount") ?? value(row, "headcount")),
+    original_headcount: n(value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
+      ? value(row, "original_headcount")
+      : value(row, "allocation_headcount")),
+    current_headcount: n(value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
+      ? value(row, "current_headcount")
+      : value(row, "headcount")),
     utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
   };
 }
@@ -1210,7 +1214,9 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         if (originalBaseField && canCreateOriginal && (!hasOriginalSnapshot || savedOriginalBase <= 0)) {
           update[originalBaseField] = originalBase;
         }
-        const savedOriginalCountValue = row.original_headcount ?? row.allocation_headcount;
+        const savedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
+          ? row.original_headcount
+          : row.allocation_headcount;
         const originalCountIsSet = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
           String(savedOriginalCountValue).trim() !== "";
         const savedOriginalCount = originalCountIsSet ? n(savedOriginalCountValue) : stats.count;
@@ -1354,7 +1360,9 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         orgFields[originalBaseField] = orgOriginalBase;
       }
       if (currentBaseField) orgFields[currentBaseField] = orgBase;
-      const savedOrgOriginalCountValue = master.original_headcount ?? master.allocation_headcount;
+      const savedOrgOriginalCountValue = master.original_headcount !== null && master.original_headcount !== undefined && String(master.original_headcount).trim() !== ""
+        ? master.original_headcount
+        : master.allocation_headcount;
       const orgOriginalCountIsSet = savedOrgOriginalCountValue !== null && savedOrgOriginalCountValue !== undefined &&
         String(savedOrgOriginalCountValue).trim() !== "";
       const savedOrgOriginalCount = orgOriginalCountIsSet ? n(savedOrgOriginalCountValue) : eligibleEmployees.length;
