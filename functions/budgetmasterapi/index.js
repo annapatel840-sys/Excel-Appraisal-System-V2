@@ -1028,10 +1028,24 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   const masterCalcField = pickColumn(masterColumns, ["calculated_budget"], "calculated_budget");
 
   const persistOptional = async (table, rowId, columns, candidates, val) => {
-    if (!rowId || !columns) return;
-    const field = candidates.find((candidate) => columns.has(candidate));
-    if (!field) return;
-    await table.updateRow({ ROWID: rowId, [field]: val });
+    if (!rowId) return false;
+    // Prefer confirmed schema metadata, but do not silently skip writes when
+    // Catalyst getAllColumns is unavailable or returns unexpected names.
+    const knownField = columns ? candidates.find((candidate) => columns.has(candidate)) : "";
+    const fieldsToTry = knownField
+      ? [knownField, ...candidates.filter((candidate) => candidate !== knownField)]
+      : candidates;
+    let lastError = null;
+    for (const field of fieldsToTry) {
+      try {
+        await table.updateRow({ ROWID: rowId, [field]: val });
+        return true;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    if (lastError) throw lastError;
+    return false;
   };
 
   // Resolve each Budget_Master row against its own immediately preceding cycle.
@@ -1221,19 +1235,19 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       if (rawPct === null && orgPctSet) update.percentage = effectivePct;
       if (distributionColumns) {
         const originalBaseField = ["original_budget_base", "original_base"].find((key) => distributionColumns.has(key));
-        const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => distributionColumns.has(key));
-        const currentCountField = ["current_headcount", "headcount"].find((key) => distributionColumns.has(key));
-        const currentBaseField = ["current_budget_base", "current_base"].find((key) => distributionColumns.has(key));
         const overrideField = ["override_percentage", "allocation_percentage"].find((key) => distributionColumns.has(key));
         if (originalBaseField && canCreateOriginal && (!hasOriginalSnapshot || savedOriginalBase <= 0)) {
           update[originalBaseField] = originalBase;
         }
-if (originalCountField && !originalCountIsSet) update[originalCountField] = stats.count;
-        if (currentCountField) update[currentCountField] = stats.count;
-        if (currentBaseField) update[currentBaseField] = stats.base;
         if (overrideField && rawPct === null) update[overrideField] = effectivePct;
       }
       await distributionTable.updateRow(update);
+      // Save the initial count once. Every subsequent refresh only updates Current Count.
+      if (!originalCountIsSet) {
+        await persistOptional(distributionTable, row.id, distributionColumns, ["original_headcount", "allocation_headcount"], stats.count);
+      }
+      await persistOptional(distributionTable, row.id, distributionColumns, ["current_headcount", "headcount"], stats.count);
+      await persistOptional(distributionTable, row.id, distributionColumns, ["current_budget_base", "current_base"], stats.base);
       Object.assign(row, {
         budget_base: stats.base,
         original_budget_base: originalBase,
@@ -1308,17 +1322,16 @@ if (originalCountField && !originalCountIsSet) update[originalCountField] = stat
       };
       if (compColumns) {
         const originalBaseField = ["original_budget_base", "original_base"].find((key) => compColumns.has(key));
-        const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => compColumns.has(key));
-        const currentCountField = ["current_headcount", "headcount"].find((key) => compColumns.has(key));
-        const currentBaseField = ["current_budget_base", "current_base"].find((key) => compColumns.has(key));
         if (originalBaseField && (!hasOriginalSnapshot || savedOriginalBase <= 0)) {
           update[originalBaseField] = originalBase;
         }
-if (originalCountField && !originalCountIsSet) update[originalCountField] = stats.count;
-        if (currentCountField) update[currentCountField] = stats.count;
-        if (currentBaseField) update[currentBaseField] = stats.base;
       }
       await compTable.updateRow(update);
+      if (!originalCountIsSet) {
+        await persistOptional(compTable, row.id, compColumns, ["original_headcount", "allocation_headcount"], stats.count);
+      }
+      await persistOptional(compTable, row.id, compColumns, ["current_headcount", "headcount"], stats.count);
+      await persistOptional(compTable, row.id, compColumns, ["current_budget_base", "current_base"], stats.base);
       Object.assign(row, {
         budget_base: stats.base,
         calculated_budget: originalBudget,
@@ -1369,19 +1382,16 @@ if (originalCountField && !originalCountIsSet) update[originalCountField] = stat
     };
     if (masterColumns) {
       const originalBaseField = ["original_budget_base", "original_base"].find((key) => masterColumns.has(key));
-      const currentBaseField = ["current_budget_base", "current_base"].find((key) => masterColumns.has(key));
-      const originalCountField = ["original_headcount", "allocation_headcount"].find((key) => masterColumns.has(key));
-      const currentCountField = ["current_headcount", "headcount"].find((key) => masterColumns.has(key));
       if (originalBaseField && orgPctSet && (!hasOrgOriginalSnapshot || savedOrgOriginalBase <= 0)) {
         orgFields[originalBaseField] = orgOriginalBase;
       }
-      if (currentBaseField) orgFields[currentBaseField] = orgBase;
-      if (originalCountField && !orgOriginalCountIsSet) {
-        orgFields[originalCountField] = eligibleEmployees.length;
-      }
-      if (currentCountField) orgFields[currentCountField] = eligibleEmployees.length;
     }
     await masterTable.updateRow(orgFields);
+    if (!orgOriginalCountIsSet) {
+      await persistOptional(masterTable, master.id, masterColumns, ["original_headcount", "allocation_headcount"], eligibleEmployees.length);
+    }
+    await persistOptional(masterTable, master.id, masterColumns, ["current_headcount", "headcount"], eligibleEmployees.length);
+    await persistOptional(masterTable, master.id, masterColumns, ["current_budget_base", "current_base"], orgBase);
     Object.assign(master, {
       org_budget_base: orgBase,
       original_budget_base: orgOriginalBase,
