@@ -57,8 +57,12 @@ function mapMaster(row) {
     org_budget_base: n(value(row, "org_budget_base")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
-    original_headcount: value(row, "original_headcount") ?? value(row, "allocation_headcount"),
-    current_headcount: value(row, "current_headcount") ?? value(row, "headcount"),
+    original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
+      ? value(row, "original_headcount")
+      : value(row, "allocation_headcount"),
+    current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
+      ? value(row, "current_headcount")
+      : value(row, "headcount"),
     budget_utilized: utilized,
     calculated_budget: calculated,
     applied_budget: applied,
@@ -92,9 +96,13 @@ function mapDistribution(row) {
     original_base: n(value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base")),
     current_base: n(value(row, "current_base")),
-    original_headcount: value(row, "original_headcount"),
+    original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
+      ? value(row, "original_headcount")
+      : value(row, "allocation_headcount"),
     allocation_headcount: value(row, "allocation_headcount"),
-    current_headcount: value(row, "current_headcount"),
+    current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
+      ? value(row, "current_headcount")
+      : value(row, "headcount"),
     headcount: value(row, "headcount"),
     calculated_budget: calculated,
     total_utilization: utilized,
@@ -120,12 +128,12 @@ function mapComp(row) {
     appraisal_cycle_id: String(value(row, "appraisal_cycle_id")),
     original_budget_base: n(value(row, "original_budget_base") || value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base") || value(row, "current_base")),
-    original_headcount: n(value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
-      ? value(row, "original_headcount")
-      : value(row, "allocation_headcount")),
-    current_headcount: n(value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
-      ? value(row, "current_headcount")
-      : value(row, "headcount")),
+    original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
+      ? n(value(row, "original_headcount"))
+      : n(value(row, "allocation_headcount")),
+    current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
+      ? n(value(row, "current_headcount"))
+      : n(value(row, "headcount")),
     utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
   };
 }
@@ -1195,11 +1203,12 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         : (canCreateOriginal ? originalBase * (1 + effectivePct / 100) : 0);
       const updatedBudget = (rawPct !== null || orgPctSet) ? stats.base * (1 + effectivePct / 100) : 0;
 
-      const resolvedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
+      const savedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
         ? row.original_headcount
         : row.allocation_headcount;
-      const resolvedOriginalCount = resolvedOriginalCountValue !== null && resolvedOriginalCountValue !== undefined &&
-        String(resolvedOriginalCountValue).trim() !== "" ? n(resolvedOriginalCountValue) : stats.count;
+      const originalCountIsSet = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
+        String(savedOriginalCountValue).trim() !== "";
+      const savedOriginalCount = originalCountIsSet ? n(savedOriginalCountValue) : stats.count;
       const update = {
         ROWID: row.id,
         budget_base: stats.base,
@@ -1219,13 +1228,7 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         if (originalBaseField && canCreateOriginal && (!hasOriginalSnapshot || savedOriginalBase <= 0)) {
           update[originalBaseField] = originalBase;
         }
-        const savedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
-          ? row.original_headcount
-          : row.allocation_headcount;
-        const originalCountIsSet = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
-          String(savedOriginalCountValue).trim() !== "";
-        const savedOriginalCount = originalCountIsSet ? n(savedOriginalCountValue) : stats.count;
-        if (originalCountField && !originalCountIsSet) update[originalCountField] = stats.count;
+if (originalCountField && !originalCountIsSet) update[originalCountField] = stats.count;
         if (currentCountField) update[currentCountField] = stats.count;
         if (currentBaseField) update[currentBaseField] = stats.base;
         if (overrideField && rawPct === null) update[overrideField] = effectivePct;
@@ -1290,11 +1293,12 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       // Comp Manager % is an allocation share of the team CTC base, not an extra hike on top of that base.
       const originalBudget = hasOriginalSnapshot ? savedOriginalBudget : (originalBase * pct / 100);
       const updatedBudget = stats.base * pct / 100;
-      const resolvedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
+      const savedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
         ? row.original_headcount
         : row.allocation_headcount;
-      const resolvedOriginalCount = resolvedOriginalCountValue !== null && resolvedOriginalCountValue !== undefined &&
-        String(resolvedOriginalCountValue).trim() !== "" ? n(resolvedOriginalCountValue) : stats.count;
+      const originalCountIsSet = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
+        String(savedOriginalCountValue).trim() !== "";
+      const savedOriginalCount = originalCountIsSet ? n(savedOriginalCountValue) : stats.count;
       const update = {
         ROWID: row.id,
         budget_base: stats.base,
@@ -1310,13 +1314,7 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         if (originalBaseField && (!hasOriginalSnapshot || savedOriginalBase <= 0)) {
           update[originalBaseField] = originalBase;
         }
-        const savedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
-          ? row.original_headcount
-          : row.allocation_headcount;
-        const originalCountIsSet = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
-          String(savedOriginalCountValue).trim() !== "";
-        const savedOriginalCount = originalCountIsSet ? n(savedOriginalCountValue) : stats.count;
-        if (originalCountField && !originalCountIsSet) update[originalCountField] = stats.count;
+if (originalCountField && !originalCountIsSet) update[originalCountField] = stats.count;
         if (currentCountField) update[currentCountField] = stats.count;
         if (currentBaseField) update[currentBaseField] = stats.base;
       }
@@ -1327,7 +1325,7 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         applied_budget: updatedBudget,
         current_headcount: stats.count,
         total_utilization: stats.utilized,
-        original_headcount: resolvedOriginalCount,
+        original_headcount: savedOriginalCount,
       });
     }
 
@@ -1354,6 +1352,12 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
       ? previousOrgOriginal
       : (orgPctSet ? orgOriginalBase * (1 + orgPct / 100) : 0);
     const orgUpdated = orgPctSet ? orgBase * (1 + orgPct / 100) : 0;
+    const savedOrgOriginalCountValue = master.original_headcount !== null && master.original_headcount !== undefined && String(master.original_headcount).trim() !== ""
+      ? master.original_headcount
+      : master.allocation_headcount;
+    const orgOriginalCountIsSet = savedOrgOriginalCountValue !== null && savedOrgOriginalCountValue !== undefined &&
+      String(savedOrgOriginalCountValue).trim() !== "";
+    const savedOrgOriginalCount = orgOriginalCountIsSet ? n(savedOrgOriginalCountValue) : eligibleEmployees.length;
     const orgFields = {
       ROWID: master.id,
       // Live sum of previous-appraisal CTC for eligible employees in this cycle.
@@ -1372,12 +1376,6 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         orgFields[originalBaseField] = orgOriginalBase;
       }
       if (currentBaseField) orgFields[currentBaseField] = orgBase;
-      const savedOrgOriginalCountValue = master.original_headcount !== null && master.original_headcount !== undefined && String(master.original_headcount).trim() !== ""
-        ? master.original_headcount
-        : master.allocation_headcount;
-      const orgOriginalCountIsSet = savedOrgOriginalCountValue !== null && savedOrgOriginalCountValue !== undefined &&
-        String(savedOrgOriginalCountValue).trim() !== "";
-      const savedOrgOriginalCount = orgOriginalCountIsSet ? n(savedOrgOriginalCountValue) : eligibleEmployees.length;
       if (originalCountField && !orgOriginalCountIsSet) {
         orgFields[originalCountField] = eligibleEmployees.length;
       }
