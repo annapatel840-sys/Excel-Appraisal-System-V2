@@ -110,6 +110,25 @@ function percent(value) {
   return Number(value || 0).toFixed(1) + "%";
 }
 
+// Two-decimal percentage for the summary tiles.
+function pct2(value) {
+  return Number(value || 0).toFixed(2) + "%";
+}
+
+// Budget = base x % / 100 (same rule as the Tech ED screens and the budget engine).
+function bud(base, pct) {
+  return (amount(base) * amount(pct)) / 100;
+}
+
+// Original / Updated for one Tech ED row. Updated always follows base x %.
+// A stored "calculated" figure is the original snapshot; values saved under
+// the older base x (1 + %) rule are larger than the base, so they are ignored.
+function deriveRowBudgets(base, pct, pctSet, calculated) {
+  const updated = pctSet ? bud(base, pct) : 0;
+  const original = calculated > 0 && calculated <= amount(base) + 0.5 ? calculated : updated;
+  return { original, updated };
+}
+
 function dateText(value) {
   if (!value) return "—";
   const p = String(value).split("-");
@@ -166,9 +185,9 @@ const AUDIT_COLS = [
   ["Owner", false],
   ["Old %", true],
   ["New %", true],
-  ["Budget before", true],
-  ["Budget after", true],
-  ["Changed by", false],
+  ["Budget Before", true],
+  ["Budget After", true],
+  ["Changed By", false],
   ["Reason", false],
 ];
 
@@ -182,10 +201,10 @@ function AuditTable({
     ([h, r]) => [
       h === "Owner"
         ? ownerLabel
-        : h === "Budget before"
-          ? budgetLabel + " before"
-          : h === "Budget after"
-            ? budgetLabel + " after"
+        : h === "Budget Before"
+          ? budgetLabel + " Before"
+          : h === "Budget After"
+            ? budgetLabel + " After"
             : h,
       r,
     ],
@@ -249,18 +268,19 @@ function AuditTable({
 /* =====================================================================
    HR LOGIN
    ===================================================================== */
+// [label, right-aligned, has column menu]
 const HR_COLS = [
-  ["Tech ED", false],
-  ["Budget base", true],
-  ["% applied", false],
-  ["Budget", true],
-  ["Original", true],
-  ["Updated", true],
-  ["Original count", true],
-  ["Current count", true],
-  ["Reason", false],
-  ["Update", false],
-  ["Last changed", false],
+  ["Tech ED", false, true],
+  ["Budget Base", true, true],
+  ["% Applied", false, true],
+  ["Budget", true, true],
+  ["Original", true, true],
+  ["Updated", true, true],
+  ["Original Count", true, true],
+  ["Current Count", true, true],
+  ["Reason", false, false],
+  ["Update", false, false],
+  ["Last Changed", false, false],
 ];
 
 const BUDGET_MASTER_CSS = `
@@ -312,13 +332,33 @@ const BUDGET_MASTER_CSS = `
 
 .bm-chip{align-self:flex-start;display:inline-block;background:var(--th-bg);color:var(--navy);border:1px solid var(--th-line);border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
 
-.bm-tw{border:1px solid var(--th-line);border-radius:8px;overflow:auto;max-height:58vh}
+.bm-tw{border:1px solid var(--th-line);border-radius:8px;overflow:auto;max-height:68vh}
 .bm-table{width:100%;border-collapse:collapse}
-.bm-table th{position:sticky;top:0;z-index:2;background:var(--th-bg);color:var(--navy);font-size:10.5px;font-weight:700;text-align:left;padding:9px 11px;border-bottom:1px solid var(--th-line);vertical-align:bottom;line-height:1.25;white-space:normal}
-.bm-table td{padding:8px 11px;border-bottom:1px solid #F0F1F3;white-space:nowrap;font-variant-numeric:tabular-nums}
+.bm-table th{position:sticky;top:0;z-index:4;background:var(--th-bg);color:var(--navy);font-size:10.5px;font-weight:700;text-align:left;padding:9px 11px;border-bottom:1px solid var(--th-line);vertical-align:top;line-height:1.25;white-space:normal}
+.bm-table td{padding:8px 11px;border-bottom:1px solid #F0F1F3;white-space:nowrap;vertical-align:top;font-variant-numeric:tabular-nums}
 .bm-table .bm-n{text-align:right}
-.bm-table tbody tr:nth-child(odd) td{background:var(--row-odd)}
-.bm-table tbody tr:nth-child(even) td{background:var(--row-even)}
+.bm-table tbody tr.bm-bo td{background:var(--row-odd)}
+.bm-table tbody tr.bm-be td{background:var(--row-even)}
+/* frozen first column, sticky header and Total row */
+.bm-table th:first-child,.bm-table td:first-child{min-width:150px}
+.bm-table th:first-child{left:0;z-index:6}
+.bm-table tbody tr:not(.bm-sub):not(.bm-tot) td:first-child{position:sticky;left:0;z-index:2;box-shadow:inset -1px 0 0 var(--th-line)}
+.bm-table tr.bm-tot td{position:sticky;bottom:0;z-index:3}
+.bm-table tr.bm-tot td:first-child{left:0;z-index:5}
+.bm-dd{display:inline-block;margin-left:4px;border:1px solid var(--th-line);background:#fff;border-radius:4px;font-size:9px;line-height:14px;min-width:16px;height:16px;padding:0;text-align:center;color:var(--navy);cursor:pointer;vertical-align:middle}
+.bm-table th.bm-filt .bm-dd::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#FFE066;border:1px solid #C9A400;margin-right:2px;vertical-align:middle}
+.bm-gmenu{position:fixed;z-index:60;width:240px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 24px rgba(16,42,67,.18);padding:8px;font-size:11.5px;font-weight:600;max-height:70vh;overflow:auto}
+.bm-gmenu .bm-gi{display:block;width:100%;text-align:left;background:none;border:0;padding:5px 6px;border-radius:5px;cursor:pointer;font-weight:600}
+.bm-gmenu .bm-gi:hover{background:var(--row-hover)}
+.bm-gmenu .bm-gi-check{display:flex;gap:6px;align-items:center}
+.bm-gmenu hr{border:0;border-top:1px solid var(--line);margin:6px 0}
+.bm-gmenu .bm-gl{color:var(--muted);font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;margin:2px 0 4px}
+.bm-gmenu select,.bm-gmenu input[type=text]{width:100%;border:1px solid #D1D5DB;border-radius:5px;padding:4px 6px;font-size:11.5px;margin-bottom:4px;background:#fff}
+.bm-gmenu .bm-gck{max-height:150px;overflow:auto;margin-top:2px}
+.bm-gmenu .bm-gck label{display:flex;gap:6px;align-items:center;padding:2px 4px}
+.bm-gmenu .bm-gb{display:flex;gap:6px;justify-content:flex-end;margin-top:8px}
+.bm-btn-pri{background:var(--navy);border-color:var(--navy);color:#fff}
+.bm-btn-pri:hover:not(:disabled){background:#17385a}
 .bm-table tbody tr.bm-data:hover td{background:var(--row-hover)}
 .bm-table td.bm-rl{background:var(--rl-bg)!important;color:var(--navy);font-weight:700;border-right:1px solid var(--th-line)}
 .bm-table td.bm-in{background:#FFF9DC!important}
@@ -335,6 +375,8 @@ const BUDGET_MASTER_CSS = `
 .bm-ract{white-space:nowrap}
 .bm-hbtn{border:1px solid #D1D5DB;border-radius:12px;padding:2px 9px;font-size:11px;color:#4B5563;background:#fff;cursor:pointer}
 .bm-hbtn:disabled{opacity:.4;cursor:default}
+.bm-hbtn-apply:not(:disabled){background:var(--main);color:#fff;border-color:var(--main);font-weight:700}
+.bm-hbtn-apply:hover:not(:disabled){background:#2560d4}
 .bm-hbtn-pub:not(:disabled){background:var(--navy);color:#fff;border-color:var(--navy)}
 .bm-source{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px}
 .bm-source-override{display:inline-flex;align-items:center;border-radius:5px;padding:2px 8px;font-size:11px;font-weight:700;background:#FEF6E7;color:#B7791F}
@@ -359,6 +401,116 @@ function deltaNode(from, to) {
   );
 }
 
+/* ---------- Excel-style column menu (sort, wrap, condition, value list) ---------- */
+const MENU_OPS = [
+  ["contains", "contains"],
+  ["equals", "equals"],
+  ["not", "does not equal"],
+  ["gt", "is greater than"],
+  ["lt", "is less than"],
+];
+
+function cellNumber(value) {
+  const t = String(value).replace(/[,\s%]/g, "");
+  return /^-?\d+(\.\d+)?$/.test(t) ? parseFloat(t) : NaN;
+}
+
+function compareCells(x, y) {
+  const nx = cellNumber(x);
+  const ny = cellNumber(y);
+  return !Number.isNaN(nx) && !Number.isNaN(ny) ? nx - ny : String(x).localeCompare(String(y));
+}
+
+function passesColumnFilter(filter, value) {
+  if (filter.vals && !filter.vals.includes(value)) return false;
+  if (filter.op && filter.val !== "") {
+    const a = cellNumber(value);
+    const b = cellNumber(filter.val);
+    const L = value.toLowerCase();
+    const R = filter.val.toLowerCase();
+    if (filter.op === "contains" && !L.includes(R)) return false;
+    if (filter.op === "equals" && L !== R && a !== b) return false;
+    if (filter.op === "not" && (L === R || a === b)) return false;
+    if (filter.op === "gt" && !(a > b)) return false;
+    if (filter.op === "lt" && !(a < b)) return false;
+  }
+  return true;
+}
+
+function ColumnMenu({ rect, values, filter, wrap, onSort, onWrap, onApply, onClear }) {
+  const [op, setOp] = useState(filter?.op || "");
+  const [val, setVal] = useState(filter?.val || "");
+  const [search, setSearch] = useState("");
+  const [checked, setChecked] = useState(() => new Set(filter?.vals || values));
+  const shown = values.filter((v) => v.toLowerCase().includes(search.toLowerCase()));
+  const allOn = shown.length > 0 && shown.every((v) => checked.has(v));
+  const left = Math.max(8, Math.min(rect.left, window.innerWidth - 256));
+  const top = Math.min(rect.bottom + 4, window.innerHeight - 120);
+
+  function toggleAll(on) {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      shown.forEach((v) => (on ? next.add(v) : next.delete(v)));
+      return next;
+    });
+  }
+
+  function apply() {
+    const on = values.filter((v) => checked.has(v));
+    const next = {};
+    if (on.length < values.length) next.vals = on;
+    if (op && val.trim() !== "") {
+      next.op = op;
+      next.val = val.trim();
+    }
+    onApply(next.vals || next.op ? next : null);
+  }
+
+  return (
+    <div className="bm-gmenu" data-bm-menu style={{ left, top }}>
+      <button className="bm-gi" type="button" onClick={() => onSort(1)}>Sort ↑</button>
+      <button className="bm-gi" type="button" onClick={() => onSort(-1)}>Sort ↓</button>
+      <label className="bm-gi bm-gi-check">
+        <input type="checkbox" checked={wrap} onChange={(e) => onWrap(e.target.checked)} /> Wrap text in this column
+      </label>
+      <hr />
+      <div className="bm-gl">Condition</div>
+      <select value={op} onChange={(e) => setOp(e.target.value)}>
+        <option value="">No condition</option>
+        {MENU_OPS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+      </select>
+      <input type="text" placeholder="Value" value={val} onChange={(e) => setVal(e.target.value)} />
+      <hr />
+      <input type="text" placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <div className="bm-gck">
+        <label>
+          <input type="checkbox" checked={allOn} onChange={(e) => toggleAll(e.target.checked)} /> Select all
+        </label>
+        {shown.map((v) => (
+          <label key={v}>
+            <input
+              type="checkbox"
+              checked={checked.has(v)}
+              onChange={(e) =>
+                setChecked((prev) => {
+                  const next = new Set(prev);
+                  if (e.target.checked) next.add(v); else next.delete(v);
+                  return next;
+                })
+              }
+            />{" "}
+            {v === "" ? "(blank)" : v}
+          </label>
+        ))}
+      </div>
+      <div className="bm-gb">
+        <button className="bm-btn" type="button" onClick={onClear}>Clear</button>
+        <button className="bm-btn bm-btn-pri" type="button" onClick={apply}>Apply</button>
+      </div>
+    </div>
+  );
+}
+
 function HRApplyBudget() {
   const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], techEdOwners = [], currentUser = {}, updateBudget, reload: reloadBudget, loading: budgetLoading, error: budgetError = "", budgetWarning = "" } = useBudget();
   // Access rules (permissive when accessapi is unavailable).
@@ -378,6 +530,20 @@ function HRApplyBudget() {
   const [allPct, setAllPct] = useState("");
   const [error, setError] = useState("");
   const [savingOrg, setSavingOrg] = useState(false);
+  // Column menu state: filters / sort / wrap per column index.
+  const [gridFilters, setGridFilters] = useState({});
+  const [gridSort, setGridSort] = useState(null);
+  const [gridWrap, setGridWrap] = useState({});
+  const [colMenu, setColMenu] = useState(null);
+  useEffect(() => {
+    if (!colMenu) return undefined;
+    const close = (event) => {
+      if (event.target.closest?.("[data-bm-menu]") || event.target.closest?.(".bm-dd")) return;
+      setColMenu(null);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [colMenu]);
   const [history, setHistory] = useState({});
   const [auditState, setAuditState] = useState(() => readBudgetAudit());
   useEffect(() => {
@@ -500,11 +666,8 @@ function HRApplyBudget() {
       const employeeId = normalizeOwnerKey(
         employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text || "",
       );
-      const inAppraisalSheet = employee.in_appraisal_sheet === true ||
-        String(employee.in_appraisal_sheet ?? "").trim().toLowerCase() === "true" ||
-        String(employee.in_appraisal_sheet ?? "").trim() === "1";
       const employeeCountKey = key + "::" + (employeeId || normalizeOwnerKey(employee.row_id || employee.ROWID || employee.id || ""));
-      if (eligible && inAppraisalSheet && !countedEligibleEmployees.has(employeeCountKey)) {
+      if (eligible && !countedEligibleEmployees.has(employeeCountKey)) {
         employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
         countedEligibleEmployees.add(employeeCountKey);
       }
@@ -540,29 +703,31 @@ function HRApplyBudget() {
         if (existing) {
           existing.pct = amount(row.percentage);
           existing.base = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== "" ? amount(row.budget_base) : existing.base;
-          existing.original = amount(row.calculated_budget);
-          existing.updated = amount(row.applied_budget) || existing.original;
+          existing.pctSet = row.percentage !== null && row.percentage !== undefined && String(row.percentage).trim() !== "";
+          Object.assign(existing, deriveRowBudgets(existing.base, existing.pct, existing.pctSet, amount(row.calculated_budget)));
           const originalCountValue = row.original_headcount ?? row.allocation_headcount;
           const currentCountValue = row.current_headcount ?? row.headcount;
           existing.team0 = amount(originalCountValue) > 0
             ? amount(originalCountValue)
             : (existing.team0 || employeeCounts.get(key) || 0);
-          // Current count is live, not a potentially stale saved count.
-          existing.team = employeeCounts.get(key) || 0;
+          existing.team = amount(currentCountValue) > 0
+            ? amount(currentCountValue)
+            : (employeeCounts.get(key) || 0);
           existing.id = row.id || existing.id;
         }
         return;
       }
       const calculated = amount(row.calculated_budget);
-      const applied = amount(row.applied_budget) || calculated;
       const assignedCount = employeeCounts.get(key) || 0;
       const originalCountValue = row.original_headcount ?? row.allocation_headcount;
       const currentCountValue = row.current_headcount ?? row.headcount;
       const originalCount = amount(originalCountValue) > 0 ? amount(originalCountValue) : assignedCount;
-      const currentCount = assignedCount;
+      const currentCount = amount(currentCountValue) > 0 ? amount(currentCountValue) : assignedCount;
       const storedBase = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== ""
         ? amount(row.budget_base)
         : null;
+      const rowPctSet = row.percentage !== null && row.percentage !== undefined && String(row.percentage).trim() !== "";
+      const rowBase = storedBase !== null ? storedBase : (employeeBases.get(key) || (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated));
       nextRows.push({
         id: row.id || "tech-ed-" + key,
         canonicalKey: key,
@@ -571,9 +736,8 @@ function HRApplyBudget() {
         pctSet: row.percentage !== null && row.percentage !== undefined && String(row.percentage).trim() !== "",
         // budgetmasterapi calculates this base from the cycle's eligible roster;
         // prefer it over the all-employee API roster to avoid inflating Org Base.
-        base: storedBase !== null ? storedBase : (employeeBases.get(key) || (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated)),
-        original: calculated,
-        updated: applied,
+        base: rowBase,
+        ...deriveRowBudgets(rowBase, amount(row.percentage), rowPctSet, calculated),
         team0: originalCount,
         team: currentCount,
         lastChanged: "—",
@@ -593,8 +757,8 @@ function HRApplyBudget() {
         pct: amount(selectedMaster?.budget_percentage),
         pctSet: false,
         base: employeeBases.get(key) || 0,
-        original: selectedMaster?.budget_percentage_is_set ? (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100) : 0,
-        updated: selectedMaster?.budget_percentage_is_set ? (employeeBases.get(key) || 0) * (1 + amount(selectedMaster?.budget_percentage) / 100) : 0,
+        original: selectedMaster?.budget_percentage_is_set ? bud(employeeBases.get(key) || 0, selectedMaster?.budget_percentage) : 0,
+        updated: selectedMaster?.budget_percentage_is_set ? bud(employeeBases.get(key) || 0, selectedMaster?.budget_percentage) : 0,
         team0: employeeCounts.get(key) || 0,
         team: employeeCounts.get(key) || 0,
         lastChanged: "—",
@@ -643,9 +807,7 @@ function HRApplyBudget() {
   const orgOriginalCountValue = selectedMaster?.original_headcount ?? selectedMaster?.allocation_headcount;
   const orgCurrentCountValue = selectedMaster?.current_headcount ?? selectedMaster?.headcount;
   const orgOriginalCount = amount(orgOriginalCountValue) > 0 ? amount(orgOriginalCountValue) : total.team0;
-  // Current headcount must always reflect the live eligible Appraisal Sheet roster;
-  // persisted current_headcount may be stale until the next backend calculation.
-  const orgCurrentCount = total.team;
+  const orgCurrentCount = amount(orgCurrentCountValue) > 0 ? amount(orgCurrentCountValue) : total.team;
 
   // Saved Tech-Ed percentages remain independent of future Org % changes.
   const previewPct = (row) => {
@@ -656,21 +818,25 @@ function HRApplyBudget() {
     return amount(row.pct);
   };
 
-  const previewBudget = (row) => row.base * (1 + previewPct(row) / 100);
+  const previewBudget = (row) => bud(row.base, previewPct(row));
   // The API exposes org_budget_base as the LIVE eligible prior-cycle CTC sum.
   // calculated_budget is the original budget captured on the first applied Org %;
   // do not invalidate that snapshot just because payroll/eligibility changed later.
-  const savedOrgBase = amount(selectedMaster?.org_budget_base);
   const savedOrgOriginal = amount(selectedMaster?.calculated_budget);
-  const hasValidOrgSnapshot = Boolean(selectedMaster?.budget_percentage_is_set) &&
-    savedOrgOriginal >= 0;
+  const orgApplied = Boolean(selectedMaster?.budget_percentage_is_set);
+  const savedOrgPct = amount(selectedMaster?.budget_percentage);
   const orgBase = orgBaseFromRoster;
-  const effectiveOrgPct = orgPct === "" ? amount(selectedMaster?.budget_percentage) : amount(orgPct);
-  const orgPctEntered = Boolean(selectedMaster?.budget_percentage_is_set) || orgPct !== "";
-  const previewOrgBudget = orgPctEntered ? orgBase * (1 + effectiveOrgPct / 100) : 0;
+  const effectiveOrgPct = orgPct === "" ? savedOrgPct : amount(orgPct);
+  const orgPctEntered = orgApplied || orgPct !== "";
+  // Org budget = org base x Org % / 100.
+  const previewOrgBudget = orgPctEntered ? bud(orgBase, effectiveOrgPct) : 0;
+  const savedOrgUpdated = orgApplied ? bud(orgBase, savedOrgPct) : 0;
+  // Original = snapshot from the first applied Org %. Figures saved under the
+  // older base x (1 + %) rule are above the base and are not used.
+  const hasValidOrgSnapshot = orgApplied && savedOrgOriginal > 0 && savedOrgOriginal <= orgBase + 0.5;
   const originalOrgBudget = hasValidOrgSnapshot
     ? savedOrgOriginal
-    : (orgPctEntered ? orgBase * (1 + effectiveOrgPct / 100) : 0);
+    : (orgApplied ? savedOrgUpdated : previewOrgBudget);
   const orgPending = orgPct !== "" && !!selectedMaster && amount(orgPct) !== Number(selectedMaster.budget_percentage || 0);
   const draftCount = rows.filter((row) =>
     Object.prototype.hasOwnProperty.call(pending, row.name) &&
@@ -703,8 +869,8 @@ function HRApplyBudget() {
     const orgBase = orgBaseFromRoster;
     const originalBudget = hasValidOrgSnapshot
       ? savedOrgOriginal
-      : orgBase * (1 + org / 100);
-    const updatedBudget = orgBase * (1 + org / 100);
+      : bud(orgBase, org);
+    const updatedBudget = bud(orgBase, org);
     const previousOrgPct = amount(selectedMaster?.budget_percentage);
     const previousOrgBudget = amount(selectedMaster?.applied_budget);
     const actor = String(currentUser.name || currentUser.email || "Unknown user");
@@ -743,8 +909,8 @@ function HRApplyBudget() {
           appraiser_tech_ed_id: String(row.canonicalKey || row.name || "").trim().split(/\s+-\s+/)[0].slice(0, 20),
           percentage: org,
           budget_base: row.base,
-          calculated_budget: row.original || row.base * (1 + org / 100),
-          applied_budget: row.base * (1 + org / 100),
+          calculated_budget: row.original || bud(row.base, org),
+          applied_budget: bud(row.base, org),
         },
         "distribution",
         false,
@@ -823,7 +989,7 @@ function HRApplyBudget() {
     }
 
     const org = orgPct !== "" ? amount(orgPct) : amount(selectedMaster?.budget_percentage);
-    const available = orgBaseFromRoster * (1 + org / 100);
+    const available = bud(orgBaseFromRoster, org);
     if (previewTotal > available + 0.5) {
       setError(
         "Not applied. Tech-Ed Updated Budgets total " + money(previewTotal) +
@@ -896,7 +1062,7 @@ function HRApplyBudget() {
       const publishedAt = new Date();
       await Promise.all(toPublish.map((row) => {
         const pct = Number(staged[row.name]);
-        const budget = row.base * (1 + pct / 100);
+        const budget = bud(row.base, pct);
         return updateBudget(
           row.id && !String(row.id).startsWith("tech-ed-") ? row.id : "",
           {
@@ -923,7 +1089,7 @@ function HRApplyBudget() {
           from: amount(row.pct),
           to: pct,
           before: amount(row.updated),
-          after: row.base * (1 + pct / 100),
+          after: bud(row.base, pct),
           by: actor,
           reason: stagedReasons[row.name] || "Budget percentage published",
           cycleId,
@@ -956,19 +1122,70 @@ function HRApplyBudget() {
     }
   }
 
-  const displayedOrgUpdated = orgPending
-    ? previewOrgBudget
-    : amount(selectedMaster?.applied_budget) || previewOrgBudget;
+  // Updated = the saved Org budget; a pending Org % shows as "After pending".
+  const displayedOrgUpdated = savedOrgUpdated;
+  // Text shown in each filterable column (used by the column menu).
+  const cellText = (row, col) => {
+    switch (col) {
+      case 0: return String(row.name || "");
+      case 1: return money(row.base);
+      case 2: return String(previewPct(row));
+      case 3: return money(previewBudget(row));
+      case 4: return money(row.original);
+      case 5: return money(row.updated);
+      case 6: return String(row.team0);
+      case 7: return String(row.team);
+      default: return "";
+    }
+  };
+  const visibleRows = (() => {
+    const filterEntries = Object.entries(gridFilters);
+    let list = rows.filter((row) =>
+      filterEntries.every(([col, f]) => passesColumnFilter(f, cellText(row, Number(col)))),
+    );
+    if (gridSort) {
+      list = [...list].sort(
+        (a, b) => compareCells(cellText(a, gridSort.c), cellText(b, gridSort.c)) * gridSort.d,
+      );
+    }
+    return list;
+  })();
+  const visibleTotal = visibleRows.reduce(
+    (s2, r) => ({
+      base: s2.base + r.base,
+      budget: s2.budget + previewBudget(r),
+      original: s2.original + r.original,
+      updated: s2.updated + r.updated,
+      team0: s2.team0 + r.team0,
+      team: s2.team + r.team,
+    }),
+    { base: 0, budget: 0, original: 0, updated: 0, team0: 0, team: 0 },
+  );
+  function openColMenu(event, col) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    setColMenu((current) => (current && current.c === col ? null : {
+      c: col,
+      rect: { left: rect.left, bottom: rect.bottom },
+      values: [...new Set(rows.map((row) => cellText(row, col)))].sort(compareCells),
+    }));
+  }
+
+  const wrapStyle = (col) => (gridWrap[col] === false ? { whiteSpace: "nowrap" } : { whiteSpace: "normal" });
   const displayedUtilized = amount(selectedMaster?.budget_utilized ?? selectedMaster?.total_utilization);
-  const availableAfterAllocation = displayedOrgUpdated - previewTotal;
+  // Allotted = Tech ED budgets already applied (saved or applied-not-published).
+  const appliedTotal = rows.reduce((sum, row) => {
+    const appliedPct = Object.prototype.hasOwnProperty.call(staged, row.name)
+      ? Number(staged[row.name])
+      : (row.pctSet ? amount(row.pct) : 0);
+    return sum + bud(row.base, appliedPct);
+  }, 0);
+  const availableAfterAllocation = (orgPending ? previewOrgBudget : displayedOrgUpdated) - previewTotal;
 
   // Presentation-only flags. The Tech-Ed list is shown once an Org % has been saved.
-  const orgApplied = Boolean(selectedMaster?.budget_percentage_is_set);
   const cycleLabel = cycleLoading
     ? "Loading…"
     : activeCycle?.name || selectedMaster?.appraisal_cycle_name || "No active cycle";
 
-  const totalsBudget = previewTotal;
   const notPublishedCount = rows.filter((row) => !row.pctSet).length;
   const stripMessage = orgPending
     ? "Org % change not applied yet (use Apply org %)"
@@ -1095,26 +1312,32 @@ function HRApplyBudget() {
           </div>
           <div className="bm-tile">
             <small>Original budget</small>
-            <b>{orgPctEntered ? money(originalOrgBudget) : "—"}</b>
+            <b>{orgApplied ? money(originalOrgBudget) : "—"}</b>
           </div>
           <div className="bm-tile bm-tile-hl">
             <small>Updated budget</small>
-            <b>{orgPctEntered ? money(displayedOrgUpdated) : "—"}</b>
-            {orgPctEntered ? (orgPending ? <em className="bm-mut">Preview — not yet saved</em> : deltaNode(originalOrgBudget, displayedOrgUpdated)) : null}
+            <b>{orgApplied ? money(displayedOrgUpdated) : "—"}</b>
+            {orgApplied ? deltaNode(originalOrgBudget, displayedOrgUpdated) : null}
+            {orgApplied && orgPending && Math.round(previewOrgBudget) !== Math.round(displayedOrgUpdated) ? (
+              <em className="bm-mut">After pending: {money(previewOrgBudget)}</em>
+            ) : null}
           </div>
           <div className="bm-tile">
             <small>Allotted to Tech EDs</small>
-            <b>{orgApplied && displayedOrgUpdated > 0 ? percent((previewTotal / displayedOrgUpdated) * 100) : "—"}</b>
+            <b>{orgApplied && displayedOrgUpdated > 0 ? pct2((appliedTotal / displayedOrgUpdated) * 100) : "—"}</b>
             {orgApplied ? (
               <em className="bm-mut">
-                {money(previewTotal)} of {money(displayedOrgUpdated)}
+                {money(appliedTotal)} of {money(displayedOrgUpdated)}
+                {Math.round(previewTotal) !== Math.round(appliedTotal) && previewOrgBudget > 0
+                  ? " · After pending: " + pct2((previewTotal / previewOrgBudget) * 100)
+                  : ""}
                 {availableAfterAllocation < -0.5 ? " · over by " + money(-availableAfterAllocation) : ""}
               </em>
             ) : null}
           </div>
           <div className="bm-tile">
             <small>Budget utilised</small>
-            <b>{orgApplied && displayedOrgUpdated > 0 ? percent((displayedUtilized / displayedOrgUpdated) * 100) : "—"}</b>
+            <b>{orgApplied && displayedOrgUpdated > 0 ? pct2((displayedUtilized / displayedOrgUpdated) * 100) : "—"}</b>
             {orgApplied && displayedOrgUpdated > 0 ? <em className="bm-mut">{money(displayedUtilized)} of {money(displayedOrgUpdated)}</em> : null}
           </div>
           <div className="bm-tile">
@@ -1129,13 +1352,25 @@ function HRApplyBudget() {
           <table className="bm-table">
             <thead>
               <tr>
-                {HR_COLS.map(([h, right]) => (
-                  <th key={h} className={right ? "bm-n" : ""}>{h}</th>
+                {HR_COLS.map(([h, right, menu], i) => (
+                  <th key={h} className={(right ? "bm-n" : "") + (gridFilters[i] ? " bm-filt" : "")}>
+                    {h}
+                    {menu ? (
+                      <button
+                        type="button"
+                        className="bm-dd"
+                        aria-label={h + " column menu"}
+                        onClick={(e) => openColMenu(e, i)}
+                      >
+                        {gridSort && gridSort.c === i ? (gridSort.d > 0 ? "↑" : "↓") : "▾"}
+                      </button>
+                    ) : null}
+                  </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {orgApplied && rows.length ? rows.map((r) => {
+              {orgApplied && rows.length ? visibleRows.map((r, rowIdx) => {
                 const p = previewPct(r);
                 const changing = Number(p) !== r.pct;
                 const hasPending = Object.prototype.hasOwnProperty.call(pending, r.name);
@@ -1151,12 +1386,12 @@ function HRApplyBudget() {
                   : (!r.pctSet ? "No % yet" : "");
                 return (
                   <FragmentRow key={r.name}>
-                    <tr className={"bm-data" + (hasPending ? " bm-edrow" : "")}>
-                      <td className="bm-rl">
+                    <tr className={"bm-data " + (rowIdx % 2 ? "bm-be" : "bm-bo") + (hasPending ? " bm-edrow" : "")}>
+                      <td className="bm-rl" style={wrapStyle(0)}>
                         {r.name}
                         {tag ? <> <span className="bm-tag">{tag}</span></> : null}
                       </td>
-                      <td className="bm-n">{money(r.base)}</td>
+                      <td className="bm-n" style={wrapStyle(1)}>{money(r.base)}</td>
                       <td className="bm-in">
                         <div className="bm-pin-cell">
                           <input
@@ -1180,11 +1415,11 @@ function HRApplyBudget() {
                           </div>
                         ) : null}
                       </td>
-                      <td className="bm-n bm-calc">{money(previewBudget(r))}</td>
-                      <td className="bm-n">{money(r.original)}</td>
-                      <td className="bm-n">{money(r.updated)}</td>
-                      <td className="bm-n">{r.team0}</td>
-                      <td className="bm-n">{r.team}</td>
+                      <td className="bm-n bm-calc" style={wrapStyle(3)}>{money(previewBudget(r))}</td>
+                      <td className="bm-n" style={wrapStyle(4)}>{money(r.original)}</td>
+                      <td className="bm-n" style={wrapStyle(5)}>{money(r.updated)}</td>
+                      <td className="bm-n" style={wrapStyle(6)}>{r.team0}</td>
+                      <td className="bm-n" style={wrapStyle(7)}>{r.team}</td>
                       <td>
                         <input
                           type="text"
@@ -1200,7 +1435,7 @@ function HRApplyBudget() {
                       <td className="bm-ract">
                         <button
                           type="button"
-                          className="bm-hbtn"
+                          className="bm-hbtn bm-hbtn-apply"
                           disabled={!canConfig || !hasPending || savingOrg}
                           onClick={() => apply(r.name)}
                         >
@@ -1249,13 +1484,13 @@ function HRApplyBudget() {
               {orgApplied && rows.length ? (
                 <tr className="bm-tot">
                   <td>Total</td>
-                  <td className="bm-n">{money(total.base)}</td>
+                  <td className="bm-n">{money(visibleTotal.base)}</td>
                   <td></td>
-                  <td className="bm-n">{money(totalsBudget)}</td>
-                  <td className="bm-n">{money(total.original)}</td>
-                  <td className="bm-n">{money(total.updated)}</td>
-                  <td className="bm-n">{total.team0}</td>
-                  <td className="bm-n">{total.team}</td>
+                  <td className="bm-n">{money(visibleTotal.budget)}</td>
+                  <td className="bm-n">{money(visibleTotal.original)}</td>
+                  <td className="bm-n">{money(visibleTotal.updated)}</td>
+                  <td className="bm-n">{visibleTotal.team0}</td>
+                  <td className="bm-n">{visibleTotal.team}</td>
                   <td></td>
                   <td></td>
                   <td></td>
@@ -1264,6 +1499,30 @@ function HRApplyBudget() {
             </tbody>
           </table>
         </div>
+
+        {colMenu ? (
+          <ColumnMenu
+            key={colMenu.c}
+            rect={colMenu.rect}
+            values={colMenu.values}
+            filter={gridFilters[colMenu.c]}
+            wrap={gridWrap[colMenu.c] !== false}
+            onSort={(d) => { setGridSort({ c: colMenu.c, d }); setColMenu(null); }}
+            onWrap={(on) => setGridWrap((w) => ({ ...w, [colMenu.c]: on }))}
+            onApply={(f) => {
+              setGridFilters((cur) => {
+                const next = { ...cur };
+                if (f) next[colMenu.c] = f; else delete next[colMenu.c];
+                return next;
+              });
+              setColMenu(null);
+            }}
+            onClear={() => {
+              setGridFilters((cur) => { const next = { ...cur }; delete next[colMenu.c]; return next; });
+              setColMenu(null);
+            }}
+          />
+        ) : null}
 
         <div className="bm-foot">
           {!orgApplied
@@ -1453,7 +1712,7 @@ export function BudgetMasterPage() {
               onClick={() => setTab("apply")}
               className={tabClass(tab === "apply")}
             >
-              Apply budget
+              Apply Budget
             </button>
             {canAudit && (
               <button
@@ -1463,7 +1722,7 @@ export function BudgetMasterPage() {
                 onClick={() => setTab("audit")}
                 className={tabClass(tab === "audit")}
               >
-                Audit trail
+                Audit Trail
               </button>
             )}
           </div>
