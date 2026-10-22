@@ -29,6 +29,8 @@ const COLORS = {
 };
 
 const fmtCr = (v) => `₹ ${(v / 1e7).toFixed(2)} Cr`;
+// Full amount in Indian grouping, e.g. ₹ 1,57,00,000 (used for the budget cards).
+const fmtFull = (v) => `₹ ${Math.round(Number(v) || 0).toLocaleString("en-IN")}`;
 const fmtL = (v) => `₹ ${(v / 1e5).toFixed(2)} L`;
 const utilColor = (u) => (u > 100 ? "#cf1322" : u > 90 ? "#d46b08" : "#389e0d");
 
@@ -139,12 +141,12 @@ export function Dashboard() {
     budget: [
       {
         label: "Budget consumed",
-        value: fmtCr(budget.consumed),
+        value: fmtFull(budget.consumed),
         sub: "Hike + PB + RB",
       },
       {
         label: "Budget allocated",
-        value: fmtCr(budget.allocated),
+        value: fmtFull(budget.allocated),
         sub: budget.allocatedIsEstimate
           ? "Estimate — Budget Master unavailable"
           : "From Budget Master",
@@ -154,7 +156,7 @@ export function Dashboard() {
         value: `${budget.utilisation.toFixed(1)}%`,
         sub:
           budget.utilisation > 100
-            ? `Over by ${fmtCr(budget.consumed - budget.allocated)}`
+            ? `Over by ${fmtFull(budget.consumed - budget.allocated)}`
             : "Within budget",
         color: utilColor(budget.utilisation),
       },
