@@ -1032,7 +1032,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // Prefer confirmed schema metadata, but do not silently skip writes when
     // Catalyst getAllColumns is unavailable or returns unexpected names.
     const knownField = columns ? candidates.find((candidate) => columns.has(candidate)) : "";
-    const fieldsToTry = knownField ? [knownField] : candidates;
+    const fieldsToTry = knownField
+      ? [knownField, ...candidates.filter((candidate) => candidate !== knownField)]
+      : candidates;
     let lastError = null;
     for (const field of fieldsToTry) {
       try {
