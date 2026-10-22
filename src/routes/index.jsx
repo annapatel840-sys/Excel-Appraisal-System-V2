@@ -98,7 +98,7 @@ export function Dashboard() {
 
   const budget = useMemo(
     () => ({
-      ...budgetTotals(appraisalRows, sharedAllocated),
+      ...budgetTotals(appraisalRows, sharedAllocated, !allocatedIsEstimate),
       allocatedIsEstimate,
     }),
     [rows, sharedAllocated, allocatedIsEstimate],
