@@ -1236,11 +1236,17 @@ const BulkOperations = forwardRef(function BulkOperations(
     const s = sums(list, over);
     let bud, used, tpb;
     if (sb) {
+      // The /budget response may omit some totals; a missing one counts as 0
+      // instead of turning every figure into NaN.
+      const sbBase = Number(sb.base) || 0,
+        sbUpdated = Number(sb.updated) || 0,
+        sbUsed = Number(sb.used) || 0,
+        sbTpb = Number(sb.tpb) || 0;
       const z = sb0 || sums(list, null),
-        ratio = sb.base ? sb.updated / sb.base : 0;
-      bud = sb.updated + (s.base - z.base) * ratio;
-      used = sb.used + (s.used - z.used);
-      tpb = sb.tpb + (s.tpb - z.tpb);
+        ratio = sbBase ? sbUpdated / sbBase : 0;
+      bud = sbUpdated + (s.base - z.base) * ratio;
+      used = sbUsed + (s.used - z.used);
+      tpb = sbTpb + (s.tpb - z.tpb);
     } else {
       bud = 0.35 * s.base;
       used = s.used;
@@ -1457,6 +1463,11 @@ const BulkOperations = forwardRef(function BulkOperations(
       n,
       before: budgetOf(scope, null),
       after: budgetOf(scope, over),
+      delta: (() => {
+        const a = sums(scope, over),
+          z = sums(scope, null);
+        return { used: a.used - z.used, tpb: a.tpb - z.tpb };
+      })(),
       rules: JSON.parse(JSON.stringify(rules)),
       text: ruleText(rules),
     };
@@ -1484,15 +1495,16 @@ const BulkOperations = forwardRef(function BulkOperations(
 
   const b0Raw = budgetOf(scope, null),
     bPvRaw = pv ? pv.after : b0Raw;
-  // HR: header = the Appraisal Sheet's Budget Allocated / Utilisation /
-  // Utilisation incl. Target PB. A preview moves them by the change it makes.
-  const hdrOf = (raw) => {
-    if (!sheetHdr) return raw;
-    const used = sheetHdr.used + (raw.used - b0Raw.used);
-    const tpb = sheetHdr.tpb + (raw.tpb - b0Raw.tpb);
+  // HR: the header IS the Appraisal Sheet's Budget Allocated / Utilisation /
+  // Utilisation incl. Target PB, read from the sheet rows + Budget Master.
+  // Nothing from this screen's /budget call is used. A preview only adds the
+  // change it makes to those rows.
+  const hdrOf = (d) => {
+    if (!sheetHdr) return null;
+    const used = sheetHdr.used + (d ? d.used : 0);
+    const tpb = sheetHdr.tpb + (d ? d.tpb : 0);
     const bud = sheetHdr.allocated;
     return {
-      ...raw,
       budget: bud,
       used,
       tpb,
@@ -1500,8 +1512,8 @@ const BulkOperations = forwardRef(function BulkOperations(
       utilT: bud ? ((used + tpb) / bud) * 100 : 0,
     };
   };
-  const b0 = hdrOf(b0Raw),
-    bPv = hdrOf(bPvRaw);
+  const b0 = hdrOf(null) || b0Raw,
+    bPv = (pv && hdrOf(pv.delta)) || bPvRaw;
 
   /* ---------- grid data ---------- */
   const colVal = (e, k) => {
