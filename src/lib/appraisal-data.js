@@ -94,7 +94,7 @@ const LAST = [
 // CALCULATIONS
 //
 //   Total of PB            = Allocated PB + New PB
-//   Total Bonus ("Total Bonu - PB and RB") = PB + New RB   (joining bonus is one-time, not here)
+//   Total Bonus ("Total Bonus PB and RB") = PB + New RB   (joining bonus is one-time, not here)
 //   New Base Salary        = Current Base + Hike Amount    (next year's base, also Total CTC)
 //   Total Rewards          = New Base Salary + Total Bonus (column "Total Rewards")
 //   Current Rewards        = RB to be paid + PB to be paid (what is being paid now)
@@ -106,7 +106,7 @@ const LAST = [
 export const totalOfPB = (r) =>
   Number(r.allocatedPBAmount || 0) + Number(r.newPBToBeOffered || 0);
 
-// Total Bonu - PB and RB column = PB + RB (auto-calculated, not editable).
+// Total Bonus PB and RB column = PB + RB (auto-calculated, not editable).
 export const totalBonus = (r) =>
   Number(r.allocatedPBAmount || 0) + Number(r.newRB || 0);
 
@@ -365,7 +365,7 @@ export const COLUMNS = [
   },
   {
     key: "totalBonus",
-    label: "Total Bonu - PB and RB",
+    label: "Total Bonus PB and RB",
     type: "currency",
     editable: false,
     computed: true,
