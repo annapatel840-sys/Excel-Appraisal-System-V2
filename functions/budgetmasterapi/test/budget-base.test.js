@@ -234,6 +234,9 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(Number(initialTeam.original_headcount), 2);
     const initialComp = initial.json.compManager.find((row) => row.comp_manager === 'C1');
     assert.strictEqual(Number(initialComp.original_headcount), 2);
+    const originalOrgBudget = initial.json.master[0].calculated_budget;
+    const originalTechBudget = initialTeam.calculated_budget;
+    const originalCompBudget = initialComp.calculated_budget;
 
     store.tables.Eligibility_List.find((row) => row.emp_id === 'E2').eligibility_status = 'Not Eligible';
     const changed = await get(api);
@@ -246,6 +249,12 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const changedComp = changed.json.compManager.find((row) => row.comp_manager === 'C1');
     assert.strictEqual(Number(changedComp.original_headcount), 2);
     assert.strictEqual(Number(changedComp.current_headcount), 1);
+    assert.strictEqual(changed.json.master[0].calculated_budget, originalOrgBudget, 'Org Original Budget remains fixed when the roster changes');
+    assert.strictEqual(changed.json.master[0].applied_budget, 1080000, 'Org Updated Budget follows the current eligible roster');
+    assert.strictEqual(changedTeam.calculated_budget, originalTechBudget, 'Tech-Ed Original Budget remains fixed');
+    assert.strictEqual(changedTeam.applied_budget, 1080000, 'Tech-Ed Updated Budget follows the current eligible roster');
+    assert.strictEqual(changedComp.calculated_budget, originalCompBudget, 'Comp Manager Original Budget remains fixed');
+    assert.strictEqual(changedComp.applied_budget, 80000, 'Comp Manager Updated Budget follows the current eligible roster');
   });
 
   await t('cycle-ineligible employees are excluded from org and Tech-ED bases', async () => {
