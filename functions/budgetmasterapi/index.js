@@ -99,9 +99,11 @@ function mapDistribution(row) {
     original_base: n(value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base")),
     current_base: n(value(row, "current_base")),
-    original_headcount: value(row, "original_headcount") !== "" && value(row, "original_headcount") !== null && value(row, "original_headcount") !== undefined
-      ? value(row, "original_headcount")
-      : value(row, "allocation_headcount"),
+    // Prefer the legacy allocation-time snapshot if it exists, because
+    // original_headcount may already have been overwritten by older code.
+    original_headcount: value(row, "allocation_headcount") !== "" && value(row, "allocation_headcount") !== null && value(row, "allocation_headcount") !== undefined
+      ? value(row, "allocation_headcount")
+      : value(row, "original_headcount"),
     allocation_headcount: value(row, "allocation_headcount"),
     current_headcount: value(row, "current_headcount") !== "" && value(row, "current_headcount") !== null && value(row, "current_headcount") !== undefined
       ? value(row, "current_headcount")
