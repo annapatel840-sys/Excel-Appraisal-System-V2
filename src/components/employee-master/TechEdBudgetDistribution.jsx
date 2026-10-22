@@ -509,7 +509,7 @@ export function TechEdBudgetDistribution() {
         // count always reflects the current eligible Appraisal Sheet roster.
         team0: live.original_headcount !== null && live.original_headcount !== undefined && String(live.original_headcount).trim() !== ""
           ? num(live.original_headcount)
-          : stats.count,
+          : (live.headcount !== null && live.headcount !== undefined && String(live.headcount).trim() !== "" ? num(live.headcount) : stats.count),
         team: stats.count,
         original, updated, liveId: live.id,
         liveCalculated: original, liveApplied: updated,
@@ -537,7 +537,7 @@ export function TechEdBudgetDistribution() {
   // Original headcount is the allocation-time snapshot stored by HR; current
   // headcount is always recomputed from the current Appraisal Sheet roster.
   const currentTeamCount = allTeam.length;
-  const savedTeamCount = liveTech?.original_headcount;
+  const savedTeamCount = liveTech?.original_headcount !== null && liveTech?.original_headcount !== undefined && String(liveTech.original_headcount).trim() !== "" ? liveTech.original_headcount : liveTech?.headcount;
   const team0 = savedTeamCount !== null && savedTeamCount !== undefined && String(savedTeamCount).trim() !== ""
     ? num(savedTeamCount)
     : currentTeamCount;
