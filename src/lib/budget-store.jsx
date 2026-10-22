@@ -399,6 +399,7 @@ export function BudgetProvider({ children }) {
         updated,
         utilized,
         remaining: updated - utilized,
+        hasBudgetMaster: true,
       };
     }
     // Backwards-compatible fallback for installations without a Budget_Master row.
@@ -410,7 +411,7 @@ export function BudgetProvider({ children }) {
         utilized: sum.utilized + row.budget_utilized,
         remaining: sum.remaining + row.budget_remaining,
       }),
-      { base: 0, additional: 0, updated: 0, utilized: 0, remaining: 0 },
+      { base: 0, additional: 0, updated: 0, utilized: 0, remaining: 0, hasBudgetMaster: false },
     );
   }, [rows, budgetMasterRows, activeBudgetCycleId]);
 
