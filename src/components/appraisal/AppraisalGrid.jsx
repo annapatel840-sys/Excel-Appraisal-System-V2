@@ -57,7 +57,7 @@ const PAY_FLOOR_FIELDS = {
 };
 
 // Message for a PB / RB value below its floor, or "" when it is allowed.
-const payFloorMessage = (row, colKey, raw) => {
+const payFloorMessage = (row, colKey, raw, colLabel) => {
   const payFloor = PAY_FLOOR_FIELDS[colKey];
   if (!payFloor) return "";
   const floor = Number(row[payFloor.floorKey]) || 0;
@@ -66,7 +66,7 @@ const payFloorMessage = (row, colKey, raw) => {
   const stored = Number(row[colKey]) || 0;
   // A cell left as it was is not an edit, so it is never rejected.
   return entered !== stored && entered < floor
-    ? `Below ${payFloor.floorLabel} (${formatHistoryNumber(floor)}) — not allowed`
+    ? `${colLabel} can't be less than ${payFloor.floorLabel} (${formatHistoryNumber(floor)}). Not saved.`
     : "";
 };
 
@@ -2781,7 +2781,7 @@ export function AppraisalGrid({
       }
 
       if (PAY_FLOOR_FIELDS[col.key] && isNumericType(col.type)) {
-        const message = payFloorMessage(row, col.key, raw);
+        const message = payFloorMessage(row, col.key, raw, col.label);
         setPayError(`${row.id}:${col.key}`, message);
 
         // Not saved: the field keeps its old value and shows the red message.
@@ -3568,21 +3568,19 @@ export function AppraisalGrid({
       ? Number(row[payFloorCfg.floorKey]) || 0
       : 0;
     const isCellActive = active === `${rowIndex}:${col.key}`;
-    // One line under the field: red when the value is not allowed, otherwise
-    // the muted "Preloaded" hint, shown only while the cursor is in this cell.
-    const payNote =
-      payError ||
-      (isCellActive && payFloorValue > 0
+    // Error: red text in the cell. Otherwise the muted note floats under the
+    // field only while the cursor is in this cell (it never moves the row).
+    const payNote = payError;
+    const preloadedNote =
+      !payError && isCellActive && payFloorValue > 0
         ? `Preloaded · less than this → ${formatHistoryNumber(payFloorValue)} paid`
-        : "");
+        : "";
 
     return (
       <div
         className={cn(
-          "relative flex min-h-[38px] w-full px-1.5",
-          // With a note: 11px above the field and 11px for the note below it,
-          // so the row grows evenly and the other cells line up with the field.
-          payNote ? "flex-col justify-start pb-0 pt-[11px]" : "items-center py-1",
+          "relative flex min-h-[38px] w-full px-1.5 py-1",
+          payNote ? "flex-col justify-center gap-0.5" : "items-center",
         )}
       >
         {/* <input
@@ -3683,7 +3681,7 @@ export function AppraisalGrid({
 
             // PB / RB: show the red field + message live while typing.
             if (PAY_FLOOR_FIELDS[col.key]) {
-              setPayError(cellKey, payFloorMessage(row, col.key, value));
+              setPayError(cellKey, payFloorMessage(row, col.key, value, col.label));
             }
 
             if (
@@ -3753,11 +3751,8 @@ export function AppraisalGrid({
 
         {payNote && (
           <span
-            role={payError ? "alert" : undefined}
-            className={cn(
-              "block h-[11px] whitespace-nowrap text-[10.5px] leading-[11px]",
-              payError ? "font-semibold text-[#b42318]" : "text-[#5f7482]",
-            )}
+            role="alert"
+            className="block whitespace-nowrap text-[10.5px] font-bold leading-tight text-[#b42318]"
           >
             {payNote}
           </span>
@@ -3852,7 +3847,11 @@ export function AppraisalGrid({
                 maxWidth: width,
                 minHeight: CELL_MIN_HEIGHT,
                 boxSizing: "border-box",
-                zIndex: isFrozen ? 30 : 1,
+                zIndex: isFrozen
+                  ? 30
+                  : active === `${rowIndex}:${col.key}`
+                    ? 25
+                    : 1,
                 boxShadow:
                   isName && isSelectedRow ? "inset 3px 0 0 #102a43" : "none",
               }}
