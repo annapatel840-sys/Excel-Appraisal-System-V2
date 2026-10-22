@@ -409,7 +409,16 @@ export function BudgetProvider({ children }) {
         : ownedRows;
       // If cycle IDs differ between APIs, only fall back when ownership has one
       // unambiguous allocation; never substitute the organisation-wide amount.
-      const candidates = cycleRows.length ? cycleRows : ownedRows.length === 1 ? ownedRows : [];
+      // The API may already scope rows to this Tech-Ed, even when legacy
+      // allocation identifiers do not match the login's directory aliases.
+      // If that response contains one allocation, it is safer than org totals.
+      const candidates = cycleRows.length
+        ? cycleRows
+        : ownedRows.length === 1
+          ? ownedRows
+          : budgetDistributionRows.length === 1
+            ? budgetDistributionRows
+            : [];
       const own = candidates.length === 1 ? candidates[0] : null;
       if (own) {
         const updated = number(own.applied_budget ?? own.updated_budget);
