@@ -548,9 +548,11 @@ export function TechEdBudgetDistribution() {
   // The rendered eligible Appraisal Sheet roster is the live source of truth.
   const currentTeamCount = allTeam.length;
   const savedTeamCount = liveTech?.original_headcount !== null && liveTech?.original_headcount !== undefined && String(liveTech.original_headcount).trim() !== "" ? liveTech.original_headcount : liveTech?.headcount;
+  // Original Count is a persisted baseline. Never replace a missing baseline
+  // with today's roster count, or it will appear to change with eligibility.
   const team0 = savedTeamCount !== null && savedTeamCount !== undefined && String(savedTeamCount).trim() !== ""
     ? num(savedTeamCount)
-    : currentTeamCount;
+    : 0;
   const allotted = cmNodes.reduce((s, n) => s + n.updated, 0);
   const used = assignedTeam.reduce((sum, employee) => sum + employeeUtilized(employee), 0);
   const usedPct = myUpdated ? (used / myUpdated) * 100 : 0;
