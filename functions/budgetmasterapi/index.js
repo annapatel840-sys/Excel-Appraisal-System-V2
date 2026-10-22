@@ -1300,7 +1300,9 @@ bundle.employeeRoster = rosterForCycle.map((employee) => ({
         if (originalBaseField && (!hasOriginalSnapshot || savedOriginalBase <= 0)) {
           update[originalBaseField] = originalBase;
         }
-        const savedOriginalCountValue = row.original_headcount ?? row.allocation_headcount;
+        const savedOriginalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
+          ? row.original_headcount
+          : row.allocation_headcount;
         const originalCountIsSet = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
           String(savedOriginalCountValue).trim() !== "";
         const savedOriginalCount = originalCountIsSet ? n(savedOriginalCountValue) : stats.count;
