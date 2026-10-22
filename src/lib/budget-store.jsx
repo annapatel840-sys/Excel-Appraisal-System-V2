@@ -425,18 +425,21 @@ export function BudgetProvider({ children }) {
       const cycleRows = activeBudgetCycleId
         ? ownedRows.filter((row) => String(row.appraisal_cycle_id || "") === activeBudgetCycleId)
         : ownedRows;
-      // If cycle IDs differ between APIs, only fall back when ownership has one
-      // unambiguous allocation; never substitute the organisation-wide amount.
-      // The API may already scope rows to this Tech-Ed, even when legacy
-      // allocation identifiers do not match the login's directory aliases.
-      // If that response contains one allocation, it is safer than org totals.
+      const activeCycleRows = activeBudgetCycleId
+        ? budgetDistributionRows.filter((row) => String(row.appraisal_cycle_id || "") === activeBudgetCycleId)
+        : budgetDistributionRows;
+      // The API filters Budget_Distribution to this Tech-Ed for scoped logins.
+      // If legacy owner aliases still fail to match, a single row for the active
+      // cycle is the allocation the distribution screen is showing.
       const candidates = cycleRows.length
         ? cycleRows
-        : ownedRows.length === 1
-          ? ownedRows
-          : budgetDistributionRows.length === 1
-            ? budgetDistributionRows
-            : [];
+        : activeCycleRows.length === 1
+          ? activeCycleRows
+          : ownedRows.length === 1
+            ? ownedRows
+            : !activeBudgetCycleId && budgetDistributionRows.length === 1
+              ? budgetDistributionRows
+              : [];
       const own = candidates.length === 1 ? candidates[0] : null;
       if (own) {
         const updated = number(own.applied_budget ?? own.updated_budget);
