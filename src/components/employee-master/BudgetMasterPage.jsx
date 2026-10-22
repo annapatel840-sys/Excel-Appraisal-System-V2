@@ -129,8 +129,12 @@ function money(value) {
   return INR.format(amount(value));
 }
 
-function percent(value) {
-  return Number(value || 0).toFixed(1) + "%";
+// Select the whole value when a % field gets focus (click or Tab).
+function selectOnFocus(event) {
+  const input = event.currentTarget;
+  requestAnimationFrame(() => {
+    if (document.activeElement === input) input.select();
+  });
 }
 
 // Two-decimal percentage for the summary tiles.
@@ -274,9 +278,9 @@ function AuditTable({
                   <td className={td + "font-bold"}>{r.owner}</td>
                 ) : null}
                 <td className={td + "text-right"}>
-                  {r.from == null ? "—" : percent(r.from)}
+                  {r.from == null ? "—" : pct2(r.from)}
                 </td>
-                <td className={td + "text-right font-bold"}>{percent(r.to)}</td>
+                <td className={td + "text-right font-bold"}>{pct2(r.to)}</td>
                 <td className={td + "text-right"}>
                   {r.before == null ? "—" : money(r.before)}
                 </td>
@@ -739,8 +743,14 @@ function HRApplyBudget() {
           existing.base = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== "" ? amount(row.budget_base) : existing.base;
           existing.pctSet = row.percentage !== null && row.percentage !== undefined && String(row.percentage).trim() !== "";
           Object.assign(existing, deriveRowBudgets(existing.base, existing.pct, existing.pctSet, amount(row.calculated_budget)));
-          const originalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== "" ? row.original_headcount : row.headcount;
-           const currentCountValue = employeeCounts.get(key) || 0;
+          const originalCountValue =
+             row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
+               ? row.original_headcount
+               : row.allocation_headcount;
+           const currentCountValue =
+             row.current_headcount !== null && row.current_headcount !== undefined && String(row.current_headcount).trim() !== ""
+               ? row.current_headcount
+               : row.headcount;
            const hasSavedOriginalCount = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
            existing.team0 = hasSavedOriginalCount
              ? amount(originalCountValue)
@@ -755,8 +765,14 @@ function HRApplyBudget() {
       }
       const calculated = amount(row.calculated_budget);
       const assignedCount = employeeCounts.get(key) || 0;
-      const originalCountValue = row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== "" ? row.original_headcount : row.headcount;
-       const currentCountValue = employeeCounts.get(key) || 0;
+      const originalCountValue =
+         row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
+           ? row.original_headcount
+           : row.allocation_headcount;
+       const currentCountValue =
+         row.current_headcount !== null && row.current_headcount !== undefined && String(row.current_headcount).trim() !== ""
+           ? row.current_headcount
+           : row.headcount;
        const originalCountIsSet = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
        const originalCount = originalCountIsSet ? amount(originalCountValue) : assignedCount;
        const currentCount = currentCountValue !== null && currentCountValue !== undefined && String(currentCountValue).trim() !== ""
@@ -845,8 +861,14 @@ function HRApplyBudget() {
 
   // Org headcount comes from the same cycle-scoped eligibility calculation as
   // Org Budget Base. Fall back to the Tech-Ed roll-up only for older schemas.
-  const orgOriginalCountValue = selectedMaster?.original_headcount !== null && selectedMaster?.original_headcount !== undefined && String(selectedMaster.original_headcount).trim() !== "" ? selectedMaster.original_headcount : selectedMaster?.headcount;
-  const orgCurrentCountValue = total.team;
+  const orgOriginalCountValue =
+    selectedMaster?.original_headcount !== null && selectedMaster?.original_headcount !== undefined && String(selectedMaster.original_headcount).trim() !== ""
+      ? selectedMaster.original_headcount
+      : selectedMaster?.allocation_headcount;
+  const orgCurrentCountValue =
+    selectedMaster?.current_headcount !== null && selectedMaster?.current_headcount !== undefined && String(selectedMaster.current_headcount).trim() !== ""
+      ? selectedMaster.current_headcount
+      : selectedMaster?.headcount;
   const orgOriginalCount = orgOriginalCountValue !== null && orgOriginalCountValue !== undefined && String(orgOriginalCountValue).trim() !== ""
     ? amount(orgOriginalCountValue)
     : total.team0;
@@ -933,6 +955,10 @@ function HRApplyBudget() {
       setError("Enter a valid Org % between 0 and 100.");
       return;
     }
+    if (orgApplied && org === savedOrgPct) {
+      setError("Org % is unchanged. Enter a different % to apply.");
+      return;
+    }
     if (draftCount || stagedCount) {
       setError("Apply, publish, or discard Tech-Ed edits before changing the organization percentage.");
       return;
@@ -945,7 +971,9 @@ function HRApplyBudget() {
       : (hasValidOrgSnapshot ? savedOrgOriginal : bud(orgBase, org));
     const updatedBudget = bud(orgBase, org);
     const previousOrgPct = amount(selectedMaster?.budget_percentage);
-    const previousOrgBudget = amount(selectedMaster?.applied_budget);
+    // "Before" = the Org budget currently in force (base x last saved %), not the
+    // figure stored by the server, which may still use the older formula.
+    const previousOrgBudget = orgApplied ? savedOrgUpdated : 0;
     const actor = String(currentUser.name || currentUser.email || "Unknown user");
     const reason = String(orgReason || "").trim() || "Org budget percentage updated";
     try {
@@ -961,9 +989,9 @@ function HRApplyBudget() {
         date: new Date().toISOString().slice(0, 10),
         time: new Date().toLocaleTimeString(),
         owner: "Org",
-        from: previousOrgPct,
+        from: orgApplied ? previousOrgPct : null,
         to: org,
-        before: previousOrgBudget,
+        before: orgApplied ? previousOrgBudget : null,
         after: updatedBudget,
         by: actor,
         reason,
@@ -1159,9 +1187,10 @@ function HRApplyBudget() {
           date: publishedAt.toISOString().slice(0, 10),
           time: publishedAt.toLocaleTimeString(),
           owner: row.name,
-          from: amount(row.pct),
+          // First % for this Tech ED has no "old" value.
+          from: row.pctSet ? amount(row.pct) : null,
           to: pct,
-          before: amount(row.updated),
+          before: row.pctSet ? bud(row.base, row.pct) : null,
           after: bud(row.base, pct),
           by: actor,
           reason: stagedReasons[row.name] || "Budget percentage published",
@@ -1301,6 +1330,7 @@ function HRApplyBudget() {
                   placeholder="0.00"
                   value={orgPct}
                   disabled={!canConfig || savingOrg}
+                  onFocus={selectOnFocus}
                   onChange={(e) => setOrgPct(e.target.value)}
                   aria-label="Organization budget percentage"
                 />
@@ -1345,6 +1375,7 @@ function HRApplyBudget() {
                   placeholder="%"
                   value={allPct}
                   disabled={!canConfig || !orgApplied || savingOrg}
+                  onFocus={selectOnFocus}
                   onChange={(e) => applyPctToAll(e.target.value)}
                   aria-label="Percentage for all Tech EDs"
                 />
@@ -1476,6 +1507,7 @@ function HRApplyBudget() {
                             placeholder="Enter %"
                             value={p}
                             disabled={!canConfig}
+                            onFocus={selectOnFocus}
                             title={changing ? Number(r.pct).toFixed(2) + " → " + Number(p).toFixed(2) + " (not applied yet)" : undefined}
                             onChange={(e) => setRowPct(r.name, e.target.value)}
                             aria-label={"Percentage for " + r.name}
