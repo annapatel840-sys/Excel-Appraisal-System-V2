@@ -92,12 +92,12 @@ const WIDTHS = {
   monthPB: 78,
   currentAnnualBasePay: 132,
   targetPBAllocatedForMay: 140,
-  allocatedPBAmount: 240,
+  allocatedPBAmount: 120,
   pbInstallment: 84,
   newPBToBeOffered: 128,
   newPBInstallment: 84,
   totalOfPB: 110,
-  newRB: 240,
+  newRB: 120,
   totalBonus: 110,
   hikeAmount: 118,
   hikePct: 84,
@@ -3847,7 +3847,15 @@ export function AppraisalGrid({
                 maxWidth: width,
                 minHeight: CELL_MIN_HEIGHT,
                 boxSizing: "border-box",
-                zIndex: isFrozen ? 30 : 1,
+                // A PB / RB note longer than the 120px cell runs into the next
+                // cell's empty lower band, so this cell sits above its neighbour.
+                zIndex: isFrozen
+                  ? 30
+                  : PAY_FLOOR_FIELDS[col.key] &&
+                      (active === `${rowIndex}:${col.key}` ||
+                        payErrors[`${row.id}:${col.key}`])
+                    ? 25
+                    : 1,
                 boxShadow:
                   isName && isSelectedRow ? "inset 3px 0 0 #102a43" : "none",
               }}
