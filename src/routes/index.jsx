@@ -4,6 +4,7 @@ import { AppShell } from "@/components/appraisal/AppShell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
+import { resolveBudgetAllocated } from "@/components/appraisal/BudgetStatsBar";
 import { cn } from "@/lib/utils";
 import {
   budgetTotals,
@@ -86,14 +87,21 @@ export function Dashboard() {
     error: budgetError,
   } = useBudget();
 
-  // Real Budget Master total when loaded; budgetTotals falls back to the
-  // placeholder estimate otherwise.
-  const realAllocated =
-    !budgetLoading && !budgetError ? budgetMasterTotals?.updated : 0;
+  // Same Budget Allocated the Appraisal Sheet uses (Budget Master total, else
+  // the shared labelled estimate), so Consumed vs allocated matches the sheet.
+  const { allocated: sharedAllocated, isEstimate: allocatedIsEstimate } =
+    resolveBudgetAllocated({
+      totals: budgetMasterTotals,
+      loading: budgetLoading,
+      error: budgetError,
+    });
 
   const budget = useMemo(
-    () => budgetTotals(appraisalRows, realAllocated),
-    [rows, realAllocated],
+    () => ({
+      ...budgetTotals(appraisalRows, sharedAllocated),
+      allocatedIsEstimate,
+    }),
+    [rows, sharedAllocated, allocatedIsEstimate],
   );
   const mgrStats = useMemo(() => byManager(appraisalRows), [rows]);
   const desigStats = useMemo(() => byDesignation(appraisalRows), [rows]);
@@ -320,8 +328,7 @@ export function Dashboard() {
                         total: m.consumed,
                         segments: [
                           { value: m.hike, color: COLORS.hike, label: "H" },
-                          { value: m.pb, color: COLORS.pb, label: "PB" },
-                          // { value: m.consumedPB, color: COLORS.pb, label: "PB" },
+                          { value: m.budgetPb, color: COLORS.pb, label: "PB" },
                           {
                             value: m.rb,
                             color: COLORS.rb,
@@ -369,8 +376,7 @@ export function Dashboard() {
                         total: d.consumed,
                         segments: [
                           { value: d.hike, color: COLORS.hike, label: "H" },
-                          { value: d.pb, color: COLORS.pb, label: "PB" },
-                          // { value: d.consumedPB, color: COLORS.pb, label: "PB" },
+                          { value: d.budgetPb, color: COLORS.pb, label: "PB" },
                           {
                             value: d.rb,
                             color: COLORS.rb,

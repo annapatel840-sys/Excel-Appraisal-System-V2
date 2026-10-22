@@ -9,9 +9,6 @@ import {
 // per-manager / per-designation splits, which Budget Master doesn't provide.
 const PLACEHOLDER_BUDGET_PCT = 0.08;
 
-// PB counted towards "Consumed" - identical to the Appraisal Sheet's
-// budget bar (Allocated PB Amount only, NOT New PB to be Offered).
-// const consumedPBOf = (r) => Number(r.allocatedPBAmount) || 0;
 export function groupBy(rows, keyFn) {
   const map = new Map();
 
@@ -30,6 +27,11 @@ export function sum(rows, fn) {
   return rows.reduce((s, r) => s + (Number(fn(r)) || 0), 0);
 }
 
+// Budget-consumed PB: the same PB figure the Appraisal Sheet's
+// "Consumed (Hikes + Bonuses)" uses (allocatedPBAmount only). Consumed =
+// Hike + this PB + RB, so the Dashboard equals the sheet exactly.
+export const consumedPB = (r) => Number(r.allocatedPBAmount) || 0;
+
 export function orgAllocated(rows) {
   return sum(rows, (r) => r.currentAnnualBasePay) * PLACEHOLDER_BUDGET_PCT;
 }
@@ -40,13 +42,15 @@ export function budgetTotals(rows, realAllocated) {
   const hike = sum(rows, calcHikeAmount);
   const pb = sum(rows, totalOfPB);
   const rb = sum(rows, (r) => r.newRB);
-  const consumed = hike + pb + rb;
+  const budgetPb = sum(rows, consumedPB);
+  const consumed = hike + budgetPb + rb;
   const hasReal = Number(realAllocated) > 0;
   const allocated = hasReal ? Number(realAllocated) : orgAllocated(rows);
 
   return {
     hike,
     pb,
+    budgetPb,
     rb,
     consumed,
     allocated,
@@ -55,27 +59,6 @@ export function budgetTotals(rows, realAllocated) {
   };
 }
 
-// export function budgetTotals(rows, realAllocated) {
-//   const hike = sum(rows, calcHikeAmount);
-//   const pb = sum(rows, totalOfPB);
-//   const consumedPB = sum(rows, consumedPBOf);
-//   const rb = sum(rows, (r) => r.newRB);
-//   const consumed = hike + consumedPB + rb;
-//   const hasReal = Number(realAllocated) > 0;
-//   const allocated = hasReal ? Number(realAllocated) : orgAllocated(rows);
-
-//   return {
-//     hike,
-//     pb,
-//     consumedPB,
-//     rb,
-//     consumed,
-//     allocated,
-//     allocatedIsEstimate: !hasReal,
-//     utilisation: allocated ? (consumed / allocated) * 100 : 0,
-//   };
-// }
-
 export function byManager(rows) {
   const groups = groupBy(rows, (r) => r.compManager || r.reportingManager);
 
@@ -83,7 +66,8 @@ export function byManager(rows) {
     const hike = sum(list, calcHikeAmount);
     const pb = sum(list, totalOfPB);
     const rb = sum(list, (r) => r.newRB);
-    const consumed = hike + pb + rb;
+    const budgetPb = sum(list, consumedPB);
+    const consumed = hike + budgetPb + rb;
     const allocated = orgAllocated(list);
     const targetPB = sum(list, (r) => r.targetPBAllocatedForMay);
     const avgHike = list.length ? sum(list, calcHikePct) / list.length : 0;
@@ -93,6 +77,7 @@ export function byManager(rows) {
       headcount: list.length,
       hike,
       pb,
+      budgetPb,
       rb,
       consumed,
       allocated,
@@ -100,31 +85,7 @@ export function byManager(rows) {
       targetPB,
       avgHike,
     };
-
-
-    // const hike = sum(list, calcHikeAmount);
-    // const pb = sum(list, totalOfPB);
-    // const consumedPB = sum(list, consumedPBOf);
-    // const rb = sum(list, (r) => r.newRB);
-    // const consumed = hike + consumedPB + rb;
-    // const allocated = orgAllocated(list);
-    // const targetPB = sum(list, (r) => r.targetPBAllocatedForMay);
-    // const avgHike = list.length ? sum(list, calcHikePct) / list.length : 0;
-
-    // return {
-    //   name,
-    //   headcount: list.length,
-    //   hike,
-    //   pb,
-    //   consumedPB,
-    //   rb,
-    //   consumed,
-    //   allocated,
-    //   utilisation: allocated ? (consumed / allocated) * 100 : 0,
-    //   targetPB,
-    //   avgHike,
-    // };
-   });
+  });
 }
 
 export function byDesignation(rows) {
@@ -135,7 +96,8 @@ export function byDesignation(rows) {
       const hike = sum(list, calcHikeAmount);
       const pb = sum(list, totalOfPB);
       const rb = sum(list, (r) => r.newRB);
-      const consumed = hike + pb + rb;
+      const budgetPb = sum(list, consumedPB);
+      const consumed = hike + budgetPb + rb;
       const allocated = orgAllocated(list);
       const targetPB = sum(list, (r) => r.targetPBAllocatedForMay);
       const targetNext = sum(list, (r) => r.targetPBNextYear);
@@ -152,6 +114,7 @@ export function byDesignation(rows) {
         headcount: list.length,
         hike,
         pb,
+        budgetPb,
         rb,
         consumed,
         allocated,
@@ -161,29 +124,6 @@ export function byDesignation(rows) {
         avgHike,
         promotions,
       };
-      // const hike = sum(list, calcHikeAmount);
-      // const pb = sum(list, totalOfPB);
-      // const consumedPB = sum(list, consumedPBOf);
-      // const rb = sum(list, (r) => r.newRB);
-      // const consumed = hike + consumedPB + rb;
-      // const allocated = orgAllocated(list);
-      // // ...rest of the existing lines stay the same...
-
-      // return {
-      //   name,
-      //   headcount: list.length,
-      //   hike,
-      //   pb,
-      //   consumedPB,   // <-- add this line
-      //   rb,
-      //   consumed,
-      //   allocated,
-      //   targetPB,
-      //   targetNext,
-      //   avgBase,
-      //   avgHike,
-      //   promotions,
-      // };
     })
     .sort((a, b) => b.headcount - a.headcount);
 }
