@@ -24,24 +24,21 @@ function value(row, key) {
   return row && row[key] !== undefined && row[key] !== null ? row[key] : "";
 }
 
-// Resolve the saved baseline from dedicated snapshot columns first. Some
-// older Budget tables used allocation_headcount for the original allocation.
-// Only use generic headcount as a last-resort legacy field when neither
-// dedicated snapshot column exists in the row schema.
+// Original Count must come only from a dedicated snapshot field. Generic
+// headcount is mutable in legacy deployments and therefore cannot be treated
+// as an original baseline. If the schema has neither snapshot field, return
+// blank so the API can report the missing persistence capability rather than
+// displaying a count that changes with the live team.
 function originalHeadcountValue(row) {
   const keys = Object.keys(row || {});
   const keyFor = (name) => keys.find((key) => key.toLowerCase() === name);
-  const originalKey = keyFor("original_headcount");
-  if (originalKey && row[originalKey] !== "" && row[originalKey] !== null && row[originalKey] !== undefined) {
-    return row[originalKey];
+  for (const name of ["original_headcount", "allocation_headcount"]) {
+    const key = keyFor(name);
+    if (key && row[key] !== "" && row[key] !== null && row[key] !== undefined) {
+      return row[key];
+    }
   }
-  const allocationKey = keyFor("allocation_headcount");
-  if (allocationKey && row[allocationKey] !== "" && row[allocationKey] !== null && row[allocationKey] !== undefined) {
-    return row[allocationKey];
-  }
-  if (originalKey || allocationKey) return "";
-  const legacyKey = keyFor("headcount");
-  return legacyKey ? row[legacyKey] : "";
+  return "";
 }
 
 function n(v) {
@@ -1351,7 +1348,7 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       await distributionTable.updateRow(update);
       // Save the initial count once. Every subsequent refresh only updates Current Count.
       if (!originalCountIsSet) {
-        await persistOptional(distributionTable, row.id, distributionColumns, ["original_headcount", "allocation_headcount", "headcount"], stats.count);
+        await persistOptional(distributionTable, row.id, distributionColumns, ["original_headcount", "allocation_headcount"], stats.count);
       }
       await persistOptional(distributionTable, row.id, distributionColumns, ["current_headcount"], stats.count);
       await persistOptional(distributionTable, row.id, distributionColumns, ["current_budget_base"], stats.base);
@@ -1441,7 +1438,7 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       }
       await compTable.updateRow(update);
       if (!originalCountIsSet) {
-        await persistOptional(compTable, row.id, compColumns, ["original_headcount", "allocation_headcount", "headcount"], stats.count);
+        await persistOptional(compTable, row.id, compColumns, ["original_headcount", "allocation_headcount"], stats.count);
       }
       await persistOptional(compTable, row.id, compColumns, ["current_headcount"], stats.count);
       await persistOptional(compTable, row.id, compColumns, ["current_budget_base"], stats.base);
@@ -1507,7 +1504,7 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
     }
     await masterTable.updateRow(orgFields);
     if (!orgOriginalCountIsSet) {
-      await persistOptional(masterTable, master.id, masterColumns, ["original_headcount", "allocation_headcount", "headcount"], eligibleEmployees.length);
+      await persistOptional(masterTable, master.id, masterColumns, ["original_headcount", "allocation_headcount"], eligibleEmployees.length);
     }
     await persistOptional(masterTable, master.id, masterColumns, ["current_headcount"], eligibleEmployees.length);
     await persistOptional(masterTable, master.id, masterColumns, ["current_budget_base"], orgBase);
