@@ -1170,7 +1170,11 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
     const rawEligibility = String(firstValue(masterRow, ["eligibility", "eligible_status", "eligibility_status", "eligible"]) || "").trim().toLowerCase().replace(/[ _-]+/g, "");
     const rawStatus = String(firstValue(masterRow, ["emp_status", "status", "employee_status"]) || "").trim().toLowerCase();
     const explicitlyEligible = ["eligible", "yes", "true", "1"].includes(rawEligibility);
-    const eligible = cycleEligibility ? cycleEligibility.eligible : rawStatus === "active" && explicitlyEligible;
+    const eligible = cycleEligibility
+      ? cycleEligibility.eligible
+      : sheetEmployee
+        ? sheetEmployee.eligible
+        : rawStatus === "active" && explicitlyEligible;
     const rawTech = firstValue(masterRow, ["appraiser_tech_ed", "appraiser_tech_ed_id", "appraiser_tech_ed1", "appraiser_teched", "tech_ed", "tech_ed_id"]);
     const rawComp = firstValue(masterRow, ["comp_manager", "comp_manager_id", "comp_manager_name", "director"]);
     return {
