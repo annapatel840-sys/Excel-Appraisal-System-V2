@@ -91,12 +91,12 @@ const WIDTHS = {
   monthPB: 78,
   currentAnnualBasePay: 132,
   targetPBAllocatedForMay: 140,
-  allocatedPBAmount: 128,
+  allocatedPBAmount: 240,
   pbInstallment: 84,
   newPBToBeOffered: 128,
   newPBInstallment: 84,
   totalOfPB: 110,
-  newRB: 108,
+  newRB: 240,
   totalBonus: 110,
   hikeAmount: 118,
   hikePct: 84,
@@ -3567,11 +3567,14 @@ export function AppraisalGrid({
     const payFloorValue = payFloorCfg
       ? Number(row[payFloorCfg.floorKey]) || 0
       : 0;
-    const payNote =
-      payError ||
-      (payFloorValue > 0
+    const isCellActive = active === `${rowIndex}:${col.key}`;
+    // Error: red text in the cell. Otherwise the muted note floats under the
+    // field only while the cursor is in this cell (it never moves the row).
+    const payNote = payError;
+    const preloadedNote =
+      !payError && isCellActive && payFloorValue > 0
         ? `Preloaded · less than this → ${formatHistoryNumber(payFloorValue)} paid`
-        : "");
+        : "";
 
     return (
       <div
@@ -3748,13 +3751,16 @@ export function AppraisalGrid({
 
         {payNote && (
           <span
-            role={payError ? "alert" : undefined}
-            className={cn(
-              "block text-[10.5px] leading-tight",
-              payError ? "font-bold text-[#b42318]" : "text-[#6b7a88]",
-            )}
+            role="alert"
+            className="block whitespace-nowrap text-[10.5px] font-bold leading-tight text-[#b42318]"
           >
             {payNote}
+          </span>
+        )}
+
+        {preloadedNote && (
+          <span className="pointer-events-none absolute left-1.5 top-[calc(100%-3px)] z-50 whitespace-nowrap rounded bg-white px-1 text-[10.5px] leading-tight text-[#6b7a88] shadow-sm ring-1 ring-[#e3e9ec]">
+            {preloadedNote}
           </span>
         )}
 
@@ -3841,7 +3847,11 @@ export function AppraisalGrid({
                 maxWidth: width,
                 minHeight: CELL_MIN_HEIGHT,
                 boxSizing: "border-box",
-                zIndex: isFrozen ? 30 : 1,
+                zIndex: isFrozen
+                  ? 30
+                  : active === `${rowIndex}:${col.key}`
+                    ? 25
+                    : 1,
                 boxShadow:
                   isName && isSelectedRow ? "inset 3px 0 0 #102a43" : "none",
               }}
