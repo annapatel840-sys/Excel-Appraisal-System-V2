@@ -280,6 +280,7 @@ export function AppraisalCycleMasterPage({
   const [confirm, setConfirm] = useState(null); // { kind, cycle }
   const [confirmRemark, setConfirmRemark] = useState("");
   const [modalError, setModalError] = useState("");
+  const [generatedByCycle, setGeneratedByCycle] = useState({});
 
   const showBanner = (title, body, error = false) =>
     setBanner({ title, body, error });
@@ -610,10 +611,14 @@ export function AppraisalCycleMasterPage({
       }
       setSaving(true);
       try {
-        await onGenerateSheet(cycle);
+        const result = await onGenerateSheet(cycle);
+        setGeneratedByCycle((previous) => ({
+          ...previous,
+          [cycle.id]: result?.data || result || { eligible: 0 },
+        }));
         showBanner(
           "Appraisal Sheet generated",
-          `${cycle.name}: sheet created.`,
+          `${cycle.name}: ${result?.data?.eligible ?? result?.eligible ?? "eligible"} eligible employee(s) processed.`,
         );
         setConfirm(null);
       } catch (error) {
@@ -837,7 +842,7 @@ export function AppraisalCycleMasterPage({
 
   const checkAct = (id, c) => {
     if (id === "gen") return openConfirm("generate", c);
-    navTo(id);
+    navTo(id, c);
   };
 
   /* ---------------- steps ---------------- */
@@ -846,7 +851,9 @@ export function AppraisalCycleMasterPage({
     const w = statsFor(c);
     const act = c.status === "Active" || c.status === "Closed" || c.archived;
     const closed = c.status === "Closed" || c.archived;
-    const gen = !!w?.sheetGenerated;
+    const generatedResult = generatedByCycle[c.id];
+    const gen = !!w?.sheetGenerated || !!generatedResult;
+    const generatedRowCount = w?.sheetRows ?? generatedResult?.eligible;
     const m = w ? missingPay(w) : 0;
     const L = w?.letters || { gen: false, toSend: 0, sent: 0, dropped: 0 };
     const row = (g, id, title, sub, state, acts = []) => ({
