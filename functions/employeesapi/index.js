@@ -860,10 +860,13 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       return;
     }
     const rank = historyCycleRank(cycle);
-    // Only an archived cycle that predates the active cycle qualifies as the last appraisal.
+    // The previous appraisal source is the most recent closed/archived cycle
+    // before the current cycle. Some completed cycles are marked "Closed"
+    // rather than setting archived=true, so accept both lifecycle conventions.
+    const priorStatus = cycleStatusOf(cycle);
     const archived = cycle?.archived === true ||
       ["true", "1", "yes"].includes(String(cycle?.archived ?? "").trim().toLowerCase()) ||
-      cycleStatusOf(cycle) === "archived";
+      ["archived", "closed", "complete", "completed"].includes(priorStatus);
     if (!archived || (currentRank > 0 && rank >= currentRank)) return;
     const storedValue = firstNonEmpty(record, [
       "total_ctc_with_rewards", "total_CTC_with_rewards", "totalCTCWithRewards",
