@@ -968,7 +968,12 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       // fields from the current cycle when uploaded; otherwise retain any
       // explicitly stored Appraisal_Sheet value (or leave blank/zero).
       manager_rating: feedbackValue("manager_rating") ?? employee.manager_rating ?? "",
-      interview_count: feedbackValue("interview_count") ?? employee.interview_count ?? "",
+      interview_count: feedbackValue("interview_count", "interviewCount") ?? employee.interview_count ?? "",
+      // RR% is sourced from Feedback_And_Rating.revenue_released for the
+      // current cycle. Employee_Master RR% remains a fallback for older rows
+      // or when feedback has not yet been uploaded for this cycle.
+      rr_percent: feedbackValue("revenue_released", "rr_percent", "rr") ??
+        employee.rr_percent ?? employee.RR_percent ?? "",
       gross_margin: feedbackValue("gross_margin") ?? employee.gross_margin ?? "",
       pb_to_be_paid: payrollPreviousPB,
       rb_to_be_paid: payrollPreviousRB,
