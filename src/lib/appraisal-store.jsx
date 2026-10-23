@@ -333,6 +333,14 @@ const mapCatalystEmployee = (employee, index) => {
 
     // CHANGED: these two grid columns were never read back from the API.
     targetPBCriteria: String(employee.target_PB_criteria || ""),
+    // Previous-year criteria for the "Set Target Criteria" column. Uses a
+    // dedicated field when the API sends one, otherwise the value as loaded.
+    setTargetCriteria: String(
+      employee.previous_target_pb_criteria ??
+        employee.current_target_pb_criteria ??
+        employee.target_PB_criteria ??
+        "",
+    ),
     compManagerRemarks: String(
       employee.comp_manager_rewards || employee.comp_manager_remarks || "",
     ),

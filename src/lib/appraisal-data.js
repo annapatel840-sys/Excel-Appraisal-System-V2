@@ -358,7 +358,7 @@ export const COLUMNS = [
   },
   {
     key: "targetPBAllocatedForMay",
-    label: "Target PB Allocated",
+    label: "Target PB Set",
     type: "currency",
     editable: false,
     width: 145,
@@ -498,10 +498,18 @@ export const COLUMNS = [
   },
   {
     key: "previousAppraisalTotalCtcWithRewards",
-    label: "Previous Appraisal Total CTC with Rewards",
+    label: "Previous Total CTC Reward",
     type: "currency",
     editable: false,
-    width: 210,
+    width: 170,
+  },
+  {
+    // Last year's Target PB criteria, shown for reference (not editable).
+    key: "setTargetCriteria",
+    label: "Set Target Criteria",
+    type: "text",
+    editable: false,
+    width: 190,
   },
 ];
 
