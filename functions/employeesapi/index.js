@@ -910,22 +910,18 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     if (!rowId) return;
     const desiredDate = employee.last_appraisal_date;
     const desiredTargetPB = employee.target_pb_allocated_for_may;
-    const desiredCriteria = employee.target_pb_criteria;
     const sourceRow = employees.find((row) =>
       String(row.ROWID ?? row.rowid ?? "") === rowId
     );
     const existingDate = String(sourceRow?.last_appraisal_date ?? "").trim();
     const existingTargetPB = Number(sourceRow?.target_pb_allocated_for_may || 0);
-    const existingCriteria = String(sourceRow?.target_PB_criteria ?? sourceRow?.target_pb_criteria ?? "").trim();
     if (existingDate === String(desiredDate ?? "").trim() &&
-        existingTargetPB === Number(desiredTargetPB || 0) &&
-        existingCriteria === String(desiredCriteria ?? "").trim()) return;
+        existingTargetPB === Number(desiredTargetPB || 0)) return;
     try {
       await appraisalTable.updateRow({
         ROWID: rowId,
         last_appraisal_date: desiredDate,
         target_pb_allocated_for_may: desiredTargetPB,
-        target_PB_criteria: desiredCriteria,
       });
     } catch (error) {
       console.error("Could not persist archived-cycle appraisal lookup for row", rowId, error?.message || error);
