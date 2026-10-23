@@ -853,7 +853,7 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
       costCenter: ["Cost Center", "cost_center"],
       currentSalary: ["Current Salary", "current_salary"],
       location: ["Location", "location"],
-      lastAppraisal: ["Last Appraisal (Month/Year)", "Last Appraisal", "last_appraisal_month_year"],
+      lastAppraisal: ["Last Appraisal (Month/Year)", "Last Appraisal Month and Year", "Last Appraisal Date", "Last Appraisal", "last_appraisal_month_year", "last_appraisal_date"],
     };
 
     const indexes = Object.fromEntries(
