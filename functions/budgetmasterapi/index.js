@@ -1212,7 +1212,7 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
   const currentEmployeeById = new Map(employees.map((employee) => [
     String(employee.employeeId || employee.emp_id || "").trim().toLowerCase(), employee,
   ]));
-  const legacyEligibleEmployees = masterEmployeeRows.map((masterRow) => {
+  const legacyCycleEmployees = masterEmployeeRows.map((masterRow) => {
     const empId = String(firstValue(masterRow, ["emp_id", "empId", "employee_id"]) || "").trim();
     if (!empId) return null;
     const sheetEmployee = currentEmployeeById.get(empId.toLowerCase());
@@ -1234,10 +1234,12 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
     const rawComp = firstValue(masterRow, ["comp_manager", "comp_manager_id", "comp_manager_name", "director"]);
     return {
       eligible,
+      inEligibilityList: Boolean(cycleEligibility),
       techEd: sheetEmployee?.techEd || resolvePersonId(rawTech),
       compManager: sheetEmployee?.compManager || String(rawComp || "").trim(),
     };
-  }).filter((employee) => employee && employee.eligible);
+  }).filter((employee) => employee && employee.inEligibilityList);
+  const legacyEligibleEmployees = legacyCycleEmployees.filter((employee) => employee.eligible);
   const eligibleEmployees = employees.filter((employee) => employee.eligible && employee.in_appraisal_sheet);
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
     const orgBase = eligibleEmployees.reduce((sum, employee) => sum + employee.base, 0);
@@ -1318,7 +1320,7 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       const hasSavedOriginalCount = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
         String(savedOriginalCountValue).trim() !== "";
       const savedOriginalCountNumber = hasSavedOriginalCount ? n(savedOriginalCountValue) : stats.count;
-      const legacyOwnerCount = legacyEligibleEmployees.filter((employee) => ownerKey(employee.techEd) === techKey).length;
+      const legacyOwnerCount = legacyCycleEmployees.filter((employee) => ownerKey(employee.techEd) === techKey).length;
       // Repair only the known legacy bug: old code copied the Eligibility List
       // count into Original Count. A matching inflated legacy count is repaired
       // once; normal eligibility/delegation changes never rewrite the baseline.
@@ -1413,7 +1415,7 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       const hasSavedOriginalCount = savedOriginalCountValue !== null && savedOriginalCountValue !== undefined &&
         String(savedOriginalCountValue).trim() !== "";
       const savedOriginalCountNumber = hasSavedOriginalCount ? n(savedOriginalCountValue) : stats.count;
-      const legacyOwnerCount = legacyEligibleEmployees.filter((employee) =>
+      const legacyOwnerCount = legacyCycleEmployees.filter((employee) =>
         ownerKey(employee.techEd) === details.techEdKey && ownerKey(employee.compManager) === details.compKey
       ).length;
       // Repair a legacy baseline only when it exactly matches the inflated
