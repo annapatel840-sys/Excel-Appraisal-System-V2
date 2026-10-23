@@ -1305,9 +1305,14 @@ function filterEmployees(
    ============================================================ */
 
 async function getEmployees(req, res) {
+  // Use the server-side admin scope for Data Store reads. The request still
+  // passes through accessCore below, which enforces role, screen, row-scope,
+  // and hidden-field rules before the response is returned. Using the signed-in
+  // user's Data Store scope here can fail with Catalyst's generic
+  // "No privileges to perform this action" after sheet generation.
   const appInstance = catalyst.initialize(req);
-
-  const datastore = appInstance.datastore();
+  const adminInstance = catalyst.initialize(req, { scope: "admin" });
+  const datastore = adminInstance.datastore();
 
   const a = req.access;
   const enforced = Boolean(a && a.enforced);
