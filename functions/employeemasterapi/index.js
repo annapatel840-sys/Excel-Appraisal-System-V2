@@ -220,6 +220,33 @@ function normalizeEmployeeMasterDate(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function normalizeLastAppraisalMonthYear(value) {
+  if (value === null || value === undefined) return value;
+  const text = String(value).trim();
+  if (!text) return text;
+
+  // Already in the expected display/storage format, e.g. Mar-26.
+  if (/^[A-Za-z]{3,9}[\s-]+\d{2,4}$/.test(text)) return text;
+
+  let year = 0;
+  let month = 0;
+  let match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/);
+  if (match) {
+    year = Number(match[1]);
+    month = Number(match[2]);
+  } else {
+    match = text.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
+    if (match) {
+      month = Number(match[2]);
+      year = Number(match[3]);
+    }
+  }
+
+  if (!year || month < 1 || month > 12) return value;
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return monthNames[month - 1] + "-" + String(year).slice(-2);
+}
+
 function normalizeEmployeeMasterData(data) {
   const normalized = {};
 
@@ -244,6 +271,12 @@ function normalizeEmployeeMasterData(data) {
     } else {
       delete normalized.date_of_join;
     }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(normalized, "last_appraisal_month_year")) {
+    normalized.last_appraisal_month_year = normalizeLastAppraisalMonthYear(
+      normalized.last_appraisal_month_year,
+    );
   }
 
   NUMERIC_FIELDS.forEach(function (field) {
