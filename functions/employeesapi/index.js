@@ -865,9 +865,12 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const previousCtc = prior && prior.value !== null ? prior.value : currentTotalCtc(employee);
     const previousCycleName = prior ? historyCycleName(prior.cycle) : "";
     const label = prior ? previousCycleName : "New - " + currentYear;
+    // Prefer the prior archived cycle's effective date. During a first
+    // cycle (e.g. New Joiner), fall back to the uploaded Employee_Master date
+    // rather than erasing a valid source value when no archived cycle exists.
     const lastArchivedEffectiveDate = prior
       ? String(prior.cycle?.effective_date ?? prior.cycle?.effectiveDate ?? prior.cycle?.start_date ?? "").trim()
-      : "";
+      : String(employee.last_appraisal_date ?? employee.lastAppraisalDate ?? "").trim();
     const payrollAmount = (value) => {
       const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
       return Number.isFinite(parsed) ? parsed : 0;
@@ -878,6 +881,12 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const payrollPreviousRB = prior ? payrollAmount(firstNonEmpty(prior.row, [
       "rb_to_be_paid", "retention_bonus", "previous_year_retention_bonus", "previous_year_rb", "previous_rb",
     ])) : 0;
+    const payrollPreviousPBMonth = prior ? String(firstNonEmpty(prior.row, [
+      "month_pb", "pb_month", "performance_bonus_month", "month_of_pb",
+    ]) ?? "").trim() : "";
+    const payrollPreviousRBMonth = prior ? String(firstNonEmpty(prior.row, [
+      "month_rb", "rb_month", "retention_bonus_month", "month_of_rb",
+    ]) ?? "").trim() : "";
     const currentTargetPB = currentPayroll
       ? firstNonEmpty(currentPayroll, [
           "target_performance_bonus_for_next_year", "target_performance_bonus_next_year",
@@ -915,6 +924,8 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       last_appraisal_cycle_name: label,
       pb_to_be_paid: payrollPreviousPB,
       rb_to_be_paid: payrollPreviousRB,
+      month_pb: payrollPreviousPBMonth,
+      month_rb: payrollPreviousRBMonth,
       target_pb_allocated_for_may: targetPBForNextYear,
       target_pb_allocated: targetPBForNextYear,
       previous_target_pb_criteria: currentTargetPBCriteria,
@@ -954,30 +965,41 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
   return (appraisalRows || []).map(function (row) {
     const empId = String(row.emp_id || "").trim();
     const master = employeeMasterMap.get(empId.toLowerCase()) || {};
+    // Employee_Master uploads can retain Excel/header casing. Resolve aliases
+    // case-insensitively so valid source data is not lost due to header casing.
+    const masterValue = (...names) => {
+      const keys = Object.keys(master);
+      for (const name of names) {
+        const actual = keys.find((key) => key.toLowerCase() === String(name).toLowerCase());
+        if (actual !== undefined && master[actual] !== null && master[actual] !== undefined &&
+            String(master[actual]).trim() !== "") return master[actual];
+      }
+      return "";
+    };
 
-    const active = normalizeStatus(master.emp_status || "Active");
+    const active = normalizeStatus(masterValue("emp_status", "status") || "Active");
 
     return {
       ...row,
 
-      name: String(master.emp_name || row.name || ""),
+      name: String(masterValue("emp_name", "name") || row.name || ""),
       designation: String(
-        master.designation || row.designation || row.title || "",
+        masterValue("designation", "title") || row.designation || row.title || "",
       ),
       // Expose Employee_Master-only fields on the merged roster response too.
       // Employee Master UI reads these from the Employees API's rawEmployee.
-      email_id: String(master.email_id || row.email_id || ""),
+      email_id: String(masterValue("email_id", "email") || row.email_id || ""),
       last_appraisal_month_year: String(
-        master.last_appraisal_month_year || row.last_appraisal_month_year || "",
+        masterValue("last_appraisal_month_year", "last_appraisal_month_year") || row.last_appraisal_month_year || "",
       ),
       reporting_manager: String(
-        master.repo_manager || row.reporting_manager || "",
+        masterValue("repo_manager", "reporting_manager", "manager") || row.reporting_manager || "",
       ),
       // Keep the stored Comp Manager key intact for existing matching/writes,
       // and expose a separate resolved label for display in budget screens.
-      comp_manager: String(row.comp_manager || master.director || ""),
+      comp_manager: String(row.comp_manager || masterValue("comp_manager", "comp_manager_name", "director") || ""),
       comp_manager_display: (() => {
-        const raw = String(row.comp_manager || master.director || "").trim();
+        const raw = String(row.comp_manager || masterValue("comp_manager", "comp_manager_name", "director") || "").trim();
         if (!raw) return "";
         const key = raw.split(/\s+-\s+/)[0].trim();
         const manager =
@@ -1057,19 +1079,19 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       })(),
       department: String(master.department || row.department || ""),
       location: String(
-        master.location ||
-          master.work_location ||
+        masterValue("location", "work_location") ||
           row.location ||
           row.work_location ||
           "",
       ),
       wissen_experience: Number(
-        master.wissen_experience || row.wissen_experience || 0,
+        masterValue("wissen_experience", "wissen_exp", "org_experience", "orgExp") || row.wissen_experience || 0,
       ),
       total_experience: Number(
-        master.total_experience || row.total_experience || 0,
+        masterValue("total_experience", "total_exp", "experience") || row.total_experience || 0,
       ),
-      joining_date: String(master.date_of_join || row.joining_date || ""),
+      joining_date: String(masterValue("date_of_join", "joining_date", "joining_date") || row.joining_date || ""),
+      rr_percent: Number(masterValue("rr_percent", "rr_percent", "rr") || row.rr_percent || 0),
       status: active,
 
       // Employee_Master is the eligibility source of truth. Preserve an
