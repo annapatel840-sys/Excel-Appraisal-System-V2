@@ -944,6 +944,12 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       designation: String(
         master.designation || row.designation || row.title || "",
       ),
+      // Expose Employee_Master-only fields on the merged roster response too.
+      // Employee Master UI reads these from the Employees API's rawEmployee.
+      email_id: String(master.email_id || row.email_id || ""),
+      last_appraisal_month_year: String(
+        master.last_appraisal_month_year || row.last_appraisal_month_year || "",
+      ),
       reporting_manager: String(
         master.repo_manager || row.reporting_manager || "",
       ),
