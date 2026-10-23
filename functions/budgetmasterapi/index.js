@@ -2050,8 +2050,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         };
       })
       .filter((employee) => employee && employee.inEligibilityList);
-    const eligibleEmployees = employees.filter(
-      (employee) => employee.eligible && employee.in_appraisal_sheet,
+    const appraisalSheetEmployees = employees.filter(
+      (employee) => employee.in_appraisal_sheet,
+    );
+    const eligibleEmployees = appraisalSheetEmployees.filter(
+      (employee) => employee.eligible,
     );
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
     const orgBase = eligibleEmployees.reduce(
@@ -2070,6 +2073,21 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         { base: 0, count: 0, utilized: 0 },
       ]),
     );
+    // Original Count is the generated Appraisal_Sheet roster snapshot. Keep
+    // roster counts separate from live eligible counts, which can change later.
+    const techRosterCounts = new Map();
+    const compRosterCounts = new Map();
+    appraisalSheetEmployees.forEach((employee) => {
+      const techKey = ownerKey(employee.techEd);
+      const compKey = ownerKey(employee.compManager);
+      if (techKey) {
+        techRosterCounts.set(techKey, (techRosterCounts.get(techKey) || 0) + 1);
+      }
+      if (techKey && compKey) {
+        const pairKey = techKey + "::" + compKey;
+        compRosterCounts.set(pairKey, (compRosterCounts.get(pairKey) || 0) + 1);
+      }
+    });
     let orgUtilized = 0;
 
     eligibleEmployees.forEach((employee) => {
@@ -2174,9 +2192,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         savedOriginalCountValue !== null &&
         savedOriginalCountValue !== undefined &&
         String(savedOriginalCountValue).trim() !== "";
+      const rosterCount = techRosterCounts.get(techKey) || 0;
       const savedOriginalCountNumber = hasSavedOriginalCount
         ? n(savedOriginalCountValue)
-        : stats.count;
+        : rosterCount;
       const legacyOwnerCount = legacyCycleEmployees.filter(
         (employee) => ownerKey(employee.techEd) === techKey,
       ).length;
@@ -2185,13 +2204,13 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       // once; normal eligibility/delegation changes never rewrite the baseline.
       const repairLegacyOriginalCount =
         hasSavedOriginalCount &&
-        legacyOwnerCount - stats.count > 1 &&
+        legacyOwnerCount - rosterCount > 1 &&
         savedOriginalCountNumber === legacyOwnerCount;
       const originalCountIsSet =
         hasSavedOriginalCount && !repairLegacyOriginalCount;
       const savedOriginalCount = originalCountIsSet
         ? savedOriginalCountNumber
-        : stats.count;
+        : rosterCount;
       const update = {
         ROWID: row.id,
         budget_base: stats.base,
@@ -2229,7 +2248,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
           row.id,
           distributionColumns,
           ["original_headcount", "allocation_headcount"],
-          stats.count,
+          rosterCount,
         );
       }
       await persistOptional(
@@ -2336,9 +2355,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         savedOriginalCountValue !== null &&
         savedOriginalCountValue !== undefined &&
         String(savedOriginalCountValue).trim() !== "";
+      const rosterCount = compRosterCounts.get(pairKey) || 0;
       const savedOriginalCountNumber = hasSavedOriginalCount
         ? n(savedOriginalCountValue)
-        : stats.count;
+        : rosterCount;
       const legacyOwnerCount = legacyCycleEmployees.filter(
         (employee) =>
           ownerKey(employee.techEd) === details.techEdKey &&
@@ -2348,13 +2368,13 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       // Eligibility List team count, not after ordinary eligibility/delegation changes.
       const repairLegacyOriginalCount =
         hasSavedOriginalCount &&
-        legacyOwnerCount > stats.count &&
+        legacyOwnerCount - rosterCount > 1 &&
         savedOriginalCountNumber === legacyOwnerCount;
       const originalCountIsSet =
         hasSavedOriginalCount && !repairLegacyOriginalCount;
       const savedOriginalCount = originalCountIsSet
         ? savedOriginalCountNumber
-        : stats.count;
+        : rosterCount;
       const update = {
         ROWID: row.id,
         budget_base: stats.base,
@@ -2381,7 +2401,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
           row.id,
           compColumns,
           ["original_headcount", "allocation_headcount"],
-          stats.count,
+          rosterCount,
         );
       }
       await persistOptional(
@@ -2498,19 +2518,18 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       String(savedOrgOriginalCountValue).trim() !== "";
     const savedOrgOriginalCountNumber = hasSavedOrgOriginalCount
       ? n(savedOrgOriginalCountValue)
-      : eligibleEmployees.length;
-    // Repair the known legacy bug where Eligibility_List count (e.g. 30) was
-    // saved instead of generated Appraisal_Sheet count (e.g. 23). Keep the
-    // corrected original count immutable after this one-time repair.
+      : appraisalSheetEmployees.length;
+    // Repair legacy Eligibility_List snapshots against the full generated
+    // Appraisal_Sheet roster, not today's smaller eligible subset.
     const repairLegacyOrgOriginalCount =
       hasSavedOrgOriginalCount &&
-      legacyEligibilityCount - eligibleEmployees.length > 1 &&
+      legacyEligibilityCount - appraisalSheetEmployees.length > 1 &&
       savedOrgOriginalCountNumber === legacyEligibilityCount;
     const orgOriginalCountIsSet =
       hasSavedOrgOriginalCount && !repairLegacyOrgOriginalCount;
     const savedOrgOriginalCount = orgOriginalCountIsSet
       ? savedOrgOriginalCountNumber
-      : eligibleEmployees.length;
+      : appraisalSheetEmployees.length;
     const orgFields = {
       ROWID: master.id,
       // Live sum of previous-appraisal CTC for eligible employees in this cycle.
@@ -2539,7 +2558,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         master.id,
         masterColumns,
         ["original_headcount", "allocation_headcount"],
-        eligibleEmployees.length,
+        appraisalSheetEmployees.length,
       );
     }
     await persistOptional(
