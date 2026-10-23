@@ -831,7 +831,11 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
 
   const firstNonEmpty = (row, keys) => {
     for (const key of keys) {
-      const value = row?.[key];
+      const actual = Object.keys(row || {}).find(
+        (column) => column.toLowerCase() === key.toLowerCase(),
+      );
+      if (actual === undefined) continue;
+      const value = row[actual];
       if (value !== undefined && value !== null && String(historyReference(value)).trim() !== "") return value;
     }
     return "";
