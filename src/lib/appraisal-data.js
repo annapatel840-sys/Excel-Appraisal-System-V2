@@ -103,6 +103,14 @@ const LAST = [
   "Sen",
 ];
 
+// Parse Data Store / spreadsheet numeric values consistently. Some uploaded
+// payroll values can arrive formatted with commas, currency symbols or a % sign.
+const calculationNumber = (value) => {
+  if (value === null || value === undefined || String(value).trim() === "") return 0;
+  const parsed = Number(String(value).replace(/[₹,%\s,]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 // ============================================================
 // CALCULATIONS
 //
@@ -121,7 +129,7 @@ export const totalOfPB = (r) =>
 
 // Total Bonus PB and RB column = PB + RB (auto-calculated, not editable).
 export const totalBonus = (r) =>
-  Number(r.allocatedPBAmount || 0) + Number(r.newRB || 0);
+  calculationNumber(r.allocatedPBAmount) + calculationNumber(r.newRB);
 
 export const hikeAmount = (r) => {
   if (r.hikeAmount !== undefined && r.hikeAmount !== null) {
@@ -163,14 +171,16 @@ export const yoeRatio = (r) => {
 export const totalCTCWithRewards = (r) => newBaseSalary(r) + totalBonus(r);
 
 export const currentRewards = (r) =>
-  Number(r.rbToBePaid || 0) + Number(r.pbToBePaid || 0);
+  calculationNumber(r.rbToBePaid) + calculationNumber(r.pbToBePaid);
 
 export const totalBonusHikeAmount = (r) => totalBonus(r) - currentRewards(r);
 
 export const totalBonusHikePct = (r) => {
   const current = currentRewards(r);
+  if (current <= 0) return 0;
 
-  return current ? (totalBonusHikeAmount(r) / current) * 100 : 0;
+  const percentage = (totalBonusHikeAmount(r) / current) * 100;
+  return Number.isFinite(percentage) ? Number(percentage.toFixed(2)) : 0;
 };
 
 export const totalRewardsHikeAmount = (r) =>
