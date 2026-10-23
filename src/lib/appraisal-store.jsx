@@ -283,9 +283,8 @@ const mapCatalystEmployee = (employee, index) => {
     wissenExperience: Number(employee.wissen_experience || 0),
     totalExperience: Number(employee.total_experience || 0),
 
-    // The "Last Appraisal" column must display the archived cycle effective date.
-    // Keep cycle name as a fallback only when no effective date is available.
-    lastAppraisalDate: String(employee.last_appraisal_date || employee.lastAppraisalDate || employee.last_appraisal_cycle_name || ""),
+    // The "Last Appraisal" column is a date field, never the archived cycle name.
+    lastAppraisalDate: String(employee.last_appraisal_date || employee.lastAppraisalDate || ""),
     previousAppraisalTotalCtcWithRewards: Number(employee.previous_appraisal_total_ctc_with_rewards ?? employee.Previous_Appraisal_total_CTC_with_rewards ?? 0),
     doj: String(employee.date_of_join || ""),
 
