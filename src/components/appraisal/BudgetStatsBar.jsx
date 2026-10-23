@@ -87,9 +87,6 @@ export function BudgetStatsBar({
   className,
 }) {
   const utilisation = allocated ? (consumed / allocated) * 100 : 0;
-  const utilisationWithTarget = allocated
-    ? ((consumed + targetPB) / allocated) * 100
-    : 0;
   const toneFor = (pct) =>
     pct > 100 ? "text-[#b42318]" : pct > 85 ? "text-[#b54708]" : "";
 
@@ -110,20 +107,12 @@ export function BudgetStatsBar({
             ? "Estimate — Budget Master data is unavailable"
             : "Total from Budget Master"
         }
-
-        value={formatCrore(allocated)}
-
         value={formatRupees(allocated)}
-
       />
       <Stat
         label="Consumed (Hikes + Bonuses)"
         title="Hike Amount + Total Bonus, this cycle"
-
-        value={formatCrore(consumed)}
-
         value={formatRupees(consumed)}
-
       />
       <Stat
         label="Utilisation"
@@ -132,9 +121,8 @@ export function BudgetStatsBar({
       />
       <Stat
         label="Budget Utilization incl. Target PB"
-        title="(Consumed + Target PB for Next Year) as a percentage of Budget Allocated"
-        value={`${utilisationWithTarget.toFixed(1)}%`}
-        valueClassName={toneFor(utilisationWithTarget)}
+        title="Consumed (Hikes + Bonuses) + Target PB for Next Year"
+        value={formatRupees(consumed + targetPB)}
       />
     </div>
   );

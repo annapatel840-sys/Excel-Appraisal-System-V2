@@ -323,11 +323,11 @@ export function SheetPage() {
                 type="button"
                 onClick={() => setShowHistory((previous) => !previous)}
                 aria-pressed={showHistory}
-                aria-label="Show History"
+                aria-label="History"
                 className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]"
               >
                 <History className="size-3.5" />
-                <span>Show History</span>
+                <span>History</span>
                 <span
                   className={cn(
                     "relative block h-[16px] w-[30px] rounded-full transition-colors duration-200",
@@ -378,14 +378,12 @@ export function SheetPage() {
                   }
                   setFilters({});
                   setSearch("");
-                  setShowHistory(true);
                   setLastEditedTarget(String(lastEditedRow.empId).trim());
                 }}
-                className="flex h-9 min-w-0 max-w-[220px] shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]"
-                title={lastEditedRow ? "Last edited: " + lastEditedRow.name : "No edits recorded"}
+                className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]"
+                title={lastEditedRow ? "Go to the last edited employee" : "No edits recorded"}
               >
-                <span>↪ Last edited:</span>
-                <span className="truncate">{lastEditedRow?.name || "—"}</span>
+                <span>↪ Last Edited</span>
               </button>
               <div id="appraisal-my-notes-slot" className="relative shrink-0" />
 
