@@ -5,6 +5,7 @@ import { AppShell } from "@/components/appraisal/AppShell";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { useAppraisal } from "@/lib/appraisal-store";
 import { HrConfigPage } from "@/components/employee-master/HrConfigPage";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
 
@@ -59,6 +60,8 @@ const KNOWN_TABS = [
   "payroll-upload",
   "eligibility",
   "delegation",
+  "feedback-rating",
+  "team-changes",
 ];
 
 const ROSTER_FIELD_TO_CATALYST = {
@@ -587,6 +590,7 @@ function AuditHistoryPanel({ open, title, description, entries, onClose }) {
 
 export function EmployeeMaster() {
   const catalystUser = useCatalystUser();
+  const { refreshEmployees } = useAppraisal();
   const role = String(catalystUser?.role || "")
     .trim()
     .toLowerCase()
@@ -658,6 +662,8 @@ export function EmployeeMaster() {
         ? initialTab
         : defaultTab,
   );
+  const [uploadScreen, setUploadScreen] = useState("");
+  const [uploadCycleId, setUploadCycleId] = useState("");
 
   const [search, setSearch] = useState("");
 
@@ -2451,18 +2457,36 @@ export function EmployeeMaster() {
                 <AppraisalCycleMasterPage
                   defaultProcess={defaultProcess}
                   cycleStats={null}
+                  onGenerateSheet={async (cycle) => {
+                    const result = await payrollCycleRequest("generate-sheet", {
+                      method: "POST",
+                      body: { cycleId: cycle.id },
+                    });
+                    await refreshEmployees();
+                    return result;
+                  }}
                   canNavigate={(tab) =>
                     KNOWN_TABS.includes(tab) && isTabVisible(tab)
                   }
-                  onNavigate={(tab) =>
-                    KNOWN_TABS.includes(tab) && isTabVisible(tab)
-                      ? setActiveTab(tab)
-                      : showBanner(
-                          "Not connected",
-                          "That screen is not available here yet.",
-                          true,
-                        )
-                  }
+                  onNavigate={(tab, requestedUploadScreen, cycle) => {
+                    if (tab === "appraisal-sheet") {
+                      window.location.assign("/sheet");
+                      return;
+                    }
+                    if (tab === "payroll-upload") {
+                      setUploadScreen(requestedUploadScreen || "");
+                      setUploadCycleId(String(cycle?.id || ""));
+                    }
+                    if (KNOWN_TABS.includes(tab) && isTabVisible(tab)) {
+                      setActiveTab(tab);
+                      return;
+                    }
+                    showBanner(
+                      "Not connected",
+                      "That screen is not available here yet.",
+                      true,
+                    );
+                  }}
                 />
               )}
             />
@@ -2508,7 +2532,7 @@ export function EmployeeMaster() {
               overflowX: "hidden",
             }}
           >
-            <UploadPage />
+            <UploadPage key={`${uploadCycleId}:${uploadScreen}`} initialCycleId={uploadCycleId} initialScreen={uploadScreen} />
           </div>
         )}
         {isTabVisible("team-changes") && activeTab === "team-changes" && (
