@@ -976,8 +976,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     return null;
   };
 
-  // Count the cycle's actual eligible Eligibility_List records separately from
-  // Employee_Master. Older builds used this larger list count for allocations.
+  // Count all distinct employees in the cycle's Eligibility_List. This is
+  // used only to recognize legacy Original Count snapshots that mistakenly
+  // counted the entire list instead of the generated Appraisal_Sheet roster.
   const eligibleListCountForCycle = (targetCycleId) => {
     const targetCycle = currentCycleFor(cycleReference(targetCycleId));
     const targetAliases = new Set([
@@ -995,9 +996,6 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         referencedCycle ? cycleNameOf(referencedCycle) : "",
       ].filter(Boolean).map((alias) => String(alias).trim().toLowerCase());
       if (!recordAliases.some((alias) => targetAliases.has(alias))) return;
-      const rawEligibility = String(firstValue(record, ["eligibility_status", "eligible_status", "eligibility"]) || "")
-        .trim().toLowerCase().replace(/[ _-]+/g, "");
-      if (!["eligible", "yes", "true", "1"].includes(rawEligibility)) return;
       const employeeId = employeeKeyFor(firstValue(record, ["emp_id", "employee_id", "emp_code", "empId"]));
       if (employeeId) employeeIds.add(employeeId);
     });
