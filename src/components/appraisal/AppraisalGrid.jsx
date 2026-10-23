@@ -13,6 +13,7 @@ import { createPortal } from "react-dom";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { ColumnFilter } from "./ColumnFilter";
+import { TypingHistoryPopup } from "./TypingHistoryPopup";
 import { COLUMNS, formatValue } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useAccess } from "@/lib/access-store";
@@ -71,6 +72,16 @@ const payFloorMessage = (row, colKey, raw, edited = false) => {
   return touched && entered < floor
     ? `Below ${payFloor.floorLabel} (${formatHistoryNumber(floor)})`
     : "";
+};
+
+// Number cells that show the small history pop-up while you type in them,
+// and the history metric each one highlights in that pop-up.
+const TYPING_POPUP_FIELDS = {
+  hikeAmount: "hikeAmount",
+  hikePct: "hikeAmount",
+  allocatedPBAmount: "performanceBonus",
+  newRB: "retentionBonus",
+  targetPBNextYear: "targetPB",
 };
 
 const WIDTHS = {
@@ -1777,6 +1788,11 @@ export function AppraisalGrid({
   // ============================================================
 
   const [editingValues, setEditingValues] = useState({});
+
+  // Small history pop-up while typing: { rowId, colKey, raw }.
+  const [typing, setTyping] = useState(null);
+  const [typingClosed, setTypingClosed] = useState(false);
+  const typingAnchorRef = useRef(null);
 
   const setEditingValue = useCallback((cellKey, value) => {
     setEditingValues((previous) => ({ ...previous, [cellKey]: value }));
@@ -3671,6 +3687,13 @@ export function AppraisalGrid({
               [cellKey]: storedValue,
             }));
 
+            if (TYPING_POPUP_FIELDS[col.key]) {
+              typingAnchorRef.current = input;
+              setTypingClosed(false);
+              setTyping({ rowId: row.id, colKey: col.key, raw: storedValue });
+              if (row.empId) loadHistory(row.empId).catch(() => {});
+            }
+
             if (col.type !== "date") {
               requestAnimationFrame(() => {
                 if (document.activeElement === input) {
@@ -3682,6 +3705,10 @@ export function AppraisalGrid({
           onChange={(event) => {
             const value = event.target.value;
             setEditingValue(cellKey, value);
+
+            if (TYPING_POPUP_FIELDS[col.key]) {
+              setTyping({ rowId: row.id, colKey: col.key, raw: value });
+            }
 
             pendingDraftRef.current = { row, col, raw: value };
 
@@ -3719,6 +3746,11 @@ export function AppraisalGrid({
             setActive(null);
 
             pendingDraftRef.current = null;
+
+            if (TYPING_POPUP_FIELDS[col.key]) {
+              setTyping(null);
+              setTypingClosed(false);
+            }
 
             const raw =
               editingValues[cellKey] !== undefined
@@ -4029,6 +4061,80 @@ export function AppraisalGrid({
         };
       })()
     : null;
+
+  // ---- small history pop-up while typing ----
+  useEffect(() => {
+    if (!typing) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") setTyping(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [typing]);
+
+  const typingPopup = (() => {
+    if (!typing || typingClosed) return null;
+    const baseRow = rows.find((item) => item.id === typing.rowId);
+    if (!baseRow) return null;
+
+    const pbFloor = Number(baseRow.pbToBePaid) || 0;
+    const rbFloor = Number(baseRow.rbToBePaid) || 0;
+    const basePay = Number(baseRow.currentAnnualBasePay) || 0;
+    const rawText = String(typing.raw ?? "").replace(/,/g, "").trim();
+    const entered = Number(rawText);
+    const valid = rawText !== "" && Number.isFinite(entered);
+
+    // The current cycle column is live: it already includes what is typed.
+    const draft = { ...baseRow };
+    if (valid) {
+      if (typing.colKey === "hikePct") {
+        draft.hikePct = entered;
+        draft.hikeAmount = (basePay * entered) / 100;
+      } else if (typing.colKey === "hikeAmount") {
+        draft.hikeAmount = entered;
+        draft.hikePct = basePay ? (entered / basePay) * 100 : 0;
+      } else if (typing.colKey === "allocatedPBAmount") {
+        draft.allocatedPBAmount = Math.max(entered, pbFloor);
+      } else if (typing.colKey === "newRB") {
+        draft.newRB = Math.max(entered, rbFloor);
+      } else {
+        draft[typing.colKey] = entered;
+      }
+    }
+
+    const state = historyByEmpId[String(baseRow.empId || "").trim()];
+    const records = buildHistoryView(state?.data || [], draft, currentCycleName);
+
+    let warning = "";
+    if (valid && typing.colKey === "allocatedPBAmount" && entered < pbFloor) {
+      warning = `entered ${formatHistoryNumber(entered)} is less → ${formatHistoryNumber(pbFloor)} paid`;
+    }
+    if (valid && typing.colKey === "newRB" && entered < rbFloor) {
+      warning = `entered ${formatHistoryNumber(entered)} is less → ${formatHistoryNumber(rbFloor)} paid`;
+    }
+
+    return {
+      employeeName: baseRow.name,
+      records,
+      highlightKey: TYPING_POPUP_FIELDS[typing.colKey],
+      paid: {
+        pb: pbFloor,
+        pbMonth: baseRow.monthPB,
+        rb: rbFloor,
+        rbMonth: baseRow.monthRB,
+        typing:
+          typing.colKey === "allocatedPBAmount"
+            ? "pb"
+            : typing.colKey === "newRB"
+              ? "rb"
+              : "",
+        warning,
+      },
+      criteria: baseRow.targetPBCriteria,
+      loading: !state || state.loading,
+      error: state?.error || "",
+    };
+  })();
 
   const notesContext = liveHistoryRow
     ? `${liveHistoryRow.name} (${liveHistoryRow.empId}) · ${currentCycleName}`
@@ -4677,6 +4783,20 @@ export function AppraisalGrid({
         >
           {toastParts.message}
         </div>
+      )}
+
+      {typingPopup && (
+        <TypingHistoryPopup
+          {...typingPopup}
+          metricColumns={historyMetricColumns}
+          anchorEl={typingAnchorRef.current}
+          topOffset={
+            gridViewportRef.current
+              ? gridViewportRef.current.getBoundingClientRect().top
+              : 112
+          }
+          onClose={() => setTypingClosed(true)}
+        />
       )}
 
       {cellToast && toastParts && !toastParts.error && (
