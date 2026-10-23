@@ -1321,11 +1321,12 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
         String(savedOriginalCountValue).trim() !== "";
       const savedOriginalCountNumber = hasSavedOriginalCount ? n(savedOriginalCountValue) : stats.count;
       const legacyOwnerCount = legacyEligibleEmployees.filter((employee) => ownerKey(employee.techEd) === techKey).length;
-      // Original Count is a one-time snapshot. Never "repair" a saved count
-      // from today's Eligibility List: that list changes as people enter/leave
-      // eligibility, so a valid baseline can coincidentally equal its new size.
-      // Only initialize the baseline when the persisted original field is blank.
-      const originalCountIsSet = hasSavedOriginalCount;
+      // Repair only the known legacy bug: old code copied the Eligibility List
+      // count into Original Count. A matching inflated legacy count is repaired
+      // once; normal eligibility/delegation changes never rewrite the baseline.
+      const repairLegacyOriginalCount = hasSavedOriginalCount &&
+        legacyOwnerCount > stats.count && savedOriginalCountNumber === legacyOwnerCount;
+      const originalCountIsSet = hasSavedOriginalCount && !repairLegacyOriginalCount;
       const savedOriginalCount = originalCountIsSet ? savedOriginalCountNumber : stats.count;
       const update = {
         ROWID: row.id,
@@ -1417,11 +1418,11 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       const legacyOwnerCount = legacyEligibleEmployees.filter((employee) =>
         ownerKey(employee.techEd) === details.techEdKey && ownerKey(employee.compManager) === details.compKey
       ).length;
-      // Original Count is a one-time snapshot. Never "repair" a saved count
-      // from today's Eligibility List: that list changes as people enter/leave
-      // eligibility, so a valid baseline can coincidentally equal its new size.
-      // Only initialize the baseline when the persisted original field is blank.
-      const originalCountIsSet = hasSavedOriginalCount;
+      // Repair a legacy baseline only when it exactly matches the inflated
+      // Eligibility List team count, not after ordinary eligibility/delegation changes.
+      const repairLegacyOriginalCount = hasSavedOriginalCount &&
+        legacyOwnerCount > stats.count && savedOriginalCountNumber === legacyOwnerCount;
+      const originalCountIsSet = hasSavedOriginalCount && !repairLegacyOriginalCount;
       const savedOriginalCount = originalCountIsSet ? savedOriginalCountNumber : stats.count;
       const update = {
         ROWID: row.id,
@@ -1483,9 +1484,13 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
     const hasSavedOrgOriginalCount = savedOrgOriginalCountValue !== null && savedOrgOriginalCountValue !== undefined &&
       String(savedOrgOriginalCountValue).trim() !== "";
     const savedOrgOriginalCountNumber = hasSavedOrgOriginalCount ? n(savedOrgOriginalCountValue) : eligibleEmployees.length;
-    // Organization Original Count follows the same immutable-baseline rule:
-    // a changing Eligibility List must never rewrite an already-saved snapshot.
-    const orgOriginalCountIsSet = hasSavedOrgOriginalCount;
+    // Repair the known legacy bug where Eligibility_List count (e.g. 30) was
+    // saved instead of generated Appraisal_Sheet count (e.g. 23). Keep the
+    // corrected original count immutable after this one-time repair.
+    const repairLegacyOrgOriginalCount = hasSavedOrgOriginalCount &&
+      legacyEligibilityCount > eligibleEmployees.length &&
+      savedOrgOriginalCountNumber === legacyEligibilityCount;
+    const orgOriginalCountIsSet = hasSavedOrgOriginalCount && !repairLegacyOrgOriginalCount;
     const savedOrgOriginalCount = orgOriginalCountIsSet ? savedOrgOriginalCountNumber : eligibleEmployees.length;
     const orgFields = {
       ROWID: master.id,
