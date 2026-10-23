@@ -819,22 +819,23 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const cycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
     if (!cycle) return;
     const rank = historyCycleRank(cycle);
-    // Only a closed cycle that predates the active cycle qualifies as the last appraisal.
-    if (cycleStatusOf(cycle) !== "closed" || (currentRank > 0 && rank >= currentRank)) return;
+    // Only an archived cycle that predates the active cycle qualifies as the last appraisal.
+    const archived = cycle?.archived === true || String(cycle?.archived ?? "").toLowerCase() === "true" ||
+      cycleStatusOf(cycle) === "archived";
+    if (!archived || (currentRank > 0 && rank >= currentRank)) return;
     const storedValue = firstNonEmpty(record, [
       "total_ctc_with_rewards", "total_CTC_with_rewards", "totalCTCWithRewards",
       "total_ctc", "new_ctc", "newCTC",
     ]);
-    const parsedValue = storedValue !== ""
+    const parsedRaw = storedValue !== ""
       ? Number(String(storedValue).replace(/[₹,\s]/g, ""))
       : ctcFromComponents(record);
-    if (parsedValue === null || parsedValue === undefined || !Number.isFinite(parsedValue)) return;
+    const parsedValue = Number.isFinite(parsedRaw) ? parsedRaw : null;
     const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
     const item = { cycle, rank, value: parsedValue, row: record, rowTime };
     const current = historyByEmployee.get(empKey);
-    // Payroll uploads can add or correct a row for the same employee/cycle.
-    // Pick the newest valid row within the newest closed cycle, so Appraisal
-    // Sheet refreshes to the uploaded value instead of retaining an older row.
+    // Pick the newest employee record in the newest archived cycle, even if
+    // its CTC is blank: bonus and effective-date fields still come from this row.
     if (
       !current ||
       item.rank > current.rank ||
@@ -846,9 +847,21 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const empRaw = firstNonEmpty(employee, ["emp_id", "employee_id", "emp_code", "empId"]);
     const empKey = rowEmployeeKey(empRaw, employeeMasterMap);
     const prior = empKey ? historyByEmployee.get(empKey) : null;
-    const previousCtc = prior ? prior.value : currentTotalCtc(employee);
+    const previousCtc = prior && prior.value !== null ? prior.value : currentTotalCtc(employee);
     const previousCycleName = prior ? historyCycleName(prior.cycle) : "";
     const label = prior ? previousCycleName : "New - " + currentYear;
+    const lastArchivedEffectiveDate = prior
+      ? String(prior.cycle?.effective_date ?? prior.cycle?.effectiveDate ?? prior.cycle?.start_date ?? "").trim()
+      : "";
+    const payrollPreviousPB = prior ? Number(firstNonEmpty(prior.row, [
+      "pb_to_be_paid", "performance_bonus", "previous_year_performance_bonus", "previous_year_pb", "previous_pb",
+    ]) || 0) : 0;
+    const payrollPreviousRB = prior ? Number(firstNonEmpty(prior.row, [
+      "rb_to_be_paid", "retention_bonus", "previous_year_retention_bonus", "previous_year_rb", "previous_rb",
+    ]) || 0) : 0;
+    const targetPBForNextYear = prior ? Number(firstNonEmpty(prior.row, [
+      "target_performance_bonus_for_next_year", "target_performance_bonus_next_year",
+    ]) || 0) : 0;
     const master = empKey ? employeeMasterMap.get(empKey) : null;
     const masterId = String(master?.ROWID ?? master?.rowid ?? master?.id ?? "").trim().toLowerCase();
     const cycleEligibility = (masterId ? eligibilityByEmployee.get("row:" + masterId) : null) ||
@@ -865,9 +878,14 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       previous_appraisal_total_ctc_with_rewards: previousCtc,
       Previous_Appraisal_total_CTC_with_rewards: previousCtc,
       previousAppraisalTotalCtcWithRewards: previousCtc,
-      last_appraisal_date: label,
-      lastAppraisalDate: label,
+      // The date column is sourced from the archived cycle's effective_date,
+      // never from stale demo values or the cycle-name label.
+      last_appraisal_date: lastArchivedEffectiveDate || (prior ? "" : label),
+      lastAppraisalDate: lastArchivedEffectiveDate || (prior ? "" : label),
       last_appraisal_cycle_name: label,
+      pb_to_be_paid: payrollPreviousPB,
+      rb_to_be_paid: payrollPreviousRB,
+      target_pb_allocated_for_may: targetPBForNextYear,
     };
   });
 }
