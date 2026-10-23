@@ -807,7 +807,7 @@ const PAYROLL_DATA_CSS = `
 .pd-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; border: none; background: none; border-radius: 6px; font-size: 12.5px; color: #1f2937; cursor: pointer; text-align: left; font-weight: 500; }
 .pd-menu-item:hover { background: #eef2f8; }
 .pd-menu-icon { width: 16px; text-align: center; flex-shrink: 0; }
-.pd-th-inner { display: flex; align-items: center; gap: 5px; justify-content: space-between; }
+.pd-th-inner { display: flex; align-items: flex-start; gap: 5px; justify-content: space-between; }\n.pd-th-inner > span { min-width: 0; flex: 1 1 auto; overflow-wrap: anywhere; }
 .pd-colfilter-btn { border: none; background: none; cursor: pointer; color: #8592a6; font-size: 10px; padding: 2px 3px; border-radius: 3px; flex-shrink: 0; }
 .pd-colfilter-btn:hover { background: #d7e0ed; color: #17365d; }
 .pd-colfilter-btn.filtered { color: #17365d; }
@@ -837,7 +837,7 @@ const PAYROLL_DATA_CSS = `
 .pd-colfilter-apply-row button.clear { color: #a5432f; border-color: #e7c9c3; }
 .pd-grid-wrap { margin: 14px 18px 0; background: white; border: 1px solid #d4dbe5; border-radius: 6px; overflow: auto; flex: 1 1 auto; min-height: 160px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
 .pd-grid-wrap table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
-.pd-grid-wrap th, .pd-grid-wrap td { border-right: 1px solid #e0e5ec; border-bottom: 1px solid #e0e5ec; padding: 5px 8px; white-space: nowrap; height: 28px; font-size: 11.5px; }
+.pd-grid-wrap th, .pd-grid-wrap td { border-right: 1px solid #e0e5ec; border-bottom: 1px solid #e0e5ec; padding: 5px 8px; white-space: normal; overflow-wrap: anywhere; word-break: normal; height: auto; min-height: 28px; vertical-align: top; font-size: 11.5px; }
 .pd-grid-wrap th { position: sticky; top: 0; z-index: 4; background: #e9eef5; color: #24364d; font-size: 10.5px; font-weight: 600; text-align: left; }
 .pd-grid-wrap th.frozen, .pd-grid-wrap td.frozen { position: sticky; left: 0; z-index: 3; background: #fff; }
 .pd-grid-wrap th.frozen { z-index: 8; background: #dfe8f3; }
