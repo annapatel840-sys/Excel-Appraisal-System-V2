@@ -855,6 +855,9 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const lastArchivedEffectiveDate = prior
       ? String(prior.cycle?.effective_date ?? prior.cycle?.effectiveDate ?? prior.cycle?.start_date ?? "").trim()
       : "";
+    const priorTargetPBCriteria = prior ? String(firstNonEmpty(prior.row, [
+      "target_pb_criteria", "target_PB_criteria", "target_performance_bonus_criteria",
+    ]) ?? "").trim() : "";
     const payrollAmount = (value) => {
       const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
       return Number.isFinite(parsed) ? parsed : 0;
@@ -886,13 +889,16 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       previousAppraisalTotalCtcWithRewards: previousCtc,
       // The date column is sourced from the archived cycle's effective_date,
       // never from stale demo values or the cycle-name label.
-      last_appraisal_date: lastArchivedEffectiveDate || (prior ? "" : label),
-      lastAppraisalDate: lastArchivedEffectiveDate || (prior ? "" : label),
+      // Do not substitute a cycle name into the date field.
+      last_appraisal_date: lastArchivedEffectiveDate,
+      lastAppraisalDate: lastArchivedEffectiveDate,
       last_appraisal_cycle_name: label,
       pb_to_be_paid: payrollPreviousPB,
       rb_to_be_paid: payrollPreviousRB,
       target_pb_allocated_for_may: targetPBForNextYear,
       target_pb_allocated: targetPBForNextYear,
+      previous_target_pb_criteria: priorTargetPBCriteria,
+      target_pb_criteria: priorTargetPBCriteria,
     };
   });
 
@@ -904,18 +910,22 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     if (!rowId) return;
     const desiredDate = employee.last_appraisal_date;
     const desiredTargetPB = employee.target_pb_allocated_for_may;
+    const desiredCriteria = employee.target_pb_criteria;
     const sourceRow = employees.find((row) =>
       String(row.ROWID ?? row.rowid ?? "") === rowId
     );
     const existingDate = String(sourceRow?.last_appraisal_date ?? "").trim();
     const existingTargetPB = Number(sourceRow?.target_pb_allocated_for_may || 0);
+    const existingCriteria = String(sourceRow?.target_PB_criteria ?? sourceRow?.target_pb_criteria ?? "").trim();
     if (existingDate === String(desiredDate ?? "").trim() &&
-        existingTargetPB === Number(desiredTargetPB || 0)) return;
+        existingTargetPB === Number(desiredTargetPB || 0) &&
+        existingCriteria === String(desiredCriteria ?? "").trim()) return;
     try {
       await appraisalTable.updateRow({
         ROWID: rowId,
         last_appraisal_date: desiredDate,
         target_pb_allocated_for_may: desiredTargetPB,
+        target_PB_criteria: desiredCriteria,
       });
     } catch (error) {
       console.error("Could not persist archived-cycle appraisal lookup for row", rowId, error?.message || error);
