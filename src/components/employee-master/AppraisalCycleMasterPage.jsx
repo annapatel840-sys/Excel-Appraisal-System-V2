@@ -946,7 +946,7 @@ export function AppraisalCycleMasterPage({
         "gn",
         "Generate Appraisal Sheet",
         gen
-          ? `${w.sheetRows ?? ""} rows generated`
+          ? `${generatedRowCount ?? ""} rows generated`
           : act
             ? "Not generated · nothing blocks this step"
             : "Available after Activate",
