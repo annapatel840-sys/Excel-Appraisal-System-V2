@@ -799,10 +799,22 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   const currentRank = currentCycle ? historyCycleRank(currentCycle) : 0;
   const currentCycleName = currentCycle ? historyCycleName(currentCycle) : "";
   const currentFeedbackByEmployee = new Map();
+  const feedbackFirstNonEmpty = (record, keys) => {
+    for (const key of keys) {
+      const actual = Object.keys(record || {}).find(
+        (column) => column.toLowerCase() === key.toLowerCase(),
+      );
+      if (actual !== undefined && record[actual] !== null &&
+          record[actual] !== undefined && String(record[actual]).trim() !== "") {
+        return record[actual];
+      }
+    }
+    return "";
+  };
   feedbackRows.forEach((record) => {
-    const empRaw = firstNonEmpty(record, ["emp_ID", "emp_id", "employee_id", "emp_code"]);
+    const empRaw = feedbackFirstNonEmpty(record, ["emp_ID", "emp_id", "employee_id", "emp_code"]);
     const empKey = rowEmployeeKey(empRaw, employeeMasterMap);
-    const rawCycle = historyReference(firstNonEmpty(record, [
+    const rawCycle = historyReference(feedbackFirstNonEmpty(record, [
       "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name",
     ]));
     const cycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
@@ -1026,7 +1038,11 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       // Employee Master UI reads these from the Employees API's rawEmployee.
       email_id: String(masterValue("email_id", "email") || row.email_id || ""),
       last_appraisal_month_year: String(
-        masterValue("last_appraisal_month_year", "last_appraisal_month_year") || row.last_appraisal_month_year || "",
+        masterValue("last_appraisal_month_year") || row.last_appraisal_month_year || "",
+      ),
+      last_appraisal_date: String(
+        masterValue("last_appraisal_date", "last_appraisal", "last_appraisal_effective_date") ||
+        row.last_appraisal_date || "",
       ),
       reporting_manager: String(
         masterValue("repo_manager", "reporting_manager", "manager") || row.reporting_manager || "",
@@ -1203,7 +1219,9 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       manager_rating: String(row.manager_rating || ""),
       rating: Number(row.rating || 0),
       joining_bonus: Number(row.joining_bonus || 0),
-      target_PB_criteria: String(row.target_PB_criteria || ""),
+      target_PB_criteria: String(
+        row.target_PB_criteria ?? row.target_pb_criteria ?? row.target_performance_bonus_criteria ?? "",
+      ),
       comp_manager_remarks: String(row.comp_manager_remarks || ""),
     };
   });
