@@ -1364,7 +1364,80 @@ async function getEmployees(req, res) {
      LOAD EMPLOYEES
      ========================================================== */
 
-  const appraisalRows = await getAllEmployees(datastore);
+  let appraisalRows = await getAllEmployees(datastore);
+
+  // Appraisal view must be isolated to the one active cycle. Appraisal_Sheet
+  // intentionally retains archived cycles, so returning every row here makes
+  // old employees leak into a newly generated sheet. Master/eligibility views
+  // remain full-roster views and are not cycle-filtered.
+  if (requestedView !== "master" && requestedView !== "eligibility") {
+    const [cycleRows, cycleEligibilityRows] = await Promise.all([
+      readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
+      readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)).catch(() => []),
+    ]);
+    const activeCycle = cycleRows.find((cycle) => {
+      const status = String(
+        cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "",
+      ).trim().toLowerCase();
+      const archived = ["true", "1", "yes"].includes(
+        String(cycle?.archived ?? "").trim().toLowerCase(),
+      );
+      return status === "active" && !archived;
+    });
+    if (activeCycle) {
+      const activeCycleId = String(
+        activeCycle.ROWID ?? activeCycle.rowid ?? activeCycle.id ?? activeCycle.ID ?? "",
+      ).trim();
+      const activeCycleName = historyCycleName(activeCycle).toLowerCase();
+      const eligibleMasterIds = new Set();
+      const eligibleEmployeeIds = new Set();
+
+      cycleEligibilityRows.forEach((record) => {
+        const rawCycle = historyReference(
+          record?.appraisal_cycle_id ?? record?.cycle_id ?? record?.cycleId,
+        );
+        const recordCycle = cycleRows.find((candidate) => {
+          const candidateId = String(
+            candidate.ROWID ?? candidate.rowid ?? candidate.id ?? candidate.ID ?? "",
+          ).trim();
+          return candidateId === rawCycle ||
+            historyCycleName(candidate).toLowerCase() === rawCycle.toLowerCase();
+        });
+        const belongsToActiveCycle = rawCycle === activeCycleId ||
+          (!!activeCycleName && rawCycle.toLowerCase() === activeCycleName) ||
+          (!!recordCycle && String(
+            recordCycle.ROWID ?? recordCycle.rowid ?? recordCycle.id ?? recordCycle.ID ?? "",
+          ).trim() === activeCycleId);
+        const eligibilityStatus = String(
+          record?.eligibility_status ?? record?.eligible_status ?? "",
+        ).trim().toLowerCase().replace(/[ _-]+/g, "");
+        if (!belongsToActiveCycle || !["eligible", "yes", "true", "1"].includes(eligibilityStatus)) return;
+
+        const masterId = historyReference(
+          record?.employee_master_id ?? record?.employee_master_row_id,
+        ).toLowerCase();
+        const empId = String(record?.emp_id ?? record?.employee_id ?? record?.emp_code ?? "")
+          .trim().toLowerCase();
+        if (masterId) eligibleMasterIds.add(masterId);
+        if (empId) eligibleEmployeeIds.add(empId);
+      });
+
+      appraisalRows = appraisalRows.filter((row) => {
+        const rowCycle = historyReference(
+          row?.cycle_id ?? row?.appraisal_cycle_id ?? row?.appraisalCycleId,
+        );
+        const belongsToActiveCycle = rowCycle === activeCycleId ||
+          (!!activeCycleName && rowCycle.toLowerCase() === activeCycleName);
+        if (!belongsToActiveCycle) return false;
+        const masterId = historyReference(
+          row?.emp_master_row_id ?? row?.employee_master_id,
+        ).toLowerCase();
+        const empId = String(row?.emp_id ?? row?.employee_id ?? "").trim().toLowerCase();
+        return (masterId && eligibleMasterIds.has(masterId)) ||
+          (empId && eligibleEmployeeIds.has(empId));
+      });
+    }
+  }
 
   /* ==========================================================
      LOAD EMPLOYEE MASTER
