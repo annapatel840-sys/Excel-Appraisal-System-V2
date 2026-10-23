@@ -870,12 +870,21 @@ async function generateAppraisalSheet(tables, cycle, actor) {
       .map((value) => String(value || "").trim().toLowerCase())
       .filter(Boolean),
   );
+  const referenceText = (value) => {
+    if (value && typeof value === "object") {
+      return String(
+        value.ROWID ?? value.rowid ?? value.id ?? value.ID ?? value.value ??
+        value.cycle_name ?? value.appraisal_cycle_name ?? "",
+      ).trim();
+    }
+    return String(value ?? "").trim();
+  };
   const payrollByMasterId = new Map();
   payrollRows.forEach((row) => {
-    const masterId = String(row.emp_id ?? row.employee_master_id ?? "").trim();
-    const payrollCycle = String(
-      row.appraisal_cycle_name ?? row.appraisal_cycle_id ?? row.cycle_id ?? row.appraisal_year ?? "",
-    ).trim().toLowerCase();
+    const masterId = referenceText(row.emp_id ?? row.employee_master_id);
+    const payrollCycle = referenceText(
+      row.appraisal_cycle_name ?? row.appraisal_cycle_id ?? row.cycle_id ?? row.appraisal_year,
+    ).toLowerCase();
     if (masterId && cycleKeys.has(payrollCycle)) {
       payrollByMasterId.set(masterId, row);
     }
@@ -921,7 +930,7 @@ async function generateAppraisalSheet(tables, cycle, actor) {
         retention_bonus: ["retention_bonus"],
         hike_pct: ["hike_pct"],
         hike_amount: ["hike_amount"],
-        total_CTC_with_rewards: ["total_CTC_with_rewards", "total_ctc_with_rewards", "total_ctc"],
+        total_ctc_with_rewards: ["total_CTC_with_rewards", "total_ctc_with_rewards", "total_ctc"],
         total_rewards_hike_amount: ["total_rewards_hike_amount"],
         total_reward_hike_pct: ["total_reward_hike_pct"],
         total_bonus: ["total_bonus"],
@@ -933,7 +942,18 @@ async function generateAppraisalSheet(tables, cycle, actor) {
         const value = payrollFields
           .map((field) => payroll[field])
           .find((candidate) => candidate !== undefined && candidate !== null && String(candidate).trim() !== "");
-        if (value !== undefined) payload[sheetField] = value;
+        if (value === undefined) return;
+        // Existing Appraisal Sheet input is authoritative after generation.
+        // Seed new rows from payroll, and fill only blank values on reruns.
+        const existingValue = existing?.[sheetField];
+        if (
+          !existing ||
+          existingValue === undefined ||
+          existingValue === null ||
+          String(existingValue).trim() === ""
+        ) {
+          payload[sheetField] = value;
+        }
       });
     }
 
