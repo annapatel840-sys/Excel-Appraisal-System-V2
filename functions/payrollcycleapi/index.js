@@ -932,7 +932,6 @@ async function generateAppraisalSheet(tables, cycle, actor) {
         hike_amount: ["hike_amount"],
         total_ctc_with_rewards: ["total_CTC_with_rewards", "total_ctc_with_rewards", "total_ctc"],
         total_rewards_hike_amount: ["total_rewards_hike_amount"],
-        total_reward_hike_pct: ["total_reward_hike_pct"],
         total_bonus: ["total_bonus"],
         new_base_pay: ["new_base_pay"],
         target_pb_allocated_for_may: ["target_performance_bonus_for_next_year", "target_performance_bonus_next_year"],
