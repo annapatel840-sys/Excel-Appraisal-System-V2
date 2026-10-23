@@ -17,7 +17,6 @@ const STATIC_COL_META = {
   totalCtcRewards: { label: "Total CTC with Rewards", type: "number", money: true },
   totalRewardHikeAmt: { label: "Total Reward Hike Amount", type: "number", money: true },
   totalRewardHikePct: { label: "Total Reward Hike%", type: "number", pct: true },
-  targetPerformanceAgreed: { label: "Target Performance Agreed", type: "number", money: true },
   targetPbNextYear: { label: "Target Performance Bonus for Next Year", type: "number", money: true },
   targetPbCriteria: { label: "Target PB Criteria" },
   totalBonus: { label: "Total Bonus", type: "number", money: true },

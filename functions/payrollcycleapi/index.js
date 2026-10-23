@@ -168,14 +168,14 @@ const PAYROLL_FIELDS = {
   joiningBonus: "joining_bonus", performanceBonus: "performance_bonus", retentionBonus: "retention_bonus",
   hikePct: "hike_pct", hikeAmt: "hike_amount", totalCtcRewards: "total_CTC_with_rewards",
   totalRewardHikeAmt: "total_rewards_hike_amount", totalRewardHikePct: "total_reward_hike_pct",
-  targetPerformanceAgreed: "target_performance_agreed", totalBonus: "total_bonus", newBasePay: "new_base_pay",
+  totalBonus: "total_bonus", newBasePay: "new_base_pay",
   targetPbNextYear: "target_performance_bonus_for_next_year", targetPbCriteria: "target_pb_criteria",
   rbPaid: "rb_to_be_paid", rbMonth: "month_rb", pbPaid: "pb_to_be_paid", pbMonth: "month_pb",
   tbPaid: "tb_to_be_paid", tbMonth: "month_tb",
 };
 const NUMERIC_FIELDS = new Set([
   "basePay","joiningBonus","performanceBonus","retentionBonus","hikePct","hikeAmt",
-  "totalCtcRewards","totalRewardHikeAmt","totalRewardHikePct","targetPerformanceAgreed",
+  "totalCtcRewards","totalRewardHikeAmt","totalRewardHikePct",
   "totalBonus","newBasePay","rbPaid","pbPaid","tbPaid","targetPbNextYear",
 ]);
 const MAX_TEXT_LENGTH = { empName: 100, fyYear: 20, rbMonth: 30, pbMonth: 30, tbMonth: 30, targetPbCriteria: 255 };
@@ -953,7 +953,7 @@ function mapPayroll(row, cycleByName, cycleById, employeeById = new Map()) {
     performanceBonus: num("performance_bonus"), retentionBonus: num("retention_bonus"),
     hikePct: num("hike_pct"), hikeAmt: num("hike_amount"),
     totalCtcRewards: num("total_CTC_with_rewards"), totalRewardHikeAmt: num("total_rewards_hike_amount"),
-    totalRewardHikePct: num("total_reward_hike_pct"), targetPerformanceAgreed: num("target_performance_agreed"),
+    totalRewardHikePct: num("total_reward_hike_pct"),
     totalBonus: num("total_bonus"), newBasePay: num("new_base_pay"), rbPaid: num("rb_to_be_paid"),
     rbMonth: text("month_rb"), pbPaid: num("pb_to_be_paid"), pbMonth: text("month_pb"),
     tbPaid: num("tb_to_be_paid"), tbMonth: text("month_tb"), cycleId: cycle?.id || "", createdTime: text("CREATEDTIME"),

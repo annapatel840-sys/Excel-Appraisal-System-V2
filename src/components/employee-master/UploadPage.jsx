@@ -89,7 +89,6 @@ const PAY_FIELDS = [
   { key: "totalCtcRewards", label: "Total CTC with Rewards" },
   { key: "totalRewardHikeAmt", label: "Total Reward Hike Amount" },
   { key: "totalRewardHikePct", label: "Total Reward Hike%" },
-  { key: "targetPerformanceAgreed", label: "Target Performance Agreed" },
   { key: "targetPbNextYear", label: "Target Performance Bonus for Next Year", uploadHeaders: ["Target PB for Next Year"] },
   { key: "targetPbCriteria", label: "Target PB Criteria" },
   { key: "totalBonus", label: "Total Bonus" },
