@@ -1324,7 +1324,7 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       // count into Original Count. A matching inflated legacy count is repaired
       // once; normal eligibility/delegation changes never rewrite the baseline.
       const repairLegacyOriginalCount = hasSavedOriginalCount &&
-        legacyOwnerCount > stats.count && savedOriginalCountNumber === legacyOwnerCount;
+        legacyOwnerCount - stats.count > 1 && savedOriginalCountNumber === legacyOwnerCount;
       const originalCountIsSet = hasSavedOriginalCount && !repairLegacyOriginalCount;
       const savedOriginalCount = originalCountIsSet ? savedOriginalCountNumber : stats.count;
       const update = {
@@ -1487,7 +1487,7 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
     // saved instead of generated Appraisal_Sheet count (e.g. 23). Keep the
     // corrected original count immutable after this one-time repair.
     const repairLegacyOrgOriginalCount = hasSavedOrgOriginalCount &&
-      legacyEligibilityCount > eligibleEmployees.length &&
+      legacyEligibilityCount - eligibleEmployees.length > 1 &&
       savedOrgOriginalCountNumber === legacyEligibilityCount;
     const orgOriginalCountIsSet = hasSavedOrgOriginalCount && !repairLegacyOrgOriginalCount;
     const savedOrgOriginalCount = orgOriginalCountIsSet ? savedOrgOriginalCountNumber : eligibleEmployees.length;
