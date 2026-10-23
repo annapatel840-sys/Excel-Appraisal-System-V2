@@ -174,6 +174,28 @@ async function scenario(label, columns) {
     assert.strictEqual((await post('cycles/update/' + c.id, { name: c.name, start: c.start, end: c.end })).status, 409);
   });
 
+  await t('New Joiner with No process can activate, close, and archive through the standard cycle lifecycle', async () => {
+    const created = await post('cycles/create', {
+      name: 'New Joiner 2028',
+      type: 'New Joiner',
+      process: 'None',
+      effective: iso(5),
+      start: '',
+      end: '',
+    });
+    assert.strictEqual(created.status, 201, JSON.stringify(created.json));
+    const cycle = await byName('New Joiner 2028');
+    assert.strictEqual(cycle.status, 'Upcoming');
+    assert.strictEqual(cycle.process || 'None', 'None');
+    assert.strictEqual((await post('cycles/status/' + cycle.id, { status: 'Active' })).status, 200);
+    assert.strictEqual((await byName('New Joiner 2028')).status, 'Active');
+    assert.strictEqual((await post('cycles/status/' + cycle.id, { status: 'Closed' })).status, 200);
+    assert.strictEqual((await post('cycles/archive/' + cycle.id, { archived: true })).status, 200);
+    const archived = await byName('New Joiner 2028');
+    assert.strictEqual(archived.status, 'Closed');
+    assert.ok(archived.archived);
+  });
+
   await t('Add remark appends instead of overwriting; audit holds only the new remark', async () => {
     const c = await byName('Exceptional 2027');
     await post('cycles/remarks/' + c.id, { remark: 'first' });
