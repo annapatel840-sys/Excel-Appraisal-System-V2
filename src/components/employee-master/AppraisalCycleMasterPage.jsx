@@ -809,11 +809,14 @@ export function AppraisalCycleMasterPage({
   // A link is shown only when its screen can be opened from here.
   const canGo = (id) => {
     const tabKey = NAV_TAB[id];
-    if (!tabKey || !onNavigate) return false;
+    if (!onNavigate) return false;
+    // Appraisal Sheet is a separate route, not an Employee Master tab.
+    if (id === "go-ap") return true;
+    if (!tabKey) return false;
     return canNavigate ? !!canNavigate(tabKey) : true;
   };
 
-  const navTo = (id) => {
+  const navTo = (id, cycle) => {
     const tabKey = NAV_TAB[id];
     const uploadScreen =
       id === "go-up-em"
@@ -824,7 +827,11 @@ export function AppraisalCycleMasterPage({
             ? "fb"
             : undefined;
 
-    if (tabKey && onNavigate) return onNavigate(tabKey, uploadScreen);
+    if (id === "go-ap") {
+      window.location.assign("/sheet");
+      return;
+    }
+    if (tabKey && onNavigate) return onNavigate(tabKey, uploadScreen, cycle);
     showBanner("Not connected", "This step is not linked to a screen yet.");
   };
 
@@ -1378,7 +1385,7 @@ export function AppraisalCycleMasterPage({
                           key={a.id}
                           type="button"
                           className={a.link ? "acx-btn link" : "acx-btn sm"}
-                          onClick={() => checkAct(a.id, c)}
+                          onClick={() => a.id === "go-ap" ? navTo(a.id, c) : checkAct(a.id, c)}
                         >
                           {a.l}
                         </button>
