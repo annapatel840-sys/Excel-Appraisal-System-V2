@@ -899,10 +899,11 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     if (!rowId) return;
     const desiredDate = employee.last_appraisal_date;
     const desiredTargetPB = employee.target_pb_allocated_for_may;
-    const existingDate = String(employee.ROWID ? (employees.find((row) =>
+    const sourceRow = employees.find((row) =>
       String(row.ROWID ?? row.rowid ?? "") === rowId
-    )?.last_appraisal_date ?? "") : "").trim();
-    const existingTargetPB = Number(employee.target_pb_allocated_for_may || 0);
+    );
+    const existingDate = String(sourceRow?.last_appraisal_date ?? "").trim();
+    const existingTargetPB = Number(sourceRow?.target_pb_allocated_for_may || 0);
     if (existingDate === String(desiredDate ?? "").trim() &&
         existingTargetPB === Number(desiredTargetPB || 0)) return;
     try {
