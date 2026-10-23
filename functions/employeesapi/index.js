@@ -843,7 +843,8 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     ) historyByEmployee.set(empKey, item);
   });
 
-  return (employees || []).map((employee) => {
+  const appraisalTable = datastore.table(EMPLOYEES_TABLE_ID);
+  const updatedEmployees = (employees || []).map((employee) => {
     const empRaw = firstNonEmpty(employee, ["emp_id", "employee_id", "emp_code", "empId"]);
     const empKey = rowEmployeeKey(empRaw, employeeMasterMap);
     const prior = empKey ? historyByEmployee.get(empKey) : null;
@@ -886,8 +887,35 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       pb_to_be_paid: payrollPreviousPB,
       rb_to_be_paid: payrollPreviousRB,
       target_pb_allocated_for_may: targetPBForNextYear,
+      target_pb_allocated: targetPBForNextYear,
     };
   });
+
+  // Persist the lookup-derived date and target PB into the current Appraisal_Sheet
+  // row so newly generated cycles replace stale demo values in the table itself.
+  // The removed pb_to_be_paid/rb_to_be_paid columns are intentionally not written.
+  await Promise.all(updatedEmployees.map(async (employee) => {
+    const rowId = String(employee.ROWID ?? employee.rowid ?? "").trim();
+    if (!rowId) return;
+    const desiredDate = employee.last_appraisal_date;
+    const desiredTargetPB = employee.target_pb_allocated_for_may;
+    const existingDate = String(employee.ROWID ? (employees.find((row) =>
+      String(row.ROWID ?? row.rowid ?? "") === rowId
+    )?.last_appraisal_date ?? "") : "").trim();
+    const existingTargetPB = Number(employee.target_pb_allocated_for_may || 0);
+    if (existingDate === String(desiredDate ?? "").trim() &&
+        existingTargetPB === Number(desiredTargetPB || 0)) return;
+    try {
+      await appraisalTable.updateRow({
+        ROWID: rowId,
+        last_appraisal_date: desiredDate,
+        target_pb_allocated_for_may: desiredTargetPB,
+      });
+    } catch (error) {
+      console.error("Could not persist archived-cycle appraisal lookup for row", rowId, error?.message || error);
+    }
+  }));
+  return updatedEmployees;
 }
 
 function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
