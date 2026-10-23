@@ -228,6 +228,50 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(Number(changedComp.current_headcount), 22, 'Comp Manager Current Count follows current eligible sheet rows');
   });
 
+  await t('repairs legacy 30-count snapshots to 23 sheet rows while current count is 22', async () => {
+    const employeeMaster = Array.from({ length: 30 }, (_, i) => ({
+      emp_id: 'E' + (i + 1),
+      emp_name: 'Employee ' + (i + 1),
+      emp_status: 'Active',
+      eligibility: 'Eligible',
+      appraiser_tech_ed: 'T1',
+      comp_manager: 'C1',
+    }));
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8, original_headcount: 30, current_headcount: 30 }],
+      Budget_Distribution: [{ appraisal_cycle_id: 'Apr-26', appraiser_tech_ed_id: 'T1', percentage: 8, original_headcount: 30, current_headcount: 30 }],
+      Budget_Distribution_Comp: [{ appraisal_cycle_id: 'Apr-26', comp_manager: 'C1', percentage: 8, original_headcount: 30, current_headcount: 30 }],
+      Employee_Master: employeeMaster,
+      Eligibility_List: Array.from({ length: 30 }, (_, i) => ({
+        appraisal_cycle_id: 'Apr-26',
+        emp_id: 'E' + (i + 1),
+        eligibility_status: i === 22 ? 'Not Eligible' : 'Eligible',
+      })),
+      Payroll_Data: [],
+      Appraisal_Cycle_Master: [{ cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' }],
+      Appraisal_Sheet: Array.from({ length: 23 }, (_, i) =>
+        sheet('E' + (i + 1), 'T1', 'C1', 1000000, 0)
+      ),
+    });
+    const cycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = cycleId;
+    store.tables.Budget_Distribution[0].appraisal_cycle_id = cycleId;
+    store.tables.Budget_Distribution_Comp[0].appraisal_cycle_id = cycleId;
+    store.tables.Budget_Distribution_Comp[0].budget_distribution_id = store.tables.Budget_Distribution[0].ROWID;
+    store.tables.Eligibility_List.forEach((row) => { row.appraisal_cycle_id = cycleId; });
+
+    const r = await get(load(store));
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(Number(r.json.master[0].original_headcount), 23, 'legacy Org baseline is repaired from the full sheet roster');
+    assert.strictEqual(Number(r.json.master[0].current_headcount), 22, 'Org Current Count excludes the ineligible sheet employee');
+    const tech = r.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1');
+    assert.strictEqual(Number(tech.original_headcount), 23, 'legacy Tech-Ed baseline is repaired from sheet rows');
+    assert.strictEqual(Number(tech.current_headcount), 22);
+    const comp = r.json.compManager.find((row) => row.comp_manager === 'C1');
+    assert.strictEqual(Number(comp.original_headcount), 23, 'legacy Comp Manager baseline is repaired from sheet rows');
+    assert.strictEqual(Number(comp.current_headcount), 22);
+  });
+
   await t('original counts remain fixed while current counts follow eligibility changes', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
