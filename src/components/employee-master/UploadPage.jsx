@@ -282,8 +282,8 @@ function normalizeCell(field, value) {
       }
     }
     const text = sv(value).trim();
-    const iso = text.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})(?:[T\\s].*)?$/);
-    const dayFirst = text.match(/^(\\d{1,2})[\\/.-](\\d{1,2})[\\/.-](\\d{4})$/);
+    const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/);
+    const dayFirst = text.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/);
     const year = iso ? Number(iso[1]) : dayFirst ? Number(dayFirst[3]) : 0;
     const month = iso ? Number(iso[2]) : dayFirst ? Number(dayFirst[2]) : 0;
     if (year && month >= 1 && month <= 12) {
