@@ -2466,7 +2466,9 @@ export function EmployeeMaster() {
                     return result;
                   }}
                   canNavigate={(tab) =>
-                    KNOWN_TABS.includes(tab) && isTabVisible(tab)
+                    tab === "appraisal-sheet"
+                      ? access.canScreen("appraisalSheet")
+                      : KNOWN_TABS.includes(tab) && isTabVisible(tab)
                   }
                   onNavigate={(tab, requestedUploadScreen, cycle) => {
                     if (tab === "appraisal-sheet") {
