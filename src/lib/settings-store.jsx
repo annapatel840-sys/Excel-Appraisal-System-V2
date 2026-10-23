@@ -5,7 +5,8 @@ const STORAGE_KEY = "employee-appraisal-settings";
 function readSettings() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    return { ...DEFAULT_SETTINGS, ...(saved || {}) };
+    // The theme is fixed to Navy Blue; ignore any theme saved earlier.
+    return { ...DEFAULT_SETTINGS, ...(saved || {}), theme: "navy" };
   } catch { return DEFAULT_SETTINGS; }
 }
 const SettingsContext = createContext(null);
@@ -19,7 +20,7 @@ export function SettingsProvider({ children }) {
   const value = useMemo(() => ({
     settings,
     saveSettings(next) {
-      const normalized = { ...DEFAULT_SETTINGS, ...next };
+      const normalized = { ...DEFAULT_SETTINGS, ...next, theme: "navy" };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
       setSettings(normalized);
     },

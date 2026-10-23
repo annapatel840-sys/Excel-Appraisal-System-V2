@@ -28,6 +28,7 @@ export const FIELDS = COLUMNS.map((c) => ({
                 ? "enum"
                 : "text",
     ...(c.options ? { options: c.options } : {}),
+    ...(c.optionLabels ? { optionLabels: c.optionLabels } : {}),
     get: (r) => (c.computed && c.fn ? c.fn(r) : r[c.key]),
 }));
 

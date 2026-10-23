@@ -9,7 +9,8 @@ import {
   useState,
 } from "react";
 
-import { COLUMNS } from "./appraisal-data";
+import { COLUMNS, normalizeManagerRating } from "./appraisal-data";
+import { loadFeedbackRating } from "./feedback-rating-api";
 import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 import { useCatalystUser } from "./catalyst-auth";
 import { getViewAsSelected, useViewAs } from "./view-as-store";
@@ -75,6 +76,29 @@ const nextId = () => `a${Date.now()}-${seq++}`;
 /* ============================================================
 CATALYST API
 ============================================================ */
+
+/* Manager Rating (1-5) per employee for the current cycle, read from
+   Feedback_And_Rating (table 74008000000022041). Returns null if unavailable. */
+async function loadManagerRatings() {
+  try {
+    const data = await loadFeedbackRating();
+    const cycles = data?.cycles || [];
+    const current =
+      cycles.find((c) => String(c.status).toLowerCase() === "active") ||
+      cycles.find((c) => String(c.status).toLowerCase() !== "archived");
+    const map = new Map();
+    (data?.rows || []).forEach((row) => {
+      if (current && String(row.cid) !== String(current.id)) return;
+      const rating = normalizeManagerRating(row.mr);
+      const key = String(row.id || "").trim().toLowerCase();
+      if (key && rating) map.set(key, rating);
+    });
+    return map;
+  } catch (error) {
+    console.warn("Could not load Manager Rating from Feedback_And_Rating:", error);
+    return null;
+  }
+}
 
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
 const AUDIT_API_URL = catalystFunctionUrl("appraisalauditapi");
@@ -295,7 +319,7 @@ const mapCatalystEmployee = (employee, index) => {
         ? Number(employee.rating)
         : "",
 
-    managerRating: String(employee.manager_rating || ""),
+    managerRating: normalizeManagerRating(employee.manager_rating),
     interviewCount: Number(employee.interview_count || 0),
 
     rrPercent: Number(employee.rr_percent || 0),
@@ -1070,8 +1094,21 @@ export function AppraisalProvider({ children }) {
         return;
       }
 
+      // Manager Rating comes from the Feedback_And_Rating table (current
+      // cycle). If that table cannot be read, the sheet still loads.
+      const ratingByEmp = await loadManagerRatings();
+
+      if (requestId !== loadSeqRef.current) {
+        return;
+      }
+
       const employees = mergePendingCells(
-        result.employees.map(mapCatalystEmployee),
+        result.employees.map(mapCatalystEmployee).map((employee) => ({
+          ...employee,
+          managerRating: ratingByEmp
+            ? ratingByEmp.get(String(employee.empId).trim().toLowerCase()) || ""
+            : employee.managerRating,
+        })),
         rowsRef.current,
         pendingCellsRef.current,
       );

@@ -1,18 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, LogOut, RotateCcw, Save } from "lucide-react";
+import { LogOut, RotateCcw, Save } from "lucide-react";
 
 import { useCatalystSignOut, useCatalystUser } from "@/lib/catalyst-auth";
 import { DEFAULT_SETTINGS, useSettings } from "@/lib/settings-store";
 import { cn } from "@/lib/utils";
 import { roleLabelOf, useViewAs } from "@/lib/view-as-store";
 import { ViewAsSelect } from "./ViewAsSwitcher";
-
-// Same options the old gear / Settings page offered.
-const THEMES = [
-  { id: "navy", label: "Navy Blue", description: "Current project theme", swatch: "#173b63" },
-  { id: "slate", label: "Slate Blue", description: "A softer alternate blue", swatch: "#334155" },
-  { id: "mono", label: "Black & White", description: "High-contrast monochrome", swatch: "#111111" },
-];
 
 const NAV_POSITIONS = [
   { id: "top", label: "Top header" },
@@ -169,46 +162,6 @@ export function ProfileMenu({ isVertical, isCollapsed, showSettings }) {
           {/* What used to be behind the gear */}
           {showSettings && (
             <div className="space-y-4 p-3">
-              <section>
-                <SectionLabel>Theme</SectionLabel>
-                <div className="space-y-1">
-                  {THEMES.map((theme) => {
-                    const selected = draft.theme === theme.id;
-                    return (
-                      <button
-                        key={theme.id}
-                        type="button"
-                        onClick={() => update("theme", theme.id)}
-                        className={cn(
-                          "flex w-full items-center gap-2.5 rounded-lg border px-2.5 py-1.5 text-left transition",
-                          selected
-                            ? "border-[var(--app-brand)] ring-2 ring-[var(--app-brand)]/15"
-                            : "border-[#e3e9ec] hover:border-[var(--app-brand)]/50",
-                        )}
-                      >
-                        <span
-                          className="size-6 shrink-0 rounded-md border border-black/10"
-                          style={{ backgroundColor: theme.swatch }}
-                        />
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-xs font-medium">
-                            {theme.label}
-                          </span>
-                          <span className="block truncate text-[10px] text-slate-500">
-                            {theme.description}
-                          </span>
-                        </span>
-                        {selected && (
-                          <span className="flex size-4 shrink-0 items-center justify-center rounded-full bg-[var(--app-brand)] text-white">
-                            <Check className="size-3" />
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </section>
-
               <section>
                 <SectionLabel>Navigation</SectionLabel>
                 <div className="grid grid-cols-2 gap-1.5">

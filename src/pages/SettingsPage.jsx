@@ -1,15 +1,9 @@
 import { useEffect, useState } from "react";
-import { Check, LogOut, RotateCcw, Save, Settings2 } from "lucide-react";
+import { LogOut, RotateCcw, Save, Settings2 } from "lucide-react";
 import { AppShell } from "@/components/appraisal/AppShell";
 import { Button } from "@/components/ui/button";
 import { useSettings, DEFAULT_SETTINGS } from "@/lib/settings-store";
 import { useCatalystSignOut } from "@/lib/catalyst-auth";
-
-const THEMES = [
-  { id: "navy", label: "Navy Blue", description: "Current project theme", swatch: "#173b63" },
-  { id: "slate", label: "Slate Blue", description: "A softer alternate blue", swatch: "#334155" },
-  { id: "mono", label: "Black & White", description: "High-contrast monochrome", swatch: "#111111" },
-];
 
 export function SettingsPage() {
   const { settings, saveSettings, resetSettings } = useSettings();
@@ -28,30 +22,10 @@ export function SettingsPage() {
             <Settings2 className="size-5 text-primary" />
             <div>
               <h2 className="text-lg font-semibold">Settings & Configuration</h2>
-              <p className="text-xs text-muted-foreground">Change the application appearance and navigation layout.</p>
+              <p className="text-xs text-muted-foreground">Change the navigation layout.</p>
             </div>
           </div>
         </div>
-        <section className="rounded-lg border border-border bg-card p-4">
-          <h3 className="text-sm font-semibold">Theme</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Choose the main project color and visual style.</p>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            {THEMES.map((theme) => {
-              const selected = draft.theme === theme.id;
-              return (
-                <button key={theme.id} type="button" onClick={() => update("theme", theme.id)}
-                  className={"rounded-lg border p-3 text-left transition " + (selected ? "border-primary ring-2 ring-primary/20" : "border-border hover:border-primary/50")}>
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="size-9 rounded-md border border-black/10" style={{ backgroundColor: theme.swatch }} />
-                    {selected && <span className="flex size-5 items-center justify-center rounded-full bg-primary text-primary-foreground"><Check className="size-3.5" /></span>}
-                  </div>
-                  <p className="mt-3 text-sm font-medium">{theme.label}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">{theme.description}</p>
-                </button>
-              );
-            })}
-          </div>
-        </section>
         <section className="rounded-lg border border-border bg-card p-4">
           <h3 className="text-sm font-semibold">Navigation</h3>
           <p className="mt-1 text-xs text-muted-foreground">Select where the main project navigation should appear.</p>

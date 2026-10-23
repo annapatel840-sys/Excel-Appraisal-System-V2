@@ -105,6 +105,10 @@ export function ColumnFilter({
   const formatOption = (option) => {
     const text = String(option === null || option === undefined ? "" : option);
 
+    if (meta?.optionLabels?.[text]) {
+      return meta.optionLabels[text];
+    }
+
     if (!isNumberColumn || text.trim() === "") {
       return text;
     }

@@ -3,11 +3,24 @@
 // ============================================================
 
 // Dropdown options
-export const MANAGER_RATINGS = [
-  "Exceeds Expectation",
-  "Meets Expectation",
-  "Sometimes Meets Expectation",
-];
+// Manager Rating is a whole number 1-5 (read from Feedback_And_Rating).
+export const MANAGER_RATINGS = ["1", "2", "3", "4", "5"];
+
+// Shown next to the number in the column filter.
+export const MANAGER_RATING_LABELS = {
+  1: "Does Not Meets Expectation",
+  2: "Sometimes Meets Expectations",
+  3: "Meets Expectation",
+  4: "Sometimes Exceeds Expectation",
+  5: "Often Exceeds Expectation",
+};
+
+// Normalise any raw value to "1".."5", or "" when it is not a whole 1-5.
+export const normalizeManagerRating = (value) => {
+  if (value === null || value === undefined || String(value).trim() === "") return "";
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1 && n <= 5 ? String(n) : "";
+};
 
 export const STATUSES = ["Pending", "In Progress", "Completed", "Submitted"];
 
@@ -253,6 +266,9 @@ export const COLUMNS = [
     type: "enum",
     editable: false,
     options: MANAGER_RATINGS,
+    optionLabels: Object.fromEntries(
+      MANAGER_RATINGS.map((r) => [r, `${r} - ${MANAGER_RATING_LABELS[r]}`]),
+    ),
     width: 150,
   },
   {
@@ -563,9 +579,9 @@ export function buildEmployees(count = 250) {
     const rating = pick(MANAGER_RATINGS);
 
     const hikeRate =
-      rating === "Exceeds Expectation"
+      Number(rating) >= 4
         ? 0.12 + rand() * 0.04
-        : rating === "Meets Expectation"
+        : Number(rating) === 3
           ? 0.08 + rand() * 0.04
           : 0.04 + rand() * 0.04;
 
