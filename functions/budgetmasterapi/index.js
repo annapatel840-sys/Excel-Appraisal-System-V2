@@ -1239,7 +1239,6 @@ bundle.employeeRoster = rosterForCycle.filter((employee) => employee.in_appraisa
       compManager: sheetEmployee?.compManager || String(rawComp || "").trim(),
     };
   }).filter((employee) => employee && employee.inEligibilityList);
-  const legacyEligibleEmployees = legacyCycleEmployees.filter((employee) => employee.eligible);
   const eligibleEmployees = employees.filter((employee) => employee.eligible && employee.in_appraisal_sheet);
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
     const orgBase = eligibleEmployees.reduce((sum, employee) => sum + employee.base, 0);
