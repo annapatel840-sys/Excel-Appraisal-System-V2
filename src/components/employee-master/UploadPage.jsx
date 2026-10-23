@@ -271,6 +271,26 @@ function normalizeDateCell(value) {
 
 function normalizeCell(field, value) {
   if (field === "doj") return normalizeDateCell(value);
+  if (field === "lastAppraisal") {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return `${MONTH_NAMES[value.getMonth()]}-${String(value.getFullYear()).slice(-2)}`;
+    }
+    if (typeof value === "number" && value > 0 && value < 2958466) {
+      const parsed = XLSX.SSF.parse_date_code(value);
+      if (parsed && parsed.m >= 1 && parsed.m <= 12) {
+        return `${MONTH_NAMES[parsed.m - 1]}-${String(parsed.y).slice(-2)}`;
+      }
+    }
+    const text = sv(value).trim();
+    const iso = text.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})(?:[T\\s].*)?$/);
+    const dayFirst = text.match(/^(\\d{1,2})[\\/.-](\\d{1,2})[\\/.-](\\d{4})$/);
+    const year = iso ? Number(iso[1]) : dayFirst ? Number(dayFirst[3]) : 0;
+    const month = iso ? Number(iso[2]) : dayFirst ? Number(dayFirst[2]) : 0;
+    if (year && month >= 1 && month <= 12) {
+      return `${MONTH_NAMES[month - 1]}-${String(year).slice(-2)}`;
+    }
+    return value;
+  }
   if (!MONTH_FIELDS.has(field)) return value;
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return `${MONTH_NAMES[value.getMonth()]}-${String(value.getFullYear()).slice(-2)}`;
