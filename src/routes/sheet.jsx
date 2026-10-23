@@ -216,6 +216,14 @@ export function SheetPage() {
       text: budgetNoticeText,
       actions: [
         {
+          // Same in-app navigation the Detailed Screen's "View budget" uses.
+          label: "View budget",
+          onClick: () => {
+            window.history.pushState({}, "", "/budget-distribution");
+            window.dispatchEvent(new PopStateEvent("popstate"));
+          },
+        },
+        {
           label: "Got it",
           primary: true,
           onClick: () => setBudgetNoticeOpen(false),
