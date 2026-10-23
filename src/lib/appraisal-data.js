@@ -522,7 +522,7 @@ export const COLUMNS = [
   {
     // Last year's Target PB criteria, shown for reference (not editable).
     key: "setTargetCriteria",
-    label: "Set Target Criteria",
+    label: "Target Criteria Set",
     type: "text",
     editable: false,
     width: 190,
