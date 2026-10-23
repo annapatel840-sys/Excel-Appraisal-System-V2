@@ -351,7 +351,7 @@ const downloadErrorLog = (errors, name) =>
    checked but cannot be saved.
    ============================================================ */
 
-export function UploadPage({ handlers = {} }) {
+export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId = "" }) {
   const user = useCatalystUser();
   const role = String(user?.role || "")
     .trim()
@@ -413,10 +413,18 @@ export function UploadPage({ handlers = {} }) {
         setHistory(Array.isArray(historyData) ? historyData : []);
         setSchemaTables(Array.isArray(schemaData) ? schemaData : []);
         setCycleId((current) => {
-          if (current) return current;
+          const requested = nextCycles.find(
+            (item) => String(item.id) === String(initialCycleId),
+          );
+          if (requested) return String(requested.id);
+          if (current && nextCycles.some((item) => String(item.id) === String(current))) return current;
           const first = nextCycles.find(isOpenCycle);
           return first ? String(first.id) : "";
         });
+        if (["emp", "pay", "fb", "sheet"].includes(initialScreen)) {
+          setScreen(initialScreen);
+          setTab("rules");
+        }
       })
       .catch((e) => active && setLoadError(e.message))
       .finally(() => active && setLoading(false));
