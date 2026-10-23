@@ -815,8 +815,8 @@ export function AppraisalCycleMasterPage({
   const canGo = (id) => {
     const tabKey = NAV_TAB[id];
     if (!onNavigate) return false;
-    // Appraisal Sheet is a separate route, not an Employee Master tab.
-    if (id === "go-ap") return true;
+    // Appraisal Sheet is a separate route, not an Employee Master tab,
+    // but it still respects the caller's screen permission.
     if (!tabKey) return false;
     return canNavigate ? !!canNavigate(tabKey) : true;
   };
