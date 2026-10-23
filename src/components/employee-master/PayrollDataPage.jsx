@@ -324,6 +324,17 @@ function ColumnFilterPopover({
   );
 }
 
+function defaultPayrollColumnWidth(column) {
+  if (column.key === "emp_id") return 125;
+  if (column.key === "emp_name") return 180;
+  if (column.key === "appraisal_cycle_name") return 190;
+  if (column.key === "effectiveDate") return 135;
+  if (column.key === "fy_year") return 105;
+  if (column.label && column.label.length > 24) return 190;
+  if (column.money || column.pct) return 150;
+  return 145;
+}
+
 /* ============================================================
    MAIN COMPONENT
    ============================================================ */
@@ -346,6 +357,47 @@ export function PayrollDataPage() {
   const [openFilterCol, setOpenFilterCol] = useState(null);
   const [filterPos, setFilterPos] = useState({ left: 0, top: 0 });
   const btnRefs = useRef({});
+  const [columnWidths, setColumnWidths] = useState({});
+  const columnResizeRef = useRef(null);
+
+  const widthOf = (column) =>
+    columnWidths[column.key] ?? defaultPayrollColumnWidth(column);
+
+  const startColumnResize = (event, column) => {
+    event.preventDefault();
+    event.stopPropagation();
+    columnResizeRef.current = {
+      key: column.key,
+      startX: event.clientX,
+      startWidth: widthOf(column),
+    };
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  useEffect(() => {
+    const handlePointerMove = (event) => {
+      if (!columnResizeRef.current) return;
+      const { key, startX, startWidth } = columnResizeRef.current;
+      const nextWidth = Math.min(520, Math.max(70, startWidth + event.clientX - startX));
+      setColumnWidths((previous) => ({ ...previous, [key]: nextWidth }));
+    };
+
+    const handlePointerUp = () => {
+      columnResizeRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -578,6 +630,11 @@ export function PayrollDataPage() {
 
       <div className="pd-grid-wrap">
         <table>
+          <colgroup>
+            {COLS.map((column) => (
+              <col key={column.key} style={{ width: widthOf(column) }} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
               {COLS.map((c) => (
@@ -606,6 +663,13 @@ export function PayrollDataPage() {
                       ▾
                     </button>
                   </div>
+                  <div
+                    role="separator"
+                    aria-label={`Resize ${c.label} column`}
+                    title="Drag to resize column"
+                    onPointerDown={(event) => startColumnResize(event, c)}
+                    className="pd-column-resize-handle"
+                  />
                 </th>
               ))}
             </tr>
@@ -836,9 +900,14 @@ const PAYROLL_DATA_CSS = `
 .pd-colfilter-apply-row button.apply { background: #17365d; color: white; border-color: #17365d; }
 .pd-colfilter-apply-row button.clear { color: #a5432f; border-color: #e7c9c3; }
 .pd-grid-wrap { margin: 14px 18px 0; background: white; border: 1px solid #d4dbe5; border-radius: 6px; overflow: auto; flex: 1 1 auto; min-height: 160px; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
-.pd-grid-wrap table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; }
+.pd-grid-wrap table { border-collapse: separate; border-spacing: 0; width: max-content; min-width: 100%; table-layout: fixed; }
 .pd-grid-wrap th, .pd-grid-wrap td { border-right: 1px solid #e0e5ec; border-bottom: 1px solid #e0e5ec; padding: 5px 8px; white-space: normal; overflow-wrap: anywhere; word-break: normal; height: auto; min-height: 28px; vertical-align: top; font-size: 11.5px; }
 .pd-grid-wrap th { position: sticky; top: 0; z-index: 4; background: #e9eef5; color: #24364d; font-size: 10.5px; font-weight: 600; text-align: left; }
+.pd-column-resize-handle { position: absolute; top: 0; right: -2px; z-index: 12; width: 5px; height: 100%; cursor: col-resize; touch-action: none; }
+.pd-column-resize-handle:hover { background: rgba(23,54,93,.3); }
+.pd-grid-wrap th { overflow: visible; }
+.pd-th-inner { min-width: 0; }
+.pd-th-inner > span { min-width: 0; overflow-wrap: anywhere; }
 .pd-grid-wrap th.frozen, .pd-grid-wrap td.frozen { position: sticky; left: 0; z-index: 3; background: #fff; }
 .pd-grid-wrap th.frozen { z-index: 8; background: #dfe8f3; }
 .pd-master-cell { color: #374151; text-align: right; }
