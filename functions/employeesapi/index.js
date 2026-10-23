@@ -18,6 +18,7 @@ const DATASTORE_PAGE_SIZE = 200;
 const EMPLOYEES_TABLE_ID = "74008000000039094";
 const EMPLOYEE_MASTER_TABLE_ID = "74008000000035727";
 const PAYROLL_DATA_TABLE_ID = "74008000000035326";
+const FEEDBACK_RATING_TABLE_ID = "74008000000022041";
 const APPRAISAL_CYCLE_TABLE_ID = "74008000000034190";
 const ELIGIBILITY_TABLE_ID = "74008000000057046";
 
@@ -761,10 +762,11 @@ function currentTotalCtc(row) {
 }
 
 async function enrichPreviousAppraisalValues(datastore, employees, employeeMasterMap) {
-  const [payrollRows, cycleRows, eligibilityRows] = await Promise.all([
+  const [payrollRows, cycleRows, eligibilityRows, feedbackRows] = await Promise.all([
     readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
     readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
     readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)).catch(() => []),
+    readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)).catch(() => []),
   ]);
   const cycleIdOf = (cycle) => String(cycle?.ROWID ?? cycle?.rowid ?? cycle?.id ?? cycle?.ID ?? "").trim();
   const cycleStatusOf = (cycle) => String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "").trim().toLowerCase();
@@ -796,6 +798,21 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   });
   const currentRank = currentCycle ? historyCycleRank(currentCycle) : 0;
   const currentCycleName = currentCycle ? historyCycleName(currentCycle) : "";
+  const currentFeedbackByEmployee = new Map();
+  feedbackRows.forEach((record) => {
+    const empRaw = firstNonEmpty(record, ["emp_ID", "emp_id", "employee_id", "emp_code"]);
+    const empKey = rowEmployeeKey(empRaw, employeeMasterMap);
+    const rawCycle = historyReference(firstNonEmpty(record, [
+      "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name",
+    ]));
+    const cycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
+    if (!empKey || !cycle || cycleIdOf(cycle) !== currentCycleId) return;
+    const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
+    const existing = currentFeedbackByEmployee.get(empKey);
+    if (!existing || rowTime.localeCompare(existing.rowTime, undefined, { numeric: true }) > 0) {
+      currentFeedbackByEmployee.set(empKey, { row: record, rowTime });
+    }
+  });
   const yearMatch = currentCycleName.match(/(?:19|20)\d{2}/);
   const shortYearMatch = currentCycleName.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*(\d{2})/i);
   const currentYear = yearMatch ? yearMatch[0] : shortYearMatch ? "20" + shortYearMatch[1] : currentCycleName || String(new Date().getFullYear());
@@ -862,6 +879,19 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const empKey = rowEmployeeKey(empRaw, employeeMasterMap);
     const prior = empKey ? historyByEmployee.get(empKey) : null;
     const currentPayroll = empKey ? currentPayrollByEmployee.get(empKey)?.row : null;
+    const currentFeedback = empKey ? currentFeedbackByEmployee.get(empKey)?.row : null;
+    const feedbackValue = (...keys) => {
+      for (const key of keys) {
+        const actual = Object.keys(currentFeedback || {}).find(
+          (column) => column.toLowerCase() === key.toLowerCase(),
+        );
+        if (actual !== undefined && currentFeedback[actual] !== null &&
+            currentFeedback[actual] !== undefined && String(currentFeedback[actual]).trim() !== "") {
+          return currentFeedback[actual];
+        }
+      }
+      return undefined;
+    };
     const previousCtc = prior && prior.value !== null ? prior.value : currentTotalCtc(employee);
     const previousCycleName = prior ? historyCycleName(prior.cycle) : "";
     const label = prior ? previousCycleName : "New - " + currentYear;
@@ -922,6 +952,12 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       last_appraisal_date: lastArchivedEffectiveDate,
       lastAppraisalDate: lastArchivedEffectiveDate,
       last_appraisal_cycle_name: label,
+      // Feedback & Rating is optional during the first cycle. Populate these
+      // fields from the current cycle when uploaded; otherwise retain any
+      // explicitly stored Appraisal_Sheet value (or leave blank/zero).
+      manager_rating: feedbackValue("manager_rating") ?? employee.manager_rating ?? "",
+      interview_count: feedbackValue("interview_count") ?? employee.interview_count ?? "",
+      gross_margin: feedbackValue("gross_margin") ?? employee.gross_margin ?? "",
       pb_to_be_paid: payrollPreviousPB,
       rb_to_be_paid: payrollPreviousRB,
       month_pb: payrollPreviousPBMonth,
