@@ -320,11 +320,19 @@ export function mapEmployeeFromApi(employee) {
     appraiser: String(appraiser).trim(),
 
     managerMail: String(
-      row.manager_email_id ||
+      row.email_id ||
+        row.manager_email_id ||
         row.manager_mail ||
         row.managerMail ||
         row.manager_email ||
         row.managerEmail ||
+        "",
+    ).trim(),
+
+    lastAppraisal: String(
+      row.last_appraisal_month_year ||
+        row.lastAppraisal ||
+        row.last_appraisal ||
         "",
     ).trim(),
 
