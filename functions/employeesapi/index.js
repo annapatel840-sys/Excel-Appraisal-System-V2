@@ -929,6 +929,10 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const payrollPreviousRBMonth = prior ? String(firstNonEmpty(prior.row, [
       "month_rb", "rb_month", "retention_bonus_month", "month_of_rb",
     ]) ?? "").trim() : "";
+    const feedbackRRRaw = feedbackValue("revenue_released", "rr_percent", "rr");
+    const feedbackRRNumber = feedbackRRRaw === undefined
+      ? undefined
+      : Number(String(feedbackRRRaw).replace(/[₹,%\s,]/g, ""));
     const currentTargetPB = currentPayroll
       ? firstNonEmpty(currentPayroll, [
           "target_performance_bonus_for_next_year", "target_performance_bonus_next_year",
@@ -972,8 +976,9 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       // RR% is sourced from Feedback_And_Rating.revenue_released for the
       // current cycle. Employee_Master RR% remains a fallback for older rows
       // or when feedback has not yet been uploaded for this cycle.
-      rr_percent: feedbackValue("revenue_released", "rr_percent", "rr") ??
-        employee.rr_percent ?? employee.RR_percent ?? "",
+      rr_percent: feedbackRRNumber !== undefined && Number.isFinite(feedbackRRNumber)
+        ? feedbackRRNumber
+        : (employee.rr_percent ?? employee.RR_percent ?? ""),
       gross_margin: feedbackValue("gross_margin") ?? employee.gross_margin ?? "",
       pb_to_be_paid: payrollPreviousPB,
       rb_to_be_paid: payrollPreviousRB,
