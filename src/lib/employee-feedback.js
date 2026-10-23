@@ -8,9 +8,11 @@ import { loadFeedbackRating } from "./feedback-rating-api";
  * same data the Feedback & Rating Master screen shows) and loads it only once
  * per page load; every screen then reads its employee's rows from that cache.
  *
- * Access: that endpoint is HR-only today. For any other login the call is
- * refused (403) -> hook returns { denied: true, items: [] } and the screens
- * keep showing what they showed before.
+ * Access: HR receives every employee's rows. Tech ED / Comp Manager logins
+ * receive only the rows of their own team (the backend scopes them). If a
+ * login has no access at all the call is refused (403) -> hook returns
+ * { denied: true, items: [] } and the screens keep showing what they showed
+ * before.
  */
 
 const keyOf = (value) => String(value ?? "").trim().toLowerCase();

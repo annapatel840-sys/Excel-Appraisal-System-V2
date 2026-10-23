@@ -219,6 +219,15 @@ function requirePayrollAccess(a, resource, method) {
     return;
   }
   if (resource === "feedback" && method === "GET") {
+    // Employee Master is HR-only, but the Feedback panel on the Appraisal Sheet and
+    // Detailed Screen is shown to every login that can open those screens (Tech ED,
+    // Comp Manager). Allow the read for any of the three; routeRequest narrows the
+    // rows to the caller's own team so non-HR logins never see anyone else's feedback.
+    const open = ["employeeMaster", "appraisalSheet", "detailScreen"].some((key) => {
+      const level = a && a.screens ? a.screens[key] : "none";
+      return level === "view" || level === "edit";
+    });
+    if (open) return;
     access.requireScreen(a, "employeeMaster", "view");
     return;
   }
@@ -1610,6 +1619,19 @@ async function routeRequest(req, res, identity, resource, a) {
 
   if (resource === "feedback" && req.method === "GET") {
     const data = await getFeedbackData(tables, query);
+    // HR (scope.all) gets everything. Any other login (Tech ED / Comp Manager) only
+    // gets the feedback of the employees in their own team, and no upload-batch
+    // history (that belongs to the HR-only Feedback & Rating Master screen).
+    if (a && a.scope && !a.scope.all) {
+      return sendJson(res, 200, {
+        success: true,
+        data: {
+          cycles: data.cycles,
+          rows: data.rows.filter((row) => access.inScope(a, row.id)),
+          batches: [],
+        },
+      });
+    }
     return sendJson(res, 200, { success: true, data });
   }
 
