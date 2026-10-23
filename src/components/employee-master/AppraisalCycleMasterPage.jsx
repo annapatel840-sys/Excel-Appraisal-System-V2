@@ -122,8 +122,14 @@ const statusOf = (c) => (c.archived ? "Archived" : c.status);
 const isOpenCycle = (c) =>
   ["Upcoming", "Active", "Closed", "Open"].includes(statusOf(c));
 const isHidden = (c) => c.status === "Cancelled" || c.status === "Deleted";
+// New Joiner cycles intentionally use "No process", but still need the same
+// data-setup workflow and lifecycle as Annual cycles.
+const isNewJoinerWorkflow = (c) =>
+  c?.type === "New Joiner" && c?.process === "None";
+const hasSetupWorkflow = (c) =>
+  c?.process === "Annual" || isNewJoinerWorkflow(c);
 const nextBtn = (c) =>
-  !c || c.archived || c.process === "None" || isHidden(c)
+  !c || c.archived || (!hasSetupWorkflow(c) && c.process === "None") || isHidden(c)
     ? null
     : BTN[c.status] || null;
 
@@ -861,7 +867,9 @@ export function AppraisalCycleMasterPage({
         "Upcoming",
         "su",
         "Set up cycle",
-        `${c.name} · effective ${formatDate(c.effective)} · start ${formatDate(c.start)} · close ${formatDate(c.end)}`,
+        isNewJoinerWorkflow(c)
+          ? `${c.name} · effective ${formatDate(c.effective)} · no start/close dates required`
+          : `${c.name} · effective ${formatDate(c.effective)} · start ${formatDate(c.start)} · close ${formatDate(c.end)}`,
         "ok",
       ),
       row(
@@ -1287,7 +1295,7 @@ export function AppraisalCycleMasterPage({
           </div>
         </>
       );
-    } else if (c.process === "None") {
+    } else if (c.process === "None" && !isNewJoinerWorkflow(c)) {
       left = (
         <>
           <div className="top">
@@ -1311,12 +1319,16 @@ export function AppraisalCycleMasterPage({
           <div className="top">
             <span className="sl">Status</span>
             <span className="acx-mut">
-              {c.process} process · Next: {nb.name} → {nb.to}
+              {isNewJoinerWorkflow(c)
+              ? "New Joiner · No process"
+              : `${c.process} process`} · Next: {nb.name} → {nb.to}
             </span>
           </div>
           <div className="big">{c.status}</div>
           <div className="mut2">
-            {c.process === "Annual" ? SDESC[c.status] : EDESC[c.status]}
+            {isNewJoinerWorkflow(c)
+              ? "New Joiner setup cycle. Complete the Employee Master and payroll uploads, then use the same Eligibility, Delegation, Feedback and Rating, and Appraisal Sheet steps as the Annual workflow."
+              : c.process === "Annual" ? SDESC[c.status] : EDESC[c.status]}
           </div>
           {stline}
           <div className="h3">{nb.name}</div>
@@ -1338,7 +1350,7 @@ export function AppraisalCycleMasterPage({
     }
 
     let right;
-    if (c.process === "Annual" && !c.archived && !isHidden(c)) {
+    if (hasSetupWorkflow(c) && !c.archived && !isHidden(c)) {
       let grp = "";
       right = (
         <>
@@ -1803,7 +1815,7 @@ export function AppraisalCycleMasterPage({
       "Annual process: status line with steps. Only one cycle on this process runs at a time.",
     Exceptional:
       "Exceptional process: HR moves it manually through Active, Closed and Archived; rows go to the Exceptional grid.",
-    None: "No process: the cycle is only a label for uploads (for example payroll). It has no steps.",
+    None: "No process: the cycle is only a label for uploads (for example payroll).",
   };
 
   /* ---------------- main render ---------------- */
@@ -2268,7 +2280,11 @@ export function AppraisalCycleMasterPage({
               <input type="text" disabled value={newName(newForm)} />
             </div>
           </div>
-          <div className="acx-hint">{setupHint[newForm.process]}</div>
+          <div className="acx-hint">
+            {newForm.type === "New Joiner" && newForm.process === "None"
+              ? "New Joiner uses No process, but still has the full setup workflow: Employee Master, Payroll, Eligibility, Delegation, Feedback and Rating, and Generate Appraisal Sheet."
+              : setupHint[newForm.process]}
+          </div>
           <label className="acx-fl">
             Effective Date{" "}
             <span
