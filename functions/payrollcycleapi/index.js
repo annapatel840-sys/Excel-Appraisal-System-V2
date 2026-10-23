@@ -900,6 +900,20 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     }
   });
 
+  // Appraisal_Sheet schemas can differ between deployed Catalyst projects.
+  // Resolve real columns once and never send optional payroll fields that do
+  // not exist in this table (for example performance_bonus or
+  // total_reward_hike_pct). Core fields remain explicit below.
+  let appraisalSheetColumns = null;
+  try {
+    const actualColumns = await tables.employees.getAllColumns();
+    appraisalSheetColumns = new Set(
+      (actualColumns || []).map((column) => String(column.column_name || "").trim()).filter(Boolean),
+    );
+  } catch (error) {
+    console.warn("Could not inspect Appraisal_Sheet columns; using standard generation mapping:", error?.message || error);
+  }
+
   let created = 0;
   let updated = 0;
   for (const employee of eligibleRows) {
@@ -938,6 +952,9 @@ async function generateAppraisalSheet(tables, cycle, actor) {
         target_pb_criteria: ["target_pb_criteria", "target_performance_bonus_criteria"],
       };
       Object.entries(payrollFieldMap).forEach(([sheetField, payrollFields]) => {
+        // The destination column must exist in the live Appraisal_Sheet schema.
+        // Missing optional columns are skipped; they must not fail generation.
+        if (appraisalSheetColumns && !appraisalSheetColumns.has(sheetField)) return;
         const value = payrollFields
           .map((field) => payroll[field])
           .find((candidate) => candidate !== undefined && candidate !== null && String(candidate).trim() !== "");
@@ -961,19 +978,28 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     );
     // Don't send "" to Catalyst Date columns; it rejects empty strings as invalid dates.
     // Omitting an absent/invalid optional date also preserves the existing value on updates.
-    if (joiningDate) payload.joining_date = joiningDate;
+    if (joiningDate && (!appraisalSheetColumns || appraisalSheetColumns.has("joining_date"))) {
+      payload.joining_date = joiningDate;
+    }
     // Appraisal_Sheet.appraiser_tech_ed is a bigint lookup/reference, not a display name.
     // Resolve imported names/employee IDs to the matching Employee_Master ROWID.
     const appraiserReference = resolveEmployeeReference(
       employee.appraiser_tech_ed,
       employeeMasterRows,
     );
-    if (appraiserReference && /^\\d+$/.test(appraiserReference)) {
+    if (
+      appraiserReference &&
+      /^\\d+$/.test(appraiserReference) &&
+      (!appraisalSheetColumns || appraisalSheetColumns.has("appraiser_tech_ed"))
+    ) {
       payload.appraiser_tech_ed = appraiserReference;
     }
     // Keep manager only when it is already a valid numeric reference.
     const compManagerReference = String(employee.comp_manager ?? "").trim();
-    if (/^\\d+$/.test(compManagerReference)) payload.comp_manager = compManagerReference;
+    if (
+      /^\\d+$/.test(compManagerReference) &&
+      (!appraisalSheetColumns || appraisalSheetColumns.has("comp_manager"))
+    ) payload.comp_manager = compManagerReference;
     if (existing) {
       await tables.employees.updateRow(payload);
       updated += 1;
