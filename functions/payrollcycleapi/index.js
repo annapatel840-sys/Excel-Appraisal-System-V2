@@ -860,10 +860,26 @@ async function generateAppraisalSheet(tables, cycle, actor) {
   if (!eligibleRows.length) {
     throw new ApiError("No eligible active employees were found for this cycle. Check the Eligibility List and criteria.", 409);
   }
-  const [sheetRows, employeeMasterRows] = await Promise.all([
+  const [sheetRows, employeeMasterRows, payrollRows] = await Promise.all([
     getAllRows(tables.employees),
     getAllRows(tables.employeeMaster),
+    getAllRows(tables.payroll),
   ]);
+  const cycleKeys = new Set(
+    [cycle.id, cycle.name]
+      .map((value) => String(value || "").trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const payrollByMasterId = new Map();
+  payrollRows.forEach((row) => {
+    const masterId = String(row.emp_id ?? row.employee_master_id ?? "").trim();
+    const payrollCycle = String(
+      row.appraisal_cycle_name ?? row.appraisal_cycle_id ?? row.cycle_id ?? row.appraisal_year ?? "",
+    ).trim().toLowerCase();
+    if (masterId && cycleKeys.has(payrollCycle)) {
+      payrollByMasterId.set(masterId, row);
+    }
+  });
   const byKey = new Map();
   sheetRows.forEach((row) => {
     const rowCycle = String(row.cycle_id || "");
@@ -892,6 +908,35 @@ async function generateAppraisalSheet(tables, cycle, actor) {
       status: "Active",
       eligible_status: "Eligible",
     };
+
+    // Payroll_Data is the source for payroll-derived appraisal fields. Only
+    // copy non-empty values and only these source-owned columns: a rerun must
+    // not reset editable appraisal inputs already saved on Appraisal_Sheet.
+    const payroll = payrollByMasterId.get(masterId);
+    if (payroll) {
+      const payrollFieldMap = {
+        current_annual_base_pay: ["current_annual_base_pay", "base_pay"],
+        joining_bonus: ["joining_bonus"],
+        performance_bonus: ["performance_bonus"],
+        retention_bonus: ["retention_bonus"],
+        hike_pct: ["hike_pct"],
+        hike_amount: ["hike_amount"],
+        total_CTC_with_rewards: ["total_CTC_with_rewards", "total_ctc_with_rewards", "total_ctc"],
+        total_rewards_hike_amount: ["total_rewards_hike_amount"],
+        total_reward_hike_pct: ["total_reward_hike_pct"],
+        total_bonus: ["total_bonus"],
+        new_base_pay: ["new_base_pay"],
+        target_pb_allocated_for_may: ["target_performance_bonus_for_next_year", "target_performance_bonus_next_year"],
+        target_pb_criteria: ["target_pb_criteria", "target_performance_bonus_criteria"],
+      };
+      Object.entries(payrollFieldMap).forEach(([sheetField, payrollFields]) => {
+        const value = payrollFields
+          .map((field) => payroll[field])
+          .find((candidate) => candidate !== undefined && candidate !== null && String(candidate).trim() !== "");
+        if (value !== undefined) payload[sheetField] = value;
+      });
+    }
+
     const joiningDate = toCatalystDate(
       employee.joining_date || employee.date_of_join || employee.date_of_joining || employee.doj,
     );
