@@ -820,7 +820,8 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     if (!cycle) return;
     const rank = historyCycleRank(cycle);
     // Only an archived cycle that predates the active cycle qualifies as the last appraisal.
-    const archived = cycle?.archived === true || String(cycle?.archived ?? "").toLowerCase() === "true" ||
+    const archived = cycle?.archived === true ||
+      ["true", "1", "yes"].includes(String(cycle?.archived ?? "").trim().toLowerCase()) ||
       cycleStatusOf(cycle) === "archived";
     if (!archived || (currentRank > 0 && rank >= currentRank)) return;
     const storedValue = firstNonEmpty(record, [
@@ -854,15 +855,19 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const lastArchivedEffectiveDate = prior
       ? String(prior.cycle?.effective_date ?? prior.cycle?.effectiveDate ?? prior.cycle?.start_date ?? "").trim()
       : "";
-    const payrollPreviousPB = prior ? Number(firstNonEmpty(prior.row, [
+    const payrollAmount = (value) => {
+      const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const payrollPreviousPB = prior ? payrollAmount(firstNonEmpty(prior.row, [
       "pb_to_be_paid", "performance_bonus", "previous_year_performance_bonus", "previous_year_pb", "previous_pb",
-    ]) || 0) : 0;
-    const payrollPreviousRB = prior ? Number(firstNonEmpty(prior.row, [
+    ])) : 0;
+    const payrollPreviousRB = prior ? payrollAmount(firstNonEmpty(prior.row, [
       "rb_to_be_paid", "retention_bonus", "previous_year_retention_bonus", "previous_year_rb", "previous_rb",
-    ]) || 0) : 0;
-    const targetPBForNextYear = prior ? Number(firstNonEmpty(prior.row, [
+    ])) : 0;
+    const targetPBForNextYear = prior ? payrollAmount(firstNonEmpty(prior.row, [
       "target_performance_bonus_for_next_year", "target_performance_bonus_next_year",
-    ]) || 0) : 0;
+    ])) : 0;
     const master = empKey ? employeeMasterMap.get(empKey) : null;
     const masterId = String(master?.ROWID ?? master?.rowid ?? master?.id ?? "").trim().toLowerCase();
     const cycleEligibility = (masterId ? eligibilityByEmployee.get("row:" + masterId) : null) ||
