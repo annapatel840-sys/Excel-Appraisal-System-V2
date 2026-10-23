@@ -665,6 +665,13 @@ export function EmployeeMaster() {
   const [uploadScreen, setUploadScreen] = useState("");
   const [uploadCycleId, setUploadCycleId] = useState("");
 
+  useEffect(() => {
+    if (activeTab !== "payroll-upload") {
+      setUploadScreen("");
+      setUploadCycleId("");
+    }
+  }, [activeTab]);
+
   const [search, setSearch] = useState("");
 
   const [statusFilter, setStatusFilter] = useState("All");
