@@ -808,6 +808,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     return "";
   };
   const historyByEmployee = new Map();
+  const currentPayrollByEmployee = new Map();
   payrollRows.forEach((record) => {
     const empRaw = firstNonEmpty(record, ["emp_id", "employee_id", "emp_code", "empId"]);
     const empKey = rowEmployeeKey(empRaw, employeeMasterMap);
@@ -818,6 +819,17 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     if (!empKey || !rawCycle) return;
     const cycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
     if (!cycle) return;
+    // Current-cycle payroll owns target PB allocation and target criteria.
+    // Archived payroll is used only for previous-appraisal values and paid bonuses.
+    if (cycleIdOf(cycle) === currentCycleId) {
+      const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
+      const current = currentPayrollByEmployee.get(empKey);
+      if (
+        !current ||
+        rowTime.localeCompare(current.rowTime, undefined, { numeric: true }) > 0
+      ) currentPayrollByEmployee.set(empKey, { row: record, rowTime });
+      return;
+    }
     const rank = historyCycleRank(cycle);
     // Only an archived cycle that predates the active cycle qualifies as the last appraisal.
     const archived = cycle?.archived === true ||
@@ -849,15 +861,13 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const empRaw = firstNonEmpty(employee, ["emp_id", "employee_id", "emp_code", "empId"]);
     const empKey = rowEmployeeKey(empRaw, employeeMasterMap);
     const prior = empKey ? historyByEmployee.get(empKey) : null;
+    const currentPayroll = empKey ? currentPayrollByEmployee.get(empKey)?.row : null;
     const previousCtc = prior && prior.value !== null ? prior.value : currentTotalCtc(employee);
     const previousCycleName = prior ? historyCycleName(prior.cycle) : "";
     const label = prior ? previousCycleName : "New - " + currentYear;
     const lastArchivedEffectiveDate = prior
       ? String(prior.cycle?.effective_date ?? prior.cycle?.effectiveDate ?? prior.cycle?.start_date ?? "").trim()
       : "";
-    const priorTargetPBCriteria = prior ? String(firstNonEmpty(prior.row, [
-      "target_pb_criteria", "target_PB_criteria", "target_performance_bonus_criteria",
-    ]) ?? "").trim() : "";
     const payrollAmount = (value) => {
       const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
       return Number.isFinite(parsed) ? parsed : 0;
@@ -868,9 +878,19 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const payrollPreviousRB = prior ? payrollAmount(firstNonEmpty(prior.row, [
       "rb_to_be_paid", "retention_bonus", "previous_year_retention_bonus", "previous_year_rb", "previous_rb",
     ])) : 0;
-    const targetPBForNextYear = prior ? payrollAmount(firstNonEmpty(prior.row, [
-      "target_performance_bonus_for_next_year", "target_performance_bonus_next_year",
-    ])) : 0;
+    const currentTargetPB = currentPayroll
+      ? firstNonEmpty(currentPayroll, [
+          "target_performance_bonus_for_next_year", "target_performance_bonus_next_year",
+        ])
+      : "";
+    const targetPBForNextYear = currentTargetPB !== ""
+      ? payrollAmount(currentTargetPB)
+      : payrollAmount(employee.target_pb_allocated_for_may ?? employee.target_pb_allocated ?? 0);
+    const currentTargetPBCriteria = currentPayroll
+      ? String(firstNonEmpty(currentPayroll, [
+          "target_pb_criteria", "target_PB_criteria", "target_performance_bonus_criteria",
+        ]) ?? "").trim()
+      : String(employee.target_pb_criteria ?? employee.target_PB_criteria ?? "").trim();
     const master = empKey ? employeeMasterMap.get(empKey) : null;
     const masterId = String(master?.ROWID ?? master?.rowid ?? master?.id ?? "").trim().toLowerCase();
     const cycleEligibility = (masterId ? eligibilityByEmployee.get("row:" + masterId) : null) ||
@@ -897,8 +917,8 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       rb_to_be_paid: payrollPreviousRB,
       target_pb_allocated_for_may: targetPBForNextYear,
       target_pb_allocated: targetPBForNextYear,
-      previous_target_pb_criteria: priorTargetPBCriteria,
-      target_pb_criteria: priorTargetPBCriteria,
+      previous_target_pb_criteria: currentTargetPBCriteria,
+      target_pb_criteria: currentTargetPBCriteria,
     };
   });
 
