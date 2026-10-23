@@ -3,7 +3,6 @@ import {
   ChevronDown,
   Download,
   History,
-  RotateCcw,
   Search,
   Upload,
   X,
@@ -20,7 +19,6 @@ import {
 } from "@/components/appraisal/BudgetStatsBar";
 import { useAppraisalImport } from "@/components/appraisal/ImportAppraisalButton"; // <-- update path if your file is named differently
 
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 import {
@@ -45,49 +43,16 @@ import {
 import { exportToExcel } from "@/lib/export-excel";
 import { useAccess } from "@/lib/access-store";
 import { useSettings } from "@/lib/settings-store";
+import { NotificationBell } from "@/components/appraisal/NotificationBell";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
-// ============================================================
-// APPRAISAL SHEET BUDGET NOTICE
-// Same budget-change message used by Detailed Screen.
-// ============================================================
+// Budget-change message shown in the notification bell.
 const BUDGET_NOTICE_PLACEHOLDER = {
   from: "10.41 L",
   to: "9.79 L",
   changes: 5,
   since: "01-Sep-26",
 };
-
-function BudgetNotice({ notice, onGotIt }) {
-  if (!notice) return null;
-
-  const budgetNoticeText =
-    `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`;
-
-  return (
-    <div className="flex h-full items-center gap-3 rounded-md border border-[#e3e9ec] bg-white px-3 py-1.5">
-      <span className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-[#102a43]">
-        <span className="text-[#b42318]">▲</span>
-        Budget changed
-      </span>
-      <span
-        className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[12px] text-[#3e4c59]"
-        aria-label={budgetNoticeText}
-      >
-        <span className="appraisal-budget-marquee inline-block min-w-max">
-          {budgetNoticeText}
-        </span>
-      </span>
-      <button
-        type="button"
-        onClick={onGotIt}
-        className="shrink-0 rounded border border-[#c4ced6] bg-[#eef3f3] px-3 py-1 text-[11px] font-semibold text-[#102a43] hover:bg-[#e4ecec]"
-      >
-        Got it
-      </button>
-    </div>
-  );
-}
 
 // ============================================================
 // PAGE
@@ -241,34 +206,50 @@ export function SheetPage() {
   // no longer in the top nav.
   const budgetVertical = settings.menuPosition === "left";
 
+  // Notification bell (top bar): budget message + edited count.
+  const budgetNoticeText = `Be aware: your team budget has changed from ${BUDGET_NOTICE_PLACEHOLDER.from} to ${BUDGET_NOTICE_PLACEHOLDER.to} — ${BUDGET_NOTICE_PLACEHOLDER.changes} team changes since allocation on ${BUDGET_NOTICE_PLACEHOLDER.since}.`;
+  const notificationItems = [];
+  if (budgetNoticeOpen) {
+    notificationItems.push({
+      key: "budget",
+      tag: "Budget changed",
+      text: budgetNoticeText,
+      actions: [
+        {
+          label: "Got it",
+          primary: true,
+          onClick: () => setBudgetNoticeOpen(false),
+        },
+      ],
+    });
+  }
+  if (appraisalRows.length > 0) {
+    const allEdited = editedCount >= appraisalRows.length;
+    notificationItems.push({
+      key: "edited",
+      tag: "Edited",
+      text: allEdited
+        ? `All ${appraisalRows.length} employees edited ✓`
+        : `${editedCount} of ${appraisalRows.length} employees edited`,
+      sub: allEdited
+        ? ""
+        : `${appraisalRows.length - editedCount} still to do`,
+      actions: [
+        {
+          label: showEditedOnly ? "Show all ›" : "Show edited ›",
+          onClick: () => {
+            setShowEditedOnly((previous) => !previous);
+            setSearch("");
+          },
+        },
+      ],
+    });
+  }
+
   return (
     <>
-      <style>{`
-        .appraisal-budget-marquee{animation:appraisalBudgetMarquee 18s linear infinite}
-        .appraisal-budget-marquee:hover{animation-play-state:paused}
-        @keyframes appraisalBudgetMarquee{from{transform:translateX(0)}to{transform:translateX(-100%)}}
-      `}</style>
-      <AppShell>
+      <AppShell notifications={<NotificationBell items={notificationItems} />}>
         <div className={cn("flex min-h-0 flex-1 flex-col gap-2", budgetVertical && "pl-1 pr-0 pt-0")}>
-          {/* Notice (half width) + budget summary bar beside it */}
-          <div className="flex items-stretch gap-2">
-            {budgetNoticeOpen && (
-              <div className="w-[calc(50%-4px)] min-w-0">
-                <BudgetNotice
-                  notice={BUDGET_NOTICE_PLACEHOLDER}
-                  onGotIt={() => setBudgetNoticeOpen(false)}
-                />
-              </div>
-            )}
-            <BudgetStatsBar
-              className="ml-auto w-[calc(50%-4px)]"
-              allocated={budgetAllocated}
-              consumed={budgetConsumed}
-              targetPB={budgetTargetPB}
-              isEstimate={budgetIsEstimate}
-            />
-          </div>
-
           {(saveError || loadError) && (
             <div
               role="alert"
@@ -287,10 +268,10 @@ export function SheetPage() {
             </div>
           )}
 
-          {/* TOOLBAR: search on the left; filters, My notes and Menu on the right */}
+          {/* TOOLBAR: search on the left, budget figures in the middle; History, Last Edited and Menu on the right */}
 
           <div className="flex items-center gap-2 rounded-md border border-[#d9dee7] bg-white px-3 py-2">
-            <div className="relative w-[320px]">
+            <div className="relative w-[240px] shrink-0">
               <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
 
               <Input
@@ -301,24 +282,15 @@ export function SheetPage() {
               />
             </div>
 
-            <div className="ml-auto flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-9 shrink-0 px-3 text-[12px]"
-                onClick={() => {
-                  setFilters({});
-                  setSearch("");
-                  setShowEditedOnly(false);
-                }}
-                disabled={
-                  activeFilters.length === 0 && !search && !showEditedOnly
-                }
-              >
-                <RotateCcw className="size-3.5" />
-                Reset
-              </Button>
+            <BudgetStatsBar
+              className="mx-2 flex-1 border-0 bg-transparent py-0"
+              allocated={budgetAllocated}
+              consumed={budgetConsumed}
+              targetPB={budgetTargetPB}
+              isEstimate={budgetIsEstimate}
+            />
 
+            <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
                 onClick={() => setShowHistory((previous) => !previous)}
@@ -348,31 +320,6 @@ export function SheetPage() {
               <button
                 type="button"
                 onClick={() => {
-                  setShowEditedOnly((previous) => !previous);
-                  setSearch("");
-                }}
-                aria-pressed={showEditedOnly}
-                className={cn(
-                  "flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-medium",
-                  showEditedOnly
-                    ? "border-[#17365d] bg-[#17365d] text-white"
-                    : "border-[#17365d] bg-white text-[#17365d] hover:bg-[#f1f5f9]",
-                )}
-                title="Filter to employees edited in this appraisal cycle"
-              >
-                <span>✎ Edited</span>
-                <strong>{editedCount}</strong>
-                <span
-                  className={
-                    showEditedOnly ? "text-white/70" : "text-slate-400"
-                  }
-                >
-                  of {appraisalRows.length}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
                   if (!lastEditedRow) {
                     return;
                   }
@@ -385,8 +332,6 @@ export function SheetPage() {
               >
                 <span>↪ Last Edited</span>
               </button>
-              <div id="appraisal-my-notes-slot" className="relative shrink-0" />
-
               <div ref={menuRef} className="relative">
                 <button
                   type="button"

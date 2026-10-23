@@ -52,7 +52,7 @@ const HR_MENU_ITEMS = [
   ["Access", "access", "/employee-master?tab=access"],
 ];
 
-export function AppShell({ children, headerActions }) {
+export function AppShell({ children, headerActions, notifications }) {
   const pathname = window.location.pathname;
   const user = useCatalystUser();
   const access = useAccess();
@@ -352,6 +352,7 @@ export function AppShell({ children, headerActions }) {
             <div className={cn(isCollapsed && "hidden group-hover/nav:block")}>
               <ViewAsSwitcher isVertical={isVertical} />
             </div>
+            {notifications}
             <ProfileMenu
               isVertical={isVertical}
               isCollapsed={isCollapsed}
