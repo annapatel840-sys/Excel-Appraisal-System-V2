@@ -38,6 +38,7 @@ import {
   describeFilter,
   isEmptyFilter,
   optionsFor as optionsForField,
+  fieldByKey,
 } from "@/lib/appraisal-filters";
 
 import { exportToExcel } from "@/lib/export-excel";
@@ -290,6 +291,8 @@ export function SheetPage() {
               />
             </div>
 
+            <div id="appraisal-group-slot" className="shrink-0" />
+
             <BudgetStatsBar
               className="mx-2 flex-1 border-0 bg-transparent py-0"
               allocated={budgetAllocated}
@@ -458,6 +461,15 @@ export function SheetPage() {
             filters={filters}
             setFilter={setFilter}
             optionsFor={(key) => optionsForField(key, rows)}
+            valuesFor={(key) => {
+              const field = fieldByKey(key);
+              return field ? appraisalRows.map((row) => field.get(row)) : [];
+            }}
+            onClearAll={() => {
+              setFilters({});
+              setSearch("");
+              setShowEditedOnly(false);
+            }}
             selected={selected}
             toggleSelected={(id, on) =>
               setSelected((prev) => {

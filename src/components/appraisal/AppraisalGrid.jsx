@@ -1649,6 +1649,8 @@ export function AppraisalGrid({
   filters,
   setFilter,
   optionsFor,
+  valuesFor,
+  onClearAll,
   selected,
   toggleSelected,
   toggleAll,
@@ -1740,10 +1742,12 @@ export function AppraisalGrid({
 
   const [notesOpen, setNotesOpen] = useState(false);
   const [notesSlot, setNotesSlot] = useState(null);
+  const [groupSlot, setGroupSlot] = useState(null);
   const notesWrapRef = useRef(null);
 
   useEffect(() => {
     setNotesSlot(document.getElementById("appraisal-my-notes-slot"));
+    setGroupSlot(document.getElementById("appraisal-group-slot"));
   }, []);
 
   useEffect(() => {
@@ -1983,27 +1987,47 @@ export function AppraisalGrid({
   // GROUP BY / SORT
   // ============================================================
 
+  // groupBy: the column the rows are grouped by (one column, Excel-style).
+  // sortList: up to 3 sort levels; the newest sort becomes level 1.
   const [groupBy, setGroupBy] = useState([]);
+  const [sortList, setSortList] = useState([]);
+  const [collapsedGroups, setCollapsedGroups] = useState({});
+  const MAX_SORT_LEVELS = 3;
 
-  const addGroup = useCallback((key, dir, label) => {
-    setGroupBy((previous) => {
-      const existingIndex = previous.findIndex((item) => item.key === key);
-
-      if (existingIndex >= 0) {
-        return previous.map((item, index) =>
-          index === existingIndex ? { ...item, dir, label } : item,
-        );
-      }
-
-      return [...previous, { key, dir, label }];
-    });
+  const addSort = useCallback((key, dir, label) => {
+    setSortList((previous) =>
+      [{ key, dir, label }, ...previous.filter((item) => item.key !== key)].slice(
+        0,
+        MAX_SORT_LEVELS,
+      ),
+    );
+    setCurrentPage(1);
   }, []);
 
-  const removeGroup = useCallback((key) => {
-    setGroupBy((previous) => previous.filter((item) => item.key !== key));
+  const setGroupColumn = useCallback((key, label) => {
+    setCollapsedGroups({});
+    setGroupBy(key ? [{ key, dir: "asc", label }] : []);
+    setCurrentPage(1);
   }, []);
 
-  const clearAllGroups = useCallback(() => setGroupBy([]), []);
+  const toggleGroupColumn = useCallback(
+    (key, label) => {
+      setCollapsedGroups({});
+      setCurrentPage(1);
+      setGroupBy(
+        groupBy.some((item) => item.key === key)
+          ? []
+          : [{ key, dir: "asc", label }],
+      );
+    },
+    [groupBy],
+  );
+
+  const clearAllGroups = useCallback(() => {
+    setGroupBy([]);
+    setCollapsedGroups({});
+  }, []);
+  const clearAllSorts = useCallback(() => setSortList([]), []);
 
   const getGroupValue = useCallback((row, col) => {
     if (col.computed && typeof col.fn === "function") {
@@ -2029,25 +2053,22 @@ export function AppraisalGrid({
     [getGroupValue],
   );
 
-  // Categorical keys sort first so sections stay contiguous.
+  // Group columns sort first so sections stay contiguous, then the sort levels.
   const sortSpecs = useMemo(() => {
-    const specs = groupBy
-      .map((group) => {
-        const column = GRID_COLUMNS.find((item) => item.key === group.key);
+    const toSpec = (item) => {
+      const column = GRID_COLUMNS.find((entry) => entry.key === item.key);
 
-        return column ? { ...group, column } : null;
-      })
+      return column ? { ...item, column } : null;
+    };
+
+    const groupColumns = groupBy.map(toSpec).filter(Boolean);
+    const sortColumns = sortList
+      .filter((item) => !groupBy.some((group) => group.key === item.key))
+      .map(toSpec)
       .filter(Boolean);
 
-    const groupColumns = specs.filter((spec) =>
-      isCategoricalColumn(spec.column),
-    );
-    const sortColumns = specs.filter(
-      (spec) => !isCategoricalColumn(spec.column),
-    );
-
     return { groupColumns, ordered: [...groupColumns, ...sortColumns] };
-  }, [groupBy]);
+  }, [groupBy, sortList]);
 
   const sortedRows = useMemo(() => {
     const { ordered } = sortSpecs;
@@ -3905,7 +3926,20 @@ export function AppraisalGrid({
     (sections) =>
       sections.map((section) => (
         <Fragment key={section.key}>
-          <tr className="bg-[#dbe6f3]">
+          <tr
+            className="cursor-pointer bg-[#dbe6f3]"
+            onClick={() =>
+              setCollapsedGroups((previous) => ({
+                ...previous,
+                [section.key]: !previous[section.key],
+              }))
+            }
+            title={
+              collapsedGroups[section.key]
+                ? "Click to expand"
+                : "Click to collapse"
+            }
+          >
             <td
               colSpan={orderedColumns.length + 1}
               className="border-b border-[#b9cbe0] p-0"
@@ -3917,6 +3951,7 @@ export function AppraisalGrid({
                 )}
               >
                 <span>
+                  {collapsedGroups[section.key] ? "▸ " : "▾ "}
                   {section.groupKey
                     ? `${
                         GRID_COLUMNS.find(
@@ -3934,7 +3969,9 @@ export function AppraisalGrid({
             </td>
           </tr>
 
-          {section.children
+          {collapsedGroups[section.key]
+            ? null
+            : section.children
             ? renderGroupedSections(section.children)
             : section.rows.map((row) =>
                 renderDataRow(
@@ -3947,7 +3984,7 @@ export function AppraisalGrid({
         </Fragment>
       )),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [renderDataRow, flattenedGroupOrder, orderedColumns.length],
+    [renderDataRow, flattenedGroupOrder, orderedColumns.length, collapsedGroups],
   );
 
   // ============================================================
@@ -3990,18 +4027,23 @@ export function AppraisalGrid({
     },
   );
 
-  const groupByColumnLabel = groupBy.length
-    ? groupBy
-        .map((group) => {
-          const column = GRID_COLUMNS.find((item) => item.key === group.key);
+  const labelOfGroups = (list) =>
+    list
+      .map((group) => {
+        const column = GRID_COLUMNS.find((item) => item.key === group.key);
 
-          return column
-            ? `${column.label} ${group.dir === "desc" ? "↓" : "↑"}`
-            : "";
-        })
-        .filter(Boolean)
-        .join(" → ")
-    : "";
+        return column
+          ? `${column.label}${group.dir === "desc" ? " ↓" : group.dir === "asc" && list === sortList ? " ↑" : ""}`
+          : "";
+      })
+      .filter(Boolean)
+      .join(" → ");
+
+  const groupOnlyLabel = labelOfGroups(groupBy);
+  const sortOnlyLabel = labelOfGroups(sortList);
+  const groupByColumnLabel = [groupOnlyLabel, sortOnlyLabel]
+    .filter(Boolean)
+    .join(" · ");
 
   // ============================================================
   // MY VIEW OBJECT PASSED TO THE "MORE" TAB
@@ -4201,6 +4243,51 @@ export function AppraisalGrid({
       {/* LEFT SIDE: NOTES BAR + GRID + PAGINATION + HISTORY */}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        {groupSlot &&
+          createPortal(
+            <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px] text-[#4b5563]">
+              <span>Group by</span>
+              <select
+                value={groupBy[0]?.key || ""}
+                onChange={(event) => {
+                  const column = GRID_COLUMNS.find(
+                    (item) => item.key === event.target.value,
+                  );
+                  setGroupColumn(column?.key || "", column?.label);
+                }}
+                className="h-8 max-w-[150px] rounded-md border border-[#d1d5db] bg-white px-1.5 text-[12px]"
+              >
+                <option value="">None</option>
+                {GRID_COLUMNS.filter(
+                  (column) =>
+                    !isNumericType(column.type) && !viewPrefs.hidden[column.key],
+                ).map((column) => (
+                  <option key={column.key} value={column.key}>
+                    {column.label}
+                  </option>
+                ))}
+              </select>
+              {(Object.keys(filters || {}).length > 0 ||
+                sortList.length > 0 ||
+                groupBy.length > 0) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClearAll?.();
+                    setSortList([]);
+                    setGroupBy([]);
+                    setCollapsedGroups({});
+                    setCurrentPage(1);
+                  }}
+                  className="h-8 rounded-md border border-[#d1d5db] bg-white px-2.5 text-[12px] font-bold text-[#102a43] hover:bg-[#f1f5f9]"
+                >
+                  Clear all filters
+                </button>
+              )}
+            </div>,
+            groupSlot,
+          )}
+
         {notesSlot &&
           createPortal(
             <div ref={notesWrapRef} className="relative">
@@ -4325,18 +4412,29 @@ export function AppraisalGrid({
                               columnKey={col.key}
                               filter={filters[col.key]}
                               options={optionsFor(col.key)}
+                              allValues={valuesFor ? valuesFor(col.key) : []}
                               onChange={(filter) => setFilter(col.key, filter)}
                               sortDirection={
-                                groupBy.find((item) => item.key === col.key)
+                                sortList.find((item) => item.key === col.key)
                                   ?.dir || null
                               }
+                              sortLevel={
+                                sortList.findIndex(
+                                  (item) => item.key === col.key,
+                                ) + 1
+                              }
                               onSortAsc={() =>
-                                addGroup(col.key, "asc", col.label)
+                                addSort(col.key, "asc", col.label)
                               }
                               onSortDesc={() =>
-                                addGroup(col.key, "desc", col.label)
+                                addSort(col.key, "desc", col.label)
                               }
-                              onClearSort={() => removeGroup(col.key)}
+                              isGrouped={groupBy.some(
+                                (item) => item.key === col.key,
+                              )}
+                              onToggleGroup={() =>
+                                toggleGroupColumn(col.key, col.label)
+                              }
                               bulkEditable={
                                 !!col.editable &&
                                 !col.computed &&
@@ -4470,11 +4568,11 @@ export function AppraisalGrid({
         >
           <div className="text-[11px] text-slate-500">
             {groupedRows
-              ? `Grouped by ${groupByColumnLabel} — showing all ${rows.length} employees`
+              ? `Grouped by ${groupOnlyLabel}${sortOnlyLabel ? ` · Sorted by ${sortOnlyLabel}` : ""} — showing all ${rows.length} employees`
               : rows.length === 0
                 ? "0 employees"
                 : `Showing ${pageStart}-${pageEnd} of ${rows.length} employees${
-                    groupBy.length ? ` · Sorted by ${groupByColumnLabel}` : ""
+                    sortList.length ? ` · Sorted by ${sortOnlyLabel}` : ""
                   }`}
           </div>
 
@@ -4488,10 +4586,10 @@ export function AppraisalGrid({
             </button>
           ) : (
             <div className="flex items-center gap-1">
-              {groupBy.length > 0 && (
+              {sortList.length > 0 && (
                 <button
                   type="button"
-                  onClick={clearAllGroups}
+                  onClick={clearAllSorts}
                   className="mr-2 flex h-6 items-center justify-center rounded border border-[#cbd5e1] bg-white px-2.5 text-[11px] font-medium text-slate-600 hover:bg-slate-100"
                 >
                   Clear sort
