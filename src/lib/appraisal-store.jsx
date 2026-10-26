@@ -800,9 +800,9 @@ const mapAuditFromCatalyst = (record, index = 0) => {
 
     batchId: String(row.batch_id || row.batchId || ""),
 
-    appraisalYear: String(
-      row.appraisal_year || row.appraisalYear || APPRAISAL_YEAR,
-    ),
+    // Missing cycle metadata must remain missing; do not relabel old audit
+    // entries as belonging to whichever cycle happens to be Active today.
+    appraisalYear: String(row.appraisal_year || row.appraisalYear || ""),
 
     saved: true,
   };
