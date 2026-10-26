@@ -1794,6 +1794,14 @@ async function importRows(tables, body, actor = "") {
       );
       for (const input of records) {
         if (!successfulUploadRows.has(Number(input?.row))) continue;
+        const rowCycleName = String(input?.appraisalCycleName || "").trim().toLowerCase();
+        // A file may contain rows for multiple cycles. Only override the
+        // current sheet with uploaded RR/YoE values belonging to this cycle.
+        if (
+          rowCycleName &&
+          rowCycleName !== String(cycle.id || "").trim().toLowerCase() &&
+          rowCycleName !== String(cycle.name || "").trim().toLowerCase()
+        ) continue;
         const empId = String(input?.empId || "").trim().toLowerCase();
         if (empId) uploadedValuesByEmpId.set(empId, input);
       }
