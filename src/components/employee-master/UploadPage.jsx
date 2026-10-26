@@ -1030,6 +1030,21 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
           succeeded: Number(r.succeeded) || 0,
           failed: (Number(r.failed) || 0) + clientFailedRows.size,
         };
+        if (screen === "fb" && Number(r.succeeded) > 0 && typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("appraisal:feedback-data-updated", {
+            detail: {
+              cycleId,
+              batchId: out.batchId,
+              succeeded: Number(r.succeeded),
+              appraisalSheetSync: r.appraisalSheetSync || null,
+            },
+          }));
+          if (r.appraisalSheetSync?.error) {
+            setError(
+              `Feedback was saved, but ${r.appraisalSheetSync.error} Redeploy/check the payrollcycleapi logs before relying on the Appraisal Sheet values.`,
+            );
+          }
+        }
       }
 
       // Payroll_Data is read dynamically by employeesapi when it enriches
