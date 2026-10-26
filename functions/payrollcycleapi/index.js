@@ -1789,7 +1789,11 @@ async function importRows(tables, body, actor = "") {
       // Uploading feedback after sheet generation must update the already
       // generated rows immediately; generation is not required to be repeated.
       const uploadedValuesByEmpId = new Map();
+      const successfulUploadRows = new Set(
+        rows.filter((row) => row.ok).map((row) => Number(row.row)),
+      );
       for (const input of records) {
+        if (!successfulUploadRows.has(Number(input?.row))) continue;
         const empId = String(input?.empId || "").trim().toLowerCase();
         if (empId) uploadedValuesByEmpId.set(empId, input);
       }
