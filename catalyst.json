@@ -9,6 +9,7 @@
       "budgetmasterapi",
       "accessapi",
       "feedbackratingapi",
+      "historicalimportapi",
       "demo_seed"
     ],
     "ignore": [],

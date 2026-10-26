@@ -125,6 +125,22 @@ async function scenario(label, columns) {
     assert.strictEqual(r.status, 409);
   });
 
+  await t('past cycle: saved as Closed and archived, even while another Annual cycle is open', async () => {
+    const r = await post('cycles/create', { name: 'Annual 2019', type: 'Annual', process: 'Annual', effective: '2019-04-01', start: '2018-04-01', end: '2019-04-01', past: true, remarks: 'FY19 history' });
+    assert.strictEqual(r.status, 201, JSON.stringify(r.json));
+    const c = await byName('Annual 2019');
+    assert.strictEqual(c.status, 'Closed');
+    assert.strictEqual(c.archived, true);
+    assert.match(c.remarks, /^Past cycle (history import only) | FY19 history$/);
+    assert.strictEqual((await byName('Annual 2027')).status, 'Upcoming', 'the open cycle is not affected');
+  });
+
+  await t('past cycle must have ended before today', async () => {
+    const r = await post('cycles/create', { name: 'Annual 2030', type: 'Annual', process: 'Annual', effective: iso(1), start: iso(-30), end: iso(5), past: true });
+    assert.strictEqual(r.status, 400);
+    assert.match(r.json.message, /ended before today/);
+  });
+
   await t('status rules: Upcoming cannot jump to Closed', async () => {
     const c = await byName('Annual 2027');
     const r = await post('cycles/status/' + c.id, { status: 'Closed' });

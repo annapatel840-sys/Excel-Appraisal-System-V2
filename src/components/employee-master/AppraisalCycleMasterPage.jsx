@@ -270,6 +270,7 @@ export function AppraisalCycleMasterPage({
   const blankNew = {
     type: "Annual",
     year: thisYear,
+    past: false,
     process: "Annual",
     effective: "",
     start: "",
@@ -770,6 +771,10 @@ export function AppraisalCycleMasterPage({
     }
     if (f.remarks.length > 10000)
       return setModalError("Remarks cannot exceed 10,000 characters.");
+    // A past cycle only holds previous-year data for Historical Import.
+    const todayIso = new Date().toLocaleDateString("en-CA");
+    if (f.past && (f.end || f.effective) >= todayIso)
+      return setModalError("A past cycle must have ended before today.");
     if (f.type !== "Exceptional") {
       const dup = cycles.find(
         (x) =>
@@ -782,7 +787,7 @@ export function AppraisalCycleMasterPage({
             : `${name} already exists (ID ${dup.id}).`,
         );
     }
-    if (ENFORCE_ONE_OPEN_ANNUAL && f.process === "Annual") {
+    if (ENFORCE_ONE_OPEN_ANNUAL && f.process === "Annual" && !f.past) {
       const prev = cycles.find(
         (c) => c.process === "Annual" && !c.archived && !isHidden(c),
       );
@@ -801,9 +806,12 @@ export function AppraisalCycleMasterPage({
         start: f.start,
         end: f.end,
         remarks: f.remarks.trim(),
+        ...(f.past ? { past: true } : {}),
       },
-      "Cycle created",
-      `${name} was set up (${procLabel(f.process)}).`,
+      f.past ? "Past cycle created" : "Cycle created",
+      f.past
+        ? `${name} was saved as Closed and archived. Import its data in HR Operations → Historical Import.`
+        : `${name} was set up (${procLabel(f.process)}).`,
     );
     if (saved) {
       setType(f.type);
@@ -1840,6 +1848,8 @@ export function AppraisalCycleMasterPage({
   const nb = nextBtn(current);
   const nextOk = !nb || nb.k !== "activate" || allOk(activateRules(current));
   const years = Array.from({ length: 11 }, (_, index) => 2020 + index);
+  // Past cycles reach further back, up to the current year.
+  const pastYears = Array.from({ length: thisYear - 2010 + 1 }, (_, index) => thisYear - index);
 
   return (
     <div className="acx">
@@ -2269,7 +2279,7 @@ export function AppraisalCycleMasterPage({
                   setNewForm((f) => ({ ...f, year: Number(e.target.value) }))
                 }
               >
-                {years.map((y) => (
+                {(newForm.past ? pastYears : years).map((y) => (
                   <option key={y}>{y}</option>
                 ))}
               </select>
@@ -2297,6 +2307,29 @@ export function AppraisalCycleMasterPage({
               <input type="text" disabled value={newName(newForm)} />
             </div>
           </div>
+          <label
+            className="acx-fl"
+            style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}
+          >
+            <input
+              type="checkbox"
+              disabled={saving}
+              checked={!!newForm.past}
+              onChange={(e) =>
+                setNewForm((f) => ({
+                  ...f,
+                  past: e.target.checked,
+                  year: e.target.checked ? Math.min(f.year, thisYear - 1) : f.year,
+                }))
+              }
+            />
+            Past cycle (history import only)
+          </label>
+          {newForm.past && (
+            <div className="acx-hint">
+              Saved directly as Closed and archived. No process step runs and it never becomes Active. Use it to load previous-year payroll and review / feedback in HR Operations → Historical Import.
+            </div>
+          )}
           <div className="acx-hint">
             {newForm.type === "New Joiner" && newForm.process === "None"
               ? "New Joiner uses No process, but still has the full setup workflow: Employee Master, Payroll, Eligibility, Delegation, Feedback and Rating, and Generate Appraisal Sheet."

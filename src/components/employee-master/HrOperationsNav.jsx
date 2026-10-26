@@ -27,6 +27,7 @@ const GROUPS = [
     items: [
       ["eligibility", "Eligibility List"],
       ["payroll-upload", "Upload"],
+      ["historical-import", "Historical Import"],
       ["team-changes", "Team Changes"],
       ["budget-distribution", "Budget Distribution"],
       ["delegation", "Delegation"],
