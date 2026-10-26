@@ -871,11 +871,11 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   const currentPayrollByEmployee = new Map();
   const bonusHistoryCandidatesByEmployee = new Map();
   const cycleYearOf = (cycle) => {
-    const match = historyCycleName(cycle).match(/(?:19|20)\\d{2}/);
+    const match = historyCycleName(cycle).match(/(?:19|20)\d{2}/);
     return match ? match[0] : "";
   };
-  const isNewJoinerCycle = (cycle) => /new[\\s_-]*joiners?/i.test(historyCycleName(cycle));
-  const isAnnualCycle = (cycle) => /\\bannual\\b/i.test(historyCycleName(cycle));
+  const isNewJoinerCycle = (cycle) => /new[\s_-]*joiners?/i.test(historyCycleName(cycle));
+  const isAnnualCycle = (cycle) => /\bannual\b/i.test(historyCycleName(cycle));
   payrollRows.forEach((record) => {
     const empRaw = firstNonEmpty(record, ["emp_id", "employee_id", "emp_code", "empId"]);
     const empKey = rowEmployeeKey(empRaw, employeeMasterMap);
@@ -922,7 +922,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       "total_ctc", "new_ctc", "newCTC",
     ]);
     const parsedRaw = storedValue !== ""
-      ? Number(String(storedValue).replace(/[₹,\\s]/g, ""))
+      ? Number(String(storedValue).replace(/[₹,\s]/g, ""))
       : ctcFromComponents(record);
     const parsedValue = Number.isFinite(parsedRaw) ? parsedRaw : null;
     const item = { cycle, rank, value: parsedValue, row: record, rowTime };
