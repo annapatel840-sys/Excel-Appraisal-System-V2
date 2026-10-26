@@ -404,6 +404,18 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
   const [toast, setToast] = useState("");
   const [dragOver, setDragOver] = useState(false);
 
+  useEffect(() => {
+    const refreshCycles = () => setLoadToken((value) => value + 1);
+    if (typeof window !== "undefined") {
+      window.addEventListener("appraisal:cycle-updated", refreshCycles);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("appraisal:cycle-updated", refreshCycles);
+      }
+    };
+  }, []);
+
   const fileInputRef = useRef(null);
   const empCache = useRef([]);
   const lastRejected = useRef("");
