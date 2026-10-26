@@ -1737,6 +1737,31 @@ async function importRows(tables, body, actor = "") {
     }
   }
 
+  let appraisalSheetSync = null;
+  if (screen === "fb" && succeeded > 0 && cycle) {
+    try {
+      // Uploading feedback after sheet generation must update the already
+      // generated rows immediately; generation is not required to be repeated.
+      const uploadedValuesByEmpId = new Map();
+      for (const input of records) {
+        const empId = String(input?.empId || "").trim().toLowerCase();
+        if (empId) uploadedValuesByEmpId.set(empId, input);
+      }
+      appraisalSheetSync = await syncFeedbackToAppraisalSheet(
+        tables,
+        cycle,
+        actor,
+        uploadedValuesByEmpId,
+      );
+    } catch (syncError) {
+      console.error("Feedback upload succeeded but Appraisal Sheet sync failed:", syncError?.message || syncError);
+      appraisalSheetSync = {
+        updated: 0,
+        error: syncError?.message || "Appraisal Sheet synchronization failed.",
+      };
+    }
+  }
+
   if (screen === "fb" && succeeded > 0) {
     try {
       await writeAudit(tables.audit, {
@@ -1765,7 +1790,14 @@ async function importRows(tables, body, actor = "") {
     }
   }
 
-  return { succeeded, failed, total: records.length, batchId: String(body.batchId || ""), rows };
+  return {
+    succeeded,
+    failed,
+    total: records.length,
+    batchId: String(body.batchId || ""),
+    rows,
+    ...(appraisalSheetSync ? { appraisalSheetSync } : {}),
+  };
 }
 
 /* ---------- Feedback & Rating screen ---------- */
