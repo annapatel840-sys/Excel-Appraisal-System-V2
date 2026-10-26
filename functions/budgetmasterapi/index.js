@@ -1823,7 +1823,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       String(m.appraisal_cycle_id || "").trim(),
     ).length,
     baseColumns:
-      "Payroll_Data.total_CTC_with_rewards from the immediately previous appraisal cycle; current total_ctc_with_rewards for employees not present in that cycle",
+      "Appraisal_Sheet.Previous_Appraisal_total_CTC_with_rewards for eligible current-cycle Appraisal Sheet employees; Payroll_Data historical Total CTC with Rewards only when the sheet snapshot is absent; current CTC only as a final fallback",
   };
   if (!bundle.diagnostics.budgetMasterCycles) {
     bundle.diagnostics.warning =
