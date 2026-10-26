@@ -678,6 +678,27 @@ export function EmployeeMaster() {
     }
   }, [activeTab]);
 
+  // Every tab change is a history entry (?tab=...), so Back retraces the exact
+  // order visited: e.g. Dashboard -> Access -> Budget Master  =>  Back: Access -> Dashboard.
+  const goToTab = (tab) => {
+    const current = new URLSearchParams(window.location.search).get("tab");
+    if (window.location.pathname === "/employee-master" && current !== tab) {
+      window.history.pushState({}, "", `/employee-master?tab=${tab}`);
+    }
+    setActiveTab(tab);
+  };
+
+  // Landing on HR Operations without ?tab= (default = Access): record it in the
+  // current history entry so it is a real step that Back returns to.
+  useEffect(() => {
+    if (window.location.pathname !== "/employee-master") return;
+    const current = new URLSearchParams(window.location.search).get("tab");
+    if (!current) {
+      window.history.replaceState({}, "", `/employee-master?tab=${activeTab}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [search, setSearch] = useState("");
 
   const [statusFilter, setStatusFilter] = useState("All");
@@ -2355,7 +2376,7 @@ export function EmployeeMaster() {
         <HrOperationsNav
           activeTab={activeTab}
           isTabVisible={isTabVisible}
-          onSelect={setActiveTab}
+          onSelect={goToTab}
         />
 
         {/* ======================================================
@@ -2544,7 +2565,7 @@ export function EmployeeMaster() {
                       setUploadCycleId(String(cycle?.id || ""));
                     }
                     if (KNOWN_TABS.includes(tab) && isTabVisible(tab)) {
-                      setActiveTab(tab);
+                      goToTab(tab);
                       return;
                     }
                     showBanner(
