@@ -157,14 +157,17 @@ export const newBaseSalary = (r) =>
 // YoE Ratio (auto-calculated):
 // if(Total_Experience == 0, 0, ((Current_Annual_Base_Pay / 100000) / Total_Experience).round(2))
 export const yoeRatio = (r) => {
-  const exp = Number(r.totalExperience) || 0;
-
-  if (exp === 0) {
-    return 0;
+  // Prefer an explicit cycle feedback/upload value when present. Older cycles
+  // without a stored YoE value retain the historical derived formula.
+  if (r?.yoeRatio !== undefined && r?.yoeRatio !== null && String(r.yoeRatio).trim() !== "") {
+    const uploaded = Number(r.yoeRatio);
+    if (Number.isFinite(uploaded)) return uploaded;
   }
 
-  const lakhs = (Number(r.currentAnnualBasePay) || 0) / 100000;
+  const exp = Number(r.totalExperience) || 0;
+  if (exp === 0) return 0;
 
+  const lakhs = (Number(r.currentAnnualBasePay) || 0) / 100000;
   return Math.round((lakhs / exp) * 100) / 100;
 };
 
