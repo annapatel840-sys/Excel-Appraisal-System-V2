@@ -172,9 +172,11 @@ export default function DelegationScreen({
     const onFocus = () => reloadRequests();
     reloadRequests();
     window.addEventListener("focus", onFocus);
+    window.addEventListener("appraisal:cycle-updated", onFocus);
     return () => {
       cancelled = true;
       window.removeEventListener("focus", onFocus);
+      window.removeEventListener("appraisal:cycle-updated", onFocus);
     };
   }, []);
 
@@ -275,8 +277,11 @@ export default function DelegationScreen({
 
   useEffect(() => {
     loadRoster();
+    const refreshRoster = () => loadRoster();
+    window.addEventListener("appraisal:cycle-updated", refreshRoster);
     // Load the active cycle's roster when the Delegation screen is mounted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => window.removeEventListener("appraisal:cycle-updated", refreshRoster);
   }, [initialRows]);
   const say = (msg, err) => {
     setToast({ msg, err });
