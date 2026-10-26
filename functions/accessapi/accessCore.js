@@ -324,8 +324,17 @@ function resolveFields(C, lim) {
    --------------------------------------------------------------------- */
 async function activeCycleId(zcql) {
   const c = SETTINGS.cycle;
-  const rows = await selectAll(zq(zcql), c.table, c.statusColumn + " = '" + q(c.activeValue) + "'");
-  return rows[0] ? String(rows[0][c.idColumn]) : null;
+  const rows = await selectAll(zq(zcql), c.table);
+  const isTruthyFlag = (value) =>
+    [true, 1, "true", "1", "yes"].includes(
+      typeof value === "string" ? value.trim().toLowerCase() : value,
+    );
+  const active = rows.find((row) =>
+    String(row[c.statusColumn] || "").trim().toLowerCase() === String(c.activeValue).toLowerCase() &&
+    !isTruthyFlag(row.archived) &&
+    !isTruthyFlag(row.hidden)
+  );
+  return active ? String(active[c.idColumn] || "") || null : null;
 }
 /* Delegation of a cycle:
      techEd / compMgr : { normEmpId: number of employees }   (who has a team)
