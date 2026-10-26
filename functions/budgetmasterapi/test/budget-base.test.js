@@ -430,7 +430,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.match(response.json.message, /Budget_Distribution must have an original_headcount or allocation_headcount column/);
   });
 
-  await t('cycle-ineligible employees are excluded from org and Tech-ED bases', async () => {
+  await t('Org and Tech-ED bases match all generated Appraisal Sheet previous CTC values while Current Count remains eligibility-scoped', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
       Budget_Distribution: [], Budget_Distribution_Comp: [],
@@ -444,8 +444,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
         { cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' },
       ],
       Appraisal_Sheet: [
-        { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: 1000000, hike_amount: 100000 },
-        { emp_id: 'E2', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: 2000000, hike_amount: 200000 },
+        { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: 1000000, Previous_Appraisal_total_CTC_with_rewards: 1100000, hike_amount: 100000 },
+        { emp_id: 'E2', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: 2000000, Previous_Appraisal_total_CTC_with_rewards: 2200000, hike_amount: 200000 },
       ],
     });
     const currentCycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
@@ -456,10 +456,10 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     );
     const r = await get(load(store));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(r.json.master[0].org_budget_base, 1100000);
+    assert.strictEqual(r.json.master[0].org_budget_base, 3300000, 'Org Budget Base is the sum of both generated Appraisal Sheet previous-CTC values');
     const team = r.json.techEd.find((row) => /T1/.test(row.appraiser_tech_ed_id));
-    assert.strictEqual(team.budget_base, 1100000);
-    assert.strictEqual(Number(team.current_headcount), 1);
+    assert.strictEqual(team.budget_base, 3300000, 'Tech-Ed base rolls up the same Appraisal Sheet CTC values');
+    assert.strictEqual(Number(team.current_headcount), 1, 'Current Count still follows cycle eligibility');
   });
 
   await t('stale Tech-ED original budget smaller than the base is recalculated', async () => {
