@@ -558,7 +558,13 @@ export function TechEdBudgetDistribution() {
   const myPct = liveTech ? num(liveTech.percentage) : 0;
   // Use the same selected allocation row/value as Dashboard, Appraisal Sheet,
   // and Detail Screen so the Tech-Ed allocation cannot drift across screens.
-  const hasLiveAllocation = Boolean(activeCycleId && liveTech);
+  // A budget row can exist before HR applies a percentage. Do not present
+  // that placeholder as an allocated/original budget until it has a real amount.
+  const hasLiveAllocation = Boolean(
+    activeCycleId &&
+    liveTech &&
+    (num(liveTech.applied_budget) > 0 || num(liveTech.percentage) > 0)
+  );
   const myOriginal = hasLiveAllocation
     ? (sharedBudgetTotals?.budgetScope === "teched"
         ? num(sharedBudgetTotals.base)
