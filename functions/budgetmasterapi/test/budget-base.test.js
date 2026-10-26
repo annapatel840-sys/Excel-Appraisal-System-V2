@@ -344,6 +344,53 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(Number(delegatedC2.current_headcount), 1, 'new Comp Manager Current Count uses the generated roster');
   });
 
+  await t('Comp Manager reassignment changes only live counts and preserves the Tech-Ed baseline', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
+      Budget_Distribution: [],
+      Budget_Distribution_Comp: [],
+      Employee_Master: [],
+      Eligibility_List: [],
+      Payroll_Data: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' },
+      ],
+      Appraisal_Sheet: [
+        sheet('E1', 'T1', 'C1', 1000000, 0),
+        sheet('E2', 'T1', 'C1', 1000000, 0),
+      ],
+    });
+    const cycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = cycleId;
+    store.tables.Eligibility_List.push(
+      { ROWID: '99101', appraisal_cycle_id: cycleId, emp_id: 'E1', eligibility_status: 'Eligible' },
+      { ROWID: '99102', appraisal_cycle_id: cycleId, emp_id: 'E2', eligibility_status: 'Eligible' },
+    );
+
+    const api = load(store);
+    const initial = await get(api);
+    assert.strictEqual(initial.status, 200, JSON.stringify(initial.json));
+    const initialTech = initial.json.techEd.find((row) => /T1/.test(row.appraiser_tech_ed_id));
+    const initialC1 = initial.json.compManager.find((row) => row.comp_manager === 'C1');
+    assert.strictEqual(Number(initialTech.original_headcount), 2);
+    assert.strictEqual(Number(initialC1.original_headcount), 2);
+
+    // HR approves a Comp Manager-only delegation: Tech-Ed stays T1.
+    store.tables.Appraisal_Sheet.find((row) => row.emp_id === 'E2').comp_manager = 'C2';
+    const changed = await get(api);
+    assert.strictEqual(changed.status, 200, JSON.stringify(changed.json));
+    const changedTech = changed.json.techEd.find((row) => /T1/.test(row.appraiser_tech_ed_id));
+    const changedC1 = changed.json.compManager.find((row) => row.comp_manager === 'C1');
+    const changedC2 = changed.json.compManager.find((row) => row.comp_manager === 'C2');
+
+    assert.strictEqual(Number(changedTech.original_headcount), 2, 'Tech-Ed Original Count remains unchanged');
+    assert.strictEqual(Number(changedTech.current_headcount), 2, 'Tech-Ed Current Count remains 2 when the employee stays under the same Tech-Ed');
+    assert.strictEqual(Number(changedC1.original_headcount), 2, 'old Comp Manager Original Count remains unchanged');
+    assert.strictEqual(Number(changedC1.current_headcount), 1, 'old Comp Manager Current Count decreases');
+    assert.strictEqual(Number(changedC2.original_headcount), 1, 'new Comp Manager gets a baseline when its allocation is first created');
+    assert.strictEqual(Number(changedC2.current_headcount), 1, 'new Comp Manager Current Count reflects the reassigned employee');
+  });
+
   await t('cycle-ineligible employees are excluded from org and Tech-ED bases', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
