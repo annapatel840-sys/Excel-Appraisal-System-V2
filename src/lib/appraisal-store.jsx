@@ -337,7 +337,7 @@ const mapCatalystEmployee = (employee, index) => {
 
     rrPercent: Number(employee.rr_percent ?? employee.revenue_released ?? employee.rr ?? 0),
     grossMargin: Number(employee.gross_margin ?? employee.grossMargin ?? 0),
-    yoeRatio: Number(employee.yoe_ratio ?? employee.yoeRatio ?? 0),
+    yoeRatio: employee.yoe_ratio ?? employee.yoeRatio ?? "",
 
     // Feedback_And_Rating values are stored with database field names, while
     // the grid columns use camelCase keys. Map the source fields explicitly so
