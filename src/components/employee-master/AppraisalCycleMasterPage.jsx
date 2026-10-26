@@ -525,6 +525,9 @@ export function AppraisalCycleMasterPage({
     setSaving(true);
     try {
       await payrollCycleRequest(resource, { method: "POST", body });
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("appraisal:cycle-updated"));
+      }
     } catch (error) {
       showBanner("Unable to save appraisal cycle", error.message, true);
       setSaving(false);
