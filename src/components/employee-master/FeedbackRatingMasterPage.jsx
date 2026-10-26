@@ -283,6 +283,13 @@ export function FeedbackRatingMasterPage({
   const CYCLES = cyclesProp || DEMO_CYCLES;
   const ROWS = useMemo(() => rowsProp || buildDemoRows(), [rowsProp]);
   const BATCHES = batchesProp || DEMO_BATCHES;
+  const activeCycle = CYCLES.find((cycle) => {
+    const status = String(cycle?.status || "").trim().toLowerCase();
+    const archived = [true, 1, "true", "1", "yes"].includes(
+      typeof cycle?.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle?.archived,
+    );
+    return status === "active" && !archived && !cycle?.hidden;
+  }) || null;
 
   const saved = useMemo(() => {
     try {
@@ -351,8 +358,11 @@ export function FeedbackRatingMasterPage({
     setNoteText("");
   };
   useEffect(() => {
-    if (cid == null && CYCLES[0]) setCid(CYCLES[0].id);
-  }, [CYCLES, cid]);
+    // The current Feedback & Rating view follows the Active cycle only.
+    // Historical rows remain stored and can be used by next-cycle calculations,
+    // but no closed cycle is selected as a fallback when there is no Active one.
+    setCid(activeCycle ? activeCycle.id : null);
+  }, [CYCLES]);
 
   // Close pop-ups on outside click / Escape.
   useEffect(() => {
@@ -418,7 +428,7 @@ export function FeedbackRatingMasterPage({
 
   // Effective dates are compared as yyyy-mm-dd, whatever the backend sends.
   const dayOf = (v) => String(v == null ? "" : v).slice(0, 10);
-  const sameCycle = (r) => String(r.cid) === String(cid);
+  const sameCycle = (r) => Boolean(activeCycle) && String(r.cid) === String(cid);
   const scope = useMemo(
     () => ROWS.filter((r) => sameCycle(r) && (!eff || dayOf(r.eff) === eff)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -600,7 +610,9 @@ export function FeedbackRatingMasterPage({
   /* ---------- render ---------- */
   const cmCol = colMenu ? colOf(colMenu.k) : null;
   const effLabel = eff ? fmtDate(eff) : "all dates";
-  const batchesForCycle = BATCHES.filter((b) => String(b.cid) === String(cid));
+  const batchesForCycle = BATCHES.filter((b) =>
+    Boolean(activeCycle) && String(b.cid) === String(cid)
+  );
 
   return (
     <div className="fb-root" onContextMenu={(e) => e.preventDefault()}>
@@ -612,7 +624,8 @@ export function FeedbackRatingMasterPage({
         <div className="tr-right" onClick={(e) => e.stopPropagation()}>
           <span className="flt">
             <span className="lbl">Cycle</span>
-            <select className="sel" aria-label="Appraisal cycle" value={cid ?? ""} onChange={(e) => onCycle(e.target.value)}>
+            <select className="sel" aria-label="Appraisal cycle" value={cid ?? ""} disabled={!activeCycle} onChange={(e) => onCycle(e.target.value)}>
+              {!activeCycle && <option value="">No active cycle</option>}
               {CYCLES.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name} · {c.status}
