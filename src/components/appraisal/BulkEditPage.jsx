@@ -1019,10 +1019,14 @@ const BulkOperations = forwardRef(function BulkOperations(
 
   /* ---------- appraisal sheet rows (already loaded in the app) ---------- */
   let sheetRows = [];
+  let sheetAudit = [];
   try {
-    sheetRows = useAppraisal().rows || [];
+    const appraisalCtx = useAppraisal();
+    sheetRows = appraisalCtx.rows || [];
+    sheetAudit = appraisalCtx.audit || [];
   } catch (x) {
     sheetRows = [];
+    sheetAudit = [];
   }
   const sheetById = useMemo(() => {
     const m = {};
@@ -1077,9 +1081,72 @@ const BulkOperations = forwardRef(function BulkOperations(
     return sh ? filterVal(sh, field) : "";
   };
 
+  /* ---------- the Appraisal Sheet's own rows, in this screen's row shape ---------- */
+  // Active + Eligible employees (the same rows the Appraisal Sheet shows),
+  // in Employee ID order. Rows the server also returned keep their server
+  // values; everything else comes straight from the sheet.
+  const sheetEmp = useMemo(() => {
+    const edited = new Set(
+      (sheetAudit || [])
+        .map((x) => String(x.empId || "").trim())
+        .filter(Boolean),
+    );
+    const num = (v) => Number(v) || 0;
+    return sheetRows
+      .filter(
+        (r) =>
+          String(r.status || "").trim().toLowerCase() === "active" &&
+          String(r.eligibility || "").trim().toLowerCase() === "eligible",
+      )
+      .map((r) => {
+        const rating = Number(r.managerRating);
+        return Object.assign({}, r, {
+          empId: String(r.empId),
+          name: r.name || "",
+          designation: r.designation || "",
+          band: r.band || desigBand.current[r.designation] || "",
+          compManager: r.compManager || "",
+          superManager: r.appraiserTechED || "",
+          rating:
+            Number.isFinite(rating) && rating > 0
+              ? rating
+              : r.rating === "" || r.rating == null
+                ? null
+                : Number(r.rating),
+          basePay: num(r.currentAnnualBasePay),
+          pbPaid: num(r.pbToBePaid),
+          rbPaid: num(r.rbToBePaid),
+          hikeAmt: num(r.hikeAmount),
+          newPB: num(r.allocatedPBAmount),
+          newRB: num(r.newRB),
+          tpbNext: num(r.targetPBNextYear),
+          newPBInst: String(r.pbInstallment || "1"),
+          remarks: r.compManagerRemarks || "",
+          promo: r.eligibleForPromotion || "No",
+          hand: edited.has(String(r.empId).trim()),
+          bulk: false,
+        });
+      })
+      .sort((a, b) =>
+        String(a.empId).localeCompare(String(b.empId), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
+      );
+  }, [sheetRows, sheetAudit]);
+
   /* ---------- scope & filters ---------- */
   const scope = useMemo(() => {
-    if (apiMode) return emp;
+    if (apiMode) {
+      if (!sheetEmp.length) return emp;
+      const byServer = {};
+      emp.forEach((e) => {
+        byServer[e.empId] = e;
+      });
+      return sheetEmp.map((e) =>
+        byServer[e.empId] ? Object.assign({}, e, byServer[e.empId]) : e,
+      );
+    }
     return emp.filter((e) =>
       role === "HR"
         ? true
@@ -1087,7 +1154,7 @@ const BulkOperations = forwardRef(function BulkOperations(
           ? e.superManager === user
           : e.compManager === user,
     );
-  }, [emp, apiMode, role, user]);
+  }, [emp, apiMode, role, user, sheetEmp]);
 
   const fdef = (id) => fdefs.find((d) => d.id === id);
   const hiddenForRole = (d) =>
@@ -2380,7 +2447,8 @@ const BulkOperations = forwardRef(function BulkOperations(
   };
 
   /* ============================== derived render data ============================== */
-  const rows = gridRows(),
+  // The table fills only after Preview is clicked.
+  const rows = pv ? gridRows() : [],
     total = rows.length,
     pages = Math.max(1, Math.ceil(total / PAGE));
   const pg = Math.min(page, pages),
@@ -2755,7 +2823,9 @@ const BulkOperations = forwardRef(function BulkOperations(
 
   const lb = lastBatch(),
     lbArmed = lb && restoreAt.id === lb.id && Date.now() - restoreAt.t < 6000;
-  const okPv = !!pv && pv.n.chg > 0 && !locked && !busy;
+  // Apply is switched off for now: this screen works up to Preview.
+  const APPLY_ENABLED = false;
+  const okPv = APPLY_ENABLED && !!pv && pv.n.chg > 0 && !locked && !busy;
 
   /* ============================== render ============================== */
   return (
@@ -2812,6 +2882,7 @@ const BulkOperations = forwardRef(function BulkOperations(
                   type="button"
                   onClick={askApply}
                   disabled={!okPv}
+                  title="Apply is not enabled yet — preview only"
                 >
                   {applyLabel()}
                 </button>
@@ -3390,6 +3461,7 @@ const BulkOperations = forwardRef(function BulkOperations(
                 className={"btn main" + (confirmAt ? " confirm" : "")}
                 type="button"
                 disabled={!okPv}
+                title="Apply is not enabled yet — preview only"
                 onClick={askApply}
               >
                 {applyLabel()}
@@ -3418,7 +3490,7 @@ const BulkOperations = forwardRef(function BulkOperations(
               <div className="strip info">
                 <span>Loading employees from the server…</span>
               </div>
-            ) : err ? (
+            ) : err && !sheetEmp.length ? (
               <div className="strip warn">
                 <b>Not saved</b>
                 <span>{err}</span>
@@ -3724,7 +3796,9 @@ const BulkOperations = forwardRef(function BulkOperations(
                   {!slice.length ? (
                     <tr>
                       <td colSpan={C.length} className="empty">
-                        No employees match the filters.
+                        {pv
+                          ? "No employees match the filters."
+                          : "Click Preview to see the employees here."}
                       </td>
                     </tr>
                   ) : (

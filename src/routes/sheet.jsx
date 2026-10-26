@@ -113,13 +113,21 @@ export function SheetPage() {
     };
   }, []);
 
+  // Sequential by Employee ID (EMP001, EMP002, ... EMP010).
   const appraisalRows = useMemo(
     () =>
-      rows.filter(
-        (row) =>
-          String(row.status || "").trim().toLowerCase() === "active" &&
-          String(row.eligibility || "").trim().toLowerCase() === "eligible",
-      ),
+      rows
+        .filter(
+          (row) =>
+            String(row.status || "").trim().toLowerCase() === "active" &&
+            String(row.eligibility || "").trim().toLowerCase() === "eligible",
+        )
+        .sort((a, b) =>
+          String(a.empId || "").localeCompare(String(b.empId || ""), undefined, {
+            numeric: true,
+            sensitivity: "base",
+          }),
+        ),
     [rows],
   );
 
