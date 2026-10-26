@@ -299,7 +299,7 @@ export function FeedbackRatingMasterPage({
     }
   }, []);
 
-  const [cid, setCid] = useState(() => (CYCLES[0] ? CYCLES[0].id : null));
+  const [cid, setCid] = useState(() => (activeCycle ? activeCycle.id : null));
   const [eff, setEff] = useState("");
   const [q, setQ] = useState("");
   const [te, setTe] = useState("");
