@@ -578,7 +578,11 @@ export function TechEdBudgetDistribution() {
   const hasLiveAllocation = Boolean(
     activeCycleId &&
     liveTech &&
-    (num(liveTech.applied_budget) > 0 || num(liveTech.percentage) > 0)
+    (
+      num(liveTech.applied_budget) > 0 ||
+      num(liveTech.percentage) > 0 ||
+      num(liveTech.budget_percentage) > 0
+    )
   );
   const myOriginal = hasLiveAllocation
     ? (sharedBudgetTotals?.budgetScope === "teched"
