@@ -16,6 +16,7 @@ import {
   fetchEligibilityEmployees,
   updateEmployeeMasterEmployee,
   updateEmployeeEligibility,
+  updateEligibilityRecords,
   createEmployeeMasterEmployees,
 } from "@/lib/employee-master-data";
 
@@ -631,6 +632,7 @@ export function EmployeeMaster() {
   const [allEmployees, setAllEmployees] = useState([]);
 
   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
+  const [eligibilityCycleId, setEligibilityCycleId] = useState("");
 
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
 
@@ -1156,11 +1158,15 @@ export function EmployeeMaster() {
       try {
         setEligibilityLoading(true);
 
+        // Keep the authoritative Active cycle ID returned by the API. Do not
+        // rely on each mapped employee row to carry a correctly shaped FK.
         const firstPage = await fetchEligibilityEmployees({
           page: 1,
           limit: 100,
           search: "",
         });
+        const loadedCycleId = String(firstPage?.cycle?.cycleId || "").trim();
+        setEligibilityCycleId(loadedCycleId);
 
         let all = Array.isArray(firstPage?.data) ? firstPage.data : [];
 
@@ -1175,6 +1181,7 @@ export function EmployeeMaster() {
             page,
             limit: 100,
             search: "",
+            cycleId: loadedCycleId,
           });
 
           all = all.concat(Array.isArray(result?.data) ? result.data : []);
@@ -1193,6 +1200,7 @@ export function EmployeeMaster() {
         }
 
         setEligibilityEmployees([]);
+        setEligibilityCycleId("");
 
         eligibilityLoadedKeyRef.current = null;
 
