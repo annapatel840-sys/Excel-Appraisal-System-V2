@@ -10,7 +10,9 @@ export function FeedbackRatingMasterContainer() {
   useEffect(() => {
     let cancelled = false;
     const refresh = () => {
-      setState((current) => ({ ...current, loading: true, error: "" }));
+      // Clear the previous cycle immediately; if the refresh fails, stale
+      // feedback rows and upload batches must not remain visible.
+      setState({ cycles: [], rows: [], batches: [], loading: true, error: "" });
       loadFeedbackRating()
         .then((data) => {
           if (!cancelled) setState({ ...data, loading: false, error: "" });
