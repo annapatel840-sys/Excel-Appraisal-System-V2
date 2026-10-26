@@ -15,6 +15,23 @@ const PAGE_SIZE = 20;
 const tagOf = (e) =>
   e.changeTag || e.eligibilityTag || (e.manualOverride ? "Changed" : "");
 
+const eligibilityDecisionOf = (employee) => {
+  const raw = String(
+    employee?.eligibleStatus ??
+      employee?.rawEmployee?.eligibility_status ??
+      employee?.rawEmployee?.eligible_status ??
+      "",
+  )
+    .trim()
+    .toLowerCase()
+    .replace(/[ _-]+/g, "");
+  if (["eligible", "yes", "true", "1"].includes(raw)) return "Eligible";
+  if (["noteligible", "no", "false", "0", "ineligible"].includes(raw)) {
+    return "Not Eligible";
+  }
+  return "Pending";
+};
+
 const updatedOf = (e) =>
   e.eligibilityUpdatedAt ||
   e.rawEmployee?.eligible_updated_at ||
@@ -67,12 +84,15 @@ const DEFS = [
     key: "eligible",
     label: "Eligible",
     w: 110,
-    get: (e) => (e.eligible === "Yes" ? "Eligible" : "Not Eligible"),
-    render: (e) => (
-      <span className={`emx-tag ${e.eligible === "Yes" ? "ok" : "warn"}`}>
-        {e.eligible === "Yes" ? "Eligible" : "Not Eligible"}
-      </span>
-    ),
+    get: (e) => eligibilityDecisionOf(e),
+    render: (e) => {
+      const decision = eligibilityDecisionOf(e);
+      return (
+        <span className={`emx-tag ${decision === "Eligible" ? "ok" : decision === "Pending" ? "info" : "warn"}`}>
+          {decision}
+        </span>
+      );
+    },
   },
   {
     key: "reason",
@@ -198,8 +218,9 @@ export function EligibilityList({
     () => locationFilteredEmployees.filter((e) => tagOf(e) !== "Removed"),
     [locationFilteredEmployees],
   );
-  const eligibleCount = counted.filter((e) => e.eligible === "Yes").length;
-  const notEligibleCount = counted.length - eligibleCount;
+  const eligibleCount = counted.filter((e) => eligibilityDecisionOf(e) === "Eligible").length;
+  const notEligibleCount = counted.filter((e) => eligibilityDecisionOf(e) === "Not Eligible").length;
+  const pendingCount = counted.filter((e) => eligibilityDecisionOf(e) === "Pending").length;
 
   /* paging */
   const pages = Math.max(1, Math.ceil(view.length / PAGE_SIZE));
@@ -320,6 +341,10 @@ export function EligibilityList({
           <div>
             <strong>{notEligibleCount}</strong>
             <span>Not Eligible</span>
+          </div>
+          <div>
+            <strong>{pendingCount}</strong>
+            <span>Pending</span>
           </div>
         </div>
 
