@@ -809,7 +809,10 @@ async function readEmployeeRoster(app) {
     const key = String(readField(row, ["emp_id", "employee_id"]) || "")
       .trim()
       .toLowerCase();
-    if (key && !appraisalById.has(key)) appraisalById.set(key, row);
+    // Appraisal_Sheet rows may contain legacy duplicates. ZCQL pages are
+    // read in ROWID order, so keep the latest row for each employee rather
+    // than allowing an older archived assignment to win.
+    if (key) appraisalById.set(key, row);
   });
   // Never add every Employee_Master record to the appraisal roster. Only
   // employees actually present in the current generated sheet belong here.
