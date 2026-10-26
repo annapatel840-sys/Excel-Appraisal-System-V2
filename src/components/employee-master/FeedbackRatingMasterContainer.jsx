@@ -9,15 +9,25 @@ export function FeedbackRatingMasterContainer() {
 
   useEffect(() => {
     let cancelled = false;
-    loadFeedbackRating()
-      .then((data) => {
-        if (!cancelled) setState({ ...data, loading: false, error: "" });
-      })
-      .catch((err) => {
-        if (!cancelled) setState((s) => ({ ...s, loading: false, error: err.message || "Could not load feedback." }));
-      });
+    const refresh = () => {
+      setState((current) => ({ ...current, loading: true, error: "" }));
+      loadFeedbackRating()
+        .then((data) => {
+          if (!cancelled) setState({ ...data, loading: false, error: "" });
+        })
+        .catch((err) => {
+          if (!cancelled) setState((current) => ({ ...current, loading: false, error: err.message || "Could not load feedback." }));
+        });
+    };
+    refresh();
+    if (typeof window !== "undefined") {
+      window.addEventListener("appraisal:cycle-updated", refresh);
+    }
     return () => {
       cancelled = true;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("appraisal:cycle-updated", refresh);
+      }
     };
   }, []);
 
