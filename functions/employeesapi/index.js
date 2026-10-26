@@ -951,10 +951,14 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
       return Number.isFinite(parsed) ? parsed : 0;
     };
-    const payrollPreviousPB = prior ? payrollAmount(firstNonEmpty(prior.row, [
+    // Existing employees must always use the last closed/archived cycle.
+    // Only employees with no prior closed-cycle Payroll_Data row (new joiners)
+    // may use the PB/RB-to-be-paid values from the current-cycle payroll upload.
+    const bonusSource = prior?.row || currentPayroll || null;
+    const payrollPreviousPB = bonusSource ? payrollAmount(firstNonEmpty(bonusSource, [
       "pb_to_be_paid", "performance_bonus", "previous_year_performance_bonus", "previous_year_pb", "previous_pb",
     ])) : 0;
-    const payrollPreviousRB = prior ? payrollAmount(firstNonEmpty(prior.row, [
+    const payrollPreviousRB = bonusSource ? payrollAmount(firstNonEmpty(bonusSource, [
       "rb_to_be_paid", "retention_bonus", "previous_year_retention_bonus", "previous_year_rb", "previous_rb",
     ])) : 0;
     const payrollPreviousPBMonth = prior ? String(firstNonEmpty(prior.row, [
