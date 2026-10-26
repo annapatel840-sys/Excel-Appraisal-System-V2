@@ -1606,19 +1606,28 @@ async function importRows(tables, body, actor = "") {
   }
 
   const targetTable = screen === "fb" ? tables.feedback : tables.payroll;
-  // Feedback & Rating may be empty before the first upload, so do not infer
-  // its schema from the first row. Use the exact database columns instead.
+  // Read the real schema even when Feedback_And_Rating is empty. This table
+  // uses mixed-case names such as Department and CostCenter_Client.
   const columns = screen === "fb"
-    ? new Set([
-        "emp_ID", "emp_name", "designation", "last_appraisal_date",
-        "revenue_released", "gross_margin", "manager_feedback", "manager_rating",
-        "client_manager_feedback", "client_feedback", "client_rating", "interview_count",
-        "at_risk", "eligible_for_promotion", "new_title", "remarks", "fy_year",
-        "appraisal_cycle_name",
-        "Department", "Band", "Effective_Date", "CostCenter_Client", "Client_Manager",
-        "Comp_Manager", "Tech_ED", "Upload_Batch",
-      ])
+    ? await (async () => {
+        try {
+          const actual = await targetTable.getAllColumns();
+          const names = (actual || []).map((column) => String(column.column_name || "").trim()).filter(Boolean);
+          if (names.length) return new Set(names);
+        } catch (error) {
+          console.warn("Could not inspect Feedback_And_Rating columns:", error?.message || error);
+        }
+        return new Set([
+          "emp_ID", "emp_name", "designation", "last_appraisal_date",
+          "revenue_released", "gross_margin", "manager_feedback", "manager_rating",
+          "client_manager_feedback", "client_feedback", "client_rating", "interview_count",
+          "at_risk", "eligible_for_promotion", "new_title", "remarks", "fy_year",
+          "appraisal_cycle_name", "Department", "Band", "Effective_Date",
+          "CostCenter_Client", "Client_Manager", "Comp_Manager", "Tech_ED", "Upload_Batch",
+        ]);
+      })()
     : await getImportColumnSet(targetTable);
+  const columnByLower = new Map([...columns].map((name) => [String(name).toLowerCase(), name]));
   const fieldMap = IMPORT_FIELD_MAP[screen];
   const records = Array.isArray(body.records) ? body.records : [];
   if (!records.length || records.length > MAX_UPLOAD_ROWS) throw new ApiError("Upload must contain between 1 and " + MAX_UPLOAD_ROWS + " rows.");
@@ -1660,7 +1669,14 @@ async function importRows(tables, body, actor = "") {
     if (!errors.length) {
       for (const [key, column] of Object.entries(fieldMap)) {
         if (input[key] === undefined) continue;
-        if (!columns.has(column)) {
+        const actualColumn = columnByLower.get(String(column).toLowerCase()) ||
+          (key === "rrPercent" ? columnByLower.get("rr_percent") || columnByLower.get("revenue_released") : null);
+        if (!actualColumn) {
+          // YoE ratio is calculated from Employee_Master in deployments where
+          // Feedback_And_Rating has no yoe_ratio column. Keep the uploaded
+          // value in the sync payload for Appraisal_Sheet, but don't reject
+          // an otherwise valid feedback row for this optional derived field.
+          if (screen === "fb" && ["yoeRatio", "rrPercent"].includes(key)) continue;
           if (key !== "empId") errors.push("Database column " + column + " is not available for this upload.");
           continue;
         }
@@ -1677,7 +1693,7 @@ async function importRows(tables, body, actor = "") {
           ) {
             continue;
           }
-          payload[column] = normalizeImportValue(key, input[key]);
+          payload[actualColumn] = normalizeImportValue(key, input[key]);
         } catch (error) {
           errors.push(error.message);
         }
