@@ -294,7 +294,13 @@ export function BudgetDistributionPage() {
     payrollCycleRequest("cycles").then((cycles) => {
       if (!mounted) return;
       const all = Array.isArray(cycles) ? cycles : [];
-      const active = all.find((cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived);
+      const active = all.find((cycle) => {
+        const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
+        const archived = [true, 1, "true", "1", "yes"].includes(
+          typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+        );
+        return status === "active" && !archived && !cycle.hidden;
+      });
       const activeId = String(active?.id || active?.appraisal_cycle_id || active?.cycle_id || active?.ROWID || "");
       setActiveCycleId(activeId);
       const master = budgetMasterRows.find((row) => String(row.appraisal_cycle_id || "") === activeId);
