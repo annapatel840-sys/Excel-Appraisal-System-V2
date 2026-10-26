@@ -236,6 +236,7 @@ function decodeDelegationRequest(row) {
     empName: meta.empName || row.target || "",
     requestType:
       meta.requestType || (meta.field === "screen" ? "screen" : "delegation"),
+    cycleId: String(meta.cycleId || ""),
     field: meta.field || "",
     oldId: meta.oldId || "",
     newId: row.new_value || "",
@@ -261,6 +262,14 @@ app.get(
     if (a.denied) throw a.denied;
     if (!["hr", "techEd", "compMgr"].includes(a.role))
       throw new HttpError(403, "You do not have access to the request queue.");
+    const activeCycleId = String(await A.activeCycleId(ap.admin.zcql()) || "").trim();
+    // Delegation requests are working data for one cycle. With no Active cycle,
+    // the current request queue is intentionally empty; older cycle requests stay
+    // in AccessLog for history and are never shown as current requests.
+    if (!activeCycleId) {
+      send(res, { requests: [] });
+      return;
+    }
     const rows = await selectAll(ap.admin.zcql(), T.log);
     const latestById = new Map();
     const compareRequestEvents = (x, y) => {
@@ -292,8 +301,9 @@ app.get(
       .map(decodeDelegationRequest)
       .filter(
         (r) =>
-          a.role === "hr" ||
-          String(r.byId).toLowerCase() === String(a.user.email || "").toLowerCase(),
+          r.cycleId === activeCycleId &&
+          (a.role === "hr" ||
+            String(r.byId).toLowerCase() === String(a.user.email || "").toLowerCase()),
       )
       .sort((x, y) => String(y.on).localeCompare(String(x.on)));
     send(res, { requests });
@@ -339,6 +349,10 @@ app.post(
       } else {
         throw new HttpError(422, "Unsupported request type.");
       }
+      const activeCycleId = String(await A.activeCycleId(ap.admin.zcql()) || "").trim();
+      if (!activeCycleId) {
+        throw new HttpError(409, "Create and activate an appraisal cycle before submitting delegation requests.");
+      }
       const id =
         "DR-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
       const at = nowDT();
@@ -353,6 +367,7 @@ app.post(
         role: byName,
         old_value: JSON.stringify({
           requestType,
+          cycleId: activeCycleId,
           field: requestType === "screen" ? "screen" : field,
           oldId: String(body.oldId || ""),
           empName: String(body.empName || empId),
