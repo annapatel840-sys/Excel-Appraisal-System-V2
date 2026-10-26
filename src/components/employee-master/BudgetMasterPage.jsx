@@ -623,9 +623,13 @@ function HRApplyBudget() {
     payrollCycleRequest("cycles")
       .then((cycles) => {
         if (!mounted) return;
-        const active = (Array.isArray(cycles) ? cycles : []).find(
-          (cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived,
-        );
+        const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
+          const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
+          const archived = [true, 1, "true", "1", "yes"].includes(
+            typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+          );
+          return status === "active" && !archived && !cycle.hidden;
+        });
         setActiveCycle(active || null);
       })
       .catch((cycleError) => {
