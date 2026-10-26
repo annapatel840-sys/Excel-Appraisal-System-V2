@@ -3,6 +3,7 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useAppraisal } from "@/lib/appraisal-store";
+import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 /* ------------------------------------------------------------------ data */
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
@@ -49,7 +50,7 @@ const refNo = (p) =>
 /* -------------------------------------------------------------- component */
 export default function DelegationScreen({
   initialRows,
-  cycleName = "Apr-26",
+  cycleName = "",
   showRoleSwitch = false,
   onRefresh, // optional: () => void
   onUpload, // optional: () => void
@@ -68,6 +69,10 @@ export default function DelegationScreen({
     role: isHRUser ? "HR Admin" : "Tech Ed",
   });
   const [rows, setRows] = useState(() => initialRows || []);
+  const [activeCycleName, setActiveCycleName] = useState("");
+  const [activeCycleId, setActiveCycleId] = useState("");
+  const [rosterLoading, setRosterLoading] = useState(false);
+  const displayCycleName = activeCycleName || cycleName || "No active cycle";
   const normalizeRequests = (items) =>
     (Array.isArray(items) ? items : []).map((q) => ({
       ...q,
@@ -178,61 +183,93 @@ export default function DelegationScreen({
     (!isHR && !access.canScreen("delegation", "edit")) ||
     (!isHR && !access.canAction("delegateRequest"));
 
-  useEffect(() => {
-    if (initialRows || rows.length) return;
-    let cancelled = false;
-    const loadRoster = async () => {
-      try {
-        const firstResponse = await catalystFetch(
-          EMPLOYEE_API_URL + "?page=1&limit=100&view=delegation",
+  const loadRoster = async () => {
+    setRosterLoading(true);
+    try {
+      const cycles = await payrollCycleRequest("cycles");
+      const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
+        const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
+        const archived = ["true", "1", "yes"].includes(String(cycle.archived ?? "").trim().toLowerCase());
+        return status === "active" && !archived && !cycle.hidden;
+      });
+      if (!active) {
+        setActiveCycleId("");
+        setActiveCycleName("");
+        setRows([]);
+        return;
+      }
+      const cycleId = String(active.id || active.appraisal_cycle_id || active.cycle_id || active.ROWID || "");
+      setActiveCycleId(cycleId);
+      setActiveCycleName(String(active.name || active.cycle_name || active.appraisal_year || ""));
+      if (Array.isArray(initialRows) && initialRows.length) {
+        const unique = new Map();
+        initialRows.forEach((item) => {
+          const id = String(item.emp_id || item.id || item.ROWID || "").trim().toLowerCase();
+          if (id && !unique.has(id)) unique.set(id, item);
+        });
+        setRows(Array.from(unique.values()));
+        return;
+      }
+
+      // Delegation is prepared before sheet generation, so employeesapi builds
+      // the working roster from the active cycle's Eligibility_List when the
+      // Appraisal Sheet has not yet been generated.
+      const firstResponse = await catalystFetch(
+        EMPLOYEE_API_URL + "?page=1&limit=100&view=delegation",
+        { method: "GET", cache: "no-store" },
+      );
+      const first = await firstResponse.json();
+      if (!firstResponse.ok || !first?.success) {
+        throw new Error(first?.message || "Unable to load appraisal employees.");
+      }
+      const all = Array.isArray(first.data) ? [...first.data] : [];
+      const totalPages = Math.max(1, Number(first.pagination?.totalPages || 1));
+      for (let pageNo = 2; pageNo <= totalPages; pageNo += 1) {
+        const response = await catalystFetch(
+          EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=100&view=delegation",
           { method: "GET", cache: "no-store" },
         );
-        const first = await firstResponse.json();
-        if (!firstResponse.ok || !first?.success)
-          throw new Error(
-            first?.message || "Unable to load appraisal employees.",
-          );
-        const all = Array.isArray(first.data) ? [...first.data] : [];
-        const totalPages = Math.max(
-          1,
-          Number(first.pagination?.totalPages || 1),
-        );
-        for (let pageNo = 2; pageNo <= totalPages; pageNo += 1) {
-          const response = await catalystFetch(
-            EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=100&view=delegation",
-            { method: "GET", cache: "no-store" },
-          );
-          const payload = await response.json();
-          if (response.ok && Array.isArray(payload.data))
-            all.push(...payload.data);
+        const payload = await response.json();
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.message || "Unable to load the remaining delegation employees.");
         }
-        if (cancelled) return;
-        setRows(
-          all
-            .map((item) => ({
-              id: String(item.emp_id || item.ROWID || "").trim(),
-              name: String(item.name || item.emp_id || "").trim(),
-              rm: String(item.reporting_manager || "").trim(),
-              teId: String(item.appraiser_tech_ed || "").trim(),
-              te: String(item.appraiser_tech_ed || "").trim(),
-              comp: String(item.comp_manager || "").trim(),
-              app: String(item.appraiser_tech_ed || "").trim(),
-              prevComp: "",
-              prevApp: "",
-              base: "",
-              lastRole: "",
-            }))
-            .filter((row) => row.id),
-        );
-      } catch (error) {
-        if (!cancelled)
-          say(error?.message || "Unable to load appraisal employees.", true);
+        if (Array.isArray(payload.data)) all.push(...payload.data);
       }
-    };
+      const unique = new Map();
+      all.forEach((item) => {
+        const id = String(item.emp_id || item.employee_id || "").trim().toLowerCase();
+        if (!id) return;
+        const previous = unique.get(id);
+        if (!previous || String(item.MODIFIEDTIME || item.CREATEDTIME || item.ROWID || "") >=
+            String(previous.MODIFIEDTIME || previous.CREATEDTIME || previous.ROWID || "")) {
+          unique.set(id, item);
+        }
+      });
+      setRows(Array.from(unique.values()).map((item) => ({
+        id: String(item.emp_id || item.employee_id || item.ROWID || "").trim(),
+        name: String(item.name || item.emp_name || item.emp_id || "").trim(),
+        rm: String(item.reporting_manager || item.repo_manager || "").trim(),
+        teId: String(item.appraiser_tech_ed || "").trim(),
+        te: String(item.appraiser_tech_ed || "").trim(),
+        comp: String(item.comp_manager || "").trim(),
+        app: String(item.appraiser_tech_ed || "").trim(),
+        prevComp: "",
+        prevApp: "",
+        base: "",
+        lastRole: "",
+      })));
+    } catch (error) {
+      setRows([]);
+      say(error?.message || "Unable to load appraisal employees.", true);
+    } finally {
+      setRosterLoading(false);
+    }
+  };
+
+  useEffect(() => {
     loadRoster();
-    return () => {
-      cancelled = true;
-    };
+    // Load the active cycle's roster when the Delegation screen is mounted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialRows]);
   const say = (msg, err) => {
     setToast({ msg, err });
