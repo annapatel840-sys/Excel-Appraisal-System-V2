@@ -1928,12 +1928,35 @@ export function EmployeeMaster() {
      SAVE ELIGIBILITY TO CATALYST
      ============================================================ */
 
-  const persistEligibilityChange = async (change) => {
+  const persistEligibilityChange = async (change, source = "Manual") => {
     const eligible = change.fields?.Eligible === "Yes" ? "Yes" : "No";
-
     const eligibleReason = change.fields?.Reason || "";
 
-    await updateEmployeeEligibility(change.empId, eligible, eligibleReason);
+    // Eligibility decisions are cycle-scoped in Eligibility_List. Resolve the
+    // cycle from the loaded row rather than sending a cycle-less update (which
+    // the backend correctly rejects and leaves every employee Pending).
+    const employee = eligibilityEmployees.find(
+      (item) => normalizeEmpId(item.empId) === normalizeEmpId(change.empId),
+    );
+    const cycleId = String(
+      employee?.appraisalCycleId ||
+      employee?.rawEmployee?.appraisal_cycle_id ||
+      employee?.rawEmployee?.appraisalCycleId ||
+      "",
+    ).trim();
+    if (!cycleId) {
+      throw new Error(
+        `Could not identify the active appraisal cycle for ${change.empId}. Refresh the Eligibility List and try again.`,
+      );
+    }
+
+    await updateEmployeeEligibility(
+      change.empId,
+      eligible,
+      eligibleReason,
+      cycleId,
+      source,
+    );
 
     return {
       empId: change.empId,
@@ -2242,7 +2265,7 @@ export function EmployeeMaster() {
 
     try {
       const results = await Promise.allSettled(
-        changes.map((change) => persistEligibilityChange(change)),
+        changes.map((change) => persistEligibilityChange(change, "Criteria")),
       );
 
       const successfulChanges = [];
