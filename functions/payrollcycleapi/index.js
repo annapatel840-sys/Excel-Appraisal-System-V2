@@ -1404,6 +1404,136 @@ function normalizeImportValue(key, value) {
   return String(value).trim();
 }
 
+async function syncFeedbackToAppraisalSheet(tables, cycle, actor = "", uploadedValuesByEmpId = new Map()) {
+  if (!cycle?.id) return { updated: 0, matched: 0, skipped: 0 };
+
+  const [feedbackRows, masterRows, sheetRows, sheetColumnsRaw] = await Promise.all([
+    getAllRows(tables.feedback),
+    getAllRows(tables.employeeMaster),
+    getAllRows(tables.employees),
+    tables.employees.getAllColumns(),
+  ]);
+  const sheetColumns = new Map(
+    (sheetColumnsRaw || [])
+      .map((column) => String(column.column_name || "").trim())
+      .filter(Boolean)
+      .map((name) => [name.toLowerCase(), name]),
+  );
+  const valueOf = (row, ...aliases) => {
+    if (!row) return undefined;
+    const keys = Object.keys(row);
+    for (const alias of aliases) {
+      const actual = keys.find((key) => key.toLowerCase() === String(alias).toLowerCase());
+      if (actual !== undefined && row[actual] !== null && row[actual] !== undefined && String(row[actual]).trim() !== "") {
+        return row[actual];
+      }
+    }
+    return undefined;
+  };
+  const idOf = (row) => String(row?.ROWID ?? row?.rowid ?? row?.id ?? row?.ID ?? "").trim();
+  const cycleIds = new Set([cycle.id, cycle.sourceRowId].map((value) => String(value || "").trim()).filter(Boolean));
+  const masterByRowId = new Map(masterRows.map((row) => [idOf(row), row]).filter(([id]) => id));
+  const masterByEmpId = new Map(
+    masterRows.map((row) => [String(valueOf(row, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase(), row])
+      .filter(([id]) => id),
+  );
+  const feedbackByMasterId = new Map();
+  const feedbackByEmpId = new Map();
+  const feedbackTime = (row) => String(valueOf(row, "MODIFIEDTIME", "CREATEDTIME", "ROWID") || "");
+  feedbackRows.forEach((row) => {
+    const feedbackCycleId = String(valueOf(row, "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name") || "").trim();
+    if (!cycleIds.has(feedbackCycleId)) return;
+    const rawEmployee = String(valueOf(row, "emp_ID", "emp_id", "employee_master_row_id", "employee_id", "emp_code") || "").trim();
+    if (!rawEmployee) return;
+    const master = masterByRowId.get(rawEmployee) || masterByEmpId.get(rawEmployee.toLowerCase());
+    const masterId = master ? idOf(master) : rawEmployee;
+    const empId = String(valueOf(master, "emp_id", "employee_id", "emp_code") || rawEmployee).trim().toLowerCase();
+    const previousMaster = feedbackByMasterId.get(masterId);
+    if (!previousMaster || feedbackTime(row).localeCompare(feedbackTime(previousMaster), undefined, { numeric: true }) >= 0) {
+      feedbackByMasterId.set(masterId, row);
+    }
+    const previousEmp = feedbackByEmpId.get(empId);
+    if (empId && (!previousEmp || feedbackTime(row).localeCompare(feedbackTime(previousEmp), undefined, { numeric: true }) >= 0)) {
+      feedbackByEmpId.set(empId, row);
+    }
+  });
+
+  const sourceMappings = [
+    { destination: ["manager_rating"], source: ["manager_rating"] },
+    { destination: ["rr_percent", "rr", "revenue_released"], source: ["rr_percent", "revenue_released", "rr"] },
+    { destination: ["gross_margin"], source: ["gross_margin"] },
+    { destination: ["yoe_ratio"], source: ["yoe_ratio"] },
+    { destination: ["CostCenter_Client", "cost_center_client", "costcenter_client"], source: ["CostCenter_Client", "cost_center_client", "costcenter_client"] },
+    { destination: ["client_manager_feedback", "clientManagerFeedback"], source: ["client_manager_feedback", "clientManagerFeedback"] },
+    { destination: ["client_rating", "clientRating"], source: ["client_rating", "clientRating"] },
+  ];
+  let updated = 0;
+  let matched = 0;
+  let skipped = 0;
+  for (const sheetRow of sheetRows) {
+    if (String(sheetRow.cycle_id || "").trim() !== String(cycle.id)) continue;
+    const masterId = String(sheetRow.emp_master_row_id || "").trim();
+    const empId = String(sheetRow.emp_id || "").trim().toLowerCase();
+    const master = masterByRowId.get(masterId) || masterByEmpId.get(empId);
+    const resolvedMasterId = master ? idOf(master) : masterId;
+    const feedback = feedbackByMasterId.get(resolvedMasterId) || feedbackByEmpId.get(empId);
+    if (!feedback) continue;
+    matched += 1;
+    const uploaded = uploadedValuesByEmpId.get(empId) || {};
+    const payload = { ROWID: idOf(sheetRow) };
+    for (const mapping of sourceMappings) {
+      const destination = mapping.destination
+        .map((name) => sheetColumns.get(name.toLowerCase()))
+        .find(Boolean);
+      if (!destination) continue;
+      let value;
+      if (mapping.destination.some((name) => ["rr_percent", "rr"].includes(name.toLowerCase())) &&
+          uploaded.rrPercent !== undefined && uploaded.rrPercent !== null && String(uploaded.rrPercent).trim() !== "") {
+        value = uploaded.rrPercent;
+      } else if (mapping.destination.some((name) => name.toLowerCase() === "yoe_ratio") &&
+          uploaded.yoeRatio !== undefined && uploaded.yoeRatio !== null && String(uploaded.yoeRatio).trim() !== "") {
+        value = uploaded.yoeRatio;
+      } else {
+        value = mapping.source
+          .map((name) => valueOf(feedback, name))
+          .find((candidate) => candidate !== undefined);
+      }
+      if (value === undefined && mapping.destination.some((name) => name.toLowerCase() === "yoe_ratio")) {
+        const basePay = Number(valueOf(master, "current_annual_base_pay", "base_pay", "current_salary")) || 0;
+        const experience = Number(valueOf(master, "total_experience", "total_exp", "experience")) || 0;
+        if (basePay > 0 && experience > 0) value = Math.round((basePay / 100000 / experience) * 100) / 100;
+      }
+      if (value !== undefined && value !== null && String(value).trim() !== "") payload[destination] = value;
+    }
+    if (Object.keys(payload).length === 1) {
+      skipped += 1;
+      continue;
+    }
+    await tables.employees.updateRow(payload);
+    updated += 1;
+  }
+
+  if (updated > 0) {
+    await writeAudit(tables.audit, {
+      actor: actor || "System",
+      source: "feedback_upload",
+      cycle,
+      action: "Appraisal Sheet feedback refreshed",
+      details: {
+        kind: "upload",
+        action: "Appraisal Sheet feedback refreshed",
+        message: `Refreshed feedback/rating fields for ${updated} existing Appraisal Sheet row(s).`,
+        cycleId: cycle.id,
+        cycleName: cycle.name,
+        updated,
+        matched,
+        skipped,
+      },
+    });
+  }
+  return { updated, matched, skipped };
+}
+
 async function importRows(tables, body, actor = "") {
   const screen = String(body.screen || "").trim().toLowerCase();
   if (!["fb", "sheet"].includes(screen)) throw new ApiError("Unsupported upload type.");
