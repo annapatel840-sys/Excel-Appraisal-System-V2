@@ -1212,18 +1212,27 @@ export function AppraisalProvider({ children }) {
   }, [loadEmployees]);
 
   useEffect(() => {
-    const refreshAfterCycleOrPayrollChange = async () => {
+    const refreshAfterPayrollChange = async () => {
+      await loadEmployees();
+      await refreshAuditHistory();
+    };
+    const refreshAfterCycleChange = async () => {
+      // Clear the prior cycle synchronously before querying the new status.
+      APPRAISAL_YEAR = "";
+      updateRows(() => []);
+      setEmployeeCounts({ total: 0, active: 0, inactive: 0 });
+      setAudit([]);
       await loadEmployees();
       await refreshAuditHistory();
     };
     if (typeof window !== "undefined") {
-      window.addEventListener("appraisal:payroll-data-updated", refreshAfterCycleOrPayrollChange);
-      window.addEventListener("appraisal:cycle-updated", refreshAfterCycleOrPayrollChange);
+      window.addEventListener("appraisal:payroll-data-updated", refreshAfterPayrollChange);
+      window.addEventListener("appraisal:cycle-updated", refreshAfterCycleChange);
     }
     return () => {
       if (typeof window !== "undefined") {
-        window.removeEventListener("appraisal:payroll-data-updated", refreshAfterCycleOrPayrollChange);
-        window.removeEventListener("appraisal:cycle-updated", refreshAfterCycleOrPayrollChange);
+        window.removeEventListener("appraisal:payroll-data-updated", refreshAfterPayrollChange);
+        window.removeEventListener("appraisal:cycle-updated", refreshAfterCycleChange);
       }
     };
   // refreshAuditHistory is a stable useCallback; it is initialized before effects run.
