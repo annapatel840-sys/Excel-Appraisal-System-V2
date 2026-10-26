@@ -1434,6 +1434,17 @@ async function importRows(tables, body, actor = "") {
     throw new ApiError("The selected appraisal cycle no longer exists.", 404);
   }
   if (cycle?.archived) throw new ApiError("The selected cycle is archived.", 409);
+  if (
+    ["fb", "sheet"].includes(screen) &&
+    (!cycle || String(cycle.status || "").trim().toLowerCase() !== "active")
+  ) {
+    throw new ApiError(
+      screen === "fb"
+        ? "Feedback & Rating uploads are allowed only for the Active appraisal cycle."
+        : "Appraisal Sheet uploads are allowed only for the Active appraisal cycle.",
+      409,
+    );
+  }
 
   const targetTable = screen === "fb" ? tables.feedback : tables.payroll;
   // Feedback & Rating may be empty before the first upload, so do not infer
