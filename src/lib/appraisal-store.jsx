@@ -86,13 +86,12 @@ const nextId = () => `a${Date.now()}-${seq++}`;
 CATALYST API
 ============================================================ */
 
-/* Client Rating column = "client_rating - client_feedback" (either part alone
-   when the other is empty). */
-function formatClientRating(rating, feedback) {
+/* Client Rating is a numeric decimal field only.
+   Client feedback is stored separately and must not be appended to this value. */
+function formatClientRating(rating) {
+  if (rating === null || rating === undefined || String(rating).trim() === "") return "";
   const n = Number(rating);
-  const r = Number.isFinite(n) && n > 0 ? String(Math.round(n * 100) / 100) : "";
-  const f = String(feedback ?? "").trim();
-  return r && f ? `${r} - ${f}` : r || f;
+  return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : "";
 }
 
 /* Current-cycle Feedback_And_Rating data per employee (table 74008000000022041),
@@ -102,7 +101,7 @@ function formatClientRating(rating, feedback) {
    or null if the table is unavailable (the sheet then loads without it).
      costCenterClient = CostCenter_Client
      clientManager    = client_manager_feedback
-     clientRating     = client_rating - client_feedback */
+     clientRating     = numeric client_rating only */
 async function loadCurrentCycleFeedback() {
   try {
     const data = await loadFeedbackRating();
@@ -127,7 +126,7 @@ async function loadCurrentCycleFeedback() {
       const next = {
         costCenterClient: String(row.client ?? "").trim(),
         clientManager: String(row.cmf ?? "").trim(),
-        clientRating: formatClientRating(row.cr, row.cf),
+        clientRating: formatClientRating(row.cr),
       };
       if (next.costCenterClient || next.clientManager || next.clientRating) {
         client.set(key, next);
@@ -1193,7 +1192,7 @@ export function AppraisalProvider({ children }) {
             : employee.managerRating,
           // Cost Center/Client, Client Manager Feedback and Client Rating come
           // from Feedback_And_Rating (CostCenter_Client, client_manager_feedback,
-          // client_rating - client_feedback). Empty when the employee has no row.
+          // numeric client_rating only). Empty when the employee has no row.
           ...(feedback
             ? {
                 costCenterClient: "",
