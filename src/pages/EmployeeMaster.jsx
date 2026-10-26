@@ -2385,13 +2385,14 @@ export function EmployeeMaster() {
 
       const oldEligible = existingEmployee?.eligible;
 
-      const eligibilityCycleId = String(
+      const selectedEligibilityCycleId = String(
+        eligibilityCycleId ||
         existingEmployee?.appraisalCycleId ||
         existingEmployee?.rawEmployee?.appraisal_cycle_id ||
         existingEmployee?.rawEmployee?.appraisalCycleId ||
         "",
       ).trim();
-      if (!eligibilityCycleId) {
+      if (!selectedEligibilityCycleId) {
         throw new Error("Could not identify the selected appraisal cycle. Refresh the Eligibility List and try again.");
       }
 
@@ -2399,7 +2400,7 @@ export function EmployeeMaster() {
         empId,
         normalizedEligible,
         eligibleReason || "",
-        eligibilityCycleId,
+        selectedEligibilityCycleId,
       );
 
       addEligibilityAudit({
