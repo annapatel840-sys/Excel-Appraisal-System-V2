@@ -33,8 +33,15 @@ export function FeedbackRatingMasterContainer() {
     };
   }, []);
 
+  const activeCycle = state.cycles.find((cycle) =>
+    String(cycle?.status || "").trim().toLowerCase() === "active" &&
+    ![true, 1, "true", "1", "yes"].includes(
+      typeof cycle?.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle?.archived,
+    )
+  );
   return (
     <FeedbackRatingMasterPage
+      key={activeCycle?.id || "no-active-cycle"}
       cycles={state.cycles}
       rows={state.rows}
       batches={state.batches}
