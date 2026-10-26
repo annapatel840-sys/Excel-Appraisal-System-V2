@@ -435,6 +435,18 @@ function cycleIdOf(cycle) {
   return String(firstValue(cycle, ["ROWID", "rowid", "id", "ID"]) || "").trim();
 }
 
+function isHistoricalCycle(cycle) {
+  const status = String(
+    firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "",
+  ).trim().toLowerCase();
+  const archivedValue = firstValue(cycle, ["archived", "is_archived", "isArchived"]);
+  const archived = [true, 1, "true", "1", "yes", "archived"].includes(
+    typeof archivedValue === "string" ? archivedValue.trim().toLowerCase() : archivedValue,
+  );
+  // Match employeesapi: a prior appraisal can be Closed, Archived, or Completed.
+  return archived || ["archived", "closed", "complete", "completed"].includes(status);
+}
+
 function cycleRank(cycle) {
   const dateValue = firstValue(cycle, [
     "start_date",
@@ -1319,15 +1331,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       ? cycleRank(current)
       : cycleRank({ cycle_name: cycleId });
     const earlier = cycleRows
-      .filter(
-        (cycle) =>
-          String(
-            firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) ||
-              "",
-          )
-            .trim()
-            .toLowerCase() === "closed",
-      )
+      .filter((cycle) => isHistoricalCycle(cycle))
       .filter(
         (cycle) =>
           cycleRank(cycle) > 0 &&
@@ -1957,15 +1961,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       ? cycleRank(currentCycle)
       : cycleRank({ cycle_name: targetCycleId });
     const closedCycles = cycleRows
-      .filter(
-        (cycle) =>
-          String(
-            firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) ||
-              "",
-          )
-            .trim()
-            .toLowerCase() === "closed",
-      )
+      .filter((cycle) => isHistoricalCycle(cycle))
       .filter(
         (cycle) =>
           cycleRank(cycle) > 0 &&
