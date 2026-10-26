@@ -23,7 +23,16 @@ export async function historicalImportRequest(
   }
 
   if (!response.ok || payload.success !== true) {
-    const error = new Error(payload.message || "The request failed.");
+    // Catalyst (API Gateway, platform) errors put the text under data.message.
+    const detail =
+      payload.message ||
+      payload.data?.message ||
+      (payload.data?.error_code ? `Catalyst error ${payload.data.error_code}` : "");
+    const error = new Error(
+      detail
+        ? `${detail} (HTTP ${response.status})`
+        : `The historical import service could not be reached (HTTP ${response.status}).`,
+    );
     error.status = response.status;
     throw error;
   }
