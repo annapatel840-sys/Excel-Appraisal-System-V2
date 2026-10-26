@@ -479,6 +479,36 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(team.calculated_budget, 100000, 'legacy tiny snapshot is repaired using base × percentage / 100');
   });
 
+  await t('Org Budget Base uses the Budget Master cycle when multiple cycles are Active and Appraisal Sheet uses appraisal_cycle', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
+      Budget_Distribution: [], Budget_Distribution_Comp: [],
+      Employee_Master: [],
+      Eligibility_List: [],
+      Payroll_Data: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Annual 2025', start_date: '2025-04-01', status: 'Active' },
+        { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Active' },
+      ],
+      Appraisal_Sheet: [
+        { emp_id: 'OLD1', appraisal_cycle: 'Annual 2025', appraiser_tech_ed: 'T1', comp_manager: 'C1', Previous_Appraisal_total_CTC_with_rewards: 1000000 },
+        { emp_id: 'CUR1', appraisal_cycle: 'Annual 2026', appraiser_tech_ed: 'T2', comp_manager: 'C2', Previous_Appraisal_total_CTC_with_rewards: 2750000 },
+      ],
+    });
+    const currentCycle = store.tables.Appraisal_Cycle_Master.find((row) => row.cycle_name === 'Annual 2026');
+    store.tables.Budget_Master[0].appraisal_cycle_id = currentCycle.ROWID;
+    store.tables.Eligibility_List.push({
+      appraisal_cycle_id: currentCycle.ROWID, emp_id: 'CUR1', eligibility_status: 'Eligible',
+    });
+
+    const response = await get(load(store));
+    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+    assert.strictEqual(response.json.master[0].org_budget_base, 2750000);
+    assert.strictEqual(response.json.employeeRoster.length, 1);
+    assert.strictEqual(response.json.employeeRoster[0].emp_id, 'CUR1');
+    assert.strictEqual(response.json.employeeRoster[0].previous_appraisal_total_ctc_with_rewards, 2750000);
+  });
+
   await t('Org Budget Base reads Payroll CTC from Archived and Completed prior cycles', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
