@@ -2,11 +2,9 @@ import { useEffect, useSyncExternalStore } from "react";
 
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
-// Name of the current appraisal cycle (from Appraisal Cycle Master) for the
-// top bar. It reads the same "cycles" list the other screens already use and
-// picks the current one the way Bulk Edit does: the active cycle, otherwise
-// the first one that is not archived. The result is shared across pages and
-// refreshed in the background when it is more than a minute old.
+// The top-bar label must represent an Active cycle only. Closed and
+// archived cycles remain available in cycle history, but are never a fallback.
+// When no Active cycle exists, the global header intentionally shows no label.
 
 const STALE_MS = 60_000;
 const listeners = new Set();
@@ -14,23 +12,31 @@ let currentName = "";
 let fetchedAt = 0;
 let inflight = null;
 
+const isTruthyFlag = (value) =>
+  value === true || value === 1 ||
+  ["true", "1", "yes"].includes(String(value ?? "").trim().toLowerCase());
+
 const isActiveCycle = (cycle) =>
-  String(cycle?.status || "").trim().toLowerCase() === "active" &&
-  !cycle?.archived &&
-  !cycle?.hidden;
+  String(cycle?.status ?? cycle?.cycle_status ?? "").trim().toLowerCase() === "active" &&
+  !isTruthyFlag(cycle?.archived) &&
+  !isTruthyFlag(cycle?.hidden);
 
 function load() {
   if (inflight) return inflight;
   inflight = payrollCycleRequest("cycles")
     .then((data) => {
       const list = Array.isArray(data) ? data : [];
-      const picked =
-        list.find(isActiveCycle) || list.find((cycle) => !cycle?.archived) || list[0];
-      currentName = String(picked?.name || "").trim();
+      const picked = list.find(isActiveCycle);
+      // Never fall back to a closed or archived cycle.
+      currentName = String(
+        picked?.name || picked?.cycle_name || picked?.appraisal_cycle_name || "",
+      ).trim();
       listeners.forEach((listener) => listener());
     })
     .catch(() => {
-      // keep whatever name we already have; the top bar just shows no cycle
+      // Don't retain a stale closed-cycle label if refresh fails.
+      currentName = "";
+      listeners.forEach((listener) => listener());
     })
     .finally(() => {
       fetchedAt = Date.now();
