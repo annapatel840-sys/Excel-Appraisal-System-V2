@@ -292,6 +292,8 @@ export function BudgetDistributionPage() {
   useEffect(() => {
     let mounted = true;
     const loadCycle = () => {
+      setActiveCycleId("");
+      setCycleLabel("No active cycle");
       payrollCycleRequest("cycles").then((cycles) => {
         if (!mounted) return;
         const all = Array.isArray(cycles) ? cycles : [];
