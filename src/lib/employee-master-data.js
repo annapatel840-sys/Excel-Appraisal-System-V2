@@ -201,15 +201,16 @@ export function mapEmployeeFromApi(employee) {
     row.Joining_date ||
     row.joining_date ||
     row.doj ||
+    row.date_of_join ||
     row.date_of_joining ||
     row.dateOfJoining ||
     row.joiningDate ||
     "";
 
   const reportingManager =
-    row.reporting_manager || row.reportingManager || row.manager || "";
+    row.reporting_manager || row.reportingManager || row.repo_manager || row.manager || "";
 
-  const compManager = row.comp_manager || row.compManager || "";
+  const compManager = row.comp_manager || row.compManager || row.director || "";
 
   const superManager =
     row.super_manager ||
@@ -282,7 +283,7 @@ export function mapEmployeeFromApi(employee) {
         : row.empId || "",
     ).trim(),
 
-    name: String(row.name || "").trim(),
+    name: String(row.name || row.emp_name || "").trim(),
 
     designation: String(row.designation || "").trim(),
 
@@ -349,7 +350,7 @@ export function mapEmployeeFromApi(employee) {
         "",
     ).trim(),
 
-    status: normalizeStatus(row.status),
+    status: normalizeStatus(row.status || row.emp_status),
 
     /*
      * Eligibility comes from Employees.eligible_status.
@@ -407,7 +408,10 @@ export async function fetchEmployeeMasterEmployees({
   status = "all",
   location = "",
 } = {}) {
-  const url = new URL(EMPLOYEE_API_URL);
+  // Employee Master is global master data. Do not source this screen from
+  // employeesapi, whose Employees/Appraisal_Sheet-backed view can contain one
+  // row per appraisal cycle and inflate a 30-person roster into many rows.
+  const url = new URL(EMPLOYEE_MASTER_API_URL);
 
   url.searchParams.set("page", String(page));
   url.searchParams.set("limit", String(limit));
