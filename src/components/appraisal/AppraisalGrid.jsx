@@ -14,7 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { ColumnFilter } from "./ColumnFilter";
 import { TypingHistoryPopup } from "./TypingHistoryPopup";
-import { COLUMNS, formatValue } from "@/lib/appraisal-data";
+import { COLUMNS, MANAGER_RATING_LABELS, formatValue } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useAccess } from "@/lib/access-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
@@ -96,7 +96,7 @@ const WIDTHS = {
   lastAppraisalDate: 140,
   previousAppraisalTotalCtcWithRewards: 170,
   setTargetCriteria: 190,
-  managerRating: 140,
+  managerRating: 210,
   interviewCount: 86,
   rrPercent: 76,
   grossMargin: 90,
@@ -3317,7 +3317,15 @@ export function AppraisalGrid({
           : "";
 
       const isMoney = col.type === "currency";
-      const text = isMoney ? displayValue.replace(/^₹\s?/, "") : rawText;
+      // Manager Rating: show the description next to the number, e.g.
+      // "3 - Meets Expectation" (the stored value stays 1-5).
+      const ratingLabel =
+        col.key === "managerRating" ? MANAGER_RATING_LABELS[rawText] : "";
+      const text = isMoney
+        ? displayValue.replace(/^₹\s?/, "")
+        : ratingLabel
+          ? `${rawText} - ${ratingLabel}`
+          : rawText;
 
       return (
         <button
