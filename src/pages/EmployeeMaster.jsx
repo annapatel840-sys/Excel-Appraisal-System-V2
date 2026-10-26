@@ -220,6 +220,7 @@ async function postAuditEntries(entries) {
         changed_by: entry.changedBy,
         changed_at: entry.changedAtIso,
         source: entry.source,
+        appraisal_year: entry.appraisalYear || "",
       })),
     ),
   });
@@ -233,7 +234,7 @@ async function postAuditEntries(entries) {
   }
 }
 
-async function fetchAuditEntries(source) {
+async function fetchAuditEntries(source, cycleName = "") {
   const url = new URL(AUDIT_API_URL);
 
   url.searchParams.set("limit", "500");
@@ -264,7 +265,12 @@ async function fetchAuditEntries(source) {
       oldValue: String(row.old_value || ""),
       newValue: String(row.new_value || ""),
       changedAt: formatAuditTime(row.changed_at || row.CREATEDTIME),
-    }));
+      appraisalYear: String(row.appraisal_year || row.appraisalYear || ""),
+    }))
+    .filter((entry) =>
+      source !== AUDIT_SOURCE_ELIGIBILITY ||
+      (Boolean(cycleName) && entry.appraisalYear === cycleName)
+    );
 }
 
 /* ============================================================
@@ -746,6 +752,45 @@ export function EmployeeMaster() {
   }, [isTechEd, access.ok, defaultTab]);
 
   const eligibilityLoadedKeyRef = useRef(null);
+  const [currentAppraisalCycleName, setCurrentAppraisalCycleName] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const refreshCycle = async () => {
+      try {
+        const cycles = await payrollCycleRequest("cycles");
+        const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
+          const status = String(cycle?.status ?? cycle?.cycle_status ?? "").trim().toLowerCase();
+          const archived = [true, 1, "true", "1", "yes"].includes(
+            typeof cycle?.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle?.archived,
+          );
+          return status === "active" && !archived && !cycle?.hidden;
+        });
+        if (!cancelled) setCurrentAppraisalCycleName(String(active?.name || active?.cycle_name || ""));
+      } catch {
+        if (!cancelled) setCurrentAppraisalCycleName("");
+      }
+    };
+    refreshCycle();
+    const onCycleChange = () => {
+      refreshCycle();
+      setEligibilityReloadKey((value) => value + 1);
+      setRefreshKey((value) => value + 1);
+    };
+    window.addEventListener("appraisal:cycle-updated", onCycleChange);
+    return () => {
+      cancelled = true;
+      window.removeEventListener("appraisal:cycle-updated", onCycleChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    // Eligibility decisions and their audit trail belong to one cycle. Keep
+    // Employee Master status history separate because it is global master data.
+    setEligibilityAudit([]);
+    setRemoteEligibilityAudit(null);
+    setEligibilityAuditOpen(false);
+  }, [currentAppraisalCycleName]);
 
   /* ============================================================
      SEPARATE AUDIT STATES
@@ -786,6 +831,7 @@ export function EmployeeMaster() {
     const fullEntry = {
       id: `${now.getTime()}-${Math.random().toString(36).slice(2)}`,
       ...entry,
+      appraisalYear: source === AUDIT_SOURCE_ELIGIBILITY ? currentAppraisalCycleName : "",
       changedBy: auditUserName,
       changedAtIso: now.toISOString(),
       changedAt: formatAuditTime(now),
@@ -875,6 +921,7 @@ export function EmployeeMaster() {
     try {
       const entries = await fetchAuditEntries(
         isStatus ? AUDIT_SOURCE_STATUS : AUDIT_SOURCE_ELIGIBILITY,
+        isStatus ? "" : currentAppraisalCycleName,
       );
 
       if (isStatus) {
