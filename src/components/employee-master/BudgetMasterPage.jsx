@@ -646,6 +646,8 @@ function HRApplyBudget() {
 
   useEffect(() => {
     const refreshActiveCycle = () => {
+      setActiveCycle(null);
+      setSelectedCycle("");
       setCycleLoading(true);
       payrollCycleRequest("cycles")
         .then((cycles) => {
