@@ -391,6 +391,43 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(Number(changedC2.current_headcount), 1, 'new Comp Manager Current Count reflects the reassigned employee');
   });
 
+  await t('fails clearly when original headcount snapshot columns are missing', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
+      Budget_Distribution: [],
+      Budget_Distribution_Comp: [],
+      Employee_Master: [],
+      Eligibility_List: [],
+      Payroll_Data: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' },
+      ],
+      Appraisal_Sheet: [
+        sheet('E1', 'T1', 'C1', 1000000, 0),
+        sheet('E2', 'T1', 'C1', 1000000, 0),
+      ],
+    });
+    const cycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = cycleId;
+    store.tables.Eligibility_List.push(
+      { ROWID: '99201', appraisal_cycle_id: cycleId, emp_id: 'E1', eligibility_status: 'Eligible' },
+      { ROWID: '99202', appraisal_cycle_id: cycleId, emp_id: 'E2', eligibility_status: 'Eligible' },
+    );
+
+    // Model a real schema that has mutable Current Count but no dedicated
+    // Original Count snapshot column. Silently returning the live roster size
+    // would make Original Count change after delegation.
+    store.schema = {
+      Budget_Master: ['ROWID', 'appraisal_cycle_id', 'budget_percentage', 'org_budget_base', 'calculated_budget', 'applied_budget', 'budget_utilized', 'current_headcount', 'current_budget_base'],
+      Budget_Distribution: ['ROWID', 'appraisal_cycle_id', 'appraiser_tech_ed_id', 'percentage', 'budget_base', 'claculated_budget', 'applied_budget', 'total_utilization', 'current_headcount', 'current_budget_base'],
+      Budget_Distribution_Comp: ['ROWID', 'appraisal_cycle_id', 'budget_distribution_id', 'comp_manager', 'percentage', 'budget_base', 'calculated_budget', 'applied_budget', 'total_utilization', 'current_headcount', 'current_budget_base'],
+    };
+    const api = load(store);
+    const response = await get(api);
+    assert.strictEqual(response.status, 500);
+    assert.match(response.json.message, /Budget_Distribution must have an original_headcount or allocation_headcount column/);
+  });
+
   await t('cycle-ineligible employees are excluded from org and Tech-ED bases', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
