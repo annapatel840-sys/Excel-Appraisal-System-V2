@@ -1521,6 +1521,18 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
           cycleNameOf(previousCycle).toLowerCase() + "::" + employeeId,
         )
       : null;
+    // New joiners may have their PB/RB-to-be-paid values included in the
+    // payroll upload for the current no-process cycle (for example Annual 2027)
+    // but naturally have no prior closed-cycle payroll row. Prefer the prior
+    // closed cycle when it exists; use the current-cycle payroll row only when
+    // no prior payroll record exists for this employee.
+    const currentCyclePayrollRecord =
+      payrollRowsByCycleAndEmployee.get(currentCycleId + "::" + employeeId) ||
+      payrollRowsByCycleAndEmployee.get(
+        cycleNameOf(activeCycleRow).toLowerCase() + "::" + employeeId,
+      ) ||
+      null;
+    const bonusPayrollRecord = previousPayrollRecord || currentCyclePayrollRecord;
     const currentCtcValue = currentCtc(row);
     // Appraisal_Sheet's Previous_Appraisal_total_CTC_with_rewards is the
     // canonical base. Use historical Payroll_Data only when that sheet field
@@ -1657,8 +1669,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // employee's latest prior Closed/Archived/Completed Payroll_Data row;
     // current Appraisal_Sheet values belong to this cycle and must not leak
     // into the previous-year fields.
-    const previousPerformance = previousPayrollRecord
-      ? n(firstValue(previousPayrollRecord, [
+    const previousPerformance = bonusPayrollRecord
+      ? n(firstValue(bonusPayrollRecord, [
           "pb_to_be_paid",
           "pbToBePaid",
           "previous_year_performance_bonus",
@@ -1675,8 +1687,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
           "totalPB",
         ]))
       : 0;
-    const previousRetention = previousPayrollRecord
-      ? n(firstValue(previousPayrollRecord, [
+    const previousRetention = bonusPayrollRecord
+      ? n(firstValue(bonusPayrollRecord, [
           "rb_to_be_paid",
           "rbToBePaid",
           "previous_year_retention_bonus",
