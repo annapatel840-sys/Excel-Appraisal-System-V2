@@ -1208,7 +1208,6 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name",
     "cycleId", "appraisalCycleId", "appraisalCycleName",
   ]));
-  const hasUnscopedSheetRows = appraisalRows.some((row) => !sheetCycleReference(row));
   const hasCycleTaggedSheetRows = appraisalRows.some((row) => Boolean(sheetCycleReference(row)));
   const unscopedSheetRows = appraisalRows.filter((row) => !sheetCycleReference(row));
   const currentAppraisalRows = cycleScopedSheetRows.length
