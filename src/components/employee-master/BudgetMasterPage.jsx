@@ -645,6 +645,32 @@ function HRApplyBudget() {
   }, []);
 
   useEffect(() => {
+    const refreshActiveCycle = () => {
+      setCycleLoading(true);
+      payrollCycleRequest("cycles")
+        .then((cycles) => {
+          const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
+            const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
+            const archived = [true, 1, "true", "1", "yes"].includes(
+              typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+            );
+            return status === "active" && !archived && !cycle.hidden;
+          });
+          setActiveCycle(active || null);
+        })
+        .catch(() => setActiveCycle(null))
+        .finally(() => setCycleLoading(false));
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("appraisal:cycle-updated", refreshActiveCycle);
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("appraisal:cycle-updated", refreshActiveCycle);
+      }
+    };
+  }, []);
+  useEffect(() => {
     if (cycleLoading) return;
     setSelectedCycle(activeCycle?.id ? String(activeCycle.id) : "");
   }, [activeCycle, cycleLoading]);
