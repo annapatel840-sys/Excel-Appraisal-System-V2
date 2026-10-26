@@ -1649,6 +1649,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       eligible_status: eligible ? "eligible" : "not eligible",
       base: previousAppraisalCtc,
       current_ctc: currentCtcValue,
+      // Preserve the Appraisal_Sheet value separately so cycle enrichment
+      // cannot replace the canonical budget base with a blank/current payroll value.
+      sheet_previous_appraisal_ctc: sheetPreviousCtc,
       previous_appraisal_total_ctc_with_rewards: previousAppraisalCtc,
       Previous_Appraisal_total_CTC_with_rewards: previousAppraisalCtc,
       last_appraisal_date: lastAppraisalLabel,
@@ -1993,7 +1996,17 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         priorCycleName = cycleName;
         break;
       }
-      const base = priorCtc === null ? employee.current_ctc : priorCtc;
+      // The generated Appraisal_Sheet's Previous_Appraisal_total_CTC_with_rewards
+      // is the required Org Budget Base source. Do not overwrite it with a
+      // current CTC (which may be blank) just because Payroll_Data is missing.
+      // Historical Payroll_Data is the fallback only when the sheet snapshot is absent.
+      const sheetPreviousCtc = employee.sheet_previous_appraisal_ctc;
+      const base =
+        sheetPreviousCtc !== null && sheetPreviousCtc !== undefined
+          ? n(sheetPreviousCtc)
+          : priorCtc === null
+            ? employee.current_ctc
+            : priorCtc;
       const cycleEligibility = cycleEligibilityFor(employee, targetCycleId);
       // Eligibility_List is the source of truth for each appraisal cycle.
       // Missing/Pending rows are not eligible, matching Appraisal Sheet's
