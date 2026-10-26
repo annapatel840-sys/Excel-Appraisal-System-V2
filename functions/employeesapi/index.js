@@ -1634,7 +1634,9 @@ async function getEmployees(req, res) {
         row?.emp_master_row_id ?? row?.employee_master_id,
       ).toLowerCase();
       const empId = String(row?.emp_id ?? row?.employee_id ?? "").trim().toLowerCase();
-      const key = masterId ? "master:" + masterId : empId ? "emp:" + empId : "";
+      // Prefer the stable business employee ID: duplicate legacy rows can
+      // carry different Employee_Master ROWIDs but still represent one person.
+      const key = empId ? "emp:" + empId : masterId ? "master:" + masterId : "";
       if (!key) return;
       if (!uniqueCurrentRows.has(key)) uniqueCurrentRows.set(key, row);
     });
