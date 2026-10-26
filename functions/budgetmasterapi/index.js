@@ -1923,8 +1923,21 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // dedicated snapshot first, then the legacy field without failing the API.
     for (const candidate of candidates) {
       try {
-        await table.updateRow({ ROWID: rowId, [candidate]: val });
-        return true;
+        const updated = await table.updateRow({ ROWID: rowId, [candidate]: val });
+        const returnedKey = Object.keys(updated || {}).find(
+          (key) => key.toLowerCase() === candidate.toLowerCase(),
+        );
+        // Some deployments silently ignore unknown columns instead of rejecting
+        // the update. Do not claim a snapshot was saved unless the returned row
+        // confirms that the dedicated field actually exists and holds the value.
+        if (
+          returnedKey &&
+          updated[returnedKey] !== null &&
+          updated[returnedKey] !== undefined &&
+          String(updated[returnedKey]) === String(val)
+        ) {
+          return true;
+        }
       } catch (_) {
         // Continue to the next candidate supported by this Data Store table.
       }
@@ -2342,13 +2355,18 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       await distributionTable.updateRow(update);
       // Save the initial count once. Every subsequent refresh only updates Current Count.
       if (!originalCountIsSet) {
-        await persistOptional(
+        const saved = await persistOptional(
           distributionTable,
           row.id,
           distributionColumns,
           ["original_headcount", "allocation_headcount"],
           rosterCount,
         );
+        if (rosterCount > 0 && !saved) {
+          throw new Error(
+            "Cannot preserve Tech-Ed Original Count: Budget_Distribution must have an original_headcount or allocation_headcount column.",
+          );
+        }
       }
       await persistOptional(
         distributionTable,
@@ -2483,13 +2501,18 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       }
       await compTable.updateRow(update);
       if (!originalCountIsSet) {
-        await persistOptional(
+        const saved = await persistOptional(
           compTable,
           row.id,
           compColumns,
           ["original_headcount", "allocation_headcount"],
           rosterCount,
         );
+        if (rosterCount > 0 && !saved) {
+          throw new Error(
+            "Cannot preserve Comp Manager Original Count: Budget_Distribution_Comp must have an original_headcount or allocation_headcount column.",
+          );
+        }
       }
       await persistOptional(
         compTable,
@@ -2632,13 +2655,18 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     }
     await masterTable.updateRow(orgFields);
     if (!orgOriginalCountIsSet) {
-      await persistOptional(
+      const saved = await persistOptional(
         masterTable,
         master.id,
         masterColumns,
         ["original_headcount", "allocation_headcount"],
         appraisalSheetEmployees.length,
       );
+      if (appraisalSheetEmployees.length > 0 && !saved) {
+        throw new Error(
+          "Cannot preserve Org Original Count: Budget_Master must have an original_headcount or allocation_headcount column.",
+        );
+      }
     }
     await persistOptional(
       masterTable,
