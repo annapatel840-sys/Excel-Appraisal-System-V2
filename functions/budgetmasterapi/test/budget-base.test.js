@@ -11,11 +11,12 @@ const TABLE_IDS = { '74008000000034565': 'Budget_Master', '74008000000033809': '
 function makeStore(data) {
   let seq = 5000;
   const tables = {};
+  const store = { tables, app: null, schema: {} };
   Object.entries(data).forEach(([name, rows]) => {
     tables[name] = rows.map((r) => ({ ROWID: String(++seq), ...r }));
   });
   const tableApi = (name) => ({
-    getAllColumns: async () => [],
+    getAllColumns: async () => (store.schema[name] || []).map((column_name) => ({ column_name })),
     insertRow: async (row) => { const r = { ...row, ROWID: String(++seq) }; (tables[name] = tables[name] || []).push(r); return { ...r }; },
     updateRow: async (row) => { const r = (tables[name] || []).find((x) => x.ROWID === String(row.ROWID)); if (r) Object.assign(r, row); return { ...r }; },
     getPagedRows: async () => ({ data: (tables[name] || []).map((r) => ({ ...r })), more_records: false }),
@@ -32,7 +33,8 @@ function makeStore(data) {
     datastore: () => ({ table: (id) => tableApi(TABLE_IDS[id] || id) }),
     userManagement: () => ({ getCurrentUser: async () => ({ user_id: '1', email_id: 'hr@x.com', role_details: { role_name: 'HR' } }) }),
   };
-  return { tables, app };
+  store.app = app;
+  return store;
 }
 
 function load(store) {
