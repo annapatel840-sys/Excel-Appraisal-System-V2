@@ -732,7 +732,7 @@ function HRApplyBudget() {
     const nextRows = [];
     const seenOwners = new Set();
     (Array.isArray(budgetDistributionRows) ? budgetDistributionRows : [])
-      .filter((row) => !selectedCycle || String(row.appraisal_cycle_id) === String(selectedCycle))
+      .filter((row) => Boolean(selectedCycle) && String(row.appraisal_cycle_id) === String(selectedCycle))
       .forEach((row) => {
       const owner = row.appraiser_tech_ed_id || "";
       const key = resolveTechOwnerKey(owner);
