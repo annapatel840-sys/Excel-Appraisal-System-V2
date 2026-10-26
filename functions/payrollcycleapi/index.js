@@ -1779,14 +1779,30 @@ async function routeRequest(req, res, identity, resource, a) {
   if (resource === "eligibility" && req.method === "GET") {
     const queryCycleId = String(query.cycleId || query.cycle_id || "").trim();
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
-    const cycle = queryCycleId
-      ? cycles.find((item) => item.id === queryCycleId)
-      : cycles.find((item) => item.status === "Active" && !item.archived);
+    const activeCycle = cycles.find((item) =>
+      item.status === "Active" &&
+      ![true, 1, "true", "1", "yes"].includes(
+        typeof item.archived === "string" ? item.archived.trim().toLowerCase() : item.archived,
+      ) &&
+      ![true, 1, "true", "1", "yes"].includes(
+        typeof item.hidden === "string" ? item.hidden.trim().toLowerCase() : item.hidden,
+      )
+    );
+    // Explicit old cycle IDs must not bypass the Active-cycle boundary.
+    const cycle = activeCycle && (!queryCycleId || queryCycleId === activeCycle.id)
+      ? activeCycle
+      : null;
     if (!cycle) {
       return sendJson(res, 200, {
         success: true,
         data: [],
-        meta: { cycleId: "", cycleName: "", message: "No active appraisal cycle is available." },
+        meta: {
+          cycleId: "",
+          cycleName: "",
+          message: activeCycle
+            ? "Eligibility data is available only for the Active appraisal cycle."
+            : "No active appraisal cycle is available.",
+        },
       });
     }
     const data = await getEligibilityRows(tables, cycle, actor);
