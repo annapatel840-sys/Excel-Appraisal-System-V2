@@ -2199,12 +2199,21 @@ export function EmployeeMaster() {
     const cutoffIso = toIsoDate(cutoffDate);
 
     eligibilityEmployees.forEach((employee) => {
-      if (employee.manualOverride) {
+      const savedStatus = String(employee.eligibleStatus || "")
+        .trim()
+        .toLowerCase();
+      const isUndecided = !["eligible", "not eligible", "yes", "no"].includes(
+        savedStatus,
+      );
+
+      // Preserve explicit manual decisions, but never let a stale manual flag
+      // exempt an undecided/Pending employee from evaluation.
+      if (employee.manualOverride && !isUndecided) {
         return;
       }
 
       // Inactive employees are left untouched by criteria.
-      if (employee.status === "Inactive") {
+      if (String(employee.status || "").trim().toLowerCase() === "inactive") {
         return;
       }
 
@@ -2242,13 +2251,6 @@ export function EmployeeMaster() {
       // A Pending row (no decision saved yet) is displayed as "No", so it must
       // still be persisted even when the criteria result is also "No";
       // otherwise it stays Pending and blocks Generate Appraisal Sheet.
-      const savedStatus = String(employee.eligibleStatus || "")
-        .trim()
-        .toLowerCase();
-      const isUndecided = !["eligible", "not eligible", "yes", "no"].includes(
-        savedStatus,
-      );
-
       // Only eligible_status is persisted; a differing (derived) reason is
       // refreshed locally without a PATCH.
       if (employee.eligible === nextEligible && !isUndecided) {
