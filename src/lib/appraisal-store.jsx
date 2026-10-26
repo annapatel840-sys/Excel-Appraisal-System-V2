@@ -325,6 +325,28 @@ const mapCatalystEmployee = (employee, index) => {
     rrPercent: Number(employee.rr_percent || 0),
     grossMargin: Number(employee.gross_margin || 0),
 
+    // Feedback_And_Rating values are stored with database field names, while
+    // the grid columns use camelCase keys. Map the source fields explicitly so
+    // populated backend values are actually rendered in the Appraisal Sheet.
+    costCenterClient: String(
+      employee.CostCenter_Client ??
+        employee.cost_center_client ??
+        employee.costcenter_client ??
+        employee.costCenterClient ??
+        "",
+    ),
+    clientManager: String(
+      employee.client_manager_feedback ??
+        employee.clientManagerFeedback ??
+        employee.clientManager ??
+        "",
+    ),
+    clientRating: String(
+      employee.client_rating ??
+        employee.clientRating ??
+        "",
+    ),
+
     rbToBePaid: Number(employee.rb_to_be_paid || 0),
     monthRB: String(employee.month_rb || ""),
 
