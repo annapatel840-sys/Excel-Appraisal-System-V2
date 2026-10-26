@@ -1226,7 +1226,9 @@ export function AppraisalProvider({ children }) {
         window.removeEventListener("appraisal:cycle-updated", refreshAfterCycleOrPayrollChange);
       }
     };
-  }, [loadEmployees, refreshAuditHistory]);
+  // refreshAuditHistory is a stable useCallback; it is initialized before effects run.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadEmployees]);
 
 
 
