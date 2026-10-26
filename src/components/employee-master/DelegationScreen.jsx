@@ -193,6 +193,10 @@ export default function DelegationScreen({
     (!isHR && !access.canAction("delegateRequest"));
 
   const loadRoster = async () => {
+    // Clear the previous cycle's working roster before fetching the next one.
+    setRows([]);
+    setActiveCycleId("");
+    setActiveCycleName("");
     setRosterLoading(true);
     try {
       const cycles = await payrollCycleRequest("cycles");
