@@ -762,6 +762,9 @@ async function readEmployeeRoster(app) {
       .trim().toLowerCase() === "active" &&
     ![true, 1, "true", "1", "yes"].includes(
       typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+    ) &&
+    ![true, 1, "true", "1", "yes"].includes(
+      typeof cycle.hidden === "string" ? cycle.hidden.trim().toLowerCase() : cycle.hidden,
     ),
   );
   if (!activeCycle) return [];
