@@ -1475,7 +1475,7 @@ async function syncFeedbackToAppraisalSheet(tables, cycle, actor = "", uploadedV
   const idOf = (row) => referenceText(row?.ROWID ?? row?.rowid ?? row?.id ?? row?.ID ?? "");
   const cycleIds = new Set(
     [cycle.id, cycle.sourceRowId, cycle.name]
-      .map((value) => referenceText(value))
+      .map((value) => referenceText(value).toLowerCase())
       .filter(Boolean),
   );
   const masterByRowId = new Map(masterRows.map((row) => [idOf(row), row]).filter(([id]) => id));
@@ -1490,7 +1490,7 @@ async function syncFeedbackToAppraisalSheet(tables, cycle, actor = "", uploadedV
     const feedbackCycleId = referenceText(
       valueOf(row, "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name", "appraisal_year"),
     );
-    if (!cycleIds.has(feedbackCycleId) && !cycleIds.has(feedbackCycleId.toLowerCase())) return;
+    if (!cycleIds.has(feedbackCycleId.toLowerCase())) return;
     const rawEmployee = referenceText(
       valueOf(row, "emp_ID", "emp_id", "employee_master_row_id", "employee_id", "emp_code"),
     );
@@ -1522,7 +1522,7 @@ async function syncFeedbackToAppraisalSheet(tables, cycle, actor = "", uploadedV
   let skipped = 0;
   for (const sheetRow of sheetRows) {
     const sheetCycleId = referenceText(valueOf(sheetRow, "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name"));
-    if (sheetCycleId !== referenceText(cycle.id) && sheetCycleId !== referenceText(cycle.sourceRowId)) continue;
+    if (!cycleIds.has(sheetCycleId.toLowerCase())) continue;
     const masterId = referenceText(valueOf(sheetRow, "emp_master_row_id", "employee_master_id"));
     const empId = referenceText(valueOf(sheetRow, "emp_id", "employee_id")).toLowerCase();
     const master = masterByRowId.get(masterId) || masterByEmpId.get(empId);
