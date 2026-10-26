@@ -598,7 +598,18 @@ async function clearEligibilityRows(tables, cycleId) {
   );
 }
 
+function eligibilityStatusOf(row) {
+  const raw = String(
+    row?.eligibility_status ?? row?.eligible_status ?? row?.eligibility ?? "",
+  ).trim().toLowerCase().replace(/[ _-]+/g, "");
+  if (["eligible", "yes", "true", "1"].includes(raw)) return "Eligible";
+  if (["noteligible", "no", "false", "0", "ineligible"].includes(raw)) return "Not Eligible";
+  // An absent/unknown decision is not the same as an explicit Eligible choice.
+  return "Pending";
+}
+
 function shapeEligibilityRow(row, master) {
+  const eligibilityStatus = eligibilityStatusOf(row);
   return {
     ...master,
     ...row,
@@ -611,7 +622,8 @@ function shapeEligibilityRow(row, master) {
     doj: master.joining_date || master.date_of_join || "",
     joining_date: master.joining_date || "",
     status: String(master.emp_status || master.status || "Active"),
-    eligible_status: String(row.eligibility_status || "Eligible"),
+    eligibility_status: eligibilityStatus,
+    eligible_status: eligibilityStatus,
     eligibleReason: String(row.eligibility_reason || ""),
     eligible_reason: String(row.eligibility_reason || ""),
     eligibilitySource: String(row.eligibility_source || "Criteria"),
@@ -876,8 +888,12 @@ async function generateAppraisalSheet(tables, cycle, actor) {
   if (cycle.archived) throw new ApiError("Archived cycles cannot generate an Appraisal Sheet.", 409);
 
   const cycleEligibilityRows = await getEligibilityRows(tables, cycle, actor);
+  // Only employees whose decision is still Pending should block generation.
+  // Explicit Not Eligible decisions are valid and are intentionally excluded
+  // from the generated sheet; legacy eligible_status/eligibility aliases are
+  // normalized by eligibilityStatusOf() as well.
   const pendingCount = cycleEligibilityRows.filter(
-    (row) => String(row.eligibility_status || "").trim().toLowerCase() === "pending",
+    (row) => eligibilityStatusOf(row) === "Pending",
   ).length;
   if (pendingCount) {
     throw new ApiError(
@@ -886,15 +902,16 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     );
   }
   const eligibleRows = cycleEligibilityRows.filter(
-    (row) => String(row.eligibility_status || "").toLowerCase() === "eligible",
+    (row) => eligibilityStatusOf(row) === "Eligible",
   );
   if (!eligibleRows.length) {
     throw new ApiError("No eligible active employees were found for this cycle. Check the Eligibility List and criteria.", 409);
   }
-  const [sheetRows, employeeMasterRows, payrollRows] = await Promise.all([
+  const [sheetRows, employeeMasterRows, payrollRows, feedbackRows] = await Promise.all([
     getAllRows(tables.employees),
     getAllRows(tables.employeeMaster),
     getAllRows(tables.payroll),
+    getAllRows(tables.feedback),
   ]);
   const cycleKeys = new Set(
     [cycle.id, cycle.name]
@@ -918,6 +935,33 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     ).toLowerCase();
     if (masterId && cycleKeys.has(payrollCycle)) {
       payrollByMasterId.set(masterId, row);
+    }
+  });
+
+  // Feedback_And_Rating stores emp_ID and appraisal_cycle_name as Employee_Master
+  // and Appraisal_Cycle_Master ROWIDs. Resolve both keys so generation reads only
+  // the feedback uploaded for this exact cycle, not a previous/closed cycle.
+  const feedbackByMasterId = new Map();
+  const feedbackCycleKeys = new Set(
+    [cycle.id, cycle.sourceRowId, cycle.name]
+      .map((value) => referenceText(value).toLowerCase())
+      .filter(Boolean),
+  );
+  feedbackRows.forEach((row) => {
+    const masterId = referenceText(
+      row.emp_ID ?? row.emp_id ?? row.employee_master_id ?? row.employee_master_row_id,
+    );
+    const feedbackCycle = referenceText(
+      row.appraisal_cycle_name ?? row.appraisal_cycle_id ?? row.cycle_id ?? row.appraisal_year,
+    ).toLowerCase();
+    if (!masterId || !feedbackCycleKeys.has(feedbackCycle)) return;
+    const previous = feedbackByMasterId.get(masterId);
+    const rowTime = String(row.MODIFIEDTIME || row.CREATEDTIME || row.ROWID || "");
+    const previousTime = previous
+      ? String(previous.MODIFIEDTIME || previous.CREATEDTIME || previous.ROWID || "")
+      : "";
+    if (!previous || rowTime.localeCompare(previousTime, undefined, { numeric: true }) >= 0) {
+      feedbackByMasterId.set(masterId, row);
     }
   });
   const byKey = new Map();
@@ -962,6 +1006,24 @@ async function generateAppraisalSheet(tables, cycle, actor) {
       status: "Active",
       eligible_status: "Eligible",
     };
+
+    // Feedback_And_Rating is the source of the three client columns. Refresh
+    // them from the current cycle's uploaded data whenever the sheet is generated.
+    const feedback = feedbackByMasterId.get(masterId);
+    if (feedback) {
+      const feedbackFieldMap = {
+        CostCenter_Client: ["CostCenter_Client", "costcenter_client"],
+        client_manager_feedback: ["client_manager_feedback"],
+        client_rating: ["client_rating"],
+      };
+      Object.entries(feedbackFieldMap).forEach(([sheetField, feedbackFields]) => {
+        if (appraisalSheetColumns && !appraisalSheetColumns.has(sheetField)) return;
+        const value = feedbackFields
+          .map((field) => feedback[field])
+          .find((candidate) => candidate !== undefined && candidate !== null && String(candidate).trim() !== "");
+        if (value !== undefined) payload[sheetField] = value;
+      });
+    }
 
     // Payroll_Data is the source for payroll-derived appraisal fields. Only
     // copy non-empty values and only these source-owned columns: a rerun must
