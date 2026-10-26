@@ -405,6 +405,29 @@ export function ColumnFilter({
         <PopoverContent
           ref={contentRef}
           align="start"
+          hideWhenDetached={false}
+          // Dragging / clicking the grid's horizontal or vertical scrollbar
+          // counts as a click "outside" and used to close the menu. Keep it
+          // open for scrollbar interaction (and for scroll-induced focus
+          // changes); real outside clicks still close it.
+          onInteractOutside={(event) => {
+            const original = event.detail?.originalEvent;
+            const target = original?.target;
+            if (
+              original &&
+              typeof original.clientX === "number" &&
+              target instanceof HTMLElement
+            ) {
+              const rect = target.getBoundingClientRect();
+              const onVBar =
+                target.scrollHeight > target.clientHeight &&
+                original.clientX > rect.left + target.clientWidth;
+              const onHBar =
+                target.scrollWidth > target.clientWidth &&
+                original.clientY > rect.top + target.clientHeight;
+              if (onVBar || onHBar) event.preventDefault();
+            }
+          }}
           className="w-[262px] overflow-visible p-0 py-[3px]"
           style={{ fontFamily: MANROPE }}
         >

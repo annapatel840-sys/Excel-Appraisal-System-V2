@@ -8,13 +8,13 @@ import { cn } from "@/lib/utils";
  * Small history table that appears while typing in an editable number cell
  * of the Appraisal Sheet. It is docked top-right of the grid (it moves to the
  * left when it would cover the cell being typed in). Cycles run across (newest
- * first, up to 5), fields run down. The first column is the CURRENT cycle and
+ * first, up to 3: the live current cycle + the 2 older ones), fields run down. The first column is the CURRENT cycle and
  * is live: it already includes what is being typed.
  *
  * Purely presentational: all data is passed in by AppraisalGrid.
  */
 
-const MAX_CYCLES = 5;
+const MAX_CYCLES = 3;
 
 const fmt = (value) => {
   const n = Number(value);

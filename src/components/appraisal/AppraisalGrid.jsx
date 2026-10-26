@@ -4124,6 +4124,9 @@ export function AppraisalGrid({
 
   const typingPopup = (() => {
     if (!typing || typingClosed) return null;
+    // Not shown while the History panel (Show History) or the employee side
+    // panel is open: those already show the same history.
+    if (showHistory || detailOpen) return null;
     const baseRow = rows.find((item) => item.id === typing.rowId);
     if (!baseRow) return null;
 
