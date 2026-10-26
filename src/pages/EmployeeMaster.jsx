@@ -773,6 +773,13 @@ export function EmployeeMaster() {
     };
     refreshCycle();
     const onCycleChange = () => {
+      // Remove the previous cycle's working eligibility view immediately.
+      setCurrentAppraisalCycleName("");
+      setEligibilityEmployees([]);
+      setEligibilityAudit([]);
+      setRemoteEligibilityAudit(null);
+      setEligibilityAuditOpen(false);
+      eligibilityLoadedKeyRef.current = null;
       refreshCycle();
       setEligibilityReloadKey((value) => value + 1);
       setRefreshKey((value) => value + 1);
