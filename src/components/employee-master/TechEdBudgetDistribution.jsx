@@ -178,9 +178,13 @@ export function TechEdBudgetDistribution() {
         if (!mounted) return;
         const allCycles = Array.isArray(cycles) ? cycles : [];
         setCycleRows(allCycles);
-        const active = allCycles.find(
-          (cycle) => String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived,
-        );
+        const active = allCycles.find((cycle) => {
+          const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
+          const archived = [true, 1, "true", "1", "yes"].includes(
+            typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+          );
+          return status === "active" && !archived && !cycle.hidden;
+        });
         const cycleId = active?.id ?? active?.appraisal_cycle_id ?? active?.cycle_id ?? active?.ROWID ?? "";
         setActiveCycleId(cycleId ? String(cycleId) : "");
       })
@@ -309,9 +313,8 @@ export function TechEdBudgetDistribution() {
     if (cycleMatches.length === 1) return cycleMatches[0];
     if (cycleMatches.length > 1) return null;
 
-    // Never guess between multiple cycles. A unique owner allocation is safe
-    // to show when cycle metadata has no matching alias.
-    return candidates.length === 1 ? candidates[0] : null;
+    // Never fall back to an unscoped or archived-cycle allocation.
+    return null;
   }, [
     budgetDistributionRows, budgetMasterRows, cycleRows, employeeRows, techEdOwners, myName,
     user?.name, user?.display_name, user?.first_name, user?.last_name,
@@ -540,12 +543,17 @@ export function TechEdBudgetDistribution() {
   const myPct = liveTech ? num(liveTech.percentage) : 0;
   // Use the same selected allocation row/value as Dashboard, Appraisal Sheet,
   // and Detail Screen so the Tech-Ed allocation cannot drift across screens.
-  const myOriginal = sharedBudgetTotals?.budgetScope === "teched"
-    ? num(sharedBudgetTotals.base)
-    : (liveTech ? num(liveTech.calculated_budget) : 0);
-  const myUpdated = sharedBudgetTotals?.budgetScope === "teched"
-    ? num(sharedBudgetTotals.updated)
-    : (liveTech ? num(liveTech.applied_budget) : 0);
+  const hasLiveAllocation = Boolean(activeCycleId && liveTech);
+  const myOriginal = hasLiveAllocation
+    ? (sharedBudgetTotals?.budgetScope === "teched"
+        ? num(sharedBudgetTotals.base)
+        : num(liveTech.calculated_budget))
+    : null;
+  const myUpdated = hasLiveAllocation
+    ? (sharedBudgetTotals?.budgetScope === "teched"
+        ? num(sharedBudgetTotals.updated)
+        : num(liveTech.applied_budget))
+    : null;
   // Backend counts are calculated from the cycle-scoped eligible Appraisal Sheet
   // roster and persisted by budgetmasterapi. Prefer them so every screen agrees.
   // The rendered eligible Appraisal Sheet roster is the live source of truth.
@@ -669,11 +677,11 @@ export function TechEdBudgetDistribution() {
       ) : null}
       <div className="btop">
         <span>
-          Appraisal cycle <b>{cycleLabel || "Cycle name unavailable"}</b>
+          Appraisal cycle <b>{activeCycleId ? (cycleLabel || "Cycle name unavailable") : "No active cycle"}</b>
         </span>
         <span className="sep" />
         <span>
-          Tech-Ed allocation from Budget Master · updated {lakh(myUpdated)}
+          Tech-Ed allocation from Budget Master · updated {hasLiveAllocation ? lakh(myUpdated) : "—"}
         </span>
         <span className="sep" />
         <span>
@@ -681,11 +689,13 @@ export function TechEdBudgetDistribution() {
         </span>
         <span className="sep" />
         <span className="applied">
-          Budget applied by HR: <b>{myPct}%</b> = <b>{lakh(myUpdated)}</b> updated · original{" "}
-          {lakh(myOriginal)}
-          <button type="button" className="dd" aria-expanded={appliedOpen} onClick={() => setAppliedOpen((v) => !v)}>
-            % history {appliedOpen ? "▴" : "▾"}
-          </button>
+          Budget applied by HR: <b>{hasLiveAllocation ? myPct + "%" : "—"}</b> = <b>{hasLiveAllocation ? lakh(myUpdated) : "—"}</b> updated · original{" "}
+          {hasLiveAllocation ? lakh(myOriginal) : "—"}
+          {hasLiveAllocation ? (
+            <button type="button" className="dd" aria-expanded={appliedOpen} onClick={() => setAppliedOpen((v) => !v)}>
+              % history {appliedOpen ? "▴" : "▾"}
+            </button>
+          ) : null}
         </span>
       </div>
       {appliedOpen && (
@@ -701,14 +711,14 @@ export function TechEdBudgetDistribution() {
             <div className="bsum flat">
               <div>
                 <div className="f-label">Original allotted</div>
-                <div className="v">{lakh(myOriginal)}</div>
+                <div className="v">{hasLiveAllocation ? lakh(myOriginal) : "—"}</div>
                 <div className="d mut">Fixed at allocation</div>
               </div>
               <div>
                 <div className="f-label">Updated budget</div>
-                <div className="v">{lakh(myUpdated)}</div>
+                <div className="v">{hasLiveAllocation ? lakh(myUpdated) : "—"}</div>
                 <div className="d">
-                  <Chg d={myUpdated - myOriginal} />
+                  {hasLiveAllocation ? <Chg d={myUpdated - myOriginal} /> : "—"}
                 </div>
               </div>
               <div>
@@ -786,7 +796,7 @@ export function TechEdBudgetDistribution() {
                     <td className="r">{lakh(myOriginal)}</td>
                     <td className="r">{lakh(myUpdated)}</td>
                     <td className="r">
-                      <ChangeCell from={myOriginal} to={myUpdated} />
+                      {hasLiveAllocation ? <ChangeCell from={myOriginal} to={myUpdated} /> : "—"}
                     </td>
                     <td className="r">{team0}</td>
                     <td className="r">{currentTeamCount}</td>
@@ -847,8 +857,8 @@ export function TechEdBudgetDistribution() {
                           <td>
                             <b>{n.name}</b>
                           </td>
-                          <td className="r">{lakh(n.original)}</td>
-                          <td className="r">{lakh(n.updated)}</td>
+                          <td className="r">{n.liveId || n.original ? lakh(n.original) : "—"}</td>
+                          <td className="r">{n.liveId || n.updated ? lakh(n.updated) : "—"}</td>
                           <td className="r">
                             <ChangeCell from={n.original} to={n.updated} />
                           </td>
