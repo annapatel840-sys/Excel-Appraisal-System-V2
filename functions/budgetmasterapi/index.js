@@ -2769,6 +2769,56 @@ module.exports = async function (req, res) {
     const resource = String(body.resource || "master").toLowerCase();
     let id = String(body.id || "").trim();
 
+    // Budget writes must always target the Active cycle. Historical budget rows
+    // stay stored for reference, but closed/archived cycles are read-only.
+    const cycleRowsForWrite = await getAllRows(app, TABLES.cycles);
+    const activeCycleForWrite = cycleRowsForWrite.find((cycle) => {
+      const status = String(firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "")
+        .trim().toLowerCase();
+      const archived = [true, 1, "true", "1", "yes"].includes(
+        typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+      );
+      const hidden = [true, 1, "true", "1", "yes"].includes(
+        typeof cycle.hidden === "string" ? cycle.hidden.trim().toLowerCase() : cycle.hidden,
+      );
+      return status === "active" && !archived && !hidden;
+    });
+    const activeCycleIdForWrite = activeCycleForWrite ? cycleIdOf(activeCycleForWrite) : "";
+    if (!activeCycleIdForWrite) {
+      throw new access.HttpError(409, "Budget changes require an Active appraisal cycle.");
+    }
+    const activeCycleNameForWrite = cycleNameOf(activeCycleForWrite).trim().toLowerCase();
+    const requestedCycleId = String(body.appraisal_cycle_id || body.cycle_id || "").trim();
+    if (
+      requestedCycleId &&
+      requestedCycleId !== activeCycleIdForWrite &&
+      requestedCycleId.toLowerCase() !== activeCycleNameForWrite
+    ) {
+      throw new access.HttpError(409, "Budget changes are allowed only for the Active appraisal cycle.");
+    }
+    if (id) {
+      const tableId =
+        resource === "master" ? TABLES.master
+        : resource === "distribution" ? TABLES.distribution
+        : (resource === "comp" || resource === "compmanager") ? TABLES.comp
+        : "";
+      if (tableId) {
+        const targetRows = await getAllRows(app, tableId);
+        const target = targetRows.find((row) => idOf(row) === id);
+        let rowCycleId = String(value(target, "appraisal_cycle_id") || "").trim();
+        if (!rowCycleId && target && (resource === "comp" || resource === "compmanager")) {
+          const parentId = String(value(target, "budget_distribution_id") || "").trim();
+          const parent = (await getAllRows(app, TABLES.distribution)).find((row) => idOf(row) === parentId);
+          rowCycleId = String(value(parent, "appraisal_cycle_id") || "").trim();
+        }
+        const matchesActiveCycle = rowCycleId === activeCycleIdForWrite ||
+          rowCycleId.toLowerCase() === activeCycleNameForWrite;
+        if (!target || !matchesActiveCycle) {
+          throw new access.HttpError(409, "This budget allocation belongs to a different or closed appraisal cycle.");
+        }
+      }
+    }
+
     // Upsert cycle-scoped allocations using the actual foreign-key ROWIDs.
     // Budget_Master.appraisal_cycle_id and both cycle/parent columns are Data Store
     // foreign keys; the Tech-ED/Comp Manager varchar columns store business IDs.
