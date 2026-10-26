@@ -246,3 +246,22 @@
     font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
   }
 }
+
+
+/* ------------------------------------------------------------------
+   Browser print / "Save as PDF" shows a blank page on every screen.
+   Only affects @media print; on-screen layout and the app's own
+   export buttons (Excel / file downloads) are not touched.
+   ------------------------------------------------------------------ */
+@media print {
+  html,
+  body {
+    display: none !important;
+    visibility: hidden !important;
+    background: #fff !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+}
