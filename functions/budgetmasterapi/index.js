@@ -1393,6 +1393,40 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       historyRowsByCycleAndEmployee.set(key, historyRow);
   });
 
+  // Keep a separate latest-payroll index for previous-year bonus fields.
+  // A payroll row can have valid PB/RB values even when its CTC total/components
+  // are blank, so do not discard it using the CTC-only validation above.
+  const payrollRowsByCycleAndEmployee = new Map();
+  payrollRows.forEach((historyRow) => {
+    const employeeKey = employeeKeyFor(
+      firstValue(historyRow, ["emp_id", "employee_id", "emp_code", "empId"]),
+    );
+    const cycleRef = cycleReferenceForRow(historyRow);
+    const referencedCycle =
+      cycleById.get(cycleRef) || cycleByName.get(cycleRef.toLowerCase());
+    const cycleKey = referencedCycle
+      ? cycleIdOf(referencedCycle) || cycleNameOf(referencedCycle).toLowerCase()
+      : cycleRef.toLowerCase();
+    if (!employeeKey || !cycleKey) return;
+    const key = cycleKey + "::" + employeeKey;
+    const previous = payrollRowsByCycleAndEmployee.get(key);
+    const rowTime = String(
+      historyRow.MODIFIEDTIME ||
+        historyRow.CREATEDTIME ||
+        historyRow.ROWID ||
+        "",
+    );
+    const previousTime = previous
+      ? String(previous.MODIFIEDTIME || previous.CREATEDTIME || previous.ROWID || "")
+      : "";
+    if (
+      !previous ||
+      rowTime.localeCompare(previousTime, undefined, { numeric: true }) >= 0
+    ) {
+      payrollRowsByCycleAndEmployee.set(key, historyRow);
+    }
+  });
+
   const appraisalByEmployee = new Map();
   currentAppraisalRows.forEach((row) => {
     const rawEmployeeId = String(
@@ -1478,6 +1512,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const previousRecord = previousCycle
       ? historyRowsByCycleAndEmployee.get(historyKey) ||
         historyRowsByCycleAndEmployee.get(
+          cycleNameOf(previousCycle).toLowerCase() + "::" + employeeId,
+        )
+      : null;
+    const previousPayrollRecord = previousCycle
+      ? payrollRowsByCycleAndEmployee.get(historyKey) ||
+        payrollRowsByCycleAndEmployee.get(
           cycleNameOf(previousCycle).toLowerCase() + "::" + employeeId,
         )
       : null;
@@ -1617,8 +1657,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // employee's latest prior Closed/Archived/Completed Payroll_Data row;
     // current Appraisal_Sheet values belong to this cycle and must not leak
     // into the previous-year fields.
-    const previousPerformance = previousRecord
-      ? n(firstNonZeroValue(previousRecord, [
+    const previousPerformance = previousPayrollRecord
+      ? n(firstNonZeroValue(previousPayrollRecord, [
           "pb_to_be_paid",
           "pbToBePaid",
           "previous_year_performance_bonus",
@@ -1635,8 +1675,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
           "totalPB",
         ]))
       : 0;
-    const previousRetention = previousRecord
-      ? n(firstNonZeroValue(previousRecord, [
+    const previousRetention = previousPayrollRecord
+      ? n(firstNonZeroValue(previousPayrollRecord, [
           "rb_to_be_paid",
           "rbToBePaid",
           "previous_year_retention_bonus",
