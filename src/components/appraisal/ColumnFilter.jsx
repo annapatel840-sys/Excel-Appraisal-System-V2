@@ -26,6 +26,8 @@ import { fieldByKey, isEmptyFilter } from "@/lib/appraisal-filters";
    - bulk edit this column  ->  ONLY for editable columns
    ============================================================ */
 
+const MANROPE = '"Manrope", "Segoe UI", system-ui, sans-serif';
+
 const TEXT_MENU = [
   ["equals", "Equals…"],
   ["notEquals", "Does Not Equal…"],
@@ -404,7 +406,7 @@ export function ColumnFilter({
           ref={contentRef}
           align="start"
           className="w-[262px] overflow-visible p-0 py-[3px]"
-          style={{ fontFamily: "Arial, Helvetica, sans-serif" }}
+          style={{ fontFamily: MANROPE }}
         >
           <div className="max-h-[calc(100vh-80px)] overflow-y-auto overflow-x-visible">
             <MenuItem
@@ -648,6 +650,7 @@ export function ColumnFilter({
       <Dialog open={!!dialog} onOpenChange={(next) => !next && setDialog(null)}>
         <DialogContent
           className="w-[380px] max-w-[92vw] gap-0 p-4 text-[12.5px]"
+          style={{ fontFamily: MANROPE }}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();

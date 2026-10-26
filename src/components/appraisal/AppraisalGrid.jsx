@@ -4246,27 +4246,6 @@ export function AppraisalGrid({
         {groupSlot &&
           createPortal(
             <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px] text-[#4b5563]">
-              <span>Group by</span>
-              <select
-                value={groupBy[0]?.key || ""}
-                onChange={(event) => {
-                  const column = GRID_COLUMNS.find(
-                    (item) => item.key === event.target.value,
-                  );
-                  setGroupColumn(column?.key || "", column?.label);
-                }}
-                className="h-8 max-w-[150px] rounded-md border border-[#d1d5db] bg-white px-1.5 text-[12px]"
-              >
-                <option value="">None</option>
-                {GRID_COLUMNS.filter(
-                  (column) =>
-                    !isNumericType(column.type) && !viewPrefs.hidden[column.key],
-                ).map((column) => (
-                  <option key={column.key} value={column.key}>
-                    {column.label}
-                  </option>
-                ))}
-              </select>
               {(Object.keys(filters || {}).length > 0 ||
                 sortList.length > 0 ||
                 groupBy.length > 0) && (
