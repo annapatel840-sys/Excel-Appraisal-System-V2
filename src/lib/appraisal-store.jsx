@@ -14,9 +14,11 @@ import { loadFeedbackRating } from "./feedback-rating-api";
 import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 import { useCatalystUser } from "./catalyst-auth";
 import { getViewAsSelected, useViewAs } from "./view-as-store";
+import { payrollCycleRequest } from "./payroll-cycle-api";
 
 const CURRENT_USER = "Unknown user";
-const APPRAISAL_YEAR = "Apr-26";
+// Set from Appraisal_Cycle_Master before loading or saving current-cycle data.
+let APPRAISAL_YEAR = "";
 const AUDIT_LOCAL_STORAGE_KEY = "appraisal.auditTrail.v1";
 const AUDIT_LOCAL_STORAGE_LIMIT = 5000;
 
@@ -31,6 +33,13 @@ const readLocalAuditTrail = () => {
   } catch (_) {
     return [];
   }
+};
+
+const currentCycleAudit = (entries) => {
+  if (!APPRAISAL_YEAR) return [];
+  return (Array.isArray(entries) ? entries : []).filter((entry) =>
+    String(entry?.appraisalYear || entry?.cycleName || entry?.cycle || "").trim() === APPRAISAL_YEAR
+  );
 };
 
 const writeLocalAuditTrail = (entries) => {
@@ -1110,10 +1119,29 @@ export function AppraisalProvider({ children }) {
       setLoading(true);
       setError("");
 
-      // The Appraisal Sheet contains active employees explicitly marked
-      // Eligible in the current cycle for both HR and Tech-ED. HR still sees
-      // every eligible employee; Employee Master/Eligibility screens keep
-      // their separate full-roster views.
+      // Resolve the cycle first. No Active cycle means the working Appraisal
+      // Sheet and its local audit trail are empty; archived payroll/history stay
+      // stored and are not used as a fallback for current-cycle data.
+      const cycles = await payrollCycleRequest("cycles");
+      const activeCycle = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
+        const status = String(cycle?.status ?? cycle?.cycle_status ?? "").trim().toLowerCase();
+        const archived = [true, 1, "true", "1", "yes"].includes(
+          typeof cycle?.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle?.archived,
+        );
+        return status === "active" && !archived && !cycle?.hidden;
+      });
+      APPRAISAL_YEAR = String(activeCycle?.name || activeCycle?.cycle_name || activeCycle?.appraisal_year || "").trim();
+      if (!activeCycle || !APPRAISAL_YEAR) {
+        updateRows(() => []);
+        setEmployeeCounts({ total: 0, active: 0, inactive: 0 });
+        setAudit([]);
+        setError("No active appraisal cycle. The current Appraisal Sheet is empty.");
+        return;
+      }
+      setAudit((previous) => currentCycleAudit(previous));
+
+      // Only active-cycle employees explicitly marked Eligible appear here.
+      // Employee Master and Payroll remain separate persistent data sources.
       const result = await fetchAllEmployeesFromCatalyst("active", "eligible");
 
       if (requestId !== loadSeqRef.current) {
@@ -1189,10 +1217,12 @@ export function AppraisalProvider({ children }) {
     };
     if (typeof window !== "undefined") {
       window.addEventListener("appraisal:payroll-data-updated", refreshAfterPayrollUpload);
+      window.addEventListener("appraisal:cycle-updated", refreshAfterPayrollUpload);
     }
     return () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("appraisal:payroll-data-updated", refreshAfterPayrollUpload);
+        window.removeEventListener("appraisal:cycle-updated", refreshAfterPayrollUpload);
       }
     };
   }, [loadEmployees]);
@@ -1205,19 +1235,20 @@ export function AppraisalProvider({ children }) {
 
   const refreshAuditHistory = useCallback(async (empId = "") => {
     try {
-      const records = await fetchAuditHistoryFromCatalyst(empId);
+      const records = currentCycleAudit(await fetchAuditHistoryFromCatalyst(empId));
 
       setAudit((previous) => {
+        const currentPrevious = currentCycleAudit(previous);
         if (!String(empId).trim()) {
-          return mergeAuditEntries(records, previous);
+          return mergeAuditEntries(records, currentPrevious);
         }
 
-        const otherEmployees = previous.filter(
+        const otherEmployees = currentPrevious.filter(
           (item) => String(item.empId) !== String(empId),
         );
         return mergeAuditEntries(records, [
           ...otherEmployees,
-          ...previous.filter((item) => String(item.empId) === String(empId)),
+          ...currentPrevious.filter((item) => String(item.empId) === String(empId)),
         ]);
       });
 
@@ -1251,7 +1282,7 @@ export function AppraisalProvider({ children }) {
         }
 
         setAudit((previous) => {
-          return mergeAuditEntries(records, previous);
+          return mergeAuditEntries(currentCycleAudit(records), currentCycleAudit(previous));
         });
       } catch (err) {
         console.error("Initial audit history load failed:", err);
@@ -1270,7 +1301,7 @@ export function AppraisalProvider({ children }) {
               }
 
               setAudit((previous) => {
-                return mergeAuditEntries(retryRecords, previous);
+                return mergeAuditEntries(currentCycleAudit(retryRecords), currentCycleAudit(previous));
               });
             } catch (retryError) {
               console.error("Audit history retry failed:", retryError);
