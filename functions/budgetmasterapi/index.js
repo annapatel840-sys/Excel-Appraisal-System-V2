@@ -748,13 +748,38 @@ async function readTechEdOwners(app) {
 }
 
 async function readEmployeeRoster(app) {
-  // Use the API's ZCQL paging helper rather than Data Store getPagedRows.
-  // getPagedRows across both full employee tables was causing the endpoint
-  // to exceed Catalyst's execution timeout.
-  const [appraisalRows, masterRows] = await Promise.all([
+  const [allAppraisalRows, masterRows, cycleRows] = await Promise.all([
     getAllRows(app, "Appraisal_Sheet"),
     getAllRows(app, "Employee_Master"),
+    getAllRows(app, "Appraisal_Cycle_Master").catch(() => []),
   ]);
+
+  // The budget roster must be sourced only from the generated Appraisal_Sheet
+  // for the Active cycle. Employee_Master-only people and archived-cycle rows
+  // must never create Comp Manager allocations on the Tech-Ed screen.
+  const activeCycle = cycleRows.find((cycle) =>
+    String(readField(cycle, ["status", "cycle_status", "appraisal_status"]) || "")
+      .trim().toLowerCase() === "active" &&
+    ![true, 1, "true", "1", "yes"].includes(
+      typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+    ),
+  );
+  if (!activeCycle) return [];
+
+  const activeCycleId = cycleIdOf(activeCycle);
+  const activeCycleName = cycleNameOf(activeCycle).toLowerCase();
+  const sheetCycleReference = (row) => cycleReference(readField(row, [
+    "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name",
+    "cycleId", "appraisalCycleId", "appraisalCycleName",
+  ]));
+  const hasTaggedRows = allAppraisalRows.some((row) => Boolean(sheetCycleReference(row)));
+  const currentAppraisalRows = allAppraisalRows.filter((row) => {
+    const reference = sheetCycleReference(row);
+    if (!reference) return !hasTaggedRows;
+    return reference === activeCycleId ||
+      (activeCycleName && reference.toLowerCase() === activeCycleName);
+  });
+
   const masterById = new Map(
     masterRows.map((row) => [
       String(readField(row, ["emp_id", "employee_id"]))
@@ -779,15 +804,16 @@ async function readEmployeeRoster(app) {
       ? linkedId + " - " + linkedName
       : linkedId || linkedName || assignment;
   };
-  const appraisalById = new Map(
-    appraisalRows.map((row) => [
-      String(readField(row, ["emp_id", "employee_id"]))
-        .trim()
-        .toLowerCase(),
-      row,
-    ]),
-  );
-  const allIds = new Set([...masterById.keys(), ...appraisalById.keys()]);
+  const appraisalById = new Map();
+  currentAppraisalRows.forEach((row) => {
+    const key = String(readField(row, ["emp_id", "employee_id"]) || "")
+      .trim()
+      .toLowerCase();
+    if (key && !appraisalById.has(key)) appraisalById.set(key, row);
+  });
+  // Never add every Employee_Master record to the appraisal roster. Only
+  // employees actually present in the current generated sheet belong here.
+  const allIds = new Set(appraisalById.keys());
   return Array.from(allIds)
     .map((key) => {
       const row = appraisalById.get(key) || {};
