@@ -42,6 +42,7 @@ import { EligibilityModal } from "@/components/employee-master/EligibilityModal"
 import { ImportPreviewModal } from "@/components/employee-master/ImportPreviewModal";
 import { AppraisalCycleMasterPage } from "@/components/employee-master/AppraisalCycleMasterPage";
 import { PayrollDataPage } from "@/components/employee-master/PayrollDataPage";
+import { HistoricalImportPage } from "@/components/employee-master/HistoricalImportPage";
 import { FeedbackRatingMasterContainer } from "@/components/employee-master/FeedbackRatingMasterContainer";
 import { UploadPage } from "@/components/employee-master/UploadPage";
 import { TeamChangesPage } from "@/components/employee-master/TeamChangesPage";
@@ -63,6 +64,7 @@ const KNOWN_TABS = [
   "delegation",
   "feedback-rating",
   "team-changes",
+  "historical-import",
 ];
 
 const ROSTER_FIELD_TO_CATALYST = {
@@ -617,6 +619,9 @@ export function EmployeeMaster() {
   // Which HR Operations tabs to show: access rules when /me answered,
   // otherwise the role-based rules used before access control.
   const isTabVisible = (tab) => {
+    // Historical Import is for the HR role only; access rules cannot open it
+    // to other roles.
+    if (tab === "historical-import") return isRoleHR;
     if (access.ok) {
       if (tab === "location-master") return isRoleHR && access.canScreen("cycleMaster", "edit");
       if (tab === "payroll-upload") return access.canScreen("payroll", "edit");
@@ -654,6 +659,7 @@ export function EmployeeMaster() {
       "budget-master",
       "budget-distribution",
       "delegation",
+      "historical-import",
       "access",
     ].filter(isTabVisible),
   );
@@ -2687,6 +2693,16 @@ export function EmployeeMaster() {
         {isTabVisible("payroll-data") && activeTab === "payroll-data" && (
           <div className="em-tab-content">
             <PayrollDataPage />
+          </div>
+        )}
+
+        {/* ======================================================
+            HISTORICAL IMPORT (HR only)
+            ====================================================== */}
+
+        {isTabVisible("historical-import") && activeTab === "historical-import" && (
+          <div className="em-tab-content">
+            <HistoricalImportPage />
           </div>
         )}
 

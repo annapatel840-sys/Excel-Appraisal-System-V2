@@ -2166,7 +2166,9 @@ async function routeRequest(req, res, identity, resource, a) {
   }
 
   if (resource === "audit" && req.method === "GET") {
-    const auditRows = await getAllRows(tables.audit);
+    // Historical Import keeps its undo data in the audit table; it is internal.
+    const auditRows = (await getAllRows(tables.audit))
+      .filter((row) => row.source !== "historical_import_undo");
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
     const cycleById = new Map(cycles.map((cycle) => [cycle.id, cycle]));
     const entries = auditRows.map((row) => {
@@ -2457,13 +2459,28 @@ async function routeRequest(req, res, identity, resource, a) {
       if (same) {
         return sendJson(res, 409, { success: false, message: same.status === "Cancelled" ? `"${same.name}" was used by a cancelled cycle. Choose another name.` : "An appraisal cycle with that name already exists." });
       }
+      // A past cycle holds previous-year data loaded through Historical Import.
+      // It is saved directly as Closed and archived: no process step runs and
+      // it never becomes the Active cycle.
+      const past = body.past === true;
+      if (past) {
+        const lastDay = fields.end || fields.effective || fields.start;
+        if (!lastDay || lastDay >= todayLocal()) {
+          return sendJson(res, 400, { success: false, message: "A past cycle must have ended before today." });
+        }
+      }
+      const pastNote = "Past cycle (history import only)";
       const row = withOptionalColumns(columns, {
-        cycle_name: fields.name, start_date: storedStart(fields), end_date: fields.end, status: "Upcoming",
-        remarks, changed_by: actor, changed_at: now, archived: false,
+        cycle_name: fields.name, start_date: storedStart(fields), end_date: fields.end, status: past ? "Closed" : "Upcoming",
+        remarks: past ? (remarks ? `${pastNote} | ${remarks}` : pastNote) : remarks,
+        changed_by: actor, changed_at: now, archived: past,
       }, optionalValues(fields));
       const created = await tables.cycles.insertRow(row);
       const cycle = normalizeCycle({ ...row, ...created });
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle, action: "Created cycle", details: { kind: "cycle", action: "Created cycle", message: `Cycle created as Upcoming (${fields.type}, ${fields.process === "None" ? "no process" : fields.process + " process"}).`, cycleName: cycle.name, newRemarks: cycle.remarks } });
+      const message = past
+        ? `Past cycle created as Closed and archived (${fields.type}) for Historical Import.`
+        : `Cycle created as Upcoming (${fields.type}, ${fields.process === "None" ? "no process" : fields.process + " process"}).`;
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle, action: past ? "Created past cycle" : "Created cycle", details: { kind: "cycle", action: past ? "Created past cycle" : "Created cycle", message, cycleName: cycle.name, newRemarks: cycle.remarks } });
       return sendJson(res, 201, { success: true, data: cycle });
     }
 
