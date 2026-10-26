@@ -139,6 +139,16 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
       pb_to_be_paid: '72,500',
       rb_to_be_paid: '31,250',
     });
+    const newEmployeeRowId = store.tables.Employee_Master.find((row) => row.emp_id === 'E2').ROWID;
+    // No-process/current-cycle upload for a new joiner: no previous closed-cycle
+    // payroll exists, but the upload already contains the PB/RB-to-be-paid values.
+    store.tables.Payroll_Data.push({
+      ROWID: '99992',
+      emp_id: newEmployeeRowId,
+      appraisal_cycle_name: currentCycleId,
+      pb_to_be_paid: '14,500',
+      rb_to_be_paid: '8,250',
+    });
 
     const r = await get(load(store));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
@@ -149,8 +159,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(existing.last_appraisal_date, 'Apr-25');
     assert.strictEqual(existing.pb_to_be_paid, 72500, 'PB to be paid comes from the last closed Payroll_Data row');
     assert.strictEqual(existing.rb_to_be_paid, 31250, 'RB to be paid comes from the last closed Payroll_Data row');
-    assert.strictEqual(fresh.pb_to_be_paid, 0, 'new employees without prior payroll have no previous PB');
-    assert.strictEqual(fresh.rb_to_be_paid, 0, 'new employees without prior payroll have no previous RB');
+    assert.strictEqual(fresh.pb_to_be_paid, 14500, 'new employees use PB/RB values in their current-cycle payroll upload when prior payroll is absent');
+    assert.strictEqual(fresh.rb_to_be_paid, 8250, 'new employees use PB/RB values in their current-cycle payroll upload when prior payroll is absent');
     assert.strictEqual(fresh.previous_appraisal_total_ctc_with_rewards, 905000);
     assert.strictEqual(fresh.last_appraisal_date, 'New - 2026');
     const orgBase = 2500000 + 905000;
