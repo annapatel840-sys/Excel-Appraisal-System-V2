@@ -798,44 +798,25 @@ async function saveEligibilityRowsBatch(tables, body, actor) {
   });
 
   const writeBatches = async (items, mode) => {
-    for (let start = 0; start < items.length; start += 100) {
-      const batch = items.slice(start, start + 100);
+    // Eligibility updates are cycle-critical. Write each row individually so
+    // a partially accepted Data Store batch cannot silently leave some rows
+    // Pending while the UI believes the entire batch succeeded.
+    for (const item of items) {
       try {
-        const rows = batch.map((item) => item.row);
         const stored = mode === "update"
-          ? await tables.eligibility.updateRows(rows)
-          : await tables.eligibility.insertRows(rows);
-        batch.forEach((item, index) => {
-          results[item.index] = {
-            empId: item.empId,
-            ok: true,
-            data: shapeEligibilityRow(
-              { ...item.row, ...(Array.isArray(stored) ? (stored[index] || {}) : {}) },
-              item.master,
-            ),
-          };
-        });
-      } catch (batchError) {
-        // If Catalyst rejects a batch, retry rows individually so the caller
-        // still receives exact per-employee success/failure information.
-        for (const item of batch) {
-          try {
-            const stored = mode === "update"
-              ? await tables.eligibility.updateRow(item.row)
-              : await tables.eligibility.insertRow(item.row);
-            results[item.index] = {
-              empId: item.empId,
-              ok: true,
-              data: shapeEligibilityRow({ ...item.row, ...(stored || {}) }, item.master),
-            };
-          } catch (error) {
-            results[item.index] = {
-              empId: item.empId,
-              ok: false,
-              reason: error?.message || batchError?.message || "Eligibility save failed.",
-            };
-          }
-        }
+          ? await tables.eligibility.updateRow(item.row)
+          : await tables.eligibility.insertRow(item.row);
+        results[item.index] = {
+          empId: item.empId,
+          ok: true,
+          data: shapeEligibilityRow({ ...item.row, ...(stored || {}) }, item.master),
+        };
+      } catch (error) {
+        results[item.index] = {
+          empId: item.empId,
+          ok: false,
+          reason: error?.message || "Eligibility save failed.",
+        };
       }
     }
   };
