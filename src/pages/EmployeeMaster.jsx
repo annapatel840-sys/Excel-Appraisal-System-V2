@@ -1231,8 +1231,22 @@ export function EmployeeMaster() {
   // Force the Eligibility List to reload from Catalyst on its next view.
   const invalidateEligibilityList = () => {
     eligibilityLoadedKeyRef.current = null;
+    setEligibilityCycleId("");
     setEligibilityReloadKey((value) => value + 1);
   };
+
+  // A cycle can be created/closed while HR Operations remains mounted. Clear
+  // the retained ID and reload so eligibility writes cannot target an old cycle.
+  useEffect(() => {
+    const onCycleUpdated = () => {
+      eligibilityLoadedKeyRef.current = null;
+      setEligibilityCycleId("");
+      setEligibilityEmployees([]);
+      setEligibilityReloadKey((value) => value + 1);
+    };
+    window.addEventListener("appraisal:cycle-updated", onCycleUpdated);
+    return () => window.removeEventListener("appraisal:cycle-updated", onCycleUpdated);
+  }, []);
 
   /* ============================================================
      FILE READING
