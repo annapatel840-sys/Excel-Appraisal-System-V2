@@ -789,6 +789,17 @@ async function readEmployeeRoster(app) {
     ]),
   );
   const masterByRowId = new Map(masterRows.map((row) => [idOf(row), row]));
+  const masterByName = new Map(
+    masterRows
+      .map((row) => [
+        String(readField(row, ["emp_name", "employee_name", "name"]) || "")
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, " "),
+        row,
+      ])
+      .filter(([name]) => Boolean(name)),
+  );
   const formatTechEdAssignment = (raw) => {
     const assignment = String(raw || "").trim();
     if (!assignment) return "";
@@ -861,11 +872,14 @@ async function readEmployeeRoster(app) {
         .split(/\s+-\s+/)[0]
         .trim()
         .toLowerCase();
+      const managerNameKey = managerRaw.trim().toLowerCase().replace(/\s+/g, " ");
       const managerRow =
         masterById.get(managerKey) ||
         masterByRowId.get(managerKey) ||
         masterByRowId.get(managerRaw) ||
-        masterById.get(managerRaw.toLowerCase());
+        masterById.get(managerRaw.toLowerCase()) ||
+        masterByName.get(managerKey) ||
+        masterByName.get(managerNameKey);
       const managerId = managerRow
         ? String(readField(managerRow, ["emp_id", "employee_id"]) || "").trim()
         : "";
