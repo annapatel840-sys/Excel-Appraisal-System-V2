@@ -224,8 +224,16 @@ export default function DelegationScreen({
         return;
       }
 
+      // Ensure the Active cycle's Eligibility_List is initialized/refreshed
+      // before fetching delegation rows. Its GET path syncs missing eligibility
+      // rows from Employee_Master for the current cycle.
+      await payrollCycleRequest("eligibility", {
+        method: "GET",
+        query: { cycleId },
+      });
+
       // Delegation is prepared before sheet generation, so employeesapi builds
-      // the working roster from the active cycle's Eligibility_List when the
+      // the working roster from the active cycle's eligible records when the
       // Appraisal Sheet has not yet been generated.
       const firstResponse = await catalystFetch(
         EMPLOYEE_API_URL + "?page=1&limit=100&view=delegation",
