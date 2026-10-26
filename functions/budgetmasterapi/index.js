@@ -2771,7 +2771,7 @@ module.exports = async function (req, res) {
 
     // Budget writes must always target the Active cycle. Historical budget rows
     // stay stored for reference, but closed/archived cycles are read-only.
-    const cycleRowsForWrite = await getAllRows(app, TABLES.cycles);
+    const cycleRowsForWrite = await getAllRows(app, "Appraisal_Cycle_Master");
     const activeCycleForWrite = cycleRowsForWrite.find((cycle) => {
       const status = String(firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "")
         .trim().toLowerCase();
@@ -2798,9 +2798,9 @@ module.exports = async function (req, res) {
     }
     if (id) {
       const tableId =
-        resource === "master" ? TABLES.master
-        : resource === "distribution" ? TABLES.distribution
-        : (resource === "comp" || resource === "compmanager") ? TABLES.comp
+        resource === "master" ? "Budget_Master"
+        : resource === "distribution" ? "Budget_Distribution"
+        : (resource === "comp" || resource === "compmanager") ? "Budget_Distribution_Comp"
         : "";
       if (tableId) {
         const targetRows = await getAllRows(app, tableId);
@@ -2808,7 +2808,7 @@ module.exports = async function (req, res) {
         let rowCycleId = String(value(target, "appraisal_cycle_id") || "").trim();
         if (!rowCycleId && target && (resource === "comp" || resource === "compmanager")) {
           const parentId = String(value(target, "budget_distribution_id") || "").trim();
-          const parent = (await getAllRows(app, TABLES.distribution)).find((row) => idOf(row) === parentId);
+          const parent = (await getAllRows(app, "Budget_Distribution")).find((row) => idOf(row) === parentId);
           rowCycleId = String(value(parent, "appraisal_cycle_id") || "").trim();
         }
         const matchesActiveCycle = rowCycleId === activeCycleIdForWrite ||
