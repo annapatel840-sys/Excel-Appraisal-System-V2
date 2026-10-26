@@ -32,7 +32,7 @@ function value(row, key) {
 function originalHeadcountValue(row) {
   const keys = Object.keys(row || {});
   const keyFor = (name) => keys.find((key) => key.toLowerCase() === name);
-  for (const name of ["original_headcount", "allocation_headcount"]) {
+  for (const name of ["original_headcount", "allocation_headcount", "headcount"]) {
     const key = keyFor(name);
     if (key && row[key] !== "" && row[key] !== null && row[key] !== undefined) {
       return row[key];
@@ -2346,7 +2346,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
           distributionTable,
           row.id,
           distributionColumns,
-          ["original_headcount", "allocation_headcount"],
+          ["original_headcount", "allocation_headcount", "headcount"],
           rosterCount,
         );
       }
@@ -2487,7 +2487,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
           compTable,
           row.id,
           compColumns,
-          ["original_headcount", "allocation_headcount"],
+          ["original_headcount", "allocation_headcount", "headcount"],
           rosterCount,
         );
       }
@@ -2636,7 +2636,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         masterTable,
         master.id,
         masterColumns,
-        ["original_headcount", "allocation_headcount"],
+        ["original_headcount", "allocation_headcount", "headcount"],
         appraisalSheetEmployees.length,
       );
     }
