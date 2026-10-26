@@ -2193,8 +2193,13 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       (employee) => employee.eligible,
     );
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
-    const orgBase = eligibleEmployees.reduce(
-      (sum, employee) => sum + employee.base,
+    // Appraisal_Sheet is already the generated, cycle-specific appraisal
+    // roster. Its Previous_Appraisal_total_CTC_with_rewards column is the
+    // authoritative base and must roll up exactly to Org Budget Base. Do not
+    // apply a second Eligibility_List filter to the generated sheet rows:
+    // stale/changed eligibility records otherwise zero out valid sheet values.
+    const orgBase = appraisalSheetEmployees.reduce(
+      (sum, employee) => sum + n(employee.base),
       0,
     );
     const techBases = new Map(
@@ -2226,33 +2231,40 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     });
     let orgUtilized = 0;
 
-    eligibleEmployees.forEach((employee) => {
+    appraisalSheetEmployees.forEach((employee) => {
       const techKey = ownerKey(employee.techEd);
       const compKey = ownerKey(employee.compManager);
-      // Keep the exact same consumed formula as Budget Distribution: Hike +
-      // Allocated PB + New RB, aggregated only over eligible Appraisal Sheet rows.
-      const consumed =
-        n(employee.hike_amount) +
-        n(employee.allocated_pb_amount) +
-        n(employee.new_rb);
-      orgUtilized += consumed;
+      const isCurrentlyEligible = Boolean(employee.eligible);
+      // Budget bases roll up the generated Appraisal_Sheet's previous-CTC
+      // column exactly. Live eligibility affects Current Count and utilization,
+      // but must not silently remove an already-generated sheet row's base.
+      const consumed = isCurrentlyEligible
+        ? n(employee.hike_amount) +
+          n(employee.allocated_pb_amount) +
+          n(employee.new_rb)
+        : 0;
+      if (isCurrentlyEligible) orgUtilized += consumed;
       if (techKey) {
         const tech = techBases.get(techKey) || {
           base: 0,
           count: 0,
           utilized: 0,
         };
-        tech.base += employee.base;
-        tech.count += 1;
-        tech.utilized += consumed;
+        tech.base += n(employee.base);
+        if (isCurrentlyEligible) {
+          tech.count += 1;
+          tech.utilized += consumed;
+        }
         techBases.set(techKey, tech);
       }
       if (techKey && compKey) {
         const key = techKey + "::" + compKey;
         const comp = compBases.get(key) || { base: 0, count: 0, utilized: 0 };
-        comp.base += employee.base;
-        comp.count += 1;
-        comp.utilized += consumed;
+        comp.base += n(employee.base);
+        if (isCurrentlyEligible) {
+          comp.count += 1;
+          comp.utilized += consumed;
+        }
         compBases.set(key, comp);
       }
     });
