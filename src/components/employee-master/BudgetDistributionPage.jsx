@@ -306,9 +306,8 @@ export function BudgetDistributionPage() {
         });
         const activeId = String(active?.id || active?.appraisal_cycle_id || active?.cycle_id || active?.ROWID || "");
         setActiveCycleId(activeId);
-        const master = budgetMasterRows.find((row) => String(row.appraisal_cycle_id || "") === activeId);
         setCycleLabel(active
-          ? String(active.name || active.cycle_name || master?.appraisal_cycle_name || master?.cycle_name || "Active cycle unavailable")
+          ? String(active.name || active.cycle_name || active.appraisal_year || "Active cycle unavailable")
           : "No active cycle");
       }).catch((cycleError) => {
         console.error("Failed to load Budget Distribution cycle:", cycleError);
@@ -329,7 +328,10 @@ export function BudgetDistributionPage() {
         window.removeEventListener("appraisal:cycle-updated", loadCycle);
       }
     };
-  }, [budgetMasterRows]);
+  // Cycle refresh is event-driven; budget row changes must not clear the active
+  // cycle label or trigger redundant cycle requests.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const resolveTechRecord = (raw) => {
     const text = String(raw || "").trim();
     if (!text) return null;
