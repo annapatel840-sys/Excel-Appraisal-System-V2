@@ -421,6 +421,7 @@ export function TechEdBudgetDistribution() {
   }, [auditStorageKey, auditState]);
 
   const cmNodes = useMemo(() => {
+    if (!activeCycleId || !techOwnerKey) return [];
     const managerStats = new Map();
     const currentTechOwner = techOwnerKey;
     const resolveTechAssignment = (raw) => {
@@ -436,14 +437,19 @@ export function TechEdBudgetDistribution() {
       if (!text) return "";
       const parts = ownerParts(text);
 
-      // A Comp Manager often is not a member of their own Tech-Ed roster.
-      // Resolve the saved manager ID through any team row that already carries
-      // both the stored Comp Manager key and its Employee_Master display label.
+      // Resolve a saved manager ID through current Appraisal Sheet rows and
+      // use the canonical "employee ID - name" display label when available.
       const linkedManager = employeeRows.find((employee) =>
         employee.comp_manager_display &&
-        ownerMatches(employee.comp_manager || employee.comp_manager_id || employee.compManager, parts)
+        [
+          employee.comp_manager, employee.comp_manager_id, employee.compManager,
+          employee.comp_manager_display, employee.comp_manager_name,
+        ].filter(Boolean).some((alias) => ownerMatches(alias, parts))
       );
-      if (linkedManager?.comp_manager_display) return String(linkedManager.comp_manager_display).trim();
+      if (linkedManager?.comp_manager_display) {
+        const display = String(linkedManager.comp_manager_display).trim();
+        if (display.includes(" - ")) return display;
+      }
 
       const manager = employeeRows.find((employee) => {
         const aliases = [
@@ -483,11 +489,17 @@ export function TechEdBudgetDistribution() {
       stats.utilized += employeeUtilized(employee);
       managerStats.set(key, stats);
     });
-    const savedKeys = new Set(liveComps.map((live) => ownerKey(resolveManager(live.comp_manager))));
+    // Saved allocation rows are not the roster. Show saved managers only if
+    // they still exist in the current eligible Appraisal Sheet; add current
+    // managers that have not yet received an allocation as dynamic rows.
+    const currentLiveComps = liveComps.filter((live) =>
+      managerStats.has(ownerKey(resolveManager(live.comp_manager)))
+    );
+    const savedKeys = new Set(currentLiveComps.map((live) => ownerKey(resolveManager(live.comp_manager))));
     const unsaved = Array.from(managerStats.entries())
       .filter(([key]) => key && !savedKeys.has(key))
       .map(([, stats]) => ({ id: "", comp_manager: stats.name, percentage: 0, budget_base: stats.base, calculated_budget: 0, applied_budget: 0, total_utilization: stats.utilized }));
-    return liveComps.concat(unsaved).map((live) => {
+    return currentLiveComps.concat(unsaved).map((live) => {
       const pct = num(live.percentage);
       const resolvedName = resolveManager(live.comp_manager);
       const stats = managerStats.get(ownerKey(resolvedName)) || { count: 0, base: 0, utilized: 0, name: resolvedName || live.comp_manager };
@@ -527,9 +539,11 @@ export function TechEdBudgetDistribution() {
         history,
       };
     });
-  }, [liveComps, employeeRows, techOwnerKey, log, techEdOwners]);
+  }, [liveComps, employeeRows, techOwnerKey, log, techEdOwners, activeCycleId]);
 
-  const assignedTeam = useMemo(() => employeeRows.filter((employee) => {
+  const assignedTeam = useMemo(() => {
+    if (!activeCycleId || !techOwnerKey) return [];
+    return employeeRows.filter((employee) => {
     if (employee.in_appraisal_sheet !== true) return false;
     const raw = employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
     const linked = techEdOwners.find((item) =>
@@ -538,7 +552,8 @@ export function TechEdBudgetDistribution() {
     );
     const assignment = String(linked?.assignment || raw).trim();
     return Boolean(techOwnerKey) && ownerKey(assignment) === techOwnerKey && isActiveAndEligible(employee);
-  }), [employeeRows, techOwnerKey, techEdOwners]);
+    });
+  }, [employeeRows, techOwnerKey, techEdOwners, activeCycleId]);
   const allTeam = assignedTeam;
   const myPct = liveTech ? num(liveTech.percentage) : 0;
   // Use the same selected allocation row/value as Dashboard, Appraisal Sheet,
