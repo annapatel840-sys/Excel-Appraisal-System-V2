@@ -2303,23 +2303,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         savedOriginalCountValue !== undefined &&
         String(savedOriginalCountValue).trim() !== "";
       const rosterCount = techRosterCounts.get(techKey) || 0;
-      const savedOriginalCountNumber = hasSavedOriginalCount
-        ? n(savedOriginalCountValue)
-        : rosterCount;
-      const legacyOwnerCount = legacyCycleEmployees.filter(
-        (employee) => ownerKey(employee.techEd) === techKey,
-      ).length;
-      // Repair only the known legacy bug: old code copied the Eligibility List
-      // count into Original Count. A matching inflated legacy count is repaired
-      // once; normal eligibility/delegation changes never rewrite the baseline.
-      const repairLegacyOriginalCount =
-        hasSavedOriginalCount &&
-        legacyOwnerCount - rosterCount > 1 &&
-        savedOriginalCountNumber === legacyOwnerCount;
-      const originalCountIsSet =
-        hasSavedOriginalCount && !repairLegacyOriginalCount;
+      // Once captured, Original Count is immutable. Do not infer corruption by
+      // comparing with today's roster or Employee_Master: approved delegation
+      // changes ownership and must only affect Current Count.
+      const originalCountIsSet = hasSavedOriginalCount;
       const savedOriginalCount = originalCountIsSet
-        ? savedOriginalCountNumber
+        ? n(savedOriginalCountValue)
         : rosterCount;
       const update = {
         ROWID: row.id,
@@ -2466,24 +2455,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         savedOriginalCountValue !== undefined &&
         String(savedOriginalCountValue).trim() !== "";
       const rosterCount = compRosterCounts.get(pairKey) || 0;
-      const savedOriginalCountNumber = hasSavedOriginalCount
-        ? n(savedOriginalCountValue)
-        : rosterCount;
-      const legacyOwnerCount = legacyCycleEmployees.filter(
-        (employee) =>
-          ownerKey(employee.techEd) === details.techEdKey &&
-          ownerKey(employee.compManager) === details.compKey,
-      ).length;
-      // Repair a legacy baseline only when it exactly matches the inflated
-      // Eligibility List team count, not after ordinary eligibility/delegation changes.
-      const repairLegacyOriginalCount =
-        hasSavedOriginalCount &&
-        legacyOwnerCount - rosterCount > 1 &&
-        savedOriginalCountNumber === legacyOwnerCount;
-      const originalCountIsSet =
-        hasSavedOriginalCount && !repairLegacyOriginalCount;
+      // Preserve each Comp Manager's first saved count across delegation. The
+      // live/current count is recalculated below from eligible Appraisal Sheet
+      // rows; comparing with Employee_Master breaks the snapshot after reassignment.
+      const originalCountIsSet = hasSavedOriginalCount;
       const savedOriginalCount = originalCountIsSet
-        ? savedOriginalCountNumber
+        ? n(savedOriginalCountValue)
         : rosterCount;
       const update = {
         ROWID: row.id,
@@ -2626,19 +2603,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       savedOrgOriginalCountValue !== null &&
       savedOrgOriginalCountValue !== undefined &&
       String(savedOrgOriginalCountValue).trim() !== "";
-    const savedOrgOriginalCountNumber = hasSavedOrgOriginalCount
-      ? n(savedOrgOriginalCountValue)
-      : appraisalSheetEmployees.length;
-    // Repair legacy Eligibility_List snapshots against the full generated
-    // Appraisal_Sheet roster, not today's smaller eligible subset.
-    const repairLegacyOrgOriginalCount =
-      hasSavedOrgOriginalCount &&
-      legacyEligibilityCount - appraisalSheetEmployees.length > 1 &&
-      savedOrgOriginalCountNumber === legacyEligibilityCount;
-    const orgOriginalCountIsSet =
-      hasSavedOrgOriginalCount && !repairLegacyOrgOriginalCount;
+    // Org Original Count is a snapshot too. Never rewrite it on GET based on
+    // current eligibility or assignment data; those belong in Current Count.
+    const orgOriginalCountIsSet = hasSavedOrgOriginalCount;
     const savedOrgOriginalCount = orgOriginalCountIsSet
-      ? savedOrgOriginalCountNumber
+      ? n(savedOrgOriginalCountValue)
       : appraisalSheetEmployees.length;
     const orgFields = {
       ROWID: master.id,
