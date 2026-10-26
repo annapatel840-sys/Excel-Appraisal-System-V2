@@ -191,11 +191,11 @@ export function BudgetProvider({ children }) {
       const masterRows = Array.isArray(budgetJson && budgetJson.master)
         ? budgetJson.master
         : [];
-      setActiveBudgetCycleId(activeCycleId);
       const compRows = Array.isArray(budgetJson && budgetJson.compManager)
         ? budgetJson.compManager
         : [];
       const activeCycleId = String(budgetJson?.active_appraisal_cycle_id || "").trim();
+      setActiveBudgetCycleId(activeCycleId);
       const normalizedTechEd = techEdRows.map(normalizeRow).filter((row) =>
         Boolean(activeCycleId) && String(row.appraisal_cycle_id || "").trim() === activeCycleId
       );
