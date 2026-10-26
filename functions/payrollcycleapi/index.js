@@ -1067,6 +1067,18 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     if (feedback) {
       const feedbackFieldMap = [
         {
+          destinationAliases: ["manager_rating", "managerRating"],
+          sourceAliases: ["manager_rating", "managerRating"],
+        },
+        {
+          destinationAliases: ["rr_percent", "rr", "revenue_released"],
+          sourceAliases: ["rr_percent", "revenue_released", "rr"],
+        },
+        {
+          destinationAliases: ["gross_margin", "grossMargin"],
+          sourceAliases: ["gross_margin", "grossMargin"],
+        },
+        {
           destinationAliases: ["CostCenter_Client", "cost_center_client", "costcenter_client"],
           sourceAliases: ["CostCenter_Client", "cost_center_client", "costcenter_client"],
         },
@@ -1089,6 +1101,24 @@ async function generateAppraisalSheet(tables, cycle, actor) {
           .find((candidate) => candidate !== undefined && candidate !== null && String(candidate).trim() !== "");
         if (value !== undefined) payload[destination || destinationAliases[0]] = value;
       });
+
+      // Feedback table versions differ: RR may be stored as revenue_released,
+      // while YoE ratio is calculated from Employee_Master if no uploaded
+      // yoe_ratio column exists in the feedback table.
+      const yoeDestination = appraisalSheetColumnByLower
+        ? ["yoe_ratio", "yoeRatio"].map((name) => appraisalSheetColumnByLower.get(name.toLowerCase())).find(Boolean)
+        : "yoe_ratio";
+      if (yoeDestination && (!appraisalSheetColumns || appraisalSheetColumns.has(yoeDestination))) {
+        const uploadedYoE = fieldValue(feedback, "yoe_ratio", "yoeRatio");
+        const basePay = Number(fieldValue(employeeMasterById.get(masterId), "current_annual_base_pay", "base_pay", "current_salary")) || 0;
+        const experience = Number(fieldValue(employeeMasterById.get(masterId), "total_experience", "total_exp", "experience")) || 0;
+        const yoe = uploadedYoE !== undefined
+          ? uploadedYoE
+          : basePay > 0 && experience > 0
+            ? Math.round((basePay / 100000 / experience) * 100) / 100
+            : undefined;
+        if (yoe !== undefined && yoe !== null && String(yoe).trim() !== "") payload[yoeDestination] = yoe;
+      }
     }
 
     // Payroll_Data is the source for payroll-derived appraisal fields. Only
