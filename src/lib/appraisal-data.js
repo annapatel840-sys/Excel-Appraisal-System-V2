@@ -521,7 +521,7 @@ export const COLUMNS = [
   {
     key: "clientRating",
     label: "Client Rating",
-    type: "text",
+    type: "decimal",
     editable: false,
     width: 130,
   },
