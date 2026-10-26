@@ -1241,31 +1241,48 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   // Appraisal_Sheet can retain rows from closed cycles. Restrict the budget
   // roster to rows for the current Active cycle so old rows/duplicates cannot
   // inflate the Org Budget Base.
-  const activeSheetCycle = cycleRows.find((cycle) =>
+  const isActiveCycle = (cycle) =>
     String(firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "")
       .trim().toLowerCase() === "active" &&
     ![true, "true", "1", "yes"].includes(
-      typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
-    ),
+      typeof firstValue(cycle, ["archived", "is_archived", "isArchived"]) === "string"
+        ? String(firstValue(cycle, ["archived", "is_archived", "isArchived"])).trim().toLowerCase()
+        : firstValue(cycle, ["archived", "is_archived", "isArchived"]),
+    );
+  // Budget_Master's selected cycle is the authority for the budget screen.
+  // Do not accidentally calculate from another Active cycle when legacy data
+  // has more than one active cycle row.
+  const budgetCycleRefs = new Set(
+    bundle.master
+      .map((master) => cycleReference(master.appraisal_cycle_id).toLowerCase())
+      .filter(Boolean),
   );
+  const activeSheetCycle =
+    cycleRows.find((cycle) =>
+      isActiveCycle(cycle) &&
+      [cycleIdOf(cycle), cycleNameOf(cycle)].some((ref) =>
+        budgetCycleRefs.has(String(ref || "").trim().toLowerCase()),
+      ),
+    ) || cycleRows.find(isActiveCycle);
   const activeSheetCycleId = activeSheetCycle ? cycleIdOf(activeSheetCycle) : "";
   const activeSheetCycleName = activeSheetCycle ? cycleNameOf(activeSheetCycle) : "";
+  const sheetCycleFields = [
+    "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name",
+    "cycleId", "appraisalCycleId", "appraisalCycleName",
+    "cycle", "appraisal_cycle",
+  ];
   const cycleScopedSheetRows = activeSheetCycle
     ? appraisalRows.filter((row) => {
-        const raw = cycleReference(firstValue(row, [
-          "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name",
-          "cycleId", "appraisalCycleId", "appraisalCycleName",
-        ]));
-        return raw && (raw === activeSheetCycleId ||
-          raw.toLowerCase() === activeSheetCycleName.toLowerCase());
+        const raw = cycleReference(firstValue(row, sheetCycleFields));
+        return raw && (
+          raw === activeSheetCycleId ||
+          raw.toLowerCase() === activeSheetCycleName.toLowerCase()
+        );
       })
     : [];
   // Legacy deployments may have one sheet roster with no cycle key. Use that
   // only when the Active cycle has no explicitly tagged rows.
-  const sheetCycleReference = (row) => cycleReference(firstValue(row, [
-    "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name",
-    "cycleId", "appraisalCycleId", "appraisalCycleName",
-  ]));
+  const sheetCycleReference = (row) => cycleReference(firstValue(row, sheetCycleFields));
   const hasCycleTaggedSheetRows = appraisalRows.some((row) => Boolean(sheetCycleReference(row)));
   const unscopedSheetRows = appraisalRows.filter((row) => !sheetCycleReference(row));
   const currentAppraisalRows = cycleScopedSheetRows.length
