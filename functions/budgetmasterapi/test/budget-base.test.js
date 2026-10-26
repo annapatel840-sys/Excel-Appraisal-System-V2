@@ -136,6 +136,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
       allocated_pb: '50,000',
       performance_bonus: '25,000',
       retention_bonus: '25,000',
+      pb_to_be_paid: '72,500',
+      rb_to_be_paid: '31,250',
     });
 
     const r = await get(load(store));
@@ -145,6 +147,10 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const fresh = r.json.employeeRoster.find((employee) => employee.emp_id === 'E2');
     assert.strictEqual(existing.previous_appraisal_total_ctc_with_rewards, 2500000);
     assert.strictEqual(existing.last_appraisal_date, 'Apr-25');
+    assert.strictEqual(existing.pb_to_be_paid, 72500, 'PB to be paid comes from the last closed Payroll_Data row');
+    assert.strictEqual(existing.rb_to_be_paid, 31250, 'RB to be paid comes from the last closed Payroll_Data row');
+    assert.strictEqual(fresh.pb_to_be_paid, 0, 'new employees without prior payroll have no previous PB');
+    assert.strictEqual(fresh.rb_to_be_paid, 0, 'new employees without prior payroll have no previous RB');
     assert.strictEqual(fresh.previous_appraisal_total_ctc_with_rewards, 905000);
     assert.strictEqual(fresh.last_appraisal_date, 'New - 2026');
     const orgBase = 2500000 + 905000;
@@ -393,7 +399,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(Number(changedC2.current_headcount), 1, 'new Comp Manager Current Count reflects the reassigned employee');
   });
 
-  await t('fails clearly when original headcount snapshot columns are missing', async () => {
+  await t('budget API remains available when legacy schema lacks Original Count snapshot columns', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
       Budget_Distribution: [],
@@ -426,8 +432,9 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     };
     const api = load(store);
     const response = await get(api);
-    assert.strictEqual(response.status, 500);
-    assert.match(response.json.message, /Budget_Distribution must have an original_headcount or allocation_headcount column/);
+    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+    assert.strictEqual(response.json.master[0].org_budget_base, 2000000);
+    assert.strictEqual(response.json.employeeRoster.length, 2);
   });
 
   await t('Org and Tech-ED bases match all generated Appraisal Sheet previous CTC values while Current Count remains eligibility-scoped', async () => {
