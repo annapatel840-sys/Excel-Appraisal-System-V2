@@ -479,6 +479,72 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(team.calculated_budget, 100000, 'legacy tiny snapshot is repaired using base × percentage / 100');
   });
 
+  await t('Org Budget Base reads Payroll CTC from Archived and Completed prior cycles', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
+      Budget_Distribution: [], Budget_Distribution_Comp: [],
+      Employee_Master: [{ emp_id: 'E1', emp_name: 'Existing Employee', emp_status: 'Active', eligibility: 'Eligible' }],
+      Eligibility_List: [],
+      Payroll_Data: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Annual 2025', start_date: '2025-04-01', status: 'Archived', archived: true },
+        { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Active' },
+      ],
+      Appraisal_Sheet: [
+        { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: '', Previous_Appraisal_total_CTC_with_rewards: '' },
+      ],
+    });
+    const priorCycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    const currentCycleId = store.tables.Appraisal_Cycle_Master[1].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = currentCycleId;
+    store.tables.Eligibility_List.push({
+      appraisal_cycle_id: currentCycleId, emp_id: 'E1', eligibility_status: 'Eligible',
+    });
+    store.tables.Payroll_Data.push({
+      emp_id: 'E1',
+      appraisal_cycle_name: priorCycleId,
+      total_ctc_with_rewards: '18,75,000',
+    });
+    const response = await get(load(store));
+    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+    assert.strictEqual(response.json.master[0].org_budget_base, 1875000);
+    const employee = response.json.employeeRoster.find((row) => row.emp_id === 'E1');
+    assert.strictEqual(employee.previous_appraisal_total_ctc_with_rewards, 1875000);
+    assert.strictEqual(response.json.diagnostics.warning, undefined);
+  });
+
+  await t('Org Budget Base reads Payroll CTC from Closed prior cycles', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
+      Budget_Distribution: [], Budget_Distribution_Comp: [],
+      Employee_Master: [{ emp_id: 'E1', emp_name: 'Existing Employee', emp_status: 'Active', eligibility: 'Eligible' }],
+      Eligibility_List: [],
+      Payroll_Data: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Annual 2025', start_date: '2025-04-01', status: 'Closed' },
+        { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Active' },
+      ],
+      Appraisal_Sheet: [
+        { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: '', Previous_Appraisal_total_CTC_with_rewards: '' },
+      ],
+    });
+    const priorCycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    const currentCycleId = store.tables.Appraisal_Cycle_Master[1].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = currentCycleId;
+    store.tables.Eligibility_List.push({
+      appraisal_cycle_id: currentCycleId, emp_id: 'E1', eligibility_status: 'Eligible',
+    });
+    store.tables.Payroll_Data.push({
+      emp_id: 'E1',
+      appraisal_cycle_name: priorCycleId,
+      total_ctc_with_rewards: '18,75,000',
+    });
+    const response = await get(load(store));
+    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+    assert.strictEqual(response.json.master[0].org_budget_base, 1875000);
+    assert.strictEqual(response.json.employeeRoster.find((row) => row.emp_id === 'E1').previous_appraisal_total_ctc_with_rewards, 1875000);
+  });
+
   await t('Org Budget Base uses Appraisal Sheet previous total CTC with rewards when payroll/current CTC is blank', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
