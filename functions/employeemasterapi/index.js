@@ -650,6 +650,8 @@ async function createRoster(req, res, table, employeesTable, afterWrite) {
   const existingRows = await getAllRoster(table);
 
   const existingByEmpId = new Map();
+  const existingRowTime = (row) =>
+    String(row?.MODIFIEDTIME || row?.CREATEDTIME || row?.ROWID || "");
 
   existingRows.forEach(function (row) {
     const key = String(row.emp_id || "")
@@ -657,7 +659,13 @@ async function createRoster(req, res, table, employeesTable, afterWrite) {
       .toLowerCase();
 
     if (key) {
-      existingByEmpId.set(key, row);
+      const previous = existingByEmpId.get(key);
+      if (
+        !previous ||
+        existingRowTime(row).localeCompare(existingRowTime(previous), undefined, { numeric: true }) >= 0
+      ) {
+        existingByEmpId.set(key, row);
+      }
     }
   });
 
