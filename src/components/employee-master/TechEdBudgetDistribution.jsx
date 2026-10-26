@@ -579,9 +579,10 @@ export function TechEdBudgetDistribution() {
     activeCycleId &&
     liveTech &&
     (
-      num(liveTech.applied_budget) > 0 ||
-      num(liveTech.percentage) > 0 ||
-      num(liveTech.budget_percentage) > 0
+      liveTech.percentage_is_set === true ||
+      (liveTech.percentage !== null &&
+        liveTech.percentage !== undefined &&
+        String(liveTech.percentage).trim() !== "")
     )
   );
   const myOriginal = hasLiveAllocation
