@@ -599,8 +599,10 @@ async function clearEligibilityRows(tables, cycleId) {
 }
 
 function eligibilityStatusOf(row) {
+  // Empty primary aliases must not mask a populated legacy field.
   const raw = String(
-    row?.eligibility_status ?? row?.eligible_status ?? row?.eligibility ?? "",
+    [row?.eligibility_status, row?.eligible_status, row?.eligibility]
+      .find((value) => value !== undefined && value !== null && String(value).trim() !== "") ?? "",
   ).trim().toLowerCase().replace(/[ _-]+/g, "");
   if (["eligible", "yes", "true", "1"].includes(raw)) return "Eligible";
   if (["noteligible", "no", "false", "0", "ineligible"].includes(raw)) return "Not Eligible";
