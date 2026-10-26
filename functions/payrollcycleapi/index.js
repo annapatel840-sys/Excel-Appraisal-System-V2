@@ -678,7 +678,7 @@ async function saveEligibilityRow(tables, body, actor) {
   const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
   const cycle = cycles.find((item) => item.id === cycleId);
   if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
-  if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived) {
+  if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived || cycle.hidden) {
     throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
   }
 
@@ -734,7 +734,7 @@ async function saveEligibilityRowsBatch(tables, body, actor) {
   const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
   const cycle = cycles.find((item) => item.id === cycleId);
   if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
-  if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived) {
+  if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived || cycle.hidden) {
     throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
   }
 
@@ -903,7 +903,7 @@ function resolveEmployeeReference(value, masterRows) {
 
 async function generateAppraisalSheet(tables, cycle, actor) {
   if (!cycle?.id) throw new ApiError("Select an appraisal cycle before generating the sheet.", 400);
-  if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived) {
+  if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived || cycle.hidden) {
     throw new ApiError("Generate the Appraisal Sheet only for the Active appraisal cycle.", 409);
   }
 
