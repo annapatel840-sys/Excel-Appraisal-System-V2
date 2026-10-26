@@ -492,6 +492,9 @@ function cycleReference(raw) {
 
 function currentCtc(row) {
   const stored = firstValue(row, [
+    "previous_appraisal_total_ctc_with_rewards",
+    "Previous_Appraisal_total_CTC_with_rewards",
+    "previousAppraisalTotalCtcWithRewards",
     "total_ctc_with_rewards",
     "total_CTC_with_rewards",
     "total_ctc",
@@ -548,6 +551,9 @@ function currentCtc(row) {
 
 function previousCtc(record) {
   const raw = firstValue(record, [
+    "previous_appraisal_total_ctc_with_rewards",
+    "Previous_Appraisal_total_CTC_with_rewards",
+    "previousAppraisalTotalCtcWithRewards",
     "total_ctc_with_rewards",
     "total_CTC_with_rewards",
     "totalCTCWithRewards",
@@ -1173,6 +1179,46 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       .map((cycle) => [cycleNameOf(cycle).toLowerCase(), cycle])
       .filter(([name]) => name),
   );
+
+  // Appraisal_Sheet can retain rows from closed cycles. Restrict the budget
+  // roster to rows for the current Active cycle so old rows/duplicates cannot
+  // inflate the Org Budget Base.
+  const activeSheetCycle = cycleRows.find((cycle) =>
+    String(firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "")
+      .trim().toLowerCase() === "active" &&
+    ![true, "true", "1", "yes"].includes(
+      typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+    ),
+  );
+  const activeSheetCycleId = activeSheetCycle ? cycleIdOf(activeSheetCycle) : "";
+  const activeSheetCycleName = activeSheetCycle ? cycleNameOf(activeSheetCycle) : "";
+  const cycleScopedSheetRows = activeSheetCycle
+    ? appraisalRows.filter((row) => {
+        const raw = cycleReference(firstValue(row, [
+          "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name",
+          "cycleId", "appraisalCycleId", "appraisalCycleName",
+        ]));
+        return raw && (raw === activeSheetCycleId ||
+          raw.toLowerCase() === activeSheetCycleName.toLowerCase());
+      })
+    : [];
+  // Legacy deployments may have one sheet roster with no cycle key. Use that
+  // only when the Active cycle has no explicitly tagged rows.
+  const hasUnscopedSheetRows = appraisalRows.some((row) =>
+    !cycleReference(firstValue(row, [
+      "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name",
+      "cycleId", "appraisalCycleId", "appraisalCycleName",
+    ])),
+  );
+  const currentAppraisalRows = cycleScopedSheetRows.length
+    ? cycleScopedSheetRows
+    : hasUnscopedSheetRows
+      ? appraisalRows.filter((row) => !cycleReference(firstValue(row, [
+          "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name",
+          "cycleId", "appraisalCycleId", "appraisalCycleName",
+        ])))
+      : appraisalRows;
+
   const employeeKeyFor = (raw) => {
     const identity = normalizedIdentity(raw);
     if (!identity) return "";
@@ -1192,7 +1238,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   // similarly named appraisalById map belongs to readEmployeeRoster and is
   // not in scope here.
   const appraisalEmployeeIds = new Set(
-    appraisalRows
+    currentAppraisalRows
       .map((row) => {
         const rawId = String(
           firstValue(row, [
@@ -1282,7 +1328,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   });
 
   const appraisalByEmployee = new Map();
-  appraisalRows.forEach((row) => {
+  currentAppraisalRows.forEach((row) => {
     const rawEmployeeId = String(
       firstValue(row, [
         "emp_id",
@@ -1370,11 +1416,25 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         )
       : null;
     const currentCtcValue = currentCtc(row);
-    const storedPreviousCtc = previousRecord
-      ? previousCtc(previousRecord)
-      : null;
+    // Appraisal_Sheet's Previous_Appraisal_total_CTC_with_rewards is the
+    // canonical base. Use historical Payroll_Data only when that sheet field
+    // is absent, then fall back to the current CTC for new joiners/legacy rows.
+    const sheetPreviousRaw = firstValue(row, [
+      "Previous_Appraisal_total_CTC_with_rewards",
+      "previous_appraisal_total_ctc_with_rewards",
+      "previousAppraisalTotalCtcWithRewards",
+    ]);
+    const sheetPreviousCtc =
+      sheetPreviousRaw === "" || sheetPreviousRaw === null || sheetPreviousRaw === undefined
+        ? null
+        : n(sheetPreviousRaw);
+    const storedPreviousCtc = previousRecord ? previousCtc(previousRecord) : null;
     const previousAppraisalCtc =
-      storedPreviousCtc === null ? currentCtcValue : storedPreviousCtc;
+      sheetPreviousCtc !== null
+        ? sheetPreviousCtc
+        : storedPreviousCtc === null
+          ? currentCtcValue
+          : storedPreviousCtc;
     const currentCycle = currentCycleFor(currentCycleId);
     const currentCycleName = cycleNameOf(currentCycle) || currentCycleId;
     const currentYearFull = currentCycleName.match(/(?:19|20)\d{2}/);
@@ -1707,7 +1767,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     (employee) => employee.techEd,
   ).length;
   bundle.diagnostics = {
-    appraisalRows: appraisalRows.length,
+    appraisalRows: currentAppraisalRows.length,
     employees: appraisalEmployees.length,
     employeesWithBase: withBase,
     employeesWithTechEd: withTechEd,
