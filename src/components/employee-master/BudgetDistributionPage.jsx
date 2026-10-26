@@ -291,31 +291,43 @@ export function BudgetDistributionPage() {
   const [activeCycleId, setActiveCycleId] = useState("");
   useEffect(() => {
     let mounted = true;
-    payrollCycleRequest("cycles").then((cycles) => {
-      if (!mounted) return;
-      const all = Array.isArray(cycles) ? cycles : [];
-      const active = all.find((cycle) => {
-        const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
-        const archived = [true, 1, "true", "1", "yes"].includes(
-          typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
-        );
-        return status === "active" && !archived && !cycle.hidden;
+    const loadCycle = () => {
+      payrollCycleRequest("cycles").then((cycles) => {
+        if (!mounted) return;
+        const all = Array.isArray(cycles) ? cycles : [];
+        const active = all.find((cycle) => {
+          const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
+          const archived = [true, 1, "true", "1", "yes"].includes(
+            typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+          );
+          return status === "active" && !archived && !cycle.hidden;
+        });
+        const activeId = String(active?.id || active?.appraisal_cycle_id || active?.cycle_id || active?.ROWID || "");
+        setActiveCycleId(activeId);
+        const master = budgetMasterRows.find((row) => String(row.appraisal_cycle_id || "") === activeId);
+        setCycleLabel(active
+          ? String(active.name || active.cycle_name || master?.appraisal_cycle_name || master?.cycle_name || "Active cycle unavailable")
+          : "No active cycle");
+      }).catch((cycleError) => {
+        console.error("Failed to load Budget Distribution cycle:", cycleError);
+        if (mounted) {
+          // A failed cycle lookup must never expose a previous cycle's budget.
+          setActiveCycleId("");
+          setCycleLabel("No active cycle");
+        }
       });
-      const activeId = String(active?.id || active?.appraisal_cycle_id || active?.cycle_id || active?.ROWID || "");
-      setActiveCycleId(activeId);
-      const master = budgetMasterRows.find((row) => String(row.appraisal_cycle_id || "") === activeId);
-      setCycleLabel(String(active?.name || active?.cycle_name || master?.appraisal_cycle_name || master?.cycle_name || "Active cycle unavailable"));
-    }).catch((cycleError) => {
-      console.error("Failed to load Budget Distribution cycle:", cycleError);
-      if (mounted) {
-        // A failed cycle lookup must never expose a previous cycle's budget.
-        setActiveCycleId("");
-        setCycleLabel("No active cycle");
+    };
+    loadCycle();
+    if (typeof window !== "undefined") {
+      window.addEventListener("appraisal:cycle-updated", loadCycle);
+    }
+    return () => {
+      mounted = false;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("appraisal:cycle-updated", loadCycle);
       }
-    });
-    return () => { mounted = false; };
+    };
   }, [budgetMasterRows]);
-
   const resolveTechRecord = (raw) => {
     const text = String(raw || "").trim();
     if (!text) return null;
