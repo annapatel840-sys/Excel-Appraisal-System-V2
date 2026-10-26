@@ -808,8 +808,8 @@ export function TechEdBudgetDistribution() {
                     <td>
                       <b>{String(loginTechOwner).split(/\s+-\s+/)[1] || myName}</b> <span className="muted-small">(you)</span>
                     </td>
-                    <td className="r">{lakh(myOriginal)}</td>
-                    <td className="r">{lakh(myUpdated)}</td>
+                    <td className="r">{hasLiveAllocation ? lakh(myOriginal) : "—"}</td>
+                    <td className="r">{hasLiveAllocation ? lakh(myUpdated) : "—"}</td>
                     <td className="r">
                       {hasLiveAllocation ? <ChangeCell from={myOriginal} to={myUpdated} /> : "—"}
                     </td>
