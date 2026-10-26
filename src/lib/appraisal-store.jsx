@@ -83,12 +83,16 @@ async function loadManagerRatings() {
   try {
     const data = await loadFeedbackRating();
     const cycles = data?.cycles || [];
-    const current =
-      cycles.find((c) => String(c.status).toLowerCase() === "active") ||
-      cycles.find((c) => String(c.status).toLowerCase() !== "archived");
+    // Feedback ratings are current working data only for the Active cycle.
+    // Closed/archived cycles remain historical inputs, never a current fallback.
+    const current = cycles.find((c) =>
+      String(c.status ?? "").trim().toLowerCase() === "active" &&
+      !["true", "1", "yes"].includes(String(c.archived ?? "").trim().toLowerCase())
+    );
     const map = new Map();
+    if (!current) return map;
     (data?.rows || []).forEach((row) => {
-      if (current && String(row.cid) !== String(current.id)) return;
+      if (String(row.cid) !== String(current.id)) return;
       const rating = normalizeManagerRating(row.mr);
       const key = String(row.id || "").trim().toLowerCase();
       if (key && rating) map.set(key, rating);
