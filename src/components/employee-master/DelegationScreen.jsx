@@ -73,6 +73,13 @@ export default function DelegationScreen({
   const [activeCycleId, setActiveCycleId] = useState("");
   const [rosterLoading, setRosterLoading] = useState(false);
   const displayCycleName = activeCycleName || cycleName || "No active cycle";
+  useEffect(() => {
+    setLocked(false);
+    setAudit([]);
+    setSel({});
+    setPage(1);
+    setFilter({ q: "", te: "", comp: "", status: "" });
+  }, [activeCycleId]);
   const normalizeRequests = (items) =>
     (Array.isArray(items) ? items : []).map((q) => ({
       ...q,
@@ -661,14 +668,14 @@ export default function DelegationScreen({
     setModal({
       type: "confirm",
       title: "Save & lock delegation",
-      body: `Lock the delegation for ${cycleName} (${rows.length} employees)? No changes are possible afterwards.`,
+      body: `Lock the delegation for ${displayCycleName} (${rows.length} employees)? No changes are possible afterwards.`,
       ok: () => {
         setLocked(true);
         log({
           action: "Locked",
-          why: `${rows.length} employees locked for ${cycleName}`,
+          why: `${rows.length} employees locked for ${displayCycleName}`,
         });
-        say(`Delegation for ${cycleName} locked.`);
+        say(`Delegation for ${displayCycleName} locked.`);
       },
     });
 
@@ -706,7 +713,7 @@ export default function DelegationScreen({
     );
     Object.assign(document.createElement("a"), {
       href: url,
-      download: `Delegation_${cycleName}.csv`,
+      download: `Delegation_${displayCycleName}.csv`,
     }).click();
     URL.revokeObjectURL(url);
   };
@@ -766,7 +773,7 @@ export default function DelegationScreen({
       )}
       {locked && (
         <div className="dg-mq lock">
-          Delegation for {cycleName} is locked. It will be used as
+          Delegation for {displayCycleName} is locked. It will be used as
           previous-cycle data for the next cycle.
         </div>
       )}
@@ -861,7 +868,7 @@ export default function DelegationScreen({
                 onClick={() =>
                   onRefresh
                     ? onRefresh()
-                    : say("Connect onRefresh to your Employee Master API.")
+                    : loadRoster()
                 }
               >
                 Refresh from master
@@ -920,7 +927,12 @@ export default function DelegationScreen({
           <div className="dg-tw">
             {!scoped.length ? (
               <div className="empty">
-                No employees are mapped to you as Tech Ed in {cycleName}.
+                {activeCycleId ? "No delegation rows are available for " + displayCycleName + "." : "No active appraisal cycle. Create or activate a cycle to start delegation."}
+                {activeCycleId && (
+                  <button className="btn p" type="button" disabled={rosterLoading} onClick={loadRoster}>
+                    {rosterLoading ? "Fetching data..." : "Generate / Fetch Delegation Data"}
+                  </button>
+                )}
               </div>
             ) : (
               <table>
