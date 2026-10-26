@@ -869,6 +869,13 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   };
   const historyByEmployee = new Map();
   const currentPayrollByEmployee = new Map();
+  const bonusHistoryCandidatesByEmployee = new Map();
+  const cycleYearOf = (cycle) => {
+    const match = historyCycleName(cycle).match(/(?:19|20)\\d{2}/);
+    return match ? match[0] : "";
+  };
+  const isNewJoinerCycle = (cycle) => /new[\\s_-]*joiners?/i.test(historyCycleName(cycle));
+  const isAnnualCycle = (cycle) => /\\bannual\\b/i.test(historyCycleName(cycle));
   payrollRows.forEach((record) => {
     const empRaw = firstNonEmpty(record, ["emp_id", "employee_id", "emp_code", "empId"]);
     const empKey = rowEmployeeKey(empRaw, employeeMasterMap);
@@ -879,8 +886,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     if (!empKey || !rawCycle) return;
     const cycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
     if (!cycle) return;
-    // Current-cycle payroll owns target PB allocation and target criteria.
-    // Archived payroll is used only for previous-appraisal values and paid bonuses.
+    // Current-cycle payroll still owns current target PB allocation and criteria.
     if (cycleIdOf(cycle) === currentCycleId) {
       const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
       const current = currentPayrollByEmployee.get(empKey);
@@ -891,32 +897,60 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       return;
     }
     const rank = historyCycleRank(cycle);
-    // The previous appraisal source is the most recent closed/archived cycle
-    // before the current cycle. Some completed cycles are marked "Closed"
-    // rather than setting archived=true, so accept both lifecycle conventions.
     const priorStatus = cycleStatusOf(cycle);
     const archived = cycle?.archived === true ||
-      ["true", "1", "yes"].includes(String(cycle?.archived ?? "").trim().toLowerCase()) ||
+      ["true", "1", "yes", "archived"].includes(String(cycle?.archived ?? "").trim().toLowerCase()) ||
       ["archived", "closed", "complete", "completed"].includes(priorStatus);
-    if (!archived || (currentRank > 0 && rank >= currentRank)) return;
+    if (!archived) return;
+    const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
+    const sameYearNewJoinerCycle =
+      isNewJoinerCycle(cycle) &&
+      cycleYearOf(cycle) !== "" &&
+      cycleYearOf(cycle) === currentYear;
+    // Keep closed payroll rows for the employee-specific bonus source:
+    // same-year closed New Joiner cycle wins; otherwise latest closed Annual.
+    if ((currentRank <= 0 || rank < currentRank) || sameYearNewJoinerCycle) {
+      const candidates = bonusHistoryCandidatesByEmployee.get(empKey) || [];
+      candidates.push({ cycle, rank, row: record, rowTime, sameYearNewJoinerCycle });
+      bonusHistoryCandidatesByEmployee.set(empKey, candidates);
+    }
+    // General previous-appraisal/CTC data remains strictly before the active
+    // cycle. Same-year New Joiner payroll is used only for PB/RB mapping.
+    if (currentRank > 0 && rank >= currentRank) return;
     const storedValue = firstNonEmpty(record, [
       "total_ctc_with_rewards", "total_CTC_with_rewards", "totalCTCWithRewards",
       "total_ctc", "new_ctc", "newCTC",
     ]);
     const parsedRaw = storedValue !== ""
-      ? Number(String(storedValue).replace(/[₹,\s]/g, ""))
+      ? Number(String(storedValue).replace(/[₹,\\s]/g, ""))
       : ctcFromComponents(record);
     const parsedValue = Number.isFinite(parsedRaw) ? parsedRaw : null;
-    const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
     const item = { cycle, rank, value: parsedValue, row: record, rowTime };
     const current = historyByEmployee.get(empKey);
-    // Pick the newest employee record in the newest archived cycle, even if
-    // its CTC is blank: bonus and effective-date fields still come from this row.
     if (
       !current ||
       item.rank > current.rank ||
       (item.rank === current.rank && item.rowTime.localeCompare(current.rowTime, undefined, { numeric: true }) > 0)
     ) historyByEmployee.set(empKey, item);
+  });
+  const bonusPayrollByEmployee = new Map();
+  bonusHistoryCandidatesByEmployee.forEach((candidates, empKey) => {
+    const sameYearNewJoiner = candidates
+      .filter((item) => item.sameYearNewJoinerCycle)
+      .sort((a, b) => b.rank - a.rank || b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }))[0];
+    if (sameYearNewJoiner) {
+      bonusPayrollByEmployee.set(empKey, sameYearNewJoiner);
+      return;
+    }
+    const priorCycles = candidates.filter((item) => currentRank <= 0 || item.rank < currentRank);
+    const annual = priorCycles
+      .filter((item) => isAnnualCycle(item.cycle))
+      .sort((a, b) => b.rank - a.rank || b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }))[0];
+    const latestPrior = priorCycles
+      .slice()
+      .sort((a, b) => b.rank - a.rank || b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }))[0];
+    const selected = annual || latestPrior;
+    if (selected) bonusPayrollByEmployee.set(empKey, selected);
   });
 
   const appraisalTable = datastore.table(EMPLOYEES_TABLE_ID);
@@ -925,6 +959,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const empKey = rowEmployeeKey(empRaw, employeeMasterMap);
     const prior = empKey ? historyByEmployee.get(empKey) : null;
     const currentPayroll = empKey ? currentPayrollByEmployee.get(empKey)?.row : null;
+    const bonusPayroll = empKey ? bonusPayrollByEmployee.get(empKey)?.row : null;
     const currentFeedback = empKey ? currentFeedbackByEmployee.get(empKey)?.row : null;
     const feedbackValue = (...keys) => {
       for (const key of keys) {
@@ -951,20 +986,20 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
       return Number.isFinite(parsed) ? parsed : 0;
     };
-    // Existing employees must always use the last closed/archived cycle.
-    // Only employees with no prior closed-cycle Payroll_Data row (new joiners)
-    // may use the PB/RB-to-be-paid values from the current-cycle payroll upload.
-    const bonusSource = prior?.row || currentPayroll || null;
+    // PB/RB-to-be-paid always come from a closed-cycle Payroll_Data row.
+    // New joiners use their same-year closed New Joiner cycle (e.g. New Joiner
+    // 2027); everyone else uses the latest closed Annual cycle (e.g. Annual 2026).
+    const bonusSource = bonusPayroll || null;
     const payrollPreviousPB = bonusSource ? payrollAmount(firstNonEmpty(bonusSource, [
       "pb_to_be_paid", "performance_bonus", "previous_year_performance_bonus", "previous_year_pb", "previous_pb",
     ])) : 0;
     const payrollPreviousRB = bonusSource ? payrollAmount(firstNonEmpty(bonusSource, [
       "rb_to_be_paid", "retention_bonus", "previous_year_retention_bonus", "previous_year_rb", "previous_rb",
     ])) : 0;
-    const payrollPreviousPBMonth = prior ? String(firstNonEmpty(prior.row, [
+    const payrollPreviousPBMonth = bonusSource ? String(firstNonEmpty(bonusSource, [
       "month_pb", "pb_month", "performance_bonus_month", "month_of_pb",
     ]) ?? "").trim() : "";
-    const payrollPreviousRBMonth = prior ? String(firstNonEmpty(prior.row, [
+    const payrollPreviousRBMonth = bonusSource ? String(firstNonEmpty(bonusSource, [
       "month_rb", "rb_month", "retention_bonus_month", "month_of_rb",
     ]) ?? "").trim() : "";
     const feedbackRRRaw = feedbackValue("revenue_released", "rr_percent", "rr");
