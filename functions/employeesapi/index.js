@@ -356,7 +356,8 @@ async function activeCycleRowId(datastore) {
   const active = cycles.find(function (cycle) {
     const status = String(cycle?.status ?? cycle?.cycle_status ?? "").trim().toLowerCase();
     const archived = ["true", "1", "yes"].includes(String(cycle?.archived ?? "").trim().toLowerCase());
-    return status === "active" && !archived;
+    const hidden = ["true", "1", "yes"].includes(String(cycle?.hidden ?? "").trim().toLowerCase());
+    return status === "active" && !archived && !hidden;
   });
   return active ? String(active.ROWID ?? active.rowid ?? "").trim() : "";
 }
@@ -1526,7 +1527,10 @@ async function getEmployees(req, res) {
       const archived = ["true", "1", "yes"].includes(
         String(cycle?.archived ?? "").trim().toLowerCase(),
       );
-      return status === "active" && !archived;
+      const hidden = ["true", "1", "yes"].includes(
+        String(cycle?.hidden ?? "").trim().toLowerCase(),
+      );
+      return status === "active" && !archived && !hidden;
     });
     if (activeCycle) {
       const activeCycleId = String(
