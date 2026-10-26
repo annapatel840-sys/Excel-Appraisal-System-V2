@@ -265,9 +265,13 @@ export function mapEmployeeFromApi(employee) {
   const eligibilityValue =
     row.eligible_status !== undefined &&
     row.eligible_status !== null &&
-    row.eligible_status !== ""
+    String(row.eligible_status).trim() !== ""
       ? row.eligible_status
-      : row.eligible;
+      : row.eligibility_status !== undefined &&
+          row.eligibility_status !== null &&
+          String(row.eligibility_status).trim() !== ""
+        ? row.eligibility_status
+        : row.eligible;
 
   const mappedEligibility = normalizeEligibility(eligibilityValue);
 
@@ -360,9 +364,13 @@ export function mapEmployeeFromApi(employee) {
      * Keep the actual Data Store value available.
      */
     eligibleStatus: String(
-      row.eligible_status !== undefined && row.eligible_status !== null
+      row.eligible_status !== undefined &&
+        row.eligible_status !== null &&
+        String(row.eligible_status).trim() !== ""
         ? row.eligible_status
-        : "",
+        : row.eligibility_status !== undefined && row.eligibility_status !== null
+          ? row.eligibility_status
+          : "",
     ).trim(),
 
     eligibleReason: String(
