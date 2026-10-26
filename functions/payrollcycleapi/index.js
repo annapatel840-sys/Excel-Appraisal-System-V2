@@ -924,10 +924,22 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     if (value && typeof value === "object") {
       return String(
         value.ROWID ?? value.rowid ?? value.id ?? value.ID ?? value.value ??
-        value.cycle_name ?? value.appraisal_cycle_name ?? "",
+        value.emp_id ?? value.employee_id ?? value.cycle_name ?? value.appraisal_cycle_name ?? "",
       ).trim();
     }
     return String(value ?? "").trim();
+  };
+  // Catalyst field names can preserve Excel header casing (emp_ID,
+  // CostCenter_Client). Match aliases case-insensitively.
+  const fieldValue = (row, ...names) => {
+    const keys = Object.keys(row || {});
+    for (const name of names) {
+      const actual = keys.find((key) => key.toLowerCase() === String(name).toLowerCase());
+      if (actual !== undefined && row[actual] !== null && row[actual] !== undefined) {
+        return row[actual];
+      }
+    }
+    return undefined;
   };
   const payrollByMasterId = new Map();
   payrollRows.forEach((row) => {
@@ -944,26 +956,56 @@ async function generateAppraisalSheet(tables, cycle, actor) {
   // and Appraisal_Cycle_Master ROWIDs. Resolve both keys so generation reads only
   // the feedback uploaded for this exact cycle, not a previous/closed cycle.
   const feedbackByMasterId = new Map();
+  const feedbackByEmpId = new Map();
+  const employeeMasterById = new Map(
+    employeeMasterRows.map((row) => [
+      referenceText(row.ROWID ?? row.rowid ?? row.id),
+      row,
+    ]).filter(([id]) => id),
+  );
+  const employeeMasterByEmpId = new Map(
+    employeeMasterRows.map((row) => [
+      String(fieldValue(row, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase(),
+      row,
+    ]).filter(([id]) => id),
+  );
   const feedbackCycleKeys = new Set(
     [cycle.id, cycle.sourceRowId, cycle.name]
       .map((value) => referenceText(value).toLowerCase())
       .filter(Boolean),
   );
+  const feedbackRowTime = (row) => String(
+    fieldValue(row, "MODIFIEDTIME", "CREATEDTIME", "ROWID") || "",
+  );
   feedbackRows.forEach((row) => {
-    const masterId = referenceText(
-      row.emp_ID ?? row.emp_id ?? row.employee_master_id ?? row.employee_master_row_id,
-    );
-    const feedbackCycle = referenceText(
-      row.appraisal_cycle_name ?? row.appraisal_cycle_id ?? row.cycle_id ?? row.appraisal_year,
-    ).toLowerCase();
-    if (!masterId || !feedbackCycleKeys.has(feedbackCycle)) return;
-    const previous = feedbackByMasterId.get(masterId);
-    const rowTime = String(row.MODIFIEDTIME || row.CREATEDTIME || row.ROWID || "");
-    const previousTime = previous
-      ? String(previous.MODIFIEDTIME || previous.CREATEDTIME || previous.ROWID || "")
-      : "";
-    if (!previous || rowTime.localeCompare(previousTime, undefined, { numeric: true }) >= 0) {
+    const rawEmployee = referenceText(fieldValue(
+      row, "emp_ID", "emp_id", "employee_master_id", "employee_master_row_id", "employee_id", "emp_code",
+    ));
+    const feedbackCycle = referenceText(fieldValue(
+      row, "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name", "appraisal_year",
+    )).toLowerCase();
+    if (!rawEmployee || !feedbackCycleKeys.has(feedbackCycle)) return;
+
+    // emp_ID is a lookup to Employee_Master.ROWID in current uploads, but
+    // older records may contain the employee's business ID instead.
+    const master = employeeMasterById.get(rawEmployee) ||
+      employeeMasterByEmpId.get(rawEmployee.toLowerCase());
+    const masterId = master
+      ? referenceText(master.ROWID ?? master.rowid ?? master.id)
+      : rawEmployee;
+    const empId = master
+      ? String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase()
+      : rawEmployee.toLowerCase();
+
+    const previousMaster = feedbackByMasterId.get(masterId);
+    if (!previousMaster ||
+        feedbackRowTime(row).localeCompare(feedbackRowTime(previousMaster), undefined, { numeric: true }) >= 0) {
       feedbackByMasterId.set(masterId, row);
+    }
+    const previousEmp = feedbackByEmpId.get(empId);
+    if (empId && (!previousEmp ||
+        feedbackRowTime(row).localeCompare(feedbackRowTime(previousEmp), undefined, { numeric: true }) >= 0)) {
+      feedbackByEmpId.set(empId, row);
     }
   });
   const byKey = new Map();
@@ -982,10 +1024,14 @@ async function generateAppraisalSheet(tables, cycle, actor) {
   // not exist in this table (for example performance_bonus or
   // total_reward_hike_pct). Core fields remain explicit below.
   let appraisalSheetColumns = null;
+  let appraisalSheetColumnByLower = null;
   try {
     const actualColumns = await tables.employees.getAllColumns();
     appraisalSheetColumns = new Set(
       (actualColumns || []).map((column) => String(column.column_name || "").trim()).filter(Boolean),
+    );
+    appraisalSheetColumnByLower = new Map(
+      [...appraisalSheetColumns].map((name) => [name.toLowerCase(), name]),
     );
   } catch (error) {
     console.warn("Could not inspect Appraisal_Sheet columns; using standard generation mapping:", error?.message || error);
@@ -1011,19 +1057,32 @@ async function generateAppraisalSheet(tables, cycle, actor) {
 
     // Feedback_And_Rating is the source of the three client columns. Refresh
     // them from the current cycle's uploaded data whenever the sheet is generated.
-    const feedback = feedbackByMasterId.get(masterId);
+    const feedback = feedbackByMasterId.get(masterId) ||
+      feedbackByEmpId.get(empId.toLowerCase());
     if (feedback) {
-      const feedbackFieldMap = {
-        CostCenter_Client: ["CostCenter_Client", "costcenter_client"],
-        client_manager_feedback: ["client_manager_feedback"],
-        client_rating: ["client_rating"],
-      };
-      Object.entries(feedbackFieldMap).forEach(([sheetField, feedbackFields]) => {
-        if (appraisalSheetColumns && !appraisalSheetColumns.has(sheetField)) return;
-        const value = feedbackFields
-          .map((field) => feedback[field])
+      const feedbackFieldMap = [
+        {
+          destinationAliases: ["CostCenter_Client", "cost_center_client", "costcenter_client"],
+          sourceAliases: ["CostCenter_Client", "cost_center_client", "costcenter_client"],
+        },
+        {
+          destinationAliases: ["client_manager_feedback", "clientManagerFeedback"],
+          sourceAliases: ["client_manager_feedback", "clientManagerFeedback"],
+        },
+        {
+          destinationAliases: ["client_rating", "clientRating"],
+          sourceAliases: ["client_rating", "clientRating"],
+        },
+      ];
+      feedbackFieldMap.forEach(({ destinationAliases, sourceAliases }) => {
+        const destination = appraisalSheetColumnByLower
+          ? destinationAliases.map((name) => appraisalSheetColumnByLower.get(name.toLowerCase())).find(Boolean)
+          : destinationAliases[0];
+        if (appraisalSheetColumns && !destination) return;
+        const value = sourceAliases
+          .map((name) => fieldValue(feedback, name))
           .find((candidate) => candidate !== undefined && candidate !== null && String(candidate).trim() !== "");
-        if (value !== undefined) payload[sheetField] = value;
+        if (value !== undefined) payload[destination || destinationAliases[0]] = value;
       });
     }
 
