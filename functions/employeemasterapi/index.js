@@ -558,6 +558,7 @@ async function getRoster(req, res, table) {
   const limit = Math.min(100, Math.max(1, limitValue || 20));
   const search = String(url.searchParams.get("search") || "").trim().toLowerCase();
   const statusParam = String(url.searchParams.get("status") || "").trim().toLowerCase();
+  const locationParam = String(url.searchParams.get("location") || "").trim().toLowerCase();
 
   // Employee_Master is a persistent master, not a per-cycle staging table.
   // Older imports may have created duplicate rows for the same business ID.
@@ -583,6 +584,10 @@ async function getRoster(req, res, table) {
     const status = String(row?.emp_status || row?.status || "Active").trim().toLowerCase();
     if (statusParam === "active" && status !== "active") return false;
     if (statusParam === "inactive" && status !== "inactive") return false;
+    if (locationParam) {
+      const location = String(row?.location || row?.work_location || "").trim().toLowerCase();
+      if (location !== locationParam) return false;
+    }
     if (search) {
       const searchable = [row?.emp_id, row?.employee_id, row?.emp_name, row?.designation, row?.department]
         .map((value) => String(value || "").toLowerCase()).join(" ");
