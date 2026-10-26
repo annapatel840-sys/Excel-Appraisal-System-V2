@@ -773,6 +773,7 @@ export function EmployeeMaster() {
     };
     refreshCycle();
     const onCycleChange = () => {
+
       // Remove the previous cycle's working eligibility view immediately.
       setCurrentAppraisalCycleName("");
       setEligibilityEmployees([]);
@@ -780,6 +781,7 @@ export function EmployeeMaster() {
       setRemoteEligibilityAudit(null);
       setEligibilityAuditOpen(false);
       eligibilityLoadedKeyRef.current = null;
+
       refreshCycle();
       setEligibilityReloadKey((value) => value + 1);
       setRefreshKey((value) => value + 1);
@@ -2179,9 +2181,19 @@ export function EmployeeMaster() {
 
       const nextReason = reasons.join(", ");
 
+      // A Pending row (no decision saved yet) is displayed as "No", so it must
+      // still be persisted even when the criteria result is also "No";
+      // otherwise it stays Pending and blocks Generate Appraisal Sheet.
+      const savedStatus = String(employee.eligibleStatus || "")
+        .trim()
+        .toLowerCase();
+      const isUndecided = !["eligible", "not eligible", "yes", "no"].includes(
+        savedStatus,
+      );
+
       // Only eligible_status is persisted; a differing (derived) reason is
       // refreshed locally without a PATCH.
-      if (employee.eligible === nextEligible) {
+      if (employee.eligible === nextEligible && !isUndecided) {
         if (employee.eligibleReason !== nextReason) {
           reasonOnlyChanges.push({
             empId: employee.empId,
@@ -2195,7 +2207,7 @@ export function EmployeeMaster() {
       changes.push({
         empId: employee.empId,
         name: employee.name,
-        oldEligible: employee.eligible,
+        oldEligible: isUndecided ? "Pending" : employee.eligible,
         fields: {
           Eligible: nextEligible,
           Reason: nextReason,
