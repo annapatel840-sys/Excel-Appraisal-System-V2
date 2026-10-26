@@ -176,7 +176,7 @@ function normalizeEmployeeMasterDate(value) {
   if (!text) return null;
 
   // YYYY-MM-DD (optionally followed by a time).
-  let match = text.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})(?:[T\\s].*)?$/);
+  let match = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s].*)?$/);
   if (match) {
     const y = Number(match[1]);
     const m = Number(match[2]);
@@ -192,7 +192,7 @@ function normalizeEmployeeMasterDate(value) {
   }
 
   // DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY.
-  match = text.match(/^(\\d{1,2})[\\/.-](\\d{1,2})[\\/.-](\\d{4})(?:[T\\s].*)?$/);
+  match = text.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})(?:[T\s].*)?$/);
   if (match) {
     const d = Number(match[1]);
     const m = Number(match[2]);
@@ -208,7 +208,7 @@ function normalizeEmployeeMasterDate(value) {
   }
 
   // Excel serial date.
-  if (/^\\d+(?:\\.\\d+)?$/.test(text)) {
+  if (/^\d+(?:\.\d+)?$/.test(text)) {
     const serial = Number(text);
     if (serial > 0 && serial < 2958466) {
       const date = new Date(1899, 11, 30 + Math.floor(serial));
@@ -284,7 +284,7 @@ function normalizeEmployeeMasterData(data) {
 
     const value = normalized[field];
     const number = Number(
-      String(value).replace(/[₹,%\\s,]/g, "").trim(),
+      String(value).replace(/[₹,%\s]/g, "").trim(),
     );
 
     if (!Number.isFinite(number)) {

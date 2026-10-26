@@ -350,6 +350,32 @@ function getCurrentUserMatchValues(user) {
     .filter(Boolean);
 }
 
+// ROWID of the Active, non-archived appraisal cycle ("" when none).
+async function activeCycleRowId(datastore) {
+  const cycles = await readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)).catch(function () { return []; });
+  const active = cycles.find(function (cycle) {
+    const status = String(cycle?.status ?? cycle?.cycle_status ?? "").trim().toLowerCase();
+    const archived = ["true", "1", "yes"].includes(String(cycle?.archived ?? "").trim().toLowerCase());
+    return status === "active" && !archived;
+  });
+  return active ? String(active.ROWID ?? active.rowid ?? "").trim() : "";
+}
+
+// Employee_Master ROWID for a Delegation value: a ROWID, an employee ID, or
+// "EMP002 - Ashok Kumar".
+function masterRowIdFor(value, masterRows) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const rowIdOf = function (row) { return String(row.ROWID || row.rowid || "").trim(); };
+  const exact = (masterRows || []).find(function (row) { return rowIdOf(row) === raw; });
+  if (exact) return rowIdOf(exact);
+  const empId = raw.split(/\s+-\s+/)[0].trim().toLowerCase();
+  const byEmpId = (masterRows || []).find(function (row) {
+    return String(row.emp_id || "").trim().toLowerCase() === empId;
+  });
+  return byEmpId ? rowIdOf(byEmpId) : "";
+}
+
 async function techEdOwnedEmpIds(datastore, a) {
   const owned = new Set();
   if (!a || !a.enforced || (a.scope && a.scope.all) || a.role !== "techEd") return owned;
@@ -1509,6 +1535,7 @@ async function getEmployees(req, res) {
       const activeCycleName = historyCycleName(activeCycle).toLowerCase();
       const eligibleMasterIds = new Set();
       const eligibleEmployeeIds = new Set();
+      const eligibleRecords = [];
 
       cycleEligibilityRows.forEach((record) => {
         const rawCycle = historyReference(
@@ -1538,6 +1565,7 @@ async function getEmployees(req, res) {
           .trim().toLowerCase();
         if (masterId) eligibleMasterIds.add(masterId);
         if (empId) eligibleEmployeeIds.add(empId);
+        eligibleRecords.push({ masterId: masterId, empId: empId });
       });
 
       appraisalRows = appraisalRows.filter((row) => {
@@ -1554,6 +1582,43 @@ async function getEmployees(req, res) {
         return (masterId && eligibleMasterIds.has(masterId)) ||
           (empId && eligibleEmployeeIds.has(empId));
       });
+
+      // Delegation runs before Generate Appraisal Sheet. Eligible employees
+      // without a sheet row yet are listed from Employee_Master (Tech-ED and
+      // Comp Manager come from there; Generate copies them into the sheet).
+      if (requestedView === "delegation") {
+        const onSheet = new Set();
+        appraisalRows.forEach(function (row) {
+          const masterId = historyReference(row?.emp_master_row_id).toLowerCase();
+          const empId = String(row?.emp_id || "").trim().toLowerCase();
+          if (masterId) onSheet.add("row:" + masterId);
+          if (empId) onSheet.add("emp:" + empId);
+        });
+        const masterForEligibility = await getAllEmployeeMaster(datastore);
+        const masterByRowId = new Map(masterForEligibility.map(function (row) {
+          return [String(row.ROWID || row.rowid || "").trim().toLowerCase(), row];
+        }));
+        eligibleRecords.forEach(function (record) {
+          const master = (record.masterId && masterByRowId.get(record.masterId)) ||
+            masterForEligibility.find(function (row) {
+              return String(row.emp_id || "").trim().toLowerCase() === record.empId;
+            });
+          if (!master) return;
+          const masterId = String(master.ROWID || master.rowid || "").trim();
+          const empId = String(master.emp_id || "").trim();
+          if (onSheet.has("row:" + masterId.toLowerCase()) || onSheet.has("emp:" + empId.toLowerCase())) return;
+          onSheet.add("row:" + masterId.toLowerCase());
+          onSheet.add("emp:" + empId.toLowerCase());
+          appraisalRows.push({
+            emp_id: empId,
+            emp_master_row_id: masterId,
+            cycle_id: activeCycleId,
+            eligible_status: "Eligible",
+            status: "Active",
+            sheet_generated: false,
+          });
+        });
+      }
     }
   }
 
@@ -1985,12 +2050,12 @@ async function updateEmployee(req, res) {
     masterTable.getAllRows(),
   ]);
 
+  // Appraisal_Sheet keeps rows of earlier cycles: edit the Active cycle's row.
+  // With an Active cycle and no row for it, the sheet is not generated yet.
+  const currentCycleId = await activeCycleRowId(datastore);
   const appraisalRow = (appraisalRows || []).find(function (row) {
-    return (
-      String(row.emp_id || "")
-        .trim()
-        .toLowerCase() === empId.toLowerCase()
-    );
+    if (String(row.emp_id || "").trim().toLowerCase() !== empId.toLowerCase()) return false;
+    return !currentCycleId || String(row.cycle_id || "").trim() === currentCycleId;
   });
   const masterRow = (masterRows || []).find(function (row) {
     return (
@@ -2000,7 +2065,10 @@ async function updateEmployee(req, res) {
     );
   });
 
-  if (!appraisalRow) {
+  // Before Generate Appraisal Sheet, Delegation (Tech-ED / Comp Manager) is
+  // saved on Employee_Master; Generate copies it into the sheet.
+  const beforeGenerate = !appraisalRow && isDelegationAssignmentChange && !!masterRow;
+  if (!appraisalRow && !beforeGenerate) {
     return sendJson(res, 404, {
       success: false,
       message: "Appraisal record " + empId + " not found.",
@@ -2034,7 +2102,7 @@ async function updateEmployee(req, res) {
   });
 
   const masterUpdate = { ROWID: masterRow.ROWID };
-  const appraisalUpdate = { ROWID: appraisalRow.ROWID };
+  const appraisalUpdate = { ROWID: appraisalRow ? appraisalRow.ROWID : "" };
 
   changedColumns.forEach(function (column) {
     const value = body[column];
@@ -2051,9 +2119,23 @@ async function updateEmployee(req, res) {
       return;
     }
 
+    if (column === "comp_manager" && !appraisalRow) {
+      masterUpdate.comp_manager = value;
+      return;
+    }
+
     const masterColumn = masterFieldMap[column];
     if (masterColumn) {
       masterUpdate[masterColumn] = value;
+      // Appraisal_Sheet.appraiser_tech_ed is a lookup to Employee_Master;
+      // keep the generated sheet row on the same Tech-ED.
+      if (column === "appraiser_tech_ed" && appraisalRow) {
+        const techEdRowId = masterRowIdFor(value, masterRows);
+        if (!techEdRowId && String(value || "").trim()) {
+          throw new access.HttpError(422, "Tech-ED " + value + " was not found in Employee Master.");
+        }
+        appraisalUpdate.appraiser_tech_ed = techEdRowId || null;
+      }
       return;
     }
 
@@ -2085,7 +2167,12 @@ async function updateEmployee(req, res) {
   }
 
   const merged = mergeEmployeeMasterIntoAppraisal(
-    [updatedAppraisal],
+    [updatedAppraisal || {
+      emp_id: empId,
+      emp_master_row_id: String(masterRow.ROWID || ""),
+      eligible_status: "Eligible",
+      sheet_generated: false,
+    }],
     new Map([[empId.toLowerCase(), updatedMaster]]),
   )[0];
 
