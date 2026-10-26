@@ -173,32 +173,47 @@ export function TechEdBudgetDistribution() {
 
   useEffect(() => {
     let mounted = true;
-    payrollCycleRequest("cycles")
-      .then((cycles) => {
-        if (!mounted) return;
-        const allCycles = Array.isArray(cycles) ? cycles : [];
-        setCycleRows(allCycles);
-        const active = allCycles.find((cycle) => {
-          const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
-          const archived = [true, 1, "true", "1", "yes"].includes(
-            typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
-          );
-          return status === "active" && !archived && !cycle.hidden;
+    const loadCycles = () => {
+      // Never leave a closed cycle selected while the refreshed list is loading.
+      setCycleRows([]);
+      setActiveCycleId("");
+      setCycleLoading(true);
+      payrollCycleRequest("cycles")
+        .then((cycles) => {
+          if (!mounted) return;
+          const allCycles = Array.isArray(cycles) ? cycles : [];
+          setCycleRows(allCycles);
+          const active = allCycles.find((cycle) => {
+            const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
+            const archived = [true, 1, "true", "1", "yes"].includes(
+              typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+            );
+            return status === "active" && !archived && !cycle.hidden;
+          });
+          const cycleId = active?.id ?? active?.appraisal_cycle_id ?? active?.cycle_id ?? active?.ROWID ?? "";
+          setActiveCycleId(cycleId ? String(cycleId) : "");
+        })
+        .catch((cycleError) => {
+          console.error("Failed to load appraisal cycles for Budget Distribution:", cycleError);
+          if (mounted) {
+            setCycleRows([]);
+            setActiveCycleId("");
+          }
+        })
+        .finally(() => {
+          if (mounted) setCycleLoading(false);
         });
-        const cycleId = active?.id ?? active?.appraisal_cycle_id ?? active?.cycle_id ?? active?.ROWID ?? "";
-        setActiveCycleId(cycleId ? String(cycleId) : "");
-      })
-      .catch((cycleError) => {
-        console.error("Failed to load appraisal cycles for Budget Distribution:", cycleError);
-        if (mounted) {
-          setCycleRows([]);
-          setActiveCycleId("");
-        }
-      })
-      .finally(() => {
-        if (mounted) setCycleLoading(false);
-      });
-    return () => { mounted = false; };
+    };
+    loadCycles();
+    if (typeof window !== "undefined") {
+      window.addEventListener("appraisal:cycle-updated", loadCycles);
+    }
+    return () => {
+      mounted = false;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("appraisal:cycle-updated", loadCycles);
+      }
+    };
   }, []);
 
   const liveTech = useMemo(() => {
