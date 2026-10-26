@@ -1460,8 +1460,24 @@ async function syncFeedbackToAppraisalSheet(tables, cycle, actor = "", uploadedV
     }
     return undefined;
   };
-  const idOf = (row) => String(row?.ROWID ?? row?.rowid ?? row?.id ?? row?.ID ?? "").trim();
-  const cycleIds = new Set([cycle.id, cycle.sourceRowId].map((value) => String(value || "").trim()).filter(Boolean));
+  // Catalyst lookup columns can arrive as objects instead of plain ROWID
+  // strings. Unwrap them before matching employee and cycle records; String(obj)
+  // becomes "[object Object]" and silently prevents all three fields syncing.
+  const referenceText = (value) => {
+    if (value && typeof value === "object") {
+      return String(
+        value.ROWID ?? value.rowid ?? value.id ?? value.ID ?? value.value ??
+        value.emp_id ?? value.employee_id ?? value.cycle_name ?? value.appraisal_cycle_name ?? "",
+      ).trim();
+    }
+    return String(value ?? "").trim();
+  };
+  const idOf = (row) => referenceText(row?.ROWID ?? row?.rowid ?? row?.id ?? row?.ID ?? "");
+  const cycleIds = new Set(
+    [cycle.id, cycle.sourceRowId, cycle.name]
+      .map((value) => referenceText(value))
+      .filter(Boolean),
+  );
   const masterByRowId = new Map(masterRows.map((row) => [idOf(row), row]).filter(([id]) => id));
   const masterByEmpId = new Map(
     masterRows.map((row) => [String(valueOf(row, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase(), row])
@@ -1471,9 +1487,13 @@ async function syncFeedbackToAppraisalSheet(tables, cycle, actor = "", uploadedV
   const feedbackByEmpId = new Map();
   const feedbackTime = (row) => String(valueOf(row, "MODIFIEDTIME", "CREATEDTIME", "ROWID") || "");
   feedbackRows.forEach((row) => {
-    const feedbackCycleId = String(valueOf(row, "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name") || "").trim();
-    if (!cycleIds.has(feedbackCycleId)) return;
-    const rawEmployee = String(valueOf(row, "emp_ID", "emp_id", "employee_master_row_id", "employee_id", "emp_code") || "").trim();
+    const feedbackCycleId = referenceText(
+      valueOf(row, "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name", "appraisal_year"),
+    );
+    if (!cycleIds.has(feedbackCycleId) && !cycleIds.has(feedbackCycleId.toLowerCase())) return;
+    const rawEmployee = referenceText(
+      valueOf(row, "emp_ID", "emp_id", "employee_master_row_id", "employee_id", "emp_code"),
+    );
     if (!rawEmployee) return;
     const master = masterByRowId.get(rawEmployee) || masterByEmpId.get(rawEmployee.toLowerCase());
     const masterId = master ? idOf(master) : rawEmployee;
@@ -1501,9 +1521,10 @@ async function syncFeedbackToAppraisalSheet(tables, cycle, actor = "", uploadedV
   let matched = 0;
   let skipped = 0;
   for (const sheetRow of sheetRows) {
-    if (String(sheetRow.cycle_id || "").trim() !== String(cycle.id)) continue;
-    const masterId = String(sheetRow.emp_master_row_id || "").trim();
-    const empId = String(sheetRow.emp_id || "").trim().toLowerCase();
+    const sheetCycleId = referenceText(valueOf(sheetRow, "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name"));
+    if (sheetCycleId !== referenceText(cycle.id) && sheetCycleId !== referenceText(cycle.sourceRowId)) continue;
+    const masterId = referenceText(valueOf(sheetRow, "emp_master_row_id", "employee_master_id"));
+    const empId = referenceText(valueOf(sheetRow, "emp_id", "employee_id")).toLowerCase();
     const master = masterByRowId.get(masterId) || masterByEmpId.get(empId);
     const resolvedMasterId = master ? idOf(master) : masterId;
     const feedback = feedbackByMasterId.get(resolvedMasterId) || feedbackByEmpId.get(empId);
