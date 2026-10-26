@@ -550,129 +550,69 @@ function extractCount(result) {
 // Counts are calculated separately.
 // ============================================================
 
-async function getRoster(req, res, appInstance) {
+async function getRoster(req, res, table) {
   const url = new URL(req.url, "https://" + (req.headers.host || "localhost"));
-
   const pageValue = parseInt(url.searchParams.get("page"), 10);
   const limitValue = parseInt(url.searchParams.get("limit"), 10);
-
   const page = Math.max(1, pageValue || 1);
-
   const limit = Math.min(100, Math.max(1, limitValue || 20));
+  const search = String(url.searchParams.get("search") || "").trim().toLowerCase();
+  const statusParam = String(url.searchParams.get("status") || "").trim().toLowerCase();
 
-  const search = String(url.searchParams.get("search") || "")
-    .trim()
-    .toLowerCase();
-
-  const statusParam = String(url.searchParams.get("status") || "")
-    .trim()
-    .toLowerCase();
-
-  const whereCondition = buildWhereCondition(search, statusParam);
-
-  const offset = (page - 1) * limit;
-
-  const dataQuery =
-    "SELECT * FROM " +
-    EMPLOYEE_MASTER_TABLE_NAME +
-    whereCondition +
-    " LIMIT " +
-    limit +
-    " OFFSET " +
-    offset;
-
-  const filteredCountQuery =
-    "SELECT COUNT(ROWID) FROM " + EMPLOYEE_MASTER_TABLE_NAME + whereCondition;
-
-  const totalCountQuery =
-    "SELECT COUNT(ROWID) FROM " + EMPLOYEE_MASTER_TABLE_NAME;
-
-  const activeCountQuery =
-    "SELECT COUNT(ROWID) FROM " +
-    EMPLOYEE_MASTER_TABLE_NAME +
-    " WHERE emp_status = 'Active'";
-
-  const inactiveCountQuery =
-    "SELECT COUNT(ROWID) FROM " +
-    EMPLOYEE_MASTER_TABLE_NAME +
-    " WHERE emp_status = 'Inactive'";
-
-  const zcql = appInstance.zcql();
-
-  // Run independent database queries together.
-  const results = await Promise.all([
-    zcql.executeZCQLQuery(dataQuery),
-    zcql.executeZCQLQuery(filteredCountQuery),
-    zcql.executeZCQLQuery(totalCountQuery),
-    zcql.executeZCQLQuery(activeCountQuery),
-    zcql.executeZCQLQuery(inactiveCountQuery),
-  ]);
-
-  const data = Array.isArray(results[0])
-    ? results[0].map(function (row) {
-        if (row[EMPLOYEE_MASTER_TABLE_NAME]) {
-          return row[EMPLOYEE_MASTER_TABLE_NAME];
-        }
-
-        return row;
-      })
-    : [];
-
-  const filteredCount = extractCount(results[1]);
-  const totalCount = extractCount(results[2]);
-  const activeCount = extractCount(results[3]);
-  const inactiveCount = extractCount(results[4]);
-
-  const totalPages = filteredCount === 0 ? 1 : Math.ceil(filteredCount / limit);
-
+  // Employee_Master is a persistent master, not a per-cycle staging table.
+  // Older imports may have created duplicate rows for the same business ID.
+  // Build a canonical, unique roster before filtering, counting and paginating
+  // so duplicates cannot inflate the UI's employee count or repeat across pages.
+  const allRows = await getAllRoster(table);
+  const latestByEmpId = new Map();
+  const withoutEmpId = [];
+  const rowTime = (row) => String(row?.MODIFIEDTIME || row?.CREATEDTIME || row?.ROWID || "");
+  allRows.forEach((row) => {
+    const key = String(row?.emp_id || row?.employee_id || "").trim().toLowerCase();
+    if (!key) {
+      withoutEmpId.push(row);
+      return;
+    }
+    const previous = latestByEmpId.get(key);
+    if (!previous || rowTime(row).localeCompare(rowTime(previous), undefined, { numeric: true }) >= 0) {
+      latestByEmpId.set(key, row);
+    }
+  });
+  const uniqueRows = [...latestByEmpId.values(), ...withoutEmpId];
+  const filteredRows = uniqueRows.filter((row) => {
+    const status = String(row?.emp_status || row?.status || "Active").trim().toLowerCase();
+    if (statusParam === "active" && status !== "active") return false;
+    if (statusParam === "inactive" && status !== "inactive") return false;
+    if (search) {
+      const searchable = [row?.emp_id, row?.employee_id, row?.emp_name, row?.designation, row?.department]
+        .map((value) => String(value || "").toLowerCase()).join(" ");
+      if (!searchable.includes(search)) return false;
+    }
+    return true;
+  });
+  const totalCount = uniqueRows.length;
+  const activeCount = uniqueRows.filter((row) =>
+    String(row?.emp_status || row?.status || "Active").trim().toLowerCase() === "active"
+  ).length;
+  const inactiveCount = uniqueRows.filter((row) =>
+    String(row?.emp_status || row?.status || "").trim().toLowerCase() === "inactive"
+  ).length;
+  const filteredCount = filteredRows.length;
+  const totalPages = Math.max(1, Math.ceil(filteredCount / limit));
   const safePage = Math.min(page, totalPages);
-
-  // If requested page is outside the valid range,
-  // fetch the final valid page.
-  let finalData = data;
-
-  if (safePage !== page) {
-    const safeOffset = (safePage - 1) * limit;
-
-    const safeDataQuery =
-      "SELECT * FROM " +
-      EMPLOYEE_MASTER_TABLE_NAME +
-      whereCondition +
-      " LIMIT " +
-      limit +
-      " OFFSET " +
-      safeOffset;
-
-    const safeResult = await zcql.executeZCQLQuery(safeDataQuery);
-
-    finalData = Array.isArray(safeResult)
-      ? safeResult.map(function (row) {
-          if (row[EMPLOYEE_MASTER_TABLE_NAME]) {
-            return row[EMPLOYEE_MASTER_TABLE_NAME];
-          }
-
-          return row;
-        })
-      : [];
-  }
+  const finalData = filteredRows.slice((safePage - 1) * limit, safePage * limit);
 
   sendJson(res, 200, {
     success: true,
     data: finalData,
-
     pagination: {
       page: safePage,
-      limit: limit,
+      limit,
       totalCount: filteredCount,
-      totalPages: totalPages,
+      totalPages,
       returnedCount: finalData.length,
     },
-
-    counts: {
-      total: totalCount,
-      active: activeCount,
-      inactive: inactiveCount,
-    },
+    counts: { total: totalCount, active: activeCount, inactive: inactiveCount },
   });
 }
 
@@ -683,11 +623,22 @@ async function getRoster(req, res, appInstance) {
 async function createRoster(req, res, table, employeesTable, afterWrite) {
   const body = await readRequestBody(req);
 
-  const incoming = Array.isArray(body.employees)
+  const rawIncoming = Array.isArray(body.employees)
     ? body.employees
     : Array.isArray(body)
       ? body
       : [body];
+
+  // Keep one import item per business employee ID. If a file repeats an ID,
+  // the last row wins rather than creating multiple master records in one batch.
+  const incomingByEmpId = new Map();
+  const incomingWithoutId = [];
+  rawIncoming.forEach((item) => {
+    const empId = String(item?.emp_id || "").trim().toLowerCase();
+    if (!empId) incomingWithoutId.push(item);
+    else incomingByEmpId.set(empId, item);
+  });
+  const incoming = [...incomingByEmpId.values(), ...incomingWithoutId];
 
   if (!incoming.length) {
     return sendJson(res, 400, {
@@ -1124,7 +1075,7 @@ module.exports = async function (req, res) {
 
     // GET reads only from Employee_Master.
     if (req.method === "GET") {
-      await getRoster(req, res, appInstance);
+      await getRoster(req, res, table);
       return;
     }
 
