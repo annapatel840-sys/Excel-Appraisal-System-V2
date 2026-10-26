@@ -1613,20 +1613,41 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       "joiningBonus",
       "current_joining_bonus",
     ]);
-    const previousPerformance = amount([
-      "previous_year_performance_bonus",
-      "previous_year_pb",
-      "previous_pb",
-      "pb_to_be_paid",
-      "pbToBePaid",
-    ]);
-    const previousRetention = amount([
-      "previous_year_retention_bonus",
-      "previous_year_rb",
-      "previous_rb",
-      "rb_to_be_paid",
-      "rbToBePaid",
-    ]);
+    // PB/RB to be paid are historical amounts. Read them only from the
+    // employee's latest prior Closed/Archived/Completed Payroll_Data row;
+    // current Appraisal_Sheet values belong to this cycle and must not leak
+    // into the previous-year fields.
+    const previousPerformance = previousRecord
+      ? n(firstNonZeroValue(previousRecord, [
+          "pb_to_be_paid",
+          "pbToBePaid",
+          "previous_year_performance_bonus",
+          "previous_year_pb",
+          "previous_pb",
+          "performance_bonus",
+          "performance_bonus_amount",
+          "target_pb_allocated_for_may",
+          "targetPBAllocatedForMay",
+          "allocated_pb_amount",
+          "allocatedPBAmount",
+          "allocated_pb",
+          "total_pb",
+          "totalPB",
+        ]))
+      : 0;
+    const previousRetention = previousRecord
+      ? n(firstNonZeroValue(previousRecord, [
+          "rb_to_be_paid",
+          "rbToBePaid",
+          "previous_year_retention_bonus",
+          "previous_year_rb",
+          "previous_rb",
+          "retention_bonus",
+          "retention_bonus_amount",
+          "new_rb",
+          "newRB",
+        ]))
+      : 0;
     const previousJoining = amount([
       "previous_year_joining_bonus",
       "previous_year_jb",
@@ -2400,11 +2421,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
           ["original_headcount", "allocation_headcount"],
           rosterCount,
         );
-        if (rosterCount > 0 && !saved) {
-          throw new Error(
-            "Cannot preserve Tech-Ed Original Count: Budget_Distribution must have an original_headcount or allocation_headcount column.",
-          );
-        }
+        // Older deployments may not yet have the dedicated snapshot column.
+        // Do not turn an otherwise valid budget read into HTTP 500; the schema
+        // must include original_headcount (preferred) for cross-refresh persistence.
       }
       await persistOptional(
         distributionTable,
@@ -2546,11 +2565,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
           ["original_headcount", "allocation_headcount"],
           rosterCount,
         );
-        if (rosterCount > 0 && !saved) {
-          throw new Error(
-            "Cannot preserve Comp Manager Original Count: Budget_Distribution_Comp must have an original_headcount or allocation_headcount column.",
-          );
-        }
+        // Older deployments may not yet have the dedicated snapshot column.
+        // Keep the API available while schema migration is pending.
       }
       await persistOptional(
         compTable,
@@ -2700,11 +2716,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         ["original_headcount", "allocation_headcount"],
         appraisalSheetEmployees.length,
       );
-      if (appraisalSheetEmployees.length > 0 && !saved) {
-        throw new Error(
-          "Cannot preserve Org Original Count: Budget_Master must have an original_headcount or allocation_headcount column.",
-        );
-      }
+      // Older deployments may not yet have the dedicated snapshot column.
+      // Keep the budget calculation available while schema migration is pending.
     }
     await persistOptional(
       masterTable,
