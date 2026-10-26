@@ -302,8 +302,9 @@ export function BudgetDistributionPage() {
     }).catch((cycleError) => {
       console.error("Failed to load Budget Distribution cycle:", cycleError);
       if (mounted) {
-        setActiveCycleId(String(budgetMasterRows[0]?.appraisal_cycle_id || ""));
-        setCycleLabel(String(budgetMasterRows[0]?.appraisal_cycle_name || budgetMasterRows[0]?.cycle_name || "Cycle unavailable"));
+        // A failed cycle lookup must never expose a previous cycle's budget.
+        setActiveCycleId("");
+        setCycleLabel("No active cycle");
       }
     });
     return () => { mounted = false; };
@@ -369,7 +370,7 @@ export function BudgetDistributionPage() {
   const rows = useMemo(() => {
     const unique = new Map();
     [...budgetRows]
-      .filter((row) => !activeCycleId || String(row.appraisal_cycle_id || "") === activeCycleId)
+      .filter((row) => Boolean(activeCycleId) && String(row.appraisal_cycle_id || "") === activeCycleId)
       .forEach((row) => {
         const identity = resolveTechRecord(row.tech_ed_id);
         if (!identity) return;
