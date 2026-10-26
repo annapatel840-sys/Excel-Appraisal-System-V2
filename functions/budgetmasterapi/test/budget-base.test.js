@@ -228,7 +228,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(Number(changedComp.current_headcount), 22, 'Comp Manager Current Count follows current eligible sheet rows');
   });
 
-  await t('repairs legacy 30-count snapshots to 23 sheet rows while current count is 22', async () => {
+  await t('preserves saved original counts even when delegation or eligibility changes the live roster', async () => {
     const employeeMaster = Array.from({ length: 30 }, (_, i) => ({
       emp_id: 'E' + (i + 1),
       emp_name: 'Employee ' + (i + 1),
@@ -262,13 +262,13 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
 
     const r = await get(load(store));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(Number(r.json.master[0].original_headcount), 23, 'legacy Org baseline is repaired from the full sheet roster');
+    assert.strictEqual(Number(r.json.master[0].original_headcount), 30, 'saved Org Original Count is never rewritten during a live refresh');
     assert.strictEqual(Number(r.json.master[0].current_headcount), 22, 'Org Current Count excludes the ineligible sheet employee');
     const tech = r.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1');
-    assert.strictEqual(Number(tech.original_headcount), 23, 'legacy Tech-Ed baseline is repaired from sheet rows');
+    assert.strictEqual(Number(tech.original_headcount), 30, 'saved Tech-Ed Original Count is never rewritten during a live refresh');
     assert.strictEqual(Number(tech.current_headcount), 22);
     const comp = r.json.compManager.find((row) => row.comp_manager === 'C1');
-    assert.strictEqual(Number(comp.original_headcount), 23, 'legacy Comp Manager baseline is repaired from sheet rows');
+    assert.strictEqual(Number(comp.original_headcount), 30, 'saved Comp Manager Original Count is never rewritten during a live refresh');
     assert.strictEqual(Number(comp.current_headcount), 22);
   });
 
