@@ -335,6 +335,17 @@ function normalizeCycle(row) {
       row.appraisalYear ||
       "",
   ).trim();
+  const rawStatus = String(row.status || "Upcoming").trim();
+  const statusKey = rawStatus.toLowerCase();
+  const status =
+    statusKey === "active" ? "Active" :
+    statusKey === "closed" ? "Closed" :
+    statusKey === "upcoming" ? "Upcoming" :
+    rawStatus;
+  const isTruthyFlag = (value) =>
+    [true, 1, "true", "1", "yes"].includes(
+      typeof value === "string" ? value.trim().toLowerCase() : value,
+    );
   return {
     id,
     sourceRowId,
@@ -342,11 +353,12 @@ function normalizeCycle(row) {
     effective: row.effective_date || row.effectiveDate || "",
     start: row.start_date || row.startDate || "",
     end: row.end_date || row.endDate || "",
-    status: row.status || "Upcoming",
+    status,
     remarks: row.remarks || "",
     changedBy: row.changed_by || "",
     changedAt: row.changed_at || "",
-    archived: row.archived === true || row.archived === "true",
+    archived: isTruthyFlag(row.archived),
+    hidden: isTruthyFlag(row.hidden),
     type: row.cycle_type || "",
     process: row.process || "",
     cancelReason: row.cancel_reason || cancelReasonFromRemarks(row),
