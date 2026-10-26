@@ -2930,6 +2930,13 @@ module.exports = async function (req, res) {
           message: "The parent Tech-Ed budget allocation was not found.",
         });
       }
+      const parentCycleId = String(value(parent, "appraisal_cycle_id") || "").trim();
+      if (
+        parentCycleId !== activeCycleIdForWrite &&
+        parentCycleId.toLowerCase() !== activeCycleNameForWrite
+      ) {
+        throw new access.HttpError(409, "Comp Manager budgets can only be created under the Active appraisal cycle.");
+      }
       const adminScope = Boolean(a && a.scope && a.scope.all);
       if (
         a.enforced &&
