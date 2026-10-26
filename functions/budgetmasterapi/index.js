@@ -2001,13 +2001,14 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       cycle.archived !== true &&
       String(cycle.archived || "").toLowerCase() !== "true",
   );
-  const rosterCycleId =
-    cycleIdOf(activeRosterCycle) ||
-    String(bundle.master[0]?.appraisal_cycle_id || "");
+  // Only an explicitly Active cycle may drive current budget screens.
+  // Never infer the current cycle from the newest/first historical Budget_Master
+  // row: when all cycles are closed, current working data must be empty.
+  const rosterCycleId = cycleIdOf(activeRosterCycle);
   bundle.active_appraisal_cycle_id = rosterCycleId;
   const rosterForCycle = rosterCycleId
     ? employeesForBudgetCycle(rosterCycleId)
-    : employees;
+    : [];
   bundle.employeeRoster = rosterForCycle
     .filter((employee) => employee.in_appraisal_sheet)
     .map((employee) => ({
