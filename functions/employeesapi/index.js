@@ -1619,7 +1619,26 @@ async function getEmployees(req, res) {
           });
         });
       }
+    } else {
+      // No Active cycle means there is no current appraisal sheet to display.
+      // Keep archived Appraisal_Sheet rows in storage for history/payroll, but
+      // never leak them into the current grid between cycles.
+      appraisalRows = [];
     }
+
+    // Defensive de-duplication: one current sheet row per employee, even if
+    // older data already contains duplicate records for the same active cycle.
+    const uniqueCurrentRows = new Map();
+    appraisalRows.forEach((row) => {
+      const masterId = historyReference(
+        row?.emp_master_row_id ?? row?.employee_master_id,
+      ).toLowerCase();
+      const empId = String(row?.emp_id ?? row?.employee_id ?? "").trim().toLowerCase();
+      const key = masterId ? "master:" + masterId : empId ? "emp:" + empId : "";
+      if (!key) return;
+      if (!uniqueCurrentRows.has(key)) uniqueCurrentRows.set(key, row);
+    });
+    appraisalRows = [...uniqueCurrentRows.values()];
   }
 
   /* ==========================================================
