@@ -1998,8 +1998,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       )
         .trim()
         .toLowerCase() === "active" &&
-      cycle.archived !== true &&
-      String(cycle.archived || "").toLowerCase() !== "true",
+      ![true, 1, "true", "1", "yes"].includes(
+        typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+      ) &&
+      ![true, 1, "true", "1", "yes"].includes(
+        typeof cycle.hidden === "string" ? cycle.hidden.trim().toLowerCase() : cycle.hidden,
+      ),
   );
   // Only an explicitly Active cycle may drive current budget screens.
   // Never infer the current cycle from the newest/first historical Budget_Master
