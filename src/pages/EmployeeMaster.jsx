@@ -1947,6 +1947,7 @@ export function EmployeeMaster() {
       (item) => normalizeEmpId(item.empId) === normalizeEmpId(change.empId),
     );
     const cycleId = String(
+      eligibilityCycleId ||
       employee?.appraisalCycleId ||
       employee?.rawEmployee?.appraisal_cycle_id ||
       employee?.rawEmployee?.appraisalCycleId ||
@@ -2272,27 +2273,53 @@ export function EmployeeMaster() {
     }
 
     try {
-      const results = await Promise.allSettled(
-        changes.map((change) => persistEligibilityChange(change, "Criteria")),
+      if (!eligibilityCycleId) {
+        throw new Error(
+          "The active appraisal cycle ID is missing. Reload the Eligibility List before applying criteria.",
+        );
+      }
+
+      // Use the backend's batch endpoint with an explicit cycle ID. This avoids
+      // deriving a foreign key from each mapped employee and returns a result
+      // for every employee so failed writes cannot be reported as success.
+      const saveResult = await updateEligibilityRecords(
+        changes.map((change) => ({
+          empId: change.empId,
+          eligible_status: change.fields?.Eligible === "Yes" ? "Eligible" : "Not Eligible",
+          reason: change.fields?.Reason || "",
+          source: "Criteria",
+        })),
+        eligibilityCycleId,
+        "Criteria",
       );
 
+      const rowResults = Array.isArray(saveResult?.rows) ? saveResult.rows : [];
+      const resultByEmpId = new Map(
+        rowResults.map((row) => [normalizeEmpId(row.empId), row]),
+      );
       const successfulChanges = [];
-      let failedCount = 0;
+      const failedRows = [];
 
-      results.forEach((result, index) => {
-        if (result.status === "fulfilled") {
-          successfulChanges.push(result.value);
-
+      changes.forEach((change) => {
+        const result = resultByEmpId.get(normalizeEmpId(change.empId));
+        if (result?.ok) {
+          const savedChange = {
+            empId: change.empId,
+            name: change.name,
+            fields: change.fields,
+          };
+          successfulChanges.push(savedChange);
           addEligibilityAudit({
-            empId: result.value.empId,
-            employeeName: result.value.name,
-            oldValue: changes[index].oldEligible,
-            newValue: result.value.fields?.Eligible,
+            empId: change.empId,
+            employeeName: change.name,
+            oldValue: change.oldEligible,
+            newValue: change.fields?.Eligible === "Yes" ? "Eligible" : "Not Eligible",
           });
         } else {
-          failedCount += 1;
-
-          console.error("Eligibility criteria update failed:", result.reason);
+          failedRows.push({
+            empId: change.empId,
+            reason: result?.reason || "No success confirmation returned by the backend.",
+          });
         }
       });
 
@@ -2300,22 +2327,41 @@ export function EmployeeMaster() {
         applyLocalEligibilityChanges(successfulChanges);
       }
 
-      if (failedCount > 0) {
+      // Read the same cycle back from Catalyst after writing. Do not claim
+      // criteria are applied unless persisted statuses no longer contain Pending.
+      const verification = await fetchEligibilityEmployees({
+        page: 1,
+        limit: 1000,
+        search: "",
+        cycleId: eligibilityCycleId,
+      });
+      const verifiedRows = Array.isArray(verification?.data) ? verification.data : [];
+      setEligibilityEmployees(verifiedRows);
+      const pendingRows = verifiedRows.filter((employee) => {
+        const status = String(employee.eligibleStatus || "").trim().toLowerCase();
+        return !["eligible", "not eligible", "yes", "no"].includes(status);
+      });
+
+      const firstFailure = failedRows[0];
+      if (failedRows.length || pendingRows.length) {
+        const detail = firstFailure
+          ? ` First save failure: ${firstFailure.empId}: ${firstFailure.reason}`
+          : "";
         showBanner(
-          "Criteria partially applied",
-          `${successfulChanges.length} employee(s) updated in Catalyst. ${failedCount} employee(s) failed.`,
+          "Eligibility verification failed",
+          `${successfulChanges.length} employee(s) saved; ${failedRows.length} save(s) failed and ${pendingRows.length} employee(s) still have Pending/unknown status.${detail} Appraisal Sheet generation will remain blocked until these are resolved.`,
           true,
         );
       } else {
         showBanner(
-          "Criteria applied",
-          `${successfulChanges.length} employee(s) eligibility updated in Catalyst. Active/Inactive status was not changed.`,
+          "Criteria applied and verified",
+          `${verifiedRows.length} employee(s) reloaded from Catalyst; no Pending eligibility decisions remain for this cycle.`,
         );
       }
     } catch (error) {
       showBanner(
         "Criteria update failed",
-        error?.message || "Unable to save eligibility changes to Catalyst.",
+        error?.message || "Unable to save and verify eligibility decisions in Catalyst.",
         true,
       );
     }
