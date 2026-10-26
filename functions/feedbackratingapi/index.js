@@ -159,6 +159,7 @@ function shapeFeedback(row, masterByRowId, masterByEmpId, cycleById) {
     gm: num(col(row, "gross_margin")),
     client: text(col(row, "CostCenter_Client")),
     cm: text(col(row, "Client_Manager")),
+    cmf: text(col(row, "client_manager_feedback")),
     cr: num(col(row, "client_rating")),
     cf: text(col(row, "client_feedback")),
     risk: ["yes", "y", "true", "1"].includes(yesNo) ? "Yes" : "No",

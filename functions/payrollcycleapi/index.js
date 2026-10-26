@@ -1947,6 +1947,7 @@ function shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById) {
     gm: fbNum(fbCol(row, "gross_margin")),
     client: fbText(fbCol(row, "CostCenter_Client")),
     cm: fbText(fbCol(row, "Client_Manager")),
+    cmf: fbText(fbCol(row, "client_manager_feedback")),
     cr: fbNum(fbCol(row, "client_rating")),
     cf: fbText(fbCol(row, "client_feedback")),
     risk: ["yes", "y", "true", "1"].includes(yesNo) ? "Yes" : "No",

@@ -86,9 +86,24 @@ const nextId = () => `a${Date.now()}-${seq++}`;
 CATALYST API
 ============================================================ */
 
-/* Manager Rating (1-5) per employee for the current cycle, read from
-   Feedback_And_Rating (table 74008000000022041). Returns null if unavailable. */
-async function loadManagerRatings() {
+/* Client Rating column = "client_rating - client_feedback" (either part alone
+   when the other is empty). */
+function formatClientRating(rating, feedback) {
+  const n = Number(rating);
+  const r = Number.isFinite(n) && n > 0 ? String(Math.round(n * 100) / 100) : "";
+  const f = String(feedback ?? "").trim();
+  return r && f ? `${r} - ${f}` : r || f;
+}
+
+/* Current-cycle Feedback_And_Rating data per employee (table 74008000000022041),
+   from the existing loadFeedbackRating() call. Returns
+     { ratings: Map(empId -> manager rating 1-5),
+       client:  Map(empId -> { costCenterClient, clientManager, clientRating }) }
+   or null if the table is unavailable (the sheet then loads without it).
+     costCenterClient = CostCenter_Client
+     clientManager    = client_manager_feedback
+     clientRating     = client_rating - client_feedback */
+async function loadCurrentCycleFeedback() {
   try {
     const data = await loadFeedbackRating();
     const cycles = data?.cycles || [];
@@ -98,17 +113,29 @@ async function loadManagerRatings() {
       String(c.status ?? "").trim().toLowerCase() === "active" &&
       !["true", "1", "yes"].includes(String(c.archived ?? "").trim().toLowerCase())
     );
-    const map = new Map();
-    if (!current) return map;
+    const ratings = new Map();
+    const client = new Map();
+    if (!current) return { ratings, client };
     (data?.rows || []).forEach((row) => {
       if (String(row.cid) !== String(current.id)) return;
-      const rating = normalizeManagerRating(row.mr);
       const key = String(row.id || "").trim().toLowerCase();
-      if (key && rating) map.set(key, rating);
+      if (!key) return;
+
+      const rating = normalizeManagerRating(row.mr);
+      if (rating) ratings.set(key, rating);
+
+      const next = {
+        costCenterClient: String(row.client ?? "").trim(),
+        clientManager: String(row.cmf ?? "").trim(),
+        clientRating: formatClientRating(row.cr, row.cf),
+      };
+      if (next.costCenterClient || next.clientManager || next.clientRating) {
+        client.set(key, next);
+      }
     });
-    return map;
+    return { ratings, client };
   } catch (error) {
-    console.warn("Could not load Manager Rating from Feedback_And_Rating:", error);
+    console.warn("Could not load Feedback_And_Rating data:", error);
     return null;
   }
 }
@@ -1151,7 +1178,8 @@ export function AppraisalProvider({ children }) {
 
       // Manager Rating comes from the Feedback_And_Rating table (current
       // cycle). If that table cannot be read, the sheet still loads.
-      const ratingByEmp = await loadManagerRatings();
+      const feedback = await loadCurrentCycleFeedback();
+      const ratingByEmp = feedback ? feedback.ratings : null;
 
       if (requestId !== loadSeqRef.current) {
         return;
@@ -1163,6 +1191,17 @@ export function AppraisalProvider({ children }) {
           managerRating: ratingByEmp
             ? ratingByEmp.get(String(employee.empId).trim().toLowerCase()) || ""
             : employee.managerRating,
+          // Cost Center/Client, Client Manager Feedback and Client Rating come
+          // from Feedback_And_Rating (CostCenter_Client, client_manager_feedback,
+          // client_rating - client_feedback). Empty when the employee has no row.
+          ...(feedback
+            ? {
+                costCenterClient: "",
+                clientManager: "",
+                clientRating: "",
+                ...(feedback.client.get(String(employee.empId).trim().toLowerCase()) || {}),
+              }
+            : {}),
         })),
         rowsRef.current,
         pendingCellsRef.current,
