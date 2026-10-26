@@ -67,21 +67,38 @@ export function useEmployeeFeedback(empId) {
   useEffect(() => {
     let cancelled = false;
 
-    loadAll()
-      .then((map) => {
-        if (!cancelled) setState({ status: "ready", map, error: "" });
-      })
-      .catch((error) => {
-        if (cancelled) return;
-        setState({
-          status: error?.status === 403 ? "denied" : "error",
-          map: null,
-          error: error?.message || "Could not load feedback.",
+    const load = () => {
+      setState({ status: "loading", map: null, error: "" });
+      loadAll()
+        .then((map) => {
+          if (!cancelled) setState({ status: "ready", map, error: "" });
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          setState({
+            status: error?.status === 403 ? "denied" : "error",
+            map: null,
+            error: error?.message || "Could not load feedback.",
+          });
         });
-      });
+    };
+
+    const reloadAfterUpload = () => {
+      // Invalidate this page-lifetime cache after a row is inserted/replaced.
+      cachePromise = null;
+      load();
+    };
+
+    load();
+    if (typeof window !== "undefined") {
+      window.addEventListener("appraisal:feedback-data-updated", reloadAfterUpload);
+    }
 
     return () => {
       cancelled = true;
+      if (typeof window !== "undefined") {
+        window.removeEventListener("appraisal:feedback-data-updated", reloadAfterUpload);
+      }
     };
   }, []);
 
