@@ -191,12 +191,17 @@ export function BudgetProvider({ children }) {
       const masterRows = Array.isArray(budgetJson && budgetJson.master)
         ? budgetJson.master
         : [];
-      setActiveBudgetCycleId(String(budgetJson?.active_appraisal_cycle_id || ""));
+      setActiveBudgetCycleId(activeCycleId);
       const compRows = Array.isArray(budgetJson && budgetJson.compManager)
         ? budgetJson.compManager
         : [];
-      const normalizedTechEd = techEdRows.map(normalizeRow);
-      const normalizedMaster = masterRows.map(normalizeRow);
+      const activeCycleId = String(budgetJson?.active_appraisal_cycle_id || "").trim();
+      const normalizedTechEd = techEdRows.map(normalizeRow).filter((row) =>
+        Boolean(activeCycleId) && String(row.appraisal_cycle_id || "").trim() === activeCycleId
+      );
+      const normalizedMaster = masterRows.map(normalizeRow).filter((row) =>
+        Boolean(activeCycleId) && String(row.appraisal_cycle_id || "").trim() === activeCycleId
+      );
       const normalizedComp = compRows.map((row) => ({
         ...row,
         id: String(row.id || ""),
@@ -211,7 +216,9 @@ export function BudgetProvider({ children }) {
           number(row.applied_budget) > 0
             ? (number(row.total_utilization) / number(row.applied_budget)) * 100
             : 0,
-      }));
+      })).filter((row) =>
+        Boolean(activeCycleId) && String(row.appraisal_cycle_id || "").trim() === activeCycleId
+      );
       // Keep the existing budgetRows API shape for current screens, while
       // exposing the three relational levels to every budget consumer.
       setBudgetRows(normalizedTechEd);
@@ -219,10 +226,10 @@ export function BudgetProvider({ children }) {
       setBudgetDistributionRows(normalizedTechEd);
       setBudgetCompManagerRows(normalizedComp);
 
-      const apiEmployees = Array.isArray(employeeResult.employees)
+      const apiEmployees = activeCycleId && Array.isArray(employeeResult.employees)
         ? employeeResult.employees
         : [];
-      const rosterEmployees = Array.isArray(
+      const rosterEmployees = activeCycleId && Array.isArray(
         budgetJson && budgetJson.employeeRoster,
       )
         ? budgetJson.employeeRoster
