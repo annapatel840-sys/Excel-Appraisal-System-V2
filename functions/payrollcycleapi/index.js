@@ -666,7 +666,9 @@ async function saveEligibilityRow(tables, body, actor) {
   const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
   const cycle = cycles.find((item) => item.id === cycleId);
   if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
-  if (cycle.archived) throw new ApiError("Archived cycles are read-only.", 409);
+  if (cycle.status !== "Active" || cycle.archived) {
+    throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
+  }
 
   const masters = await getAllRows(tables.employeeMaster);
   const master = masters.find((row) => String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase());
@@ -720,7 +722,9 @@ async function saveEligibilityRowsBatch(tables, body, actor) {
   const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
   const cycle = cycles.find((item) => item.id === cycleId);
   if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
-  if (cycle.archived) throw new ApiError("Archived cycles are read-only.", 409);
+  if (cycle.status !== "Active" || cycle.archived) {
+    throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
+  }
 
   const [masters, allEligibility] = await Promise.all([
     getAllRows(tables.employeeMaster),
@@ -887,7 +891,9 @@ function resolveEmployeeReference(value, masterRows) {
 
 async function generateAppraisalSheet(tables, cycle, actor) {
   if (!cycle?.id) throw new ApiError("Select an appraisal cycle before generating the sheet.", 400);
-  if (cycle.archived) throw new ApiError("Archived cycles cannot generate an Appraisal Sheet.", 409);
+  if (cycle.status !== "Active" || cycle.archived) {
+    throw new ApiError("Generate the Appraisal Sheet only for the Active appraisal cycle.", 409);
+  }
 
   const cycleEligibilityRows = await getEligibilityRows(tables, cycle, actor);
   // Only employees whose decision is still Pending should block generation.
