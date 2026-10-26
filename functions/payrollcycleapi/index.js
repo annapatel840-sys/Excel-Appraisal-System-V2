@@ -893,12 +893,18 @@ async function generateAppraisalSheet(tables, cycle, actor) {
   // Explicit Not Eligible decisions are valid and are intentionally excluded
   // from the generated sheet; legacy eligible_status/eligibility aliases are
   // normalized by eligibilityStatusOf() as well.
-  const pendingCount = cycleEligibilityRows.filter(
+  const pendingRows = cycleEligibilityRows.filter(
     (row) => eligibilityStatusOf(row) === "Pending",
-  ).length;
-  if (pendingCount) {
+  );
+  if (pendingRows.length) {
+    const pendingIds = pendingRows
+      .map((row) => String(row.empId || row.emp_id || "").trim())
+      .filter(Boolean);
+    const sample = pendingIds.length
+      ? ` Pending employee IDs: ${pendingIds.slice(0, 20).join(", ")}${pendingIds.length > 20 ? ", ..." : ""}.`
+      : "";
     throw new ApiError(
-      `Apply eligibility criteria for this cycle before generating the Appraisal Sheet. ${pendingCount} active employee(s) still need evaluation.`,
+      `Apply eligibility criteria for this cycle before generating the Appraisal Sheet. ${pendingRows.length} active employee(s) still need evaluation.${sample}`,
       409,
     );
   }
