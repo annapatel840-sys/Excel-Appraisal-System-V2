@@ -1212,20 +1212,21 @@ export function AppraisalProvider({ children }) {
   }, [loadEmployees]);
 
   useEffect(() => {
-    const refreshAfterPayrollUpload = () => {
-      loadEmployees();
+    const refreshAfterCycleOrPayrollChange = async () => {
+      await loadEmployees();
+      await refreshAuditHistory();
     };
     if (typeof window !== "undefined") {
-      window.addEventListener("appraisal:payroll-data-updated", refreshAfterPayrollUpload);
-      window.addEventListener("appraisal:cycle-updated", refreshAfterPayrollUpload);
+      window.addEventListener("appraisal:payroll-data-updated", refreshAfterCycleOrPayrollChange);
+      window.addEventListener("appraisal:cycle-updated", refreshAfterCycleOrPayrollChange);
     }
     return () => {
       if (typeof window !== "undefined") {
-        window.removeEventListener("appraisal:payroll-data-updated", refreshAfterPayrollUpload);
-        window.removeEventListener("appraisal:cycle-updated", refreshAfterPayrollUpload);
+        window.removeEventListener("appraisal:payroll-data-updated", refreshAfterCycleOrPayrollChange);
+        window.removeEventListener("appraisal:cycle-updated", refreshAfterCycleOrPayrollChange);
       }
     };
-  }, [loadEmployees]);
+  }, [loadEmployees, refreshAuditHistory]);
 
 
 
@@ -1275,6 +1276,19 @@ export function AppraisalProvider({ children }) {
       }
 
       try {
+        const cycles = await payrollCycleRequest("cycles");
+        const activeCycle = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
+          const status = String(cycle?.status ?? cycle?.cycle_status ?? "").trim().toLowerCase();
+          const archived = [true, 1, "true", "1", "yes"].includes(
+            typeof cycle?.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle?.archived,
+          );
+          return status === "active" && !archived && !cycle?.hidden;
+        });
+        APPRAISAL_YEAR = String(activeCycle?.name || activeCycle?.cycle_name || activeCycle?.appraisal_year || "").trim();
+        if (!APPRAISAL_YEAR) {
+          if (!cancelled) setAudit([]);
+          return;
+        }
         const records = await fetchAuditHistoryFromCatalyst();
 
         if (cancelled) {
