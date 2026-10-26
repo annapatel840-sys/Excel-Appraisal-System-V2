@@ -1798,16 +1798,9 @@ export function DetailScreenPage({
                                 if (payErr.pb) setPayErr((e) => ({ ...e, pb: "" }));
                               }}
                               onCommit={(v) => {
+                                // Same as the Appraisal Sheet: a value below
+                                // "PB to be Paid" is flagged (red) but kept.
                                 const n = parseAmount(v);
-                                if ((Number(n) || 0) < payFloors.pbFloor) {
-                                  setPayErr((e) => ({
-                                    ...e,
-                                    pb: `PB can't be less than PB to be Paid (${fmt(payFloors.pbFloor)}). Not saved.`,
-                                  }));
-                                  setPayReset((r) => ({ ...r, pb: r.pb + 1 }));
-                                  clearDraft(["pbStr"]);
-                                  return;
-                                }
                                 setPayErr((e) => ({ ...e, pb: "" }));
                                 commit("allocatedPBAmount", n);
                                 clearDraft(["pbStr"]);
@@ -1842,7 +1835,7 @@ export function DetailScreenPage({
                           >
                             {payErr.pb ||
                               (livePB < payFloors.pbFloor
-                                ? `Below PB to be Paid (${fmt(payFloors.pbFloor)}) — not allowed`
+                                ? `Below PB to be Paid (${fmt(payFloors.pbFloor)})`
                                 : `Preloaded · less than this → ${fmt(payFloors.pbFloor)} paid`)}
                           </span>
                         </FieldRow>
@@ -1880,16 +1873,9 @@ export function DetailScreenPage({
                               if (payErr.rb) setPayErr((e) => ({ ...e, rb: "" }));
                             }}
                             onCommit={(v) => {
+                              // Same as the Appraisal Sheet: a value below
+                              // "RB to be Paid" is flagged (red) but kept.
                               const n = Number(String(v).replace(/[^0-9.]/g, "")) || 0;
-                              if (n < payFloors.rbFloor) {
-                                setPayErr((e) => ({
-                                  ...e,
-                                  rb: `RB can't be less than RB to be Paid (${fmt(payFloors.rbFloor)}). Not saved.`,
-                                }));
-                                setPayReset((r) => ({ ...r, rb: r.rb + 1 }));
-                                clearDraft(["rbStr"]);
-                                return;
-                              }
                               setPayErr((e) => ({ ...e, rb: "" }));
                               commit("newRB", n);
                               clearDraft(["rbStr"]);
@@ -1907,7 +1893,7 @@ export function DetailScreenPage({
                           >
                             {payErr.rb ||
                               (liveRB < payFloors.rbFloor
-                                ? `Below RB to be Paid (${fmt(payFloors.rbFloor)}) — not allowed`
+                                ? `Below RB to be Paid (${fmt(payFloors.rbFloor)})`
                                 : `Preloaded · less than this → ${fmt(payFloors.rbFloor)} paid`)}
                           </span>
                         </FieldRow>

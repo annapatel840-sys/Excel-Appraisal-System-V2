@@ -75,8 +75,18 @@ export function TypingHistoryPopup({
       if (!node) return;
       const cw = node.offsetWidth;
       const ch = node.offsetHeight;
-      const top = Math.round(topOffset + 8);
-      let left = window.innerWidth - cw - 60;
+      // Always keep the whole box on screen (the page may be scrolled, e.g.
+      // when the History panel is open, so the grid's top can be negative).
+      const top = Math.round(
+        Math.min(
+          Math.max(8, topOffset + 8),
+          Math.max(8, window.innerHeight - ch - 8),
+        ),
+      );
+      let left = Math.min(
+        window.innerWidth - cw - 60,
+        window.innerWidth - cw - 8,
+      );
       const r = anchorEl?.getBoundingClientRect();
       if (r) {
         const hit = !(
@@ -115,7 +125,7 @@ export function TypingHistoryPopup({
       role="dialog"
       aria-label="Appraisal history while typing"
       style={{ left: pos.left, top: pos.top }}
-      className="pointer-events-none fixed z-[9999] max-w-[420px] rounded-lg border border-[#c9d8ec] bg-white p-1.5 text-[10px] shadow-[0_10px_30px_rgba(16,42,67,.2)]"
+      className="pointer-events-none fixed z-[2147483000] box-border w-max max-w-[calc(100vw-16px)] overflow-hidden rounded-lg border border-[#c9d8ec] bg-white p-1.5 text-[10px] shadow-[0_10px_30px_rgba(16,42,67,.2)]"
     >
       <h6 className="mb-[3px] flex items-center justify-between gap-2 text-[11px] font-extrabold text-[#102a43]">
         <span className="whitespace-nowrap">{employeeName}</span>
@@ -158,6 +168,7 @@ export function TypingHistoryPopup({
       ) : error && !rows.length ? (
         <p className="px-1 py-2 text-[10px] text-[#b42318]">{error}</p>
       ) : (
+        <div className="max-w-full overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr>
@@ -269,6 +280,7 @@ export function TypingHistoryPopup({
             </tr>
           </tbody>
         </table>
+        </div>
       )}
     </div>,
     document.body,
