@@ -1204,20 +1204,20 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     : [];
   // Legacy deployments may have one sheet roster with no cycle key. Use that
   // only when the Active cycle has no explicitly tagged rows.
-  const hasUnscopedSheetRows = appraisalRows.some((row) =>
-    !cycleReference(firstValue(row, [
-      "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name",
-      "cycleId", "appraisalCycleId", "appraisalCycleName",
-    ])),
-  );
+  const sheetCycleReference = (row) => cycleReference(firstValue(row, [
+    "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name",
+    "cycleId", "appraisalCycleId", "appraisalCycleName",
+  ]));
+  const hasUnscopedSheetRows = appraisalRows.some((row) => !sheetCycleReference(row));
+  const hasCycleTaggedSheetRows = appraisalRows.some((row) => Boolean(sheetCycleReference(row)));
+  const unscopedSheetRows = appraisalRows.filter((row) => !sheetCycleReference(row));
   const currentAppraisalRows = cycleScopedSheetRows.length
     ? cycleScopedSheetRows
-    : hasUnscopedSheetRows
-      ? appraisalRows.filter((row) => !cycleReference(firstValue(row, [
-          "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name",
-          "cycleId", "appraisalCycleId", "appraisalCycleName",
-        ])))
-      : appraisalRows;
+    : unscopedSheetRows.length
+      ? unscopedSheetRows
+      : hasCycleTaggedSheetRows
+        ? []
+        : appraisalRows;
 
   const employeeKeyFor = (raw) => {
     const identity = normalizedIdentity(raw);
