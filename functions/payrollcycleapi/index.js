@@ -847,7 +847,7 @@ function toCatalystDate(value) {
 }
 
 function normalizePersonKey(value) {
-  return String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function resolveEmployeeReference(value, masterRows) {
@@ -857,6 +857,10 @@ function resolveEmployeeReference(value, masterRows) {
   if (exactRowId) return String(exactRowId.ROWID || exactRowId.rowid);
 
   const key = normalizePersonKey(raw);
+  // Delegation values are "EMP002 - Ashok Kumar": match the employee ID part.
+  const empIdKey = normalizePersonKey(raw.split(/\s+-\s+/)[0]);
+  const byEmpId = masterRows.find((row) => normalizePersonKey(row.emp_id) === empIdKey);
+  if (byEmpId) return String(byEmpId.ROWID || byEmpId.rowid || "");
   const matched = masterRows.find((row) => {
     const candidates = [
       row.emp_id, row.employee_id, row.name, row.emp_name, row.full_name,
@@ -1016,17 +1020,22 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     );
     if (
       appraiserReference &&
-      /^\\d+$/.test(appraiserReference) &&
+      /^\d+$/.test(appraiserReference) &&
       (!appraisalSheetColumns || appraisalSheetColumns.has("appraiser_tech_ed"))
     ) {
       payload.appraiser_tech_ed = appraiserReference;
     }
-    // Keep manager only when it is already a valid numeric reference.
-    const compManagerReference = String(employee.comp_manager ?? "").trim();
+    // Appraisal_Sheet.comp_manager is text ("EMP001 - Name"), set from the
+    // Delegation value on Employee_Master; by default the Tech-ED is the Comp
+    // Manager. A rerun keeps a Comp Manager already saved on the sheet.
+    const compManagerText = String(employee.comp_manager ?? "").trim() ||
+      String(employee.appraiser_tech_ed ?? "").trim();
     if (
-      /^\\d+$/.test(compManagerReference) &&
+      compManagerText &&
+      !/^\d+$/.test(compManagerText) &&
+      (!existing || !String(existing.comp_manager || "").trim()) &&
       (!appraisalSheetColumns || appraisalSheetColumns.has("comp_manager"))
-    ) payload.comp_manager = compManagerReference;
+    ) payload.comp_manager = compManagerText.slice(0, 30);
     if (existing) {
       await tables.employees.updateRow(payload);
       updated += 1;

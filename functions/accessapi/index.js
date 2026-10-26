@@ -450,17 +450,37 @@ app.post(
         // Appraisal_Sheet is the source of truth for these assignments.
         // Updating Employee_Master as well can fail when that optional column
         // is absent or protected, leaving the approval action appearing broken.
-        const found = await selectAll(
+        const allSheetRows = await selectAll(
           ap.admin.zcql(),
           s.table,
           s.empId + " = '" + q(empId) + "'",
         );
-        if (!found.length)
-          throw new HttpError(
-            404,
-            "Employee " + empId + " was not found in Appraisal_Sheet.",
-          );
+        // Appraisal_Sheet keeps earlier cycles: change only the Active cycle's row.
+        const activeCycles = (await selectAll(
+          ap.admin.zcql(),
+          SETTINGS.cycle.table,
+          SETTINGS.cycle.statusColumn + " = '" + SETTINGS.cycle.activeValue + "'",
+        )).filter((c) => !["true", "1", "yes"].includes(String(c.archived ?? "").trim().toLowerCase()));
+        const activeCycleId = activeCycles.length ? String(activeCycles[0].ROWID || "") : "";
+        const found = activeCycleId
+          ? allSheetRows.filter((r) => String(r.cycle_id || "") === activeCycleId)
+          : allSheetRows;
         const datastore = ap.admin.datastore();
+        if (!found.length) {
+          // Before Generate Appraisal Sheet: Delegation lives on Employee_Master
+          // (text "EMP001 - Name"); Generate copies it into the sheet.
+          const masters = await selectAll(
+            ap.admin.zcql(),
+            SETTINGS.employeeMaster.table,
+            SETTINGS.employeeMaster.empId + " = '" + q(empId) + "'",
+          );
+          if (!masters.length)
+            throw new HttpError(404, "Employee " + empId + " was not found in Employee Master.");
+          await datastore.table("74008000000035727").updateRow({
+            ROWID: masters[0].ROWID,
+            [column]: newId,
+          });
+        }
         // Appraisal_Sheet.appraiser_tech_ed is a bigint lookup to Employee_Master.
         // Delegation UI stores the selected person's employee ID/name, so resolve
         // it to Employee_Master.ROWID before writing the lookup field.
