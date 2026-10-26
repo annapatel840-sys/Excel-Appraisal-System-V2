@@ -1658,7 +1658,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // current Appraisal_Sheet values belong to this cycle and must not leak
     // into the previous-year fields.
     const previousPerformance = previousPayrollRecord
-      ? n(firstNonZeroValue(previousPayrollRecord, [
+      ? n(firstValue(previousPayrollRecord, [
           "pb_to_be_paid",
           "pbToBePaid",
           "previous_year_performance_bonus",
@@ -1676,7 +1676,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         ]))
       : 0;
     const previousRetention = previousPayrollRecord
-      ? n(firstNonZeroValue(previousPayrollRecord, [
+      ? n(firstValue(previousPayrollRecord, [
           "rb_to_be_paid",
           "rbToBePaid",
           "previous_year_retention_bonus",
