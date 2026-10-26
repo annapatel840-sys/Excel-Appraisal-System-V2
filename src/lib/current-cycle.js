@@ -58,6 +58,14 @@ export function useCurrentCycleName() {
   );
   useEffect(() => {
     if (Date.now() - fetchedAt > STALE_MS) load();
+    if (typeof window === "undefined") return undefined;
+    const refresh = () => {
+      currentName = "";
+      listeners.forEach((listener) => listener());
+      load();
+    };
+    window.addEventListener("appraisal:cycle-updated", refresh);
+    return () => window.removeEventListener("appraisal:cycle-updated", refresh);
   }, []);
   return name;
 }
