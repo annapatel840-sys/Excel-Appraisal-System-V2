@@ -335,8 +335,9 @@ const mapCatalystEmployee = (employee, index) => {
     managerRating: normalizeManagerRating(employee.manager_rating),
     interviewCount: Number(employee.interview_count || 0),
 
-    rrPercent: Number(employee.rr_percent || 0),
-    grossMargin: Number(employee.gross_margin || 0),
+    rrPercent: Number(employee.rr_percent ?? employee.revenue_released ?? employee.rr ?? 0),
+    grossMargin: Number(employee.gross_margin ?? employee.grossMargin ?? 0),
+    yoeRatio: Number(employee.yoe_ratio ?? employee.yoeRatio ?? 0),
 
     // Feedback_And_Rating values are stored with database field names, while
     // the grid columns use camelCase keys. Map the source fields explicitly so
@@ -1216,6 +1217,10 @@ export function AppraisalProvider({ children }) {
       await loadEmployees();
       await refreshAuditHistory();
     };
+    const refreshAfterFeedbackChange = async () => {
+      await loadEmployees();
+      await refreshAuditHistory();
+    };
     const refreshAfterCycleChange = async () => {
       // Clear the prior cycle synchronously before querying the new status.
       APPRAISAL_YEAR = "";
@@ -1227,11 +1232,13 @@ export function AppraisalProvider({ children }) {
     };
     if (typeof window !== "undefined") {
       window.addEventListener("appraisal:payroll-data-updated", refreshAfterPayrollChange);
+      window.addEventListener("appraisal:feedback-data-updated", refreshAfterFeedbackChange);
       window.addEventListener("appraisal:cycle-updated", refreshAfterCycleChange);
     }
     return () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("appraisal:payroll-data-updated", refreshAfterPayrollChange);
+        window.removeEventListener("appraisal:feedback-data-updated", refreshAfterFeedbackChange);
         window.removeEventListener("appraisal:cycle-updated", refreshAfterCycleChange);
       }
     };
