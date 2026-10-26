@@ -639,7 +639,7 @@ function shapeEligibilityRow(row, master) {
 }
 
 async function getEligibilityRows(tables, cycle, actor = "") {
-  if (cycle.status === "Active" && !cycle.archived) {
+  if (String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived) {
     await syncEligibilityRows(tables, cycle, actor);
   }
   const [masterRows, eligibilityRows] = await Promise.all([
@@ -666,7 +666,7 @@ async function saveEligibilityRow(tables, body, actor) {
   const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
   const cycle = cycles.find((item) => item.id === cycleId);
   if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
-  if (cycle.status !== "Active" || cycle.archived) {
+  if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived) {
     throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
   }
 
@@ -722,7 +722,7 @@ async function saveEligibilityRowsBatch(tables, body, actor) {
   const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
   const cycle = cycles.find((item) => item.id === cycleId);
   if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
-  if (cycle.status !== "Active" || cycle.archived) {
+  if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived) {
     throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
   }
 
@@ -891,7 +891,7 @@ function resolveEmployeeReference(value, masterRows) {
 
 async function generateAppraisalSheet(tables, cycle, actor) {
   if (!cycle?.id) throw new ApiError("Select an appraisal cycle before generating the sheet.", 400);
-  if (cycle.status !== "Active" || cycle.archived) {
+  if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived) {
     throw new ApiError("Generate the Appraisal Sheet only for the Active appraisal cycle.", 409);
   }
 
@@ -1786,7 +1786,7 @@ async function routeRequest(req, res, identity, resource, a) {
     const queryCycleId = String(query.cycleId || query.cycle_id || "").trim();
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
     const activeCycle = cycles.find((item) =>
-      item.status === "Active" &&
+      String(item.status || "").trim().toLowerCase() === "active" &&
       ![true, 1, "true", "1", "yes"].includes(
         typeof item.archived === "string" ? item.archived.trim().toLowerCase() : item.archived,
       ) &&
