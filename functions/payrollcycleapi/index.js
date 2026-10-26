@@ -535,14 +535,20 @@ async function syncEligibilityRows(tables, cycle, actor = "") {
   const existingByMasterId = new Map(
     cycleRows.map((row) => [String(row.employee_master_id || ""), row]),
   );
-  const toDelete = cycleRows.filter(
+  const inactiveRows = cycleRows.filter(
     (row) => !activeByRowId.has(String(row.employee_master_id || "")),
   );
-  if (toDelete.length) {
-    await tables.eligibility.deleteRows(
-      toDelete.map((row) => rowId(row)).filter(Boolean),
-    );
-  }
+  // Eligibility_List only ever holds the Active cycle. Rows left behind by any
+  // other cycle (e.g. closed before this clean-up existed) are stale and would
+  // collide on the unique emp_id column, so remove them before inserting.
+  const staleRows = existingRows.filter(
+    (row) => String(row.appraisal_cycle_id || "") !== String(cycle.id),
+  );
+  const toDelete = [...inactiveRows, ...staleRows];
+  await deleteEligibilityRowsById(
+    tables,
+    toDelete.map((row) => rowId(row)),
+  );
 
   const rowsToInsert = [];
   const now = nowLocal();
@@ -568,7 +574,28 @@ async function syncEligibilityRows(tables, cycle, actor = "") {
   for (let index = 0; index < rowsToInsert.length; index += 100) {
     await tables.eligibility.insertRows(rowsToInsert.slice(index, index + 100));
   }
-  return { created: rowsToInsert.length, removed: toDelete.length, activeEmployees: activeMasters.length };
+  return { created: rowsToInsert.length, removed: inactiveRows.length, staleRemoved: staleRows.length, activeEmployees: activeMasters.length };
+}
+
+async function deleteEligibilityRowsById(tables, ids) {
+  const clean = ids.filter(Boolean);
+  for (let index = 0; index < clean.length; index += 100) {
+    await tables.eligibility.deleteRows(clean.slice(index, index + 100));
+  }
+  return clean.length;
+}
+
+// Eligibility_List is only kept while a cycle is Active. Closing (or
+// cancelling) a cycle empties that cycle's rows.
+async function clearEligibilityRows(tables, cycleId) {
+  const rows = await getAllRows(tables.eligibility);
+  const mine = rows.filter(
+    (row) => String(row.appraisal_cycle_id || "") === String(cycleId),
+  );
+  return deleteEligibilityRowsById(
+    tables,
+    mine.map((row) => rowId(row)),
+  );
 }
 
 function shapeEligibilityRow(row, master) {
@@ -2098,11 +2125,14 @@ async function routeRequest(req, res, identity, resource, a) {
       await bumpAccessVersion(req, a, "Cycle status changed: " + existing.name);
       const updated = { ...existing, status, remarks, changedBy: actor, changedAt: now };
       let eligibilitySync = null;
+      let eligibilityCleared = null;
       if (status === "Active") {
         eligibilitySync = await syncEligibilityRows(tables, updated, actor);
+      } else if (status === "Closed") {
+        eligibilityCleared = await clearEligibilityRows(tables, id);
       }
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Status changed", details: { kind: "cycle", action: "Status changed", message: `Cycle status changed from ${existing.status} to ${status}.`, cycleName: updated.name, ...(eligibilitySync ? { eligibilityCreated: eligibilitySync.created, inactiveRemoved: eligibilitySync.removed } : {}), ...(remark ? { newRemarks: `${verb}: ${remark}` } : {}) } });
-      return sendJson(res, 200, { success: true, data: { ...updated, eligibilitySync } });
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Status changed", details: { kind: "cycle", action: "Status changed", message: `Cycle status changed from ${existing.status} to ${status}.`, cycleName: updated.name, ...(eligibilitySync ? { eligibilityCreated: eligibilitySync.created, inactiveRemoved: eligibilitySync.removed } : {}), ...(eligibilityCleared !== null ? { eligibilityCleared } : {}), ...(remark ? { newRemarks: `${verb}: ${remark}` } : {}) } });
+      return sendJson(res, 200, { success: true, data: { ...updated, eligibilitySync, eligibilityCleared } });
     }
 
     if (action === "archive") {
@@ -2134,7 +2164,10 @@ async function routeRequest(req, res, identity, resource, a) {
       if (remarks.length > 10000) return sendJson(res, 400, { success: false, message: "Remarks exceed 10,000 characters." });
       const row = withOptionalColumns(columns, { ROWID: id, status: "Cancelled", remarks, changed_by: actor, changed_at: now }, { cancel_reason: reason });
       await tables.cycles.updateRow(row);
-      if (existing.status === "Active") await bumpAccessVersion(req, a, "Active cycle cancelled: " + existing.name);
+      if (existing.status === "Active") {
+        await clearEligibilityRows(tables, id);
+        await bumpAccessVersion(req, a, "Active cycle cancelled: " + existing.name);
+      }
       const updated = { ...existing, status: "Cancelled", remarks, cancelReason: reason, changedBy: actor, changedAt: now };
       await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: "Cycle cancelled", oldValue: existing.status, newValue: "Cancelled", details: { kind: "cycle", action: "Cycle cancelled", message: `Cycle cancelled (was ${existing.status}). Reason: ${reason}`, cycleName: updated.name, newRemarks: `Cancelled: ${reason}` } });
       return sendJson(res, 200, { success: true, data: updated });
