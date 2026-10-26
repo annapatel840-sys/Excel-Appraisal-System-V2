@@ -471,12 +471,16 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
         : { ok: false, why: "Open cycles only" };
     }
     if (key === "sheet") {
-      if (!open) return { ok: false, why: "Open cycles only" };
+      if (String(cycle.status || "").trim().toLowerCase() !== "active")
+        return { ok: false, why: "Active cycles only" };
       if (typeOf(cycle.name) !== "Annual")
         return { ok: false, why: "Current Annual cycle only" };
       return { ok: true };
     }
     if (!isHR) return { ok: false, why: "HR only" };
+    if (key === "fb" && String(cycle.status || "").trim().toLowerCase() !== "active") {
+      return { ok: false, why: "Feedback & Rating uploads require an Active cycle" };
+    }
     if (!open) return { ok: false, why: "Open cycles only" };
     return { ok: true };
   };
