@@ -1796,6 +1796,9 @@ export function AppraisalGrid({
   // Small history pop-up while typing: { rowId, colKey, raw }.
   const [typing, setTyping] = useState(null);
   const [typingClosed, setTypingClosed] = useState(false);
+  // Client Manager Feedback cells the user has clicked open (row ids). By
+  // default that column shows a single truncated line to save space.
+  const [openFeedback, setOpenFeedback] = useState({});
   const typingAnchorRef = useRef(null);
 
   const setEditingValue = useCallback((cellKey, value) => {
@@ -3327,21 +3330,38 @@ export function AppraisalGrid({
           ? `${rawText} - ${ratingLabel}`
           : rawText;
 
+      // Client Manager Feedback: one line only; click the cell to read all
+      // of it, click again to fold it back.
+      const isFeedback = col.key === "clientManager";
+      const feedbackOpen = isFeedback && !!openFeedback[row.id];
+      const showWrapped = isFeedback ? feedbackOpen : wraps;
+
       return (
         <button
           type="button"
           onClick={(event) => {
             event.stopPropagation();
             openRow(row);
+            if (isFeedback) {
+              setOpenFeedback((previous) => ({
+                ...previous,
+                [row.id]: !previous[row.id],
+              }));
+            }
           }}
           className={cn(
             "flex min-h-[38px] h-auto w-full min-w-0 items-center overflow-hidden px-2 py-1",
             "text-[12px] font-normal text-[#4b5563] leading-tight",
             isMoney ? "justify-end text-right tabular-nums" : "text-left",
+            isFeedback && "cursor-pointer",
           )}
-          title={text}
+          title={isFeedback && !feedbackOpen ? `${text} (click to expand)` : text}
         >
-          <span className={wraps ? "break-words" : "block truncate"}>
+          <span
+            className={
+              showWrapped ? "break-words" : "block min-w-0 max-w-full truncate"
+            }
+          >
             {text}
           </span>
         </button>
