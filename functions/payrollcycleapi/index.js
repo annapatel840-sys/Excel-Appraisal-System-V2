@@ -1749,14 +1749,21 @@ async function importRows(tables, body, actor = "") {
       continue;
     }
 
+    const storedReference = (value) => {
+      if (value && typeof value === "object") {
+        return String(value.ROWID ?? value.rowid ?? value.id ?? value.ID ?? value.value ?? "").trim();
+      }
+      return String(value ?? "").trim();
+    };
     const existing = existingRows.find((row) => {
       const storedEmp = row.emp_ID ?? row.emp_id ?? "";
+      const storedEmpKey = storedReference(storedEmp);
       const sameEmp = screen === "fb"
-        ? String(storedEmp || "").trim() === String(master ? rowId(master) : "").trim()
-        : String(storedEmp || "").trim().toLowerCase() === empId.toLowerCase();
+        ? storedEmpKey === String(master ? rowId(master) : "").trim()
+        : storedEmpKey.toLowerCase() === empId.toLowerCase();
       if (!sameEmp) return false;
       if (screen === "fb") {
-        const storedCycle = String(row.appraisal_cycle_name || "").trim();
+        const storedCycle = storedReference(row.appraisal_cycle_name);
         const targetCycleId = String(rowCycle?.id || rowCycle?.sourceRowId || cycleId || "").trim();
         return storedCycle === targetCycleId;
       }
