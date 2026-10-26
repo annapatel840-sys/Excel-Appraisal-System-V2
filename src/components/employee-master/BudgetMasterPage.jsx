@@ -1663,7 +1663,7 @@ function FragmentRow({ children }) {
 }
 
 function HRAuditTrail() {
-  const { techEdOwners = [], employeeRows = [] } = useBudget();
+  const { techEdOwners = [], employeeRows = [], activeBudgetCycleId = "" } = useBudget();
   // The Tech-Ed filter must come from the budget roster. The old screen
   // referenced an undefined local variable named "rows" and crashed on mount.
   const rows = useMemo(() => {
@@ -1698,11 +1698,19 @@ function HRAuditTrail() {
     };
   }, []);
 
+  // Local audit entries are retained for historical reference but the current
+  // screen only shows entries belonging to the Active appraisal cycle.
   const orgRows = auditState.org.filter(
-    (r) => (!from || r.date >= from) && (!to || r.date <= to),
+    (r) =>
+      Boolean(activeBudgetCycleId) &&
+      String(r.cycleId || "") === String(activeBudgetCycleId) &&
+      (!from || r.date >= from) &&
+      (!to || r.date <= to),
   );
   const tedRows = auditState.techEd.filter(
     (r) =>
+      Boolean(activeBudgetCycleId) &&
+      String(r.cycleId || "") === String(activeBudgetCycleId) &&
       (!from || r.date >= from) &&
       (!to || r.date <= to) &&
       (filter === "all" || r.owner === filter),
