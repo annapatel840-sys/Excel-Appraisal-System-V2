@@ -479,6 +479,35 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(team.calculated_budget, 100000, 'legacy tiny snapshot is repaired using base × percentage / 100');
   });
 
+  await t('Org Budget Base uses Appraisal Sheet previous total CTC with rewards when payroll/current CTC is blank', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
+      Budget_Distribution: [], Budget_Distribution_Comp: [],
+      Employee_Master: [],
+      Eligibility_List: [
+        { appraisal_cycle_id: 'Apr-26', emp_id: 'E1', eligibility_status: 'Eligible' },
+        { appraisal_cycle_id: 'Apr-26', emp_id: 'E2', eligibility_status: 'Eligible' },
+      ],
+      Payroll_Data: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' },
+      ],
+      Appraisal_Sheet: [
+        { ...sheet('E1', 'T1', 'C1', '', 0), Previous_Appraisal_total_CTC_with_rewards: '12,50,000' },
+        { ...sheet('E2', 'T1', 'C1', '', 0), previous_appraisal_total_ctc_with_rewards: '8,75,000' },
+      ],
+    });
+    const cycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = cycleId;
+    store.tables.Eligibility_List.forEach((row) => { row.appraisal_cycle_id = cycleId; });
+
+    const r = await get(load(store));
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(r.json.master[0].org_budget_base, 1250000 + 875000);
+    assert.strictEqual(r.json.employeeRoster.find((employee) => employee.emp_id === 'E1').previous_appraisal_total_ctc_with_rewards, 1250000);
+    assert.strictEqual(r.json.employeeRoster.find((employee) => employee.emp_id === 'E2').previous_appraisal_total_ctc_with_rewards, 875000);
+  });
+
   await t('empty pay columns: base 0 with a clear warning', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
