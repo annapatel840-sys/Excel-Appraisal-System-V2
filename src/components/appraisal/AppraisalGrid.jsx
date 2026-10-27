@@ -2724,6 +2724,26 @@ export function AppraisalGrid({
 
       const basePay = Number(row.currentAnnualBasePay || 0);
       const pct = Number(String(raw).replace(/,/g, "")) || 0;
+
+      // The % box only shows the amount rounded to 1 decimal. If the value
+      // is just that rounded display, keep the amount exactly as typed
+      // (otherwise 35000 could turn into 35008 when the % cell is left).
+      const shownPct = basePay
+        ? Number((((Number(row.hikeAmount) || 0) / basePay) * 100).toFixed(1))
+        : 0;
+
+      if (
+        basePay &&
+        (Number(row.hikeAmount) || 0) !== 0 &&
+        pct === shownPct
+      ) {
+        if ((Number(row.hikePct) || 0) !== pct) {
+          updateLinkedCells(row.id, { hikePct: pct });
+        }
+
+        return { changed: false, hikeAmount: Number(row.hikeAmount) || 0 };
+      }
+
       const amount = Math.round(basePay * (pct / 100));
 
       const changed =
@@ -3484,9 +3504,29 @@ export function AppraisalGrid({
       );
     }
 
-    const storedValue = String(
+    let storedValue = String(
       row[col.key] !== null && row[col.key] !== undefined ? row[col.key] : "",
     );
+
+    // Hike % and Hike Amount always mirror each other: the cell that is NOT
+    // being typed in is derived from the other one (live while typing, and
+    // fresh whenever the cursor lands in it).
+    if (col.key === "hikePct" || col.key === "hikeAmount") {
+      const basePay = Number(row.currentAnnualBasePay || 0);
+      const otherKey = col.key === "hikePct" ? "hikeAmount" : "hikePct";
+      const otherDraft = editingValues[`${row.id}:${otherKey}`];
+      const otherRaw =
+        otherDraft !== undefined ? otherDraft : row[otherKey];
+      const other = Number(String(otherRaw ?? "").replace(/,/g, ""));
+
+      if (basePay && String(otherRaw ?? "").trim() !== "" && Number.isFinite(other)) {
+        if (col.key === "hikePct") {
+          storedValue = String(Number(((other / basePay) * 100).toFixed(1)));
+        } else if (otherDraft !== undefined) {
+          storedValue = String(Math.round(basePay * (other / 100)));
+        }
+      }
+    }
 
     if (col.type === "textarea") {
       const textareaDraft =
