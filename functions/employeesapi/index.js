@@ -1878,7 +1878,11 @@ async function getEmployees(req, res) {
   );
 
   const viewAsParam = String(params.viewAs || "").trim().toLowerCase();
-  const asCompMgr = enforced && viewAsParam === "compmanager" && (a.role === "hr" || a.role === "techEd");
+  // A Tech-Ed previewing Comp Manager must retain the Tech-Ed's own roster
+  // scope; the selected Comp Manager is applied by the UI within that roster.
+  // Do not compare the Tech-Ed login's employee ID to comp_manager, which
+  // incorrectly returned an empty roster for this preview.
+  const asCompMgr = enforced && viewAsParam === "compmanager" && a.role === "hr";
   const myEmpIdLower = String((a.user && a.user.empId) || "").trim().toLowerCase();
 
 
