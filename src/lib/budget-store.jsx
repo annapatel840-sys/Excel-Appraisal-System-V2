@@ -8,7 +8,7 @@ import {
 } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
-import { useViewAs, currentUserMatchesManager, managerIdentityMatches } from "@/lib/view-as-store";
+import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
 const BudgetContext = createContext(null);
@@ -451,7 +451,7 @@ export function BudgetProvider({ children }) {
             !ownParent ||
             String(row.budget_distribution_id || "") !== String(ownParent.id || "")) return false;
         const rawManager = String(row.comp_manager || "").trim();
-        if (currentUserMatchesManager(rawManager, currentUser, employeeRows)) return true;
+        if (currentUserMatchesManager(rawManager, authenticatedUser, employeeRows)) return true;
         // Budget_Distribution_Comp may store a lookup ROWID while the roster
         // exposes the human-readable "Employee ID - Name" assignment.
         const linkedManager = employeeRows.find((employee) =>
@@ -464,7 +464,7 @@ export function BudgetProvider({ children }) {
             )
         );
         return Boolean(linkedManager?.comp_manager_display) &&
-          currentUserMatchesManager(linkedManager.comp_manager_display, currentUser, employeeRows);
+          currentUserMatchesManager(linkedManager.comp_manager_display, authenticatedUser, employeeRows);
       });
       const manager = managerCandidates.length === 1 ? managerCandidates[0] : null;
       if (manager) {
@@ -578,7 +578,7 @@ export function BudgetProvider({ children }) {
       }),
       { base: 0, additional: 0, updated: 0, utilized: 0, remaining: 0, hasBudgetMaster: false, hasAuthoritativeBudget: false },
     );
-  }, [rows, budgetMasterRows, budgetDistributionRows, budgetCompManagerRows, employeeRows, techEdOwners, currentUser, roleText, activeBudgetCycleId, isCompManagerPreview]);
+  }, [rows, budgetMasterRows, budgetDistributionRows, budgetCompManagerRows, employeeRows, techEdOwners, currentUser, roleText, activeBudgetCycleId, isCompManagerPreview, authenticatedUser]);
 
   const hierarchy = useMemo(() => {
     const next = {};
