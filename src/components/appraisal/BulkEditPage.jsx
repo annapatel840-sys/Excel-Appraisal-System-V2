@@ -31,7 +31,6 @@ import React, {
 } from "react";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
-import { useCatalystUser } from "@/lib/catalyst-auth";
 import {
   resolveBudgetAllocated,
   sumBudgetConsumed,
@@ -1081,26 +1080,20 @@ const BulkOperations = forwardRef(function BulkOperations(
     });
     return m;
   }, [sheetRows]);
-  /* ---------- HR header budget (same numbers as the Appraisal Sheet) ---------- */
-  let budgetCtx = null,
-    catalystUser = null;
+  /* ---------- header budget (same numbers as the Appraisal Sheet) ---------- */
+  let budgetCtx = null;
   try {
     budgetCtx = useBudget();
   } catch (x) {
     budgetCtx = null;
   }
-  try {
-    catalystUser = useCatalystUser();
-  } catch (x) {
-    catalystUser = null;
-  }
-  const isHrUser = String(catalystUser?.role || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
-    .includes("hr");
+  // Header budget numbers: for EVERY login (HR, Tech ED, Comp Manager) they
+  // come from what the app already holds in memory - the shared Budget
+  // context (role-aware allocation) and the Appraisal Sheet rows - exactly
+  // like the Appraisal Sheet's own top bar. No extra server call, so they
+  // show the moment this page opens.
   const sheetHdr = useMemo(() => {
-    if (!isHrUser || !budgetCtx || !sheetRows.length) return null;
+    if (!budgetCtx || !sheetRows.length) return null;
     // Same scope as the Appraisal Sheet: Active + Eligible employees.
     const live = sheetRows.filter(
       (r) =>
@@ -1114,10 +1107,12 @@ const BulkOperations = forwardRef(function BulkOperations(
     });
     return {
       allocated,
+      // Still loading and nothing to show yet: the header shows "…", not 0.
+      pending: !!budgetCtx.loading && !allocated,
       used: sumBudgetConsumed(live),
       tpb: sumTargetPB(live),
     };
-  }, [isHrUser, budgetCtx, sheetRows]);
+  }, [budgetCtx, sheetRows]);
 
   // Value of a filter field: the bulk row first, then the appraisal sheet row.
   const fVal = (e, field) => {
@@ -1621,8 +1616,9 @@ const BulkOperations = forwardRef(function BulkOperations(
 
   const b0Raw = budgetOf(scope, null),
     bPvRaw = pv ? pv.after : b0Raw;
-  // HR: the header IS the Appraisal Sheet's Budget Allocated / Utilisation /
-  // Utilisation incl. Target PB, read from the sheet rows + Budget Master.
+  // All logins: the header IS the Appraisal Sheet's Budget Allocated /
+  // Utilisation / Utilisation incl. Target PB, read from the sheet rows + the
+  // shared (role-aware) Budget context.
   // Nothing from this screen's /budget call is used. A preview only adds the
   // change it makes to those rows.
   const hdrOf = (d) => {
@@ -2901,7 +2897,9 @@ const BulkOperations = forwardRef(function BulkOperations(
             <span>Budget Allocated</span>
             <strong>
               {sheetHdr
-                ? Math.round(bPv.budget).toLocaleString("en-IN")
+                ? sheetHdr.pending
+                  ? "…"
+                  : Math.round(bPv.budget).toLocaleString("en-IN")
                 : big(bPv.budget)}
             </strong>
           </div>
