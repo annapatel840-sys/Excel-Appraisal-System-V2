@@ -8,7 +8,7 @@ import {
 } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
-import { useViewAs, useSelectedCompManager, managerIdentityMatches } from "@/lib/view-as-store";
+import { useViewAs, currentUserMatchesManager, managerIdentityMatches } from "@/lib/view-as-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
 const BudgetContext = createContext(null);
@@ -116,7 +116,6 @@ async function fetchAllEligibleEmployees() {
 export function BudgetProvider({ children }) {
   const authenticatedUser = useCatalystUser();
   const { effectiveId, actualId } = useViewAs();
-  const { selectedCompManager } = useSelectedCompManager();
   const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
   const currentUser = useMemo(
     () => ({
@@ -448,14 +447,13 @@ export function BudgetProvider({ children }) {
       });
       const ownParent = ownParentCandidates.length === 1 ? ownParentCandidates[0] : null;
       const managerCandidates = budgetCompManagerRows.filter((row) => {
-        if (!selectedCompManager ||
-            (activeBudgetCycleId && String(row.appraisal_cycle_id || "") !== activeBudgetCycleId) ||
+        if ((activeBudgetCycleId && String(row.appraisal_cycle_id || "") !== activeBudgetCycleId) ||
             !ownParent ||
             String(row.budget_distribution_id || "") !== String(ownParent.id || "")) return false;
         const rawManager = String(row.comp_manager || "").trim();
-        if (managerIdentityMatches(rawManager, selectedCompManager)) return true;
-        // Budget_Distribution_Comp can store a lookup ROWID while the UI shows
-        // "Employee ID - Name". Resolve that saved key through the roster.
+        if (currentUserMatchesManager(rawManager, currentUser, employeeRows)) return true;
+        // Budget_Distribution_Comp may store a lookup ROWID while the roster
+        // exposes the human-readable "Employee ID - Name" assignment.
         const linkedManager = employeeRows.find((employee) =>
           [employee.comp_manager, employee.comp_manager_id, employee.compManager,
             employee.comp_manager_display, employee.comp_manager_name]
@@ -466,7 +464,7 @@ export function BudgetProvider({ children }) {
             )
         );
         return Boolean(linkedManager?.comp_manager_display) &&
-          managerIdentityMatches(linkedManager.comp_manager_display, selectedCompManager);
+          currentUserMatchesManager(linkedManager.comp_manager_display, currentUser, employeeRows);
       });
       const manager = managerCandidates.length === 1 ? managerCandidates[0] : null;
       if (manager) {
@@ -580,7 +578,7 @@ export function BudgetProvider({ children }) {
       }),
       { base: 0, additional: 0, updated: 0, utilized: 0, remaining: 0, hasBudgetMaster: false, hasAuthoritativeBudget: false },
     );
-  }, [rows, budgetMasterRows, budgetDistributionRows, budgetCompManagerRows, employeeRows, techEdOwners, currentUser, roleText, activeBudgetCycleId, isCompManagerPreview, selectedCompManager]);
+  }, [rows, budgetMasterRows, budgetDistributionRows, budgetCompManagerRows, employeeRows, techEdOwners, currentUser, roleText, activeBudgetCycleId, isCompManagerPreview]);
 
   const hierarchy = useMemo(() => {
     const next = {};
