@@ -3066,7 +3066,13 @@ export function AppraisalGrid({
       while (navRow >= 0 && navRow <= maxRow) {
         while (navIndex >= 0 && navIndex < navColumns.length) {
           if (canFocus(navRow, navColumns[navIndex].key)) {
-            focusCell(navRow, navColumns[navIndex].key);
+            const nextRowIndex = navRow;
+            const nextKey = navColumns[navIndex].key;
+
+            // Save the value of this cell first (blur runs the same commit
+            // as clicking away), then move to the next cell.
+            target.blur();
+            setTimeout(() => focusCell(nextRowIndex, nextKey), 0);
             return;
           }
 

@@ -188,11 +188,8 @@ export function SheetPage() {
   );
 
   const lastEditedEntry =
-    audit.find(
-      (entry) =>
-        String(entry.appraisalYear || "Apr-26") === "Apr-26" &&
-        String(entry.empId || "").trim(),
-    ) || null;
+    // The audit list is already limited to the active cycle by the store.
+    audit.find((entry) => String(entry.empId || "").trim()) || null;
   const lastEditedRow = lastEditedEntry
     ? rows.find(
         (row) => String(row.empId).trim() === String(lastEditedEntry.empId).trim(),
