@@ -559,11 +559,7 @@ async function syncEligibilityRows(tables, cycle, actor = "") {
   for (const row of cycleRows) {
     const linkedMasterId = String(row.employee_master_id || "");
     const empId = String(row.emp_id || "").trim().toLowerCase();
-    // emp_id is the stable business key. A stale reference can point to a
-    // different *valid* Employee_Master ROWID, so resolve by emp_id first.
-    // Only use the foreign key when the eligibility row has no employee ID.
-    const master = (empId && activeByEmpId.get(empId)) ||
-      activeByRowId.get(linkedMasterId);
+    const master = activeByRowId.get(linkedMasterId) || activeByEmpId.get(empId);
     if (!master) {
       inactiveRows.push(row);
       continue;
@@ -806,11 +802,8 @@ async function getEligibilityRows(tables, cycle, actor = "") {
   return eligibilityRows
     .filter((row) => String(row.appraisal_cycle_id || "") === String(cycle.id))
     .map((row) => {
-      // Prefer emp_id when present: a valid-but-wrong employee_master_id
-      // must not silently map one employee's eligibility decision to another.
-      const empId = String(row.emp_id || "").trim().toLowerCase();
-      const master = (empId && masterByEmpId.get(empId)) ||
-        masterById.get(String(row.employee_master_id || ""));
+      const master = masterById.get(String(row.employee_master_id || "")) ||
+        masterByEmpId.get(String(row.emp_id || "").trim().toLowerCase());
       return master ? shapeEligibilityRow(row, master) : null;
     })
     .filter(Boolean);
