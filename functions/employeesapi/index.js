@@ -1036,11 +1036,40 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const label = previousCycleName || ("New - " + currentYear);
     // For a new joiner, use the matching New Joiners cycle effective date;
     // otherwise use the last closed Annual cycle effective date.
-    const lastArchivedEffectiveDate = selectedPayrollCycle
+    const cycleBasedLastAppraisalDate = selectedPayrollCycle
       ? String(selectedPayrollCycle.effective_date ?? selectedPayrollCycle.effectiveDate ?? selectedPayrollCycle.start_date ?? selectedPayrollCycle.startDate ?? "").trim()
       : prior
         ? String(prior.cycle?.effective_date ?? prior.cycle?.effectiveDate ?? prior.cycle?.start_date ?? "").trim()
         : String(employee.last_appraisal_date ?? employee.lastAppraisalDate ?? "").trim();
+    // A new joiner has no earlier regular appraisal, so their Last Appraisal
+    // date is their date of joining (Employee_Master / Employees joining date).
+    // An employee is a new joiner when ANY of these hold:
+    //   1. they have a New Joiner payroll row in the current cycle's year;
+    //   2. their most recent closed cycle was a "New Joiner <year>" cycle
+    //      (e.g. New Joiner 2026 -> now in Annual 2027), so they have not yet
+    //      been through a regular Annual appraisal;
+    //   3. they have no prior cycle or payroll history at all.
+    // Existing staff keep the closed-cycle effective date. If the joining
+    // date is missing we fall back to the cycle-based date.
+    const previousCycleWasNewJoiner = Boolean(prior && isNewJoinerCycle(prior.cycle));
+    const isNewJoinerRow =
+      Boolean(sameYearNewJoinerPayroll) ||
+      previousCycleWasNewJoiner ||
+      (!prior && !selectedPayrollSource);
+    const joiningDateValue = (() => {
+      const master = (empKey && (employeeMasterMap.get(empKey) || employeeMasterMap.get(String(empRaw ?? "").trim().toLowerCase()))) || {};
+      for (const source of [employee, master]) {
+        for (const name of ["date_of_join", "joining_date", "Joining_date", "date_of_joining", "doj"]) {
+          const actual = Object.keys(source).find((key) => key.toLowerCase() === name.toLowerCase());
+          if (actual !== undefined && source[actual] !== null && source[actual] !== undefined &&
+              String(source[actual]).trim() !== "") return String(source[actual]).trim();
+        }
+      }
+      return "";
+    })();
+    const lastArchivedEffectiveDate = isNewJoinerRow && joiningDateValue
+      ? joiningDateValue
+      : cycleBasedLastAppraisalDate;
     const payrollAmount = (value) => {
       const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
       return Number.isFinite(parsed) ? parsed : 0;
