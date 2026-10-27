@@ -76,7 +76,7 @@ export function SheetPage() {
   const { openImportPicker, importUi } = useAppraisalImport();
   const catalystUser = useCatalystUser();
   const { effectiveId, actualId } = useViewAs();
-  const { selectedCompManager } = useSelectedCompManager();
+  const { selectedCompManager, setSelectedCompManager } = useSelectedCompManager();
   const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
   const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
@@ -102,6 +102,13 @@ export function SheetPage() {
   const [auditOpen, setAuditOpen] = useState(false);
   const [lastEditedTarget, setLastEditedTarget] = useState("");
   const [budgetNoticeOpen, setBudgetNoticeOpen] = useState(true);
+
+  useEffect(() => {
+    if (!isCompManagerPreview || selectedCompManager) return;
+    const firstManager = rows.find((row) => row.compManagerDisplay || row.compManager);
+    const manager = firstManager?.compManagerDisplay || firstManager?.compManager || "";
+    if (manager) setSelectedCompManager(manager);
+  }, [isCompManagerPreview, selectedCompManager, rows, setSelectedCompManager]);
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
