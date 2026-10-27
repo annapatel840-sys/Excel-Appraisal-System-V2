@@ -1184,7 +1184,10 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     if (Number.isFinite(Number(desiredPreviousCtc)) &&
         Number(desiredPreviousCtc) > 0 &&
         existingPreviousCtc !== Number(desiredPreviousCtc)) {
-      update.previous_appraisal_total_ctc_with_rewards = Number(desiredPreviousCtc);
+      // Use the exact Appraisal_Sheet datastore column name/casing.
+      // updateRow field keys must match the Data Store schema; the lowercase alias
+      // was not the persisted column name, leaving Budget Master reading blank.
+      update.Previous_Appraisal_total_CTC_with_rewards = Number(desiredPreviousCtc);
     }
     if (Object.keys(update).length === 1) continue;
     try {
