@@ -755,11 +755,11 @@ export function TechEdBudgetDistribution() {
         </span>
         <span className="sep" />
         <span>
-          <b>{LEVELS[0]}</b>
+          <b>{isCompManagerPreview ? LEVELS[1] : LEVELS[0]}</b>
         </span>
         <span className="sep" />
         <span className="applied">
-          Budget applied by HR: <b>{hasLiveAllocation ? myPct + "%" : "—"}</b> = <b>{hasLiveAllocation ? lakh(myUpdated) : "—"}</b> updated · original{" "}
+          {isCompManagerPreview ? "Comp Manager allocation" : "Budget applied by HR"}: <b>{hasLiveAllocation ? myPct + "%" : "—"}</b> = <b>{hasLiveAllocation ? lakh(myUpdated) : "—"}</b> updated · original{" "}
           {hasLiveAllocation ? lakh(myOriginal) : "—"}
           {!isCompManagerPreview && hasLiveAllocation ? (
             <button type="button" className="dd" aria-expanded={appliedOpen} onClick={() => setAppliedOpen((v) => !v)}>
