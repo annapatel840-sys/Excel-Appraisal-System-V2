@@ -912,7 +912,6 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       ["true", "1", "yes", "archived"].includes(String(cycle?.archived ?? "").trim().toLowerCase()) ||
       ["archived", "closed", "complete", "completed"].includes(priorStatus);
     if (!archived) return;
-    const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
     const sameYearNewJoinerCycle =
       isNewJoinerCycle(cycle) &&
       cycleYearOf(cycle) !== "" &&
