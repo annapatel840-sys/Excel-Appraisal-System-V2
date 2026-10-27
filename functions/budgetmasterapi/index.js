@@ -944,7 +944,8 @@ async function readEmployeeRoster(app) {
               rawEligibility,
             )
           ? "not eligible"
-          : normalizeStatus(employeeStatus) === "Active"
+          : // normalizeStatus is not defined in this function; compare directly.
+            String(employeeStatus || "").trim().toLowerCase() === "active"
             ? "eligible"
             : "not eligible";
       return {
@@ -1539,6 +1540,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // canonical base. Use historical Payroll_Data only when that sheet field
     // is absent, then fall back to the current CTC for new joiners/legacy rows.
     const sheetPreviousRaw = firstValue(row, [
+      // Live Appraisal_Sheet column (written by employeesapi).
+      "previous_year_CTC_with_rewards",
       "Previous_Appraisal_total_CTC_with_rewards",
       "previous_appraisal_total_ctc_with_rewards",
       "previousAppraisalTotalCtcWithRewards",

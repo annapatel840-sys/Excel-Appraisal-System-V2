@@ -1026,7 +1026,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
         ])
       : "";
     const payrollCtcParsed = payrollCtcValue !== ""
-      ? Number(String(payrollCtcValue).replace(/[₹,\\s]/g, ""))
+      ? Number(String(payrollCtcValue).replace(/[₹,\s]/g, ""))
       : ctcFromComponents(selectedPayroll || {});
     const previousCtc = sameYearNewJoinerPayroll && Number.isFinite(payrollCtcParsed)
       ? payrollCtcParsed
@@ -1173,6 +1173,34 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   // Persist only one Appraisal_Sheet row at a time. Parallel updateRow calls
   // for every employee exceeded Catalyst's COMPONENT concurrency quota and could
   // make Budget Master fail while it was reading the same sheet.
+  //
+  // Column names are resolved against the live Appraisal_Sheet schema: one
+  // unknown key makes Catalyst reject the whole updateRow, which used to drop
+  // the date / target PB / base pay updates on every load. The previous-CTC
+  // value is stored in previous_year_CTC_with_rewards and target criteria in
+  // target_PB_criteria (live names); missing columns are skipped.
+  const liveColumnByKey = new Map();
+  try {
+    (await appraisalTable.getAllColumns()).forEach(function (column) {
+      const name = String(column?.column_name || "").trim();
+      if (name) liveColumnByKey.set(name.toLowerCase(), name);
+    });
+  } catch (error) {
+    console.error("Could not read Appraisal_Sheet columns; skipping lookup writes:", error?.message || error);
+    return updatedEmployees;
+  }
+  const liveColumn = function (...names) {
+    for (const name of names) {
+      const actual = liveColumnByKey.get(String(name).toLowerCase());
+      if (actual) return actual;
+    }
+    return "";
+  };
+  const previousCtcColumn = liveColumn(
+    "previous_year_CTC_with_rewards",
+    "previous_appraisal_total_ctc_with_rewards",
+  );
+  const targetCriteriaColumn = liveColumn("target_PB_criteria", "target_pb_criteria");
   for (const employee of updatedEmployees) {
     const rowId = String(employee.ROWID ?? employee.rowid ?? "").trim();
     if (!rowId) continue;
@@ -1187,12 +1215,17 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const existingDate = String(sourceRow?.last_appraisal_date ?? "").trim();
     const existingTargetPB = Number(sourceRow?.target_pb_allocated_for_may || 0);
     const existingBasePay = Number(sourceRow?.current_annual_base_pay || 0);
-    const existingTargetCriteria = String(sourceRow?.target_pb_criteria ?? "").trim();
+    // Read the stored values from the live column names, so an unchanged value
+    // is not rewritten on every load.
+    const existingTargetCriteria = String(
+      (targetCriteriaColumn && sourceRow?.[targetCriteriaColumn]) ?? sourceRow?.target_pb_criteria ?? "",
+    ).trim();
     const existingPreviousCtcRaw = firstNonEmpty(sourceRow || {}, [
+      previousCtcColumn,
       "previous_appraisal_total_ctc_with_rewards",
       "Previous_Appraisal_total_CTC_with_rewards",
       "previousAppraisalTotalCtcWithRewards",
-    ]);
+    ].filter(Boolean));
     // Same parsing as payrollAmount in the mapping above (not in scope here).
     const previousCtcNumber = Number(String(existingPreviousCtcRaw).replace(/[₹,\s]/g, ""));
     const existingPreviousCtc = existingPreviousCtcRaw === ""
@@ -1208,20 +1241,20 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     if (existingBasePay !== Number(desiredBasePay || 0) && Number(desiredBasePay || 0) > 0) {
       update.current_annual_base_pay = desiredBasePay;
     }
-    if (existingTargetCriteria !== String(desiredTargetCriteria ?? "").trim() &&
+    if (targetCriteriaColumn &&
+        existingTargetCriteria !== String(desiredTargetCriteria ?? "").trim() &&
         String(desiredTargetCriteria ?? "").trim()) {
-      update.target_pb_criteria = desiredTargetCriteria;
+      update[targetCriteriaColumn] = desiredTargetCriteria;
     }
     // Budget Master sums the stored Appraisal_Sheet column, not a separate
-    // payroll fallback. Persist the exact value returned for that column so both
+    // payroll fallback. Persist the value returned for that column so both
     // screens read the same per-employee number on subsequent requests.
-    if (Number.isFinite(Number(desiredPreviousCtc)) &&
+    // previous_year_CTC_with_rewards is a bigint column: store whole rupees.
+    if (previousCtcColumn &&
+        Number.isFinite(Number(desiredPreviousCtc)) &&
         Number(desiredPreviousCtc) > 0 &&
-        existingPreviousCtc !== Number(desiredPreviousCtc)) {
-      // Use the exact Appraisal_Sheet datastore column name/casing.
-      // updateRow field keys must match the Data Store schema; the lowercase alias
-      // was not the persisted column name, leaving Budget Master reading blank.
-      update.Previous_Appraisal_total_CTC_with_rewards = Number(desiredPreviousCtc);
+        existingPreviousCtc !== Math.round(Number(desiredPreviousCtc))) {
+      update[previousCtcColumn] = Math.round(Number(desiredPreviousCtc));
     }
     if (Object.keys(update).length === 1) continue;
     try {

@@ -981,6 +981,138 @@ function resolveEmployeeReference(value, masterRows) {
   return matched ? String(matched.ROWID || matched.rowid || "") : "";
 }
 
+/* ---------- Archive: Appraisal Sheet -> Payroll Data ----------
+   Archiving a cycle moves its final Appraisal Sheet values into that cycle's
+   Payroll_Data row per employee (upsert on employee + cycle), keeps a full
+   copy of every sheet row in Appraisal_Audit (source "sheet_archive"), then
+   removes the cycle's Appraisal_Sheet rows. The next cycle reads its previous
+   values (PB / RB to be paid, target PB, previous CTC) from this payroll row.
+   Nothing is removed unless every row was written to Payroll_Data first. */
+const SHEET_ARCHIVE_SOURCE = "sheet_archive";
+const SHEET_ARCHIVE_MARK = "Appraisal Sheet moved to Payroll Data";
+
+function sheetNumber(row, column) {
+  const raw = row[column];
+  if (raw === undefined || raw === null || String(raw).trim() === "") return null;
+  const value = Number(String(raw).replace(/[₹,%\s]/g, ""));
+  return Number.isFinite(value) ? value : null;
+}
+
+// Appraisal_Sheet columns -> Payroll_Data columns for one employee.
+function payrollValuesFromSheet(row) {
+  const base = sheetNumber(row, "current_annual_base_pay");
+  const hikeAmount = sheetNumber(row, "hike_amount");
+  const hikePct = sheetNumber(row, "hike_pct");
+  const pb = sheetNumber(row, "allocated_pb_amount");
+  const rb = sheetNumber(row, "new_rb");
+  const joining = sheetNumber(row, "joining_bonus");
+  const targetNext = sheetNumber(row, "target_pb_next_year");
+  const criteria = String(row.target_PB_criteria ?? row.target_pb_criteria ?? "").trim();
+  const values = {};
+  if (base !== null) values.current_annual_base_pay = base;
+  if (hikeAmount !== null) values.hike_amount = Math.round(hikeAmount);
+  if (hikePct !== null) values.hike_pct = hikePct;
+  const newBase = base !== null ? base + (hikeAmount || 0) : null;
+  if (newBase !== null) values.new_base_pay = newBase;
+  // PB / RB decided in this cycle are what the next cycle shows as "to be paid".
+  if (pb !== null) {
+    values.performance_bonus = Math.round(pb);
+    values.pb_to_be_paid = pb;
+  }
+  if (rb !== null) {
+    values.retention_bonus = Math.round(rb);
+    values.rb_to_be_paid = rb;
+  }
+  if (joining !== null) values.joining_bonus = Math.round(joining);
+  if (pb !== null || rb !== null || joining !== null) {
+    values.total_bonus = Math.round((pb || 0) + (rb || 0) + (joining || 0));
+  }
+  if (newBase !== null) values.total_CTC_with_rewards = newBase + (pb || 0) + (rb || 0);
+  if (targetNext !== null) values.target_performance_bonus_for_next_year = targetNext;
+  if (criteria) values.target_pb_criteria = criteria.slice(0, 100);
+  const name = String(row.name || "").trim();
+  if (name) values.emp_name = name.slice(0, 100);
+  return values;
+}
+
+async function moveSheetToPayroll(tables, cycle, actor) {
+  const ref = (value) => String(
+    value && typeof value === "object" ? (value.ROWID ?? value.rowid ?? value.id ?? "") : (value ?? ""),
+  ).trim();
+  const [sheetRows, payrollRows, masterRows] = await Promise.all([
+    getAllRows(tables.employees),
+    getAllRows(tables.payroll),
+    getAllRows(tables.employeeMaster),
+  ]);
+  const cycleRows = sheetRows.filter((row) => ref(row.cycle_id) === String(cycle.id));
+  if (!cycleRows.length) return { moved: 0, inserted: 0, updated: 0, removed: 0 };
+
+  const masterIdByEmpId = new Map(masterRows.map((row) => [String(row.emp_id || "").trim().toLowerCase(), rowId(row)]));
+  const payrollByMaster = new Map();
+  payrollRows
+    .filter((row) => ref(row.appraisal_cycle_name) === String(cycle.id))
+    .forEach((row) => payrollByMaster.set(ref(row.emp_id), row));
+
+  const missing = [];
+  const inserts = [];
+  const updates = [];
+  const seen = new Set();
+  for (const row of cycleRows) {
+    const masterId = ref(row.emp_master_row_id) || masterIdByEmpId.get(String(row.emp_id || "").trim().toLowerCase()) || "";
+    if (!masterId) {
+      missing.push(String(row.emp_id || rowId(row)));
+      continue;
+    }
+    // Duplicate sheet rows for one employee: the first one written wins.
+    if (seen.has(masterId)) continue;
+    seen.add(masterId);
+    const values = { ...payrollValuesFromSheet(row), emp_id: masterId, appraisal_cycle_name: String(cycle.id) };
+    const existing = payrollByMaster.get(masterId);
+    if (existing) updates.push({ ROWID: rowId(existing), ...values });
+    else inserts.push(values);
+  }
+  if (missing.length) {
+    throw new ApiError(
+      `Cannot archive ${cycle.name}: ${missing.length} Appraisal Sheet row(s) have no Employee Master record (${missing.slice(0, 10).join(", ")}). Nothing was changed.`,
+      409,
+    );
+  }
+
+  // 1. Full copy of every sheet row, so nothing on the sheet is lost.
+  const now = nowLocal();
+  const snapshots = cycleRows.map((row) => ({
+    emp_id: String(row.emp_id || "").slice(0, 10),
+    employee_name: String(row.name || "").slice(0, 30),
+    field_name: "Sheet archived",
+    old_value: "",
+    new_value: "",
+    changed_by: String(actor || "").slice(0, 50),
+    changed_at: now,
+    source: SHEET_ARCHIVE_SOURCE,
+    batch_id: String(cycle.id),
+    appraisal_year: String(cycle.name || "").slice(0, 30),
+    details: JSON.stringify({ kind: "sheet-archive", cycleId: cycle.id, cycleName: cycle.name, row }).slice(0, 10000),
+  }));
+  for (let index = 0; index < snapshots.length; index += 100) {
+    await tables.audit.insertRows(snapshots.slice(index, index + 100));
+  }
+
+  // 2. Final values into Payroll_Data (upsert on employee + cycle).
+  for (let index = 0; index < updates.length; index += 100) {
+    await tables.payroll.updateRows(updates.slice(index, index + 100));
+  }
+  for (let index = 0; index < inserts.length; index += 100) {
+    await tables.payroll.insertRows(inserts.slice(index, index + 100));
+  }
+
+  // 3. Remove the cycle's rows from the Appraisal Sheet.
+  const ids = cycleRows.map(rowId).filter(Boolean);
+  for (let index = 0; index < ids.length; index += 100) {
+    await tables.employees.deleteRows(ids.slice(index, index + 100));
+  }
+  return { moved: cycleRows.length, inserted: inserts.length, updated: updates.length, removed: ids.length };
+}
+
 async function generateAppraisalSheet(tables, cycle, actor) {
   if (!cycle?.id) throw new ApiError("Select an appraisal cycle before generating the sheet.", 400);
   if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived || cycle.hidden) {
@@ -2271,7 +2403,7 @@ async function routeRequest(req, res, identity, resource, a) {
   if (resource === "audit" && req.method === "GET") {
     // Historical Import keeps its undo data in the audit table; it is internal.
     const auditRows = (await getAllRows(tables.audit))
-      .filter((row) => row.source !== "historical_import_undo");
+      .filter((row) => row.source !== "historical_import_undo" && row.source !== SHEET_ARCHIVE_SOURCE);
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
     const cycleById = new Map(cycles.map((cycle) => [cycle.id, cycle]));
     const entries = auditRows.map((row) => {
@@ -2673,18 +2805,28 @@ async function routeRequest(req, res, identity, resource, a) {
       const archived = body.archived;
       const remark = String(body.remark || "").trim();
       if (archived && existing.status !== "Closed") return sendJson(res, 409, { success: false, message: "Close the cycle before archiving it." });
+      if (!archived && String(existing.remarks || "").includes(SHEET_ARCHIVE_MARK)) {
+        return sendJson(res, 409, { success: false, message: `${existing.name}'s Appraisal Sheet was moved to Payroll Data when it was archived, so it cannot be unarchived.` });
+      }
       const otherActive = otherActiveCycle(id);
       if (!archived && existing.status === "Active" && otherActive) {
         return sendJson(res, 409, { success: false, message: `Close or archive "${otherActive.name}" before unarchiving this active cycle.` });
       }
-      const remarks = remark ? appendRemark(existing.remarks, `${archived ? "Archive" : "Unarchive"}: ${remark}`) : existing.remarks;
+      let remarks = remark ? appendRemark(existing.remarks, `${archived ? "Archive" : "Unarchive"}: ${remark}`) : existing.remarks;
       if (remarks.length > 10000) return sendJson(res, 400, { success: false, message: "Remarks exceed 10,000 characters." });
+      // Archive moves the cycle's Appraisal Sheet into Payroll Data before the
+      // cycle is flagged; if the move fails the cycle stays Closed.
+      const moved = archived ? await moveSheetToPayroll(tables, existing, actor) : null;
+      if (moved && moved.moved) remarks = appendRemark(remarks, `${SHEET_ARCHIVE_MARK} (${moved.moved} row(s))`);
       const row = { ROWID: id, archived, changed_by: actor, changed_at: now };
-      if (remark) row.remarks = remarks;
+      if (remark || (moved && moved.moved)) row.remarks = remarks;
       await tables.cycles.updateRow(row);
       const updated = { ...existing, archived, remarks, changedBy: actor, changedAt: now };
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: archived ? "Cycle archived" : "Cycle unarchived", details: { kind: "cycle", action: archived ? "Cycle archived" : "Cycle unarchived", message: archived ? "Cycle archived." : "Cycle unarchived.", cycleName: updated.name, ...(remark ? { newRemarks: `${archived ? "Archive" : "Unarchive"}: ${remark}` } : {}) } });
-      return sendJson(res, 200, { success: true, data: updated });
+      const archiveMessage = moved && moved.moved
+        ? `Cycle archived. ${moved.moved} Appraisal Sheet row(s) moved to Payroll Data (${moved.inserted} added, ${moved.updated} updated) and removed from the Appraisal Sheet.`
+        : archived ? "Cycle archived." : "Cycle unarchived.";
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: archived ? "Cycle archived" : "Cycle unarchived", details: { kind: "cycle", action: archived ? "Cycle archived" : "Cycle unarchived", message: archiveMessage, cycleName: updated.name, ...(moved ? { sheetMoved: moved } : {}), ...(remark ? { newRemarks: `${archived ? "Archive" : "Unarchive"}: ${remark}` } : {}) } });
+      return sendJson(res, 200, { success: true, data: { ...updated, sheetMoved: moved } });
     }
 
     if (action === "cancel") {
