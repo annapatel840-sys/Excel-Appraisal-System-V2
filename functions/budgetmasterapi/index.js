@@ -2298,50 +2298,27 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // be resolved from the sheet snapshot or the established previous-cycle mapping;
     // summing only the raw stored field incorrectly returned zero when that displayed
     // column was populated by the mapping/fallback path.
-    // Org/Tech-Ed/Comp Manager base must equal the complete Total row of the
-    // generated Appraisal_Sheet Previous Total CTC with Rewards column. Do not
-    // filter this sum again through Eligibility_List: the sheet was already
-    // generated from eligibility, and an ID mismatch in the live eligibility join
-    // must not make the Budget Master total differ from the visible sheet total.
+    // Org Budget Base must equal the Previous Total CTC with Rewards total for
+    // the same currently eligible Appraisal Sheet rows shown in the grid.
     const sheetBaseValue = (employee) => n(
       employee.sheet_previous_appraisal_ctc ??
       employee.previous_appraisal_total_ctc_with_rewards ??
       employee.Previous_Appraisal_total_CTC_with_rewards ??
       employee.base,
     );
-    // Sum the actual generated Appraisal_Sheet rows, not the deduplicated
-    // employee roster. The UI's column total is row-based, so joining/deduplicating
-    // employees before summing can make Org Budget Base differ from that total.
-    const mappedBaseByEmployee = new Map();
-    employees.forEach((employee) => {
-      const key = String(employee.employeeId || employee.emp_id || "").trim().toLowerCase();
-      if (key && !mappedBaseByEmployee.has(key)) {
-        mappedBaseByEmployee.set(key, sheetBaseValue(employee));
-      }
-    });
-    const orgBaseRows = currentAppraisalRows.map((row) => {
-      const rawId = String(firstValue(row, [
-        "emp_id", "empId", "employee_id", "employeeId", "employee_id_text",
-      ]) || idOf(row)).trim();
-      const key = employeeKeyFor(rawId);
-      const rawCtc = firstValue(row, [
-        "Previous_Appraisal_total_CTC_with_rewards",
-        "previous_appraisal_total_ctc_with_rewards",
-        "previousAppraisalTotalCtcWithRewards",
-      ]);
-      const hasStoredCtc = rawCtc !== "" && rawCtc !== null && rawCtc !== undefined;
-      const mapped = mappedBaseByEmployee.get(key) ?? mappedBaseByEmployee.get(rawId.toLowerCase()) ?? 0;
+    const orgBaseRows = eligibleEmployees.map((employee) => {
+      const rawCtc = employee.sheet_previous_appraisal_ctc;
       return {
-        employeeId: key || rawId,
-        ctc: hasStoredCtc ? n(rawCtc) : n(mapped),
-        hasStoredCtc,
+        employeeId: String(employee.employeeId || employee.emp_id || "").trim(),
+        ctc: sheetBaseValue(employee),
+        hasStoredCtc: rawCtc !== null && rawCtc !== undefined,
       };
     });
     const orgBase = orgBaseRows.reduce((sum, row) => sum + row.ctc, 0);
     bundle.diagnostics = {
       ...(bundle.diagnostics || {}),
-      budgetBaseSource: "all generated Appraisal_Sheet Previous_Appraisal_total_CTC_with_rewards values",
-      budgetBaseSheetRows: currentAppraisalRows.length,
+      budgetBaseSource: "eligible Appraisal_Sheet Previous_Appraisal_total_CTC_with_rewards values",
+      budgetBaseSheetRows: orgBaseRows.length,
       budgetBaseRosterEmployees: appraisalSheetEmployees.length,
       budgetBaseEligibleRows: eligibleEmployees.length,
       budgetBaseRowsWithCtc: orgBaseRows.filter((row) => row.ctc !== 0).length,

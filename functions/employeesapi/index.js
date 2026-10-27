@@ -1660,7 +1660,9 @@ async function getEmployees(req, res) {
   // Appraisal view must be isolated to the one active cycle. Appraisal_Sheet
   // intentionally retains archived cycles, so returning every row here makes
   // old employees leak into a newly generated sheet. Master/eligibility views
-  // remain full-roster views and are not cycle-filtered.
+  // remain full-roster views and are not cycle-filtered. Eligibility List
+  // decisions update matching sheet rows, but an ID mismatch must not remove
+  // an otherwise valid generated row from the active sheet.
   if (requestedView !== "master" && requestedView !== "eligibility") {
     const [cycleRows, cycleEligibilityRows] = await Promise.all([
       readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
@@ -1683,13 +1685,16 @@ async function getEmployees(req, res) {
         activeCycle.ROWID ?? activeCycle.rowid ?? activeCycle.id ?? activeCycle.ID ?? "",
       ).trim();
       const activeCycleName = historyCycleName(activeCycle).toLowerCase();
-      const eligibleMasterIds = new Set();
-      const eligibleEmployeeIds = new Set();
+      const eligibilityByMasterId = new Map();
+      const eligibilityByEmployeeId = new Map();
       const eligibleRecords = [];
 
       cycleEligibilityRows.forEach((record) => {
         const rawCycle = historyReference(
-          record?.appraisal_cycle_id ?? record?.cycle_id ?? record?.cycleId,
+          record?.appraisal_cycle_id ??
+            record?.appraisal_cycle_name ??
+            record?.cycle_id ??
+            record?.cycleId,
         );
         const recordCycle = cycleRows.find((candidate) => {
           const candidateId = String(
@@ -1704,33 +1709,57 @@ async function getEmployees(req, res) {
             recordCycle.ROWID ?? recordCycle.rowid ?? recordCycle.id ?? recordCycle.ID ?? "",
           ).trim() === activeCycleId);
         const eligibilityStatus = String(
-          record?.eligibility_status ?? record?.eligible_status ?? "",
+          record?.eligibility_status ??
+            record?.eligible_status ??
+            record?.eligibility ??
+            "",
         ).trim().toLowerCase().replace(/[ _-]+/g, "");
-        if (!belongsToActiveCycle || !["eligible", "yes", "true", "1"].includes(eligibilityStatus)) return;
+        if (!belongsToActiveCycle) return;
 
         const masterId = historyReference(
           record?.employee_master_id ?? record?.employee_master_row_id,
         ).toLowerCase();
         const empId = String(record?.emp_id ?? record?.employee_id ?? record?.emp_code ?? "")
           .trim().toLowerCase();
-        if (masterId) eligibleMasterIds.add(masterId);
-        if (empId) eligibleEmployeeIds.add(empId);
-        eligibleRecords.push({ masterId: masterId, empId: empId });
+        const eligible = ["eligible", "yes", "true", "1"].includes(eligibilityStatus);
+        const decision = {
+          eligible,
+          status: eligible
+            ? "Eligible"
+            : String(
+                record?.eligibility_status ??
+                  record?.eligible_status ??
+                  record?.eligibility ??
+                  "Not Eligible",
+              ).trim() || "Not Eligible",
+        };
+        if (masterId) eligibilityByMasterId.set(masterId, decision);
+        if (empId) eligibilityByEmployeeId.set(empId, decision);
+        if (eligible) eligibleRecords.push({ masterId: masterId, empId: empId });
       });
 
       appraisalRows = appraisalRows.filter((row) => {
         const rowCycle = historyReference(
-          row?.cycle_id ?? row?.appraisal_cycle_id ?? row?.appraisalCycleId,
+          row?.cycle_id ??
+            row?.appraisal_cycle_id ??
+            row?.appraisalCycleId ??
+            row?.appraisal_cycle ??
+            row?.appraisal_cycle_name,
         );
         const belongsToActiveCycle = rowCycle === activeCycleId ||
           (!!activeCycleName && rowCycle.toLowerCase() === activeCycleName);
-        if (!belongsToActiveCycle) return false;
+        return belongsToActiveCycle;
+      }).map((row) => {
         const masterId = historyReference(
           row?.emp_master_row_id ?? row?.employee_master_id,
         ).toLowerCase();
         const empId = String(row?.emp_id ?? row?.employee_id ?? "").trim().toLowerCase();
-        return (masterId && eligibleMasterIds.has(masterId)) ||
-          (empId && eligibleEmployeeIds.has(empId));
+        const decision =
+          (masterId && eligibilityByMasterId.get(masterId)) ||
+          (empId && eligibilityByEmployeeId.get(empId));
+        return decision
+          ? { ...row, eligible_status: decision.status }
+          : row;
       });
 
       // Delegation runs before Generate Appraisal Sheet. Eligible employees

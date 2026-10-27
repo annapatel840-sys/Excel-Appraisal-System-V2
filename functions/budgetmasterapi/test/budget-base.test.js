@@ -447,7 +447,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(response.json.employeeRoster.length, 2);
   });
 
-  await t('Org and Tech-ED bases match all generated Appraisal Sheet previous CTC values while Current Count remains eligibility-scoped', async () => {
+  await t('Org Budget Base matches the currently eligible Appraisal Sheet CTC total', async () => {
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
       Budget_Distribution: [], Budget_Distribution_Comp: [],
@@ -473,7 +473,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     );
     const r = await get(load(store));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(r.json.master[0].org_budget_base, 3300000, 'Org Budget Base is the sum of both generated Appraisal Sheet previous-CTC values');
+    assert.strictEqual(r.json.master[0].org_budget_base, 1100000, 'Org Budget Base includes only employees currently eligible in the Appraisal Sheet');
     const team = r.json.techEd.find((row) => /T1/.test(row.appraiser_tech_ed_id));
     assert.strictEqual(team.budget_base, 3300000, 'Tech-Ed base rolls up the same Appraisal Sheet CTC values');
     assert.strictEqual(Number(team.current_headcount), 1, 'Current Count still follows cycle eligibility');
@@ -500,7 +500,9 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
       Budget_Distribution: [], Budget_Distribution_Comp: [],
-      Employee_Master: [],
+      Employee_Master: [
+        { emp_id: 'CUR1', emp_name: 'Current Employee', emp_status: 'Active', eligibility: 'Eligible' },
+      ],
       Eligibility_List: [],
       Payroll_Data: [],
       Appraisal_Cycle_Master: [

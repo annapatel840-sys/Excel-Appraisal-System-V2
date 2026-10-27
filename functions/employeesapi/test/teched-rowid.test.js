@@ -10,10 +10,15 @@ const path = require('path');
 
 const MASTER = '74008000000035727';
 const SHEET = '74008000000039094';
+const CYCLE = '74008000000034190';
+const ELIGIBILITY = '74008000000057046';
+const ACTIVE_CYCLE = 'cycle-1';
 const TABLES = {
   [MASTER]: [
     { ROWID: '74008000000027043', emp_id: 'EMP0051', emp_name: 'Ashok Kumar', email_id: 'ashok@x.com', emp_status: 'Active', eligibility: 'Eligible' },
     { ROWID: '74008000000027046', emp_id: 'EMP0057', emp_name: 'Prabhu Parida', email_id: 'prabhu@x.com', emp_status: 'Active', eligibility: 'Eligible' },
+    { ROWID: '74008000000030006', emp_id: 'E6', emp_name: 'Six', email_id: 'e6@x.com', emp_status: 'Active', eligibility: 'Eligible' },
+    { ROWID: '74008000000030007', emp_id: 'E7', emp_name: 'Seven', email_id: 'e7@x.com', emp_status: 'Active', eligibility: 'Eligible' },
     { ROWID: '74008000000030001', emp_id: 'E1', emp_name: 'One', email_id: 'e1@x.com', emp_status: 'Active', eligibility: 'Eligible' },
     { ROWID: '74008000000030002', emp_id: 'E2', emp_name: 'Two', email_id: 'e2@x.com', emp_status: 'Active', eligibility: 'Eligible' },
     { ROWID: '74008000000030003', emp_id: 'E3', emp_name: 'Three', email_id: 'e3@x.com', emp_status: 'Active', eligibility: 'Eligible' },
@@ -21,11 +26,24 @@ const TABLES = {
     { ROWID: '74008000000030005', emp_id: 'E5', emp_name: 'Five', email_id: 'e5@x.com', emp_status: 'Active', eligibility: 'Eligible' },
   ],
   [SHEET]: [
-    { ROWID: '1', emp_id: 'E1', appraiser_tech_ed1: '74008000000027043' },
-    { ROWID: '2', emp_id: 'E2', appraiser_tech_ed1: '74008000000027043' },
-    { ROWID: '3', emp_id: 'E3', appraiser_tech_ed1: '74008000000027046' },
-    { ROWID: '4', emp_id: 'E4', appraiser_tech_ed: 'EMP0051 - Ashok Kumar' },     // legacy text
-    { ROWID: '5', emp_id: 'E5', appraiser_tech_ed: '74008000000027046' },         // ROWID in the old column
+    { ROWID: '1', emp_id: 'E1', cycle_id: ACTIVE_CYCLE, eligible_status: 'Eligible', appraiser_tech_ed1: '74008000000027043' },
+    { ROWID: '2', emp_id: 'E2', cycle_id: ACTIVE_CYCLE, eligible_status: 'Eligible', appraiser_tech_ed1: '74008000000027043' },
+    { ROWID: '3', emp_id: 'E3', cycle_id: ACTIVE_CYCLE, eligible_status: 'Eligible', appraiser_tech_ed1: '74008000000027046' },
+    { ROWID: '4', emp_id: 'E4', cycle_id: ACTIVE_CYCLE, eligible_status: 'Eligible', appraiser_tech_ed: 'EMP0051 - Ashok Kumar' },     // legacy text
+    { ROWID: '5', emp_id: 'E5', cycle_id: ACTIVE_CYCLE, eligible_status: 'Eligible', appraiser_tech_ed: '74008000000027046' },         // ROWID in the old column
+    // The generated sheet row remains visible even if its Eligibility_List
+    // record cannot be joined by employee ID.
+    { ROWID: '6', emp_id: 'E6', cycle_id: ACTIVE_CYCLE, eligible_status: 'Eligible' },
+    { ROWID: '7', emp_id: 'E7', cycle_id: ACTIVE_CYCLE, eligible_status: 'Eligible' },
+  ],
+  [CYCLE]: [{ ROWID: ACTIVE_CYCLE, cycle_name: 'Annual 2026', status: 'Active' }],
+  [ELIGIBILITY]: [
+    { ROWID: '11', appraisal_cycle_id: ACTIVE_CYCLE, emp_id: 'E1', eligibility_status: 'Eligible' },
+    { ROWID: '12', appraisal_cycle_id: ACTIVE_CYCLE, emp_id: 'E2', eligibility_status: 'Eligible' },
+    { ROWID: '13', appraisal_cycle_id: ACTIVE_CYCLE, emp_id: 'E3', eligibility_status: 'Eligible' },
+    { ROWID: '14', appraisal_cycle_id: ACTIVE_CYCLE, emp_id: 'E4', eligibility_status: 'Eligible' },
+    { ROWID: '15', appraisal_cycle_id: ACTIVE_CYCLE, emp_id: 'E5', eligibility_status: 'Eligible' },
+    { ROWID: '17', appraisal_cycle_id: ACTIVE_CYCLE, emp_id: 'E7', eligibility_status: 'Not Eligible' },
   ],
 };
 
@@ -112,6 +130,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const r = await get(load(), Q);
     const sheetIds = ['E1', 'E2', 'E3', 'E4', 'E5'];
     assert.deepStrictEqual(ids(r).filter((x) => sheetIds.includes(x)), sheetIds);
+    assert.ok(ids(r).includes('E6'), 'an eligible generated sheet row is not dropped by an Eligibility_List ID mismatch');
+    assert.ok(!ids(r).includes('E7'), 'an explicit Not Eligible cycle decision still excludes a generated row');
     const byId = Object.fromEntries(r.json.data.map((e) => [e.emp_id, e.appraiser_tech_ed]));
     assert.strictEqual(byId.E1, 'EMP0051 - Ashok Kumar');
     assert.strictEqual(byId.E3, 'EMP0057 - Prabhu Parida');
