@@ -631,10 +631,12 @@ export function TechEdBudgetDistribution() {
   const savedTeamCount = liveTech?.original_headcount;
   // Original Count is a persisted baseline. Never replace a missing baseline
   // with today's roster count, or it will appear to change with eligibility.
-  const team0 = savedTeamCount !== null && savedTeamCount !== undefined && String(savedTeamCount).trim() !== ""
-    ? num(savedTeamCount)
-    : 0;
-  const allotted = cmNodes.reduce((s, n) => s + n.updated, 0);
+  const team0 = isCompManagerPreview
+    ? num(selectedManagerNode?.team0)
+    : savedTeamCount !== null && savedTeamCount !== undefined && String(savedTeamCount).trim() !== ""
+      ? num(savedTeamCount)
+      : 0;
+  const allotted = isCompManagerPreview ? 0 : cmNodes.reduce((s, n) => s + n.updated, 0);
   const used = assignedTeam.reduce((sum, employee) => sum + employeeUtilized(employee), 0);
   const usedPct = myUpdated ? (used / myUpdated) * 100 : 0;
   const over = usedPct > 100;
@@ -1019,7 +1021,7 @@ export function TechEdBudgetDistribution() {
             </div>
           </>
         )}
-      </div>
+      </div>}
 
       {!isCompManagerPreview && <div className="card">
         {paneHead("audit", "% Applied — audit trail (you and your " + cmLabel + ")")}
