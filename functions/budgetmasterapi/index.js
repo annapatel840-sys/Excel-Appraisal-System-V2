@@ -1279,13 +1279,16 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   const sheetCycleReference = (row) => cycleReference(firstValue(row, sheetCycleFields));
   const hasCycleTaggedSheetRows = appraisalRows.some((row) => Boolean(sheetCycleReference(row)));
   const unscopedSheetRows = appraisalRows.filter((row) => !sheetCycleReference(row));
+  // Appraisal_Sheet is the generated roster for the active appraisal cycle in
+  // this deployment. Some existing rows store cycle references in legacy formats
+  // that do not exactly match the cycle master ID/name. If strict matching yields
+  // no rows, do not silently treat the roster as empty (which zeroes Org Budget
+  // Base and team headcounts); use the available generated sheet rows instead.
   const currentAppraisalRows = cycleScopedSheetRows.length
     ? cycleScopedSheetRows
     : unscopedSheetRows.length
       ? unscopedSheetRows
-      : hasCycleTaggedSheetRows
-        ? []
-        : appraisalRows;
+      : appraisalRows;
 
   const employeeKeyFor = (raw) => {
     const identity = normalizedIdentity(raw);
