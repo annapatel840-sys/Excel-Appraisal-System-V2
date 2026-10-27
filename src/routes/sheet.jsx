@@ -32,7 +32,7 @@ import { cn } from "@/lib/utils";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
-import { useViewAs, useSelectedCompManager, managerIdentityMatches } from "@/lib/view-as-store";
+import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
 
 import {
   applyFilters,
@@ -76,7 +76,7 @@ export function SheetPage() {
   const { openImportPicker, importUi } = useAppraisalImport();
   const catalystUser = useCatalystUser();
   const { effectiveId, actualId } = useViewAs();
-  const { selectedCompManager, setSelectedCompManager } = useSelectedCompManager();
+
   const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
   const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
@@ -104,13 +104,6 @@ export function SheetPage() {
   const [budgetNoticeOpen, setBudgetNoticeOpen] = useState(true);
 
   useEffect(() => {
-    if (!isCompManagerPreview || selectedCompManager) return;
-    const firstManager = rows.find((row) => row.compManagerDisplay || row.compManager);
-    const manager = firstManager?.compManagerDisplay || firstManager?.compManager || "";
-    if (manager) setSelectedCompManager(manager);
-  }, [isCompManagerPreview, selectedCompManager, rows, setSelectedCompManager]);
-
-  useEffect(() => {
     const handleOutsideClick = (event) => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
         setMenuOpen(false);
@@ -133,7 +126,7 @@ export function SheetPage() {
             String(row.status || "").trim().toLowerCase() === "active" &&
             String(row.eligibility || "").trim().toLowerCase() === "eligible" &&
             (!isCompManagerPreview ||
-              (selectedCompManager && managerIdentityMatches(row.compManagerDisplay || row.compManager, selectedCompManager))),
+              currentUserMatchesManager(row.compManagerDisplay || row.compManager, catalystUser, rows)),
         )
         .sort((a, b) =>
           String(a.empId || "").localeCompare(String(b.empId || ""), undefined, {
@@ -141,7 +134,7 @@ export function SheetPage() {
             sensitivity: "base",
           }),
         ),
-    [rows, isCompManagerPreview, selectedCompManager],
+    [rows, isCompManagerPreview, catalystUser],
   );
 
   const editedEmployeeIds = useMemo(
