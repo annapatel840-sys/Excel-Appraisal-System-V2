@@ -2287,21 +2287,70 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const appraisalSheetEmployees = employees.filter(
       (employee) => employee && employee.in_appraisal_sheet,
     );
-    // Resolve eligibility using the same cycle-specific Eligibility_List
-    // lookup used by the employee roster response. The raw row-level employee.eligible
-    // flag can be false when eligibility is stored only in Eligibility_List; using it
-    // alone caused Org Budget Base to drop to zero despite eligible sheet employees.
     const eligibleEmployees = appraisalSheetEmployees.filter((employee) => {
       const cycleEligibility = cycleEligibilityFor(employee, cycleId);
       return cycleEligibility ? cycleEligibility.eligible : employee.eligible;
     });
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
-    // Org Budget Base is the exact sum of the Appraisal_Sheet's previous-CTC field
-    // for those same eligible sheet employees. No payroll/current-CTC substitution.
-    const orgBase = eligibleEmployees.reduce(
-      (sum, employee) => sum + n(employee.sheet_previous_appraisal_ctc),
-      0,
-    );
+
+    // Calculate Org Budget Base directly from the raw Appraisal_Sheet rows.
+    // Do not depend on the transformed employee roster's CTC aliases or payroll
+    // fallbacks: the displayed Previous Total CTC with Rewards column is canonical.
+    const rawSheetBudgetRows = currentAppraisalRows.map((row) => {
+      const rawEmployeeId = String(
+        firstValue(row, [
+          "emp_id", "empId", "employee_id", "employeeId", "employee_id_text",
+        ]) || idOf(row),
+      ).trim();
+      const employeeId = employeeKeyFor(rawEmployeeId);
+      const masterRow =
+        masterByEmployee.get(employeeId) || masterByRowId.get(rawEmployeeId) || {};
+      const candidate = {
+        employeeId,
+        emp_id: rawEmployeeId,
+        employee_master_row_id: idOf(masterRow),
+      };
+      const cycleEligibility = cycleEligibilityFor(candidate, cycleId);
+      const rawSheetEligibility = String(firstValue(row, [
+        "eligibility", "eligible_status", "eligibility_status", "eligible",
+      ]) || "").trim().toLowerCase().replace(/[ _-]+/g, "");
+      const hasSheetEligibility = Boolean(rawSheetEligibility);
+      const sheetEligible = ["eligible", "yes", "true", "1"].includes(rawSheetEligibility);
+      const resolvedEmployee = employees.find((item) =>
+        String(item.employeeId || item.emp_id || "").trim().toLowerCase() ===
+        String(employeeId).trim().toLowerCase()
+      );
+      const isEligible = cycleEligibility
+        ? cycleEligibility.eligible
+        : hasSheetEligibility
+          ? sheetEligible
+          : Boolean(resolvedEmployee?.eligible);
+      const rawCtc = firstValue(row, [
+        "Previous_Appraisal_total_CTC_with_rewards",
+        "previous_appraisal_total_ctc_with_rewards",
+        "previousAppraisalTotalCtcWithRewards",
+      ]);
+      const ctc = rawCtc === "" || rawCtc === null || rawCtc === undefined
+        ? 0
+        : n(rawCtc);
+      return { employeeId, isEligible, rawCtc, ctc };
+    });
+    const eligibleRawSheetRows = rawSheetBudgetRows.filter((row) => row.isEligible);
+    const orgBase = eligibleRawSheetRows.reduce((sum, row) => sum + row.ctc, 0);
+    bundle.diagnostics = {
+      ...(bundle.diagnostics || {}),
+      budgetBaseSource: "raw Appraisal_Sheet.Previous_Appraisal_total_CTC_with_rewards",
+      budgetBaseSheetRows: currentAppraisalRows.length,
+      budgetBaseEligibleRows: eligibleRawSheetRows.length,
+      budgetBaseRowsWithCtc: eligibleRawSheetRows.filter((row) =>
+        row.rawCtc !== "" && row.rawCtc !== null && row.rawCtc !== undefined
+      ).length,
+      budgetBaseRawCtcSum: orgBase,
+      budgetBaseMissingEmployeeIds: eligibleRawSheetRows
+        .filter((row) => row.rawCtc === "" || row.rawCtc === null || row.rawCtc === undefined)
+        .map((row) => row.employeeId)
+        .slice(0, 20),
+    };
     const techBases = new Map(
       Array.from(techLabels.keys(), (key) => [
         key,
