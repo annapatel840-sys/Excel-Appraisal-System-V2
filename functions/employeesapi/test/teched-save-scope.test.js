@@ -20,9 +20,11 @@ function seed() {
       { ROWID: '74008000000030001', emp_id: 'EMP013', emp_name: 'Thirteen', email_id: 'e13@x.com', emp_status: 'Active' },
       { ROWID: '74008000000030002', emp_id: 'E2', emp_name: 'Two', email_id: 'e2@x.com', emp_status: 'Active' },
     ],
+    // Saves go to the Active cycle's row.
+    '74008000000034190': [{ ROWID: 'C1', cycle_name: 'Annual 2027', status: 'Active', archived: false }],
     [SHEET]: [
-      { ROWID: '1', emp_id: 'EMP013', appraiser_tech_ed1: '74008000000027043', hike_amount: '' },
-      { ROWID: '2', emp_id: 'E2', appraiser_tech_ed1: '74008000000027046', hike_amount: '' },
+      { ROWID: '1', emp_id: 'EMP013', appraiser_tech_ed1: '74008000000027043', hike_amount: '', cycle_id: 'C1' },
+      { ROWID: '2', emp_id: 'E2', appraiser_tech_ed1: '74008000000027046', hike_amount: '', cycle_id: 'C1' },
     ],
   };
 }
