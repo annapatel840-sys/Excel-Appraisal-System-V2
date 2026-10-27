@@ -1148,6 +1148,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const desiredTargetPB = employee.target_pb_allocated_for_may;
     const desiredBasePay = employee.current_annual_base_pay;
     const desiredTargetCriteria = employee.target_pb_criteria;
+    const desiredPreviousCtc = employee.previous_appraisal_total_ctc_with_rewards;
     const sourceRow = employees.find((row) =>
       String(row.ROWID ?? row.rowid ?? "") === rowId
     );
@@ -1155,6 +1156,14 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const existingTargetPB = Number(sourceRow?.target_pb_allocated_for_may || 0);
     const existingBasePay = Number(sourceRow?.current_annual_base_pay || 0);
     const existingTargetCriteria = String(sourceRow?.target_pb_criteria ?? "").trim();
+    const existingPreviousCtcRaw = firstNonEmpty(sourceRow || {}, [
+      "previous_appraisal_total_ctc_with_rewards",
+      "Previous_Appraisal_total_CTC_with_rewards",
+      "previousAppraisalTotalCtcWithRewards",
+    ]);
+    const existingPreviousCtc = existingPreviousCtcRaw === ""
+      ? null
+      : payrollAmount(existingPreviousCtcRaw);
     const update = { ROWID: rowId };
     if (existingDate !== String(desiredDate ?? "").trim() && String(desiredDate ?? "").trim()) {
       update.last_appraisal_date = desiredDate;
@@ -1168,6 +1177,14 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     if (existingTargetCriteria !== String(desiredTargetCriteria ?? "").trim() &&
         String(desiredTargetCriteria ?? "").trim()) {
       update.target_pb_criteria = desiredTargetCriteria;
+    }
+    // Budget Master sums the stored Appraisal_Sheet column, not a separate
+    // payroll fallback. Persist the exact value returned for that column so both
+    // screens read the same per-employee number on subsequent requests.
+    if (Number.isFinite(Number(desiredPreviousCtc)) &&
+        Number(desiredPreviousCtc) > 0 &&
+        existingPreviousCtc !== Number(desiredPreviousCtc)) {
+      update.previous_appraisal_total_ctc_with_rewards = Number(desiredPreviousCtc);
     }
     if (Object.keys(update).length === 1) continue;
     try {
