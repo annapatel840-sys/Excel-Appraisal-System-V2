@@ -81,7 +81,7 @@ const BDESC = {
   close:
     "Closes the cycle (Active → Closed). A window shows what is still pending; you choose Close anyway or Don't close yet.",
   archive:
-    "Final values go to Compensation History and the Appraisal Sheet and Detail are cleared. The cycle becomes read-only and cannot be reopened. A window shows what is still pending first.",
+    "The final Appraisal Sheet values move into Payroll Data for this cycle (used as last year's values next cycle) and the cycle is cleared from the Appraisal Sheet and Detail screen. The cycle becomes read-only and cannot be reopened. A window shows what is still pending first.",
   generate:
     "One row per eligible employee; feeds the Detail screen. Comp Manager defaults to the Tech ED of each employee; Delegation can change it later. Runs once; after it, any change goes to the Change list. Nothing blocks this step.",
 };
