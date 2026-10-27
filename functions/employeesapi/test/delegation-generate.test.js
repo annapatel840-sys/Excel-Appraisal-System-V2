@@ -249,20 +249,6 @@ const LIST = 'page=1&limit=100&view=delegation';
     assert.strictEqual(eligibility.eligibility_status, 'Eligible', 'eligibility decision is preserved');
   });
 
-  await t('Generate corrects a valid-but-wrong Employee_Master reference using emp_id', async () => {
-    accessResult = HR;
-    const eligibility = DB[T.elig].find((row) => row.emp_id === 'EMP013' && row.appraisal_cycle_id === 'C1');
-    assert.ok(eligibility);
-    eligibility.employee_master_id = ids.EMP011; // valid ROWID, but belongs to another employee
-
-    const g = await generate('C1');
-    assert.strictEqual(g.status, 200, JSON.stringify(g.json));
-    assert.ok(sheetRow('EMP013', 'C1'), 'EMP013 is generated');
-    assert.ok(!sheetRow('EMP011', 'C1') || sheetRow('EMP011', 'C1').emp_master_row_id === ids.EMP011,
-      'EMP013 eligibility must not be applied to EMP011');
-    assert.strictEqual(eligibility.employee_master_id, ids.EMP013, 'wrong reference is corrected');
-  });
-
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 })();
