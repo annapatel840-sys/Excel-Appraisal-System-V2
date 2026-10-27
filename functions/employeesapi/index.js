@@ -869,6 +869,9 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   };
   const historyByEmployee = new Map();
   const currentPayrollByEmployee = new Map();
+  // Keep cycle-specific payroll rows so a same-year New Joiners upload can be
+  // selected per employee without changing the source used for existing staff.
+  const payrollByEmployeeAndCycle = new Map();
   const bonusHistoryCandidatesByEmployee = new Map();
   const cycleYearOf = (cycle) => {
     const match = historyCycleName(cycle).match(/(?:19|20)\d{2}/);
@@ -886,9 +889,16 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     if (!empKey || !rawCycle) return;
     const cycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
     if (!cycle) return;
-    // Current-cycle payroll still owns current target PB allocation and criteria.
+    const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
+    const payrollCycleKey = cycleIdOf(cycle) || rawCycle;
+    const payrollKey = empKey + "::" + payrollCycleKey;
+    const priorForCycle = payrollByEmployeeAndCycle.get(payrollKey);
+    if (!priorForCycle || rowTime.localeCompare(priorForCycle.rowTime, undefined, { numeric: true }) > 0) {
+      payrollByEmployeeAndCycle.set(payrollKey, { row: record, rowTime, cycle });
+    }
+    // Keep the active-cycle row as a compatibility fallback, but select the
+    // employee-specific source below (same-year New Joiners first, then Annual).
     if (cycleIdOf(cycle) === currentCycleId) {
-      const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
       const current = currentPayrollByEmployee.get(empKey);
       if (
         !current ||
@@ -960,6 +970,40 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const prior = empKey ? historyByEmployee.get(empKey) : null;
     const currentPayroll = empKey ? currentPayrollByEmployee.get(empKey)?.row : null;
     const bonusPayroll = empKey ? bonusPayrollByEmployee.get(empKey)?.row : null;
+    const employeePayrollRows = empKey
+      ? Array.from(payrollByEmployeeAndCycle.values()).filter((item) =>
+          item.row && rowEmployeeKey(firstNonEmpty(item.row, ["emp_id", "employee_id", "emp_code", "empId"]), employeeMasterMap) === empKey
+        )
+      : [];
+    const sameYearNewJoinerPayroll = employeePayrollRows
+      .filter((item) =>
+        isNewJoinerCycle(item.cycle) &&
+        cycleYearOf(item.cycle) !== "" &&
+        cycleYearOf(item.cycle) === currentYear
+      )
+      .sort((a, b) =>
+        historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
+        b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true })
+      )[0] || null;
+    const priorAnnualPayroll = employeePayrollRows
+      .filter((item) =>
+        isAnnualCycle(item.cycle) &&
+        (currentRank <= 0 || historyCycleRank(item.cycle) < currentRank) &&
+        (item.cycle.archived === true ||
+          ["true", "1", "yes", "archived"].includes(String(item.cycle.archived ?? "").trim().toLowerCase()) ||
+          ["archived", "closed", "complete", "completed"].includes(cycleStatusOf(item.cycle))
+        )
+      )
+      .sort((a, b) =>
+        historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
+        b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true })
+      )[0] || null;
+    // New joiners use their matching New Joiners cycle for payroll-mapped
+    // values and last-appraisal date/name. Existing staff use the last closed
+    // Annual payroll cycle. Feedback remains separately cycle-scoped below.
+    const selectedPayrollSource = sameYearNewJoinerPayroll || priorAnnualPayroll;
+    const selectedPayroll = selectedPayrollSource?.row || currentPayroll || null;
+    const selectedPayrollCycle = selectedPayrollSource?.cycle || null;
     const currentFeedback = empKey ? currentFeedbackByEmployee.get(empKey)?.row : null;
     const feedbackValue = (...keys) => {
       for (const key of keys) {
@@ -973,15 +1017,31 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       }
       return undefined;
     };
-    const previousCtc = prior && prior.value !== null ? prior.value : currentTotalCtc(employee);
-    const previousCycleName = prior ? historyCycleName(prior.cycle) : "";
-    const label = prior ? previousCycleName : "New - " + currentYear;
-    // Prefer the prior archived cycle's effective date. During a first
-    // cycle (e.g. New Joiner), fall back to the uploaded Employee_Master date
-    // rather than erasing a valid source value when no archived cycle exists.
-    const lastArchivedEffectiveDate = prior
-      ? String(prior.cycle?.effective_date ?? prior.cycle?.effectiveDate ?? prior.cycle?.start_date ?? "").trim()
-      : String(employee.last_appraisal_date ?? employee.lastAppraisalDate ?? "").trim();
+    const payrollCtcValue = selectedPayroll
+      ? firstNonEmpty(selectedPayroll, [
+          "total_ctc_with_rewards", "total_CTC_with_rewards", "totalCTCWithRewards",
+          "total_ctc", "new_ctc", "newCTC",
+        ])
+      : "";
+    const payrollCtcParsed = payrollCtcValue !== ""
+      ? Number(String(payrollCtcValue).replace(/[₹,\\s]/g, ""))
+      : ctcFromComponents(selectedPayroll || {});
+    const previousCtc = sameYearNewJoinerPayroll && Number.isFinite(payrollCtcParsed)
+      ? payrollCtcParsed
+      : prior && prior.value !== null
+        ? prior.value
+        : currentTotalCtc(employee);
+    const previousCycleName = selectedPayrollCycle
+      ? historyCycleName(selectedPayrollCycle)
+      : prior ? historyCycleName(prior.cycle) : "";
+    const label = previousCycleName || ("New - " + currentYear);
+    // For a new joiner, use the matching New Joiners cycle effective date;
+    // otherwise use the last closed Annual cycle effective date.
+    const lastArchivedEffectiveDate = selectedPayrollCycle
+      ? String(selectedPayrollCycle.effective_date ?? selectedPayrollCycle.effectiveDate ?? selectedPayrollCycle.start_date ?? selectedPayrollCycle.startDate ?? "").trim()
+      : prior
+        ? String(prior.cycle?.effective_date ?? prior.cycle?.effectiveDate ?? prior.cycle?.start_date ?? "").trim()
+        : String(employee.last_appraisal_date ?? employee.lastAppraisalDate ?? "").trim();
     const payrollAmount = (value) => {
       const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
       return Number.isFinite(parsed) ? parsed : 0;
@@ -1006,19 +1066,30 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const feedbackRRNumber = feedbackRRRaw === undefined
       ? undefined
       : Number(String(feedbackRRRaw).replace(/[₹,%\s,]/g, ""));
-    const currentTargetPB = currentPayroll
-      ? firstNonEmpty(currentPayroll, [
+    const currentTargetPB = selectedPayroll
+      ? firstNonEmpty(selectedPayroll, [
           "target_performance_bonus_for_next_year", "target_performance_bonus_next_year",
+          "target_pb_allocated_for_may", "target_pb_allocated", "allocated_pb_amount",
         ])
       : "";
     const targetPBForNextYear = currentTargetPB !== ""
       ? payrollAmount(currentTargetPB)
       : payrollAmount(employee.target_pb_allocated_for_may ?? employee.target_pb_allocated ?? 0);
-    const currentTargetPBCriteria = currentPayroll
-      ? String(firstNonEmpty(currentPayroll, [
+    const currentTargetPBCriteria = selectedPayroll
+      ? String(firstNonEmpty(selectedPayroll, [
           "target_pb_criteria", "target_PB_criteria", "target_performance_bonus_criteria",
+          "target_performance_bonus_for_next_year_criteria",
         ]) ?? "").trim()
       : String(employee.target_pb_criteria ?? employee.target_PB_criteria ?? "").trim();
+    const payrollAnnualBasePayRaw = selectedPayroll
+      ? firstNonEmpty(selectedPayroll, [
+          "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay",
+          "base_pay", "basePay", "annual_base_pay", "annualBasePay",
+        ])
+      : "";
+    const payrollAnnualBasePay = payrollAnnualBasePayRaw !== ""
+      ? payrollAmount(payrollAnnualBasePayRaw)
+      : Number(employee.current_annual_base_pay || 0);
     const master = empKey ? employeeMasterMap.get(empKey) : null;
     const masterId = String(master?.ROWID ?? master?.rowid ?? master?.id ?? "").trim().toLowerCase();
     const cycleEligibility = (masterId ? eligibilityByEmployee.get("row:" + masterId) : null) ||
@@ -1035,6 +1106,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       previous_appraisal_total_ctc_with_rewards: previousCtc,
       Previous_Appraisal_total_CTC_with_rewards: previousCtc,
       previousAppraisalTotalCtcWithRewards: previousCtc,
+      current_annual_base_pay: payrollAnnualBasePay,
       // The date column is sourced from the archived cycle's effective_date,
       // never from stale demo values or the cycle-name label.
       // Do not substitute a cycle name into the date field.
@@ -1072,18 +1144,26 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     if (!rowId) return;
     const desiredDate = employee.last_appraisal_date;
     const desiredTargetPB = employee.target_pb_allocated_for_may;
+    const desiredBasePay = employee.current_annual_base_pay;
+    const desiredTargetCriteria = employee.target_pb_criteria;
     const sourceRow = employees.find((row) =>
       String(row.ROWID ?? row.rowid ?? "") === rowId
     );
     const existingDate = String(sourceRow?.last_appraisal_date ?? "").trim();
     const existingTargetPB = Number(sourceRow?.target_pb_allocated_for_may || 0);
+    const existingBasePay = Number(sourceRow?.current_annual_base_pay || 0);
+    const existingTargetCriteria = String(sourceRow?.target_pb_criteria ?? "").trim();
     if (existingDate === String(desiredDate ?? "").trim() &&
-        existingTargetPB === Number(desiredTargetPB || 0)) return;
+        existingTargetPB === Number(desiredTargetPB || 0) &&
+        existingBasePay === Number(desiredBasePay || 0) &&
+        existingTargetCriteria === String(desiredTargetCriteria ?? "").trim()) return;
     try {
       await appraisalTable.updateRow({
         ROWID: rowId,
         last_appraisal_date: desiredDate,
         target_pb_allocated_for_may: desiredTargetPB,
+        current_annual_base_pay: desiredBasePay,
+        target_pb_criteria: desiredTargetCriteria,
       });
     } catch (error) {
       console.error("Could not persist archived-cycle appraisal lookup for row", rowId, error?.message || error);
