@@ -8,6 +8,7 @@ import {
 } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
+import { useViewAs, useSelectedCompManager, managerIdentityMatches } from "@/lib/view-as-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
 const BudgetContext = createContext(null);
@@ -114,6 +115,9 @@ async function fetchAllEligibleEmployees() {
 
 export function BudgetProvider({ children }) {
   const authenticatedUser = useCatalystUser();
+  const { effectiveId, actualId } = useViewAs();
+  const { selectedCompManager } = useSelectedCompManager();
+  const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
   const currentUser = useMemo(
     () => ({
       name:
@@ -433,6 +437,40 @@ export function BudgetProvider({ children }) {
     });
     const isTechEdBudgetView = roleText.includes("teched") || (!isHR && hasTechEdAllocationForLogin);
 
+    if (isCompManagerPreview) {
+      const ownParentCandidates = budgetDistributionRows.filter((row) => {
+        const raw = row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed ||
+          row.appraiser_tech_ed || row.appraiser_tech_ed1 || "";
+        const matchesOwner = ownerMatches(raw, detectedOwnerAliases) ||
+          detectedOwnerAliases.includes(normalizeOwner(raw));
+        return matchesOwner &&
+          (!activeBudgetCycleId || String(row.appraisal_cycle_id || "") === activeBudgetCycleId);
+      });
+      const ownParent = ownParentCandidates.length === 1 ? ownParentCandidates[0] : null;
+      const managerCandidates = budgetCompManagerRows.filter((row) =>
+        Boolean(selectedCompManager) &&
+        (!activeBudgetCycleId || String(row.appraisal_cycle_id || "") === activeBudgetCycleId) &&
+        managerIdentityMatches(row.comp_manager, selectedCompManager) &&
+        ownParent &&
+        String(row.budget_distribution_id || "") === String(ownParent.id || "")
+      );
+      const manager = managerCandidates.length === 1 ? managerCandidates[0] : null;
+      if (manager) {
+        const original = number(manager.calculated_budget);
+        const updated = number(manager.applied_budget);
+        const utilized = number(manager.total_utilization);
+        return {
+          base: original, additional: 0, updated, utilized,
+          remaining: updated - utilized, hasBudgetMaster: false,
+          hasAuthoritativeBudget: true, budgetScope: "compmanager",
+        };
+      }
+      return {
+        base: 0, additional: 0, updated: 0, utilized: 0, remaining: 0,
+        hasBudgetMaster: false, hasAuthoritativeBudget: true, budgetScope: "compmanager",
+      };
+    }
+
     // A Tech-Ed login must see their own Budget_Distribution allocation,
     // not the organisation-wide Budget_Master total. Dashboard, Appraisal Sheet,
     // and Detail Screen all consume this shared role-aware total.
@@ -528,7 +566,7 @@ export function BudgetProvider({ children }) {
       }),
       { base: 0, additional: 0, updated: 0, utilized: 0, remaining: 0, hasBudgetMaster: false, hasAuthoritativeBudget: false },
     );
-  }, [rows, budgetMasterRows, budgetDistributionRows, techEdOwners, currentUser, roleText, activeBudgetCycleId]);
+  }, [rows, budgetMasterRows, budgetDistributionRows, budgetCompManagerRows, techEdOwners, currentUser, roleText, activeBudgetCycleId, isCompManagerPreview, selectedCompManager]);
 
   const hierarchy = useMemo(() => {
     const next = {};
