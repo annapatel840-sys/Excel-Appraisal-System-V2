@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
-import { useViewAs, useSelectedCompManager, managerIdentityMatches, currentUserMatchesManager } from "@/lib/view-as-store";
+import { useViewAs, managerIdentityMatches, currentUserMatchesManager } from "@/lib/view-as-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 /* Budget Distribution uses persisted Budget_Distribution and
@@ -157,7 +157,6 @@ function AuditTable({ list, showName }) {
 export function TechEdBudgetDistribution() {
   const user = useCatalystUser();
   const { effectiveId, actualId } = useViewAs();
-  const { setSelectedCompManager } = useSelectedCompManager();
   const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
   const {
     budgetDistributionRows,
