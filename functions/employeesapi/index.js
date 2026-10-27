@@ -981,7 +981,11 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       .filter((item) =>
         isNewJoinerCycle(item.cycle) &&
         cycleYearOf(item.cycle) !== "" &&
-        cycleYearOf(item.cycle) === currentYear
+        cycleYearOf(item.cycle) === currentYear &&
+        (item.cycle.archived === true ||
+          ["true", "1", "yes", "archived"].includes(String(item.cycle.archived ?? "").trim().toLowerCase()) ||
+          ["archived", "closed", "complete", "completed"].includes(cycleStatusOf(item.cycle))
+        )
       )
       .sort((a, b) =>
         historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
