@@ -26,7 +26,7 @@ import {
   sumTargetPB,
 } from "./BudgetStatsBar";
 import { useCatalystUser } from "@/lib/catalyst-auth";
-import { useViewAs, useSelectedCompManager, managerIdentityMatches } from "@/lib/view-as-store";
+import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
 import { buildFeedbackEntries, cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
@@ -970,7 +970,7 @@ export function DetailScreenPage({
   } = useBudget();
   const catalystUser = useCatalystUser();
   const { effectiveId, actualId } = useViewAs();
-  const { selectedCompManager, setSelectedCompManager } = useSelectedCompManager();
+ 
   const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
   const role = String(catalystUser?.role || "")
     .trim()
@@ -988,18 +988,11 @@ export function DetailScreenPage({
           String(row.status || "").trim().toLowerCase() === "active" &&
           String(row.eligibility || "").trim().toLowerCase() === "eligible" &&
           (!isCompManagerPreview ||
-            (selectedCompManager && managerIdentityMatches(row.compManagerDisplay || row.compManager, selectedCompManager))),
+            currentUserMatchesManager(row.compManagerDisplay || row.compManager, catalystUser, liveRows || [])),
       ),
-    [liveRows, isCompManagerPreview, selectedCompManager],
+    [liveRows, isCompManagerPreview, catalystUser],
   );
   const isScopedToTeam = isTechEd || rows.length > 0;
-
-  useEffect(() => {
-    if (!isCompManagerPreview || selectedCompManager) return;
-    const firstManager = (liveRows || []).find((row) => row.compManagerDisplay || row.compManager);
-    const manager = firstManager?.compManagerDisplay || firstManager?.compManager || "";
-    if (manager) setSelectedCompManager(manager);
-  }, [isCompManagerPreview, selectedCompManager, liveRows, setSelectedCompManager]);
 
   // Budget summary shown beside the notice (same numbers as the Appraisal Sheet).
   const budgetConsumed = useMemo(() => sumBudgetConsumed(rows), [rows]);
