@@ -1599,14 +1599,20 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         "totalPB",
       ]),
     );
-    const rawEligibility = String(
-      firstValue(masterRow, [
+    // The generated Appraisal_Sheet row is the exact roster/value set shown
+    // to HR. Prefer its eligibility/status fields when present; Employee_Master
+    // can be stale after the cycle eligibility step has generated the sheet.
+    const sheetEligibilityRaw = String(
+      firstValue(row, [
         "eligibility",
         "eligible_status",
         "eligibility_status",
         "eligible",
-      ]) ||
-        firstValue(row, [
+      ]) || "",
+    ).trim();
+    const rawEligibility = String(
+      sheetEligibilityRaw ||
+        firstValue(masterRow, [
           "eligibility",
           "eligible_status",
           "eligibility_status",
@@ -1618,12 +1624,13 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       .toLowerCase()
       .replace(/[ _-]+/g, "");
     const rawStatus = String(
-      firstValue(masterRow, ["emp_status", "status", "employee_status"]) ||
-        firstValue(row, ["emp_status", "status", "employee_status"]) ||
+      firstValue(row, ["emp_status", "status", "employee_status"]) ||
+        firstValue(masterRow, ["emp_status", "status", "employee_status"]) ||
         "",
     )
       .trim()
       .toLowerCase();
+    const sheetEligibilityExplicit = Boolean(sheetEligibilityRaw);
     const explicitEligible = ["eligible", "yes", "true", "1"].includes(
       rawEligibility,
     );
@@ -1739,6 +1746,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       comp_manager: rawCompManager,
       comp_manager_display: compManagerDisplay,
       eligible,
+      sheet_eligibility_explicit: sheetEligibilityExplicit,
       status: rawStatus,
       eligible_status: eligible ? "eligible" : "not eligible",
       base: previousAppraisalCtc,
@@ -2100,15 +2108,22 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       // Match the Appraisal Sheet filter exactly: a cycle-specific Eligibility_List
       // decision wins; when no decision exists, use the same Active + explicit/fallback
       // eligibility rule as employeesapi so Org Base includes exactly displayed staff.
-      const eligible = cycleEligibility
-        ? cycleEligibility.eligible
-        : employee.eligible;
+      // Once the cycle's Appraisal_Sheet has been generated, its explicit
+      // eligibility value is authoritative for the exact CTC rows shown on screen.
+      // Use Eligibility_List only for legacy sheet rows with no eligibility value.
+      const eligible = employee.sheet_eligibility_explicit
+        ? employee.eligible
+        : cycleEligibility
+          ? cycleEligibility.eligible
+          : employee.eligible;
       return {
         ...employee,
         eligible,
-        eligible_status: cycleEligibility
-          ? cycleEligibility.status
-          : employee.eligible_status,
+        eligible_status: employee.sheet_eligibility_explicit
+          ? employee.eligible_status
+          : cycleEligibility
+            ? cycleEligibility.status
+            : employee.eligible_status,
         base,
         previous_appraisal_total_ctc_with_rewards: base,
         Previous_Appraisal_total_CTC_with_rewards: base,
