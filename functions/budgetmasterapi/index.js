@@ -2108,22 +2108,19 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       // Match the Appraisal Sheet filter exactly: a cycle-specific Eligibility_List
       // decision wins; when no decision exists, use the same Active + explicit/fallback
       // eligibility rule as employeesapi so Org Base includes exactly displayed staff.
-      // Once the cycle's Appraisal_Sheet has been generated, its explicit
-      // eligibility value is authoritative for the exact CTC rows shown on screen.
-      // Use Eligibility_List only for legacy sheet rows with no eligibility value.
-      const eligible = employee.sheet_eligibility_explicit
-        ? employee.eligible
-        : cycleEligibility
-          ? cycleEligibility.eligible
-          : employee.eligible;
+      // Eligibility_List is the live membership source for this cycle:
+      // approved additions/removals there must immediately change the budget roster.
+      // Fall back to the Appraisal_Sheet eligibility field only for legacy rows
+      // that have no matching cycle-specific Eligibility_List record.
+      const eligible = cycleEligibility
+        ? cycleEligibility.eligible
+        : employee.eligible;
       return {
         ...employee,
         eligible,
-        eligible_status: employee.sheet_eligibility_explicit
-          ? employee.eligible_status
-          : cycleEligibility
-            ? cycleEligibility.status
-            : employee.eligible_status,
+        eligible_status: cycleEligibility
+          ? cycleEligibility.status
+          : employee.eligible_status,
         base,
         previous_appraisal_total_ctc_with_rewards: base,
         Previous_Appraisal_total_CTC_with_rewards: base,
@@ -2300,8 +2297,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // Canonical rule: Org Budget Base is the sum of the exact previous-CTC values
     // carried from the generated Appraisal_Sheet rows for employees marked eligible
     // in that sheet/cycle. No second Eligibility_List membership filter is applied.
+    // Budget Base must be the sum of the actual Previous Total CTC with
+    // Rewards values displayed on eligible Appraisal_Sheet rows. Never substitute
+    // a historical payroll/current-CTC fallback here: that makes the base differ
+    // from the visible column whenever the sheet value is blank or stale.
     const orgBase = eligibleEmployees.reduce(
-      (sum, employee) => sum + n(employee.sheet_previous_appraisal_ctc ?? employee.base),
+      (sum, employee) => sum + n(employee.sheet_previous_appraisal_ctc),
       0,
     );
     const techBases = new Map(
