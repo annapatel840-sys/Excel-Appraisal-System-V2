@@ -26,6 +26,7 @@ import {
   sumTargetPB,
 } from "./BudgetStatsBar";
 import { useCatalystUser } from "@/lib/catalyst-auth";
+import { useViewAs, useSelectedCompManager, managerIdentityMatches } from "@/lib/view-as-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
 import { buildFeedbackEntries, cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
@@ -968,6 +969,9 @@ export function DetailScreenPage({
     error: budgetError,
   } = useBudget();
   const catalystUser = useCatalystUser();
+  const { effectiveId, actualId } = useViewAs();
+  const { selectedCompManager } = useSelectedCompManager();
+  const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
   const role = String(catalystUser?.role || "")
     .trim()
     .toLowerCase()
@@ -982,9 +986,11 @@ export function DetailScreenPage({
       (liveRows || []).filter(
         (row) =>
           String(row.status || "").trim().toLowerCase() === "active" &&
-          String(row.eligibility || "").trim().toLowerCase() === "eligible",
+          String(row.eligibility || "").trim().toLowerCase() === "eligible" &&
+          (!isCompManagerPreview ||
+            (selectedCompManager && managerIdentityMatches(row.compManagerDisplay || row.compManager, selectedCompManager))),
       ),
-    [liveRows],
+    [liveRows, isCompManagerPreview, selectedCompManager],
   );
   const isScopedToTeam = isTechEd || rows.length > 0;
 
