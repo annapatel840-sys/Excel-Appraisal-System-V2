@@ -320,7 +320,11 @@ const formatEditableNumeric = (value, type) => {
 };
 
 // input = yellow tint, calculated = blue tint, master = banded rows.
-const cellBackground = ({ kind, rowIndex, selected }) => {
+const cellBackground = ({ kind, rowIndex, selected, flash }) => {
+  if (flash) {
+    return "bg-[#ffe08a] group-hover:bg-[#ffe08a]";
+  }
+
   if (selected) {
     return "bg-[#dcebff] group-hover:bg-[#dcebff]";
   }
@@ -2543,6 +2547,9 @@ export function AppraisalGrid({
 
   const handledFocusRef = useRef("");
   const [scrollTargetId, setScrollTargetId] = useState(null);
+  // Row flashed in amber after "Last Edited" so the person is easy to spot.
+  const [flashRowId, setFlashRowId] = useState(null);
+  const flashTimerRef = useRef(null);
   const [focusNotice, setFocusNotice] = useState("");
   const focusNoticeTimerRef = useRef(null);
 
@@ -2600,6 +2607,13 @@ export function AppraisalGrid({
 
     setHistoryRow(targetRow);
     setScrollTargetId(targetRow.id);
+    setFlashRowId(targetRow.id);
+
+    if (flashTimerRef.current) {
+      clearTimeout(flashTimerRef.current);
+    }
+
+    flashTimerRef.current = setTimeout(() => setFlashRowId(null), 4000);
 
     if ((showHistory || detailOpen) && targetRow.empId) {
       loadHistory(targetRow.empId).catch(() => {});
@@ -2613,6 +2627,10 @@ export function AppraisalGrid({
     () => () => {
       if (focusNoticeTimerRef.current) {
         clearTimeout(focusNoticeTimerRef.current);
+      }
+
+      if (flashTimerRef.current) {
+        clearTimeout(flashTimerRef.current);
       }
     },
     [],
@@ -3785,6 +3803,7 @@ export function AppraisalGrid({
 
   const renderDataRow = (row, rowIndex) => {
     const isSelectedRow = historyRow?.id === row.id;
+    const isFlashRow = flashRowId === row.id;
 
     return (
       <tr
@@ -3800,6 +3819,7 @@ export function AppraisalGrid({
               kind: "master",
               rowIndex,
               selected: isSelectedRow,
+              flash: isFlashRow,
             }),
           )}
           style={{
@@ -3843,6 +3863,7 @@ export function AppraisalGrid({
                   kind: isFrozen ? "master" : kind,
                   rowIndex,
                   selected: isSelectedRow,
+                  flash: isFlashRow,
                 }),
               )}
               style={{
