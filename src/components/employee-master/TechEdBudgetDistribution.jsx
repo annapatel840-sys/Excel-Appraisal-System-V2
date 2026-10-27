@@ -513,6 +513,14 @@ export function TechEdBudgetDistribution() {
       stats.utilized += employeeUtilized(employee);
       managerStats.set(key, stats);
     });
+    // The parent Tech-Ed's budget base is the pool to distribute across
+    // Comp Managers. Use the persisted base; for older rows derive it from the
+    // original allocation and percentage when that is the only available value.
+    const parentPct = num(liveTech?.percentage);
+    const parentBudgetBase = num(liveTech?.budget_base) ||
+      (parentPct > 0 ? num(liveTech?.calculated_budget) * 100 / parentPct : 0);
+    const totalCurrentTeamCount = Array.from(managerStats.values()).reduce((sum, stats) => sum + stats.count, 0);
+
     // Saved allocation rows are not the roster. Show saved managers only if
     // they still exist in the current eligible Appraisal Sheet; add current
     // managers that have not yet received an allocation as dynamic rows.
@@ -522,17 +530,17 @@ export function TechEdBudgetDistribution() {
     const savedKeys = new Set(currentLiveComps.map((live) => ownerKey(resolveManager(live.comp_manager))));
     const unsaved = Array.from(managerStats.entries())
       .filter(([key]) => key && !savedKeys.has(key))
-      .map(([, stats]) => ({ id: "", comp_manager: stats.name, percentage: 0, budget_base: stats.base, calculated_budget: 0, applied_budget: 0, total_utilization: stats.utilized }));
+      .map(([, stats]) => ({ id: "", comp_manager: stats.name, percentage: 0, budget_base: 0, calculated_budget: 0, applied_budget: 0, total_utilization: stats.utilized }));
     return currentLiveComps.concat(unsaved).map((live) => {
       const pct = num(live.percentage);
       const resolvedName = resolveManager(live.comp_manager);
       const stats = managerStats.get(ownerKey(resolvedName)) || { count: 0, base: 0, utilized: 0, name: resolvedName || live.comp_manager };
-      // When the manager exists in the current eligible Appraisal Sheet roster,
-      // its CTC base must come from that live roster, even when the saved row has
-      // a non-zero but stale budget_base. Keep saved fallback only for orphan rows.
+      // Comp Manager Budget Base is the Tech-Ed budget base apportioned by
+      // each manager's share of the current eligible Appraisal Sheet headcount.
+      // This base is the percentage calculation base, not the manager's CTC sum.
       const hasCurrentRoster = managerStats.has(ownerKey(resolvedName));
-      const base = hasCurrentRoster
-        ? stats.base
+      const base = hasCurrentRoster && totalCurrentTeamCount > 0
+        ? parentBudgetBase * stats.count / totalCurrentTeamCount
         : (num(live.budget_base) || (pct ? num(live.calculated_budget) * 100 / pct : 0));
       const original = num(live.calculated_budget);
       const updated = num(live.applied_budget);
@@ -563,7 +571,7 @@ export function TechEdBudgetDistribution() {
         history,
       };
     });
-  }, [liveComps, employeeRows, techOwnerKey, log, techEdOwners, activeCycleId, isCompManagerPreview, user]);
+  }, [liveComps, employeeRows, techOwnerKey, log, techEdOwners, activeCycleId, isCompManagerPreview, user, liveTech]);
 
   // A Tech-Ed preview may only see a Comp Manager allocation if the signed-in
   // employee is itself that Comp Manager. Never default to another manager.
@@ -618,6 +626,10 @@ export function TechEdBudgetDistribution() {
           ? num(sharedBudgetTotals.updated)
           : num(liveTech.applied_budget))
     : null;
+  const parentBudgetBaseForDisplay = num(liveTech?.budget_base) ||
+    (num(liveTech?.percentage) > 0
+      ? num(liveTech?.calculated_budget) * 100 / num(liveTech?.percentage)
+      : num(sharedBudgetTotals?.base));
   // Backend counts are calculated from the cycle-scoped eligible Appraisal Sheet
   // roster and persisted by budgetmasterapi. Prefer them so every screen agrees.
   // The rendered eligible Appraisal Sheet roster is the live source of truth.
@@ -672,6 +684,8 @@ export function TechEdBudgetDistribution() {
     }
     if (to === node.pct) return;
     const newUpd = (node.base * to) / 100;
+    const firstAllocation = !node.liveId || !(num(node.original) > 0);
+    const nextOriginal = firstAllocation ? newUpd : node.original;
     const sum = allotted - node.updated + newUpd;
     if (sum > myUpdated + 0.5) {
       setErr(
@@ -690,8 +704,9 @@ export function TechEdBudgetDistribution() {
       await updateBudget(node.liveId || "", {
         percentage: to,
         budget_base: node.base,
-        // Keep the initial Comp Manager allocation frozen after the first save.
-        calculated_budget: node.liveId ? node.original : newUpd,
+        // Freeze Original Budget at the first real allocation. Later % changes
+        // update only Updated Budget using the current allocated Budget Base.
+        calculated_budget: nextOriginal,
         applied_budget: newUpd,
         comp_manager: name,
         ...(node.liveId ? {} : { budget_distribution_id: liveTech.id }),
@@ -847,8 +862,9 @@ export function TechEdBudgetDistribution() {
               <table className="bal">
                 <thead>
                   <tr>
-                    <th>Level</th>
-                    <th>Owner</th>
+                    <th className="level-col">Level</th>
+                    <th className="owner-col">Owner</th>
+                    <th className="r budget-base-col">Budget Base</th>
                     <th className="r">Original Budget</th>
                     <th className="r">Updated Budget</th>
                     <th className="r">Change</th>
@@ -864,6 +880,7 @@ export function TechEdBudgetDistribution() {
                     <td>
                       <b>{String(loginTechOwner).split(/\s+-\s+/)[1] || myName}</b> <span className="muted-small">(you)</span>
                     </td>
+                    <td className="r budget-base-col">{hasLiveAllocation ? lakh(parentBudgetBaseForDisplay) : "—"}</td>
                     <td className="r">{hasLiveAllocation ? lakh(myOriginal) : "—"}</td>
                     <td className="r">{hasLiveAllocation ? lakh(myUpdated) : "—"}</td>
                     <td className="r">
@@ -928,6 +945,7 @@ export function TechEdBudgetDistribution() {
                           <td>
                             <b>{n.name}</b>
                           </td>
+                          <td className="r budget-base-col">{n.liveId || n.base ? lakh(n.base) : "—"}</td>
                           <td className="r">{n.liveId || n.original ? lakh(n.original) : "—"}</td>
                           <td className="r">{n.liveId || n.updated ? lakh(n.updated) : "—"}</td>
                           <td className="r">
@@ -971,7 +989,7 @@ export function TechEdBudgetDistribution() {
                         </tr>
                         {open && (
                           <tr className="tr">
-                            <td colSpan={9}>
+                            <td colSpan={10}>
                               <table className="trail" style={{ maxWidth: 560 }}>
                                 <thead>
                                   <tr>
@@ -1078,9 +1096,13 @@ const CSS = `
   padding: 7px 10px; font-size: 12px; display: flex; justify-content: space-between; gap: 10px; }
 .tbd-root .link { background: none; border: 0; padding: 0; color: #1859a8; font-size: 11.5px; font-weight: 700; cursor: pointer; }
 .tbd-root .bscroll { overflow-x: auto; }
-.tbd-root table.bal { width: 100%; min-width: 980px; border-collapse: collapse; font-size: 12.5px; }
-.tbd-root .bal th { background: #e8eef5; color: #12304f; font-weight: 600; font-size: 12px; text-align: left; padding: 8px 10px; border-bottom: 2px solid #9fb3cf; white-space: nowrap; }
-.tbd-root .bal td { padding: 7px 10px; border-bottom: 1px solid #e1e5eb; vertical-align: middle; }
+.tbd-root table.bal { width: 100%; min-width: 1180px; table-layout: auto; border-collapse: collapse; font-size: 12.5px; }
+.tbd-root .bal th { background: #e8eef5; color: #12304f; font-weight: 600; font-size: 12px; text-align: left; padding: 9px 10px; border-bottom: 2px solid #9fb3cf; white-space: nowrap; }
+.tbd-root .bal td { padding: 8px 10px; border-bottom: 1px solid #e1e5eb; vertical-align: middle; white-space: nowrap; }
+.tbd-root .bal .level-col { width: 112px; }
+.tbd-root .bal .owner-col { min-width: 205px; }
+.tbd-root .bal .budget-base-col { min-width: 128px; }
+.tbd-root .bal th.r, .tbd-root .bal td.r { text-align: right; font-variant-numeric: tabular-nums; }
 .tbd-root .bal .r { text-align: right; }
 .tbd-root .bal tr.self td { background: #e9f4f4; font-weight: 700; }
 .tbd-root .bal tr.self td.first { box-shadow: inset 4px 0 0 #14a3a3; }
