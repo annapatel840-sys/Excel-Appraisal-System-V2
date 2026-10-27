@@ -774,22 +774,21 @@ export function TechEdBudgetDistribution() {
         </div>
       )}
 
-      {isCompManagerPreview && cmNodes.length > 0 && (
-        <div className="card" style={{ padding: "10px 14px" }}>
-          <label className="f-label" htmlFor="preview-comp-manager">Comp Manager</label>
-          <select
-            id="preview-comp-manager"
-            value={selectedManagerNode?.name || ""}
-            onChange={(event) => setSelectedCompManager(event.target.value)}
-            style={{ marginLeft: 8, maxWidth: 360, border: "1px solid #cbd5e1", borderRadius: 6, padding: "5px 8px", background: "#fff" }}
-          >
-            {cmNodes.map((node) => <option key={node.name} value={node.name}>{node.name}</option>)}
-          </select>
-        </div>
-      )}
-
       <div className="card">
         {paneHead("mine", "My Budget")}
+        {isCompManagerPreview && cmNodes.length > 0 && (
+          <div style={{ padding: "8px 14px", borderBottom: "1px solid #d3dbe6" }}>
+            <label className="f-label" htmlFor="preview-comp-manager">Comp Manager</label>
+            <select
+              id="preview-comp-manager"
+              value={selectedManagerNode?.name || ""}
+              onChange={(event) => setSelectedCompManager(event.target.value)}
+              style={{ marginLeft: 8, maxWidth: 360, border: "1px solid #cbd5e1", borderRadius: 6, padding: "5px 8px", background: "#fff" }}
+            >
+              {cmNodes.map((node) => <option key={node.name} value={node.name}>{node.name}</option>)}
+            </select>
+          </div>
+        )}
         {pane.mine && (
           <>
             <div className="bsum flat">
