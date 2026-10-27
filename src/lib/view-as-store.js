@@ -64,14 +64,14 @@ export function useSelectedCompManager() {
 }
 
 export function normalizeManagerIdentity(value) {
-  return String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 export function managerIdentityMatches(value, selected) {
   const parts = (input) => {
     const normalized = normalizeManagerIdentity(input);
     if (!normalized) return [];
-    const split = normalized.split(/\\s+-\\s+/);
+    const split = normalized.split(/\s+-\s+/);
     return split.length > 1 ? [normalized, ...split] : [normalized];
   };
   const left = parts(value);
