@@ -535,12 +535,12 @@ export function TechEdBudgetDistribution() {
       const pct = num(live.percentage);
       const resolvedName = resolveManager(live.comp_manager);
       const stats = managerStats.get(ownerKey(resolvedName)) || { count: 0, base: 0, utilized: 0, name: resolvedName || live.comp_manager };
-      // Comp Manager Budget Base is the Tech-Ed budget base apportioned by
-      // each manager's share of the current eligible Appraisal Sheet headcount.
-      // This base is the percentage calculation base, not the manager's CTC sum.
+        // Comp Manager Budget Base is the sum of Previous_Appraisal_total_CTC_with_rewards
+      // for that manager's current eligible Appraisal Sheet employees, matching
+      // the Budget Master base calculation. Do not split the Tech-Ed pool by headcount.
       const hasCurrentRoster = managerStats.has(ownerKey(resolvedName));
-      const base = hasCurrentRoster && totalCurrentTeamCount > 0
-        ? parentBudgetBase * stats.count / totalCurrentTeamCount
+      const base = hasCurrentRoster
+        ? stats.base
         : (num(live.budget_base) || (pct ? num(live.calculated_budget) * 100 / pct : 0));
       const original = num(live.calculated_budget);
       const updated = num(live.applied_budget);
@@ -1022,7 +1022,7 @@ export function TechEdBudgetDistribution() {
               </table>
             </div>
             <div className="note">
-              Comp Manager Budget Base = Tech-Ed Budget Base allocated by each manager's share of the current eligible employee count · Updated Budget = Budget Base × Allot % · Original Budget is fixed at the first calculation · Utilised = {UTILISED_LABEL}
+              Comp Manager Budget Base = sum of Previous Appraisal Total CTC with Rewards for that manager's current eligible employees · Updated Budget = Budget Base × Allot % · Original Budget is fixed at the first calculation · Utilised = {UTILISED_LABEL}
             </div>
           </>
         )}
