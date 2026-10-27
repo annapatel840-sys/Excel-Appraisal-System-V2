@@ -2298,37 +2298,35 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // be resolved from the sheet snapshot or the established previous-cycle mapping;
     // summing only the raw stored field incorrectly returned zero when that displayed
     // column was populated by the mapping/fallback path.
-    const orgBase = eligibleEmployees.reduce(
-      (sum, employee) => sum + n(
-        employee.base ??
-        employee.previous_appraisal_total_ctc_with_rewards ??
-        employee.Previous_Appraisal_total_CTC_with_rewards,
-      ),
+    // Org/Tech-Ed/Comp Manager base must equal the complete Total row of the
+    // generated Appraisal_Sheet Previous Total CTC with Rewards column. Do not
+    // filter this sum again through Eligibility_List: the sheet was already
+    // generated from eligibility, and an ID mismatch in the live eligibility join
+    // must not make the Budget Master total differ from the visible sheet total.
+    const sheetBaseValue = (employee) => n(
+      employee.sheet_previous_appraisal_ctc ??
+      employee.previous_appraisal_total_ctc_with_rewards ??
+      employee.Previous_Appraisal_total_CTC_with_rewards ??
+      employee.base,
+    );
+    const orgBase = appraisalSheetEmployees.reduce(
+      (sum, employee) => sum + sheetBaseValue(employee),
       0,
     );
     bundle.diagnostics = {
       ...(bundle.diagnostics || {}),
-      budgetBaseSource: "eligible Appraisal_Sheet employee mapped Previous Total CTC with Rewards value",
+      budgetBaseSource: "all generated Appraisal_Sheet Previous_Appraisal_total_CTC_with_rewards values",
       budgetBaseSheetRows: appraisalSheetEmployees.length,
       budgetBaseEligibleRows: eligibleEmployees.length,
-      budgetBaseRowsWithCtc: eligibleEmployees.filter((employee) =>
-        n(
-          employee.base ??
-          employee.previous_appraisal_total_ctc_with_rewards ??
-          employee.Previous_Appraisal_total_CTC_with_rewards,
-        ) > 0
+      budgetBaseRowsWithCtc: appraisalSheetEmployees.filter((employee) =>
+        sheetBaseValue(employee) !== 0
       ).length,
       budgetBaseRawCtcSum: orgBase,
-      budgetBaseMissingEmployeeIds: eligibleEmployees
-        .filter((employee) =>
-          !n(
-            employee.base ??
-            employee.previous_appraisal_total_ctc_with_rewards ??
-            employee.Previous_Appraisal_total_CTC_with_rewards,
-          )
-        )
+      budgetBaseMissingEmployeeIds: appraisalSheetEmployees
+        .filter((employee) => sheetBaseValue(employee) === 0)
         .map((employee) => employee.employeeId || employee.emp_id || "")
         .slice(0, 20),
+      budgetBaseSheetRowCountMismatch: appraisalSheetEmployees.length !== legacyEligibilityCount,
     };
     const techBases = new Map(
       Array.from(techLabels.keys(), (key) => [
@@ -2359,13 +2357,16 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     });
     let orgUtilized = 0;
 
-    eligibleEmployees.forEach((employee) => {
+    appraisalSheetEmployees.forEach((employee) => {
       const techKey = ownerKey(employee.techEd);
       const compKey = ownerKey(employee.compManager);
-      const isCurrentlyEligible = Boolean(employee.eligible);
-      // Budget bases roll up the generated Appraisal_Sheet's previous-CTC
-      // column exactly. Live eligibility affects Current Count and utilization,
-      // but must not silently remove an already-generated sheet row's base.
+      const cycleEligibility = cycleEligibilityFor(employee, cycleId);
+      const isCurrentlyEligible = cycleEligibility
+        ? cycleEligibility.eligible
+        : Boolean(employee.eligible);
+      // Base allocations roll up every generated Appraisal_Sheet row so their
+      // sum matches the sheet column Total row. Current counts and utilization
+      // still follow the live cycle eligibility decision.
       const consumed = isCurrentlyEligible
         ? n(employee.hike_amount) +
           n(employee.allocated_pb_amount) +
@@ -2378,7 +2379,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
           count: 0,
           utilized: 0,
         };
-        tech.base += n(employee.base);
+        tech.base += sheetBaseValue(employee);
         if (isCurrentlyEligible) {
           tech.count += 1;
           tech.utilized += consumed;
@@ -2388,7 +2389,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       if (techKey && compKey) {
         const key = techKey + "::" + compKey;
         const comp = compBases.get(key) || { base: 0, count: 0, utilized: 0 };
-        comp.base += n(employee.base);
+        comp.base += sheetBaseValue(employee);
         if (isCurrentlyEligible) {
           comp.count += 1;
           comp.utilized += consumed;
