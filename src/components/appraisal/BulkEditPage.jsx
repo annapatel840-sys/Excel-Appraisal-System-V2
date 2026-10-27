@@ -462,6 +462,27 @@ const FILTER_DEFAULT = [
     type: "select",
     field: "promoDesignation",
   },
+  {
+    id: "rrPercent",
+    label: "RR %",
+    type: "range",
+    field: "rrPercent",
+    ranges: [[0, 60], [60, 75], [75, 90], [90, 100], [100, null]],
+  },
+  {
+    id: "grossMargin",
+    label: "Gross Margin %",
+    type: "range",
+    field: "grossMargin",
+    ranges: [[0, 20], [20, 30], [30, 40], [40, 50], [50, null]],
+  },
+  {
+    id: "totalExperience",
+    label: "YOE",
+    type: "range",
+    field: "totalExperience",
+    ranges: [[0, 2], [2, 5], [5, 10], [10, null]],
+  },
 ];
 const FILTER_IDS = FILTER_DEFAULT.filter((d) => d.type !== "search").map(
   (d) => d.id,
@@ -492,13 +513,13 @@ const CFG_KEY = "bulkForWhomCfg_v1",
   COLW_KEY = "bulkColW_v2",
   SCN_KEY = "bulkScenarios_v3";
 const EDITED_LBL = {
-  hand: "Edited by hand",
+  hand: "Edited manually",
   bulk: "Edited in bulk",
   none: "Not edited",
 };
 const CK_LBL = {
   chg: "Rows that will change",
-  skip: "Skipped · edited by hand",
+  skip: "Skipped · edited manually",
   off: "Left out · unticked",
   same: "No change",
   range: "Out of band range",
@@ -555,6 +576,10 @@ const nowT = () => {
     ("0" + d.getHours()).slice(-2) + ":" + ("0" + d.getMinutes()).slice(-2)
   );
 };
+// "Budget Utilization incl. Target PB" = Consumed (Hike + PB + RB) + Target PB,
+// shown as an amount, exactly like the Appraisal Sheet's top bar (not a %).
+const rupees = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
+const inclT = (x) => (Number(x && x.used) || 0) + (Number(x && x.tpb) || 0);
 const lvl = (p) => (p > 100 ? "danger" : p > 90 ? "warn" : "");
 const isHike = (f) => f === "hikePct" || f === "hikeAmt";
 const hikeBasis = (e) => e.basePay; /* Hike % is always worked on Base pay */
@@ -568,6 +593,13 @@ const rangeHit = (v, r) => {
   if (v === "" || v == null || isNaN(n)) return false;
   return n >= r[0] && (r[1] == null || n < r[1]);
 };
+// A range filter value is a position in the HR ranges ("2") or a custom
+// from-to typed in the filter ("c:70:85"; blank "to" = no upper limit).
+const customR = (x) => {
+  const m = /^c:([^:]*):([^:]*)$/.exec(String(x));
+  return m ? [Number(m[1]), m[2] === "" ? null : Number(m[2])] : null;
+};
+const rangeOf = (d, x) => customR(x) || d.ranges[Number(x)];
 const dp = (e, v) => (v.hikeAmt / e.basePay) * 100;
 
 function normFilters(list) {
@@ -950,6 +982,8 @@ const BulkOperations = forwardRef(function BulkOperations(
     return [];
   });
   const [filt, setFilt] = useState({});
+  const [rgFrom, setRgFrom] = useState("");
+  const [rgTo, setRgTo] = useState("");
   const [pop, setPop] = useState(null);
   const [colF, setColF] = useState({}),
     [fpop, setFpop] = useState(null);
@@ -1194,8 +1228,10 @@ const BulkOperations = forwardRef(function BulkOperations(
       const hit = v.some((x) => {
         if (d.type === "select")
           return fVal(e, d.field) === x;
-        if (d.type === "range")
-          return rangeHit(e[d.field], d.ranges[Number(x)]);
+        if (d.type === "range") {
+          const rg = rangeOf(d, x);
+          return !!rg && rangeHit(fVal(e, d.field), rg);
+        }
         return true;
       });
       if (!hit) return false;
@@ -1203,12 +1239,23 @@ const BulkOperations = forwardRef(function BulkOperations(
     return true;
   };
   const optionsFor = (d) => {
-    if (d.type === "range")
-      return d.ranges.map((r, i) => ({
+    if (d.type === "range") {
+      const ro = d.ranges.map((r, i) => ({
         v: String(i),
         label: rangeLabel(r),
-        n: scope.filter((e) => rangeHit(e[d.field], r)).length,
+        n: scope.filter((e) => rangeHit(fVal(e, d.field), r)).length,
       }));
+      (filt[d.id] || []).forEach((x) => {
+        const c = customR(x);
+        if (c)
+          ro.push({
+            v: x,
+            label: rangeLabel(c) + " (custom)",
+            n: scope.filter((e) => rangeHit(fVal(e, d.field), c)).length,
+          });
+      });
+      return ro;
+    }
     const m = {};
     // Options come from the appraisal sheet; counts are for the rows in scope.
     sheetRows.forEach((r) => {
@@ -1225,7 +1272,7 @@ const BulkOperations = forwardRef(function BulkOperations(
   };
   const valLabel = (d, v) =>
     d.type === "range"
-      ? rangeLabel(d.ranges[Number(v)])
+      ? rangeLabel(rangeOf(d, v) || [0, null])
       : d.type === "edited"
         ? EDITED_LBL[v] || v
         : v;
@@ -2260,6 +2307,7 @@ const BulkOperations = forwardRef(function BulkOperations(
         rows: pv.n.chg,
         util: pv.after.util,
         utilT: pv.after.utilT,
+        usedT: inclT(pv.after),
         rules: pv.rules,
         skip: skipHand,
       },
@@ -2421,7 +2469,7 @@ const BulkOperations = forwardRef(function BulkOperations(
       });
       let note = "";
       if (p) {
-        if (p.st === "skip") note = "Skipped · edited by hand";
+        if (p.st === "skip") note = "Skipped · edited manually";
         else if (p.st === "off") note = "Not selected";
         else if (p.st === "same") note = "No change";
         (p.notes || []).forEach((x) => {
@@ -2684,8 +2732,8 @@ const BulkOperations = forwardRef(function BulkOperations(
             )}
           </div>
           <div className="sb">
-            incl. Target PB <b>{x1.utilT.toFixed(1)}%</b>
-            {moved && <small> from {x0.utilT.toFixed(1)}%</small>}
+            incl. Target PB <b>{rupees(inclT(x1))}</b>
+            {moved && <small> from {rupees(inclT(x0))}</small>}
           </div>
         </div>
         <div className="kvs">
@@ -2735,7 +2783,7 @@ const BulkOperations = forwardRef(function BulkOperations(
       <>
         <div className="cks">
           {row("chg", "info", "Rows will change", n.chg)}
-          {row("skip", "grey", "Skipped · edited by hand", n.skip)}
+          {row("skip", "grey", "Skipped · edited manually", n.skip)}
           {row("off", "grey", "Left out · unticked", n.off)}
           {row("same", "grey", "No change", n.same)}
           {row("range", n.range ? "warn" : "ok", "Out of band range", n.range)}
@@ -2850,8 +2898,14 @@ const BulkOperations = forwardRef(function BulkOperations(
             {kp(b0.util, bPv.util)}
           </div>
           <div className="tk">
-            <span>Incl. Target PB</span>
-            {kp(b0.utilT, bPv.utilT)}
+            <span>Budget Utilization incl. Target PB</span>
+            {pv && Math.abs(inclT(bPv) - inclT(b0)) >= 0.5 ? (
+              <strong>
+                {rupees(inclT(b0))} <small>→</small> {rupees(inclT(bPv))}
+              </strong>
+            ) : (
+              <strong>{rupees(inclT(b0))}</strong>
+            )}
           </div>
         </div>
         <span className="tb-mock">Mock screen</span>
@@ -3414,7 +3468,7 @@ const BulkOperations = forwardRef(function BulkOperations(
                         }}
                       />
                       <span className="sw" />
-                      Skip rows already edited by hand
+                      Skip rows already edited manually
                     </label>
                   </div>
                 </div>
@@ -3508,7 +3562,7 @@ const BulkOperations = forwardRef(function BulkOperations(
                     : ""}
                 </span>
                 {pv.n.skip > 0 && (
-                  <span>{pv.n.skip} skipped (edited by hand)</span>
+                  <span>{pv.n.skip} skipped (edited manually)</span>
                 )}
                 {pv.n.off > 0 && <span>{pv.n.off} not selected</span>}
                 {pv.n.same > 0 && (
@@ -3623,7 +3677,7 @@ const BulkOperations = forwardRef(function BulkOperations(
                           <td>{s.text}</td>
                           <td className="r">{s.rows}</td>
                           <td className="r">{s.util.toFixed(1)}%</td>
-                          <td className="r">{s.utilT.toFixed(1)}%</td>
+                          <td className="r">{s.usedT != null ? rupees(s.usedT) : "—"}</td>
                           <td>
                             <button
                               className="btn"
@@ -3857,7 +3911,7 @@ const BulkOperations = forwardRef(function BulkOperations(
                       if (p) {
                         if (p.st === "skip")
                           notes.push(
-                            tg("grey", "Skipped · edited by hand", "s"),
+                            tg("grey", "Skipped · edited manually", "s"),
                           );
                         else if (p.st === "off")
                           notes.push(tg("grey", "Not selected", "o"));
@@ -3875,7 +3929,7 @@ const BulkOperations = forwardRef(function BulkOperations(
                       if (!pv || !p || p.st !== "chg") {
                         if (e.bulk) notes.push(tg("ok", "Bulk applied", "b"));
                         else if (e.hand && !(p && p.st === "skip"))
-                          notes.push(tg("info", "Edited by hand", "e"));
+                          notes.push(tg("info", "Edited manually", "e"));
                       }
                       return (
                         <tr key={e.empId}>
@@ -4200,6 +4254,50 @@ const BulkOperations = forwardRef(function BulkOperations(
                       </div>
                     )}
                   </div>
+                  {d.type === "range" && (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 6,
+                        alignItems: "center",
+                        padding: "6px 4px 2px",
+                      }}
+                    >
+                      <span className="mini">Custom</span>
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="from"
+                        value={rgFrom}
+                        onChange={(ev) => setRgFrom(ev.target.value)}
+                        style={{ width: 70, margin: 0 }}
+                      />
+                      <span className="mini">to</span>
+                      <input
+                        type="number"
+                        step="any"
+                        placeholder="to"
+                        value={rgTo}
+                        onChange={(ev) => setRgTo(ev.target.value)}
+                        style={{ width: 70, margin: 0 }}
+                      />
+                      <button
+                        className="btn"
+                        type="button"
+                        onClick={() => {
+                          if (rgFrom === "" && rgTo === "") return;
+                          setFiltVals(pop.id, [
+                            ...cur,
+                            "c:" + (rgFrom === "" ? "0" : rgFrom) + ":" + rgTo,
+                          ]);
+                          setRgFrom("");
+                          setRgTo("");
+                        }}
+                      >
+                        Add
+                      </button>
+                    </div>
+                  )}
                   <div className="ft">
                     <button
                       className="btn lnk"
