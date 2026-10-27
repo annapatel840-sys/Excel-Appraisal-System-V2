@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { getSelectedEmpId, setSelectedEmpId } from "@/lib/selected-employee";
 import { useAppraisal } from "@/lib/appraisal-store";
 import {
   NEW_TITLES,
@@ -1037,7 +1038,31 @@ export function DetailScreenPage({
     setSearch("");
   }, [currentUser.name]);
 
+  // Open on the person selected in the Appraisal Sheet, and keep that
+  // selection in sync as the user moves between employees here.
+  const [selectionSynced, setSelectionSynced] = useState(false);
+
+  useEffect(() => {
+    if (selectionSynced || !rows.length) return;
+
+    const shared = getSelectedEmpId().toLowerCase();
+    const found = shared
+      ? rows.findIndex(
+          (row) => String(row.empId || "").trim().toLowerCase() === shared,
+        )
+      : -1;
+
+    if (found > -1) setIndex(found);
+    setSelectionSynced(true);
+  }, [rows, selectionSynced]);
+
   const employee = rows[Math.min(index, rows.length - 1)] || rows[0];
+
+  useEffect(() => {
+    if (selectionSynced && employee?.empId) {
+      setSelectedEmpId(employee.empId);
+    }
+  }, [selectionSynced, employee?.empId]);
   const feedbackData = useEmployeeFeedback(employee?.empId);
 
   const noticeSignature = employee

@@ -13,6 +13,7 @@ import { createPortal } from "react-dom";
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { ColumnFilter } from "./ColumnFilter";
+import { getSelectedEmpId, setSelectedEmpId } from "@/lib/selected-employee";
 import { TypingHistoryPopup } from "./TypingHistoryPopup";
 import { COLUMNS, MANAGER_RATING_LABELS, formatValue } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
@@ -76,12 +77,14 @@ const payFloorMessage = (row, colKey, raw, edited = false) => {
 
 // Number cells that show the small history pop-up while you type in them,
 // and the history metric each one highlights in that pop-up.
+// TEMPORARILY DISABLED: the list is emptied so the pop-up never opens.
+// The original entries are kept below; put them back to turn it on again.
 const TYPING_POPUP_FIELDS = {
-  hikeAmount: "hikeAmount",
-  hikePct: "hikeAmount",
-  allocatedPBAmount: "performanceBonus",
-  newRB: "retentionBonus",
-  targetPBNextYear: "targetPB",
+  // hikeAmount: "hikeAmount",
+  // hikePct: "hikeAmount",
+  // allocatedPBAmount: "performanceBonus",
+  // newRB: "retentionBonus",
+  // targetPBNextYear: "targetPB",
 };
 
 const WIDTHS = {
@@ -2260,11 +2263,26 @@ export function AppraisalGrid({
   const [historyRow, setHistoryRow] = useState(null);
 
   // Select the first employee by default so the panel is never empty.
+  // If the person was already open in the Detailed Screen, start on them.
   useEffect(() => {
     if (!historyRow && rows.length > 0) {
-      setHistoryRow(rows[0]);
+      const shared = getSelectedEmpId().toLowerCase();
+      const match = shared
+        ? rows.find(
+            (row) => String(row.empId || "").trim().toLowerCase() === shared,
+          )
+        : null;
+
+      setHistoryRow(match || rows[0]);
     }
   }, [rows, historyRow]);
+
+  // Remember the selected person for the Detailed Screen.
+  useEffect(() => {
+    if (historyRow?.empId) {
+      setSelectedEmpId(historyRow.empId);
+    }
+  }, [historyRow?.empId]);
 
   // ============================================================
   // HISTORY LOADER (one request per employee, shared by the
