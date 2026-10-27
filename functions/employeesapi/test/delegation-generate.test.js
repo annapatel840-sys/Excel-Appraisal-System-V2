@@ -236,6 +236,19 @@ const LIST = 'page=1&limit=100&view=delegation';
     assert.strictEqual(r.status, 422, JSON.stringify(r.json));
   });
 
+  await t('Generate repairs a stale Eligibility_List master reference by emp_id and keeps the Eligible decision', async () => {
+    accessResult = HR;
+    const eligibility = DB[T.elig].find((row) => row.emp_id === 'EMP013' && row.appraisal_cycle_id === 'C1');
+    assert.ok(eligibility, 'EMP013 eligibility row seeded');
+    eligibility.employee_master_id = 'STALE-MASTER-ROWID';
+
+    const g = await generate('C1');
+    assert.strictEqual(g.status, 200, JSON.stringify(g.json));
+    assert.ok(sheetRow('EMP013', 'C1'), 'EMP013 must be generated from the Eligible row');
+    assert.strictEqual(eligibility.employee_master_id, ids.EMP013, 'stale master reference is repaired');
+    assert.strictEqual(eligibility.eligibility_status, 'Eligible', 'eligibility decision is preserved');
+  });
+
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
   process.exit(fail ? 1 : 0);
 })();
