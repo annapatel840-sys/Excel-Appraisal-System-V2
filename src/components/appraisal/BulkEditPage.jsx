@@ -3877,7 +3877,7 @@ const BulkOperations = forwardRef(function BulkOperations(
                                 <span className={d > 0 ? "up" : "dn"}>
                                   {d > 0 ? "+" : "▼ "}
                                   {F.kind === "pct"
-                                    ? Math.abs(d).toFixed(2) + " pp"
+                                    ? Math.abs(d).toFixed(2) + "%"
                                     : inr(Math.abs(d))}
                                 </span>
                               );
