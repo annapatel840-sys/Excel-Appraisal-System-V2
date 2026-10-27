@@ -1655,6 +1655,26 @@ export function DetailScreenPage({
                         : null;
                     const prevTPB = Number(targetPBCurrent) || 0;
                     const vsLast = (live, prev) => (last ? live - prev : null);
+                    // Red floor alert (value is still accepted): this year's PB / RB
+                    // below the "to be Paid" amount OR below last year's PB / RB.
+                    // A blank / 0 value nobody has typed is not flagged against
+                    // last year (same as the Appraisal Sheet).
+                    const prevPB = Number(last?.performanceBonus) || 0;
+                    const prevRB = Number(last?.retentionBonus) || 0;
+                    const pbTouched = livePB > 0 || isEdited("allocatedPBAmount");
+                    const rbTouched = liveRB > 0 || isEdited("newRB");
+                    const pbUsesPrev = pbTouched && prevPB > payFloors.pbFloor;
+                    const rbUsesPrev = rbTouched && prevRB > payFloors.rbFloor;
+                    const pbLimit = pbUsesPrev ? prevPB : payFloors.pbFloor;
+                    const rbLimit = rbUsesPrev ? prevRB : payFloors.rbFloor;
+                    const pbLow = livePB < pbLimit;
+                    const rbLow = liveRB < rbLimit;
+                    const pbLowMsg = pbUsesPrev
+                      ? `Below last year's PB (${fmt(prevPB)})`
+                      : `Below PB to be Paid (${fmt(payFloors.pbFloor)})`;
+                    const rbLowMsg = rbUsesPrev
+                      ? `Below last year's RB (${fmt(prevRB)})`
+                      : `Below RB to be Paid (${fmt(payFloors.rbFloor)})`;
                     const naBox = (
                       <div
                         style={{
@@ -1792,7 +1812,7 @@ export function DetailScreenPage({
                               className="flex-1"
                               defaultValue={fmtOrBlank(proposedPB)}
                               edited={isEdited("allocatedPBAmount")}
-                              invalid={livePB < payFloors.pbFloor}
+                              invalid={pbLow}
                               onLive={(v) => {
                                 setDraft({ pbStr: v });
                                 if (payErr.pb) setPayErr((e) => ({ ...e, pb: "" }));
@@ -1824,18 +1844,18 @@ export function DetailScreenPage({
                             </select>
                           </div>
                           <span
-                            role={payErr.pb || livePB < payFloors.pbFloor ? "alert" : undefined}
+                            role={payErr.pb || pbLow ? "alert" : undefined}
                             style={{
                               ...subNote,
                               color:
-                                payErr.pb || livePB < payFloors.pbFloor ? RED : MUTED,
+                                payErr.pb || pbLow ? RED : MUTED,
                               fontWeight:
-                                payErr.pb || livePB < payFloors.pbFloor ? 700 : 400,
+                                payErr.pb || pbLow ? 700 : 400,
                             }}
                           >
                             {payErr.pb ||
-                              (livePB < payFloors.pbFloor
-                                ? `Below PB to be Paid (${fmt(payFloors.pbFloor)})`
+                              (pbLow
+                                ? pbLowMsg
                                 : `Preloaded · less than this → ${fmt(payFloors.pbFloor)} paid`)}
                           </span>
                         </FieldRow>
@@ -1866,7 +1886,7 @@ export function DetailScreenPage({
                             key={`${employee.id}-newRB-${payReset.rb}`}
                             defaultValue={fmt(proposedRB ?? 0)}
                             edited={isEdited("newRB")}
-                            invalid={liveRB < payFloors.rbFloor}
+                            invalid={rbLow}
                             className="w-[75%]"
                             onLive={(v) => {
                               setDraft({ rbStr: v });
@@ -1882,18 +1902,18 @@ export function DetailScreenPage({
                             }}
                           />
                           <span
-                            role={payErr.rb || liveRB < payFloors.rbFloor ? "alert" : undefined}
+                            role={payErr.rb || rbLow ? "alert" : undefined}
                             style={{
                               ...subNote,
                               color:
-                                payErr.rb || liveRB < payFloors.rbFloor ? RED : MUTED,
+                                payErr.rb || rbLow ? RED : MUTED,
                               fontWeight:
-                                payErr.rb || liveRB < payFloors.rbFloor ? 700 : 400,
+                                payErr.rb || rbLow ? 700 : 400,
                             }}
                           >
                             {payErr.rb ||
-                              (liveRB < payFloors.rbFloor
-                                ? `Below RB to be Paid (${fmt(payFloors.rbFloor)})`
+                              (rbLow
+                                ? rbLowMsg
                                 : `Preloaded · less than this → ${fmt(payFloors.rbFloor)} paid`)}
                           </span>
                         </FieldRow>
