@@ -544,9 +544,37 @@ async function syncEligibilityRows(tables, cycle, actor = "") {
   const activeByRowId = new Map(
     activeMasters.map((row) => [String(row.ROWID || row.rowid || ""), row]),
   );
-  const inactiveRows = cycleRows.filter(
-    (row) => !activeByRowId.has(String(row.employee_master_id || "")),
+  const activeByEmpId = new Map(
+    activeMasters
+      .map((row) => [String(row.emp_id || "").trim().toLowerCase(), row])
+      .filter(([empId]) => empId),
   );
+
+  // employee_master_id is the preferred relationship, but older/imported
+  // Eligibility_List rows can contain a stale ROWID. Recover those rows using
+  // the stable business key (emp_id), repair the foreign key, and preserve the
+  // saved Eligible/Not Eligible decision instead of silently dropping it.
+  const inactiveRows = [];
+  let repairedReferences = 0;
+  for (const row of cycleRows) {
+    const linkedMasterId = String(row.employee_master_id || "");
+    const empId = String(row.emp_id || "").trim().toLowerCase();
+    const master = activeByRowId.get(linkedMasterId) || activeByEmpId.get(empId);
+    if (!master) {
+      inactiveRows.push(row);
+      continue;
+    }
+    const actualMasterId = String(master.ROWID || master.rowid || "");
+    if (actualMasterId && linkedMasterId !== actualMasterId) {
+      await tables.eligibility.updateRow({
+        ROWID: rowId(row),
+        employee_master_id: actualMasterId,
+        emp_id: String(master.emp_id || row.emp_id || "").trim(),
+      });
+      repairedReferences += 1;
+    }
+  }
+
   // Eligibility_List only ever holds the Active cycle. Rows left behind by any
   // other cycle (e.g. closed before this clean-up existed) are stale and would
   // collide on the unique emp_id column, so remove them before inserting.
@@ -562,7 +590,13 @@ async function syncEligibilityRows(tables, cycle, actor = "") {
   // Employees are NOT copied in from Employee Master here. The Eligibility
   // List starts empty for a cycle; it is filled only by "Apply Criteria"
   // (applyEligibilityCriteria) and by HR adding individual employees by hand.
-  return { created: 0, removed: inactiveRows.length, staleRemoved: staleRows.length, activeEmployees: activeMasters.length };
+  return {
+    created: 0,
+    removed: inactiveRows.length,
+    staleRemoved: staleRows.length,
+    repairedReferences,
+    activeEmployees: activeMasters.length,
+  };
 }
 
 // Normalises a date to "yyyy-mm-dd" for the joining-date cutoff comparison.
@@ -760,10 +794,16 @@ async function getEligibilityRows(tables, cycle, actor = "") {
   const masterById = new Map(
     masterRows.map((row) => [String(row.ROWID || row.rowid || ""), row]),
   );
+  const masterByEmpId = new Map(
+    masterRows
+      .map((row) => [String(row.emp_id || "").trim().toLowerCase(), row])
+      .filter(([empId]) => empId),
+  );
   return eligibilityRows
     .filter((row) => String(row.appraisal_cycle_id || "") === String(cycle.id))
     .map((row) => {
-      const master = masterById.get(String(row.employee_master_id || ""));
+      const master = masterById.get(String(row.employee_master_id || "")) ||
+        masterByEmpId.get(String(row.emp_id || "").trim().toLowerCase());
       return master ? shapeEligibilityRow(row, master) : null;
     })
     .filter(Boolean);
