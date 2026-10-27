@@ -746,9 +746,6 @@ export function TechEdBudgetDistribution() {
     <div className="tbd-root">
       <style>{CSS}</style>
 
-      {cycleLoading ? (
-        <div className="berr">Loading active appraisal cycle and Tech-Ed allocation…</div>
-      ) : null}
       {!cycleLoading && !budgetLoading && !liveTech && !budgetError ? (
         <div className="berr">
           {loginTechOwner
