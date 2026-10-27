@@ -1112,8 +1112,13 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
           "target_performance_bonus_for_next_year_criteria",
         ]) ?? "").trim()
       : String(employee.target_pb_criteria ?? employee.target_PB_criteria ?? "").trim();
+    // Current Annual Base Pay for the active cycle is the NEW base pay
+    // from the selected prior closed payroll cycle. Same-year New Joiner
+    // payroll wins for that employee; otherwise selectedPayroll is the latest
+    // closed Annual cycle. Do not use the old current/base-pay field first.
     const payrollAnnualBasePayRaw = selectedPayroll
       ? firstNonEmpty(selectedPayroll, [
+          "new_base_pay", "newBasePay",
           "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay",
           "base_pay", "basePay", "annual_base_pay", "annualBasePay",
         ])
