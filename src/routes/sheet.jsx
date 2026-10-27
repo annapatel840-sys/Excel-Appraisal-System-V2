@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
 import { useCatalystUser } from "@/lib/catalyst-auth";
+import { useViewAs, useSelectedCompManager, managerIdentityMatches } from "@/lib/view-as-store";
 
 import {
   applyFilters,
@@ -74,6 +75,9 @@ export function SheetPage() {
   } = useBudget();
   const { openImportPicker, importUi } = useAppraisalImport();
   const catalystUser = useCatalystUser();
+  const { effectiveId, actualId } = useViewAs();
+  const { selectedCompManager } = useSelectedCompManager();
+  const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
   const role = String(catalystUser?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
   const isHR = role.includes("hr");
@@ -120,7 +124,9 @@ export function SheetPage() {
         .filter(
           (row) =>
             String(row.status || "").trim().toLowerCase() === "active" &&
-            String(row.eligibility || "").trim().toLowerCase() === "eligible",
+            String(row.eligibility || "").trim().toLowerCase() === "eligible" &&
+            (!isCompManagerPreview ||
+              (selectedCompManager && managerIdentityMatches(row.compManagerDisplay || row.compManager, selectedCompManager))),
         )
         .sort((a, b) =>
           String(a.empId || "").localeCompare(String(b.empId || ""), undefined, {
@@ -128,7 +134,7 @@ export function SheetPage() {
             sensitivity: "base",
           }),
         ),
-    [rows],
+    [rows, isCompManagerPreview, selectedCompManager],
   );
 
   const editedEmployeeIds = useMemo(
