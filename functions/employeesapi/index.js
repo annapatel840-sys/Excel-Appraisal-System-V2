@@ -1138,9 +1138,12 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   // Persist the lookup-derived date and target PB into the current Appraisal_Sheet
   // row so newly generated cycles replace stale demo values in the table itself.
   // The removed pb_to_be_paid/rb_to_be_paid columns are intentionally not written.
-  await Promise.all(updatedEmployees.map(async (employee) => {
+  // Persist only one Appraisal_Sheet row at a time. Parallel updateRow calls
+  // for every employee exceeded Catalyst's COMPONENT concurrency quota and could
+  // make Budget Master fail while it was reading the same sheet.
+  for (const employee of updatedEmployees) {
     const rowId = String(employee.ROWID ?? employee.rowid ?? "").trim();
-    if (!rowId) return;
+    if (!rowId) continue;
     const desiredDate = employee.last_appraisal_date;
     const desiredTargetPB = employee.target_pb_allocated_for_may;
     const desiredBasePay = employee.current_annual_base_pay;
@@ -1152,22 +1155,27 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const existingTargetPB = Number(sourceRow?.target_pb_allocated_for_may || 0);
     const existingBasePay = Number(sourceRow?.current_annual_base_pay || 0);
     const existingTargetCriteria = String(sourceRow?.target_pb_criteria ?? "").trim();
-    if (existingDate === String(desiredDate ?? "").trim() &&
-        existingTargetPB === Number(desiredTargetPB || 0) &&
-        existingBasePay === Number(desiredBasePay || 0) &&
-        existingTargetCriteria === String(desiredTargetCriteria ?? "").trim()) return;
-    try {
-      await appraisalTable.updateRow({
-        ROWID: rowId,
-        last_appraisal_date: desiredDate,
-        target_pb_allocated_for_may: desiredTargetPB,
-        current_annual_base_pay: desiredBasePay,
-        target_pb_criteria: desiredTargetCriteria,
-      });
-    } catch (error) {
-      console.error("Could not persist archived-cycle appraisal lookup for row", rowId, error?.message || error);
+    const update = { ROWID: rowId };
+    if (existingDate !== String(desiredDate ?? "").trim() && String(desiredDate ?? "").trim()) {
+      update.last_appraisal_date = desiredDate;
     }
-  }));
+    if (existingTargetPB !== Number(desiredTargetPB || 0)) {
+      update.target_pb_allocated_for_may = desiredTargetPB;
+    }
+    if (existingBasePay !== Number(desiredBasePay || 0) && Number(desiredBasePay || 0) > 0) {
+      update.current_annual_base_pay = desiredBasePay;
+    }
+    if (existingTargetCriteria !== String(desiredTargetCriteria ?? "").trim() &&
+        String(desiredTargetCriteria ?? "").trim()) {
+      update.target_pb_criteria = desiredTargetCriteria;
+    }
+    if (Object.keys(update).length === 1) continue;
+    try {
+      await appraisalTable.updateRow(update);
+    } catch (error) {
+      console.error("Could not persist payroll-derived appraisal lookup for row", rowId, error?.message || error);
+    }
+  }
   return updatedEmployees;
 }
 
