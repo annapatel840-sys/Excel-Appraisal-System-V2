@@ -970,7 +970,7 @@ export function DetailScreenPage({
   } = useBudget();
   const catalystUser = useCatalystUser();
   const { effectiveId, actualId } = useViewAs();
-  const { selectedCompManager } = useSelectedCompManager();
+  const { selectedCompManager, setSelectedCompManager } = useSelectedCompManager();
   const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
   const role = String(catalystUser?.role || "")
     .trim()
@@ -993,6 +993,13 @@ export function DetailScreenPage({
     [liveRows, isCompManagerPreview, selectedCompManager],
   );
   const isScopedToTeam = isTechEd || rows.length > 0;
+
+  useEffect(() => {
+    if (!isCompManagerPreview || selectedCompManager) return;
+    const firstManager = (liveRows || []).find((row) => row.compManagerDisplay || row.compManager);
+    const manager = firstManager?.compManagerDisplay || firstManager?.compManager || "";
+    if (manager) setSelectedCompManager(manager);
+  }, [isCompManagerPreview, selectedCompManager, liveRows, setSelectedCompManager]);
 
   // Budget summary shown beside the notice (same numbers as the Appraisal Sheet).
   const budgetConsumed = useMemo(() => sumBudgetConsumed(rows), [rows]);
