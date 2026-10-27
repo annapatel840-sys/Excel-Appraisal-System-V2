@@ -79,6 +79,32 @@ export function managerIdentityMatches(value, selected) {
   return left.some((part) => right.has(part));
 }
 
+export function currentUserMatchesManager(value, user, employeeRows = []) {
+  const aliases = [
+    user?.name, user?.display_name, user?.displayName,
+    user?.first_name, user?.last_name,
+    [user?.first_name, user?.last_name].filter(Boolean).join(" "),
+    user?.email, user?.email_id, user?.user_id, user?.userId,
+    user?.empId, user?.emp_id, user?.employeeId, user?.employee_id,
+  ].filter(Boolean);
+  const normalizedAliases = new Set(aliases.map(normalizeManagerIdentity));
+  const linkedEmployee = employeeRows.find((employee) =>
+    [
+      employee?.empId, employee?.emp_id, employee?.employee_id, employee?.employeeId,
+      employee?.name, employee?.emp_name, employee?.employee_name,
+      employee?.email, employee?.email_id, employee?.emailId,
+    ].filter(Boolean).some((alias) => normalizedAliases.has(normalizeManagerIdentity(alias)))
+  );
+  if (linkedEmployee) {
+    aliases.push(
+      linkedEmployee.empId, linkedEmployee.emp_id, linkedEmployee.employee_id,
+      linkedEmployee.employeeId, linkedEmployee.name, linkedEmployee.emp_name,
+      linkedEmployee.employee_name,
+    );
+  }
+  return aliases.some((alias) => managerIdentityMatches(value, alias));
+}
+
 function readSaved() {
   try {
     const saved = window.sessionStorage.getItem(STORAGE_KEY) || "";
