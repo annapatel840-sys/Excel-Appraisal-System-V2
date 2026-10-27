@@ -2325,7 +2325,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const appraisalSheetEmployees = employees.filter(
       (employee) => employee && employee.in_appraisal_sheet,
     );
-    const eligibleEmployees = appraisalSheetEmployees.filter((employee) => {
+    // Match the Appraisal Sheet page's exact roster filter (src/routes/sheet.jsx):
+    // active status AND explicit Eligible value from the generated sheet roster.
+    // Do not re-apply Eligibility_List through cycleEligibilityFor here; that
+    // second lookup can disagree with the already-generated rows and change the
+    // budget total while the Appraisal Sheet's Total row stays the same.
+    const cycleFilteredEmployees = appraisalSheetEmployees.filter((employee) => {
       const cycleEligibility = cycleEligibilityFor(employee, cycleId);
       const employeeStatus = String(employee.master_status || employee.status)
         .trim()
@@ -2333,6 +2338,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       const active = !employeeStatus || employeeStatus === "active";
       return active &&
         (cycleEligibility ? cycleEligibility.eligible : employee.eligible);
+    });
+    const eligibleEmployees = appraisalSheetEmployees.filter((employee) => {
+      const employeeStatus = String(employee.status || employee.master_status)
+        .trim()
+        .toLowerCase();
+      return employeeStatus === "active" && Boolean(employee.eligible);
     });
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
 
@@ -2364,6 +2375,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       budgetBaseSheetRows: orgBaseRows.length,
       budgetBaseRosterEmployees: appraisalSheetEmployees.length,
       budgetBaseEligibleRows: eligibleEmployees.length,
+      budgetBaseCycleEligibilityRows: cycleFilteredEmployees.length,
+      budgetBaseEligibilityFilterDelta: cycleFilteredEmployees.length - eligibleEmployees.length,
       budgetBaseRowsWithCtc: orgBaseRows.filter((row) => row.ctc !== 0).length,
       budgetBaseStoredCtcRows: orgBaseRows.filter((row) => row.hasStoredCtc).length,
       budgetBaseRawCtcSum: orgBase,
