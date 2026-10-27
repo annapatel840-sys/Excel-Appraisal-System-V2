@@ -402,6 +402,11 @@ export function TechEdBudgetDistribution() {
   const cycleLabel = String(activeCycle?.name || liveMaster?.appraisal_cycle_name || liveMaster?.cycle_name || "").trim();
 
   const [pane, setPane] = useState({ mine: true, alloc: true, audit: true });
+  useEffect(() => {
+    setPane(isCompManagerPreview
+      ? { mine: true, alloc: false, audit: false }
+      : { mine: true, alloc: true, audit: true });
+  }, [isCompManagerPreview]);
   const [appliedOpen, setAppliedOpen] = useState(false);
   const [trailOpen, setTrailOpen] = useState({});
   const [reason, setReason] = useState("");
