@@ -16,7 +16,6 @@ import {
   fetchEligibilityEmployees,
   updateEmployeeMasterEmployee,
   updateEmployeeEligibility,
-  updateEligibilityRecords,
   createEmployeeMasterEmployees,
 } from "@/lib/employee-master-data";
 
@@ -637,7 +636,6 @@ export function EmployeeMaster() {
   const [allEmployees, setAllEmployees] = useState([]);
 
   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
-  const [eligibilityCycleId, setEligibilityCycleId] = useState("");
 
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
 
@@ -1200,6 +1198,13 @@ export function EmployeeMaster() {
         finished = true;
 
         setEligibilityEmployees(all);
+
+        try {
+          const masters = await fetchAllEmployeeMasterEmployees();
+          if (!cancelled) setEligibilityMasterEmployees(masters);
+        } catch (masterError) {
+          console.error("Employee Master load for eligibility failed:", masterError);
+        }
       } catch (error) {
         if (cancelled) {
           return;
@@ -2205,21 +2210,12 @@ export function EmployeeMaster() {
     const cutoffIso = toIsoDate(cutoffDate);
 
     eligibilityEmployees.forEach((employee) => {
-      const savedStatus = String(employee.eligibleStatus || "")
-        .trim()
-        .toLowerCase();
-      const isUndecided = !["eligible", "not eligible", "yes", "no"].includes(
-        savedStatus,
-      );
-
-      // Preserve explicit manual decisions, but never let a stale manual flag
-      // exempt an undecided/Pending employee from evaluation.
-      if (employee.manualOverride && !isUndecided) {
+      if (employee.manualOverride) {
         return;
       }
 
       // Inactive employees are left untouched by criteria.
-      if (String(employee.status || "").trim().toLowerCase() === "inactive") {
+      if (employee.status === "Inactive") {
         return;
       }
 
@@ -2257,6 +2253,13 @@ export function EmployeeMaster() {
       // A Pending row (no decision saved yet) is displayed as "No", so it must
       // still be persisted even when the criteria result is also "No";
       // otherwise it stays Pending and blocks Generate Appraisal Sheet.
+      const savedStatus = String(employee.eligibleStatus || "")
+        .trim()
+        .toLowerCase();
+      const isUndecided = !["eligible", "not eligible", "yes", "no"].includes(
+        savedStatus,
+      );
+
       // Only eligible_status is persisted; a differing (derived) reason is
       // refreshed locally without a PATCH.
       if (employee.eligible === nextEligible && !isUndecided) {
@@ -2284,64 +2287,34 @@ export function EmployeeMaster() {
     if (reasonOnlyChanges.length > 0) {
       applyLocalEligibilityChanges(reasonOnlyChanges);
     }
-
-    if (changes.length === 0) {
-      showBanner(
-        "Criteria applied",
-        `${evaluated} employee(s) evaluated. No eligibility changes were required.`,
+    if (!eligibilityCycleId) {
+      throw new Error(
+        "Could not identify the active appraisal cycle. Refresh the Eligibility List and try again.",
       );
-
-      return;
     }
 
     try {
-      if (!eligibilityCycleId) {
-        throw new Error(
-          "The active appraisal cycle ID is missing. Reload the Eligibility List before applying criteria.",
-        );
-      }
-
-      // Use the backend's batch endpoint with an explicit cycle ID. This avoids
-      // deriving a foreign key from each mapped employee and returns a result
-      // for every employee so failed writes cannot be reported as success.
-      const saveResult = await updateEligibilityRecords(
-        changes.map((change) => ({
-          empId: change.empId,
-          eligible_status: change.fields?.Eligible === "Yes" ? "Eligible" : "Not Eligible",
-          reason: change.fields?.Reason || "",
-          source: "Criteria",
-        })),
-        eligibilityCycleId,
-        "Criteria",
+      const results = await Promise.allSettled(
+        changes.map((change) => persistEligibilityChange(change)),
       );
 
-      const rowResults = Array.isArray(saveResult?.rows) ? saveResult.rows : [];
-      const resultByEmpId = new Map(
-        rowResults.map((row) => [normalizeEmpId(row.empId), row]),
-      );
       const successfulChanges = [];
-      const failedRows = [];
+      let failedCount = 0;
 
-      changes.forEach((change) => {
-        const result = resultByEmpId.get(normalizeEmpId(change.empId));
-        if (result?.ok) {
-          const savedChange = {
-            empId: change.empId,
-            name: change.name,
-            fields: change.fields,
-          };
-          successfulChanges.push(savedChange);
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled") {
+          successfulChanges.push(result.value);
+
           addEligibilityAudit({
-            empId: change.empId,
-            employeeName: change.name,
-            oldValue: change.oldEligible,
-            newValue: change.fields?.Eligible === "Yes" ? "Eligible" : "Not Eligible",
+            empId: result.value.empId,
+            employeeName: result.value.name,
+            oldValue: changes[index].oldEligible,
+            newValue: result.value.fields?.Eligible,
           });
         } else {
-          failedRows.push({
-            empId: change.empId,
-            reason: result?.reason || "No success confirmation returned by the backend.",
-          });
+          failedCount += 1;
+
+          console.error("Eligibility criteria update failed:", result.reason);
         }
       });
 
@@ -2349,41 +2322,22 @@ export function EmployeeMaster() {
         applyLocalEligibilityChanges(successfulChanges);
       }
 
-      // Read the same cycle back from Catalyst after writing. Do not claim
-      // criteria are applied unless persisted statuses no longer contain Pending.
-      const verification = await fetchEligibilityEmployees({
-        page: 1,
-        limit: 1000,
-        search: "",
-        cycleId: eligibilityCycleId,
-      });
-      const verifiedRows = Array.isArray(verification?.data) ? verification.data : [];
-      setEligibilityEmployees(verifiedRows);
-      const pendingRows = verifiedRows.filter((employee) => {
-        const status = String(employee.eligibleStatus || "").trim().toLowerCase();
-        return !["eligible", "not eligible", "yes", "no"].includes(status);
-      });
-
-      const firstFailure = failedRows[0];
-      if (failedRows.length || pendingRows.length) {
-        const detail = firstFailure
-          ? ` First save failure: ${firstFailure.empId}: ${firstFailure.reason}`
-          : "";
+      if (failedCount > 0) {
         showBanner(
-          "Eligibility verification failed",
-          `${successfulChanges.length} employee(s) saved; ${failedRows.length} save(s) failed and ${pendingRows.length} employee(s) still have Pending/unknown status.${detail} Appraisal Sheet generation will remain blocked until these are resolved.`,
+          "Criteria partially applied",
+          `${successfulChanges.length} employee(s) updated in Catalyst. ${failedCount} employee(s) failed.`,
           true,
         );
       } else {
         showBanner(
-          "Criteria applied and verified",
-          `${verifiedRows.length} employee(s) reloaded from Catalyst; no Pending eligibility decisions remain for this cycle.`,
+          "Criteria applied",
+          `${successfulChanges.length} employee(s) eligibility updated in Catalyst. Active/Inactive status was not changed.`,
         );
       }
     } catch (error) {
       showBanner(
         "Criteria update failed",
-        error?.message || "Unable to save and verify eligibility decisions in Catalyst.",
+        error?.message || "Unable to save eligibility changes to Catalyst.",
         true,
       );
     }
@@ -2595,7 +2549,11 @@ export function EmployeeMaster() {
               >
                 {canEditEmployees && (
                   <EligibilityCriteria
-                    employees={eligibilityEmployees}
+                    employees={
+                      eligibilityMasterEmployees.length
+                        ? eligibilityMasterEmployees
+                        : eligibilityEmployees
+                    }
                     excludedEmployees={excludedEmployees}
                     setExcludedEmployees={setExcludedEmployees}
                     onApply={applyEligibilityCriteria}
@@ -2613,6 +2571,10 @@ export function EmployeeMaster() {
                   onChangeEligibility={
                     canEditEmployees ? setEligibilityEmployee : undefined
                   }
+                  onAddEmployee={
+                    canEditEmployees ? addEmployeeToEligibility : undefined
+                  }
+                  masterEmployees={eligibilityMasterEmployees}
                   onDownloadTemplate={downloadEligibilityTemplate}
                   onImport={
                     canEditEmployees ? handleEligibilityFile : undefined

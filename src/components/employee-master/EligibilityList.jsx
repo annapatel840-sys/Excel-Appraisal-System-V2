@@ -373,7 +373,7 @@ export function EligibilityList({
               className="em-btn emx-dashed"
               onClick={() => setAddOpen(true)}
             >
-              <Plus size={14} /> Add employee
+              <Plus size={14} /> Add An Employee
             </button>
           )}
 

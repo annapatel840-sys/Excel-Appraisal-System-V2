@@ -738,6 +738,26 @@ export async function updateEligibilityRecords(records, cycleId, source = "Crite
   };
 }
 
+/*
+ * Apply Criteria: the backend evaluates the Employee Master against the
+ * criteria and puts only the employees who pass into the cycle's Eligibility
+ * List (excluded employees are left out; manual rows are never touched).
+ */
+export async function applyEligibilityCriteriaToCycle(cycleId, criteria = {}) {
+  if (!cycleId) throw new Error("Select an appraisal cycle before applying criteria.");
+  return payrollCycleRequest("eligibility", {
+    method: "POST",
+    body: {
+      action: "apply-criteria",
+      cycleId,
+      departments: criteria.departments || [],
+      designations: criteria.designations || [],
+      excludedEmployees: criteria.excludedEmployees || [],
+      cutoffDate: criteria.cutoffDate || "",
+    },
+  });
+}
+
 /* ============================================================
    CREATE / IMPORT EMPLOYEES
    ============================================================ */
