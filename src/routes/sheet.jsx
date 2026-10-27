@@ -214,8 +214,11 @@ export function SheetPage() {
   // Utilisation = Consumed as a percentage of Budget Allocated.
   // ============================================================
 
-  const budgetConsumed = useMemo(() => sumBudgetConsumed(filtered), [filtered]);
-  const budgetTargetPB = useMemo(() => sumTargetPB(filtered), [filtered]);
+  // In Comp Manager preview, budget figures describe the manager's whole team,
+  // not just the temporary search/filter subset currently visible in the grid.
+  const budgetRowsForStats = isCompManagerPreview ? appraisalRows : filtered;
+  const budgetConsumed = useMemo(() => sumBudgetConsumed(budgetRowsForStats), [budgetRowsForStats]);
+  const budgetTargetPB = useMemo(() => sumTargetPB(budgetRowsForStats), [budgetRowsForStats]);
 
   const { allocated: budgetAllocated, isEstimate: budgetIsEstimate } =
     resolveBudgetAllocated({
