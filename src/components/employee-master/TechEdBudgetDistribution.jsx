@@ -2,7 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
-import { useViewAs, useSelectedCompManager, managerIdentityMatches } from "@/lib/view-as-store";
+import { useViewAs, useSelectedCompManager, managerIdentityMatches, currentUserMatchesManager } from "@/lib/view-as-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 /* Budget Distribution uses persisted Budget_Distribution and
@@ -157,7 +157,7 @@ function AuditTable({ list, showName }) {
 export function TechEdBudgetDistribution() {
   const user = useCatalystUser();
   const { effectiveId, actualId } = useViewAs();
-  const { selectedCompManager, setSelectedCompManager } = useSelectedCompManager();
+  const { setSelectedCompManager } = useSelectedCompManager();
   const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
   const {
     budgetDistributionRows,
@@ -498,6 +498,7 @@ export function TechEdBudgetDistribution() {
       const rawManager = employee.comp_manager_display || employee.comp_manager_name || employee.comp_manager || employee.comp_manager_id || employee.compManager || "";
       const manager = resolveManager(rawManager);
       if (!manager) return;
+      if (isCompManagerPreview && !currentUserMatchesManager(manager, user, employeeRows)) return;
       const key = ownerKey(manager);
       const stats = managerStats.get(key) || { count: 0, base: 0, utilized: 0, name: manager };
       stats.count += 1;
@@ -563,21 +564,12 @@ export function TechEdBudgetDistribution() {
         history,
       };
     });
-  }, [liveComps, employeeRows, techOwnerKey, log, techEdOwners, activeCycleId]);
+  }, [liveComps, employeeRows, techOwnerKey, log, techEdOwners, activeCycleId, isCompManagerPreview, user]);
 
-  useEffect(() => {
-    if (!isCompManagerPreview || !cmNodes.length) return;
-    if (!cmNodes.some((node) => managerIdentityMatches(node.name, selectedCompManager))) {
-      setSelectedCompManager(cmNodes[0].name);
-    }
-  }, [isCompManagerPreview, cmNodes, selectedCompManager, setSelectedCompManager]);
-
-  const selectedManagerNode = useMemo(
-    () => isCompManagerPreview
-      ? (cmNodes.find((node) => managerIdentityMatches(node.name, selectedCompManager)) || null)
-      : null,
-    [isCompManagerPreview, cmNodes, selectedCompManager],
-  );
+  // A Tech-Ed preview may only see a Comp Manager allocation if the signed-in
+  // employee is itself that Comp Manager. Never default to another manager.
+  const selectedManagerNode = isCompManagerPreview ? (cmNodes[0] || null) : null;
+  const selectedCompManager = selectedManagerNode?.name || "";
 
   const assignedTeam = useMemo(() => {
     if (!activeCycleId || !techOwnerKey) return [];
@@ -781,17 +773,9 @@ export function TechEdBudgetDistribution() {
 
       <div className="card">
         {paneHead("mine", "My Budget")}
-        {isCompManagerPreview && cmNodes.length > 0 && (
-          <div style={{ padding: "8px 14px", borderBottom: "1px solid #d3dbe6" }}>
-            <label className="f-label" htmlFor="preview-comp-manager">Comp Manager</label>
-            <select
-              id="preview-comp-manager"
-              value={selectedManagerNode?.name || ""}
-              onChange={(event) => setSelectedCompManager(event.target.value)}
-              style={{ marginLeft: 8, maxWidth: 360, border: "1px solid #cbd5e1", borderRadius: 6, padding: "5px 8px", background: "#fff" }}
-            >
-              {cmNodes.map((node) => <option key={node.name} value={node.name}>{node.name}</option>)}
-            </select>
+        {isCompManagerPreview && !selectedManagerNode && (
+          <div style={{ padding: "8px 14px", color: "#64748b" }}>
+            No Comp Manager allocation is linked to the signed-in employee.
           </div>
         )}
         {pane.mine && (
