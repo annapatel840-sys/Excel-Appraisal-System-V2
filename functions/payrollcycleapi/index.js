@@ -1185,11 +1185,12 @@ async function generateAppraisalSheet(tables, cycle, actor) {
   if (!eligibleRows.length) {
     throw new ApiError("No eligible active employees were found for this cycle. Check the Eligibility List and criteria.", 409);
   }
-  const [sheetRows, employeeMasterRows, payrollRows, feedbackRows] = await Promise.all([
+  const [sheetRows, employeeMasterRows, payrollRows, feedbackRows, allCycles] = await Promise.all([
     getAllRows(tables.employees),
     getAllRows(tables.employeeMaster),
     getAllRows(tables.payroll),
     getAllRows(tables.feedback),
+    getAllRows(tables.cycles),
   ]);
   const cycleKeys = new Set(
     [cycle.id, cycle.name]
@@ -1218,14 +1219,90 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     return undefined;
   };
   const payrollByMasterId = new Map();
-  payrollRows.forEach((row) => {
-    const masterId = referenceText(row.emp_id ?? row.employee_master_id);
-    const payrollCycle = referenceText(
+  const payrollBaseSourceByMasterId = new Map();
+  const normalizedCycles = allCycles.map(normalizeCycle);
+  const cycleByReference = new Map();
+  normalizedCycles.forEach((item) => {
+    if (item.id) cycleByReference.set(item.id.toLowerCase(), item);
+    if (item.name) cycleByReference.set(item.name.toLowerCase(), item);
+  });
+  const cycleYear = (item) => {
+    const match = String(item?.name || "").match(/(?:19|20)\d{2}/);
+    return match ? match[0] : "";
+  };
+  const isNewJoinerCycle = (item) => /new[\s_-]*joiners?/i.test(String(item?.name || ""));
+  const isAnnualCycle = (item) => /\bannual\b/i.test(String(item?.name || ""));
+  const isClosedCycle = (item) =>
+    String(item?.status || "").toLowerCase() === "closed" || Boolean(item?.archived);
+  const cycleOrder = (item) => {
+    const date = String(item?.effective || item?.end || item?.start || "");
+    const year = Number(cycleYear(item)) || 0;
+    return [year, date];
+  };
+  const isBeforeCurrentCycle = (item) => {
+    const [itemYear, itemDate] = cycleOrder(item);
+    const [currentYear, currentDate] = cycleOrder(cycle);
+    return itemYear < currentYear || (itemYear === currentYear && itemDate && currentDate && itemDate < currentDate);
+  };
+  const currentYear = cycleYear(cycle);
+  const payrollRowsWithCycle = payrollRows.map((row) => {
+    const rawCycle = referenceText(
       row.appraisal_cycle_name ?? row.appraisal_cycle_id ?? row.cycle_id ?? row.appraisal_year,
-    ).toLowerCase();
-    if (masterId && cycleKeys.has(payrollCycle)) {
+    );
+    return { row, rawCycle, cycle: cycleByReference.get(rawCycle.toLowerCase()) || null };
+  });
+  payrollRowsWithCycle.forEach(({ row, rawCycle }) => {
+    const masterId = referenceText(row.emp_id ?? row.employee_master_id);
+    if (masterId && cycleKeys.has(rawCycle.toLowerCase())) {
       payrollByMasterId.set(masterId, row);
     }
+  });
+  // Current Annual Base Pay must come from the selected prior cycle's NEW
+  // base pay, not the current cycle's current_annual_base_pay/base_pay.
+  // A same-year closed New Joiner payroll row takes priority per employee;
+  // all other employees use their latest closed Annual payroll row.
+  const masterIdToEmpId = new Map(
+    employeeMasterRows.map((row) => [
+      referenceText(row.ROWID ?? row.rowid ?? row.id),
+      String(fieldValue(row, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase(),
+    ]).filter(([id]) => id),
+  );
+  const basePayrollCandidatesByEmployee = new Map();
+  payrollRowsWithCycle.forEach(({ row, cycle: sourceCycle }) => {
+    if (!sourceCycle || !isClosedCycle(sourceCycle)) return;
+    const sourceYear = cycleYear(sourceCycle);
+    const masterId = referenceText(row.emp_id ?? row.employee_master_id);
+    const empId = masterIdToEmpId.get(masterId) || String(fieldValue(row, "employee_code", "emp_code") || "").trim().toLowerCase();
+    if (!empId) return;
+    const sameYearNewJoiner = isNewJoinerCycle(sourceCycle) && sourceYear && sourceYear === currentYear;
+    const priorAnnual = isAnnualCycle(sourceCycle) && isBeforeCurrentCycle(sourceCycle);
+    if (!sameYearNewJoiner && !priorAnnual) return;
+    const candidate = { row, cycle: sourceCycle, sameYearNewJoiner, rowTime: String(row.MODIFIEDTIME || row.CREATEDTIME || row.ROWID || "") };
+    const list = basePayrollCandidatesByEmployee.get(empId) || [];
+    list.push(candidate);
+    basePayrollCandidatesByEmployee.set(empId, list);
+  });
+  basePayrollCandidatesByEmployee.forEach((candidates, empId) => {
+    const compareNewest = (a, b) => {
+      const ay = Number(cycleYear(a.cycle)) || 0;
+      const by = Number(cycleYear(b.cycle)) || 0;
+      const ad = String(a.cycle.effective || a.cycle.end || a.cycle.start || "");
+      const bd = String(b.cycle.effective || b.cycle.end || b.cycle.start || "");
+      return by - ay || bd.localeCompare(ad) || b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true });
+    };
+    const sameYearNewJoiner = candidates.filter((item) => item.sameYearNewJoiner).sort(compareNewest)[0];
+    const latestAnnual = candidates.filter((item) => isAnnualCycle(item.cycle) && isBeforeCurrentCycle(item.cycle)).sort(compareNewest)[0];
+    const selected = sameYearNewJoiner || latestAnnual;
+    if (!selected) return;
+    const sourceMasterId = referenceText(selected.row.emp_id ?? selected.row.employee_master_id);
+    if (sourceMasterId) payrollBaseSourceByMasterId.set(sourceMasterId, selected.row);
+    // Also index by actual Employee_Master ROWID when payroll emp_id stores
+    // the business employee ID instead of a lookup reference.
+    const master = employeeMasterRows.find((item) =>
+      String(fieldValue(item, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase() === empId
+    );
+    const actualMasterId = referenceText(master?.ROWID ?? master?.rowid ?? master?.id);
+    if (actualMasterId) payrollBaseSourceByMasterId.set(actualMasterId, selected.row);
   });
 
   // Feedback_And_Rating stores emp_ID and appraisal_cycle_name as Employee_Master
@@ -1396,6 +1473,17 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     // copy non-empty values and only these source-owned columns: a rerun must
     // not reset editable appraisal inputs already saved on Appraisal_Sheet.
     const payroll = payrollByMasterId.get(masterId);
+    const previousPayrollBaseSource = payrollBaseSourceByMasterId.get(masterId) ||
+      payrollBaseSourceByMasterId.get(String(employee.empId || "").trim());
+    const previousNewBasePay = previousPayrollBaseSource
+      ? fieldValue(previousPayrollBaseSource, "new_base_pay", "newBasePay")
+      : undefined;
+    if (previousNewBasePay !== undefined && previousNewBasePay !== null && String(previousNewBasePay).trim() !== "" &&
+        (!appraisalSheetColumns || appraisalSheetColumns.has("current_annual_base_pay"))) {
+      // This source-owned field must override stale values on an existing sheet
+      // row as well as seed a new row.
+      payload.current_annual_base_pay = previousNewBasePay;
+    }
     if (payroll) {
       const payrollFieldMap = {
         current_annual_base_pay: ["current_annual_base_pay", "base_pay"],
@@ -1419,8 +1507,10 @@ async function generateAppraisalSheet(tables, cycle, actor) {
           .map((field) => payroll[field])
           .find((candidate) => candidate !== undefined && candidate !== null && String(candidate).trim() !== "");
         if (value === undefined) return;
-        // Existing Appraisal Sheet input is authoritative after generation.
-        // Seed new rows from payroll, and fill only blank values on reruns.
+        // Current Annual Base Pay is governed by the selected prior-cycle
+        // new_base_pay above. Do not let current-cycle payroll overwrite it.
+        if (sheetField === "current_annual_base_pay") return;
+        // Other existing Appraisal Sheet inputs remain authoritative after generation.
         const existingValue = existing?.[sheetField];
         if (
           !existing ||
