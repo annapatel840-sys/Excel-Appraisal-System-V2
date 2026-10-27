@@ -1193,9 +1193,11 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       "Previous_Appraisal_total_CTC_with_rewards",
       "previousAppraisalTotalCtcWithRewards",
     ]);
+    // Same parsing as payrollAmount in the mapping above (not in scope here).
+    const previousCtcNumber = Number(String(existingPreviousCtcRaw).replace(/[₹,\s]/g, ""));
     const existingPreviousCtc = existingPreviousCtcRaw === ""
       ? null
-      : payrollAmount(existingPreviousCtcRaw);
+      : Number.isFinite(previousCtcNumber) ? previousCtcNumber : 0;
     const update = { ROWID: rowId };
     if (existingDate !== String(desiredDate ?? "").trim() && String(desiredDate ?? "").trim()) {
       update.last_appraisal_date = desiredDate;
