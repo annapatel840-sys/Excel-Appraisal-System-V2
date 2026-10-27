@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
+import { useViewAs, useSelectedCompManager, managerIdentityMatches } from "@/lib/view-as-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 /* Budget Distribution uses persisted Budget_Distribution and
@@ -155,6 +156,9 @@ function AuditTable({ list, showName }) {
 
 export function TechEdBudgetDistribution() {
   const user = useCatalystUser();
+  const { effectiveId, actualId } = useViewAs();
+  const { selectedCompManager, setSelectedCompManager } = useSelectedCompManager();
+  const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
   const {
     budgetDistributionRows,
     budgetCompManagerRows,
@@ -556,44 +560,67 @@ export function TechEdBudgetDistribution() {
     });
   }, [liveComps, employeeRows, techOwnerKey, log, techEdOwners, activeCycleId]);
 
+  useEffect(() => {
+    if (!isCompManagerPreview || !cmNodes.length) return;
+    if (!cmNodes.some((node) => managerIdentityMatches(node.name, selectedCompManager))) {
+      setSelectedCompManager(cmNodes[0].name);
+    }
+  }, [isCompManagerPreview, cmNodes, selectedCompManager, setSelectedCompManager]);
+
+  const selectedManagerNode = useMemo(
+    () => isCompManagerPreview
+      ? (cmNodes.find((node) => managerIdentityMatches(node.name, selectedCompManager)) || null)
+      : null,
+    [isCompManagerPreview, cmNodes, selectedCompManager],
+  );
+
   const assignedTeam = useMemo(() => {
     if (!activeCycleId || !techOwnerKey) return [];
     return employeeRows.filter((employee) => {
-    if (employee.in_appraisal_sheet !== true) return false;
-    const raw = employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
-    const linked = techEdOwners.find((item) =>
-      [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name, item?.email, item?.email_id].filter(Boolean)
-        .some((alias) => ownerMatches(alias, raw))
-    );
-    const assignment = String(linked?.assignment || raw).trim();
-    return Boolean(techOwnerKey) && ownerKey(assignment) === techOwnerKey && isActiveAndEligible(employee);
+      if (employee.in_appraisal_sheet !== true) return false;
+      const raw = employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed_appraisal_sheet || employee.appraiser_tech_ed || employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || employee.tech_ed || employee.tech_ed_id || "";
+      const linked = techEdOwners.find((item) =>
+        [item?.employee_id, item?.row_id, item?.ROWID, item?.assignment, item?.name, item?.email, item?.email_id].filter(Boolean)
+          .some((alias) => ownerMatches(alias, raw))
+      );
+      const assignment = String(linked?.assignment || raw).trim();
+      if (!(Boolean(techOwnerKey) && ownerKey(assignment) === techOwnerKey && isActiveAndEligible(employee))) return false;
+      if (!isCompManagerPreview) return true;
+      const manager = employee.comp_manager_display || employee.comp_manager_name || employee.comp_manager || employee.comp_manager_id || employee.compManager || "";
+      return Boolean(selectedCompManager) && managerIdentityMatches(manager, selectedCompManager);
     });
-  }, [employeeRows, techOwnerKey, techEdOwners, activeCycleId]);
+  }, [employeeRows, techOwnerKey, techEdOwners, activeCycleId, isCompManagerPreview, selectedCompManager]);
   const allTeam = assignedTeam;
-  const myPct = liveTech ? num(liveTech.percentage) : 0;
+  const myPct = isCompManagerPreview ? num(selectedManagerNode?.pct) : (liveTech ? num(liveTech.percentage) : 0);
   // Use the same selected allocation row/value as Dashboard, Appraisal Sheet,
   // and Detail Screen so the Tech-Ed allocation cannot drift across screens.
   // A budget row can exist before HR applies a percentage. Do not present
   // that placeholder as an allocated/original budget until it has a real amount.
-  const hasLiveAllocation = Boolean(
-    activeCycleId &&
-    liveTech &&
-    (
-      liveTech.percentage_is_set === true ||
-      (liveTech.percentage !== null &&
-        liveTech.percentage !== undefined &&
-        String(liveTech.percentage).trim() !== "")
-    )
-  );
+  const hasLiveAllocation = isCompManagerPreview
+    ? Boolean(activeCycleId && selectedManagerNode?.liveId)
+    : Boolean(
+        activeCycleId &&
+        liveTech &&
+        (
+          liveTech.percentage_is_set === true ||
+          (liveTech.percentage !== null &&
+            liveTech.percentage !== undefined &&
+            String(liveTech.percentage).trim() !== "")
+        )
+      );
   const myOriginal = hasLiveAllocation
-    ? (sharedBudgetTotals?.budgetScope === "teched"
-        ? num(sharedBudgetTotals.base)
-        : num(liveTech.calculated_budget))
+    ? (isCompManagerPreview
+        ? num(selectedManagerNode?.original)
+        : sharedBudgetTotals?.budgetScope === "teched"
+          ? num(sharedBudgetTotals.base)
+          : num(liveTech.calculated_budget))
     : null;
   const myUpdated = hasLiveAllocation
-    ? (sharedBudgetTotals?.budgetScope === "teched"
-        ? num(sharedBudgetTotals.updated)
-        : num(liveTech.applied_budget))
+    ? (isCompManagerPreview
+        ? num(selectedManagerNode?.updated)
+        : sharedBudgetTotals?.budgetScope === "teched"
+          ? num(sharedBudgetTotals.updated)
+          : num(liveTech.applied_budget))
     : null;
   // Backend counts are calculated from the cycle-scoped eligible Appraisal Sheet
   // roster and persisted by budgetmasterapi. Prefer them so every screen agrees.
@@ -722,7 +749,7 @@ export function TechEdBudgetDistribution() {
         </span>
         <span className="sep" />
         <span>
-          Tech-Ed allocation from Budget Master · updated {hasLiveAllocation ? lakh(myUpdated) : "—"}
+          {isCompManagerPreview ? "Comp Manager allocation" : "Tech-Ed allocation"} · updated {hasLiveAllocation ? lakh(myUpdated) : "—"}
         </span>
         <span className="sep" />
         <span>
@@ -732,16 +759,30 @@ export function TechEdBudgetDistribution() {
         <span className="applied">
           Budget applied by HR: <b>{hasLiveAllocation ? myPct + "%" : "—"}</b> = <b>{hasLiveAllocation ? lakh(myUpdated) : "—"}</b> updated · original{" "}
           {hasLiveAllocation ? lakh(myOriginal) : "—"}
-          {hasLiveAllocation ? (
+          {!isCompManagerPreview && hasLiveAllocation ? (
             <button type="button" className="dd" aria-expanded={appliedOpen} onClick={() => setAppliedOpen((v) => !v)}>
               % history {appliedOpen ? "▴" : "▾"}
             </button>
           ) : null}
         </span>
       </div>
-      {appliedOpen && (
+      {!isCompManagerPreview && appliedOpen && (
         <div className="apdrop">
           <AuditTable list={auditFor([myName])} showName={false} />
+        </div>
+      )}
+
+      {isCompManagerPreview && cmNodes.length > 0 && (
+        <div className="card" style={{ padding: "10px 14px" }}>
+          <label className="f-label" htmlFor="preview-comp-manager">Comp Manager</label>
+          <select
+            id="preview-comp-manager"
+            value={selectedManagerNode?.name || ""}
+            onChange={(event) => setSelectedCompManager(event.target.value)}
+            style={{ marginLeft: 8, maxWidth: 360, border: "1px solid #cbd5e1", borderRadius: 6, padding: "5px 8px", background: "#fff" }}
+          >
+            {cmNodes.map((node) => <option key={node.name} value={node.name}>{node.name}</option>)}
+          </select>
         </div>
       )}
 
@@ -797,7 +838,7 @@ export function TechEdBudgetDistribution() {
         )}
       </div>
 
-      <div className="card">
+      {!isCompManagerPreview && <div className="card">
         {paneHead("alloc", "Allocation", cmNodes.length + " " + cmLabel)}
         {pane.alloc && (
           <>
@@ -980,7 +1021,7 @@ export function TechEdBudgetDistribution() {
         )}
       </div>
 
-      <div className="card">
+      {!isCompManagerPreview && <div className="card">
         {paneHead("audit", "% Applied — audit trail (you and your " + cmLabel + ")")}
         {pane.audit && (
           <>
@@ -1000,7 +1041,7 @@ export function TechEdBudgetDistribution() {
             </div>
           </>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
