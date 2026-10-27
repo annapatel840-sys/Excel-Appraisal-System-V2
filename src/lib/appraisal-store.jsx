@@ -394,7 +394,12 @@ const mapCatalystEmployee = (employee, index) => {
     pbToBePaid: Number(employee.pb_to_be_paid || 0),
     monthPB: String(employee.month_pb || ""),
 
-    currentAnnualBasePay: Number(employee.current_annual_base_pay || 0),
+    // Backend enriches current_annual_base_pay from the selected prior
+    // closed cycle's new_base_pay (same-year New Joiner cycle first, otherwise
+    // latest closed Annual). Do not use the current row's new_base_pay here.
+    currentAnnualBasePay: Number(
+      employee.current_annual_base_pay ?? employee.currentAnnualBasePay ?? 0,
+    ),
 
     targetPBAllocatedForMay: Number(employee.target_pb_allocated_for_may || 0),
 
