@@ -580,6 +580,8 @@ const nowT = () => {
 // "Budget Utilization incl. Target PB" = Consumed (Hike + PB + RB) + Target PB,
 // shown as an amount, exactly like the Appraisal Sheet's top bar (not a %).
 const rupees = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
+const pctOf = (x) =>
+  x && Number(x.budget) ? ((Number(x.used) || 0) / Number(x.budget)) * 100 : 0;
 const inclT = (x) => (Number(x && x.used) || 0) + (Number(x && x.tpb) || 0);
 const lvl = (p) => (p > 100 ? "danger" : p > 90 ? "warn" : "");
 const isHike = (f) => f === "hikePct" || f === "hikeAmt";
@@ -2911,6 +2913,19 @@ const BulkOperations = forwardRef(function BulkOperations(
               </strong>
             ) : (
               <strong className={lvl(b0.util)}>{rupees(b0.used)}</strong>
+            )}
+          </div>
+          <div className="tk">
+            <span>Utilisation %</span>
+            {pv && Math.abs(pctOf(bPv) - pctOf(b0)) >= 0.05 ? (
+              <strong className={lvl(pctOf(bPv))}>
+                {pctOf(b0).toFixed(1)}% <small>→</small>{" "}
+                {pctOf(bPv).toFixed(1)}%
+              </strong>
+            ) : (
+              <strong className={lvl(pctOf(b0))}>
+                {pctOf(b0).toFixed(1)}%
+              </strong>
             )}
           </div>
           <div className="tk">

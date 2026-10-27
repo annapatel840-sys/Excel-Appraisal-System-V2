@@ -394,12 +394,7 @@ const mapCatalystEmployee = (employee, index) => {
     pbToBePaid: Number(employee.pb_to_be_paid || 0),
     monthPB: String(employee.month_pb || ""),
 
-    // Backend enriches current_annual_base_pay from the selected prior
-    // closed cycle's new_base_pay (same-year New Joiner cycle first, otherwise
-    // latest closed Annual). Do not use the current row's new_base_pay here.
-    currentAnnualBasePay: Number(
-      employee.current_annual_base_pay ?? employee.currentAnnualBasePay ?? 0,
-    ),
+    currentAnnualBasePay: Number(employee.current_annual_base_pay || 0),
 
     targetPBAllocatedForMay: Number(employee.target_pb_allocated_for_may || 0),
 
@@ -1063,7 +1058,7 @@ const linkedHikeValues = (row, key, value) => {
 
   const amount = Number(value) || 0;
 
-  const pct = basePay ? Number(((amount / basePay) * 100).toFixed(1)) : 0;
+  const pct = basePay ? Number(((amount / basePay) * 100).toFixed(2)) : 0;
 
   return { hikeAmount: amount, hikePct: pct };
 };

@@ -2725,11 +2725,11 @@ export function AppraisalGrid({
       const basePay = Number(row.currentAnnualBasePay || 0);
       const pct = Number(String(raw).replace(/,/g, "")) || 0;
 
-      // The % box only shows the amount rounded to 1 decimal. If the value
+      // The % box only shows the amount rounded to 2 decimals. If the value
       // is just that rounded display, keep the amount exactly as typed
       // (otherwise 35000 could turn into 35008 when the % cell is left).
       const shownPct = basePay
-        ? Number((((Number(row.hikeAmount) || 0) / basePay) * 100).toFixed(1))
+        ? Number((((Number(row.hikeAmount) || 0) / basePay) * 100).toFixed(2))
         : 0;
 
       if (
@@ -2785,7 +2785,7 @@ export function AppraisalGrid({
 
       const basePay = Number(row.currentAnnualBasePay || 0);
       const amount = Number(String(raw).replace(/,/g, "")) || 0;
-      const pct = basePay ? Number(((amount / basePay) * 100).toFixed(1)) : 0;
+      const pct = basePay ? Number(((amount / basePay) * 100).toFixed(2)) : 0;
 
       const changed =
         (Number(row.hikeAmount) || 0) !== amount ||
@@ -3307,11 +3307,9 @@ export function AppraisalGrid({
         col.key === "managerRating" ? MANAGER_RATING_LABELS[rawText] : "";
       const text = isMoney
         ? displayValue.replace(/^₹\s?/, "")
-        : col.dateDisplay
-          ? displayValue
-          : ratingLabel
-            ? `${rawText} - ${ratingLabel}`
-            : rawText;
+        : ratingLabel
+          ? `${rawText} - ${ratingLabel}`
+          : rawText;
 
       // Client Manager Feedback: one line only, except on the active
       // (selected / highlighted) row, where the whole text is shown.
@@ -3521,7 +3519,7 @@ export function AppraisalGrid({
 
       if (basePay && String(otherRaw ?? "").trim() !== "" && Number.isFinite(other)) {
         if (col.key === "hikePct") {
-          storedValue = String(Number(((other / basePay) * 100).toFixed(1)));
+          storedValue = String(Number(((other / basePay) * 100).toFixed(2)));
         } else if (otherDraft !== undefined) {
           storedValue = String(Math.round(basePay * (other / 100)));
         }
@@ -4531,7 +4529,7 @@ export function AppraisalGrid({
                   } else if (col.key in totals.sums) {
                     text = formatHistoryNumber(totals.sums[col.key]);
                   } else if (col.key === "hikePct" && totals.hikePct !== null) {
-                    text = `${totals.hikePct.toFixed(1)}%`;
+                    text = `${totals.hikePct.toFixed(2)}%`;
                   }
 
                   return (
