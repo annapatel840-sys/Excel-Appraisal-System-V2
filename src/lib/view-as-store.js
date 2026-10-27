@@ -22,7 +22,62 @@ export const viewAsRolesFor = (actualId) =>
   VIEW_AS_ROLES.filter((role) => (SWITCHABLE_ROLES[actualId] || []).includes(role.id));
 
 const STORAGE_KEY = "appraisal-view-as-role";
+const COMP_MANAGER_STORAGE_KEY = "appraisal-view-as-manager";
 const listeners = new Set();
+const compManagerListeners = new Set();
+
+function readSelectedCompManager() {
+  try {
+    return typeof window === "undefined"
+      ? ""
+      : String(window.sessionStorage.getItem(COMP_MANAGER_STORAGE_KEY) || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+let selectedCompManager = readSelectedCompManager();
+
+function subscribeCompManager(listener) {
+  compManagerListeners.add(listener);
+  return () => compManagerListeners.delete(listener);
+}
+
+export function setSelectedCompManager(value) {
+  selectedCompManager = String(value || "").trim();
+  try {
+    if (selectedCompManager) window.sessionStorage.setItem(COMP_MANAGER_STORAGE_KEY, selectedCompManager);
+    else window.sessionStorage.removeItem(COMP_MANAGER_STORAGE_KEY);
+  } catch {
+    // The selection still works for the current page session.
+  }
+  compManagerListeners.forEach((listener) => listener());
+}
+
+export function useSelectedCompManager() {
+  const value = useSyncExternalStore(
+    subscribeCompManager,
+    () => selectedCompManager,
+    () => "",
+  );
+  return { selectedCompManager: value, setSelectedCompManager };
+}
+
+export function normalizeManagerIdentity(value) {
+  return String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+}
+
+export function managerIdentityMatches(value, selected) {
+  const parts = (input) => {
+    const normalized = normalizeManagerIdentity(input);
+    if (!normalized) return [];
+    const split = normalized.split(/\\s+-\\s+/);
+    return split.length > 1 ? [normalized, ...split] : [normalized];
+  };
+  const left = parts(value);
+  const right = new Set(parts(selected));
+  return left.some((part) => right.has(part));
+}
 
 function readSaved() {
   try {
