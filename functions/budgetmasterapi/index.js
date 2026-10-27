@@ -380,11 +380,11 @@ function sendAccessError(res, error) {
 }
 
 async function readBundle(app) {
-  const [masterRows, distributionRows, compRows] = await Promise.all([
-    getAllRows(app, "Budget_Master"),
-    getAllRows(app, "Budget_Distribution"),
-    getAllRows(app, "Budget_Distribution_Comp"),
-  ]);
+  // Catalyst COMPONENT concurrency is shared across datastore scans. Read these
+  // paged tables sequentially instead of starting three scans at once.
+  const masterRows = await getAllRows(app, "Budget_Master");
+  const distributionRows = await getAllRows(app, "Budget_Distribution");
+  const compRows = await getAllRows(app, "Budget_Distribution_Comp");
 
   return {
     master: masterRows.map(mapMaster),
@@ -760,11 +760,11 @@ async function readTechEdOwners(app) {
 }
 
 async function readEmployeeRoster(app) {
-  const [allAppraisalRows, masterRows, cycleRows] = await Promise.all([
-    getAllRows(app, "Appraisal_Sheet"),
-    getAllRows(app, "Employee_Master"),
-    getAllRows(app, "Appraisal_Cycle_Master").catch(() => []),
-  ]);
+  // Keep COMPONENT datastore requests serialized; each getAllRows call can
+  // issue multiple paged ZCQL requests.
+  const allAppraisalRows = await getAllRows(app, "Appraisal_Sheet");
+  const masterRows = await getAllRows(app, "Employee_Master");
+  const cycleRows = await getAllRows(app, "Appraisal_Cycle_Master").catch(() => []);
 
   // The budget roster must be sourced only from the generated Appraisal_Sheet
   // for the Active cycle. Employee_Master-only people and archived-cycle rows
@@ -1174,19 +1174,13 @@ function pickColumn(columns, candidates, fallback) {
 async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   // Appraisal_Sheet provides the current roster and team assignments.
   // Payroll_Data + Appraisal_Cycle_Master provide prior-cycle CTC values.
-  const [
-    appraisalRows,
-    masterEmployeeRows,
-    payrollRows,
-    cycleRows,
-    eligibilityRows,
-  ] = await Promise.all([
-    getAllRows(app, "Appraisal_Sheet"),
-    getAllRows(app, "Employee_Master").catch(() => []),
-    getAllRows(app, "Payroll_Data"),
-    getAllRows(app, "Appraisal_Cycle_Master"),
-    getAllRows(app, "Eligibility_List").catch(() => []),
-  ]);
+  // Serialize all source-table scans. Parallel paged reads can exceed the
+  // Catalyst COMPONENT concurrency limit and fail the entire budget calculation.
+  const appraisalRows = await getAllRows(app, "Appraisal_Sheet");
+  const masterEmployeeRows = await getAllRows(app, "Employee_Master").catch(() => []);
+  const payrollRows = await getAllRows(app, "Payroll_Data");
+  const cycleRows = await getAllRows(app, "Appraisal_Cycle_Master");
+  const eligibilityRows = await getAllRows(app, "Eligibility_List").catch(() => []);
   if (!appraisalRows.length) {
     throw new Error(
       "Appraisal_Sheet returned no rows; cannot calculate budget bases.",
@@ -2835,10 +2829,9 @@ module.exports = async function (req, res) {
       // Keep this endpoint limited to the three budget tables. The frontend
       // already loads the full employee roster through employeesapi; scanning
       // both employee tables again here caused Catalyst's execution timeout.
-      const [rawBundle, techEdOwners] = await Promise.all([
-        readBundle(app),
-        readTechEdOwners(app),
-      ]);
+      // Avoid overlapping multiple datastore scans on the same request.
+      const rawBundle = await readBundle(app);
+      const techEdOwners = await readTechEdOwners(app);
       let calculatedBundle = rawBundle;
       try {
         calculatedBundle = await calculateBudgetBases(
