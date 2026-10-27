@@ -9,6 +9,7 @@ import {
   totalBonus,
   totalOfPB,
   pct,
+  formatAppraisalDate,
 } from "@/lib/appraisal-data";
 
 // ============================================================
@@ -539,7 +540,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
             }
           />
 
-          <InfoCell label="Last Appraisal" value={employee.lastAppraisalDate} />
+          <InfoCell label="Last Appraisal" value={formatAppraisalDate(employee.lastAppraisalDate)} />
 
           <InfoCell label="Manager Rating" value={employee.managerRating} />
 

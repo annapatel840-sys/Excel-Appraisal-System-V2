@@ -2,6 +2,8 @@
 // APPRAISAL DATA
 // ============================================================
 
+import { parseDateValue } from "./employee-master-data";
+
 // Dropdown options
 // Manager Rating is a whole number 1-5 (read from Feedback_And_Rating).
 export const MANAGER_RATINGS = ["1", "2", "3", "4", "5"];
@@ -270,6 +272,9 @@ export const COLUMNS = [
     key: "lastAppraisalDate",
     label: "Last Appraisal",
     type: "text",
+    // Display-only: shown as "DD Mon YYYY" (see formatAppraisalDate).
+    // The stored/sorted value stays the original date string.
+    dateDisplay: true,
     editable: false,
     width: 150,
   },
@@ -730,8 +735,36 @@ export const inr = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
 
 export const pct = (n) => `${Number(n || 0).toFixed(1)}%`;
 
+const MONTH_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/**
+ * Format a date value as "DD Mon YYYY" (e.g. "01 Apr 2025").
+ * Anything that is not a recognisable date (blank, or a text label)
+ * is returned unchanged so no information is lost.
+ */
+export function formatAppraisalDate(value) {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+
+  const date = parseDateValue(value);
+
+  if (!date) {
+    return String(value);
+  }
+
+  return `${String(date.getDate()).padStart(2, "0")} ${MONTH_SHORT[date.getMonth()]} ${date.getFullYear()}`;
+}
+
 export function formatValue(row, col) {
   const value = col.computed && col.fn ? col.fn(row) : row[col.key];
+
+  if (col.dateDisplay) {
+    return formatAppraisalDate(value);
+  }
 
   if (col.type === "currency") {
     return inr(value);
