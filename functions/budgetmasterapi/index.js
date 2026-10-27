@@ -2270,21 +2270,23 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
           compManager:
             sheetEmployee?.compManager || String(rawComp || "").trim(),
         };
-      })
-      .filter((employee) => employee && employee.inEligibilityList);
+      });
+    // Appraisal_Sheet is the authoritative, generated roster for this cycle.
+    // Do not discard sheet employees merely because a corresponding Eligibility_List
+    // row is absent/incomplete; that second filter caused budget totals to omit
+    // employees whose previous-CTC values are visibly present on Appraisal_Sheet.
     const appraisalSheetEmployees = employees.filter(
-      (employee) => employee.in_appraisal_sheet,
+      (employee) => employee && employee.in_appraisal_sheet,
     );
     const eligibleEmployees = appraisalSheetEmployees.filter(
       (employee) => employee.eligible,
     );
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
-    // The budget base must equal the sum of Previous_Appraisal_total_CTC_with_rewards
-    // for employees currently eligible in this cycle. The generated Appraisal_Sheet
-    // remains the only source of employee rows/CTC values; Eligibility_List determines
-    // which of those rows participate in the budget, not which employees are fetched.
+    // Canonical rule: Org Budget Base is the sum of the exact previous-CTC values
+    // carried from the generated Appraisal_Sheet rows for employees marked eligible
+    // in that sheet/cycle. No second Eligibility_List membership filter is applied.
     const orgBase = eligibleEmployees.reduce(
-      (sum, employee) => sum + n(employee.base),
+      (sum, employee) => sum + n(employee.sheet_previous_appraisal_ctc ?? employee.base),
       0,
     );
     const techBases = new Map(
