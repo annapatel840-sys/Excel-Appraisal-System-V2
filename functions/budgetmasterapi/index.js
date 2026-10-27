@@ -2293,62 +2293,41 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     });
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
 
-    // Calculate Org Budget Base directly from the raw Appraisal_Sheet rows.
-    // Do not depend on the transformed employee roster's CTC aliases or payroll
-    // fallbacks: the displayed Previous Total CTC with Rewards column is canonical.
-    const rawSheetBudgetRows = currentAppraisalRows.map((row) => {
-      const rawEmployeeId = String(
-        firstValue(row, [
-          "emp_id", "empId", "employee_id", "employeeId", "employee_id_text",
-        ]) || idOf(row),
-      ).trim();
-      const employeeId = employeeKeyFor(rawEmployeeId);
-      const masterRow =
-        masterByEmployee.get(employeeId) || masterByRowId.get(rawEmployeeId) || {};
-      const candidate = {
-        employeeId,
-        emp_id: rawEmployeeId,
-        employee_master_row_id: idOf(masterRow),
-      };
-      const cycleEligibility = cycleEligibilityFor(candidate, cycleId);
-      const rawSheetEligibility = String(firstValue(row, [
-        "eligibility", "eligible_status", "eligibility_status", "eligible",
-      ]) || "").trim().toLowerCase().replace(/[ _-]+/g, "");
-      const hasSheetEligibility = Boolean(rawSheetEligibility);
-      const sheetEligible = ["eligible", "yes", "true", "1"].includes(rawSheetEligibility);
-      const resolvedEmployee = employees.find((item) =>
-        String(item.employeeId || item.emp_id || "").trim().toLowerCase() ===
-        String(employeeId).trim().toLowerCase()
-      );
-      const isEligible = cycleEligibility
-        ? cycleEligibility.eligible
-        : hasSheetEligibility
-          ? sheetEligible
-          : Boolean(resolvedEmployee?.eligible);
-      const rawCtc = firstValue(row, [
-        "Previous_Appraisal_total_CTC_with_rewards",
-        "previous_appraisal_total_ctc_with_rewards",
-        "previousAppraisalTotalCtcWithRewards",
-      ]);
-      const ctc = rawCtc === "" || rawCtc === null || rawCtc === undefined
-        ? 0
-        : n(rawCtc);
-      return { employeeId, isEligible, rawCtc, ctc };
-    });
-    const eligibleRawSheetRows = rawSheetBudgetRows.filter((row) => row.isEligible);
-    const orgBase = eligibleRawSheetRows.reduce((sum, row) => sum + row.ctc, 0);
+    // Use the same mapped per-employee base that is returned to the Appraisal
+    // Sheet/Budget roster. The visible Previous Total CTC with Rewards column can
+    // be resolved from the sheet snapshot or the established previous-cycle mapping;
+    // summing only the raw stored field incorrectly returned zero when that displayed
+    // column was populated by the mapping/fallback path.
+    const orgBase = eligibleEmployees.reduce(
+      (sum, employee) => sum + n(
+        employee.base ??
+        employee.previous_appraisal_total_ctc_with_rewards ??
+        employee.Previous_Appraisal_total_CTC_with_rewards,
+      ),
+      0,
+    );
     bundle.diagnostics = {
       ...(bundle.diagnostics || {}),
-      budgetBaseSource: "raw Appraisal_Sheet.Previous_Appraisal_total_CTC_with_rewards",
-      budgetBaseSheetRows: currentAppraisalRows.length,
-      budgetBaseEligibleRows: eligibleRawSheetRows.length,
-      budgetBaseRowsWithCtc: eligibleRawSheetRows.filter((row) =>
-        row.rawCtc !== "" && row.rawCtc !== null && row.rawCtc !== undefined
+      budgetBaseSource: "eligible Appraisal_Sheet employee mapped Previous Total CTC with Rewards value",
+      budgetBaseSheetRows: appraisalSheetEmployees.length,
+      budgetBaseEligibleRows: eligibleEmployees.length,
+      budgetBaseRowsWithCtc: eligibleEmployees.filter((employee) =>
+        n(
+          employee.base ??
+          employee.previous_appraisal_total_ctc_with_rewards ??
+          employee.Previous_Appraisal_total_CTC_with_rewards,
+        ) > 0
       ).length,
       budgetBaseRawCtcSum: orgBase,
-      budgetBaseMissingEmployeeIds: eligibleRawSheetRows
-        .filter((row) => row.rawCtc === "" || row.rawCtc === null || row.rawCtc === undefined)
-        .map((row) => row.employeeId)
+      budgetBaseMissingEmployeeIds: eligibleEmployees
+        .filter((employee) =>
+          !n(
+            employee.base ??
+            employee.previous_appraisal_total_ctc_with_rewards ??
+            employee.Previous_Appraisal_total_CTC_with_rewards,
+          )
+        )
+        .map((employee) => employee.employeeId || employee.emp_id || "")
         .slice(0, 20),
     };
     const techBases = new Map(
