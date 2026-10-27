@@ -77,9 +77,11 @@ async function fetchAllEligibleEmployees() {
     const url = new URL(catalystFunctionUrl("employeesapi"));
     url.searchParams.set("page", String(page));
     url.searchParams.set("limit", String(EMPLOYEE_PAGE_LIMIT));
-    // HR Budget Master needs the full Appraisal Sheet roster to discover
-    // every assigned Tech-ED, not only active/eligible employees.
-    url.searchParams.set("view", "master");
+    // Budget Distribution is also used by Tech-Ed accounts, which are not
+    // authorized for the Employee Master screen. Request the Appraisal view so
+    // employeesapi applies the signed-in user's normal appraisal scope instead
+    // of returning a transient 403 for this supplementary roster request.
+    url.searchParams.set("view", "appraisal");
     url.searchParams.set("status", "all");
     url.searchParams.set("eligible", "all");
     url.searchParams.set("_ts", String(Date.now()));
