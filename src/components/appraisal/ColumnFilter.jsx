@@ -431,7 +431,10 @@ export function ColumnFilter({
           className="w-[262px] overflow-visible p-0 py-[3px]"
           style={{ fontFamily: MANROPE }}
         >
-          <div className="max-h-[calc(100vh-80px)] overflow-y-auto overflow-x-visible">
+          {/* No overflow here: with overflow-y:auto the browser also clips the
+              sideways Text/Number Filters submenu (overflow-x can't stay visible),
+              so the submenu items could not be seen or clicked. */}
+          <div>
             <MenuItem
               icon={
                 useNumberFilters ? (
