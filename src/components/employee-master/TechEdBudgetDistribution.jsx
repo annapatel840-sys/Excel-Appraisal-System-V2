@@ -1022,7 +1022,7 @@ export function TechEdBudgetDistribution() {
               </table>
             </div>
             <div className="note">
-              Budget base = Current Annual Base Pay + Allocated PB Amount of each {LEVELS[1]}'s team · Utilised = {UTILISED_LABEL}
+              Comp Manager Budget Base = Tech-Ed Budget Base allocated by each manager's share of the current eligible employee count · Updated Budget = Budget Base × Allot % · Original Budget is fixed at the first calculation · Utilised = {UTILISED_LABEL}
             </div>
           </>
         )}
