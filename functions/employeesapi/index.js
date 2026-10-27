@@ -351,8 +351,11 @@ function getCurrentUserMatchValues(user) {
 }
 
 // ROWID of the Active, non-archived appraisal cycle ("" when none).
+// Pass an admin-scoped datastore: app roles (HR, Tech-Ed, Comp. Manager) have
+// no permission on Appraisal_Cycle_Master. A read failure is thrown, never
+// treated as "no Active cycle", so a save cannot fall back to another row.
 async function activeCycleRowId(datastore) {
-  const cycles = await readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)).catch(function () { return []; });
+  const cycles = await readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID));
   const active = cycles.find(function (cycle) {
     const status = String(cycle?.status ?? cycle?.cycle_status ?? "").trim().toLowerCase();
     const archived = ["true", "1", "yes"].includes(String(cycle?.archived ?? "").trim().toLowerCase());
@@ -1190,9 +1193,11 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       "Previous_Appraisal_total_CTC_with_rewards",
       "previousAppraisalTotalCtcWithRewards",
     ]);
+    // Same parsing as payrollAmount in the mapping above (not in scope here).
+    const previousCtcNumber = Number(String(existingPreviousCtcRaw).replace(/[₹,\s]/g, ""));
     const existingPreviousCtc = existingPreviousCtcRaw === ""
       ? null
-      : payrollAmount(existingPreviousCtcRaw);
+      : Number.isFinite(previousCtcNumber) ? previousCtcNumber : 0;
     const update = { ROWID: rowId };
     if (existingDate !== String(desiredDate ?? "").trim() && String(desiredDate ?? "").trim()) {
       update.last_appraisal_date = desiredDate;
@@ -2285,11 +2290,19 @@ async function updateEmployee(req, res) {
 
   // Appraisal_Sheet keeps rows of earlier cycles: edit the Active cycle's row.
   // With an Active cycle and no row for it, the sheet is not generated yet.
-  const currentCycleId = await activeCycleRowId(datastore);
-  const appraisalRow = (appraisalRows || []).find(function (row) {
-    if (String(row.emp_id || "").trim().toLowerCase() !== empId.toLowerCase()) return false;
-    return !currentCycleId || String(row.cycle_id || "").trim() === currentCycleId;
-  });
+  const currentCycleId = await activeCycleRowId(
+    catalyst.initialize(req, { scope: "admin" }).datastore(),
+  );
+  // Only the Active cycle's row is ever edited; without an Active cycle there
+  // is no current Appraisal Sheet row to change.
+  const appraisalRow = currentCycleId
+    ? (appraisalRows || []).find(function (row) {
+        return (
+          String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase() &&
+          String(row.cycle_id || "").trim() === currentCycleId
+        );
+      })
+    : undefined;
   const masterRow = (masterRows || []).find(function (row) {
     return (
       String(row.emp_id || "")
@@ -2302,9 +2315,11 @@ async function updateEmployee(req, res) {
   // saved on Employee_Master; Generate copies it into the sheet.
   const beforeGenerate = !appraisalRow && isDelegationAssignmentChange && !!masterRow;
   if (!appraisalRow && !beforeGenerate) {
-    return sendJson(res, 404, {
+    return sendJson(res, currentCycleId ? 404 : 409, {
       success: false,
-      message: "Appraisal record " + empId + " not found.",
+      message: currentCycleId
+        ? "Appraisal record " + empId + " not found in the Active appraisal cycle."
+        : "There is no Active appraisal cycle, so " + empId + " cannot be saved.",
     });
   }
   if (!masterRow) {
