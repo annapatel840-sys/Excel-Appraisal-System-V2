@@ -16,6 +16,8 @@ import {
   fetchEligibilityEmployees,
   updateEmployeeMasterEmployee,
   updateEmployeeEligibility,
+  updateEligibilityRecords,
+  applyEligibilityCriteriaToCycle,
   createEmployeeMasterEmployees,
 } from "@/lib/employee-master-data";
 
@@ -636,6 +638,10 @@ export function EmployeeMaster() {
   const [allEmployees, setAllEmployees] = useState([]);
 
   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
+  const [eligibilityCycleId, setEligibilityCycleId] = useState("");
+  // Full Employee Master (all pages). The Eligibility List starts empty for a
+  // cycle, so the criteria panel and "Add An Employee" read from this list.
+  const [eligibilityMasterEmployees, setEligibilityMasterEmployees] = useState([]);
 
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
 
@@ -2201,91 +2207,75 @@ export function EmployeeMaster() {
       return;
     }
 
-    let evaluated = 0;
-
-    const changes = [];
-
-    const reasonOnlyChanges = [];
-
-    const cutoffIso = toIsoDate(cutoffDate);
-
-    eligibilityEmployees.forEach((employee) => {
-      if (employee.manualOverride) {
-        return;
+    try {
+      if (!eligibilityCycleId) {
+        throw new Error(
+          "The active appraisal cycle ID is missing. Reload the Eligibility List before applying criteria.",
+        );
       }
 
-      // Inactive employees are left untouched by criteria.
-      if (employee.status === "Inactive") {
-        return;
-      }
+      // The backend evaluates the Employee Master against the criteria and
+      // adds only the employees who pass to this cycle's Eligibility List.
+      // Employees excluded by the criteria are left out of the list.
+      const result = await applyEligibilityCriteriaToCycle(eligibilityCycleId, {
+        departments,
+        designations,
+        excludedEmployees: excluded,
+        cutoffDate: toIsoDate(cutoffDate),
+      });
 
-      evaluated += 1;
-
-      const reasons = [];
-
-      if (departments.length && departments.includes(employee.organization)) {
-        reasons.push("Department excluded");
-      }
-
-      if (designations.length && designations.includes(employee.designation)) {
-        reasons.push("Designation excluded");
-      }
-
-      if (excluded.includes(employee.empId)) {
-        reasons.push("Employee excluded");
-      }
-
-      if (cutoffIso) {
-        const dojIso = toIsoDate(employee.doj);
-
-        // The cutoff rule needs a DOJ; without one eligibility can't be shown.
-        if (!dojIso) {
-          reasons.push("Missing DOJ");
-        } else if (dojIso > cutoffIso) {
-          reasons.push("Joined after cutoff date");
-        }
-      }
-
-      const nextEligible = reasons.length > 0 ? "No" : "Yes";
-
-      const nextReason = reasons.join(", ");
-
-      // A Pending row (no decision saved yet) is displayed as "No", so it must
-      // still be persisted even when the criteria result is also "No";
-      // otherwise it stays Pending and blocks Generate Appraisal Sheet.
-      const savedStatus = String(employee.eligibleStatus || "")
-        .trim()
-        .toLowerCase();
-      const isUndecided = !["eligible", "not eligible", "yes", "no"].includes(
-        savedStatus,
+      (result?.addedRows || []).forEach((row) =>
+        addEligibilityAudit({
+          empId: row.empId,
+          employeeName: row.name,
+          oldValue: "Not in list",
+          newValue: "Eligible",
+        }),
+      );
+      (result?.removedRows || []).forEach((row) =>
+        addEligibilityAudit({
+          empId: row.empId,
+          employeeName: row.name,
+          oldValue: "Eligible",
+          newValue: "Removed by criteria",
+        }),
       );
 
-      // Only eligible_status is persisted; a differing (derived) reason is
-      // refreshed locally without a PATCH.
-      if (employee.eligible === nextEligible && !isUndecided) {
-        if (employee.eligibleReason !== nextReason) {
-          reasonOnlyChanges.push({
-            empId: employee.empId,
-            fields: { Eligible: nextEligible, Reason: nextReason },
-          });
-        }
+      await reloadEligibilityRows();
 
-        return;
-      }
+      showBanner(
+        "Criteria applied",
+        `${result?.evaluated ?? 0} employee(s) evaluated: ${result?.added ?? 0} added to the Eligibility List, ${result?.excluded ?? 0} left out by the criteria` +
+          `${result?.removed ? ` (${result.removed} removed from the list)` : ""}. ` +
+          "Use Add An Employee to include anyone who was left out.",
+      );
+    } catch (error) {
+      showBanner(
+        "Criteria update failed",
+        error?.message || "Unable to apply eligibility criteria.",
+        true,
+      );
+    }
+  };
 
-      changes.push({
-        empId: employee.empId,
-        name: employee.name,
-        oldEligible: isUndecided ? "Pending" : employee.eligible,
-        fields: {
-          Eligible: nextEligible,
-          Reason: nextReason,
-        },
-      });
+  // Re-read the active cycle's Eligibility List from Catalyst.
+  const reloadEligibilityRows = async () => {
+    const reloaded = await fetchEligibilityEmployees({
+      page: 1,
+      limit: 100000,
+      search: "",
+      cycleId: eligibilityCycleId,
     });
+    setEligibilityEmployees(Array.isArray(reloaded?.data) ? reloaded.data : []);
+  };
 
-    if (reasonOnlyChanges.length > 0) {
-      applyLocalEligibilityChanges(reasonOnlyChanges);
+  /* ============================================================
+     ADD AN EMPLOYEE (manual inclusion in the Eligibility List)
+     ============================================================ */
+
+  const addEmployeeToEligibility = async ({ empId, eligibleReason }) => {
+    if (!canEditEmployees) {
+      throw new Error("You do not have permission to change the Eligibility List.");
     }
     if (!eligibilityCycleId) {
       throw new Error(
@@ -2293,54 +2283,35 @@ export function EmployeeMaster() {
       );
     }
 
+    const master = eligibilityMasterEmployees.find(
+      (employee) => normalizeEmpId(employee.empId) === normalizeEmpId(empId),
+    );
+
+    await updateEmployeeEligibility(
+      empId,
+      "Yes",
+      eligibleReason || "",
+      eligibilityCycleId,
+      "Manual",
+    );
+
+    addEligibilityAudit({
+      empId,
+      employeeName: master?.name || "",
+      oldValue: "Not in list",
+      newValue: "Eligible",
+    });
+
     try {
-      const results = await Promise.allSettled(
-        changes.map((change) => persistEligibilityChange(change)),
-      );
-
-      const successfulChanges = [];
-      let failedCount = 0;
-
-      results.forEach((result, index) => {
-        if (result.status === "fulfilled") {
-          successfulChanges.push(result.value);
-
-          addEligibilityAudit({
-            empId: result.value.empId,
-            employeeName: result.value.name,
-            oldValue: changes[index].oldEligible,
-            newValue: result.value.fields?.Eligible,
-          });
-        } else {
-          failedCount += 1;
-
-          console.error("Eligibility criteria update failed:", result.reason);
-        }
-      });
-
-      if (successfulChanges.length > 0) {
-        applyLocalEligibilityChanges(successfulChanges);
-      }
-
-      if (failedCount > 0) {
-        showBanner(
-          "Criteria partially applied",
-          `${successfulChanges.length} employee(s) updated in Catalyst. ${failedCount} employee(s) failed.`,
-          true,
-        );
-      } else {
-        showBanner(
-          "Criteria applied",
-          `${successfulChanges.length} employee(s) eligibility updated in Catalyst. Active/Inactive status was not changed.`,
-        );
-      }
-    } catch (error) {
-      showBanner(
-        "Criteria update failed",
-        error?.message || "Unable to save eligibility changes to Catalyst.",
-        true,
-      );
+      await reloadEligibilityRows();
+    } catch (reloadError) {
+      console.error("Eligibility reload after add failed:", reloadError);
     }
+
+    showBanner(
+      "Employee added",
+      `${empId} was added to the Eligibility List as Eligible.`,
+    );
   };
 
   /* ============================================================
