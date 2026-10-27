@@ -1272,7 +1272,12 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     if (!sourceCycle || !isClosedCycle(sourceCycle)) return;
     const sourceYear = cycleYear(sourceCycle);
     const masterId = referenceText(row.emp_id ?? row.employee_master_id);
-    const empId = masterIdToEmpId.get(masterId) || String(fieldValue(row, "employee_code", "emp_code") || "").trim().toLowerCase();
+    const directMaster = employeeMasterRows.find((master) =>
+      String(fieldValue(master, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase() === masterId.toLowerCase()
+    );
+    const empId = masterIdToEmpId.get(masterId) ||
+      String(fieldValue(directMaster || {}, "emp_id", "employee_id", "emp_code") || "").trim().toLowerCase() ||
+      String(fieldValue(row, "employee_code", "emp_code") || "").trim().toLowerCase();
     if (!empId) return;
     const sameYearNewJoiner = isNewJoinerCycle(sourceCycle) && sourceYear && sourceYear === currentYear;
     const priorAnnual = isAnnualCycle(sourceCycle) && isBeforeCurrentCycle(sourceCycle);
