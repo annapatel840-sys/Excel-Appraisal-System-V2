@@ -1796,9 +1796,6 @@ export function AppraisalGrid({
   // Small history pop-up while typing: { rowId, colKey, raw }.
   const [typing, setTyping] = useState(null);
   const [typingClosed, setTypingClosed] = useState(false);
-  // Client Manager Feedback cells the user has clicked open (row ids). By
-  // default that column shows a single truncated line to save space.
-  const [openFeedback, setOpenFeedback] = useState({});
   const typingAnchorRef = useRef(null);
 
   const setEditingValue = useCallback((cellKey, value) => {
@@ -1833,67 +1830,7 @@ export function AppraisalGrid({
 
   const resizeRef = useRef(null);
 
-  const [columnOrder, setColumnOrder] = useState(DEFAULT_COLUMN_ORDER);
-
-  const draggedColumnRef = useRef(null);
-
-  const handleColumnDragStart = useCallback((event, column) => {
-    if (FROZEN_KEYS.has(column.key)) {
-      event.preventDefault();
-      return;
-    }
-
-    draggedColumnRef.current = column.key;
-
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", column.key);
-  }, []);
-
-  const handleColumnDragOver = useCallback((event) => {
-    event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-  }, []);
-
-  const handleColumnDrop = useCallback((event, targetColumn) => {
-    event.preventDefault();
-
-    const draggedKey =
-      draggedColumnRef.current || event.dataTransfer.getData("text/plain");
-
-    if (
-      !draggedKey ||
-      draggedKey === targetColumn.key ||
-      FROZEN_KEYS.has(draggedKey) ||
-      FROZEN_KEYS.has(targetColumn.key)
-    ) {
-      draggedColumnRef.current = null;
-      return;
-    }
-
-    setColumnOrder((previous) => {
-      const next = [...previous];
-
-      const draggedIndex = next.indexOf(draggedKey);
-      const targetIndex = next.indexOf(targetColumn.key);
-
-      if (draggedIndex === -1 || targetIndex === -1) {
-        return previous;
-      }
-
-      [next[draggedIndex], next[targetIndex]] = [
-        next[targetIndex],
-        next[draggedIndex],
-      ];
-
-      return next;
-    });
-
-    draggedColumnRef.current = null;
-  }, []);
-
-  const handleColumnDragEnd = useCallback(() => {
-    draggedColumnRef.current = null;
-  }, []);
+  const [columnOrder] = useState(DEFAULT_COLUMN_ORDER);
 
   // every column this login may see (before the user's own Show / hide)
   const allColumns = useMemo(
@@ -3330,10 +3267,10 @@ export function AppraisalGrid({
           ? `${rawText} - ${ratingLabel}`
           : rawText;
 
-      // Client Manager Feedback: one line only; click the cell to read all
-      // of it, click again to fold it back.
+      // Client Manager Feedback: one line only, except on the active
+      // (selected / highlighted) row, where the whole text is shown.
       const isFeedback = col.key === "clientManager";
-      const feedbackOpen = isFeedback && !!openFeedback[row.id];
+      const feedbackOpen = isFeedback && historyRow?.id === row.id;
       const showWrapped = isFeedback ? feedbackOpen : wraps;
 
       return (
@@ -3342,20 +3279,13 @@ export function AppraisalGrid({
           onClick={(event) => {
             event.stopPropagation();
             openRow(row);
-            if (isFeedback) {
-              setOpenFeedback((previous) => ({
-                ...previous,
-                [row.id]: !previous[row.id],
-              }));
-            }
           }}
           className={cn(
             "flex min-h-[38px] h-auto w-full min-w-0 items-center overflow-hidden px-2 py-1",
             "text-[12px] font-normal text-[#4b5563] leading-tight",
             isMoney ? "justify-end text-right tabular-nums" : "text-left",
-            isFeedback && "cursor-pointer",
           )}
-          title={isFeedback && !feedbackOpen ? `${text} (click to expand)` : text}
+          title={text}
         >
           <span
             className={
@@ -4382,11 +4312,6 @@ export function AppraisalGrid({
                   return (
                     <th
                       key={col.key}
-                      draggable={!isFrozen}
-                      onDragStart={(event) => handleColumnDragStart(event, col)}
-                      onDragOver={handleColumnDragOver}
-                      onDrop={(event) => handleColumnDrop(event, col)}
-                      onDragEnd={handleColumnDragEnd}
                       className="sticky border-r border-b border-[#cbd5e1] p-0"
                       style={{
                         position: "sticky",
