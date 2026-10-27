@@ -172,7 +172,7 @@ const CSS = `
   .rrow select[data-k="hikeUnit"],.rrow select[data-k="unit"]{width:112px}
   .rrow input[data-k]{width:80px!important}
   .rrow .f .unit{padding:5px 0;white-space:nowrap;font-size:11.5px}
-  .rrow .xbtn{height:26px;width:26px;padding:0;font-size:14px;color:var(--muted);position:absolute;right:8px;top:50%;margin-top:2px;transform:translateY(-50%)}
+  #ruleCard .rrow .xbtn{height:26px;width:26px;min-width:26px;padding:0;display:inline-flex;align-items:center;justify-content:center;line-height:1;font-size:14px;color:var(--muted);position:absolute;right:8px;top:50%;margin:0;transform:translateY(-50%)}
   .rnote{font-size:10.5px;color:var(--muted);margin:5px 0 0;line-height:1.35}
   .mini{font-size:11px;color:var(--muted)}
   #topWrap{display:flex;flex-direction:column;gap:12px;flex:0 0 auto;max-height:72vh;overflow:auto;transition:max-height .25s ease,opacity .2s ease}
