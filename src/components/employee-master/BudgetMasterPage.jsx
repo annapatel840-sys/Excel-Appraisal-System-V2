@@ -781,7 +781,12 @@ function HRApplyBudget() {
           // The API handles legacy schemas. Never substitute a potentially
           // live/current headcount field for the immutable Original Count.
           const originalCountValue = row.original_headcount;
-           const currentCountValue = employeeCounts.get(key) || 0;
+           const currentCountValue =
+             row.current_headcount !== null &&
+             row.current_headcount !== undefined &&
+             String(row.current_headcount).trim() !== ""
+               ? row.current_headcount
+               : employeeCounts.get(key) || 0;
            const hasSavedOriginalCount = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
            // Original Count is a saved baseline, never a live roster fallback.
            // If the API has not persisted a baseline, keep it unset rather than
@@ -804,7 +809,12 @@ function HRApplyBudget() {
       const originalCountValue = row.original_headcount;
        // Always show the live eligible Appraisal Sheet count. Saved current_headcount
        // may be stale if a legacy schema lacks that column or a delegation just changed.
-       const currentCountValue = assignedCount;
+       const currentCountValue =
+         row.current_headcount !== null &&
+         row.current_headcount !== undefined &&
+         String(row.current_headcount).trim() !== ""
+           ? row.current_headcount
+           : assignedCount;
        const originalCountIsSet = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
        // Do not initialize Original Count from today's Current Count in the UI.
        // The backend persists the baseline; a missing value must remain visible
@@ -922,7 +932,14 @@ function HRApplyBudget() {
   const orgOriginalCount = orgOriginalCountValue !== null && orgOriginalCountValue !== undefined && String(orgOriginalCountValue).trim() !== ""
     ? amount(orgOriginalCountValue)
     : total.team0;
-  const orgCurrentCount = employeeRows.length ? orgRosterCurrentCount : amount(orgCurrentCountValue || total.team);
+  const orgCurrentCount =
+    orgCurrentCountValue !== null &&
+    orgCurrentCountValue !== undefined &&
+    String(orgCurrentCountValue).trim() !== ""
+      ? amount(orgCurrentCountValue)
+      : employeeRows.length
+        ? orgRosterCurrentCount
+        : amount(total.team);
 
   // Saved Tech-Ed percentages remain independent of future Org % changes.
   const previewPct = (row) => {

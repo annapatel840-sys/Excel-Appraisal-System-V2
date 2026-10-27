@@ -67,7 +67,7 @@ function get(api) {
   });
 }
 
-const sheet = (id, techEd, cm, base, pb) => ({ emp_id: id, appraiser_tech_ed: techEd, comp_manager: cm, current_annual_base_pay: base, allocated_pb_amount: pb });
+const sheet = (id, techEd, cm, base, pb) => ({ emp_id: id, appraiser_tech_ed: techEd, comp_manager: cm, status: 'Active', eligible_status: 'Eligible', current_annual_base_pay: base, allocated_pb_amount: pb });
 let pass = 0, fail = 0;
 async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name); } catch (e) { fail++; console.log('FAIL', name, '\n   ', e.message); } }
 
@@ -90,8 +90,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     const master = r.json.master[0];
     assert.strictEqual(master.org_budget_base, 1200000 + 100000 + 800000 + 50000 + 1500000 + 150000);
-    const ashok = r.json.techEd.find((x) => /Ashok/.test(x.appraiser_tech_ed_id));
-    const prabhu = r.json.techEd.find((x) => /Prabhu/.test(x.appraiser_tech_ed_id));
+    const ashok = r.json.techEd.find((x) => x.appraiser_tech_ed_id === 'EMP0051');
+    const prabhu = r.json.techEd.find((x) => x.appraiser_tech_ed_id === 'EMP0057');
     assert.strictEqual(ashok.budget_base, 2150000);
     assert.strictEqual(prabhu.budget_base, 1650000);
     assert.strictEqual(r.json.diagnostics.employeesWithBase, 3);
@@ -113,7 +113,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
         { cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' },
       ],
       Appraisal_Sheet: [
-        { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: 1000000, hike_amount: 100000, allocated_pb_amount: 50000, new_pb_to_be_offered: 20000, new_rb: 10000 },
+        { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', Previous_Appraisal_total_CTC_with_rewards: 27000, current_annual_base_pay: 1000000, hike_amount: 100000, allocated_pb_amount: 50000, new_pb_to_be_offered: 20000, new_rb: 10000 },
         { emp_id: 'E2', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: 800000, hike_amount: 50000, allocated_pb_amount: 40000, new_pb_to_be_offered: 10000, new_rb: 5000 },
       ],
     });
@@ -184,6 +184,45 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(changedTech.applied_budget, techBase * 0.10);
   });
 
+  await t('budget base uses the same-year New Joiners payroll value shown by the Appraisal Sheet', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
+      Budget_Distribution: [],
+      Budget_Distribution_Comp: [],
+      Employee_Master: [
+        { emp_id: 'E1', emp_name: 'New Joiner', emp_status: 'Active', eligibility: 'Eligible' },
+      ],
+      Eligibility_List: [],
+      Payroll_Data: [],
+      Appraisal_Cycle_Master: [
+        { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Closed' },
+        { cycle_name: 'New Joiners 2027', start_date: '2027-01-01', status: 'Closed' },
+        { cycle_name: 'Annual 2027', start_date: '2027-04-01', status: 'Active' },
+      ],
+      Appraisal_Sheet: [
+        sheet('E1', 'T1', 'C1', 900000, 0),
+      ],
+    });
+    const [priorCycle, joinerCycle, activeCycle] = store.tables.Appraisal_Cycle_Master;
+    store.tables.Budget_Master[0].appraisal_cycle_id = activeCycle.ROWID;
+    store.tables.Eligibility_List.push({
+      ROWID: '99101',
+      appraisal_cycle_id: activeCycle.ROWID,
+      emp_id: 'E1',
+      eligibility_status: 'Eligible',
+    });
+    store.tables.Payroll_Data.push(
+      { ROWID: '99102', emp_id: 'E1', appraisal_cycle_name: priorCycle.ROWID, total_ctc_with_rewards: 1000000 },
+      { ROWID: '99103', emp_id: 'E1', appraisal_cycle_name: joinerCycle.ROWID, total_ctc_with_rewards: 1027000 },
+    );
+
+    const response = await get(load(store));
+    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+    assert.strictEqual(response.json.master[0].org_budget_base, 1027000);
+    assert.strictEqual(response.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1').budget_base, 1027000);
+    assert.strictEqual(response.json.employeeRoster[0].previous_appraisal_total_ctc_with_rewards, 1027000);
+  });
+
   await t('Appraisal Sheet roster (23) wins over a larger eligible master/list (30)', async () => {
     const employeeMaster = Array.from({ length: 30 }, (_, i) => ({
       emp_id: 'E' + (i + 1),
@@ -220,7 +259,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const tech = r.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1');
     assert.strictEqual(Number(tech.original_headcount), 23);
     assert.strictEqual(Number(tech.current_headcount), 23);
-    const comp = r.json.compManager.find((row) => row.comp_manager === 'C1');
+    const comp = r.json.compManager.find((row) => String(row.comp_manager).toLowerCase() === 'c1');
     assert.strictEqual(Number(comp.original_headcount), 23);
     assert.strictEqual(Number(comp.current_headcount), 23);
 
@@ -239,7 +278,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(Number(changedRoster.json.master[0].original_headcount), 23, 'Org Original Count remains the initial generated roster size');
     assert.strictEqual(Number(changedRoster.json.master[0].current_headcount), 22, 'Org Current Count follows current eligible sheet rows');
     const changedTech = changedRoster.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1');
-    const changedComp = changedRoster.json.compManager.find((row) => row.comp_manager === 'C1');
+    const changedComp = changedRoster.json.compManager.find((row) => String(row.comp_manager).toLowerCase() === 'c1');
     assert.strictEqual(Number(changedTech.original_headcount), 23, 'Tech-Ed Original Count remains fixed');
     assert.strictEqual(Number(changedTech.current_headcount), 22, 'Tech-Ed Current Count follows current eligible sheet rows');
     assert.strictEqual(Number(changedComp.original_headcount), 23, 'Comp Manager Original Count remains fixed');
@@ -285,7 +324,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const tech = r.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1');
     assert.strictEqual(Number(tech.original_headcount), 30, 'saved Tech-Ed Original Count is never rewritten during a live refresh');
     assert.strictEqual(Number(tech.current_headcount), 22);
-    const comp = r.json.compManager.find((row) => row.comp_manager === 'C1');
+    const comp = r.json.compManager.find((row) => String(row.comp_manager).toLowerCase() === 'c1');
     assert.strictEqual(Number(comp.original_headcount), 30, 'saved Comp Manager Original Count is never rewritten during a live refresh');
     assert.strictEqual(Number(comp.current_headcount), 22);
   });
@@ -315,7 +354,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(Number(initial.json.master[0].original_headcount), 2);
     const initialTeam = initial.json.techEd.find((row) => /T1/.test(row.appraiser_tech_ed_id));
     assert.strictEqual(Number(initialTeam.original_headcount), 2);
-    const initialComp = initial.json.compManager.find((row) => row.comp_manager === 'C1');
+    const initialComp = initial.json.compManager.find((row) => String(row.comp_manager).toLowerCase() === 'c1');
     assert.strictEqual(Number(initialComp.original_headcount), 2);
     const originalOrgBudget = initial.json.master[0].calculated_budget;
     const originalTechBudget = initialTeam.calculated_budget;
@@ -329,7 +368,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const changedTeam = changed.json.techEd.find((row) => /T1/.test(row.appraiser_tech_ed_id));
     assert.strictEqual(Number(changedTeam.original_headcount), 2);
     assert.strictEqual(Number(changedTeam.current_headcount), 1);
-    const changedComp = changed.json.compManager.find((row) => row.comp_manager === 'C1');
+    const changedComp = changed.json.compManager.find((row) => String(row.comp_manager).toLowerCase() === 'c1');
     assert.strictEqual(Number(changedComp.original_headcount), 2);
     assert.strictEqual(Number(changedComp.current_headcount), 1);
     assert.strictEqual(changed.json.master[0].calculated_budget, originalOrgBudget, 'Org Original Budget remains fixed when the roster changes');
@@ -354,8 +393,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(Number(delegatedT1.current_headcount), 1, 'previous Tech-Ed Current Count falls after delegation');
     assert.strictEqual(Number(delegatedT2.original_headcount), 1, 'new Tech-Ed baseline starts from its generated roster');
     assert.strictEqual(Number(delegatedT2.current_headcount), 1, 'new Tech-Ed Current Count uses the generated roster');
-    const delegatedC1 = delegated.json.compManager.find((row) => row.comp_manager === 'C1');
-    const delegatedC2 = delegated.json.compManager.find((row) => row.comp_manager === 'C2');
+    const delegatedC1 = delegated.json.compManager.find((row) => String(row.comp_manager).toLowerCase() === 'c1');
+    const delegatedC2 = delegated.json.compManager.find((row) => String(row.comp_manager).toLowerCase() === 'c2');
     assert.strictEqual(Number(delegatedC1.original_headcount), 2, 'previous Comp Manager baseline is not reset');
     assert.strictEqual(Number(delegatedC1.current_headcount), 1, 'previous Comp Manager Current Count falls after delegation');
     assert.strictEqual(Number(delegatedC2.original_headcount), 1, 'new Comp Manager baseline starts from its generated roster');
@@ -389,7 +428,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const initial = await get(api);
     assert.strictEqual(initial.status, 200, JSON.stringify(initial.json));
     const initialTech = initial.json.techEd.find((row) => /T1/.test(row.appraiser_tech_ed_id));
-    const initialC1 = initial.json.compManager.find((row) => row.comp_manager === 'C1');
+    const initialC1 = initial.json.compManager.find((row) => String(row.comp_manager).toLowerCase() === 'c1');
     assert.strictEqual(Number(initialTech.original_headcount), 2);
     assert.strictEqual(Number(initialC1.original_headcount), 2);
 
@@ -398,8 +437,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const changed = await get(api);
     assert.strictEqual(changed.status, 200, JSON.stringify(changed.json));
     const changedTech = changed.json.techEd.find((row) => /T1/.test(row.appraiser_tech_ed_id));
-    const changedC1 = changed.json.compManager.find((row) => row.comp_manager === 'C1');
-    const changedC2 = changed.json.compManager.find((row) => row.comp_manager === 'C2');
+    const changedC1 = changed.json.compManager.find((row) => String(row.comp_manager).toLowerCase() === 'c1');
+    const changedC2 = changed.json.compManager.find((row) => String(row.comp_manager).toLowerCase() === 'c2');
 
     assert.strictEqual(Number(changedTech.original_headcount), 2, 'Tech-Ed Original Count remains unchanged');
     assert.strictEqual(Number(changedTech.current_headcount), 2, 'Tech-Ed Current Count remains 2 when the employee stays under the same Tech-Ed');
@@ -447,36 +486,58 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(response.json.employeeRoster.length, 2);
   });
 
-  await t('Org Budget Base matches the currently eligible Appraisal Sheet CTC total', async () => {
+  await t('Org and Tech-ED bases exclude cycle-eligible employees inactive in Employee Master', async () => {
+    const employeeMaster = Array.from({ length: 32 }, (_, index) => {
+      const empId = 'E' + (index + 1);
+      return {
+        emp_id: empId,
+        emp_name: 'Employee ' + (index + 1),
+        emp_status: index === 31 ? 'Inactive' : 'Active',
+        eligibility: 'Eligible',
+      };
+    });
+    const appraisalRows = Array.from({ length: 32 }, (_, index) => {
+      const previousCtc = index === 30 ? 666747 : index === 31 ? 324700 : 300000;
+      return {
+        emp_id: 'E' + (index + 1),
+        appraiser_tech_ed: 'T1',
+        comp_manager: 'C1',
+        Previous_Appraisal_total_CTC_with_rewards: previousCtc,
+        total_ctc_with_rewards: previousCtc,
+      };
+    });
     const store = makeStore({
       Budget_Master: [{ appraisal_cycle_id: '', budget_percentage: 8 }],
       Budget_Distribution: [], Budget_Distribution_Comp: [],
-      Employee_Master: [
-        { emp_id: 'E1', emp_name: 'Eligible Employee', emp_status: 'Active', eligibility: 'Eligible' },
-        { emp_id: 'E2', emp_name: 'Not Eligible Employee', emp_status: 'Active', eligibility: 'Eligible' },
-      ],
+      Employee_Master: employeeMaster,
       Eligibility_List: [],
       Payroll_Data: [],
       Appraisal_Cycle_Master: [
         { cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' },
       ],
-      Appraisal_Sheet: [
-        { emp_id: 'E1', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: 1000000, Previous_Appraisal_total_CTC_with_rewards: 1100000, hike_amount: 100000 },
-        { emp_id: 'E2', appraiser_tech_ed: 'T1', comp_manager: 'C1', current_annual_base_pay: 2000000, Previous_Appraisal_total_CTC_with_rewards: 2200000, hike_amount: 200000 },
-      ],
+      Appraisal_Sheet: appraisalRows,
     });
     const currentCycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
     store.tables.Budget_Master[0].appraisal_cycle_id = currentCycleId;
-    store.tables.Eligibility_List.push(
-      { ROWID: '99771', appraisal_cycle_id: currentCycleId, emp_id: 'E1', eligibility_status: 'Eligible' },
-      { ROWID: '99772', appraisal_cycle_id: currentCycleId, emp_id: 'E2', eligibility_status: 'Not Eligible' },
-    );
+    employeeMaster.forEach((employee, index) => {
+      store.tables.Eligibility_List.push({
+        ROWID: String(99771 + index),
+        appraisal_cycle_id: currentCycleId,
+        emp_id: employee.emp_id,
+        eligibility_status: 'Eligible',
+      });
+    });
     const r = await get(load(store));
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(r.json.master[0].org_budget_base, 1100000, 'Org Budget Base includes only employees currently eligible in the Appraisal Sheet');
+    assert.strictEqual(r.json.master[0].org_budget_base, 9666747, 'Org Budget Base excludes the inactive employee, matching the 31-row appraisal total');
+    assert.strictEqual(Number(r.json.master[0].current_headcount), 31);
     const team = r.json.techEd.find((row) => /T1/.test(row.appraiser_tech_ed_id));
-    assert.strictEqual(team.budget_base, 3300000, 'Tech-Ed base rolls up the same Appraisal Sheet CTC values');
-    assert.strictEqual(Number(team.current_headcount), 1, 'Current Count still follows cycle eligibility');
+    assert.strictEqual(team.budget_base, 9666747, 'Tech-Ed base matches the eligible Appraisal Sheet total');
+    assert.strictEqual(Number(team.current_headcount), 31, 'Tech-ED Current Count matches the eligible Appraisal Sheet count');
+    assert.strictEqual(Number(team.original_headcount), 32, 'Original Count remains the generated-sheet snapshot');
+    const inactiveEmployee = r.json.employeeRoster.find((employee) => employee.emp_id === 'E32');
+    assert.strictEqual(inactiveEmployee.status, 'inactive');
+    assert.strictEqual(inactiveEmployee.eligible, false);
   });
 
   await t('stale Tech-ED original budget smaller than the base is recalculated', async () => {
@@ -510,8 +571,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
         { cycle_name: 'Annual 2026', start_date: '2026-04-01', status: 'Active' },
       ],
       Appraisal_Sheet: [
-        { emp_id: 'OLD1', appraisal_cycle: 'Annual 2025', appraiser_tech_ed: 'T1', comp_manager: 'C1', Previous_Appraisal_total_CTC_with_rewards: 1000000 },
-        { emp_id: 'CUR1', appraisal_cycle: 'Annual 2026', appraiser_tech_ed: 'T2', comp_manager: 'C2', Previous_Appraisal_total_CTC_with_rewards: 2750000 },
+        { emp_id: 'OLD1', appraisal_cycle: 'Annual 2025', appraiser_tech_ed: 'T1', comp_manager: 'C1', Previous_Appraisal_total_CTC_with_rewards: 1000000, total_ctc_with_rewards: 1000000 },
+        { emp_id: 'CUR1', appraisal_cycle: 'Annual 2026', appraiser_tech_ed: 'T2', comp_manager: 'C2', Previous_Appraisal_total_CTC_with_rewards: 2750000, total_ctc_with_rewards: 2750000 },
       ],
     });
     const currentCycle = store.tables.Appraisal_Cycle_Master.find((row) => row.cycle_name === 'Annual 2026');
@@ -550,6 +611,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
       appraisal_cycle_id: currentCycleId, emp_id: 'E1', eligibility_status: 'Eligible',
     });
     store.tables.Payroll_Data.push({
+      ROWID: '99301',
       emp_id: 'E1',
       appraisal_cycle_name: priorCycleId,
       total_ctc_with_rewards: '18,75,000',
@@ -584,6 +646,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
       appraisal_cycle_id: currentCycleId, emp_id: 'E1', eligibility_status: 'Eligible',
     });
     store.tables.Payroll_Data.push({
+      ROWID: '99302',
       emp_id: 'E1',
       appraisal_cycle_name: priorCycleId,
       total_ctc_with_rewards: '18,75,000',
@@ -608,8 +671,8 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
         { cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' },
       ],
       Appraisal_Sheet: [
-        { ...sheet('E1', 'T1', 'C1', '', 0), Previous_Appraisal_total_CTC_with_rewards: '12,50,000' },
-        { ...sheet('E2', 'T1', 'C1', '', 0), previous_appraisal_total_ctc_with_rewards: '8,75,000' },
+        { ...sheet('E1', 'T1', 'C1', '', 0), Previous_Appraisal_total_CTC_with_rewards: '27,000', total_ctc_with_rewards: '12,50,000' },
+        { ...sheet('E2', 'T1', 'C1', '', 0), previous_appraisal_total_ctc_with_rewards: '27,000', total_ctc_with_rewards: '8,75,000' },
       ],
     });
     const cycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
@@ -636,7 +699,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const r = await get(load(store));
     assert.strictEqual(r.status, 200);
     assert.strictEqual(r.json.master[0].org_budget_base, 0);
-    assert.match(r.json.diagnostics.warning, /None of the 2 employees .* Current Annual Base Pay/);
+    assert.match(r.json.diagnostics.warning, /None of the 2 Appraisal Sheet employees .* budget base is 0/);
   });
 
   await t('some employees without pay: partial warning', async () => {
@@ -650,7 +713,7 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
       Appraisal_Sheet: [sheet('E1', 'T1', 'C1', '1000000', '0'), sheet('E2', 'T1', 'C1', '', '')],
     });
     const r = await get(load(store));
-    assert.match(r.json.diagnostics.warning, /1 of 2 employees have no/);
+    assert.match(r.json.diagnostics.warning, /1 of 2 Appraisal Sheet employees have no usable/);
     assert.strictEqual(r.json.master[0].org_budget_base, 1000000);
   });
 

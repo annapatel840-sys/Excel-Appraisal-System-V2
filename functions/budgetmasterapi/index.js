@@ -485,6 +485,16 @@ function cycleRank(cycle) {
   return yearMatch ? new Date(Number(yearMatch[0]), 0, 1).getTime() : 0;
 }
 
+function cycleYearOf(cycle) {
+  const name = cycleNameOf(cycle);
+  const year = name.match(/(?:19|20)\d{2}/);
+  if (year) return year[0];
+  const shortYear = name.match(
+    /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*(\d{2})/i,
+  );
+  return shortYear ? "20" + shortYear[1] : "";
+}
+
 function cycleReference(raw) {
   if (raw === null || raw === undefined) return "";
   if (typeof raw === "object") {
@@ -504,9 +514,6 @@ function cycleReference(raw) {
 
 function currentCtc(row) {
   const stored = firstValue(row, [
-    "previous_appraisal_total_ctc_with_rewards",
-    "Previous_Appraisal_total_CTC_with_rewards",
-    "previousAppraisalTotalCtcWithRewards",
     "total_ctc_with_rewards",
     "total_CTC_with_rewards",
     "total_ctc",
@@ -563,9 +570,6 @@ function currentCtc(row) {
 
 function previousCtc(record) {
   const raw = firstValue(record, [
-    "previous_appraisal_total_ctc_with_rewards",
-    "Previous_Appraisal_total_CTC_with_rewards",
-    "previousAppraisalTotalCtcWithRewards",
     "total_ctc_with_rewards",
     "total_CTC_with_rewards",
     "totalCTCWithRewards",
@@ -1620,9 +1624,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       .trim()
       .toLowerCase()
       .replace(/[ _-]+/g, "");
+    const masterStatus = String(
+      firstValue(masterRow, ["emp_status", "status", "employee_status"]) || "",
+    ).trim().toLowerCase();
     const rawStatus = String(
-      firstValue(row, ["emp_status", "status", "employee_status"]) ||
-        firstValue(masterRow, ["emp_status", "status", "employee_status"]) ||
+      firstValue(masterRow, ["emp_status", "status", "employee_status"]) ||
+        firstValue(row, ["emp_status", "status", "employee_status"]) ||
         "",
     )
       .trim()
@@ -1745,6 +1752,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       eligible,
       sheet_eligibility_explicit: sheetEligibilityExplicit,
       status: rawStatus,
+      master_status: masterStatus,
       eligible_status: eligible ? "eligible" : "not eligible",
       base: previousAppraisalCtc,
       current_ctc: currentCtcValue,
@@ -2055,6 +2063,15 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     const currentRank = currentCycle
       ? cycleRank(currentCycle)
       : cycleRank({ cycle_name: targetCycleId });
+    const targetYear = cycleYearOf(currentCycle || { cycle_name: targetCycleId });
+    const sameYearNewJoinerCycles = cycleRows
+      .filter(
+        (cycle) =>
+          /new[\s_-]*joiners?/i.test(cycleNameOf(cycle)) &&
+          targetYear &&
+          cycleYearOf(cycle) === targetYear,
+      )
+      .sort((a, b) => cycleRank(b) - cycleRank(a));
     const closedCycles = cycleRows
       .filter((cycle) => isHistoricalCycle(cycle))
       .filter(
@@ -2070,6 +2087,22 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         .toLowerCase();
       let priorCtc = null;
       let priorCycleName = "";
+      let sameYearNewJoinerPayroll = null;
+      for (const joinerCycle of sameYearNewJoinerCycles) {
+        const cycleId = cycleIdOf(joinerCycle);
+        const cycleName = cycleNameOf(joinerCycle);
+        const payroll =
+          payrollRowsByCycleAndEmployee.get(
+            (cycleId || cycleName.toLowerCase()) + "::" + employeeKey,
+          ) ||
+          payrollRowsByCycleAndEmployee.get(
+            cycleName.toLowerCase() + "::" + employeeKey,
+          );
+        if (payroll) {
+          sameYearNewJoinerPayroll = payroll;
+          break;
+        }
+      }
       for (const closedCycle of closedCycles) {
         const cycleId = cycleIdOf(closedCycle);
         const cycleName = cycleNameOf(closedCycle);
@@ -2087,17 +2120,19 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
         priorCycleName = cycleName;
         break;
       }
-      // The generated Appraisal_Sheet's Previous_Appraisal_total_CTC_with_rewards
-      // is the required Org Budget Base source. Do not overwrite it with a
-      // current CTC (which may be blank) just because Payroll_Data is missing.
-      // Historical Payroll_Data is the fallback only when the sheet snapshot is absent.
-      const sheetPreviousCtc = employee.sheet_previous_appraisal_ctc;
+      const newJoinerCtc = sameYearNewJoinerPayroll
+        ? previousCtc(sameYearNewJoinerPayroll)
+        : null;
+      // Match the Appraisal Sheet's per-employee source order: same-year New
+      // Joiners payroll, latest closed prior-cycle payroll, then current sheet
+      // Total CTC. The stored previous-CTC sheet cell can be stale and is not
+      // the value displayed after employeesapi enriches the row.
       const base =
-        sheetPreviousCtc !== null && sheetPreviousCtc !== undefined
-          ? n(sheetPreviousCtc)
-          : priorCtc === null
-            ? employee.current_ctc
-            : priorCtc;
+        newJoinerCtc !== null
+          ? newJoinerCtc
+          : priorCtc !== null
+            ? priorCtc
+            : employee.current_ctc;
       const cycleEligibility = cycleEligibilityFor(employee, targetCycleId);
       // Eligibility_List is the source of truth for each appraisal cycle.
       // Missing/Pending rows are not eligible, matching Appraisal Sheet's
@@ -2109,9 +2144,13 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       // approved additions/removals there must immediately change the budget roster.
       // Fall back to the Appraisal_Sheet eligibility field only for legacy rows
       // that have no matching cycle-specific Eligibility_List record.
-      const eligible = cycleEligibility
-        ? cycleEligibility.eligible
-        : employee.eligible;
+      const employeeStatus = String(employee.master_status || employee.status)
+        .trim()
+        .toLowerCase();
+      const active = !employeeStatus || employeeStatus === "active";
+      const eligible =
+        active &&
+        (cycleEligibility ? cycleEligibility.eligible : employee.eligible);
       return {
         ...employee,
         eligible,
@@ -2280,16 +2319,20 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
             sheetEmployee?.compManager || String(rawComp || "").trim(),
         };
       });
-    // Appraisal_Sheet is the authoritative, generated roster for this cycle.
-    // Do not discard sheet employees merely because a corresponding Eligibility_List
-    // row is absent/incomplete; that second filter caused budget totals to omit
-    // employees whose previous-CTC values are visibly present on Appraisal_Sheet.
+    // Appraisal_Sheet defines the roster. Apply the cycle decision when present,
+    // otherwise use the sheet/master eligibility fields, and always honor the
+    // Employee_Master active status used by the Appraisal Sheet API.
     const appraisalSheetEmployees = employees.filter(
       (employee) => employee && employee.in_appraisal_sheet,
     );
     const eligibleEmployees = appraisalSheetEmployees.filter((employee) => {
       const cycleEligibility = cycleEligibilityFor(employee, cycleId);
-      return cycleEligibility ? cycleEligibility.eligible : employee.eligible;
+      const employeeStatus = String(employee.master_status || employee.status)
+        .trim()
+        .toLowerCase();
+      const active = !employeeStatus || employeeStatus === "active";
+      return active &&
+        (cycleEligibility ? cycleEligibility.eligible : employee.eligible);
     });
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
 
@@ -2298,12 +2341,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     // be resolved from the sheet snapshot or the established previous-cycle mapping;
     // summing only the raw stored field incorrectly returned zero when that displayed
     // column was populated by the mapping/fallback path.
-    // Org Budget Base must equal the Previous Total CTC with Rewards total for
-    // the same currently eligible Appraisal Sheet rows shown in the grid.
+    // Org and team bases must use the same active, cycle-eligible sheet roster
+    // shown in the grid; a stale Eligible decision must not include inactive staff.
     const sheetBaseValue = (employee) => n(
-      employee.sheet_previous_appraisal_ctc ??
       employee.previous_appraisal_total_ctc_with_rewards ??
       employee.Previous_Appraisal_total_CTC_with_rewards ??
+      employee.sheet_previous_appraisal_ctc ??
       employee.base,
     );
     const orgBaseRows = eligibleEmployees.map((employee) => {
@@ -2359,22 +2402,14 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     });
     let orgUtilized = 0;
 
-    appraisalSheetEmployees.forEach((employee) => {
+    eligibleEmployees.forEach((employee) => {
       const techKey = ownerKey(employee.techEd);
       const compKey = ownerKey(employee.compManager);
-      const cycleEligibility = cycleEligibilityFor(employee, cycleId);
-      const isCurrentlyEligible = cycleEligibility
-        ? cycleEligibility.eligible
-        : Boolean(employee.eligible);
-      // Base allocations roll up every generated Appraisal_Sheet row so their
-      // sum matches the sheet column Total row. Current counts and utilization
-      // still follow the live cycle eligibility decision.
-      const consumed = isCurrentlyEligible
-        ? n(employee.hike_amount) +
-          n(employee.allocated_pb_amount) +
-          n(employee.new_rb)
-        : 0;
-      if (isCurrentlyEligible) orgUtilized += consumed;
+      const consumed =
+        n(employee.hike_amount) +
+        n(employee.allocated_pb_amount) +
+        n(employee.new_rb);
+      orgUtilized += consumed;
       if (techKey) {
         const tech = techBases.get(techKey) || {
           base: 0,
@@ -2382,20 +2417,16 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
           utilized: 0,
         };
         tech.base += sheetBaseValue(employee);
-        if (isCurrentlyEligible) {
-          tech.count += 1;
-          tech.utilized += consumed;
-        }
+        tech.count += 1;
+        tech.utilized += consumed;
         techBases.set(techKey, tech);
       }
       if (techKey && compKey) {
         const key = techKey + "::" + compKey;
         const comp = compBases.get(key) || { base: 0, count: 0, utilized: 0 };
         comp.base += sheetBaseValue(employee);
-        if (isCurrentlyEligible) {
-          comp.count += 1;
-          comp.utilized += consumed;
-        }
+        comp.count += 1;
+        comp.utilized += consumed;
         compBases.set(key, comp);
       }
     });
