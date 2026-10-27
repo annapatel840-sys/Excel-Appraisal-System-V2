@@ -2279,12 +2279,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       (employee) => employee.eligible,
     );
     const legacyEligibilityCount = eligibleListCountForCycle(cycleId);
-    // Appraisal_Sheet is already the generated, cycle-specific appraisal
-    // roster. Its Previous_Appraisal_total_CTC_with_rewards column is the
-    // authoritative base and must roll up exactly to Org Budget Base. Do not
-    // apply a second Eligibility_List filter to the generated sheet rows:
-    // stale/changed eligibility records otherwise zero out valid sheet values.
-    const orgBase = appraisalSheetEmployees.reduce(
+    // The budget base must equal the sum of Previous_Appraisal_total_CTC_with_rewards
+    // for employees currently eligible in this cycle. The generated Appraisal_Sheet
+    // remains the only source of employee rows/CTC values; Eligibility_List determines
+    // which of those rows participate in the budget, not which employees are fetched.
+    const orgBase = eligibleEmployees.reduce(
       (sum, employee) => sum + n(employee.base),
       0,
     );
@@ -2317,7 +2316,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     });
     let orgUtilized = 0;
 
-    appraisalSheetEmployees.forEach((employee) => {
+    eligibleEmployees.forEach((employee) => {
       const techKey = ownerKey(employee.techEd);
       const compKey = ownerKey(employee.compManager);
       const isCurrentlyEligible = Boolean(employee.eligible);
