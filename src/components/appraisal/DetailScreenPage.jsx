@@ -983,13 +983,21 @@ export function DetailScreenPage({
   // count matches the sheet (not the whole employee master).
   const rows = useMemo(
     () =>
-      (liveRows || []).filter(
-        (row) =>
-          String(row.status || "").trim().toLowerCase() === "active" &&
-          String(row.eligibility || "").trim().toLowerCase() === "eligible" &&
-          (!isCompManagerPreview ||
-            currentUserMatchesManager(row.compManagerDisplay || row.compManager, catalystUser, liveRows || [])),
-      ),
+      (liveRows || [])
+        .filter(
+          (row) =>
+            String(row.status || "").trim().toLowerCase() === "active" &&
+            String(row.eligibility || "").trim().toLowerCase() === "eligible" &&
+            (!isCompManagerPreview ||
+              currentUserMatchesManager(row.compManagerDisplay || row.compManager, catalystUser, liveRows || [])),
+        )
+        // Sequential by Employee ID (EMP001, EMP002, ... EMP010), same as the sheet.
+        .sort((a, b) =>
+          String(a.empId || "").localeCompare(String(b.empId || ""), undefined, {
+            numeric: true,
+            sensitivity: "base",
+          }),
+        ),
     [liveRows, isCompManagerPreview, catalystUser],
   );
   const isScopedToTeam = isTechEd || rows.length > 0;
