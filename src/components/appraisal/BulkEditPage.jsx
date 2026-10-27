@@ -114,6 +114,7 @@ const CSS = `
   .filter-btn{border:0;background:transparent;color:#5b6b82;font-size:11px;padding:2px 4px;border-radius:3px;cursor:pointer;line-height:1;flex:none}
   .filter-btn:hover{background:#d3ddea}.filter-btn.active{background:#c7d6ea;color:#17365d}
   .filter-btn.filtered{color:#17365d}.filter-btn.filtered::after{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:#c9a400;margin-left:2px;vertical-align:top}
+  .filter-pop .filter-sort-row{padding-right:30px}.filter-pop .px{top:4px}
   .filter-pop{position:fixed;z-index:60;background:#fff;border:1px solid #c7d0dc;border-radius:6px;box-shadow:0 6px 18px rgba(20,30,50,.18);width:270px;font-size:11.5px;color:#111827;text-align:left;font-weight:400}
   .filter-sort-row{display:flex;gap:2px;padding:4px;border-bottom:1px solid #edf0f4}
   .filter-sort-row button{flex:1;border:0;background:transparent;padding:4px;border-radius:4px;cursor:pointer;font:inherit;color:#374151}.filter-sort-row button:hover{background:#eef2f7}
@@ -220,7 +221,8 @@ const CSS = `
   .menu button:disabled{opacity:.45;cursor:not-allowed}
   .menu hr{border:0;border-top:1px solid var(--line);margin:4px 0}
   .pop{position:fixed;z-index:50;background:#fff;border:1px solid var(--th-line);border-radius:10px;box-shadow:0 8px 24px rgba(16,42,67,.18);padding:8px;min-width:220px;max-width:300px}
-  .pop h4{margin:2px 4px 6px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+  .px{position:absolute;top:5px;right:6px;width:22px;height:22px;padding:0;border:0;border-radius:5px;background:none;color:var(--muted);font-size:13px;line-height:22px;cursor:pointer;z-index:2}.px:hover{background:var(--grey-bg);color:var(--ink)}
+  .pop h4{padding-right:26px;margin:2px 4px 6px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
   .pop .lst{max-height:240px;overflow:auto}
   .pop label,.pop .it{display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:6px;font-size:12.5px;cursor:pointer;width:100%;border:0;background:none;font-family:inherit;text-align:left;color:var(--ink)}
   .pop label:hover,.pop .it:hover{background:var(--row-hover)}
@@ -783,6 +785,7 @@ function ColFilterPop({
   onCond,
   onPick,
   onClear,
+  onClose,
 }) {
   const ops = num ? NUMBER_OPS : TEXT_OPS;
   const cond = cur && !(cur instanceof Set) ? cur : null;
@@ -820,6 +823,15 @@ function ColFilterPop({
       style={{ left: pos.left, top }}
       onMouseDown={(e) => e.stopPropagation()}
     >
+      <button
+        className="px"
+        type="button"
+        title="Close"
+        aria-label="Close"
+        onClick={onClose}
+      >
+        ✕
+      </button>
       <div className="filter-sort-row">
         <button type="button" onClick={() => onSort(1)}>
           ↑ Sort
@@ -2082,10 +2094,9 @@ const BulkOperations = forwardRef(function BulkOperations(
         " row" +
         (n === 1 ? "" : "s") +
         " · " +
-        pv.before.util.toFixed(1) +
-        "% → " +
-        pv.after.util.toFixed(1) +
-        "%"
+        rupees(pv.before.used) +
+        " → " +
+        rupees(pv.after.used)
       );
     return "Apply to " + n + " row" + (n === 1 ? "" : "s");
   };
@@ -2306,6 +2317,7 @@ const BulkOperations = forwardRef(function BulkOperations(
         text: pv.text,
         rows: pv.n.chg,
         util: pv.after.util,
+        usedU: pv.after.used,
         utilT: pv.after.utilT,
         usedT: inclT(pv.after),
         rules: pv.rules,
@@ -2719,8 +2731,8 @@ const BulkOperations = forwardRef(function BulkOperations(
         <div className={"ic" + (x1.util > 100 ? " red" : "")}>
           <div className="tg">Budget utilised</div>
           <div className="bn">
-            {x1.util.toFixed(1)}%
-            <small>{moved ? "from " + x0.util.toFixed(1) + "%" : "now"}</small>
+            {rupees(x1.used)}
+            <small>{moved ? "from " + rupees(x0.used) : "now"}</small>
           </div>
           <div className="bar">
             <i className="af" style={{ width: Math.min(100, x1.util) + "%" }} />
@@ -2895,7 +2907,13 @@ const BulkOperations = forwardRef(function BulkOperations(
           </div>
           <div className="tk">
             <span>Utilisation</span>
-            {kp(b0.util, bPv.util)}
+            {pv && Math.abs(bPv.used - b0.used) >= 0.5 ? (
+              <strong className={lvl(bPv.util)}>
+                {rupees(b0.used)} <small>→</small> {rupees(bPv.used)}
+              </strong>
+            ) : (
+              <strong className={lvl(b0.util)}>{rupees(b0.used)}</strong>
+            )}
           </div>
           <div className="tk">
             <span>Budget Utilization incl. Target PB</span>
@@ -3497,9 +3515,9 @@ const BulkOperations = forwardRef(function BulkOperations(
                 Change <b>{ruleText(rules)}</b>
               </span>
               <span className="bud">
-                Budget {bPv.util.toFixed(1)}%
-                {pv && Math.abs(bPv.util - pv.before.util) > 0.005 && (
-                  <small> from {pv.before.util.toFixed(1)}%</small>
+                Utilisation {rupees(bPv.used)}
+                {pv && Math.abs(bPv.used - pv.before.used) >= 0.5 && (
+                  <small> from {rupees(pv.before.used)}</small>
                 )}
               </span>
               <span className="sp" />
@@ -3620,10 +3638,10 @@ const BulkOperations = forwardRef(function BulkOperations(
                 <>
                   <span className="tg2">Impact</span>
                   <span className="k">
-                    Budget utilised <b>{mctx.after.util.toFixed(1)}%</b>
+                    Budget utilised <b>{rupees(mctx.after.used)}</b>
                     {pv &&
-                      Math.abs(mctx.after.util - mctx.before.util) > 0.005 && (
-                        <small> from {mctx.before.util.toFixed(1)}%</small>
+                      Math.abs(mctx.after.used - mctx.before.used) >= 0.5 && (
+                        <small> from {rupees(mctx.before.used)}</small>
                       )}
                   </span>
                   <span className="k">
@@ -3676,7 +3694,7 @@ const BulkOperations = forwardRef(function BulkOperations(
                           </td>
                           <td>{s.text}</td>
                           <td className="r">{s.rows}</td>
-                          <td className="r">{s.util.toFixed(1)}%</td>
+                          <td className="r">{s.usedU != null ? rupees(s.usedU) : "—"}</td>
                           <td className="r">{s.usedT != null ? rupees(s.usedT) : "—"}</td>
                           <td>
                             <button
@@ -4193,6 +4211,15 @@ const BulkOperations = forwardRef(function BulkOperations(
           style={{ left: pop.left, top: pop.top }}
           onClick={(ev) => ev.stopPropagation()}
         >
+          <button
+            className="px"
+            type="button"
+            title="Close"
+            aria-label="Close"
+            onClick={() => setPop(null)}
+          >
+            ✕
+          </button>
           {pop.kind === "add" ? (
             <>
               <h4>Filter by</h4>
@@ -4374,6 +4401,7 @@ const BulkOperations = forwardRef(function BulkOperations(
               onCond={done}
               onPick={done}
               onClear={() => done(null)}
+              onClose={() => setFpop(null)}
             />
           );
         })()}
