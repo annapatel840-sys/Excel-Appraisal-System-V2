@@ -3287,9 +3287,11 @@ export function AppraisalGrid({
         col.key === "managerRating" ? MANAGER_RATING_LABELS[rawText] : "";
       const text = isMoney
         ? displayValue.replace(/^₹\s?/, "")
-        : ratingLabel
-          ? `${rawText} - ${ratingLabel}`
-          : rawText;
+        : col.dateDisplay
+          ? displayValue
+          : ratingLabel
+            ? `${rawText} - ${ratingLabel}`
+            : rawText;
 
       // Client Manager Feedback: one line only, except on the active
       // (selected / highlighted) row, where the whole text is shown.
