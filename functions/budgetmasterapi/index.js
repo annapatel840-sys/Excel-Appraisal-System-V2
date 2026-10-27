@@ -2309,24 +2309,49 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       employee.Previous_Appraisal_total_CTC_with_rewards ??
       employee.base,
     );
-    const orgBase = appraisalSheetEmployees.reduce(
-      (sum, employee) => sum + sheetBaseValue(employee),
-      0,
-    );
+    // Sum the actual generated Appraisal_Sheet rows, not the deduplicated
+    // employee roster. The UI's column total is row-based, so joining/deduplicating
+    // employees before summing can make Org Budget Base differ from that total.
+    const mappedBaseByEmployee = new Map();
+    employees.forEach((employee) => {
+      const key = String(employee.employeeId || employee.emp_id || "").trim().toLowerCase();
+      if (key && !mappedBaseByEmployee.has(key)) {
+        mappedBaseByEmployee.set(key, sheetBaseValue(employee));
+      }
+    });
+    const orgBaseRows = currentAppraisalRows.map((row) => {
+      const rawId = String(firstValue(row, [
+        "emp_id", "empId", "employee_id", "employeeId", "employee_id_text",
+      ]) || idOf(row)).trim();
+      const key = employeeKeyFor(rawId);
+      const rawCtc = firstValue(row, [
+        "Previous_Appraisal_total_CTC_with_rewards",
+        "previous_appraisal_total_ctc_with_rewards",
+        "previousAppraisalTotalCtcWithRewards",
+      ]);
+      const hasStoredCtc = rawCtc !== "" && rawCtc !== null && rawCtc !== undefined;
+      const mapped = mappedBaseByEmployee.get(key) ?? mappedBaseByEmployee.get(rawId.toLowerCase()) ?? 0;
+      return {
+        employeeId: key || rawId,
+        ctc: hasStoredCtc ? n(rawCtc) : n(mapped),
+        hasStoredCtc,
+      };
+    });
+    const orgBase = orgBaseRows.reduce((sum, row) => sum + row.ctc, 0);
     bundle.diagnostics = {
       ...(bundle.diagnostics || {}),
       budgetBaseSource: "all generated Appraisal_Sheet Previous_Appraisal_total_CTC_with_rewards values",
-      budgetBaseSheetRows: appraisalSheetEmployees.length,
+      budgetBaseSheetRows: currentAppraisalRows.length,
+      budgetBaseRosterEmployees: appraisalSheetEmployees.length,
       budgetBaseEligibleRows: eligibleEmployees.length,
-      budgetBaseRowsWithCtc: appraisalSheetEmployees.filter((employee) =>
-        sheetBaseValue(employee) !== 0
-      ).length,
+      budgetBaseRowsWithCtc: orgBaseRows.filter((row) => row.ctc !== 0).length,
+      budgetBaseStoredCtcRows: orgBaseRows.filter((row) => row.hasStoredCtc).length,
       budgetBaseRawCtcSum: orgBase,
-      budgetBaseMissingEmployeeIds: appraisalSheetEmployees
-        .filter((employee) => sheetBaseValue(employee) === 0)
-        .map((employee) => employee.employeeId || employee.emp_id || "")
+      budgetBaseMissingEmployeeIds: orgBaseRows
+        .filter((row) => row.ctc === 0)
+        .map((row) => row.employeeId)
         .slice(0, 20),
-      budgetBaseSheetRowCountMismatch: appraisalSheetEmployees.length !== legacyEligibilityCount,
+      budgetBaseSheetRowCountMismatch: currentAppraisalRows.length !== legacyEligibilityCount,
     };
     const techBases = new Map(
       Array.from(techLabels.keys(), (key) => [
