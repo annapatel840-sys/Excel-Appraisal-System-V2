@@ -335,6 +335,7 @@ const mapCatalystEmployee = (employee, index) => {
 
     reportingManager: String(employee.reporting_manager || ""),
     compManager: String(employee.comp_manager || ""),
+    compManagerDisplay: String(employee.comp_manager_display || employee.comp_manager_name || employee.comp_manager || ""),
     // appraiser_tech_ed1 is a lookup FK in some API responses; prefer the
     // resolved Appraisal Sheet assignment so the grid shows Employee ID - Name.
     // Never show a bare Employee_Master ROWID (e.g. 74008000000027046) as the name.
