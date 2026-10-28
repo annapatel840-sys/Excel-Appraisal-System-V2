@@ -60,10 +60,10 @@ const SETTINGS = {
     empId: 'emp_id', name: 'emp_name', email: 'email_id',
     status: 'emp_status', activeValue: 'Active'
   },
-  // Delegation holds EMPLOYEE IDs of the Comp Manager and Appraiser Tech ED.
+  // Delegation.cycle_id and emp_id are lookups; assignment fields store employee IDs as text.
   delegation: {
     table: 'Delegation', cycleColumn: 'cycle_id', empId: 'emp_id',
-    compManagerId: 'comp_manager_id', appraiserTechEdId: 'appraiser_tech_ed_id'
+    compManagerId: 'comp_manager', appraiserTechEdId: 'appraiser_tech_ed'
   },
   cycle: { table: 'Appraisal_Cycle_Master', idColumn: 'ROWID', statusColumn: 'status', activeValue: 'Active', nameColumn: 'cycle_name' },
   appraisalSheet: { table: 'Appraisal_Sheet', empId: 'emp_id' },
