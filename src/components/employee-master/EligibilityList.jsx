@@ -81,8 +81,19 @@ const DEFS = [
     get: (e) => e.appraiser || e.superManager || "—",
   },
   {
+    key: "status",
+    label: "Employee Status",
+    w: 125,
+    get: (e) => String(e.status || e.rawEmployee?.emp_status || "Active"),
+    render: (e) => {
+      const status = String(e.status || e.rawEmployee?.emp_status || "Active").trim();
+      const active = status.toLowerCase() === "active";
+      return <span className={`emx-tag ${active ? "ok" : "grey"}`}>{active ? "Active" : "Inactive"}</span>;
+    },
+  },
+  {
     key: "eligible",
-    label: "Eligible",
+    label: "Eligibility",
     w: 110,
     get: (e) => eligibilityDecisionOf(e),
     render: (e) => {
@@ -504,11 +515,11 @@ export function EligibilityList({
             onToggleAll={toggleAll}
             allSelected={allSelected}
             someSelected={viewSelected > 0}
-            canSelectRow={(e) => tagOf(e) !== "Removed"}
-            rowClass={(e) => (tagOf(e) === "Removed" ? "emx-dim" : "")}
+            canSelectRow={(e) => tagOf(e) !== "Removed" && String(e.status || e.rawEmployee?.emp_status || "Active").toLowerCase() === "active"}
+            rowClass={(e) => (tagOf(e) === "Removed" || String(e.status || e.rawEmployee?.emp_status || "Active").toLowerCase() !== "active" ? "emx-dim" : "")}
             actionHeader={canEdit ? "Action" : null}
             renderAction={(e) =>
-              tagOf(e) === "Removed" ? (
+              tagOf(e) === "Removed" || String(e.status || e.rawEmployee?.emp_status || "Active").toLowerCase() !== "active" ? (
                 "—"
               ) : (
                 <button
@@ -516,7 +527,7 @@ export function EligibilityList({
                   className="emx-mini"
                   onClick={() => onChangeEligibility(e)}
                 >
-                  {e.eligible === "Yes" ? "Set Not Eligible" : "Set Eligible"}
+                  {eligibilityDecisionOf(e) === "Eligible" ? "Set Not Eligible" : "Set Eligible"}
                 </button>
               )
             }
