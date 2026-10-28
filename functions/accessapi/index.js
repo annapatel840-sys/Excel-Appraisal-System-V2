@@ -39,6 +39,62 @@ app.use(express.json({ limit: "1mb" }));
 
 const BATCH = 200; // Data Store insertRows / deleteRows limit
 
+const DELEGATION_DATA_TABLE_ID = "74008000000036124";
+
+async function upsertDelegationData(ap, { cycleId, empId, status, field, assignment, updatedBy }) {
+  const cycleKey = String(cycleId || "").trim();
+  const employeeKey = String(empId || "").trim();
+  if (!cycleKey || !employeeKey) throw new HttpError(422, "Cycle and employee are required to save Delegation data.");
+
+  const zcql = ap.admin.zcql();
+  const employeeConfig = SETTINGS.employeeMaster;
+  const masters = await selectAll(zcql, employeeConfig.table);
+  const master = masters.find((row) =>
+    String(row[employeeConfig.empId] || "").trim().toLowerCase() === employeeKey.toLowerCase() ||
+    String(row.ROWID || "").trim() === employeeKey
+  );
+  if (!master) throw new HttpError(404, "Employee " + employeeKey + " was not found in Employee Master.");
+
+  const masterRowId = String(master.ROWID || master.rowid || "").trim();
+  if (!masterRowId) throw new HttpError(422, "Employee Master record has no row ID.");
+  const datastore = ap.admin.datastore();
+  const table = datastore.table(DELEGATION_DATA_TABLE_ID);
+  const existingRows = await selectAll(
+    zcql,
+    SETTINGS.delegation.table,
+    SETTINGS.delegation.cycleColumn + " = '" + q(cycleKey) + "'",
+  );
+  const existing = existingRows.find((row) =>
+    String(row.emp_id || "").trim() === masterRowId ||
+    String(row.emp_id || "").trim().toLowerCase() === employeeKey.toLowerCase()
+  );
+  const row = {
+    cycle_id: cycleKey,
+    emp_id: masterRowId,
+    status: String(status || existing?.status || "Pending"),
+    updated_by: String(updatedBy || "").trim(),
+    updated_at: nowDT(),
+  };
+
+  if (existing?.previous_comp_manager) row.previous_comp_manager = existing.previous_comp_manager;
+  if (existing?.previous_appraiser_tech_ed) row.previous_appraiser_tech_ed = existing.previous_appraiser_tech_ed;
+  if (field === "comp" && assignment !== undefined) row.comp_manager = String(assignment || "").trim();
+  if (field === "app" && assignment !== undefined) row.appraiser_tech_ed = String(assignment || "").trim();
+
+  if (existing) {
+    const rowId = String(existing.ROWID || existing.rowid || "").trim();
+    if (!rowId) throw new HttpError(500, "Existing Delegation record has no ROWID.");
+    await table.updateRow({ ...row, ROWID: rowId });
+  } else {
+    if (!row.comp_manager) row.comp_manager = String(master.comp_manager || "").trim();
+    if (!row.appraiser_tech_ed) row.appraiser_tech_ed = String(master.appraiser_tech_ed || "").trim();
+    row.previous_comp_manager = "";
+    row.previous_appraiser_tech_ed = "";
+    await table.insertRow(row);
+  }
+}
+
+
 function apps(req) {
   return {
     user: catalyst.initialize(req),
@@ -359,6 +415,12 @@ app.post(
       const byName = String(
         body.byName || a.user.name || a.user.email || "Application user",
       );
+      await upsertDelegationData(ap, {
+        cycleId: activeCycleId,
+        empId,
+        status: "Pending",
+        updatedBy: a.user.email || byName,
+      });
       await table.insertRow({
         changed_at: at,
         changed_by: a.user.email || "",
@@ -550,6 +612,14 @@ app.post(
             [column]: storedValue,
           });
         }
+        await upsertDelegationData(ap, {
+          cycleId: String(meta.cycleId || activeCycleId || "").trim(),
+          empId: String(row.target || "").trim(),
+          status: "Approved",
+          field,
+          assignment: newId,
+          updatedBy: a.user.email || a.user.name || "",
+        });
         // Version invalidation is helpful but must not turn a successful
         // assignment update into a failed approval if AccessVersion is locked.
         try {
@@ -563,6 +633,14 @@ app.post(
         }
       }
 
+      if (status === "rejected" && String(meta.requestType || "delegation").toLowerCase() !== "screen") {
+        await upsertDelegationData(ap, {
+          cycleId: String(meta.cycleId || "").trim(),
+          empId: String(row.target || "").trim(),
+          status: "Rejected",
+          updatedBy: a.user.email || a.user.name || "",
+        });
+      }
       meta.decidedBy = a.user.name || a.user.email;
       meta.decidedOn = nowDT();
       meta.remarks = remarks;
