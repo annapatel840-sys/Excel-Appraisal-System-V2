@@ -538,64 +538,101 @@ async function syncEligibilityRows(tables, cycle, actor = "") {
   const cycleRows = existingRows.filter(
     (row) => String(row.appraisal_cycle_id || "") === String(cycle.id),
   );
-  const activeMasters = masterRows.filter((row) =>
-    String(row.emp_status || row.status || "Active").trim().toLowerCase() === "active"
+  const masterByRowId = new Map(
+    masterRows.map((row) => [String(row.ROWID || row.rowid || ""), row]),
   );
-  const activeByRowId = new Map(
-    activeMasters.map((row) => [String(row.ROWID || row.rowid || ""), row]),
-  );
-  const activeByEmpId = new Map(
-    activeMasters
+  const masterByEmpId = new Map(
+    masterRows
       .map((row) => [String(row.emp_id || "").trim().toLowerCase(), row])
       .filter(([empId]) => empId),
   );
+  const existingByMasterId = new Map(
+    cycleRows.map((row) => [String(row.employee_master_id || ""), row]),
+  );
+  const existingByEmpId = new Map(
+    cycleRows.map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]),
+  );
 
-  // employee_master_id is the preferred relationship, but older/imported
-  // Eligibility_List rows can contain a stale ROWID. Recover those rows using
-  // the stable business key (emp_id), repair the foreign key, and preserve the
-  // saved Eligible/Not Eligible decision instead of silently dropping it.
-  const inactiveRows = [];
+  // Keep inactive employees already on this cycle's list so HR can see why
+  // they no longer qualify. Truly orphaned rows and rows from other cycles
+  // are still removed; inactive rows are retained and marked Not Eligible.
   let repairedReferences = 0;
+  let inactiveMarked = 0;
   for (const row of cycleRows) {
     const linkedMasterId = String(row.employee_master_id || "");
     const empId = String(row.emp_id || "").trim().toLowerCase();
-    const master = activeByRowId.get(linkedMasterId) || activeByEmpId.get(empId);
-    if (!master) {
-      inactiveRows.push(row);
-      continue;
-    }
+    const master = masterByRowId.get(linkedMasterId) || masterByEmpId.get(empId);
+    if (!master) continue;
     const actualMasterId = String(master.ROWID || master.rowid || "");
+    const inactive = String(master.emp_status || master.status || "Active").trim().toLowerCase() !== "active";
+    const patch = { ROWID: rowId(row) };
     if (actualMasterId && linkedMasterId !== actualMasterId) {
-      await tables.eligibility.updateRow({
-        ROWID: rowId(row),
-        employee_master_id: actualMasterId,
-        emp_id: String(master.emp_id || row.emp_id || "").trim(),
-      });
+      patch.employee_master_id = actualMasterId;
+      patch.emp_id = String(master.emp_id || row.emp_id || "").trim();
       repairedReferences += 1;
     }
+    if (inactive && eligibilityStatusOf(row) !== "Not Eligible") {
+      patch.eligibility_status = "Not Eligible";
+      patch.eligibility_reason = "Employee inactive";
+      patch.eligibility_source = "System";
+      patch.change_tag = "Changed";
+      patch.evaluated_at = nowLocal();
+      patch.updated_by = String(actor || "System").slice(0, 60);
+      patch.eligibility_updated_at = nowLocal();
+      inactiveMarked += 1;
+    }
+    if (Object.keys(patch).length > 1) await tables.eligibility.updateRow(patch);
   }
 
-  // Eligibility_List only ever holds the Active cycle. Rows left behind by any
-  // other cycle (e.g. closed before this clean-up existed) are stale and would
-  // collide on the unique emp_id column, so remove them before inserting.
+  // The Eligibility List is cycle-specific. Remove only stale-cycle rows and
+  // rows whose employee no longer exists in Employee_Master.
   const staleRows = existingRows.filter(
     (row) => String(row.appraisal_cycle_id || "") !== String(cycle.id),
   );
-  const toDelete = [...inactiveRows, ...staleRows];
-  await deleteEligibilityRowsById(
-    tables,
-    toDelete.map((row) => rowId(row)),
-  );
+  const orphanRows = cycleRows.filter((row) => {
+    const empId = String(row.emp_id || "").trim().toLowerCase();
+    return !masterByRowId.has(String(row.employee_master_id || "")) && !masterByEmpId.has(empId);
+  });
+  const toDelete = [...staleRows, ...orphanRows];
+  await deleteEligibilityRowsById(tables, toDelete.map((row) => rowId(row)));
 
-  // Employees are NOT copied in from Employee Master here. The Eligibility
-  // List starts empty for a cycle; it is filled only by "Apply Criteria"
-  // (applyEligibilityCriteria) and by HR adding individual employees by hand.
+  // First load of a cycle seeds every Active Employee Master record as
+  // Eligible. Apply Criteria then changes each row to Eligible / Not Eligible.
+  const now = nowLocal();
+  const toInsert = [];
+  for (const master of masterRows) {
+    if (String(master.emp_status || master.status || "Active").trim().toLowerCase() !== "active") continue;
+    const masterId = String(master.ROWID || master.rowid || "");
+    const empId = String(master.emp_id || "").trim();
+    if (!masterId || !empId) continue;
+    const existing = existingByMasterId.get(masterId) || existingByEmpId.get(empId.toLowerCase());
+    if (existing) continue;
+    toInsert.push({
+      appraisal_cycle_id: String(cycle.id),
+      employee_master_id: masterId,
+      emp_id: empId,
+      eligibility_status: "Eligible",
+      eligibility_reason: "",
+      eligibility_source: "System",
+      change_tag: "New",
+      evaluated_at: now,
+      updated_by: String(actor || "System").slice(0, 60),
+      eligibility_updated_at: now,
+    });
+  }
+  for (let index = 0; index < toInsert.length; index += 100) {
+    await tables.eligibility.insertRows(toInsert.slice(index, index + 100));
+  }
+
   return {
-    created: 0,
-    removed: inactiveRows.length,
+    created: toInsert.length,
+    removed: orphanRows.length,
     staleRemoved: staleRows.length,
     repairedReferences,
-    activeEmployees: activeMasters.length,
+    inactiveMarked,
+    activeEmployees: masterRows.filter((row) =>
+      String(row.emp_status || row.status || "Active").trim().toLowerCase() === "active"
+    ).length,
   };
 }
 
@@ -628,7 +665,8 @@ async function applyEligibilityCriteria(tables, body, actor) {
     throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
   }
 
-  // Clears rows left by other cycles / inactive employees (unique emp_id).
+  // Ensure all active employees have an initial Eligible row and retain
+  // existing inactive employees as visible Not Eligible rows.
   await syncEligibilityRows(tables, cycle, actor);
 
   const lowerList = (value) =>
@@ -652,22 +690,39 @@ async function applyEligibilityCriteria(tables, body, actor) {
 
   const now = nowLocal();
   const toInsert = [];
-  const toDelete = [];
+  const toUpdate = [];
   const added = [];
-  const removed = [];
+  const updated = [];
   let evaluated = 0;
   let excluded = 0;
-  let kept = 0;
   let manualKept = 0;
 
   for (const master of masters) {
-    if (String(master.emp_status || master.status || "Active").trim().toLowerCase() !== "active") continue;
     const masterId = String(master.ROWID || master.rowid || "");
     const empId = String(master.emp_id || "").trim();
     if (!masterId || !empId) continue;
-    evaluated += 1;
-
     const existing = existingByMasterId.get(masterId);
+    const active = String(master.emp_status || master.status || "Active").trim().toLowerCase() === "active";
+
+    // Keep existing cycle rows for employees who became inactive after setup.
+    if (!active) {
+      if (existing && eligibilityStatusOf(existing) !== "Not Eligible") {
+        toUpdate.push({
+          ROWID: rowId(existing),
+          eligibility_status: "Not Eligible",
+          eligibility_reason: "Employee inactive",
+          eligibility_source: "System",
+          change_tag: "Changed",
+          evaluated_at: now,
+          updated_by: String(actor || "System").slice(0, 60),
+          eligibility_updated_at: now,
+        });
+        updated.push({ empId, name: String(master.emp_name || master.name || ""), oldStatus: eligibilityStatusOf(existing), newStatus: "Not Eligible" });
+      }
+      continue;
+    }
+
+    evaluated += 1;
     if (existing && String(existing.eligibility_source || "").trim().toLowerCase() === "manual") {
       manualKept += 1;
       continue;
@@ -688,38 +743,54 @@ async function applyEligibilityCriteria(tables, body, actor) {
     }
 
     const name = String(master.emp_name || master.name || "");
-    if (reasons.length) {
-      excluded += 1;
-      if (existing) {
-        toDelete.push(rowId(existing));
-        removed.push({ empId, name });
-      }
-      continue;
-    }
-    if (existing) {
-      kept += 1;
-      continue;
-    }
-    toInsert.push({
+    const decision = reasons.length ? "Not Eligible" : "Eligible";
+    if (reasons.length) excluded += 1;
+    const values = {
       appraisal_cycle_id: cycleId,
       employee_master_id: masterId,
       emp_id: empId,
-      eligibility_status: "Eligible",
-      eligibility_reason: "",
+      eligibility_status: decision,
+      eligibility_reason: reasons.join(", ").slice(0, 50),
       eligibility_source: "Criteria",
-      change_tag: "New",
+      change_tag: existing ? "Changed" : "New",
       evaluated_at: now,
       updated_by: String(actor || "System").slice(0, 60),
       eligibility_updated_at: now,
-    });
-    added.push({ empId, name });
+    };
+    if (existing) {
+      if (
+        eligibilityStatusOf(existing) !== decision ||
+        String(existing.eligibility_reason || "") !== values.eligibility_reason ||
+        String(existing.eligibility_source || "").toLowerCase() !== "criteria"
+      ) {
+        toUpdate.push({ ROWID: rowId(existing), ...values });
+        updated.push({ empId, name, oldStatus: eligibilityStatusOf(existing), newStatus: decision });
+      }
+    } else {
+      toInsert.push(values);
+      added.push({ empId, name });
+    }
   }
 
-  await deleteEligibilityRowsById(tables, toDelete);
+  for (let index = 0; index < toUpdate.length; index += 1) {
+    await tables.eligibility.updateRow(toUpdate[index]);
+  }
   for (let index = 0; index < toInsert.length; index += 100) {
     await tables.eligibility.insertRows(toInsert.slice(index, index + 100));
   }
-  return { cycleId, evaluated, added: added.length, removed: removed.length, excluded, kept, manualKept, addedRows: added, removedRows: removed };
+  return {
+    cycleId,
+    evaluated,
+    added: added.length,
+    updated: updated.length,
+    excluded,
+    kept: Math.max(0, evaluated - added.length - updated.length - manualKept),
+    manualKept,
+    addedRows: added,
+    updatedRows: updated,
+    removed: 0,
+    removedRows: [],
+  };
 }
 
 async function deleteEligibilityRowsById(tables, ids) {
