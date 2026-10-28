@@ -241,6 +241,22 @@ async function setup() {
     assert.strictEqual(r.status, 409);
   });
 
+  await t('employee made inactive after cycle setup remains visible as Inactive and Not Eligible', async () => {
+    const { post, c, api, elig, store } = await richSetup();
+    await apply(post, c.id);
+    const master = store.table(MASTER_T, null);
+    const employee = master.rows.find((row) => row.emp_id === 'E1');
+    employee.emp_status = 'Inactive';
+
+    const response = await call(api, 'GET', 'eligibility');
+    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+    const row = response.json.data.records.find((item) => item.emp_id === 'E1');
+    assert.ok(row, 'inactive employee should remain in the cycle Eligibility List');
+    assert.strictEqual(row.status, 'Inactive');
+    assert.strictEqual(row.eligibility_status, 'Not Eligible');
+    assert.strictEqual(elig.rows.find((item) => item.emp_id === 'E1').eligibility_reason, 'Employee inactive');
+  });
+
   await t('apply criteria needs the Active cycle', async () => {
     const { post, mk } = await setup();
     const c = await mk('Annual U');
