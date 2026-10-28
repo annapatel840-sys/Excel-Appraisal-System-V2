@@ -330,7 +330,7 @@ const cellBackground = ({ kind, rowIndex, selected, flash }) => {
   }
 
   if (selected) {
-    return "bg-[#dcebff] group-hover:bg-[#dcebff]";
+    return "bg-[#e5e7eb] group-hover:bg-[#e5e7eb]";
   }
 
   const base =
@@ -3246,7 +3246,7 @@ export function AppraisalGrid({
   const draftClass = (cellKey, isBlinking) =>
     cn(
       modified[cellKey]
-        ? "border-[#c9a400] bg-[#ffe066] font-semibold text-[#1e293b]"
+        ? "border-[#b39ddb] bg-[#e6dff7] font-semibold text-[#1e293b]"
         : "border-[#d7c96b] bg-[#fffef3] text-[#1e293b]",
       "focus:border-[#2563eb] focus:bg-white focus:ring-1 focus:ring-[#2563eb]",
       isBlinking && "appraisal-cell-blink",

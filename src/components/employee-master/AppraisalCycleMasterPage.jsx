@@ -946,7 +946,7 @@ export function AppraisalCycleMasterPage({
         "fr",
         "Feedback and Rating",
         act
-          ? "Upload Feedback and Rating for this cycle before generating the Appraisal Sheet"
+          ? "Upload as the data comes in · repeat any time · not required for any other step"
           : "Available after Activate",
         act ? "pd" : "lk",
         // act ? [{ l: "Upload ›", id: "go-up-fr" }] : [],
@@ -959,7 +959,7 @@ export function AppraisalCycleMasterPage({
         gen
           ? `${generatedRowCount ?? ""} rows generated`
           : act
-            ? "Requires this cycle’s Payroll, Feedback and Rating uploads"
+            ? "Not generated · nothing blocks this step"
             : "Available after Activate",
         gen ? "ok" : act ? "wn" : "lk",
         act && !gen ? [{ l: "Generate", id: "gen" }] : [],
@@ -2494,8 +2494,8 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .acx .ck .tx{flex:1;min-width:0}.acx .ck .tx b{display:block}.acx .ck .tx span{color:var(--muted);font-size:11.5px;display:block}
 .acx .ck.lk .tx b,.acx .ck.lk .tx span{color:#9AA3B0}
 .acx .ck .ac{display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
-.acx-panel{flex:0 0 auto;display:flex;flex-direction:column;position:relative;border-top:4px solid #2F6FED;--tc:#2F6FED;--tt:#E8F0FE;--tx:#1D4FA8;min-width:300px;max-width:720px}
-.acx-panel.aud{border-top-color:#0E8A8A;--tc:#0E8A8A;--tt:#E3F5F4;--tx:#0B6B6B}
+.acx-panel{flex:0 0 auto;display:flex;flex-direction:column;position:relative;--tc:#2F6FED;--tt:#E8F0FE;--tx:#1D4FA8;min-width:300px;max-width:720px}
+.acx-panel.aud{--tc:#0E8A8A;--tt:#E3F5F4;--tx:#0B6B6B}
 .acx-phw{background:#fff;color:var(--navy);border-bottom:1px solid var(--line);padding:8px 10px 8px 16px;display:flex;align-items:center;gap:8px}
 .acx-phw .who{flex:1;min-width:0;font-size:12px;color:#374151;line-height:1.35}.acx-phw .who b{color:var(--navy);font-size:13px}
 .acx-ic2{flex:0 0 auto;border:1px solid #D1D5DB;background:#fff;border-radius:6px;height:26px;min-width:26px;padding:0 6px;font-size:13px;color:#374151;cursor:pointer}
