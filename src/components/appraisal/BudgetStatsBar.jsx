@@ -131,7 +131,7 @@ export function BudgetStatsBar({
         valueClassName={toneFor(utilisation)}
       />
       <Stat
-        label="Budget Utilization incl. Target PB"
+        label="Total Target PB"
         title="Total of the Appraisal Sheet Target PB for Next Year column"
         value={formatRupees(targetPB)}
       />
