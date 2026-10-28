@@ -114,8 +114,13 @@ const DEFS = [
   {
     key: "by",
     label: "Set by",
-    w: 90,
-    get: (e) => (e.manualOverride ? "Manual" : "Criteria"),
+    w: 100,
+    get: (e) => {
+      const source = String(e.eligibilitySource || e.rawEmployee?.eligibility_source || "").trim().toLowerCase();
+      if (e.manualOverride || source === "manual") return "Manual";
+      if (source === "system") return "Initial";
+      return "Criteria";
+    },
   },
   {
     key: "tag",
