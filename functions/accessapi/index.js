@@ -1598,11 +1598,24 @@ app.post(
         cm = compMgrOf(k);
       if (t) techSet++;
       if (cm) compSet++;
+      // Delegation.cycle_id and Delegation.emp_id are lookup fields.
+      // Store their Data Store ROWIDs; assignment columns are plain varchar fields
+      // and store the selected employees' employee IDs.
+      const employeeMasterRowId = String(
+        (em[k] && (em[k].row.ROWID || em[k].row.rowid)) || "",
+      ).trim();
+      if (!employeeMasterRowId) {
+        skipped++;
+        return;
+      }
       rows.push({
         [d.cycleColumn]: cycleId,
-        [d.empId]: empId,
+        [d.empId]: employeeMasterRowId,
         [d.compManagerId]: cm,
         [d.appraiserTechEdId]: t,
+        previous_comp_manager: "",
+        previous_appraiser_tech_ed: "",
+        status: "Active",
         updated_by: me.user.email,
         updated_at: at,
       });
