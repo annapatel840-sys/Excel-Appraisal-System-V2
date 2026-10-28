@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useBudget } from "@/lib/budget-store";
@@ -228,7 +228,138 @@ const AUDIT_COLS = [
   ["Reason", false],
 ];
 
+/* Date-range filter shown in the Date column header (replaces the old
+   From / To bar). Filtering is UI only: it narrows the rows already loaded. */
+function DateRangeFilter({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [style, setStyle] = useState({});
+  const btnRef = useRef(null);
+  const panelRef = useRef(null);
+  const active = Boolean(value.from || value.to);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (event) => {
+      if (
+        panelRef.current?.contains(event.target) ||
+        btnRef.current?.contains(event.target)
+      )
+        return;
+      setOpen(false);
+    };
+    const onKey = (event) => event.key === "Escape" && setOpen(false);
+    const close = () => setOpen(false);
+    document.addEventListener("mousedown", onDown, true);
+    document.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      document.removeEventListener("mousedown", onDown, true);
+      document.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [open]);
+
+  const toggle = () => {
+    if (open) return setOpen(false);
+    const rect = btnRef.current.getBoundingClientRect();
+    const width = 230;
+    setStyle({
+      position: "fixed",
+      top: rect.bottom + 4,
+      left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)),
+      width,
+      zIndex: 999999,
+    });
+    setDraft(value);
+    setOpen(true);
+  };
+
+  const apply = () => {
+    let { from, to } = draft;
+    if (from && to && from > to) [from, to] = [to, from];
+    onChange({ from, to });
+    setOpen(false);
+  };
+  const clear = () => {
+    onChange({ from: "", to: "" });
+    setDraft({ from: "", to: "" });
+    setOpen(false);
+  };
+  const input =
+    "mt-1 h-8 w-full rounded border border-[#cbd3df] px-2 text-[12px] font-normal text-[#0f1f33]";
+
+  return (
+    <span className="relative inline-flex align-middle">
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={toggle}
+        title="Filter Date"
+        aria-label="Filter Date"
+        aria-expanded={open}
+        className={
+          "ml-1.5 inline-flex h-5 w-5 items-center justify-center rounded " +
+          (active
+            ? "bg-[#102A43] text-white"
+            : "text-[#64748b] hover:bg-[#e8edf3]")
+        }
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+        </svg>
+      </button>
+      {open && (
+        <div
+          ref={panelRef}
+          style={style}
+          className="rounded-lg border border-[#d7dce3] bg-white p-3 text-left text-[12px] font-semibold text-[#334155] shadow-xl"
+        >
+          <label className="block">
+            From
+            <input
+              type="date"
+              value={draft.from}
+              onChange={(e) => setDraft({ ...draft, from: e.target.value })}
+              className={input}
+            />
+          </label>
+          <label className="mt-2 block">
+            To
+            <input
+              type="date"
+              value={draft.to}
+              onChange={(e) => setDraft({ ...draft, to: e.target.value })}
+              className={input}
+            />
+          </label>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={apply}
+              className="h-7 flex-1 rounded bg-[#102A43] text-[12px] font-semibold text-white"
+            >
+              Apply
+            </button>
+            <button
+              type="button"
+              onClick={clear}
+              className="h-7 flex-1 rounded border border-[#cbd3df] text-[12px] font-semibold text-[#334155] hover:bg-[#f1f5f9]"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+    </span>
+  );
+}
+
 function AuditTable({
+  dateFilter,
+  onDateFilter,
   rows,
   showOwner = true,
   ownerLabel = "Owner",
@@ -262,6 +393,9 @@ function AuditTable({
                 }
               >
                 {h}
+                {h === "Date" && onDateFilter ? (
+                  <DateRangeFilter value={dateFilter} onChange={onDateFilter} />
+                ) : null}
               </th>
             ))}
           </tr>
@@ -1727,8 +1861,8 @@ function HRAuditTrail() {
       return true;
     }).sort((a, b) => a.name.localeCompare(b.name));
   }, [techEdOwners, employeeRows]);
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [orgDates, setOrgDates] = useState({ from: "", to: "" });
+  const [tedDates, setTedDates] = useState({ from: "", to: "" });
   const [filter, setFilter] = useState("all");
   const [auditState, setAuditState] = useState(() => readBudgetAudit());
 
@@ -1753,47 +1887,22 @@ function HRAuditTrail() {
     (r) =>
       Boolean(activeBudgetCycleId) &&
       String(r.cycleId || "") === String(activeBudgetCycleId) &&
-      (!from || r.date >= from) &&
-      (!to || r.date <= to),
+      (!orgDates.from || r.date >= orgDates.from) &&
+      (!orgDates.to || r.date <= orgDates.to),
   );
   const tedRows = auditState.techEd.filter(
     (r) =>
       Boolean(activeBudgetCycleId) &&
       String(r.cycleId || "") === String(activeBudgetCycleId) &&
-      (!from || r.date >= from) &&
-      (!to || r.date <= to) &&
+      (!tedDates.from || r.date >= tedDates.from) &&
+      (!tedDates.to || r.date <= tedDates.to) &&
       (filter === "all" || r.owner === filter),
   );
 
   return (
     <div className="flex flex-col gap-2">
-      <div
-        className="rounded-[10px] border bg-white"
-        style={{ borderColor: BORDER }}
-      >
-        <div className="flex flex-wrap items-center gap-3 px-3.5 py-2 text-[12px] text-slate-600">
-          <label>
-            From{" "}
-            <input
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              className="ml-1 h-7 max-w-[150px] rounded border border-[#cbd3df] px-2"
-            />
-          </label>
-          <label>
-            To{" "}
-            <input
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              className="ml-1 h-7 max-w-[150px] rounded border border-[#cbd3df] px-2"
-            />
-          </label>
-          <span className="ml-auto text-[11px]">
-            Audit lines can't be edited or deleted
-          </span>
-        </div>
+      <div className="px-1 text-right text-[11px] text-slate-600">
+        Audit lines can't be edited or deleted
       </div>
       <section
         className="overflow-hidden rounded-[10px] border bg-white"
@@ -1808,6 +1917,8 @@ function HRAuditTrail() {
         <div className="p-3.5">
           <AuditTable
             rows={orgRows}
+            dateFilter={orgDates}
+            onDateFilter={setOrgDates}
             showOwner={false}
             budgetLabel="Org budget"
           />
@@ -1841,7 +1952,12 @@ function HRAuditTrail() {
           </label>
         </div>
         <div className="p-3.5">
-          <AuditTable rows={tedRows} ownerLabel="Tech ED" />
+          <AuditTable
+            rows={tedRows}
+            dateFilter={tedDates}
+            onDateFilter={setTedDates}
+            ownerLabel="Tech ED"
+          />
         </div>
       </section>
     </div>

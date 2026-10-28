@@ -8,7 +8,7 @@
 .emx-table{border-collapse:separate;border-spacing:0;table-layout:fixed;font-size:12.5px}
 
 /* header: other headings sit BELOW the sticky first heading (z 2 < z 5) */
-.emx-table th{position:sticky;top:0;z-index:2;background:#E6EEF8;color:#102A43;font-size:10.5px;font-weight:700;text-align:left;padding:0;border-bottom:1px solid #C9D8EC;vertical-align:middle}
+.emx-table th{position:sticky;top:0;z-index:2;background:#E6EEF8;color:#102A43;font-size:10.5px;font-weight:700;text-align:left;padding:0;border-bottom:1px solid #CBD5E1;border-right:1px solid #CBD5E1;vertical-align:middle}
 .emx-table th:first-child{left:0;z-index:5;background:#DFE8F3;border-right:1px solid #C9D8EC}
 .emx-thi{display:flex;align-items:center;gap:3px;padding:6px 4px 6px 8px;min-height:38px}
 .emx-tl{flex:1;white-space:normal;line-height:1.25;overflow-wrap:break-word}
@@ -20,11 +20,11 @@
 .emx-rs:hover{background:#C9D8EC}
 
 /* body: first column sticky (z 1 < header z 2 so it also hides under headers on vertical scroll) */
-.emx-table td{padding:8px;border-bottom:1px solid #F0F1F3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#374151;vertical-align:middle;background:#FBFCFE}
+.emx-table td{padding:8px;border-bottom:1px solid #E0E5EC;border-right:1px solid #E0E5EC;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#374151;vertical-align:middle;background:#FBFCFE}
 .emx-table.cmp td{padding:3px 8px}
 .emx-table td.wr{white-space:normal;overflow-wrap:break-word;text-overflow:clip}
 .emx-table tbody tr:nth-child(even) td{background:#F2F5F9}
-.emx-table tbody tr td:first-child{position:sticky;left:0;z-index:1;background:#FBFCFE;border-right:1px solid #C9D8EC}
+.emx-table tbody tr td:first-child{position:sticky;left:0;z-index:1;background:#FBFCFE;border-right:1px solid #CBD5E1}
 .emx-table tbody tr:nth-child(even) td:first-child{background:#F2F5F9}
 .emx-table tbody tr:hover td,
 .emx-table tbody tr:hover td:first-child{background:#EAF2FF}
