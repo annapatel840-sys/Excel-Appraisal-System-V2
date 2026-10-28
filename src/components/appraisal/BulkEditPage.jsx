@@ -582,7 +582,7 @@ const nowT = () => {
 const rupees = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
 const pctOf = (x) =>
   x && Number(x.budget) ? ((Number(x.used) || 0) / Number(x.budget)) * 100 : 0;
-const inclT = (x) => (Number(x && x.used) || 0) + (Number(x && x.tpb) || 0);
+const inclT = (x) => Number(x && x.tpb) || 0;
 const lvl = (p) => (p > 100 ? "danger" : p > 90 ? "warn" : "");
 const isHike = (f) => f === "hikePct" || f === "hikeAmt";
 const hikeBasis = (e) => e.basePay; /* Hike % is always worked on Base pay */
