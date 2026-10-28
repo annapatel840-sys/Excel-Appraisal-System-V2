@@ -934,12 +934,14 @@ export default function DelegationScreen({
           </div>
 
           <div className="dg-tw">
-            {!scoped.length ? (
+            {rosterLoading ? (
+              <div className="empty" role="status">Loading delegation data…</div>
+            ) : !scoped.length ? (
               <div className="empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
                 {activeCycleId ? "No delegation rows are available for " + displayCycleName + "." : "No active appraisal cycle. Create or activate a cycle to start delegation."}
                 {activeCycleId && (
-                  <button className="btn p" type="button" disabled={rosterLoading} onClick={loadRoster}>
-                    {rosterLoading ? "Fetching data..." : "Generate / Fetch Delegation Data"}
+                  <button className="btn p" type="button" onClick={loadRoster}>
+                    Generate / Fetch Delegation Data
                   </button>
                 )}
               </div>
