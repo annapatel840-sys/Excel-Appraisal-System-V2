@@ -1021,9 +1021,11 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     // Delegation history must come from a closed prior-cycle payroll row,
     // never from the active-cycle upload fallback used for current payroll fields.
     const previousAssignmentPayroll = selectedPayrollSource?.row || null;
-    // Read assignments from the existing Appraisal_Sheet history.
-    // Cycle and employee references can be stored as either IDs, lookup objects,
-    // or cycle names, so resolve both sides before comparing.
+    // Resolve the employee's historical Appraisal_Sheet row directly.
+    // Prefer the selected payroll cycle when it matches, but don't require the
+    // Payroll_Data cycle reference to be identical to the Appraisal_Sheet one.
+    // New employees are identified by having a same-year New Joiners sheet row;
+    // everyone else uses the most recent closed Annual sheet row.
     const assignmentCycle = selectedPayrollSource?.cycle || null;
     const assignmentCycleId = assignmentCycle ? cycleIdOf(assignmentCycle) : "";
     const assignmentCycleName = assignmentCycle ? historyCycleName(assignmentCycle).toLowerCase() : "";
@@ -1034,35 +1036,54 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       assignmentMaster?.ROWID, assignmentMaster?.rowid, assignmentMaster?.id,
       assignmentMaster?.employee_master_id, assignmentMaster?.employee_master_row_id,
     ].map((value) => historyReference(value).toLowerCase()).filter(Boolean));
-    const assignmentHistoryRow = appraisalHistoryRows
-      .filter((row) => {
+    const historicalAssignmentRows = appraisalHistoryRows
+      .map((row) => {
         const rawCycle = historyReference(
           row?.cycle_id ?? row?.appraisal_cycle_id ?? row?.appraisalCycleId ??
-          row?.appraisal_cycle ?? row?.appraisal_cycle_name ?? row?.cycle_name,
+          row?.appraisal_cycle ?? row?.appraisal_cycle_name ?? row?.cycle_name ?? row?.appraisal_year,
         );
-        const resolvedCycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
-        const cycleMatches = Boolean(
-          assignmentCycleId &&
-          ((resolvedCycle && cycleIdOf(resolvedCycle) === assignmentCycleId) ||
-            rawCycle.toLowerCase() === assignmentCycleId.toLowerCase() ||
-            rawCycle.toLowerCase() === assignmentCycleName)
-        );
-        if (!cycleMatches) return false;
+        const cycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase()) ||
+          cycleRows.find((item) => {
+            const aliases = [cycleIdOf(item), historyCycleName(item)].map((v) => String(v || "").trim().toLowerCase());
+            return aliases.includes(rawCycle.toLowerCase());
+          });
+        if (!cycle) return null;
         const rowEmp = rowEmployeeKey(
           row?.emp_id ?? row?.employee_id ?? row?.emp_code ?? row?.empId,
           employeeMasterMap,
         );
         const rowMasterId = historyReference(
-          row?.emp_master_row_id ?? row?.employee_master_id ?? row?.employee_master_row_id ??
-          row?.emp_master_id,
+          row?.emp_master_row_id ?? row?.employee_master_id ?? row?.employee_master_row_id ?? row?.emp_master_id,
         ).toLowerCase();
-        return (empKey && rowEmp === empKey) ||
-          (rowMasterId && assignmentMasterIds.has(rowMasterId));
+        const employeeMatches = Boolean((empKey && rowEmp === empKey) ||
+          (rowMasterId && assignmentMasterIds.has(rowMasterId)));
+        if (!employeeMatches) return null;
+        const cycleStatus = cycleStatusOf(cycle);
+        const closed = cycle.archived === true ||
+          ["true", "1", "yes", "archived"].includes(String(cycle.archived ?? "").trim().toLowerCase()) ||
+          ["archived", "closed", "complete", "completed"].includes(cycleStatus);
+        if (!closed) return null;
+        const cycleId = cycleIdOf(cycle);
+        const exactSelectedCycle = Boolean(
+          assignmentCycleId && cycleId === assignmentCycleId ||
+          assignmentCycleName && historyCycleName(cycle).toLowerCase() === assignmentCycleName
+        );
+        return { row, cycle, cycleId, exactSelectedCycle, rowTime: String(row.MODIFIEDTIME || row.CREATEDTIME || row.ROWID || "") };
       })
-      .sort((a, b) =>
-        String(b.MODIFIEDTIME || b.CREATEDTIME || b.ROWID || "")
-          .localeCompare(String(a.MODIFIEDTIME || a.CREATEDTIME || a.ROWID || ""), undefined, { numeric: true }),
-      )[0] || null;
+      .filter(Boolean);
+    const sameYearJoinerHistory = historicalAssignmentRows
+      .filter((item) => isNewJoinerCycle(item.cycle) && cycleYearOf(item.cycle) === currentYear)
+      .sort((a, b) => historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
+        b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }))[0] || null;
+    const annualAssignmentHistory = historicalAssignmentRows
+      .filter((item) => isAnnualCycle(item.cycle) &&
+        (currentRank <= 0 || historyCycleRank(item.cycle) < currentRank))
+      .sort((a, b) => historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
+        b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }))[0] || null;
+    const exactAssignmentHistory = historicalAssignmentRows
+      .filter((item) => item.exactSelectedCycle)
+      .sort((a, b) => b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }))[0] || null;
+    const assignmentHistoryRow = (sameYearJoinerHistory || exactAssignmentHistory || annualAssignmentHistory)?.row || null;
     const assignmentDisplay = (value) => {
       const raw = historyReference(value);
       if (!raw) return "";
