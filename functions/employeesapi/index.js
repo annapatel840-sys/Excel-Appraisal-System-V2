@@ -1178,8 +1178,8 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       previous_tech_ed: previousAppraiserTechEd,
       // When no current Comp Manager has been saved yet, carry forward the
       // prior-cycle manager; a genuinely new employee falls back to Tech-ED.
-      delegation_comp_manager: String(employee.comp_manager || "").trim() ||
-        previousCompManager ||
+      delegation_comp_manager: previousCompManager ||
+        String(employee.comp_manager || "").trim() ||
         String(employee.appraiser_tech_ed || "").trim(),
       current_annual_base_pay: payrollAnnualBasePay,
       // The date column is sourced from the archived cycle's effective_date,
