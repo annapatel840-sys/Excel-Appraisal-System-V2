@@ -612,42 +612,18 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
   const toDelete = [...staleRows, ...orphanRows];
   await deleteEligibilityRowsById(tables, toDelete.map((row) => rowId(row)));
 
-  // First load of a cycle seeds every Active Employee Master record as
-  // Eligible. Apply Criteria then changes each row to Eligible / Not Eligible.
-  const now = nowLocal();
-  const toInsert = [];
-  for (const master of masterRows) {
-    if (String(master.emp_status || master.status || "Active").trim().toLowerCase() !== "active") continue;
-    const masterId = String(master.ROWID || master.rowid || "");
-    const empId = String(master.emp_id || "").trim();
-    if (!masterId || !empId) continue;
-    const existing = existingByMasterId.get(masterId) || existingByEmpId.get(empId.toLowerCase());
-    if (existing) continue;
-    toInsert.push({
-      appraisal_cycle_id: String(cycle.id),
-      employee_master_id: masterId,
-      emp_id: empId,
-      eligibility_status: "Eligible",
-      eligibility_reason: "",
-      eligibility_source: "System",
-      change_tag: "New",
-      evaluated_at: now,
-      updated_by: String(actor || "System").slice(0, 60),
-      eligibility_updated_at: now,
-    });
-  }
-  for (let index = 0; index < toInsert.length; index += 100) {
-    await tables.eligibility.insertRows(toInsert.slice(index, index + 100));
-  }
+  // Opening the Eligibility List must never pre-populate employees.
+  // Only Apply Criteria or the explicit Add An Employee action may create
+  // cycle rows. This sync is limited to repairing existing rows/references.
 
   if (readBack) {
     readBack.masterRows = masterRows;
     readBack.eligibilityRows = existingRows;
-    readBack.changed = rowsUpdated > 0 || toDelete.length > 0 || toInsert.length > 0;
+    readBack.changed = rowsUpdated > 0 || toDelete.length > 0;
   }
 
   return {
-    created: toInsert.length,
+    created: 0,
     removed: orphanRows.length,
     staleRemoved: staleRows.length,
     repairedReferences,
@@ -787,7 +763,17 @@ async function applyEligibilityCriteria(tables, body, actor) {
 
     const name = String(master.emp_name || master.name || "");
     const decision = reasons.length ? "Not Eligible" : "Eligible";
-    if (reasons.length) excluded += 1;
+    if (reasons.length) {
+      excluded += 1;
+      // Employees who fail setup criteria must not be inserted into the
+      // Eligibility List. Remove legacy/system/criteria rows for them, but
+      // preserve deliberate manual inclusions.
+      if (existing && String(existing.eligibility_source || "").trim().toLowerCase() !== "manual") {
+        await deleteEligibilityRowsById(tables, [rowId(existing)]);
+        existingByMasterId.delete(masterId);
+      }
+      continue;
+    }
     const values = {
       appraisal_cycle_id: cycleId,
       employee_master_id: masterId,
