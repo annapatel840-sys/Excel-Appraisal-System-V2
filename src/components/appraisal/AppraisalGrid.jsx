@@ -206,6 +206,17 @@ const GRID_STYLES = `
   0%, 100% { box-shadow: 0 0 0 0 rgba(201,164,0,0); }
   50% { box-shadow: 0 0 0 3px rgba(201,164,0,.55); }
 }
+/* Selected row: a grey border around the whole row. It is drawn inside each
+   cell (inset shadows) so sticky / frozen cells cannot hide it. */
+.appraisal-sel > td {
+  box-shadow: inset 0 2px 0 #64748b, inset 0 -2px 0 #64748b !important;
+}
+.appraisal-sel > td:first-child {
+  box-shadow: inset 2px 0 0 #64748b, inset 0 2px 0 #64748b, inset 0 -2px 0 #64748b !important;
+}
+.appraisal-sel > td:last-child {
+  box-shadow: inset -2px 0 0 #64748b, inset 0 2px 0 #64748b, inset 0 -2px 0 #64748b !important;
+}
 .appraisal-cell-blink { animation: appraisalCellBlink .5s ease-in-out 3; }
 
 /* Row density: Compact (More tab). !important is needed because the cells
@@ -3879,14 +3890,8 @@ export function AppraisalGrid({
       <tr
         key={row.id}
         data-row-id={row.id}
-        className="group"
-        style={{
-          minHeight: CELL_MIN_HEIGHT,
-          // Selected row: a grey border around the whole row.
-          ...(isSelectedRow
-            ? { outline: "2px solid #64748b", outlineOffset: "-2px" }
-            : {}),
-        }}
+        className={cn("group", isSelectedRow && "appraisal-sel")}
+        style={{ minHeight: CELL_MIN_HEIGHT }}
       >
         <td
           className={cn(
