@@ -229,6 +229,38 @@ export default function DelegationScreen({
       const cycleId = String(active.id || active.appraisal_cycle_id || active.cycle_id || active.ROWID || "");
       setActiveCycleId(cycleId);
       setActiveCycleName(String(active.name || active.cycle_name || active.appraisal_year || ""));
+
+      // First-time setup: persist the active cycle's initial delegation roster.
+      // replace:false makes this safe to run again: existing rows are retained.
+      let delegationSaveError = "";
+      if (isHR) {
+        try {
+          const saveResponse = await catalystFetch(
+            ACCESS_API_URL + "delegation/fill",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+              },
+              body: JSON.stringify({ cycleId, replace: false }),
+            },
+          );
+          const savePayload = await saveResponse.json().catch(() => ({}));
+          if (!saveResponse.ok || savePayload.ok === false || savePayload.success === false) {
+            throw new Error(
+              savePayload.error ||
+                savePayload.message ||
+                "The initial Delegation rows could not be saved.",
+            );
+          }
+        } catch (saveError) {
+          delegationSaveError =
+            saveError?.message || "The initial Delegation rows could not be saved.";
+          console.error("Initial Delegation POST failed:", saveError);
+        }
+      }
+
       // Always fetch the enriched delegation roster from employeesapi.
       // initialRows may contain only Employee_Master values and omit previous-cycle references.
       // Ensure the Active cycle's Eligibility_List is initialized/refreshed
@@ -286,6 +318,12 @@ export default function DelegationScreen({
         base: "",
         lastRole: "",
       })));
+      if (delegationSaveError) {
+        say(
+          "Roster loaded, but saving Delegation failed: " + delegationSaveError,
+          true,
+        );
+      }
     } catch (error) {
       setRows([]);
       say(error?.message || "Unable to load appraisal employees.", true);
