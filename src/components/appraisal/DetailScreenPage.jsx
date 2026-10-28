@@ -2252,7 +2252,10 @@ export function DetailScreenPage({
                       </button>
                     </div>
 
-                    <div className="flex shrink-0 gap-2 px-3 py-2.5">
+                    <div
+                      className="mb-2 flex shrink-0"
+                      style={{ background: "#FAFAFB", borderBottom: "1px solid #E5E7EB" }}
+                    >
                       {[
                         ["manager", "Manager"],
                         ["client", "Client"],
@@ -2262,13 +2265,18 @@ export function DetailScreenPage({
                           key={k}
                           type="button"
                           onClick={() => setFbTab(k)}
-                          className="rounded-full border px-3 py-1 text-[12px] font-semibold"
+                          className="flex flex-1 items-center justify-center gap-1.5 py-[10px] text-[13px]"
                           style={{
-                            borderColor: fbTab === k ? "#9AA7B4" : LINE,
-                            background: fbTab === k ? SOFT : "#fff",
-                            color: INK,
+                            borderBottom: `2px solid ${fbTab === k ? "#2F6FED" : "transparent"}`,
+                            background: fbTab === k ? "#E8F0FE" : "transparent",
+                            color: fbTab === k ? "#1D4FA8" : "#6B7280",
+                            fontWeight: fbTab === k ? 800 : 600,
                           }}
                         >
+                          <span
+                            className="inline-block size-2 shrink-0 rounded-full"
+                            style={{ background: "#2F6FED" }}
+                          />
                           {l}
                         </button>
                       ))}

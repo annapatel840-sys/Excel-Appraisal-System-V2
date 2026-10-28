@@ -262,9 +262,10 @@ const CSS = `
   .mp-t span{font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #metX{border:0;background:none;color:var(--muted);font-size:14px;width:28px;height:28px;border-radius:6px;cursor:pointer}
   #metX:hover{background:var(--grey-bg)}
-  .mp-tabs{display:flex;background:#FAFAFB;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:0 14px}
-  .mp-tabs button{font-family:inherit;font-size:12.5px;font-weight:600;color:var(--muted);background:none;border:0;border-bottom:2px solid transparent;padding:8px 12px 8px 0;margin-right:10px;margin-bottom:-1px;cursor:pointer}
-  .mp-tabs button.on{font-weight:800;color:var(--ink);border-bottom-color:var(--navy)}
+  .mp-tabs{display:flex;background:#FAFAFB;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .mp-tabs button{flex:1;font-family:inherit;font-size:13px;font-weight:600;color:var(--muted);background:none;border:0;border-bottom:2px solid transparent;padding:10px 0;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px}
+  .mp-tabs button:before{content:"";width:8px;height:8px;border-radius:50%;background:#2F6FED}
+  .mp-tabs button.on{font-weight:800;color:#1D4FA8;background:#E8F0FE;border-bottom-color:#2F6FED}
   .mp-b{flex:1;overflow:auto;padding:12px 14px}
   #metPanel .imp{display:flex;flex-direction:column;gap:10px}
   #metTab{display:none;position:absolute;right:0;top:50%;transform:translateY(-50%);z-index:20;writing-mode:vertical-rl;background:var(--navy);color:#fff;border:0;border-radius:8px 0 0 8px;padding:14px 7px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer}

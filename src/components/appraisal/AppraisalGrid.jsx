@@ -1611,12 +1611,13 @@ function EmployeePanel({
             aria-selected={activeTab === key}
             onClick={() => setTab(key)}
             className={cn(
-              "flex-1 border-b-2 py-[9px] text-[13px]",
+              "flex flex-1 items-center justify-center gap-1.5 border-b-2 py-[10px] text-[13px]",
               activeTab === key
-                ? "border-[#102a43] font-extrabold text-[#111827]"
+                ? "border-[#2f6fed] bg-[#e8f0fe] font-extrabold text-[#1d4fa8]"
                 : "border-transparent font-semibold text-[#6b7280]",
             )}
           >
+            <span className="size-2 shrink-0 rounded-full bg-[#2f6fed]" />
             {label}
           </button>
         ))}
@@ -1636,8 +1637,8 @@ function EmployeePanel({
               className={cn(
                 "rounded-[14px] border px-2.5 py-[3px] text-[11.5px]",
                 sub === key
-                  ? "border-[#cbd2da] bg-[#eef0f3] font-bold text-[#111827]"
-                  : "border-[#d1d5db] bg-white text-[#374151] hover:border-[#9ca3af]",
+                  ? "border-[#2f6fed] bg-[#e8f0fe] font-bold text-[#1d4fa8]"
+                  : "border-[#d1d5db] bg-white text-[#4b5563] hover:border-[#9ca3af]",
               )}
             >
               {label}
