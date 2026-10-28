@@ -946,7 +946,7 @@ export function AppraisalCycleMasterPage({
         "fr",
         "Feedback and Rating",
         act
-          ? "Upload as the data comes in · repeat any time · not required for any other step"
+          ? "Upload Feedback and Rating for this cycle before generating the Appraisal Sheet"
           : "Available after Activate",
         act ? "pd" : "lk",
         // act ? [{ l: "Upload ›", id: "go-up-fr" }] : [],
@@ -959,7 +959,7 @@ export function AppraisalCycleMasterPage({
         gen
           ? `${generatedRowCount ?? ""} rows generated`
           : act
-            ? "Not generated · nothing blocks this step"
+            ? "Requires this cycle’s Payroll, Feedback and Rating uploads"
             : "Available after Activate",
         gen ? "ok" : act ? "wn" : "lk",
         act && !gen ? [{ l: "Generate", id: "gen" }] : [],
