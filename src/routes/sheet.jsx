@@ -31,6 +31,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
+import { useNotices } from "@/lib/notices";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
 
@@ -48,13 +49,6 @@ import { useSettings } from "@/lib/settings-store";
 import { NotificationBell } from "@/components/appraisal/NotificationBell";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
-// Budget-change message shown in the notification bell.
-const BUDGET_NOTICE_PLACEHOLDER = {
-  from: "10.41 L",
-  to: "9.79 L",
-  changes: 5,
-  since: "01-Sep-26",
-};
 
 // ============================================================
 // PAGE
@@ -101,7 +95,7 @@ export function SheetPage() {
 
   const [auditOpen, setAuditOpen] = useState(false);
   const [lastEditedTarget, setLastEditedTarget] = useState("");
-  const [budgetNoticeOpen, setBudgetNoticeOpen] = useState(true);
+  const { notices: dynamicNotices, dismiss: dismissNotice } = useNotices();
 
   useEffect(() => {
     const handleOutsideClick = (event) => {
@@ -218,31 +212,33 @@ export function SheetPage() {
   // no longer in the top nav.
   const budgetVertical = settings.menuPosition === "left";
 
-  // Notification bell (top bar): budget message + edited count.
-  const budgetNoticeText = `Be aware: your team budget has changed from ${BUDGET_NOTICE_PLACEHOLDER.from} to ${BUDGET_NOTICE_PLACEHOLDER.to} — ${BUDGET_NOTICE_PLACEHOLDER.changes} team changes since allocation on ${BUDGET_NOTICE_PLACEHOLDER.since}.`;
-  const notificationItems = [];
-  if (budgetNoticeOpen) {
-    notificationItems.push({
-      key: "budget",
-      tag: "Budget changed",
-      text: budgetNoticeText,
-      actions: [
-        {
-          // Same in-app navigation the Detailed Screen's "View budget" uses.
-          label: "View budget",
-          onClick: () => {
-            window.history.pushState({}, "", "/budget-distribution");
-            window.dispatchEvent(new PopStateEvent("popstate"));
-          },
-        },
-        {
-          label: "Got it",
-          primary: true,
-          onClick: () => setBudgetNoticeOpen(false),
-        },
-      ],
-    });
-  }
+  // Notification bell (top bar): live notices (budget change, bulk edit,
+  // data upload, employee status change) + the edited count.
+  const notificationItems = dynamicNotices.map((notice) => ({
+    key: notice.key,
+    tag: notice.tag,
+    text: notice.text,
+    sub: notice.sub,
+    actions: [
+      ...(notice.kind === "budget"
+        ? [
+            {
+              // Same in-app navigation the Detailed Screen's "View budget" uses.
+              label: "View budget",
+              onClick: () => {
+                window.history.pushState({}, "", "/budget-distribution");
+                window.dispatchEvent(new PopStateEvent("popstate"));
+              },
+            },
+          ]
+        : []),
+      {
+        label: "Got it",
+        primary: true,
+        onClick: () => dismissNotice(notice.key),
+      },
+    ],
+  }));
   if (appraisalRows.length > 0) {
     const allEdited = editedCount >= appraisalRows.length;
     notificationItems.push({
