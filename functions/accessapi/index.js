@@ -1241,7 +1241,7 @@ app.post(
     } catch (err) {
       for (const d of done.reverse()) {
         try {
-          const t = ds.table(d.table);
+          const t = ds.table("74008000000036124");
           if (d.op === "insert") await t.deleteRow(d.ROWID);
           else await t.updateRow(d.before);
         } catch (e) {
