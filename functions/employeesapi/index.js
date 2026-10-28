@@ -1017,7 +1017,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       const raw = historyReference(value);
       if (!raw) return "";
       const direct = employeeMasterMap.get(raw) || employeeMasterMap.get(raw.toLowerCase());
-      const empId = raw.split(/\\s+-\\s+/)[0].trim().toLowerCase();
+      const empId = raw.split(/\s+-\s+/)[0].trim().toLowerCase();
       const master = direct || employeeMasterMap.get(empId);
       if (!master) return raw;
       const id = String(master.emp_id || "").trim();
