@@ -59,7 +59,11 @@ const DEFS = [
     key: "location",
     label: "Location",
     w: 120,
-    get: (e) => e.location || e.rawEmployee?.location || e.rawEmployee?.work_location || "—",
+    get: (e) =>
+      e.location ||
+      e.rawEmployee?.location ||
+      e.rawEmployee?.work_location ||
+      "—",
   },
   {
     key: "dept",
@@ -86,9 +90,15 @@ const DEFS = [
     w: 125,
     get: (e) => String(e.status || e.rawEmployee?.emp_status || "Active"),
     render: (e) => {
-      const status = String(e.status || e.rawEmployee?.emp_status || "Active").trim();
+      const status = String(
+        e.status || e.rawEmployee?.emp_status || "Active",
+      ).trim();
       const active = status.toLowerCase() === "active";
-      return <span className={`emx-tag ${active ? "ok" : "grey"}`}>{active ? "Active" : "Inactive"}</span>;
+      return (
+        <span className={`emx-tag ${active ? "ok" : "grey"}`}>
+          {active ? "Active" : "Inactive"}
+        </span>
+      );
     },
   },
   {
@@ -99,7 +109,9 @@ const DEFS = [
     render: (e) => {
       const decision = eligibilityDecisionOf(e);
       return (
-        <span className={`emx-tag ${decision === "Eligible" ? "ok" : decision === "Pending" ? "info" : "warn"}`}>
+        <span
+          className={`emx-tag ${decision === "Eligible" ? "ok" : decision === "Pending" ? "info" : "warn"}`}
+        >
           {decision}
         </span>
       );
@@ -116,7 +128,11 @@ const DEFS = [
     label: "Set by",
     w: 100,
     get: (e) => {
-      const source = String(e.eligibilitySource || e.rawEmployee?.eligibility_source || "").trim().toLowerCase();
+      const source = String(
+        e.eligibilitySource || e.rawEmployee?.eligibility_source || "",
+      )
+        .trim()
+        .toLowerCase();
       if (e.manualOverride || source === "manual") return "Manual";
       if (source === "system") return "Initial";
       return "Criteria";
@@ -222,7 +238,12 @@ export function EligibilityList({
   const locationFilteredEmployees = useMemo(() => {
     if (!locationFilter || locationFilter === "All") return employees;
     return employees.filter((employee) => {
-      const employeeLocation = String(employee.location || employee.rawEmployee?.location || employee.rawEmployee?.work_location || "").trim();
+      const employeeLocation = String(
+        employee.location ||
+          employee.rawEmployee?.location ||
+          employee.rawEmployee?.work_location ||
+          "",
+      ).trim();
       return employeeLocation.toLowerCase() === locationFilter.toLowerCase();
     });
   }, [employees, locationFilter]);
@@ -234,9 +255,15 @@ export function EligibilityList({
     () => locationFilteredEmployees.filter((e) => tagOf(e) !== "Removed"),
     [locationFilteredEmployees],
   );
-  const eligibleCount = counted.filter((e) => eligibilityDecisionOf(e) === "Eligible").length;
-  const notEligibleCount = counted.filter((e) => eligibilityDecisionOf(e) === "Not Eligible").length;
-  const pendingCount = counted.filter((e) => eligibilityDecisionOf(e) === "Pending").length;
+  const eligibleCount = counted.filter(
+    (e) => eligibilityDecisionOf(e) === "Eligible",
+  ).length;
+  const notEligibleCount = counted.filter(
+    (e) => eligibilityDecisionOf(e) === "Not Eligible",
+  ).length;
+  const pendingCount = counted.filter(
+    (e) => eligibilityDecisionOf(e) === "Pending",
+  ).length;
 
   /* paging */
   const pages = Math.max(1, Math.ceil(view.length / PAGE_SIZE));
@@ -244,7 +271,10 @@ export function EligibilityList({
   useEffect(() => {
     if (page > pages) setPage(pages);
   }, [page, pages]);
-  useEffect(() => setPage(1), [grid.filters, grid.sort, search, locationFilter]);
+  useEffect(
+    () => setPage(1),
+    [grid.filters, grid.sort, search, locationFilter],
+  );
 
   const pageRows = useMemo(
     () => view.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
@@ -389,7 +419,7 @@ export function EligibilityList({
               className="em-btn emx-dashed"
               onClick={() => setAddOpen(true)}
             >
-              <Plus size={14} /> Add An Employee
+              <Plus size={14} /> Add an Employee
             </button>
           )}
 
@@ -520,11 +550,26 @@ export function EligibilityList({
             onToggleAll={toggleAll}
             allSelected={allSelected}
             someSelected={viewSelected > 0}
-            canSelectRow={(e) => tagOf(e) !== "Removed" && String(e.status || e.rawEmployee?.emp_status || "Active").toLowerCase() === "active"}
-            rowClass={(e) => (tagOf(e) === "Removed" || String(e.status || e.rawEmployee?.emp_status || "Active").toLowerCase() !== "active" ? "emx-dim" : "")}
+            canSelectRow={(e) =>
+              tagOf(e) !== "Removed" &&
+              String(
+                e.status || e.rawEmployee?.emp_status || "Active",
+              ).toLowerCase() === "active"
+            }
+            rowClass={(e) =>
+              tagOf(e) === "Removed" ||
+              String(
+                e.status || e.rawEmployee?.emp_status || "Active",
+              ).toLowerCase() !== "active"
+                ? "emx-dim"
+                : ""
+            }
             actionHeader={canEdit ? "Action" : null}
             renderAction={(e) =>
-              tagOf(e) === "Removed" || String(e.status || e.rawEmployee?.emp_status || "Active").toLowerCase() !== "active" ? (
+              tagOf(e) === "Removed" ||
+              String(
+                e.status || e.rawEmployee?.emp_status || "Active",
+              ).toLowerCase() !== "active" ? (
                 "—"
               ) : (
                 <button
@@ -532,7 +577,9 @@ export function EligibilityList({
                   className="emx-mini"
                   onClick={() => onChangeEligibility(e)}
                 >
-                  {eligibilityDecisionOf(e) === "Eligible" ? "Set Not Eligible" : "Set Eligible"}
+                  {eligibilityDecisionOf(e) === "Eligible"
+                    ? "Set Not Eligible"
+                    : "Set Eligible"}
                 </button>
               )
             }
@@ -549,7 +596,6 @@ export function EligibilityList({
             onPage={setPage}
             grid={grid}
           />
-
         </div>
 
         <SidePanel
@@ -565,7 +611,10 @@ export function EligibilityList({
           auditHint="Every manual change: user, date and time, employee, previous and new value."
           onFullAudit={onAuditHistory}
         />
-        <PanelTab open={panel.open} onOpen={() => updatePanel({ open: true })} />
+        <PanelTab
+          open={panel.open}
+          onOpen={() => updatePanel({ open: true })}
+        />
       </div>
 
       {addOpen && (
