@@ -108,13 +108,15 @@ async function setup() {
     assert.ok(elig.rows.every((x) => x.appraisal_cycle_id === c.id));
   });
 
-  await t('activating a cycle does NOT put Employee Master employees into the Eligibility List', async () => {
+  await t('first Eligibility List load seeds Active employees as Eligible', async () => {
     const { post, mk, elig } = await setup();
     const a = await mk('Annual A');
     const r = await post('cycles/status/' + a.id, { status: 'Active' });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(r.json.data.eligibilitySync.created, 0);
-    assert.strictEqual(elig.rows.length, 0);
+    const listed = await call(api, 'GET', 'eligibility');
+    assert.strictEqual(listed.status, 200, JSON.stringify(listed.json));
+    assert.strictEqual(elig.rows.length, 2);
+    assert.ok(elig.rows.every((x) => x.eligibility_status === 'Eligible'));
   });
 
   await t('closing a cycle empties its eligibility rows; next cycle activates cleanly', async () => {
@@ -154,14 +156,15 @@ async function setup() {
     assert.strictEqual(elig.rows.length, 0);
   });
 
-  await t('GET eligibility for the Active cycle returns an empty list until criteria are applied', async () => {
+  await t('GET eligibility for the Active cycle initializes active employees as Eligible before criteria', async () => {
     const { post, mk, api, elig } = await setup();
     const a = await mk('Annual A');
     await post('cycles/status/' + a.id, { status: 'Active' });
     const r = await call(api, 'GET', 'eligibility');
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(r.json.data.records.length, 0);
-    assert.strictEqual(elig.rows.length, 0);
+    assert.strictEqual(r.json.data.records.length, 2);
+    assert.strictEqual(elig.rows.length, 2);
+    assert.ok(r.json.data.records.every((x) => x.eligibility_status === 'Eligible'));
     await apply(post, a.id);
     const r2 = await call(api, 'GET', 'eligibility');
     assert.strictEqual(r2.json.data.records.length, 2);
@@ -185,23 +188,33 @@ async function setup() {
     store.table(MASTER_T, null).rows.find((m) => m.emp_id === 'E1').joining_date = '15-03-2023';
     const r = await apply(post, c.id, { departments: ['Sales'], designations: [], excludedEmployees: ['E2'], cutoffDate: '2025-01-01' });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    // E1 passes, E2 excluded by name, E3 Sales, E4 joined after cutoff, E5 inactive
-    assert.deepStrictEqual(ids(elig), ['E1']);
-    assert.strictEqual(elig.rows[0].eligibility_status, 'Eligible');
-    assert.strictEqual(elig.rows[0].eligibility_source, 'Criteria');
-    assert.strictEqual(r.json.data.added, 1);
+    // Rows stay visible: passing employees are Eligible and excluded employees are Not Eligible.
+    assert.deepStrictEqual(ids(elig), ['E1', 'E2', 'E3', 'E4']);
+    const status = Object.fromEntries(elig.rows.map((row) => [row.emp_id, row.eligibility_status]));
+    assert.strictEqual(status.E1, 'Eligible');
+    assert.strictEqual(status.E2, 'Not Eligible');
+    assert.strictEqual(status.E3, 'Not Eligible');
+    assert.strictEqual(status.E4, 'Not Eligible');
+    assert.strictEqual(r.json.data.added, 0);
+    assert.strictEqual(r.json.data.updated, 4);
   });
 
   await t('cutoff with a missing joining date leaves the employee out', async () => {
     const { post, c, elig } = await richSetup();
     await apply(post, c.id, { cutoffDate: '2025-12-31' });
-    assert.deepStrictEqual(ids(elig), ['E3', 'E4']); // E1/E2 have no DOJ
+    assert.deepStrictEqual(ids(elig), ['E1', 'E2', 'E3', 'E4']); // missing DOJ is Not Eligible; other active rows remain visible
+    const status = Object.fromEntries(elig.rows.map((row) => [row.emp_id, row.eligibility_status]));
+    assert.strictEqual(status.E1, 'Not Eligible');
+    assert.strictEqual(status.E2, 'Not Eligible');
+    assert.strictEqual(status.E3, 'Eligible');
+    assert.strictEqual(status.E4, 'Eligible');
   });
 
   await t('Add An Employee: a left-out employee is added by hand and survives re-applying criteria', async () => {
     const { post, c, elig } = await richSetup();
     await apply(post, c.id, { departments: ['Sales'] });
-    assert.ok(!ids(elig).includes('E3'));
+    assert.ok(ids(elig).includes('E3'));
+    assert.strictEqual(elig.rows.find((r) => r.emp_id === 'E3').eligibility_status, 'Not Eligible');
     const add = await post('eligibility', { cycleId: c.id, empId: 'E3', eligible_status: 'Eligible', reason: 'ML', source: 'Manual' });
     assert.strictEqual(add.status, 200, JSON.stringify(add.json));
     assert.ok(ids(elig).includes('E3'));
@@ -217,8 +230,9 @@ async function setup() {
     await post('eligibility', { cycleId: c.id, empId: 'E4', eligible_status: 'Not Eligible', reason: 'x' });
     const r = await apply(post, c.id, { departments: ['Sales', 'Engineering'] });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.deepStrictEqual(ids(elig), ['E1', 'E2', 'E4']);
-    assert.strictEqual(r.json.data.removed, 1);
+    assert.deepStrictEqual(ids(elig), ['E1', 'E2', 'E3', 'E4']);
+    assert.strictEqual(r.json.data.removed, 0);
+    assert.strictEqual(elig.rows.find((row) => row.emp_id === 'E4').eligibility_status, 'Not Eligible');
   });
 
   await t('inactive employees cannot be added by hand', async () => {
