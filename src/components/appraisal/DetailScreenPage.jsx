@@ -289,28 +289,49 @@ const DS_CSS = `
 }
 `;
 
+const textOrDash = (value) =>
+  value !== null && value !== undefined && String(value).trim() !== ""
+    ? String(value)
+    : "—";
+
+const getCycleName = (value) => {
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "string" || typeof value === "number") {
+    const text = String(value).trim();
+    return /^\d+$/.test(text) ? "" : text;
+  }
+  if (typeof value === "object") {
+    for (const key of [
+      "appraisal_cycle_name",
+      "cycle_name",
+      "cycleName",
+      "name",
+      "display_value",
+      "value",
+      "label",
+    ]) {
+      const name = getCycleName(value[key]);
+      if (name) return name;
+    }
+  }
+  return "";
+};
+
+// Same record mapping as the Appraisal Sheet's history panel.
 const normalizeHistoryRecord = (record) => {
-  const basePay = Number(record?.base_pay) || 0;
+  // Payroll_Data uses fy_year/current_annual_base_pay/total_CTC_with_rewards;
+  // older history rows may instead use appraisal_year/base_pay/new_ctc.
+  const basePay =
+    Number(record?.base_pay ?? record?.current_annual_base_pay) || 0;
   const hike = Number(record?.hike_amount) || 0;
-  const rawCycleName =
-    record?.appraisal_cycle_name ??
-    record?.appraisalCycleName ??
-    record?.cycle_name ??
-    record?.cycleName;
+  const year = record?.appraisal_year ?? record?.fy_year;
   const cycleName =
-    typeof rawCycleName === "string" && !/^\\d+$/.test(rawCycleName.trim())
-      ? rawCycleName.trim()
-      : "";
-  const year =
-    cycleName ||
-    (record?.appraisal_year !== null && record?.appraisal_year !== undefined
-      ? String(record.appraisal_year)
-      : record?.fy_year !== null && record?.fy_year !== undefined
-        ? String(record.fy_year)
-        : "—");
+    getCycleName(record?.appraisal_cycle_name) ||
+    getCycleName(record?.appraisalCycleName) ||
+    getCycleName(record?.cycle_name);
   return {
-    cycleName,
-    year,
+    cycleName: cycleName || textOrDash(year),
+    year: textOrDash(year),
     basePay,
     joiningBonus: Number(record?.joining_bonus) || 0,
     performanceBonus: Number(record?.performance_bonus) || 0,
@@ -320,10 +341,58 @@ const normalizeHistoryRecord = (record) => {
     designation: record?.designation ? String(record.designation) : "—",
     rating: record?.rating ? String(record.rating) : "—",
     feedback: record?.manager_rating ? String(record.manager_rating) : "—",
-    targetPB: Number(record?.target_performance_bonus) || 0,
-    newCTC: Number(record?.new_ctc) || 0,
-    newBasePay: basePay + hike,
+    targetPB:
+      Number(
+        record?.target_performance_bonus ?? record?.target_performance_agreed,
+      ) || 0,
+    newCTC: Number(record?.new_ctc ?? record?.total_CTC_with_rewards) || 0,
+    newBasePay: Number(record?.new_base_pay) || basePay + hike,
   };
+};
+
+// Newest cycle first — same ordering as the Appraisal Sheet's history.
+const historyYearOrder = (value) => {
+  const year = String(value || "").trim();
+  const fiscal = year.match(/(?:FY\s*)?(\d{4})\s*[-/–]\s*(\d{2,4})/i);
+  if (fiscal) {
+    const end =
+      fiscal[2].length === 2 ? Number(`20${fiscal[2]}`) : Number(fiscal[2]);
+    return end * 100 + 1;
+  }
+  const fullYear = year.match(/(?:19|20)\d{2}/);
+  if (fullYear) return Number(fullYear[0]) * 100;
+  const shortYear = year.match(
+    /(?:Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar)[-\s](\d{2})/i,
+  );
+  if (shortYear) return Number(`20${shortYear[1]}`) * 100;
+  return 0;
+};
+
+const sortHistoryDesc = (a, b) =>
+  historyYearOrder(b.year) - historyYearOrder(a.year) ||
+  String(b.year).localeCompare(String(a.year));
+
+const yearNumberFromCycle = (cycleName) => {
+  const match = String(cycleName || "").match(/(\d{2,4})$/);
+  if (!match) return null;
+  return match[1].length === 2 ? `20${match[1]}` : match[1];
+};
+
+// Same "is this the current cycle" rule as the Appraisal Sheet.
+const isCurrentYearRecord = (record, currentCycleName = CURRENT_CYCLE) => {
+  const cycleKey = normalizeYearKey(record?.cycleName);
+  const currentCycleKey = normalizeYearKey(currentCycleName);
+  if (cycleKey && currentCycleKey && cycleKey === currentCycleKey) return true;
+  if (record?.cycleName && cycleKey && currentCycleKey) return false;
+  const year = String(record?.year ?? "").trim();
+  const currentYear = yearNumberFromCycle(currentCycleName);
+  if (year === currentYear) return true;
+  const fiscal = year.match(/(\d{4})\s*[-/–]\s*(\d{2,4})/);
+  if (fiscal) {
+    const endYear = fiscal[2].length === 2 ? `20${fiscal[2]}` : fiscal[2];
+    return endYear === currentYear;
+  }
+  return normalizeYearKey(year) === currentCycleKey;
 };
 
 const HISTORY_COLUMNS = [
@@ -370,30 +439,6 @@ const normalizeYearKey = (y) =>
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
-const isCurrentCycleYearKey = (year, currentCycleName = CURRENT_CYCLE) => {
-  const raw = normalizeYearKey(year);
-  if (!raw) return false;
-  const current = normalizeYearKey(currentCycleName);
-  if (current && raw === current) return true;
-  // Support older history rows that only stored a year instead of a cycle name.
-  return (
-    raw === "2026" ||
-    raw === "202627" ||
-    raw === "fy2026" ||
-    raw === "apr26" ||
-    raw === "apr2026" ||
-    raw.includes("2026")
-  );
-};
-const isBlankRecord = (h) =>
-  h.designation === "—" &&
-  h.rating === "—" &&
-  h.feedback === "—" &&
-  !h.basePay &&
-  !h.totalBonus &&
-  !h.newCTC &&
-  !h.hikeAmount;
-
 // Same formulas the history grid already used for prior cycles.
 const priorVals = (h) => {
   const tb = (h.performanceBonus || 0) + (h.retentionBonus || 0);
@@ -1134,7 +1179,7 @@ export function DetailScreenPage({
       const records = Array.isArray(result?.data) ? result.data : [];
       return records
         .map(normalizeHistoryRecord)
-        .sort((a, b) => String(b.year).localeCompare(String(a.year)));
+        .sort(sortHistoryDesc);
     })();
     historyPromiseRef.current.set(key, promise);
     promise
@@ -1168,18 +1213,19 @@ export function DetailScreenPage({
   const historyState = historyByEmpId[empKey];
   const historyRecords = historyState?.data || [];
 
+  // Older cycles only (the current one is the live card), exactly like the
+  // Appraisal Sheet: nothing is dropped or merged, newest first.
   const priorCycles = useMemo(() => {
-    const seen = new Set();
-    const result = [];
-    for (const record of historyRecords) {
-      if (isCurrentCycleYearKey(record.cycleName || record.year, currentCycleName)) continue;
-      if (isBlankRecord(record)) continue;
-      const yearKey = normalizeYearKey(record.cycleName || record.year);
-      if (!yearKey || seen.has(yearKey)) continue;
-      seen.add(yearKey);
-      result.push(record);
-    }
-    return result;
+    const legacyKey = normalizeYearKey(CURRENT_CYCLE);
+    const currentKey = normalizeYearKey(currentCycleName);
+    return historyRecords.filter(
+      (record) =>
+        !isCurrentYearRecord(record, currentCycleName) &&
+        !(
+          legacyKey !== currentKey &&
+          normalizeYearKey(record.cycleName) === legacyKey
+        ),
+    );
   }, [historyRecords, currentCycleName]);
 
   const derived = useMemo(() => {
@@ -2531,7 +2577,7 @@ export function DetailScreenPage({
                 : null;
               return (
                 <div
-                  key={normalizeYearKey(h.cycleName || h.year)}
+                  key={`${normalizeYearKey(h.cycleName || h.year)}-${i}`}
                   className="grid items-center text-[12px]"
                   style={{
                     gridTemplateColumns: HIST_GRID,
