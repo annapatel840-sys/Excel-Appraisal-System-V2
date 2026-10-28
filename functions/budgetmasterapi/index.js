@@ -77,6 +77,9 @@ function mapMaster(row) {
     ]),
   );
   return {
+    // Catalyst system columns, so every screen can show "Last updated".
+    updated_at: String(value(row, "MODIFIEDTIME") || value(row, "CREATEDTIME") || ""),
+    created_at: String(value(row, "CREATEDTIME") || ""),
     id: idOf(row),
     appraisal_cycle_id: cycleReference(value(row, "appraisal_cycle_id")),
     budget_percentage: n(value(row, "budget_percentage")),
@@ -124,6 +127,9 @@ function mapDistribution(row) {
     ]),
   );
   return {
+    // Catalyst system columns, so every screen can show "Last updated".
+    updated_at: String(value(row, "MODIFIEDTIME") || value(row, "CREATEDTIME") || ""),
+    created_at: String(value(row, "CREATEDTIME") || ""),
     id: idOf(row),
     appraisal_cycle_id: cycleReference(value(row, "appraisal_cycle_id")),
     appraiser_tech_ed_id: String(value(row, "appraiser_tech_ed_id")),
@@ -163,6 +169,9 @@ function mapComp(row) {
     ]),
   );
   return {
+    // Catalyst system columns, so every screen can show "Last updated".
+    updated_at: String(value(row, "MODIFIEDTIME") || value(row, "CREATEDTIME") || ""),
+    created_at: String(value(row, "CREATEDTIME") || ""),
     id: idOf(row),
     comp_manager: String(value(row, "comp_manager")),
     percentage: n(value(row, "percentage")),
