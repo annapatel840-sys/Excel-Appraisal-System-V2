@@ -36,7 +36,18 @@ export const sumBudgetConsumed = (rows) =>
 
 // Target PB for Next Year, added up over the same rows.
 export const sumTargetPB = (rows) =>
-  (rows || []).reduce((sum, row) => sum + (Number(row.targetPBNextYear) || 0), 0);
+  (rows || []).reduce((sum, row) => {
+    const value =
+      row?.targetPBNextYear ??
+      row?.target_pb_next_year ??
+      row?.target_performance_bonus_for_next_year ??
+      row?.target_performance_agreed ??
+      row?.target_pb_allocated_for_may ??
+      row?.target_pb_allocated ??
+      0;
+    const amount = Number(String(value ?? "").replace(/[₹,\\s]/g, ""));
+    return sum + (Number.isFinite(amount) ? amount : 0);
+  }, 0);
 
 // All screens must display the same saved allocation, even if the separate
 // employee-roster request failed. A demo number must never masquerade as budget.
@@ -121,8 +132,8 @@ export function BudgetStatsBar({
       />
       <Stat
         label="Budget Utilization incl. Target PB"
-        title="Consumed (Hikes + Bonuses) + Target PB for Next Year"
-        value={formatRupees(consumed + targetPB)}
+        title="Total of the Appraisal Sheet Target PB for Next Year column"
+        value={formatRupees(targetPB)}
       />
     </div>
   );
