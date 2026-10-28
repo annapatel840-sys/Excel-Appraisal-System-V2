@@ -312,7 +312,7 @@ export const COLUMNS = [
   },
   {
     key: "rbToBePaid",
-    label: "RB to be Paid",
+    label: "RB to be Paid this FY",
     type: "currency",
     editable: false,
     width: 120,
@@ -326,7 +326,7 @@ export const COLUMNS = [
   },
   {
     key: "pbToBePaid",
-    label: "PB to be Paid",
+    label: "PB to be Paid this FY",
     type: "currency",
     editable: false,
     width: 120,
@@ -370,14 +370,14 @@ export const COLUMNS = [
   },
   {
     key: "newRB",
-    label: "Retention Bonus (RB)",
+    label: "RB for This Year",
     type: "currency",
     editable: true,
     width: 145,
   },
   {
     key: "allocatedPBAmount",
-    label: "Performance Bonus (PB)",
+    label: "PB for This Year",
     type: "currency",
     editable: true,
     width: 155,
@@ -392,7 +392,7 @@ export const COLUMNS = [
   },
   {
     key: "targetPBAllocatedForMay",
-    label: "Target PB Set",
+    label: "Target PB Set Last Year",
     type: "currency",
     editable: false,
     width: 145,
@@ -532,7 +532,7 @@ export const COLUMNS = [
   },
   {
     key: "previousAppraisalTotalCtcWithRewards",
-    label: "Previous Total CTC Reward",
+    label: "Previous Total Rewards",
     type: "currency",
     editable: false,
     width: 170,

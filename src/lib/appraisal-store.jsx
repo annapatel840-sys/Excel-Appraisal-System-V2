@@ -2146,6 +2146,14 @@ export function AppraisalProvider({ children }) {
       keyByName.set(String(labelOf(column.key)).trim().toLowerCase(), column.key);
     });
 
+    // Audit entries saved before the column renames carry the old labels.
+    [
+      ["pb to be paid", "pbToBePaid"],
+      ["rb to be paid", "rbToBePaid"],
+      ["performance bonus (pb)", "allocatedPBAmount"],
+      ["retention bonus (rb)", "newRB"],
+    ].forEach(([name, key]) => keyByName.set(name, key));
+
     const fromAudit = {};
     (Array.isArray(audit) ? audit : []).forEach((entry) => {
       const rowId = rowIdByEmp.get(String(entry?.empId || "").trim());

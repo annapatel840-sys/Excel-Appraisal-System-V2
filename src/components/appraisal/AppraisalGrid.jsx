@@ -139,19 +139,20 @@ const FROZEN_KEYS = new Set(["name"]);
 // These columns sit straight after "Gross Margin", in this order. Everything
 // else keeps its existing order (before Gross Margin / after Hike%).
 const AFTER_GROSS_MARGIN_ORDER = [
-  "previousAppraisalTotalCtcWithRewards",
-  "targetPBAllocatedForMay",
-  "rbToBePaid",
-  "monthRB",
-  "newRB",
-  "pbToBePaid",
-  "monthPB",
-  "setTargetCriteria",
-  "allocatedPBAmount",
-  "pbInstallment",
+  "previousAppraisalTotalCtcWithRewards", // Previous Total Rewards
   "currentAnnualBasePay",
   "hikeAmount",
   "hikePct",
+  "newBaseSalary",
+  "pbToBePaid", // PB to be Paid this FY
+  "monthPB",
+  "targetPBAllocatedForMay", // Target PB Set Last Year
+  "setTargetCriteria", // Target Criteria Set
+  "allocatedPBAmount", // PB for This Year
+  "pbInstallment",
+  "rbToBePaid", // RB to be Paid this FY
+  "monthRB",
+  "newRB", // RB for This Year
 ];
 
 const DEFAULT_COLUMN_ORDER = (() => {
@@ -3368,11 +3369,16 @@ export function AppraisalGrid({
               cellRefs.current[`${rowIndex}:${col.key}`] = element;
             }}
             value={String(
-              row[col.key] !== null && row[col.key] !== undefined
+              row[col.key] !== null &&
+                row[col.key] !== undefined &&
+                row[col.key] !== ""
                 ? row[col.key]
                 : col.key === "eligibleForPromotion"
                   ? "No"
-                  : "",
+                  : // Instalment shows 1 until it is edited (display only).
+                    col.key === "pbInstallment"
+                    ? "1"
+                    : "",
             )}
             onFocus={() => {
               setActive(`${rowIndex}:${col.key}`);
