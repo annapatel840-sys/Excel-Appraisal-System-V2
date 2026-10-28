@@ -1571,7 +1571,16 @@ export function DetailScreenPage({
         currentCycleName,
         fallback:
           fbTab === "manager"
-            ? timeline.map((t) => ({
+            ? timeline
+                // Skip history years that have nothing to show (no title and
+                // no rating) so empty placeholder years do not appear.
+                .filter(
+                  (t) =>
+                    t.current ||
+                    t.rating !== "—" ||
+                    (t.title && t.title !== "—"),
+                )
+                .map((t) => ({
                 key: `sheet-${t.year}`,
                 cycleKey: cycleKey(t.year),
                 cycle: t.year,
