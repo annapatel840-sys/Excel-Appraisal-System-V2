@@ -1621,7 +1621,7 @@ app.post(
       });
     });
 
-    const t = ds.table(d.table);
+    const t = ds.table("74008000000036124");
     let deleted = 0,
       inserted = [];
     if (replace && existing.length) {
