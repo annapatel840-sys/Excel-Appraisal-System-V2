@@ -1019,27 +1019,40 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     // Delegation history must come from a closed prior-cycle payroll row,
     // never from the active-cycle upload fallback used for current payroll fields.
     const previousAssignmentPayroll = selectedPayrollSource?.row || null;
-    const assignmentCycleId = selectedPayrollSource?.cycle
-      ? cycleIdOf(selectedPayrollSource.cycle)
-      : "";
-    const assignmentHistoryRow = assignmentCycleId
-      ? appraisalHistoryRows
-          .filter((row) => {
-            const rowCycle = historyReference(
-              row?.cycle_id ?? row?.appraisal_cycle_id ?? row?.appraisal_cycle_name ?? row?.cycle_name,
-            );
-            if (rowCycle !== assignmentCycleId) return false;
-            const rowEmp = rowEmployeeKey(
-              row?.emp_id ?? row?.employee_id ?? row?.emp_code,
-              employeeMasterMap,
-            );
-            return rowEmp === empKey;
-          })
-          .sort((a, b) =>
-            String(b.MODIFIEDTIME || b.CREATEDTIME || b.ROWID || "")
-              .localeCompare(String(a.MODIFIEDTIME || a.CREATEDTIME || a.ROWID || ""), undefined, { numeric: true }),
-          )[0] || null
-      : null;
+    // Find the employee's latest archived/closed Appraisal_Sheet row before
+    // the active cycle. Do not require it to match the payroll row's cycle ID:
+    // legacy Appraisal_Sheet rows can store cycle names, IDs, or appraisal_year.
+    const assignmentHistoryRow = appraisalHistoryRows
+      .map((row) => {
+        const rawCycle = historyReference(
+          row?.cycle_id ?? row?.appraisal_cycle_id ?? row?.appraisal_cycle_name ??
+          row?.cycle_name ?? row?.appraisal_year ?? row?.appraisalYear,
+        );
+        const rowCycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
+        const rowEmp = rowEmployeeKey(
+          row?.emp_id ?? row?.employee_id ?? row?.emp_code,
+          employeeMasterMap,
+        );
+        const rowCycleStatus = rowCycle ? cycleStatusOf(rowCycle) : "";
+        const isClosed = rowCycle && (
+          rowCycle.archived === true ||
+          ["true", "1", "yes", "archived"].includes(String(rowCycle.archived ?? "").trim().toLowerCase()) ||
+          ["archived", "closed", "complete", "completed"].includes(rowCycleStatus)
+        );
+        return { row, rowCycle, rowEmp, isClosed };
+      })
+      .filter(({ rowCycle, rowEmp, isClosed }) =>
+        rowEmp === empKey &&
+        isClosed &&
+        rowCycle &&
+        cycleIdOf(rowCycle) !== currentCycleId &&
+        (!currentRank || historyCycleRank(rowCycle) < currentRank)
+      )
+      .sort((a, b) =>
+        historyCycleRank(b.rowCycle) - historyCycleRank(a.rowCycle) ||
+        String(b.row.MODIFIEDTIME || b.row.CREATEDTIME || b.row.ROWID || "")
+          .localeCompare(String(a.row.MODIFIEDTIME || a.row.CREATEDTIME || a.row.ROWID || ""), undefined, { numeric: true }),
+      )[0]?.row || null;
     const assignmentDisplay = (value) => {
       const raw = historyReference(value);
       if (!raw) return "";
@@ -1051,28 +1064,21 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       const name = String(master.emp_name || master.name || "").trim();
       return id && name ? id + " - " + name : name || id || raw;
     };
-    const previousCompManager = assignmentHistoryRow
-      ? assignmentDisplay(firstNonEmpty(assignmentHistoryRow, [
-          "comp_manager", "Comp_Manager", "comp_manager_name", "compManager",
-          "compensation_manager",
-        ]))
-      : previousAssignmentPayroll
-        ? assignmentDisplay(firstNonEmpty(previousAssignmentPayroll, [
-            "Comp_Manager", "comp_manager", "comp_manager_name", "compManager",
-            "compensation_manager",
-          ]))
-        : "";
-    const previousAppraiserTechEd = assignmentHistoryRow
-      ? assignmentDisplay(firstNonEmpty(assignmentHistoryRow, [
-          "appraiser_tech_ed1", "appraiser_tech_ed", "Tech_ED", "tech_ed",
-          "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name",
-        ]))
-      : previousAssignmentPayroll
-        ? assignmentDisplay(firstNonEmpty(previousAssignmentPayroll, [
-            "Tech_ED", "tech_ed", "appraiser_tech_ed", "appraiser_tech_ed1",
-            "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name",
-          ]))
-        : "";
+    const previousCompManager = assignmentDisplay(firstNonEmpty(
+      assignmentHistoryRow || previousAssignmentPayroll || {},
+      [
+        "comp_manager", "Comp_Manager", "comp_manager_name", "compManager",
+        "compensation_manager", "compManagerName",
+      ],
+    ));
+    const previousAppraiserTechEd = assignmentDisplay(firstNonEmpty(
+      assignmentHistoryRow || previousAssignmentPayroll || {},
+      [
+        "appraiser_tech_ed1", "appraiser_tech_ed", "Tech_ED", "tech_ed",
+        "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name",
+        "appraiser_tech_ed_name1",
+      ],
+    ));
     const currentFeedback = empKey ? currentFeedbackByEmployee.get(empKey)?.row : null;
     const feedbackValue = (...keys) => {
       for (const key of keys) {
