@@ -51,6 +51,7 @@ import { BudgetMasterPage } from "@/components/employee-master/BudgetMasterPage"
 import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
 import DelegationScreen from "@/components/employee-master/DelegationScreen";
 import AccessPage from "@/components/employee-master/AccessPage";
+import { HrDashboardPage } from "@/components/employee-master/HrDashboardPage";
 import { HrOperationsNav } from "@/components/employee-master/HrOperationsNav";
 import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
 
@@ -623,6 +624,8 @@ export function EmployeeMaster() {
     // Historical Import is for the HR role only; access rules cannot open it
     // to other roles.
     if (tab === "historical-import") return isRoleHR;
+    // HR Dashboard (dummy screen for now): HR only.
+    if (tab === "hr-dashboard") return isRoleHR;
     if (access.ok) {
       if (tab === "location-master") return isRoleHR && access.canScreen("cycleMaster", "edit");
       if (tab === "payroll-upload") return access.canScreen("payroll", "edit");
@@ -652,6 +655,7 @@ export function EmployeeMaster() {
   const initialTab = new URLSearchParams(window.location.search).get("tab");
   const allowedTabs = new Set(
     [
+      "hr-dashboard",
       "roster",
       "eligibility",
       "appraisal-cycle",
@@ -667,8 +671,10 @@ export function EmployeeMaster() {
       "access",
     ].filter(isTabVisible),
   );
-  // HR Operations opens on Access (when the user may see it).
-  const defaultTab = allowedTabs.has("access")
+  // HR Operations opens on the HR Dashboard (when the user may see it).
+  const defaultTab = allowedTabs.has("hr-dashboard")
+    ? "hr-dashboard"
+    : allowedTabs.has("access")
     ? "access"
     : allowedTabs.has("roster") || !allowedTabs.size
       ? "roster"
@@ -2232,14 +2238,6 @@ export function EmployeeMaster() {
           newValue: "Eligible",
         }),
       );
-      (result?.updatedRows || []).forEach((row) =>
-        addEligibilityAudit({
-          empId: row.empId,
-          employeeName: row.name,
-          oldValue: row.oldStatus || "",
-          newValue: row.newStatus || "",
-        }),
-      );
       (result?.removedRows || []).forEach((row) =>
         addEligibilityAudit({
           empId: row.empId,
@@ -2253,7 +2251,9 @@ export function EmployeeMaster() {
 
       showBanner(
         "Criteria applied",
-        `${result?.evaluated ?? 0} active employee(s) evaluated: ${result?.updated ?? 0} status(es) updated, ${result?.excluded ?? 0} marked Not Eligible. Employees remain visible in the list.`,
+        `${result?.evaluated ?? 0} employee(s) evaluated: ${result?.added ?? 0} added to the Eligibility List, ${result?.excluded ?? 0} left out by the criteria` +
+          `${result?.removed ? ` (${result.removed} removed from the list)` : ""}. ` +
+          "Use Add An Employee to include anyone who was left out.",
       );
     } catch (error) {
       showBanner(
@@ -2710,6 +2710,11 @@ export function EmployeeMaster() {
             }}
           >
             <DelegationScreen showRoleSwitch={false} />
+          </div>
+        )}
+        {isTabVisible("hr-dashboard") && activeTab === "hr-dashboard" && (
+          <div className="em-tab-content">
+            <HrDashboardPage />
           </div>
         )}
         {isTabVisible("access") && activeTab === "access" && (

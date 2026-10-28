@@ -4,7 +4,7 @@ import "./hr-ops-nav.css";
 
 /*
  * White sub-navigation for the HR Operations screen:
- *   Master ▾  |  Operation ▾  |  Access
+ *   HR Dashboard  |  Master ▾  |  Operation ▾  |  Access
  * The active entry reads "Group · Item" (e.g. "Master · Budget Master").
  * Only the tabs the user may open (isTabVisible) are listed.
  */
@@ -62,6 +62,19 @@ export function HrOperationsNav({ activeTab, isTabVisible, onSelect }) {
 
   return (
     <nav className="hrn" ref={rootRef} aria-label="HR Operations">
+      {isTabVisible("hr-dashboard") && (
+        <button
+          type="button"
+          className={`hrn-trigger${activeTab === "hr-dashboard" ? " active" : ""}`}
+          onClick={() => {
+            setOpenId(null);
+            onSelect("hr-dashboard");
+          }}
+        >
+          HR Dashboard
+        </button>
+      )}
+
       {groups.map((group) => {
         const activeItem = group.items.find(([tab]) => tab === activeTab);
         const open = openId === group.id;

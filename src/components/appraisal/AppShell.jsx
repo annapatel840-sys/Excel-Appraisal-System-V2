@@ -27,8 +27,8 @@ const TECH_ED_PATHS = [
   "/settings",
 ];
 
-// HR Operations is a plain link now; it opens on the Access tab.
-const HR_OPERATIONS_HOME = "/employee-master?tab=access";
+// HR Operations is a plain link now; it opens on the HR Dashboard tab.
+const HR_OPERATIONS_HOME = "/employee-master?tab=hr-dashboard";
 
 const HR_MENU_ITEMS = [
   ["Employee Master", "roster", "/employee-master?tab=roster"],

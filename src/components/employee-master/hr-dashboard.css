@@ -1,0 +1,37 @@
+/* HR Operations -> HR Dashboard (dummy screen). Everything is scoped to .hrd. */
+.hrd { font-family: var(--font-sans, "Manrope", ui-sans-serif, system-ui, sans-serif); color: #111827; font-size: 12.5px; background: #fff; border: 1px solid #e5e7eb; border-radius: 12px; padding: 14px 16px; }
+.hrd-note { background: #dcebff; border: 1px solid #b9d3f5; color: #1d4fa8; border-radius: 8px; padding: 7px 12px; margin-bottom: 12px; font-weight: 600; }
+.hrd-kp { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+.hrd-k { border: 1px solid #e5e7eb; border-left: 5px solid #2f6fed; border-radius: 8px; padding: 10px 14px; background: #fff; min-width: 0; }
+.hrd-k.am { border-left-color: #b7791f; background: #fef6e7; }
+.hrd-k.ok { border-left-color: #15803d; }
+.hrd-k small { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: #6b7280; }
+.hrd-k b { font-size: 22px; font-weight: 800; color: #102a43; }
+.hrd-k em { display: block; font-style: normal; color: #6b7280; font-size: 11.5px; margin-top: 2px; }
+.hrd-two { display: grid; grid-template-columns: 1fr 1.25fr; gap: 14px; margin-top: 12px; }
+.hrd-two-b { grid-template-columns: 1fr 1.25fr; }
+.hrd-sec { min-width: 0; }
+.hrd-chip { display: inline-block; background: #e6eef8; color: #102a43; border: 1px solid #c9d8ec; border-radius: 5px; font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 3px 9px; letter-spacing: .06em; margin-bottom: 8px; }
+.hrd-t { width: 100%; border-collapse: collapse; }
+.hrd-t th { background: #e6eef8; color: #102a43; font-size: 11px; font-weight: 700; text-align: left; padding: 7px 10px; border-bottom: 1px solid #c9d8ec; border-top: 1px solid #c9d8ec; }
+.hrd-t td { padding: 7px 10px; border-bottom: 1px solid #f0f1f3; font-size: 12.5px; }
+.hrd-t tbody tr:nth-child(odd) td { background: #fbfcfe; }
+.hrd-t tbody tr:nth-child(even) td { background: #f2f5f9; }
+.hrd-t td:first-child { background: #eef3fa !important; font-weight: 700; color: #102a43; }
+.hrd-t .n { text-align: right; font-variant-numeric: tabular-nums; }
+.hrd-pill { display: inline-block; border-radius: 5px; padding: 1px 8px; font-size: 11px; font-weight: 700; }
+.hrd-pill.p-b { background: #dcebff; color: #1d4fa8; }
+.hrd-pill.p-a { background: #fef6e7; color: #b7791f; }
+.hrd-pill.p-v { background: #ece7fb; color: #5b3fb0; }
+.hrd-pill.p-g { background: #ecfdf3; color: #15803d; }
+.hrd-sb { display: inline-block; width: 80px; height: 7px; background: #eef1f4; border-radius: 4px; vertical-align: middle; margin-right: 8px; overflow: hidden; }
+.hrd-sb i { display: block; height: 100%; background: #15803d; }
+.hrd-sb i.w { background: #b7791f; }
+.hrd-line { display: flex; margin: 8px 0 4px; }
+.hrd-line div { flex: 1; text-align: center; padding: 7px 0; font-size: 12px; font-weight: 600; background: #eef0f3; color: #6b7280; border-right: 2px solid #fff; }
+.hrd-line div.on { background: #27548a; color: #fff; font-weight: 800; }
+.hrd-pend { display: flex; gap: 18px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: #374151; }
+.hrd-pend b { color: #102a43; }
+.hrd-sm { border: 1px solid #d1d5db; background: #fff; border-radius: 6px; padding: 3px 10px; font-weight: 700; font-size: 11.5px; cursor: default; }
+.hrd-sm.go { background: #2f6fed; border-color: #2f6fed; color: #fff; }
+@media (max-width: 1100px) { .hrd-kp { grid-template-columns: repeat(2, 1fr); } .hrd-two, .hrd-two-b { grid-template-columns: 1fr; } }
