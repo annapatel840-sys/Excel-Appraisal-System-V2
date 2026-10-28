@@ -236,7 +236,7 @@ export default function DelegationScreen({
       // the working roster from the active cycle's eligible records when the
       // Appraisal Sheet has not yet been generated.
       const firstResponse = await catalystFetch(
-        EMPLOYEE_API_URL + "?page=1&limit=100&view=delegation",
+        EMPLOYEE_API_URL + "?page=1&limit=1000&view=delegation",
         { method: "GET", cache: "no-store" },
       );
       const first = await firstResponse.json();
@@ -247,7 +247,7 @@ export default function DelegationScreen({
       const totalPages = Math.max(1, Number(first.pagination?.totalPages || 1));
       for (let pageNo = 2; pageNo <= totalPages; pageNo += 1) {
         const response = await catalystFetch(
-          EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=100&view=delegation",
+          EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=1000&view=delegation",
           { method: "GET", cache: "no-store" },
         );
         const payload = await response.json();

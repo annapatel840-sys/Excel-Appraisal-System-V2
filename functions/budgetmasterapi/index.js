@@ -386,11 +386,63 @@ async function readBundle(app) {
   const distributionRows = await getAllRows(app, "Budget_Distribution");
   const compRows = await getAllRows(app, "Budget_Distribution_Comp");
 
+  const byRowId = (rows) =>
+    new Map(rows.map((row) => [idOf(row), row]).filter(([id]) => id));
   return {
     master: masterRows.map(mapMaster),
     techEd: distributionRows.map(mapDistribution),
     compManager: compRows.map(mapComp),
+    // Stored rows as read, so the recalculation can skip writes that would
+    // not change anything (see skipUnchangedWrites).
+    raw: {
+      master: byRowId(masterRows),
+      distribution: byRowId(distributionRows),
+      comp: byRowId(compRows),
+    },
   };
+}
+
+// Budget GET recalculates on every load. Writing back values that are already
+// stored costs one Data Store round trip per row; skip those updates.
+function sameStoredValue(stored, next) {
+  if (stored === next) return true;
+  const blank = (value) =>
+    value === null || value === undefined || String(value).trim() === "";
+  if (blank(stored) && blank(next)) return true;
+  if (blank(stored) || blank(next)) return false;
+  const a = Number(stored);
+  const b = Number(next);
+  if (Number.isFinite(a) && Number.isFinite(b)) {
+    return Math.abs(a - b) <= 1e-6 * Math.max(1, Math.abs(a), Math.abs(b));
+  }
+  return String(stored).trim() === String(next).trim();
+}
+
+function skipUnchangedWrites(table, rawById) {
+  if (!rawById) return table;
+  return new Proxy(table, {
+    get(target, prop) {
+      if (prop !== "updateRow") {
+        const member = target[prop];
+        return typeof member === "function" ? member.bind(target) : member;
+      }
+      return async (update) => {
+        const raw = rawById.get(String((update && update.ROWID) || ""));
+        const unchanged =
+          raw &&
+          Object.keys(update).every(
+            (key) =>
+              key === "ROWID" ||
+              (Object.prototype.hasOwnProperty.call(raw, key) &&
+                sameStoredValue(raw[key], update[key])),
+          );
+        if (unchanged) return { ...raw };
+        const saved = await target.updateRow(update);
+        if (raw) Object.assign(raw, update);
+        return saved;
+      };
+    },
+  });
 }
 
 function normalizedIdentity(raw) {
@@ -1991,9 +2043,14 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     return techAliasToKey.get(key) || key;
   };
 
-  const distributionTable = app.datastore().table(TABLES.distribution);
-  const compTable = app.datastore().table(TABLES.comp);
-  const masterTable = app.datastore().table(TABLES.master);
+  // Updates that would store the same values are skipped (no round trip).
+  const raw = bundle.raw || {};
+  const distributionTable = skipUnchangedWrites(
+    app.datastore().table(TABLES.distribution),
+    raw.distribution,
+  );
+  const compTable = skipUnchangedWrites(app.datastore().table(TABLES.comp), raw.comp);
+  const masterTable = skipUnchangedWrites(app.datastore().table(TABLES.master), raw.master);
   const [distributionColumns, compColumns, masterColumns] = await Promise.all([
     getColumnNames(distributionTable),
     getColumnNames(compTable),
@@ -2246,6 +2303,18 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
   for (const master of bundle.master) {
     const cycleId = String(master.appraisal_cycle_id || "").trim();
     if (!cycleId) continue;
+    // Only the Active cycle's budget is recalculated and saved. Closed and
+    // archived cycles keep the values stored while they were current; they
+    // used to be rewritten on every load with the Active cycle's roster.
+    const masterCycle = currentCycleFor(cycleId);
+    const masterCycleHidden = [true, 1, "true", "1", "yes"].includes(
+      typeof masterCycle?.hidden === "string"
+        ? masterCycle.hidden.trim().toLowerCase()
+        : masterCycle?.hidden,
+    );
+    // A cycle reference that matches no cycle row (legacy data) is still
+    // calculated as before.
+    if (masterCycle && (!isActiveCycle(masterCycle) || masterCycleHidden)) continue;
     const employees = employeesForBudgetCycle(cycleId);
     // Only employees eligible in THIS appraisal cycle participate in the
     // Appraisal Sheet and organization/Tech-ED budget bases. Changes in the

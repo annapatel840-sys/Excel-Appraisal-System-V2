@@ -4,12 +4,14 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { fetchAppraisalRoster } from "@/lib/employee-roster";
 
 const BudgetContext = createContext(null);
 
@@ -67,52 +69,13 @@ function ownerMatches(owner, identities) {
   );
 }
 
-const EMPLOYEE_PAGE_LIMIT = 100; // employeesapi caps limit at 100
-
+// Budget Distribution is also used by Tech-Ed accounts, which are not
+// authorized for the Employee Master screen, so the roster is the Appraisal
+// view (the signed-in user's normal appraisal scope). The request is shared
+// with the Appraisal Sheet store when both load at the same time.
 async function fetchAllEligibleEmployees() {
-  const employees = [];
-  let page = 1;
-  let totalPages = 1;
-  do {
-    const url = new URL(catalystFunctionUrl("employeesapi"));
-    url.searchParams.set("page", String(page));
-    url.searchParams.set("limit", String(EMPLOYEE_PAGE_LIMIT));
-    // Budget Distribution is also used by Tech-Ed accounts, which are not
-    // authorized for the Employee Master screen. Request the Appraisal view so
-    // employeesapi applies the signed-in user's normal appraisal scope instead
-    // of returning a transient 403 for this supplementary roster request.
-    url.searchParams.set("view", "appraisal");
-    url.searchParams.set("status", "all");
-    url.searchParams.set("eligible", "all");
-    url.searchParams.set("_ts", String(Date.now()));
-    const response = await catalystFetch(url.toString(), {
-      cache: "no-store",
-      headers: {
-        Accept: "application/json",
-        "Cache-Control": "no-cache",
-        Pragma: "no-cache",
-      },
-    });
-    let json = {};
-    try {
-      json = await response.json();
-    } catch (_) {
-      json = {};
-    }
-    if (!response.ok || (json && json.success === false)) {
-      throw new Error(
-        (json && json.message) ||
-          `Failed to load employees for budget counts (${response.status}).`,
-      );
-    }
-    employees.push(...(Array.isArray(json && json.data) ? json.data : []));
-    totalPages = Math.max(
-      1,
-      Number((json && json.pagination && json.pagination.totalPages) || 1),
-    );
-    page += 1;
-  } while (page <= totalPages);
-  return employees;
+  const roster = await fetchAppraisalRoster();
+  return roster.employees;
 }
 
 export function BudgetProvider({ children }) {
@@ -151,7 +114,7 @@ export function BudgetProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
+  const runLoad = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
@@ -342,6 +305,24 @@ export function BudgetProvider({ children }) {
       setLoading(false);
     }
   }, []);
+
+  // A full load (budget calculation + roster) is expensive. reload() from a
+  // screen that opens while a load started under 2 s ago (e.g. Budget Master
+  // opening during the first load) shares that load instead of starting a
+  // second one. Loads after a save or an update event always start fresh.
+  const loadRef = useRef(null);
+  const load = useCallback(() => {
+    const promise = runLoad().finally(() => {
+      if (loadRef.current && loadRef.current.promise === promise) loadRef.current = null;
+    });
+    loadRef.current = { startedAt: Date.now(), promise };
+    return promise;
+  }, [runLoad]);
+  const reloadShared = useCallback(() => {
+    const current = loadRef.current;
+    if (current && Date.now() - current.startedAt <= 2000) return current.promise;
+    return load();
+  }, [load]);
 
   useEffect(() => {
     load();
@@ -631,7 +612,7 @@ export function BudgetProvider({ children }) {
         totals,
         loading,
         error,
-        reload: load,
+        reload: reloadShared,
         updateBudget,
         hierarchy,
         eligibilityEvents,
