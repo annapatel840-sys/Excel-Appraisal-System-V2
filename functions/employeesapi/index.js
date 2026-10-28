@@ -1010,6 +1010,32 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const selectedPayrollSource = sameYearNewJoinerPayroll || priorAnnualPayroll;
     const selectedPayroll = selectedPayrollSource?.row || currentPayroll || null;
     const selectedPayrollCycle = selectedPayrollSource?.cycle || null;
+    // Delegation history must come from a closed prior-cycle payroll row,
+    // never from the active-cycle upload fallback used for current payroll fields.
+    const previousAssignmentPayroll = selectedPayrollSource?.row || null;
+    const assignmentDisplay = (value) => {
+      const raw = historyReference(value);
+      if (!raw) return "";
+      const direct = employeeMasterMap.get(raw) || employeeMasterMap.get(raw.toLowerCase());
+      const empId = raw.split(/\\s+-\\s+/)[0].trim().toLowerCase();
+      const master = direct || employeeMasterMap.get(empId);
+      if (!master) return raw;
+      const id = String(master.emp_id || "").trim();
+      const name = String(master.emp_name || master.name || "").trim();
+      return id && name ? id + " - " + name : name || id || raw;
+    };
+    const previousCompManager = previousAssignmentPayroll
+      ? assignmentDisplay(firstNonEmpty(previousAssignmentPayroll, [
+          "Comp_Manager", "comp_manager", "comp_manager_name", "compManager",
+          "compensation_manager",
+        ]))
+      : "";
+    const previousAppraiserTechEd = previousAssignmentPayroll
+      ? assignmentDisplay(firstNonEmpty(previousAssignmentPayroll, [
+          "Tech_ED", "tech_ed", "appraiser_tech_ed", "appraiser_tech_ed1",
+          "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name",
+        ]))
+      : "";
     const currentFeedback = empKey ? currentFeedbackByEmployee.get(empKey)?.row : null;
     const feedbackValue = (...keys) => {
       for (const key of keys) {
@@ -1146,6 +1172,15 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       previous_appraisal_total_ctc_with_rewards: previousCtc,
       Previous_Appraisal_total_CTC_with_rewards: previousCtc,
       previousAppraisalTotalCtcWithRewards: previousCtc,
+      // Previous assignment columns are shown separately on Delegation.
+      previous_comp_manager: previousCompManager,
+      previous_appraiser_tech_ed: previousAppraiserTechEd,
+      previous_tech_ed: previousAppraiserTechEd,
+      // When no current Comp Manager has been saved yet, carry forward the
+      // prior-cycle manager; a genuinely new employee falls back to Tech-ED.
+      delegation_comp_manager: String(employee.comp_manager || "").trim() ||
+        previousCompManager ||
+        String(employee.appraiser_tech_ed || "").trim(),
       current_annual_base_pay: payrollAnnualBasePay,
       // The date column is sourced from the archived cycle's effective_date,
       // never from stale demo values or the cycle-name label.
