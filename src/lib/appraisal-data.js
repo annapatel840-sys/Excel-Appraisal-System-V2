@@ -312,7 +312,7 @@ export const COLUMNS = [
   },
   {
     key: "rbToBePaid",
-    label: "RB to be Paid this FY",
+    label: "RB to be paid this FY",
     type: "currency",
     editable: false,
     width: 120,
@@ -326,7 +326,7 @@ export const COLUMNS = [
   },
   {
     key: "pbToBePaid",
-    label: "PB to be Paid this FY",
+    label: "PB to be paid this FY",
     type: "currency",
     editable: false,
     width: 120,
