@@ -792,11 +792,14 @@ function currentTotalCtc(row) {
 }
 
 async function enrichPreviousAppraisalValues(datastore, employees, employeeMasterMap) {
-  const [payrollRows, cycleRows, eligibilityRows, feedbackRows] = await Promise.all([
+  const [payrollRows, cycleRows, eligibilityRows, feedbackRows, appraisalHistoryRows] = await Promise.all([
     readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
     readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
     readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)).catch(() => []),
     readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)).catch(() => []),
+    // Delegation assignments are saved on Appraisal_Sheet, not guaranteed to
+    // exist in Payroll_Data. Read all cycle rows to recover prior assignments.
+    readAllDataStoreRows(datastore.table(EMPLOYEES_TABLE_ID)).catch(() => []),
   ]);
   const cycleIdOf = (cycle) => String(cycle?.ROWID ?? cycle?.rowid ?? cycle?.id ?? cycle?.ID ?? "").trim();
   const cycleStatusOf = (cycle) => String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "").trim().toLowerCase();
@@ -1013,6 +1016,27 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     // Delegation history must come from a closed prior-cycle payroll row,
     // never from the active-cycle upload fallback used for current payroll fields.
     const previousAssignmentPayroll = selectedPayrollSource?.row || null;
+    const assignmentCycleId = selectedPayrollSource?.cycle
+      ? cycleIdOf(selectedPayrollSource.cycle)
+      : "";
+    const assignmentHistoryRow = assignmentCycleId
+      ? appraisalHistoryRows
+          .filter((row) => {
+            const rowCycle = historyReference(
+              row?.cycle_id ?? row?.appraisal_cycle_id ?? row?.appraisal_cycle_name ?? row?.cycle_name,
+            );
+            if (rowCycle !== assignmentCycleId) return false;
+            const rowEmp = rowEmployeeKey(
+              row?.emp_id ?? row?.employee_id ?? row?.emp_code,
+              employeeMasterMap,
+            );
+            return rowEmp === empKey;
+          })
+          .sort((a, b) =>
+            String(b.MODIFIEDTIME || b.CREATEDTIME || b.ROWID || "")
+              .localeCompare(String(a.MODIFIEDTIME || a.CREATEDTIME || a.ROWID || ""), undefined, { numeric: true }),
+          )[0] || null
+      : null;
     const assignmentDisplay = (value) => {
       const raw = historyReference(value);
       if (!raw) return "";
@@ -1024,18 +1048,28 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       const name = String(master.emp_name || master.name || "").trim();
       return id && name ? id + " - " + name : name || id || raw;
     };
-    const previousCompManager = previousAssignmentPayroll
-      ? assignmentDisplay(firstNonEmpty(previousAssignmentPayroll, [
-          "Comp_Manager", "comp_manager", "comp_manager_name", "compManager",
+    const previousCompManager = assignmentHistoryRow
+      ? assignmentDisplay(firstNonEmpty(assignmentHistoryRow, [
+          "comp_manager", "Comp_Manager", "comp_manager_name", "compManager",
           "compensation_manager",
         ]))
-      : "";
-    const previousAppraiserTechEd = previousAssignmentPayroll
-      ? assignmentDisplay(firstNonEmpty(previousAssignmentPayroll, [
-          "Tech_ED", "tech_ed", "appraiser_tech_ed", "appraiser_tech_ed1",
+      : previousAssignmentPayroll
+        ? assignmentDisplay(firstNonEmpty(previousAssignmentPayroll, [
+            "Comp_Manager", "comp_manager", "comp_manager_name", "compManager",
+            "compensation_manager",
+          ]))
+        : "";
+    const previousAppraiserTechEd = assignmentHistoryRow
+      ? assignmentDisplay(firstNonEmpty(assignmentHistoryRow, [
+          "appraiser_tech_ed1", "appraiser_tech_ed", "Tech_ED", "tech_ed",
           "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name",
         ]))
-      : "";
+      : previousAssignmentPayroll
+        ? assignmentDisplay(firstNonEmpty(previousAssignmentPayroll, [
+            "Tech_ED", "tech_ed", "appraiser_tech_ed", "appraiser_tech_ed1",
+            "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name",
+          ]))
+        : "";
     const currentFeedback = empKey ? currentFeedbackByEmployee.get(empKey)?.row : null;
     const feedbackValue = (...keys) => {
       for (const key of keys) {
