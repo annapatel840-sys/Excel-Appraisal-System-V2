@@ -101,7 +101,8 @@ async function setup() {
     const c = await mk('Annual NEW');
     const r = await post('cycles/status/' + c.id, { status: 'Active' });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    assert.strictEqual(elig.rows.length, 0);
+    assert.strictEqual(elig.rows.length, 2);
+    assert.ok(elig.rows.every((x) => x.eligibility_status === 'Eligible'));
     const ap = await apply(post, c.id);
     assert.strictEqual(ap.status, 200, JSON.stringify(ap.json));
     assert.strictEqual(elig.rows.length, 2);
@@ -131,7 +132,8 @@ async function setup() {
     assert.strictEqual(elig.rows.length, 0);
     const b = await mk('Annual B');
     assert.strictEqual((await post('cycles/status/' + b.id, { status: 'Active' })).status, 200);
-    assert.strictEqual(elig.rows.length, 0);
+    assert.strictEqual(elig.rows.length, 2);
+    assert.ok(elig.rows.every((x) => x.eligibility_status === 'Eligible'));
     assert.strictEqual((await apply(post, b.id)).status, 200);
     assert.strictEqual(elig.rows.length, 2);
   });
@@ -143,7 +145,8 @@ async function setup() {
     await apply(post, a.id);
     await post('cycles/status/' + a.id, { status: 'Closed' });
     assert.strictEqual((await post('cycles/status/' + a.id, { status: 'Active' })).status, 200);
-    assert.strictEqual(elig.rows.length, 0);
+    assert.strictEqual(elig.rows.length, 2);
+    assert.ok(elig.rows.every((x) => x.eligibility_status === 'Eligible'));
   });
 
   await t('cancelling an Active cycle empties its eligibility rows', async () => {
