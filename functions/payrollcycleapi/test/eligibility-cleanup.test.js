@@ -110,7 +110,7 @@ async function setup() {
   });
 
   await t('first Eligibility List load seeds Active employees as Eligible', async () => {
-    const { post, mk, elig } = await setup();
+    const { post, mk, api, elig } = await setup();
     const a = await mk('Annual A');
     const r = await post('cycles/status/' + a.id, { status: 'Active' });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
@@ -138,7 +138,7 @@ async function setup() {
     assert.strictEqual(elig.rows.length, 2);
   });
 
-  await t('reopening a closed cycle starts with an empty list again', async () => {
+  await t('reopening a closed cycle resets the list to initial Eligible rows', async () => {
     const { post, mk, elig } = await setup();
     const a = await mk('Annual A');
     await post('cycles/status/' + a.id, { status: 'Active' });
