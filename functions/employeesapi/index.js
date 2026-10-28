@@ -1826,6 +1826,22 @@ async function getEmployees(req, res) {
      LOAD EMPLOYEES
      ========================================================== */
 
+  // Appraisal_Sheet, the cycle tables and Employee_Master are independent
+  // reads: start them together instead of one after another. Employee_Master
+  // is read once and reused below. The no-op catches only stop an early
+  // failure from being reported as unhandled; each promise is awaited (and
+  // throws) where it is used.
+  const isCycleView = requestedView !== "master" && requestedView !== "eligibility";
+  const employeeMasterPromise = getAllEmployeeMaster(datastore);
+  employeeMasterPromise.catch(() => {});
+  const cycleReadsPromise = isCycleView
+    ? Promise.all([
+      readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
+      readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)).catch(() => []),
+    ])
+    : null;
+  if (cycleReadsPromise) cycleReadsPromise.catch(() => {});
+
   let appraisalRows = await getAllEmployees(datastore);
 
   // Appraisal view must be isolated to the one active cycle. Appraisal_Sheet
@@ -1834,11 +1850,8 @@ async function getEmployees(req, res) {
   // remain full-roster views and are not cycle-filtered. Eligibility List
   // decisions update matching sheet rows, but an ID mismatch must not remove
   // an otherwise valid generated row from the active sheet.
-  if (requestedView !== "master" && requestedView !== "eligibility") {
-    const [cycleRows, cycleEligibilityRows] = await Promise.all([
-      readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
-      readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)).catch(() => []),
-    ]);
+  if (isCycleView) {
+    const [cycleRows, cycleEligibilityRows] = await cycleReadsPromise;
     const activeCycle = cycleRows.find((cycle) => {
       const status = String(
         cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "",
@@ -1944,7 +1957,7 @@ async function getEmployees(req, res) {
           if (masterId) onSheet.add("row:" + masterId);
           if (empId) onSheet.add("emp:" + empId);
         });
-        const masterForEligibility = await getAllEmployeeMaster(datastore);
+        const masterForEligibility = await employeeMasterPromise;
         const masterByRowId = new Map(masterForEligibility.map(function (row) {
           return [String(row.ROWID || row.rowid || "").trim().toLowerCase(), row];
         }));
@@ -1997,7 +2010,7 @@ async function getEmployees(req, res) {
      LOAD EMPLOYEE MASTER
      ========================================================== */
 
-  const employeeMasterRows = await getAllEmployeeMaster(datastore);
+  const employeeMasterRows = await employeeMasterPromise;
 
   const employeeMasterMap = buildEmployeeMasterMap(employeeMasterRows);
 

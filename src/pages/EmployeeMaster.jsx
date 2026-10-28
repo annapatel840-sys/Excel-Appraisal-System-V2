@@ -5,7 +5,7 @@ import { AppShell } from "@/components/appraisal/AppShell";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
-import { useAppraisal } from "@/lib/appraisal-store";
+import { useAppraisalRefresh } from "@/lib/appraisal-store";
 import { HrConfigPage } from "@/components/employee-master/HrConfigPage";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
 
@@ -601,7 +601,7 @@ function AuditHistoryPanel({ open, title, description, entries, onClose }) {
 
 export function EmployeeMaster() {
   const catalystUser = useCatalystUser();
-  const { refreshEmployees } = useAppraisal();
+  const { refreshEmployees } = useAppraisalRefresh();
   const role = String(catalystUser?.role || "")
     .trim()
     .toLowerCase()

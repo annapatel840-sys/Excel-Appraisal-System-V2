@@ -14,8 +14,8 @@ import { loadFeedbackRating } from "./feedback-rating-api";
 import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 import { useCatalystUser } from "./catalyst-auth";
 import { getViewAsSelected, useViewAs } from "./view-as-store";
-import { payrollCycleRequest } from "./payroll-cycle-api";
-import { fetchAppraisalRoster, isActiveEligible } from "./employee-roster";
+import { invalidatePayrollCycleReads, payrollCycleRequest } from "./payroll-cycle-api";
+import { fetchAppraisalRoster, invalidateEmployeeRoster, isActiveEligible } from "./employee-roster";
 
 const CURRENT_USER = "Unknown user";
 // Set from Appraisal_Cycle_Master before loading or saving current-cycle data.
@@ -1070,6 +1070,18 @@ export function AppraisalProvider({ children }) {
 
   const loadSeqRef = useRef(0);
 
+  // The provider wraps every screen, but only screens that read appraisal
+  // data (useAppraisal) need it. Nothing loads until the first such screen
+  // mounts; screens that only call refreshEmployees (useAppraisalRefresh)
+  // do not trigger a load.
+  const [dataWanted, setDataWanted] = useState(false);
+  const dataWantedRef = useRef(false);
+  const requestData = useCallback(() => {
+    if (dataWantedRef.current) return;
+    dataWantedRef.current = true;
+    setDataWanted(true);
+  }, []);
+
   const [audit, setAudit] = useState(() => readLocalAuditTrail());
 
   // Browser-local fallback makes the audit trail survive refreshes even when
@@ -1112,10 +1124,27 @@ export function AppraisalProvider({ children }) {
       setLoading(true);
       setError("");
 
-      // Resolve the cycle first. No Active cycle means the working Appraisal
-      // Sheet and its local audit trail are empty; archived payroll/history stay
+      // The cycle list, the roster and Feedback are independent requests, so
+      // they run together. No Active cycle means the working Appraisal Sheet
+      // and its local audit trail are empty; archived payroll/history stay
       // stored and are not used as a fallback for current-cycle data.
-      const cycles = await payrollCycleRequest("cycles");
+      // Only active-cycle employees explicitly marked Eligible appear here.
+      // Employee Master and Payroll remain separate persistent data sources.
+      // The full roster request is shared with the Budget store; the same
+      // status=active / eligible=eligible rule employeesapi applies is applied
+      // here (counts are the unfiltered scope counts either way).
+      // Manager Rating comes from the Feedback_And_Rating table (current
+      // cycle). If that table cannot be read, the sheet still loads.
+      const [cycles, roster, feedback] = await Promise.all([
+        payrollCycleRequest("cycles"),
+        fetchAppraisalRoster({ viewAs: getViewAsSelected() }),
+        loadCurrentCycleFeedback(),
+      ]);
+
+      if (requestId !== loadSeqRef.current) {
+        return;
+      }
+
       const activeCycle = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
         const status = String(cycle?.status ?? cycle?.cycle_status ?? "").trim().toLowerCase();
         const archived = [true, 1, "true", "1", "yes"].includes(
@@ -1133,30 +1162,12 @@ export function AppraisalProvider({ children }) {
       }
       setAudit((previous) => currentCycleAudit(previous));
 
-      // Only active-cycle employees explicitly marked Eligible appear here.
-      // Employee Master and Payroll remain separate persistent data sources.
-      // The full roster request is shared with the Budget store; the same
-      // status=active / eligible=eligible rule employeesapi applies is applied
-      // here (counts are the unfiltered scope counts either way).
-      const roster = await fetchAppraisalRoster({ viewAs: getViewAsSelected() });
       const result = {
         employees: roster.employees.filter(isActiveEligible),
         counts: roster.counts,
         pagination: roster.pagination,
       };
-
-      if (requestId !== loadSeqRef.current) {
-        return;
-      }
-
-      // Manager Rating comes from the Feedback_And_Rating table (current
-      // cycle). If that table cannot be read, the sheet still loads.
-      const feedback = await loadCurrentCycleFeedback();
       const ratingByEmp = feedback ? feedback.ratings : null;
-
-      if (requestId !== loadSeqRef.current) {
-        return;
-      }
 
       const employees = mergePendingCells(
         result.employees.map(mapCatalystEmployee).map((employee) => ({
@@ -1216,24 +1227,30 @@ export function AppraisalProvider({ children }) {
   ========================================================== */
 
   useEffect(() => {
+    if (!dataWanted) return undefined;
     loadEmployees();
 
     return () => {
       // Invalidate the in-flight load.
       loadSeqRef.current += 1;
     };
-  }, [loadEmployees]);
+  }, [loadEmployees, dataWanted]);
 
   useEffect(() => {
+    // Before any screen has asked for appraisal data there is nothing to
+    // refresh; the first load reads current data anyway.
     const refreshAfterPayrollChange = async () => {
+      if (!dataWantedRef.current) return;
       await loadEmployees();
       await refreshAuditHistory();
     };
     const refreshAfterFeedbackChange = async () => {
+      if (!dataWantedRef.current) return;
       await loadEmployees();
       await refreshAuditHistory();
     };
     const refreshAfterCycleChange = async () => {
+      if (!dataWantedRef.current) return;
       // Clear the prior cycle synchronously before querying the new status.
       APPRAISAL_YEAR = "";
       updateRows(() => []);
@@ -1296,6 +1313,7 @@ export function AppraisalProvider({ children }) {
   ========================================================== */
 
   useEffect(() => {
+    if (!dataWanted) return undefined;
     let cancelled = false;
 
     const loadAudit = async () => {
@@ -1360,7 +1378,7 @@ export function AppraisalProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dataWanted]);
 
   /* ==========================================================
   REJECT FIELDS WITH NO DATABASE COLUMN
@@ -2009,7 +2027,12 @@ export function AppraisalProvider({ children }) {
   REFRESH EMPLOYEES
   ========================================================== */
 
+  // An explicit refresh always reads from the server, never a shared copy.
+  // Before any screen has loaded appraisal data there is nothing to refresh.
   const refreshEmployees = useCallback(async () => {
+    if (!dataWantedRef.current) return;
+    invalidateEmployeeRoster();
+    invalidatePayrollCycleReads();
     await loadEmployees();
   }, [loadEmployees]);
 
@@ -2155,6 +2178,7 @@ export function AppraisalProvider({ children }) {
       appraisalHistoryFor,
       refreshEmployees,
       refreshAuditHistory,
+      requestData,
     }),
     [
       rows,
@@ -2173,6 +2197,7 @@ export function AppraisalProvider({ children }) {
       appraisalHistoryFor,
       refreshEmployees,
       refreshAuditHistory,
+      requestData,
     ],
   );
 
@@ -2186,12 +2211,30 @@ export function AppraisalProvider({ children }) {
 HOOK
 ============================================================ */
 
+// Reading appraisal data starts the provider's load (once).
 export function useAppraisal() {
   const ctx = useContext(AppraisalContext);
+  const requestData = ctx?.requestData;
+
+  useEffect(() => {
+    if (requestData) requestData();
+  }, [requestData]);
 
   if (!ctx) {
     throw new Error("useAppraisal must be used inside AppraisalProvider");
   }
 
   return ctx;
+}
+
+// For screens that only refresh appraisal data after their own saves:
+// returns refreshEmployees without starting a load.
+export function useAppraisalRefresh() {
+  const ctx = useContext(AppraisalContext);
+
+  if (!ctx) {
+    throw new Error("useAppraisalRefresh must be used inside AppraisalProvider");
+  }
+
+  return { refreshEmployees: ctx.refreshEmployees };
 }

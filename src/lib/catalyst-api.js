@@ -19,6 +19,26 @@ export function catalystFunctionUrl(functionName) {
   return `${FUNCTIONS_BASE_URL.replace(/\/+$/, "")}/${functionName}/`;
 }
 
+// Read caches (cycle list, eligibility, employee roster) register here and are
+// cleared whenever any request other than GET/HEAD is sent through
+// catalystFetch, so a read after a save never reuses data from before it.
+const writeListeners = new Set();
+
+export function onCatalystWrite(listener) {
+  writeListeners.add(listener);
+  return () => writeListeners.delete(listener);
+}
+
+function notifyWrite() {
+  writeListeners.forEach((listener) => {
+    try {
+      listener();
+    } catch (error) {
+      console.error("Read cache invalidation failed:", error);
+    }
+  });
+}
+
 function notifySessionExpired() {
   window.dispatchEvent(new Event(CATALYST_SESSION_EXPIRED_EVENT));
 }
@@ -59,11 +79,22 @@ export async function catalystFetch(input, options = {}) {
   const headers = new Headers(options.headers);
   headers.set("Authorization", authResponse.access_token);
 
-  const response = await fetch(input, {
-    ...options,
-    credentials: "include",
-    headers,
-  });
+  const method = String(options.method || "GET").toUpperCase();
+  const isWrite = method !== "GET" && method !== "HEAD";
+  if (isWrite) notifyWrite();
+
+  let response;
+  try {
+    response = await fetch(input, {
+      ...options,
+      credentials: "include",
+      headers,
+    });
+  } finally {
+    // Clear again once the write has landed: a read that started during the
+    // write must not be shared with callers that come after it.
+    if (isWrite) notifyWrite();
+  }
 
   if (response.status === 401) notifySessionExpired();
 
