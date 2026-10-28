@@ -4,6 +4,7 @@ import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
 import { useViewAs, managerIdentityMatches, currentUserMatchesManager } from "@/lib/view-as-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { splitStamp } from "@/lib/budget-audit-local";
 
 /* Budget Distribution uses persisted Budget_Distribution and
    Budget_Distribution_Comp rows. The prior UI-only sample allocations have
@@ -94,14 +95,10 @@ const employeeUtilized = (employee) => {
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 function dateText(iso) {
   const p = String(iso || "").slice(0, 10).split("-");
-  return p.length === 3 && MONTHS[Number(p[1]) - 1] ? p[2] + "-" + MONTHS[Number(p[1]) - 1] : iso || "—";
+  return p.length === 3 && MONTHS[Number(p[1]) - 1] ? p[2] + "-" + MONTHS[Number(p[1]) - 1] + "-" + p[0] : iso || "—";
 }
-function nowParts() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, "0");
-  return { date: d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()), time: pad(d.getHours()) + ":" + pad(d.getMinutes()) };
-}
-const byDate = (a, b) => String(a.date + (a.time || "")).localeCompare(String(b.date + (b.time || "")));
+const byDate = (a, b) => String((a.date || "") + (a.time || "")).localeCompare(String((b.date || "") + (b.time || "")));
+const stampText = (x) => (x && x.date ? dateText(x.date) + (x.time ? " " + x.time : "") : "—");
 
 function Chg({ d }) {
   if (Math.abs(d) < 1) return <span className="mut">No change</span>;
@@ -138,12 +135,12 @@ function AuditTable({ list, showName }) {
         <tbody>
           {list.map((x, i) => (
             <tr key={i}>
-              <td>{dateText(x.date) + (x.time ? " " + x.time : "")}</td>
+              <td>{stampText(x)}</td>
               {showName && <td style={{ fontWeight: 700 }}>{x.name}</td>}
-              <td className="n">{x.from === null ? "—" : x.from + "%"}</td>
-              <td className="n" style={{ fontWeight: 700 }}>{x.to}%</td>
-              <td className="n">{x.before === null ? "—" : lakh(x.before)}</td>
-              <td className="n">{lakh(x.after)}</td>
+              <td className="n">{x.from == null ? "—" : x.from + "%"}</td>
+              <td className="n" style={{ fontWeight: 700 }}>{x.to == null ? "—" : x.to + "%"}</td>
+              <td className="n">{x.before == null ? "—" : lakh(x.before)}</td>
+              <td className="n">{x.after == null ? "—" : lakh(x.after)}</td>
               <td>{x.by}</td>
               <td>{x.reason || "—"}</td>
             </tr>
@@ -166,6 +163,7 @@ export function TechEdBudgetDistribution() {
     techEdOwners = [],
     totals: sharedBudgetTotals,
     updateBudget,
+    budgetAuditLog = [],
     loading: budgetLoading,
     error: budgetError,
   } = useBudget();
@@ -412,36 +410,15 @@ export function TechEdBudgetDistribution() {
   const [err, setErr] = useState("");
   const [auditFilter, setAuditFilter] = useState("all");
   const [drafts, setDrafts] = useState({});
-  const auditStorageKey = liveTech
-    ? "appraisal-budget-audit:" + String(liveTech.appraisal_cycle_id) + ":" + ownerKey(liveTech.appraiser_tech_ed_id)
-    : "";
-  const [auditState, setAuditState] = useState({ key: "", entries: [] });
-  const log = auditState.key === auditStorageKey ? auditState.entries : [];
-
-  useEffect(() => {
-    if (!auditStorageKey) {
-      setAuditState({ key: "", entries: [] });
-      return;
-    }
-    let entries = [];
-    try {
-      const saved = window.localStorage.getItem(auditStorageKey);
-      const parsed = saved ? JSON.parse(saved) : [];
-      entries = Array.isArray(parsed) ? parsed : [];
-    } catch (storageError) {
-      console.error("Could not read the Budget Distribution audit trail:", storageError);
-    }
-    setAuditState({ key: auditStorageKey, entries });
-  }, [auditStorageKey]);
-
-  useEffect(() => {
-    if (!auditStorageKey || auditState.key !== auditStorageKey) return;
-    try {
-      window.localStorage.setItem(auditStorageKey, JSON.stringify(auditState.entries));
-    } catch (storageError) {
-      console.error("Could not save the Budget Distribution audit trail:", storageError);
-    }
-  }, [auditStorageKey, auditState]);
+  // Audit trail comes from the browser-side budget audit (budget-store.jsx),
+  // limited to this Tech-ED's own row and the Comp Manager rows under it.
+  const log = useMemo(() => {
+    if (!liveTech) return [];
+    const techId = String(liveTech.id);
+    return budgetAuditLog.filter((entry) =>
+      (entry.level === "techEd" && String(entry.rowId) === techId) ||
+      (entry.level === "comp" && String(entry.parentId) === techId));
+  }, [budgetAuditLog, liveTech]);
 
   const cmNodes = useMemo(() => {
     if (!activeCycleId || !techOwnerKey) return [];
@@ -545,11 +522,20 @@ export function TechEdBudgetDistribution() {
       const original = num(live.calculated_budget);
       const updated = num(live.applied_budget);
       const managerName = String(stats.name || resolvedName || "Unassigned Comp Manager").trim();
-      const managerLog = log.filter((entry) => ownerKey(resolveManager(entry.name)) === ownerKey(managerName));
+      const managerLog = live.id
+        ? log.filter((entry) => entry.level === "comp" && String(entry.rowId) === String(live.id)).sort(byDate)
+        : [];
+      const savedAt = live.updated_at || live.created_at || "";
+      const baseStamp = splitStamp(live.created_at || live.updated_at || "");
       const history = [
-        { date: "", amount: original, team: stats.count, pct },
-        ...managerLog.map((entry) => ({ date: entry.date, amount: num(entry.after), team: stats.count, pct: num(entry.to) })),
+        {
+          date: baseStamp.date, time: baseStamp.time, amount: original, team: stats.count,
+          pct: managerLog.length && managerLog[0].from != null ? num(managerLog[0].from) : pct,
+        },
+        ...managerLog.map((entry) => ({ date: entry.date, time: entry.time, amount: num(entry.after), team: stats.count, pct: num(entry.to) })),
       ];
+      const lastEntry = managerLog.length ? managerLog[managerLog.length - 1] : null;
+      const lastStamp = lastEntry ? { date: lastEntry.date, time: lastEntry.time } : splitStamp(savedAt);
       return {
         name: managerName,
         pct, pct0: pct, base,
@@ -567,7 +553,10 @@ export function TechEdBudgetDistribution() {
         original, updated, liveId: live.id,
         liveCalculated: original, liveApplied: updated,
         liveUtilized: stats.utilized,
-        lastChanged: managerLog.length ? managerLog[managerLog.length - 1].date : "",
+        lastChanged: lastStamp.date,
+        lastChangedTime: lastStamp.time,
+        logCount: managerLog.length,
+        savedAt,
         history,
       };
     });
@@ -649,23 +638,45 @@ export function TechEdBudgetDistribution() {
   const usedPct = myUpdated ? (used / myUpdated) * 100 : 0;
   const over = usedPct > 100;
 
-  // Tech ED history: own budget per date, rolled up with the Comp Managers.
-  const myHistory = useMemo(() => [{
-    date: "", allocated: myOriginal, updated: myUpdated, team: team0,
-    allotted, buffer: myUpdated - allotted,
-  }], [myOriginal, myUpdated, team0, allotted]);
+  // Tech ED history: newest first. The latest row carries today's roll-up;
+  // older rows come from the audit trail (amount after each change).
+  const myHistory = useMemo(() => {
+    const mine = log.filter((entry) => entry.level === "techEd").sort((a, b) => byDate(b, a));
+    const saved = splitStamp(liveTech?.updated_at || liveTech?.created_at || "");
+    const current = {
+      date: mine.length ? mine[0].date : saved.date,
+      time: mine.length ? mine[0].time : saved.time,
+      allocated: myOriginal, updated: myUpdated, team: team0,
+      allotted, buffer: myUpdated - allotted,
+    };
+    const older = mine.slice(1).map((entry) => ({
+      date: entry.date, time: entry.time, allocated: myOriginal, updated: entry.after,
+      team: team0, allotted: null, buffer: null,
+    }));
+    return [current, ...older];
+  }, [log, liveTech, myOriginal, myUpdated, team0, allotted]);
 
   const auditFor = (names) => {
     const out = [];
-    names.forEach((name) => {
-      if (name === myName && liveTech) {
-        out.push({ date: "", time: "", name, from: null, to: myPct, before: null, after: myOriginal, by: "Data Store", reason: "Current saved allocation" });
-        return;
+    if (liveTech && names.includes(myName)) {
+      const mine = log.filter((entry) => entry.level === "techEd").map((entry) => ({ ...entry, name: myName }));
+      if (mine.length) out.push(...mine);
+      else {
+        const saved = splitStamp(liveTech.updated_at || liveTech.created_at || "");
+        out.push({ date: saved.date, time: saved.time, name: myName, from: null, to: myPct, before: null, after: myOriginal, by: "Data Store", reason: "Current saved allocation" });
       }
-      const node = cmNodes.find((item) => item.name === name);
-      if (node) out.push({ date: "", time: "", name, from: null, to: node.pct0, before: null, after: node.original, by: "Data Store", reason: "Current saved allocation" });
+    }
+    cmNodes.forEach((node) => {
+      if (!names.includes(node.name)) return;
+      const mine = node.liveId
+        ? log.filter((entry) => entry.level === "comp" && String(entry.rowId) === String(node.liveId)).map((entry) => ({ ...entry, name: node.name }))
+        : [];
+      if (mine.length) out.push(...mine);
+      else {
+        const saved = splitStamp(node.savedAt);
+        out.push({ date: saved.date, time: saved.time, name: node.name, from: null, to: node.pct0, before: null, after: node.original, by: "Data Store", reason: "Current saved allocation" });
+      }
     });
-    log.forEach((entry) => { if (names.includes(entry.name)) out.push(entry); });
     return out.sort((a, b) => byDate(b, a));
   };
 
@@ -694,7 +705,6 @@ export function TechEdBudgetDistribution() {
       );
       return;
     }
-    const t = nowParts();
     if (!liveTech?.id) {
       setErr("Your Tech-Ed budget allocation is not saved yet, so Comp Manager budgets cannot be allotted.");
       return;
@@ -709,19 +719,13 @@ export function TechEdBudgetDistribution() {
         calculated_budget: nextOriginal,
         applied_budget: newUpd,
         comp_manager: name,
+        audit_reason: reason.trim(),
         ...(node.liveId ? {} : { budget_distribution_id: liveTech.id }),
       }, "comp");
     } catch (error) {
       setErr(error.message || "Failed to save Comp Manager budget.");
       return;
     }
-    setAuditState((state) => ({
-      key: auditStorageKey,
-      entries: [
-        ...(state.key === auditStorageKey ? state.entries : []),
-        { name, from: node.pct, to, by: myName, date: t.date, time: t.time, before: node.updated, after: newUpd, reason: reason.trim() },
-      ],
-    }));
     setReason("");
     setErr("");
   }
@@ -767,7 +771,14 @@ export function TechEdBudgetDistribution() {
         </span>
         <span className="sep" />
         <span className="applied">
-          {isCompManagerPreview ? "Comp Manager allocation" : "Budget applied by HR"}: <b>{hasLiveAllocation ? myPct + "%" : "—"}</b> = <b>{hasLiveAllocation ? lakh(myUpdated) : "—"}</b> updated · original{" "}
+          {isCompManagerPreview ? "Comp Manager allocation" : "Budget applied by HR"}:{" "}
+          {/* Comp Managers see the amount only, never the allocation percentage. */}
+          {!isCompManagerPreview && (
+            <>
+              <b>{hasLiveAllocation ? myPct + "%" : "—"}</b> ={" "}
+            </>
+          )}
+          <b>{hasLiveAllocation ? lakh(myUpdated) : "—"}</b> updated · original{" "}
           {hasLiveAllocation ? lakh(myOriginal) : "—"}
           {!isCompManagerPreview && hasLiveAllocation ? (
             <button type="button" className="dd" aria-expanded={appliedOpen} onClick={() => setAppliedOpen((v) => !v)}>
@@ -893,7 +904,7 @@ export function TechEdBudgetDistribution() {
                         title={(selfOpen ? "Hide" : "Show") + " budget history"}
                         onClick={() => setTrailOpen((t) => ({ ...t, [myName]: !t[myName] }))}
                       >
-                        {dateText(myHistory[myHistory.length - 1].date)} {selfOpen ? "▴" : "▾"}
+                        {dateText(myHistory[0].date)} {selfOpen ? "▴" : "▾"}
                       </button>
                     </td>
                     <td className="r">
@@ -915,14 +926,14 @@ export function TechEdBudgetDistribution() {
                             </tr>
                           </thead>
                           <tbody>
-                            {myHistory.map((x) => (
-                              <tr key={x.date}>
-                                <td>{dateText(x.date)}</td>
+                            {myHistory.map((x, i) => (
+                              <tr key={i}>
+                                <td>{stampText(x)}</td>
                                 <td className="n">{lakh(x.allocated)}</td>
                                 <td className="n">{lakh(x.updated)}</td>
                                 <td className="n">{x.team}</td>
-                                <td className="n">{lakh(x.allotted)}</td>
-                                <td className="n">{lakh(x.buffer)}</td>
+                                <td className="n">{x.allotted === null ? "—" : lakh(x.allotted)}</td>
+                                <td className="n">{x.buffer === null ? "—" : lakh(x.buffer)}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -951,7 +962,7 @@ export function TechEdBudgetDistribution() {
                           <td className="r">{n.team0}</td>
                           <td className="r">{n.team}</td>
                           <td>
-                            {n.history.length > 1 ? (
+                            {n.liveId || n.history.length > 1 ? (
                               <button
                                 type="button"
                                 className="dd"
@@ -998,9 +1009,9 @@ export function TechEdBudgetDistribution() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {n.history.map((x) => (
-                                    <tr key={x.date}>
-                                      <td>{dateText(x.date)}</td>
+                                  {n.history.map((x, i) => (
+                                    <tr key={i}>
+                                      <td>{stampText(x)}</td>
                                       <td className="n">{lakh(n.original)}</td>
                                       <td className="n">{lakh(x.amount)}</td>
                                       <td className="n">{x.team}</td>

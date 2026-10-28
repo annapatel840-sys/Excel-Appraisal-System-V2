@@ -32,13 +32,17 @@ function ownerKey(value) {
  
 function dateText(value) {
   if (!value) return "—";
-  const date = new Date(value);
+  // Catalyst timestamps look like "2026-10-28 14:03:22:123"; read them as written.
+  const text = String(value).trim();
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  const date = match
+    ? new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), Number(match[4]), Number(match[5]))
+    : new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  return (
+    date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) +
+    (match ? " " + match[4] + ":" + match[5] : "")
+  );
 }
  
 const CSS = `
@@ -258,6 +262,7 @@ export function BudgetDistributionPage() {
     error,
     reload,
     isHR,
+    budgetAuditLog = [],
   } = useBudget();
  
   // Total utilised = the Appraisal Sheet's "Consumed (Hikes + Bonuses)": the
@@ -387,6 +392,16 @@ export function BudgetDistributionPage() {
       countedEligibleEmployees.add(employeeId);
       return true;
     }).length;
+  };
+
+  // Newest recorded budget change for a Tech-ED (browser audit trail), else
+  // the row's own saved timestamp from Budget_Distribution.
+  const lastUpdatedFor = (row) => {
+    let latest = null;
+    (budgetAuditLog || []).forEach((entry) => {
+      if (entry.level === "techEd" && String(entry.rowId) === String(row.id) && (!latest || entry.at > latest.at)) latest = entry;
+    });
+    return latest ? latest.date + " " + (latest.time || "00:00") : row.updated_at || row.modified_at || "";
   };
 
   const rows = useMemo(() => {
@@ -652,7 +667,7 @@ export function BudgetDistributionPage() {
                       </div>
                       <div className="detail-item">
                         <div className="label">Last updated</div>
-                        <b>{dateText(row.updated_at || row.modified_at)}</b>
+                        <b>{dateText(lastUpdatedFor(row))}</b>
                       </div>
                     </div>
                   </div>

@@ -12,6 +12,13 @@ import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { fetchAppraisalRoster } from "@/lib/employee-roster";
+import {
+  auditOwnerKey,
+  auditUserKey,
+  recordBudgetChange,
+  syncBudgetSnapshots,
+  useBudgetAuditLog,
+} from "@/lib/budget-audit-local";
 
 const BudgetContext = createContext(null);
 
@@ -576,19 +583,90 @@ export function BudgetProvider({ children }) {
   const eligibilityEvents = useMemo(() => [], []);
   const gridSupervisorChanges = useMemo(() => [], []);
 
+  // ---- Budget audit trail (browser localStorage, active cycle only) ----
+  const auditUser = auditUserKey(currentUser);
+  const budgetAuditLog = useBudgetAuditLog(auditUser, activeBudgetCycleId);
+  const auditRowsRef = useRef({ master: [], techEd: [], comp: [], cycleId: "", user: "", actor: "" });
+  auditRowsRef.current = {
+    master: budgetMasterRows,
+    techEd: budgetDistributionRows,
+    comp: budgetCompManagerRows,
+    cycleId: activeBudgetCycleId,
+    user: auditUser,
+    actor: currentUser.name,
+  };
+
+  // Snapshot every saved row each time budget data loads. A row whose saved %
+  // or amount differs from the previous snapshot is logged with its old values.
+  useEffect(() => {
+    if (loading || !activeBudgetCycleId || !auditUser) return;
+    const pctOf = (row, field) =>
+      row[field] === null || row[field] === undefined || row[field] === "" ? null : number(row[field]);
+    const items = [];
+    if (isHR) {
+      budgetMasterRows.forEach((row) => items.push({
+        level: "org", rowId: row.id, parentId: "", ownerKey: "org", name: "Org",
+        pct: row.budget_percentage_is_set === false ? null : pctOf(row, "budget_percentage"),
+        applied: row.applied_budget, stamp: row.updated_at,
+      }));
+    }
+    budgetDistributionRows.forEach((row) => items.push({
+      level: "techEd", rowId: row.id, parentId: "",
+      ownerKey: auditOwnerKey(row.appraiser_tech_ed_id), name: String(row.appraiser_tech_ed_id || ""),
+      pct: row.percentage_is_set === false ? null : pctOf(row, "percentage"),
+      applied: row.applied_budget, stamp: row.updated_at,
+    }));
+    budgetCompManagerRows.forEach((row) => items.push({
+      level: "comp", rowId: row.id, parentId: row.budget_distribution_id,
+      ownerKey: auditOwnerKey(row.comp_manager), name: String(row.comp_manager || ""),
+      pct: row.percentage_is_set === false ? null : pctOf(row, "percentage"),
+      applied: row.applied_budget, stamp: row.updated_at,
+    }));
+    syncBudgetSnapshots(auditUser, activeBudgetCycleId, items);
+  }, [loading, activeBudgetCycleId, auditUser, isHR, budgetMasterRows, budgetDistributionRows, budgetCompManagerRows]);
+
   const updateBudget = useCallback(
     async (id, changes, resource = "master", refresh = true) => {
+      // audit_reason is for the local audit trail only; it is not sent to the API.
+      const { audit_reason: auditReason, ...payload } = changes || {};
       const response = await catalystFetch(
         catalystFunctionUrl("budgetmasterapi"),
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id, resource, ...changes }),
+          body: JSON.stringify({ id, resource, ...payload }),
         },
       );
       const result = await response.json();
       if (!response.ok)
         throw new Error((result && result.message) || "Budget update failed.");
+      try {
+        const ctx = auditRowsRef.current;
+        const saved = result && result.data;
+        if (saved && ctx.user && ctx.cycleId) {
+          const level = resource === "master" ? "org" : resource === "distribution" ? "techEd" : "comp";
+          const list = level === "org" ? ctx.master : level === "techEd" ? ctx.techEd : ctx.comp;
+          const old = list.find((row) => String(row.id) === String(saved.id || id));
+          const pctField = level === "org" ? "budget_percentage" : "percentage";
+          const isSet = (row) => row && row[level === "org" ? "budget_percentage_is_set" : "percentage_is_set"] !== false &&
+            row[pctField] !== null && row[pctField] !== undefined && row[pctField] !== "";
+          recordBudgetChange(ctx.user, ctx.cycleId, {
+            level,
+            rowId: saved.id || id,
+            parentId: level === "comp" ? saved.budget_distribution_id || (old && old.budget_distribution_id) : "",
+            ownerKey: level === "org" ? "org" : auditOwnerKey(level === "techEd" ? saved.appraiser_tech_ed_id : saved.comp_manager),
+            name: level === "org" ? "Org" : String(level === "techEd" ? saved.appraiser_tech_ed_id : saved.comp_manager || ""),
+            from: isSet(old) ? number(old[pctField]) : null,
+            to: saved[pctField] === null || saved[pctField] === undefined ? null : number(saved[pctField]),
+            before: old ? number(old.applied_budget) : null,
+            after: number(saved.applied_budget),
+            by: ctx.actor,
+            reason: String(auditReason || "").trim(),
+          });
+        }
+      } catch (auditError) {
+        console.error("Budget audit trail was not recorded:", auditError);
+      }
       if (refresh) await load();
       return result;
     },
@@ -614,6 +692,7 @@ export function BudgetProvider({ children }) {
         error,
         reload: reloadShared,
         updateBudget,
+        budgetAuditLog,
         hierarchy,
         eligibilityEvents,
         gridSupervisorChanges,

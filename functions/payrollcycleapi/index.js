@@ -1677,7 +1677,15 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     // Appraisal_Sheet.comp_manager is text ("EMP001 - Name"), set from the
     // Delegation value on Employee_Master; by default the Tech-ED is the Comp
     // Manager. A rerun keeps a Comp Manager already saved on the sheet.
+    const previousPayrollCompManager = previousPayrollBaseSource
+      ? String(fieldValue(
+          previousPayrollBaseSource,
+          "Comp_Manager", "comp_manager", "comp_manager_name", "compManager",
+          "compensation_manager",
+        ) ?? "").trim()
+      : "";
     const compManagerText = String(employee.comp_manager ?? "").trim() ||
+      previousPayrollCompManager ||
       String(employee.appraiser_tech_ed ?? "").trim();
     if (
       compManagerText &&
