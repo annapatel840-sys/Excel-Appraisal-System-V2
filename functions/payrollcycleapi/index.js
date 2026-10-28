@@ -528,7 +528,10 @@ async function requirePayrollTables(adminApp) {
   };
 }
 
-async function syncEligibilityRows(tables, cycle, actor = "") {
+// readBack (optional): receives the Employee_Master and Eligibility_List rows
+// this sync read, plus whether it wrote anything, so a caller can reuse them
+// instead of reading both tables again when nothing changed.
+async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
   if (!cycle?.id) throw new ApiError("Select an appraisal cycle before loading eligibility.", 400);
 
   const [masterRows, existingRows] = await Promise.all([
@@ -558,6 +561,7 @@ async function syncEligibilityRows(tables, cycle, actor = "") {
   // are still removed; inactive rows are retained and marked Not Eligible.
   let repairedReferences = 0;
   let inactiveMarked = 0;
+  let rowsUpdated = 0;
   for (const row of cycleRows) {
     const linkedMasterId = String(row.employee_master_id || "");
     const empId = String(row.emp_id || "").trim().toLowerCase();
@@ -590,7 +594,10 @@ async function syncEligibilityRows(tables, cycle, actor = "") {
       patch.updated_by = String(actor || "System").slice(0, 60);
       patch.eligibility_updated_at = nowLocal();
     }
-    if (Object.keys(patch).length > 1) await tables.eligibility.updateRow(patch);
+    if (Object.keys(patch).length > 1) {
+      await tables.eligibility.updateRow(patch);
+      rowsUpdated += 1;
+    }
   }
 
   // The Eligibility List is cycle-specific. Remove only stale-cycle rows and
@@ -631,6 +638,12 @@ async function syncEligibilityRows(tables, cycle, actor = "") {
   }
   for (let index = 0; index < toInsert.length; index += 100) {
     await tables.eligibility.insertRows(toInsert.slice(index, index + 100));
+  }
+
+  if (readBack) {
+    readBack.masterRows = masterRows;
+    readBack.eligibilityRows = existingRows;
+    readBack.changed = rowsUpdated > 0 || toDelete.length > 0 || toInsert.length > 0;
   }
 
   return {
@@ -863,13 +876,17 @@ function shapeEligibilityRow(row, master) {
 }
 
 async function getEligibilityRows(tables, cycle, actor = "") {
+  const synced = {};
   if (String(cycle.status || "").trim().toLowerCase() === "active" && !cycle.archived) {
-    await syncEligibilityRows(tables, cycle, actor);
+    await syncEligibilityRows(tables, cycle, actor, synced);
   }
-  const [masterRows, eligibilityRows] = await Promise.all([
-    getAllRows(tables.employeeMaster),
-    getAllRows(tables.eligibility),
-  ]);
+  // When the sync wrote nothing, the rows it read are still current.
+  const [masterRows, eligibilityRows] = synced.masterRows && !synced.changed
+    ? [synced.masterRows, synced.eligibilityRows]
+    : await Promise.all([
+      getAllRows(tables.employeeMaster),
+      getAllRows(tables.eligibility),
+    ]);
   const masterById = new Map(
     masterRows.map((row) => [String(row.ROWID || row.rowid || ""), row]),
   );

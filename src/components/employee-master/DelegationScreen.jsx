@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
-import { useAppraisal } from "@/lib/appraisal-store";
+import { useAppraisalRefresh } from "@/lib/appraisal-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 /* ------------------------------------------------------------------ data */
@@ -161,7 +161,9 @@ export default function DelegationScreen({
 
   useEffect(() => {
     let cancelled = false;
+    let loadedAt = 0;
     const reloadRequests = async () => {
+      loadedAt = Date.now();
       try {
         const response = await catalystFetch(
           ACCESS_API_URL + "delegation/requests",
@@ -178,21 +180,25 @@ export default function DelegationScreen({
           say(error?.message || "Unable to load delegation requests.", true);
       }
     };
-    const onFocus = () => reloadRequests();
+    // Returning to the window re-checks for new requests at most once every
+    // 30 s; switching windows back and forth no longer reloads each time.
+    const onFocus = () => {
+      if (Date.now() - loadedAt >= 30000) reloadRequests();
+    };
     reloadRequests();
     window.addEventListener("focus", onFocus);
-    window.addEventListener("appraisal:cycle-updated", onFocus);
+    window.addEventListener("appraisal:cycle-updated", reloadRequests);
     return () => {
       cancelled = true;
       window.removeEventListener("focus", onFocus);
-      window.removeEventListener("appraisal:cycle-updated", onFocus);
+      window.removeEventListener("appraisal:cycle-updated", reloadRequests);
     };
   }, []);
 
   const isHR = user.role === "HR Admin";
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
-  const { refreshEmployees } = useAppraisal();
+  const { refreshEmployees } = useAppraisalRefresh();
   const canApprove = isHR;
   const canAudit = access.canAction("viewAudit");
   // View-only screen, or a Tech Ed without the delegateRequest action: no edits.

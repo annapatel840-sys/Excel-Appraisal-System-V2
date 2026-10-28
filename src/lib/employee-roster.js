@@ -1,4 +1,4 @@
-import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
+import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "./catalyst-api";
 
 /* ============================================================
    SHARED APPRAISAL ROSTER
@@ -11,14 +11,14 @@ import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 
    - One request returns up to ROSTER_LIMIT rows (employeesapi MAX_LIMIT);
      any further pages are fetched in parallel, not one after another.
-   - Only requests already in flight are shared. Data changes announced
-     through the app's update events cancel sharing, so a reload after a
-     save always reads fresh data.
+   - A request in flight, or a result under SHARE_WINDOW_MS old, is shared.
+     Any save sent through catalystFetch and the app's update events cancel
+     sharing, so a reload after a save always reads fresh data.
    ============================================================ */
 
 export const ROSTER_LIMIT = 1000;
-// A request started this long ago is still shared by a new caller.
-const SHARE_WINDOW_MS = 2000;
+// A request started this long ago (still running or finished) is shared.
+const SHARE_WINDOW_MS = 15000;
 
 const inFlight = new Map(); // key -> { startedAt, promise }
 
@@ -26,6 +26,7 @@ export function invalidateEmployeeRoster() {
   inFlight.clear();
 }
 
+onCatalystWrite(invalidateEmployeeRoster);
 if (typeof window !== "undefined") {
   [
     "appraisal:cycle-updated",
@@ -85,16 +86,21 @@ async function loadRoster(viewAs) {
 
 /* Full Appraisal-view roster: { employees, counts, pagination }.
    viewAs: the HR role preview, if any (a preview gets its own request). */
+// Each caller gets its own copy of the shared result.
+const copyOf = (roster) => JSON.parse(JSON.stringify(roster));
+
 export function fetchAppraisalRoster({ viewAs = "" } = {}) {
   const key = String(viewAs || "");
   const shared = inFlight.get(key);
-  if (shared && Date.now() - shared.startedAt <= SHARE_WINDOW_MS) return shared.promise;
+  if (shared && Date.now() - shared.startedAt <= SHARE_WINDOW_MS) return shared.promise.then(copyOf);
   const entry = { startedAt: Date.now(), promise: null };
-  entry.promise = loadRoster(key).finally(() => {
+  entry.promise = loadRoster(key).catch((error) => {
+    // A failed load is never shared; the next caller tries again.
     if (inFlight.get(key) === entry) inFlight.delete(key);
+    throw error;
   });
   inFlight.set(key, entry);
-  return entry.promise;
+  return entry.promise.then(copyOf);
 }
 
 // Same rule as employeesapi's status=active & eligible=eligible filters.

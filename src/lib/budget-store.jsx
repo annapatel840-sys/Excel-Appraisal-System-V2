@@ -331,13 +331,28 @@ export function BudgetProvider({ children }) {
     return load();
   }, [load]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // The provider wraps every screen, but only screens that use budget data
+  // (useBudget) need it. Nothing loads until the first such screen mounts.
+  const [dataWanted, setDataWanted] = useState(false);
+  const dataWantedRef = useRef(false);
+  const requestData = useCallback(() => {
+    if (dataWantedRef.current) return;
+    dataWantedRef.current = true;
+    setDataWanted(true);
+  }, []);
 
   useEffect(() => {
-    const refreshBudget = () => { load(); };
+    if (dataWanted) load();
+  }, [load, dataWanted]);
+
+  useEffect(() => {
+    // Before any screen has asked for budget data there is nothing to
+    // refresh; the first load reads current data anyway.
+    const refreshBudget = () => {
+      if (dataWantedRef.current) load();
+    };
     const refreshForCycleChange = () => {
+      if (!dataWantedRef.current) return;
       // Clear the previous cycle synchronously so stale amounts cannot remain
       // visible while the new active-cycle response is loading.
       setActiveBudgetCycleId("");
@@ -691,6 +706,7 @@ export function BudgetProvider({ children }) {
         loading,
         error,
         reload: reloadShared,
+        requestData,
         updateBudget,
         budgetAuditLog,
         hierarchy,
@@ -704,8 +720,13 @@ export function BudgetProvider({ children }) {
   );
 }
 
+// Using budget data starts the provider's load (once).
 export function useBudget() {
   const ctx = useContext(BudgetContext);
+  const requestData = ctx?.requestData;
+  useEffect(() => {
+    if (requestData) requestData();
+  }, [requestData]);
   if (!ctx) throw new Error("useBudget must be used within BudgetProvider");
   return ctx;
 }

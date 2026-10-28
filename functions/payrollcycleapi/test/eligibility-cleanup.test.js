@@ -290,6 +290,29 @@ async function setup() {
     assert.strictEqual(elig.rows.find((item) => item.emp_id === 'E1').eligibility_reason, 'Employee inactive');
   });
 
+  await t('an unchanged Eligibility List load reads each table once', async () => {
+    const { post, mk, api, elig, store } = await setup();
+    const a = await mk('Annual R');
+    assert.strictEqual((await post('cycles/status/' + a.id, { status: 'Active' })).status, 200);
+    const master = store.table(MASTER_T, null);
+    const reads = { elig: 0, master: 0 };
+    const eligRead = elig.getPagedRows;
+    const masterRead = master.getPagedRows;
+    elig.getPagedRows = async (...args) => { reads.elig += 1; return eligRead(...args); };
+    master.getPagedRows = async (...args) => { reads.master += 1; return masterRead(...args); };
+
+    const response = await call(api, 'GET', 'eligibility');
+    assert.strictEqual(response.status, 200, JSON.stringify(response.json));
+    assert.deepStrictEqual(response.json.data.records.map((row) => row.emp_id).sort(), ['E1', 'E2']);
+    assert.strictEqual(reads.elig, 1);
+    assert.strictEqual(reads.master, 1);
+
+    // A change found by the sync still returns the updated list.
+    await master.insertRow({ emp_id: 'E3', emp_name: 'C', emp_status: 'Active' });
+    const after = await call(api, 'GET', 'eligibility');
+    assert.deepStrictEqual(after.json.data.records.map((row) => row.emp_id).sort(), ['E1', 'E2', 'E3']);
+  });
+
   await t('apply criteria needs the Active cycle', async () => {
     const { post, mk } = await setup();
     const c = await mk('Annual U');
