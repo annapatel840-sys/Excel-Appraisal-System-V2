@@ -214,16 +214,8 @@ export default function DelegationScreen({
       const cycleId = String(active.id || active.appraisal_cycle_id || active.cycle_id || active.ROWID || "");
       setActiveCycleId(cycleId);
       setActiveCycleName(String(active.name || active.cycle_name || active.appraisal_year || ""));
-      if (Array.isArray(initialRows) && initialRows.length) {
-        const unique = new Map();
-        initialRows.forEach((item) => {
-          const id = String(item.emp_id || item.id || item.ROWID || "").trim().toLowerCase();
-          if (id && !unique.has(id)) unique.set(id, item);
-        });
-        setRows(Array.from(unique.values()));
-        return;
-      }
-
+      // Always fetch the enriched delegation roster from employeesapi.
+      // initialRows may contain only Employee_Master values and omit previous-cycle references.
       // Ensure the Active cycle's Eligibility_List is initialized/refreshed
       // before fetching delegation rows. Its GET path syncs missing eligibility
       // rows from Employee_Master for the current cycle.
