@@ -580,6 +580,15 @@ async function syncEligibilityRows(tables, cycle, actor = "") {
       patch.updated_by = String(actor || "System").slice(0, 60);
       patch.eligibility_updated_at = nowLocal();
       inactiveMarked += 1;
+    } else if (!inactive && eligibilityStatusOf(row) === "Pending") {
+      // Repair legacy/partially-created rows: first-time status is Eligible,
+      // never Pending. Apply Criteria will set the final decision afterward.
+      patch.eligibility_status = "Eligible";
+      patch.eligibility_reason = "";
+      patch.eligibility_source = "System";
+      patch.evaluated_at = nowLocal();
+      patch.updated_by = String(actor || "System").slice(0, 60);
+      patch.eligibility_updated_at = nowLocal();
     }
     if (Object.keys(patch).length > 1) await tables.eligibility.updateRow(patch);
   }
