@@ -675,6 +675,25 @@ function isoDateOf(value) {
 // "Apply Criteria": evaluates the Active cycle's roster from Employee_Master.
 // Every employee remains visible; each active non-manual row is updated to
 // Eligible or Not Eligible. Manual decisions are preserved.
+async function eligibilityCriteriaWasApplied(tables, cycleId, eligibilityRows = null) {
+  // The audit marker survives closing/archiving, when Eligibility_List rows
+  // are intentionally cleared. The row-source check also locks cycles where
+  // Apply Criteria was completed before this marker was introduced.
+  const [auditRows, rows] = await Promise.all([
+    getAllRows(tables.audit),
+    eligibilityRows ? Promise.resolve(eligibilityRows) : getAllRows(tables.eligibility),
+  ]);
+  const hasAuditMarker = auditRows.some((row) =>
+    String(row.source || "").trim().toLowerCase() === "eligibility_criteria" &&
+    String(row.batch_id || "") === String(cycleId),
+  );
+  const hasCriteriaRows = rows.some((row) =>
+    String(row.appraisal_cycle_id || "") === String(cycleId) &&
+    String(row.eligibility_source || "").trim().toLowerCase() === "criteria",
+  );
+  return hasAuditMarker || hasCriteriaRows;
+}
+
 async function applyEligibilityCriteria(tables, body, actor) {
   const cycleId = String(body.cycleId || body.appraisal_cycle_id || "").trim();
   if (!cycleId) throw new ApiError("Appraisal cycle is required.", 400);
@@ -684,6 +703,9 @@ async function applyEligibilityCriteria(tables, body, actor) {
   if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
   if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived || cycle.hidden) {
     throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
+  }
+  if (await eligibilityCriteriaWasApplied(tables, cycleId)) {
+    throw new ApiError("Apply Criteria has already been used for this appraisal cycle. It is locked for this cycle.", 409);
   }
 
   // Ensure all active employees have an initial Eligible row and retain
@@ -799,8 +821,27 @@ async function applyEligibilityCriteria(tables, body, actor) {
   for (let index = 0; index < toInsert.length; index += 100) {
     await tables.eligibility.insertRows(toInsert.slice(index, index + 100));
   }
+  // Persist a cycle-specific marker so the lock survives refreshes and
+  // remains associated with this cycle after its eligibility rows are cleared.
+  await writeAudit(tables.audit, {
+    actor,
+    source: "eligibility_criteria",
+    batchId: cycleId,
+    cycle,
+    action: "Apply Criteria completed",
+    details: {
+      kind: "eligibility-criteria-applied",
+      action: "Apply Criteria completed",
+      cycleId,
+      cycleName: cycle.name,
+      evaluated,
+      added: added.length,
+      excluded,
+    },
+  });
   return {
     cycleId,
+    criteriaApplied: true,
     evaluated,
     added: added.length,
     updated: updated.length,
@@ -2587,11 +2628,12 @@ async function routeRequest(req, res, identity, resource, a) {
       });
     }
     const data = await getEligibilityRows(tables, cycle, actor);
+    const criteriaApplied = await eligibilityCriteriaWasApplied(tables, cycle.id, data);
     return sendJson(res, 200, {
       success: true,
       data: {
         records: data,
-        meta: { cycleId: cycle.id, cycleName: cycle.name, total: data.length },
+        meta: { cycleId: cycle.id, cycleName: cycle.name, total: data.length, criteriaApplied },
       },
     });
   }
