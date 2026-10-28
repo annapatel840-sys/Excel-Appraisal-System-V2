@@ -10,7 +10,8 @@
       "accessapi",
       "feedbackratingapi",
       "historicalimportapi",
-      "demo_seed"
+      "demo_seed",
+      "designationmasterapi"
     ],
     "ignore": [],
     "source": "functions"

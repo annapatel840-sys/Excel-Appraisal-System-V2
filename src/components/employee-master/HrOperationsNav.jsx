@@ -19,6 +19,7 @@ const GROUPS = [
       ["budget-master", "Budget Master"],
       ["payroll-data", "Payroll Master"],
       ["feedback-rating", "Feedback & Rating Master"],
+      ["designation-master", "Designation Master"],
     ],
   },
   {

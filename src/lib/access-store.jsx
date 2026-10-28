@@ -23,6 +23,7 @@ export const HR_TAB_SCREENS = {
   "team-changes": "teamChanges",
   "budget-master": "budgetAllocation",
   "budget-distribution": "budgetDistribution",
+  "designation-master": "employeeMaster",
   delegation: "delegation",
   access: "access",
 };

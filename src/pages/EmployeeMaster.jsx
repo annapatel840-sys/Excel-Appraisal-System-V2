@@ -8,7 +8,7 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAppraisalRefresh } from "@/lib/appraisal-store";
 import { HrConfigPage } from "@/components/employee-master/HrConfigPage";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
-
+import { DesignationMasterPage } from "@/components/employee-master/DesignationMasterPage";
 import {
   FIELD_DEFS,
   fetchEmployeeMasterEmployees,
@@ -670,6 +670,7 @@ export function EmployeeMaster() {
       "delegation",
       "historical-import",
       "access",
+      "designation-master",
     ].filter(isTabVisible),
   );
   // HR Operations opens on the HR Dashboard (when the user may see it).
@@ -2727,6 +2728,12 @@ export function EmployeeMaster() {
         {isTabVisible("access") && activeTab === "access" && (
           <div className="em-tab-content">
             <AccessPage />
+          </div>
+        )}
+        {isTabVisible("designation-master") &&
+          activeTab === "designation-master" && (
+          <div className="em-tab-content">
+          <DesignationMasterPage />
           </div>
         )}
 
