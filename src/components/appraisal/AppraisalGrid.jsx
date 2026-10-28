@@ -330,7 +330,7 @@ const cellBackground = ({ kind, rowIndex, selected, flash }) => {
   }
 
   if (selected) {
-    return "bg-[#e5e7eb] group-hover:bg-[#e5e7eb]";
+    return "bg-[#dcebff]";
   }
 
   const base =
@@ -342,7 +342,7 @@ const cellBackground = ({ kind, rowIndex, selected, flash }) => {
           ? "bg-[#fbfcfe]"
           : "bg-[#f2f5f9]";
 
-  return `${base} group-hover:bg-[#eaf2ff]`;
+  return base; // no colour change on hover
 };
 
 // ============================================================
@@ -3246,7 +3246,7 @@ export function AppraisalGrid({
   const draftClass = (cellKey, isBlinking) =>
     cn(
       modified[cellKey]
-        ? "border-[#b39ddb] bg-[#e6dff7] font-semibold text-[#1e293b]"
+        ? "border-[#c9a400] bg-[#ffe066] font-semibold text-[#1e293b]"
         : "border-[#d7c96b] bg-[#fffef3] text-[#1e293b]",
       "focus:border-[#2563eb] focus:bg-white focus:ring-1 focus:ring-[#2563eb]",
       isBlinking && "appraisal-cell-blink",
@@ -3880,7 +3880,13 @@ export function AppraisalGrid({
         key={row.id}
         data-row-id={row.id}
         className="group"
-        style={{ minHeight: CELL_MIN_HEIGHT }}
+        style={{
+          minHeight: CELL_MIN_HEIGHT,
+          // Selected row: a grey border around the whole row.
+          ...(isSelectedRow
+            ? { outline: "2px solid #64748b", outlineOffset: "-2px" }
+            : {}),
+        }}
       >
         <td
           className={cn(
