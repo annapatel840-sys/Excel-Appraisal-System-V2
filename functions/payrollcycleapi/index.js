@@ -2583,6 +2583,92 @@ async function getFeedbackData(tables, query) {
   return { cycles, rows, batches };
 }
 
+/* TEMPORARY ONE-TIME MIGRATION.
+   Remove this helper and its route/dispatcher after the Payroll_Data migration
+   has been run and verified. It copies legacy BIGINT values only into empty
+   replacement DOUBLE fields; existing non-empty destination values are kept. */
+const PAYROLL_DOUBLE_MIGRATION_FIELDS = [
+  ["performance_bonus_1", "performance_bonus"],
+  ["retention_bonus_1", "retention_bonus"],
+  ["joining_bonus_1", "joining_bonus"],
+  ["total_bonus_1", "total_bonus"],
+  ["hike_amount_1", "hike_amount"],
+];
+
+async function migratePayrollDoubleColumns(tables, dryRun) {
+  const rows = await getAllRows(tables.payroll);
+  const summary = {
+    dryRun,
+    rowsScanned: rows.length,
+    rowsWithChanges: 0,
+    rowsUpdated: 0,
+    invalidValues: [],
+    fields: {},
+  };
+  const updates = [];
+
+  for (const [source, destination] of PAYROLL_DOUBLE_MIGRATION_FIELDS) {
+    summary.fields[destination] = {
+      source,
+      sourceNonEmpty: 0,
+      copied: 0,
+      destinationAlreadyPopulated: 0,
+      nullSource: 0,
+      invalidSource: 0,
+    };
+  }
+
+  for (const row of rows) {
+    const patch = { ROWID: rowId(row) };
+    let changed = false;
+    for (const [source, destination] of PAYROLL_DOUBLE_MIGRATION_FIELDS) {
+      const stats = summary.fields[destination];
+      const rawSource = row[source];
+      if (rawSource === undefined || rawSource === null || String(rawSource).trim() === "") {
+        stats.nullSource += 1;
+        continue;
+      }
+      stats.sourceNonEmpty += 1;
+
+      const rawDestination = row[destination];
+      if (rawDestination !== undefined && rawDestination !== null && String(rawDestination).trim() !== "") {
+        stats.destinationAlreadyPopulated += 1;
+        continue;
+      }
+
+      const value = Number(rawSource);
+      if (!Number.isFinite(value) || !Number.isSafeInteger(value)) {
+        stats.invalidSource += 1;
+        if (summary.invalidValues.length < 20) {
+          summary.invalidValues.push({ rowId: rowId(row), field: source, value: String(rawSource) });
+        }
+        continue;
+      }
+      patch[destination] = value;
+      stats.copied += 1;
+      changed = true;
+    }
+    if (changed) {
+      summary.rowsWithChanges += 1;
+      if (patch.ROWID) updates.push(patch);
+    }
+  }
+
+  if (summary.invalidValues.length) {
+    throw new ApiError(
+      "Migration stopped because one or more source values could not be safely converted. No updates were written. Review invalidValues and correct those rows first.",
+      409,
+    );
+  }
+  if (!dryRun) {
+    for (let index = 0; index < updates.length; index += 100) {
+      await tables.payroll.updateRows(updates.slice(index, index + 100));
+      summary.rowsUpdated += updates.slice(index, index + 100).length;
+    }
+  }
+  return summary;
+}
+
 async function routeRequest(req, res, identity, resource, a) {
   const enforced = Boolean(a && a.enforced);
   access.guard(a, () => requirePayrollAccess(a, resource, req.method));
@@ -2612,6 +2698,32 @@ async function routeRequest(req, res, identity, resource, a) {
   const tables = await requirePayrollTables(adminApp);
   const query = getQuery(req);
   const actor = identity.name || identity.email;
+
+  if (resource === "migrate-payroll-double-columns") {
+    if (req.method !== "POST") {
+      return sendJson(res, 405, { success: false, message: "Use POST for this temporary migration endpoint." });
+    }
+    if (!isHR(identity.user)) {
+      return sendJson(res, 403, { success: false, message: "Only an HR account can run this migration." });
+    }
+    access.requireScreen(a, "payroll", "edit");
+    const body = await readBody(req);
+    const dryRun = body.dryRun === true;
+    if (!dryRun && body.confirm !== "COPY_BIGINT_TO_DOUBLE") {
+      return sendJson(res, 400, {
+        success: false,
+        message: "For a read-only preview send { \"dryRun\": true }. To execute, send { \"confirm\": \"COPY_BIGINT_TO_DOUBLE\" }.",
+      });
+    }
+    const summary = await migratePayrollDoubleColumns(tables, dryRun);
+    return sendJson(res, 200, {
+      success: true,
+      message: dryRun
+        ? "Dry run completed. No data was changed. Review the counts before executing."
+        : "Migration completed. Existing non-empty DOUBLE values were preserved.",
+      data: summary,
+    });
+  }
 
   if (resource === "schema" && req.method === "GET") {
     const schema = await getProjectSchema(adminApp);
@@ -3244,6 +3356,7 @@ module.exports = async function payrollCycleApi(req, res) {
     // `return await` so errors thrown inside routeRequest reach the catch below
     // (a bare `return routeRequest(...)` left them as unhandled rejections).
     if (resource === "session") return await routeRequest(req, res, identity, resource, a);
+    if (resource === "migrate-payroll-double-columns" && req.method === "POST") return await routeRequest(req, res, identity, resource, a);
     if (resource === "schema" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "cycles" && req.method === "GET") return await routeRequest(req, res, identity, resource, a);
     if (resource === "eligibility" && (req.method === "GET" || req.method === "POST")) return await routeRequest(req, res, identity, resource, a);
