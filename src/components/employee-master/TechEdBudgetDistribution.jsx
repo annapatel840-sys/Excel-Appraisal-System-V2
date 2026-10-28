@@ -767,7 +767,14 @@ export function TechEdBudgetDistribution() {
         </span>
         <span className="sep" />
         <span className="applied">
-          {isCompManagerPreview ? "Comp Manager allocation" : "Budget applied by HR"}: <b>{hasLiveAllocation ? myPct + "%" : "—"}</b> = <b>{hasLiveAllocation ? lakh(myUpdated) : "—"}</b> updated · original{" "}
+          {isCompManagerPreview ? "Comp Manager allocation" : "Budget applied by HR"}:{" "}
+          {/* Comp Managers see the amount only, never the allocation percentage. */}
+          {!isCompManagerPreview && (
+            <>
+              <b>{hasLiveAllocation ? myPct + "%" : "—"}</b> ={" "}
+            </>
+          )}
+          <b>{hasLiveAllocation ? lakh(myUpdated) : "—"}</b> updated · original{" "}
           {hasLiveAllocation ? lakh(myOriginal) : "—"}
           {!isCompManagerPreview && hasLiveAllocation ? (
             <button type="button" className="dd" aria-expanded={appliedOpen} onClick={() => setAppliedOpen((v) => !v)}>
