@@ -175,6 +175,19 @@ async function setup() {
     assert.strictEqual(r2.json.data.records.length, 2);
   });
 
+  // ---- Apply Criteria + Add An Employee --------------------------------
+  const richSetup = async () => {
+    const ctx = await setup();
+    const master = ctx.store.table(MASTER_T, null);
+    await master.insertRow({ emp_id: 'E3', emp_name: 'C', emp_status: 'Active', department: 'Sales', designation: 'Manager', joining_date: '2020-01-10' });
+    await master.insertRow({ emp_id: 'E4', emp_name: 'D', emp_status: 'Active', department: 'Engineering', designation: 'Analyst', joining_date: '2025-08-01' });
+    await master.insertRow({ emp_id: 'E5', emp_name: 'E', emp_status: 'Inactive', department: 'Engineering', designation: 'Analyst', joining_date: '2020-01-10' });
+    const c = await ctx.mk('Annual R');
+    await ctx.post('cycles/status/' + c.id, { status: 'Active' });
+    return { ...ctx, c };
+  };
+  const ids = (elig) => elig.rows.map((r) => r.emp_id).sort();
+
   await t('Appraisal Sheet generation is blocked when cycle payroll has not been uploaded', async () => {
     const { post, c } = await richSetup();
     await apply(post, c.id);
@@ -202,18 +215,6 @@ async function setup() {
     assert.match(result.json.message || result.json.error || '', /rating values/i);
   });
 
-  // ---- Apply Criteria + Add An Employee --------------------------------
-  const richSetup = async () => {
-    const ctx = await setup();
-    const master = ctx.store.table(MASTER_T, null);
-    await master.insertRow({ emp_id: 'E3', emp_name: 'C', emp_status: 'Active', department: 'Sales', designation: 'Manager', joining_date: '2020-01-10' });
-    await master.insertRow({ emp_id: 'E4', emp_name: 'D', emp_status: 'Active', department: 'Engineering', designation: 'Analyst', joining_date: '2025-08-01' });
-    await master.insertRow({ emp_id: 'E5', emp_name: 'E', emp_status: 'Inactive', department: 'Engineering', designation: 'Analyst', joining_date: '2020-01-10' });
-    const c = await ctx.mk('Annual R');
-    await ctx.post('cycles/status/' + c.id, { status: 'Active' });
-    return { ...ctx, c };
-  };
-  const ids = (elig) => elig.rows.map((r) => r.emp_id).sort();
 
   await t('apply criteria adds only active employees who pass; excluded ones are left out', async () => {
     const { post, c, elig, store } = await richSetup();
