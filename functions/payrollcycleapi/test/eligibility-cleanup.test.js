@@ -216,7 +216,7 @@ async function setup() {
   });
 
 
-  await t('apply criteria adds only active employees who pass; excluded ones are left out', async () => {
+  await t('apply criteria updates each active employee to Eligible or Not Eligible', async () => {
     const { post, c, elig, store } = await richSetup();
     store.table(MASTER_T, null).rows.find((m) => m.emp_id === 'E1').joining_date = '15-03-2023';
     const r = await apply(post, c.id, { departments: ['Sales'], designations: [], excludedEmployees: ['E2'], cutoffDate: '2025-01-01' });
@@ -232,7 +232,7 @@ async function setup() {
     assert.strictEqual(r.json.data.updated, 4);
   });
 
-  await t('cutoff with a missing joining date leaves the employee out', async () => {
+  await t('cutoff with a missing joining date marks the employee Not Eligible', async () => {
     const { post, c, elig } = await richSetup();
     await apply(post, c.id, { cutoffDate: '2025-12-31' });
     assert.deepStrictEqual(ids(elig), ['E1', 'E2', 'E3', 'E4']); // missing DOJ is Not Eligible; other active rows remain visible
