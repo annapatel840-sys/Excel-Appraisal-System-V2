@@ -1574,6 +1574,13 @@ async function generateAppraisalSheet(tables, cycle, actor) {
 
   let created = 0;
   let updated = 0;
+  const eligibleMasterIds = new Set(
+    eligibleRows.map((employee) => String(employee.employeeMasterRowId || "")).filter(Boolean),
+  );
+  const eligibleEmpIds = new Set(
+    eligibleRows.map((employee) => String(employee.empId || "").trim().toLowerCase()).filter(Boolean),
+  );
+
   for (const employee of eligibleRows) {
     const masterId = String(employee.employeeMasterRowId || "");
     const empId = String(employee.empId || "").trim();
@@ -1754,6 +1761,22 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     }
   }
 
+  // Appraisal_Sheet must be an exact projection of this cycle's
+  // Eligibility_List. Remove stale rows when an employee is no longer
+  // present as Eligible, without touching rows from other cycles.
+  const eligibleSheetRowsToRemove = sheetRows.filter((row) => {
+    if (String(row.cycle_id || "") !== String(cycle.id)) return false;
+    const rowMasterId = String(row.emp_master_row_id || "").trim();
+    const rowEmpId = String(row.emp_id || "").trim().toLowerCase();
+    const isStillEligible = (rowMasterId && eligibleMasterIds.has(rowMasterId)) ||
+      (rowEmpId && eligibleEmpIds.has(rowEmpId));
+    return !isStillEligible;
+  });
+  const staleSheetRowIds = eligibleSheetRowsToRemove.map((row) => rowId(row)).filter(Boolean);
+  for (let index = 0; index < staleSheetRowIds.length; index += 100) {
+    await tables.employees.deleteRows(staleSheetRowIds.slice(index, index + 100));
+  }
+
   await writeAudit(tables.audit, {
     actor,
     source: "cycle",
@@ -1766,10 +1789,18 @@ async function generateAppraisalSheet(tables, cycle, actor) {
       cycleName: cycle.name,
       created,
       updated,
+      removedStaleRows: staleSheetRowIds.length,
       eligible: eligibleRows.length,
     },
   });
-  return { cycleId: cycle.id, cycleName: cycle.name, created, updated, eligible: eligibleRows.length };
+  return {
+    cycleId: cycle.id,
+    cycleName: cycle.name,
+    created,
+    updated,
+    removedStaleRows: staleSheetRowIds.length,
+    eligible: eligibleRows.length,
+  };
 }
 
 function mapPayroll(row, cycleByName, cycleById, employeeById = new Map()) {
