@@ -4,56 +4,10 @@ import { AppShell } from "@/components/appraisal/AppShell";
 import { Button } from "@/components/ui/button";
 import { useSettings, DEFAULT_SETTINGS } from "@/lib/settings-store";
 import { useCatalystSignOut } from "@/lib/catalyst-auth";
-import { useAccess } from "@/lib/access-store";
-import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 export function SettingsPage() {
   const { settings, saveSettings, resetSettings } = useSettings();
   const signOut = useCatalystSignOut();
-  const access = useAccess();
-  const [migrationPreview, setMigrationPreview] = useState(null);
-  const [migrationResult, setMigrationResult] = useState(null);
-  const [migrationBusy, setMigrationBusy] = useState(false);
-  const [migrationError, setMigrationError] = useState("");
-  const canRunPayrollMigration = access.canScreen("payroll", "edit");
-
-  const previewPayrollMigration = async () => {
-    setMigrationBusy(true);
-    setMigrationError("");
-    setMigrationResult(null);
-    try {
-      const result = await payrollCycleRequest("migrate-payroll-double-columns", {
-        method: "POST",
-        body: { dryRun: true },
-      });
-      setMigrationPreview(result);
-    } catch (error) {
-      setMigrationError(error?.message || "Could not preview the payroll migration. Confirm the updated API is deployed and your account has Payroll edit access.");
-    } finally {
-      setMigrationBusy(false);
-    }
-  };
-
-  const confirmPayrollMigration = async () => {
-    if (!migrationPreview || migrationPreview.invalidValues?.length) return;
-    const approved = window.confirm("Copy the legacy BIGINT values into empty DOUBLE fields in Payroll_Data now? Existing destination values will be preserved.");
-    if (!approved) return;
-    setMigrationBusy(true);
-    setMigrationError("");
-    setMigrationResult(null);
-    try {
-      const result = await payrollCycleRequest("migrate-payroll-double-columns", {
-        method: "POST",
-        body: { confirm: "COPY_BIGINT_TO_DOUBLE" },
-      });
-      setMigrationResult(result);
-      setMigrationPreview(null);
-    } catch (error) {
-      setMigrationError(error?.message || "The payroll migration failed. No success is assumed; review the API response before retrying.");
-    } finally {
-      setMigrationBusy(false);
-    }
-  };
   const [draft, setDraft] = useState(settings);
   useEffect(() => setDraft(settings), [settings]);
   const update = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
@@ -92,39 +46,6 @@ export function SettingsPage() {
             </p>
           )}
         </section>
-        {canRunPayrollMigration && (
-          <section className="rounded-lg border border-amber-300 bg-card p-4 space-y-3">
-            <div>
-              <h3 className="text-sm font-semibold">Temporary Payroll Data Migration</h3>
-              <p className="mt-1 text-xs text-muted-foreground">One-time tool. It copies legacy BIGINT values into empty replacement DOUBLE fields only; populated destination values are preserved. Do not delete the legacy columns until the copied values are verified.</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Button type="button" onClick={previewPayrollMigration} disabled={migrationBusy}>
-                {migrationBusy ? "Working…" : "Preview Migration"}
-              </Button>
-              {migrationPreview && (
-                <Button type="button" onClick={confirmPayrollMigration} disabled={migrationBusy || Boolean(migrationPreview.invalidValues?.length)}>
-                  Confirm and Copy Data
-                </Button>
-              )}
-            </div>
-            {migrationError && <p role="alert" className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{migrationError}</p>}
-            {migrationPreview && (
-              <div className="space-y-2 rounded-md bg-muted/40 p-3 text-sm">
-                <p><strong>Preview only — no data changed.</strong> Rows scanned: {migrationPreview.rowsScanned}; rows with values to copy: {migrationPreview.rowsWithChanges}.</p>
-                <div className="overflow-x-auto"><table className="w-full text-left text-xs"><thead><tr><th className="py-1 pr-3">Destination field</th><th className="py-1 pr-3">Source field</th><th className="py-1 pr-3">Values to copy</th><th className="py-1">Already populated</th></tr></thead><tbody>{Object.entries(migrationPreview.fields || {}).map(([name, stats]) => <tr key={name} className="border-t border-border"><td className="py-1 pr-3">{name}</td><td className="py-1 pr-3">{stats.source}</td><td className="py-1 pr-3">{stats.copied}</td><td className="py-1">{stats.destinationAlreadyPopulated}</td></tr>)}</tbody></table></div>
-                {migrationPreview.invalidValues?.length > 0 && <p className="text-red-700">Unsafe source values were found. Copy is disabled; no changes were made.</p>}
-              </div>
-            )}
-            {migrationResult && (
-              <div role="status" className="rounded-md border border-green-300 p-3 text-sm">
-                <p className="font-semibold">Migration API reported success.</p>
-                <p>Rows scanned: {migrationResult.rowsScanned}; rows updated: {migrationResult.rowsUpdated}; rows with changes: {migrationResult.rowsWithChanges}.</p>
-                <p className="mt-1 text-xs text-muted-foreground">Please verify these destination values in Payroll_Data before confirming cleanup of this temporary tool and the old columns.</p>
-              </div>
-            )}
-          </section>
-        )}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-card p-3">
           <button type="button" onClick={reset} className="inline-flex items-center gap-2 rounded-md border border-border px-3 py-2 text-xs font-medium hover:bg-muted"><RotateCcw className="size-3.5" />Reset to Default</button>
           <button type="button" onClick={signOut} className="inline-flex items-center gap-2 rounded-md border border-red-200 px-3 py-2 text-xs font-medium text-red-700 hover:bg-red-50"><LogOut className="size-3.5" />Sign Out</button>
