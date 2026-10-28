@@ -795,15 +795,73 @@ function currentTotalCtc(row) {
   return ctcFromComponents(row) ?? 0;
 }
 
+
+async function syncDelegationSnapshotRows(datastore, employees, employeeMasterMap, cycleId, options = {}) {
+  const activeCycleId = String(cycleId || "").trim();
+  if (!activeCycleId) return;
+
+  const table = datastore.table(DELEGATION_TABLE_ID);
+  const records = await readAllDataStoreRows(table);
+  const updatedAt = new Date().toISOString();
+  const actor = String(options.updatedBy || "system").trim() || "system";
+
+  for (const employee of employees || []) {
+    const empId = String(employee?.emp_id || employee?.employee_id || "").trim();
+    if (!empId) continue;
+    const master = employeeMasterMap.get(empId.toLowerCase()) || {};
+    const masterRowId = String(master.ROWID || master.rowid || master.id || employee.emp_master_row_id || "").trim();
+    if (!masterRowId) continue;
+
+    const existing = records.find((record) => {
+      const rowCycleId = historyReference(record?.cycle_id);
+      const rowEmployeeId = historyReference(record?.emp_id);
+      return rowCycleId === activeCycleId &&
+        (rowEmployeeId === masterRowId || rowEmployeeId.toLowerCase() === empId.toLowerCase());
+    });
+
+    const previousComp = String(employee?.previous_comp_manager || "").trim();
+    const previousTechEd = String(employee?.previous_appraiser_tech_ed || employee?.previous_tech_ed || "").trim();
+    const currentComp = String(employee?.comp_manager || employee?.delegation_comp_manager || employee?.appraiser_tech_ed || "").trim();
+    const currentTechEd = String(employee?.appraiser_tech_ed || "").trim();
+    const row = {
+      cycle_id: activeCycleId,
+      emp_id: masterRowId,
+      comp_manager: currentComp,
+      appraiser_tech_ed: currentTechEd,
+      status: String(existing?.status || options.status || "Active"),
+      updated_by: actor,
+      updated_at: updatedAt,
+    };
+
+    if (existing) {
+      // A saved historical snapshot is immutable after first capture.
+      row.previous_comp_manager = String(existing.previous_comp_manager || previousComp).trim();
+      row.previous_appraiser_tech_ed = String(existing.previous_appraiser_tech_ed || previousTechEd).trim();
+      const rowId = String(existing.ROWID || existing.rowid || "").trim();
+      if (rowId) {
+        await table.updateRow({ ...row, ROWID: rowId });
+        Object.assign(existing, row);
+      }
+    } else {
+      row.previous_comp_manager = previousComp;
+      row.previous_appraiser_tech_ed = previousTechEd;
+      const created = await table.insertRow(row);
+      records.push({ ...row, ...(created || {}) });
+    }
+  }
+}
+
 async function enrichPreviousAppraisalValues(datastore, employees, employeeMasterMap) {
-  const [payrollRows, cycleRows, eligibilityRows, feedbackRows, appraisalHistoryRows] = await Promise.all([
+  const [payrollRows, cycleRows, eligibilityRows, feedbackRows, appraisalHistoryRows, delegationRows] = await Promise.all([
     readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
     readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
     readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)).catch(() => []),
     readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)).catch(() => []),
-    // Use the existing Appraisal_Sheet rows for prior-cycle assignments.
-    // Delegation does not require a separate Data Store table.
     readAllDataStoreRows(datastore.table(EMPLOYEES_TABLE_ID)).catch(() => []),
+    readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID)).catch((error) => {
+      console.error("Could not read Delegation records:", error?.message || error);
+      return [];
+    }),
   ]);
   const cycleIdOf = (cycle) => String(cycle?.ROWID ?? cycle?.rowid ?? cycle?.id ?? cycle?.ID ?? "").trim();
   const cycleStatusOf = (cycle) => String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "").trim().toLowerCase();
@@ -1095,28 +1153,37 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       const name = String(master.emp_name || master.name || "").trim();
       return id && name ? id + " - " + name : name || id || raw;
     };
-    const previousCompManager = assignmentDisplay(
-      firstNonEmpty(assignmentHistoryRow || {}, [
-        "comp_manager_id", "comp_manager", "Comp_Manager", "comp_manager_name",
-        "compManager", "compensation_manager", "compManagerName",
-      ]) ||
-      firstNonEmpty(previousAssignmentPayroll || {}, [
-        "comp_manager_id", "comp_manager", "Comp_Manager", "comp_manager_name",
-        "compManager", "compensation_manager", "compManagerName",
-      ]),
-    );
-    const previousAppraiserTechEd = assignmentDisplay(
-      firstNonEmpty(assignmentHistoryRow || {}, [
-        "appraiser_tech_ed_id", "appraiser_tech_ed1", "appraiser_tech_ed", "Tech_ED",
-        "tech_ed", "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name",
-        "appraiser_tech_ed_name1",
-      ]) ||
-      firstNonEmpty(previousAssignmentPayroll || {}, [
-        "appraiser_tech_ed_id", "appraiser_tech_ed1", "appraiser_tech_ed", "Tech_ED",
-        "tech_ed", "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name",
-        "appraiser_tech_ed_name1",
-      ]),
-    );
+    const masterRowId = historyReference(assignmentMaster?.ROWID ?? assignmentMaster?.rowid ?? assignmentMaster?.id).toLowerCase();
+    const savedDelegation = delegationRows.find((record) => {
+      const savedCycle = historyReference(record?.cycle_id).toLowerCase();
+      const savedEmployee = historyReference(record?.emp_id).toLowerCase();
+      return savedCycle === String(currentCycleId).toLowerCase() &&
+        (savedEmployee === masterRowId || savedEmployee === String(empKey || "").toLowerCase());
+    });
+    const previousCompManager = String(savedDelegation?.previous_comp_manager || "").trim() ||
+      assignmentDisplay(
+        firstNonEmpty(assignmentHistoryRow || {}, [
+          "comp_manager_id", "comp_manager", "Comp_Manager", "comp_manager_name",
+          "compManager", "compensation_manager", "compManagerName",
+        ]) ||
+        firstNonEmpty(previousAssignmentPayroll || {}, [
+          "comp_manager_id", "comp_manager", "Comp_Manager", "comp_manager_name",
+          "compManager", "compensation_manager", "compManagerName",
+        ]),
+      );
+    const previousAppraiserTechEd = String(savedDelegation?.previous_appraiser_tech_ed || "").trim() ||
+      assignmentDisplay(
+        firstNonEmpty(assignmentHistoryRow || {}, [
+          "appraiser_tech_ed_id", "appraiser_tech_ed1", "appraiser_tech_ed", "Tech_ED",
+          "tech_ed", "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name",
+          "appraiser_tech_ed_name1",
+        ]) ||
+        firstNonEmpty(previousAssignmentPayroll || {}, [
+          "appraiser_tech_ed_id", "appraiser_tech_ed1", "appraiser_tech_ed", "Tech_ED",
+          "tech_ed", "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name",
+          "appraiser_tech_ed_name1",
+        ]),
+      );
     const currentFeedback = empKey ? currentFeedbackByEmployee.get(empKey)?.row : null;
     const feedbackValue = (...keys) => {
       for (const key of keys) {
@@ -1291,6 +1358,15 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       target_pb_criteria: currentTargetPBCriteria,
     };
   });
+
+  // Save one Delegation row per employee for the active cycle. Previous assignment
+  // snapshots are written only when the record is first created (or still blank),
+  // so later refreshes and approved changes never erase the historical values.
+  try {
+    await syncDelegationSnapshotRows(datastore, updatedEmployees, employeeMasterMap, currentCycleId);
+  } catch (error) {
+    console.error("Could not sync Delegation snapshots:", error?.message || error);
+  }
 
   // Persist the lookup-derived date and target PB into the current Appraisal_Sheet
   // row so newly generated cycles replace stale demo values in the table itself.
