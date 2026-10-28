@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { ColumnFilter } from "./ColumnFilter";
 import { getSelectedEmpId, setSelectedEmpId } from "@/lib/selected-employee";
 import { TypingHistoryPopup } from "./TypingHistoryPopup";
-import { COLUMNS, MANAGER_RATING_LABELS, formatValue } from "@/lib/appraisal-data";
+import { COLUMNS, MANAGER_RATING_LABELS, formatValue, defaultInstallment } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useAccess } from "@/lib/access-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
@@ -3387,9 +3387,9 @@ export function AppraisalGrid({
                 ? row[col.key]
                 : col.key === "eligibleForPromotion"
                   ? "No"
-                  : // Instalment shows 1 until it is edited (display only).
+                  : // Instalment defaults to 1 when PB > 0, else 0 (display only).
                     col.key === "pbInstallment"
-                    ? "1"
+                    ? defaultInstallment(row)
                     : "",
             )}
             onFocus={() => {

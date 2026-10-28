@@ -3,6 +3,7 @@ import { useAppraisal } from "@/lib/appraisal-store";
 import {
   NEW_TITLES,
   INSTALLMENT_OPTIONS,
+  defaultInstallment,
   totalOfPB,
   totalBonus as calcTotalBonus,
   newBaseSalary,
@@ -970,7 +971,12 @@ export function DetailScreenPage() {
                       <select
                         data-f="pbInstallment"
                         className={`gs${isEd("pbInstallment") ? " ed" : ""}`}
-                        value={String(employee.pbInstallment || "1")}
+                        value={String(
+                          employee.pbInstallment === "" ||
+                            employee.pbInstallment == null
+                            ? defaultInstallment(employee)
+                            : employee.pbInstallment,
+                        )}
                         onChange={(e) =>
                           commit("pbInstallment", e.target.value)
                         }

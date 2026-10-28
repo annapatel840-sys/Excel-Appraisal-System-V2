@@ -407,7 +407,10 @@ export function SheetPage() {
                         role="menuitem"
                         className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-[12px] text-[#334155] hover:bg-[#f1f5f9]"
                         onClick={() => {
-                          exportToExcel(filtered, undefined, {
+                          // Export only the ticked rows; if none are ticked
+                          // (or all are), export everything currently shown.
+                          const ticked = filtered.filter((r) => selected[r.id]);
+                          exportToExcel(ticked.length ? ticked : filtered, undefined, {
                             isHidden: access.isHidden,
                           }).catch((error) => {
                             console.error("Excel export failed:", error);

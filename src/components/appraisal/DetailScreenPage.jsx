@@ -11,6 +11,7 @@ import { useAppraisal } from "@/lib/appraisal-store";
 import {
   NEW_TITLES,
   INSTALLMENT_OPTIONS,
+  defaultInstallment,
   inr,
   totalOfPB,
   totalBonus as calcTotalBonus,
@@ -1877,7 +1878,7 @@ export function DetailScreenPage({
                               key={`${employee.id}-pbInstallment`}
                               value={
                                 isBlank(employee.pbInstallment)
-                                  ? ""
+                                  ? defaultInstallment(employee)
                                   : String(employee.pbInstallment)
                               }
                               onChange={(e) => commit("pbInstallment", e.target.value)}

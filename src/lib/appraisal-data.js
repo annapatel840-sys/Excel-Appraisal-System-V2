@@ -28,6 +28,11 @@ export const STATUSES = ["Pending", "In Progress", "Completed", "Submitted"];
 
 export const INSTALLMENT_OPTIONS = ["1", "2", "4"];
 
+// Default instalment (display only, until the user picks one): 1 when the
+// PB for this year is above 0, otherwise blank (shown as "—").
+export const defaultInstallment = (r) =>
+  Number(r?.allocatedPBAmount || 0) > 0 ? "1" : "";
+
 export const PROMOTION_OPTIONS = ["Yes", "No"];
 
 export const NEW_TITLES = [
