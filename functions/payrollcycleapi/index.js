@@ -1322,6 +1322,52 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     );
     return { row, rawCycle, cycle: cycleByReference.get(rawCycle.toLowerCase()) || null };
   });
+
+  // Do not generate a partial appraisal sheet. The required source uploads
+  // must belong to this exact cycle; rows from another cycle cannot satisfy
+  // the prerequisite just because they exist in the same Data Store tables.
+  const currentCyclePayrollRows = payrollRowsWithCycle.filter(
+    ({ cycle: sourceCycle }) => sourceCycle && String(sourceCycle.id) === String(cycle.id),
+  );
+  if (!currentCyclePayrollRows.length) {
+    throw new ApiError(
+      `Payroll data has not been uploaded for ${cycle.name}. Upload payroll data for this cycle before generating the Appraisal Sheet.`,
+      409,
+    );
+  }
+
+  const currentCycleFeedbackRows = feedbackRows.filter((row) => {
+    const feedbackCycle = referenceText(
+      fieldValue(row, "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name", "appraisal_year"),
+    ).toLowerCase();
+    return [cycle.id, cycle.sourceRowId, cycle.name]
+      .map((value) => referenceText(value).toLowerCase())
+      .filter(Boolean)
+      .includes(feedbackCycle);
+  });
+  const hasFeedback = currentCycleFeedbackRows.some((row) =>
+    ["manager_feedback", "client_manager_feedback", "client_feedback"].some((field) => {
+      const value = fieldValue(row, field);
+      return value !== undefined && value !== null && String(value).trim() !== "";
+    }),
+  );
+  const hasRating = currentCycleFeedbackRows.some((row) =>
+    ["manager_rating", "client_rating"].some((field) => {
+      const value = fieldValue(row, field);
+      return value !== undefined && value !== null && String(value).trim() !== "";
+    }),
+  );
+  if (!currentCycleFeedbackRows.length || !hasFeedback || !hasRating) {
+    const missing = [
+      !currentCycleFeedbackRows.length ? "Feedback and Rating upload" : "",
+      !hasFeedback ? "feedback values" : "",
+      !hasRating ? "rating values" : "",
+    ].filter(Boolean).join(" and ");
+    throw new ApiError(
+      `${missing} is required for ${cycle.name}. Upload the cycle's Feedback and Rating data before generating the Appraisal Sheet.`,
+      409,
+    );
+  }
   payrollRowsWithCycle.forEach(({ row, rawCycle }) => {
     const masterId = referenceText(row.emp_id ?? row.employee_master_id);
     if (masterId && cycleKeys.has(rawCycle.toLowerCase())) {
