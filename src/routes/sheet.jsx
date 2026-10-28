@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { cn } from "@/lib/utils";
-import { useAppraisal } from "@/lib/appraisal-store";
+import { useAppraisal, LAST_EDIT_STORAGE_KEY } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
 import { useNotices } from "@/lib/notices";
 import { useCatalystUser } from "@/lib/catalyst-auth";
@@ -178,43 +178,23 @@ export function SheetPage() {
     [appraisalRows, editedEmployeeIds],
   );
 
-  // The newest edit is also remembered in browser storage, so "Last Edited"
-  // keeps working after a refresh or re-login (before / without the audit
-  // history coming back from the server).
-  const lastEditedKey = `appraisal.lastEdited.v1:${String(
-    catalystUser?.email || catalystUser?.name || "user",
-  ).toLowerCase()}`;
+  // The newest edit is remembered in browser storage by the store at the
+  // moment it is made, so this keeps working after a refresh or re-login.
+  // It is re-read whenever the audit list changes.
   const auditLastEntry =
     // The audit list is already limited to the active cycle by the store.
     audit.find((entry) => String(entry.empId || "").trim()) || null;
-  const [storedLastEdit, setStoredLastEdit] = useState(null);
-  useEffect(() => {
+  const storedLastEdit = useMemo(() => {
     try {
-      const raw = window.localStorage.getItem(lastEditedKey);
-      setStoredLastEdit(raw ? JSON.parse(raw) : null);
+      const raw = window.localStorage.getItem(LAST_EDIT_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return parsed?.empId ? parsed : null;
     } catch (_) {
-      setStoredLastEdit(null);
+      return null;
     }
-  }, [lastEditedKey]);
-  useEffect(() => {
-    if (!auditLastEntry) return;
-    const next = {
-      empId: String(auditLastEntry.empId).trim(),
-      at: auditLastEntry.at,
-    };
-    setStoredLastEdit((prev) => {
-      const prevTime = prev ? new Date(prev.at).getTime() : 0;
-      const nextTime = new Date(next.at).getTime();
-      if (prev && Number.isFinite(prevTime) && prevTime >= nextTime) return prev;
-      try {
-        window.localStorage.setItem(lastEditedKey, JSON.stringify(next));
-      } catch (_) {
-        /* storage unavailable: stays for this page view only */
-      }
-      return next;
-    });
-  }, [auditLastEntry?.empId, auditLastEntry?.at, lastEditedKey]);
-  const lastEditedEntry = auditLastEntry || storedLastEdit;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audit]);
+  const lastEditedEntry = storedLastEdit || auditLastEntry;
   const lastEditedRow = lastEditedEntry
     ? rows.find(
         (row) => String(row.empId).trim() === String(lastEditedEntry.empId).trim(),

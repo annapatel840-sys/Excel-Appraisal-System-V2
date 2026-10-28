@@ -36,6 +36,24 @@ const readLocalAuditTrail = () => {
   }
 };
 
+// The most recent edit is remembered in browser storage the moment it is made,
+// so the Appraisal Sheet's "Last Edited" button works after a refresh/re-login.
+export const LAST_EDIT_STORAGE_KEY = "appraisal.lastEdit.v2";
+const rememberLastEdit = (entry) => {
+  try {
+    if (typeof window === "undefined" || !entry?.empId) return;
+    window.localStorage.setItem(
+      LAST_EDIT_STORAGE_KEY,
+      JSON.stringify({
+        empId: String(entry.empId).trim(),
+        at: entry.at || new Date().toISOString(),
+      }),
+    );
+  } catch (_) {
+    /* storage unavailable */
+  }
+};
+
 const currentCycleAudit = (entries) => {
   if (!APPRAISAL_YEAR) return [];
   return (Array.isArray(entries) ? entries : []).filter((entry) =>
@@ -1570,6 +1588,7 @@ export function AppraisalProvider({ children }) {
 
     updateRows(() => nextRows);
 
+    rememberLastEdit(entries[entries.length - 1]);
     setAudit((prev) => [...entries.slice().reverse(), ...prev]);
 
     setModified((prev) => ({
@@ -1700,6 +1719,7 @@ export function AppraisalProvider({ children }) {
 
       updateRows(() => nextRows);
 
+      rememberLastEdit(entries[entries.length - 1]);
       setAudit((prev) => [...entries.slice().reverse(), ...prev]);
 
       setModified((prev) => ({
