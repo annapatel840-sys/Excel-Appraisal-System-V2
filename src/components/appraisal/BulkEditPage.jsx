@@ -2930,7 +2930,7 @@ const BulkOperations = forwardRef(function BulkOperations(
             )}
           </div>
           <div className="tk">
-            <span>Budget Utilization incl. Target PB</span>
+            <span>Total Target PB</span>
             {pv && Math.abs(inclT(bPv) - inclT(b0)) >= 0.5 ? (
               <strong>
                 {rupees(inclT(b0))} <small>→</small> {rupees(inclT(bPv))}
