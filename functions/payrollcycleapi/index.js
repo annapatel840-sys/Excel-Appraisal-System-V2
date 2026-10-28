@@ -541,6 +541,13 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
   const cycleRows = existingRows.filter(
     (row) => String(row.appraisal_cycle_id || "") === String(cycle.id),
   );
+  // Older versions seeded all active employees with System rows on first
+  // page load. If this cycle has never had criteria applied, remove those
+  // automatic placeholders while preserving explicit Manual rows.
+  const criteriaAlreadyApplied = await eligibilityCriteriaWasApplied(tables, cycle.id, cycleRows);
+  const unqualifiedSeedRows = criteriaAlreadyApplied ? [] : cycleRows.filter((row) =>
+    String(row.eligibility_source || "").trim().toLowerCase() === "system",
+  );
   const masterByRowId = new Map(
     masterRows.map((row) => [String(row.ROWID || row.rowid || ""), row]),
   );
@@ -609,7 +616,7 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
     const empId = String(row.emp_id || "").trim().toLowerCase();
     return !masterByRowId.has(String(row.employee_master_id || "")) && !masterByEmpId.has(empId);
   });
-  const toDelete = [...staleRows, ...orphanRows];
+  const toDelete = [...staleRows, ...orphanRows, ...unqualifiedSeedRows];
   await deleteEligibilityRowsById(tables, toDelete.map((row) => rowId(row)));
 
   // Opening the Eligibility List must never pre-populate employees.
@@ -626,6 +633,7 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
     created: 0,
     removed: orphanRows.length,
     staleRemoved: staleRows.length,
+    unqualifiedSeedRowsRemoved: unqualifiedSeedRows.length,
     repairedReferences,
     inactiveMarked,
     activeEmployees: masterRows.filter((row) =>
