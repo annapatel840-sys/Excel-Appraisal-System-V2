@@ -2232,6 +2232,14 @@ export function EmployeeMaster() {
           newValue: "Eligible",
         }),
       );
+      (result?.updatedRows || []).forEach((row) =>
+        addEligibilityAudit({
+          empId: row.empId,
+          employeeName: row.name,
+          oldValue: row.oldStatus || "",
+          newValue: row.newStatus || "",
+        }),
+      );
       (result?.removedRows || []).forEach((row) =>
         addEligibilityAudit({
           empId: row.empId,
@@ -2245,9 +2253,7 @@ export function EmployeeMaster() {
 
       showBanner(
         "Criteria applied",
-        `${result?.evaluated ?? 0} employee(s) evaluated: ${result?.added ?? 0} added to the Eligibility List, ${result?.excluded ?? 0} left out by the criteria` +
-          `${result?.removed ? ` (${result.removed} removed from the list)` : ""}. ` +
-          "Use Add An Employee to include anyone who was left out.",
+        `${result?.evaluated ?? 0} active employee(s) evaluated: ${result?.updated ?? 0} status(es) updated, ${result?.excluded ?? 0} marked Not Eligible. Employees remain visible in the list.`,
       );
     } catch (error) {
       showBanner(
