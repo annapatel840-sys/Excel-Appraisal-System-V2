@@ -12,7 +12,10 @@ const access = require("./accessCore");
 const app = express();
 
 const DEFAULT_LIMIT = 20;
-const MAX_LIMIT = 100;
+// One request can return the whole roster (the Appraisal Sheet and Budget
+// stores share it); every page re-runs the full table reads, so fewer pages
+// means less work.
+const MAX_LIMIT = 1000;
 const DATASTORE_PAGE_SIZE = 200;
 
 const EMPLOYEES_TABLE_ID = "74008000000039094";

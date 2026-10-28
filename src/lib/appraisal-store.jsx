@@ -15,6 +15,7 @@ import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 import { useCatalystUser } from "./catalyst-auth";
 import { getViewAsSelected, useViewAs } from "./view-as-store";
 import { payrollCycleRequest } from "./payroll-cycle-api";
+import { fetchAppraisalRoster, isActiveEligible } from "./employee-roster";
 
 const CURRENT_USER = "Unknown user";
 // Set from Appraisal_Cycle_Master before loading or saving current-cycle data.
@@ -525,42 +526,6 @@ const fetchEmployeePageFromCatalyst = async (
     data: Array.isArray(payload.data) ? payload.data : [],
     pagination: payload.pagination || {},
     counts: payload.counts || {},
-  };
-};
-
-/* ============================================================
-FETCH ALL EMPLOYEES
-============================================================ */
-
-const fetchAllEmployeesFromCatalyst = async (status = "", eligible = "") => {
-  const firstPage = await fetchEmployeePageFromCatalyst(
-    1,
-    100,
-    status,
-    eligible,
-  );
-
-  const allEmployees = [...firstPage.data];
-
-  const totalPages = Math.max(1, Number(firstPage.pagination?.totalPages || 1));
-
-  if (totalPages > 1) {
-    for (let page = 2; page <= totalPages; page += 1) {
-      const result = await fetchEmployeePageFromCatalyst(
-        page,
-        100,
-        status,
-        eligible,
-      );
-
-      allEmployees.push(...result.data);
-    }
-  }
-
-  return {
-    employees: allEmployees,
-    counts: firstPage.counts || {},
-    pagination: firstPage.pagination || {},
   };
 };
 
@@ -1170,7 +1135,15 @@ export function AppraisalProvider({ children }) {
 
       // Only active-cycle employees explicitly marked Eligible appear here.
       // Employee Master and Payroll remain separate persistent data sources.
-      const result = await fetchAllEmployeesFromCatalyst("active", "eligible");
+      // The full roster request is shared with the Budget store; the same
+      // status=active / eligible=eligible rule employeesapi applies is applied
+      // here (counts are the unfiltered scope counts either way).
+      const roster = await fetchAppraisalRoster({ viewAs: getViewAsSelected() });
+      const result = {
+        employees: roster.employees.filter(isActiveEligible),
+        counts: roster.counts,
+        pagination: roster.pagination,
+      };
 
       if (requestId !== loadSeqRef.current) {
         return;
