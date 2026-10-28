@@ -72,7 +72,16 @@ export default function DelegationScreen({
   const [activeCycleName, setActiveCycleName] = useState("");
   const [activeCycleId, setActiveCycleId] = useState("");
   const [rosterLoading, setRosterLoading] = useState(false);
+  const [showRosterLoading, setShowRosterLoading] = useState(false);
   const displayCycleName = activeCycleName || cycleName || "No active cycle";
+  useEffect(() => {
+    if (!rosterLoading) {
+      setShowRosterLoading(false);
+      return undefined;
+    }
+    const timer = window.setTimeout(() => setShowRosterLoading(true), 500);
+    return () => window.clearTimeout(timer);
+  }, [rosterLoading]);
   useEffect(() => {
     setLocked(false);
     setAudit([]);
@@ -934,9 +943,9 @@ export default function DelegationScreen({
           </div>
 
           <div className="dg-tw">
-            {rosterLoading ? (
+            {rosterLoading && showRosterLoading ? (
               <div className="empty" role="status">Loading delegation data…</div>
-            ) : !scoped.length ? (
+            ) : rosterLoading ? null : !scoped.length ? (
               <div className="empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
                 {activeCycleId ? "No delegation rows are available for " + displayCycleName + "." : "No active appraisal cycle. Create or activate a cycle to start delegation."}
                 {activeCycleId && (
