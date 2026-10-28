@@ -642,6 +642,7 @@ export function EmployeeMaster() {
 
   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
   const [eligibilityCycleId, setEligibilityCycleId] = useState("");
+  const [eligibilityCriteriaApplied, setEligibilityCriteriaApplied] = useState(false);
   // Full Employee Master (all pages). The Eligibility List starts empty for a
   // cycle, so the criteria panel and "Add An Employee" read from this list.
   const [eligibilityMasterEmployees, setEligibilityMasterEmployees] = useState([]);
@@ -1183,6 +1184,7 @@ export function EmployeeMaster() {
         });
         const loadedCycleId = String(firstPage?.cycle?.cycleId || "").trim();
         setEligibilityCycleId(loadedCycleId);
+        setEligibilityCriteriaApplied(Boolean(firstPage?.cycle?.criteriaApplied));
 
         let all = Array.isArray(firstPage?.data) ? firstPage.data : [];
 
@@ -1255,6 +1257,7 @@ export function EmployeeMaster() {
   const invalidateEligibilityList = () => {
     eligibilityLoadedKeyRef.current = null;
     setEligibilityCycleId("");
+    setEligibilityCriteriaApplied(false);
     setEligibilityReloadKey((value) => value + 1);
   };
 
@@ -1264,6 +1267,7 @@ export function EmployeeMaster() {
     const onCycleUpdated = () => {
       eligibilityLoadedKeyRef.current = null;
       setEligibilityCycleId("");
+      setEligibilityCriteriaApplied(false);
       setEligibilityEmployees([]);
       setEligibilityReloadKey((value) => value + 1);
     };
@@ -2247,6 +2251,7 @@ export function EmployeeMaster() {
         }),
       );
 
+      setEligibilityCriteriaApplied(true);
       await reloadEligibilityRows();
 
       showBanner(
@@ -2273,6 +2278,7 @@ export function EmployeeMaster() {
       cycleId: eligibilityCycleId,
     });
     setEligibilityEmployees(Array.isArray(reloaded?.data) ? reloaded.data : []);
+    setEligibilityCriteriaApplied(Boolean(reloaded?.cycle?.criteriaApplied));
   };
 
   /* ============================================================
@@ -2534,6 +2540,7 @@ export function EmployeeMaster() {
                     excludedEmployees={excludedEmployees}
                     setExcludedEmployees={setExcludedEmployees}
                     onApply={applyEligibilityCriteria}
+                    readOnly={eligibilityCriteriaApplied || !eligibilityCycleId}
                   />
                 )}
 
