@@ -859,7 +859,7 @@ export function DetailScreenPage() {
               <b className={tone(uCur)}>{uCur.toFixed(1)}%</b>
             </div>
             <div className="kpi">
-              <span>Incl. Target PB</span>
+              <span>Total Target PB</span>
               <b className={tone(uTpb)}>{uTpb.toFixed(1)}%</b>
             </div>
           </div>
