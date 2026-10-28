@@ -1867,19 +1867,35 @@ export function DetailScreenPage({
                                 // "PB to be Paid" is flagged (red) but kept.
                                 const n = parseAmount(v);
                                 setPayErr((e) => ({ ...e, pb: "" }));
-                                commit("allocatedPBAmount", n);
+                                if (
+                                  !((Number(n) || 0) > 0) &&
+                                  !isBlank(employee.pbInstallment)
+                                ) {
+                                  // PB 0 / cleared: Instalment resets to empty.
+                                  commitLinked({
+                                    allocatedPBAmount: n,
+                                    pbInstallment: "",
+                                  });
+                                } else {
+                                  commit("allocatedPBAmount", n);
+                                }
                                 clearDraft(["pbStr"]);
                               }}
                             />
                             <select
                               key={`${employee.id}-pbInstallment`}
+                              disabled={
+                                !((Number(employee.allocatedPBAmount) || 0) > 0)
+                              }
                               value={
-                                isBlank(employee.pbInstallment)
-                                  ? defaultInstallment(employee)
-                                  : String(employee.pbInstallment)
+                                !((Number(employee.allocatedPBAmount) || 0) > 0)
+                                  ? ""
+                                  : isBlank(employee.pbInstallment)
+                                    ? defaultInstallment(employee)
+                                    : String(employee.pbInstallment)
                               }
                               onChange={(e) => commit("pbInstallment", e.target.value)}
-                              className="h-[36px] w-[64px] shrink-0 rounded border px-1 text-[14.5px] outline-none focus:border-[#0B7A75]"
+                              className="h-[36px] w-[64px] shrink-0 rounded border px-1 text-[14.5px] outline-none focus:border-[#0B7A75] disabled:cursor-not-allowed disabled:opacity-60"
                               style={fieldStyle(isEdited("pbInstallment"))}
                             >
                               <option value="">—</option>

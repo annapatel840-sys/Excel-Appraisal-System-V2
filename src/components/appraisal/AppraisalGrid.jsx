@@ -2887,7 +2887,23 @@ export function AppraisalGrid({
         return;
       }
 
-      updateCell(row.id, col.key, value);
+      // PB set to 0 / cleared: reset Instalment to empty (it becomes
+      // non-editable) in the same update.
+      if (
+        col.key === "allocatedPBAmount" &&
+        !((Number(value) || 0) > 0) &&
+        String(row.pbInstallment ?? "") !== ""
+      ) {
+        updateLinkedCells(
+          row.id,
+          { allocatedPBAmount: value, pbInstallment: "" },
+          "Cell edit",
+        );
+        flashSaved(`${row.id}:pbInstallment`);
+        markEdited(`${row.id}:pbInstallment`);
+      } else {
+        updateCell(row.id, col.key, value);
+      }
 
       flashSaved(`${row.id}:${col.key}`);
       markEdited(`${row.id}:${col.key}`);
@@ -2912,6 +2928,7 @@ export function AppraisalGrid({
     },
     [
       updateCell,
+      updateLinkedCells,
       flashSaved,
       markEdited,
       updateHikePct,
@@ -3000,9 +3017,27 @@ export function AppraisalGrid({
         return;
       }
 
+      // Instalment only applies to rows whose PB for This Year is above 0.
+      if (col.key === "pbInstallment") {
+        const pbIds = rows
+          .filter((row) => (Number(row.allocatedPBAmount) || 0) > 0)
+          .map((row) => row.id);
+
+        if (pbIds.length) {
+          bulkUpdate(pbIds, col.key, "set", value);
+        }
+
+        return;
+      }
+
       const ids = rows.map((row) => row.id);
 
       bulkUpdate(ids, col.key, "set", value);
+
+      // PB set to 0 / cleared: reset Instalment to empty.
+      if (col.key === "allocatedPBAmount" && !((Number(value) || 0) > 0)) {
+        bulkUpdate(ids, "pbInstallment", "set", "");
+      }
 
       if (col.key === "eligibleForPromotion" && value === "No") {
         bulkUpdate(ids, "newTitle", "set", null);
@@ -3037,6 +3072,11 @@ export function AppraisalGrid({
 
       if (column.key === "newTitle") {
         return row.eligibleForPromotion === "Yes";
+      }
+
+      // Instalment only applies when PB for This Year is above 0.
+      if (column.key === "pbInstallment") {
+        return (Number(row.allocatedPBAmount) || 0) > 0;
       }
 
       return true;
@@ -3327,9 +3367,11 @@ export function AppraisalGrid({
 
     if (!isEditable) {
       const rawText =
-        row[col.key] !== null && row[col.key] !== undefined
-          ? String(row[col.key])
-          : "";
+        col.key === "pbInstallment" && !((Number(row.allocatedPBAmount) || 0) > 0)
+          ? ""
+          : row[col.key] !== null && row[col.key] !== undefined
+            ? String(row[col.key])
+            : "";
 
       const isMoney = col.type === "currency";
       // Manager Rating: show the description next to the number, e.g.
