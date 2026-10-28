@@ -140,11 +140,8 @@ export function SheetPage() {
   const editedEmployeeIds = useMemo(
     () =>
       new Set(
+        // The store already limits the audit list to the active cycle.
         audit
-          .filter(
-            (entry) =>
-              String(entry.appraisalYear || "Apr-26") === "Apr-26",
-          )
           .map((entry) => String(entry.empId || "").trim())
           .filter(Boolean),
       ),

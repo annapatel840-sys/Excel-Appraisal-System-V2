@@ -1114,7 +1114,7 @@ export function AppraisalProvider({ children }) {
     writeLocalAuditTrail(audit);
   }, [audit]);
 
-  const [modified, setModified] = useState({});
+  const [modifiedLive, setModified] = useState({});
 
   const [loading, setLoading] = useState(true);
 
@@ -2129,6 +2129,32 @@ export function AppraisalProvider({ children }) {
   /* ==========================================================
   CONTEXT VALUE
   ========================================================== */
+
+  // Yellow "edited" cells = edited this session + everything already in this
+  // cycle's audit trail, so they survive a refresh or a fresh login.
+  const modified = useMemo(() => {
+    const rowIdByEmp = new Map();
+    rows.forEach((row) => {
+      const emp = String(row.empId || "").trim();
+      if (emp) rowIdByEmp.set(emp, row.id);
+    });
+
+    const keyByName = new Map();
+    COLUMNS.forEach((column) => {
+      if (!column.editable || column.computed) return;
+      keyByName.set(String(column.key).trim().toLowerCase(), column.key);
+      keyByName.set(String(labelOf(column.key)).trim().toLowerCase(), column.key);
+    });
+
+    const fromAudit = {};
+    (Array.isArray(audit) ? audit : []).forEach((entry) => {
+      const rowId = rowIdByEmp.get(String(entry?.empId || "").trim());
+      const key = keyByName.get(String(entry?.field || "").trim().toLowerCase());
+      if (rowId !== undefined && key) fromAudit[`${rowId}:${key}`] = true;
+    });
+
+    return { ...fromAudit, ...modifiedLive };
+  }, [audit, rows, modifiedLive]);
 
   const value = useMemo(
     () => ({
