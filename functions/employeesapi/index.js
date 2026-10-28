@@ -2021,6 +2021,18 @@ async function getEmployees(req, res) {
         if (eligible) eligibleRecords.push({ masterId: masterId, empId: empId });
       });
 
+      // The active Appraisal Sheet is strictly driven by Eligibility_List.
+      // Do not keep legacy sheet rows when the employee has no eligibility
+      // record, is Not Eligible, or is no longer Active in Employee_Master.
+      const masterRowsForEligibility = await employeeMasterPromise;
+      const masterByRowIdForEligibility = new Map(masterRowsForEligibility.map((master) => [
+        String(master.ROWID ?? master.rowid ?? master.id ?? "").trim().toLowerCase(),
+        master,
+      ]));
+      const masterByEmpIdForEligibility = new Map(masterRowsForEligibility.map((master) => [
+        String(master.emp_id ?? master.employee_id ?? "").trim().toLowerCase(),
+        master,
+      ]).filter(([empId]) => empId));
       appraisalRows = appraisalRows.filter((row) => {
         const rowCycle = historyReference(
           row?.cycle_id ??
@@ -2031,7 +2043,24 @@ async function getEmployees(req, res) {
         );
         const belongsToActiveCycle = rowCycle === activeCycleId ||
           (!!activeCycleName && rowCycle.toLowerCase() === activeCycleName);
-        return belongsToActiveCycle;
+        if (!belongsToActiveCycle) return false;
+
+        const masterId = historyReference(
+          row?.emp_master_row_id ?? row?.employee_master_id,
+        ).toLowerCase();
+        const empId = String(row?.emp_id ?? row?.employee_id ?? "").trim().toLowerCase();
+        const decision =
+          (masterId && eligibilityByMasterId.get(masterId)) ||
+          (empId && eligibilityByEmployeeId.get(empId));
+        if (!decision?.eligible) return false;
+
+        const master = (masterId && masterByRowIdForEligibility.get(masterId)) ||
+          (empId && masterByEmpIdForEligibility.get(empId));
+        if (!master) return false;
+        const masterStatus = String(master.emp_status ?? master.status ?? "Active").trim().toLowerCase();
+        if (masterStatus !== "active") return false;
+
+        return true;
       }).map((row) => {
         const masterId = historyReference(
           row?.emp_master_row_id ?? row?.employee_master_id,
@@ -2040,9 +2069,7 @@ async function getEmployees(req, res) {
         const decision =
           (masterId && eligibilityByMasterId.get(masterId)) ||
           (empId && eligibilityByEmployeeId.get(empId));
-        return decision
-          ? { ...row, eligible_status: decision.status }
-          : row;
+        return { ...row, eligible_status: decision.status };
       });
 
       // Delegation runs before Generate Appraisal Sheet. Eligible employees
