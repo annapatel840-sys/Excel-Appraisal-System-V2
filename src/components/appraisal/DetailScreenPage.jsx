@@ -30,6 +30,7 @@ import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
+import { useNotices } from "@/lib/notices";
 import { buildFeedbackEntries, cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
 
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
@@ -52,13 +53,6 @@ const CURRENT_CYCLE = "Apr-26";
    FRONTEND-ONLY SETTINGS (layout / banner). None of these touch data.
    ------------------------------------------------------------------ */
 const BUDGET_PATH = "/budget-distribution";
-// Same budget-change message the Appraisal Sheet shows.
-const BUDGET_NOTICE_PLACEHOLDER = {
-  from: "10.41 L",
-  to: "9.79 L",
-  changes: 5,
-  since: "01-Sep-26",
-};
 
 const NOTES_KEY = "appraisal.myNotes";
 const NOTE_DRAFT_KEY = "appraisal.noteDraft";
@@ -536,47 +530,39 @@ function useFitScale(depKey) {
 const BANNER_BTN =
   "min-w-[92px] shrink-0 rounded border border-[#c4ced6] bg-[#eef3f3] px-3 py-1 text-center text-[11px] font-semibold text-[#102a43] hover:bg-[#e4ecec]";
 
-/* Budget notice. Expanded: [Budget changed] [marquee] [View budget] [Got it].
-   After "Got it" only a bell icon button is left on the far right; clicking
-   it brings the whole notice (including View budget) back. */
-function BudgetBanner({ notice, open, onGotIt, onShow, onViewBudget }) {
-  if (!notice) return null;
+/* Live notices (budget change, bulk edit, data upload, employee status
+   change) — the same ones the Appraisal Sheet bell shows. Layout:
+   [tag] [marquee] [View budget — only for a budget notice] [Got it].
+   "Got it" hides what has been read; a new change brings a new notice. */
+function BudgetBanner({ notices, onGotIt, onViewBudget }) {
+  if (!notices || notices.length === 0) return null;
 
-  if (!open) {
-    return (
-      <div className="flex items-center">
-        <button
-          type="button"
-          onClick={onShow}
-          title="Show budget notice"
-          aria-label="Show budget notice"
-          className="relative ml-auto inline-flex size-7 shrink-0 items-center justify-center rounded border border-[#c4ced6] bg-[#eef3f3] text-[#102a43] hover:bg-[#e4ecec]"
-        >
-          <Bell className="size-3.5" />
-          <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-[#b42318]" />
-        </button>
-      </div>
-    );
-  }
-
-  const budgetNoticeText = `Be aware: your team budget has changed from ${notice.from} to ${notice.to} — ${notice.changes} team changes since allocation on ${notice.since}.`;
+  const first = notices[0];
+  const label =
+    notices.length > 1 ? `${first.tag} +${notices.length - 1}` : first.tag;
+  const noticeText = notices
+    .map((n) => (n.sub ? `${n.text} (${n.sub})` : n.text))
+    .join("   •   ");
+  const hasBudget = notices.some((n) => n.kind === "budget");
 
   // Same size and look as the notice on the Appraisal Sheet.
   return (
     <div className="flex h-full items-center gap-3 rounded-md border border-[#e3e9ec] bg-white px-3 py-1.5">
       <span className="inline-flex shrink-0 items-center gap-2 text-[12px] font-bold text-[#102a43]">
         <span className="text-[#b42318]">▲</span>
-        Budget changed
+        {label}
       </span>
       <span
         className="min-w-0 flex-1 overflow-hidden whitespace-nowrap text-[12px] text-[#3e4c59]"
-        aria-label={budgetNoticeText}
+        aria-label={noticeText}
       >
-        <span className="ds-marquee">{budgetNoticeText}</span>
+        <span className="ds-marquee">{noticeText}</span>
       </span>
-      <button type="button" onClick={onViewBudget} className={BANNER_BTN}>
-        View budget
-      </button>
+      {hasBudget && (
+        <button type="button" onClick={onViewBudget} className={BANNER_BTN}>
+          View budget
+        </button>
+      )}
       <button type="button" onClick={onGotIt} className={BANNER_BTN}>
         Got it
       </button>
@@ -1003,7 +989,6 @@ const HIST_GRID = "110px repeat(9, minmax(0, 1fr))";
    ------------------------------------------------------------------ */
 export function DetailScreenPage({
   onViewBudget,
-  budgetNotice = BUDGET_NOTICE_PLACEHOLDER,
 } = {}) {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
   const currentCycleName = useCurrentCycleName() || CURRENT_CYCLE;
@@ -1064,7 +1049,7 @@ export function DetailScreenPage({
   const historyPromiseRef = useRef(new Map());
 
   // Layout-only state (no effect on data)
-  const [noticeOpen, setNoticeOpen] = useState(true);
+  const { notices: liveNotices, dismissAll: dismissLiveNotices } = useNotices();
   const [metricsOpen, setMetricsOpen] = useState(false);
 
   const [cardOpen, setCardOpen] = useState(true);
@@ -1110,28 +1095,7 @@ export function DetailScreenPage({
   }, [selectionSynced, employee?.empId]);
   const feedbackData = useEmployeeFeedback(employee?.empId);
 
-  const noticeSignature = employee
-    ? JSON.stringify({
-        hikeAmount: employee.hikeAmount,
-        hikePct: employee.hikePct,
-        newBasePay: employee.newBasePay,
-        performanceBonus: employee.performanceBonus,
-        retentionBonus: employee.retentionBonus,
-        compManagerRemarks: employee.compManagerRemarks,
-      })
-    : "";
 
-  const previousNoticeSignatureRef = useRef("");
-  useEffect(() => {
-    if (!noticeSignature) return;
-    if (
-      previousNoticeSignatureRef.current &&
-      previousNoticeSignatureRef.current !== noticeSignature
-    ) {
-      setNoticeOpen(true);
-    }
-    previousNoticeSignatureRef.current = noticeSignature;
-  }, [noticeSignature]);
 
   // Measure + scale the compensation table so it fits one screen.
   const { boxRef, fitRef, scale } = useFitScale(employee?.id);
@@ -1618,13 +1582,11 @@ export function DetailScreenPage({
         >
           {/* Notice (half width) + budget summary bar beside it */}
           <div className="flex items-stretch gap-2">
-            {budgetNotice && noticeOpen && (
+            {liveNotices.length > 0 && (
               <div className="w-[calc(50%-4px)] min-w-0">
                 <BudgetBanner
-                  notice={budgetNotice}
-                  open
-                  onGotIt={() => setNoticeOpen(false)}
-                  onShow={() => setNoticeOpen(true)}
+                  notices={liveNotices}
+                  onGotIt={dismissLiveNotices}
                   onViewBudget={handleViewBudget}
                 />
               </div>
@@ -1636,15 +1598,6 @@ export function DetailScreenPage({
               targetPB={budgetTargetPB}
               isEstimate={budgetIsEstimate}
             />
-            {budgetNotice && !noticeOpen && (
-              <BudgetBanner
-                notice={budgetNotice}
-                open={false}
-                onGotIt={() => setNoticeOpen(false)}
-                onShow={() => setNoticeOpen(true)}
-                onViewBudget={handleViewBudget}
-              />
-            )}
           </div>
         </div>
 
