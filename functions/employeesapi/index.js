@@ -1324,9 +1324,11 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       previous_comp_manager: previousCompManager,
       previous_appraiser_tech_ed: previousAppraiserTechEd,
       previous_tech_ed: previousAppraiserTechEd,
-      // When no current Comp Manager has been saved yet, carry forward the
-      // prior-cycle manager; a genuinely new employee falls back to Tech-ED.
-      delegation_comp_manager: previousCompManager ||
+      // The Delegation row is the persisted source for this cycle's current
+      // Comp Manager. For a new row, default to the prior-cycle manager; a new
+      // employee without prior history falls back to the Employee Master Tech-ED.
+      delegation_comp_manager: String(savedDelegation?.comp_manager || "").trim() ||
+        previousCompManager ||
         String(employee.comp_manager || "").trim() ||
         String(employee.appraiser_tech_ed || "").trim(),
       current_annual_base_pay: payrollAnnualBasePay,
