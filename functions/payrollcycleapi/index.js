@@ -659,10 +659,9 @@ function isoDateOf(value) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-// "Apply Criteria": builds the Eligibility List for the Active cycle from the
-// Employee Master. Active employees who pass every criterion are added as
-// Eligible; employees excluded by a criterion are left out of the list.
-// Rows HR set or added by hand (source "Manual") are never touched.
+// "Apply Criteria": evaluates the Active cycle's roster from Employee_Master.
+// Every employee remains visible; each active non-manual row is updated to
+// Eligible or Not Eligible. Manual decisions are preserved.
 async function applyEligibilityCriteria(tables, body, actor) {
   const cycleId = String(body.cycleId || body.appraisal_cycle_id || "").trim();
   if (!cycleId) throw new ApiError("Appraisal cycle is required.", 400);
