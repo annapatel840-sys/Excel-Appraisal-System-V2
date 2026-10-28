@@ -877,6 +877,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     }
     return "";
   };
+  const readField = (row, ...keys) => firstNonEmpty(row, keys);
   const historyByEmployee = new Map();
   const currentPayrollByEmployee = new Map();
   // Keep cycle-specific payroll rows so a same-year New Joiners upload can be
