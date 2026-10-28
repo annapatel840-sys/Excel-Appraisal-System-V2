@@ -7,6 +7,8 @@ const Module = require('module');
 const CYCLE_T = '74008000000034190';
 const MASTER_T = '74008000000035727';
 const ELIG_T = '74008000000057046';
+const PAYROLL_T = '74008000000035326';
+const FEEDBACK_T = '74008000000022041';
 const CYCLE_COLS = ['cycle_name', 'start_date', 'end_date', 'status', 'remarks', 'changed_by', 'changed_at', 'archived', 'cycle_type', 'process', 'effective_date', 'cancel_reason'];
 
 function makeStore() {
@@ -171,6 +173,33 @@ async function setup() {
     await apply(post, a.id);
     const r2 = await call(api, 'GET', 'eligibility');
     assert.strictEqual(r2.json.data.records.length, 2);
+  });
+
+  await t('Appraisal Sheet generation is blocked when cycle payroll has not been uploaded', async () => {
+    const { post, c } = await richSetup();
+    await apply(post, c.id);
+    const result = await post('generate-sheet', { cycleId: c.id });
+    assert.strictEqual(result.status, 409, JSON.stringify(result.json));
+    assert.match(result.json.message || result.json.error || '', /Payroll data has not been uploaded/i);
+  });
+
+  await t('Appraisal Sheet generation requires cycle Feedback and Rating values', async () => {
+    const { post, c, store } = await richSetup();
+    await apply(post, c.id);
+    const master = store.table(MASTER_T, null).rows.find((row) => row.emp_id === 'E1');
+    await store.table(PAYROLL_T, null).insertRow({
+      emp_id: master.ROWID,
+      appraisal_cycle_name: c.id,
+    });
+    await store.table(FEEDBACK_T, null).insertRow({
+      emp_ID: master.ROWID,
+      appraisal_cycle_name: c.id,
+      manager_feedback: 'Good performance',
+      // Deliberately no rating: generation must not proceed.
+    });
+    const result = await post('generate-sheet', { cycleId: c.id });
+    assert.strictEqual(result.status, 409, JSON.stringify(result.json));
+    assert.match(result.json.message || result.json.error || '', /rating values/i);
   });
 
   // ---- Apply Criteria + Add An Employee --------------------------------
