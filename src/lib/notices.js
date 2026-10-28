@@ -22,6 +22,10 @@ const RECENT_DAYS = 14;
 const DAY_MS = 86400000;
 
 const readDismissed = () => {
+  // Notices can no longer be dismissed ("Got it" was removed), so ignore any
+  // dismissals saved by older versions; they must always show.
+  return [];
+  // eslint-disable-next-line no-unreachable
   try {
     const parsed = JSON.parse(window.localStorage.getItem(DISMISSED_KEY) || "[]");
     return Array.isArray(parsed) ? parsed : [];

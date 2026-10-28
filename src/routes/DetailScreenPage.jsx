@@ -878,13 +878,6 @@ export function DetailScreenPage() {
             <button type="button" className="sbtn" onClick={goBudget}>
               View budget
             </button>
-            <button
-              type="button"
-              className="sbtn g"
-              onClick={() => setHideAlert(true)}
-            >
-              Got it
-            </button>
           </div>
         ) : null}
 

@@ -178,9 +178,43 @@ export function SheetPage() {
     [appraisalRows, editedEmployeeIds],
   );
 
-  const lastEditedEntry =
+  // The newest edit is also remembered in browser storage, so "Last Edited"
+  // keeps working after a refresh or re-login (before / without the audit
+  // history coming back from the server).
+  const lastEditedKey = `appraisal.lastEdited.v1:${String(
+    catalystUser?.email || catalystUser?.name || "user",
+  ).toLowerCase()}`;
+  const auditLastEntry =
     // The audit list is already limited to the active cycle by the store.
     audit.find((entry) => String(entry.empId || "").trim()) || null;
+  const [storedLastEdit, setStoredLastEdit] = useState(null);
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(lastEditedKey);
+      setStoredLastEdit(raw ? JSON.parse(raw) : null);
+    } catch (_) {
+      setStoredLastEdit(null);
+    }
+  }, [lastEditedKey]);
+  useEffect(() => {
+    if (!auditLastEntry) return;
+    const next = {
+      empId: String(auditLastEntry.empId).trim(),
+      at: auditLastEntry.at,
+    };
+    setStoredLastEdit((prev) => {
+      const prevTime = prev ? new Date(prev.at).getTime() : 0;
+      const nextTime = new Date(next.at).getTime();
+      if (prev && Number.isFinite(prevTime) && prevTime >= nextTime) return prev;
+      try {
+        window.localStorage.setItem(lastEditedKey, JSON.stringify(next));
+      } catch (_) {
+        /* storage unavailable: stays for this page view only */
+      }
+      return next;
+    });
+  }, [auditLastEntry?.empId, auditLastEntry?.at, lastEditedKey]);
+  const lastEditedEntry = auditLastEntry || storedLastEdit;
   const lastEditedRow = lastEditedEntry
     ? rows.find(
         (row) => String(row.empId).trim() === String(lastEditedEntry.empId).trim(),
@@ -232,11 +266,6 @@ export function SheetPage() {
             },
           ]
         : []),
-      {
-        label: "Got it",
-        primary: true,
-        onClick: () => dismissNotice(notice.key),
-      },
     ],
   }));
   if (appraisalRows.length > 0) {

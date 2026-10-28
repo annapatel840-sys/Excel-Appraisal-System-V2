@@ -564,9 +564,6 @@ function BudgetBanner({ notices, onGotIt, onViewBudget }) {
           View budget
         </button>
       )}
-      <button type="button" onClick={onGotIt} className={BANNER_BTN}>
-        Got it
-      </button>
     </div>
   );
 }
