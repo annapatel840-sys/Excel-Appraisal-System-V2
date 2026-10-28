@@ -272,10 +272,10 @@ export default function DelegationScreen({
         rm: String(item.reporting_manager || item.repo_manager || "").trim(),
         teId: String(item.appraiser_tech_ed || "").trim(),
         te: String(item.appraiser_tech_ed || "").trim(),
-        comp: String(item.comp_manager || "").trim(),
+        comp: String(item.delegation_comp_manager || item.comp_manager || "").trim(),
         app: String(item.appraiser_tech_ed || "").trim(),
-        prevComp: "",
-        prevApp: "",
+        prevComp: String(item.previous_comp_manager || item.prev_comp_manager || "").trim(),
+        prevApp: String(item.previous_appraiser_tech_ed || item.previous_tech_ed || item.prev_appraiser_tech_ed || "").trim(),
         base: "",
         lastRole: "",
       })));
