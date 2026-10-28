@@ -796,15 +796,14 @@ function currentTotalCtc(row) {
 }
 
 async function enrichPreviousAppraisalValues(datastore, employees, employeeMasterMap) {
-  const [payrollRows, cycleRows, eligibilityRows, feedbackRows, appraisalHistoryRows, delegationRows] = await Promise.all([
+  const [payrollRows, cycleRows, eligibilityRows, feedbackRows, appraisalHistoryRows] = await Promise.all([
     readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
     readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
     readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)).catch(() => []),
     readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)).catch(() => []),
+    // Use the existing Appraisal_Sheet rows for prior-cycle assignments.
+    // Delegation does not require a separate Data Store table.
     readAllDataStoreRows(datastore.table(EMPLOYEES_TABLE_ID)).catch(() => []),
-    // The authoritative cycle-specific assignment history is the Delegation
-    // table (cycle_id, emp_id, comp_manager_id, appraiser_tech_ed_id).
-    readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID)).catch(() => []),
   ]);
   const cycleIdOf = (cycle) => String(cycle?.ROWID ?? cycle?.rowid ?? cycle?.id ?? cycle?.ID ?? "").trim();
   const cycleStatusOf = (cycle) => String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "").trim().toLowerCase();
@@ -1021,9 +1020,9 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     // Delegation history must come from a closed prior-cycle payroll row,
     // never from the active-cycle upload fallback used for current payroll fields.
     const previousAssignmentPayroll = selectedPayrollSource?.row || null;
-    // Delegation history is stored in the Delegation table, keyed by cycle_id
-    // and emp_id. Match the exact prior cycle selected for this employee:
-    // last closed Annual for existing staff, same-year closed New Joiners for new staff.
+    // Read prior assignment values from the existing Appraisal_Sheet history,
+    // matching the same employee and the selected closed cycle. Do not depend
+    // on a separate Delegation table.
     const assignmentCycle = selectedPayrollSource?.cycle || null;
     const assignmentCycleAliases = new Set(
       [
@@ -1032,13 +1031,14 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
         assignmentCycle ? assignmentCycle.sourceRowId : "",
       ].map((value) => historyReference(value).toLowerCase()).filter(Boolean),
     );
-    const assignmentHistoryRow = delegationRows
+    const assignmentHistoryRow = appraisalHistoryRows
       .filter((row) => {
         const rawCycle = historyReference(
-          row?.cycle_id ?? row?.appraisal_cycle_id ?? row?.appraisal_cycle_name ?? row?.cycle_name,
+          row?.cycle_id ?? row?.appraisal_cycle_id ?? row?.appraisalCycleId ??
+          row?.appraisal_cycle ?? row?.appraisal_cycle_name ?? row?.cycle_name,
         ).toLowerCase();
         const rowEmp = rowEmployeeKey(
-          row?.emp_id ?? row?.employee_id ?? row?.emp_code,
+          row?.emp_id ?? row?.employee_id ?? row?.emp_code ?? row?.empId,
           employeeMasterMap,
         );
         return rowEmp === empKey && assignmentCycleAliases.has(rawCycle);
