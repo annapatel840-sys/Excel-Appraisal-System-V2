@@ -1020,30 +1020,48 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     // Delegation history must come from a closed prior-cycle payroll row,
     // never from the active-cycle upload fallback used for current payroll fields.
     const previousAssignmentPayroll = selectedPayrollSource?.row || null;
-    // Appraisal_Sheet is the existing source for saved prior-cycle assignments.
-    // Match the exact cycle selected for this employee; do not query a new table.
-    const assignmentCycleId = selectedPayrollSource?.cycle
-      ? cycleIdOf(selectedPayrollSource.cycle)
-      : "";
-    const assignmentHistoryRow = assignmentCycleId
-      ? appraisalHistoryRows
-          .filter((row) => {
-            const rowCycle = historyReference(
-              row?.cycle_id ?? row?.appraisal_cycle_id ?? row?.appraisalCycleId ??
-              row?.appraisal_cycle ?? row?.appraisal_cycle_name ?? row?.cycle_name,
-            );
-            if (rowCycle !== assignmentCycleId) return false;
-            const rowEmp = rowEmployeeKey(
-              row?.emp_id ?? row?.employee_id ?? row?.emp_code ?? row?.empId,
-              employeeMasterMap,
-            );
-            return rowEmp === empKey;
-          })
-          .sort((a, b) =>
-            String(b.MODIFIEDTIME || b.CREATEDTIME || b.ROWID || "")
-              .localeCompare(String(a.MODIFIEDTIME || a.CREATEDTIME || a.ROWID || ""), undefined, { numeric: true }),
-          )[0] || null
+    // Read assignments from the existing Appraisal_Sheet history.
+    // Cycle and employee references can be stored as either IDs, lookup objects,
+    // or cycle names, so resolve both sides before comparing.
+    const assignmentCycle = selectedPayrollSource?.cycle || null;
+    const assignmentCycleId = assignmentCycle ? cycleIdOf(assignmentCycle) : "";
+    const assignmentCycleName = assignmentCycle ? historyCycleName(assignmentCycle).toLowerCase() : "";
+    const assignmentMaster = empKey
+      ? (employeeMasterMap.get(empKey) || employeeMasterMap.get(String(empRaw ?? "").trim().toLowerCase()))
       : null;
+    const assignmentMasterIds = new Set([
+      assignmentMaster?.ROWID, assignmentMaster?.rowid, assignmentMaster?.id,
+      assignmentMaster?.employee_master_id, assignmentMaster?.employee_master_row_id,
+    ].map((value) => historyReference(value).toLowerCase()).filter(Boolean));
+    const assignmentHistoryRow = appraisalHistoryRows
+      .filter((row) => {
+        const rawCycle = historyReference(
+          row?.cycle_id ?? row?.appraisal_cycle_id ?? row?.appraisalCycleId ??
+          row?.appraisal_cycle ?? row?.appraisal_cycle_name ?? row?.cycle_name,
+        );
+        const resolvedCycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
+        const cycleMatches = Boolean(
+          assignmentCycleId &&
+          ((resolvedCycle && cycleIdOf(resolvedCycle) === assignmentCycleId) ||
+            rawCycle.toLowerCase() === assignmentCycleId.toLowerCase() ||
+            rawCycle.toLowerCase() === assignmentCycleName)
+        );
+        if (!cycleMatches) return false;
+        const rowEmp = rowEmployeeKey(
+          row?.emp_id ?? row?.employee_id ?? row?.emp_code ?? row?.empId,
+          employeeMasterMap,
+        );
+        const rowMasterId = historyReference(
+          row?.emp_master_row_id ?? row?.employee_master_id ?? row?.employee_master_row_id ??
+          row?.emp_master_id,
+        ).toLowerCase();
+        return (empKey && rowEmp === empKey) ||
+          (rowMasterId && assignmentMasterIds.has(rowMasterId));
+      })
+      .sort((a, b) =>
+        String(b.MODIFIEDTIME || b.CREATEDTIME || b.ROWID || "")
+          .localeCompare(String(a.MODIFIEDTIME || a.CREATEDTIME || a.ROWID || ""), undefined, { numeric: true }),
+      )[0] || null;
     const assignmentDisplay = (value) => {
       const raw = historyReference(value);
       if (!raw) return "";
