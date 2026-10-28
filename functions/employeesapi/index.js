@@ -24,6 +24,7 @@ const PAYROLL_DATA_TABLE_ID = "74008000000035326";
 const FEEDBACK_RATING_TABLE_ID = "74008000000022041";
 const APPRAISAL_CYCLE_TABLE_ID = "74008000000034190";
 const ELIGIBILITY_TABLE_ID = "74008000000057046";
+const DELEGATION_TABLE_ID = "74008000000036124";
 
 /* ============================================================
    EXPRESS JSON BODY PARSER
@@ -795,14 +796,15 @@ function currentTotalCtc(row) {
 }
 
 async function enrichPreviousAppraisalValues(datastore, employees, employeeMasterMap) {
-  const [payrollRows, cycleRows, eligibilityRows, feedbackRows, appraisalHistoryRows] = await Promise.all([
+  const [payrollRows, cycleRows, eligibilityRows, feedbackRows, appraisalHistoryRows, delegationRows] = await Promise.all([
     readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
     readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
     readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)).catch(() => []),
     readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)).catch(() => []),
-    // Delegation assignments are saved on Appraisal_Sheet, not guaranteed to
-    // exist in Payroll_Data. Read all cycle rows to recover prior assignments.
     readAllDataStoreRows(datastore.table(EMPLOYEES_TABLE_ID)).catch(() => []),
+    // The authoritative cycle-specific assignment history is the Delegation
+    // table (cycle_id, emp_id, comp_manager_id, appraiser_tech_ed_id).
+    readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID)).catch(() => []),
   ]);
   const cycleIdOf = (cycle) => String(cycle?.ROWID ?? cycle?.rowid ?? cycle?.id ?? cycle?.ID ?? "").trim();
   const cycleStatusOf = (cycle) => String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "").trim().toLowerCase();
@@ -1019,22 +1021,9 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     // Delegation history must come from a closed prior-cycle payroll row,
     // never from the active-cycle upload fallback used for current payroll fields.
     const previousAssignmentPayroll = selectedPayrollSource?.row || null;
-    // Use the exact same historical cycle chosen for payroll mapping:
-    // existing employees -> last closed Annual cycle;
-    // new employees -> same-year archived/closed New Joiners cycle.
-    // Appraisal_Sheet stores the cycle link in cycle_id and employee link in
-    // emp_master_row_id; support legacy aliases and lookup objects too.
-    const readField = (row, ...names) => {
-      const keys = Object.keys(row || {});
-      for (const name of names) {
-        const actual = keys.find((key) => key.toLowerCase() === String(name).toLowerCase());
-        if (actual !== undefined && row[actual] !== null && row[actual] !== undefined &&
-            String(historyReference(row[actual])).trim() !== "") {
-          return row[actual];
-        }
-      }
-      return "";
-    };
+    // Delegation history is stored in the Delegation table, keyed by cycle_id
+    // and emp_id. Match the exact prior cycle selected for this employee:
+    // last closed Annual for existing staff, same-year closed New Joiners for new staff.
     const assignmentCycle = selectedPayrollSource?.cycle || null;
     const assignmentCycleAliases = new Set(
       [
@@ -1043,16 +1032,15 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
         assignmentCycle ? assignmentCycle.sourceRowId : "",
       ].map((value) => historyReference(value).toLowerCase()).filter(Boolean),
     );
-    const assignmentHistoryRow = appraisalHistoryRows
+    const assignmentHistoryRow = delegationRows
       .filter((row) => {
-        const rawCycle = historyReference(readField(
-          row, "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name",
-          "cycle_name", "appraisal_year", "appraisalYear",
-        )).toLowerCase();
-        const rowEmp = rowEmployeeKey(readField(
-          row, "emp_id", "employee_id", "emp_code", "emp_master_row_id",
-          "employee_master_id", "employee_master_row_id",
-        ), employeeMasterMap);
+        const rawCycle = historyReference(
+          row?.cycle_id ?? row?.appraisal_cycle_id ?? row?.appraisal_cycle_name ?? row?.cycle_name,
+        ).toLowerCase();
+        const rowEmp = rowEmployeeKey(
+          row?.emp_id ?? row?.employee_id ?? row?.emp_code,
+          employeeMasterMap,
+        );
         return rowEmp === empKey && assignmentCycleAliases.has(rawCycle);
       })
       .sort((a, b) =>
@@ -1071,12 +1059,12 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       return id && name ? id + " - " + name : name || id || raw;
     };
     const previousCompManager = assignmentDisplay(
-      readField(assignmentHistoryRow || {}, "comp_manager", "Comp_Manager", "comp_manager_name", "compManager", "compensation_manager", "compManagerName") ||
-      readField(previousAssignmentPayroll || {}, "comp_manager", "Comp_Manager", "comp_manager_name", "compManager", "compensation_manager", "compManagerName"),
+      readField(assignmentHistoryRow || {}, "comp_manager_id", "comp_manager", "Comp_Manager", "comp_manager_name", "compManager", "compensation_manager", "compManagerName") ||
+      readField(previousAssignmentPayroll || {}, "comp_manager_id", "comp_manager", "Comp_Manager", "comp_manager_name", "compManager", "compensation_manager", "compManagerName"),
     );
     const previousAppraiserTechEd = assignmentDisplay(
-      readField(assignmentHistoryRow || {}, "appraiser_tech_ed1", "appraiser_tech_ed", "Tech_ED", "tech_ed", "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name", "appraiser_tech_ed_name1") ||
-      readField(previousAssignmentPayroll || {}, "appraiser_tech_ed1", "appraiser_tech_ed", "Tech_ED", "tech_ed", "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name", "appraiser_tech_ed_name1"),
+      readField(assignmentHistoryRow || {}, "appraiser_tech_ed_id", "appraiser_tech_ed1", "appraiser_tech_ed", "Tech_ED", "tech_ed", "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name", "appraiser_tech_ed_name1") ||
+      readField(previousAssignmentPayroll || {}, "appraiser_tech_ed_id", "appraiser_tech_ed1", "appraiser_tech_ed", "Tech_ED", "tech_ed", "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name", "appraiser_tech_ed_name1"),
     );
     const currentFeedback = empKey ? currentFeedbackByEmployee.get(empKey)?.row : null;
     const feedbackValue = (...keys) => {
