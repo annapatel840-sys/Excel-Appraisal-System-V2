@@ -1,89 +1,105 @@
 "use strict";
 
+/* ---------------------------------------------------------------------
+   designationmasterapi - Designation Master (HR Operations > Masters)
+
+   GET  /  -> { success, data }   current-cycle designations, groups, options, audit
+   POST /  -> { success, data }   saves the whole screen, returns fresh data
+
+   Catalyst tables (looked up by NAME, so no table IDs to paste):
+     Designations              cycle_id, name, department, band, next_type,
+                               single_next_designation, group_id, status
+     Designation_Next          des_id, next_id            (the "Multiple" list)
+     Designation_Groups        cycle_id, group_name
+     Designation_Group_Members group_id, des_id
+     Designation_Config        type, status               (the 4 switches)
+   plus: Appraisal_Cycle_Master, Employee_Master, Appraisal_Audit (existing).
+   --------------------------------------------------------------------- */
+
 const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
 
-const TABLES = {
-  designations: "74008000000100115",
-  groups: "74008000000100854",
-  members: "74008000000109217",
-  config: "74008000000109580",
-  cycles: "74008000000034190",
-  employeeMaster: "74008000000035727",
-  audit: "74008000000034940",
-
-  // Replace with the real ID after creating Designation_Next_Mappings.
-  mappings: "REPLACE_WITH_DESIGNATION_NEXT_MAPPINGS_TABLE_ID",
+const TBL = {
+  designations: "Designations",
+  next: "Designation_Next",
+  groups: "Designation_Groups",
+  members: "Designation_Group_Members",
+  config: "Designation_Config",
+  cycles: "Appraisal_Cycle_Master",
+  employees: "Employee_Master",
+  audit: "Appraisal_Audit",
 };
 
-const TYPES = ["S", "M", "G", "F"];
 const SOURCE = "Designation Master";
+const TYPES = ["S", "M", "G", "F"];
+const TYPE_LABEL = {
+  S: "Single designation",
+  M: "Multiple designations",
+  G: "Group",
+  F: "Free select",
+};
+// Band Master is not a Catalyst table yet. Replace this list with a read of
+// Band Master when it exists (spec: band must be a Band Master code).
+const BANDS = ["B1", "B2", "B3", "B4", "B5", "B6", "B7"];
+const SCREEN_KEY = "employeeMaster"; // HR Operations screens are HR-only
+const BATCH = 200;
 
+/* ---------- small helpers ---------- */
 function sendJson(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
 }
-
-function value(row, key) {
-  return row?.[key] ?? "";
+const text = (v) => String(v ?? "").trim();
+const lower = (v) => text(v).toLowerCase();
+const clip = (v, n = 250) => String(v ?? "").slice(0, n);
+const rowId = (r) => String((r && (r.ROWID ?? r.rowid)) ?? "");
+function refId(v) {
+  if (v && typeof v === "object") return String(v.ROWID ?? v.rowid ?? v.id ?? "");
+  return String(v ?? "");
 }
-
-function rowId(row) {
-  return String(row?.ROWID ?? row?.rowid ?? row?.id ?? "");
+function isOn(v) {
+  return v === true || v === 1 || ["1", "true", "active", "yes"].includes(lower(v));
 }
-
-function refId(value) {
-  if (value && typeof value === "object") {
-    return String(value.ROWID ?? value.rowid ?? value.id ?? value.ID ?? "");
-  }
-  return String(value ?? "");
+function fail(status, message) {
+  return new access.HttpError(status, message);
 }
-
-function isOn(value) {
-  return value === true || value === 1 || value === "1" ||
-    String(value).toLowerCase() === "true" ||
-    String(value).toLowerCase() === "active";
+function chunks(list, size = BATCH) {
+  const out = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
 }
+const sameList = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-function text(value) {
-  return String(value ?? "").trim();
-}
-
-function now() {
-  return new Date().toISOString();
-}
-
-async function getAllRows(table) {
+/* ZCQL read (the Data Store getPagedRows call hangs on Advanced I/O functions,
+   which is why every other function in this project reads through ZCQL). */
+async function readAll(app, table, where = "", cols = "*") {
+  const zcql = app.zcql();
   const rows = [];
-  let nextToken;
-
-  do {
-    const options = { maxRows: 200 };
-    if (nextToken) options.nextToken = nextToken;
-
-    const result = await table.getPagedRows(options);
-    rows.push(...(result.data || []));
-    nextToken = result.more_records ? result.next_token : null;
-  } while (nextToken);
-
+  let last = "0";
+  for (let guard = 0; guard < 5000; guard += 1) {
+    const q =
+      `SELECT ${cols} FROM ${table} WHERE ROWID > ${last}` +
+      (where ? ` AND ${where}` : "") +
+      " ORDER BY ROWID ASC LIMIT 300";
+    const result = await zcql.executeZCQLQuery(q);
+    const page = (result || []).map((i) => (i && (i[table] || Object.values(i)[0])) || {});
+    rows.push(...page);
+    if (page.length < 300) break;
+    last = rowId(page[page.length - 1]);
+    if (!last) break;
+  }
   return rows;
-}
-
-function getQuery(req) {
-  const url = new URL(req.url || "/", "http://localhost");
-  return { ...Object.fromEntries(url.searchParams.entries()), ...(req.queryParams || {}) };
 }
 
 async function readBody(req) {
   if (req.body && typeof req.body === "object") return req.body;
-  if (typeof req.body === "string") return JSON.parse(req.body);
-
+  if (typeof req.body === "string") return JSON.parse(req.body || "{}");
   return new Promise((resolve, reject) => {
     let body = "";
-    req.on("data", (chunk) => {
-      body += chunk.toString();
+    req.on("data", (c) => {
+      body += c.toString();
       if (body.length > 5_000_000) {
-        reject(new Error("Request body exceeds 5 MB."));
+        reject(fail(413, "Request body exceeds 5 MB."));
         req.destroy();
       }
     });
@@ -91,485 +107,559 @@ async function readBody(req) {
       try {
         resolve(body.trim() ? JSON.parse(body) : {});
       } catch {
-        reject(new Error("Invalid JSON request body."));
+        reject(fail(400, "Invalid JSON request body."));
       }
     });
     req.on("error", reject);
   });
 }
 
-async function checkAccess(req, method) {
+/* ---------- access ---------- */
+async function authorize(req, method) {
   const userApp = catalyst.initialize(req);
   const adminApp = catalyst.initialize(req, { scope: "admin" });
-  const result = await access.check(userApp, adminApp);
-
-  access.requireScreen(
-    result,
-    "employeeMaster",
-    method === "GET" ? "view" : "edit",
+  const a = await access.check(userApp, adminApp);
+  access.guard(a, () =>
+    access.requireScreen(a, SCREEN_KEY, method === "GET" ? "view" : "edit"),
   );
-
-  const user = await userApp.userManagement().getCurrentUser();
-  if (!user?.user_id) {
-    const error = new Error("Please sign in.");
-    error.status = 401;
-    throw error;
+  let actor = a && a.user && a.user.email;
+  if (!actor) {
+    try {
+      const u = await userApp.userManagement().getCurrentUser();
+      actor = u && (u.email_id || u.user_id);
+    } catch (e) {
+      actor = "";
+    }
   }
-
-  return {
-    adminApp,
-    actor: text(user.email_id || user.user_id),
-  };
+  return { adminApp, actor: text(actor) || "unknown" };
 }
 
-function tableSet(adminApp) {
-  const ds = adminApp.datastore();
-
-  if (TABLES.mappings.startsWith("REPLACE_")) {
-    throw new Error(
-      "Create Designation_Next_Mappings in Catalyst and set its table ID in the function.",
-    );
-  }
-
-  return {
-    designations: ds.table(TABLES.designations),
-    groups: ds.table(TABLES.groups),
-    members: ds.table(TABLES.members),
-    config: ds.table(TABLES.config),
-    cycles: ds.table(TABLES.cycles),
-    employeeMaster: ds.table(TABLES.employeeMaster),
-    audit: ds.table(TABLES.audit),
-    mappings: ds.table(TABLES.mappings),
-  };
-}
-
-async function getActiveCycle(tables) {
-  const rows = await getAllRows(tables.cycles);
+/* ---------- cycle ---------- */
+async function getActiveCycle(app) {
+  const rows = await readAll(app, TBL.cycles);
   const row = rows.find(
-    (item) => text(item.status).toLowerCase() === "active",
+    (r) => lower(r.status) === "active" && !isOn(r.archived),
   );
-
-  if (!row) {
-    const error = new Error("No active appraisal cycle was found.");
-    error.status = 409;
-    throw error;
-  }
-
-  return {
-    id: rowId(row),
-    name: text(row.cycle_name || row.name || row.appraisal_year),
-  };
+  if (!row) throw fail(409, "No active appraisal cycle was found.");
+  return { id: rowId(row), name: text(row.cycle_name) };
 }
 
-async function auditChange(tables, actor, cycle, rowName, field, oldValue, newValue) {
-  if (String(oldValue ?? "") === String(newValue ?? "")) return;
-
-  await tables.audit.insertRow({
-    emp_id: "SYSTEM",
-    employee_name: rowName || "Designation Master",
-    field_name: field,
-    old_value: String(oldValue ?? ""),
-    new_value: String(newValue ?? ""),
-    changed_by: actor,
-    changed_at: now(),
-    source: SOURCE,
-    appraisal_year: cycle.name,
-    details: JSON.stringify({ cycleId: cycle.id, rowName }),
-  });
-}
-
-async function loadData(tables, cycle) {
-  const [
-    designationRows,
-    allGroupRows,
-    memberRows,
-    configRows,
-    mappingRows,
-    employeeRows,
-    auditRows,
-  ] = await Promise.all([
-    getAllRows(tables.designations),
-    getAllRows(tables.groups),
-    getAllRows(tables.members),
-    getAllRows(tables.config),
-    getAllRows(tables.mappings),
-    getAllRows(tables.employeeMaster),
-    getAllRows(tables.audit),
+/* ---------- load ---------- */
+async function syncFromEmployeeMaster(app, cycle) {
+  const [desRows, empRows] = await Promise.all([
+    readAll(app, TBL.designations),
+    readAll(app, TBL.employees, "", "ROWID, designation, department"),
   ]);
-
-  const currentRows = designationRows.filter(
-    (row) => refId(row.cycle_id) === cycle.id,
-  );
-
-  // Sync new Employee_Master designations as inactive, with no next type.
   const known = new Set(
-    currentRows.map((row) => text(row.name).toLowerCase()),
+    desRows.filter((r) => refId(r.cycle_id) === cycle.id).map((r) => lower(r.name)),
   );
-
-  const masterPairs = new Map();
-  employeeRows.forEach((row) => {
-    const name = text(row.designation);
-    if (!name) return;
-
-    const key = name.toLowerCase();
-    if (!masterPairs.has(key)) {
-      masterPairs.set(key, {
-        name,
-        department: text(row.department),
-      });
+  const pairs = new Map();
+  empRows.forEach((r) => {
+    const name = text(r.designation);
+    if (name && !pairs.has(name.toLowerCase())) {
+      pairs.set(name.toLowerCase(), { name, department: text(r.department) });
     }
   });
-
-  for (const [key, item] of masterPairs) {
-    if (known.has(key)) continue;
-
-    await tables.designations.insertRow({
+  const toAdd = [];
+  pairs.forEach((p, key) => {
+    if (known.has(key)) return;
+    // Spec: new designations arrive with no next type and Status Inactive.
+    toAdd.push({
       cycle_id: cycle.id,
-      name: item.name,
-      department: item.department,
+      name: clip(p.name),
+      department: clip(p.department),
       band: "",
       next_type: "",
-      single_next_designation: "",
       status: false,
     });
-  }
-
-  // Re-read after synchronisation so new records appear immediately.
-  const syncedRows = await getAllRows(tables.designations);
-  const current = syncedRows.filter(
-    (row) => refId(row.cycle_id) === cycle.id,
-  );
-
-  const groups = allGroupRows
-    .filter((row) => refId(row.cycle_id) === cycle.id)
-    .map((row) => ({
-      id: rowId(row),
-      name: text(row.group_name),
-      memberIds: memberRows
-        .filter((member) => refId(member.group_id) === rowId(row))
-        .map((member) => refId(member.des_id)),
-    }));
-
-  const config = { S: false, M: false, G: false, F: false };
-  configRows.forEach((row) => {
-    const type = text(row.type).toUpperCase();
-    if (TYPES.includes(type)) config[type] = isOn(row.status);
   });
+  const table = app.datastore().table(TBL.designations);
+  for (const part of chunks(toAdd)) await table.insertRows(part);
+  return new Set(pairs.keys());
+}
 
-  // If no options have been configured yet, default all to enabled.
-  if (!configRows.length) {
-    config.S = config.M = config.G = config.F = true;
+async function loadData(app, cycle, { sync = true } = {}) {
+  const masterNames = sync
+    ? await syncFromEmployeeMaster(app, cycle)
+    : new Set();
+
+  let nextRows;
+  try {
+    nextRows = await readAll(app, TBL.next);
+  } catch (e) {
+    throw fail(
+      500,
+      "Catalyst table Designation_Next is missing. Create it with two foreign-key columns: des_id and next_id (both pointing to Designations).",
+    );
   }
 
-  const currentMappings = mappingRows.filter(
-    (row) => refId(row.cycle_id) === cycle.id,
-  );
-
-  const designations = current.map((row) => {
-    const id = rowId(row);
-    const mapping = currentMappings.filter(
-      (item) => refId(item.designation_id) === id,
+  try {
+    await app.zcql().executeZCQLQuery("SELECT group_id FROM Designations LIMIT 1");
+  } catch (e) {
+    throw fail(
+      500,
+      "Catalyst table Designations has no group_id column. Add a foreign-key column group_id pointing to Designation_Groups.",
     );
+  }
 
+  const [allDes, allGroups, memberRows, cfgRows, auditRows] = await Promise.all([
+    readAll(app, TBL.designations),
+    readAll(app, TBL.groups),
+    readAll(app, TBL.members),
+    readAll(app, TBL.config),
+    readAll(app, TBL.audit, `source = '${SOURCE}'`),
+  ]);
+
+  const desRows = allDes.filter((r) => refId(r.cycle_id) === cycle.id);
+
+  const groupRows = allGroups.filter((r) => refId(r.cycle_id) === cycle.id);
+  const groupIds = new Set(groupRows.map(rowId));
+  const desIds = new Set(desRows.map(rowId));
+
+  const designations = desRows.map((r) => {
+    const id = rowId(r);
     return {
       id,
-      name: text(row.name),
-      department: text(row.department),
-      nextType: text(row.next_type).toUpperCase(),
-      singleNextId: refId(row.single_next_designation),
-      multipleNextIds: mapping
-        .filter((item) => text(item.mapping_type).toUpperCase() === "M")
-        .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
-        .map((item) => refId(item.next_designation_id)),
-      groupId: refId(
-        mapping.find((item) => text(item.mapping_type).toUpperCase() === "G")?.group_id,
-      ),
-      status: isOn(row.status) ? "Active" : "Inactive",
+      name: text(r.name),
+      department: text(r.department),
+      inMaster: masterNames.has(lower(r.name)) || !!text(r.department),
+      band: text(r.band),
+      nextType: text(r.next_type).toUpperCase(),
+      singleNextId: refId(r.single_next_designation),
+      multipleNextIds: nextRows
+        .filter((n) => refId(n.des_id) === id)
+        .map((n) => refId(n.next_id)),
+      groupId: refId(r.group_id),
+      status: isOn(r.status) ? "Active" : "Inactive",
     };
   });
 
+  const groups = groupRows.map((r) => ({
+    id: rowId(r),
+    name: text(r.group_name),
+    memberIds: memberRows
+      .filter((m) => refId(m.group_id) === rowId(r) && desIds.has(refId(m.des_id)))
+      .map((m) => refId(m.des_id)),
+  }));
+
+  const options = { S: false, M: false, G: false, F: false };
+  cfgRows.forEach((r) => {
+    const t = text(r.type).toUpperCase();
+    if (TYPES.includes(t)) options[t] = isOn(r.status);
+  });
+  if (!cfgRows.length) TYPES.forEach((t) => (options[t] = true));
+
   const audit = auditRows
-    .filter(
-      (row) =>
-        text(row.source) === SOURCE &&
-        text(row.appraisal_year) === cycle.name,
+    .map((r) => {
+      let d = {};
+      try {
+        d = JSON.parse(r.details || "{}");
+      } catch (e) {
+        d = {};
+      }
+      return { r, d };
+    })
+    .filter(({ r, d }) =>
+      d.cycleId ? String(d.cycleId) === cycle.id : text(r.appraisal_year) === cycle.name,
     )
-    .sort((a, b) => String(b.changed_at).localeCompare(String(a.changed_at)))
-    .slice(0, 300)
-    .map((row) => ({
-      id: rowId(row),
-      rowName: text(row.employee_name),
-      field: text(row.field_name),
-      oldValue: text(row.old_value),
-      newValue: text(row.new_value),
-      changedBy: text(row.changed_by),
-      changedAt: text(row.changed_at),
+    .sort(
+      (a, b) =>
+        String(b.r.changed_at).localeCompare(String(a.r.changed_at)) ||
+        Number(rowId(b.r)) - Number(rowId(a.r)),
+    )
+    .slice(0, 1000)
+    .map(({ r, d }) => ({
+      id: rowId(r),
+      at: text(r.changed_at),
+      by: text(r.changed_by),
+      rowName: text(r.employee_name),
+      tab: d.tab || "",
+      rid: d.rid || "",
+      field: d.field || text(r.field_name),
+      ov: d.ov ?? text(r.old_value),
+      nv: d.nv ?? text(r.new_value),
+      text: d.txt || `${text(r.field_name)}: ${text(r.old_value)} → ${text(r.new_value)}`,
     }));
 
-  return { cycle, designations, groups, options: config, audit };
+  return { cycle, designations, groups, options, bands: BANDS, audit };
 }
 
-function validatePayload(payload, existing) {
+/* ---------- rules (spec: VALIDATIONS) ---------- */
+function isUnmapped(d, options) {
+  const t = d.nextType;
+  if (!t || !options[t]) return true;
+  if (t === "S") return !d.singleNextId;
+  if (t === "M") return !(d.multipleNextIds || []).length;
+  if (t === "G") return !d.groupId;
+  return false; // F: nothing to store
+}
+
+function validate(payload, db) {
+  const errors = [];
   const options = payload.options || {};
-  if (!TYPES.some((type) => options[type] === true)) {
-    throw new Error("At least one next-designation type must be enabled.");
+  if (!TYPES.some((t) => options[t] === true)) {
+    errors.push("At least one next-designation type must stay on.");
   }
 
   const designations = payload.designations || [];
   const groups = payload.groups || [];
+  const dbIds = new Set(db.designations.map((d) => d.id));
+  const ids = new Set(designations.map((d) => String(d.id)));
+  const groupIds = new Set(groups.map((g) => String(g.id)));
 
-  const groupNames = new Set();
-  for (const group of groups) {
-    const name = text(group.name).toLowerCase();
-
-    if (!name) throw new Error("Group name is required.");
-    if (groupNames.has(name)) {
-      throw new Error(`Group name "${group.name}" is duplicated.`);
+  // designations
+  const seenNames = new Set();
+  designations.forEach((d) => {
+    const id = String(d.id);
+    const name = text(d.name);
+    if (!name) return errors.push("Designation name is required.");
+    if (seenNames.has(name.toLowerCase())) {
+      errors.push(`${name}: this designation already exists in the cycle.`);
     }
-    groupNames.add(name);
-
-    if (!(group.memberIds || []).length) {
-      throw new Error(`Group "${group.name}" must have at least one member.`);
+    seenNames.add(name.toLowerCase());
+    if (!id.startsWith("new-") && !dbIds.has(id)) {
+      errors.push(`${name}: not found in the current cycle. Refresh and try again.`);
     }
-  }
-
-  const designationIds = new Set(designations.map((row) => String(row.id)));
-  for (const row of designations) {
-    if (!text(row.name)) throw new Error("Designation name is required.");
-
-    if (row.status !== "Active") continue;
-
-    const type = text(row.nextType).toUpperCase();
-    if (!TYPES.includes(type)) {
-      throw new Error(`${row.name}: select a valid next-designation type.`);
+    if (text(d.band) && !BANDS.includes(text(d.band))) {
+      errors.push(`${name}: band ${d.band} is not in Band Master.`);
     }
-    if (options[type] !== true) {
-      throw new Error(`${row.name}: next type ${type} is switched off.`);
-    }
+    const type = text(d.nextType).toUpperCase();
+    if (type && !TYPES.includes(type)) errors.push(`${name}: unknown next type.`);
 
-    if (type === "S") {
-      if (!row.singleNextId) throw new Error(`${row.name}: select a next designation.`);
-      if (String(row.singleNextId) === String(row.id)) {
-        throw new Error(`${row.name}: a designation cannot map to itself.`);
-      }
-      if (!designationIds.has(String(row.singleNextId))) {
-        throw new Error(`${row.name}: selected next designation is invalid.`);
-      }
+    if (text(d.singleNextId)) {
+      if (String(d.singleNextId) === id) errors.push(`${name}: a designation cannot be its own next designation.`);
+      else if (!ids.has(String(d.singleNextId))) errors.push(`${name}: the next designation is not valid.`);
+    }
+    const list = (d.multipleNextIds || []).map(String);
+    if (new Set(list).size !== list.length) errors.push(`${name}: the same designation is listed twice.`);
+    if (list.includes(id)) errors.push(`${name}: the list cannot contain the designation itself.`);
+    if (list.some((x) => !ids.has(x))) errors.push(`${name}: the list has a designation that is not valid.`);
+    if (text(d.groupId) && !groupIds.has(String(d.groupId))) {
+      errors.push(`${name}: the chosen group does not exist in this cycle.`);
     }
 
-    if (type === "M") {
-      const ids = row.multipleNextIds || [];
-      if (!ids.length) throw new Error(`${row.name}: select at least one next designation.`);
-      if (new Set(ids.map(String)).size !== ids.length) {
-        throw new Error(`${row.name}: duplicate next designations are not allowed.`);
-      }
-      if (ids.some((id) => String(id) === String(row.id))) {
-        throw new Error(`${row.name}: a designation cannot map to itself.`);
-      }
-      if (ids.some((id) => !designationIds.has(String(id)))) {
-        throw new Error(`${row.name}: one or more next designations are invalid.`);
-      }
+    const row = {
+      nextType: type,
+      singleNextId: text(d.singleNextId),
+      multipleNextIds: list,
+      groupId: text(d.groupId),
+    };
+    if (d.status === "Active" && isUnmapped(row, options)) {
+      errors.push(
+        `${name}: not mapped. Map the next designation first, then make it Active.`,
+      );
     }
+  });
 
-    if (type === "G") {
-      const group = groups.find((item) => String(item.id) === String(row.groupId));
-      if (!group) throw new Error(`${row.name}: select a valid group.`);
-      if (!(group.memberIds || []).length) {
-        throw new Error(`${row.name}: the selected group has no members.`);
-      }
-    }
-  }
+  // groups
+  const seenGroups = new Set();
+  groups.forEach((g) => {
+    const name = text(g.name);
+    if (!name) return errors.push("Group name is required.");
+    if (seenGroups.has(name.toLowerCase())) errors.push(`Group "${name}" already exists in the cycle.`);
+    seenGroups.add(name.toLowerCase());
+    const members = (g.memberIds || []).map(String);
+    if (!members.length) errors.push(`Group "${name}" needs at least one designation.`);
+    if (new Set(members).size !== members.length) errors.push(`Group "${name}" lists a designation twice.`);
+    if (members.some((m) => !ids.has(m))) errors.push(`Group "${name}" has a designation that is not valid.`);
+  });
+
+  // a group cannot be deleted while a designation points to it
+  db.groups.forEach((g) => {
+    if (groupIds.has(g.id)) return;
+    const used = designations.find((d) => String(d.groupId) === g.id);
+    if (used) errors.push(`Group "${g.name}" cannot be removed while ${used.name} points to it.`);
+  });
+
+  return [...new Set(errors)];
 }
 
-async function saveData(tables, cycle, actor, payload) {
-  const current = await loadData(tables, cycle);
-  validatePayload(payload, current);
+/* ---------- audit text ---------- */
+function makeCtx(designations, groups) {
+  const names = new Map(designations.map((d) => [String(d.id), d.name]));
+  const grp = new Map(groups.map((g) => [String(g.id), g]));
+  const dn = (id) => names.get(String(id)) || "";
+  const gn = (id) => {
+    const g = grp.get(String(id));
+    if (!g) return "";
+    return `${g.name} (${(g.memberIds || []).map(dn).filter(Boolean).join(", ") || "no designations"})`;
+  };
+  return { dn, gn };
+}
+function describe(type, d, ctx) {
+  if (type === "S") return `${TYPE_LABEL.S}: ${d.singleNextId ? ctx.dn(d.singleNextId) : "not set"}`;
+  if (type === "M") {
+    const n = (d.multipleNextIds || []).map(ctx.dn).filter(Boolean);
+    return `${TYPE_LABEL.M}: ${n.length ? n.join(", ") : "not set"}`;
+  }
+  if (type === "G") return `${TYPE_LABEL.G}: ${d.groupId ? ctx.gn(d.groupId) : "not set"}`;
+  if (type === "F") return TYPE_LABEL.F;
+  return "none";
+}
 
-  const existingDesignations = new Map(
-    current.designations.map((row) => [row.id, row]),
-  );
+/* ---------- save ---------- */
+async function saveData(app, cycle, actor, payload) {
+  const db = await loadData(app, cycle, { sync: true });
+  const errors = validate(payload, db);
+  if (errors.length) throw fail(400, errors.slice(0, 8).join(" "));
 
-  for (const row of payload.designations || []) {
-    const previous = existingDesignations.get(String(row.id));
-    if (!previous) continue;
-
-    const type = text(row.nextType).toUpperCase();
-    const active = row.status === "Active";
-    const oldMapping = `${previous.nextType}|${previous.singleNextId}|${previous.multipleNextIds.join(",")}|${previous.groupId}`;
-    const newMapping = `${type}|${row.singleNextId || ""}|${(row.multipleNextIds || []).join(",")}|${row.groupId || ""}`;
-
-    await tables.designations.updateRow({
-      ROWID: row.id,
-      next_type: type,
-      single_next_designation: type === "S" ? row.singleNextId : "",
-      status: active,
+  const batchId = `DM-${Date.now()}`;
+  const auditRows = [];
+  const oldCtx = makeCtx(db.designations, db.groups);
+  const log = (key, rowName, field, oldTxt, newTxt, meta) =>
+    auditRows.push({
+      emp_id: clip(key),
+      employee_name: clip(rowName),
+      field_name: clip(field),
+      old_value: clip(oldTxt),
+      new_value: clip(newTxt),
+      changed_by: clip(actor),
+      changed_at: access.nowDT(),
+      source: SOURCE,
+      batch_id: batchId,
+      appraisal_year: clip(cycle.name),
+      details: JSON.stringify({
+        cycleId: cycle.id,
+        tab: meta.tab,
+        rid: meta.rid,
+        field: meta.field,
+        ov: meta.ov,
+        nv: meta.nv,
+        txt: meta.txt || `${field}: ${oldTxt || "none"} → ${newTxt || "none"}`,
+      }),
     });
 
-    await auditChange(
-      tables, actor, cycle, row.name, "Status",
-      previous.status, row.status,
-    );
-    await auditChange(
-      tables, actor, cycle, row.name, "Next designation mapping",
-      oldMapping, newMapping,
-    );
-  }
+  const ds = app.datastore();
+  const tDes = ds.table(TBL.designations);
+  const tNext = ds.table(TBL.next);
+  const tGrp = ds.table(TBL.groups);
+  const tMem = ds.table(TBL.members);
+  const tCfg = ds.table(TBL.config);
 
-  // Save option switches. Preserve all existing designation mappings when
-  // an option is switched off so the mapping can be restored later.
-  const configRows = await getAllRows(tables.config);
-  for (const type of TYPES) {
-    const old = configRows.find((row) => text(row.type).toUpperCase() === type);
-    const enabled = payload.options[type] === true;
+  const desPayload = payload.designations || [];
+  const grpPayload = payload.groups || [];
+  const dbDes = new Map(db.designations.map((d) => [d.id, d]));
+  const dbGrp = new Map(db.groups.map((g) => [g.id, g]));
 
-    if (old) {
-      await tables.config.updateRow({
-        ROWID: rowId(old),
-        type,
-        status: enabled,
-      });
-    } else {
-      await tables.config.insertRow({ type, status: enabled });
-    }
-
-    await auditChange(
-      tables, actor, cycle, "Designation options", `Option ${type}`,
-      old ? String(isOn(old.status)) : "(unset)",
-      String(enabled),
-    );
-  }
-
-  // Save group records, mapping temporary client IDs to Catalyst ROWIDs.
-  const groupRows = await getAllRows(tables.groups);
-  const cycleGroups = groupRows.filter(
-    (row) => refId(row.cycle_id) === cycle.id,
-  );
-  const groupIdMap = new Map();
-
-  for (const group of payload.groups || []) {
-    let actualId = String(group.id || "");
-    const previous = cycleGroups.find((row) => rowId(row) === actualId);
-
-    if (previous) {
-      await tables.groups.updateRow({
-        ROWID: actualId,
-        group_name: text(group.name),
-      });
-
-      await auditChange(
-        tables, actor, cycle, group.name, "Group name",
-        previous.group_name, group.name,
-      );
-    } else {
-      const inserted = await tables.groups.insertRow({
+  /* 1. new designations (start Inactive, no next type) */
+  const desMap = new Map(); // client id -> Catalyst ROWID
+  desPayload.forEach((d) => desMap.set(String(d.id), String(d.id)));
+  const fresh = desPayload.filter((d) => String(d.id).startsWith("new-"));
+  for (const part of chunks(fresh)) {
+    const inserted = await tDes.insertRows(
+      part.map((d) => ({
         cycle_id: cycle.id,
-        group_name: text(group.name),
+        name: clip(text(d.name)),
+        department: "",
+        band: "",
+        next_type: "",
+        status: false,
+      })),
+    );
+    (Array.isArray(inserted) ? inserted : []).forEach((row, i) => {
+      desMap.set(String(part[i].id), rowId(row));
+      dbDes.set(rowId(row), {
+        id: rowId(row), name: text(part[i].name), department: "", band: "", nextType: "",
+        singleNextId: "", multipleNextIds: [], groupId: "", status: "Inactive",
       });
-      actualId = rowId(inserted);
-      if (!actualId && inserted?.ROWID) actualId = String(inserted.ROWID);
+      log(`DES:${rowId(row)}`, text(part[i].name), "Designation added", "", "Inactive until mapped", {
+        tab: "des", rid: rowId(row), field: "added", ov: "", nv: "",
+        txt: "Designation added (Inactive until mapped)",
+      });
+    });
+  }
+  const mapDes = (id) => (id ? desMap.get(String(id)) || String(id) : "");
 
-      await auditChange(
-        tables, actor, cycle, group.name, "Group created",
-        "", group.name,
-      );
+  /* 2. groups: add / rename / remove */
+  const grpMap = new Map();
+  grpPayload.forEach((g) => grpMap.set(String(g.id), String(g.id)));
+  for (const g of grpPayload.filter((x) => String(x.id).startsWith("new-"))) {
+    const inserted = await tGrp.insertRow({ cycle_id: cycle.id, group_name: clip(text(g.name)) });
+    const real = rowId(inserted);
+    grpMap.set(String(g.id), real);
+    dbGrp.set(real, { id: real, name: text(g.name), memberIds: [] });
+    log(`GRP:${real}`, text(g.name), "Group added", "", text(g.name), {
+      tab: "grp", rid: real, field: "added", ov: "", nv: "", txt: "Group added",
+    });
+  }
+  for (const g of grpPayload) {
+    const prev = dbGrp.get(grpMap.get(String(g.id)));
+    if (prev && prev.name !== text(g.name) && !String(g.id).startsWith("new-")) {
+      await tGrp.updateRow({ ROWID: prev.id, group_name: clip(text(g.name)) });
+      log(`GRP:${prev.id}`, text(g.name), "Name", prev.name, text(g.name), {
+        tab: "grp", rid: prev.id, field: "n", ov: prev.name, nv: text(g.name),
+        txt: `Name: ${prev.name} → ${text(g.name)}`,
+      });
     }
-
-    groupIdMap.set(String(group.id), actualId);
+  }
+  const keepGroups = new Set(grpPayload.map((g) => grpMap.get(String(g.id))));
+  const memberRowsAll = await readAll(app, TBL.members);
+  for (const g of db.groups) {
+    if (keepGroups.has(g.id)) continue;
+    const mine = memberRowsAll.filter((m) => refId(m.group_id) === g.id).map(rowId);
+    for (const part of chunks(mine)) await tMem.deleteRows(part);
+    await tGrp.deleteRow(g.id);
+    log(`GRP:${g.id}`, g.name, "Group removed", g.name, "", {
+      tab: "grp", rid: g.id, field: "removed", ov: g.name, nv: "", txt: "Group removed",
+    });
   }
 
-  // Rebuild member rows only for groups belonging to this cycle.
-  const allMembers = await getAllRows(tables.members);
-  const cycleGroupIds = new Set(cycleGroups.map(rowId));
-  for (const id of groupIdMap.values()) cycleGroupIds.add(id);
-
-  for (const member of allMembers) {
-    if (cycleGroupIds.has(refId(member.group_id))) {
-      await tables.members.deleteRow(rowId(member));
-    }
-  }
-
-  for (const group of payload.groups || []) {
-    const actualGroupId = groupIdMap.get(String(group.id));
-    for (const designationId of group.memberIds || []) {
-      await tables.members.insertRow({
-        group_id: actualGroupId,
-        des_id: designationId,
+  /* 3. group members */
+  const newCtx = makeCtx(
+    desPayload.map((d) => ({ id: mapDes(d.id), name: d.name })),
+    grpPayload.map((g) => ({
+      id: grpMap.get(String(g.id)),
+      name: g.name,
+      memberIds: (g.memberIds || []).map(mapDes),
+    })),
+  );
+  for (const g of grpPayload) {
+    const gid = grpMap.get(String(g.id));
+    const want = [...new Set((g.memberIds || []).map(mapDes))];
+    const have = memberRowsAll.filter((m) => refId(m.group_id) === gid);
+    const haveIds = have.map((m) => refId(m.des_id));
+    const drop = have.filter((m) => !want.includes(refId(m.des_id))).map(rowId);
+    const add = want.filter((id) => !haveIds.includes(id));
+    for (const part of chunks(drop)) await tMem.deleteRows(part);
+    for (const part of chunks(add))
+      await tMem.insertRows(part.map((id) => ({ group_id: gid, des_id: id })));
+    if (drop.length || add.length) {
+      const oldN = haveIds.map(oldCtx.dn).filter(Boolean).join(", ");
+      const newN = want.map(newCtx.dn).filter(Boolean).join(", ");
+      log(`GRP:${gid}`, text(g.name), "Designations", oldN, newN, {
+        tab: "grp", rid: gid, field: "mem", ov: oldN, nv: newN,
+        txt: `Designations: ${oldN || "none"} → ${newN || "none"}`,
       });
     }
   }
 
-  // Rebuild multiple/group mapping rows for the current cycle only.
-  const mappingRows = await getAllRows(tables.mappings);
-  for (const row of mappingRows) {
-    if (refId(row.cycle_id) === cycle.id) {
-      await tables.mappings.deleteRow(rowId(row));
+  /* 4 + 5. designations (band, type, single, group, status) and the Multiple list */
+  const nextRowsAll = await readAll(app, TBL.next);
+  for (const d of desPayload) {
+    const id = mapDes(d.id);
+    const prev = dbDes.get(id);
+    if (!prev) continue;
+    const cur = {
+      band: text(d.band),
+      nextType: text(d.nextType).toUpperCase(),
+      singleNextId: mapDes(text(d.singleNextId)),
+      multipleNextIds: (d.multipleNextIds || []).map(mapDes),
+      groupId: text(d.groupId) ? grpMap.get(String(d.groupId)) || "" : "",
+      status: d.status === "Active" ? "Active" : "Inactive",
+    };
+    const nm = prev.name;
+    const key = `DES:${id}`;
+    const change = (field, label, ov, nv, txt) =>
+      log(key, nm, label, ov, nv, { tab: "des", rid: id, field, ov, nv, txt });
+
+    const patch = {};
+    if (cur.band !== prev.band) {
+      patch.band = cur.band;
+      change("band", "Band", prev.band, cur.band, `Band: ${prev.band || "none"} → ${cur.band || "none"}`);
     }
-  }
+    if (cur.nextType !== prev.nextType) {
+      patch.next_type = cur.nextType;
+      const o = describe(prev.nextType, prev, oldCtx);
+      const n = describe(cur.nextType, cur, newCtx);
+      change("nt", "Next type", o, n, `Next type: ${o} → ${n}`);
+    } else if (cur.nextType === "S" && cur.singleNextId !== prev.singleNextId) {
+      const o = prev.singleNextId ? oldCtx.dn(prev.singleNextId) : "none";
+      const n = cur.singleNextId ? newCtx.dn(cur.singleNextId) : "none";
+      change("n1", "Next designation", o, n, `Next designation: ${o} → ${n}`);
+    } else if (cur.nextType === "G" && cur.groupId !== prev.groupId) {
+      const o = prev.groupId ? oldCtx.gn(prev.groupId) : "none";
+      const n = cur.groupId ? newCtx.gn(cur.groupId) : "none";
+      change("ng", "Group", o, n, `Group: ${o} → ${n}`);
+    }
+    if (cur.singleNextId !== prev.singleNextId) patch.single_next_designation = cur.singleNextId || null;
+    if (cur.groupId !== prev.groupId) patch.group_id = cur.groupId || null;
+    if (cur.status !== prev.status) {
+      patch.status = cur.status === "Active";
+      change("on", "Status", prev.status, cur.status, `Status: ${prev.status} → ${cur.status}`);
+    }
+    if (Object.keys(patch).length) await tDes.updateRow({ ROWID: id, ...patch });
 
-  for (const row of payload.designations || []) {
-    const type = text(row.nextType).toUpperCase();
-
-    if (type === "M") {
-      for (let index = 0; index < (row.multipleNextIds || []).length; index++) {
-        await tables.mappings.insertRow({
-          cycle_id: cycle.id,
-          designation_id: row.id,
-          mapping_type: "M",
-          next_designation_id: row.multipleNextIds[index],
-          group_id: "",
-          sort_order: index + 1,
-        });
+    // Multiple list
+    const oldList = prev.multipleNextIds;
+    if (!sameList(oldList, cur.multipleNextIds)) {
+      const stale = nextRowsAll.filter((n) => refId(n.des_id) === id).map(rowId);
+      for (const part of chunks(stale)) await tNext.deleteRows(part);
+      for (const part of chunks(cur.multipleNextIds))
+        await tNext.insertRows(part.map((nid) => ({ des_id: id, next_id: nid })));
+      if (cur.nextType === prev.nextType && cur.nextType === "M") {
+        const o = oldList.map(oldCtx.dn).filter(Boolean).join(", ") || "none";
+        const n = cur.multipleNextIds.map(newCtx.dn).filter(Boolean).join(", ") || "none";
+        change("nm", "Next designations", o, n, `Next designations: ${o} → ${n}`);
       }
     }
-
-    if (type === "G") {
-      await tables.mappings.insertRow({
-        cycle_id: cycle.id,
-        designation_id: row.id,
-        mapping_type: "G",
-        next_designation_id: "",
-        group_id: groupIdMap.get(String(row.groupId)) || row.groupId,
-        sort_order: 1,
-      });
-    }
   }
 
-  // Re-read after writing so the client receives persisted IDs and values.
-  return loadData(tables, cycle);
+  /* 6. the four switches (one audit row for the switch + one per designation using it) */
+  const cfgRows = await readAll(app, TBL.config);
+  for (const t of TYPES) {
+    const row = cfgRows.find((r) => text(r.type).toUpperCase() === t);
+    const was = row ? isOn(row.status) : true; // no rows yet = all on
+    const now = payload.options[t] === true;
+    if (row) {
+      if (was !== now) await tCfg.updateRow({ ROWID: rowId(row), status: now });
+    } else {
+      await tCfg.insertRow({ type: t, status: now });
+    }
+    if (was === now) continue;
+    const using = desPayload.filter((d) => text(d.nextType).toUpperCase() === t);
+    const word = now ? "switched on" : "switched off";
+    log(`OPT:${t}`, "Next designation options", TYPE_LABEL[t], was ? "On" : "Off", now ? "On" : "Off", {
+      tab: "opt", rid: t, field: "option", ov: was, nv: now,
+      txt: `${TYPE_LABEL[t]} ${word} · ${using.length} designation${using.length === 1 ? "" : "s"} affected`,
+    });
+    using.forEach((d) => {
+      const id = mapDes(d.id);
+      const cur = {
+        singleNextId: mapDes(text(d.singleNextId)),
+        multipleNextIds: (d.multipleNextIds || []).map(mapDes),
+        groupId: text(d.groupId) ? grpMap.get(String(d.groupId)) || "" : "",
+      };
+      const m = describe(t, cur, newCtx);
+      const txt = now
+        ? `Next type: ${TYPE_LABEL[t]} switched on, mapping restored: ${m}`
+        : `Next type: ${m} → switched off, not mapped (choose another type)`;
+      log(`DES:${id}`, d.name, "Next type", m, now ? m : "switched off", {
+        tab: "des", rid: id, field: "nt", ov: m, nv: now ? m : "switched off", txt,
+      });
+    });
+  }
+
+  /* 7. audit trail (user, date and time, old value, new value) */
+  const tAudit = ds.table(TBL.audit);
+  for (const part of chunks(auditRows)) await tAudit.insertRows(part);
+
+  return loadData(app, cycle, { sync: false });
 }
 
+/* ---------- handler ---------- */
 module.exports = async function designationMasterApi(req, res) {
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     return res.end();
   }
-
   try {
     if (req.method !== "GET" && req.method !== "POST") {
       return sendJson(res, 405, { success: false, message: "Method not allowed." });
     }
-
-    const { adminApp, actor } = await checkAccess(req, req.method);
-    const tables = tableSet(adminApp);
-    const cycle = await getActiveCycle(tables);
+    const { adminApp, actor } = await authorize(req, req.method);
+    const cycle = await getActiveCycle(adminApp);
 
     if (req.method === "GET") {
-      const data = await loadData(tables, cycle);
-      return sendJson(res, 200, { success: true, data });
+      return sendJson(res, 200, { success: true, data: await loadData(adminApp, cycle) });
     }
 
     const payload = await readBody(req);
     if (payload.cycleId && String(payload.cycleId) !== cycle.id) {
-      return sendJson(res, 409, {
-        success: false,
-        message: "The appraisal cycle changed. Refresh Designation Master before saving.",
-      });
+      throw fail(409, "The appraisal cycle changed. Refresh Designation Master before saving.");
     }
-
-    const data = await saveData(tables, cycle, actor, payload);
-    return sendJson(res, 200, { success: true, data });
+    return sendJson(res, 200, { success: true, data: await saveData(adminApp, cycle, actor, payload) });
   } catch (error) {
-    const status = error.status || (error instanceof SyntaxError ? 400 : 500);
+    const status = error.status || 500;
     console.error("designationmasterapi:", error.message, error.stack || "");
     return sendJson(res, status, { success: false, message: error.message || "Designation Master failed." });
   }
