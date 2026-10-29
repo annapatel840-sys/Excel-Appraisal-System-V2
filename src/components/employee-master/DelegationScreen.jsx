@@ -148,6 +148,7 @@ export default function DelegationScreen({
     role: isHRUser ? "HR Admin" : "Tech Ed",
   });
   const [rows, setRows] = useState(() => initialRows || []);
+  const [stagedChanges, setStagedChanges] = useState({});
   const resolveName = useMemo(() => makeResolver(rows), [rows]);
   const [activeCycleName, setActiveCycleName] = useState("");
   const [activeCycleId, setActiveCycleId] = useState("");
@@ -619,30 +620,21 @@ export default function DelegationScreen({
     return out;
   };
 
-  // Comp. Manager changes do not go through approval: HR applies them directly
-  // (recorded, then approved in the same step using the existing endpoints).
+  // HR assignment edits stay local until the page-level Save is clicked.
   const compDirect = (field) => field === "comp" && isHR && canApprove;
   const hrDirect = (field) => isHR && canApprove && ["comp", "app"].includes(field);
   const applyDirectChange = async (target, field, personId, why) => {
-    const response = await catalystFetch(ACCESS_API_URL + "delegation/save", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify({
-        cycleId: activeCycleId,
+    const key = target.id + "::" + field;
+    setStagedChanges((current) => ({
+      ...current,
+      [key]: {
         empId: target.id,
+        empName: target.name,
         field,
         assignment: personId,
-        reason: why,
-      }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok || !payload.ok) {
-      throw new Error(payload.error || "Unable to save " + FIELDS[field] + ".");
-    }
-    return payload;
+        reason: why || FIELDS[field] + " change",
+      },
+    }));
   };
 
   const saveChange = async () => {
@@ -651,26 +643,19 @@ export default function DelegationScreen({
     // when it is left empty).
     const whyText = reason.trim() || `${FIELDS[field]} change`;
     if (hrDirect(field)) {
-      try {
-        await applyDirectChange(row, field, person.id, whyText);
-      } catch (error) {
-        await loadRequests().catch(() => {});
-        return say(error?.message || "Unable to update " + FIELDS[field] + ".", true);
-      }
-      await refreshEmployees().catch(() => {});
+      await applyDirectChange(row, field, person.id, whyText);
       setRows((rs) =>
         applyTo(rs, row.id, field, person.id, "HR Admin", whyText, user.name),
       );
-      await loadRequests().catch(() => {});
       log({
         emp: row.id,
         field: FIELDS[field],
         from: nameOf(row[field]),
         to: person.name,
-        action: "Changed",
+        action: "Staged",
         why: whyText,
       });
-      say(FIELDS[field] + " updated for " + row.id + ".");
+      say(FIELDS[field] + " staged for " + row.id + ". Click Save to update the backend.");
       setModal(null);
       return;
     }
@@ -1091,13 +1076,30 @@ export default function DelegationScreen({
     });
   const saveDelegation = async () => {
     if (!isHR || !activeCycleId || !rows.length) return;
+    const changes = Object.values(stagedChanges);
+    if (!changes.length) return say("No unsaved delegation changes.");
     try {
-      await refreshEmployees().catch(() => {});
-      const refreshedRows = await loadRoster();
-      if (!Array.isArray(refreshedRows)) {
-        throw new Error("Delegation changes may be saved, but the roster could not be refreshed. Please reload the screen.");
+      for (const change of changes) {
+        const response = await catalystFetch(ACCESS_API_URL + "delegation/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            cycleId: activeCycleId,
+            empId: change.empId,
+            field: change.field,
+            assignment: change.assignment,
+            reason: change.reason,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.ok === false || payload.success === false) {
+          throw new Error(payload.error || payload.message || "Unable to save " + change.empId + ".");
+        }
       }
-      say(`Delegation for ${displayCycleName} saved and refreshed. You can continue editing.`);
+      setStagedChanges({});
+      await refreshEmployees().catch(() => {});
+      await loadRoster();
+      say("Saved " + changes.length + " delegation change(s) for " + displayCycleName + ". You can continue editing.");
       onRefresh?.();
     } catch (error) {
       say(error?.message || "Unable to save Delegation.", true);
@@ -1318,11 +1320,11 @@ export default function DelegationScreen({
             {isHR && (
               <button
                 className="btn p"
-                disabled={editLocked || !rows.length || rosterLoading}
-                title="Save and refresh the current delegation assignments"
+                disabled={editLocked || !rows.length || rosterLoading || !Object.keys(stagedChanges).length}
+                title="Save staged HR delegation changes to the backend and Appraisal Sheet"
                 onClick={saveDelegation}
               >
-                Save
+                Save{Object.keys(stagedChanges).length ? " (" + Object.keys(stagedChanges).length + ")" : ""}
               </button>
             )}
           </div>
