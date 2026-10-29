@@ -68,6 +68,19 @@ const matchesFilter = (raw, f) => {
   const second = testText(raw, f.op2, f.value3);
   return f.join === "or" ? first || second : first && second;
 };
+const displayAssignment = (value, roster = []) => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const normalized = raw.toLowerCase();
+  const people = Array.isArray(roster) ? roster : [];
+  const match = people.find((person) => {
+    const id = String(person.id ?? "").trim().toLowerCase();
+    const name = String(person.name ?? "").trim().toLowerCase();
+    return normalized === id || normalized === name ||
+      normalized === (id && name ? `${id} - ${name}`.toLowerCase() : "");
+  });
+  return match ? `${String(match.id).trim()} - ${String(match.name || "").trim()}`.trim() : raw;
+};
 const nameOf = (value) => String(value || "").trim();
 const now = () => new Date().toISOString().replace("T", " ").slice(0, 19);
 const fmt = (s) => {
