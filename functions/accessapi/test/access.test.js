@@ -399,6 +399,17 @@ const version = () => Number((tbl('AccessVersion')[0] || {}).version || 0);
     assert.strictEqual((await call('POST', '/delegation/fill', U.priya, { cycleId: cNext.ROWID })).status, 403);
   });
 
+  await test('/delegation/fill matches Eligibility_List IDs to Employee Master; never replaces with an empty list', async () => {
+    const cFill = insert(CYC, { cycle_name: 'FY2028', status: 'Upcoming' });
+    const empty = await call('POST', '/delegation/fill', U.hr, { cycleId: cFill.ROWID, replace: true });
+    assert.strictEqual(empty.ok, false); assert.strictEqual(empty.status, 422);
+    insert('Eligibility_List', { appraisal_cycle_id: cFill.ROWID, emp_id: 'EMP0100', eligibility_status: 'Eligible' });
+    insert('Eligibility_List', { appraisal_cycle_id: cFill.ROWID, emp_id: 'EMP0101', eligibility_status: 'Not Eligible' });
+    const r = await call('POST', '/delegation/fill', U.hr, { cycleId: cFill.ROWID, replace: true });
+    assert.strictEqual(r.ok, true, JSON.stringify(r));
+    assert.strictEqual(r.inserted, 1);
+  });
+
   await test('dry run: check() returns dryRun instead of throwing; throws when ACCESS_ENFORCE=true', async () => {
     delete process.env.ACCESS_ENFORCE;
     const logs = []; const orig = console.log; console.log = (...a) => logs.push(a.join(' '));

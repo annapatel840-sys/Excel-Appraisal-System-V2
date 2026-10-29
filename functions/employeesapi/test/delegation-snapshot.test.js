@@ -1,7 +1,7 @@
-/* Every employeesapi GET syncs one Delegation row per employee for the active
-   cycle. It used to rewrite every row on every load; now it writes only a new
-   or changed row, and reports delegation_saved so the Delegation screen can
-   skip its one-time roster fill. Run: node test/delegation-snapshot.test.js */
+/* HR's Delegation view (page 1) saves the roster it shows into the Delegation
+   table for the Active cycle: missing rows are inserted, saved rows are kept
+   (only blank Previous columns are filled). Previous Comp Manager / Tech ED
+   come from Previous_Delegation first. Run: node test/delegation-snapshot.test.js */
 'use strict';
 
 const assert = require('assert');
@@ -12,6 +12,7 @@ const path = require('path');
 const T = {
   sheet: '74008000000039094', master: '74008000000035727', cycles: '74008000000034190',
   elig: '74008000000057046', payroll: '74008000000035326', delegation: '74008000000036124',
+  previous: '74008000000096255',
 };
 
 let DB;
@@ -24,6 +25,18 @@ function table(id) {
     getAllColumns: async () => [],
     getPagedRows: async () => ({ data: rows.map((r) => ({ ...r })), more_records: false }),
     getAllRows: async () => rows.map((r) => ({ ...r })),
+    insertRows: async (list) => list.map((row) => {
+      if (id === T.delegation) writes.push({ type: 'insert', row });
+      const saved = { ...row, ROWID: 'D' + (++seq) };
+      rows.push(saved);
+      return { ...saved };
+    }),
+    updateRows: async (list) => list.map((u) => {
+      if (id === T.delegation) writes.push({ type: 'update', row: u });
+      const r = rows.find((x) => x.ROWID === String(u.ROWID));
+      Object.assign(r, u);
+      return { ...r };
+    }),
     insertRow: async (row) => {
       if (id === T.delegation) writes.push({ type: 'insert', row });
       const saved = { ...row, ROWID: 'D' + (++seq) };
@@ -82,6 +95,7 @@ function seed() {
   seq = 0;
   DB = {
     [T.cycles]: [
+      { ROWID: 'C26', cycle_name: 'Annual 2026', status: 'Closed', archived: false, start_date: '2025-04-01', end_date: '2026-03-31' },
       { ROWID: 'C27', cycle_name: 'Annual 2027', status: 'Active', archived: false, start_date: '2026-04-01', end_date: '2027-03-31' },
     ],
     [T.master]: [
@@ -95,6 +109,7 @@ function seed() {
         eligible_status: 'Eligible', status: 'Active' },
     ],
     [T.delegation]: [],
+    [T.previous]: [],
   };
 }
 
@@ -107,15 +122,20 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
   const origError = console.error;
   console.error = () => {};
 
-  await t('first load saves a Delegation row and reports it was not saved before', async () => {
+  await t('first Delegation load saves the shown roster', async () => {
     const r = await get('page=1&limit=1000&view=delegation');
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     assert.strictEqual(delegationRow(r).delegation_saved, false);
-    assert.strictEqual(DB[T.delegation].length, 1);
     assert.deepStrictEqual(writes.map((w) => w.type), ['insert']);
+    const row = DB[T.delegation][0];
+    assert.strictEqual(row.cycle_id, 'C27');
+    assert.strictEqual(row.emp_id, 'M22');
+    assert.strictEqual(row.appraiser_tech_ed, 'EMP051');
+    assert.match(row.updated_at, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    assert.strictEqual(row.updated_by, 'hr@x.com');
   });
 
-  await t('an unchanged load writes nothing and reports the row as saved', async () => {
+  await t('a later load writes nothing and reports the row as saved', async () => {
     await get('page=1&limit=1000&view=delegation');
     writes = [];
     const r = await get('page=1&limit=1000&view=delegation');
@@ -125,15 +145,36 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
     assert.strictEqual(DB[T.delegation].length, 1);
   });
 
-  await t('a changed assignment is still saved', async () => {
+  await t('a saved row is not overwritten by a load', async () => {
     await get('page=1&limit=1000&view=delegation');
     writes = [];
     DB[T.master].find((m) => m.ROWID === 'M22').appraiser_tech_ed = 'EMP060 - Ravi Rao';
+    await get('page=1&limit=1000&view=delegation');
+    assert.deepStrictEqual(writes, []);
+    assert.strictEqual(DB[T.delegation][0].appraiser_tech_ed, 'EMP051');
+  });
+
+  await t('other pages and views write nothing', async () => {
+    await get('page=2&limit=1000&view=delegation');
+    await get('page=1&limit=1000');
+    assert.deepStrictEqual(writes, []);
+  });
+
+  await t('Previous_Delegation of the closed prior cycle fills the Previous columns', async () => {
+    DB[T.previous].push({ ROWID: 'P1', cycle_id: 'C26', emp_id: 'M22', comp_manager: 'EMP060', appraiser_tech_ed: 'EMP051' });
     const r = await get('page=1&limit=1000&view=delegation');
-    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(delegationRow(r).previous_comp_manager, 'EMP060 - Ravi Rao');
+    assert.strictEqual(delegationRow(r).previous_appraiser_tech_ed, 'EMP051 - Ashok Kumar');
+    assert.strictEqual(DB[T.delegation][0].previous_comp_manager, 'EMP060 - Ravi Rao');
+  });
+
+  await t('an existing row gets its blank Previous columns filled', async () => {
+    DB[T.delegation].push({ ROWID: 'D9', cycle_id: 'C27', emp_id: 'M22', comp_manager: 'EMP051', previous_comp_manager: '' });
+    DB[T.previous].push({ ROWID: 'P1', cycle_id: 'C26', emp_id: 'M22', comp_manager: 'EMP060' });
+    await get('page=1&limit=1000&view=delegation');
     assert.deepStrictEqual(writes.map((w) => w.type), ['update']);
-    assert.strictEqual(DB[T.delegation].length, 1);
-    assert.match(String(DB[T.delegation][0].appraiser_tech_ed), /EMP060/);
+    assert.strictEqual(DB[T.delegation][0].previous_comp_manager, 'EMP060 - Ravi Rao');
+    assert.strictEqual(DB[T.delegation][0].comp_manager, 'EMP051');
   });
 
   console.error = origError;

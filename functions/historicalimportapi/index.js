@@ -17,7 +17,9 @@
 
    type: "payroll"    -> Payroll_Data
          "feedback"   -> Feedback_And_Rating
-         "delegation" -> Delegation (Comp Manager / Appraiser Tech ED of that cycle)
+         "delegation" -> Previous_Delegation (Comp Manager / Appraiser Tech ED
+                         of that past cycle; the Delegation screen shows them
+                         as the Previous columns of the next cycle)
    A row that already exists for the same employee and cycle is replaced.
    Employees missing from Employee Master are added there as Inactive.
    Undo restores replaced rows and removes inserted rows; employees added
@@ -31,7 +33,7 @@ const TABLES = {
   employeeMaster: "74008000000035727",
   payroll: "74008000000035326",
   feedback: "74008000000022041",
-  delegation: "74008000000036124",
+  previousDelegation: "74008000000096255",
   cycles: "74008000000034190",
   audit: "74008000000034940",
 };
@@ -85,16 +87,14 @@ const FILE_TYPES = {
   },
   delegation: {
     label: "Delegation",
-    table: "delegation",
+    table: "previousDelegation",
     empColumn: "emp_id",
     cycleColumn: "cycle_id",
     fields: [
       { key: "empId", label: "Employee ID", required: true },
       { key: "empName", label: "Employee Name", kind: "master" },
-      { key: "compManager", label: "Comp Manager", column: "comp_manager", kind: "text", aliases: ["Comp. Manager", "Comp Manager ID"] },
-      { key: "techEd", label: "Appraiser Tech ED", column: "appraiser_tech_ed", kind: "text", aliases: ["Tech ED", "Appraiser / Tech ED", "Tech-ED"] },
-      { key: "previousCompManager", label: "Previous Comp Manager", column: "previous_comp_manager", kind: "text" },
-      { key: "previousTechEd", label: "Previous Appraiser Tech ED", column: "previous_appraiser_tech_ed", kind: "text", aliases: ["Previous Tech ED"] },
+      { key: "compManager", label: "Comp Manager", column: "comp_manager", kind: "text", max: 100, aliases: ["Comp. Manager", "Comp Manager ID"] },
+      { key: "techEd", label: "Appraiser Tech ED", column: "appraiser_tech_ed", kind: "text", max: 100, aliases: ["Tech ED", "Appraiser / Tech ED", "Tech-ED"] },
     ],
   },
   feedback: {
@@ -541,9 +541,9 @@ async function commitChunk(tables, body, actor) {
     (def.empLookupColumns || [def.empColumn]).forEach((column) => { values[column] = masterId; });
     values[def.cycleColumn] = cycle.id;
     if (def.batchColumn) values[def.batchColumn] = batchId;
-    if (def.table === "delegation") {
-      values.updated_by = String(actor || "").slice(0, 50);
-      values.updated_at = new Date().toISOString();
+    if (def.table === "previousDelegation") {
+      values.updated_by = String(actor || "").slice(0, 100);
+      values.updated_at = nowLocal();
     }
     if (def.table === "feedback" && cycle.effective && parseDate(cycle.effective)) {
       values.Effective_Date = parseDate(cycle.effective);

@@ -25,6 +25,8 @@ const FEEDBACK_RATING_TABLE_ID = "74008000000022041";
 const APPRAISAL_CYCLE_TABLE_ID = "74008000000034190";
 const ELIGIBILITY_TABLE_ID = "74008000000057046";
 const DELEGATION_TABLE_ID = "74008000000036124";
+// Past cycles' Delegation, loaded through Historical Import.
+const PREVIOUS_DELEGATION_TABLE_ID = "74008000000096255";
 
 /* ============================================================
    EXPRESS JSON BODY PARSER
@@ -796,82 +798,87 @@ function currentTotalCtc(row) {
 }
 
 
-async function syncDelegationSnapshotRows(datastore, employees, employeeMasterMap, cycleId, options = {}) {
+// Data Store datetime text ("YYYY-MM-DD HH:mm:ss", IST). An ISO string is
+// rejected by datetime columns.
+function dataStoreNow(date = new Date()) {
+  return new Date(date.getTime() + 330 * 60 * 1000).toISOString().replace("T", " ").slice(0, 19);
+}
+
+// Employee ID for an assignment value (employee ID, Employee_Master ROWID or
+// "EMP001 - Name"); unmatched text is kept as it is.
+function assignmentEmployeeId(value, employeeMasterMap) {
+  const raw = historyReference(value);
+  if (!raw) return "";
+  const identity = raw.split(/\s+-\s+/)[0].trim();
+  const master = employeeMasterMap.get(raw) || employeeMasterMap.get(raw.toLowerCase()) ||
+    employeeMasterMap.get(identity) || employeeMasterMap.get(identity.toLowerCase());
+  return String(master?.emp_id || raw).trim();
+}
+
+// Saves the Delegation screen's roster for the Active cycle: one Delegation
+// row per employee that has none yet, holding what the screen shows. Rows
+// that exist are the saved assignments (changed only by Delegation save,
+// approved requests or the Eligibility "Generate Delegation"), so only their
+// blank Previous columns are filled in.
+async function saveDelegationRoster(datastore, employees, employeeMasterMap, cycleId, records, actor) {
   const activeCycleId = String(cycleId || "").trim();
   if (!activeCycleId) return;
-
   const table = datastore.table(DELEGATION_TABLE_ID);
-  // options.records: the Delegation rows the caller already read in this
-  // request (only pass them when that read succeeded, or rows get duplicated).
-  const records = Array.isArray(options.records) ? options.records : await readAllDataStoreRows(table);
-  const updatedAt = new Date().toISOString();
-  const actor = String(options.updatedBy || "system").trim() || "system";
-
-  // This cycle's rows by employee reference (Employee_Master ROWID or emp_id),
-  // first match wins, so each employee is a direct lookup instead of a scan.
+  const updatedAt = dataStoreNow();
   const recordByEmployee = new Map();
   records.forEach((record) => {
     if (historyReference(record?.cycle_id) !== activeCycleId) return;
     const key = historyReference(record?.emp_id).toLowerCase();
     if (key && !recordByEmployee.has(key)) recordByEmployee.set(key, record);
   });
-  const sameText = (a, b) => String(a ?? "").trim() === String(b ?? "").trim();
-
+  const text = (value) => String(value ?? "").trim().slice(0, 100);
+  const inserts = [];
+  const updates = [];
+  const seen = new Set();
   for (const employee of employees || []) {
     const empId = String(employee?.emp_id || employee?.employee_id || "").trim();
     if (!empId) continue;
     const master = employeeMasterMap.get(empId.toLowerCase()) || {};
     const masterRowId = String(master.ROWID || master.rowid || master.id || employee.emp_master_row_id || "").trim();
-    if (!masterRowId) continue;
-
-    const existing = recordByEmployee.get(masterRowId.toLowerCase()) ||
-      recordByEmployee.get(empId.toLowerCase());
-
-    const previousComp = String(employee?.previous_comp_manager || "").trim();
-    const previousTechEd = String(employee?.previous_appraiser_tech_ed || employee?.previous_tech_ed || "").trim();
-    const currentComp = String(employee?.comp_manager || employee?.delegation_comp_manager || employee?.appraiser_tech_ed || "").trim();
-    const currentTechEd = String(employee?.appraiser_tech_ed || "").trim();
-    const row = {
+    if (!masterRowId || seen.has(masterRowId)) continue;
+    seen.add(masterRowId);
+    const previousComp = text(employee.previous_comp_manager);
+    const previousTechEd = text(employee.previous_appraiser_tech_ed);
+    const existing = recordByEmployee.get(masterRowId.toLowerCase()) || recordByEmployee.get(empId.toLowerCase());
+    if (existing) {
+      const patch = {};
+      if (!text(existing.previous_comp_manager) && previousComp) patch.previous_comp_manager = previousComp;
+      if (!text(existing.previous_appraiser_tech_ed) && previousTechEd) patch.previous_appraiser_tech_ed = previousTechEd;
+      const rowId = String(existing.ROWID || existing.rowid || "").trim();
+      if (rowId && Object.keys(patch).length) updates.push({ ROWID: rowId, ...patch });
+      continue;
+    }
+    inserts.push({
       cycle_id: activeCycleId,
       emp_id: masterRowId,
-      comp_manager: currentComp,
-      appraiser_tech_ed: currentTechEd,
-      status: String(existing?.status || options.status || "Active"),
+      comp_manager: text(assignmentEmployeeId(employee.delegation_comp_manager, employeeMasterMap)),
+      appraiser_tech_ed: text(assignmentEmployeeId(employee.appraiser_tech_ed, employeeMasterMap)),
+      director: text(master.director || employee.director),
+      previous_comp_manager: previousComp,
+      previous_appraiser_tech_ed: previousTechEd,
+      status: "Active",
       updated_by: actor,
       updated_at: updatedAt,
-    };
-
-    if (existing) {
-      // A saved historical snapshot is immutable after first capture.
-      row.previous_comp_manager = String(existing.previous_comp_manager || previousComp).trim();
-      row.previous_appraiser_tech_ed = String(existing.previous_appraiser_tech_ed || previousTechEd).trim();
-      const rowId = String(existing.ROWID || existing.rowid || "").trim();
-      // Every employee list load runs this; write only when a value changed.
-      const unchanged =
-        historyReference(existing.cycle_id) === activeCycleId &&
-        historyReference(existing.emp_id) === masterRowId &&
-        ["comp_manager", "appraiser_tech_ed", "status", "previous_comp_manager", "previous_appraiser_tech_ed"]
-          .every((column) => sameText(existing[column], row[column]));
-      if (rowId && !unchanged) {
-        await table.updateRow({ ...row, ROWID: rowId });
-        Object.assign(existing, row);
-      }
-    } else {
-      row.previous_comp_manager = previousComp;
-      row.previous_appraiser_tech_ed = previousTechEd;
-      const created = await table.insertRow(row);
-      const saved = { ...row, ...(created || {}) };
-      records.push(saved);
-      recordByEmployee.set(masterRowId.toLowerCase(), saved);
-    }
+    });
+  }
+  for (let index = 0; index < inserts.length; index += 100) {
+    await table.insertRows(inserts.slice(index, index + 100));
+  }
+  for (let index = 0; index < updates.length; index += 100) {
+    await table.updateRows(updates.slice(index, index + 100));
   }
 }
 
-async function enrichPreviousAppraisalValues(datastore, employees, employeeMasterMap) {
-  // Whether the Delegation read below succeeded: only then can the snapshot
-  // sync reuse its rows (an empty fallback would make it insert duplicates).
+async function enrichPreviousAppraisalValues(datastore, employees, employeeMasterMap, options = {}) {
+  // Whether the Delegation read below succeeded: only then can the roster be
+  // saved from it (an empty fallback would make it insert duplicates).
   let delegationReadOk = true;
-  const [payrollRows, cycleRows, eligibilityRows, feedbackRows, appraisalHistoryRows, delegationRows] = await Promise.all([
+  const [payrollRows, cycleRows, eligibilityRows, feedbackRows, appraisalHistoryRows, delegationRows, previousDelegationRows] = await Promise.all([
     readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
     readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
     readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)).catch(() => []),
@@ -880,6 +887,10 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID)).catch((error) => {
       console.error("Could not read Delegation records:", error?.message || error);
       delegationReadOk = false;
+      return [];
+    }),
+    readAllDataStoreRows(datastore.table(PREVIOUS_DELEGATION_TABLE_ID)).catch((error) => {
+      console.error("Could not read Previous_Delegation records:", error?.message || error);
       return [];
     }),
   ]);
@@ -912,6 +923,25 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     if (empId) eligibilityByEmployee.set("emp:" + empId, { status: normalized, record });
   });
   const currentRank = currentCycle ? historyCycleRank(currentCycle) : 0;
+  // Each employee's Previous_Delegation row from the latest closed or
+  // archived cycle before the current one, by Employee_Master ROWID.
+  const previousDelegationByEmployee = new Map();
+  previousDelegationRows.forEach((record) => {
+    const cycle = cycleById.get(historyReference(record?.cycle_id));
+    const masterId = historyReference(record?.emp_id).toLowerCase();
+    if (!cycle || !masterId || cycleIdOf(cycle) === currentCycleId) return;
+    const closed = cycle.archived === true ||
+      ["true", "1", "yes"].includes(String(cycle.archived ?? "").trim().toLowerCase()) ||
+      ["archived", "closed", "complete", "completed"].includes(cycleStatusOf(cycle));
+    const rank = historyCycleRank(cycle);
+    if (!closed || (currentRank > 0 && rank >= currentRank)) return;
+    const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
+    const prior = previousDelegationByEmployee.get(masterId);
+    if (!prior || rank > prior.rank ||
+        (rank === prior.rank && rowTime.localeCompare(prior.rowTime, undefined, { numeric: true }) > 0)) {
+      previousDelegationByEmployee.set(masterId, { row: record, rank, rowTime });
+    }
+  });
   const currentCycleName = currentCycle ? historyCycleName(currentCycle) : "";
   const currentFeedbackByEmployee = new Map();
   const feedbackFirstNonEmpty = (record, keys) => {
@@ -1180,7 +1210,11 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       return savedCycle === String(currentCycleId).toLowerCase() &&
         (savedEmployee === masterRowId || savedEmployee === String(empKey || "").toLowerCase());
     });
-    const previousCompManager = String(savedDelegation?.previous_comp_manager || "").trim() ||
+    // Uploaded Previous Delegation first, then the snapshot saved on this
+    // cycle's Delegation row, then the prior cycle's sheet / payroll.
+    const uploadedPrevious = previousDelegationByEmployee.get(masterRowId)?.row || null;
+    const previousCompManager = assignmentDisplay(uploadedPrevious?.comp_manager) ||
+      String(savedDelegation?.previous_comp_manager || "").trim() ||
       assignmentDisplay(
         firstNonEmpty(assignmentHistoryRow || {}, [
           "comp_manager_id", "comp_manager", "Comp_Manager", "comp_manager_name",
@@ -1191,7 +1225,8 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
           "compManager", "compensation_manager", "compManagerName",
         ]),
       );
-    const previousAppraiserTechEd = String(savedDelegation?.previous_appraiser_tech_ed || "").trim() ||
+    const previousAppraiserTechEd = assignmentDisplay(uploadedPrevious?.appraiser_tech_ed) ||
+      String(savedDelegation?.previous_appraiser_tech_ed || "").trim() ||
       assignmentDisplay(
         firstNonEmpty(assignmentHistoryRow || {}, [
           "appraiser_tech_ed_id", "appraiser_tech_ed1", "appraiser_tech_ed", "Tech_ED",
@@ -1385,9 +1420,18 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     };
   });
 
-  // Delegation rows are created/replaced only by the explicit HR action
-  // POST /server/accessapi/delegation/fill after eligibility criteria are applied.
-  // A read of employeesapi must remain side-effect-free for Delegation.
+  // The Delegation screen's roster is stored in the Delegation table for the
+  // Active cycle: missing rows are added with what the screen shows. Only the
+  // Delegation view's first page does this, so parallel page reads can't
+  // insert the same employee twice. Other reads stay side-effect-free.
+  if (options.saveDelegation && delegationReadOk && currentCycleId) {
+    try {
+      await saveDelegationRoster(datastore, updatedEmployees, employeeMasterMap, currentCycleId,
+        delegationRows, String(options.updatedBy || "Delegation screen").slice(0, 100));
+    } catch (error) {
+      console.error("Could not save the Delegation roster:", error?.message || error);
+    }
+  }
 
   // Persist the lookup-derived date and target PB into the current Appraisal_Sheet
   // row so newly generated cycles replace stale demo values in the table itself.
@@ -2173,6 +2217,10 @@ async function getEmployees(req, res) {
     historyDatastore,
     mergedEmployees,
     employeeMasterMap,
+    {
+      saveDelegation: hrUser && requestedView === "delegation" && requestedPage === 1,
+      updatedBy: (a && a.user && a.user.email) || currentUser?.email_id || "",
+    },
   );
 
   /* ==========================================================
