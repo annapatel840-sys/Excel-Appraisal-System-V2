@@ -2282,6 +2282,63 @@ export function EmployeeMaster() {
     setEligibilityCriteriaApplied(Boolean(reloaded?.cycle?.criteriaApplied));
   };
 
+  const editRegenerateEligibility = async () => {
+    if (!canEditEmployees || !eligibilityCycleId) return;
+    const confirmed = window.confirm(
+      "Edit and regenerate eligibility for this cycle? This removes the current cycle's Eligibility List and its applied-criteria marker. You will need to apply criteria again."
+    );
+    if (!confirmed) return;
+    try {
+      const result = await payrollCycleRequest("eligibility", {
+        method: "POST",
+        body: { action: "reset-criteria", cycleId: eligibilityCycleId },
+      });
+      setEligibilityEmployees([]);
+      setEligibilityCriteriaApplied(false);
+      setBanner(null);
+      showBanner(
+        "Eligibility list cleared",
+        "The current cycle's generated eligibility records were removed. Update the criteria and select Apply Criteria again."
+      );
+      window.dispatchEvent(new CustomEvent("appraisal:eligibility-reset", {
+        detail: { cycleId: eligibilityCycleId, removed: result?.removed || 0 }
+      }));
+    } catch (error) {
+      showBanner("Unable to reset eligibility", error?.message || "Please try again.", true);
+    }
+  };
+
+  const generateDelegationFromEligibility = async () => {
+    if (!canEditEmployees || !eligibilityCycleId || !eligibilityCriteriaApplied) return;
+    const confirmed = window.confirm(
+      "Generate or replace Delegation for this cycle using the current Eligibility List?"
+    );
+    if (!confirmed) return;
+    try {
+      const response = await catalystFetch(
+        catalystFunctionUrl("accessapi") + "delegation/fill",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ cycleId: eligibilityCycleId, replace: true }),
+        }
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.ok === false || payload.success === false) {
+        throw new Error(payload.error || payload.message || "Delegation generation failed.");
+      }
+      window.dispatchEvent(new CustomEvent("appraisal:delegation-generated", {
+        detail: { cycleId: eligibilityCycleId }
+      }));
+      showBanner(
+        "Delegation generated",
+        `Delegation was generated for ${payload.inserted ?? 0} employee record(s). Open the Delegation page to review the assignments.`
+      );
+    } catch (error) {
+      showBanner("Delegation generation failed", error?.message || "Please try again.", true);
+    }
+  };
+
   /* ============================================================
      ADD AN EMPLOYEE (manual inclusion in the Eligibility List)
      ============================================================ */
@@ -2541,7 +2598,11 @@ export function EmployeeMaster() {
                     excludedEmployees={excludedEmployees}
                     setExcludedEmployees={setExcludedEmployees}
                     onApply={applyEligibilityCriteria}
-                    readOnly={eligibilityCriteriaApplied || !eligibilityCycleId}
+                    onEditRegenerate={editRegenerateEligibility}
+                    onGenerateDelegation={generateDelegationFromEligibility}
+                    criteriaApplied={eligibilityCriteriaApplied}
+                    delegationGenerated={false}
+                    readOnly={!eligibilityCycleId}
                   />
                 )}
 
