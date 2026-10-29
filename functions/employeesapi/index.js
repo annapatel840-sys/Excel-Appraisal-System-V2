@@ -1385,18 +1385,9 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     };
   });
 
-  // Save one Delegation row per employee for the active cycle. Previous assignment
-  // snapshots are written only when the record is first created (or still blank),
-  // so later refreshes and approved changes never erase the historical values.
-  try {
-    // Pass copies: the sync updates its records in place, and delegationRows
-    // must keep describing what was saved before this request.
-    await syncDelegationSnapshotRows(datastore, updatedEmployees, employeeMasterMap, currentCycleId, {
-      records: delegationReadOk ? delegationRows.map((record) => ({ ...record })) : undefined,
-    });
-  } catch (error) {
-    console.error("Could not sync Delegation snapshots:", error?.message || error);
-  }
+  // Delegation rows are created/replaced only by the explicit HR action
+  // POST /server/accessapi/delegation/fill after eligibility criteria are applied.
+  // A read of employeesapi must remain side-effect-free for Delegation.
 
   // Persist the lookup-derived date and target PB into the current Appraisal_Sheet
   // row so newly generated cycles replace stale demo values in the table itself.
