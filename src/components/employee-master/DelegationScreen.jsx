@@ -767,7 +767,7 @@ export default function DelegationScreen({
         to: source.label,
         why: `${done.length} employee(s): ${why}`,
       });
-      say(`Comp. Manager set to ${source.label} for ${done.length} employee(s).`);
+      say(`Comp. Manager set to ${source.label} for ${done.length} employee(s). Click Save to keep the changes.`);
     } else if (done.length) {
       say(`${done.length} request(s) sent to HR for approval (${no}).`);
     }
@@ -878,7 +878,7 @@ export default function DelegationScreen({
                 to: nameOf(person),
                 why: `${done.length} employee(s): ${why.trim()}`,
               });
-              say(FIELDS[field] + " updated for " + done.length + " employee(s).");
+              say(FIELDS[field] + " staged for " + done.length + " employee(s). Click Save to keep the changes.");
             }
             await loadRequests().catch(() => {});
           })();
@@ -1131,11 +1131,16 @@ export default function DelegationScreen({
       const summary = d.alreadyGenerated
         ? `Appraisal Sheet updated: ${parts.join(", ") || "changes applied"}.`
         : `Appraisal Sheet generated for ${d.created ?? d.eligible ?? 0} employee(s).`;
-      refreshEmployees().catch(() => {});
+      // Load the generated / updated rows first so the sheet opens with them.
+      await refreshEmployees().catch(() => {});
       onRefresh?.();
       if (access.canScreen("appraisalSheet")) {
         say(summary + " Opening the Appraisal Sheet…");
-        setTimeout(() => window.location.assign("/sheet"), 900);
+        // Same in-app navigation the rest of the app uses (no full reload).
+        setTimeout(() => {
+          window.history.pushState({}, "", "/sheet");
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        }, 500);
       } else {
         setModal({
           type: "notice",
@@ -1167,6 +1172,27 @@ export default function DelegationScreen({
     }
     runGenerateSheet();
   };
+
+  // Throw away everything not saved yet: the grid goes back to the last
+  // saved Delegation.
+  const discardUnsaved = async () => {
+    if (!Object.keys(stagedChanges).length) return;
+    setStagedChanges({});
+    setSel({});
+    await loadRoster();
+    say("Unsaved changes discarded. Showing the last saved Delegation.");
+  };
+
+  // Warn before a browser refresh / tab close while changes are unsaved.
+  useEffect(() => {
+    if (!Object.keys(stagedChanges).length) return undefined;
+    const warn = (event) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [stagedChanges]);
 
   const saveDelegation = async () => {
     if (!isHR || !activeCycleId || !rows.length) return;
@@ -1419,6 +1445,16 @@ export default function DelegationScreen({
                 onClick={saveDelegation}
               >
                 Save{Object.keys(stagedChanges).length ? " (" + Object.keys(stagedChanges).length + ")" : ""}
+              </button>
+            )}
+            {isHR && Object.keys(stagedChanges).length > 0 && (
+              <button
+                className="btn"
+                disabled={rosterLoading || sheetBusy}
+                title="Discard unsaved changes and go back to the last saved Delegation"
+                onClick={discardUnsaved}
+              >
+                Discard
               </button>
             )}
             {isHR && (
