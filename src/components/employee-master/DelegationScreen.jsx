@@ -1098,23 +1098,19 @@ export default function DelegationScreen({
         say(`${ids.size} request(s) approved.`);
       },
     });
-  // Generate / update the Appraisal Sheet from the saved Delegation data:
-  // creates it the first time, otherwise updates only what changed, and says
-  // so when it is already up to date.
+  // Generate / update the Appraisal Sheet from the LAST SAVED Delegation data:
+  // creates it the first time, otherwise updates only what changed, says so
+  // when it is already up to date, and opens the Appraisal Sheet afterwards.
+  // Changes that were not saved are not used; the grid goes back to the last
+  // saved values.
   const [sheetBusy, setSheetBusy] = useState(false);
-  const generateSheet = async () => {
-    if (!isHR || !activeCycleId || sheetBusy) return;
-    const unsaved = Object.keys(stagedChanges).length;
-    if (unsaved) {
-      setModal({
-        type: "notice",
-        title: "Save your changes first",
-        body: `You have ${unsaved} unsaved delegation change(s). Click Save first, then Generate Appraisal Sheet so they are included.`,
-      });
-      return;
-    }
+  const runGenerateSheet = async () => {
     setSheetBusy(true);
     try {
+      if (Object.keys(stagedChanges).length) {
+        setStagedChanges({});
+        await loadRoster();
+      }
       const result = await payrollCycleRequest("generate-sheet", {
         method: "POST",
         body: { cycleId: activeCycleId },
@@ -1129,20 +1125,24 @@ export default function DelegationScreen({
         return;
       }
       const parts = [];
-      if (d.created) parts.push(`${d.created} employee(s) added`);
+      if (d.created) parts.push(`${d.created} added`);
       if (d.updated) parts.push(`${d.updated} updated`);
       if (d.removedStaleRows) parts.push(`${d.removedStaleRows} removed`);
-      setModal({
-        type: "notice",
-        title: d.alreadyGenerated
-          ? "Appraisal Sheet updated"
-          : "Appraisal Sheet generated",
-        body: d.alreadyGenerated
-          ? `The existing Appraisal Sheet for ${displayCycleName} was updated: ${parts.join(", ") || "changes applied"}.`
-          : `The Appraisal Sheet for ${displayCycleName} was generated for ${d.created ?? d.eligible ?? 0} employee(s).`,
-      });
+      const summary = d.alreadyGenerated
+        ? `Appraisal Sheet updated: ${parts.join(", ") || "changes applied"}.`
+        : `Appraisal Sheet generated for ${d.created ?? d.eligible ?? 0} employee(s).`;
       refreshEmployees().catch(() => {});
       onRefresh?.();
+      if (access.canScreen("appraisalSheet")) {
+        say(summary + " Opening the Appraisal Sheet…");
+        setTimeout(() => window.location.assign("/sheet"), 900);
+      } else {
+        setModal({
+          type: "notice",
+          title: d.alreadyGenerated ? "Appraisal Sheet updated" : "Appraisal Sheet generated",
+          body: summary,
+        });
+      }
     } catch (error) {
       setModal({
         type: "notice",
@@ -1152,6 +1152,20 @@ export default function DelegationScreen({
     } finally {
       setSheetBusy(false);
     }
+  };
+  const generateSheet = () => {
+    if (!isHR || !activeCycleId || sheetBusy) return;
+    const unsaved = Object.keys(stagedChanges).length;
+    if (unsaved) {
+      setModal({
+        type: "confirm",
+        title: "Unsaved changes",
+        body: `You have ${unsaved} unsaved delegation change(s). They will be discarded and the Appraisal Sheet will use the last saved Delegation. To include them, click Cancel and Save first.`,
+        ok: runGenerateSheet,
+      });
+      return;
+    }
+    runGenerateSheet();
   };
 
   const saveDelegation = async () => {
