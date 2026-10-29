@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Check, X } from "lucide-react";
+import { Check, X, RefreshCw, Users } from "lucide-react";
 
 function CheckList({ values, selected, setSelected, disabled }) {
   const toggle = (value) =>
@@ -32,6 +32,10 @@ export function EligibilityCriteria({
   excludedEmployees,
   setExcludedEmployees,
   onApply,
+  onEditRegenerate,
+  onGenerateDelegation,
+  criteriaApplied = false,
+  delegationGenerated = false,
   readOnly = false,
 }) {
   const [selectedDepartments, setSelectedDepartments] = useState([]);
@@ -165,22 +169,49 @@ export function EligibilityCriteria({
         onChange={(event) => setCutoffDate(event.target.value)}
       />
 
-      <button
-        type="button"
-        className="em-btn em-btn-primary em-apply-btn"
-        disabled={readOnly}
-        onClick={() =>
-          onApply({
-            departments: selectedDepartments,
-            designations: selectedDesignations,
-            excludedEmployees,
-            cutoffDate,
-          })
-        }
-      >
-        <Check size={14} />
-        Apply Criteria
-      </button>
+      <div style={{ display: "flex", gap: 8, alignItems: "stretch", marginTop: 12, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          className="em-btn em-btn-primary em-apply-btn"
+          style={{ flex: "1 1 150px", width: "auto", marginTop: 0 }}
+          disabled={readOnly || criteriaApplied}
+          onClick={() =>
+            onApply({
+              departments: selectedDepartments,
+              designations: selectedDesignations,
+              excludedEmployees,
+              cutoffDate,
+            })
+          }
+        >
+          <Check size={14} />
+          Apply Criteria
+        </button>
+        {criteriaApplied && (
+          <button
+            type="button"
+            className="em-btn"
+            style={{ flex: "1 1 170px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+            disabled={readOnly}
+            onClick={onEditRegenerate}
+          >
+            <RefreshCw size={14} />
+            Edit & Regenerate
+          </button>
+        )}
+      </div>
+      {criteriaApplied && (
+        <button
+          type="button"
+          className="em-btn em-btn-primary"
+          style={{ width: "100%", marginTop: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+          disabled={readOnly || delegationGenerated}
+          onClick={onGenerateDelegation}
+        >
+          <Users size={14} />
+          {delegationGenerated ? "Delegation Generated" : "Generate Delegation"}
+        </button>
+      )}
 
     </div>
   );
