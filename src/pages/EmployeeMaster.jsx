@@ -644,6 +644,7 @@ export function EmployeeMaster() {
   const [eligibilityCycleId, setEligibilityCycleId] = useState("");
   const [eligibilityCriteriaApplied, setEligibilityCriteriaApplied] = useState(false);
   const [delegationGenerated, setDelegationGenerated] = useState(false);
+  const [eligibilityResetConfirm, setEligibilityResetConfirm] = useState(false);
   // Full Employee Master (all pages). The Eligibility List starts empty for a
   // cycle, so the criteria panel and "Add An Employee" read from this list.
   const [eligibilityMasterEmployees, setEligibilityMasterEmployees] = useState([]);
@@ -2284,12 +2285,13 @@ export function EmployeeMaster() {
     setEligibilityCriteriaApplied(Boolean(reloaded?.cycle?.criteriaApplied));
   };
 
-  const editRegenerateEligibility = async () => {
+  const editRegenerateEligibility = () => {
     if (!canEditEmployees || !eligibilityCycleId) return;
-    const confirmed = window.confirm(
-      "Edit and regenerate eligibility for this cycle? This removes the current cycle's Eligibility List and its applied-criteria marker. You will need to apply criteria again."
-    );
-    if (!confirmed) return;
+    setEligibilityResetConfirm(true);
+  };
+
+  const confirmEditRegenerateEligibility = async () => {
+    setEligibilityResetConfirm(false);
     try {
       const result = await payrollCycleRequest("eligibility", {
         method: "POST",
@@ -2313,10 +2315,6 @@ export function EmployeeMaster() {
 
   const generateDelegationFromEligibility = async () => {
     if (!canEditEmployees || !eligibilityCycleId || !eligibilityCriteriaApplied) return;
-    const confirmed = window.confirm(
-      "Generate or replace Delegation for this cycle using the current Eligibility List?"
-    );
-    if (!confirmed) return;
     try {
       const response = await catalystFetch(
         catalystFunctionUrl("accessapi") + "delegation/fill",
@@ -2334,10 +2332,7 @@ export function EmployeeMaster() {
       window.dispatchEvent(new CustomEvent("appraisal:delegation-generated", {
         detail: { cycleId: eligibilityCycleId }
       }));
-      showBanner(
-        "Delegation generated",
-        `Delegation was generated for ${payload.inserted ?? 0} employee record(s). Open the Delegation page to review the assignments.`
-      );
+      goToTab("delegation");
     } catch (error) {
       showBanner("Delegation generation failed", error?.message || "Please try again.", true);
     }
@@ -2635,6 +2630,9 @@ export function EmployeeMaster() {
                       ? () => openAuditHistory("eligibility")
                       : undefined
                   }
+                  criteriaApplied={eligibilityCriteriaApplied}
+                  onGenerateDelegation={generateDelegationFromEligibility}
+                  delegationGenerated={delegationGenerated}
                 />
               </div>
             )}
