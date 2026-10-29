@@ -643,6 +643,7 @@ export function EmployeeMaster() {
   const [eligibilityEmployees, setEligibilityEmployees] = useState([]);
   const [eligibilityCycleId, setEligibilityCycleId] = useState("");
   const [eligibilityCriteriaApplied, setEligibilityCriteriaApplied] = useState(false);
+  const [delegationGenerated, setDelegationGenerated] = useState(false);
   // Full Employee Master (all pages). The Eligibility List starts empty for a
   // cycle, so the criteria panel and "Add An Employee" read from this list.
   const [eligibilityMasterEmployees, setEligibilityMasterEmployees] = useState([]);
@@ -1269,6 +1270,7 @@ export function EmployeeMaster() {
       eligibilityLoadedKeyRef.current = null;
       setEligibilityCycleId("");
       setEligibilityCriteriaApplied(false);
+      setDelegationGenerated(false);
       setEligibilityEmployees([]);
       setEligibilityReloadKey((value) => value + 1);
     };
@@ -2295,6 +2297,7 @@ export function EmployeeMaster() {
       });
       setEligibilityEmployees([]);
       setEligibilityCriteriaApplied(false);
+      setDelegationGenerated(false);
       setBanner(null);
       showBanner(
         "Eligibility list cleared",
@@ -2327,6 +2330,7 @@ export function EmployeeMaster() {
       if (!response.ok || payload.ok === false || payload.success === false) {
         throw new Error(payload.error || payload.message || "Delegation generation failed.");
       }
+      setDelegationGenerated(true);
       window.dispatchEvent(new CustomEvent("appraisal:delegation-generated", {
         detail: { cycleId: eligibilityCycleId }
       }));
@@ -2601,7 +2605,7 @@ export function EmployeeMaster() {
                     onEditRegenerate={editRegenerateEligibility}
                     onGenerateDelegation={generateDelegationFromEligibility}
                     criteriaApplied={eligibilityCriteriaApplied}
-                    delegationGenerated={false}
+                    delegationGenerated={delegationGenerated}
                     readOnly={!eligibilityCycleId}
                   />
                 )}
