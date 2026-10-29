@@ -801,9 +801,21 @@ async function syncDelegationSnapshotRows(datastore, employees, employeeMasterMa
   if (!activeCycleId) return;
 
   const table = datastore.table(DELEGATION_TABLE_ID);
-  const records = await readAllDataStoreRows(table);
+  // options.records: the Delegation rows the caller already read in this
+  // request (only pass them when that read succeeded, or rows get duplicated).
+  const records = Array.isArray(options.records) ? options.records : await readAllDataStoreRows(table);
   const updatedAt = new Date().toISOString();
   const actor = String(options.updatedBy || "system").trim() || "system";
+
+  // This cycle's rows by employee reference (Employee_Master ROWID or emp_id),
+  // first match wins, so each employee is a direct lookup instead of a scan.
+  const recordByEmployee = new Map();
+  records.forEach((record) => {
+    if (historyReference(record?.cycle_id) !== activeCycleId) return;
+    const key = historyReference(record?.emp_id).toLowerCase();
+    if (key && !recordByEmployee.has(key)) recordByEmployee.set(key, record);
+  });
+  const sameText = (a, b) => String(a ?? "").trim() === String(b ?? "").trim();
 
   for (const employee of employees || []) {
     const empId = String(employee?.emp_id || employee?.employee_id || "").trim();
@@ -812,12 +824,8 @@ async function syncDelegationSnapshotRows(datastore, employees, employeeMasterMa
     const masterRowId = String(master.ROWID || master.rowid || master.id || employee.emp_master_row_id || "").trim();
     if (!masterRowId) continue;
 
-    const existing = records.find((record) => {
-      const rowCycleId = historyReference(record?.cycle_id);
-      const rowEmployeeId = historyReference(record?.emp_id);
-      return rowCycleId === activeCycleId &&
-        (rowEmployeeId === masterRowId || rowEmployeeId.toLowerCase() === empId.toLowerCase());
-    });
+    const existing = recordByEmployee.get(masterRowId.toLowerCase()) ||
+      recordByEmployee.get(empId.toLowerCase());
 
     const previousComp = String(employee?.previous_comp_manager || "").trim();
     const previousTechEd = String(employee?.previous_appraiser_tech_ed || employee?.previous_tech_ed || "").trim();
@@ -838,7 +846,13 @@ async function syncDelegationSnapshotRows(datastore, employees, employeeMasterMa
       row.previous_comp_manager = String(existing.previous_comp_manager || previousComp).trim();
       row.previous_appraiser_tech_ed = String(existing.previous_appraiser_tech_ed || previousTechEd).trim();
       const rowId = String(existing.ROWID || existing.rowid || "").trim();
-      if (rowId) {
+      // Every employee list load runs this; write only when a value changed.
+      const unchanged =
+        historyReference(existing.cycle_id) === activeCycleId &&
+        historyReference(existing.emp_id) === masterRowId &&
+        ["comp_manager", "appraiser_tech_ed", "status", "previous_comp_manager", "previous_appraiser_tech_ed"]
+          .every((column) => sameText(existing[column], row[column]));
+      if (rowId && !unchanged) {
         await table.updateRow({ ...row, ROWID: rowId });
         Object.assign(existing, row);
       }
@@ -846,12 +860,17 @@ async function syncDelegationSnapshotRows(datastore, employees, employeeMasterMa
       row.previous_comp_manager = previousComp;
       row.previous_appraiser_tech_ed = previousTechEd;
       const created = await table.insertRow(row);
-      records.push({ ...row, ...(created || {}) });
+      const saved = { ...row, ...(created || {}) };
+      records.push(saved);
+      recordByEmployee.set(masterRowId.toLowerCase(), saved);
     }
   }
 }
 
 async function enrichPreviousAppraisalValues(datastore, employees, employeeMasterMap) {
+  // Whether the Delegation read below succeeded: only then can the snapshot
+  // sync reuse its rows (an empty fallback would make it insert duplicates).
+  let delegationReadOk = true;
   const [payrollRows, cycleRows, eligibilityRows, feedbackRows, appraisalHistoryRows, delegationRows] = await Promise.all([
     readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
     readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
@@ -860,6 +879,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     readAllDataStoreRows(datastore.table(EMPLOYEES_TABLE_ID)).catch(() => []),
     readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID)).catch((error) => {
       console.error("Could not read Delegation records:", error?.message || error);
+      delegationReadOk = false;
       return [];
     }),
   ]);
@@ -1327,6 +1347,10 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       // The Delegation row is the persisted source for this cycle's current
       // Comp Manager. For a new row, default to the prior-cycle manager; a new
       // employee without prior history falls back to the Employee Master Tech-ED.
+      // Whether this cycle already had a saved Delegation row for the
+      // employee when the request started. The Delegation screen runs its
+      // one-time roster fill only while some employee has none.
+      delegation_saved: Boolean(savedDelegation),
       delegation_comp_manager: String(savedDelegation?.comp_manager || "").trim() ||
         previousCompManager ||
         String(employee.comp_manager || "").trim() ||
@@ -1365,7 +1389,11 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   // snapshots are written only when the record is first created (or still blank),
   // so later refreshes and approved changes never erase the historical values.
   try {
-    await syncDelegationSnapshotRows(datastore, updatedEmployees, employeeMasterMap, currentCycleId);
+    // Pass copies: the sync updates its records in place, and delegationRows
+    // must keep describing what was saved before this request.
+    await syncDelegationSnapshotRows(datastore, updatedEmployees, employeeMasterMap, currentCycleId, {
+      records: delegationReadOk ? delegationRows.map((record) => ({ ...record })) : undefined,
+    });
   } catch (error) {
     console.error("Could not sync Delegation snapshots:", error?.message || error);
   }
