@@ -349,6 +349,7 @@ export default function DelegationScreen({
         id: String(item.emp_id || item.employee_id || item.ROWID || "").trim(),
         name: String(item.name || item.emp_name || item.emp_id || "").trim(),
         rm: String(item.reporting_manager || item.repo_manager || "").trim(),
+        director: String(item.director || "").trim(),
         rawTe: item.appraiser_tech_ed || "",
         rawComp: item.delegation_comp_manager || item.comp_manager || "",
         rawPrevComp: item.previous_comp_manager || item.prev_comp_manager || "",
@@ -360,6 +361,7 @@ export default function DelegationScreen({
         id: item.id,
         name: item.name,
         rm: item.rm,
+        director: item.director,
         teId: displayAssignment(item.rawTe, roster),
         te: displayAssignment(item.rawTe, roster),
         comp: displayAssignment(item.rawComp, roster),
@@ -516,30 +518,47 @@ export default function DelegationScreen({
     const { row, field, person } = modal;
     if (!reason.trim()) return say("Reason is mandatory.", true);
     try {
-      const request = await submitDelegationRequest({
-        empId: row.id,
-        empName: row.name,
-        field,
-        oldId: row[field],
-        newId: person.id,
-        reason: reason.trim(),
-        byName: user.name,
-      });
-      await loadRequests();
-      log({
-        emp: row.id,
-        field: FIELDS[field],
-        from: nameOf(row[field]),
-        to: person.name,
-        action: "Requested",
-        why: reason,
-      });
-      say(`Request ${request?.id || "submitted"} sent to HR for approval.`);
+      if (isHR) {
+        const response = await catalystFetch(ACCESS_API_URL + "delegation/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({
+            cycleId: activeCycleId,
+            empId: row.id,
+            field,
+            assignment: person.id,
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to save delegation.");
+        setRows((current) => applyTo(current, row.id, field, person.id, "HR Admin", reason.trim(), user.name));
+        await refreshEmployees().catch(() => {});
+        window.dispatchEvent(new CustomEvent("appraisal:budget-data-updated"));
+        log({ emp: row.id, field: FIELDS[field], from: nameOf(row[field]), to: person.name, action: "Saved by HR", why: reason });
+        say("Delegation change saved.");
+      } else {
+        const request = await submitDelegationRequest({
+          empId: row.id,
+          empName: row.name,
+          field,
+          oldId: row[field],
+          newId: person.id,
+          reason: reason.trim(),
+          byName: user.name,
+        });
+        await loadRequests();
+        log({
+          emp: row.id,
+          field: FIELDS[field],
+          from: nameOf(row[field]),
+          to: person.name,
+          action: "Requested",
+          why: reason,
+        });
+        say(`Request ${request?.id || "submitted"} sent to HR for approval.`);
+      }
     } catch (error) {
-      return say(
-        error?.message || "Unable to send delegation request to HR.",
-        true,
-      );
+      return say(error?.message || (isHR ? "Unable to save delegation." : "Unable to send delegation request to HR."), true);
     }
     setModal(null);
   };
@@ -778,26 +797,20 @@ export default function DelegationScreen({
         say(`${ids.size} request(s) approved.`);
       },
     });
-  const lock = () =>
-    setModal({
-      type: "confirm",
-      title: "Save & lock delegation",
-      body: `Lock the delegation for ${displayCycleName} (${rows.length} employees)? No changes are possible afterwards.`,
-      ok: () => {
-        setLocked(true);
-        log({
-          action: "Locked",
-          why: `${rows.length} employees locked for ${displayCycleName}`,
-        });
-        say(`Delegation for ${displayCycleName} locked.`);
-      },
-    });
+  const lock = () => {
+    if (isHR) {
+      say("HR changes are saved when you confirm each assignment. No delegation lock is applied.");
+      return;
+    }
+    say("Tech-Ed changes are saved only after HR approves the request.");
+  };
 
   const exportCsv = () => {
     const head = [
       "Employee ID",
       "Employee Name",
       "Reporting Manager",
+      "Director",
       "Tech Ed",
       "Comp Manager",
       "Appraiser Tech Ed",
@@ -809,6 +822,7 @@ export default function DelegationScreen({
       r.id,
       r.name,
       r.rm,
+      r.director,
       r.te,
       nameOf(r.comp),
       nameOf(r.app),
@@ -1041,7 +1055,7 @@ export default function DelegationScreen({
               <table>
                 <thead>
                   <tr className="grp">
-                    <th className="g g1" colSpan={5}>
+                    <th className="g g1" colSpan={6}>
                       <span>FROM EMPLOYEE MASTER · READ-ONLY</span>
                     </th>
                     <th className="g g2" colSpan={2}>
@@ -1069,6 +1083,7 @@ export default function DelegationScreen({
                       "EMPLOYEE ID",
                       "EMPLOYEE NAME",
                       "REPORTING MANAGER",
+                      "DIRECTOR",
                       "TECH ED",
                       "COMP MANAGER",
                       "APPRAISER TECH ED",
@@ -1098,6 +1113,7 @@ export default function DelegationScreen({
                         <td className="ref">{r.id}</td>
                         <td className="nm">{r.name}</td>
                         <td>{r.rm}</td>
+                        <td>{r.director || "—"}</td>
                         <td>{displayAssignment(r.te)}</td>
                         {["comp", "app"].map((f) => {
                           const prev = f === "comp" ? r.prevComp : r.prevApp;
