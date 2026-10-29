@@ -3,14 +3,22 @@
 /* ---------------------------------------------------------------------
    designationmasterapi - Designation Master (HR Operations > Masters)
 
-   GET  /  -> { success, data }   current-cycle designations, groups, options, audit
-   POST /  -> { success, data }   saves the whole screen, returns fresh data
+   GET  /                  -> { success, data }  current-cycle designations, groups,
+                              options, audit. Every GET first syncs Employee_Master:
+                              a designation that is not in the Designation table yet
+                              gets a new row (cycle_id, name, department; Inactive,
+                              no next type) so HR can map it.
+   GET  /?view=appraisal   -> { success, data }  read-only "new title" rules for the
+                              Appraisal Sheet (one entry per designation: mapped or
+                              not, and the options its New title dropdown must show).
+                              Needs view access on appraisalSheet / detailScreen /
+                              employeeMaster, not HR-only.
+   POST /                  -> { success, data }  saves the whole screen (HR only)
 
    Catalyst tables (looked up by NAME, so no table IDs to paste):
-     Designations              cycle_id, name, department, band, next_type,
+     Designation               cycle_id, name, department, band, next_type,
                                single_next_designation, group_id, status
-                               (group_id = foreign key to Designation_Groups;
-                                add it to the Designations table if missing)
+                               (group_id = foreign key to Designation_Groups)
      Designation_Next          designation_id, next_id    (the "Multiple" list)
      Designation_Groups        cycle_id, group_name
      Designation_Group_Members group_id, des_id
@@ -22,7 +30,7 @@ const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
 
 const TBL = {
-  designations: "Designations",
+  designations: "Designation",
   next: "Designation_Next",
   groups: "Designation_Groups",
   members: "Designation_Group_Members",
@@ -171,13 +179,31 @@ async function readBody(req) {
 }
 
 /* ---------- access ---------- */
-async function authorize(req, method) {
+// Screens whose users may read the read-only "new title" rules. Writes and the
+// full Designation Master read stay HR-only (employeeMaster).
+const RULE_SCREENS = ["appraisalSheet", "detailScreen", "employeeMaster"];
+
+function requireAnyScreen(a, keys, level) {
+  const ok = keys.some((key) => {
+    try {
+      access.requireScreen(a, key, level);
+      return true;
+    } catch (e) {
+      if (e instanceof access.HttpError) return false;
+      throw e;
+    }
+  });
+  if (!ok) throw fail(403, "You do not have access to this screen.");
+}
+
+async function authorize(req, method, rulesOnly = false) {
   const userApp = catalyst.initialize(req);
   const adminApp = catalyst.initialize(req, { scope: "admin" });
   const a = await access.check(userApp, adminApp);
-  access.guard(a, () =>
-    access.requireScreen(a, SCREEN_KEY, method === "GET" ? "view" : "edit"),
-  );
+  access.guard(a, () => {
+    if (method === "GET" && rulesOnly) return requireAnyScreen(a, RULE_SCREENS, "view");
+    return access.requireScreen(a, SCREEN_KEY, method === "GET" ? "view" : "edit");
+  });
   let actor = a && a.user && a.user.email;
   if (!actor) {
     try {
@@ -227,20 +253,26 @@ async function syncFromEmployeeMaster(app, cycle) {
       status: false,
     });
   });
+  const table = app.datastore().table(TBL.designations);
   if (toAdd.length) {
-    const table = app.datastore().table(TBL.designations);
     for (const part of chunks(toAdd)) await table.insertRows(part);
   }
+  // A row created earlier without a department (e.g. added by hand) gets it
+  // from Employee_Master the first time the designation is found there.
+  const fill = desRows
+    .filter((r) => !text(r.department) && pairs.get(lower(r.name))?.department)
+    .map((r) => ({ ROWID: rowId(r), department: clip(pairs.get(lower(r.name)).department) }));
+  for (const part of chunks(fill)) await table.updateRows(part);
   return new Set(pairs.keys());
 }
 
 async function loadData(app, cycle, { sync = true } = {}) {
   try {
-    await app.zcql().executeZCQLQuery("SELECT group_id FROM Designations LIMIT 1");
+    await app.zcql().executeZCQLQuery(`SELECT group_id FROM ${TBL.designations} LIMIT 1`);
   } catch (e) {
     throw fail(
       500,
-      "Catalyst table Designations has no group_id column. Add a foreign-key column group_id pointing to Designation_Groups.",
+      "Catalyst table Designation has no group_id column. Add a foreign-key column group_id pointing to Designation_Groups.",
     );
   }
 
@@ -691,6 +723,104 @@ async function saveData(app, cycle, actor, payload) {
   return loadData(app, cycle, { sync: false });
 }
 
+/* ---------- Appraisal Sheet "New title" rules (read-only) ----------
+   One entry per designation of the active cycle, keyed by lower-case name:
+     mapped   true  -> the New title dropdown may open
+              false -> the sheet must show the "not mapped" popup with `message`
+     options  names the dropdown shows (S: the one next designation,
+              M: the listed ones, G: the active members of the group)
+     free     true for Free select: the dropdown shows `freeOptions` (every
+              Active designation) and nothing is pre-filled
+     prefill  the single next designation (type S only), else ""
+   A designation that has no row in the Designation table is not in `rules`;
+   the sheet treats that as not mapped too. */
+async function loadRules(app, cycle) {
+  const [allDes, memberRows, nextRows, cfgRows] = await Promise.all([
+    readCycle(app, TBL.designations, cycle.id),
+    readAll(app, TBL.members),
+    readAll(app, TBL.next),
+    readAll(app, TBL.config),
+  ]);
+
+  const options = { S: false, M: false, G: false, F: false };
+  cfgRows.forEach((r) => {
+    const t = text(r.type).toUpperCase();
+    if (TYPES.includes(t)) options[t] = isOn(r.status);
+  });
+  if (!cfgRows.length) TYPES.forEach((t) => (options[t] = true));
+
+  const seen = new Set();
+  const rows = allDes.filter((r) => {
+    const k = lower(r.name);
+    if (!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  const byId = new Map(rows.map((r) => [rowId(r), r]));
+  const activeName = (id) => {
+    const r = byId.get(String(id));
+    return r && isOn(r.status) ? text(r.name) : "";
+  };
+  const freeOptions = rows.filter((r) => isOn(r.status)).map((r) => text(r.name)).sort();
+  const uniq = (list) => [...new Set(list.filter(Boolean))];
+
+  const rules = {};
+  rows.forEach((r) => {
+    const id = rowId(r);
+    const name = text(r.name);
+    const type = text(r.next_type).toUpperCase();
+    const notMapped = `${name} is not mapped to a next designation. Ask HR to map it in Designation Master.`;
+    const entry = { name, mapped: false, nextType: type, options: [], free: false, prefill: "", message: notMapped };
+
+    if (!type || !TYPES.includes(type)) {
+      rules[lower(name)] = entry;
+      return;
+    }
+    if (!options[type]) {
+      entry.message = `${name}: "${TYPE_LABEL[type]}" is switched off in Designation Master. Ask HR to choose another next type.`;
+      rules[lower(name)] = entry;
+      return;
+    }
+
+    let names = [];
+    let anySet = true;
+    if (type === "S") {
+      const sid = refId(r.single_next_designation);
+      anySet = !!sid;
+      names = uniq([activeName(sid)]);
+    } else if (type === "M") {
+      const ids = nextRows.filter((n) => refId(n.designation_id) === id).map((n) => refId(n.next_id));
+      anySet = ids.length > 0;
+      names = uniq(ids.map(activeName));
+    } else if (type === "G") {
+      const gid = refId(r.group_id);
+      const ids = gid
+        ? memberRows.filter((m) => refId(m.group_id) === gid).map((m) => refId(m.des_id))
+        : [];
+      anySet = !!gid && ids.length > 0;
+      names = uniq(ids.map(activeName));
+    }
+
+    if (type === "F") {
+      entry.mapped = true;
+      entry.free = true;
+      entry.message = "";
+    } else if (!anySet) {
+      // keep the generic "not mapped" message
+    } else if (!names.length) {
+      entry.message = `${name}: none of its next designations is Active. Ask HR to update Designation Master.`;
+    } else {
+      entry.mapped = true;
+      entry.options = names;
+      entry.prefill = type === "S" ? names[0] : "";
+      entry.message = "";
+    }
+    rules[lower(name)] = entry;
+  });
+
+  return { cycle, rules, freeOptions };
+}
+
 /* ---------- handler ---------- */
 module.exports = async function designationMasterApi(req, res) {
   if (req.method === "OPTIONS") {
@@ -701,10 +831,21 @@ module.exports = async function designationMasterApi(req, res) {
     if (req.method !== "GET" && req.method !== "POST") {
       return sendJson(res, 405, { success: false, message: "Method not allowed." });
     }
-    const { adminApp, actor } = await authorize(req, req.method);
+    let rulesOnly = false;
+    try {
+      rulesOnly =
+        req.method === "GET" &&
+        new URL(req.url, "https://x").searchParams.get("view") === "appraisal";
+    } catch (e) {
+      rulesOnly = false;
+    }
+    const { adminApp, actor } = await authorize(req, req.method, rulesOnly);
     const cycle = await getActiveCycle(adminApp);
 
     if (req.method === "GET") {
+      if (rulesOnly) {
+        return sendJson(res, 200, { success: true, data: await loadRules(adminApp, cycle) });
+      }
       return sendJson(res, 200, { success: true, data: await loadData(adminApp, cycle) });
     }
 
