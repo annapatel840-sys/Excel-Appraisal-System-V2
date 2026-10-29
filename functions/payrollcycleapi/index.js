@@ -1341,6 +1341,21 @@ async function moveSheetToPayroll(tables, cycle, actor, beforeWrite = null) {
   return { moved: cycleRows.length, inserted: inserts.length, updated: updates.length, removed: ids.length };
 }
 
+// Compare a value already stored on a sheet row with the value generation
+// would write, ignoring type/format noise (number vs text, date vs date-time).
+function sameSheetValue(stored, next) {
+  const a = stored === undefined || stored === null ? "" : String(stored).trim();
+  const b = next === undefined || next === null ? "" : String(next).trim();
+  if (a === b) return true;
+  if (a !== "" && b !== "" && Number.isFinite(Number(a)) && Number.isFinite(Number(b))) {
+    return Number(a) === Number(b);
+  }
+  if (/^\d{4}-\d{2}-\d{2}/.test(a) && /^\d{4}-\d{2}-\d{2}/.test(b)) {
+    return a.slice(0, 10) === b.slice(0, 10);
+  }
+  return false;
+}
+
 async function generateAppraisalSheet(tables, cycle, actor) {
   if (!cycle?.id) throw new ApiError("Select an appraisal cycle before generating the sheet.", 400);
   if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived || cycle.hidden) {
@@ -1631,6 +1646,9 @@ async function generateAppraisalSheet(tables, cycle, actor) {
 
   let created = 0;
   let updated = 0;
+  let unchanged = 0;
+  // Did this cycle already have an Appraisal Sheet before this run?
+  const alreadyGenerated = sheetRows.some((row) => String(row.cycle_id || "") === String(cycle.id));
   const eligibleMasterIds = new Set(
     eligibleRows.map((employee) => String(employee.employeeMasterRowId || "")).filter(Boolean),
   );
@@ -1810,8 +1828,16 @@ async function generateAppraisalSheet(tables, cycle, actor) {
       (!appraisalSheetColumns || appraisalSheetColumns.has("comp_manager"))
     ) payload.comp_manager = compManagerText.slice(0, 30);
     if (existing) {
-      await tables.employees.updateRow(payload);
-      updated += 1;
+      // Only touch rows where something differs from what is already stored.
+      const differs = Object.keys(payload).some(
+        (key) => key !== "ROWID" && !sameSheetValue(existing[key], payload[key]),
+      );
+      if (differs) {
+        await tables.employees.updateRow(payload);
+        updated += 1;
+      } else {
+        unchanged += 1;
+      }
     } else {
       await tables.employees.insertRow(payload);
       created += 1;
@@ -1834,29 +1860,37 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     await tables.employees.deleteRows(staleSheetRowIds.slice(index, index + 100));
   }
 
-  await writeAudit(tables.audit, {
-    actor,
-    source: "cycle",
-    cycle,
-    action: "Appraisal Sheet generated",
-    details: {
-      kind: "cycle",
-      action: "Appraisal Sheet generated",
-      message: `Generated ${created} new and refreshed ${updated} existing Appraisal Sheet rows from Eligibility List.`,
-      cycleName: cycle.name,
-      created,
-      updated,
-      removedStaleRows: staleSheetRowIds.length,
-      eligible: eligibleRows.length,
-    },
-  });
+  const upToDate = created === 0 && updated === 0 && staleSheetRowIds.length === 0;
+  // A run that changed nothing is not worth an audit entry.
+  if (!upToDate || !alreadyGenerated) {
+    await writeAudit(tables.audit, {
+      actor,
+      source: "cycle",
+      cycle,
+      action: alreadyGenerated ? "Appraisal Sheet updated" : "Appraisal Sheet generated",
+      details: {
+        kind: "cycle",
+        action: alreadyGenerated ? "Appraisal Sheet updated" : "Appraisal Sheet generated",
+        message: `Added ${created} new and updated ${updated} existing Appraisal Sheet rows from Eligibility List (${unchanged} already up to date).`,
+        cycleName: cycle.name,
+        created,
+        updated,
+        unchanged,
+        removedStaleRows: staleSheetRowIds.length,
+        eligible: eligibleRows.length,
+      },
+    });
+  }
   return {
     cycleId: cycle.id,
     cycleName: cycle.name,
     created,
     updated,
+    unchanged,
     removedStaleRows: staleSheetRowIds.length,
     eligible: eligibleRows.length,
+    alreadyGenerated,
+    upToDate: alreadyGenerated && upToDate,
   };
 }
 
@@ -2750,19 +2784,6 @@ async function routeRequest(req, res, identity, resource, a) {
       const eligibilityRows = await getAllRows(tables.eligibility);
       const cycleRows = eligibilityRows.filter((row) => String(row.appraisal_cycle_id || "") === cycleId);
       const removed = await deleteEligibilityRowsById(tables, cycleRows.map(rowId));
-
-      // Delegation is derived from the eligibility list. When HR edits and
-      // regenerates eligibility, clear the old delegation roster too so it
-      // cannot appear generated before the explicit Generate Delegation action.
-      const delegationRows = await getAllRows(tables.delegation);
-      const cycleDelegationRows = delegationRows.filter(
-        (row) => String(row.cycle_id || row.appraisal_cycle_id || "") === cycleId,
-      );
-      const removedDelegation = cycleDelegationRows.length;
-      for (let index = 0; index < cycleDelegationRows.length; index += 100) {
-        await tables.delegation.deleteRows(cycleDelegationRows.slice(index, index + 100).map(rowId));
-      }
-
       const auditRows = await getAllRows(tables.audit);
       const markerRows = auditRows.filter((row) =>
         String(row.source || "").trim().toLowerCase() === "eligibility_criteria" &&
@@ -2771,7 +2792,7 @@ async function routeRequest(req, res, identity, resource, a) {
       for (let index = 0; index < markerRows.length; index += 100) {
         await tables.audit.deleteRows(markerRows.slice(index, index + 100).map(rowId));
       }
-      return sendJson(res, 200, { success: true, data: { cycleId, removed, removedDelegation, criteriaApplied: false } });
+      return sendJson(res, 200, { success: true, data: { cycleId, removed, criteriaApplied: false } });
     }
     if (String(body.action || "").trim().toLowerCase() === "apply-criteria") {
       const result = await applyEligibilityCriteria(tables, body, actor);

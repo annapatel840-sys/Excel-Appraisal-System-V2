@@ -29,8 +29,7 @@ const PAGE = 50;
 const MIN_COL = 70;
 const MAX_COL = 520;
 const COLS = [
-  { key: "id", label: "Employee ID", w: 140, cls: "ref" },
-  { key: "name", label: "Employee Name", w: 190, cls: "nm" },
+  { key: "employee", label: "Employee", w: 300, cls: "nm" },
   { key: "rm", label: "Reporting Manager", w: 220 },
   { key: "director", label: "Director", w: 190 },
   { key: "te", label: "Tech-ED", w: 230 },
@@ -242,7 +241,7 @@ export default function DelegationScreen({
   const [audit, setAudit] = useState([]);
   const [locked, setLocked] = useState(false);
   const [colFilters, setColFilters] = useState({});
-  const [sort, setSort] = useState({ key: "id", dir: "asc" });
+  const [sort, setSort] = useState({ key: "employee", dir: "asc" });
   const [colWidths, setColWidths] = useState(() =>
     Object.fromEntries(COLS.map((c) => [c.key, c.w])),
   );
@@ -516,6 +515,8 @@ export default function DelegationScreen({
         return resolveName(r.prevApp);
       case "te":
         return resolveName(r.te);
+      case "employee":
+        return r.name ? `${r.id} - ${r.name}` : String(r.id ?? "");
       case "rm":
         return resolveName(r.rm);
       case "director":
@@ -558,13 +559,8 @@ export default function DelegationScreen({
     setPage(1);
   };
   const filtersActive = Object.keys(colFilters).length > 0;
-  // Employee ID and Employee Name stay fixed on the left while scrolling.
-  const fzLeft = (key) =>
-    key === "id"
-      ? SELECT_W
-      : key === "name"
-        ? SELECT_W + (colWidths.id ?? 140)
-        : undefined;
+  // The Employee column ("EMP001 - Name") stays fixed on the left while scrolling.
+  const fzLeft = (key) => (key === "employee" ? SELECT_W : undefined);
 
   /* drag a header edge to resize a column (same behaviour as the Appraisal Sheet) */
   const startColResize = useCallback(
@@ -1102,6 +1098,62 @@ export default function DelegationScreen({
         say(`${ids.size} request(s) approved.`);
       },
     });
+  // Generate / update the Appraisal Sheet from the saved Delegation data:
+  // creates it the first time, otherwise updates only what changed, and says
+  // so when it is already up to date.
+  const [sheetBusy, setSheetBusy] = useState(false);
+  const generateSheet = async () => {
+    if (!isHR || !activeCycleId || sheetBusy) return;
+    const unsaved = Object.keys(stagedChanges).length;
+    if (unsaved) {
+      setModal({
+        type: "notice",
+        title: "Save your changes first",
+        body: `You have ${unsaved} unsaved delegation change(s). Click Save first, then Generate Appraisal Sheet so they are included.`,
+      });
+      return;
+    }
+    setSheetBusy(true);
+    try {
+      const result = await payrollCycleRequest("generate-sheet", {
+        method: "POST",
+        body: { cycleId: activeCycleId },
+      });
+      const d = result?.data || result || {};
+      if (d.upToDate) {
+        setModal({
+          type: "notice",
+          title: "Appraisal Sheet is up to date",
+          body: `The Appraisal Sheet for ${displayCycleName} is already up to date. There is nothing new to add or update.`,
+        });
+        return;
+      }
+      const parts = [];
+      if (d.created) parts.push(`${d.created} employee(s) added`);
+      if (d.updated) parts.push(`${d.updated} updated`);
+      if (d.removedStaleRows) parts.push(`${d.removedStaleRows} removed`);
+      setModal({
+        type: "notice",
+        title: d.alreadyGenerated
+          ? "Appraisal Sheet updated"
+          : "Appraisal Sheet generated",
+        body: d.alreadyGenerated
+          ? `The existing Appraisal Sheet for ${displayCycleName} was updated: ${parts.join(", ") || "changes applied"}.`
+          : `The Appraisal Sheet for ${displayCycleName} was generated for ${d.created ?? d.eligible ?? 0} employee(s).`,
+      });
+      refreshEmployees().catch(() => {});
+      onRefresh?.();
+    } catch (error) {
+      setModal({
+        type: "notice",
+        title: "Unable to generate the Appraisal Sheet",
+        body: error?.message || "The request failed.",
+      });
+    } finally {
+      setSheetBusy(false);
+    }
+  };
+
   const saveDelegation = async () => {
     if (!isHR || !activeCycleId || !rows.length) return;
     const changes = Object.values(stagedChanges);
@@ -1355,6 +1407,16 @@ export default function DelegationScreen({
                 Save{Object.keys(stagedChanges).length ? " (" + Object.keys(stagedChanges).length + ")" : ""}
               </button>
             )}
+            {isHR && (
+              <button
+                className="btn p"
+                disabled={!activeCycleId || !rows.length || rosterLoading || sheetBusy}
+                title="Create the Appraisal Sheet from this Delegation, or update the existing one with what changed"
+                onClick={generateSheet}
+              >
+                {sheetBusy ? "Generating…" : "Generate Appraisal Sheet"}
+              </button>
+            )}
           </div>
 
           <div className="dg-tw">
@@ -1386,7 +1448,7 @@ export default function DelegationScreen({
                 </colgroup>
                 <thead>
                   <tr className="grp">
-                    <th className="g g1 fz" colSpan={3} style={{ left: 0 }}>
+                    <th className="g g1 fz" colSpan={2} style={{ left: 0 }}>
                       <span>&nbsp;</span>
                     </th>
                     <th className="g g1" colSpan={3}>
@@ -2076,7 +2138,7 @@ const CSS = `
 .dg .dg-grid tr.grp th.fz{z-index:7}
 .dg .dg-grid td.fz{position:sticky;z-index:2;background:#fff}
 .dg .dg-grid tr.sel td.fz{background:#f7fbfa}
-.dg .dg-grid th:nth-child(3).fz,.dg .dg-grid td:nth-child(3).fz{border-right:2px solid #94a3b8}
+.dg .dg-grid th:nth-child(2).fz,.dg .dg-grid td:nth-child(2).fz{border-right:2px solid #94a3b8}
 .dg .dg-grid .hl{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dg .dg-grid .rz{position:absolute;top:0;right:-2px;height:100%;width:5px;cursor:col-resize;touch-action:none;z-index:10}
 .dg .dg-grid .rz:hover{background:rgba(23,54,93,.3)}
