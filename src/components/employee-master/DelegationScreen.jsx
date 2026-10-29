@@ -25,6 +25,15 @@ const TAG = {
 };
 const PAGE = 50;
 const nameOf = (value) => String(value || "").trim();
+// Catalyst lookup fields can arrive as "EMP001, EMP001 - Employee Name".
+// Keep the resolved "EMP001 - Employee Name" value consistently in the grid
+// and dropdowns instead of exposing the duplicated lookup representation.
+const displayAssignment = (value) => {
+  const text = nameOf(value);
+  if (!text.includes(",")) return text;
+  const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
+  return parts.find((part) => /\\s-\\s/.test(part)) || parts[parts.length - 1] || text;
+};
 const now = () => new Date().toISOString().replace("T", " ").slice(0, 19);
 const fmt = (s) => {
   const d = new Date(String(s).replace(" ", "T"));
@@ -309,12 +318,12 @@ export default function DelegationScreen({
         id: String(item.emp_id || item.employee_id || item.ROWID || "").trim(),
         name: String(item.name || item.emp_name || item.emp_id || "").trim(),
         rm: String(item.reporting_manager || item.repo_manager || "").trim(),
-        teId: String(item.appraiser_tech_ed || "").trim(),
-        te: String(item.appraiser_tech_ed || "").trim(),
-        comp: String(item.delegation_comp_manager || item.comp_manager || "").trim(),
-        app: String(item.appraiser_tech_ed || "").trim(),
-        prevComp: String(item.previous_comp_manager || item.prev_comp_manager || "").trim(),
-        prevApp: String(item.previous_appraiser_tech_ed || item.previous_tech_ed || item.prev_appraiser_tech_ed || "").trim(),
+        teId: displayAssignment(item.appraiser_tech_ed || ""),
+        te: displayAssignment(item.appraiser_tech_ed || ""),
+        comp: displayAssignment(item.delegation_comp_manager || item.comp_manager || ""),
+        app: displayAssignment(item.appraiser_tech_ed || ""),
+        prevComp: displayAssignment(item.previous_comp_manager || item.prev_comp_manager || ""),
+        prevApp: displayAssignment(item.previous_appraiser_tech_ed || item.previous_tech_ed || item.prev_appraiser_tech_ed || ""),
         base: "",
         lastRole: "",
       })));
@@ -388,7 +397,7 @@ export default function DelegationScreen({
         ...new Set(
           [...rows.map((r) => r.comp), ...rows.map((r) => r.app)]
             .filter(Boolean)
-            .map((v) => String(v).trim()),
+            .map((v) => displayAssignment(v)),
         ),
       ]
         .sort((a, b) => a.localeCompare(b))
@@ -1059,7 +1068,7 @@ export default function DelegationScreen({
                         <td className="ref">{r.id}</td>
                         <td className="nm">{r.name}</td>
                         <td>{r.rm}</td>
-                        <td>{r.te}</td>
+                        <td>{displayAssignment(r.te)}</td>
                         {["comp", "app"].map((f) => {
                           const prev = f === "comp" ? r.prevComp : r.prevApp;
                           return (
