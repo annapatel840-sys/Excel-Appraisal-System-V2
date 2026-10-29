@@ -302,8 +302,23 @@ VALUE NORMALIZATION
 ============================================================ */
 
 const normalizeValueForCatalyst = (key, value) => {
+  // pb_installment / new_pb_installment are int columns: an empty value must
+  // go out as 0 (shown as empty in the UI), never as "".
+  if (
+    (key === "pbInstallment" || key === "newPBInstallment") &&
+    (value === "" || value === null || value === undefined)
+  ) {
+    return 0;
+  }
+
   if (value === "" || value === null || value === undefined) {
     return value;
+  }
+
+  if (key === "hikeAmount") {
+    const n = Number(value);
+
+    return Number.isFinite(n) ? Number(n.toFixed(2)) : 0;
   }
 
   if (NUMERIC_FIELDS.has(key)) {
@@ -428,7 +443,7 @@ const mapCatalystEmployee = (employee, index) => {
     newRB: Number(employee.new_rb || 0),
     joiningBonus: Number(employee.joining_bonus || 0),
 
-    hikeAmount: Number(employee.hike_amount || 0),
+    hikeAmount: Number(Number(employee.hike_amount || 0).toFixed(2)),
     hikePct: Number(employee.hike_pct || 0),
 
     targetPBNextYear: Number(employee.target_pb_next_year || 0),
@@ -1036,10 +1051,13 @@ const linkedHikeValues = (row, key, value) => {
   if (key === "hikePct") {
     const pct = Number(value) || 0;
 
-    return { hikePct: pct, hikeAmount: Math.round(basePay * (pct / 100)) };
+    return {
+      hikePct: pct,
+      hikeAmount: Number((basePay * (pct / 100)).toFixed(2)),
+    };
   }
 
-  const amount = Number(value) || 0;
+  const amount = Number((Number(value) || 0).toFixed(2));
 
   const pct = basePay ? Number(((amount / basePay) * 100).toFixed(2)) : 0;
 
@@ -1865,7 +1883,7 @@ export function AppraisalProvider({ children }) {
         const roundValue =
           key === "hikePct"
             ? (number) => Number(number.toFixed(2))
-            : Math.round;
+            : (number) => Number(number.toFixed(2));
 
         let changedRows = 0;
 

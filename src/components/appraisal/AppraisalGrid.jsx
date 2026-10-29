@@ -2775,7 +2775,7 @@ export function AppraisalGrid({
         return { changed: false, hikeAmount: Number(row.hikeAmount) || 0 };
       }
 
-      const amount = Math.round(basePay * (pct / 100));
+      const amount = Number((basePay * (pct / 100)).toFixed(2));
 
       const changed =
         (Number(row.hikePct) || 0) !== pct ||
@@ -2815,7 +2815,8 @@ export function AppraisalGrid({
       }
 
       const basePay = Number(row.currentAnnualBasePay || 0);
-      const amount = Number(String(raw).replace(/,/g, "")) || 0;
+      const amount =
+        Number((Number(String(raw).replace(/,/g, "")) || 0).toFixed(2));
       const pct = basePay ? Number(((amount / basePay) * 100).toFixed(2)) : 0;
 
       const changed =
@@ -3825,6 +3826,13 @@ export function AppraisalGrid({
           }}
           onChange={(event) => {
             const value = event.target.value;
+
+            // Hike Amount accepts at most 2 decimal places: extra digits
+            // are simply not appended.
+            if (col.key === "hikeAmount" && /[.]\d{3,}/.test(value)) {
+              return;
+            }
+
             setEditingValue(cellKey, value);
 
             if (TYPING_POPUP_FIELDS[col.key]) {
