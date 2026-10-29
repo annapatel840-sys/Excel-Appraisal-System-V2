@@ -392,44 +392,6 @@ export function AppraisalCycleMasterPage({
     return () => window.removeEventListener("appraisal:cycle-updated", refresh);
   }, [currentSetupCycleId, loadSetupStatus]);
 
-  // Generate Delegation only after Apply Criteria has created this cycle's
-  // eligible roster. Rebuild the cycle's Delegation rows from that roster.
-  const generateDelegation = async (c) => {
-    if (setupBusy) return;
-    const eligibility = setupStatus[c.id]?.eligibility;
-    if (!eligibility?.generated) {
-      showBanner(
-        "Apply Eligibility Criteria first",
-        `${c.name}: open Eligibility, apply the criteria, then use Generate Delegation.`,
-        true,
-      );
-      navTo("go-el", c);
-      return;
-    }
-    setSetupBusy("gen-dl");
-    try {
-      const response = await catalystFetch(
-        catalystFunctionUrl("accessapi") + "delegation/fill",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ cycleId: c.id, replace: true }),
-        },
-      );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload.ok === false || payload.success === false) {
-        throw new Error(payload.error || payload.message || "The Delegation list could not be generated.");
-      }
-      await loadSetupStatus(c.id);
-      showBanner("Delegation generated", `${c.name}: open Delegation to review the saved assignments.`);
-      navTo("go-dl", c);
-    } catch (error) {
-      showBanner("Unable to generate Delegation", error?.message || "The request failed.", true);
-    } finally {
-      setSetupBusy("");
-    }
-  };
-
   // Pending items: use the prop when given, otherwise derive from cycleStats.
   const pendingList = (() => {
     if (pendingItems.length) return pendingItems;
@@ -937,7 +899,7 @@ export function AppraisalCycleMasterPage({
   const checkAct = (id, c) => {
     if (id === "gen") return openConfirm("generate", c);
     if (id === "gen-el") return navTo("go-el", c);
-    if (id === "gen-dl") return generateDelegation(c);
+    if (id === "gen-dl") return navTo("go-el", c);
     navTo(id, c);
   };
 
@@ -1040,13 +1002,13 @@ export function AppraisalCycleMasterPage({
           : dlSetup === undefined
             ? "Checking Delegation…"
             : dlSetup === 0
-              ? "Not generated · Generate creates the Delegation list for this cycle"
-              : "Default: Tech ED is the Comp Manager · Delegation changes it",
+              ? "Not generated · Apply Eligibility Criteria, then use Generate Delegation in the Eligibility List"
+              : "Generated · Default Tech-Ed assignment is saved; open Delegation to review",
         !act ? "lk" : dlSetup === undefined ? "pd" : dlSetup === 0 ? "wn" : "ok",
         !act || dlSetup === undefined
           ? []
           : dlSetup === 0
-            ? [{ l: setupBusy === "gen-dl" ? "Generating…" : "Generate", id: "gen-dl" }]
+            ? [{ l: "Open Eligibility ›", id: "go-el" }]
             : [{ l: "Open ›", id: "go-dl" }],
       ),
       row(
@@ -1506,7 +1468,7 @@ export function AppraisalCycleMasterPage({
                   <span className="ac">
                     {r.acts
                       .filter((a) =>
-                        a.id === "gen" || a.id === "gen-dl" ||
+                        a.id === "gen" ||
                         // Eligibility's Generate opens the Eligibility screen.
                         canGo(a.id === "gen-el" ? "go-el" : a.id))
                       .map((a) => (
@@ -1514,7 +1476,7 @@ export function AppraisalCycleMasterPage({
                           key={a.id}
                           type="button"
                           className={a.link ? "acx-btn link" : "acx-btn sm"}
-                          disabled={a.id === "gen-dl" && !!setupBusy}
+                          disabled={false}
                           onClick={() => a.id === "go-ap" ? navTo(a.id, c) : checkAct(a.id, c)}
                         >
                           {a.l}
