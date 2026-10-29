@@ -1579,9 +1579,27 @@ app.post(
     const keys = Array.from(
       new Set(Object.keys(em).concat(Object.keys(sheet))),
     );
+    // Delegation.emp_id is a lookup to Employee_Master and is stored as
+    // the Employee_Master ROWID, while the fill keys above are employee IDs
+    // such as EMP001. Index existing rows by the canonical employee ID so
+    // repeated POST /delegation/fill calls with replace:false are idempotent.
+    const employeeIdByMasterRowId = new Map();
+    emRows.forEach((employee) => {
+      const rowId = String(employee.ROWID || employee.rowid || "").trim();
+      const employeeId = String(employee[e.empId] || "").trim();
+      if (rowId && employeeId) {
+        employeeIdByMasterRowId.set(rowId, employeeId);
+      }
+    });
     const existingBy = {};
-    existing.forEach((r) => {
-      existingBy[norm(r[d.empId])] = r;
+    existing.forEach((row) => {
+      const storedEmployeeRef = String(row[d.empId] || "").trim();
+      const canonicalEmployeeId =
+        employeeIdByMasterRowId.get(storedEmployeeRef) ||
+        (em[norm(storedEmployeeRef)] && em[norm(storedEmployeeRef)].id) ||
+        storedEmployeeRef;
+      const key = norm(canonicalEmployeeId);
+      if (key && !existingBy[key]) existingBy[key] = row;
     });
     const at = nowDT();
     let techSet = 0,
