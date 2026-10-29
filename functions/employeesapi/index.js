@@ -1535,6 +1535,9 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       reporting_manager: String(
         masterValue("repo_manager", "reporting_manager", "manager") || row.reporting_manager || "",
       ),
+      // Director is sourced from Employee_Master and shown as a separate
+      // read-only hierarchy column on the Delegation screen.
+      director: String(masterValue("director") || ""),
       // Keep the stored Comp Manager key intact for existing matching/writes,
       // and expose a separate resolved label for display in budget screens.
       comp_manager: String(row.comp_manager || masterValue("comp_manager", "comp_manager_name", "director") || ""),
