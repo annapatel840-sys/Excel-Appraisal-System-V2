@@ -1736,7 +1736,15 @@ app.post(
         [d.empId]: employeeMasterRowId,
         [d.compManagerId]: cm,
         [d.appraiserTechEdId]: t,
-        director: String((em[k] && em[k].row.director) || "").trim(),
+        director: String((() => {
+          const masterRow = (em[k] && em[k].row) || {};
+          const directorKey = Object.keys(masterRow).find((key) =>
+            ["director", "director_name", "director name", "director_full_name"].includes(
+              key.trim().toLowerCase()
+            )
+          );
+          return directorKey ? masterRow[directorKey] : "";
+        })() || "").trim(),
         previous_comp_manager: "",
         previous_appraiser_tech_ed: "",
         status: "Active",
