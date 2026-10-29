@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/dialog";
 
 import { cn } from "@/lib/utils";
+import { showNotice } from "@/lib/show-notice";
 import { useAppraisal, LAST_EDIT_STORAGE_KEY } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
 import { useNotices } from "@/lib/notices";
@@ -423,7 +424,7 @@ export function SheetPage() {
                             isHidden: access.isHidden,
                           }).catch((error) => {
                             console.error("Excel export failed:", error);
-                            window.alert(
+                            showNotice(
                               "Excel export failed: " +
                                 (error?.message || "unknown error"),
                             );
@@ -548,9 +549,9 @@ export function SheetPage() {
                 });
                 const payload = await response.json().catch(() => ({}));
                 if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to send request.");
-                window.alert(isScreenRequest ? "Screen request sent to HR for approval." : "Delegation request sent to HR for approval.");
+                showNotice(isScreenRequest ? "Screen request sent to HR for approval." : "Delegation request sent to HR for approval.");
               } catch (error) {
-                window.alert(error?.message || "Unable to send request to HR.");
+                showNotice(error?.message || "Unable to send request to HR.");
               }
             }}
           />

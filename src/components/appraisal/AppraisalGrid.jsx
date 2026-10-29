@@ -12,6 +12,7 @@ import { createPortal } from "react-dom";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
+import { showNotice } from "@/lib/show-notice";
 import { ColumnFilter } from "./ColumnFilter";
 import { getSelectedEmpId, setSelectedEmpId } from "@/lib/selected-employee";
 import { TypingHistoryPopup } from "./TypingHistoryPopup";
@@ -3066,11 +3067,7 @@ export function AppraisalGrid({
       // New Title only on rows eligible for promotion.
       if (col.key === "newTitle") {
         const eligibleIds = rows
-          .filter((row) => {
-            if (row.eligibleForPromotion !== "Yes") return false;
-            const rule = getNewTitleRule(row);
-            return rule.ok && rule.options.includes(value);
-          })
+          .filter((row) => row.eligibleForPromotion === "Yes")
           .map((row) => row.id);
         const skipped = rows.length - eligibleIds.length;
 
@@ -3079,8 +3076,8 @@ export function AppraisalGrid({
         }
 
         if (skipped) {
-          window.alert(
-            `New Title was applied to ${eligibleIds.length} employee(s). ${skipped} skipped because they are not eligible for promotion or the title is not allowed for their designation in Designation Master.`,
+          showNotice(
+            `New Title was applied to ${eligibleIds.length} employee(s). ${skipped} skipped because they are not eligible for promotion.`,
           );
         }
 
@@ -3113,7 +3110,7 @@ export function AppraisalGrid({
         bulkUpdate(ids, "newTitle", "set", null);
       }
     },
-    [rows, bulkUpdate, updateHikePct, updateHikeAmount, designationRules, designationRulesLoading, designationRulesError],
+    [rows, bulkUpdate, updateHikePct, updateHikeAmount],
   );
 
   // ============================================================
@@ -3504,34 +3501,12 @@ export function AppraisalGrid({
                     ? defaultInstallment(row)
                     : "",
             )}
-            onMouseDown={(event) => {
-              // New Title: a designation that is not mapped in Designation
-              // Master gets the sheet's error popup instead of a dropdown.
-              if (col.key !== "newTitle") return;
-              const rule = getNewTitleRule(row);
-              if (!rule.ok) {
-                event.preventDefault();
-                event.currentTarget.blur();
-                window.alert(rule.message);
-              }
-            }}
             onFocus={() => {
               setActive(`${rowIndex}:${col.key}`);
               selectRowForEdit(row);
             }}
             onBlur={() => setActive(null)}
-            onKeyDown={(event) => {
-              if (
-                col.key === "newTitle" &&
-                (event.key === " " || event.key === "F4") &&
-                !getNewTitleRule(row).ok
-              ) {
-                event.preventDefault();
-                window.alert(getNewTitleRule(row).message);
-                return;
-              }
-              onKeyDown(event, rowIndex, col.key);
-            }}
+            onKeyDown={(event) => onKeyDown(event, rowIndex, col.key)}
             onDoubleClick={(event) =>
               handleEditableDoubleClick(event, rowIndex, col.key)
             }
@@ -3603,7 +3578,7 @@ export function AppraisalGrid({
                 String(value).trim() === ""
               ) {
                 setActive(cellKey);
-                window.alert(
+                showNotice(
                   "Designation is required when Promotion is Yes. Please select a designation before continuing.",
                 );
                 return;
@@ -3654,12 +3629,8 @@ export function AppraisalGrid({
 
             {(
               col.key === "newTitle"
-                ? (() => {
-                    const list = getNewTitleRule(row).options || [];
-                    const cur = String(row.newTitle || "");
-                    return cur && !list.includes(cur) ? [cur, ...list] : list;
-                  })()
-                : col.options || []
+              ? getNewTitleRule(row).options
+              : col.options || []
               ).map((option) => (
                <option key={option} value={option}>
              {option}
@@ -3910,7 +3881,7 @@ export function AppraisalGrid({
 
   if (!rule.ok) {
     event.preventDefault();
-    window.alert(rule.message);
+    showNotice(rule.message);
   }
 }}
 
@@ -3924,7 +3895,7 @@ export function AppraisalGrid({
   const rule = getNewTitleRule(row);
 
   if (!rule.ok) {
-    window.alert(rule.message);
+    showNotice(rule.message);
     event.currentTarget.blur();
     return;
   }

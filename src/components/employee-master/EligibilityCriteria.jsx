@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { Check, RefreshCw } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Check, X, RefreshCw } from "lucide-react";
+import { loadDesignationMaster } from "@/lib/designation-master-api";
 
 function CheckList({ values, selected, setSelected, disabled }) {
   const toggle = (value) =>
@@ -33,7 +34,9 @@ export function EligibilityCriteria({
   setExcludedEmployees,
   onApply,
   onEditRegenerate,
+  onGenerateDelegation,
   criteriaApplied = false,
+  delegationGenerated = false,
   readOnly = false,
 }) {
   const [selectedDepartments, setSelectedDepartments] = useState([]);
@@ -47,21 +50,44 @@ export function EligibilityCriteria({
     [employees],
   );
 
-  const departments = useMemo(
-    () =>
-      [...new Set(activeEmployees.map((employee) => employee.organization))]
-        .filter(Boolean)
-        .sort(),
-    [activeEmployees],
-  );
+  // Designation + department names come from the Designation table
+  // (Designation Master). If that table cannot be read, fall back to the
+  // values found in the employee list so the screen keeps working.
+  const [designationRows, setDesignationRows] = useState([]);
 
-  const designations = useMemo(
-    () =>
-      [...new Set(activeEmployees.map((employee) => employee.designation))]
-        .filter(Boolean)
-        .sort(),
-    [activeEmployees],
-  );
+  useEffect(() => {
+    let cancelled = false;
+    loadDesignationMaster()
+      .then((data) => {
+        if (!cancelled) setDesignationRows(data?.designations || []);
+      })
+      .catch((error) => {
+        console.error("Could not load Designation table for criteria:", error);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const departments = useMemo(() => {
+    const fromTable = [...new Set(designationRows.map((row) => row.department))]
+      .filter(Boolean)
+      .sort();
+    if (fromTable.length) return fromTable;
+    return [...new Set(activeEmployees.map((employee) => employee.organization))]
+      .filter(Boolean)
+      .sort();
+  }, [designationRows, activeEmployees]);
+
+  const designations = useMemo(() => {
+    const fromTable = [...new Set(designationRows.map((row) => row.name))]
+      .filter(Boolean)
+      .sort();
+    if (fromTable.length) return fromTable;
+    return [...new Set(activeEmployees.map((employee) => employee.designation))]
+      .filter(Boolean)
+      .sort();
+  }, [designationRows, activeEmployees]);
 
   const suggestions = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -98,14 +124,14 @@ export function EligibilityCriteria({
         values={designations}
         selected={selectedDesignations}
         setSelected={setSelectedDesignations}
-        disabled={readOnly || criteriaApplied}
+        disabled={readOnly}
       />
 
       <div className="em-crit-h">Exclude specific employees</div>
       <div className="em-search-field">
         <input
           value={search}
-          disabled={readOnly || criteriaApplied}
+          disabled={readOnly}
           onChange={(event) => {
             setSearch(event.target.value);
             setShowSuggest(true);
@@ -143,7 +169,7 @@ export function EligibilityCriteria({
               {employee?.name ?? empId}
               <button
                 type="button"
-                disabled={readOnly || criteriaApplied}
+                disabled={readOnly}
                 onClick={() =>
                   setExcludedEmployees((current) =>
                     current.filter((item) => item !== empId),
@@ -163,7 +189,7 @@ export function EligibilityCriteria({
         type="date"
         className="em-date-input"
         value={cutoffDate}
-        disabled={readOnly || criteriaApplied}
+        disabled={readOnly}
         onChange={(event) => setCutoffDate(event.target.value)}
       />
 
@@ -186,18 +212,16 @@ export function EligibilityCriteria({
           Apply Criteria
         </button>
         {criteriaApplied && (
-          <>
-            <button
-              type="button"
-              className="em-btn"
-              style={{ flex: "1 1 170px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-              disabled={readOnly}
-              onClick={onEditRegenerate}
-            >
-              <RefreshCw size={14} />
-              Edit & Regenerate
-            </button>
-          </>
+          <button
+            type="button"
+            className="em-btn"
+            style={{ flex: "1 1 170px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+            disabled={readOnly}
+            onClick={onEditRegenerate}
+          >
+            <RefreshCw size={14} />
+            Edit & Regenerate
+          </button>
         )}
       </div>
 
