@@ -1659,10 +1659,17 @@ app.post(
         .filter((row) =>
           String(row.eligibility_status || row.eligible_status || "").trim().toLowerCase() === "eligible"
         )
-        .map((row) => String(row.emp_id || "").trim().toLowerCase())
+        // Same key as the Employee_Master index (norm upper-cases).
+        .map((row) => norm(row.emp_id))
         .filter((id) => id && em[id] &&
           String(em[id].row[e.status] || "Active").trim().toLowerCase() === "active")
     );
+    // Never replace a cycle's Delegation with an empty list.
+    if (!eligibleIds.size)
+      throw new HttpError(
+        422,
+        "No active employees are marked Eligible for this cycle. Apply the eligibility criteria first.",
+      );
     const keys = Array.from(eligibleIds);
     // Delegation.emp_id is a lookup to Employee_Master and is stored as
     // the Employee_Master ROWID, while the fill keys above are employee IDs

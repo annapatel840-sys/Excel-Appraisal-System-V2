@@ -392,22 +392,23 @@ export function AppraisalCycleMasterPage({
     return () => window.removeEventListener("appraisal:cycle-updated", refresh);
   }, [currentSetupCycleId, loadSetupStatus]);
 
-  // "Generate" on the Delegation step: the same one-time fill the Delegation
-  // screen runs (existing rows are kept). Eligibility's "Generate" opens the
-  // Eligibility screen instead, because its list is created by Apply
-  // Criteria, which needs HR's criteria and can run only once per cycle.
+  // "Generate" on the Delegation step: loads the Delegation roster, which
+  // saves a Delegation row for every employee on it that has none (existing
+  // rows are kept), so the table holds what the Delegation screen shows.
+  // Eligibility's "Generate" opens the Eligibility screen instead, because
+  // its list is created by Apply Criteria, which needs HR's criteria and can
+  // run only once per cycle.
   const generateDelegation = async (c) => {
     if (setupBusy) return;
     setSetupBusy("gen-dl");
     try {
-      const response = await catalystFetch(catalystFunctionUrl("accessapi") + "delegation/fill", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({ cycleId: c.id, replace: false }),
-      });
+      const response = await catalystFetch(
+        catalystFunctionUrl("employeesapi") + "?page=1&limit=1000&view=delegation",
+        { method: "GET", cache: "no-store" },
+      );
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload.ok === false || payload.success === false) {
-        throw new Error(payload.error || payload.message || "The Delegation list could not be generated.");
+      if (!response.ok || payload.success === false) {
+        throw new Error(payload.message || "The Delegation list could not be generated.");
       }
       await loadSetupStatus(c.id);
       showBanner("Delegation generated", `${c.name}: open Delegation to review the assignments.`);

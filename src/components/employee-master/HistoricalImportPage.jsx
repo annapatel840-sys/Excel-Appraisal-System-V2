@@ -6,7 +6,8 @@ import { historicalImportRequest } from "@/lib/historical-import-api";
    HISTORICAL IMPORT (HR only)
 
    Previous-year data goes straight into storage for a past cycle:
-   Payroll -> Payroll_Data, Review and Feedback -> Feedback_And_Rating.
+   Payroll -> Payroll_Data, Review and Feedback -> Feedback_And_Rating,
+   Delegation -> Previous_Delegation.
    No appraisal step runs (Eligibility, Delegation, Appraisal Sheet,
    budget). Past cycles are created in Appraisal Cycle Master.
    ============================================================ */
@@ -15,7 +16,7 @@ const PAGE = 20;
 const TYPE_INFO = {
   payroll: { icon: "₹", note: "Saved to Payroll Data" },
   feedback: { icon: "★", note: "Saved to Review and Feedback" },
-  delegation: { icon: "⇧", note: "Saved to Delegation" },
+  delegation: { icon: "⇧", note: "Saved to Previous Delegation" },
 };
 
 // Always show the Delegation card. It becomes fully usable once the import
@@ -286,8 +287,9 @@ export function HistoricalImportPage() {
   const downloadTemplate = () => {
     const sheet = XLSX.utils.aoa_to_sheet([fields.map((f) => f.label)]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, sheet, type === "payroll" ? "Payroll" : "Feedback");
-    XLSX.writeFile(wb, `Historical_${type === "payroll" ? "Payroll" : "Review_Feedback"}_template.xlsx`);
+    const name = { payroll: "Payroll", feedback: "Review_Feedback", delegation: "Previous_Delegation" }[type] || "Import";
+    XLSX.utils.book_append_sheet(wb, sheet, name.slice(0, 31));
+    XLSX.writeFile(wb, `Historical_${name}_template.xlsx`);
   };
 
   const downloadReport = () => {
