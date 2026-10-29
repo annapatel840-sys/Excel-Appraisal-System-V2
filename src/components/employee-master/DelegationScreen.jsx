@@ -28,17 +28,30 @@ const nameOf = (value) => String(value || "").trim();
 // Catalyst lookup values can contain both a bare employee ID and its
 // resolved "ID - Name" label. Prefer the resolved label and use the loaded
 // roster to resolve any remaining bare IDs so dropdowns never show both forms.
+// Employee ID (lower case) -> name, built once per roster array, so resolving
+// a bare ID is a lookup instead of a scan of the whole roster.
+const namesByRoster = new WeakMap();
+const rosterNames = (roster) => {
+  let names = namesByRoster.get(roster);
+  if (!names) {
+    names = new Map();
+    roster.forEach((employee) => {
+      const id = String(employee.id || "").trim().toLowerCase();
+      if (id && !names.has(id)) names.set(id, employee.name);
+    });
+    namesByRoster.set(roster, names);
+  }
+  return names;
+};
 const displayAssignment = (value, roster = []) => {
   const text = nameOf(value);
   if (!text) return "";
   const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
-  const resolved = parts.find((part) => /\\s-\\s/.test(part));
+  const resolved = parts.find((part) => /\s-\s/.test(part));
   const candidate = resolved || parts[parts.length - 1] || text;
-  if (/\\s-\\s/.test(candidate)) return candidate;
-  const match = roster.find((employee) =>
-    String(employee.id || "").trim().toLowerCase() === candidate.toLowerCase()
-  );
-  return match?.name ? candidate + " - " + match.name : candidate;
+  if (/\s-\s/.test(candidate)) return candidate;
+  const name = rosterNames(roster).get(candidate.toLowerCase());
+  return name ? candidate + " - " + name : candidate;
 };
 const now = () => new Date().toISOString().replace("T", " ").slice(0, 19);
 const fmt = (s) => {
@@ -245,10 +258,55 @@ export default function DelegationScreen({
       setActiveCycleId(cycleId);
       setActiveCycleName(String(active.name || active.cycle_name || active.appraisal_year || ""));
 
+      // Always fetch the enriched delegation roster from employeesapi.
+      // initialRows may contain only Employee_Master values and omit previous-cycle references.
+      // Ensure the Active cycle's Eligibility_List is initialized/refreshed
+      // before fetching delegation rows. Its GET path syncs missing eligibility
+      // rows from Employee_Master for the current cycle.
+      await payrollCycleRequest("eligibility", {
+        method: "GET",
+        query: { cycleId },
+      });
+
+      // Delegation is prepared before sheet generation, so employeesapi builds
+      // the working roster from the active cycle's eligible records when the
+      // Appraisal Sheet has not yet been generated. Any pages after the first
+      // load in parallel.
+      const fetchDelegationRoster = async () => {
+        const fetchPage = async (pageNo) => {
+          const response = await catalystFetch(
+            EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=1000&view=delegation",
+            { method: "GET", cache: "no-store" },
+          );
+          const payload = await response.json();
+          if (!response.ok || !payload?.success) {
+            throw new Error(
+              payload?.message ||
+                (pageNo === 1
+                  ? "Unable to load appraisal employees."
+                  : "Unable to load the remaining delegation employees."),
+            );
+          }
+          return payload;
+        };
+        const first = await fetchPage(1);
+        const totalPages = Math.max(1, Number(first.pagination?.totalPages || 1));
+        const rest = await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, index) => fetchPage(index + 2)),
+        );
+        return [first, ...rest].flatMap((payload) =>
+          Array.isArray(payload.data) ? payload.data : [],
+        );
+      };
+      let all = await fetchDelegationRoster();
+
       // First-time setup: persist the active cycle's initial delegation roster.
-      // replace:false makes this safe to run again: existing rows are retained.
+      // It is needed only while some employee has no saved Delegation row
+      // (employeesapi reports delegation_saved), so a normal open skips this
+      // save. replace:false keeps existing rows; the roster is then reloaded
+      // so it shows the saved values.
       let delegationSaveError = "";
-      if (isHR) {
+      if (isHR && all.some((item) => item.delegation_saved !== true)) {
         try {
           const saveResponse = await catalystFetch(
             ACCESS_API_URL + "delegation/fill",
@@ -274,42 +332,9 @@ export default function DelegationScreen({
             saveError?.message || "The initial Delegation rows could not be saved.";
           console.error("Initial Delegation POST failed:", saveError);
         }
+        if (!delegationSaveError) all = await fetchDelegationRoster();
       }
 
-      // Always fetch the enriched delegation roster from employeesapi.
-      // initialRows may contain only Employee_Master values and omit previous-cycle references.
-      // Ensure the Active cycle's Eligibility_List is initialized/refreshed
-      // before fetching delegation rows. Its GET path syncs missing eligibility
-      // rows from Employee_Master for the current cycle.
-      await payrollCycleRequest("eligibility", {
-        method: "GET",
-        query: { cycleId },
-      });
-
-      // Delegation is prepared before sheet generation, so employeesapi builds
-      // the working roster from the active cycle's eligible records when the
-      // Appraisal Sheet has not yet been generated.
-      const firstResponse = await catalystFetch(
-        EMPLOYEE_API_URL + "?page=1&limit=1000&view=delegation",
-        { method: "GET", cache: "no-store" },
-      );
-      const first = await firstResponse.json();
-      if (!firstResponse.ok || !first?.success) {
-        throw new Error(first?.message || "Unable to load appraisal employees.");
-      }
-      const all = Array.isArray(first.data) ? [...first.data] : [];
-      const totalPages = Math.max(1, Number(first.pagination?.totalPages || 1));
-      for (let pageNo = 2; pageNo <= totalPages; pageNo += 1) {
-        const response = await catalystFetch(
-          EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=1000&view=delegation",
-          { method: "GET", cache: "no-store" },
-        );
-        const payload = await response.json();
-        if (!response.ok || !payload?.success) {
-          throw new Error(payload?.message || "Unable to load the remaining delegation employees.");
-        }
-        if (Array.isArray(payload.data)) all.push(...payload.data);
-      }
       const unique = new Map();
       all.forEach((item) => {
         const id = String(item.emp_id || item.employee_id || "").trim().toLowerCase();
