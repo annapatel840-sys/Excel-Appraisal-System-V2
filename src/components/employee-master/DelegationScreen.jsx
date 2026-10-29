@@ -9,12 +9,12 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 /* ------------------------------------------------------------------ data */
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
 const ACCESS_API_URL = catalystFunctionUrl("accessapi");
-const FIELDS = { comp: "Comp Manager", app: "Appraiser Tech Ed" };
+const FIELDS = { comp: "Comp. Manager", app: "Appraiser Tech-Ed" };
 const ST = {
   CF: "Carried forward",
-  NEW: "New – Tech Ed default",
+  NEW: "New – Tech-Ed default",
   HR: "Changed – HR",
-  TE: "Changed – Tech Ed (approved)",
+  TE: "Changed – Tech-Ed (approved)",
   PD: "Pending HR approval",
 };
 const TAG = {
@@ -33,20 +33,20 @@ const COLS = [
   { key: "name", label: "EMPLOYEE NAME", w: 190, cls: "nm" },
   { key: "rm", label: "REPORTING MANAGER", w: 220 },
   { key: "director", label: "DIRECTOR", w: 190 },
-  { key: "te", label: "TECH ED", w: 230 },
-  { key: "comp", label: "COMP MANAGER", w: 240, edit: true },
-  { key: "app", label: "APPRAISER TECH ED", w: 240, edit: true },
-  { key: "prevComp", label: "PREV. COMP MANAGER", w: 220, cls: "ref" },
-  { key: "prevApp", label: "PREV. APPRAISER TECH ED", w: 250, cls: "ref" },
+  { key: "te", label: "TECH-ED", w: 230 },
+  { key: "comp", label: "COMP. MANAGER", w: 240, edit: true },
+  { key: "app", label: "APPRAISER TECH-ED", w: 240, edit: true },
+  { key: "prevComp", label: "PREV. COMP. MANAGER", w: 220, cls: "ref" },
+  { key: "prevApp", label: "PREV. APPRAISER TECH-ED", w: 250, cls: "ref" },
   { key: "status", label: "STATUS", w: 210 },
 ];
 const SELECT_W = 40;
-/* Default Comp Manager: copy this value from each employee's own row */
+/* Default Comp. Manager: copy this value from each employee's own row */
 const DEFAULT_COMP_SOURCES = [
-  { key: "prevComp", label: "Previous Comp Manager" },
+  { key: "prevComp", label: "Previous Comp. Manager" },
   { key: "director", label: "Director" },
   { key: "rm", label: "Reporting Manager" },
-  { key: "te", label: "Tech Ed" },
+  { key: "te", label: "Tech-Ed" },
 ];
 const testText = (raw, op, value) => {
   const v = String(value ?? "").trim().toLowerCase();
@@ -92,6 +92,35 @@ const csvCell = (v) =>
   /[",\n]/.test(String(v ?? ""))
     ? '"' + String(v).replace(/"/g, '""') + '"'
     : String(v ?? "");
+/* Show every person as "EMP001 - Name": values that arrive as only an
+   employee ID or only a name are matched against the roster. */
+const makeResolver = (list) => {
+  const byId = new Map();
+  const nameCount = new Map();
+  const byName = new Map();
+  (list || []).forEach((r) => {
+    const id = String(r.id || "").trim();
+    const name = String(r.name || "").trim();
+    if (!id) return;
+    const full = name ? `${id} - ${name}` : id;
+    byId.set(id.toLowerCase(), full);
+    if (name) {
+      const k = name.toLowerCase();
+      nameCount.set(k, (nameCount.get(k) || 0) + 1);
+      byName.set(k, full);
+    }
+  });
+  return (value) => {
+    const s0 = String(value ?? "").trim();
+    if (!s0) return "";
+    const m = s0.match(/^(\S+)\s*-\s*(.+)$/);
+    if (m && byId.has(m[1].toLowerCase())) return byId.get(m[1].toLowerCase());
+    const low = s0.toLowerCase();
+    if (byId.has(low)) return byId.get(low);
+    if (byName.has(low) && nameCount.get(low) === 1) return byName.get(low);
+    return s0;
+  };
+};
 let seq = 1;
 const refNo = (p) =>
   p +
@@ -120,6 +149,7 @@ export default function DelegationScreen({
     role: isHRUser ? "HR Admin" : "Tech Ed",
   });
   const [rows, setRows] = useState(() => initialRows || []);
+  const resolveName = useMemo(() => makeResolver(rows), [rows]);
   const [activeCycleName, setActiveCycleName] = useState("");
   const [activeCycleId, setActiveCycleId] = useState("");
   const [rosterLoading, setRosterLoading] = useState(false);
@@ -176,7 +206,7 @@ export default function DelegationScreen({
         return "Pending";
       })(),
       reason: q.reason || q.details || "",
-      byName: q.byName || q.requestedBy || q.byId || "Tech Ed",
+      byName: q.byName || q.requestedBy || q.byId || "Tech-Ed",
       no: q.no || q.id || `DR-${Date.now()}`,
     }));
   const [reqs, setReqs] = useState([]);
@@ -189,6 +219,21 @@ export default function DelegationScreen({
   );
   const resizeRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [defaultComp, setDefaultComp] = useState("");
+  useEffect(() => {
+    // The chosen default is remembered per cycle in this browser.
+    let saved = "";
+    try {
+      saved = window.localStorage.getItem("dg-default-comp:" + activeCycleId) || "";
+    } catch (_) {}
+    setDefaultComp(DEFAULT_COMP_SOURCES.some((o) => o.key === saved) ? saved : "");
+  }, [activeCycleId]);
+  const saveDefaultComp = (key) => {
+    setDefaultComp(key);
+    try {
+      window.localStorage.setItem("dg-default-comp:" + activeCycleId, key);
+    } catch (_) {}
+  };
   const menuRef = useRef(null);
   useEffect(() => {
     if (!menuOpen) return undefined;
@@ -272,7 +317,7 @@ export default function DelegationScreen({
   const { refreshEmployees } = useAppraisalRefresh();
   const canApprove = isHR;
   const canAudit = access.canAction("viewAudit");
-  // View-only screen, or a Tech Ed without the delegateRequest action: no edits.
+  // View-only screen, or a Tech-Ed without the delegateRequest action: no edits.
   const editLocked =
     locked ||
     (!isHR && !access.canScreen("delegation", "edit")) ||
@@ -376,7 +421,7 @@ export default function DelegationScreen({
           unique.set(id, item);
         }
       });
-      setRows(Array.from(unique.values()).map((item) => ({
+      const mapped = Array.from(unique.values()).map((item) => ({
         id: String(item.emp_id || item.employee_id || item.ROWID || "").trim(),
         name: String(item.name || item.emp_name || item.emp_id || "").trim(),
         rm: String(item.reporting_manager || item.repo_manager || "").trim(),
@@ -389,13 +434,15 @@ export default function DelegationScreen({
         prevApp: String(item.previous_appraiser_tech_ed || item.previous_tech_ed || item.prev_appraiser_tech_ed || "").trim(),
         base: "",
         lastRole: "",
-      })));
+      }));
+      setRows(mapped);
       if (delegationSaveError) {
         say(
           "Roster loaded, but saving Delegation failed: " + delegationSaveError,
           true,
         );
       }
+      return mapped;
     } catch (error) {
       setRows([]);
       say(error?.message || "Unable to load appraisal employees.", true);
@@ -460,24 +507,27 @@ export default function DelegationScreen({
         ...new Set(
           [...rows.map((r) => r.comp), ...rows.map((r) => r.app)]
             .filter(Boolean)
-            .map((v) => String(v).trim()),
+            .map((v) => resolveName(v)),
         ),
       ]
+        .filter(Boolean)
         .sort((a, b) => a.localeCompare(b))
         .map((value) => ({ id: value, name: value, roles: [] })),
-    [rows],
+    [rows, resolveName],
   );
   const pending = myReqs.filter((q) => q.status === "Pending");
   const colValue = (r, key) => {
     switch (key) {
       case "comp":
-        return nameOf(r.comp);
+        return resolveName(r.comp);
       case "app":
-        return nameOf(r.app);
+        return resolveName(r.app);
       case "prevComp":
-        return nameOf(r.prevComp);
+        return resolveName(r.prevComp);
       case "prevApp":
-        return nameOf(r.prevApp);
+        return resolveName(r.prevApp);
+      case "te":
+        return resolveName(r.te);
       case "status":
         return statusOf(r);
       default:
@@ -599,7 +649,7 @@ export default function DelegationScreen({
     return out;
   };
 
-  // Comp Manager changes do not go through approval: HR applies them directly
+  // Comp. Manager changes do not go through approval: HR applies them directly
   // (recorded, then approved in the same step using the existing endpoints).
   const compDirect = (field) => field === "comp" && isHR && canApprove;
   const applyCompDirect = async (target, personId, why, batch) => {
@@ -616,23 +666,21 @@ export default function DelegationScreen({
     await decideDelegationRequest(
       request?.id,
       "approved",
-      "Comp Manager change applied directly (no approval required)",
+      "Comp. Manager change applied directly (no approval required)",
     );
   };
 
   const saveChange = async () => {
     const { row, field, person } = modal;
-    // Reason is optional for Comp Manager (the server needs some text, so a
-    // default is stored when it is left empty); still mandatory for Appraiser Tech Ed.
-    const whyText =
-      reason.trim() || (field === "comp" ? "Comp Manager change" : "");
-    if (!whyText) return say("Reason is mandatory.", true);
+    // Reason is optional (the server needs some text, so a default is stored
+    // when it is left empty).
+    const whyText = reason.trim() || `${FIELDS[field]} change`;
     if (compDirect(field)) {
       try {
         await applyCompDirect(row, person.id, whyText);
       } catch (error) {
         await loadRequests().catch(() => {});
-        return say(error?.message || "Unable to update Comp Manager.", true);
+        return say(error?.message || "Unable to update Comp. Manager.", true);
       }
       await refreshEmployees().catch(() => {});
       setRows((rs) =>
@@ -647,7 +695,7 @@ export default function DelegationScreen({
         action: "Changed",
         why: whyText,
       });
-      say("Comp Manager updated for " + row.id + ".");
+      say("Comp. Manager updated for " + row.id + ".");
       setModal(null);
       return;
     }
@@ -680,99 +728,129 @@ export default function DelegationScreen({
     setModal(null);
   };
 
-  // Default Comp Manager: for the selected employees (or every employee
-  // currently shown when none is selected), set Comp Manager from the chosen
-  // source column of their own row.
+  // Default Comp. Manager: set Comp. Manager from the chosen source column of
+  // each employee's own row (Previous Comp. Manager / Director / Reporting
+  // Manager / Tech-Ed).
+  const defaultTargets = (base, sourceKey, resolve) =>
+    base
+      .map((r) => ({ r, value: resolve(r[sourceKey]) }))
+      .filter(({ r, value }) => value && value !== resolve(r.comp));
+
+  const executeDefaultComp = async (targets, source) => {
+    const why = `Default Comp. Manager: ${source.label}`;
+    const no = refNo("DC");
+    const done = [];
+    try {
+      for (const { r, value } of targets) {
+        if (compDirect("comp")) await applyCompDirect(r, value, why, no);
+        else
+          await submitDelegationRequest({
+            empId: r.id,
+            empName: r.name,
+            field: "comp",
+            oldId: r.comp,
+            newId: value,
+            reason: why,
+            byName: user.name,
+            batch: no,
+          });
+        done.push({ r, value });
+      }
+    } catch (error) {
+      say(error?.message || "Unable to set the default Comp. Manager.", true);
+    }
+    if (done.length && compDirect("comp")) {
+      await refreshEmployees().catch(() => {});
+      setRows((rs) =>
+        done.reduce(
+          (acc, { r, value }) =>
+            applyTo(acc, r.id, "comp", value, "HR Admin", why, user.name),
+          rs,
+        ),
+      );
+      log({
+        action: "Changed",
+        field: FIELDS.comp,
+        to: source.label,
+        why: `${done.length} employee(s): ${why}`,
+      });
+      say(`Comp. Manager set to ${source.label} for ${done.length} employee(s).`);
+    } else if (done.length) {
+      say(`${done.length} request(s) sent to HR for approval (${no}).`);
+    }
+    await loadRequests().catch(() => {});
+  };
+
   const applyDefaultComp = (sourceKey) => {
     const source = DEFAULT_COMP_SOURCES.find((o) => o.key === sourceKey);
     if (!source) return;
-    const base = selIds.length ? scoped.filter((r) => sel[r.id]) : list;
-    const targets = base
-      .map((r) => ({ r, value: nameOf(r[sourceKey]) }))
-      .filter(({ r, value }) => value && value !== nameOf(r.comp));
-    const skipped = base.length - targets.length;
-    if (!targets.length)
+    if (!rows.length) {
+      saveDefaultComp(sourceKey);
       return say(
-        `No employees to change: ${source.label} is empty or already the Comp Manager.`,
-        true,
+        `Default Comp. Manager set to ${source.label}. It is applied when the delegation data is generated.`,
       );
-    const why = `Default Comp Manager: ${source.label}`;
+    }
+    const base = selIds.length ? scoped.filter((r) => sel[r.id]) : list;
+    const targets = defaultTargets(base, sourceKey, resolveName);
+    const skipped = base.length - targets.length;
+    if (!targets.length) {
+      saveDefaultComp(sourceKey);
+      return say(
+        `Default Comp. Manager set to ${source.label}. No employees to change (empty or already the Comp. Manager).`,
+      );
+    }
     setModal({
       type: "confirm",
-      title: "Default Comp Manager",
+      title: "Default Comp. Manager",
       body:
-        `Set Comp Manager to the ${source.label} for ${targets.length} employee(s)` +
+        `Set Comp. Manager to the ${source.label} for ${targets.length} employee(s)` +
         (selIds.length ? " (selected)" : " (as shown in the grid)") +
         (skipped ? `. ${skipped} skipped (empty or unchanged)` : "") +
-        (isHR
+        (compDirect("comp")
           ? ". Applied immediately; no approval needed."
           : ". One request per employee will be sent to HR for approval."),
       ok: () => {
-        const no = refNo("DC");
-        (async () => {
-          const done = [];
-          try {
-            for (const { r, value } of targets) {
-              if (compDirect("comp")) await applyCompDirect(r, value, why, no);
-              else
-                await submitDelegationRequest({
-                  empId: r.id,
-                  empName: r.name,
-                  field: "comp",
-                  oldId: r.comp,
-                  newId: value,
-                  reason: why,
-                  byName: user.name,
-                  batch: no,
-                });
-              done.push({ r, value });
-            }
-          } catch (error) {
-            say(error?.message || "Unable to set the default Comp Manager.", true);
-          }
-          if (done.length && compDirect("comp")) {
-            await refreshEmployees().catch(() => {});
-            setRows((rs) =>
-              done.reduce(
-                (acc, { r, value }) =>
-                  applyTo(acc, r.id, "comp", value, "HR Admin", why, user.name),
-                rs,
-              ),
-            );
-            log({
-              action: "Changed",
-              field: FIELDS.comp,
-              to: source.label,
-              why: `${done.length} employee(s): ${why}`,
-            });
-            say(`Comp Manager set to ${source.label} for ${done.length} employee(s).`);
-          } else if (done.length) {
-            say(`${done.length} request(s) sent to HR for approval (${no}).`);
-          }
-          await loadRequests().catch(() => {});
-        })();
+        saveDefaultComp(sourceKey);
+        executeDefaultComp(targets, source);
         setSel({});
       },
     });
+  };
+
+  // Generate / fetch the delegation data: the default Comp. Manager must be
+  // chosen first, and is applied to the new rows as soon as they are loaded.
+  const generateDelegation = async () => {
+    const source = DEFAULT_COMP_SOURCES.find((o) => o.key === defaultComp);
+    if (!source) {
+      setModal({
+        type: "notice",
+        title: "Select Default Comp. Manager",
+        body: "Please select the Default Comp. Manager first, then generate / upload the delegation data.",
+      });
+      return;
+    }
+    const loaded = await loadRoster();
+    if (Array.isArray(loaded) && loaded.length && isHR) {
+      const targets = defaultTargets(loaded, source.key, makeResolver(loaded));
+      if (targets.length) await executeDefaultComp(targets, source);
+    }
   };
 
   const doBulk = () => {
     const { field, scope, person } = bulk;
     let why = bulk.reason;
     if (!person) return say("Choose who to assign.", true);
-    if (field !== "comp" && !why.trim())
-      return say("Reason is mandatory.", true);
-    why = why.trim() || "Comp Manager change";
+    why = why.trim() || `${FIELDS[field]} change`;
     let t =
       scope === "sel"
         ? scoped.filter((r) => sel[r.id])
         : scoped.filter((r) => r.teId === scope.slice(3));
     if (scope === "sel" && !t.length)
       return say(
-        'Select employees in the grid, or choose "All under Tech Ed".',
+        'Select employees in the grid, or choose "All under Tech-Ed".',
         true,
       );
-    t = t.filter((r) => r[field] !== person);
+    t = t.filter((r) => resolveName(r[field]) !== person);
     if (!t.length)
       return say("No employees to change (already assigned).", true);
     setModal({
@@ -792,7 +870,7 @@ export default function DelegationScreen({
                 done.push(r);
               }
             } catch (error) {
-              say(error?.message || "Unable to update Comp Manager.", true);
+              say(error?.message || "Unable to update Comp. Manager.", true);
             }
             if (done.length) {
               await refreshEmployees().catch(() => {});
@@ -809,7 +887,7 @@ export default function DelegationScreen({
                 to: nameOf(person),
                 why: `${done.length} employee(s): ${why.trim()}`,
               });
-              say(`Comp Manager updated for ${done.length} employee(s).`);
+              say(`Comp. Manager updated for ${done.length} employee(s).`);
             }
             await loadRequests().catch(() => {});
           })();
@@ -1050,14 +1128,17 @@ export default function DelegationScreen({
       "Employee Name",
       "Reporting Manager",
       "Director",
-      "Tech Ed",
-      "Comp Manager",
-      "Appraiser Tech Ed",
-      "Prev. Comp Manager",
-      "Prev. Appraiser Tech Ed",
+      "Tech-Ed",
+      "Comp. Manager",
+      "Appraiser Tech-Ed",
+      "Prev. Comp. Manager",
+      "Prev. Appraiser Tech-Ed",
       "Status",
     ];
-    const body = list.map((r) => [
+    const chosen = list.filter((r) => sel[r.id]);
+    const exportRows =
+      chosen.length > 0 && chosen.length < list.length ? chosen : list;
+    const body = exportRows.map((r) => [
       r.id,
       r.name,
       r.rm,
@@ -1113,7 +1194,7 @@ export default function DelegationScreen({
         const rs = scoped.filter((r) => r.te === t);
         return {
           id: rs[0].teId,
-          label: `All under Tech Ed ${t} (${rs.length})`,
+          label: `All under Tech-Ed ${t} (${rs.length})`,
         };
       })
     : scoped.length
@@ -1132,7 +1213,7 @@ export default function DelegationScreen({
             {USERS.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name}
-                {u.role === "Tech Ed" ? " · Tech Ed" : ""}
+                {u.role === "Tech Ed" ? " · Tech-Ed" : ""}
               </option>
             ))}
           </select>
@@ -1148,7 +1229,7 @@ export default function DelegationScreen({
         <div className="dg-mq">
           ⚠{" "}
           {isHR
-            ? `${pending.length} delegation request(s) from Tech Eds awaiting your approval.`
+            ? `${pending.length} delegation request(s) from Tech-Eds awaiting your approval.`
             : `${pending.length} of your request(s) awaiting HR approval.`}
         </div>
       )}
@@ -1199,7 +1280,7 @@ export default function DelegationScreen({
           <div className="dg-stats">
             {[
               ["Total employees", scoped.length, "#1f2a37", null],
-              ["Employee Without Comp-Manager", withoutComp, "#94620a", null],
+              ["Employee Without Comp. Manager", withoutComp, "#94620a", null],
               [
                 isHR ? "Pending HR approval" : "My pending requests",
                 pending.length,
@@ -1231,11 +1312,11 @@ export default function DelegationScreen({
           <div className="dg-tb">
             <span style={{ flex: 1 }} />
             <label className="dg-dflt">
-              <span>Default Comp Manager</span>
+              <span>Default Comp. Manager</span>
               <select
                 className="f"
-                disabled={editLocked || !rows.length}
-                value=""
+                disabled={editLocked}
+                value={defaultComp}
                 onChange={(e) =>
                   e.target.value && applyDefaultComp(e.target.value)
                 }
@@ -1277,7 +1358,7 @@ export default function DelegationScreen({
               <div className="empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
                 {activeCycleId ? "No delegation rows are available for " + displayCycleName + "." : "No active appraisal cycle. Create or activate a cycle to start delegation."}
                 {activeCycleId && (
-                  <button className="btn p" type="button" onClick={loadRoster}>
+                  <button className="btn p" type="button" onClick={generateDelegation}>
                     Generate / Fetch Delegation Data
                   </button>
                 )}
@@ -1376,15 +1457,20 @@ export default function DelegationScreen({
                         {COLS.map((c) => {
                           if (c.edit) {
                             const f = c.key;
-                            const prev = f === "comp" ? r.prevComp : r.prevApp;
+                            const prev = resolveName(
+                              f === "comp" ? r.prevComp : r.prevApp,
+                            );
                             return (
                               <td key={f}>
                                 <select
                                   className={
-                                    "in" + (prev && r[f] !== prev ? " c" : "")
+                                    "in" +
+                                    (prev && resolveName(r[f]) !== prev
+                                      ? " c"
+                                      : "")
                                   }
                                   disabled={editLocked}
-                                  value={r[f]}
+                                  value={resolveName(r[f])}
                                   onChange={(e) => {
                                     setReason("");
                                     setModal({
@@ -1442,8 +1528,8 @@ export default function DelegationScreen({
               <b style={{ color: "#e0914f" }}>■</b> Orange = differs from
               previous cycle
             </span>
-            <span>New employee → Comp Manager defaults to Tech Ed</span>
-            <span>Appraiser Tech Ed defaults to Tech Ed</span>
+            <span>New employee → Comp. Manager defaults to Tech-Ed</span>
+            <span>Appraiser Tech-Ed defaults to Tech-Ed</span>
             {filtersActive && (
               <button
                 type="button"
@@ -1483,8 +1569,8 @@ export default function DelegationScreen({
           <div className="dg-help">
             <b>How it works:</b>{" "}
             {isHR
-              ? "Tech Ed and Reporting Manager come from the Employee Master. Comp Manager defaults to last cycle's; for new employees it defaults to the Tech Ed. Your changes apply immediately. Changes by a Tech Ed arrive as requests on the right and apply only when you approve. Save & lock is allowed only when no requests are pending."
-              : 'You see employees whose Tech Ed is you. Any change you make is sent to HR for approval; the current value stays until HR approves. You can withdraw a pending request from "My requests".'}
+              ? "Tech-Ed and Reporting Manager come from the Employee Master. Comp. Manager defaults to last cycle's; for new employees it defaults to the Tech-Ed. Your changes apply immediately. Changes by a Tech-Ed arrive as requests on the right and apply only when you approve. Save & lock is allowed only when no requests are pending."
+              : 'You see employees whose Tech-Ed is you. Any change you make is sent to HR for approval; the current value stays until HR approves. You can withdraw a pending request from "My requests".'}
           </div>
         </div>
 
@@ -1499,7 +1585,7 @@ export default function DelegationScreen({
                   </div>
                   <div className="ss">
                     {isHR
-                      ? "Requests raised by Tech Eds"
+                      ? "Requests raised by Tech-Eds"
                       : "Changes you sent to HR"}
                   </div>
                 </div>
@@ -1702,8 +1788,8 @@ export default function DelegationScreen({
             value={bulk.field}
             onChange={(e) => setBulk({ ...bulk, field: e.target.value })}
           >
-            <option value="comp">Comp Manager</option>
-            <option value="app">Appraiser Tech Ed</option>
+            <option value="comp">Comp. Manager</option>
+            <option value="app">Appraiser Tech-Ed</option>
           </select>
           <div className="lb">Apply to</div>
           <select
@@ -1733,7 +1819,7 @@ export default function DelegationScreen({
               </option>
             ))}
           </select>
-          <div className="lb">Reason {modal.field === "comp" ? "(optional)" : "(mandatory)"}</div>
+          <div className="lb">Reason (optional)</div>
           <input
             className="fld"
             disabled={editLocked}
@@ -1744,7 +1830,7 @@ export default function DelegationScreen({
           <div className="note">
             {isHR
               ? "HR Admin: applied immediately."
-              : "Tech Ed: one request per employee is sent to HR for approval."}
+              : "Tech-Ed: one request per employee is sent to HR for approval."}
           </div>
         </Modal>
       )}
@@ -1771,7 +1857,7 @@ export default function DelegationScreen({
             {FIELDS[modal.field]}: {nameOf(modal.row[modal.field]) || "—"}{" "}
             <span className="ar">→ {modal.person.name}</span>
           </div>
-          <div className="lb">Reason {bulk.field === "comp" ? "(optional)" : "(mandatory)"}</div>
+          <div className="lb">Reason (optional)</div>
           <textarea
             className="fld"
             autoFocus
@@ -1784,6 +1870,19 @@ export default function DelegationScreen({
               ? "Applies immediately and is recorded in the audit trail."
               : "The current value stays until HR approves."}
           </div>
+        </Modal>
+      )}
+      {modal?.type === "notice" && (
+        <Modal
+          title={modal.title}
+          onClose={() => setModal(null)}
+          foot={
+            <button className="btn p" onClick={() => setModal(null)}>
+              OK
+            </button>
+          }
+        >
+          {modal.body}
         </Modal>
       )}
       {modal?.type === "confirm" && (
