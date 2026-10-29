@@ -92,7 +92,7 @@ export function EligibilityCriteria({
         values={departments}
         selected={selectedDepartments}
         setSelected={setSelectedDepartments}
-        disabled={readOnly}
+        disabled={readOnly || criteriaApplied}
       />
 
       <div className="em-crit-h">Exclude by designation</div>
