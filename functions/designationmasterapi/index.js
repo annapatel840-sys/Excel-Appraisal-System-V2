@@ -9,7 +9,9 @@
    Catalyst tables (looked up by NAME, so no table IDs to paste):
      Designations              cycle_id, name, department, band, next_type,
                                single_next_designation, group_id, status
-     Designation_Next          des_id, next_id            (the "Multiple" list)
+                               (group_id = foreign key to Designation_Groups;
+                                add it to the Designations table if missing)
+     Designation_Next          designation_id, next_id    (the "Multiple" list)
      Designation_Groups        cycle_id, group_name
      Designation_Group_Members group_id, des_id
      Designation_Config        type, status               (the 4 switches)
@@ -91,6 +93,60 @@ async function readAll(app, table, where = "", cols = "*") {
   return rows;
 }
 
+/* Rows of one cycle only. The filter runs inside ZCQL so the function never
+   downloads other cycles; if ZCQL rejects the filter we fall back to a full
+   read and filter here. */
+async function readCycle(app, table, cycleId, cycleCol = "cycle_id") {
+  try {
+    return await readAll(app, table, `${cycleCol} = ${cycleId}`);
+  } catch (e) {
+    const all = await readAll(app, table);
+    return all.filter((r) => refId(r[cycleCol]) === String(cycleId));
+  }
+}
+
+/* Newest rows first, capped (the audit table is shared by every screen and
+   grows without limit, so it is never read in full). */
+async function readRecent(app, table, where, max = 1000) {
+  const zcql = app.zcql();
+  const rows = [];
+  for (let off = 0; off < max; off += 300) {
+    const q =
+      `SELECT * FROM ${table}` +
+      (where ? ` WHERE ${where}` : "") +
+      ` ORDER BY ROWID DESC LIMIT ${off}, 300`;
+    const result = await zcql.executeZCQLQuery(q);
+    const page = (result || []).map((i) => (i && (i[table] || Object.values(i)[0])) || {});
+    rows.push(...page);
+    if (page.length < 300) break;
+  }
+  return rows.slice(0, max);
+}
+
+/* Distinct designation + department pairs from Employee_Master. DISTINCT keeps
+   this to a handful of small queries instead of reading every employee row. */
+async function readMasterPairs(app) {
+  const zcql = app.zcql();
+  const out = [];
+  try {
+    for (let off = 0; off < 6000; off += 300) {
+      const result = await zcql.executeZCQLQuery(
+        `SELECT DISTINCT designation, department FROM ${TBL.employees} ` +
+          `ORDER BY designation ASC LIMIT ${off}, 300`,
+      );
+      const page = (result || []).map(
+        (i) => (i && (i[TBL.employees] || Object.values(i)[0])) || {},
+      );
+      out.push(...page);
+      if (page.length < 300) break;
+    }
+    return out;
+  } catch (e) {
+    console.error("designationmasterapi: DISTINCT read failed, scanning:", e.message);
+    return readAll(app, TBL.employees, "", "ROWID, designation, department");
+  }
+}
+
 async function readBody(req) {
   if (req.body && typeof req.body === "object") return req.body;
   if (typeof req.body === "string") return JSON.parse(req.body || "{}");
@@ -147,12 +203,10 @@ async function getActiveCycle(app) {
 /* ---------- load ---------- */
 async function syncFromEmployeeMaster(app, cycle) {
   const [desRows, empRows] = await Promise.all([
-    readAll(app, TBL.designations),
-    readAll(app, TBL.employees, "", "ROWID, designation, department"),
+    readCycle(app, TBL.designations, cycle.id),
+    readMasterPairs(app),
   ]);
-  const known = new Set(
-    desRows.filter((r) => refId(r.cycle_id) === cycle.id).map((r) => lower(r.name)),
-  );
+  const known = new Set(desRows.map((r) => lower(r.name)));
   const pairs = new Map();
   empRows.forEach((r) => {
     const name = text(r.designation);
@@ -173,26 +227,14 @@ async function syncFromEmployeeMaster(app, cycle) {
       status: false,
     });
   });
-  const table = app.datastore().table(TBL.designations);
-  for (const part of chunks(toAdd)) await table.insertRows(part);
+  if (toAdd.length) {
+    const table = app.datastore().table(TBL.designations);
+    for (const part of chunks(toAdd)) await table.insertRows(part);
+  }
   return new Set(pairs.keys());
 }
 
 async function loadData(app, cycle, { sync = true } = {}) {
-  const masterNames = sync
-    ? await syncFromEmployeeMaster(app, cycle)
-    : new Set();
-
-  let nextRows;
-  try {
-    nextRows = await readAll(app, TBL.next);
-  } catch (e) {
-    throw fail(
-      500,
-      "Catalyst table Designation_Next is missing. Create it with two foreign-key columns: des_id and next_id (both pointing to Designations).",
-    );
-  }
-
   try {
     await app.zcql().executeZCQLQuery("SELECT group_id FROM Designations LIMIT 1");
   } catch (e) {
@@ -202,17 +244,30 @@ async function loadData(app, cycle, { sync = true } = {}) {
     );
   }
 
-  const [allDes, allGroups, memberRows, cfgRows, auditRows] = await Promise.all([
-    readAll(app, TBL.designations),
-    readAll(app, TBL.groups),
+  const masterNames = sync
+    ? await syncFromEmployeeMaster(app, cycle)
+    : new Set();
+
+
+  const [allDes, allGroups, memberRows, nextRows, cfgRows, auditRows] = await Promise.all([
+    readCycle(app, TBL.designations, cycle.id),
+    readCycle(app, TBL.groups, cycle.id),
     readAll(app, TBL.members),
+    readAll(app, TBL.next),
     readAll(app, TBL.config),
-    readAll(app, TBL.audit, `source = '${SOURCE}'`),
+    readRecent(app, TBL.audit, `source = '${SOURCE}'`),
   ]);
 
-  const desRows = allDes.filter((r) => refId(r.cycle_id) === cycle.id);
+  // keep one row per designation name (guards against a double sync)
+  const seenDes = new Set();
+  const desRows = allDes.filter((r) => {
+    const k = lower(r.name);
+    if (!k || seenDes.has(k)) return false;
+    seenDes.add(k);
+    return true;
+  });
 
-  const groupRows = allGroups.filter((r) => refId(r.cycle_id) === cycle.id);
+  const groupRows = allGroups;
   const groupIds = new Set(groupRows.map(rowId));
   const desIds = new Set(desRows.map(rowId));
 
@@ -227,7 +282,7 @@ async function loadData(app, cycle, { sync = true } = {}) {
       nextType: text(r.next_type).toUpperCase(),
       singleNextId: refId(r.single_next_designation),
       multipleNextIds: nextRows
-        .filter((n) => refId(n.des_id) === id)
+        .filter((n) => refId(n.designation_id) === id)
         .map((n) => refId(n.next_id)),
       groupId: refId(r.group_id),
       status: isOn(r.status) ? "Active" : "Inactive",
@@ -582,10 +637,10 @@ async function saveData(app, cycle, actor, payload) {
     // Multiple list
     const oldList = prev.multipleNextIds;
     if (!sameList(oldList, cur.multipleNextIds)) {
-      const stale = nextRowsAll.filter((n) => refId(n.des_id) === id).map(rowId);
+      const stale = nextRowsAll.filter((n) => refId(n.designation_id) === id).map(rowId);
       for (const part of chunks(stale)) await tNext.deleteRows(part);
       for (const part of chunks(cur.multipleNextIds))
-        await tNext.insertRows(part.map((nid) => ({ des_id: id, next_id: nid })));
+        await tNext.insertRows(part.map((nid) => ({ designation_id: id, next_id: nid })));
       if (cur.nextType === prev.nextType && cur.nextType === "M") {
         const o = oldList.map(oldCtx.dn).filter(Boolean).join(", ") || "none";
         const n = cur.multipleNextIds.map(newCtx.dn).filter(Boolean).join(", ") || "none";
