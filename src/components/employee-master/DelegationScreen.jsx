@@ -32,7 +32,6 @@ const COLS = [
   { key: "id", label: "EMPLOYEE ID", w: 110, cls: "ref" },
   { key: "name", label: "EMPLOYEE NAME", w: 170, cls: "nm" },
   { key: "rm", label: "REPORTING MANAGER", w: 170 },
-  { key: "director", label: "DIRECTOR", w: 170, cls: "ref" },
   { key: "te", label: "TECH ED", w: 210 },
   { key: "comp", label: "COMP MANAGER", w: 210, edit: true },
   { key: "app", label: "APPRAISER TECH ED", w: 210, edit: true },
@@ -68,19 +67,6 @@ const matchesFilter = (raw, f) => {
   if (!f.op2 || String(f.value3 ?? "").trim() === "") return first;
   const second = testText(raw, f.op2, f.value3);
   return f.join === "or" ? first || second : first && second;
-};
-const displayAssignment = (value, roster = []) => {
-  const raw = String(value ?? "").trim();
-  if (!raw) return "";
-  const normalized = raw.toLowerCase();
-  const people = Array.isArray(roster) ? roster : [];
-  const match = people.find((person) => {
-    const id = String(person.id ?? "").trim().toLowerCase();
-    const name = String(person.name ?? "").trim().toLowerCase();
-    return normalized === id || normalized === name ||
-      normalized === (id && name ? `${id} - ${name}`.toLowerCase() : "");
-  });
-  return match ? `${String(match.id).trim()} - ${String(match.name || "").trim()}`.trim() : raw;
 };
 const nameOf = (value) => String(value || "").trim();
 const now = () => new Date().toISOString().replace("T", " ").slice(0, 19);
@@ -194,6 +180,22 @@ export default function DelegationScreen({
     Object.fromEntries(COLS.map((c) => [c.key, c.w])),
   );
   const resizeRef = useRef(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+  useEffect(() => {
+    if (!menuOpen) return undefined;
+    const close = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target))
+        setMenuOpen(false);
+    };
+    const esc = (e) => e.key === "Escape" && setMenuOpen(false);
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [menuOpen]);
   const [sel, setSel] = useState({});
   const [page, setPage] = useState(1);
   const [reqTab, setReqTab] = useState("Pending");
@@ -291,6 +293,37 @@ export default function DelegationScreen({
       setActiveCycleId(cycleId);
       setActiveCycleName(String(active.name || active.cycle_name || active.appraisal_year || ""));
 
+      // First-time setup: persist the active cycle's initial delegation roster.
+      // replace:false makes this safe to run again: existing rows are retained.
+      let delegationSaveError = "";
+      if (isHR) {
+        try {
+          const saveResponse = await catalystFetch(
+            ACCESS_API_URL + "delegation/fill",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json",
+              },
+              body: JSON.stringify({ cycleId, replace: false }),
+            },
+          );
+          const savePayload = await saveResponse.json().catch(() => ({}));
+          if (!saveResponse.ok || savePayload.ok === false || savePayload.success === false) {
+            throw new Error(
+              savePayload.error ||
+                savePayload.message ||
+                "The initial Delegation rows could not be saved.",
+            );
+          }
+        } catch (saveError) {
+          delegationSaveError =
+            saveError?.message || "The initial Delegation rows could not be saved.";
+          console.error("Initial Delegation POST failed:", saveError);
+        }
+      }
+
       // Always fetch the enriched delegation roster from employeesapi.
       // initialRows may contain only Employee_Master values and omit previous-cycle references.
       // Ensure the Active cycle's Eligibility_List is initialized/refreshed
@@ -303,38 +336,28 @@ export default function DelegationScreen({
 
       // Delegation is prepared before sheet generation, so employeesapi builds
       // the working roster from the active cycle's eligible records when the
-      // Appraisal Sheet has not yet been generated. Any pages after the first
-      // load in parallel.
-      const fetchDelegationRoster = async () => {
-        const fetchPage = async (pageNo) => {
-          const response = await catalystFetch(
-            EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=1000&view=delegation",
-            { method: "GET", cache: "no-store" },
-          );
-          const payload = await response.json();
-          if (!response.ok || !payload?.success) {
-            throw new Error(
-              payload?.message ||
-                (pageNo === 1
-                  ? "Unable to load appraisal employees."
-                  : "Unable to load the remaining delegation employees."),
-            );
-          }
-          return payload;
-        };
-        const first = await fetchPage(1);
-        const totalPages = Math.max(1, Number(first.pagination?.totalPages || 1));
-        const rest = await Promise.all(
-          Array.from({ length: totalPages - 1 }, (_, index) => fetchPage(index + 2)),
+      // Appraisal Sheet has not yet been generated.
+      const firstResponse = await catalystFetch(
+        EMPLOYEE_API_URL + "?page=1&limit=1000&view=delegation",
+        { method: "GET", cache: "no-store" },
+      );
+      const first = await firstResponse.json();
+      if (!firstResponse.ok || !first?.success) {
+        throw new Error(first?.message || "Unable to load appraisal employees.");
+      }
+      const all = Array.isArray(first.data) ? [...first.data] : [];
+      const totalPages = Math.max(1, Number(first.pagination?.totalPages || 1));
+      for (let pageNo = 2; pageNo <= totalPages; pageNo += 1) {
+        const response = await catalystFetch(
+          EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=1000&view=delegation",
+          { method: "GET", cache: "no-store" },
         );
-        return [first, ...rest].flatMap((payload) =>
-          Array.isArray(payload.data) ? payload.data : [],
-        );
-      };
-      let all = await fetchDelegationRoster();
-
-      // Delegation is generated only by the Eligibility page's explicit
-      // "Generate Delegation" action. Opening this screen must never create rows.
+        const payload = await response.json();
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.message || "Unable to load the remaining delegation employees.");
+        }
+        if (Array.isArray(payload.data)) all.push(...payload.data);
+      }
       const unique = new Map();
       all.forEach((item) => {
         const id = String(item.emp_id || item.employee_id || "").trim().toLowerCase();
@@ -345,33 +368,25 @@ export default function DelegationScreen({
           unique.set(id, item);
         }
       });
-      const roster = Array.from(unique.values()).map((item) => ({
+      setRows(Array.from(unique.values()).map((item) => ({
         id: String(item.emp_id || item.employee_id || item.ROWID || "").trim(),
         name: String(item.name || item.emp_name || item.emp_id || "").trim(),
         rm: String(item.reporting_manager || item.repo_manager || "").trim(),
-        director: String(item.director || "").trim(),
-        rawTe: item.appraiser_tech_ed || "",
-        rawComp: item.delegation_comp_manager || item.comp_manager || "",
-        rawPrevComp: item.previous_comp_manager || item.prev_comp_manager || "",
-        rawPrevApp: item.previous_appraiser_tech_ed || item.previous_tech_ed || item.prev_appraiser_tech_ed || "",
+        teId: String(item.appraiser_tech_ed || "").trim(),
+        te: String(item.appraiser_tech_ed || "").trim(),
+        comp: String(item.delegation_comp_manager || item.comp_manager || "").trim(),
+        app: String(item.appraiser_tech_ed || "").trim(),
+        prevComp: String(item.previous_comp_manager || item.prev_comp_manager || "").trim(),
+        prevApp: String(item.previous_appraiser_tech_ed || item.previous_tech_ed || item.prev_appraiser_tech_ed || "").trim(),
         base: "",
         lastRole: "",
-      }));
-      const normalizedRoster = roster.map((item) => ({
-        id: item.id,
-        name: item.name,
-        rm: item.rm,
-        director: item.director,
-        teId: displayAssignment(item.rawTe, roster),
-        te: displayAssignment(item.rawTe, roster),
-        comp: displayAssignment(item.rawComp, roster),
-        app: displayAssignment(item.rawTe, roster),
-        prevComp: displayAssignment(item.rawPrevComp, roster),
-        prevApp: displayAssignment(item.rawPrevApp, roster),
-        base: item.base,
-        lastRole: item.lastRole,
-      }));
-      setRows(normalizedRoster);
+      })));
+      if (delegationSaveError) {
+        say(
+          "Roster loaded, but saving Delegation failed: " + delegationSaveError,
+          true,
+        );
+      }
     } catch (error) {
       setRows([]);
       say(error?.message || "Unable to load appraisal employees.", true);
@@ -579,47 +594,30 @@ export default function DelegationScreen({
     const { row, field, person } = modal;
     if (!reason.trim()) return say("Reason is mandatory.", true);
     try {
-      if (isHR) {
-        const response = await catalystFetch(ACCESS_API_URL + "delegation/save", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({
-            cycleId: activeCycleId,
-            empId: row.id,
-            field,
-            assignment: person.id,
-          }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || !payload.ok) throw new Error(payload.error || "Unable to save delegation.");
-        setRows((current) => applyTo(current, row.id, field, person.id, "HR Admin", reason.trim(), user.name));
-        await refreshEmployees().catch(() => {});
-        window.dispatchEvent(new CustomEvent("appraisal:budget-data-updated"));
-        log({ emp: row.id, field: FIELDS[field], from: nameOf(row[field]), to: person.name, action: "Saved by HR", why: reason });
-        say("Delegation change saved.");
-      } else {
-        const request = await submitDelegationRequest({
-          empId: row.id,
-          empName: row.name,
-          field,
-          oldId: row[field],
-          newId: person.id,
-          reason: reason.trim(),
-          byName: user.name,
-        });
-        await loadRequests();
-        log({
-          emp: row.id,
-          field: FIELDS[field],
-          from: nameOf(row[field]),
-          to: person.name,
-          action: "Requested",
-          why: reason,
-        });
-        say(`Request ${request?.id || "submitted"} sent to HR for approval.`);
-      }
+      const request = await submitDelegationRequest({
+        empId: row.id,
+        empName: row.name,
+        field,
+        oldId: row[field],
+        newId: person.id,
+        reason: reason.trim(),
+        byName: user.name,
+      });
+      await loadRequests();
+      log({
+        emp: row.id,
+        field: FIELDS[field],
+        from: nameOf(row[field]),
+        to: person.name,
+        action: "Requested",
+        why: reason,
+      });
+      say(`Request ${request?.id || "submitted"} sent to HR for approval.`);
     } catch (error) {
-      return say(error?.message || (isHR ? "Unable to save delegation." : "Unable to send delegation request to HR."), true);
+      return say(
+        error?.message || "Unable to send delegation request to HR.",
+        true,
+      );
     }
     setModal(null);
   };
@@ -858,26 +856,26 @@ export default function DelegationScreen({
         say(`${ids.size} request(s) approved.`);
       },
     });
-  const lock = async () => {
-    if (isHR) {
-      try {
-        await loadRoster();
-        await refreshEmployees();
-        say("Delegation refreshed. All confirmed HR assignment changes are saved; no lock is applied.");
-      } catch (error) {
-        say(error?.message || "Unable to refresh saved delegation.", true);
-      }
-      return;
-    }
-    say("Tech-Ed changes are saved only after HR approves the request.");
-  };
+  const lock = () =>
+    setModal({
+      type: "confirm",
+      title: "Save & lock delegation",
+      body: `Lock the delegation for ${displayCycleName} (${rows.length} employees)? No changes are possible afterwards.`,
+      ok: () => {
+        setLocked(true);
+        log({
+          action: "Locked",
+          why: `${rows.length} employees locked for ${displayCycleName}`,
+        });
+        say(`Delegation for ${displayCycleName} locked.`);
+      },
+    });
 
   const exportCsv = () => {
     const head = [
       "Employee ID",
       "Employee Name",
       "Reporting Manager",
-      "Director",
       "Tech Ed",
       "Comp Manager",
       "Appraiser Tech Ed",
@@ -889,7 +887,6 @@ export default function DelegationScreen({
       r.id,
       r.name,
       r.rm,
-      r.director,
       r.te,
       nameOf(r.comp),
       nameOf(r.app),
@@ -984,7 +981,46 @@ export default function DelegationScreen({
       <div className="dg-body">
         {/* ------------------------------ main */}
         <div className="dg-card dg-main">
-          <div className="dg-ch">Delegation Screen</div>
+          <div className="dg-ch">
+            Delegation Screen
+            <div className="dg-menu" ref={menuRef}>
+              <button
+                type="button"
+                className="dg-menubtn"
+                aria-haspopup="menu"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen((v) => !v)}
+              >
+                ☰ Menu
+              </button>
+              {menuOpen && (
+                <div className="dg-menulist" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      exportCsv();
+                    }}
+                  >
+                    Export
+                  </button>
+                  {isHR && canAudit && (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setModal({ type: "audit" });
+                      }}
+                    >
+                      Audit trail
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
           <div className="dg-stats">
             {[
               ["Total employees", scoped.length, "#1f2a37", null],
@@ -1019,32 +1055,12 @@ export default function DelegationScreen({
 
           <div className="dg-tb">
             <span style={{ flex: 1 }} />
-            {isHR && (
-              <button
-                className="btn"
-                disabled={editLocked}
-                onClick={() => (onRefresh ? onRefresh() : loadRoster())}
-              >
-                Refresh from master
-              </button>
-            )}
             <button
               className="btn"
               onClick={() => setModal({ type: "bulk" })}
             >
               Bulk assign ({selIds.length})
             </button>
-            <button className="btn" onClick={exportCsv}>
-              Export
-            </button>
-            {isHR && canAudit && (
-              <button
-                className="btn"
-                onClick={() => setModal({ type: "audit" })}
-              >
-                Audit trail
-              </button>
-            )}
             {isHR && (
               <button
                 className="btn p"
@@ -1056,7 +1072,7 @@ export default function DelegationScreen({
                 }
                 onClick={lock}
               >
-                Save
+                Save &amp; lock delegation
               </button>
             )}
           </div>
@@ -1067,7 +1083,11 @@ export default function DelegationScreen({
             ) : rosterLoading ? null : !scoped.length ? (
               <div className="empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
                 {activeCycleId ? "No delegation rows are available for " + displayCycleName + "." : "No active appraisal cycle. Create or activate a cycle to start delegation."}
-
+                {activeCycleId && (
+                  <button className="btn p" type="button" onClick={loadRoster}>
+                    Generate / Fetch Delegation Data
+                  </button>
+                )}
               </div>
             ) : (
               <table
@@ -1086,7 +1106,6 @@ export default function DelegationScreen({
                 </colgroup>
                 <thead>
                   <tr className="grp">
-                    <th className="g" />
                     <th className="g g1" colSpan={5}>
                       <span>FROM EMPLOYEE MASTER · READ-ONLY</span>
                     </th>
@@ -1691,7 +1710,13 @@ const CSS = `
 .dg-body{display:flex;gap:14px;padding:14px 12px;align-items:flex-start}
 .dg-card{background:#fff;border:1px solid #dfe4ea;border-radius:10px;overflow:hidden}
 .dg-main{flex:1;min-width:0}
-.dg-ch{background:#15365a;color:#fff;text-align:center;font-weight:800;font-size:15.5px;padding:10px}
+.dg-ch{position:relative;background:#15365a;color:#fff;text-align:center;font-weight:800;font-size:15.5px;padding:10px}
+.dg-menu{position:absolute;right:10px;top:50%;transform:translateY(-50%)}
+.dg .dg-menubtn{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.dg .dg-menubtn:hover{background:rgba(255,255,255,.22)}
+.dg-menulist{position:absolute;right:0;top:calc(100% + 6px);min-width:150px;background:#fff;border:1px solid #E5E7EB;border-radius:8px;box-shadow:0 6px 20px rgba(15,42,68,.18);padding:4px;z-index:30;text-align:left}
+.dg .dg-menulist button{display:block;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:8px 10px;font-size:12.5px;font-weight:600;color:#102A43;cursor:pointer}
+.dg .dg-menulist button:hover{background:#eef2f8}
 .dg-stats{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid #e6eaef}
 .dg-st{padding:10px 14px;border-right:1px solid #e6eaef}.dg-st:last-child{border-right:none}
 .dg-st .l{font-size:11.5px;color:#6b7685}.dg-st .v{font-size:17px;font-weight:800}
