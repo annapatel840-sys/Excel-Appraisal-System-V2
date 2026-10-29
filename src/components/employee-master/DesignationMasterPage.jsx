@@ -1189,8 +1189,99 @@ const CSS = `
 .dmx-addbar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding:10px 14px;background:#DCEBFF;border-bottom:1px solid #B9D3F5;flex:none}
 .dmx-addbar label{display:flex;flex-direction:column;gap:3px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#1D4FA8}
 .dmx-err{color:#C0392B;font-weight:700;font-size:11.5px}
-.dmx-msg{display:flex;gap:10px;align-items:center;margin:10px 14px 0;padding:9px 12px;border-radius:8px;background:#FEF3F2;border:1px solid #FDA29B;color:#B42318;font-weight:600;flex:none}
-.dmx-msg span{flex:1}
+// .dmx-msg{display:flex;gap:10px;align-items:center;margin:10px 14px 0;padding:9px 12px;border-radius:8px;background:#FEF3F2;border:1px solid #FDA29B;color:#B42318;font-weight:600;flex:none}
+// .dmx-msg span{flex:1}
+
+/* Designation Master grid improvements */
+.dmx .emx-wrap {
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid #D5DFEB;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(16, 42, 67, 0.05);
+  overflow: auto;
+}
+
+.dmx .emx-table {
+  width: 100% !important;
+  font-size: 12.5px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.dmx .emx-table th {
+  background: #E8F0FA;
+  color: #193B61;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 12px 10px;
+  border-bottom: 1px solid #CBD8E8;
+  white-space: nowrap;
+}
+
+.dmx .emx-table th:first-child {
+  background: #DFEAF7;
+}
+
+.dmx .emx-table td {
+  padding: 10px 9px;
+  line-height: 1.4;
+  border-bottom: 1px solid #E5EAF1;
+  vertical-align: middle;
+}
+
+.dmx .emx-table tbody tr:nth-child(even) td {
+  background-color: #F7F9FC;
+}
+
+.dmx .emx-table tbody tr:hover td {
+  background-color: #EDF4FF;
+}
+
+.dmx .emx-table td select.dmx-ctl {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid #C9D3E0;
+  border-radius: 7px;
+  background-color: #FFFFFF;
+  padding: 6px 9px;
+  color: #172B4D;
+}
+
+.dmx .emx-table td select.dmx-ctl:focus {
+  outline: none;
+  border-color: #5688D8;
+  box-shadow: 0 0 0 3px rgba(86, 136, 216, 0.15);
+}
+
+.dmx .emx-table td select.dmx-ctl.ed {
+  background-color: #F0EBFF;
+  border-color: #A78BFA;
+}
+
+.dmx .emx-table tbody tr.emx-dim td {
+  color: #7B8797;
+}
+
+.dmx .emx-table td .emx-mini {
+  padding: 6px 10px;
+  border-radius: 7px;
+  border: 1px solid #CBD5E1;
+  background: #FFFFFF;
+  cursor: pointer;
+}
+
+.dmx .emx-table td .emx-mini:hover {
+  background: #EFF6FF;
+  border-color: #93B4E8;
+}
+
+.dmx .emx-work {
+  width: 100%;
+  min-width: 0;
+  padding: 12px 14px;
+  min-height: 0;
+}
 .dmx .emx-work{padding:12px 14px 12px;min-height:0}
 .dmx .emx-panel{width:340px}
 .dmx-loading{padding:40px;text-align:center;color:#6B7280}

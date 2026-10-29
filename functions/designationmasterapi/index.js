@@ -30,7 +30,7 @@ const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
 
 const TBL = {
-  designations: "Designation",
+  designations: "Designations",
   next: "Designation_Next",
   groups: "Designation_Groups",
   members: "Designation_Group_Members",
