@@ -100,14 +100,14 @@ export function EligibilityCriteria({
         values={designations}
         selected={selectedDesignations}
         setSelected={setSelectedDesignations}
-        disabled={readOnly}
+        disabled={readOnly || criteriaApplied}
       />
 
       <div className="em-crit-h">Exclude specific employees</div>
       <div className="em-search-field">
         <input
           value={search}
-          disabled={readOnly}
+          disabled={readOnly || criteriaApplied}
           onChange={(event) => {
             setSearch(event.target.value);
             setShowSuggest(true);
@@ -145,7 +145,7 @@ export function EligibilityCriteria({
               {employee?.name ?? empId}
               <button
                 type="button"
-                disabled={readOnly}
+                disabled={readOnly || criteriaApplied}
                 onClick={() =>
                   setExcludedEmployees((current) =>
                     current.filter((item) => item !== empId),
@@ -165,7 +165,7 @@ export function EligibilityCriteria({
         type="date"
         className="em-date-input"
         value={cutoffDate}
-        disabled={readOnly}
+        disabled={readOnly || criteriaApplied}
         onChange={(event) => setCutoffDate(event.target.value)}
       />
 
@@ -188,16 +188,29 @@ export function EligibilityCriteria({
           Apply Criteria
         </button>
         {criteriaApplied && (
-          <button
-            type="button"
-            className="em-btn"
-            style={{ flex: "1 1 170px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-            disabled={readOnly}
-            onClick={onEditRegenerate}
-          >
-            <RefreshCw size={14} />
-            Edit & Regenerate
-          </button>
+          <>
+            <button
+              type="button"
+              className="em-btn"
+              style={{ flex: "1 1 170px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+              disabled={readOnly}
+              onClick={onEditRegenerate}
+            >
+              <RefreshCw size={14} />
+              Edit & Regenerate
+            </button>
+            {onGenerateDelegation && (
+              <button
+                type="button"
+                className="em-btn em-btn-primary"
+                style={{ flex: "1 1 170px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+                disabled={readOnly || delegationGenerated}
+                onClick={onGenerateDelegation}
+              >
+                {delegationGenerated ? "Delegation Generated" : "Generate Delegation"}
+              </button>
+            )}
+          </>
         )}
       </div>
 
