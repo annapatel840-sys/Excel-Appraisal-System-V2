@@ -1080,7 +1080,10 @@ export default function DelegationScreen({
     if (!isHR || !activeCycleId || !rows.length) return;
     try {
       await refreshEmployees().catch(() => {});
-      await loadRoster();
+      const refreshedRows = await loadRoster();
+      if (!Array.isArray(refreshedRows)) {
+        throw new Error("Delegation changes may be saved, but the roster could not be refreshed. Please reload the screen.");
+      }
       say(`Delegation for ${displayCycleName} saved and refreshed. You can continue editing.`);
       onRefresh?.();
     } catch (error) {
