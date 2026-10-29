@@ -129,6 +129,10 @@ export function ColumnFilter({
   bulkEditable = false,
   bulkRowCount = 0,
   onBulkApply,
+
+  // optional: for screens whose columns are not in the appraisal column list
+  label: labelProp,
+  allowGroup = true,
 }) {
   const meta = fieldByKey(columnKey);
 
@@ -166,7 +170,7 @@ export function ColumnFilter({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const label = meta?.label || columnKey;
+  const label = labelProp || meta?.label || columnKey;
 
   // Raw value -> text shown in the list (labels, thousands separators).
   const formatOption = (option) => {
@@ -386,7 +390,7 @@ export function ColumnFilter({
         <PopoverTrigger asChild>
           <button
             type="button"
-            aria-label={`Filter ${meta.label}`}
+            aria-label={`Filter ${label}`}
             className={cn(
               "flex items-center gap-0.5 rounded p-1 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700",
               triggerActive && "bg-[#17365d]/12 text-[#17365d]",
@@ -472,18 +476,22 @@ export function ColumnFilter({
 
             <Divider />
 
-            <MenuItem
-              icon="▤"
-              onClick={() => {
-                onToggleGroup?.();
-                setOpen(false);
-              }}
-              onMouseEnter={() => setSubOpen(false)}
-            >
-              {isGrouped ? "Remove Grouping" : `Group by "${label}"`}
-            </MenuItem>
+            {allowGroup && (
+              <>
+                <MenuItem
+                  icon="▤"
+                  onClick={() => {
+                    onToggleGroup?.();
+                    setOpen(false);
+                  }}
+                  onMouseEnter={() => setSubOpen(false)}
+                >
+                  {isGrouped ? "Remove Grouping" : `Group by "${label}"`}
+                </MenuItem>
 
-            <Divider />
+                <Divider />
+              </>
+            )}
 
             <MenuItem
               disabled={!filterActive}

@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
@@ -24,35 +25,50 @@ const TAG = {
   [ST.PD]: "pd",
 };
 const PAGE = 50;
-const nameOf = (value) => String(value || "").trim();
-// Catalyst lookup values can contain both a bare employee ID and its
-// resolved "ID - Name" label. Prefer the resolved label and use the loaded
-// roster to resolve any remaining bare IDs so dropdowns never show both forms.
-// Employee ID (lower case) -> name, built once per roster array, so resolving
-// a bare ID is a lookup instead of a scan of the whole roster.
-const namesByRoster = new WeakMap();
-const rosterNames = (roster) => {
-  let names = namesByRoster.get(roster);
-  if (!names) {
-    names = new Map();
-    roster.forEach((employee) => {
-      const id = String(employee.id || "").trim().toLowerCase();
-      if (id && !names.has(id)) names.set(id, employee.name);
-    });
-    namesByRoster.set(roster, names);
+/* Grid columns (header filter + drag-to-resize like the Appraisal Sheet) */
+const MIN_COL = 70;
+const MAX_COL = 520;
+const COLS = [
+  { key: "id", label: "EMPLOYEE ID", w: 110, cls: "ref" },
+  { key: "name", label: "EMPLOYEE NAME", w: 170, cls: "nm" },
+  { key: "rm", label: "REPORTING MANAGER", w: 170 },
+  { key: "te", label: "TECH ED", w: 210 },
+  { key: "comp", label: "COMP MANAGER", w: 210, edit: true },
+  { key: "app", label: "APPRAISER TECH ED", w: 210, edit: true },
+  { key: "prevComp", label: "PREV. COMP MANAGER", w: 190, cls: "ref" },
+  { key: "prevApp", label: "PREV. APPRAISER TECH ED", w: 210, cls: "ref" },
+  { key: "status", label: "STATUS", w: 200 },
+];
+const SELECT_W = 40;
+const testText = (raw, op, value) => {
+  const v = String(value ?? "").trim().toLowerCase();
+  if (!v) return true;
+  const t = String(raw ?? "").toLowerCase();
+  switch (op) {
+    case "equals":
+      return t === v;
+    case "notEquals":
+      return t !== v;
+    case "startsWith":
+      return t.startsWith(v);
+    case "endsWith":
+      return t.endsWith(v);
+    case "notContains":
+      return !t.includes(v);
+    default:
+      return t.includes(v);
   }
-  return names;
 };
-const displayAssignment = (value, roster = []) => {
-  const text = nameOf(value);
-  if (!text) return "";
-  const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
-  const resolved = parts.find((part) => /\s-\s/.test(part));
-  const candidate = resolved || parts[parts.length - 1] || text;
-  if (/\s-\s/.test(candidate)) return candidate;
-  const name = rosterNames(roster).get(candidate.toLowerCase());
-  return name ? candidate + " - " + name : candidate;
+const matchesFilter = (raw, f) => {
+  if (!f) return true;
+  if (f.kind === "enum")
+    return !f.values.length || f.values.includes(String(raw ?? ""));
+  const first = testText(raw, f.op, f.value);
+  if (!f.op2 || String(f.value3 ?? "").trim() === "") return first;
+  const second = testText(raw, f.op2, f.value3);
+  return f.join === "or" ? first || second : first && second;
 };
+const nameOf = (value) => String(value || "").trim();
 const now = () => new Date().toISOString().replace("T", " ").slice(0, 19);
 const fmt = (s) => {
   const d = new Date(String(s).replace(" ", "T"));
@@ -81,7 +97,6 @@ export default function DelegationScreen({
   cycleName = "",
   showRoleSwitch = false,
   onRefresh, // optional: () => void
-  onUpload, // optional: () => void
 }) {
   const catalystUser = useCatalystUser();
   const loggedInName = String(
@@ -115,7 +130,7 @@ export default function DelegationScreen({
     setAudit([]);
     setSel({});
     setPage(1);
-    setFilter({ q: "", te: "", comp: "", status: "" });
+    setColFilters({});
   }, [activeCycleId]);
   const normalizeRequests = (items) =>
     (Array.isArray(items) ? items : []).map((q) => ({
@@ -159,7 +174,12 @@ export default function DelegationScreen({
   const [reqs, setReqs] = useState([]);
   const [audit, setAudit] = useState([]);
   const [locked, setLocked] = useState(false);
-  const [filter, setFilter] = useState({ q: "", te: "", comp: "", status: "" });
+  const [colFilters, setColFilters] = useState({});
+  const [sort, setSort] = useState({ key: "id", dir: "asc" });
+  const [colWidths, setColWidths] = useState(() =>
+    Object.fromEntries(COLS.map((c) => [c.key, c.w])),
+  );
+  const resizeRef = useRef(null);
   const [sel, setSel] = useState({});
   const [page, setPage] = useState(1);
   const [reqTab, setReqTab] = useState("Pending");
@@ -169,7 +189,6 @@ export default function DelegationScreen({
     person: "",
     reason: "",
   });
-  const [bulkOpen, setBulkOpen] = useState(false); // ADDED: Bulk assign starts folded
   const [reqOpen, setReqOpen] = useState(false); // ADDED: Pending approvals starts folded
   const [remarks, setRemarks] = useState({});
   const [modal, setModal] = useState(null); // {type, ...}
@@ -312,7 +331,7 @@ export default function DelegationScreen({
           unique.set(id, item);
         }
       });
-      const roster = Array.from(unique.values()).map((item) => ({
+      setRows(Array.from(unique.values()).map((item) => ({
         id: String(item.emp_id || item.employee_id || item.ROWID || "").trim(),
         name: String(item.name || item.emp_name || item.emp_id || "").trim(),
         rm: String(item.reporting_manager || item.repo_manager || "").trim(),
@@ -409,7 +428,7 @@ export default function DelegationScreen({
         ...new Set(
           [...rows.map((r) => r.comp), ...rows.map((r) => r.app)]
             .filter(Boolean)
-            .map((v) => displayAssignment(v, rows)),
+            .map((v) => String(v).trim()),
         ),
       ]
         .sort((a, b) => a.localeCompare(b))
@@ -417,25 +436,92 @@ export default function DelegationScreen({
     [rows],
   );
   const pending = myReqs.filter((q) => q.status === "Pending");
+  const colValue = (r, key) => {
+    switch (key) {
+      case "comp":
+        return nameOf(r.comp);
+      case "app":
+        return nameOf(r.app);
+      case "prevComp":
+        return nameOf(r.prevComp);
+      case "prevApp":
+        return nameOf(r.prevApp);
+      case "status":
+        return statusOf(r);
+      default:
+        return String(r[key] ?? "");
+    }
+  };
   const list = useMemo(() => {
-    const q = filter.q.toLowerCase();
-    return scoped
-      .filter(
-        (r) =>
-          (!q ||
-            r.id.toLowerCase().includes(q) ||
-            r.name.toLowerCase().includes(q)) &&
-          (!filter.te || r.te === filter.te) &&
-          (!filter.comp || nameOf(r.comp) === filter.comp) &&
-          (!filter.status || statusOf(r) === filter.status),
-      )
-      .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
-  }, [scoped, filter, reqs]); // eslint-disable-line
+    const active = Object.entries(colFilters);
+    const out = scoped.filter((r) =>
+      active.every(([key, f]) => matchesFilter(colValue(r, key), f)),
+    );
+    const dir = sort.dir === "desc" ? -1 : 1;
+    return out.sort(
+      (a, b) =>
+        dir *
+        colValue(a, sort.key).localeCompare(colValue(b, sort.key), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        }),
+    );
+  }, [scoped, colFilters, sort, reqs]); // eslint-disable-line
   const pages = Math.max(1, Math.ceil(list.length / PAGE));
   const cur = Math.min(page, pages);
   const slice = list.slice((cur - 1) * PAGE, cur * PAGE);
   const selIds = Object.keys(sel).filter((k) => sel[k]);
-  const count = (s) => scoped.filter((r) => statusOf(r) === s).length;
+  const withoutComp = scoped.filter((r) => !nameOf(r.comp)).length;
+  const optionsFor = (key) =>
+    [...new Set(scoped.map((r) => colValue(r, key)))].sort();
+  const setColFilter = (key, f) => {
+    setColFilters((prev) => {
+      const next = { ...prev };
+      if (f) next[key] = f;
+      else delete next[key];
+      return next;
+    });
+    setPage(1);
+  };
+  const filtersActive = Object.keys(colFilters).length > 0;
+
+  /* drag a header edge to resize a column (same behaviour as the Appraisal Sheet) */
+  const startColResize = useCallback(
+    (event, col) => {
+      event.preventDefault();
+      event.stopPropagation();
+      resizeRef.current = {
+        key: col.key,
+        startX: event.clientX,
+        startWidth: colWidths[col.key] ?? col.w,
+      };
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [colWidths],
+  );
+  useEffect(() => {
+    const move = (event) => {
+      if (!resizeRef.current) return;
+      const { key, startX, startWidth } = resizeRef.current;
+      const next = Math.min(
+        MAX_COL,
+        Math.max(MIN_COL, startWidth + event.clientX - startX),
+      );
+      setColWidths((prev) => ({ ...prev, [key]: next }));
+    };
+    const up = () => {
+      resizeRef.current = null;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  }, []);
   const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort();
 
   /* mutations */
@@ -827,7 +913,7 @@ export default function DelegationScreen({
     setSel({});
     setPage(1);
     setReqTab("Pending");
-    setFilter({ q: "", te: "", comp: "", status: "" });
+    setColFilters({});
   };
 
   const isPendingRequest = (request) =>
@@ -893,17 +979,28 @@ export default function DelegationScreen({
           <div className="dg-ch">Delegation Screen</div>
           <div className="dg-stats">
             {[
-              ["Total employees", scoped.length, "#1f2a37"],
-              ["Carried forward", count(ST.CF), "#1e7a45"],
-              ["New – defaulted to Tech Ed", count(ST.NEW), "#1d4ed8"],
-              ["Changed this cycle", count(ST.HR) + count(ST.TE), "#94620a"],
+              ["Total employees", scoped.length, "#1f2a37", null],
+              ["Employee Without Comp-Manager", withoutComp, "#94620a", null],
               [
                 isHR ? "Pending HR approval" : "My pending requests",
                 pending.length,
                 "#b42318",
+                () => setReqOpen(true),
               ],
-            ].map(([l, v, c]) => (
-              <div className="dg-st" key={l}>
+            ].map(([l, v, c, onClick]) => (
+              <div
+                className={"dg-st" + (onClick ? " click" : "")}
+                key={l}
+                onClick={onClick || undefined}
+                onKeyDown={
+                  onClick
+                    ? (e) => (e.key === "Enter" || e.key === " ") && onClick()
+                    : undefined
+                }
+                role={onClick ? "button" : undefined}
+                tabIndex={onClick ? 0 : undefined}
+                title={onClick ? "Open pending approvals" : undefined}
+              >
                 <div className="l">{l}</div>
                 <div className="v" style={{ color: c }}>
                   {v}
@@ -913,75 +1010,19 @@ export default function DelegationScreen({
           </div>
 
           <div className="dg-tb">
-            <input
-              className="srch"
-              placeholder="Search employee by name or employee ID"
-              value={filter.q}
-              onChange={(e) => {
-                setFilter({ ...filter, q: e.target.value });
-                setPage(1);
-              }}
-            />
-            <select
-              className="f"
-              value={filter.te}
-              onChange={(e) => {
-                setFilter({ ...filter, te: e.target.value });
-                setPage(1);
-              }}
-            >
-              <option value="">Tech Ed: All</option>
-              {uniq(scoped.map((r) => r.te)).map((v) => (
-                <option key={v}>{v}</option>
-              ))}
-            </select>
-            <select
-              className="f"
-              value={filter.comp}
-              onChange={(e) => {
-                setFilter({ ...filter, comp: e.target.value });
-                setPage(1);
-              }}
-            >
-              <option value="">Comp Manager: All</option>
-              {uniq(scoped.map((r) => nameOf(r.comp))).map((v) => (
-                <option key={v}>{v}</option>
-              ))}
-            </select>
-            <select
-              className="f"
-              value={filter.status}
-              onChange={(e) => {
-                setFilter({ ...filter, status: e.target.value });
-                setPage(1);
-              }}
-            >
-              <option value="">Status: All</option>
-              {Object.values(ST).map((v) => (
-                <option key={v}>{v}</option>
-              ))}
-            </select>
             <span style={{ flex: 1 }} />
             {isHR && (
               <button
                 className="btn"
                 disabled={editLocked}
-                onClick={() =>
-                  onRefresh
-                    ? onRefresh()
-                    : loadRoster()
-                }
+                onClick={() => (onRefresh ? onRefresh() : loadRoster())}
               >
                 Refresh from master
               </button>
             )}
             <button
               className="btn"
-              onClick={() =>
-                document
-                  .getElementById("dg-bulk")
-                  ?.scrollIntoView({ behavior: "smooth" })
-              }
+              onClick={() => setModal({ type: "bulk" })}
             >
               Bulk assign ({selIds.length})
             </button>
@@ -1025,7 +1066,20 @@ export default function DelegationScreen({
                 )}
               </div>
             ) : (
-              <table>
+              <table
+                className="dg-grid"
+                style={{
+                  tableLayout: "fixed",
+                  width: "max-content",
+                  minWidth: "100%",
+                }}
+              >
+                <colgroup>
+                  <col style={{ width: SELECT_W }} />
+                  {COLS.map((c) => (
+                    <col key={c.key} style={{ width: colWidths[c.key] }} />
+                  ))}
+                </colgroup>
                 <thead>
                   <tr className="grp">
                     <th className="g g1" colSpan={6}>
@@ -1037,10 +1091,10 @@ export default function DelegationScreen({
                     <th className="g g3" colSpan={2}>
                       <span>PREVIOUS CYCLE · REFERENCE</span>
                     </th>
-                    <th />
+                    <th className="g" />
                   </tr>
-                  <tr>
-                    <th>
+                  <tr className="hd">
+                    <th className="sel">
                       <input
                         type="checkbox"
                         checked={allSel}
@@ -1052,19 +1106,38 @@ export default function DelegationScreen({
                         }}
                       />
                     </th>
-                    {[
-                      "EMPLOYEE ID",
-                      "EMPLOYEE NAME",
-                      "REPORTING MANAGER",
-                      "DIRECTOR",
-                      "TECH ED",
-                      "COMP MANAGER",
-                      "APPRAISER TECH ED",
-                      "PREV. COMP MANAGER",
-                      "PREV. APPRAISER TECH ED",
-                      "STATUS",
-                    ].map((h) => (
-                      <th key={h}>{h}</th>
+                    {COLS.map((c) => (
+                      <th key={c.key}>
+                        <div className="hc">
+                          <span className="hl" title={c.label}>
+                            {c.label}
+                          </span>
+                          <ColumnFilter
+                            columnKey={c.key}
+                            label={c.label}
+                            allowGroup={false}
+                            filter={colFilters[c.key]}
+                            options={optionsFor(c.key)}
+                            allValues={[]}
+                            onChange={(f) => setColFilter(c.key, f)}
+                            sortDirection={
+                              sort.key === c.key ? sort.dir : null
+                            }
+                            sortLevel={sort.key === c.key ? 1 : 0}
+                            onSortAsc={() => setSort({ key: c.key, dir: "asc" })}
+                            onSortDesc={() =>
+                              setSort({ key: c.key, dir: "desc" })
+                            }
+                          />
+                        </div>
+                        <div
+                          role="separator"
+                          aria-label={`Resize ${c.label} column`}
+                          title="Drag to resize column"
+                          className="rz"
+                          onPointerDown={(e) => startColResize(e, c)}
+                        />
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -1073,7 +1146,7 @@ export default function DelegationScreen({
                     const st = statusOf(r);
                     return (
                       <tr key={r.id} className={sel[r.id] ? "sel" : ""}>
-                        <td>
+                        <td className="sel">
                           <input
                             type="checkbox"
                             checked={!!sel[r.id]}
@@ -1083,47 +1156,59 @@ export default function DelegationScreen({
                             }
                           />
                         </td>
-                        <td className="ref">{r.id}</td>
-                        <td className="nm">{r.name}</td>
-                        <td>{r.rm}</td>
-                        <td>{r.director || "—"}</td>
-                        <td>{displayAssignment(r.te)}</td>
-                        {["comp", "app"].map((f) => {
-                          const prev = f === "comp" ? r.prevComp : r.prevApp;
+                        {COLS.map((c) => {
+                          if (c.edit) {
+                            const f = c.key;
+                            const prev = f === "comp" ? r.prevComp : r.prevApp;
+                            return (
+                              <td key={f}>
+                                <select
+                                  className={
+                                    "in" + (prev && r[f] !== prev ? " c" : "")
+                                  }
+                                  disabled={editLocked}
+                                  value={r[f]}
+                                  onChange={(e) => {
+                                    setReason("");
+                                    setModal({
+                                      type: "reason",
+                                      row: r,
+                                      field: f,
+                                      person: people.find(
+                                        (p) => p.id === e.target.value,
+                                      ),
+                                    });
+                                  }}
+                                >
+                                  {people.map((p) => (
+                                    <option key={p.id} value={p.id}>
+                                      {p.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                            );
+                          }
+                          if (c.key === "status")
+                            return (
+                              <td key={c.key}>
+                                <span className={`tag ${TAG[st]}`}>{st}</span>
+                              </td>
+                            );
+                          const text =
+                            c.key === "prevComp" || c.key === "prevApp"
+                              ? colValue(r, c.key) || "—"
+                              : colValue(r, c.key);
                           return (
-                            <td key={f}>
-                              <select
-                                className={
-                                  "in" + (prev && r[f] !== prev ? " c" : "")
-                                }
-                                disabled={editLocked}
-                                value={r[f]}
-                                onChange={(e) => {
-                                  setReason("");
-                                  setModal({
-                                    type: "reason",
-                                    row: r,
-                                    field: f,
-                                    person: people.find(
-                                      (p) => p.id === e.target.value,
-                                    ),
-                                  });
-                                }}
-                              >
-                                {people.map((p) => (
-                                  <option key={p.id} value={p.id}>
-                                    {p.name}
-                                  </option>
-                                ))}
-                              </select>
+                            <td
+                              key={c.key}
+                              className={c.cls || ""}
+                              title={text}
+                            >
+                              {text}
                             </td>
                           );
                         })}
-                        <td className="ref">{nameOf(r.prevComp) || "—"}</td>
-                        <td className="ref">{nameOf(r.prevApp) || "—"}</td>
-                        <td>
-                          <span className={`tag ${TAG[st]}`}>{st}</span>
-                        </td>
                       </tr>
                     );
                   })}
@@ -1142,6 +1227,18 @@ export default function DelegationScreen({
             </span>
             <span>New employee → Comp Manager defaults to Tech Ed</span>
             <span>Appraiser Tech Ed defaults to Tech Ed</span>
+            {filtersActive && (
+              <button
+                type="button"
+                className="btn sm"
+                onClick={() => {
+                  setColFilters({});
+                  setPage(1);
+                }}
+              >
+                Clear filters
+              </button>
+            )}
             <span style={{ flex: 1 }} />
             <span className="pg">
               <button
@@ -1175,156 +1272,37 @@ export default function DelegationScreen({
         </div>
 
         {/* ------------------------------ side */}
-        <div className={"dg-side" + (bulkOpen && reqOpen ? " both" : "")}>
-          {/* ADDED: Bulk assign folds left to right; folded on load */}
-          <div className={"dg-col" + (bulkOpen ? " open" : "")} id="dg-bulk">
-            {bulkOpen ? (
-              <div className="dg-card">
-                <div className="sh">
-                  <span className="ic">⇄</span>
-                  <div>
-                    <div className="tt">Bulk assign</div>
-                    <div className="ss">
-                      {selIds.length} employee{selIds.length === 1 ? "" : "s"}{" "}
-                      selected
-                    </div>
+        <div className={"dg-side" + (reqOpen ? " open" : "")}>
+          {reqOpen ? (
+            <div className="dg-panel">
+              <div className="ph">
+                <div>
+                  <div className="tt">
+                    {isHR ? "Pending approvals" : "My requests"}
                   </div>
-                  <button
-                    type="button"
-                    className="btn sm"
-                    style={{ marginLeft: "auto" }}
-                    onClick={() => setBulkOpen(false)}
-                    title="Fold bulk assign"
-                  >
-                    ‹ Fold
-                  </button>
-                </div>
-                <div className="sb">
-                  <div className="lb">Field to change</div>
-                  <select
-                    className="fld"
-                    disabled={editLocked}
-                    value={bulk.field}
-                    onChange={(e) =>
-                      setBulk({ ...bulk, field: e.target.value })
-                    }
-                  >
-                    <option value="comp">Comp Manager</option>
-                    <option value="app">Appraiser Tech Ed</option>
-                  </select>
-                  <div className="lb">Apply to</div>
-                  <select
-                    className="fld"
-                    disabled={editLocked}
-                    value={bulk.scope}
-                    onChange={(e) =>
-                      setBulk({ ...bulk, scope: e.target.value })
-                    }
-                  >
-                    <option value="sel">
-                      Selected employees ({selIds.length})
-                    </option>
-                    {teScopes.map((s) => (
-                      <option key={s.id} value={`te:${s.id}`}>
-                        {s.label}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="lb">Assign to</div>
-                  <select
-                    className="fld"
-                    disabled={editLocked}
-                    value={bulk.person}
-                    onChange={(e) =>
-                      setBulk({ ...bulk, person: e.target.value })
-                    }
-                  >
-                    <option value="">— choose —</option>
-                    {people.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} · {p.roles.join(", ")}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="lb">Reason (mandatory)</div>
-                  <input
-                    className="fld"
-                    disabled={editLocked}
-                    maxLength={2000}
-                    value={bulk.reason}
-                    onChange={(e) =>
-                      setBulk({ ...bulk, reason: e.target.value })
-                    }
-                  />
-                  <button
-                    className="btn p sm"
-                    disabled={editLocked}
-                    onClick={doBulk}
-                  >
-                    Apply
-                  </button>{" "}
-                  <button
-                    className="btn sm"
-                    disabled={editLocked}
-                    onClick={() => {
-                      setSel({});
-                      setBulk({ ...bulk, person: "", reason: "" });
-                    }}
-                  >
-                    Clear
-                  </button>
-                  <div className="note">
+                  <div className="ss">
                     {isHR
-                      ? "HR Admin: applied immediately."
-                      : "Tech Ed: one request per employee is sent to HR for approval."}
+                      ? "Requests raised by Tech Eds"
+                      : "Changes you sent to HR"}
                   </div>
                 </div>
+                <button
+                  type="button"
+                  className="x"
+                  onClick={() => setReqOpen(false)}
+                  title="Close"
+                  aria-label="Close pending approvals"
+                >
+                  ✕
+                </button>
               </div>
-            ) : (
-              <button
-                type="button"
-                className="dg-fold"
-                onClick={() => setBulkOpen(true)}
-                title="Open bulk assign"
-                aria-expanded="false"
-              >
-                <span className="dg-vbtn">Bulk assign ({selIds.length}) ›</span>
-              </button>
-            )}
-          </div>
-
-          {/* ADDED: Pending approvals folds left to right; folded on load */}
-          <div className={"dg-col" + (reqOpen ? " open" : "")}>
-            {reqOpen ? (
-              <div className="dg-card">
-                <div className="sh">
-                  <span className="ic o">✓</span>
-                  <div>
-                    <div className="tt">
-                      {isHR ? "Pending approvals" : "My requests"}
-                    </div>
-                    <div className="ss">
-                      {isHR
-                        ? "Requests raised by Tech Eds"
-                        : "Changes you sent to HR"}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn sm"
-                    style={{ marginLeft: "auto" }}
-                    onClick={() => setReqOpen(false)}
-                    title="Fold pending approvals"
-                  >
-                    ‹ Fold
-                  </button>
-                </div>
-                <div className="sb">
-                  <div className="rtabs">
+              <div className="pb">
+                <div className="rtabs">
                     {["Pending", "Decided"].map((t) => (
                       <button
                         key={t}
-                        className={"btn sm" + (reqTab === t ? " p" : "")}
+                        type="button"
+                        className={"ptab" + (reqTab === t ? " on" : "")}
                         onClick={() => setReqTab(t)}
                       >
                         {t}
@@ -1449,27 +1427,110 @@ export default function DelegationScreen({
                       </div>
                     ))}
                   </div>
-                </div>
               </div>
-            ) : (
+            </div>
+          ) : (
+            <div className="dg-rail">
               <button
                 type="button"
-                className="dg-fold"
+                className="dg-ptab"
                 onClick={() => setReqOpen(true)}
                 title="Open pending approvals"
                 aria-expanded="false"
               >
-                <span className="dg-vbtn">
-                  {isHR ? "Pending approvals" : "My requests"} ({pending.length}
-                  ) ›
-                </span>
+                {isHR ? "Pending approvals" : "My requests"} ({pending.length})
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 
       {/* ------------------------------ modals */}
+      {modal?.type === "bulk" && (
+        <Modal
+          title="Bulk assign"
+          onClose={() => setModal(null)}
+          foot={
+            <>
+              <button
+                className="btn"
+                disabled={editLocked}
+                onClick={() => {
+                  setSel({});
+                  setBulk({ ...bulk, person: "", reason: "" });
+                }}
+              >
+                Clear
+              </button>
+              <button className="btn" onClick={() => setModal(null)}>
+                Close
+              </button>
+              <button
+                className="btn p"
+                disabled={editLocked}
+                onClick={doBulk}
+              >
+                Apply
+              </button>
+            </>
+          }
+        >
+          <div className="note" style={{ marginTop: 0, marginBottom: 10 }}>
+            {selIds.length} employee{selIds.length === 1 ? "" : "s"} selected
+          </div>
+          <div className="lb">Field to change</div>
+          <select
+            className="fld"
+            disabled={editLocked}
+            value={bulk.field}
+            onChange={(e) => setBulk({ ...bulk, field: e.target.value })}
+          >
+            <option value="comp">Comp Manager</option>
+            <option value="app">Appraiser Tech Ed</option>
+          </select>
+          <div className="lb">Apply to</div>
+          <select
+            className="fld"
+            disabled={editLocked}
+            value={bulk.scope}
+            onChange={(e) => setBulk({ ...bulk, scope: e.target.value })}
+          >
+            <option value="sel">Selected employees ({selIds.length})</option>
+            {teScopes.map((s) => (
+              <option key={s.id} value={`te:${s.id}`}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+          <div className="lb">Assign to</div>
+          <select
+            className="fld"
+            disabled={editLocked}
+            value={bulk.person}
+            onChange={(e) => setBulk({ ...bulk, person: e.target.value })}
+          >
+            <option value="">— choose —</option>
+            {people.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name} · {p.roles.join(", ")}
+              </option>
+            ))}
+          </select>
+          <div className="lb">Reason (mandatory)</div>
+          <input
+            className="fld"
+            disabled={editLocked}
+            maxLength={2000}
+            value={bulk.reason}
+            onChange={(e) => setBulk({ ...bulk, reason: e.target.value })}
+          />
+          <div className="note">
+            {isHR
+              ? "HR Admin: applied immediately."
+              : "Tech Ed: one request per employee is sent to HR for approval."}
+          </div>
+        </Modal>
+      )}
       {modal?.type === "reason" && (
         <Modal
           title={isHR ? "Confirm change" : "Send change to HR for approval"}
@@ -1626,9 +1687,10 @@ const CSS = `
 .dg-card{background:#fff;border:1px solid #dfe4ea;border-radius:10px;overflow:hidden}
 .dg-main{flex:1;min-width:0}
 .dg-ch{background:#15365a;color:#fff;text-align:center;font-weight:800;font-size:15.5px;padding:10px}
-.dg-stats{display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid #e6eaef}
+.dg-stats{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid #e6eaef}
 .dg-st{padding:10px 14px;border-right:1px solid #e6eaef}.dg-st:last-child{border-right:none}
 .dg-st .l{font-size:11.5px;color:#6b7685}.dg-st .v{font-size:17px;font-weight:800}
+.dg-st.click{cursor:pointer}.dg-st.click:hover{background:#f6f8fa}.dg-st.click:focus-visible{outline:2px solid #17365d;outline-offset:-2px}
 .dg-tb{display:flex;gap:8px;padding:10px 12px;align-items:center;border-bottom:1px solid #e6eaef;flex-wrap:wrap}
 .dg .srch{border:1px solid #cfd8e1;border-radius:6px;padding:7px 11px;width:230px}
 .dg .f{border:1px solid #cfd8e1;border-radius:6px;padding:6px 8px;color:#374151;background:#fff;max-width:190px}
@@ -1638,16 +1700,23 @@ const CSS = `
 .dg .btn.r{color:#b42318}
 .dg .btn:disabled{opacity:.5;cursor:not-allowed}
 .dg .btn.sm{padding:5px 12px;font-size:12px}
-.dg-tw{overflow:auto;max-height:calc(100vh - 330px);min-height:220px}
-.dg table{border-collapse:collapse;width:100%}
-.dg th{font-size:11px;letter-spacing:.3px;color:#5b6675;text-align:left;padding:9px 8px;background:#f6f8fa;border-bottom:1px solid #e1e6ec;font-weight:700;white-space:nowrap;position:sticky;top:31px;z-index:1}
-.dg tr.grp th{top:0;background:#fff;text-align:center;font-size:10.5px;padding:6px;border-bottom:none;z-index:2}
+.dg-tw{overflow:auto;max-height:calc(100vh - 300px);min-height:220px;border-top:1px solid #cbd5e1}
+.dg table{border-collapse:separate;border-spacing:0}
+.dg table.dg-grid{font-family:Arial,Helvetica,sans-serif}
+.dg .dg-grid th{position:sticky;background:#e9eef5;color:#24364d;font-size:11px;font-weight:700;text-align:left;padding:0;height:46px;border-right:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1;overflow:visible;z-index:3}
+.dg .dg-grid tr.grp th{top:0;height:28px;background:#fff;text-align:center;font-size:10.5px;padding:3px 4px;border-bottom:1px solid #cbd5e1;z-index:4}
+.dg .dg-grid tr.hd th{top:28px}
+.dg .dg-grid th.sel,.dg .dg-grid td.sel{text-align:center;padding:0}
+.dg .dg-grid .hc{display:flex;align-items:center;gap:4px;height:100%;padding:0 8px;min-height:46px}
+.dg .dg-grid .hl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dg .dg-grid .rz{position:absolute;top:0;right:-2px;height:100%;width:5px;cursor:col-resize;touch-action:none;z-index:10}
+.dg .dg-grid .rz:hover{background:rgba(23,54,93,.3)}
 .dg th.g span{display:block;border-radius:4px;padding:3px}
 .dg .g1 span{background:#eef1f5;color:#4b5563}.dg .g2 span{background:#e3f3ee;color:#146b5a}.dg .g3 span{background:#f3f4f6;color:#6b7280}
-.dg td{padding:6px 8px;border-bottom:1px solid #eef1f4;font-size:12.5px;white-space:nowrap}
+.dg .dg-grid td{padding:6px 8px;border-right:1px solid #e0e5ec;border-bottom:1px solid #e0e5ec;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:38px}
 .dg td.ref{color:#6b7685}.dg td.nm{font-weight:700}
 .dg tr.sel td{background:#f7fbfa}
-.dg .in{border:1px solid #b9dcc4;background:#eff8f1;border-radius:5px;padding:4px 6px;width:150px;color:#1f2a37}
+.dg .in{border:1px solid #b9dcc4;background:#eff8f1;border-radius:5px;padding:4px 6px;width:100%;color:#1f2a37}
 .dg .in.c{border-color:#e0914f;background:#fff4ea}
 .dg .in:disabled{background:#f3f5f8;border-color:#dfe4ea;color:#4b5563}
 .dg .tag{font-size:10.5px;padding:2px 8px;border-radius:9px;font-weight:700;white-space:nowrap}
@@ -1658,11 +1727,16 @@ const CSS = `
 .dg-help{padding:9px 12px 12px;font-size:11.5px;color:#6b7685;line-height:1.6;border-top:1px solid #eef1f4;background:#fbfcfd}
 .dg-help b{color:#374151}
 .dg .empty{padding:40px;text-align:center;color:#6b7685}
-.dg-side{flex:0 0 auto;display:flex;flex-direction:row;gap:14px;align-self:stretch}
-.dg-col{flex:0 0 34px;width:34px;min-width:0;display:flex;flex-direction:column}
-.dg-col.open{flex:0 0 330px;width:330px;align-self:flex-start}
-.dg-side.both{flex-direction:column;flex:0 0 330px;width:330px}
-.dg-side.both .dg-col.open{flex:none;width:100%;align-self:stretch}
+.dg-side{flex:0 0 auto;display:flex;flex-direction:row;align-self:stretch}
+.dg-rail{display:flex;flex-direction:column;justify-content:center;align-items:stretch;min-height:160px}
+.dg-ptab{writing-mode:vertical-rl;background:#173b63;color:#fff;border:0;border-radius:8px;padding:14px 7px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+.dg-ptab:hover{background:#0c2740}
+.dg-panel{width:330px;border:1px solid #E5E7EB;border-radius:12px;background:#fff;overflow:hidden;display:flex;flex-direction:column;align-self:flex-start}
+.dg-panel .ph{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:10px 12px;color:#102A43}
+.dg-panel .ph .tt{font-weight:800;font-size:14.5px}.dg-panel .ph .ss{font-size:11.5px;color:#6B7280;margin-top:2px}
+.dg-panel .ph .x{border:none;background:none;cursor:pointer;font-size:14px;color:#6B7280;padding:2px 4px}
+.dg-panel .ph .x:hover{color:#102A43}
+.dg-panel .pb{padding:0 12px 12px;display:flex;flex-direction:column;min-height:0}
 .dg .sh{padding:11px 13px;border-bottom:1px solid #e6eaef;display:flex;gap:9px;align-items:center}
 .dg .ic{background:#1a8a74;color:#fff;border-radius:6px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 28px}
 .dg .ic.o{background:#e0662f}
@@ -1672,9 +1746,12 @@ const CSS = `
 .dg .fld{border:1px solid #cfd8e1;border-radius:6px;padding:6px 9px;margin-bottom:9px;width:100%;background:#fff}
 .dg textarea.fld{resize:vertical;min-height:54px}
 .dg .note{font-size:11px;color:#8591a0;margin-top:7px;line-height:1.5}
-.dg .rtabs{display:flex;gap:6px;margin-bottom:10px}
-.dg .rq-list{max-height:calc(100vh - 560px);min-height:140px;overflow:auto}
-.dg .req{border:1px solid #e6eaef;border-radius:8px;padding:10px;margin-bottom:9px}
+.dg .rtabs{display:flex;align-items:center;gap:0;margin:0 -12px 10px;background:#FAFAFB;border-top:1px solid #E5E7EB;border-bottom:1px solid #E5E7EB;padding:0 12px}
+.dg .rtabs .ptab{flex:0 0 auto;padding:9px 14px;border:none;background:none;font-size:13px;font-weight:600;color:#6B7280;cursor:pointer;border-bottom:2px solid transparent;display:flex;align-items:center;gap:6px}
+.dg .rtabs .ptab:before{content:"";width:8px;height:8px;border-radius:50%;background:#2F6FED}
+.dg .rtabs .ptab.on{color:#1D4FA8;font-weight:800;background:#E8F0FE;border-bottom-color:#2F6FED}
+.dg .rq-list{max-height:calc(100vh - 360px);min-height:140px;overflow:auto}
+.dg .req{border:1px solid #E5E7EB;border-radius:10px;padding:10px;margin-bottom:9px;background:#fff}
 .dg .req .n{font-weight:800;color:#15365a;display:flex;justify-content:space-between;gap:6px}
 .dg .req .m{color:#4b5563;font-size:11.8px;margin:4px 0 8px;line-height:1.5}
 .dg .ar{color:#1a8a74;font-weight:700}
@@ -1690,10 +1767,9 @@ const CSS = `
 .dg .mdl .mb{padding:14px}
 .dg .mdl .mf{padding:10px 14px;border-top:1px solid #e6eaef;display:flex;gap:8px;justify-content:flex-end}
 .dg .chg{background:#f6f8fa;border-radius:6px;padding:9px;margin-bottom:10px;line-height:1.6}
-.dg .aud td{white-space:normal;font-size:11.5px;vertical-align:top}
+.dg table.aud{width:100%;border-collapse:collapse}
+.dg .aud th{font-size:11px;letter-spacing:.3px;color:#5b6675;text-align:left;padding:9px 8px;background:#f6f8fa;border-bottom:1px solid #e1e6ec;font-weight:700;white-space:nowrap}
+.dg .aud td{white-space:normal;font-size:11.5px;vertical-align:top;padding:6px 8px;border-bottom:1px solid #eef1f4}
 .dg .aud th{position:static}
-.dg .dg-fold{flex:1;min-height:160px;display:flex;justify-content:center;padding-top:14px;background:#fff;border:1px solid #dfe4ea;border-radius:10px;cursor:pointer;color:#15365a;font-weight:800}
-.dg .dg-fold:hover{background:#f1f4f8}
-.dg .dg-vbtn{writing-mode:vertical-rl;transform:rotate(180deg);font-size:12.5px;letter-spacing:.02em}
-@media(max-width:1100px){.dg-body{flex-direction:column}.dg-side{width:100%;flex:none;flex-direction:column}.dg-side.both{width:100%;flex:none}.dg-stats{grid-template-columns:repeat(2,1fr)}.dg-col,.dg-col.open{width:100%;flex:none}.dg .dg-fold{min-height:0;padding:10px;align-items:center}.dg .dg-vbtn{writing-mode:horizontal-tb;transform:none}}
+@media(max-width:1100px){.dg-body{flex-direction:column}.dg-side{width:100%;flex:none}.dg-rail{flex-direction:row;justify-content:flex-end;min-height:0}.dg-ptab{writing-mode:horizontal-tb;padding:7px 14px}.dg-panel{width:100%}.dg-stats{grid-template-columns:1fr}}
 `;
