@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Check, X, RefreshCw } from "lucide-react";
+import { Check, RefreshCw } from "lucide-react";
 
 function CheckList({ values, selected, setSelected, disabled }) {
   const toggle = (value) =>
@@ -33,9 +33,7 @@ export function EligibilityCriteria({
   setExcludedEmployees,
   onApply,
   onEditRegenerate,
-  onGenerateDelegation,
   criteriaApplied = false,
-  delegationGenerated = false,
   readOnly = false,
 }) {
   const [selectedDepartments, setSelectedDepartments] = useState([]);
@@ -199,17 +197,6 @@ export function EligibilityCriteria({
               <RefreshCw size={14} />
               Edit & Regenerate
             </button>
-            {onGenerateDelegation && (
-              <button
-                type="button"
-                className="em-btn em-btn-primary"
-                style={{ flex: "1 1 170px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-                disabled={readOnly || delegationGenerated}
-                onClick={onGenerateDelegation}
-              >
-                {delegationGenerated ? "Delegation Generated" : "Generate Delegation"}
-              </button>
-            )}
           </>
         )}
       </div>
