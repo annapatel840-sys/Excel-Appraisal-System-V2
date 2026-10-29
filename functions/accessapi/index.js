@@ -1736,7 +1736,7 @@ app.post(
         [d.empId]: employeeMasterRowId,
         [d.compManagerId]: cm,
         [d.appraiserTechEdId]: t,
-        director: String((em[k] && (em[k].row.director || em[k].row.comp_manager)) || "").trim(),
+        director: String((em[k] && em[k].row.director) || "").trim(),
         previous_comp_manager: "",
         previous_appraiser_tech_ed: "",
         status: "Active",
