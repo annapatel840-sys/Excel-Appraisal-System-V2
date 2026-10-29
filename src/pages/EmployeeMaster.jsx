@@ -2274,6 +2274,27 @@ export function EmployeeMaster() {
         `${result?.evaluated ?? 0} employee(s) evaluated: ${result?.added ?? 0} added to the Eligibility List, ${result?.excluded ?? 0} left out by the criteria. Use Add An Employee to include anyone who was left out.`,
       );
     } catch (error) {
+      // A network/response error can happen after Catalyst has committed the
+      // writes. Re-read the authoritative cycle before showing a failure.
+      try {
+        const recovered = await fetchEligibilityEmployees({
+          page: 1,
+          limit: 100000,
+          search: "",
+          cycleId: eligibilityCycleId,
+        });
+        if (recovered?.cycle?.criteriaApplied) {
+          setEligibilityEmployees(Array.isArray(recovered.data) ? recovered.data : []);
+          setEligibilityCriteriaApplied(true);
+          showBanner(
+            "Criteria applied",
+            "The eligibility list was saved successfully and has been loaded on screen.",
+          );
+          return;
+        }
+      } catch (recoveryError) {
+        console.error("Unable to verify eligibility after apply response error:", recoveryError);
+      }
       showBanner(
         "Criteria update failed",
         error?.message || "Unable to apply eligibility criteria.",
