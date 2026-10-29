@@ -2213,7 +2213,7 @@ async function getEmployees(req, res) {
     employeeMasterMap,
   );
   const historyDatastore = catalyst.initialize(req, { scope: "admin" }).datastore();
-  const allEmployees = await enrichPreviousAppraisalValues(
+  let allEmployees = await enrichPreviousAppraisalValues(
     historyDatastore,
     mergedEmployees,
     employeeMasterMap,
@@ -2225,6 +2225,13 @@ async function getEmployees(req, res) {
       updatedBy: (a && a.user && a.user.email) || currentUser?.email_id || "",
     },
   );
+
+  // Eligibility alone must not make the Delegation screen look generated.
+  // Show only employees with a persisted Delegation row for this active cycle;
+  // the explicit Generate Delegation action creates those rows.
+  if (requestedView === "delegation") {
+    allEmployees = allEmployees.filter((employee) => employee.delegation_saved === true);
+  }
 
   /* ==========================================================
      DOJ SOURCE
