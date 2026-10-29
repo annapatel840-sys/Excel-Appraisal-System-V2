@@ -617,22 +617,26 @@ export default function DelegationScreen({
   // (recorded, then approved in the same step using the existing endpoints).
   const compDirect = (field) => field === "comp" && isHR && canApprove;
   const hrDirect = (field) => isHR && canApprove && ["comp", "app"].includes(field);
-  const applyDirectChange = async (target, field, personId, why, batch) => {
-    const request = await submitDelegationRequest({
-      empId: target.id,
-      empName: target.name,
-      field,
-      oldId: target[field],
-      newId: personId,
-      reason: why,
-      byName: user.name,
-      batch: batch || "",
+  const applyDirectChange = async (target, field, personId, why) => {
+    const response = await catalystFetch(ACCESS_API_URL + "delegation/save", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        cycleId: activeCycleId,
+        empId: target.id,
+        field,
+        assignment: personId,
+        reason: why,
+      }),
     });
-    await decideDelegationRequest(
-      request?.id,
-      "approved",
-      FIELDS[field] + " change applied directly by HR (no approval required)",
-    );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok) {
+      throw new Error(payload.error || "Unable to save " + FIELDS[field] + ".");
+    }
+    return payload;
   };
 
   const saveChange = async () => {
@@ -831,7 +835,7 @@ export default function DelegationScreen({
             const done = [];
             try {
               for (const r of t) {
-                await applyDirectChange(r, field, person, why.trim(), no);
+                await applyDirectChange(r, field, person, why.trim());
                 done.push(r);
               }
             } catch (error) {
