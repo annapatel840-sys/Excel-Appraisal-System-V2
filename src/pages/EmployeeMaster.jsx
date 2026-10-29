@@ -2256,13 +2256,22 @@ export function EmployeeMaster() {
       );
 
       setEligibilityCriteriaApplied(true);
-      await reloadEligibilityRows();
-
+      // Backend writes have completed. Retry the read so the new rows render
+      // immediately, without requiring a browser refresh.
+      try {
+        await reloadEligibilityRows();
+      } catch (refreshError) {
+        console.error("Eligibility saved; first list refresh failed:", refreshError);
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        try {
+          await reloadEligibilityRows();
+        } catch (retryError) {
+          console.error("Eligibility list refresh retry failed:", retryError);
+        }
+      }
       showBanner(
         "Criteria applied",
-        `${result?.evaluated ?? 0} employee(s) evaluated: ${result?.added ?? 0} added to the Eligibility List, ${result?.excluded ?? 0} left out by the criteria` +
-          `${result?.removed ? ` (${result.removed} removed from the list)` : ""}. ` +
-          "Use Add An Employee to include anyone who was left out.",
+        `${result?.evaluated ?? 0} employee(s) evaluated: ${result?.added ?? 0} added to the Eligibility List, ${result?.excluded ?? 0} left out by the criteria. Use Add An Employee to include anyone who was left out.`,
       );
     } catch (error) {
       showBanner(
@@ -2831,6 +2840,46 @@ export function EmployeeMaster() {
         {/* ======================================================
             EMPLOYEE MASTER AUDIT HISTORY
             ====================================================== */}
+
+        {eligibilityResetConfirm && (
+          <div
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setEligibilityResetConfirm(false);
+            }}
+            style={{
+              position: "fixed", inset: 0, zIndex: 10000,
+              background: "rgba(15, 23, 42, 0.45)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: 20,
+            }}
+          >
+            <section
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="eligibility-reset-title"
+              style={{
+                width: "min(480px, 100%)", background: "#fff", borderRadius: 12,
+                padding: 24, boxShadow: "0 20px 60px rgba(0,0,0,0.22)",
+              }}
+            >
+              <h2 id="eligibility-reset-title" style={{ margin: "0 0 10px", fontSize: 18 }}>
+                Edit &amp; Regenerate Eligibility
+              </h2>
+              <p style={{ margin: "0 0 22px", color: "#475569", lineHeight: 1.5 }}>
+                This clears the generated Eligibility List for the active cycle. You can then change the criteria and apply them again.
+              </p>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                <button type="button" className="em-btn" onClick={() => setEligibilityResetConfirm(false)}>
+                  Cancel
+                </button>
+                <button type="button" className="em-btn em-btn-primary" onClick={confirmEditRegenerateEligibility}>
+                  Clear &amp; Continue
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
 
         <AuditHistoryPanel
           open={employeeMasterAuditOpen}
