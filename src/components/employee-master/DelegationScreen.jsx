@@ -32,6 +32,7 @@ const COLS = [
   { key: "id", label: "EMPLOYEE ID", w: 110, cls: "ref" },
   { key: "name", label: "EMPLOYEE NAME", w: 170, cls: "nm" },
   { key: "rm", label: "REPORTING MANAGER", w: 170 },
+  { key: "director", label: "DIRECTOR", w: 170, cls: "ref" },
   { key: "te", label: "TECH ED", w: 210 },
   { key: "comp", label: "COMP MANAGER", w: 210, edit: true },
   { key: "app", label: "APPRAISER TECH ED", w: 210, edit: true },
@@ -1085,7 +1086,7 @@ export default function DelegationScreen({
                 </colgroup>
                 <thead>
                   <tr className="grp">
-                    <th className="g g1" colSpan={6}>
+                    <th className="g g1" colSpan={5}>
                       <span>FROM EMPLOYEE MASTER · READ-ONLY</span>
                     </th>
                     <th className="g g2" colSpan={2}>
