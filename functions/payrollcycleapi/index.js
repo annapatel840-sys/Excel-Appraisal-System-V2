@@ -2750,6 +2750,19 @@ async function routeRequest(req, res, identity, resource, a) {
       const eligibilityRows = await getAllRows(tables.eligibility);
       const cycleRows = eligibilityRows.filter((row) => String(row.appraisal_cycle_id || "") === cycleId);
       const removed = await deleteEligibilityRowsById(tables, cycleRows.map(rowId));
+
+      // Delegation is derived from the eligibility list. When HR edits and
+      // regenerates eligibility, clear the old delegation roster too so it
+      // cannot appear generated before the explicit Generate Delegation action.
+      const delegationRows = await getAllRows(tables.delegation);
+      const cycleDelegationRows = delegationRows.filter(
+        (row) => String(row.cycle_id || row.appraisal_cycle_id || "") === cycleId,
+      );
+      const removedDelegation = cycleDelegationRows.length;
+      for (let index = 0; index < cycleDelegationRows.length; index += 100) {
+        await tables.delegation.deleteRows(cycleDelegationRows.slice(index, index + 100).map(rowId));
+      }
+
       const auditRows = await getAllRows(tables.audit);
       const markerRows = auditRows.filter((row) =>
         String(row.source || "").trim().toLowerCase() === "eligibility_criteria" &&
@@ -2758,7 +2771,7 @@ async function routeRequest(req, res, identity, resource, a) {
       for (let index = 0; index < markerRows.length; index += 100) {
         await tables.audit.deleteRows(markerRows.slice(index, index + 100).map(rowId));
       }
-      return sendJson(res, 200, { success: true, data: { cycleId, removed, criteriaApplied: false } });
+      return sendJson(res, 200, { success: true, data: { cycleId, removed, removedDelegation, criteriaApplied: false } });
     }
     if (String(body.action || "").trim().toLowerCase() === "apply-criteria") {
       const result = await applyEligibilityCriteria(tables, body, actor);
