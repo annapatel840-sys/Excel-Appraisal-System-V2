@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -346,6 +347,76 @@ export function AppraisalCycleMasterPage({
     [cycles, sel],
   );
   const statsFor = (c) => (c && cycleStats && cycleStats[c.id]) || null;
+
+  /* Whether the selected Active cycle's Eligibility List and Delegation list
+     are generated, so each step shows "Generate" until it is and "Open"
+     after. setupStatus[cycleId] = { eligibility, delegation }:
+       eligibility: { generated, total } (generated = Apply Criteria has run,
+                    which is how the list is created, once per cycle)
+       delegation:  number of saved Delegation rows
+     Either is null when it could not be read (the step then keeps its "Open"
+     button). A cycle with no entry yet is still being checked. */
+  const [setupStatus, setSetupStatus] = useState({});
+  const [setupBusy, setSetupBusy] = useState(""); // "gen-dl" | ""
+  const isActiveSetupCycle = (c) => !!c && c.status === "Active" && !c.archived;
+
+  const loadSetupStatus = useCallback(async (cycleId) => {
+    if (!cycleId) return;
+    const [eligibility, delegation] = await Promise.all([
+      // _ts keeps this read out of the shared 15 s read cache, so returning
+      // from the Eligibility screen always shows the current state.
+      payrollCycleRequest("eligibility", { query: { cycleId, count: 1, _ts: Date.now() } })
+        .then((data) =>
+          data && typeof data.criteriaApplied === "boolean"
+            ? { generated: data.criteriaApplied, total: Number(data.total) || 0 }
+            : null,
+        )
+        .catch(() => null),
+      catalystFetch(
+        catalystFunctionUrl("accessapi") + "delegation?cycle=" + encodeURIComponent(cycleId),
+        { method: "GET", cache: "no-store" },
+      )
+        .then((response) => response.json())
+        .then((payload) => (payload && payload.ok && Array.isArray(payload.rows) ? payload.rows.length : null))
+        .catch(() => null),
+    ]);
+    setSetupStatus((previous) => ({ ...previous, [cycleId]: { eligibility, delegation } }));
+  }, []);
+
+  const currentSetupCycleId = isActiveSetupCycle(current) ? current.id : "";
+  useEffect(() => {
+    if (!currentSetupCycleId) return undefined;
+    loadSetupStatus(currentSetupCycleId);
+    const refresh = () => loadSetupStatus(currentSetupCycleId);
+    window.addEventListener("appraisal:cycle-updated", refresh);
+    return () => window.removeEventListener("appraisal:cycle-updated", refresh);
+  }, [currentSetupCycleId, loadSetupStatus]);
+
+  // "Generate" on the Delegation step: the same one-time fill the Delegation
+  // screen runs (existing rows are kept). Eligibility's "Generate" opens the
+  // Eligibility screen instead, because its list is created by Apply
+  // Criteria, which needs HR's criteria and can run only once per cycle.
+  const generateDelegation = async (c) => {
+    if (setupBusy) return;
+    setSetupBusy("gen-dl");
+    try {
+      const response = await catalystFetch(catalystFunctionUrl("accessapi") + "delegation/fill", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ cycleId: c.id, replace: false }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.ok === false || payload.success === false) {
+        throw new Error(payload.error || payload.message || "The Delegation list could not be generated.");
+      }
+      await loadSetupStatus(c.id);
+      showBanner("Delegation generated", `${c.name}: open Delegation to review the assignments.`);
+    } catch (error) {
+      showBanner("Unable to generate Delegation", error?.message || "The request failed.", true);
+    } finally {
+      setSetupBusy("");
+    }
+  };
 
   // Pending items: use the prop when given, otherwise derive from cycleStats.
   const pendingList = (() => {
@@ -853,6 +924,8 @@ export function AppraisalCycleMasterPage({
 
   const checkAct = (id, c) => {
     if (id === "gen") return openConfirm("generate", c);
+    if (id === "gen-el") return navTo("go-el", c);
+    if (id === "gen-dl") return generateDelegation(c);
     navTo(id, c);
   };
 
@@ -862,6 +935,11 @@ export function AppraisalCycleMasterPage({
     const w = statsFor(c);
     const act = c.status === "Active" || c.status === "Closed" || c.archived;
     const closed = c.status === "Closed" || c.archived;
+    // Row counts for the Active cycle (undefined while checking, null when
+    // unknown). Closed/archived cycles always offer "Open".
+    const setup = isActiveSetupCycle(c) ? setupStatus[c.id] : { eligibility: null, delegation: null };
+    const elSetup = setup ? setup.eligibility : undefined;
+    const dlSetup = setup ? setup.delegation : undefined;
     const generatedResult = generatedByCycle[c.id];
     const gen = !!w?.sheetGenerated || !!generatedResult;
     const generatedRowCount = w?.sheetRows ?? generatedResult?.eligible;
@@ -923,23 +1001,41 @@ export function AppraisalCycleMasterPage({
         "Active",
         "el",
         "Eligibility",
-        act
-          ? w?.eligible != null
-            ? `${w.eligible} eligible of ${w.emCount} · New and Changed flagged`
-            : "Eligibility List runs when the cycle is activated"
-          : "Runs when the cycle is activated",
-        act ? "ok" : "lk",
-        act ? [{ l: "Open ›", id: "go-el" }] : [],
+        !act
+          ? "Runs when the cycle is activated"
+          : elSetup === undefined
+            ? "Checking the Eligibility List…"
+            : elSetup && !elSetup.generated
+              ? "Not generated · Generate opens the Eligibility List to apply the criteria"
+              : w?.eligible != null
+                ? `${w.eligible} eligible of ${w.emCount} · New and Changed flagged`
+                : elSetup
+                  ? `Generated · ${elSetup.total} employees on the Eligibility List`
+                  : "Eligibility List runs when the cycle is activated",
+        !act ? "lk" : elSetup === undefined ? "pd" : elSetup && !elSetup.generated ? "wn" : "ok",
+        !act || elSetup === undefined
+          ? []
+          : elSetup && !elSetup.generated
+            ? [{ l: "Generate", id: "gen-el" }]
+            : [{ l: "Open ›", id: "go-el" }],
       ),
       row(
         "Active",
         "dl",
         "Delegation",
-        act
-          ? "Default: Tech ED is the Comp Manager · Delegation changes it"
-          : "Available after Activate",
-        act ? "ok" : "lk",
-        act ? [{ l: "Open ›", id: "go-dl" }] : [],
+        !act
+          ? "Available after Activate"
+          : dlSetup === undefined
+            ? "Checking Delegation…"
+            : dlSetup === 0
+              ? "Not generated · Generate creates the Delegation list for this cycle"
+              : "Default: Tech ED is the Comp Manager · Delegation changes it",
+        !act ? "lk" : dlSetup === undefined ? "pd" : dlSetup === 0 ? "wn" : "ok",
+        !act || dlSetup === undefined
+          ? []
+          : dlSetup === 0
+            ? [{ l: setupBusy === "gen-dl" ? "Generating…" : "Generate", id: "gen-dl" }]
+            : [{ l: "Open ›", id: "go-dl" }],
       ),
       row(
         "Active",
@@ -1397,12 +1493,16 @@ export function AppraisalCycleMasterPage({
                   </span>
                   <span className="ac">
                     {r.acts
-                      .filter((a) => a.id === "gen" || canGo(a.id))
+                      .filter((a) =>
+                        a.id === "gen" || a.id === "gen-dl" ||
+                        // Eligibility's Generate opens the Eligibility screen.
+                        canGo(a.id === "gen-el" ? "go-el" : a.id))
                       .map((a) => (
                         <button
                           key={a.id}
                           type="button"
                           className={a.link ? "acx-btn link" : "acx-btn sm"}
+                          disabled={a.id === "gen-dl" && !!setupBusy}
                           onClick={() => a.id === "go-ap" ? navTo(a.id, c) : checkAct(a.id, c)}
                         >
                           {a.l}
