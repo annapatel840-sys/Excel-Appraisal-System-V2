@@ -95,7 +95,7 @@ export function DesignationMasterPage() {
   const [tab, setTab] = useState("des");
   const [filters, setFilters] = useState({ q: "", dept: "", status: "", unm: false });
   const [sel, setSel] = useState({ des: null, grp: null, band: null });
-  const [pages, setPages] = useState({ des: 1, grp: 1, band: 1 });
+  const [pages, setPages] = useState({ des: 1, grp: 1, band: 1, opt: 1 });
   const [adding, setAdding] = useState(false);
   const [addForm, setAddForm] = useState({ name: "", band: "", nt: "" });
   const [addErr, setAddErr] = useState("");
@@ -107,7 +107,8 @@ export function DesignationMasterPage() {
   const gridGrp = useGridState(META.grp);
   const gridBand = useGridState(META.band);
   const grids = { des: gridDes, grp: gridGrp, band: gridBand };
-  const grid = grids[tab];
+  // The Options tab has no grid; fall back so the hooks below never see undefined.
+  const grid = grids[tab] || gridDes;
 
   const [panel, updatePanel] = usePanel("dm");
   const undoStack = useRef([]);
@@ -1188,8 +1189,9 @@ const CSS = `
 .dmx-addbar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding:10px 14px;background:#DCEBFF;border-bottom:1px solid #B9D3F5;flex:none}
 .dmx-addbar label{display:flex;flex-direction:column;gap:3px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#1D4FA8}
 .dmx-err{color:#C0392B;font-weight:700;font-size:11.5px}
-// .dmx-msg{display:flex;gap:10px;align-items:center;margin:10px 14px 0;padding:9px 12px;border-radius:8px;background:#FEF3F2;border:1px solid #FDA29B;color:#B42318;font-weight:600;flex:none}
-// .dmx-msg span{flex:1}
+/* message bar */
+.dmx-msg{display:flex;gap:10px;align-items:center;margin:10px 14px 0;padding:9px 12px;border-radius:8px;background:#FEF3F2;border:1px solid #FDA29B;color:#B42318;font-weight:600;flex:none}
+.dmx-msg span{flex:1}
 
 /* Designation Master grid improvements */
 .dmx .emx-wrap {

@@ -3066,7 +3066,11 @@ export function AppraisalGrid({
       // New Title only on rows eligible for promotion.
       if (col.key === "newTitle") {
         const eligibleIds = rows
-          .filter((row) => row.eligibleForPromotion === "Yes")
+          .filter((row) => {
+            if (row.eligibleForPromotion !== "Yes") return false;
+            const rule = getNewTitleRule(row);
+            return rule.ok && rule.options.includes(value);
+          })
           .map((row) => row.id);
         const skipped = rows.length - eligibleIds.length;
 
@@ -3076,7 +3080,7 @@ export function AppraisalGrid({
 
         if (skipped) {
           window.alert(
-            `New Title was applied to ${eligibleIds.length} employee(s). ${skipped} skipped because they are not eligible for promotion.`,
+            `New Title was applied to ${eligibleIds.length} employee(s). ${skipped} skipped because they are not eligible for promotion or the title is not allowed for their designation in Designation Master.`,
           );
         }
 
@@ -3109,7 +3113,7 @@ export function AppraisalGrid({
         bulkUpdate(ids, "newTitle", "set", null);
       }
     },
-    [rows, bulkUpdate, updateHikePct, updateHikeAmount],
+    [rows, bulkUpdate, updateHikePct, updateHikeAmount, designationRules, designationRulesLoading, designationRulesError],
   );
 
   // ============================================================
@@ -3500,12 +3504,34 @@ export function AppraisalGrid({
                     ? defaultInstallment(row)
                     : "",
             )}
+            onMouseDown={(event) => {
+              // New Title: a designation that is not mapped in Designation
+              // Master gets the sheet's error popup instead of a dropdown.
+              if (col.key !== "newTitle") return;
+              const rule = getNewTitleRule(row);
+              if (!rule.ok) {
+                event.preventDefault();
+                event.currentTarget.blur();
+                window.alert(rule.message);
+              }
+            }}
             onFocus={() => {
               setActive(`${rowIndex}:${col.key}`);
               selectRowForEdit(row);
             }}
             onBlur={() => setActive(null)}
-            onKeyDown={(event) => onKeyDown(event, rowIndex, col.key)}
+            onKeyDown={(event) => {
+              if (
+                col.key === "newTitle" &&
+                (event.key === " " || event.key === "F4") &&
+                !getNewTitleRule(row).ok
+              ) {
+                event.preventDefault();
+                window.alert(getNewTitleRule(row).message);
+                return;
+              }
+              onKeyDown(event, rowIndex, col.key);
+            }}
             onDoubleClick={(event) =>
               handleEditableDoubleClick(event, rowIndex, col.key)
             }
@@ -3628,8 +3654,12 @@ export function AppraisalGrid({
 
             {(
               col.key === "newTitle"
-              ? getNewTitleRule(row).options
-              : col.options || []
+                ? (() => {
+                    const list = getNewTitleRule(row).options || [];
+                    const cur = String(row.newTitle || "");
+                    return cur && !list.includes(cur) ? [cur, ...list] : list;
+                  })()
+                : col.options || []
               ).map((option) => (
                <option key={option} value={option}>
              {option}
