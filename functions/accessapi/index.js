@@ -1632,7 +1632,9 @@ app.post(
     }
     function compMgrOf(empKey) {
       const raw = String(
-        (sheet[empKey] && sheet[empKey].comp_manager) || "",
+        (sheet[empKey] && sheet[empKey].comp_manager) ||
+          (em[empKey] && (em[empKey].row.director || em[empKey].row.comp_manager)) ||
+          "",
       ).trim();
       if (!raw) return "";
       const mm = raw.match(EMP_REF_RE);
