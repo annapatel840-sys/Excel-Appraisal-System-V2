@@ -711,7 +711,7 @@ export default function DelegationScreen({
     const done = [];
     try {
       for (const { r, value } of targets) {
-        if (compDirect("comp")) await applyCompDirect(r, value, why, no);
+        if (compDirect("comp")) await applyDirectChange(r, "comp", value, why);
         else
           await submitDelegationRequest({
             empId: r.id,
