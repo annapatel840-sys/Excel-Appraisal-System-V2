@@ -2742,6 +2742,84 @@ async function updateEmployee(req, res) {
 }
 
 /* ============================================================
+   TEMPORARY ADMIN-ONLY DATA FIX
+   Copy Employee_Master.appraiser_tech_ed -> Employee_Master.director.
+   Remove this endpoint after one successful run.
+   ============================================================ */
+
+app.post("/temporary-fill-director", async function (req, res) {
+  try {
+    const a = req.access;
+
+    // Only HR users with Employee Master edit permission may run this.
+    if (!isHRUser(a && a.user)) {
+      return sendJson(res, 403, {
+        success: false,
+        message: "Only HR can run this temporary data update.",
+      });
+    }
+    access.requireScreen(a, "employeeMaster", "edit");
+
+    // Explicit confirmation prevents an accidental bulk write.
+    if (
+      !req.body ||
+      req.body.confirm !== "COPY_APPRAISER_TECH_ED_TO_DIRECTOR"
+    ) {
+      return sendJson(res, 400, {
+        success: false,
+        message:
+          'Send JSON body {"confirm":"COPY_APPRAISER_TECH_ED_TO_DIRECTOR"} to confirm the one-time update.',
+      });
+    }
+
+    const adminApp = catalyst.initialize(req, { scope: "admin" });
+    const masterTable = adminApp.datastore().table(EMPLOYEE_MASTER_TABLE_ID);
+    const rows = await readAllDataStoreRows(masterTable);
+    let updated = 0;
+    let skippedEmptySource = 0;
+    let skippedAlreadySame = 0;
+
+    for (const row of rows) {
+      const rowId = String(row.ROWID || row.rowid || "").trim();
+      const techEd = String(row.appraiser_tech_ed || "").trim();
+      const director = String(row.director || "").trim();
+
+      if (!rowId) continue;
+      if (!techEd) {
+        skippedEmptySource += 1;
+        continue;
+      }
+      if (director === techEd) {
+        skippedAlreadySame += 1;
+        continue;
+      }
+
+      await masterTable.updateRow({
+        ROWID: rowId,
+        director: techEd,
+      });
+      updated += 1;
+    }
+
+    return sendJson(res, 200, {
+      success: true,
+      message: "Temporary Employee Master Director update completed.",
+      totalRows: rows.length,
+      updated,
+      skippedEmptySource,
+      skippedAlreadySame,
+    });
+  } catch (error) {
+    if (error instanceof access.HttpError) return sendAccessError(res, error);
+    console.error("TEMPORARY DIRECTOR UPDATE ERROR:", error);
+    return sendJson(res, 500, {
+      success: false,
+      message: error && error.message ? error.message : "Temporary update failed.",
+    });
+  }
+});
+
+/* ============================================================
    GET
    ============================================================ */
 
