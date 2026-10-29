@@ -843,15 +843,18 @@ async function loadRules(app, cycle) {
     }
 
     let names = [];
+    let listed = []; // every next designation HR chose, Active or not
     let anySet = true;
     if (type === "S") {
       const sid = refId(r.single_next_designation);
       anySet = !!sid;
       names = uniq([activeName(sid)]);
+      listed = uniq([byId.get(String(sid)) ? text(byId.get(String(sid)).name) : ""]);
     } else if (type === "M") {
       const ids = nextRows.filter((n) => refId(n.designation_id) === id).map((n) => refId(n.next_id));
       anySet = ids.length > 0;
       names = uniq(ids.map(activeName));
+      listed = uniq(ids.map((x) => (byId.get(String(x)) ? text(byId.get(String(x)).name) : "")));
     } else if (type === "G") {
       const gid = refId(r.group_id);
       const ids = gid
@@ -859,6 +862,7 @@ async function loadRules(app, cycle) {
         : [];
       anySet = !!gid && ids.length > 0;
       names = uniq(ids.map(activeName));
+      listed = uniq(ids.map((x) => (byId.get(String(x)) ? text(byId.get(String(x)).name) : "")));
     }
 
     if (type === "F") {
@@ -868,7 +872,7 @@ async function loadRules(app, cycle) {
     } else if (!anySet) {
       // keep the generic "not mapped" message
     } else if (!names.length) {
-      entry.message = `${name}: none of its next designations is Active. Ask HR to update Designation Master.`;
+      entry.message = `${name}: its next designation${listed.length === 1 ? " (" : "s ("}${listed.join(", ")}) ${listed.length === 1 ? "is" : "are"} Inactive. A designation can only be Active once it is mapped to a next type, so ask HR to map and activate ${listed.length === 1 ? "it" : "them"} in Designation Master.`;
     } else {
       entry.mapped = true;
       entry.options = names;
