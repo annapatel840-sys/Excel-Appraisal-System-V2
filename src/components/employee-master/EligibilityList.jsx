@@ -193,6 +193,9 @@ export function EligibilityList({
   onAddEmployee, // ({ empId, eligible: "Yes", eligibleReason }) => Promise   -> shows "+ Add employee"
   masterEmployees = [], // full Employee Master list, used by "+ Add employee" and the Statistics tab
   auditEntries, // optional: [{ title, meta, detail }]
+  criteriaApplied = false,
+  onGenerateDelegation,
+  delegationGenerated = false,
 }) {
   const fileInputRef = useRef(null);
   const menuRef = useRef(null);
@@ -392,6 +395,17 @@ export function EligibilityList({
             <strong>{pendingCount}</strong>
             <span>Pending</span>
           </div>
+          {canEdit && criteriaApplied && (
+            <button
+              type="button"
+              className="em-btn em-btn-primary"
+              style={{ marginLeft: 12, whiteSpace: "nowrap", alignSelf: "center" }}
+              disabled={delegationGenerated}
+              onClick={onGenerateDelegation}
+            >
+              {delegationGenerated ? "Delegation Generated" : "Generate Delegation"}
+            </button>
+          )}
         </div>
 
         <div className="em-eligibility-actions">
