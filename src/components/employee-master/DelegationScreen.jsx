@@ -29,16 +29,15 @@ const PAGE = 50;
 const MIN_COL = 70;
 const MAX_COL = 520;
 const COLS = [
-  { key: "id", label: "EMPLOYEE ID", w: 140, cls: "ref" },
-  { key: "name", label: "EMPLOYEE NAME", w: 190, cls: "nm" },
-  { key: "rm", label: "REPORTING MANAGER", w: 220 },
-  { key: "director", label: "DIRECTOR", w: 190 },
-  { key: "te", label: "TECH-ED", w: 230 },
-  { key: "comp", label: "COMP. MANAGER", w: 240, edit: true },
-  { key: "app", label: "APPRAISER TECH-ED", w: 240, edit: true },
-  { key: "prevComp", label: "PREV. COMP. MANAGER", w: 220, cls: "ref" },
-  { key: "prevApp", label: "PREV. APPRAISER TECH-ED", w: 250, cls: "ref" },
-  { key: "status", label: "STATUS", w: 210 },
+  { key: "id", label: "Employee ID", w: 140, cls: "ref" },
+  { key: "name", label: "Employee Name", w: 190, cls: "nm" },
+  { key: "rm", label: "Reporting Manager", w: 220 },
+  { key: "director", label: "Director", w: 190 },
+  { key: "te", label: "Tech-Ed", w: 230 },
+  { key: "comp", label: "Comp. Manager", w: 240, edit: true },
+  { key: "app", label: "Appraiser Tech-Ed", w: 240, edit: true },
+  { key: "prevComp", label: "Prev. Comp. Manager", w: 220, cls: "ref" },
+  { key: "prevApp", label: "Prev. Appraiser Tech-Ed", w: 250, cls: "ref" },
 ];
 const SELECT_W = 40;
 /* Default Comp. Manager: copy this value from each employee's own row */
@@ -530,6 +529,13 @@ export default function DelegationScreen({
     setPage(1);
   };
   const filtersActive = Object.keys(colFilters).length > 0;
+  // Employee ID and Employee Name stay fixed on the left while scrolling.
+  const fzLeft = (key) =>
+    key === "id"
+      ? SELECT_W
+      : key === "name"
+        ? SELECT_W + (colWidths.id ?? 140)
+        : undefined;
 
   /* drag a header edge to resize a column (same behaviour as the Appraisal Sheet) */
   const startColResize = useCallback(
@@ -709,6 +715,17 @@ export default function DelegationScreen({
     const why = `Default Comp. Manager: ${source.label}`;
     const no = refNo("DC");
     const done = [];
+    let failed = false;
+    // HR: show the new Comp Manager in the grid straight away, then save.
+    if (compDirect("comp")) {
+      setRows((rs) =>
+        targets.reduce(
+          (acc, { r, value }) =>
+            applyTo(acc, r.id, "comp", value, "HR Admin", why, user.name),
+          rs,
+        ),
+      );
+    }
     try {
       for (const { r, value } of targets) {
         if (compDirect("comp")) await applyDirectChange(r, "comp", value, why);
@@ -726,17 +743,15 @@ export default function DelegationScreen({
         done.push({ r, value });
       }
     } catch (error) {
+      failed = true;
       say(error?.message || "Unable to set the default Comp. Manager.", true);
     }
+    if (failed && compDirect("comp")) {
+      // Something did not save: reload so the grid shows what is really stored.
+      await loadRoster();
+    }
     if (done.length && compDirect("comp")) {
-      await refreshEmployees().catch(() => {});
-      setRows((rs) =>
-        done.reduce(
-          (acc, { r, value }) =>
-            applyTo(acc, r.id, "comp", value, "HR Admin", why, user.name),
-          rs,
-        ),
-      );
+      refreshEmployees().catch(() => {});
       log({
         action: "Changed",
         field: FIELDS.comp,
@@ -753,33 +768,31 @@ export default function DelegationScreen({
   const applyDefaultComp = (sourceKey) => {
     const source = DEFAULT_COMP_SOURCES.find((o) => o.key === sourceKey);
     if (!source) return;
+    saveDefaultComp(sourceKey);
     if (!rows.length) {
-      saveDefaultComp(sourceKey);
       return say(
         `Default Comp. Manager set to ${source.label}. It is applied when the delegation data is generated.`,
       );
     }
-    const base = selIds.length ? scoped.filter((r) => sel[r.id]) : list;
+    // Selected employees if any are ticked, otherwise every employee.
+    const base = selIds.length ? scoped.filter((r) => sel[r.id]) : scoped;
     const targets = defaultTargets(base, sourceKey, resolveName);
-    const skipped = base.length - targets.length;
     if (!targets.length) {
-      saveDefaultComp(sourceKey);
       return say(
         `Default Comp. Manager set to ${source.label}. No employees to change (empty or already the Comp. Manager).`,
       );
     }
+    if (compDirect("comp")) {
+      // HR: no approval needed, so it updates the grid automatically.
+      executeDefaultComp(targets, source);
+      setSel({});
+      return;
+    }
     setModal({
       type: "confirm",
       title: "Default Comp. Manager",
-      body:
-        `Set Comp. Manager to the ${source.label} for ${targets.length} employee(s)` +
-        (selIds.length ? " (selected)" : " (as shown in the grid)") +
-        (skipped ? `. ${skipped} skipped (empty or unchanged)` : "") +
-        (compDirect("comp")
-          ? ". Applied immediately; no approval needed."
-          : ". One request per employee will be sent to HR for approval."),
+      body: `Set Comp. Manager to the ${source.label} for ${targets.length} employee(s). One request per employee will be sent to HR for approval.`,
       ok: () => {
-        saveDefaultComp(sourceKey);
         executeDefaultComp(targets, source);
         setSel({});
       },
@@ -824,7 +837,7 @@ export default function DelegationScreen({
       return say("No employees to change (already assigned).", true);
     setModal({
       type: "confirm",
-      title: "Bulk assign",
+      title: "Bulk Assign",
       body: compDirect(field)
         ? `${FIELDS[field]} → ${nameOf(person)} for ${t.length} employee(s). Applied immediately; no approval needed.`
         : `${FIELDS[field]} → ${nameOf(person)} for ${t.length} employee(s). One request per employee will be sent to HR for approval.`,
@@ -1102,7 +1115,6 @@ export default function DelegationScreen({
       "Appraiser Tech-Ed",
       "Prev. Comp. Manager",
       "Prev. Appraiser Tech-Ed",
-      "Status",
     ];
     const chosen = list.filter((r) => sel[r.id]);
     const exportRows =
@@ -1117,7 +1129,6 @@ export default function DelegationScreen({
       nameOf(r.app),
       nameOf(r.prevComp),
       nameOf(r.prevApp),
-      statusOf(r),
     ]);
     const url = URL.createObjectURL(
       new Blob(
@@ -1248,10 +1259,10 @@ export default function DelegationScreen({
           </div>
           <div className="dg-stats">
             {[
-              ["Total employees", scoped.length, "#1f2a37", null],
-              ["Employee Without Comp. Manager", withoutComp, "#94620a", null],
+              ["Total Employees", scoped.length, "#1f2a37", null],
+              ["Employee without Comp. Manager", withoutComp, "#94620a", null],
               [
-                isHR ? "Pending HR approval" : "My pending requests",
+                isHR ? "Pending HR Approval" : "My Pending Requests",
                 pending.length,
                 "#b42318",
                 () => setReqOpen(true),
@@ -1302,7 +1313,7 @@ export default function DelegationScreen({
               className="btn"
               onClick={() => setModal({ type: "bulk" })}
             >
-              Bulk assign ({selIds.length})
+              Bulk Assign ({selIds.length})
             </button>
             {isHR && (
               <button
@@ -1345,19 +1356,21 @@ export default function DelegationScreen({
                 </colgroup>
                 <thead>
                   <tr className="grp">
-                    <th className="g g1" colSpan={6}>
-                      <span>FROM EMPLOYEE MASTER · READ-ONLY</span>
+                    <th className="g g1 fz" colSpan={3} style={{ left: 0 }}>
+                      <span>From Employee Master · Read-Only</span>
+                    </th>
+                    <th className="g g1" colSpan={3}>
+                      <span>&nbsp;</span>
                     </th>
                     <th className="g g2" colSpan={2}>
-                      <span>THIS CYCLE · EDITABLE</span>
+                      <span>This Cycle · Editable</span>
                     </th>
                     <th className="g g3" colSpan={2}>
-                      <span>PREVIOUS CYCLE · REFERENCE</span>
+                      <span>Previous Cycle · Reference</span>
                     </th>
-                    <th className="g" />
                   </tr>
                   <tr className="hd">
-                    <th className="sel">
+                    <th className="sel fz" style={{ left: 0 }}>
                       <input
                         type="checkbox"
                         checked={allSel}
@@ -1370,7 +1383,15 @@ export default function DelegationScreen({
                       />
                     </th>
                     {COLS.map((c) => (
-                      <th key={c.key}>
+                      <th
+                        key={c.key}
+                        className={fzLeft(c.key) !== undefined ? "fz" : ""}
+                        style={
+                          fzLeft(c.key) !== undefined
+                            ? { left: fzLeft(c.key) }
+                            : undefined
+                        }
+                      >
                         <div className="hc">
                           <span className="hl" title={c.label}>
                             {c.label}
@@ -1409,7 +1430,7 @@ export default function DelegationScreen({
                     const st = statusOf(r);
                     return (
                       <tr key={r.id} className={sel[r.id] ? "sel" : ""}>
-                        <td className="sel">
+                        <td className="sel fz" style={{ left: 0 }}>
                           <input
                             type="checkbox"
                             checked={!!sel[r.id]}
@@ -1470,7 +1491,15 @@ export default function DelegationScreen({
                           return (
                             <td
                               key={c.key}
-                              className={c.cls || ""}
+                              className={
+                                (c.cls || "") +
+                                (fzLeft(c.key) !== undefined ? " fz" : "")
+                              }
+                              style={
+                                fzLeft(c.key) !== undefined
+                                  ? { left: fzLeft(c.key) }
+                                  : undefined
+                              }
                               title={text}
                             >
                               {text}
@@ -1716,7 +1745,7 @@ export default function DelegationScreen({
       {/* ------------------------------ modals */}
       {modal?.type === "bulk" && (
         <Modal
-          title="Bulk assign"
+          title="Bulk Assign"
           onClose={() => setModal(null)}
           foot={
             <>
@@ -1970,8 +1999,8 @@ const CSS = `
 .dg-ch{position:relative;background:#15365a;color:#fff;text-align:center;font-weight:800;font-size:15.5px;padding:10px}
 .dg .dg-dflt{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#15365a;white-space:nowrap}
 .dg-menu{position:absolute;right:10px;top:50%;transform:translateY(-50%)}
-.dg .dg-menubtn{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer}
-.dg .dg-menubtn:hover{background:rgba(255,255,255,.22)}
+.dg .dg-menubtn{background:#eef2f8;color:#15365a;border:1px solid #fff;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:800;cursor:pointer}
+.dg .dg-menubtn:hover{background:#fff}
 .dg-menulist{position:absolute;right:0;top:calc(100% + 6px);min-width:150px;background:#fff;border:1px solid #E5E7EB;border-radius:8px;box-shadow:0 6px 20px rgba(15,42,68,.18);padding:4px;z-index:30;text-align:left}
 .dg .dg-menulist button{display:block;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:8px 10px;font-size:12.5px;font-weight:600;color:#102A43;cursor:pointer}
 .dg .dg-menulist button:hover{background:#eef2f8}
@@ -1997,6 +2026,11 @@ const CSS = `
 .dg .dg-grid th.sel,.dg .dg-grid td.sel{text-align:center;padding:0}
 .dg .dg-grid .hc{display:flex;align-items:center;gap:4px;height:100%;padding:0 8px;min-height:46px}
 .dg .dg-grid .hc>button{flex:0 0 auto}
+.dg .dg-grid th.fz{position:sticky;z-index:6}
+.dg .dg-grid tr.grp th.fz{z-index:7}
+.dg .dg-grid td.fz{position:sticky;z-index:2;background:#fff}
+.dg .dg-grid tr.sel td.fz{background:#f7fbfa}
+.dg .dg-grid th:nth-child(3).fz,.dg .dg-grid td:nth-child(3).fz{border-right:2px solid #94a3b8}
 .dg .dg-grid .hl{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dg .dg-grid .rz{position:absolute;top:0;right:-2px;height:100%;width:5px;cursor:col-resize;touch-action:none;z-index:10}
 .dg .dg-grid .rz:hover{background:rgba(23,54,93,.3)}
