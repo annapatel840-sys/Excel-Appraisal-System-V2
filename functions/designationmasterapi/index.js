@@ -266,15 +266,36 @@ async function syncFromEmployeeMaster(app, cycle) {
   return new Set(pairs.keys());
 }
 
-async function loadData(app, cycle, { sync = true } = {}) {
-  try {
-    await app.zcql().executeZCQLQuery(`SELECT group_id FROM ${TBL.designations} LIMIT 1`);
-  } catch (e) {
-    throw fail(
-      500,
-      "Catalyst table Designation has no group_id column. Add a foreign-key column group_id pointing to Designation_Groups.",
-    );
+/* Checks every table this function needs and reports the REAL Catalyst error
+   for each one that fails (missing table, missing column, wrong environment,
+   no permission), instead of guessing. */
+async function checkSchema(app) {
+  const probes = [
+    [TBL.designations, "ROWID, cycle_id, name, department, band, next_type, single_next_designation, group_id, status"],
+    [TBL.next, "ROWID, designation_id, next_id"],
+    [TBL.groups, "ROWID, cycle_id, group_name"],
+    [TBL.members, "ROWID, group_id, des_id"],
+    [TBL.config, "ROWID, type, status"],
+    [TBL.cycles, "ROWID, cycle_name, status, archived"],
+    [TBL.employees, "ROWID, designation, department"],
+    [TBL.audit, "ROWID, emp_id, employee_name, field_name, old_value, new_value, changed_by, changed_at, source, batch_id, appraisal_year, details"],
+  ];
+  const problems = [];
+  for (const [table, cols] of probes) {
+    try {
+      await app.zcql().executeZCQLQuery(`SELECT ${cols} FROM ${table} LIMIT 1`);
+    } catch (e) {
+      problems.push(`${table}: ${clip((e && e.message) || e, 160)}`);
+    }
   }
+  if (problems.length) {
+    console.error("designationmasterapi schema check:", problems.join(" | "));
+    throw fail(500, `Designation Master tables are not ready. ${problems.join(" | ")}`);
+  }
+}
+
+async function loadData(app, cycle, { sync = true } = {}) {
+  await checkSchema(app);
 
   const masterNames = sync
     ? await syncFromEmployeeMaster(app, cycle)
