@@ -1518,10 +1518,11 @@ app.post(
     const cyc = await selectAll(zcql, c.table, c.idColumn + " = " + cycleId);
     if (!cyc.length) throw new HttpError(404, "Cycle not found.");
 
-    const [emRows, sheetRows, existing] = await Promise.all([
+    const [emRows, sheetRows, existing, eligibilityRows] = await Promise.all([
       selectAll(zcql, e.table),
       selectAll(zcql, s.table),
       selectAll(zcql, d.table, d.cycleColumn + " = '" + q(cycleId) + "'"),
+      selectAll(zcql, "Eligibility_List", "appraisal_cycle_id = '" + q(cycleId) + "'"),
     ]);
     // Employee_Master indexes
     const em = {},
@@ -1576,9 +1577,19 @@ app.post(
       return "";
     }
 
-    const keys = Array.from(
-      new Set(Object.keys(em).concat(Object.keys(sheet))),
+    // Delegation must be generated only from the active cycle's explicit
+    // Eligibility_List decisions. Ignore inactive employees and any employee
+    // without an Eligible decision; do not fall back to the full master roster.
+    const eligibleIds = new Set(
+      eligibilityRows
+        .filter((row) =>
+          String(row.eligibility_status || row.eligible_status || "").trim().toLowerCase() === "eligible"
+        )
+        .map((row) => String(row.emp_id || "").trim().toLowerCase())
+        .filter((id) => id && em[id] &&
+          String(em[id].row[e.status] || "Active").trim().toLowerCase() === "active")
     );
+    const keys = Array.from(eligibleIds);
     // Delegation.emp_id is a lookup to Employee_Master and is stored as
     // the Employee_Master ROWID, while the fill keys above are employee IDs
     // such as EMP001. Index existing rows by the canonical employee ID so
@@ -1651,6 +1662,7 @@ app.post(
         [d.empId]: employeeMasterRowId,
         [d.compManagerId]: cm,
         [d.appraiserTechEdId]: t,
+        director: String((em[k] && (em[k].row.director || em[k].row.comp_manager)) || "").trim(),
         previous_comp_manager: "",
         previous_appraiser_tech_ed: "",
         status: "Active",
