@@ -214,8 +214,8 @@ export function EligibilityCriteria({
         {criteriaApplied && (
           <button
             type="button"
-            className="em-btn"
-            style={{ flex: "1 1 170px", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+            className="em-btn em-btn-primary em-apply-btn"
+            style={{ flex: "1 1 150px", width: "auto", marginTop: 0 }}
             disabled={readOnly}
             onClick={onEditRegenerate}
           >
