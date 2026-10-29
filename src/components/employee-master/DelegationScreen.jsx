@@ -764,9 +764,15 @@ export default function DelegationScreen({
         say(`${ids.size} request(s) approved.`);
       },
     });
-  const lock = () => {
+  const lock = async () => {
     if (isHR) {
-      say("HR changes are saved when you confirm each assignment. No delegation lock is applied.");
+      try {
+        await loadRoster();
+        await refreshEmployees();
+        say("Delegation refreshed. All confirmed HR assignment changes are saved; no lock is applied.");
+      } catch (error) {
+        say(error?.message || "Unable to refresh saved delegation.", true);
+      }
       return;
     }
     say("Tech-Ed changes are saved only after HR approves the request.");
