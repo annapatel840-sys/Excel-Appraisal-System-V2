@@ -15,8 +15,9 @@
                                 chunkIndex, chunkCount }       import a chunk
      POST ?resource=undo      { batchId }                       undo an import
 
-   type: "payroll"  -> Payroll_Data
-         "feedback" -> Feedback_And_Rating
+   type: "payroll"    -> Payroll_Data
+         "feedback"   -> Feedback_And_Rating
+         "delegation" -> Delegation (Comp Manager / Appraiser Tech ED of that cycle)
    A row that already exists for the same employee and cycle is replaced.
    Employees missing from Employee Master are added there as Inactive.
    Undo restores replaced rows and removes inserted rows; employees added
@@ -30,6 +31,7 @@ const TABLES = {
   employeeMaster: "74008000000035727",
   payroll: "74008000000035326",
   feedback: "74008000000022041",
+  delegation: "74008000000036124",
   cycles: "74008000000034190",
   audit: "74008000000034940",
 };
@@ -79,6 +81,20 @@ const FILE_TYPES = {
       { key: "pbMonth", label: "Month(PB)", column: "month_pb", kind: "text", aliases: ["Month (PB)"] },
       { key: "tbPaid", label: "TB to be paid", column: "tb_to_be_paid", kind: "number" },
       { key: "tbMonth", label: "Month(TB)", column: "month_tb", kind: "text", aliases: ["Month (TB)"] },
+    ],
+  },
+  delegation: {
+    label: "Delegation",
+    table: "delegation",
+    empColumn: "emp_id",
+    cycleColumn: "cycle_id",
+    fields: [
+      { key: "empId", label: "Employee ID", required: true },
+      { key: "empName", label: "Employee Name", kind: "master" },
+      { key: "compManager", label: "Comp Manager", column: "comp_manager", kind: "text", aliases: ["Comp. Manager", "Comp Manager ID"] },
+      { key: "techEd", label: "Appraiser Tech ED", column: "appraiser_tech_ed", kind: "text", aliases: ["Tech ED", "Appraiser / Tech ED", "Tech-ED"] },
+      { key: "previousCompManager", label: "Previous Comp Manager", column: "previous_comp_manager", kind: "text" },
+      { key: "previousTechEd", label: "Previous Appraiser Tech ED", column: "previous_appraiser_tech_ed", kind: "text", aliases: ["Previous Tech ED"] },
     ],
   },
   feedback: {
@@ -245,7 +261,7 @@ async function findPastCycle(tables, cycleId) {
 
 function fileType(type) {
   const def = FILE_TYPES[String(type || "")];
-  if (!def) throw new ApiError('Type must be "payroll" or "feedback".');
+  if (!def) throw new ApiError('Type must be "payroll", "feedback" or "delegation".');
   return def;
 }
 
@@ -525,6 +541,10 @@ async function commitChunk(tables, body, actor) {
     (def.empLookupColumns || [def.empColumn]).forEach((column) => { values[column] = masterId; });
     values[def.cycleColumn] = cycle.id;
     if (def.batchColumn) values[def.batchColumn] = batchId;
+    if (def.table === "delegation") {
+      values.updated_by = String(actor || "").slice(0, 50);
+      values.updated_at = new Date().toISOString();
+    }
     if (def.table === "feedback" && cycle.effective && parseDate(cycle.effective)) {
       values.Effective_Date = parseDate(cycle.effective);
     }

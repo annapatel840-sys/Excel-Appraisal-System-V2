@@ -15,7 +15,12 @@ const PAGE = 20;
 const TYPE_INFO = {
   payroll: { icon: "₹", note: "Saved to Payroll Data" },
   feedback: { icon: "★", note: "Saved to Review and Feedback" },
+  delegation: { icon: "⇧", note: "Saved to Delegation" },
 };
+
+// Always show the Delegation card. It becomes fully usable once the import
+// service returns a "delegation" file type in its schema.
+const DELEGATION_CARD = { label: "Upload Previous Delegation", fields: [] };
 
 const headerKey = (value) =>
   String(value || "").trim().toLowerCase().replace(/[^a-z0-9%]+/g, "");
@@ -82,9 +87,22 @@ export function HistoricalImportPage() {
     return () => window.removeEventListener("appraisal:cycle-updated", refresh);
   }, [loadAll]);
 
+  const typeDefs = useMemo(() => {
+    const defs = { ...(schema?.types || {}) };
+    if (!defs.delegation) {
+      defs.delegation = DELEGATION_CARD;
+    } else {
+      defs.delegation = {
+        ...defs.delegation,
+        label: "Upload Previous Delegation",
+      };
+    }
+    return defs;
+  }, [schema]);
+
   const fields = useMemo(
-    () => schema?.types?.[type]?.fields || [],
-    [schema, type],
+    () => typeDefs[type]?.fields || [],
+    [typeDefs, type],
   );
   const cycle = cycles.find((c) => c.id === cycleId) || null;
 
@@ -355,7 +373,7 @@ export function HistoricalImportPage() {
       <section className="hi-card">
         <div className="hi-step"><span className="hi-num">2</span>What are you importing?</div>
         <div className="hi-types">
-          {Object.entries(schema?.types || {}).map(([key, def]) => (
+          {Object.entries(typeDefs).map(([key, def]) => (
             <button
               type="button"
               key={key}
@@ -372,7 +390,9 @@ export function HistoricalImportPage() {
           ))}
         </div>
         <div className="hi-hint">
-          Columns: {fields.map((f) => f.label).join(", ")}. A row that already exists for the same employee and cycle is replaced.
+          {fields.length
+            ? `Columns: ${fields.map((f) => f.label).join(", ")}. A row that already exists for the same employee and cycle is replaced.`
+            : "Delegation import is not enabled on the import service yet."}
         </div>
       </section>
 
@@ -382,7 +402,7 @@ export function HistoricalImportPage() {
           <input
             type="file"
             accept=".xlsx,.xls,.csv"
-            disabled={!!busy}
+            disabled={!!busy || !fields.length}
             onChange={(e) => { readFile(e.target.files?.[0]); e.target.value = ""; }}
           />
           {file ? `${file.name} · ${file.rows.length} row(s)` : "Choose an .xlsx or .csv file"}

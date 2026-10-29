@@ -988,19 +988,6 @@ export default function DelegationScreen({
                 Refresh from master
               </button>
             )}
-            {isHR && (
-              <button
-                className="btn"
-                disabled={editLocked}
-                onClick={() =>
-                  onUpload
-                    ? onUpload()
-                    : say("Connect onUpload to your upload flow.")
-                }
-              >
-                ⇧ Upload previous cycle
-              </button>
-            )}
             <button
               className="btn"
               onClick={() =>
