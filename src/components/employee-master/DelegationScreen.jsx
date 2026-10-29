@@ -358,12 +358,6 @@ export default function DelegationScreen({
         lastRole: item.lastRole,
       }));
       setRows(normalizedRoster);
-      if (delegationSaveError) {
-        say(
-          "Roster loaded, but saving Delegation failed: " + delegationSaveError,
-          true,
-        );
-      }
     } catch (error) {
       setRows([]);
       say(error?.message || "Unable to load appraisal employees.", true);
@@ -1048,7 +1042,7 @@ export default function DelegationScreen({
                 }
                 onClick={lock}
               >
-                Save &amp; lock delegation
+                Save
               </button>
             )}
           </div>
