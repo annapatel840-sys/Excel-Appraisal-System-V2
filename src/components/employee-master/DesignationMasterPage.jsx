@@ -992,7 +992,6 @@ export function DesignationMasterPage() {
             </>
           )}
           <span style={{ flex: 1 }} />
-          <span className="dmx-stat">Cycle <b>{draft.cycle?.name || "—"}</b></span>
           <span className="dmx-stat">Designations <b>{draft.designations.length}</b></span>
           <span className="dmx-stat">Groups <b>{draft.groups.length}</b></span>
           <span className="dmx-stat">Inactive <b>{draft.designations.filter((d) => d.status !== "Active").length}</b></span>
