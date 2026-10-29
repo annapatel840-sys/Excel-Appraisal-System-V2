@@ -622,17 +622,21 @@ export default function DelegationScreen({
 
   const saveChange = async () => {
     const { row, field, person } = modal;
-    if (!reason.trim()) return say("Reason is mandatory.", true);
+    // Reason is optional for Comp Manager (the server needs some text, so a
+    // default is stored when it is left empty); still mandatory for Appraiser Tech Ed.
+    const whyText =
+      reason.trim() || (field === "comp" ? "Comp Manager change" : "");
+    if (!whyText) return say("Reason is mandatory.", true);
     if (compDirect(field)) {
       try {
-        await applyCompDirect(row, person.id, reason.trim());
+        await applyCompDirect(row, person.id, whyText);
       } catch (error) {
         await loadRequests().catch(() => {});
         return say(error?.message || "Unable to update Comp Manager.", true);
       }
       await refreshEmployees().catch(() => {});
       setRows((rs) =>
-        applyTo(rs, row.id, "comp", person.id, "HR Admin", reason.trim(), user.name),
+        applyTo(rs, row.id, "comp", person.id, "HR Admin", whyText, user.name),
       );
       await loadRequests().catch(() => {});
       log({
@@ -641,7 +645,7 @@ export default function DelegationScreen({
         from: nameOf(row.comp),
         to: person.name,
         action: "Changed",
-        why: reason,
+        why: whyText,
       });
       say("Comp Manager updated for " + row.id + ".");
       setModal(null);
@@ -654,7 +658,7 @@ export default function DelegationScreen({
         field,
         oldId: row[field],
         newId: person.id,
-        reason: reason.trim(),
+        reason: whyText,
         byName: user.name,
       });
       await loadRequests();
@@ -664,7 +668,7 @@ export default function DelegationScreen({
         from: nameOf(row[field]),
         to: person.name,
         action: "Requested",
-        why: reason,
+        why: whyText,
       });
       say(`Request ${request?.id || "submitted"} sent to HR for approval.`);
     } catch (error) {
@@ -753,9 +757,12 @@ export default function DelegationScreen({
   };
 
   const doBulk = () => {
-    const { field, scope, person, reason: why } = bulk;
+    const { field, scope, person } = bulk;
+    let why = bulk.reason;
     if (!person) return say("Choose who to assign.", true);
-    if (!why.trim()) return say("Reason is mandatory.", true);
+    if (field !== "comp" && !why.trim())
+      return say("Reason is mandatory.", true);
+    why = why.trim() || "Comp Manager change";
     let t =
       scope === "sel"
         ? scoped.filter((r) => sel[r.id])
@@ -1223,20 +1230,24 @@ export default function DelegationScreen({
 
           <div className="dg-tb">
             <span style={{ flex: 1 }} />
-            <select
-              className="f"
-              aria-label="Default Comp Manager"
-              disabled={editLocked || !rows.length}
-              value=""
-              onChange={(e) => e.target.value && applyDefaultComp(e.target.value)}
-            >
-              <option value="">Default Comp Manager…</option>
-              {DEFAULT_COMP_SOURCES.map((o) => (
-                <option key={o.key} value={o.key}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <label className="dg-dflt">
+              <span>Default Comp Manager</span>
+              <select
+                className="f"
+                disabled={editLocked || !rows.length}
+                value=""
+                onChange={(e) =>
+                  e.target.value && applyDefaultComp(e.target.value)
+                }
+              >
+                <option value="">Select</option>
+                {DEFAULT_COMP_SOURCES.map((o) => (
+                  <option key={o.key} value={o.key}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               className="btn"
               onClick={() => setModal({ type: "bulk" })}
@@ -1722,7 +1733,7 @@ export default function DelegationScreen({
               </option>
             ))}
           </select>
-          <div className="lb">Reason (mandatory)</div>
+          <div className="lb">Reason {modal.field === "comp" ? "(optional)" : "(mandatory)"}</div>
           <input
             className="fld"
             disabled={editLocked}
@@ -1760,7 +1771,7 @@ export default function DelegationScreen({
             {FIELDS[modal.field]}: {nameOf(modal.row[modal.field]) || "—"}{" "}
             <span className="ar">→ {modal.person.name}</span>
           </div>
-          <div className="lb">Reason (mandatory)</div>
+          <div className="lb">Reason {bulk.field === "comp" ? "(optional)" : "(mandatory)"}</div>
           <textarea
             className="fld"
             autoFocus
@@ -1893,6 +1904,7 @@ const CSS = `
 .dg-card{background:#fff;border:1px solid #dfe4ea;border-radius:10px;overflow:hidden}
 .dg-main{flex:1;min-width:0}
 .dg-ch{position:relative;background:#15365a;color:#fff;text-align:center;font-weight:800;font-size:15.5px;padding:10px}
+.dg .dg-dflt{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#15365a;white-space:nowrap}
 .dg-menu{position:absolute;right:10px;top:50%;transform:translateY(-50%)}
 .dg .dg-menubtn{background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.35);border-radius:6px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer}
 .dg .dg-menubtn:hover{background:rgba(255,255,255,.22)}
@@ -1944,7 +1956,7 @@ const CSS = `
 .dg-rail{display:flex;flex-direction:column;justify-content:center;align-items:stretch;min-height:160px}
 .dg-ptab{writing-mode:vertical-rl;background:#173b63;color:#fff;border:0;border-radius:8px;padding:14px 7px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
 .dg-ptab:hover{background:#0c2740}
-.dg-panel{width:330px;border:1px solid #E5E7EB;border-radius:12px;background:#fff;overflow:hidden;display:flex;flex-direction:column;align-self:flex-start}
+.dg-panel{width:280px;border:1px solid #E5E7EB;border-radius:12px;background:#fff;overflow:hidden;display:flex;flex-direction:column;align-self:flex-start}
 .dg-panel .ph{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:10px 12px;color:#102A43}
 .dg-panel .ph .tt{font-weight:800;font-size:14.5px}.dg-panel .ph .ss{font-size:11.5px;color:#6B7280;margin-top:2px}
 .dg-panel .ph .x{border:none;background:none;cursor:pointer;font-size:14px;color:#6B7280;padding:2px 4px}
