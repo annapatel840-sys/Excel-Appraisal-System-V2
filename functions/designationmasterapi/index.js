@@ -13,6 +13,8 @@
                               not, and the options its New title dropdown must show).
                               Needs view access on appraisalSheet / detailScreen /
                               employeeMaster, not HR-only.
+   GET  /?view=summary     -> { success, data }  { designations, active, notMapped } for the
+                              HR dashboard "Designations not mapped" tile (HR only)
    POST /                  -> { success, data }  saves the whole screen (HR only)
 
    Catalyst tables (looked up by NAME, so no table IDs to paste):
@@ -29,6 +31,9 @@
 const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
 
+// The Designations table is called "Designations" in some environments and
+// "Designation" in others; the first one that exists is used (resolved once).
+const DESIGNATION_TABLE_NAMES = ["Designations", "Designation"];
 const TBL = {
   designations: "Designations",
   next: "Designation_Next",
@@ -269,7 +274,25 @@ async function syncFromEmployeeMaster(app, cycle) {
 /* Checks every table this function needs and reports the REAL Catalyst error
    for each one that fails (missing table, missing column, wrong environment,
    no permission), instead of guessing. */
+let designationsResolved = false;
+async function resolveDesignationsTable(app) {
+  if (designationsResolved) return;
+  for (const name of DESIGNATION_TABLE_NAMES) {
+    try {
+      await app.zcql().executeZCQLQuery(`SELECT ROWID FROM ${name} LIMIT 1`);
+      TBL.designations = name;
+      designationsResolved = true;
+      return;
+    } catch (e) {
+      /* try the next name */
+    }
+  }
+}
+
+let schemaOkUntil = 0;
 async function checkSchema(app) {
+  if (Date.now() < schemaOkUntil) return;
+  await resolveDesignationsTable(app);
   const probes = [
     [TBL.designations, "ROWID, cycle_id, name, department, band, next_type, single_next_designation, group_id, status"],
     [TBL.next, "ROWID, designation_id, next_id"],
@@ -281,20 +304,23 @@ async function checkSchema(app) {
     [TBL.audit, "ROWID, emp_id, employee_name, field_name, old_value, new_value, changed_by, changed_at, source, batch_id, appraisal_year, details"],
   ];
   const problems = [];
-  for (const [table, cols] of probes) {
-    try {
-      await app.zcql().executeZCQLQuery(`SELECT ${cols} FROM ${table} LIMIT 1`);
-    } catch (e) {
-      problems.push(`${table}: ${clip((e && e.message) || e, 160)}`);
-    }
-  }
+  await Promise.all(
+    probes.map(async ([table, cols]) => {
+      try {
+        await app.zcql().executeZCQLQuery(`SELECT ${cols} FROM ${table} LIMIT 1`);
+      } catch (e) {
+        problems.push(`${table}: ${clip((e && e.message) || e, 160)}`);
+      }
+    }),
+  );
+  if (!problems.length) schemaOkUntil = Date.now() + 5 * 60 * 1000;
   if (problems.length) {
     console.error("designationmasterapi schema check:", problems.join(" | "));
     throw fail(500, `Designation Master tables are not ready. ${problems.join(" | ")}`);
   }
 }
 
-async function loadData(app, cycle, { sync = true } = {}) {
+async function loadData(app, cycle, { sync = true, withAudit = true } = {}) {
   await checkSchema(app);
 
   const masterNames = sync
@@ -308,7 +334,7 @@ async function loadData(app, cycle, { sync = true } = {}) {
     readAll(app, TBL.members),
     readAll(app, TBL.next),
     readAll(app, TBL.config),
-    readRecent(app, TBL.audit, `source = '${SOURCE}'`),
+    withAudit ? readRecent(app, TBL.audit, `source = '${SOURCE}'`) : Promise.resolve([]),
   ]);
 
   // keep one row per designation name (guards against a double sync)
@@ -434,23 +460,26 @@ function validate(payload, db) {
     const type = text(d.nextType).toUpperCase();
     if (type && !TYPES.includes(type)) errors.push(`${name}: unknown next type.`);
 
-    if (text(d.singleNextId)) {
+    // Only the mapping that belongs to the chosen next type is checked and
+    // stored (Single -> one designation, Multiple -> a list, Group -> a group,
+    // Free select -> nothing).
+    if (type === "S" && text(d.singleNextId)) {
       if (String(d.singleNextId) === id) errors.push(`${name}: a designation cannot be its own next designation.`);
       else if (!ids.has(String(d.singleNextId))) errors.push(`${name}: the next designation is not valid.`);
     }
-    const list = (d.multipleNextIds || []).map(String);
+    const list = type === "M" ? (d.multipleNextIds || []).map(String) : [];
     if (new Set(list).size !== list.length) errors.push(`${name}: the same designation is listed twice.`);
     if (list.includes(id)) errors.push(`${name}: the list cannot contain the designation itself.`);
     if (list.some((x) => !ids.has(x))) errors.push(`${name}: the list has a designation that is not valid.`);
-    if (text(d.groupId) && !groupIds.has(String(d.groupId))) {
+    if (type === "G" && text(d.groupId) && !groupIds.has(String(d.groupId))) {
       errors.push(`${name}: the chosen group does not exist in this cycle.`);
     }
 
     const row = {
       nextType: type,
-      singleNextId: text(d.singleNextId),
+      singleNextId: type === "S" ? text(d.singleNextId) : "",
       multipleNextIds: list,
-      groupId: text(d.groupId),
+      groupId: type === "G" ? text(d.groupId) : "",
     };
     if (d.status === "Active" && isUnmapped(row, options)) {
       errors.push(
@@ -475,7 +504,9 @@ function validate(payload, db) {
   // a group cannot be deleted while a designation points to it
   db.groups.forEach((g) => {
     if (groupIds.has(g.id)) return;
-    const used = designations.find((d) => String(d.groupId) === g.id);
+    const used = designations.find(
+      (d) => text(d.nextType).toUpperCase() === "G" && String(d.groupId) === g.id,
+    );
     if (used) errors.push(`Group "${g.name}" cannot be removed while ${used.name} points to it.`);
   });
 
@@ -602,15 +633,6 @@ async function saveData(app, cycle, actor, payload) {
   }
   const keepGroups = new Set(grpPayload.map((g) => grpMap.get(String(g.id))));
   const memberRowsAll = await readAll(app, TBL.members);
-  for (const g of db.groups) {
-    if (keepGroups.has(g.id)) continue;
-    const mine = memberRowsAll.filter((m) => refId(m.group_id) === g.id).map(rowId);
-    for (const part of chunks(mine)) await tMem.deleteRows(part);
-    await tGrp.deleteRow(g.id);
-    log(`GRP:${g.id}`, g.name, "Group removed", g.name, "", {
-      tab: "grp", rid: g.id, field: "removed", ov: g.name, nv: "", txt: "Group removed",
-    });
-  }
 
   /* 3. group members */
   const newCtx = makeCtx(
@@ -647,12 +669,17 @@ async function saveData(app, cycle, actor, payload) {
     const id = mapDes(d.id);
     const prev = dbDes.get(id);
     if (!prev) continue;
+    const type = text(d.nextType).toUpperCase();
+    // Only the mapping of the chosen next type is kept: Single -> one next
+    // designation, Multiple -> the list, Group -> the group, Free select and
+    // blank -> nothing. (A type that is switched OFF in Options keeps its
+    // mapping, because the row's next type does not change.)
     const cur = {
       band: text(d.band),
-      nextType: text(d.nextType).toUpperCase(),
-      singleNextId: mapDes(text(d.singleNextId)),
-      multipleNextIds: (d.multipleNextIds || []).map(mapDes),
-      groupId: text(d.groupId) ? grpMap.get(String(d.groupId)) || "" : "",
+      nextType: type,
+      singleNextId: type === "S" ? mapDes(text(d.singleNextId)) : "",
+      multipleNextIds: type === "M" ? [...new Set((d.multipleNextIds || []).map(mapDes))] : [],
+      groupId: type === "G" && text(d.groupId) ? grpMap.get(String(d.groupId)) || "" : "",
       status: d.status === "Active" ? "Active" : "Inactive",
     };
     const nm = prev.name;
@@ -689,7 +716,7 @@ async function saveData(app, cycle, actor, payload) {
 
     // Multiple list
     const oldList = prev.multipleNextIds;
-    if (!sameList(oldList, cur.multipleNextIds)) {
+    if (!sameList([...oldList].sort(), [...cur.multipleNextIds].sort())) {
       const stale = nextRowsAll.filter((n) => refId(n.designation_id) === id).map(rowId);
       for (const part of chunks(stale)) await tNext.deleteRows(part);
       for (const part of chunks(cur.multipleNextIds))
@@ -700,6 +727,17 @@ async function saveData(app, cycle, actor, payload) {
         change("nm", "Next designations", o, n, `Next designations: ${o} → ${n}`);
       }
     }
+  }
+
+  /* 5b. removed groups: only now, when no designation row points to them any more */
+  for (const g of db.groups) {
+    if (keepGroups.has(g.id)) continue;
+    const mine = memberRowsAll.filter((m) => refId(m.group_id) === g.id).map(rowId);
+    for (const part of chunks(mine)) await tMem.deleteRows(part);
+    await tGrp.deleteRow(g.id);
+    log(`GRP:${g.id}`, g.name, "Group removed", g.name, "", {
+      tab: "grp", rid: g.id, field: "removed", ov: g.name, nv: "", txt: "Group removed",
+    });
   }
 
   /* 6. the four switches (one audit row for the switch + one per designation using it) */
@@ -723,9 +761,9 @@ async function saveData(app, cycle, actor, payload) {
     using.forEach((d) => {
       const id = mapDes(d.id);
       const cur = {
-        singleNextId: mapDes(text(d.singleNextId)),
-        multipleNextIds: (d.multipleNextIds || []).map(mapDes),
-        groupId: text(d.groupId) ? grpMap.get(String(d.groupId)) || "" : "",
+        singleNextId: t === "S" ? mapDes(text(d.singleNextId)) : "",
+        multipleNextIds: t === "M" ? (d.multipleNextIds || []).map(mapDes) : [],
+        groupId: t === "G" && text(d.groupId) ? grpMap.get(String(d.groupId)) || "" : "",
       };
       const m = describe(t, cur, newCtx);
       const txt = now
@@ -756,6 +794,7 @@ async function saveData(app, cycle, actor, payload) {
    A designation that has no row in the Designation table is not in `rules`;
    the sheet treats that as not mapped too. */
 async function loadRules(app, cycle) {
+  await resolveDesignationsTable(app);
   const [allDes, memberRows, nextRows, cfgRows] = await Promise.all([
     readCycle(app, TBL.designations, cycle.id),
     readAll(app, TBL.members),
@@ -842,6 +881,18 @@ async function loadRules(app, cycle) {
   return { cycle, rules, freeOptions };
 }
 
+/* HR operations dashboard tile: how many designations are not mapped. */
+async function loadSummary(app, cycle) {
+  const data = await loadData(app, cycle, { sync: true, withAudit: false });
+  const notMapped = data.designations.filter((d) => isUnmapped(d, data.options)).length;
+  return {
+    cycle,
+    designations: data.designations.length,
+    active: data.designations.filter((d) => d.status === "Active").length,
+    notMapped,
+  };
+}
+
 /* ---------- handler ---------- */
 module.exports = async function designationMasterApi(req, res) {
   if (req.method === "OPTIONS") {
@@ -853,10 +904,10 @@ module.exports = async function designationMasterApi(req, res) {
       return sendJson(res, 405, { success: false, message: "Method not allowed." });
     }
     let rulesOnly = false;
+    let view = "";
     try {
-      rulesOnly =
-        req.method === "GET" &&
-        new URL(req.url, "https://x").searchParams.get("view") === "appraisal";
+      view = req.method === "GET" ? new URL(req.url, "https://x").searchParams.get("view") || "" : "";
+      rulesOnly = view === "appraisal";
     } catch (e) {
       rulesOnly = false;
     }
@@ -864,6 +915,9 @@ module.exports = async function designationMasterApi(req, res) {
     const cycle = await getActiveCycle(adminApp);
 
     if (req.method === "GET") {
+      if (view === "summary") {
+        return sendJson(res, 200, { success: true, data: await loadSummary(adminApp, cycle) });
+      }
       if (rulesOnly) {
         return sendJson(res, 200, { success: true, data: await loadRules(adminApp, cycle) });
       }
