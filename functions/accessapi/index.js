@@ -1592,6 +1592,9 @@ app.post(
       }
     });
     const existingBy = {};
+    const duplicateExistingRowIds = [];
+    const rowFreshness = (row) =>
+      String(row.MODIFIEDTIME || row.CREATEDTIME || row.ROWID || "");
     existing.forEach((row) => {
       const storedEmployeeRef = String(row[d.empId] || "").trim();
       const canonicalEmployeeId =
@@ -1599,8 +1602,25 @@ app.post(
         (em[norm(storedEmployeeRef)] && em[norm(storedEmployeeRef)].id) ||
         storedEmployeeRef;
       const key = norm(canonicalEmployeeId);
-      if (key && !existingBy[key]) existingBy[key] = row;
+      if (!key) return;
+      const prior = existingBy[key];
+      if (!prior) {
+        existingBy[key] = row;
+        return;
+      }
+      // Keep the newest row for this employee/cycle and remove stale duplicates.
+      // This also repairs duplicates created by earlier non-idempotent fill calls.
+      if (rowFreshness(row) > rowFreshness(prior)) {
+        duplicateExistingRowIds.push(String(prior.ROWID || prior.rowid || "").trim());
+        existingBy[key] = row;
+      } else {
+        duplicateExistingRowIds.push(String(row.ROWID || row.rowid || "").trim());
+      }
     });
+    const staleDuplicateIds = duplicateExistingRowIds.filter(Boolean);
+    if (!replace && staleDuplicateIds.length) {
+      await deleteMany(ds.table("74008000000036124"), staleDuplicateIds);
+    }
     const at = nowDT();
     let techSet = 0,
       compSet = 0,
