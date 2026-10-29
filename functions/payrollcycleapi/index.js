@@ -22,6 +22,8 @@ const TABLES = {
   feedback: "74008000000022041",
   eligibility: "74008000000057046",
   locations: "74008000000022481",
+  delegation: "74008000000036124",
+  previousDelegation: "74008000000096255",
 };
 const PAGE_SIZE = 200;
 
@@ -525,6 +527,8 @@ async function requirePayrollTables(adminApp) {
     feedback: datastore.table(TABLES.feedback),
     eligibility: datastore.table(TABLES.eligibility),
     locations: datastore.table(TABLES.locations),
+    delegation: datastore.table(TABLES.delegation),
+    previousDelegation: datastore.table(TABLES.previousDelegation),
   };
 }
 
@@ -1206,7 +1210,59 @@ function payrollValuesFromSheet(row) {
   return values;
 }
 
-async function moveSheetToPayroll(tables, cycle, actor) {
+// Copies a cycle's Delegation (Comp Manager / Appraiser Tech ED per employee)
+// into Previous_Delegation, where the next cycle's Delegation screen reads its
+// Previous columns. Upsert on employee + cycle, so archiving again or an
+// earlier Historical Import never duplicates rows. Delegation is kept.
+async function copyDelegationToHistory(tables, cycle, actor) {
+  const ref = (value) => String(
+    value && typeof value === "object" ? (value.ROWID ?? value.rowid ?? value.id ?? "") : (value ?? ""),
+  ).trim();
+  const cycleId = String(cycle.id);
+  const [delegationRows, historyRows] = await Promise.all([
+    getAllRows(tables.delegation),
+    getAllRows(tables.previousDelegation),
+  ]);
+  // Newest Delegation row per employee wins when duplicates exist.
+  const latest = new Map();
+  delegationRows
+    .filter((row) => ref(row.cycle_id) === cycleId && ref(row.emp_id))
+    .sort((a, b) => String(a.MODIFIEDTIME || "").localeCompare(String(b.MODIFIEDTIME || "")))
+    .forEach((row) => latest.set(ref(row.emp_id), row));
+  if (!latest.size) return { copied: 0, inserted: 0, updated: 0 };
+
+  const historyByMaster = new Map();
+  historyRows
+    .filter((row) => ref(row.cycle_id) === cycleId)
+    .forEach((row) => historyByMaster.set(ref(row.emp_id), row));
+  const now = nowLocal();
+  const inserts = [];
+  const updates = [];
+  latest.forEach((row, masterId) => {
+    const values = {
+      cycle_id: cycleId,
+      emp_id: masterId,
+      comp_manager: String(row.comp_manager || "").trim().slice(0, 100),
+      appraiser_tech_ed: String(row.appraiser_tech_ed || "").trim().slice(0, 100),
+      updated_by: String(actor || "").slice(0, 100),
+      updated_at: now,
+    };
+    const existing = historyByMaster.get(masterId);
+    if (existing) updates.push({ ROWID: rowId(existing), ...values });
+    else inserts.push(values);
+  });
+  for (let index = 0; index < updates.length; index += 100) {
+    await tables.previousDelegation.updateRows(updates.slice(index, index + 100));
+  }
+  for (let index = 0; index < inserts.length; index += 100) {
+    await tables.previousDelegation.insertRows(inserts.slice(index, index + 100));
+  }
+  return { copied: latest.size, inserted: inserts.length, updated: updates.length };
+}
+
+// beforeWrite (optional) runs once the sheet has passed its checks and
+// before anything is written, so a failed check still changes nothing.
+async function moveSheetToPayroll(tables, cycle, actor, beforeWrite = null) {
   const ref = (value) => String(
     value && typeof value === "object" ? (value.ROWID ?? value.rowid ?? value.id ?? "") : (value ?? ""),
   ).trim();
@@ -1248,6 +1304,7 @@ async function moveSheetToPayroll(tables, cycle, actor) {
       409,
     );
   }
+  if (beforeWrite) await beforeWrite();
 
   // 1. Full copy of every sheet row, so nothing on the sheet is lost.
   const now = nowLocal();
@@ -3204,19 +3261,31 @@ async function routeRequest(req, res, identity, resource, a) {
       }
       let remarks = remark ? appendRemark(existing.remarks, `${archived ? "Archive" : "Unarchive"}: ${remark}`) : existing.remarks;
       if (remarks.length > 10000) return sendJson(res, 400, { success: false, message: "Remarks exceed 10,000 characters." });
-      // Archive moves the cycle's Appraisal Sheet into Payroll Data before the
-      // cycle is flagged; if the move fails the cycle stays Closed.
-      const moved = archived ? await moveSheetToPayroll(tables, existing, actor) : null;
+      // Archive copies the cycle's Delegation into Previous_Delegation and
+      // moves its Appraisal Sheet into Payroll Data before the cycle is
+      // flagged; if either fails the cycle stays Closed. The copy runs after
+      // the sheet's checks and before the move, and is an upsert, so a retry
+      // after a failed move is safe.
+      let delegationCopied = null;
+      const copyDelegation = async () => {
+        delegationCopied = await copyDelegationToHistory(tables, existing, actor);
+      };
+      const moved = archived ? await moveSheetToPayroll(tables, existing, actor, copyDelegation) : null;
+      // A cycle with no sheet rows skips the move, so copy here.
+      if (archived && !delegationCopied) await copyDelegation();
       if (moved && moved.moved) remarks = appendRemark(remarks, `${SHEET_ARCHIVE_MARK} (${moved.moved} row(s))`);
       const row = { ROWID: id, archived, changed_by: actor, changed_at: now };
       if (remark || (moved && moved.moved)) row.remarks = remarks;
       await tables.cycles.updateRow(row);
       const updated = { ...existing, archived, remarks, changedBy: actor, changedAt: now };
-      const archiveMessage = moved && moved.moved
+      const archiveMessage = (moved && moved.moved
         ? `Cycle archived. ${moved.moved} Appraisal Sheet row(s) moved to Payroll Data (${moved.inserted} added, ${moved.updated} updated) and removed from the Appraisal Sheet.`
-        : archived ? "Cycle archived." : "Cycle unarchived.";
-      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: archived ? "Cycle archived" : "Cycle unarchived", details: { kind: "cycle", action: archived ? "Cycle archived" : "Cycle unarchived", message: archiveMessage, cycleName: updated.name, ...(moved ? { sheetMoved: moved } : {}), ...(remark ? { newRemarks: `${archived ? "Archive" : "Unarchive"}: ${remark}` } : {}) } });
-      return sendJson(res, 200, { success: true, data: { ...updated, sheetMoved: moved } });
+        : archived ? "Cycle archived." : "Cycle unarchived.") +
+        (delegationCopied && delegationCopied.copied
+          ? ` ${delegationCopied.copied} Delegation row(s) saved to Previous Delegation.`
+          : "");
+      await writeAudit(tables.audit, { actor, source: "cycle", cycle: updated, action: archived ? "Cycle archived" : "Cycle unarchived", details: { kind: "cycle", action: archived ? "Cycle archived" : "Cycle unarchived", message: archiveMessage, cycleName: updated.name, ...(moved ? { sheetMoved: moved } : {}), ...(delegationCopied ? { delegationCopied } : {}), ...(remark ? { newRemarks: `${archived ? "Archive" : "Unarchive"}: ${remark}` } : {}) } });
+      return sendJson(res, 200, { success: true, data: { ...updated, sheetMoved: moved, delegationCopied } });
     }
 
     if (action === "cancel") {

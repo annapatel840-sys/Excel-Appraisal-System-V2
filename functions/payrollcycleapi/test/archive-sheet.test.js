@@ -9,6 +9,7 @@ const path = require('path');
 const T = {
   sheet: '74008000000039094', master: '74008000000035727', payroll: '74008000000035326',
   cycles: '74008000000034190', audit: '74008000000034940',
+  delegation: '74008000000036124', previous: '74008000000096255',
 };
 const COLS = {
   [T.sheet]: ['emp_id', 'name', 'designation', 'reporting_manager', 'comp_manager', 'department', 'manager', 'status',
@@ -26,6 +27,9 @@ const COLS = {
     'batch_id', 'appraisal_year', 'details'],
   [T.cycles]: ['cycle_name', 'start_date', 'end_date', 'status', 'remarks', 'changed_by', 'changed_at', 'archived', 'effective_date'],
   [T.master]: ['emp_id', 'emp_name', 'emp_status'],
+  [T.delegation]: ['cycle_id', 'emp_id', 'comp_manager', 'appraiser_tech_ed', 'director', 'previous_comp_manager',
+    'previous_appraiser_tech_ed', 'status', 'updated_by', 'updated_at'],
+  [T.previous]: ['cycle_id', 'emp_id', 'comp_manager', 'appraiser_tech_ed', 'updated_by', 'updated_at'],
 };
 
 let DB;
@@ -109,6 +113,15 @@ function seed() {
     { ROWID: 'P1', emp_id: 'M22', appraisal_cycle_name: 'C26', current_annual_base_pay: 350000, fy_year: '2025-26', month_pb: 'Apr-25' },
   ];
   DB[T.audit] = [];
+  DB[T.delegation] = [
+    { ROWID: 'D1', cycle_id: 'C26', emp_id: 'M22', comp_manager: 'EMP060', appraiser_tech_ed: 'EMP051', MODIFIEDTIME: '2026-03-01 10:00:00' },
+    { ROWID: 'D2', cycle_id: 'C26', emp_id: 'M26', comp_manager: 'EMP060', appraiser_tech_ed: 'EMP052', MODIFIEDTIME: '2026-03-01 10:00:00' },
+    // Older duplicate for M26: the newer row above wins.
+    { ROWID: 'D0', cycle_id: 'C26', emp_id: 'M26', comp_manager: 'OLD', appraiser_tech_ed: 'OLD', MODIFIEDTIME: '2026-01-01 10:00:00' },
+    // The Active cycle's Delegation must not be copied.
+    { ROWID: 'D3', cycle_id: 'C27', emp_id: 'M22', comp_manager: 'EMP061', appraiser_tech_ed: 'EMP051' },
+  ];
+  DB[T.previous] = [];
 }
 
 const pRow = (master, cycle) => DB[T.payroll].filter((r) => r.emp_id === master && r.appraisal_cycle_name === cycle);
@@ -191,6 +204,7 @@ async function t(name, fn) {
     assert.strictEqual(DB[T.sheet].length, 4);
     assert.strictEqual(DB[T.payroll].length, 1);
     assert.strictEqual(DB[T.audit].length, 0);
+    assert.strictEqual(DB[T.previous].length, 0, 'Delegation is not copied when the archive stops');
   });
 
   await t('archiving a cycle with no sheet rows just archives it', async () => {
@@ -199,6 +213,44 @@ async function t(name, fn) {
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
     assert.strictEqual(r.json.data.sheetMoved.moved, 0);
     assert.strictEqual(DB[T.cycles].find((c) => c.ROWID === 'C26').archived, true);
+  });
+
+  await t('archive copies the cycle\'s Delegation into Previous_Delegation and keeps Delegation', async () => {
+    const r = await call('POST', 'cycles/archive/C26', { archived: true });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.deepStrictEqual(r.json.data.delegationCopied, { copied: 2, inserted: 2, updated: 0 });
+    const by = Object.fromEntries(DB[T.previous].map((x) => [x.emp_id, x]));
+    assert.deepStrictEqual(Object.keys(by).sort(), ['M22', 'M26']);
+    assert.strictEqual(by.M22.cycle_id, 'C26');
+    assert.strictEqual(by.M22.comp_manager, 'EMP060');
+    assert.strictEqual(by.M26.appraiser_tech_ed, 'EMP052', 'newest duplicate wins');
+    assert.strictEqual(by.M22.updated_by, 'HR A');
+    assert.match(by.M22.updated_at, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    assert.strictEqual(DB[T.delegation].length, 4, 'Delegation rows are kept');
+  });
+
+  await t('an imported Previous_Delegation row is replaced, not duplicated', async () => {
+    DB[T.previous].push({ ROWID: 'H1', cycle_id: 'C26', emp_id: 'M22', comp_manager: 'IMPORTED', appraiser_tech_ed: 'IMPORTED' });
+    const r = await call('POST', 'cycles/archive/C26', { archived: true });
+    assert.deepStrictEqual(r.json.data.delegationCopied, { copied: 2, inserted: 1, updated: 1 });
+    assert.strictEqual(DB[T.previous].length, 2);
+    assert.strictEqual(DB[T.previous].find((x) => x.ROWID === 'H1').comp_manager, 'EMP060');
+  });
+
+  await t('a failed archive can be retried without duplicating Previous_Delegation', async () => {
+    failInsertPayroll = true;
+    await call('POST', 'cycles/archive/C26', { archived: true });
+    failInsertPayroll = false;
+    const retry = await call('POST', 'cycles/archive/C26', { archived: true });
+    assert.strictEqual(retry.status, 200, JSON.stringify(retry.json));
+    assert.strictEqual(DB[T.previous].length, 2);
+  });
+
+  await t('a cycle with no sheet rows still copies its Delegation', async () => {
+    DB[T.sheet] = DB[T.sheet].filter((r) => r.cycle_id !== 'C26');
+    const r = await call('POST', 'cycles/archive/C26', { archived: true });
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(r.json.data.delegationCopied.copied, 2);
   });
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');
