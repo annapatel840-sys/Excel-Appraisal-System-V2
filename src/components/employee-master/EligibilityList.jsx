@@ -391,9 +391,17 @@ export function EligibilityList({
             <strong>{notEligibleCount}</strong>
             <span>Not Eligible</span>
           </div>
-          <div>
-            <strong>{pendingCount}</strong>
-            <span>Pending</span>
+          <div className="em-eligibility-generate">
+            {criteriaApplied && onGenerateDelegation && (
+              <button
+                type="button"
+                className="em-btn em-btn-primary"
+                disabled={delegationGenerated}
+                onClick={onGenerateDelegation}
+              >
+                {delegationGenerated ? "Delegation Generated" : "Generate Delegation"}
+              </button>
+            )}
           </div>
         </div>
 
