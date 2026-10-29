@@ -21,7 +21,10 @@ import { useAccess } from "@/lib/access-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
 import { buildFeedbackEntries, cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
-
+import {
+  loadDesignationRules,
+  newTitleChoices,
+} from "@/lib/designation-master-api";
 // ============================================================
 // API
 // ============================================================
@@ -1687,6 +1690,68 @@ export function AppraisalGrid({
   const { updateCell, updateLinkedCells, bulkUpdate, modified } =
     useAppraisal();
   const currentCycleName = useCurrentCycleName() || CURRENT_APPRAISAL_YEAR;
+
+//  This loads the rules from the existing designationmasterapi endpoint in read-only appraisal mode.
+  const [designationRules, setDesignationRules] = useState(null);
+  const [designationRulesLoading, setDesignationRulesLoading] = useState(true);
+  const [designationRulesError, setDesignationRulesError] = useState("");
+  const [designationPopupMessage, setDesignationPopupMessage] = useState("");
+
+  useEffect(() => {
+  let cancelled = false;
+
+  async function fetchDesignationRules() {
+    setDesignationRulesLoading(true);
+    setDesignationRulesError("");
+
+    try {
+      const rules = await loadDesignationRules();
+
+      if (!cancelled) {
+        setDesignationRules(rules);
+      }
+    } catch (error) {
+      if (!cancelled) {
+        setDesignationRulesError(
+          error?.message || "Unable to load Designation Master rules."
+        );
+      }
+    } finally {
+      if (!cancelled) {
+        setDesignationRulesLoading(false);
+      }
+    }
+  }
+
+  fetchDesignationRules();
+
+  return () => {
+    cancelled = true;
+  };
+}, []);
+// This uses the employee's existing row.designation as the current designation. The API then determines whether Single, Multiple, Group, or Free Select applies.
+
+  const getNewTitleRule = (row) => {
+  if (designationRulesLoading) {
+    return {
+      ok: false,
+      options: [],
+      prefill: "",
+      message: "Designation Master rules are still loading. Please try again.",
+    };
+  }
+
+  if (designationRulesError) {
+    return {
+      ok: false,
+      options: [],
+      prefill: "",
+      message: `Unable to load Designation Master rules: ${designationRulesError}`,
+    };
+  }
+
+  return newTitleChoices(designationRules, row.designation);
+};
 
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
@@ -3561,11 +3626,21 @@ export function AppraisalGrid({
               <option value="">Select... *</option>
             )}
 
-            {(col.options || []).map((option) => (
+            {(
+              col.key === "newTitle"
+              ? getNewTitleRule(row).options
+              : col.options || []
+              ).map((option) => (
+               <option key={option} value={option}>
+             {option}
+            </option>
+          ))}
+
+            {/* {(col.options || []).map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
-            ))}
+            ))} */}
           </select>
           {col.key === "newTitle" &&
             row.eligibleForPromotion === "Yes" &&
@@ -3798,11 +3873,32 @@ export function AppraisalGrid({
               input.select();
             }
           }}
+          onMouseDown={(event) => {
+  if (col.key !== "newTitle") return;
+
+  const rule = getNewTitleRule(row);
+
+  if (!rule.ok) {
+    event.preventDefault();
+    window.alert(rule.message);
+  }
+}}
+
+
           onFocus={(event) => {
             const input = event.currentTarget;
 
             setActive(`${rowIndex}:${col.key}`);
             selectRowForEdit(row);
+            if (col.key === "newTitle") {
+  const rule = getNewTitleRule(row);
+
+  if (!rule.ok) {
+    window.alert(rule.message);
+    event.currentTarget.blur();
+    return;
+  }
+}
 
             setEditingValues((previous) => ({
               ...previous,
