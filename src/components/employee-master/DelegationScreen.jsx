@@ -342,7 +342,7 @@ export default function DelegationScreen({
         rawPrevApp: item.previous_appraiser_tech_ed || item.previous_tech_ed || item.prev_appraiser_tech_ed || "",
         base: "",
         lastRole: "",
-      }));
+            })));
       const normalizedRoster = roster.map((item) => ({
         id: item.id,
         name: item.name,
