@@ -29,15 +29,16 @@ const PAGE = 50;
 const MIN_COL = 70;
 const MAX_COL = 520;
 const COLS = [
-  { key: "id", label: "EMPLOYEE ID", w: 110, cls: "ref" },
-  { key: "name", label: "EMPLOYEE NAME", w: 170, cls: "nm" },
-  { key: "rm", label: "REPORTING MANAGER", w: 170 },
-  { key: "te", label: "TECH ED", w: 210 },
-  { key: "comp", label: "COMP MANAGER", w: 210, edit: true },
-  { key: "app", label: "APPRAISER TECH ED", w: 210, edit: true },
-  { key: "prevComp", label: "PREV. COMP MANAGER", w: 190, cls: "ref" },
-  { key: "prevApp", label: "PREV. APPRAISER TECH ED", w: 210, cls: "ref" },
-  { key: "status", label: "STATUS", w: 200 },
+  { key: "id", label: "EMPLOYEE ID", w: 140, cls: "ref" },
+  { key: "name", label: "EMPLOYEE NAME", w: 190, cls: "nm" },
+  { key: "rm", label: "REPORTING MANAGER", w: 220 },
+  { key: "director", label: "DIRECTOR", w: 190 },
+  { key: "te", label: "TECH ED", w: 230 },
+  { key: "comp", label: "COMP MANAGER", w: 240, edit: true },
+  { key: "app", label: "APPRAISER TECH ED", w: 240, edit: true },
+  { key: "prevComp", label: "PREV. COMP MANAGER", w: 220, cls: "ref" },
+  { key: "prevApp", label: "PREV. APPRAISER TECH ED", w: 250, cls: "ref" },
+  { key: "status", label: "STATUS", w: 210 },
 ];
 const SELECT_W = 40;
 const testText = (raw, op, value) => {
@@ -372,6 +373,7 @@ export default function DelegationScreen({
         id: String(item.emp_id || item.employee_id || item.ROWID || "").trim(),
         name: String(item.name || item.emp_name || item.emp_id || "").trim(),
         rm: String(item.reporting_manager || item.repo_manager || "").trim(),
+        director: String(item.director || item.director_name || "").trim(),
         teId: String(item.appraiser_tech_ed || "").trim(),
         te: String(item.appraiser_tech_ed || "").trim(),
         comp: String(item.delegation_comp_manager || item.comp_manager || "").trim(),
@@ -590,9 +592,54 @@ export default function DelegationScreen({
     return out;
   };
 
+  // Comp Manager changes do not go through approval: HR applies them directly
+  // (recorded, then approved in the same step using the existing endpoints).
+  const compDirect = (field) => field === "comp" && isHR && canApprove;
+  const applyCompDirect = async (target, personId, why, batch) => {
+    const request = await submitDelegationRequest({
+      empId: target.id,
+      empName: target.name,
+      field: "comp",
+      oldId: target.comp,
+      newId: personId,
+      reason: why,
+      byName: user.name,
+      batch: batch || "",
+    });
+    await decideDelegationRequest(
+      request?.id,
+      "approved",
+      "Comp Manager change applied directly (no approval required)",
+    );
+  };
+
   const saveChange = async () => {
     const { row, field, person } = modal;
     if (!reason.trim()) return say("Reason is mandatory.", true);
+    if (compDirect(field)) {
+      try {
+        await applyCompDirect(row, person.id, reason.trim());
+      } catch (error) {
+        await loadRequests().catch(() => {});
+        return say(error?.message || "Unable to update Comp Manager.", true);
+      }
+      await refreshEmployees().catch(() => {});
+      setRows((rs) =>
+        applyTo(rs, row.id, "comp", person.id, "HR Admin", reason.trim(), user.name),
+      );
+      await loadRequests().catch(() => {});
+      log({
+        emp: row.id,
+        field: FIELDS.comp,
+        from: nameOf(row.comp),
+        to: person.name,
+        action: "Changed",
+        why: reason,
+      });
+      say("Comp Manager updated for " + row.id + ".");
+      setModal(null);
+      return;
+    }
     try {
       const request = await submitDelegationRequest({
         empId: row.id,
@@ -641,9 +688,45 @@ export default function DelegationScreen({
     setModal({
       type: "confirm",
       title: "Bulk assign",
-      body: `${FIELDS[field]} → ${nameOf(person)} for ${t.length} employee(s). One request per employee will be sent to HR for approval.`,
+      body: compDirect(field)
+        ? `${FIELDS[field]} → ${nameOf(person)} for ${t.length} employee(s). Applied immediately; no approval needed.`
+        : `${FIELDS[field]} → ${nameOf(person)} for ${t.length} employee(s). One request per employee will be sent to HR for approval.`,
       ok: () => {
         const no = refNo("BA");
+        if (compDirect(field)) {
+          (async () => {
+            const done = [];
+            try {
+              for (const r of t) {
+                await applyCompDirect(r, person, why.trim(), no);
+                done.push(r);
+              }
+            } catch (error) {
+              say(error?.message || "Unable to update Comp Manager.", true);
+            }
+            if (done.length) {
+              await refreshEmployees().catch(() => {});
+              setRows((rs) =>
+                done.reduce(
+                  (acc, r) =>
+                    applyTo(acc, r.id, "comp", person, "HR Admin", why.trim(), user.name),
+                  rs,
+                ),
+              );
+              log({
+                action: "Changed",
+                field: FIELDS.comp,
+                to: nameOf(person),
+                why: `${done.length} employee(s): ${why.trim()}`,
+              });
+              say(`Comp Manager updated for ${done.length} employee(s).`);
+            }
+            await loadRequests().catch(() => {});
+          })();
+          setSel({});
+          setBulk({ ...bulk, person: "", reason: "" });
+          return;
+        }
         (async () => {
           try {
             for (const r of t) {
@@ -876,6 +959,7 @@ export default function DelegationScreen({
       "Employee ID",
       "Employee Name",
       "Reporting Manager",
+      "Director",
       "Tech Ed",
       "Comp Manager",
       "Appraiser Tech Ed",
@@ -887,6 +971,7 @@ export default function DelegationScreen({
       r.id,
       r.name,
       r.rm,
+      r.director,
       r.te,
       nameOf(r.comp),
       nameOf(r.app),
@@ -1106,7 +1191,7 @@ export default function DelegationScreen({
                 </colgroup>
                 <thead>
                   <tr className="grp">
-                    <th className="g g1" colSpan={5}>
+                    <th className="g g1" colSpan={6}>
                       <span>FROM EMPLOYEE MASTER · READ-ONLY</span>
                     </th>
                     <th className="g g2" colSpan={2}>
@@ -1738,7 +1823,8 @@ const CSS = `
 .dg .dg-grid tr.hd th{top:28px}
 .dg .dg-grid th.sel,.dg .dg-grid td.sel{text-align:center;padding:0}
 .dg .dg-grid .hc{display:flex;align-items:center;gap:4px;height:100%;padding:0 8px;min-height:46px}
-.dg .dg-grid .hl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dg .dg-grid .hc>button{flex:0 0 auto}
+.dg .dg-grid .hl{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dg .dg-grid .rz{position:absolute;top:0;right:-2px;height:100%;width:5px;cursor:col-resize;touch-action:none;z-index:10}
 .dg .dg-grid .rz:hover{background:rgba(23,54,93,.3)}
 .dg th.g span{display:block;border-radius:4px;padding:3px}
