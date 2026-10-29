@@ -2218,7 +2218,10 @@ async function getEmployees(req, res) {
     mergedEmployees,
     employeeMasterMap,
     {
-      saveDelegation: hrUser && requestedView === "delegation" && requestedPage === 1,
+      // A read of the Delegation screen must not create/update saved
+      // Delegation rows. Only explicit Generate Delegation and assignment
+      // save/approval actions may write this cycle's roster.
+      saveDelegation: false,
       updatedBy: (a && a.user && a.user.email) || currentUser?.email_id || "",
     },
   );
