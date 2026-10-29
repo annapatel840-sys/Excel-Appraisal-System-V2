@@ -1499,6 +1499,78 @@ function tally(map, key, extra) {
   map.set(key, x);
 }
 
+/* POST /delegation/save — HR direct assignment save, no approval request. */
+app.post(
+  "/delegation/save",
+  asyncRoute(async (req, res) => {
+    const ap = apps(req);
+    const me = await requireHR(ap);
+    const body = req.body || {};
+    const cycleId = String(body.cycleId || "").trim();
+    const empId = String(body.empId || "").trim();
+    const field = String(body.field || "").trim().toLowerCase();
+    const assignment = String(body.assignment || "").trim();
+    if (!cycleId || !empId || !["comp", "app"].includes(field) || !assignment) {
+      throw new HttpError(422, "Cycle, employee, assignment field, and new assignment are required.");
+    }
+    const zcql = ap.admin.zcql();
+    const d = SETTINGS.delegation;
+    const e = SETTINGS.employeeMaster;
+    const s = SETTINGS.appraisalSheet;
+    const [masters, delegationRows, cycles] = await Promise.all([
+      selectAll(zcql, e.table),
+      selectAll(zcql, d.table, d.cycleColumn + " = '" + q(cycleId) + "'"),
+      selectAll(zcql, SETTINGS.cycle.table, SETTINGS.cycle.idColumn + " = " + cycleId),
+    ]);
+    if (!cycles.length || String(cycles[0][SETTINGS.cycle.statusColumn] || "").toLowerCase() !== "active") {
+      throw new HttpError(409, "Delegation can be saved only for the Active appraisal cycle.");
+    }
+    const master = masters.find((row) => String(row[e.empId] || "").trim().toLowerCase() === empId.toLowerCase());
+    if (!master) throw new HttpError(404, "Employee " + empId + " was not found in Employee Master.");
+    const masterRowId = String(master.ROWID || master.rowid || "").trim();
+    const existing = delegationRows.find((row) => String(row[d.empId] || "").trim() === masterRowId || String(row[d.empId] || "").trim().toLowerCase() === empId.toLowerCase());
+    const assignmentParts = assignment.match(/^\s*(.*?)\s+-\s+(.*?)\s*$/);
+    const selectedEmpId = assignmentParts ? assignmentParts[1].trim() : assignment;
+    const selectedMaster = masters.find((row) => String(row[e.empId] || "").trim().toLowerCase() === selectedEmpId.toLowerCase());
+    if (field === "app" && !selectedMaster) throw new HttpError(422, "Selected Appraiser Tech-Ed could not be matched to Employee Master.");
+    const storedAssignment = field === "app" ? String(selectedMaster.ROWID || selectedMaster.rowid || "") : assignment;
+    const datastore = ap.admin.datastore();
+    const patch = {
+      cycle_id: cycleId,
+      emp_id: masterRowId,
+      status: "Active",
+      updated_by: me.user.email,
+      updated_at: nowDT(),
+      [field === "comp" ? d.compManagerId : d.appraiserTechEdId]: assignment,
+    };
+    if (existing) {
+      await datastore.table(DELEGATION_DATA_TABLE_ID).updateRow({ ROWID: String(existing.ROWID || existing.rowid), ...patch });
+    } else {
+      patch.previous_comp_manager = "";
+      patch.previous_appraiser_tech_ed = "";
+      await datastore.table(DELEGATION_DATA_TABLE_ID).insertRow(patch);
+    }
+    const sheetRows = await selectAll(zcql, s.table, s.empId + " = '" + q(empId) + "'");
+    const currentSheetRows = sheetRows.filter((row) => String(row.cycle_id || "") === cycleId);
+    if (currentSheetRows.length) {
+      const column = field === "comp" ? "comp_manager" : "appraiser_tech_ed";
+      const sheetTable = datastore.table("74008000000039094");
+      for (const row of currentSheetRows) {
+        await sheetTable.updateRow({ ROWID: row.ROWID, [column]: storedAssignment });
+      }
+    } else {
+      const masterColumn = field === "comp" ? "director" : "appraiser_tech_ed";
+      await datastore.table("74008000000035727").updateRow({ ROWID: masterRowId, [masterColumn]: assignment });
+    }
+    try {
+      await A.bumpVersion(ap.admin, me.user.email, "Delegation saved for " + empId);
+    } catch (error) {
+      console.error("Delegation saved; access version refresh failed:", error);
+    }
+    send(res, { cycleId, empId, field, assignment });
+  }),
+);
+
 app.post(
   "/delegation/fill",
   asyncRoute(async (req, res) => {
