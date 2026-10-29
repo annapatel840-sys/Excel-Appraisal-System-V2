@@ -346,37 +346,6 @@ export default function DelegationScreen({
       setActiveCycleId(cycleId);
       setActiveCycleName(String(active.name || active.cycle_name || active.appraisal_year || ""));
 
-      // First-time setup: persist the active cycle's initial delegation roster.
-      // replace:false makes this safe to run again: existing rows are retained.
-      let delegationSaveError = "";
-      if (isHR) {
-        try {
-          const saveResponse = await catalystFetch(
-            ACCESS_API_URL + "delegation/fill",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Accept: "application/json",
-              },
-              body: JSON.stringify({ cycleId, replace: false }),
-            },
-          );
-          const savePayload = await saveResponse.json().catch(() => ({}));
-          if (!saveResponse.ok || savePayload.ok === false || savePayload.success === false) {
-            throw new Error(
-              savePayload.error ||
-                savePayload.message ||
-                "The initial Delegation rows could not be saved.",
-            );
-          }
-        } catch (saveError) {
-          delegationSaveError =
-            saveError?.message || "The initial Delegation rows could not be saved.";
-          console.error("Initial Delegation POST failed:", saveError);
-        }
-      }
-
       // Always fetch the enriched delegation roster from employeesapi.
       // initialRows may contain only Employee_Master values and omit previous-cycle references.
       // Ensure the Active cycle's Eligibility_List is initialized/refreshed
@@ -436,12 +405,6 @@ export default function DelegationScreen({
         lastRole: "",
       }));
       setRows(mapped);
-      if (delegationSaveError) {
-        say(
-          "Roster loaded, but saving Delegation failed: " + delegationSaveError,
-          true,
-        );
-      }
       return mapped;
     } catch (error) {
       setRows([]);
@@ -652,12 +615,13 @@ export default function DelegationScreen({
   // Comp. Manager changes do not go through approval: HR applies them directly
   // (recorded, then approved in the same step using the existing endpoints).
   const compDirect = (field) => field === "comp" && isHR && canApprove;
-  const applyCompDirect = async (target, personId, why, batch) => {
+  const hrDirect = (field) => isHR && canApprove && ["comp", "app"].includes(field);
+  const applyDirectChange = async (target, field, personId, why, batch) => {
     const request = await submitDelegationRequest({
       empId: target.id,
       empName: target.name,
-      field: "comp",
-      oldId: target.comp,
+      field,
+      oldId: target[field],
       newId: personId,
       reason: why,
       byName: user.name,
@@ -666,7 +630,7 @@ export default function DelegationScreen({
     await decideDelegationRequest(
       request?.id,
       "approved",
-      "Comp. Manager change applied directly (no approval required)",
+      FIELDS[field] + " change applied directly by HR (no approval required)",
     );
   };
 
@@ -675,27 +639,27 @@ export default function DelegationScreen({
     // Reason is optional (the server needs some text, so a default is stored
     // when it is left empty).
     const whyText = reason.trim() || `${FIELDS[field]} change`;
-    if (compDirect(field)) {
+    if (hrDirect(field)) {
       try {
-        await applyCompDirect(row, person.id, whyText);
+        await applyDirectChange(row, field, person.id, whyText);
       } catch (error) {
         await loadRequests().catch(() => {});
-        return say(error?.message || "Unable to update Comp. Manager.", true);
+        return say(error?.message || "Unable to update " + FIELDS[field] + ".", true);
       }
       await refreshEmployees().catch(() => {});
       setRows((rs) =>
-        applyTo(rs, row.id, "comp", person.id, "HR Admin", whyText, user.name),
+        applyTo(rs, row.id, field, person.id, "HR Admin", whyText, user.name),
       );
       await loadRequests().catch(() => {});
       log({
         emp: row.id,
-        field: FIELDS.comp,
-        from: nameOf(row.comp),
+        field: FIELDS[field],
+        from: nameOf(row[field]),
         to: person.name,
         action: "Changed",
         why: whyText,
       });
-      say("Comp. Manager updated for " + row.id + ".");
+      say(FIELDS[field] + " updated for " + row.id + ".");
       setModal(null);
       return;
     }
@@ -861,33 +825,33 @@ export default function DelegationScreen({
         : `${FIELDS[field]} → ${nameOf(person)} for ${t.length} employee(s). One request per employee will be sent to HR for approval.`,
       ok: () => {
         const no = refNo("BA");
-        if (compDirect(field)) {
+        if (hrDirect(field)) {
           (async () => {
             const done = [];
             try {
               for (const r of t) {
-                await applyCompDirect(r, person, why.trim(), no);
+                await applyDirectChange(r, field, person, why.trim(), no);
                 done.push(r);
               }
             } catch (error) {
-              say(error?.message || "Unable to update Comp. Manager.", true);
+              say(error?.message || "Unable to update " + FIELDS[field] + ".", true);
             }
             if (done.length) {
               await refreshEmployees().catch(() => {});
               setRows((rs) =>
                 done.reduce(
                   (acc, r) =>
-                    applyTo(acc, r.id, "comp", person, "HR Admin", why.trim(), user.name),
+                    applyTo(acc, r.id, field, person, "HR Admin", why.trim(), user.name),
                   rs,
                 ),
               );
               log({
                 action: "Changed",
-                field: FIELDS.comp,
+                field: FIELDS[field],
                 to: nameOf(person),
                 why: `${done.length} employee(s): ${why.trim()}`,
               });
-              say(`Comp. Manager updated for ${done.length} employee(s).`);
+              say(FIELDS[field] + " updated for " + done.length + " employee(s).");
             }
             await loadRequests().catch(() => {});
           })();
@@ -1107,20 +1071,17 @@ export default function DelegationScreen({
         say(`${ids.size} request(s) approved.`);
       },
     });
-  const lock = () =>
-    setModal({
-      type: "confirm",
-      title: "Save & lock delegation",
-      body: `Lock the delegation for ${displayCycleName} (${rows.length} employees)? No changes are possible afterwards.`,
-      ok: () => {
-        setLocked(true);
-        log({
-          action: "Locked",
-          why: `${rows.length} employees locked for ${displayCycleName}`,
-        });
-        say(`Delegation for ${displayCycleName} locked.`);
-      },
-    });
+  const saveDelegation = async () => {
+    if (!isHR || !activeCycleId || !rows.length) return;
+    try {
+      await refreshEmployees().catch(() => {});
+      await loadRoster();
+      say(`Delegation for ${displayCycleName} saved and refreshed. You can continue editing.`);
+      onRefresh?.();
+    } catch (error) {
+      say(error?.message || "Unable to save Delegation.", true);
+    }
+  };
 
   const exportCsv = () => {
     const head = [
@@ -1338,13 +1299,9 @@ export default function DelegationScreen({
             {isHR && (
               <button
                 className="btn p"
-                disabled={editLocked || pending.length > 0 || !rows.length}
-                title={
-                  pending.length
-                    ? "Approve or reject pending requests first"
-                    : ""
-                }
-                onClick={lock}
+                disabled={editLocked || !rows.length || rosterLoading}
+                title="Save and refresh the current delegation assignments"
+                onClick={saveDelegation}
               >
                 Save
               </button>
