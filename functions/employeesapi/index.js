@@ -1528,7 +1528,7 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       ),
       // Director is sourced from Employee_Master and shown as a separate
       // read-only hierarchy column on the Delegation screen.
-      director: String(masterValue("director") || ""),
+      director: String(masterValue("director", "director_name", "director name", "director_full_name") || ""),
       // Keep the stored Comp Manager key intact for existing matching/writes,
       // and expose a separate resolved label for display in budget screens.
       comp_manager: String(row.comp_manager || masterValue("comp_manager", "comp_manager_name", "director") || ""),
