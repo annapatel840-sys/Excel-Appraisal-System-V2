@@ -313,6 +313,29 @@ async function setup() {
     assert.deepStrictEqual(after.json.data.records.map((row) => row.emp_id).sort(), ['E1', 'E2', 'E3']);
   });
 
+  await t('eligibility count reports criteria status without writing', async () => {
+    const { post, mk, api, elig } = await setup();
+    const a = await mk('Annual N');
+    assert.strictEqual((await post('cycles/status/' + a.id, { status: 'Active' })).status, 200);
+    const count = () => new Promise((resolve, reject) => {
+      const req = { method: 'GET', url: '/?resource=eligibility&count=1&cycleId=' + a.id, on() {} };
+      const res = { status: 0, writeHead(s) { this.status = s; }, end(text) { resolve({ status: this.status, json: JSON.parse(text) }); } };
+      api(req, res).catch(reject);
+    });
+
+    const before = JSON.stringify(elig.rows);
+    const pending = await count();
+    assert.strictEqual(pending.status, 200, JSON.stringify(pending.json));
+    assert.strictEqual(pending.json.data.criteriaApplied, false);
+    assert.strictEqual(pending.json.data.total, elig.rows.length);
+    assert.strictEqual(JSON.stringify(elig.rows), before, 'a count must not change Eligibility rows');
+
+    assert.strictEqual((await apply(post, a.id)).status, 200);
+    const applied = await count();
+    assert.strictEqual(applied.json.data.criteriaApplied, true);
+    assert.strictEqual(applied.json.data.total, elig.rows.length);
+  });
+
   await t('apply criteria needs the Active cycle', async () => {
     const { post, mk } = await setup();
     const c = await mk('Annual U');

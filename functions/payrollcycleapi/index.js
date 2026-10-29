@@ -2639,6 +2639,22 @@ async function routeRequest(req, res, identity, resource, a) {
     const cycle = activeCycle && (!queryCycleId || queryCycleId === activeCycle.id)
       ? activeCycle
       : null;
+    // ?count=1: read-only status for Cycle Master, without the sync below
+    // (which writes). criteriaApplied is what "generated" means: the list is
+    // created by Apply Criteria, which is allowed once per cycle.
+    if (["1", "true"].includes(String(query.count || "").trim().toLowerCase())) {
+      if (!cycle) {
+        return sendJson(res, 200, { success: true, data: { cycleId: "", total: 0, criteriaApplied: false } });
+      }
+      const cycleRows = (await getAllRows(tables.eligibility)).filter(
+        (row) => String(row.appraisal_cycle_id || "") === String(cycle.id),
+      );
+      const criteriaApplied = await eligibilityCriteriaWasApplied(tables, cycle.id, cycleRows);
+      return sendJson(res, 200, {
+        success: true,
+        data: { cycleId: cycle.id, total: cycleRows.length, criteriaApplied },
+      });
+    }
     if (!cycle) {
       return sendJson(res, 200, {
         success: true,
