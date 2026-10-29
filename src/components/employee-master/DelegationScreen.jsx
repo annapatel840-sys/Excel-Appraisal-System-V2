@@ -300,41 +300,8 @@ export default function DelegationScreen({
       };
       let all = await fetchDelegationRoster();
 
-      // First-time setup: persist the active cycle's initial delegation roster.
-      // It is needed only while some employee has no saved Delegation row
-      // (employeesapi reports delegation_saved), so a normal open skips this
-      // save. replace:false keeps existing rows; the roster is then reloaded
-      // so it shows the saved values.
-      let delegationSaveError = "";
-      if (isHR && all.some((item) => item.delegation_saved !== true)) {
-        try {
-          const saveResponse = await catalystFetch(
-            ACCESS_API_URL + "delegation/fill",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Accept: "application/json",
-              },
-              body: JSON.stringify({ cycleId, replace: false }),
-            },
-          );
-          const savePayload = await saveResponse.json().catch(() => ({}));
-          if (!saveResponse.ok || savePayload.ok === false || savePayload.success === false) {
-            throw new Error(
-              savePayload.error ||
-                savePayload.message ||
-                "The initial Delegation rows could not be saved.",
-            );
-          }
-        } catch (saveError) {
-          delegationSaveError =
-            saveError?.message || "The initial Delegation rows could not be saved.";
-          console.error("Initial Delegation POST failed:", saveError);
-        }
-        if (!delegationSaveError) all = await fetchDelegationRoster();
-      }
-
+      // Delegation is generated only by the Eligibility page's explicit
+      // "Generate Delegation" action. Opening this screen must never create rows.
       const unique = new Map();
       all.forEach((item) => {
         const id = String(item.emp_id || item.employee_id || "").trim().toLowerCase();
