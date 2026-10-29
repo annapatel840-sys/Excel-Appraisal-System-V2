@@ -133,6 +133,9 @@ export function ColumnFilter({
   // optional: for screens whose columns are not in the appraisal column list
   label: labelProp,
   allowGroup = true,
+  // Always open directly under the header cell (never flip above the grid when
+  // the window is short); the value list shrinks to fit instead.
+  alwaysBelow = false,
 }) {
   const meta = fieldByKey(columnKey);
 
@@ -140,6 +143,8 @@ export function ColumnFilter({
   const [subOpen, setSubOpen] = useState(false);
   const [subLeft, setSubLeft] = useState(true);
   const contentRef = useRef(null);
+  const triggerRef = useRef(null);
+  const [alignEnd, setAlignEnd] = useState(false);
 
   // checkbox list draft
   const [search, setSearch] = useState("");
@@ -388,9 +393,21 @@ export function ColumnFilter({
 
   return (
     <>
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover
+        open={open}
+        onOpenChange={(next) => {
+          // Near the right edge, line the menu up with the icon's right side so
+          // it stays on screen without having to flip above the grid.
+          if (next && alwaysBelow && triggerRef.current) {
+            const rect = triggerRef.current.getBoundingClientRect();
+            setAlignEnd(rect.left + 262 + 8 > window.innerWidth);
+          }
+          setOpen(next);
+        }}
+      >
         <PopoverTrigger asChild>
           <button
+            ref={triggerRef}
             type="button"
             aria-label={`Filter ${label}`}
             className={cn(
@@ -410,7 +427,8 @@ export function ColumnFilter({
 
         <PopoverContent
           ref={contentRef}
-          align="start"
+          align={alwaysBelow && alignEnd ? "end" : "start"}
+          {...(alwaysBelow ? { side: "bottom", avoidCollisions: false } : {})}
           hideWhenDetached={false}
           // Dragging / clicking the grid's horizontal or vertical scrollbar
           // counts as a click "outside" and used to close the menu. Keep it
@@ -567,6 +585,16 @@ export function ColumnFilter({
 
             <div
               className="mx-2 h-[150px] overflow-auto border border-[#9ca3af] py-[3px]"
+              style={
+                alwaysBelow
+                  ? {
+                      // Menu is pinned below the header: shrink the list (60-150px)
+                      // when there is not much room under it.
+                      height:
+                        "clamp(60px, calc(var(--radix-popover-content-available-height, 460px) - 310px), 150px)",
+                    }
+                  : undefined
+              }
               onMouseEnter={() => setSubOpen(false)}
             >
               <label className="flex cursor-pointer items-center gap-1.5 px-2 py-0.5 text-[12px] hover:bg-[#eef2f8]">

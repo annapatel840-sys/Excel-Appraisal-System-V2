@@ -9,12 +9,12 @@ import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 /* ------------------------------------------------------------------ data */
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
 const ACCESS_API_URL = catalystFunctionUrl("accessapi");
-const FIELDS = { comp: "Comp. Manager", app: "Appraiser Tech-Ed" };
+const FIELDS = { comp: "Comp. Manager", app: "Appraiser Tech-ED" };
 const ST = {
   CF: "Carried forward",
-  NEW: "New – Tech-Ed default",
+  NEW: "New – Tech-ED default",
   HR: "Changed – HR",
-  TE: "Changed – Tech-Ed (approved)",
+  TE: "Changed – Tech-ED (approved)",
   PD: "Pending HR approval",
 };
 const TAG = {
@@ -33,19 +33,21 @@ const COLS = [
   { key: "name", label: "Employee Name", w: 190, cls: "nm" },
   { key: "rm", label: "Reporting Manager", w: 220 },
   { key: "director", label: "Director", w: 190 },
-  { key: "te", label: "Tech-Ed", w: 230 },
+  { key: "te", label: "Tech-ED", w: 230 },
   { key: "comp", label: "Comp. Manager", w: 240, edit: true },
-  { key: "app", label: "Appraiser Tech-Ed", w: 240, edit: true },
+  { key: "app", label: "Appraiser Tech-ED", w: 240, edit: true },
   { key: "prevComp", label: "Prev. Comp. Manager", w: 220, cls: "ref" },
-  { key: "prevApp", label: "Prev. Appraiser Tech-Ed", w: 250, cls: "ref" },
+  { key: "prevApp", label: "Prev. Appraiser Tech-ED", w: 250, cls: "ref" },
 ];
 const SELECT_W = 40;
+/* Bulk Assign dialog: starting values (also what "Clear all" resets to) */
+const BULK_DEFAULT = { field: "app", scope: "sel", person: "", reason: "" };
 /* Default Comp. Manager: copy this value from each employee's own row */
 const DEFAULT_COMP_SOURCES = [
   { key: "prevComp", label: "Previous Comp. Manager" },
   { key: "director", label: "Director" },
   { key: "rm", label: "Reporting Manager" },
-  { key: "te", label: "Tech-Ed" },
+  { key: "te", label: "Tech-ED" },
 ];
 const testText = (raw, op, value) => {
   const v = String(value ?? "").trim().toLowerCase();
@@ -92,7 +94,15 @@ const csvCell = (v) =>
     ? '"' + String(v).replace(/"/g, '""') + '"'
     : String(v ?? "");
 /* Show every person as "EMP001 - Name": values that arrive as only an
-   employee ID or only a name are matched against the roster. */
+   employee ID, only a name, or in another layout ("Name (EMP001)",
+   "Name - EMP001", "Last, First", odd spacing / dashes) are matched against
+   the roster. Anything that cannot be matched is returned unchanged. */
+const normText = (v) =>
+  String(v ?? "")
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 const makeResolver = (list) => {
   const byId = new Map();
   const nameCount = new Map();
@@ -102,21 +112,40 @@ const makeResolver = (list) => {
     const name = String(r.name || "").trim();
     if (!id) return;
     const full = name ? `${id} - ${name}` : id;
-    byId.set(id.toLowerCase(), full);
+    byId.set(normText(id), full);
     if (name) {
-      const k = name.toLowerCase();
+      const k = normText(name);
       nameCount.set(k, (nameCount.get(k) || 0) + 1);
       byName.set(k, full);
     }
   });
+  const byUniqueName = (text) => {
+    const k = normText(text);
+    return k && byName.has(k) && nameCount.get(k) === 1 ? byName.get(k) : "";
+  };
   return (value) => {
     const s0 = String(value ?? "").trim();
     if (!s0) return "";
-    const m = s0.match(/^(\S+)\s*-\s*(.+)$/);
-    if (m && byId.has(m[1].toLowerCase())) return byId.get(m[1].toLowerCase());
-    const low = s0.toLowerCase();
+    const low = normText(s0);
+    // 1. Exactly an employee ID, or exactly a (unique) name.
     if (byId.has(low)) return byId.get(low);
-    if (byName.has(low) && nameCount.get(low) === 1) return byName.get(low);
+    const exactName = byUniqueName(s0);
+    if (exactName) return exactName;
+    // 2. "EMP001 - Name" / "Name - EMP001" / "Name (EMP001)": find the ID part.
+    const parts = low.split(/\s*-\s*|[()[\]|,;:/]+/).map((p) => p.trim()).filter(Boolean);
+    for (const part of parts) if (byId.has(part)) return byId.get(part);
+    for (const tok of low.split(/[\s()[\],;:|/]+/)) if (byId.has(tok)) return byId.get(tok);
+    // 3. A name left over once an unknown ID prefix/suffix is removed.
+    for (const part of parts) {
+      const hit = byUniqueName(part);
+      if (hit) return hit;
+    }
+    // 4. "Last, First" -> "First Last".
+    const comma = s0.split(",");
+    if (comma.length === 2) {
+      const hit = byUniqueName(comma[1].trim() + " " + comma[0].trim());
+      if (hit) return hit;
+    }
     return s0;
   };
 };
@@ -145,7 +174,7 @@ export default function DelegationScreen({
   const [user, setUser] = useState({
     id: loggedInName,
     name: loggedInName,
-    role: isHRUser ? "HR Admin" : "Tech Ed",
+    role: isHRUser ? "HR Admin" : "Tech-ED",
   });
   const [rows, setRows] = useState(() => initialRows || []);
   const [stagedChanges, setStagedChanges] = useState({});
@@ -206,7 +235,7 @@ export default function DelegationScreen({
         return "Pending";
       })(),
       reason: q.reason || q.details || "",
-      byName: q.byName || q.requestedBy || q.byId || "Tech-Ed",
+      byName: q.byName || q.requestedBy || q.byId || "Tech-ED",
       no: q.no || q.id || `DR-${Date.now()}`,
     }));
   const [reqs, setReqs] = useState([]);
@@ -252,12 +281,7 @@ export default function DelegationScreen({
   const [sel, setSel] = useState({});
   const [page, setPage] = useState(1);
   const [reqTab, setReqTab] = useState("Pending");
-  const [bulk, setBulk] = useState({
-    field: "app",
-    scope: "sel",
-    person: "",
-    reason: "",
-  });
+  const [bulk, setBulk] = useState({ ...BULK_DEFAULT });
   const [reqOpen, setReqOpen] = useState(false); // ADDED: Pending approvals starts folded
   const [remarks, setRemarks] = useState({});
   const [modal, setModal] = useState(null); // {type, ...}
@@ -317,7 +341,7 @@ export default function DelegationScreen({
   const { refreshEmployees } = useAppraisalRefresh();
   const canApprove = isHR;
   const canAudit = access.canAction("viewAudit");
-  // View-only screen, or a Tech-Ed without the delegateRequest action: no edits.
+  // View-only screen, or a Tech-ED without the delegateRequest action: no edits.
   const editLocked =
     locked ||
     (!isHR && !access.canScreen("delegation", "edit")) ||
@@ -440,7 +464,7 @@ export default function DelegationScreen({
       ? ST.PD
       : r.lastRole === "HR Admin"
         ? ST.HR
-        : r.lastRole === "Tech Ed"
+        : r.lastRole === "Tech-ED"
           ? ST.TE
           : r.base;
   const scoped = useMemo(
@@ -492,6 +516,10 @@ export default function DelegationScreen({
         return resolveName(r.prevApp);
       case "te":
         return resolveName(r.te);
+      case "rm":
+        return resolveName(r.rm);
+      case "director":
+        return resolveName(r.director);
       case "status":
         return statusOf(r);
       default:
@@ -690,7 +718,7 @@ export default function DelegationScreen({
 
   // Default Comp. Manager: set Comp. Manager from the chosen source column of
   // each employee's own row (Previous Comp. Manager / Director / Reporting
-  // Manager / Tech-Ed).
+  // Manager / Tech-ED).
   const defaultTargets = (base, sourceKey, resolve) =>
     base
       .map((r) => ({ r, value: resolve(r[sourceKey]) }))
@@ -814,7 +842,7 @@ export default function DelegationScreen({
         : scoped.filter((r) => r.teId === scope.slice(3));
     if (scope === "sel" && !t.length)
       return say(
-        'Select employees in the grid, or choose "All under Tech-Ed".',
+        'Select employees in the grid, or choose "All under Tech-ED".',
         true,
       );
     t = t.filter((r) => resolveName(r[field]) !== person);
@@ -1112,11 +1140,11 @@ export default function DelegationScreen({
       "Employee Name",
       "Reporting Manager",
       "Director",
-      "Tech-Ed",
+      "Tech-ED",
       "Comp. Manager",
-      "Appraiser Tech-Ed",
+      "Appraiser Tech-ED",
       "Prev. Comp. Manager",
-      "Prev. Appraiser Tech-Ed",
+      "Prev. Appraiser Tech-ED",
     ];
     const chosen = list.filter((r) => sel[r.id]);
     const exportRows =
@@ -1124,9 +1152,9 @@ export default function DelegationScreen({
     const body = exportRows.map((r) => [
       r.id,
       r.name,
-      r.rm,
-      r.director,
-      r.te,
+      resolveName(r.rm),
+      resolveName(r.director),
+      resolveName(r.te),
       nameOf(r.comp),
       nameOf(r.app),
       nameOf(r.prevComp),
@@ -1176,7 +1204,7 @@ export default function DelegationScreen({
         const rs = scoped.filter((r) => r.te === t);
         return {
           id: rs[0].teId,
-          label: `All under Tech-Ed ${t} (${rs.length})`,
+          label: `All under Tech-ED ${t} (${rs.length})`,
         };
       })
     : scoped.length
@@ -1195,7 +1223,7 @@ export default function DelegationScreen({
             {USERS.map((u) => (
               <option key={u.id} value={u.id}>
                 {u.name}
-                {u.role === "Tech Ed" ? " · Tech-Ed" : ""}
+                {u.role === "Tech-ED" ? " · Tech-ED" : ""}
               </option>
             ))}
           </select>
@@ -1211,7 +1239,7 @@ export default function DelegationScreen({
         <div className="dg-mq">
           ⚠{" "}
           {isHR
-            ? `${pending.length} delegation request(s) from Tech-Eds awaiting your approval.`
+            ? `${pending.length} delegation request(s) from Tech-EDs awaiting your approval.`
             : `${pending.length} of your request(s) awaiting HR approval.`}
         </div>
       )}
@@ -1359,10 +1387,10 @@ export default function DelegationScreen({
                 <thead>
                   <tr className="grp">
                     <th className="g g1 fz" colSpan={3} style={{ left: 0 }}>
-                      <span>From Employee Master · Read-Only</span>
+                      <span>&nbsp;</span>
                     </th>
                     <th className="g g1" colSpan={3}>
-                      <span>&nbsp;</span>
+                      <span>From Employee Master · Read-Only</span>
                     </th>
                     <th className="g g2" colSpan={2}>
                       <span>This Cycle · Editable</span>
@@ -1402,6 +1430,7 @@ export default function DelegationScreen({
                             columnKey={"delegation:" + c.key}
                             label={c.label}
                             allowGroup={false}
+                            alwaysBelow
                             filter={colFilters[c.key]}
                             options={optionsFor(c.key)}
                             allValues={[]}
@@ -1471,6 +1500,19 @@ export default function DelegationScreen({
                                     });
                                   }}
                                 >
+                                  {resolveName(r[f]) &&
+                                    !people.some(
+                                      (p) => p.id === resolveName(r[f]),
+                                    ) && (
+                                      <option value={resolveName(r[f])}>
+                                        {resolveName(r[f])}
+                                      </option>
+                                    )}
+                                  {!resolveName(r[f]) && (
+                                    <option value="" disabled>
+                                      — not set —
+                                    </option>
+                                  )}
                                   {people.map((p) => (
                                     <option key={p.id} value={p.id}>
                                       {p.name}
@@ -1524,8 +1566,8 @@ export default function DelegationScreen({
               <b style={{ color: "#e0914f" }}>■</b> Orange = differs from
               previous cycle
             </span>
-            <span>New employee → Comp. Manager defaults to Tech-Ed</span>
-            <span>Appraiser Tech-Ed defaults to Tech-Ed</span>
+            <span>New employee → Comp. Manager defaults to Tech-ED</span>
+            <span>Appraiser Tech-ED defaults to Tech-ED</span>
             {filtersActive && (
               <button
                 type="button"
@@ -1565,8 +1607,8 @@ export default function DelegationScreen({
           <div className="dg-help">
             <b>How it works:</b>{" "}
             {isHR
-              ? "Tech-Ed and Reporting Manager come from the Employee Master. Comp. Manager defaults to last cycle's; for new employees it defaults to the Tech-Ed. Your changes apply immediately. Changes by a Tech-Ed arrive as requests on the right and apply only when you approve. Save & lock is allowed only when no requests are pending."
-              : 'You see employees whose Tech-Ed is you. Any change you make is sent to HR for approval; the current value stays until HR approves. You can withdraw a pending request from "My requests".'}
+              ? "Tech-ED and Reporting Manager come from the Employee Master. Comp. Manager defaults to last cycle's; for new employees it defaults to the Tech-ED. Your changes apply immediately. Changes by a Tech-ED arrive as requests on the right and apply only when you approve. Save & lock is allowed only when no requests are pending."
+              : 'You see employees whose Tech-ED is you. Any change you make is sent to HR for approval; the current value stays until HR approves. You can withdraw a pending request from "My requests".'}
           </div>
         </div>
 
@@ -1581,7 +1623,7 @@ export default function DelegationScreen({
                   </div>
                   <div className="ss">
                     {isHR
-                      ? "Requests raised by Tech-Eds"
+                      ? "Requests raised by Tech-EDs"
                       : "Changes you sent to HR"}
                   </div>
                 </div>
@@ -1755,11 +1797,13 @@ export default function DelegationScreen({
                 className="btn"
                 disabled={editLocked}
                 onClick={() => {
+                  // Clear everything: ticked employees and every field in the
+                  // dialog go back to their starting values.
                   setSel({});
-                  setBulk({ ...bulk, person: "", reason: "" });
+                  setBulk({ ...BULK_DEFAULT });
                 }}
               >
-                Clear
+                Clear all
               </button>
               <button className="btn" onClick={() => setModal(null)}>
                 Close
@@ -1785,7 +1829,7 @@ export default function DelegationScreen({
             onChange={(e) => setBulk({ ...bulk, field: e.target.value })}
           >
             <option value="comp">Comp. Manager</option>
-            <option value="app">Appraiser Tech-Ed</option>
+            <option value="app">Appraiser Tech-ED</option>
           </select>
           <div className="lb">Apply to</div>
           <select
@@ -1826,7 +1870,7 @@ export default function DelegationScreen({
           <div className="note">
             {isHR
               ? "HR Admin: applied immediately."
-              : "Tech-Ed: one request per employee is sent to HR for approval."}
+              : "Tech-ED: one request per employee is sent to HR for approval."}
           </div>
         </Modal>
       )}
