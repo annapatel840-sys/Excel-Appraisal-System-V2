@@ -2681,6 +2681,28 @@ async function routeRequest(req, res, identity, resource, a) {
 
   if (resource === "eligibility" && req.method === "POST") {
     const body = await readBody(req);
+    if (String(body.action || "").trim().toLowerCase() === "reset-criteria") {
+      const cycleId = String(body.cycleId || body.appraisal_cycle_id || "").trim();
+      if (!cycleId) throw new ApiError("Appraisal cycle is required.", 400);
+      const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
+      const cycle = cycles.find((item) => item.id === cycleId);
+      if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
+      if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived || cycle.hidden) {
+        throw new ApiError("Eligibility can be regenerated only for the Active appraisal cycle.", 409);
+      }
+      const eligibilityRows = await getAllRows(tables.eligibility);
+      const cycleRows = eligibilityRows.filter((row) => String(row.appraisal_cycle_id || "") === cycleId);
+      const removed = await deleteEligibilityRowsById(tables, cycleRows.map(rowId));
+      const auditRows = await getAllRows(tables.audit);
+      const markerRows = auditRows.filter((row) =>
+        String(row.source || "").trim().toLowerCase() === "eligibility_criteria" &&
+        String(row.batch_id || "") === cycleId
+      );
+      for (let index = 0; index < markerRows.length; index += 100) {
+        await tables.audit.deleteRows(markerRows.slice(index, index + 100).map(rowId));
+      }
+      return sendJson(res, 200, { success: true, data: { cycleId, removed, criteriaApplied: false } });
+    }
     if (String(body.action || "").trim().toLowerCase() === "apply-criteria") {
       const result = await applyEligibilityCriteria(tables, body, actor);
       return sendJson(res, 200, { success: true, data: result });
