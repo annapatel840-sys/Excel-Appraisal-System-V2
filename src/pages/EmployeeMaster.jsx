@@ -2606,7 +2606,7 @@ export function EmployeeMaster() {
                     onGenerateDelegation={generateDelegationFromEligibility}
                     criteriaApplied={eligibilityCriteriaApplied}
                     delegationGenerated={delegationGenerated}
-                    readOnly={!eligibilityCycleId}
+                    readOnly={!eligibilityCycleId || eligibilityCriteriaApplied}
                   />
                 )}
 
