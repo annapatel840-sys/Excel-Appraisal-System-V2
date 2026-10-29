@@ -371,15 +371,17 @@ export function ColumnFilter({
     setOpen(false);
   };
 
-  if (!meta) {
-    return null;
-  }
-
   const inputClass =
     "h-8 w-full rounded border border-[#cbd5e1] bg-white px-2 text-[12px] text-[#1e293b] outline-none focus:border-[#17365d] focus:ring-1 focus:ring-[#17365d]";
 
   const darkButtonClass =
     "h-8 w-full rounded bg-[#17365d] px-3 text-[12px] font-semibold text-white hover:bg-[#122b4a] disabled:opacity-50";
+
+  // Appraisal columns always have metadata. Other screens (Delegation) pass
+  // their own `label` and use plain text/list filters.
+  if (!meta && !labelProp) {
+    return null;
+  }
 
   const menu = useNumberFilters ? NUMBER_MENU : TEXT_MENU;
   const opLabels = useNumberFilters ? NUMBER_OP_LABELS : TEXT_OP_LABELS;

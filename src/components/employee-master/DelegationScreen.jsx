@@ -41,6 +41,13 @@ const COLS = [
   { key: "status", label: "STATUS", w: 210 },
 ];
 const SELECT_W = 40;
+/* Default Comp Manager: copy this value from each employee's own row */
+const DEFAULT_COMP_SOURCES = [
+  { key: "prevComp", label: "Previous Comp Manager" },
+  { key: "director", label: "Director" },
+  { key: "rm", label: "Reporting Manager" },
+  { key: "te", label: "Tech Ed" },
+];
 const testText = (raw, op, value) => {
   const v = String(value ?? "").trim().toLowerCase();
   if (!v) return true;
@@ -669,6 +676,82 @@ export default function DelegationScreen({
     setModal(null);
   };
 
+  // Default Comp Manager: for the selected employees (or every employee
+  // currently shown when none is selected), set Comp Manager from the chosen
+  // source column of their own row.
+  const applyDefaultComp = (sourceKey) => {
+    const source = DEFAULT_COMP_SOURCES.find((o) => o.key === sourceKey);
+    if (!source) return;
+    const base = selIds.length ? scoped.filter((r) => sel[r.id]) : list;
+    const targets = base
+      .map((r) => ({ r, value: nameOf(r[sourceKey]) }))
+      .filter(({ r, value }) => value && value !== nameOf(r.comp));
+    const skipped = base.length - targets.length;
+    if (!targets.length)
+      return say(
+        `No employees to change: ${source.label} is empty or already the Comp Manager.`,
+        true,
+      );
+    const why = `Default Comp Manager: ${source.label}`;
+    setModal({
+      type: "confirm",
+      title: "Default Comp Manager",
+      body:
+        `Set Comp Manager to the ${source.label} for ${targets.length} employee(s)` +
+        (selIds.length ? " (selected)" : " (as shown in the grid)") +
+        (skipped ? `. ${skipped} skipped (empty or unchanged)` : "") +
+        (isHR
+          ? ". Applied immediately; no approval needed."
+          : ". One request per employee will be sent to HR for approval."),
+      ok: () => {
+        const no = refNo("DC");
+        (async () => {
+          const done = [];
+          try {
+            for (const { r, value } of targets) {
+              if (compDirect("comp")) await applyCompDirect(r, value, why, no);
+              else
+                await submitDelegationRequest({
+                  empId: r.id,
+                  empName: r.name,
+                  field: "comp",
+                  oldId: r.comp,
+                  newId: value,
+                  reason: why,
+                  byName: user.name,
+                  batch: no,
+                });
+              done.push({ r, value });
+            }
+          } catch (error) {
+            say(error?.message || "Unable to set the default Comp Manager.", true);
+          }
+          if (done.length && compDirect("comp")) {
+            await refreshEmployees().catch(() => {});
+            setRows((rs) =>
+              done.reduce(
+                (acc, { r, value }) =>
+                  applyTo(acc, r.id, "comp", value, "HR Admin", why, user.name),
+                rs,
+              ),
+            );
+            log({
+              action: "Changed",
+              field: FIELDS.comp,
+              to: source.label,
+              why: `${done.length} employee(s): ${why}`,
+            });
+            say(`Comp Manager set to ${source.label} for ${done.length} employee(s).`);
+          } else if (done.length) {
+            say(`${done.length} request(s) sent to HR for approval (${no}).`);
+          }
+          await loadRequests().catch(() => {});
+        })();
+        setSel({});
+      },
+    });
+  };
+
   const doBulk = () => {
     const { field, scope, person, reason: why } = bulk;
     if (!person) return say("Choose who to assign.", true);
@@ -1140,6 +1223,20 @@ export default function DelegationScreen({
 
           <div className="dg-tb">
             <span style={{ flex: 1 }} />
+            <select
+              className="f"
+              aria-label="Default Comp Manager"
+              disabled={editLocked || !rows.length}
+              value=""
+              onChange={(e) => e.target.value && applyDefaultComp(e.target.value)}
+            >
+              <option value="">Default Comp Manager…</option>
+              {DEFAULT_COMP_SOURCES.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
             <button
               className="btn"
               onClick={() => setModal({ type: "bulk" })}
@@ -1157,7 +1254,7 @@ export default function DelegationScreen({
                 }
                 onClick={lock}
               >
-                Save &amp; lock delegation
+                Save
               </button>
             )}
           </div>
@@ -1222,7 +1319,7 @@ export default function DelegationScreen({
                             {c.label}
                           </span>
                           <ColumnFilter
-                            columnKey={c.key}
+                            columnKey={"delegation:" + c.key}
                             label={c.label}
                             allowGroup={false}
                             filter={colFilters[c.key]}
