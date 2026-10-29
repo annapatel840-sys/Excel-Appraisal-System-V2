@@ -2799,8 +2799,9 @@ app.post("/temporary-fill-director", async function (req, res) {
   try {
     const a = req.access;
 
-    // Only HR users with Employee Master edit permission may run this.
-    if (!isHRUser(a && a.user)) {
+    // Use the normalized role from accessCore. Catalyst's raw user profile
+    // does not always expose role_name in the shape expected by isHRUser().
+    if (!a || a.role !== "hr") {
       return sendJson(res, 403, {
         success: false,
         message: "Only HR can run this temporary data update.",
