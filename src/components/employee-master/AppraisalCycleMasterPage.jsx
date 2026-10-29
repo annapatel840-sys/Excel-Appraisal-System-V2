@@ -392,26 +392,37 @@ export function AppraisalCycleMasterPage({
     return () => window.removeEventListener("appraisal:cycle-updated", refresh);
   }, [currentSetupCycleId, loadSetupStatus]);
 
-  // "Generate" on the Delegation step: loads the Delegation roster, which
-  // saves a Delegation row for every employee on it that has none (existing
-  // rows are kept), so the table holds what the Delegation screen shows.
-  // Eligibility's "Generate" opens the Eligibility screen instead, because
-  // its list is created by Apply Criteria, which needs HR's criteria and can
-  // run only once per cycle.
+  // Generate Delegation only after Apply Criteria has created this cycle's
+  // eligible roster. Rebuild the cycle's Delegation rows from that roster.
   const generateDelegation = async (c) => {
     if (setupBusy) return;
+    const eligibility = setupStatus[c.id]?.eligibility;
+    if (!eligibility?.generated) {
+      showBanner(
+        "Apply Eligibility Criteria first",
+        `${c.name}: open Eligibility, apply the criteria, then use Generate Delegation.`,
+        true,
+      );
+      navTo("go-el", c);
+      return;
+    }
     setSetupBusy("gen-dl");
     try {
       const response = await catalystFetch(
-        catalystFunctionUrl("employeesapi") + "?page=1&limit=1000&view=delegation",
-        { method: "GET", cache: "no-store" },
+        catalystFunctionUrl("accessapi") + "delegation/fill",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ cycleId: c.id, replace: true }),
+        },
       );
       const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload.success === false) {
-        throw new Error(payload.message || "The Delegation list could not be generated.");
+      if (!response.ok || payload.ok === false || payload.success === false) {
+        throw new Error(payload.error || payload.message || "The Delegation list could not be generated.");
       }
       await loadSetupStatus(c.id);
-      showBanner("Delegation generated", `${c.name}: open Delegation to review the assignments.`);
+      showBanner("Delegation generated", `${c.name}: open Delegation to review the saved assignments.`);
+      navTo("go-dl", c);
     } catch (error) {
       showBanner("Unable to generate Delegation", error?.message || "The request failed.", true);
     } finally {
