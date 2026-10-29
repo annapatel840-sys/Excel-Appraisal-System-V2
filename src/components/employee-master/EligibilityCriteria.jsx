@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Check, X, RefreshCw, Users } from "lucide-react";
+import { Check, X, RefreshCw } from "lucide-react";
 
 function CheckList({ values, selected, setSelected, disabled }) {
   const toggle = (value) =>
@@ -200,18 +200,7 @@ export function EligibilityCriteria({
           </button>
         )}
       </div>
-      {criteriaApplied && (
-        <button
-          type="button"
-          className="em-btn em-btn-primary"
-          style={{ width: "100%", marginTop: 8, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6 }}
-          disabled={readOnly || delegationGenerated}
-          onClick={onGenerateDelegation}
-        >
-          <Users size={14} />
-          {delegationGenerated ? "Delegation Generated" : "Generate Delegation"}
-        </button>
-      )}
+
 
     </div>
   );
