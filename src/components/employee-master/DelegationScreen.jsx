@@ -348,9 +348,9 @@ export default function DelegationScreen({
 
       // Always fetch the enriched delegation roster from employeesapi.
       // initialRows may contain only Employee_Master values and omit previous-cycle references.
-      // Ensure the Active cycle's Eligibility_List is initialized/refreshed
-      // before fetching delegation rows. Its GET path syncs missing eligibility
-      // rows from Employee_Master for the current cycle.
+      // Read the current cycle's Eligibility_List before fetching delegation
+      // rows. This read must not generate Delegation; only the explicit
+      // Generate Delegation action is allowed to replace/save its roster.
       await payrollCycleRequest("eligibility", {
         method: "GET",
         query: { cycleId },
@@ -464,20 +464,21 @@ export default function DelegationScreen({
         String(q.byId || "").toLowerCase() ===
           String(catalystUser?.email || "").toLowerCase()),
   );
-  const people = useMemo(
-    () =>
-      [
-        ...new Set(
-          [...rows.map((r) => r.comp), ...rows.map((r) => r.app)]
-            .filter(Boolean)
-            .map((v) => resolveName(v)),
-        ),
-      ]
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b))
-        .map((value) => ({ id: value, name: value, roles: [] })),
-    [rows, resolveName],
-  );
+  const people = useMemo(() => {
+    const uniquePeople = new Map();
+    rows.forEach((row) => {
+      const id = String(row.id || "").trim();
+      const name = String(row.name || "").trim();
+      if (!id) return;
+      const key = id.toLowerCase();
+      const label = name ? `${id} - ${name}` : id;
+      const existing = uniquePeople.get(key);
+      if (!existing || (existing.name === existing.id && name)) {
+        uniquePeople.set(key, { id: label, name: label, roles: [] });
+      }
+    });
+    return Array.from(uniquePeople.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [rows]);
   const pending = myReqs.filter((q) => q.status === "Pending");
   const colValue = (r, key) => {
     switch (key) {
