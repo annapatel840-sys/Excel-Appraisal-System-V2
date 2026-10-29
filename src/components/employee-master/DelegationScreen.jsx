@@ -1086,6 +1086,7 @@ export default function DelegationScreen({
                 </colgroup>
                 <thead>
                   <tr className="grp">
+                    <th className="g" />
                     <th className="g g1" colSpan={5}>
                       <span>FROM EMPLOYEE MASTER · READ-ONLY</span>
                     </th>
