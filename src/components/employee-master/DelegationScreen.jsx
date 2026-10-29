@@ -29,7 +29,7 @@ const PAGE = 50;
 const MIN_COL = 70;
 const MAX_COL = 520;
 const COLS = [
-  { key: "employee", label: "Employee", w: 300, cls: "nm" },
+  { key: "employee", label: "Employee", w: 250, cls: "nm" },
   { key: "rm", label: "Reporting Manager", w: 220 },
   { key: "director", label: "Director", w: 190 },
   { key: "te", label: "Tech-ED", w: 230 },
@@ -2137,7 +2137,6 @@ const CSS = `
 .dg .dg-grid th.fz{position:sticky;z-index:6}
 .dg .dg-grid tr.grp th.fz{z-index:7}
 .dg .dg-grid td.fz{position:sticky;z-index:2;background:#fff}
-.dg .dg-grid tr.sel td.fz{background:#f7fbfa}
 .dg .dg-grid th:nth-child(2).fz,.dg .dg-grid td:nth-child(2).fz{border-right:2px solid #94a3b8}
 .dg .dg-grid .hl{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dg .dg-grid .rz{position:absolute;top:0;right:-2px;height:100%;width:5px;cursor:col-resize;touch-action:none;z-index:10}
@@ -2146,7 +2145,10 @@ const CSS = `
 .dg .g1 span{background:#eef1f5;color:#4b5563}.dg .g2 span{background:#e3f3ee;color:#146b5a}.dg .g3 span{background:#f3f4f6;color:#6b7280}
 .dg .dg-grid td{padding:6px 8px;border-right:1px solid #e0e5ec;border-bottom:1px solid #e0e5ec;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:38px}
 .dg td.ref{color:#6b7685}.dg td.nm{font-weight:700}
-.dg tr.sel td{background:#f7fbfa}
+/* Row colours as on the Appraisal Sheet: banded rows, blue when selected, no hover change */
+.dg .dg-grid tbody tr:nth-child(odd) td{background:#fbfcfe}
+.dg .dg-grid tbody tr:nth-child(even) td{background:#f2f5f9}
+.dg .dg-grid tbody tr.sel td{background:#dcebff}
 .dg .in{border:1px solid #b9dcc4;background:#eff8f1;border-radius:5px;padding:4px 6px;width:100%;color:#1f2a37}
 .dg .in.c{border-color:#e0914f;background:#fff4ea}
 .dg .in:disabled{background:#f3f5f8;border-color:#dfe4ea;color:#4b5563}
