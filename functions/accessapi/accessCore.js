@@ -181,7 +181,8 @@ const BUILT_IN_KEYS = ['hr', 'techEd', 'compMgr'];
    --------------------------------------------------------------------- */
 class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
 const IST_MS = 330 * 60 * 1000;
-function nowDT() { return new Date().toISOString().replace('T', ' ').slice(0, 19); }
+// Data Store datetime text in IST (the project timezone); toISOString alone is UTC.
+function nowDT() { return new Date(Date.now() + IST_MS).toISOString().replace('T', ' ').slice(0, 19); }
 /** Today's date (YYYY-MM-DD) in Asia/Kolkata — used for override end dates. */
 function today() { return new Date(Date.now() + IST_MS).toISOString().slice(0, 10); }
 function q(v) { return String(v).replace(/'/g, "''"); }
