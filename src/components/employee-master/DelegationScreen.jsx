@@ -331,7 +331,7 @@ export default function DelegationScreen({
           unique.set(id, item);
         }
       });
-      setRows(Array.from(unique.values()).map((item) => ({
+      const roster = Array.from(unique.values()).map((item) => ({
         id: String(item.emp_id || item.employee_id || item.ROWID || "").trim(),
         name: String(item.name || item.emp_name || item.emp_id || "").trim(),
         rm: String(item.reporting_manager || item.repo_manager || "").trim(),
@@ -342,7 +342,7 @@ export default function DelegationScreen({
         rawPrevApp: item.previous_appraiser_tech_ed || item.previous_tech_ed || item.prev_appraiser_tech_ed || "",
         base: "",
         lastRole: "",
-            })));
+      }));
       const normalizedRoster = roster.map((item) => ({
         id: item.id,
         name: item.name,
@@ -1053,11 +1053,7 @@ export default function DelegationScreen({
             ) : rosterLoading ? null : !scoped.length ? (
               <div className="empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
                 {activeCycleId ? "No delegation rows are available for " + displayCycleName + "." : "No active appraisal cycle. Create or activate a cycle to start delegation."}
-                {activeCycleId && (
-                  <button className="btn p" type="button" onClick={loadRoster}>
-                    Generate / Fetch Delegation Data
-                  </button>
-                )}
+
               </div>
             ) : (
               <table
