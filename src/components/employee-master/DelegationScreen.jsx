@@ -25,14 +25,20 @@ const TAG = {
 };
 const PAGE = 50;
 const nameOf = (value) => String(value || "").trim();
-// Catalyst lookup fields can arrive as "EMP001, EMP001 - Employee Name".
-// Keep the resolved "EMP001 - Employee Name" value consistently in the grid
-// and dropdowns instead of exposing the duplicated lookup representation.
-const displayAssignment = (value) => {
+// Catalyst lookup values can contain both a bare employee ID and its
+// resolved "ID - Name" label. Prefer the resolved label and use the loaded
+// roster to resolve any remaining bare IDs so dropdowns never show both forms.
+const displayAssignment = (value, roster = []) => {
   const text = nameOf(value);
-  if (!text.includes(",")) return text;
+  if (!text) return "";
   const parts = text.split(",").map((part) => part.trim()).filter(Boolean);
-  return parts.find((part) => /\\s-\\s/.test(part)) || parts[parts.length - 1] || text;
+  const resolved = parts.find((part) => /\\s-\\s/.test(part));
+  const candidate = resolved || parts[parts.length - 1] || text;
+  if (/\\s-\\s/.test(candidate)) return candidate;
+  const match = roster.find((employee) =>
+    String(employee.id || "").trim().toLowerCase() === candidate.toLowerCase()
+  );
+  return match?.name ? candidate + " - " + match.name : candidate;
 };
 const now = () => new Date().toISOString().replace("T", " ").slice(0, 19);
 const fmt = (s) => {
@@ -314,19 +320,31 @@ export default function DelegationScreen({
           unique.set(id, item);
         }
       });
-      setRows(Array.from(unique.values()).map((item) => ({
+      const roster = Array.from(unique.values()).map((item) => ({
         id: String(item.emp_id || item.employee_id || item.ROWID || "").trim(),
         name: String(item.name || item.emp_name || item.emp_id || "").trim(),
         rm: String(item.reporting_manager || item.repo_manager || "").trim(),
-        teId: displayAssignment(item.appraiser_tech_ed || ""),
-        te: displayAssignment(item.appraiser_tech_ed || ""),
-        comp: displayAssignment(item.delegation_comp_manager || item.comp_manager || ""),
-        app: displayAssignment(item.appraiser_tech_ed || ""),
-        prevComp: displayAssignment(item.previous_comp_manager || item.prev_comp_manager || ""),
-        prevApp: displayAssignment(item.previous_appraiser_tech_ed || item.previous_tech_ed || item.prev_appraiser_tech_ed || ""),
+        rawTe: item.appraiser_tech_ed || "",
+        rawComp: item.delegation_comp_manager || item.comp_manager || "",
+        rawPrevComp: item.previous_comp_manager || item.prev_comp_manager || "",
+        rawPrevApp: item.previous_appraiser_tech_ed || item.previous_tech_ed || item.prev_appraiser_tech_ed || "",
         base: "",
         lastRole: "",
-      })));
+      }));
+      const normalizedRoster = roster.map((item) => ({
+        id: item.id,
+        name: item.name,
+        rm: item.rm,
+        teId: displayAssignment(item.rawTe, roster),
+        te: displayAssignment(item.rawTe, roster),
+        comp: displayAssignment(item.rawComp, roster),
+        app: displayAssignment(item.rawTe, roster),
+        prevComp: displayAssignment(item.rawPrevComp, roster),
+        prevApp: displayAssignment(item.rawPrevApp, roster),
+        base: item.base,
+        lastRole: item.lastRole,
+      }));
+      setRows(normalizedRoster);
       if (delegationSaveError) {
         say(
           "Roster loaded, but saving Delegation failed: " + delegationSaveError,
@@ -397,7 +415,7 @@ export default function DelegationScreen({
         ...new Set(
           [...rows.map((r) => r.comp), ...rows.map((r) => r.app)]
             .filter(Boolean)
-            .map((v) => displayAssignment(v)),
+            .map((v) => displayAssignment(v, rows)),
         ),
       ]
         .sort((a, b) => a.localeCompare(b))
