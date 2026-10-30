@@ -84,10 +84,12 @@ const emptyRecord = (h) =>
 
 /* Adapter for useBudget(): change key names here if your store differs. null = no budget for this login. */
 function readBudget(store) {
-  const b = store?.myBudget ?? store?.budget ?? store?.summary ?? null;
+  // useBudget exposes the active role-scoped allocation as totals.
+  // Read it first so Comp Managers see their own child allocation here too.
+  const b = store?.totals ?? store?.myBudget ?? store?.budget ?? store?.summary ?? null;
   const allocated = Number(b?.updated ?? b?.updatedBudget ?? b?.allocated);
   if (!b || !Number.isFinite(allocated)) return null;
-  const initial = Number(b.initial ?? b.original ?? b.originalBudget);
+  const initial = Number(b.base ?? b.initial ?? b.original ?? b.originalBudget);
   return {
     allocated,
     initial: Number.isFinite(initial) ? initial : null,
