@@ -245,7 +245,8 @@ function requirePayrollAccess(a, resource, method) {
     access.requireScreen(a, resource === "eligibility" ? "employeeMaster" : "cycleMaster", "edit");
     return;
   }
-  if (["validate", "commit", "undo"].includes(resource) && method === "POST") {
+  // import: the Upload screen's Payroll / Review and Feedback upload.
+  if (["validate", "commit", "undo", "import"].includes(resource) && method === "POST") {
     access.requireScreen(a, "payroll", "edit");
   }
 }

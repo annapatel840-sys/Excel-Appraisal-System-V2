@@ -1513,6 +1513,7 @@ app.post(
     if (!cycleId || !empId || !["comp", "app"].includes(field) || !assignment) {
       throw new HttpError(422, "Cycle, employee, assignment field, and new assignment are required.");
     }
+    if (!/^\d{1,30}$/.test(cycleId)) throw new HttpError(422, "Invalid cycle id.");
     const zcql = ap.admin.zcql();
     const d = SETTINGS.delegation;
     const e = SETTINGS.employeeMaster;
@@ -1544,11 +1545,11 @@ app.post(
       [field === "comp" ? d.compManagerId : d.appraiserTechEdId]: assignment,
     };
     if (existing) {
-      await datastore.table(DELEGATION_DATA_TABLE_ID).updateRow({ ROWID: String(existing.ROWID || existing.rowid), ...patch });
+      await A.whenNotBusy(() => datastore.table(DELEGATION_DATA_TABLE_ID).updateRow({ ROWID: String(existing.ROWID || existing.rowid), ...patch }));
     } else {
       patch.previous_comp_manager = "";
       patch.previous_appraiser_tech_ed = "";
-      await datastore.table(DELEGATION_DATA_TABLE_ID).insertRow(patch);
+      await A.whenNotBusy(() => datastore.table(DELEGATION_DATA_TABLE_ID).insertRow(patch));
     }
     const sheetRows = await selectAll(zcql, s.table, s.empId + " = '" + q(empId) + "'");
     const currentSheetRows = sheetRows.filter((row) => String(row.cycle_id || "") === cycleId);
@@ -1556,11 +1557,11 @@ app.post(
       const column = field === "comp" ? "comp_manager" : "appraiser_tech_ed";
       const sheetTable = datastore.table("74008000000039094");
       for (const row of currentSheetRows) {
-        await sheetTable.updateRow({ ROWID: row.ROWID, [column]: storedAssignment });
+        await A.whenNotBusy(() => sheetTable.updateRow({ ROWID: row.ROWID, [column]: storedAssignment }));
       }
     } else {
       const masterColumn = field === "comp" ? "director" : "appraiser_tech_ed";
-      await datastore.table("74008000000035727").updateRow({ ROWID: masterRowId, [masterColumn]: assignment });
+      await A.whenNotBusy(() => datastore.table("74008000000035727").updateRow({ ROWID: masterRowId, [masterColumn]: assignment }));
     }
     try {
       await A.bumpVersion(ap.admin, me.user.email, "Delegation saved for " + empId);

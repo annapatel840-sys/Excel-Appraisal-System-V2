@@ -888,7 +888,9 @@ module.exports = async (req, res) => {
     INITIALIZE CATALYST
     -------------------------------------------------------- */
 
-    const app = catalyst.initialize(req);
+    // Requests are authorized by the access checks below; the admin scope
+    // reads and writes Payroll_Data, so Data Store roles need no table access.
+    const app = catalyst.initialize(req, { scope: "admin" });
 
     const datastore = app.datastore();
 

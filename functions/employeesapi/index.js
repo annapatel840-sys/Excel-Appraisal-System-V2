@@ -2484,9 +2484,12 @@ async function getEmployees(req, res) {
    ============================================================ */
 
 async function createEmployees(req, res) {
-  const appInstance = catalyst.initialize(req);
-
-  const datastore = appInstance.datastore();
+  // Bulk upsert of Appraisal_Sheet rows: HR only. Authorized here, then
+  // written with the admin scope, so Data Store roles need no table access.
+  access.guard(req.access, function () {
+    access.requireScreen(req.access, "employeeMaster", "edit");
+  });
+  const datastore = catalyst.initialize(req, { scope: "admin" }).datastore();
 
   const body = req.body || {};
 
@@ -2679,8 +2682,9 @@ async function createEmployees(req, res) {
    ============================================================ */
 
 async function updateEmployee(req, res) {
-  const appInstance = catalyst.initialize(req);
-  const datastore = appInstance.datastore();
+  // Authorized below with req.access; the admin scope does the write, so
+  // Data Store roles need no direct table access.
+  const datastore = catalyst.initialize(req, { scope: "admin" }).datastore();
   const body = req.body || {};
 
   const empId = String(body.emp_id || body.empId || "").trim();
@@ -2711,9 +2715,14 @@ async function updateEmployee(req, res) {
       // authorization must not depend on employee hierarchy scope or a stale
       // per-screen matrix entry. Non-HR users still need delegation edit access
       // and must remain within their assigned employee scope.
+      // Only HR changes an assignment directly. Everyone else raises a
+      // Delegation request, which HR approves (accessapi). A direct change
+      // would also move salary visibility to whoever is named.
       if (a.role !== "hr") {
-        access.requireScreen(a, "delegation", "edit");
-        requireInScope(a, [empId], editOwned);
+        throw new access.HttpError(
+          403,
+          "Only HR can change Delegation directly. Raise a Delegation request instead.",
+        );
       }
     } else {
       requireAnyScreen(a, EDIT_SCREENS, "edit");
