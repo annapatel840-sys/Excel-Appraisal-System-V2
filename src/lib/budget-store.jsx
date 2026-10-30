@@ -443,17 +443,35 @@ export function BudgetProvider({ children }) {
     const isTechEdBudgetView = roleText.includes("teched") || (!isHR && hasTechEdAllocationForLogin);
 
     if (isCompManagerPreview || isCompManagerLogin) {
+      const matchesCurrentManager = (raw) => {
+        if (currentUserMatchesManager(raw, authenticatedUser, employeeRows)) return true;
+        const rawKey = normalizeOwner(
+          raw && typeof raw === "object"
+            ? raw.ROWID || raw.rowid || raw.id || raw.value || ""
+            : raw
+        );
+        if (!rawKey) return false;
+        const linkedManager = employeeRows.find((employee) =>
+          [employee.row_id, employee.ROWID, employee.ROW_ID, employee.id,
+            employee.emp_id, employee.employee_id, employee.employeeId]
+            .some((alias) => normalizeOwner(alias) === rawKey)
+        );
+        if (!linkedManager) return false;
+        const display = [
+          linkedManager.emp_id || linkedManager.employee_id || linkedManager.employeeId,
+          linkedManager.emp_name || linkedManager.employee_name || linkedManager.name,
+        ].filter(Boolean).join(" - ");
+        return currentUserMatchesManager(display, authenticatedUser, employeeRows);
+      };
       // Resolve the Comp Manager's parent Tech-Ed from the CURRENT Appraisal
       // Sheet roster. The logged-in manager identity is not the Tech-Ed owner.
       // A manager may have many employees; all must resolve to one parent row
       // for the active cycle before their own allocation can be displayed.
       const managerTeam = employeeRows.filter((employee) =>
         employee.in_appraisal_sheet === true &&
-        currentUserMatchesManager(
+        matchesCurrentManager(
           employee.comp_manager || employee.comp_manager_id || employee.compManager ||
-            employee.comp_manager_display || employee.comp_manager_name || "",
-          authenticatedUser,
-          employeeRows,
+            employee.comp_manager_display || employee.comp_manager_name || ""
         )
       );
       const techOwnerForEmployee = (employee) => {
@@ -487,7 +505,7 @@ export function BudgetProvider({ children }) {
         if (!ownParent ||
             String(row.appraisal_cycle_id || "") !== activeBudgetCycleId ||
             String(row.budget_distribution_id || "") !== String(ownParent.id || "")) return false;
-        return currentUserMatchesManager(row.comp_manager, authenticatedUser, employeeRows);
+        return matchesCurrentManager(row.comp_manager);
       });
       const manager = managerCandidates.length === 1 ? managerCandidates[0] : null;
       if (manager) {
