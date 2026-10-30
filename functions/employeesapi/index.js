@@ -1938,37 +1938,39 @@ async function getEmployees(req, res) {
       access.requireScreen(a, "employeeMaster", "view");
     }
     if (requestedView === "delegationoptions") {
-      // Expose only the distinct assignment targets needed by the Appraisal
-      // Sheet request panel. Do not grant Tech-Ed access to the HR master API.
-      access.requireScreen(a, "appraisalSheet", "view");
-    }
-    requireInScope(a, requestedEmpIds, requestedOwned);
-  });
-
-  if (requestedView === "delegationoptions") {
     const masterRows = await getAllEmployeeMaster(datastore);
     const byId = new Map();
     const byRowId = new Map();
     const byName = new Map();
+    const lookupText = function (value) {
+      if (value === null || value === undefined) return "";
+      if (typeof value === "object") {
+        return String(
+          value.ROWID ?? value.rowid ?? value.emp_id ?? value.employee_id ??
+          value.id ?? value.ID ?? value.value ?? value.name ?? value.emp_name ?? "",
+        ).trim();
+      }
+      return String(value).trim();
+    };
     masterRows.forEach(function (row) {
-      const empId = String(row.emp_id || "").trim();
+      const empId = String(row.emp_id || row.employee_id || "").trim();
       const name = String(row.emp_name || row.name || "").trim();
-      const rowId = String(row.ROWID || row.rowid || "").trim();
+      const rowId = String(row.ROWID || row.rowid || row.id || "").trim();
       if (empId) byId.set(empId.toLowerCase(), row);
       if (rowId) byRowId.set(rowId.toLowerCase(), row);
       if (name) byName.set(name.toLowerCase(), row);
     });
     function resolveAssignment(value) {
-      const raw = String(value || "").trim();
+      const raw = lookupText(value);
       if (!raw) return null;
-      const idOrName = raw.split(/\\s+-\\s+/)[0].trim();
+      const idOrName = raw.split(/\s+-\s+/)[0].trim();
       const row = byId.get(idOrName.toLowerCase()) ||
         byRowId.get(raw.toLowerCase()) ||
         byName.get(raw.toLowerCase());
       if (!row) return null;
       const status = String(row.emp_status || row.status || "Active").trim().toLowerCase();
-      if (status !== "active") return null;
-      const empId = String(row.emp_id || "").trim();
+      if (["inactive", "disabled", "terminated"].includes(status)) return null;
+      const empId = String(row.emp_id || row.employee_id || "").trim();
       const name = String(row.emp_name || row.name || "").trim();
       if (!empId || !name) return null;
       return { empId: empId, name: name, label: empId + " - " + name };
@@ -1983,11 +1985,14 @@ async function getEmployees(req, res) {
         return left.label.localeCompare(right.label);
       });
     }
+    const techEd = collect("appraiser_tech_ed");
+    const compManagers = collect("director");
     return sendJson(res, 200, {
       success: true,
       data: {
-        techEd: collect("appraiser_tech_ed"),
-        compManagers: collect("director"),
+        techEd: techEd,
+        compManagers: compManagers,
+        counts: { employeeMasterRows: masterRows.length, techEd: techEd.length, compManagers: compManagers.length },
       },
     });
   }
