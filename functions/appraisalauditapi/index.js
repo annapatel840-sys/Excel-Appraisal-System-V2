@@ -315,8 +315,27 @@ async function getAuditHistory(req, res, a) {
   const empId = String(params.emp_id || params.empId || "").trim();
 
   access.guard(a, () => {
-    access.requireAction(a, "viewAudit");
-    if (empId) requireAuditEmpIds(a, [empId]);
+    if (empId) {
+      // Employee-specific audit reads remain restricted to the signed-in
+      // user's existing employee scope.
+      requireAuditEmpIds(a, [empId]);
+      return;
+    }
+    // The UI's initial history load requests the collection. Permit that
+    // read to appraisal users, but the response below is still filtered to
+    // access.inScope(a, row.emp_id); system rows remain HR-only.
+    const allowed = ["appraisalSheet", "detailScreen"].some((screen) => {
+      try {
+        access.requireScreen(a, screen, "view");
+        return true;
+      } catch (error) {
+        if (error instanceof access.HttpError) return false;
+        throw error;
+      }
+    });
+    if (!allowed) {
+      throw new access.HttpError(403, "You do not have access to audit history.");
+    }
   });
 
   const appraisalYear = String(
