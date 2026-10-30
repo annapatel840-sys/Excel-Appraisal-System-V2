@@ -121,9 +121,9 @@ const auditCols = (showName) => [
   ...(showName ? [{ key: "owner", label: "Owner", kind: "text", get: (x) => x.name || "" }] : []),
   { key: "from", label: "Old %", kind: "number", n: true, get: (x) => (x.from == null ? "" : x.from) },
   { key: "to", label: "New %", kind: "number", n: true, get: (x) => (x.to == null ? "" : x.to) },
-  { key: "before", label: "Budget before", kind: "number", n: true, get: (x) => (x.before == null ? "" : x.before) },
-  { key: "after", label: "Budget after", kind: "number", n: true, get: (x) => (x.after == null ? "" : x.after) },
-  { key: "by", label: "Changed by", kind: "text", get: (x) => x.by || "" },
+  { key: "before", label: "Budget Before", kind: "number", n: true, get: (x) => (x.before == null ? "" : x.before) },
+  { key: "after", label: "Budget After", kind: "number", n: true, get: (x) => (x.after == null ? "" : x.after) },
+  { key: "by", label: "Changed By", kind: "text", get: (x) => x.by || "" },
   { key: "reason", label: "Reason", kind: "text", get: (x) => x.reason || "" },
 ];
 const AUDIT_W = { date: 130, owner: 190, from: 64, to: 64, before: 96, after: 96, by: 150, reason: 220 };

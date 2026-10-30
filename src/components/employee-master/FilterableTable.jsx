@@ -222,9 +222,8 @@ export function FilterStatus({ tf, noun = "rows" }) {
    screen appends this to its own CSS, scoped by its root class. */
 export const filterTableCss = (root, table) => `
 ${root} ${table} th.ft-th { position: relative; vertical-align: top; white-space: normal; line-height: 1.2; }
-${root} .ft-head { display: flex; align-items: flex-start; gap: 4px; min-height: 20px; }
-${root} .ft-head .ft-label { flex: 1; min-width: 0; white-space: normal; overflow-wrap: break-word; word-break: normal; }
-${root} ${table} th.r .ft-label, ${root} ${table} th.n .ft-label, ${root} ${table} th.num .ft-label { text-align: right; }
+${root} .ft-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 4px; min-height: 20px; }
+${root} .ft-head .ft-label { flex: 1; min-width: 0; text-align: left; white-space: normal; overflow-wrap: break-word; word-break: normal; }
 ${root} ${table} th .ft-head > button { flex-shrink: 0; }
 ${root} ${table} td { overflow-wrap: break-word; }
 ${root} .ft-rz { position: absolute; top: 0; right: -3px; z-index: 5; width: 7px; height: 100%; cursor: col-resize; touch-action: none; }
