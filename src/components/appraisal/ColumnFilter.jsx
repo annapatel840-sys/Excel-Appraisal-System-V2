@@ -413,7 +413,7 @@ export function ColumnFilter({
             aria-label={`Filter ${label}`}
             className={cn(
               boxed
-                ? "flex h-7 min-w-7 items-center justify-center gap-0.5 rounded-[6px] border border-[#9ca3af] bg-white px-1 text-[#102a43] transition-colors hover:bg-[#f3f4f6]"
+                ? "flex h-6 min-w-6 items-center justify-center gap-0.5 rounded-[5px] border border-[#9fb4ce] bg-white px-0.5 text-[#102a43] transition-colors hover:bg-[#dcebff]"
                 : "flex items-center gap-0.5 rounded p-1 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700",
               triggerActive &&
                 (boxed
@@ -421,7 +421,7 @@ export function ColumnFilter({
                   : "bg-[#17365d]/12 text-[#17365d]"),
             )}
           >
-            <Filter className="size-3.5" />
+            <Filter className={cn("size-3.5", boxed && "size-[13px] fill-current")} />
             {sortDirection && (
               <span className="text-[10px] font-extrabold leading-none">
                 {sortDirection === "asc" ? "▲" : "▼"}

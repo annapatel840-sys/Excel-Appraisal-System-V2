@@ -210,6 +210,19 @@ const SUM_COLUMN_KEYS = new Set([
   "totalRewardsHikeAmount",
 ]);
 
+// Two "Total ... Hike Amount" columns show their % underneath the amount, in
+// ONE column ("Amount / %"), like the reference HTML. The % columns still exist
+// in COLUMNS (export, calculations); they are just not drawn as a separate column.
+const MERGED_PCT = {
+  totalBonusHikeAmount: "totalBonusHikePct",
+  totalRewardsHikeAmount: "totalRewardsHikePct",
+};
+const MERGED_PCT_KEYS = new Set(Object.values(MERGED_PCT));
+const MERGED_LABELS = {
+  totalBonusHikeAmount: "Total Bonus Hike Amount / %",
+  totalRewardsHikeAmount: "Total Rewards Hike Amount / %",
+};
+
 const GRID_STYLES = `
 .appraisal-side, .appraisal-side * { font-family: "Manrope", "Segoe UI", system-ui, sans-serif !important; }
 @keyframes appraisalCellBlink {
@@ -219,13 +232,13 @@ const GRID_STYLES = `
 /* Selected row: a grey border around the whole row. It is drawn inside each
    cell (inset shadows) so sticky / frozen cells cannot hide it. */
 .appraisal-sel > td {
-  box-shadow: inset 0 2px 0 #64748b, inset 0 -2px 0 #64748b !important;
+  box-shadow: inset 0 2px 0 #102a43, inset 0 -2px 0 #102a43 !important;
 }
 .appraisal-sel > td:first-child {
-  box-shadow: inset 2px 0 0 #64748b, inset 0 2px 0 #64748b, inset 0 -2px 0 #64748b !important;
+  box-shadow: inset 5px 0 0 #102a43, inset 0 2px 0 #102a43, inset 0 -2px 0 #102a43 !important;
 }
 .appraisal-sel > td:last-child {
-  box-shadow: inset -2px 0 0 #64748b, inset 0 2px 0 #64748b, inset 0 -2px 0 #64748b !important;
+  box-shadow: inset -2px 0 0 #102a43, inset 0 2px 0 #102a43, inset 0 -2px 0 #102a43 !important;
 }
 .appraisal-cell-blink { animation: appraisalCellBlink .5s ease-in-out 3; }
 
@@ -360,7 +373,7 @@ const cellBackground = ({ kind, rowIndex, selected, flash }) => {
   }
 
   if (selected) {
-    return "bg-[#dcebff]";
+    return "bg-[#bcd4f8]";
   }
 
   if (kind === "frozen") {
@@ -1960,7 +1973,8 @@ export function AppraisalGrid({
     () =>
       allColumns.filter(
         (column) =>
-          FROZEN_KEYS.has(column.key) || !viewPrefs.hidden[column.key],
+          !MERGED_PCT_KEYS.has(column.key) &&
+          (FROZEN_KEYS.has(column.key) || !viewPrefs.hidden[column.key]),
       ),
     [allColumns, viewPrefs.hidden],
   );
@@ -3397,7 +3411,7 @@ export function AppraisalGrid({
   const draftClass = (cellKey, isBlinking) =>
     cn(
       modified[cellKey]
-        ? "border-[#d9822b] bg-[#ffe0c2] font-semibold text-[#111827]"
+        ? "border-[#d9822b] bg-transparent font-bold text-[#111827]"
         : "border-[#d1d5db] bg-white text-[#111827]",
       "focus:border-[#102a43] focus:bg-white focus:outline focus:outline-1 focus:outline-[#102a43] focus:ring-0",
       isBlinking && "appraisal-cell-blink",
@@ -3410,14 +3424,35 @@ export function AppraisalGrid({
     const isBlinking = lastEditedKey === cellKey;
     const wraps = wrapOf(col.key);
 
+    if (col.computed && MERGED_PCT[col.key]) {
+      // Amount on top, % underneath (smaller, grey) — one "Amount / %" column.
+      const pctCol = COLUMNS.find((c) => c.key === MERGED_PCT[col.key]);
+      const pctText = pctCol ? formatValue(row, pctCol) : "";
+      return (
+        <div
+          className="flex min-h-[38px] h-auto w-full flex-col items-end justify-center gap-px overflow-hidden px-2 py-[3px] text-right tabular-nums"
+          title="Calculated automatically"
+        >
+          <span className="block max-w-full truncate text-[14px] font-semibold leading-tight text-[#111827]">
+            {col.type === "currency"
+              ? displayValue.replace(/^₹\s?/, "")
+              : displayValue}
+          </span>
+          <span className="block max-w-full truncate text-[11px] font-semibold leading-tight text-[#6b7a8f]">
+            {pctText}
+          </span>
+        </div>
+      );
+    }
+
     if (col.computed) {
       return (
         <div
           className={cn(
             "flex min-h-[38px] h-auto w-full items-center justify-end overflow-hidden",
             "px-2 py-1 leading-tight text-right",
-            "text-[12px] font-semibold tabular-nums",
-            modified[cellKey] ? "text-slate-900" : "text-[#14527d]",
+            "text-[14px] font-semibold tabular-nums",
+            modified[cellKey] ? "text-slate-900" : "text-[#111827]",
           )}
           title="Calculated automatically"
         >
@@ -3445,7 +3480,7 @@ export function AppraisalGrid({
         >
           <span
             className={cn(
-              "block max-w-full text-[12.5px] font-bold leading-tight text-[#1559a6] hover:underline",
+              "block max-w-full text-[14px] font-extrabold leading-tight text-[#1559a6] hover:underline",
               wraps ? "break-words" : "truncate",
             )}
           >
@@ -3454,7 +3489,7 @@ export function AppraisalGrid({
 
           <span
             className={cn(
-              "mt-px block max-w-full text-[10.5px] font-normal leading-tight text-slate-500",
+              "mt-px block max-w-full text-[10.5px] font-normal leading-tight text-[#556880]",
               wraps ? "break-words" : "truncate",
             )}
           >
@@ -3498,7 +3533,7 @@ export function AppraisalGrid({
           }}
           className={cn(
             "flex min-h-[38px] h-auto w-full min-w-0 items-center overflow-hidden px-2 py-1",
-            "text-[12px] font-normal text-[#4b5563] leading-tight",
+            "text-[14px] font-semibold text-[#111827] leading-tight",
             isMoney ? "justify-end text-right tabular-nums" : "text-left",
           )}
           title={text}
@@ -3656,7 +3691,7 @@ export function AppraisalGrid({
               );
             }}
             className={cn(
-              "h-[30px] w-full cursor-pointer rounded-[4px] border px-1 text-[12px] outline-none",
+              "h-[28px] w-full cursor-pointer rounded-[6px] border px-1 text-[14px] font-semibold outline-none",
               draftClass(cellKey, isBlinking),
               col.key === "newTitle" &&
                 row.eligibleForPromotion === "Yes" &&
@@ -3827,7 +3862,7 @@ export function AppraisalGrid({
               handleEditableDoubleClick(event, rowIndex, col.key)
             }
             className={cn(
-              "min-h-[30px] w-full resize-none overflow-hidden rounded-[4px] border px-1.5 py-[5px] text-[12px] leading-tight outline-none",
+              "min-h-[30px] w-full resize-none overflow-hidden rounded-[6px] border px-1.5 py-[5px] text-[14px] font-semibold leading-tight outline-none",
               !wraps && "whitespace-nowrap",
               draftClass(cellKey, isBlinking),
             )}
@@ -4056,7 +4091,7 @@ export function AppraisalGrid({
             handleEditableDoubleClick(event, rowIndex, col.key)
           }
           className={cn(
-            "h-[30px] w-full rounded-[6px] border px-1.5 text-[12px] outline-none",
+            "h-[28px] w-full rounded-[6px] border px-1.5 text-[14px] font-semibold outline-none",
             draftClass(cellKey, isBlinking),
             isNumericType(col.type) && "text-right font-medium tabular-nums",
             isMonthColumn && "text-center",
@@ -4101,7 +4136,7 @@ export function AppraisalGrid({
       >
         <td
           className={cn(
-            "sticky left-0 border-r border-b border-[#e0e5ec] p-0 align-middle",
+            "sticky left-0 border-b border-[#e5e7eb] p-0 align-middle",
             cellBackground({
               kind: "master",
               rowIndex,
@@ -4117,7 +4152,7 @@ export function AppraisalGrid({
             maxWidth: SELECT_WIDTH,
             minHeight: CELL_MIN_HEIGHT,
             zIndex: 20,
-            boxShadow: "1px 0 0 rgba(148,163,184,.35)",
+            boxShadow: "none",
           }}
           onClick={() => openRow(row)}
         >
@@ -4145,13 +4180,17 @@ export function AppraisalGrid({
               key={col.key}
               className={cn(
                 isFrozen && "sticky",
-                "border-r border-b border-[#e0e5ec] p-0 align-middle",
+                "border-b border-[#e5e7eb] p-0 align-middle",
+                isFrozen && "border-r border-r-[#c9d8ec]",
                 cellBackground({
                   kind: isFrozen ? "frozen" : kind,
                   rowIndex,
                   selected: isSelectedRow,
                   flash: isFlashRow,
                 }),
+                // Edited cell: the whole cell turns peach (HTML .ed).
+                !isFrozen && modified[`${row.id}:${col.key}`] && !isFlashRow &&
+                  "!bg-[#ffe0c2]",
               )}
               style={{
                 position: isFrozen ? "sticky" : "relative",
@@ -4170,7 +4209,13 @@ export function AppraisalGrid({
                     ? 25
                     : 1,
                 boxShadow:
-                  isName && isSelectedRow ? "inset 3px 0 0 #102a43" : "none",
+                  isName && isSelectedRow
+                    ? "inset 3px 0 0 #102a43"
+                    : isFrozen
+                      ? "6px 0 8px -6px rgba(16,42,67,.25)"
+                      : !isFrozen && modified[`${row.id}:${col.key}`]
+                        ? "inset 0 0 0 1px #d9822b"
+                        : "none",
               }}
               onClick={() => handleCellClick(row, isEditable)}
             >
@@ -4498,7 +4543,7 @@ export function AppraisalGrid({
     <div
       ref={gridRootRef}
       className={cn(
-        "relative flex min-h-0 w-full flex-row overflow-hidden rounded-md border border-[#d5dce5] bg-white",
+        "relative flex min-h-0 w-full flex-row overflow-hidden rounded-[12px] border border-[#e5e7eb] bg-white",
         viewPrefs.density === "compact" && "appraisal-compact",
       )}
       style={{
@@ -4646,7 +4691,7 @@ export function AppraisalGrid({
                   const isFrozen = isName;
                   const width = widthOf(col);
                   const showFilter = !NO_FILTER_COLUMNS.has(col.key);
-                  const headerLabel = isName ? "Employee" : col.label;
+                  const headerLabel = isName ? "Employee" : MERGED_LABELS[col.key] || col.label;
                   const headerWraps = wrapOf(col.key);
                   const headerEditable = !!col.editable && !col.computed;
 
@@ -4681,7 +4726,7 @@ export function AppraisalGrid({
                         )}
                         <span
                           className={cn(
-                            "min-w-0 flex-1 overflow-hidden text-left text-[11px] font-bold leading-[13px] text-[#102a43]",
+                            "min-w-0 flex-1 overflow-hidden text-left text-[13px] font-extrabold leading-[15px] text-[#102a43]",
                             headerWraps ? "break-words" : "truncate",
                           )}
                           title={headerLabel}
@@ -4739,7 +4784,7 @@ export function AppraisalGrid({
                         aria-label={`Resize ${headerLabel} column`}
                         title="Drag to resize column"
                         onPointerDown={(event) => startColumnResize(event, col)}
-                        className="absolute top-0 right-[-2px] z-[100] h-full w-[5px] cursor-col-resize touch-none hover:bg-[#17365d]/30"
+                        className="absolute top-0 right-[-5px] z-[100] h-full w-[11px] cursor-col-resize touch-none bg-[linear-gradient(90deg,transparent_4px,#7c93b2_4px,#7c93b2_6px,transparent_6px)] hover:bg-[linear-gradient(90deg,transparent_2px,#2f6fed_2px,#2f6fed_9px,transparent_9px)]"
                       />
                     </th>
                   );
@@ -4786,7 +4831,7 @@ export function AppraisalGrid({
             <tfoot>
               <tr style={{ height: FOOTER_HEIGHT }}>
                 <td
-                  className="border-r border-t-2 border-[#c9d8ec]"
+                  className="border-t border-[#c9d8ec]"
                   style={{
                     position: "sticky",
                     left: 0,
@@ -4795,7 +4840,7 @@ export function AppraisalGrid({
                     minWidth: SELECT_WIDTH,
                     maxWidth: SELECT_WIDTH,
                     height: FOOTER_HEIGHT,
-                    background: "#e6eef8",
+                    background: "#dfe8f3",
                     zIndex: 70,
                   }}
                 />
@@ -4818,7 +4863,7 @@ export function AppraisalGrid({
                     <td
                       key={col.key}
                       className={cn(
-                        "overflow-hidden whitespace-nowrap border-r border-t-2 border-[#c9d8ec] px-2 text-[12px] font-extrabold text-[#102a43]",
+                        "overflow-hidden whitespace-nowrap border-t border-[#c9d8ec] px-2 text-[14px] font-extrabold text-[#102a43]",
                         isName ? "text-left" : "text-right tabular-nums",
                       )}
                       style={{
@@ -4830,7 +4875,7 @@ export function AppraisalGrid({
                         maxWidth: width,
                         height: FOOTER_HEIGHT,
                         boxSizing: "border-box",
-                        background: "#e6eef8",
+                        background: "#dfe8f3",
                         zIndex: isName ? 75 : 50,
                       }}
                       title={text}
