@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Check, ChevronLeft, ChevronRight, History, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, History, Pencil, X } from "lucide-react";
 import { createPortal } from "react-dom";
 
 import { Checkbox } from "@/components/ui/checkbox";
@@ -337,26 +337,32 @@ const formatEditableNumeric = (value, type) => {
   return String(value);
 };
 
-// input = yellow tint, calculated = blue tint, master = banded rows.
+// Editable (input) columns = green family, so it is clear which columns can be
+// typed in. Everything else is banded white / grey. The frozen Employee column
+// has its own tint. Edited cells are peach (see draftClass).
 const cellBackground = ({ kind, rowIndex, selected, flash }) => {
   if (flash) {
     return "bg-[#ffe08a] group-hover:bg-[#ffe08a]";
+  }
+
+  if (kind === "input") {
+    if (selected) return "bg-[#bde3ce]";
+    return rowIndex % 2 === 0
+      ? "bg-[#e1f4e9] group-hover:bg-[#c4e7d2]"
+      : "bg-[#cfebda] group-hover:bg-[#c4e7d2]";
   }
 
   if (selected) {
     return "bg-[#dcebff]";
   }
 
-  const base =
-    kind === "input"
-      ? "bg-[#fff9dc]"
-      : kind === "calc"
-        ? "bg-[#eaf5ff]"
-        : rowIndex % 2 === 0
-          ? "bg-[#fbfcfe]"
-          : "bg-[#f2f5f9]";
+  if (kind === "frozen") {
+    return "bg-[#eef3fa] group-hover:bg-[#e1ebf9]";
+  }
 
-  return base; // no colour change on hover
+  return rowIndex % 2 === 0
+    ? "bg-white group-hover:bg-[#e1ebf9]"
+    : "bg-[#f5f7fa] group-hover:bg-[#e1ebf9]";
 };
 
 // ============================================================
@@ -3398,9 +3404,9 @@ export function AppraisalGrid({
   const draftClass = (cellKey, isBlinking) =>
     cn(
       modified[cellKey]
-        ? "border-[#c9a400] bg-[#ffe066] font-semibold text-[#1e293b]"
-        : "border-[#d7c96b] bg-[#fffef3] text-[#1e293b]",
-      "focus:border-[#2563eb] focus:bg-white focus:ring-1 focus:ring-[#2563eb]",
+        ? "border-[#d9822b] bg-[#ffe0c2] font-semibold text-[#111827]"
+        : "border-[#d1d5db] bg-white text-[#111827]",
+      "focus:border-[#102a43] focus:bg-white focus:outline focus:outline-1 focus:outline-[#102a43] focus:ring-0",
       isBlinking && "appraisal-cell-blink",
     );
 
@@ -4057,7 +4063,7 @@ export function AppraisalGrid({
             handleEditableDoubleClick(event, rowIndex, col.key)
           }
           className={cn(
-            "h-[30px] w-full rounded-[4px] border px-1.5 text-[12px] outline-none",
+            "h-[30px] w-full rounded-[6px] border px-1.5 text-[12px] outline-none",
             draftClass(cellKey, isBlinking),
             isNumericType(col.type) && "text-right font-medium tabular-nums",
             isMonthColumn && "text-center",
@@ -4148,7 +4154,7 @@ export function AppraisalGrid({
                 isFrozen && "sticky",
                 "border-r border-b border-[#e0e5ec] p-0 align-middle",
                 cellBackground({
-                  kind: isFrozen ? "master" : kind,
+                  kind: isFrozen ? "frozen" : kind,
                   rowIndex,
                   selected: isSelectedRow,
                   flash: isFlashRow,
@@ -4620,6 +4626,7 @@ export function AppraisalGrid({
                     maxWidth: SELECT_WIDTH,
                     height: HEADER_HEIGHT,
                     background: "#dfe8f3",
+                    borderColor: "#c9d8ec",
                     zIndex: 80,
                   }}
                 >
@@ -4648,11 +4655,12 @@ export function AppraisalGrid({
                   const showFilter = !NO_FILTER_COLUMNS.has(col.key);
                   const headerLabel = isName ? "Employee" : col.label;
                   const headerWraps = wrapOf(col.key);
+                  const headerEditable = !!col.editable && !col.computed;
 
                   return (
                     <th
                       key={col.key}
-                      className="sticky border-r border-b border-[#cbd5e1] p-0"
+                      className="sticky border-r border-b border-[#c9d8ec] p-0"
                       style={{
                         position: "sticky",
                         top: 0,
@@ -4663,7 +4671,7 @@ export function AppraisalGrid({
                         height: HEADER_HEIGHT,
                         boxSizing: "border-box",
                         zIndex: isFrozen ? 90 : 60,
-                        background: isFrozen ? "#dfe8f3" : "#e9eef5",
+                        background: headerEditable ? "#b9e1cb" : "#dfe8f3",
                         fontFamily: APPRAISAL_FONT,
                       }}
                     >
@@ -4671,9 +4679,16 @@ export function AppraisalGrid({
                         className="flex h-auto w-full items-center gap-1 px-2"
                         style={{ minHeight: HEADER_HEIGHT }}
                       >
+                        {headerEditable && (
+                          <Pencil
+                            aria-hidden="true"
+                            className="size-3 shrink-0 text-[#15803d]"
+                            strokeWidth={2.5}
+                          />
+                        )}
                         <span
                           className={cn(
-                            "min-w-0 flex-1 overflow-hidden text-left text-[11px] font-bold leading-[13px] text-[#24364d]",
+                            "min-w-0 flex-1 overflow-hidden text-left text-[11px] font-bold leading-[13px] text-[#102a43]",
                             headerWraps ? "break-words" : "truncate",
                           )}
                           title={headerLabel}
@@ -4684,6 +4699,7 @@ export function AppraisalGrid({
                         {showFilter && (
                           <div className="shrink-0">
                             <ColumnFilter
+                              boxed
                               columnKey={col.key}
                               filter={filters[col.key]}
                               options={optionsFor(col.key)}

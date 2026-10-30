@@ -111,6 +111,7 @@ function MenuItem({ children, onClick, disabled, icon, active, className, ...res
 const Divider = () => <hr className="my-[3px] border-0 border-t border-[#d1d5db]" />;
 
 export function ColumnFilter({
+  boxed = false, // Appraisal Sheet header look: white boxed button
   columnKey,
   filter,
   options = [],
@@ -411,8 +412,13 @@ export function ColumnFilter({
             type="button"
             aria-label={`Filter ${label}`}
             className={cn(
-              "flex items-center gap-0.5 rounded p-1 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700",
-              triggerActive && "bg-[#17365d]/12 text-[#17365d]",
+              boxed
+                ? "flex h-7 min-w-7 items-center justify-center gap-0.5 rounded-[6px] border border-[#9ca3af] bg-white px-1 text-[#102a43] transition-colors hover:bg-[#f3f4f6]"
+                : "flex items-center gap-0.5 rounded p-1 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700",
+              triggerActive &&
+                (boxed
+                  ? "border-[#102a43] bg-[#102a43] text-white hover:bg-[#102a43]"
+                  : "bg-[#17365d]/12 text-[#17365d]"),
             )}
           >
             <Filter className="size-3.5" />
