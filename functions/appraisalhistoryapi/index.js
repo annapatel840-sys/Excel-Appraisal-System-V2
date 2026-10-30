@@ -220,7 +220,7 @@ const normalizeAssignment = (value) => {
 
 const assignmentParts = (value) => {
   const normalized = normalizeAssignment(value);
-  const split = normalized.split(/\\s+-\\s+/);
+  const split = normalized.split(/\s+-\s+/);
   return split.length > 1 ? [normalized, ...split] : [normalized];
 };
 
