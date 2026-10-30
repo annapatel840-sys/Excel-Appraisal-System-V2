@@ -3593,24 +3593,29 @@ export function AppraisalGrid({
     }
 
     if (col.type === "enum") {
+      // The value the dropdown actually shows (stored value, or the display
+      // default). The edited colour must follow THIS value, not the raw
+      // stored one, or a defaulted "1" Instalment stays white.
+      const enumShown = String(
+        row[col.key] !== null &&
+          row[col.key] !== undefined &&
+          row[col.key] !== ""
+          ? row[col.key]
+          : col.key === "eligibleForPromotion"
+            ? "No"
+            : // Instalment defaults to 1 when PB > 0, else 0 (display only).
+              col.key === "pbInstallment"
+              ? defaultInstallment(row)
+              : "",
+      );
+
       return (
         <div className="flex min-h-[30px] w-full items-center px-1.5 py-[2px]">
           <select
             ref={(element) => {
               cellRefs.current[`${rowIndex}:${col.key}`] = element;
             }}
-            value={String(
-              row[col.key] !== null &&
-                row[col.key] !== undefined &&
-                row[col.key] !== ""
-                ? row[col.key]
-                : col.key === "eligibleForPromotion"
-                  ? "No"
-                  : // Instalment defaults to 1 when PB > 0, else 0 (display only).
-                    col.key === "pbInstallment"
-                    ? defaultInstallment(row)
-                    : "",
-            )}
+            value={enumShown}
             onMouseDown={(event) => {
               // New Title: a designation that is not mapped in Designation
               // Master gets the sheet's error popup instead of a dropdown.
@@ -3735,7 +3740,7 @@ export function AppraisalGrid({
             }}
             className={cn(
               "h-[26px] w-full cursor-pointer rounded-[6px] border px-1 text-[12.25px] font-semibold outline-none",
-              draftClass(cellKey, isBlinking, row[col.key]),
+              draftClass(cellKey, isBlinking, enumShown),
               col.key === "newTitle" &&
                 row.eligibleForPromotion === "Yes" &&
                 !row.newTitle &&
