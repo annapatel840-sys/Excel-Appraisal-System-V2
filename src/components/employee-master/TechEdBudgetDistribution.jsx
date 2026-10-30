@@ -306,13 +306,31 @@ export function TechEdBudgetDistribution() {
     // manager's CURRENT Appraisal Sheet assignments, not from the manager's
     // own login identity. This supports every manager account dynamically.
     if (isCompManagerLogin && !candidates.length) {
+      const matchesCurrentManager = (raw) => {
+        if (currentUserMatchesManager(raw, user, employeeRows)) return true;
+        const rawKey = normalizeOwner(
+          raw && typeof raw === "object"
+            ? raw.ROWID || raw.rowid || raw.id || raw.value || ""
+            : raw
+        );
+        if (!rawKey) return false;
+        const linkedManager = employeeRows.find((employee) =>
+          [employee.row_id, employee.ROWID, employee.ROW_ID, employee.id,
+            employee.emp_id, employee.employee_id, employee.employeeId]
+            .some((alias) => normalizeOwner(alias) === rawKey)
+        );
+        if (!linkedManager) return false;
+        const display = [
+          linkedManager.emp_id || linkedManager.emp_id || linkedManager.employee_id || linkedManager.employeeId,
+          linkedManager.emp_name || linkedManager.employee_name || linkedManager.name,
+        ].filter(Boolean).join(" - ");
+        return currentUserMatchesManager(display, user, employeeRows);
+      };
       const managerEmployees = employeeRows.filter((employee) =>
         employee.in_appraisal_sheet === true &&
-        currentUserMatchesManager(
+        matchesCurrentManager(
           employee.comp_manager || employee.comp_manager_id || employee.compManager ||
-            employee.comp_manager_display || employee.comp_manager_name || "",
-          user,
-          employeeRows,
+            employee.comp_manager_display || employee.comp_manager_name || ""
         )
       );
       const managerTechOwners = Array.from(new Set(managerEmployees.map((employee) => {
