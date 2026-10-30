@@ -18,6 +18,7 @@ import { TypingHistoryPopup } from "./TypingHistoryPopup";
 import { COLUMNS, MANAGER_RATING_LABELS, formatValue, defaultInstallment } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { fetchAppraisalRoster } from "@/lib/employee-roster";
+import { fetchAllEmployeeMasterEmployees } from "@/lib/employee-master-data";
 import { useAccess } from "@/lib/access-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
@@ -980,12 +981,14 @@ function EmployeePanel({
   const [delegationRoster, setDelegationRoster] = useState([]);
   useEffect(() => {
     let cancelled = false;
-    fetchAppraisalRoster()
-      .then((result) => {
-        if (!cancelled) setDelegationRoster(Array.isArray(result?.employees) ? result.employees : []);
+    // Delegation targets must come from Employee_Master, not the appraisal
+    // grid/eligible roster. This list is global and independent of filters.
+    fetchAllEmployeeMasterEmployees()
+      .then((employees) => {
+        if (!cancelled) setDelegationRoster(Array.isArray(employees) ? employees : []);
       })
       .catch((error) => {
-        console.error("Failed to load delegation assignees:", error);
+        console.error("Failed to load Employee Master delegation targets:", error);
         if (!cancelled) setDelegationRoster([]);
       });
     return () => { cancelled = true; };
@@ -1013,35 +1016,38 @@ function EmployeePanel({
   const currentAssignee = String(employee?.[reqField] ?? "").trim();
 
   const requestPeople = useMemo(() => {
-    // The visible Appraisal Sheet can be filtered to eligible employees only.
-    // Load the full live roster so every Tech-Ed / Comp Manager assignment
-    // in the current employee data can be offered as a delegation target.
-    const sourceRows = [...(Array.isArray(team) ? team : []), ...delegationRoster];
+    const employees = Array.isArray(delegationRoster) ? delegationRoster : [];
     const normalizeId = (value) => {
       const text = String(value ?? "").trim();
       const match = text.match(/^(.+?)\s+-\s+.+$/);
       return (match ? match[1] : text).trim().toLowerCase();
     };
-    const displayById = new Map();
-    sourceRows.forEach((row) => {
-      const id = String(row.empId ?? row.emp_id ?? "").trim();
-      const name = String(row.name ?? row.empName ?? row.emp_name ?? "").trim();
-      if (id && name) displayById.set(id.toLowerCase(), `${id} - ${name}`);
+    const employeeById = new Map();
+    const employeeByName = new Map();
+    employees.forEach((employee) => {
+      const id = String(employee.empId ?? "").trim();
+      const name = String(employee.name ?? "").trim();
+      if (id && name) {
+        const label = `${id} - ${name}`;
+        employeeById.set(id.toLowerCase(), label);
+        employeeByName.set(name.toLowerCase(), label);
+      }
     });
 
+    // Employee_Master stores the actual Tech-Ed (appraiser/super manager)
+    // and Comp Manager assigned across the workforce. Collect unique values
+    // from the matching column only, then resolve IDs/names via Employee_Master.
+    const sourceField = reqField === "appraiserTechED" ? "appraiser" : "compManager";
     const values = new Map();
-    sourceRows.forEach((row) => {
-      [
-        row.appraiserTechED, row.appraiser_tech_ed_appraisal_sheet,
-        row.appraiser_tech_ed, row.appraiser_tech_ed1,
-        row.compManagerDisplay, row.comp_manager_display,
-        row.comp_manager_name, row.compManager, row.comp_manager,
-      ].forEach((value) => {
-        const person = String(value ?? "").trim();
-        if (!person || /^[0-9]{6,}$/.test(person)) return;
-        const key = normalizeId(person);
-        values.set(key, displayById.get(key) || person);
-      });
+    employees.forEach((employee) => {
+      const raw = String(employee[sourceField] ?? "").trim();
+      if (!raw) return;
+      const key = normalizeId(raw);
+      const label =
+        employeeById.get(key) ||
+        employeeByName.get(raw.toLowerCase()) ||
+        (raw.includes(" - ") ? raw : "");
+      if (label) values.set(key, label);
     });
 
     const currentKey = normalizeId(currentAssignee);
@@ -1049,7 +1055,7 @@ function EmployeePanel({
       .filter(([key]) => key !== currentKey)
       .map(([, label]) => label)
       .sort((a, b) => a.localeCompare(b));
-  }, [team, delegationRoster, currentAssignee]);
+  }, [delegationRoster, reqField, currentAssignee]);
 
   const sendDelegation = () => {
     if (!reqPerson || !reqReason.trim()) {
