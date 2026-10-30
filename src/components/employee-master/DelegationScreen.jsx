@@ -1538,6 +1538,7 @@ export default function DelegationScreen({
                             {c.label}
                           </span>
                           <ColumnFilter
+                            boxed
                             columnKey={"delegation:" + c.key}
                             label={c.label}
                             allowGroup={false}

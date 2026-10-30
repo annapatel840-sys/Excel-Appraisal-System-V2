@@ -195,12 +195,12 @@ const CSS = `
   font-size: 12px;
   font-weight: 600;
   text-align: left;
-  padding: 3px 6px;
+  padding: 6px 6px;
   border-right: 1px solid #c9d8ec;
   border-bottom: 1px solid #9fb3cf;
 }
 .bd-root td {
-  padding: 3px 6px;
+  padding: 6px 6px;
   border-right: 1px solid #c9d8ec;
   border-bottom: 1px solid #c9d8ec;
   vertical-align: middle;

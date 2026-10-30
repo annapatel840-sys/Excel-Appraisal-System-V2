@@ -364,19 +364,20 @@ const formatEditableNumeric = (value, type) => {
 // has its own tint. Edited cells are peach (see draftClass).
 const cellBackground = ({ kind, rowIndex, flash }) => {
   if (flash) {
-    return "bg-[#ffe08a] group-hover:bg-[#ffe08a]";
+    return "bg-[#ffe08a]";
   }
 
+  // Row hover colour removed on purpose (was group-hover:bg-[#dde8f6] / #c4e7d2).
   // Selected row has no fill colour any more (only the outline border).
   if (kind === "input") {
     return rowIndex % 2 === 0
-      ? "bg-[#e1f4e9] group-hover:bg-[#c4e7d2]"
-      : "bg-[#cfebda] group-hover:bg-[#c4e7d2]";
+      ? "bg-[#e1f4e9]"
+      : "bg-[#cfebda]";
   }
 
   return rowIndex % 2 === 0
-    ? "bg-white group-hover:bg-[#dde8f6]"
-    : "bg-[#e8edf4] group-hover:bg-[#dde8f6]";
+    ? "bg-white"
+    : "bg-[#e8edf4]";
 };
 
 // ============================================================

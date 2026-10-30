@@ -1283,8 +1283,8 @@ const CSS = `
 .tbd-root .link { background: none; border: 0; padding: 0; color: #1859a8; font-size: 11.5px; font-weight: 700; cursor: pointer; }
 .tbd-root .bscroll { overflow-x: auto; }
 .tbd-root table.bal { width: 100%; border-collapse: collapse; font-size: 11.5px; }
-.tbd-root .bal th { background: #dfe8f3; color: #102a43; font-weight: 600; font-size: 12px; text-align: left; padding: 3px 6px; border-right: 1px solid #c9d8ec; border-bottom: 1px solid #9fb3cf; }
-.tbd-root .bal td { padding: 3px 6px; border-right: 1px solid #c9d8ec; border-bottom: 1px solid #c9d8ec; vertical-align: middle; white-space: normal; }
+.tbd-root .bal th { background: #dfe8f3; color: #102a43; font-weight: 600; font-size: 12px; text-align: left; padding: 6px 6px; border-right: 1px solid #c9d8ec; border-bottom: 1px solid #9fb3cf; }
+.tbd-root .bal td { padding: 6px 6px; border-right: 1px solid #c9d8ec; border-bottom: 1px solid #c9d8ec; vertical-align: middle; white-space: normal; }
 .tbd-root .bal td.r { white-space: nowrap; }
 .tbd-root .bal th.r, .tbd-root .bal td.r { text-align: right; font-variant-numeric: tabular-nums; }
 .tbd-root .bal .r { text-align: right; }
@@ -1298,10 +1298,10 @@ const CSS = `
 .tbd-root .dd[aria-expanded="true"] { background: #12304f; border-color: #12304f; color: #fff; }
 .tbd-root .trail { width: 100%; border-collapse: collapse; font-size: 12px; }
 .tbd-root .trail th { text-align: left; font-weight: 700; color: #1e3a5f; font-size: 11px; padding: 4px 8px; border: 1px solid #c9d8ec; background: #eef3fa; }
-.tbd-root .trail td { padding: 3px 6px; border: 1px solid #d9e2ee; }
+.tbd-root .trail td { padding: 5px 6px; border: 1px solid #d9e2ee; }
 .tbd-root .trail .n { text-align: right; }
 .tbd-root .audit-wrap { padding: 8px 14px 12px; }
-.tbd-root .audit-wrap .trail td, .tbd-root .audit-wrap .trail th { padding: 3px 6px; }
+.tbd-root .audit-wrap .trail td, .tbd-root .audit-wrap .trail th { padding: 5px 6px; }
 .tbd-root .note { padding: 6px 14px 10px; font-size: 11px; color: #64748b; }
 .tbd-root .trail { border-collapse: collapse; }
 /* Grid outline: the scroll wrapper carries the outer border, cells carry the inner lines. */
@@ -1311,7 +1311,7 @@ const CSS = `
 .tbd-root .bal tbody tr:last-child > td { border-bottom: 0; }
 .tbd-root .bal tr.tr td { border-right: 0; }
 .tbd-root .trail-grid { width: 100%; }
-.tbd-root .trail-grid th { background: #dfe8f3; color: #102a43; font-size: 12px; font-weight: 600; padding: 3px 6px; border-color: #c9d8ec; }
+.tbd-root .trail-grid th { background: #dfe8f3; color: #102a43; font-size: 12px; font-weight: 600; padding: 6px 6px; border-color: #c9d8ec; }
 .tbd-root .trail-grid th, .tbd-root .trail-grid td { border-top: 0; }
 .tbd-root .trail-grid th:first-child, .tbd-root .trail-grid td:first-child { border-left: 0; }
 .tbd-root .trail-grid th:last-child, .tbd-root .trail-grid td:last-child { border-right: 0; }
