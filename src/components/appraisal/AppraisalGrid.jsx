@@ -4136,7 +4136,7 @@ export function AppraisalGrid({
       >
         <td
           className={cn(
-            "sticky left-0 border-b border-[#e5e7eb] p-0 align-middle",
+            "sticky left-0 border-r border-b border-[#dde3ec] p-0 align-middle",
             cellBackground({
               kind: "master",
               rowIndex,
@@ -4180,8 +4180,8 @@ export function AppraisalGrid({
               key={col.key}
               className={cn(
                 isFrozen && "sticky",
-                "border-b border-[#e5e7eb] p-0 align-middle",
-                isFrozen && "border-r border-r-[#c9d8ec]",
+                "border-r border-b border-[#dde3ec] p-0 align-middle",
+                isFrozen && "border-r-[#c9d8ec]",
                 cellBackground({
                   kind: isFrozen ? "frozen" : kind,
                   rowIndex,
@@ -4726,7 +4726,7 @@ export function AppraisalGrid({
                         )}
                         <span
                           className={cn(
-                            "min-w-0 flex-1 overflow-hidden text-left text-[13px] font-extrabold leading-[15px] text-[#102a43]",
+                            "min-w-0 flex-1 overflow-hidden text-left text-[12px] font-semibold leading-[14px] text-[#102a43]",
                             headerWraps ? "break-words" : "truncate",
                           )}
                           title={headerLabel}
@@ -4831,7 +4831,7 @@ export function AppraisalGrid({
             <tfoot>
               <tr style={{ height: FOOTER_HEIGHT }}>
                 <td
-                  className="border-t border-[#c9d8ec]"
+                  className="border-r border-t border-[#c9d8ec]"
                   style={{
                     position: "sticky",
                     left: 0,
@@ -4863,7 +4863,7 @@ export function AppraisalGrid({
                     <td
                       key={col.key}
                       className={cn(
-                        "overflow-hidden whitespace-nowrap border-t border-[#c9d8ec] px-2 text-[14px] font-extrabold text-[#102a43]",
+                        "overflow-hidden whitespace-nowrap border-r border-t border-[#c9d8ec] px-2 text-[14px] font-extrabold text-[#102a43]",
                         isName ? "text-left" : "text-right tabular-nums",
                       )}
                       style={{
