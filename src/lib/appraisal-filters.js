@@ -132,14 +132,10 @@ function testNumber(raw, op, value, value2) {
     }
 }
 
-function matches(row, key, filter) {
-    const field = fieldByKey(key);
-
-    if (!field)
-        return true;
-
-    const raw = field.get(row);
-
+// Test one raw cell value against a filter (enum / text / number, with the
+// optional second "Custom AutoFilter" condition). Shared by the Appraisal
+// Sheet and any other table that reuses the column filter menu.
+export function matchesValue(raw, filter) {
     if (filter.kind === "enum") {
         return (
             filter.values.length === 0 ||
@@ -162,6 +158,15 @@ function matches(row, key, filter) {
     const second = test(filter.op2, filter.value3);
 
     return filter.join === "or" ? first || second : first && second;
+}
+
+function matches(row, key, filter) {
+    const field = fieldByKey(key);
+
+    if (!field)
+        return true;
+
+    return matchesValue(field.get(row), filter);
 }
 
 export function applyFilters(rows, filters, search) {

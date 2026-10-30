@@ -5,6 +5,7 @@ import { useBudget } from "@/lib/budget-store";
 import { useViewAs, managerIdentityMatches, currentUserMatchesManager } from "@/lib/view-as-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { splitStamp } from "@/lib/budget-audit-local";
+import { FilterStatus, FilterTh, filterTableCss, useTableFilters } from "./FilterableTable";
 
 /* Budget Distribution uses persisted Budget_Distribution and
    Budget_Distribution_Comp rows. The prior UI-only sample allocations have
@@ -115,41 +116,71 @@ function ChangeCell({ from, to }) {
   );
 }
 
+const auditCols = (showName) => [
+  { key: "date", label: "Date", kind: "text", get: (x) => stampText(x), sort: (x) => String(x.date || "") + String(x.time || "") },
+  ...(showName ? [{ key: "owner", label: "Owner", kind: "text", get: (x) => x.name || "" }] : []),
+  { key: "from", label: "Old %", kind: "number", n: true, get: (x) => (x.from == null ? "" : x.from) },
+  { key: "to", label: "New %", kind: "number", n: true, get: (x) => (x.to == null ? "" : x.to) },
+  { key: "before", label: "Budget before", kind: "number", n: true, get: (x) => (x.before == null ? "" : x.before) },
+  { key: "after", label: "Budget after", kind: "number", n: true, get: (x) => (x.after == null ? "" : x.after) },
+  { key: "by", label: "Changed by", kind: "text", get: (x) => x.by || "" },
+  { key: "reason", label: "Reason", kind: "text", get: (x) => x.reason || "" },
+];
+const AUDIT_COLS = { with: auditCols(true), without: auditCols(false) };
+
 function AuditTable({ list, showName }) {
+  const cols = showName ? AUDIT_COLS.with : AUDIT_COLS.without;
+  const tf = useTableFilters(list, cols);
   if (!list.length) return <div className="muted-small" style={{ padding: "6px 0" }}>No % changes yet.</div>;
   return (
-    <div className="bscroll">
-      <table className="trail">
-        <thead>
-          <tr>
-            <th>Date</th>
-            {showName && <th>Owner</th>}
-            <th className="n">Old %</th>
-            <th className="n">New %</th>
-            <th className="n">Budget before</th>
-            <th className="n">Budget after</th>
-            <th>Changed by</th>
-            <th>Reason</th>
-          </tr>
-        </thead>
-        <tbody>
-          {list.map((x, i) => (
-            <tr key={i}>
-              <td>{stampText(x)}</td>
-              {showName && <td style={{ fontWeight: 700 }}>{x.name}</td>}
-              <td className="n">{x.from == null ? "—" : x.from + "%"}</td>
-              <td className="n" style={{ fontWeight: 700 }}>{x.to == null ? "—" : x.to + "%"}</td>
-              <td className="n">{x.before == null ? "—" : lakh(x.before)}</td>
-              <td className="n">{x.after == null ? "—" : lakh(x.after)}</td>
-              <td>{x.by}</td>
-              <td>{x.reason || "—"}</td>
+    <>
+      <FilterStatus tf={tf} noun="changes" />
+      <div className="bscroll">
+        <table className="trail trail-grid">
+          <thead>
+            <tr>
+              {cols.map((c) => (
+                <FilterTh key={c.key} tf={tf} col={c} className={c.n ? "n" : ""} />
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {tf.rows.length === 0 && (
+              <tr className="ft-empty">
+                <td colSpan={cols.length}>No changes match the filters.</td>
+              </tr>
+            )}
+            {tf.rows.map((x, i) => (
+              <tr key={i}>
+                <td>{stampText(x)}</td>
+                {showName && <td style={{ fontWeight: 700 }}>{x.name}</td>}
+                <td className="n">{x.from == null ? "—" : x.from + "%"}</td>
+                <td className="n" style={{ fontWeight: 700 }}>{x.to == null ? "—" : x.to + "%"}</td>
+                <td className="n">{x.before == null ? "—" : lakh(x.before)}</td>
+                <td className="n">{x.after == null ? "—" : lakh(x.after)}</td>
+                <td>{x.by}</td>
+                <td>{x.reason || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
+
+const ALLOC_COLS = [
+  { key: "level", label: "Level", kind: "text", get: (i) => i.level },
+  { key: "owner", label: "Owner", kind: "text", get: (i) => i.owner },
+  { key: "base", label: "Budget Base", kind: "number", r: true, get: (i) => i.base },
+  { key: "original", label: "Original Budget", kind: "number", r: true, get: (i) => i.original },
+  { key: "updated", label: "Updated Budget", kind: "number", r: true, get: (i) => i.updated },
+  { key: "change", label: "Change", kind: "number", r: true, get: (i) => i.change },
+  { key: "team0", label: "Original Count", kind: "number", r: true, get: (i) => i.team0 },
+  { key: "team", label: "Current Count", kind: "number", r: true, get: (i) => i.team },
+  { key: "last", label: "Last Changed", kind: "text", get: (i) => i.last, sort: (i) => i.lastSort },
+  { key: "pct", label: "Allot %", kind: "number", r: true, get: (i) => i.pct },
+];
 
 export function TechEdBudgetDistribution() {
   const user = useCatalystUser();
@@ -822,6 +853,39 @@ export function TechEdBudgetDistribution() {
     </button>
   );
 
+  // Rows behind the Allocation table's column filters (display only).
+  const allocItems = [
+    {
+      self: true,
+      level: LEVELS[0],
+      owner: String(loginTechOwner).split(/\s+-\s+/)[1] || myName,
+      base: hasLiveAllocation ? parentBudgetBaseForDisplay : "",
+      original: hasLiveAllocation ? myOriginal : "",
+      updated: hasLiveAllocation ? myUpdated : "",
+      change: hasLiveAllocation ? myUpdated - myOriginal : "",
+      team0,
+      team: currentTeamCount,
+      last: dateText(myHistory[0].date),
+      lastSort: String(myHistory[0].date || "") + String(myHistory[0].time || ""),
+      pct: myPct,
+    },
+    ...cmNodes.map((n) => ({
+      node: n,
+      level: LEVELS[1],
+      owner: n.name,
+      base: n.liveId || n.base ? n.base : "",
+      original: n.liveId || n.original ? n.original : "",
+      updated: n.liveId || n.updated ? n.updated : "",
+      change: n.updated - n.original,
+      team0: n.team0,
+      team: n.team,
+      last: n.liveId || n.history.length > 1 ? dateText(n.lastChanged) : "—",
+      lastSort: String(n.lastChanged || "") + String(n.lastChangedTime || ""),
+      pct: n.pct,
+    })),
+  ];
+  const allocTf = useTableFilters(allocItems, ALLOC_COLS);
+
   const cmLabel = LEVELS[1] + (cmNodes.length === 1 ? "" : "s");
   const auditNames = [myName, ...cmNodes.map((c) => c.name)];
   let auditList = auditFor(auditNames);
@@ -964,78 +1028,89 @@ export function TechEdBudgetDistribution() {
               <table className="bal">
                 <thead>
                   <tr>
-                    <th className="level-col">Level</th>
-                    <th className="owner-col">Owner</th>
-                    <th className="r budget-base-col">Budget Base</th>
-                    <th className="r">Original Budget</th>
-                    <th className="r">Updated Budget</th>
-                    <th className="r">Change</th>
-                    <th className="r">Original Count</th>
-                    <th className="r">Current Count</th>
-                    <th>Last Changed</th>
-                    <th className="r">Allot %</th>
+                    {ALLOC_COLS.map((c) => (
+                      <FilterTh
+                        key={c.key}
+                        tf={allocTf}
+                        col={c}
+                        className={[c.r ? "r" : "", c.key === "level" ? "level-col" : "", c.key === "owner" ? "owner-col" : "", c.key === "base" ? "budget-base-col" : ""].filter(Boolean).join(" ")}
+                      />
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="self">
-                    <td className="first">{LEVELS[0]}</td>
-                    <td>
-                      <b>{String(loginTechOwner).split(/\s+-\s+/)[1] || myName}</b> <span className="muted-small">(you)</span>
-                    </td>
-                    <td className="r budget-base-col">{hasLiveAllocation ? lakh(parentBudgetBaseForDisplay) : "—"}</td>
-                    <td className="r">{hasLiveAllocation ? lakh(myOriginal) : "—"}</td>
-                    <td className="r">{hasLiveAllocation ? lakh(myUpdated) : "—"}</td>
-                    <td className="r">
-                      {hasLiveAllocation ? <ChangeCell from={myOriginal} to={myUpdated} /> : "—"}
-                    </td>
-                    <td className="r">{team0}</td>
-                    <td className="r">{currentTeamCount}</td>
-                    <td>
-                      <button
-                        type="button"
-                        className="dd"
-                        aria-expanded={selfOpen}
-                        title={(selfOpen ? "Hide" : "Show") + " budget history"}
-                        onClick={() => setTrailOpen((t) => ({ ...t, [myName]: !t[myName] }))}
-                      >
-                        {dateText(myHistory[0].date)} {selfOpen ? "▴" : "▾"}
-                      </button>
-                    </td>
-                    <td className="r">
-                      <span className="mut">{myPct}%</span>
-                    </td>
-                  </tr>
-                  {selfOpen && (
-                    <tr className="tr">
-                      <td colSpan={9}>
-                        <table className="trail" style={{ maxWidth: 820 }}>
-                          <thead>
-                            <tr>
-                              <th>Date</th>
-                              <th className="n">Allocated</th>
-                              <th className="n">Updated</th>
-                              <th className="n">Team size</th>
-                              <th className="n">Allotted to {LEVELS[1]}s</th>
-                              <th className="n">Buffer</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {myHistory.map((x, i) => (
-                              <tr key={i}>
-                                <td>{stampText(x)}</td>
-                                <td className="n">{lakh(x.allocated)}</td>
-                                <td className="n">{lakh(x.updated)}</td>
-                                <td className="n">{x.team}</td>
-                                <td className="n">{x.allotted === null ? "—" : lakh(x.allotted)}</td>
-                                <td className="n">{x.buffer === null ? "—" : lakh(x.buffer)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </td>
+                  {allocTf.rows.length === 0 && (
+                    <tr className="ft-empty">
+                      <td colSpan={10}>No rows match the filters.</td>
                     </tr>
                   )}
-                  {cmNodes.map((n, i) => {
+                  {allocTf.rows.map((item, i) => {
+                    if (item.self) {
+                      return (
+                        <Fragment key="self-row">
+                      <tr className="self">
+                        <td className="first">{LEVELS[0]}</td>
+                        <td>
+                          <b>{String(loginTechOwner).split(/\s+-\s+/)[1] || myName}</b> <span className="muted-small">(you)</span>
+                        </td>
+                        <td className="r budget-base-col">{hasLiveAllocation ? lakh(parentBudgetBaseForDisplay) : "—"}</td>
+                        <td className="r">{hasLiveAllocation ? lakh(myOriginal) : "—"}</td>
+                        <td className="r">{hasLiveAllocation ? lakh(myUpdated) : "—"}</td>
+                        <td className="r">
+                          {hasLiveAllocation ? <ChangeCell from={myOriginal} to={myUpdated} /> : "—"}
+                        </td>
+                        <td className="r">{team0}</td>
+                        <td className="r">{currentTeamCount}</td>
+                        <td>
+                          <button
+                            type="button"
+                            className="dd"
+                            aria-expanded={selfOpen}
+                            title={(selfOpen ? "Hide" : "Show") + " budget history"}
+                            onClick={() => setTrailOpen((t) => ({ ...t, [myName]: !t[myName] }))}
+                          >
+                            {dateText(myHistory[0].date)} {selfOpen ? "▴" : "▾"}
+                          </button>
+                        </td>
+                        <td className="r">
+                          <span className="mut">{myPct}%</span>
+                        </td>
+                      </tr>
+                      {selfOpen && (
+                        <tr className="tr">
+                          <td colSpan={9}>
+                            <table className="trail" style={{ maxWidth: 820 }}>
+                              <thead>
+                                <tr>
+                                  <th>Date</th>
+                                  <th className="n">Allocated</th>
+                                  <th className="n">Updated</th>
+                                  <th className="n">Team size</th>
+                                  <th className="n">Allotted to {LEVELS[1]}s</th>
+                                  <th className="n">Buffer</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {myHistory.map((x, i) => (
+                                  <tr key={i}>
+                                    <td>{stampText(x)}</td>
+                                    <td className="n">{lakh(x.allocated)}</td>
+                                    <td className="n">{lakh(x.updated)}</td>
+                                    <td className="n">{x.team}</td>
+                                    <td className="n">{x.allotted === null ? "—" : lakh(x.allotted)}</td>
+                                    <td className="n">{x.buffer === null ? "—" : lakh(x.buffer)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )}
+                        </Fragment>
+                      );
+                    }
+                    const n = item.node;
+
                     const open = !!trailOpen[n.name];
                     return (
                       <Fragment key={n.name}>
@@ -1199,8 +1274,8 @@ const CSS = `
 .tbd-root .link { background: none; border: 0; padding: 0; color: #1859a8; font-size: 11.5px; font-weight: 700; cursor: pointer; }
 .tbd-root .bscroll { overflow-x: auto; }
 .tbd-root table.bal { width: 100%; min-width: 1180px; table-layout: auto; border-collapse: collapse; font-size: 12.5px; }
-.tbd-root .bal th { background: #e8eef5; color: #12304f; font-weight: 600; font-size: 12px; text-align: left; padding: 9px 10px; border-bottom: 2px solid #9fb3cf; white-space: nowrap; }
-.tbd-root .bal td { padding: 8px 10px; border-bottom: 1px solid #e1e5eb; vertical-align: middle; white-space: nowrap; }
+.tbd-root .bal th { background: #dfe8f3; color: #102a43; font-weight: 600; font-size: 12px; text-align: left; padding: 6px 8px; border-right: 1px solid #c9d8ec; border-bottom: 1px solid #9fb3cf; white-space: nowrap; }
+.tbd-root .bal td { padding: 8px 10px; border-right: 1px solid #c9d8ec; border-bottom: 1px solid #c9d8ec; vertical-align: middle; white-space: nowrap; }
 .tbd-root .bal .level-col { width: 112px; }
 .tbd-root .bal .owner-col { min-width: 205px; }
 .tbd-root .bal .budget-base-col { min-width: 128px; }
@@ -1215,12 +1290,28 @@ const CSS = `
 .tbd-root .dd { border: 1px solid #c5d0dd; background: #fff; color: #17365d; border-radius: 4px; padding: 3px 8px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .tbd-root .dd[aria-expanded="true"] { background: #12304f; border-color: #12304f; color: #fff; }
 .tbd-root .trail { width: 100%; border-collapse: collapse; font-size: 12px; }
-.tbd-root .trail th { text-align: left; font-weight: 700; color: #1e3a5f; font-size: 11px; padding: 4px 8px; border-bottom: 1px solid #d7dce3; }
-.tbd-root .trail td { padding: 4px 8px; border-bottom: 1px solid #edf0f4; }
+.tbd-root .trail th { text-align: left; font-weight: 700; color: #1e3a5f; font-size: 11px; padding: 4px 8px; border: 1px solid #c9d8ec; background: #eef3fa; }
+.tbd-root .trail td { padding: 4px 8px; border: 1px solid #d9e2ee; }
 .tbd-root .trail .n { text-align: right; }
 .tbd-root .audit-wrap { padding: 8px 14px 12px; }
 .tbd-root .audit-wrap .trail td, .tbd-root .audit-wrap .trail th { padding: 6px 8px; }
 .tbd-root .note { padding: 6px 14px 10px; font-size: 11px; color: #64748b; }
+.tbd-root .trail { border-collapse: collapse; }
+/* Grid outline: the scroll wrapper carries the outer border, cells carry the inner lines. */
+.tbd-root .card > .bscroll { margin: 10px 14px 12px; border: 1px solid #7c93b2; border-radius: 6px; }
+.tbd-root .audit-wrap .bscroll, .tbd-root .apdrop .bscroll { border: 1px solid #7c93b2; border-radius: 6px; }
+.tbd-root .bal th:last-child, .tbd-root .bal td:last-child { border-right: 0; }
+.tbd-root .bal tbody tr:last-child > td { border-bottom: 0; }
+.tbd-root .bal tr.tr td { border-right: 0; }
+.tbd-root .trail-grid { width: 100%; }
+.tbd-root .trail-grid th { background: #dfe8f3; color: #102a43; font-size: 12px; font-weight: 600; padding: 5px 8px; border-color: #c9d8ec; }
+.tbd-root .trail-grid th, .tbd-root .trail-grid td { border-top: 0; }
+.tbd-root .trail-grid th:first-child, .tbd-root .trail-grid td:first-child { border-left: 0; }
+.tbd-root .trail-grid th:last-child, .tbd-root .trail-grid td:last-child { border-right: 0; }
+.tbd-root .trail-grid tbody tr:last-child td { border-bottom: 0; }
+.tbd-root .bal tr.tr td .trail { outline: 1px solid #9fb3cf; outline-offset: -1px; }
+${filterTableCss(".tbd-root", ".bal")}
+${filterTableCss(".tbd-root", ".trail-grid")}
 @keyframes tbd-pull { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .tbd-root .apdrop, .tbd-root .bal tr.tr td { animation: none; } }
 `;

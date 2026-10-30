@@ -133,6 +133,9 @@ export function ColumnFilter({
 
   // optional: for screens whose columns are not in the appraisal column list
   label: labelProp,
+  // "number" | "text": for screens whose columns are not in the appraisal
+  // column list, choose Number Filters or Text Filters explicitly.
+  kind: kindProp,
   allowGroup = true,
   // Always open directly under the header cell (never flip above the grid when
   // the window is short); the value list shrinks to fit instead.
@@ -157,7 +160,7 @@ export function ColumnFilter({
   // Custom AutoFilter / Top 10 dialog
   const [dialog, setDialog] = useState(null);
 
-  const isNumberColumn = meta?.kind === "number";
+  const isNumberColumn = (kindProp ?? meta?.kind) === "number";
   const isEnumColumn = meta?.kind === "enum";
   // Number Filters for number columns and for number-only enums (Manager Rating).
   const useNumberFilters = isNumberColumn || !!meta?.numericEnum;

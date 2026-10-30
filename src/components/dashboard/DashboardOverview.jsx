@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
@@ -286,7 +286,8 @@ export function DashboardOverview() {
   const [ratingView, setRatingView] = useState("s");
   const [levelKey, setLevelKey] = useState("");
   const [expanded, setExpanded] = useState({});
-  const [list, setList] = useState(null);
+  const [list, setList] = useState(null); // { title, rows, from: "level" | "action" }
+  const actionListRef = useRef(null);
 
   const { allocated, isEstimate } = resolveBudgetAllocated({
     totals: budgetCtx.totals,
@@ -339,7 +340,16 @@ export function DashboardOverview() {
     return (rt >= 4 && calcHikePct(r) < avgHike - 2) || (isPromoted(r) && rt > 0 && rt <= 2);
   });
 
-  const openList = (title, list_) => setList({ title, rows: list_ });
+  // `from` decides where the people table opens: level cards open it right under
+  // the level section; "Needs your action" cards open it below those cards.
+  const openList = (title, list_, from = "level") => setList({ title, rows: list_, from });
+
+  // Bring the table into view when it opens under the action cards.
+  useEffect(() => {
+    if (list?.from === "action") {
+      actionListRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [list]);
   const lim = (arr, key, d) => (expanded[key] ? arr : arr.slice(0, d));
   const showAll = (key) => (
     <button
@@ -640,13 +650,17 @@ export function DashboardOverview() {
         </>
       ) : null}
 
-      {list ? <PeopleList list={list} onClose={() => setList(null)} /> : null}
+      {list && list.from !== "action" ? <PeopleList list={list} onClose={() => setList(null)} /> : null}
 
       {/* needs your action */}
       <SectionTitle>Needs your action</SectionTitle>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {actionCards.map((c) => (
-          <Tile key={c.t} className="cursor-pointer" onClick={() => openList(c.t, c.rows)}>
+          <Tile
+            key={c.t}
+            className={cn("cursor-pointer", list?.from === "action" && list.title === c.t && "ring-2 ring-[#1D3B5E]")}
+            onClick={() => (list?.from === "action" && list.title === c.t ? setList(null) : openList(c.t, c.rows, "action"))}
+          >
             <Cap>{c.t}</Cap>
             <Big value={c.v} />
             <div className="mt-1 min-h-[30px] text-[11.5px] text-[#6B7280]">{c.s}</div>
@@ -654,6 +668,12 @@ export function DashboardOverview() {
           </Tile>
         ))}
       </div>
+
+      {list?.from === "action" ? (
+        <div ref={actionListRef}>
+          <PeopleList list={list} onClose={() => setList(null)} />
+        </div>
+      ) : null}
 
       {/* recent activity */}
       <SectionTitle>Recent activity</SectionTitle>

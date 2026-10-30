@@ -6,6 +6,7 @@ import { useBudget } from "@/lib/budget-store";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { TechEdBudgetDistribution } from "./TechEdBudgetDistribution";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { FilterStatus, FilterTh, filterTableCss, useTableFilters } from "./FilterableTable";
  
 // Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
 const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -45,6 +46,28 @@ function dateText(value) {
   );
 }
  
+const numOrBlank = (value) => {
+  if (value === null || value === undefined || String(value).trim() === "") return "";
+  const n = Number(value);
+  return Number.isFinite(n) ? n : "";
+};
+
+// Columns behind the Tech-Ed Budget Distribution table's header filters.
+const HR_COLS = [
+  { key: "level", label: "Level", kind: "text", get: (i) => i.level },
+  { key: "owner", label: "Tech-Ed", kind: "text", get: (i) => i.owner },
+  { key: "pct", label: "Budget %", kind: "number", num: true, get: (i) => numOrBlank(i.row.budget_percentage) },
+  { key: "original", label: "Original Budget", kind: "number", num: true, get: (i) => numOrBlank(i.row.budget_amount) },
+  { key: "additional", label: "Additional Budget", kind: "number", num: true, get: (i) => numOrBlank(i.row.additional_budget) },
+  { key: "updated", label: "Updated Budget", kind: "number", num: true, get: (i) => numOrBlank(i.row.updated_budget) },
+  { key: "utilised", label: "Utilised", kind: "number", num: true, get: (i) => numOrBlank(i.row.budget_utilized) },
+  { key: "remaining", label: "Remaining", kind: "number", num: true, get: (i) => numOrBlank(i.row.budget_remaining) },
+  { key: "util", label: "Utilisation %", kind: "number", num: true, get: (i) => numOrBlank(i.row.utilization_percentage) },
+  { key: "origCount", label: "Original Count", kind: "number", get: (i) => i.originalCount },
+  { key: "curCount", label: "Current Count", kind: "number", get: (i) => i.liveCount },
+  { key: "status", label: "Status", kind: "text", get: (i) => i.row.status || "Active" },
+];
+
 const CSS = `
 .bd-root {
   max-width: 1320px;
@@ -167,20 +190,32 @@ const CSS = `
   font-size: 12px;
 }
 .bd-root th {
-  background: #e8eef5;
-  color: #12304f;
-  font-size: 11px;
-  font-weight: 700;
+  background: #dfe8f3;
+  color: #102a43;
+  font-size: 12px;
+  font-weight: 600;
   text-align: left;
-  padding: 8px 10px;
-  border-bottom: 2px solid #9fb3cf;
+  padding: 6px 8px;
+  border-right: 1px solid #c9d8ec;
+  border-bottom: 1px solid #9fb3cf;
   white-space: nowrap;
 }
 .bd-root td {
   padding: 8px 10px;
-  border-bottom: 1px solid #e1e5eb;
+  border-right: 1px solid #c9d8ec;
+  border-bottom: 1px solid #c9d8ec;
   vertical-align: middle;
 }
+/* Grid outline: the wrapper carries the outer border, cells carry the inner lines. */
+.bd-root .grid-wrap {
+  overflow-x: auto;
+  margin: 10px 14px 12px;
+  border: 1px solid #7c93b2;
+  border-radius: 6px;
+}
+.bd-root th:last-child,
+.bd-root td:last-child { border-right: 0; }
+.bd-root tbody tr:last-child > td { border-bottom: 0; }
 .bd-root th.num,
 .bd-root td.num { text-align: right; }
 .bd-root tr.tech { background: #f8fbfb; }
@@ -247,6 +282,7 @@ const CSS = `
   border-radius: 6px;
   padding: 8px 10px;
 }
+${filterTableCss(".bd-root", "table")}
 `;
  
 export function BudgetDistributionPage() {
@@ -421,6 +457,24 @@ export function BudgetDistributionPage() {
     return [...unique.values()].sort((a, b) => a.tech_ed_id.localeCompare(b.tech_ed_id));
   }, [budgetRows, techEdOwners, employeeRows, activeCycleId]);
  
+  // Header filters / sort for the table (display only; no data is refetched).
+  const tableItems = rows.map((row) => {
+    // Original Count is the API's persisted baseline only.
+    // Never substitute headcount or the live roster count here.
+    const saved = row.original_headcount;
+    const originalCount = saved !== null && saved !== undefined && String(saved).trim() !== ""
+      ? Number(saved) || 0
+      : 0;
+    return {
+      row,
+      level: "Tech-Ed",
+      owner: resolveTechOwner(row.tech_ed_id) || row.tech_ed_id || "—",
+      originalCount,
+      liveCount: countForTechOwner(row.tech_ed_id),
+    };
+  });
+  const tf = useTableFilters(tableItems, HR_COLS);
+
   const totalPercentage = useMemo(
     () => rows.reduce((sum, row) => sum + Number(row.budget_percentage || 0), 0),
     [rows],
@@ -553,37 +607,27 @@ export function BudgetDistributionPage() {
             <div className="empty">No active Tech-Ed budget records found.</div>
           ) : (
             <div className="scroll">
+              <FilterStatus tf={tf} noun="records" />
+              <div className="grid-wrap">
               <table>
                 <thead>
                   <tr>
-                    <th>Level</th>
-                    <th>Tech-Ed</th>
-                    <th className="num">Budget %</th>
-                    <th className="num">Original Budget</th>
-                    <th className="num">Additional Budget</th>
-                    <th className="num">Updated Budget</th>
-                    <th className="num">Utilised</th>
-                    <th className="num">Remaining</th>
-                    <th className="num">Utilisation %</th>
-                    <th>Original Count</th>
-                    <th>Current Count</th>
-                    <th>Status</th>
+                    {HR_COLS.map((c) => (
+                      <FilterTh key={c.key} tf={tf} col={c} className={c.num ? "num" : ""} />
+                    ))}
                     <th>Access</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rows.map((row) => {
-                    const owner = resolveTechOwner(row.tech_ed_id);
+                  {tf.rows.length === 0 && (
+                    <tr className="ft-empty">
+                      <td colSpan={HR_COLS.length + 1}>No Tech-Ed records match the filters.</td>
+                    </tr>
+                  )}
+                  {tf.rows.map(({ row, owner, originalCount, liveCount }) => {
                     const key = row.id || row.tech_ed_id;
                     const expanded = Boolean(open[key]);
-                    const liveCount = countForTechOwner(row.tech_ed_id);
-                    // Original Count is the API's persisted baseline only.
-                    // Never substitute headcount or the live roster count here.
-                    const savedOriginalCount = row.original_headcount;
-                    const originalCount = savedOriginalCount !== null && savedOriginalCount !== undefined && String(savedOriginalCount).trim() !== ""
-                      ? Number(savedOriginalCount) || 0
-                      : 0;
- 
+
                     return (
                       <tr key={key} className="tech">
                         <td>
@@ -629,6 +673,7 @@ export function BudgetDistributionPage() {
                   })}
                 </tbody>
               </table>
+              </div>
  
               {rows.map((row) => {
                 const key = row.id || row.tech_ed_id;
