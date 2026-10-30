@@ -17,6 +17,7 @@ import { getSelectedEmpId, setSelectedEmpId } from "@/lib/selected-employee";
 import { TypingHistoryPopup } from "./TypingHistoryPopup";
 import { COLUMNS, MANAGER_RATING_LABELS, formatValue, defaultInstallment } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
+import { fetchAppraisalRoster } from "@/lib/employee-roster";
 import { useAccess } from "@/lib/access-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
@@ -976,6 +977,19 @@ function EmployeePanel({
   const [reqReason, setReqReason] = useState("");
   const [screenNote, setScreenNote] = useState("");
   const [reqSent, setReqSent] = useState("");
+  const [delegationRoster, setDelegationRoster] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    fetchAppraisalRoster()
+      .then((result) => {
+        if (!cancelled) setDelegationRoster(Array.isArray(result?.employees) ? result.employees : []);
+      })
+      .catch((error) => {
+        console.error("Failed to load delegation assignees:", error);
+        if (!cancelled) setDelegationRoster([]);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   // new employee selected -> clear the form
   useEffect(() => {
@@ -999,14 +1013,16 @@ function EmployeePanel({
   const currentAssignee = String(employee?.[reqField] ?? "").trim();
 
   const requestPeople = useMemo(() => {
-    const sourceRows = Array.isArray(team) ? team : [];
-    const displayById = new Map();
+    // The visible Appraisal Sheet can be filtered to eligible employees only.
+    // Load the full live roster so every Tech-Ed / Comp Manager assignment
+    // in the current employee data can be offered as a delegation target.
+    const sourceRows = [...(Array.isArray(team) ? team : []), ...delegationRoster];
     const normalizeId = (value) => {
       const text = String(value ?? "").trim();
-      const match = text.match(/^(.+?)\\s+-\\s+.+$/);
+      const match = text.match(/^(.+?)\s+-\s+.+$/);
       return (match ? match[1] : text).trim().toLowerCase();
     };
-
+    const displayById = new Map();
     sourceRows.forEach((row) => {
       const id = String(row.empId ?? row.emp_id ?? "").trim();
       const name = String(row.name ?? row.empName ?? row.emp_name ?? "").trim();
@@ -1016,19 +1032,14 @@ function EmployeePanel({
     const values = new Map();
     sourceRows.forEach((row) => {
       [
-        row.appraiserTechED,
-        row.appraiser_tech_ed_appraisal_sheet,
-        row.appraiser_tech_ed,
-        row.compManagerDisplay,
-        row.comp_manager_display,
-        row.comp_manager_name,
-        row.compManager,
-        row.comp_manager,
+        row.appraiserTechED, row.appraiser_tech_ed_appraisal_sheet,
+        row.appraiser_tech_ed, row.appraiser_tech_ed1,
+        row.compManagerDisplay, row.comp_manager_display,
+        row.comp_manager_name, row.compManager, row.comp_manager,
       ].forEach((value) => {
         const person = String(value ?? "").trim();
         if (!person || /^[0-9]{6,}$/.test(person)) return;
         const key = normalizeId(person);
-        // Show consistent "EMPID - Name" labels when the roster knows the name.
         values.set(key, displayById.get(key) || person);
       });
     });
@@ -1038,7 +1049,7 @@ function EmployeePanel({
       .filter(([key]) => key !== currentKey)
       .map(([, label]) => label)
       .sort((a, b) => a.localeCompare(b));
-  }, [team, currentAssignee]);
+  }, [team, delegationRoster, currentAssignee]);
 
   const sendDelegation = () => {
     if (!reqPerson || !reqReason.trim()) {
