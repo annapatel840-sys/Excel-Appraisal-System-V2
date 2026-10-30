@@ -1969,7 +1969,7 @@ async function getEmployees(req, res) {
     function resolveAssignment(value) {
       const raw = lookupText(value);
       if (!raw) return null;
-      const idOrName = raw.split(/\\s+-\\s+/)[0].trim();
+      const idOrName = raw.split(/\s+-\s+/)[0].trim();
       const row = byId.get(idOrName.toLowerCase()) ||
         byRowId.get(raw.toLowerCase()) ||
         byName.get(raw.toLowerCase());
@@ -1992,7 +1992,7 @@ async function getEmployees(req, res) {
       });
     }
     const techEd = collect("appraiser_tech_ed");
-    const compManagers = collect("director");
+    const compManagers = collect("comp_manager");
     return sendJson(res, 200, {
       success: true,
       data: {
