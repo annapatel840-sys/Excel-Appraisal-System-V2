@@ -443,34 +443,51 @@ export function BudgetProvider({ children }) {
     const isTechEdBudgetView = roleText.includes("teched") || (!isHR && hasTechEdAllocationForLogin);
 
     if (isCompManagerPreview || isCompManagerLogin) {
-      const ownParentCandidates = budgetDistributionRows.filter((row) => {
+      // Resolve the Comp Manager's parent Tech-Ed from the CURRENT Appraisal
+      // Sheet roster. The logged-in manager identity is not the Tech-Ed owner.
+      // A manager may have many employees; all must resolve to one parent row
+      // for the active cycle before their own allocation can be displayed.
+      const managerTeam = employeeRows.filter((employee) =>
+        employee.in_appraisal_sheet === true &&
+        currentUserMatchesManager(
+          employee.comp_manager || employee.comp_manager_id || employee.compManager ||
+            employee.comp_manager_display || employee.comp_manager_name || "",
+          authenticatedUser,
+          employeeRows,
+        )
+      );
+      const techOwnerForEmployee = (employee) => {
+        const raw = employee.appraiser_tech_ed_appraisal_sheet ||
+          employee.appraiser_tech_ed || employee.appraiser_tech_ed_id ||
+          employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed1 ||
+          employee.tech_ed || employee.tech_ed_id || "";
+        const fk = normalizeOwner(raw);
+        const linked = techEdOwners.find((owner) =>
+          normalizeOwner(owner.row_id || owner.ROWID || "") === fk ||
+          ownerMatches(owner.assignment || "", [fk])
+        );
+        return normalizeOwner(linked?.assignment || raw);
+      };
+      const assignedTechOwners = Array.from(new Set(
+        managerTeam.map(techOwnerForEmployee).filter(Boolean)
+      ));
+      const parentCandidates = budgetDistributionRows.filter((row) => {
         const raw = row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed ||
           row.appraiser_tech_ed || row.appraiser_tech_ed1 || "";
-        const matchesOwner = ownerMatches(raw, detectedOwnerAliases) ||
-          detectedOwnerAliases.includes(normalizeOwner(raw));
-        return matchesOwner &&
+        const rowOwner = normalizeOwner(raw);
+        const linked = techEdOwners.find((owner) =>
+          normalizeOwner(owner.row_id || owner.ROWID || "") === rowOwner
+        );
+        const canonicalOwner = normalizeOwner(linked?.assignment || raw);
+        return assignedTechOwners.includes(canonicalOwner) &&
           (!activeBudgetCycleId || String(row.appraisal_cycle_id || "") === activeBudgetCycleId);
       });
-      const ownParent = ownParentCandidates.length === 1 ? ownParentCandidates[0] : null;
+      const ownParent = parentCandidates.length === 1 ? parentCandidates[0] : null;
       const managerCandidates = budgetCompManagerRows.filter((row) => {
-        if ((activeBudgetCycleId && String(row.appraisal_cycle_id || "") !== activeBudgetCycleId) ||
-            !ownParent ||
+        if (!ownParent ||
+            String(row.appraisal_cycle_id || "") !== activeBudgetCycleId ||
             String(row.budget_distribution_id || "") !== String(ownParent.id || "")) return false;
-        const rawManager = String(row.comp_manager || "").trim();
-        if (currentUserMatchesManager(rawManager, authenticatedUser, employeeRows)) return true;
-        // Budget_Distribution_Comp may store a lookup ROWID while the roster
-        // exposes the human-readable "Employee ID - Name" assignment.
-        const linkedManager = employeeRows.find((employee) =>
-          [employee.comp_manager, employee.comp_manager_id, employee.compManager,
-            employee.comp_manager_display, employee.comp_manager_name]
-            .filter(Boolean)
-            .some((alias) =>
-              normalizeOwner(alias) === normalizeOwner(rawManager) ||
-              ownerMatches(alias, [normalizeOwner(rawManager)])
-            )
-        );
-        return Boolean(linkedManager?.comp_manager_display) &&
-          currentUserMatchesManager(linkedManager.comp_manager_display, authenticatedUser, employeeRows);
+        return currentUserMatchesManager(row.comp_manager, authenticatedUser, employeeRows);
       });
       const manager = managerCandidates.length === 1 ? managerCandidates[0] : null;
       if (manager) {
