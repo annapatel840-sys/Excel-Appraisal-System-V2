@@ -2330,28 +2330,52 @@ async function getEmployees(req, res) {
   );
 
   const viewAsParam = String(params.viewAs || "").trim().toLowerCase();
-  // A Tech-Ed previewing Comp Manager must retain the Tech-Ed's own roster
-  // scope; the selected Comp Manager is applied by the UI within that roster.
-  // Do not compare the Tech-Ed login's employee ID to comp_manager, which
-  // incorrectly returned an empty roster for this preview.
-  const asCompMgr = enforced && viewAsParam === "compmanager" && a.role === "hr";
-  const myEmpIdLower = String((a.user && a.user.empId) || "").trim().toLowerCase();
-
+  const roleKey = String(a.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  // Both a real Comp Manager login and an HR/Tech-Ed Comp Manager preview
+  // use the same assignment-based roster rule. A preview keeps the backend
+  // caller's scope; a real Comp Manager is matched to their Employee_Master row.
+  const asCompMgr = enforced && (
+    roleKey === "compmgr" ||
+    roleKey === "compmanager" ||
+    (viewAsParam === "compmanager" && roleKey === "hr")
+  );
+  const myMasterRow = (employeeMasterRows || []).find(function (row) {
+    return String(row.ROWID || row.rowid || "").trim() === String(myMasterRowId || "").trim();
+  }) || {};
+  const myCompManagerAliases = [
+    a.user && (a.user.empId || a.user.emp_id),
+    myMasterRow.emp_id,
+    myMasterRow.emp_name,
+    myMasterRow.name,
+    myMasterRow.email_id,
+    myMasterRow.email,
+    myMasterRowId,
+  ].map(function (value) { return String(value || "").trim().toLowerCase(); }).filter(Boolean);
+  function belongsToCompManager(employee) {
+    const rawValue = employee.comp_manager || employee.comp_manager_id ||
+      employee.comp_manager_name || employee.comp_manager_display || "";
+    const raw = rawValue && typeof rawValue === "object"
+      ? String(rawValue.ROWID || rawValue.rowid || rawValue.emp_id ||
+          rawValue.employee_id || rawValue.id || rawValue.value || rawValue.name || "")
+      : String(rawValue || "");
+    if (!raw) return false;
+    const parts = raw.toLowerCase().split(/\\s+-\\s+/).map(function (part) { return part.trim(); });
+    const master = employeeMasterMap.get(raw.toLowerCase()) ||
+      employeeMasterMap.get(parts[0]) ||
+      (parts[0] ? employeeMasterMap.get(parts[0].toLowerCase()) : null);
+    if (master) {
+      parts.push(String(master.emp_id || "").toLowerCase(), String(master.emp_name || master.name || "").toLowerCase(),
+        String(master.ROWID || master.rowid || "").toLowerCase());
+    }
+    return parts.some(function (part) { return myCompManagerAliases.includes(part); });
+  }
 
   const scopedEmployees = enforced
     ? allEmployees
-        // Tech-Ed roster ownership is maintained in Employee_Master.appraiser_tech_ed
-        // (for example, "EMP002 - Ashok Kumar"). Use that assignment as the source
-        // of truth for the Tech-Ed's visible employees instead of requiring a
-        // separate Delegation row to duplicate the same assignment.
+        // Tech-Ed and Comp Manager rosters are resolved from current assignment
+        // fields, not from stale Delegation rows or a partial access-scope list.
         .filter(function (employee) {
-
-          if (asCompMgr) {
-            const compMgrId = String(employee.comp_manager || "").split("-")[0].trim().toLowerCase();
-            return !!myEmpIdLower && compMgrId === myEmpIdLower;
-          }
-
-
+          if (asCompMgr) return belongsToCompManager(employee);
 
           if (a.scope && a.scope.all) return true;
           if (a.role === "techEd") {
