@@ -226,9 +226,12 @@ const assignmentParts = (value) => {
 
 // Comp Manager history reads are allowed only for employees currently assigned
 // to that manager in Employee_Master. This is GET-only and does not widen PATCH.
-async function compManagerCurrentlyOwnsEmployee(app, a, empId) {
+async function compManagerCurrentlyOwnsEmployee(req, a, empId) {
   if (a?.role !== "compMgr") return false;
-  const table = app.datastore().table("Employee_Master");
+  // Use the function's admin datastore scope for the authoritative master lookup;
+  // the end-user's table permissions must not block this narrow server-side check.
+  const adminApp = catalyst.initialize(req, { scope: "admin" });
+  const table = adminApp.datastore().table("Employee_Master");
   const employees = await getAllRowsFromTable(table);
   const signedInId = normalizeAssignment(a?.user?.empId);
   const signedInEmail = normalizeAssignment(a?.user?.email);
@@ -907,7 +910,7 @@ module.exports = async (req, res) => {
 
       let inScope = access.inScope(a, empId);
       if (!inScope && a.role === "compMgr") {
-        inScope = await compManagerCurrentlyOwnsEmployee(app, a, empId);
+        inScope = await compManagerCurrentlyOwnsEmployee(req, a, empId);
       }
       if (!inScope && String(a?.user?.empId || "").trim().toUpperCase() === empId.toUpperCase()) {
         inScope = true;
