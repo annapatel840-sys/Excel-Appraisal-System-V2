@@ -57,19 +57,22 @@ const META = {
     { key: "nt", label: "Next type", w: 170 },
     { key: "nx", label: "Next designation(s)", w: 380 },
     { key: "on", label: "Status", w: 110 },
-    { key: "hist", label: "History", w: 150 },
+    { key: "hist", label: "History", w: 130 },
+    { key: "lmod", label: "Last Modified", w: 150 },
   ],
   grp: [
     { key: "n", label: "Group", w: 250 },
     { key: "cnt", label: "Designations", w: 110 },
     { key: "mem", label: "Members", w: 520 },
-    { key: "hist", label: "History", w: 150 },
+    { key: "hist", label: "History", w: 130 },
+    { key: "lmod", label: "Last Modified", w: 150 },
   ],
   band: [
     { key: "n", label: "Band", w: 140 },
     { key: "cnt", label: "Designations", w: 110 },
     { key: "mem", label: "Mapped designations", w: 520 },
-    { key: "hist", label: "History", w: 150 },
+    { key: "hist", label: "History", w: 130 },
+    { key: "lmod", label: "Last Modified", w: 150 },
   ],
 };
 
@@ -442,9 +445,14 @@ export function DesignationMasterPage() {
         >
           History{list.length ? ` (${list.length})` : ""}
         </button>
-        {list[0] && <span className="dmx-hl">{list[0].at}</span>}
       </div>
     );
+  };
+
+  const lastMod = (t, id) => (auditFor(t, id)[0] || {}).at || "";
+  const lastModCell = (t, id) => {
+    const at = lastMod(t, id);
+    return at ? <span className="dmx-lm">{at}</span> : <span className="dmx-mut">—</span>;
   };
 
   const defsDes = () => [
@@ -605,6 +613,7 @@ export function DesignationMasterPage() {
       },
     },
     { key: "hist", label: "History", get: (d) => auditFor("des", d.id).length, render: (d) => histCell("des", d.id) },
+    { key: "lmod", label: "Last Modified", get: (d) => lastMod("des", d.id), render: (d) => lastModCell("des", d.id) },
   ];
 
   const defsGrp = () => [
@@ -641,6 +650,7 @@ export function DesignationMasterPage() {
       ),
     },
     { key: "hist", label: "History", get: (g) => auditFor("grp", g.id).length, render: (g) => histCell("grp", g.id) },
+    { key: "lmod", label: "Last Modified", get: (g) => lastMod("grp", g.id), render: (g) => lastModCell("grp", g.id) },
   ];
 
   const defsBand = () => [
@@ -664,6 +674,7 @@ export function DesignationMasterPage() {
       ),
     },
     { key: "hist", label: "History", get: (b) => auditFor("band", b.code).length, render: (b) => histCell("band", b.code) },
+    { key: "lmod", label: "Last Modified", get: (b) => lastMod("band", b.code), render: (b) => lastModCell("band", b.code) },
   ];
 
   const rowsAll = useMemo(() => {
@@ -968,7 +979,7 @@ export function DesignationMasterPage() {
       {tab !== "opt" && (
         <div className="dmx-toolbar">
           <input
-            className="dmx-txt" style={{ width: 220 }} placeholder="Search…"
+            className="dmx-txt dmx-search" placeholder="Search…"
             value={filters.q} onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))}
           />
           {tab === "des" && (
@@ -992,7 +1003,7 @@ export function DesignationMasterPage() {
               </label>
             </>
           )}
-          <span style={{ flex: 1 }} />
+          <div className="dmx-right">
           <span className="dmx-stat">Designations <b>{draft.designations.length}</b></span>
           <span className="dmx-stat">Groups <b>{draft.groups.length}</b></span>
           <span className="dmx-stat">Inactive <b>{draft.designations.filter((d) => d.status !== "Active").length}</b></span>
@@ -1003,6 +1014,7 @@ export function DesignationMasterPage() {
               + Add {tab === "des" ? "designation" : "group"}
             </button>
           )}
+          </div>
         </div>
       )}
 
@@ -1173,7 +1185,11 @@ const CSS = `
 .dmx-tabs{display:flex;background:#FAFAFB;border-bottom:1px solid #E5E7EB;padding:0 14px;flex:none}
 .dmx-tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:10px 4px;margin-right:24px;font:inherit;font-size:13px;font-weight:600;color:#6B7280;cursor:pointer;white-space:nowrap}
 .dmx-tabs button.on{color:#111827;font-weight:800;border-bottom-color:#102A43}
-.dmx-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid #E5E7EB;flex:none}
+.dmx-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid #E5E7EB;flex:none}
+.dmx-search{width:170px;flex:0 1 170px}
+.dmx-right{margin-left:auto;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;white-space:nowrap}
+.dmx-right .dmx-stat{margin-right:2px}
+.dmx-toolbar label{white-space:nowrap}
 .dmx-toolbar label{display:flex;gap:6px;align-items:center;color:#6B7280;font-weight:600}
 .dmx-stat{color:#6B7280;font-weight:600}.dmx-stat b{color:#102A43}
 .dmx-txt,.dmx-ctl{border:1px solid #D1D5DB;border-radius:6px;padding:5px 8px;background:#fff;font:inherit;color:inherit;min-width:0}
@@ -1182,7 +1198,7 @@ const CSS = `
 .dmx-ctl.ed{background:#DDD6FE;border-color:#8B5CF6}
 .dmx-ctl.bad{border-color:#C0392B;outline:1px solid #C0392B}
 .dmx-ctl.unm{border-color:#D92D20;color:#B42318;font-weight:700}
-.dmx-big{padding:6px 12px;font-size:12.5px}
+.dmx-big{padding:6px 11px;font-size:12.5px;white-space:nowrap}
 .emx-mini.tog{background:#E6EEF8;border-color:#9DBDEB;color:#102A43}
 .dmx-main{border:1px solid #2F6FED;background:#2F6FED;color:#fff;border-radius:6px;padding:6px 14px;font:inherit;font-weight:800;text-transform:uppercase;letter-spacing:.03em;cursor:pointer}
 .dmx-main:hover{background:#2560d4}.dmx-main:disabled{opacity:.5;cursor:not-allowed}
@@ -1211,17 +1227,48 @@ const CSS = `
 }
 
 .dmx .emx-table th {
-  background: #E8F0FA;
-  color: #193B61;
+  background: #DFE8F3;
+  color: #102A43;
+  font-family: Arial, Helvetica, sans-serif;
   font-size: 11px;
   font-weight: 700;
-  padding: 12px 10px;
-  border-bottom: 1px solid #CBD8E8;
-  white-space: nowrap;
+  line-height: 13px;
+  padding: 0;
+  border-right: 1px solid #C9D8EC;
+  border-bottom: 1px solid #C9D8EC;
+  white-space: normal;
 }
 
 .dmx .emx-table th:first-child {
-  background: #DFEAF7;
+  background: #DFE8F3;
+}
+
+/* header cell: same layout as the Appraisal Sheet grid heading */
+.dmx .emx-thi { min-height: 46px; gap: 4px; padding: 0 8px; }
+.dmx .emx-tl {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 11px; font-weight: 700; line-height: 13px; color: #102A43;
+  text-align: left;
+}
+
+/* filter button: the Appraisal Sheet funnel (lucide Filter) in its boxed look */
+.dmx .emx-table th .emx-tb {
+  flex: none;
+  width: 28px; height: 28px; min-width: 28px;
+  padding: 0; margin: 0;
+  font-size: 0; line-height: 0; color: transparent;
+  border: 1px solid #9CA3AF; border-radius: 6px;
+  background-color: #FFFFFF;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23102a43' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: center; background-size: 14px 14px;
+  cursor: pointer;
+  transition: background-color .15s;
+}
+.dmx .emx-table th .emx-tb:hover { background-color: #F3F4F6; }
+/* a column with an active filter: dark button, white funnel (as on the sheet) */
+.dmx .emx-table th .emx-dot { display: none; }
+.dmx .emx-table th .emx-dot ~ .emx-tb {
+  background-color: #102A43; border-color: #102A43; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3'/%3E%3C/svg%3E");
 }
 
 .dmx .emx-table td {
@@ -1297,6 +1344,7 @@ const CSS = `
 .dmx-mem.bad{outline:1px solid #C0392B;border-radius:6px}
 .dmx-hist{display:flex;align-items:center;gap:8px;min-width:0}
 .dmx-hl{color:#64748B;font-size:10.5px;white-space:normal;line-height:1.25}
+.dmx-lm{color:#64748B;font-size:11.5px;white-space:nowrap}
 .emx-table td select,.emx-table td input[type=text]{font-size:12px}
 .dmx-pend{display:flex;gap:10px;align-items:center;padding:10px 14px;margin-top:10px;border:1px solid #B9D3F5;background:#DCEBFF;border-radius:8px;flex:none}
 .dmx-pend .m{color:#1D4FA8;font-weight:700}.dmx-pend .e{color:#C0392B;font-weight:700}
