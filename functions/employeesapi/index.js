@@ -1938,6 +1938,12 @@ async function getEmployees(req, res) {
       access.requireScreen(a, "employeeMaster", "view");
     }
     if (requestedView === "delegationoptions") {
+      access.requireScreen(a, "appraisalSheet", "view");
+    }
+    requireInScope(a, requestedEmpIds, requestedOwned);
+  });
+
+  if (requestedView === "delegationoptions") {
     const masterRows = await getAllEmployeeMaster(datastore);
     const byId = new Map();
     const byRowId = new Map();
@@ -1963,7 +1969,7 @@ async function getEmployees(req, res) {
     function resolveAssignment(value) {
       const raw = lookupText(value);
       if (!raw) return null;
-      const idOrName = raw.split(/\s+-\s+/)[0].trim();
+      const idOrName = raw.split(/\\s+-\\s+/)[0].trim();
       const row = byId.get(idOrName.toLowerCase()) ||
         byRowId.get(raw.toLowerCase()) ||
         byName.get(raw.toLowerCase());
@@ -1996,7 +2002,6 @@ async function getEmployees(req, res) {
       },
     });
   }
-
   let currentUser = null;
   let hrUser = false;
 
