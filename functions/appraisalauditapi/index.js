@@ -304,9 +304,9 @@ function normalizeAuditPayload(item) {
    ============================================================ */
 
 async function getAuditHistory(req, res, a) {
-  const appInstance = catalyst.initialize(req);
-
-  const datastore = appInstance.datastore();
+  // Authorized by the caller's access check; the admin scope reads and
+  // writes, so Data Store roles need no direct table access.
+  const datastore = catalyst.initialize(req, { scope: "admin" }).datastore();
 
   const table = datastore.table(AUDIT_TABLE_ID);
 
@@ -461,9 +461,9 @@ async function getAuditHistory(req, res, a) {
    ============================================================ */
 
 async function createAuditRecords(req, res, a) {
-  const appInstance = catalyst.initialize(req);
-
-  const datastore = appInstance.datastore();
+  // Authorized by the caller's access check; the admin scope reads and
+  // writes, so Data Store roles need no direct table access.
+  const datastore = catalyst.initialize(req, { scope: "admin" }).datastore();
 
   const body = await readBody(req);
 

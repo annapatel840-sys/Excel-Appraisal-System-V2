@@ -201,12 +201,23 @@ function bigOf(v) { try { return BigInt(String(v)); } catch (e) { return null; }
    ROWIDs may come back as strings; progress is checked numerically (BigInt) and
    rows are de-duplicated so a bad comparison can never loop forever. */
 const PAGE = 300;
+// Catalyst answers 429 "Concurrency limit reached" when too many Data Store
+// calls run at once; wait briefly and retry instead of failing the request.
+async function whenNotBusy(fn) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await fn(); } catch (err) {
+      const busy = err && (err.statusCode === 429 || err.code === 'TOO_MANY_REQUESTS');
+      if (!busy || attempt >= 3) throw err;
+      await new Promise((r) => setTimeout(r, 250 * (attempt + 1) + Math.random() * 250));
+    }
+  }
+}
 async function selectAll(zcql, table, where) {
   const out = [], seen = new Set();
   let last = '0';
   for (let guard = 0; guard < 10000; guard++) {
     const cond = (where ? '(' + where + ') AND ' : '') + 'ROWID > ' + last;
-    const res = await zcql.executeZCQLQuery('SELECT * FROM ' + table + ' WHERE ' + cond + ' ORDER BY ROWID ASC LIMIT ' + PAGE);
+    const res = await whenNotBusy(() => zcql.executeZCQLQuery('SELECT * FROM ' + table + ' WHERE ' + cond + ' ORDER BY ROWID ASC LIMIT ' + PAGE));
     const rows = (res || []).map((r) => (r && r[table]) || (r && Object.values(r)[0]) || {});
     let max = bigOf(last), added = 0;
     for (const row of rows) {
@@ -687,7 +698,7 @@ async function bumpVersion(cat, by, why) {
 module.exports = {
   SETTINGS, T, BUILT_IN_ROLES, START_CATALOG, FIELD_COLUMNS, COLUMN_FIELDS, LEVELS, LIMITS, OV_TYPES, HttpError,
   nowDT, today, q, bool, norm, ID_RE, DATE_RE, isEnforced,
-  selectAll, buildCatalog, loadCatalog, loadRoles, loadMatrix, resolveFields, activeCycleId, loadDelegation, hasTeam, emRow, findEmployee,
+  whenNotBusy, selectAll, buildCatalog, loadCatalog, loadRoles, loadMatrix, resolveFields, activeCycleId, loadDelegation, hasTeam, emRow, findEmployee,
   loadOverrides, live, baseRoleOf, accessOf, get, check, guard, requireScreen, requireAction, canEdit, canEditColumn, requireEditColumns,
   fieldOfColumn, inScope, shapeRow, shapeRowByColumns, scopeRows, getVersion, currentVersion, bumpVersion, resetCache, ensureCache,
   _cache: CACHE

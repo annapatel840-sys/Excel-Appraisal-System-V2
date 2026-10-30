@@ -1073,15 +1073,14 @@ module.exports = async function (req, res) {
       return bumpAccessVersion(req, a, why);
     };
 
-    const appInstance = catalyst.initialize(req);
-
     // Access control is enforced above using the authenticated user.
     // Use the Catalyst admin datastore scope for the actual Employee Master
     // write so Data Store "App User" table permissions cannot block a valid
     // HR import with a 500 response.
     const writeApp = catalyst.initialize(req, { scope: "admin" });
-    const datastore = appInstance.datastore();
+    // Reads use the admin scope too, so Data Store roles need no table access.
     const writeDatastore = writeApp.datastore();
+    const datastore = writeDatastore;
 
     const table = writeDatastore.table(EMPLOYEE_MASTER_TABLE_ID);
     const employeesTable = writeDatastore.table(EMPLOYEES_TABLE_ID);

@@ -40,7 +40,9 @@ function load() {
     check: async () => accessResult,
     isEnforced: () => Boolean(accessResult.enforced),
     guard: (a, fn) => fn(),
-    requireScreen: () => {}, requireAction: () => {}, requireEditColumns: () => {},
+    // Employee Master is HR-only (the bulk POST checks it).
+    requireScreen: (a, key) => { if (key === 'employeeMaster' && a.role !== 'hr') throw new HttpError(403, 'No access to Employee Master.'); },
+    requireAction: () => {}, requireEditColumns: () => {},
     inScope: (a) => Boolean(a.scope && a.scope.all), // Delegation scope empty
     shapeRowByColumns: (a, row) => ({ ...row }),
     fieldOfColumn: () => '',
@@ -49,6 +51,8 @@ function load() {
   const tableApi = (id) => ({
     getPagedRows: async () => ({ data: (TABLES[id] || []).map((r) => ({ ...r })), more_records: false }),
     getAllRows: async () => (TABLES[id] || []).map((r) => ({ ...r })),
+    insertRows: async (rows) => rows.map((r, i) => { const x = { ...r, ROWID: 'N' + i }; TABLES[id].push(x); return x; }),
+    updateRows: async (rows) => rows.map((u) => { const r = TABLES[id].find((x) => x.ROWID === u.ROWID); Object.assign(r, u); return { ...r }; }),
     updateRow: async (u) => { const r = TABLES[id].find((x) => x.ROWID === u.ROWID); Object.assign(r, u); return { ...r }; },
   });
   const catalystStub = {
@@ -63,11 +67,11 @@ function load() {
   try { return require('../index.js'); } finally { Module._load = orig; }
 }
 
-function put(handler, body) {
+function put(handler, body, method = 'PUT') {
   return new Promise((resolve, reject) => {
     const server = http.createServer(handler).listen(0, () => {
       const data = JSON.stringify(body);
-      const rq = http.request({ host: '127.0.0.1', port: server.address().port, path: '/', method: 'PUT', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
+      const rq = http.request({ host: '127.0.0.1', port: server.address().port, path: '/', method, headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) } }, (res) => {
         let out = ''; res.on('data', (c) => (out += c));
         res.on('end', () => { server.close(); resolve({ status: res.statusCode, json: JSON.parse(out || '{}') }); });
       });
@@ -100,6 +104,21 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
     accessResult = { enforced: true, role: 'hr', scope: { all: true }, user: { email: 'hr@x.com' }, fields: {} };
     const r = await put(load(), { emp_id: 'E2', hike_amount: '7' });
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+  });
+
+  await t('Tech-ED cannot change Delegation directly, even for an own employee', async () => {
+    accessResult = ashok;
+    const r = await put(load(), { emp_id: 'EMP013', comp_manager: 'EMP0057' });
+    assert.strictEqual(r.status, 403, JSON.stringify(r.json));
+    assert.match(r.json.message, /Delegation request/);
+  });
+
+  await t('Tech-ED cannot bulk-write Appraisal Sheet rows, even for an own employee', async () => {
+    accessResult = ashok;
+    const r = await put(load(), { employees: [{ emp_id: 'EMP013', hike_amount: '999' }] }, 'POST');
+    assert.strictEqual(r.status, 403, JSON.stringify(r.json));
+    assert.match(r.json.message, /Employee Master/);
+    assert.strictEqual(TABLES[SHEET][0].hike_amount, '');
   });
 
   console.log('\n' + pass + ' passed, ' + fail + ' failed');

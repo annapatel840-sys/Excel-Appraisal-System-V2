@@ -317,6 +317,20 @@ function requireBudgetScreen(a, level) {
   });
 }
 
+// Catalyst answers 429 "Concurrency limit reached" when too many Data Store
+// calls run at once; wait briefly and retry instead of failing the screen.
+async function whenNotBusy(fn) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await fn();
+    } catch (error) {
+      const busy = error && (error.statusCode === 429 || error.code === "TOO_MANY_REQUESTS");
+      if (!busy || attempt >= 3) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1) + Math.random() * 250));
+    }
+  }
+}
+
 async function getAllRows(app, tableName) {
   const rows = [];
   const zcql = app.zcql();
@@ -332,7 +346,7 @@ async function getAllRows(app, tableName) {
       " WHERE ROWID > " +
       last +
       " ORDER BY ROWID ASC LIMIT 300";
-    const result = await zcql.executeZCQLQuery(query);
+    const result = await whenNotBusy(() => zcql.executeZCQLQuery(query));
     const page = (result || []).map(
       (item) => (item && (item[tableName] || Object.values(item)[0])) || {},
     );
@@ -3465,6 +3479,25 @@ module.exports = async function (req, res) {
       }
       if (resource === "master" && !isHR(a.user)) {
         throw new access.HttpError(403, "Only HR can update Budget Master.");
+      }
+      // A Tech-Ed's own budget (their Budget_Distribution row) is set by HR.
+      // The Tech-Ed allots it onward on the Comp Manager rows, whose total
+      // is capped at this budget above.
+      if (
+        resource === "distribution" &&
+        a.role !== "hr" &&
+        [
+          "percentage",
+          "budget_base",
+          "applied_budget",
+          "calculated_budget",
+          "claculated_budget",
+        ].some((key) => Object.prototype.hasOwnProperty.call(body, key))
+      ) {
+        throw new access.HttpError(
+          403,
+          "Only HR can change a Tech-Ed's budget.",
+        );
       }
     }
 
