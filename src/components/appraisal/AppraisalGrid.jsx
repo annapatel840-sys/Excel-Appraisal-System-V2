@@ -994,12 +994,8 @@ function EmployeePanel({
 
   const requestPeople = useMemo(() => {
     const values = new Set();
-    const sourceRows =
-      Array.isArray(team) && team.length
-        ? [...team, ...(Array.isArray(allAppraisalRows) ? allAppraisalRows : [])]
-        : Array.isArray(allAppraisalRows)
-          ? allAppraisalRows
-          : [];
+    // The parent passes the complete appraisal roster through the team prop.
+    const sourceRows = Array.isArray(team) ? team : [];
 
     sourceRows.forEach((row) => {
       // Support the resolved grid fields and the raw API field names. The
@@ -1026,7 +1022,7 @@ function EmployeePanel({
     return [...values]
       .filter((person) => person !== currentAssignee)
       .sort((a, b) => a.localeCompare(b));
-  }, [team, allAppraisalRows, currentAssignee]);
+  }, [team, currentAssignee]);
 
   const sendDelegation = () => {
     if (!reqPerson || !reqReason.trim()) {
