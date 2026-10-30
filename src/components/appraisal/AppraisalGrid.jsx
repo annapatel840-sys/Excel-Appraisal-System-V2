@@ -994,19 +994,39 @@ function EmployeePanel({
 
   const requestPeople = useMemo(() => {
     const values = new Set();
+    const sourceRows =
+      Array.isArray(team) && team.length
+        ? [...team, ...(Array.isArray(allAppraisalRows) ? allAppraisalRows : [])]
+        : Array.isArray(allAppraisalRows)
+          ? allAppraisalRows
+          : [];
 
-    team.forEach((row) => {
-      [row.appraiserTechED, row.compManager].forEach((value) => {
-        if (value && String(value).trim()) {
-          values.add(String(value).trim());
-        }
+    sourceRows.forEach((row) => {
+      // Support the resolved grid fields and the raw API field names. The
+      // request choices must come from the whole appraisal roster, not only
+      // the currently visible/filtered grid rows.
+      const assignments = [
+        row.appraiserTechED,
+        row.appraiser_tech_ed_appraisal_sheet,
+        row.appraiser_tech_ed,
+        row.compManagerDisplay,
+        row.comp_manager_display,
+        row.comp_manager_name,
+        row.compManager,
+        row.comp_manager,
+      ];
+
+      assignments.forEach((value) => {
+        const person = String(value ?? "").trim();
+        // Do not expose unresolved Catalyst lookup ROWIDs as assignees.
+        if (person && !/^[0-9]{6,}$/.test(person)) values.add(person);
       });
     });
 
     return [...values]
       .filter((person) => person !== currentAssignee)
       .sort((a, b) => a.localeCompare(b));
-  }, [team, currentAssignee]);
+  }, [team, allAppraisalRows, currentAssignee]);
 
   const sendDelegation = () => {
     if (!reqPerson || !reqReason.trim()) {
@@ -1687,8 +1707,13 @@ export function AppraisalGrid({
   isHR = false,
   onRequest,
 }) {
-  const { updateCell, updateLinkedCells, bulkUpdate, modified } =
-    useAppraisal();
+  const {
+    rows: allAppraisalRows,
+    updateCell,
+    updateLinkedCells,
+    bulkUpdate,
+    modified,
+  } = useAppraisal();
   const currentCycleName = useCurrentCycleName() || CURRENT_APPRAISAL_YEAR;
 
 //  This loads the rules from the existing designationmasterapi endpoint in read-only appraisal mode.
@@ -5105,7 +5130,7 @@ export function AppraisalGrid({
       {detailOpen && liveHistoryRow && (
         <EmployeePanel
           employee={liveHistoryRow}
-          team={rows}
+          team={allAppraisalRows?.length ? allAppraisalRows : rows}
           showRequest={showRequestTab}
           canDelegate={canDelegate}
           onRequest={onRequest}
