@@ -109,7 +109,7 @@ export function BudgetProvider({ children }) {
     roleText === "hr" ||
     roleText === "humanresources" ||
     roleText === "hroperation";
-  const isCompManagerLogin = roleText === "compmgr" || roleText === "compmanager";
+  const isCompManagerLogin = actualId === "compmanager" || roleText === "compmgr" || roleText === "compmanager";
   const [budgetRows, setBudgetRows] = useState([]);
   const [budgetMasterRows, setBudgetMasterRows] = useState([]);
   const [activeBudgetCycleId, setActiveBudgetCycleId] = useState("");
