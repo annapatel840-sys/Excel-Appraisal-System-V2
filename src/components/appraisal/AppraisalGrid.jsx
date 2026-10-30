@@ -47,7 +47,7 @@ const PANEL_FONT = '"Manrope", "Segoe UI", system-ui, sans-serif';
 // ============================================================
 
 const PAGE_SIZE = 20;
-const CELL_MIN_HEIGHT = 40;
+const CELL_MIN_HEIGHT = 32;
 const HEADER_HEIGHT = 46;
 const FOOTER_HEIGHT = 36;
 const SELECT_WIDTH = 34;
@@ -360,29 +360,21 @@ const formatEditableNumeric = (value, type) => {
 // Editable (input) columns = green family, so it is clear which columns can be
 // typed in. Everything else is banded white / grey. The frozen Employee column
 // has its own tint. Edited cells are peach (see draftClass).
-const cellBackground = ({ kind, rowIndex, selected, flash }) => {
+const cellBackground = ({ kind, rowIndex, flash }) => {
   if (flash) {
     return "bg-[#ffe08a] group-hover:bg-[#ffe08a]";
   }
 
+  // Selected row has no fill colour any more (only the outline border).
   if (kind === "input") {
-    if (selected) return "bg-[#bde3ce]";
     return rowIndex % 2 === 0
       ? "bg-[#e1f4e9] group-hover:bg-[#c4e7d2]"
       : "bg-[#cfebda] group-hover:bg-[#c4e7d2]";
   }
 
-  if (selected) {
-    return "bg-[#bcd4f8]";
-  }
-
-  if (kind === "frozen") {
-    return "bg-[#eef3fa] group-hover:bg-[#e1ebf9]";
-  }
-
   return rowIndex % 2 === 0
-    ? "bg-white group-hover:bg-[#e1ebf9]"
-    : "bg-[#f5f7fa] group-hover:bg-[#e1ebf9]";
+    ? "bg-white group-hover:bg-[#dde8f6]"
+    : "bg-[#e8edf4] group-hover:bg-[#dde8f6]";
 };
 
 // ============================================================
@@ -3408,10 +3400,23 @@ export function AppraisalGrid({
   // RENDER CELL
   // ============================================================
 
-  const draftClass = (cellKey, isBlinking) =>
+  // Values that mean "nothing set" - an edited cell holding these is not
+  // coloured like a real edit.
+  const isNeutralValue = (value) => {
+    if (value === null || value === undefined) return true;
+    const text = String(value).trim().toLowerCase();
+    if (text === "" || ["no", "na", "n/a", "none", "-"].includes(text)) {
+      return true;
+    }
+    const num = Number(text.replace(/,/g, ""));
+    return Number.isFinite(num) && num === 0;
+  };
+
+  // Edited cell: only the input box itself is tinted peach (no full cell fill).
+  const draftClass = (cellKey, isBlinking, value) =>
     cn(
-      modified[cellKey]
-        ? "border-[#d9822b] bg-transparent font-bold text-[#111827]"
+      modified[cellKey] && !isNeutralValue(value)
+        ? "border-[#d9822b] bg-[#ffe0c2] font-bold text-[#111827]"
         : "border-[#d1d5db] bg-white text-[#111827]",
       "focus:border-[#102a43] focus:bg-white focus:outline focus:outline-1 focus:outline-[#102a43] focus:ring-0",
       isBlinking && "appraisal-cell-blink",
@@ -3430,15 +3435,15 @@ export function AppraisalGrid({
       const pctText = pctCol ? formatValue(row, pctCol) : "";
       return (
         <div
-          className="flex min-h-[38px] h-auto w-full flex-col items-end justify-center gap-px overflow-hidden px-2 py-[3px] text-right tabular-nums"
+          className="flex min-h-[30px] h-auto w-full flex-col items-end justify-center gap-px overflow-hidden px-2 py-[2px] text-right tabular-nums"
           title="Calculated automatically"
         >
-          <span className="block max-w-full truncate text-[13.25px] font-semibold leading-tight text-[#111827]">
+          <span className="block max-w-full truncate text-[12.25px] font-semibold leading-tight text-[#111827]">
             {col.type === "currency"
               ? displayValue.replace(/^₹\s?/, "")
               : displayValue}
           </span>
-          <span className="block max-w-full truncate text-[11px] font-semibold leading-tight text-[#6b7a8f]">
+          <span className="block max-w-full truncate text-[10.5px] font-semibold leading-tight text-[#6b7a8f]">
             {pctText}
           </span>
         </div>
@@ -3449,9 +3454,9 @@ export function AppraisalGrid({
       return (
         <div
           className={cn(
-            "flex min-h-[38px] h-auto w-full items-center justify-end overflow-hidden",
+            "flex min-h-[30px] h-auto w-full items-center justify-end overflow-hidden",
             "px-2 py-1 leading-tight text-right",
-            "text-[13.25px] font-semibold tabular-nums",
+            "text-[12.25px] font-semibold tabular-nums",
             modified[cellKey] ? "text-slate-900" : "text-[#111827]",
           )}
           title="Calculated automatically"
@@ -3475,12 +3480,12 @@ export function AppraisalGrid({
             openRow(row);
             openDetailPanel();
           }}
-          className="flex min-h-[38px] h-auto w-full min-w-0 flex-col items-start justify-center overflow-hidden px-2 py-1 text-left"
+          className="flex min-h-[30px] h-auto w-full min-w-0 flex-col items-start justify-center overflow-hidden px-2 py-[3px] text-left"
           title={`${row.empId} - ${row.name}${row.designation ? ` · ${row.designation}` : ""}`}
         >
           <span
             className={cn(
-              "block max-w-full text-[13.25px] font-extrabold leading-tight text-[#1559a6] hover:underline",
+              "block max-w-full text-[12.25px] font-extrabold leading-tight text-[#1559a6] hover:underline",
               wraps ? "break-words" : "truncate",
             )}
           >
@@ -3532,8 +3537,8 @@ export function AppraisalGrid({
             openRow(row);
           }}
           className={cn(
-            "flex min-h-[38px] h-auto w-full min-w-0 items-center overflow-hidden px-2 py-1",
-            "text-[13.25px] font-semibold text-[#111827] leading-tight",
+            "flex min-h-[30px] h-auto w-full min-w-0 items-center overflow-hidden px-2 py-[3px]",
+            "text-[12.25px] font-semibold text-[#111827] leading-tight",
             isMoney ? "justify-end text-right tabular-nums" : "text-left",
           )}
           title={text}
@@ -3551,7 +3556,7 @@ export function AppraisalGrid({
 
     if (col.type === "enum") {
       return (
-        <div className="flex min-h-[38px] w-full items-center px-1.5 py-1">
+        <div className="flex min-h-[30px] w-full items-center px-1.5 py-[2px]">
           <select
             ref={(element) => {
               cellRefs.current[`${rowIndex}:${col.key}`] = element;
@@ -3691,8 +3696,8 @@ export function AppraisalGrid({
               );
             }}
             className={cn(
-              "h-[28px] w-full cursor-pointer rounded-[6px] border px-1 text-[13.25px] font-semibold outline-none",
-              draftClass(cellKey, isBlinking),
+              "h-[26px] w-full cursor-pointer rounded-[6px] border px-1 text-[12.25px] font-semibold outline-none",
+              draftClass(cellKey, isBlinking, row[col.key]),
               col.key === "newTitle" &&
                 row.eligibleForPromotion === "Yes" &&
                 !row.newTitle &&
@@ -3781,7 +3786,7 @@ export function AppraisalGrid({
           : storedValue;
 
       return (
-        <div className="flex min-h-[38px] w-full items-center px-1.5 py-1">
+        <div className="flex min-h-[30px] w-full items-center px-1.5 py-[2px]">
           <textarea
             ref={(element) => {
               cellRefs.current[`${rowIndex}:${col.key}`] = element;
@@ -3862,9 +3867,9 @@ export function AppraisalGrid({
               handleEditableDoubleClick(event, rowIndex, col.key)
             }
             className={cn(
-              "min-h-[30px] w-full resize-none overflow-hidden rounded-[6px] border px-1.5 py-[5px] text-[13.25px] font-semibold leading-tight outline-none",
+              "min-h-[30px] w-full resize-none overflow-hidden rounded-[6px] border px-1.5 py-[5px] text-[12.25px] font-semibold leading-tight outline-none",
               !wraps && "whitespace-nowrap",
-              draftClass(cellKey, isBlinking),
+              draftClass(cellKey, isBlinking, row[col.key]),
             )}
           />
         </div>
@@ -3890,7 +3895,7 @@ export function AppraisalGrid({
     return (
       <div
         className={cn(
-          "relative flex min-h-[38px] w-full px-1.5",
+          "relative flex min-h-[30px] w-full px-1.5",
           // With a note: 11px above the field and 11px for the note below it,
           // so the row grows evenly and the other cells line up with the field.
           payNote ? "flex-col justify-start pb-0 pt-[11px]" : "items-center py-1",
@@ -4091,8 +4096,8 @@ export function AppraisalGrid({
             handleEditableDoubleClick(event, rowIndex, col.key)
           }
           className={cn(
-            "h-[28px] w-full rounded-[6px] border px-1.5 text-[13.25px] font-semibold outline-none",
-            draftClass(cellKey, isBlinking),
+            "h-[26px] w-full rounded-[6px] border px-1.5 text-[12.25px] font-semibold outline-none",
+            draftClass(cellKey, isBlinking, row[col.key]),
             isNumericType(col.type) && "text-right font-medium tabular-nums",
             isMonthColumn && "text-center",
             payError &&
@@ -4140,7 +4145,6 @@ export function AppraisalGrid({
             cellBackground({
               kind: "master",
               rowIndex,
-              selected: isSelectedRow,
               flash: isFlashRow,
             }),
           )}
@@ -4156,7 +4160,7 @@ export function AppraisalGrid({
           }}
           onClick={() => openRow(row)}
         >
-          <div className="flex min-h-[38px] h-full items-center justify-center">
+          <div className="flex min-h-[30px] h-full items-center justify-center">
             <Checkbox
               checked={!!selected[row.id]}
               onCheckedChange={(value) => toggleSelected(row.id, !!value)}
@@ -4183,14 +4187,10 @@ export function AppraisalGrid({
                 "border-r border-b border-[#dde3ec] p-0 align-middle",
                 isFrozen && "border-r-[#c9d8ec]",
                 cellBackground({
-                  kind: isFrozen ? "frozen" : kind,
+                  kind,
                   rowIndex,
-                  selected: isSelectedRow,
                   flash: isFlashRow,
                 }),
-                // Edited cell: the whole cell turns peach (HTML .ed).
-                !isFrozen && modified[`${row.id}:${col.key}`] && !isFlashRow &&
-                  "!bg-[#ffe0c2]",
               )}
               style={{
                 position: isFrozen ? "sticky" : "relative",
@@ -4213,13 +4213,11 @@ export function AppraisalGrid({
                     ? "inset 3px 0 0 #102a43"
                     : isFrozen
                       ? "6px 0 8px -6px rgba(16,42,67,.25)"
-                      : !isFrozen && modified[`${row.id}:${col.key}`]
-                        ? "inset 0 0 0 1px #d9822b"
-                        : "none",
+                      : "none",
               }}
               onClick={() => handleCellClick(row, isEditable)}
             >
-              <div className="relative min-h-[38px] h-auto w-full">
+              <div className="relative min-h-[30px] h-auto w-full">
                 {renderCellContent(row, col, rowIndex)}
               </div>
             </td>
@@ -4863,7 +4861,7 @@ export function AppraisalGrid({
                     <td
                       key={col.key}
                       className={cn(
-                        "overflow-hidden whitespace-nowrap border-r border-t border-[#c9d8ec] px-2 text-[13.25px] font-extrabold text-[#102a43]",
+                        "overflow-hidden whitespace-nowrap border-r border-t border-[#c9d8ec] px-2 text-[12.25px] font-extrabold text-[#102a43]",
                         isName ? "text-left" : "text-right tabular-nums",
                       )}
                       style={{
