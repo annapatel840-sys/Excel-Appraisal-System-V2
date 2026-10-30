@@ -904,15 +904,27 @@ export function TechEdBudgetDistribution() {
                 </div>
                 <div className="d mut">At allocation → now</div>
               </div>
-              <div>
-                <div className="f-label">Allotted to reports</div>
-                <div className="v">{lakh(allotted)}</div>
-              </div>
-              <div>
-                <div className="f-label">Buffer</div>
-                <div className="v">{lakh(myUpdated - allotted)}</div>
-                <div className="d mut">Not passed down</div>
-              </div>
+              {isCompManagerView ? (
+                <div>
+                  <div className="f-label">Remaining</div>
+                  <div className={"v" + (myUpdated - used < 0 ? " over" : "")}>
+                    {hasLiveAllocation ? lakh(myUpdated - used) : "—"}
+                  </div>
+                  <div className="d mut">Updated budget − utilised</div>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <div className="f-label">Allotted to reports</div>
+                    <div className="v">{lakh(allotted)}</div>
+                  </div>
+                  <div>
+                    <div className="f-label">Buffer</div>
+                    <div className="v">{lakh(myUpdated - allotted)}</div>
+                    <div className="d mut">Not passed down</div>
+                  </div>
+                </>
+              )}
               <div>
                 <div className="f-label">Utilised</div>
                 <div className={"v" + (over ? " over" : "")}>
