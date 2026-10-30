@@ -879,3 +879,26 @@ export async function fetchAllEmployeeMasterEmployees() {
 }
 
 export const INITIAL_EMPLOYEES = [];
+
+/**
+ * Minimal, role-scoped list of delegation targets for the Appraisal Sheet
+ * request panel. The employeesapi endpoint reads Employee_Master server-side
+ * and returns only Tech-Ed / Comp Manager ID-name pairs.
+ */
+export async function fetchDelegationAssigneeOptions() {
+  const url = new URL(EMPLOYEE_API_URL);
+  url.searchParams.set("view", "delegationoptions");
+  url.searchParams.set("_ts", String(Date.now()));
+  const response = await catalystFetch(url.toString(), {
+    cache: "no-store",
+    headers: { Accept: "application/json", "Cache-Control": "no-cache" },
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || result?.success === false) {
+    throw new Error(result?.message || `Failed to load delegation options (${response.status}).`);
+  }
+  return {
+    techEd: Array.isArray(result?.data?.techEd) ? result.data.techEd : [],
+    compManagers: Array.isArray(result?.data?.compManagers) ? result.data.compManagers : [],
+  };
+}
