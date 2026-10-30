@@ -1110,6 +1110,51 @@ function matchesTechEdOwner(owner, a, techEdOwners = []) {
 
 function filterOwn(bundle, a, techEdOwners = []) {
   if (!a || !a.enforced || (a.scope && a.scope.all)) return bundle;
+
+  const employeeRoster = bundle.employeeRoster || [];
+  if (a.role === "compMgr") {
+    // Access scope is the current Comp Manager's employee-ID team. Resolve
+    // those employees' current Appraisal Sheet Tech-Ed assignments to the
+    // parent allocation, then return only this manager's child allocation.
+    const teamIds = new Set((a.scope?.empIds || []).map((id) => ownerKey(id)));
+    const ownEmployees = employeeRoster.filter((employee) =>
+      teamIds.has(ownerKey(employee.emp_id || employee.employee_id))
+    );
+    const techOwnerKeys = new Set(ownEmployees.map((employee) => {
+      const raw = employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed ||
+        employee.appraiser_tech_ed_id || employee.appraiser_tech_ed1 || "";
+      const key = ownerKey(raw);
+      const linked = techEdOwners.find((item) =>
+        [item.row_id, item.ROWID, item.employee_id, item.assignment, item.name]
+          .some((alias) => ownerKey(alias) === key)
+      );
+      return ownerKey(linked?.assignment || raw);
+    }).filter(Boolean));
+    const techEd = bundle.techEd.filter((row) => {
+      const raw = row.appraiser_tech_ed_id || "";
+      const key = ownerKey(raw);
+      const linked = techEdOwners.find((item) =>
+        [item.row_id, item.ROWID, item.employee_id, item.assignment, item.name]
+          .some((alias) => ownerKey(alias) === key)
+      );
+      return techOwnerKeys.has(ownerKey(linked?.assignment || raw));
+    });
+    const allowedDistributionIds = new Set(techEd.map((row) => row.id));
+    const managerKeys = new Set([
+      a.user?.empId, a.user?.name, a.user?.email,
+    ].map(ownerKey).filter(Boolean));
+    const compManager = bundle.compManager.filter((row) =>
+      allowedDistributionIds.has(String(row.budget_distribution_id)) &&
+      (ownerKey(row.comp_manager) === ownerKey(a.user?.empId) ||
+       ownerKey(row.comp_manager) === ownerKey(a.user?.name) ||
+       managerKeys.has(ownerKey(row.comp_manager)) ||
+       managerKeys.has(ownerKey(row.comp_manager).split(/\\s+-\\s+/)[0]))
+    );
+    const cycleIds = new Set(techEd.map((row) => row.appraisal_cycle_id));
+    const master = bundle.master.filter((row) => cycleIds.has(row.appraisal_cycle_id));
+    return { master, techEd, compManager, employeeRoster: ownEmployees };
+  }
+
   const techEd = bundle.techEd.filter((row) =>
     matchesTechEdOwner(row.appraiser_tech_ed_id, a, techEdOwners),
   );
@@ -1117,16 +1162,14 @@ function filterOwn(bundle, a, techEdOwners = []) {
   const compManager = bundle.compManager.filter((row) =>
     allowedDistributionIds.has(String(row.budget_distribution_id)),
   );
-  // Budget_Master is org-level and has no owner column, so a non-HR user gets
-  // only the master row for the cycle represented by their Tech-Ed allocation.
   const cycleIds = new Set(techEd.map((row) => row.appraisal_cycle_id));
   const master = bundle.master.filter((row) =>
     cycleIds.has(row.appraisal_cycle_id),
   );
-  const employeeRoster = (bundle.employeeRoster || []).filter((employee) =>
+  const ownTechEmployees = employeeRoster.filter((employee) =>
     matchesTechEdOwner(employee.appraiser_tech_ed, a, techEdOwners),
   );
-  return { master, techEd, compManager, employeeRoster };
+  return { master, techEd, compManager, employeeRoster: ownTechEmployees };
 }
 
 function ownerKey(raw) {
