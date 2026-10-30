@@ -1379,39 +1379,38 @@ export default function DelegationScreen({
               )}
             </div>
           </div>
-          <div className="dg-stats">
-            {[
-              ["Total Employees", scoped.length, "#1f2a37", null],
-              ["Employee without Comp. Manager", withoutComp, "#94620a", null],
-              [
-                isHR ? "Pending HR Approval" : "My Pending Requests",
-                pending.length,
-                "#b42318",
-                () => setReqOpen(true),
-              ],
-            ].map(([l, v, c, onClick]) => (
-              <div
-                className={"dg-st" + (onClick ? " click" : "")}
-                key={l}
-                onClick={onClick || undefined}
-                onKeyDown={
-                  onClick
-                    ? (e) => (e.key === "Enter" || e.key === " ") && onClick()
-                    : undefined
-                }
-                role={onClick ? "button" : undefined}
-                tabIndex={onClick ? 0 : undefined}
-                title={onClick ? "Open pending approvals" : undefined}
-              >
-                <div className="l">{l}</div>
-                <div className="v" style={{ color: c }}>
-                  {v}
-                </div>
-              </div>
-            ))}
-          </div>
-
           <div className="dg-tb">
+            <div className="dg-mets">
+              {[
+                ["Total Employees", scoped.length, "#1f2a37", null],
+                ["Employee without Comp. Manager", withoutComp, "#94620a", null],
+                [
+                  isHR ? "Pending HR Approval" : "My Pending Requests",
+                  pending.length,
+                  "#b42318",
+                  () => setReqOpen(true),
+                ],
+              ].map(([l, v, c, onClick]) => (
+                <div
+                  className={"dg-met" + (onClick ? " click" : "")}
+                  key={l}
+                  onClick={onClick || undefined}
+                  onKeyDown={
+                    onClick
+                      ? (e) => (e.key === "Enter" || e.key === " ") && onClick()
+                      : undefined
+                  }
+                  role={onClick ? "button" : undefined}
+                  tabIndex={onClick ? 0 : undefined}
+                  title={onClick ? "Open pending approvals" : undefined}
+                >
+                  <span className="l">{l}</span>
+                  <span className="v" style={{ color: c }}>
+                    {v}
+                  </span>
+                </div>
+              ))}
+            </div>
             <span style={{ flex: 1 }} />
             <label className="dg-dflt">
               <span>Default Comp. Manager</span>
@@ -2162,6 +2161,11 @@ const CSS = `
 .dg-menulist{position:absolute;right:0;top:calc(100% + 6px);min-width:150px;background:#fff;border:1px solid #E5E7EB;border-radius:8px;box-shadow:0 6px 20px rgba(15,42,68,.18);padding:4px;z-index:30;text-align:left}
 .dg .dg-menulist button{display:block;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:8px 10px;font-size:12.5px;font-weight:600;color:#102A43;cursor:pointer}
 .dg .dg-menulist button:hover{background:#eef2f8}
+.dg-mets{display:flex;align-items:stretch;flex-wrap:wrap}
+.dg-met{display:flex;align-items:baseline;gap:6px;padding:2px 14px;border-right:1px solid #e6eaef;white-space:nowrap}
+.dg-met:first-child{padding-left:4px}.dg-met:last-child{border-right:none}
+.dg-met .l{font-size:11.5px;color:#6b7685}.dg-met .v{font-size:16px;font-weight:800}
+.dg-met.click{cursor:pointer;border-radius:5px}.dg-met.click:hover{background:#f6f8fa}.dg-met.click:focus-visible{outline:2px solid #17365d;outline-offset:-2px}
 .dg-stats{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid #e6eaef}
 .dg-st{padding:10px 14px;border-right:1px solid #e6eaef}.dg-st:last-child{border-right:none}
 .dg-st .l{font-size:11.5px;color:#6b7685}.dg-st .v{font-size:17px;font-weight:800}

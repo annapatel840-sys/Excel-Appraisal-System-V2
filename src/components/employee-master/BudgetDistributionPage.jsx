@@ -6,7 +6,7 @@ import { useBudget } from "@/lib/budget-store";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { TechEdBudgetDistribution } from "./TechEdBudgetDistribution";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
-import { FilterStatus, FilterTh, filterTableCss, useTableFilters } from "./FilterableTable";
+import { FilterStatus, FilterTh, ResizableCols, filterTableCss, resizableTableStyle, useColumnResize, useTableFilters } from "./FilterableTable";
  
 // Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
 const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -53,6 +53,7 @@ const numOrBlank = (value) => {
 };
 
 // Columns behind the Tech-Ed Budget Distribution table's header filters.
+const HR_W = { level: 70, owner: 190, pct: 70, original: 104, additional: 104, updated: 104, utilised: 96, remaining: 96, util: 84, origCount: 70, curCount: 70, status: 76, access: 104 };
 const HR_COLS = [
   { key: "level", label: "Level", kind: "text", get: (i) => i.level },
   { key: "owner", label: "Tech-Ed", kind: "text", get: (i) => i.owner },
@@ -185,9 +186,8 @@ const CSS = `
 .bd-root .scroll { overflow-x: auto; }
 .bd-root table {
   width: 100%;
-  min-width: 1120px;
   border-collapse: collapse;
-  font-size: 12px;
+  font-size: 11px;
 }
 .bd-root th {
   background: #dfe8f3;
@@ -195,13 +195,12 @@ const CSS = `
   font-size: 12px;
   font-weight: 600;
   text-align: left;
-  padding: 6px 8px;
+  padding: 3px 6px;
   border-right: 1px solid #c9d8ec;
   border-bottom: 1px solid #9fb3cf;
-  white-space: nowrap;
 }
 .bd-root td {
-  padding: 8px 10px;
+  padding: 3px 6px;
   border-right: 1px solid #c9d8ec;
   border-bottom: 1px solid #c9d8ec;
   vertical-align: middle;
@@ -217,7 +216,7 @@ const CSS = `
 .bd-root td:last-child { border-right: 0; }
 .bd-root tbody tr:last-child > td { border-bottom: 0; }
 .bd-root th.num,
-.bd-root td.num { text-align: right; }
+.bd-root td.num { text-align: right; white-space: nowrap; }
 .bd-root tr.tech { background: #f8fbfb; }
 .bd-root tr.tech td:first-child { box-shadow: inset 4px 0 0 #14a3a3; }
 .bd-root .owner {
@@ -228,7 +227,7 @@ const CSS = `
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  padding: 2px 8px;
+  padding: 1px 7px;
   background: #e8f5ed;
   color: #166534;
   font-size: 10.5px;
@@ -239,7 +238,7 @@ const CSS = `
   align-items: center;
   border: 1px solid #d5dde7;
   border-radius: 4px;
-  padding: 3px 7px;
+  padding: 2px 6px;
   background: #f8fafc;
   color: #64748b;
   font-size: 10.5px;
@@ -474,6 +473,8 @@ export function BudgetDistributionPage() {
     };
   });
   const tf = useTableFilters(tableItems, HR_COLS);
+  const rz = useColumnResize(HR_W);
+  const hrKeys = [...HR_COLS.map((c) => c.key), "access"];
 
   const totalPercentage = useMemo(
     () => rows.reduce((sum, row) => sum + Number(row.budget_percentage || 0), 0),
@@ -609,13 +610,14 @@ export function BudgetDistributionPage() {
             <div className="scroll">
               <FilterStatus tf={tf} noun="records" />
               <div className="grid-wrap">
-              <table>
+              <table style={resizableTableStyle(rz, hrKeys)}>
+                <ResizableCols rz={rz} keys={hrKeys} />
                 <thead>
                   <tr>
                     {HR_COLS.map((c) => (
-                      <FilterTh key={c.key} tf={tf} col={c} className={c.num ? "num" : ""} />
+                      <FilterTh key={c.key} tf={tf} rz={rz} col={c} className={c.num ? "num" : ""} />
                     ))}
-                    <th>Access</th>
+                    <FilterTh tf={tf} rz={rz} noFilter col={{ key: "access", label: "Access" }} />
                   </tr>
                 </thead>
                 <tbody>

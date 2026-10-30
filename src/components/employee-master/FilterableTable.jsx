@@ -110,17 +110,65 @@ export function useTableFilters(rows, columns) {
   };
 }
 
+/* Column resizing (drag the right edge of a header, like the Appraisal Sheet).
+   `defaults` is a module-level { columnKey: widthPx } map; keys in column order. */
+const MIN_COL = 56;
+
+export function useColumnResize(defaults) {
+  const [widths, setWidths] = useState(defaults);
+  const widthOf = (key) => widths[key] ?? defaults[key] ?? 100;
+
+  const startResize = (key) => (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startW = widthOf(key);
+    const move = (e) =>
+      setWidths((cur) => ({ ...cur, [key]: Math.max(MIN_COL, Math.round(startW + e.clientX - startX)) }));
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
+
+  return { widthOf, startResize };
+}
+
+// Fixed layout so every column keeps exactly the width it was dragged to.
+export const resizableTableStyle = (rz, keys) => ({
+  tableLayout: "fixed",
+  width: keys.reduce((sum, key) => sum + rz.widthOf(key), 0),
+  minWidth: "100%",
+});
+
+export function ResizableCols({ rz, keys }) {
+  return (
+    <colgroup>
+      {keys.map((key) => (
+        <col key={key} style={{ width: rz.widthOf(key) }} />
+      ))}
+    </colgroup>
+  );
+}
+
 /* One header cell: label on the left, the Appraisal-sheet filter icon on the
    right. `className` is passed to <th> (e.g. "r" / "n" for right-aligned
    numeric columns) so each screen's own table CSS keeps controlling the look. */
-export function FilterTh({ tf, col, className = "", style }) {
+export function FilterTh({ tf, col, rz, noFilter = false, className = "", style }) {
   const sortIndex = tf.sorts.findIndex((s) => s.key === col.key);
   return (
-    <th className={className} style={style}>
+    <th className={(className + " ft-th").trim()} style={style}>
       <div className="ft-head">
         <span className="ft-label" title={col.label}>
           {col.label}
         </span>
+        {!noFilter && (
         <ColumnFilter
           boxed
           alwaysBelow
@@ -137,7 +185,17 @@ export function FilterTh({ tf, col, className = "", style }) {
           onSortAsc={() => tf.addSort(col.key, "asc")}
           onSortDesc={() => tf.addSort(col.key, "desc")}
         />
+        )}
       </div>
+      {rz && (
+        <div
+          role="separator"
+          aria-label={`Resize ${col.label} column`}
+          title="Drag to resize column"
+          className="ft-rz"
+          onPointerDown={rz.startResize(col.key)}
+        />
+      )}
     </th>
   );
 }
@@ -163,11 +221,15 @@ export function FilterStatus({ tf, noun = "rows" }) {
 /* Shared look for the filter header + status strip + bordered grid. Each
    screen appends this to its own CSS, scoped by its root class. */
 export const filterTableCss = (root, table) => `
-${root} .ft-head { display: flex; align-items: center; gap: 6px; min-height: 22px; }
-${root} .ft-head .ft-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+${root} ${table} th.ft-th { position: relative; vertical-align: top; white-space: normal; line-height: 1.2; }
+${root} .ft-head { display: flex; align-items: flex-start; gap: 4px; min-height: 20px; }
+${root} .ft-head .ft-label { flex: 1; min-width: 0; white-space: normal; overflow-wrap: break-word; word-break: normal; }
 ${root} ${table} th.r .ft-label, ${root} ${table} th.n .ft-label, ${root} ${table} th.num .ft-label { text-align: right; }
 ${root} ${table} th .ft-head > button { flex-shrink: 0; }
-${root} .ft-status { display: flex; align-items: center; gap: 12px; padding: 6px 14px; background: #eef4fc; border-bottom: 1px solid #c9d8ec; font-size: 11.5px; color: #334155; }
+${root} ${table} td { overflow-wrap: break-word; }
+${root} .ft-rz { position: absolute; top: 0; right: -3px; z-index: 5; width: 7px; height: 100%; cursor: col-resize; touch-action: none; }
+${root} .ft-rz:hover { background: linear-gradient(90deg, transparent 2px, #2f6fed 2px, #2f6fed 5px, transparent 5px); }
+${root} .ft-status { display: flex; align-items: center; gap: 12px; padding: 5px 14px; background: #eef4fc; border-bottom: 1px solid #c9d8ec; font-size: 11.5px; color: #334155; }
 ${root} .ft-clear { margin-left: auto; background: none; border: 0; padding: 0; color: #1859a8; font-size: 11.5px; font-weight: 700; cursor: pointer; }
-${root} .ft-empty td { text-align: center !important; color: #64748b; padding: 16px 10px !important; }
+${root} .ft-empty td { text-align: center !important; color: #64748b; padding: 12px 8px !important; }
 `;

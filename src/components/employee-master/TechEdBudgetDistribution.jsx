@@ -5,7 +5,7 @@ import { useBudget } from "@/lib/budget-store";
 import { useViewAs, managerIdentityMatches, currentUserMatchesManager } from "@/lib/view-as-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { splitStamp } from "@/lib/budget-audit-local";
-import { FilterStatus, FilterTh, filterTableCss, useTableFilters } from "./FilterableTable";
+import { FilterStatus, FilterTh, ResizableCols, filterTableCss, resizableTableStyle, useColumnResize, useTableFilters } from "./FilterableTable";
 
 /* Budget Distribution uses persisted Budget_Distribution and
    Budget_Distribution_Comp rows. The prior UI-only sample allocations have
@@ -126,21 +126,26 @@ const auditCols = (showName) => [
   { key: "by", label: "Changed by", kind: "text", get: (x) => x.by || "" },
   { key: "reason", label: "Reason", kind: "text", get: (x) => x.reason || "" },
 ];
+const AUDIT_W = { date: 130, owner: 190, from: 64, to: 64, before: 96, after: 96, by: 150, reason: 220 };
+const ALLOC_W = { level: 96, owner: 190, base: 104, original: 104, updated: 104, change: 140, team0: 70, team: 70, last: 120, pct: 72 };
 const AUDIT_COLS = { with: auditCols(true), without: auditCols(false) };
 
 function AuditTable({ list, showName }) {
   const cols = showName ? AUDIT_COLS.with : AUDIT_COLS.without;
   const tf = useTableFilters(list, cols);
+  const rz = useColumnResize(AUDIT_W);
+  const keys = cols.map((c) => c.key);
   if (!list.length) return <div className="muted-small" style={{ padding: "6px 0" }}>No % changes yet.</div>;
   return (
     <>
       <FilterStatus tf={tf} noun="changes" />
       <div className="bscroll">
-        <table className="trail trail-grid">
+        <table className="trail trail-grid" style={resizableTableStyle(rz, keys)}>
+          <ResizableCols rz={rz} keys={keys} />
           <thead>
             <tr>
               {cols.map((c) => (
-                <FilterTh key={c.key} tf={tf} col={c} className={c.n ? "n" : ""} />
+                <FilterTh key={c.key} tf={tf} rz={rz} col={c} className={c.n ? "n" : ""} />
               ))}
             </tr>
           </thead>
@@ -885,6 +890,8 @@ export function TechEdBudgetDistribution() {
     })),
   ];
   const allocTf = useTableFilters(allocItems, ALLOC_COLS);
+  const allocRz = useColumnResize(ALLOC_W);
+  const allocKeys = ALLOC_COLS.map((c) => c.key);
 
   const cmLabel = LEVELS[1] + (cmNodes.length === 1 ? "" : "s");
   const auditNames = [myName, ...cmNodes.map((c) => c.name)];
@@ -1025,13 +1032,15 @@ export function TechEdBudgetDistribution() {
               </div>
             )}
             <div className="bscroll">
-              <table className="bal">
+              <table className="bal" style={resizableTableStyle(allocRz, allocKeys)}>
+                <ResizableCols rz={allocRz} keys={allocKeys} />
                 <thead>
                   <tr>
                     {ALLOC_COLS.map((c) => (
                       <FilterTh
                         key={c.key}
                         tf={allocTf}
+                        rz={allocRz}
                         col={c}
                         className={[c.r ? "r" : "", c.key === "level" ? "level-col" : "", c.key === "owner" ? "owner-col" : "", c.key === "base" ? "budget-base-col" : ""].filter(Boolean).join(" ")}
                       />
@@ -1273,28 +1282,26 @@ const CSS = `
   padding: 7px 10px; font-size: 12px; display: flex; justify-content: space-between; gap: 10px; }
 .tbd-root .link { background: none; border: 0; padding: 0; color: #1859a8; font-size: 11.5px; font-weight: 700; cursor: pointer; }
 .tbd-root .bscroll { overflow-x: auto; }
-.tbd-root table.bal { width: 100%; min-width: 1180px; table-layout: auto; border-collapse: collapse; font-size: 12.5px; }
-.tbd-root .bal th { background: #dfe8f3; color: #102a43; font-weight: 600; font-size: 12px; text-align: left; padding: 6px 8px; border-right: 1px solid #c9d8ec; border-bottom: 1px solid #9fb3cf; white-space: nowrap; }
-.tbd-root .bal td { padding: 8px 10px; border-right: 1px solid #c9d8ec; border-bottom: 1px solid #c9d8ec; vertical-align: middle; white-space: nowrap; }
-.tbd-root .bal .level-col { width: 112px; }
-.tbd-root .bal .owner-col { min-width: 205px; }
-.tbd-root .bal .budget-base-col { min-width: 128px; }
+.tbd-root table.bal { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.tbd-root .bal th { background: #dfe8f3; color: #102a43; font-weight: 600; font-size: 12px; text-align: left; padding: 3px 6px; border-right: 1px solid #c9d8ec; border-bottom: 1px solid #9fb3cf; }
+.tbd-root .bal td { padding: 3px 6px; border-right: 1px solid #c9d8ec; border-bottom: 1px solid #c9d8ec; vertical-align: middle; white-space: normal; }
+.tbd-root .bal td.r { white-space: nowrap; }
 .tbd-root .bal th.r, .tbd-root .bal td.r { text-align: right; font-variant-numeric: tabular-nums; }
 .tbd-root .bal .r { text-align: right; }
 .tbd-root .bal tr.self td { background: #e9f4f4; font-weight: 700; }
 .tbd-root .bal tr.self td.first { box-shadow: inset 4px 0 0 #14a3a3; }
 .tbd-root .bal tr.grp td { border-top: 2px solid #9fb3cf; }
-.tbd-root .bal tr.tr td { background: #f7f9fc; padding: 8px 12px 12px 40px; animation: tbd-pull 160ms ease-out; }
-.tbd-root .pct-in { width: 64px; height: 26px; border: 1px solid #9fb3cf; border-radius: 4px; text-align: right; padding: 0 6px; font-size: 12.5px; background: #fffef5; }
+.tbd-root .bal tr.tr td { background: #f7f9fc; padding: 6px 10px 8px 30px; animation: tbd-pull 160ms ease-out; }
+.tbd-root .pct-in { width: 56px; height: 22px; border: 1px solid #9fb3cf; border-radius: 4px; text-align: right; padding: 0 5px; font-size: 11.5px; background: #fffef5; }
 .tbd-root .pct-in:focus { outline: 2px solid #14a3a3; outline-offset: 1px; }
-.tbd-root .dd { border: 1px solid #c5d0dd; background: #fff; color: #17365d; border-radius: 4px; padding: 3px 8px; font-size: 12px; font-weight: 700; cursor: pointer; white-space: nowrap; }
+.tbd-root .dd { border: 1px solid #c5d0dd; background: #fff; color: #17365d; border-radius: 4px; padding: 2px 6px; font-size: 11px; font-weight: 700; cursor: pointer; white-space: nowrap; }
 .tbd-root .dd[aria-expanded="true"] { background: #12304f; border-color: #12304f; color: #fff; }
 .tbd-root .trail { width: 100%; border-collapse: collapse; font-size: 12px; }
 .tbd-root .trail th { text-align: left; font-weight: 700; color: #1e3a5f; font-size: 11px; padding: 4px 8px; border: 1px solid #c9d8ec; background: #eef3fa; }
-.tbd-root .trail td { padding: 4px 8px; border: 1px solid #d9e2ee; }
+.tbd-root .trail td { padding: 3px 6px; border: 1px solid #d9e2ee; }
 .tbd-root .trail .n { text-align: right; }
 .tbd-root .audit-wrap { padding: 8px 14px 12px; }
-.tbd-root .audit-wrap .trail td, .tbd-root .audit-wrap .trail th { padding: 6px 8px; }
+.tbd-root .audit-wrap .trail td, .tbd-root .audit-wrap .trail th { padding: 3px 6px; }
 .tbd-root .note { padding: 6px 14px 10px; font-size: 11px; color: #64748b; }
 .tbd-root .trail { border-collapse: collapse; }
 /* Grid outline: the scroll wrapper carries the outer border, cells carry the inner lines. */
@@ -1304,7 +1311,7 @@ const CSS = `
 .tbd-root .bal tbody tr:last-child > td { border-bottom: 0; }
 .tbd-root .bal tr.tr td { border-right: 0; }
 .tbd-root .trail-grid { width: 100%; }
-.tbd-root .trail-grid th { background: #dfe8f3; color: #102a43; font-size: 12px; font-weight: 600; padding: 5px 8px; border-color: #c9d8ec; }
+.tbd-root .trail-grid th { background: #dfe8f3; color: #102a43; font-size: 12px; font-weight: 600; padding: 3px 6px; border-color: #c9d8ec; }
 .tbd-root .trail-grid th, .tbd-root .trail-grid td { border-top: 0; }
 .tbd-root .trail-grid th:first-child, .tbd-root .trail-grid td:first-child { border-left: 0; }
 .tbd-root .trail-grid th:last-child, .tbd-root .trail-grid td:last-child { border-right: 0; }
