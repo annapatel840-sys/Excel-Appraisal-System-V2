@@ -156,7 +156,7 @@ export function TechEdBudgetDistribution() {
   const { effectiveId, actualId } = useViewAs();
   const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
   const roleText = String(user?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
-  const isCompManagerLogin = roleText === "compmgr" || roleText === "compmanager";
+  const isCompManagerLogin = actualId === "compmanager" || roleText === "compmgr" || roleText === "compmanager";
   const isCompManagerView = isCompManagerPreview || isCompManagerLogin;
   const {
     budgetDistributionRows,
@@ -321,7 +321,7 @@ export function TechEdBudgetDistribution() {
         );
         if (!linkedManager) return false;
         const display = [
-          linkedManager.emp_id || linkedManager.emp_id || linkedManager.employee_id || linkedManager.employeeId,
+          linkedManager.emp_id || linkedManager.employee_id || linkedManager.employeeId,
           linkedManager.emp_name || linkedManager.employee_name || linkedManager.name,
         ].filter(Boolean).join(" - ");
         return currentUserMatchesManager(display, user, employeeRows);
