@@ -2359,7 +2359,7 @@ async function getEmployees(req, res) {
           rawValue.employee_id || rawValue.id || rawValue.value || rawValue.name || "")
       : String(rawValue || "");
     if (!raw) return false;
-    const parts = raw.toLowerCase().split(/\\s+-\\s+/).map(function (part) { return part.trim(); });
+    const parts = raw.toLowerCase().split(/\s+-\s+/).map(function (part) { return part.trim(); });
     const master = employeeMasterMap.get(raw.toLowerCase()) ||
       employeeMasterMap.get(parts[0]) ||
       (parts[0] ? employeeMasterMap.get(parts[0].toLowerCase()) : null);
