@@ -427,18 +427,20 @@ export function BudgetDistributionPage() {
   );
  
   const role = normalize(user?.role);
-  // Tech-Ed may be returned as "Tech Ed", "Tech-Ed", or "teched".
-  // Budget Distribution is read-only for Tech-Ed, but it must remain visible.
+  // Tech-Ed and Comp Manager accounts use the scoped personal budget view.
   const roleCompact = role.replace(/[^a-z0-9]/g, "");
+  const isTechEdRole = roleCompact === "teched";
+  const isCompManagerRole = roleCompact === "compmgr" || roleCompact === "compmanager";
   const canView =
     isHR ||
     role === "hr" ||
     role === "human resources" ||
-    roleCompact === "teched";
- 
+    isTechEdRole ||
+    isCompManagerRole;
+
   if (!canView) return null;
-  // Tech-EDs get their own budget view: their budget, their Comp Managers and Allot %.
-  if (roleCompact === "teched" && !isHR) return <TechEdBudgetDistribution />;
+  // Tech-Ed and Comp Managers get their own scoped budget view.
+  if (!isHR && (isTechEdRole || isCompManagerRole)) return <TechEdBudgetDistribution />;
  
   return (
     <div className="bd-root">
