@@ -501,9 +501,37 @@ export function TechEdBudgetDistribution() {
     // Saved allocation rows are not the roster. Show saved managers only if
     // they still exist in the current eligible Appraisal Sheet; add current
     // managers that have not yet received an allocation as dynamic rows.
-    const currentLiveComps = liveComps.filter((live) =>
+    const matchingLiveComps = liveComps.filter((live) =>
       managerStats.has(ownerKey(resolveManager(live.comp_manager)))
     );
+
+    // A Comp Manager must have only one allocation row per Tech-Ed + cycle.
+    // Legacy duplicate rows can exist when the same manager was saved once by
+    // ROWID and once by employee ID. Collapse them for this allocation view,
+    // preferring the row with a real original-headcount snapshot, then latest
+    // persisted update. Keep the chosen liveId so edits update that same row.
+    const compByManager = new Map();
+    matchingLiveComps.forEach((live) => {
+      const key = ownerKey(resolveManager(live.comp_manager));
+      const existing = compByManager.get(key);
+      const hasSnapshot = (row) =>
+        row.original_headcount !== null &&
+        row.original_headcount !== undefined &&
+        String(row.original_headcount).trim() !== "";
+      const snapshotRank = (row) => hasSnapshot(row) ? 1 : 0;
+      const timeRank = (row) => {
+        const time = Date.parse(row.updated_at || row.created_at || "");
+        return Number.isFinite(time) ? time : 0;
+      };
+      if (
+        !existing ||
+        snapshotRank(live) > snapshotRank(existing) ||
+        (snapshotRank(live) === snapshotRank(existing) && timeRank(live) > timeRank(existing))
+      ) {
+        compByManager.set(key, live);
+      }
+    });
+    const currentLiveComps = Array.from(compByManager.values());
     const savedKeys = new Set(currentLiveComps.map((live) => ownerKey(resolveManager(live.comp_manager))));
     const unsaved = Array.from(managerStats.entries())
       .filter(([key]) => key && !savedKeys.has(key))
