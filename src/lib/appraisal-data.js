@@ -522,6 +522,15 @@ export const COLUMNS = [
     width: 160,
   },
   {
+    // Manager Feedback comes from Feedback_And_Rating (manager_feedback), the
+    // same table as Manager Rating and Client Manager Feedback. Read-only.
+    key: "managerFeedback",
+    label: "Manager Feedback",
+    type: "text",
+    editable: false,
+    width: 140,
+  },
+  {
     key: "clientManager",
     label: "Client Manager Feedback",
     type: "text",

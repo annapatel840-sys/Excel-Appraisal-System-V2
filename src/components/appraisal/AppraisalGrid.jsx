@@ -35,6 +35,10 @@ const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const CURRENT_APPRAISAL_YEAR = "Apr-26"; // fallback while cycle master is loading
 
 const APPRAISAL_FONT = "Arial, Helvetica, sans-serif";
+// NOTE: the table / grid used to use the earlier font (Arial / Manrope look).
+// It now uses Inter, the same font as the reference HTML. Manrope is still used
+// by the right-hand feedback panel (PANEL_FONT) below.
+const TABLE_FONT = 'Inter, "Segoe UI", Arial, sans-serif';
 // Right feedback panel: Manrope only.
 const PANEL_FONT = '"Manrope", "Segoe UI", system-ui, sans-serif';
 
@@ -105,6 +109,7 @@ const WIDTHS = {
   previousAppraisalTotalCtcWithRewards: 170,
   setTargetCriteria: 190,
   managerRating: 210,
+  managerFeedback: 140,
   interviewCount: 86,
   rrPercent: 76,
   grossMargin: 90,
@@ -1018,11 +1023,11 @@ function EmployeePanel({
       ? delegationRoster.techEd
       : delegationRoster.compManagers;
     const current = String(currentAssignee ?? "").trim().toLowerCase().split(" - ")[0];
+
     return (Array.isArray(options) ? options : [])
       .filter((person) => String(person.empId ?? "").trim().toLowerCase() !== current)
       .filter((person) => person.empId && person.label);
   }, [delegationRoster, reqField, currentAssignee]);
-
   const sendDelegation = () => {
     if (!reqPerson || !reqReason.trim()) {
       return;
@@ -1702,13 +1707,8 @@ export function AppraisalGrid({
   isHR = false,
   onRequest,
 }) {
-  const {
-    rows: allAppraisalRows,
-    updateCell,
-    updateLinkedCells,
-    bulkUpdate,
-    modified,
-  } = useAppraisal();
+  const { updateCell, updateLinkedCells, bulkUpdate, modified } =
+    useAppraisal();
   const currentCycleName = useCurrentCycleName() || CURRENT_APPRAISAL_YEAR;
 
 //  This loads the rules from the existing designationmasterapi endpoint in read-only appraisal mode.
@@ -3485,7 +3485,7 @@ export function AppraisalGrid({
 
       // Client Manager Feedback: one line only, except on the active
       // (selected / highlighted) row, where the whole text is shown.
-      const isFeedback = col.key === "clientManager";
+      const isFeedback = col.key === "clientManager" || col.key === "managerFeedback";
       const feedbackOpen = isFeedback && historyRow?.id === row.id;
       const showWrapped = isFeedback ? feedbackOpen : wraps;
 
@@ -4595,7 +4595,7 @@ export function AppraisalGrid({
               tableLayout: "fixed",
               width: "max-content",
               minWidth: "100%",
-              fontFamily: APPRAISAL_FONT,
+              fontFamily: TABLE_FONT,
             }}
           >
             <colgroup>
@@ -4665,7 +4665,7 @@ export function AppraisalGrid({
                         boxSizing: "border-box",
                         zIndex: isFrozen ? 90 : 60,
                         background: headerEditable ? "#b9e1cb" : "#dfe8f3",
-                        fontFamily: APPRAISAL_FONT,
+                        fontFamily: TABLE_FONT,
                       }}
                     >
                       <div
@@ -5135,7 +5135,7 @@ export function AppraisalGrid({
       {detailOpen && liveHistoryRow && (
         <EmployeePanel
           employee={liveHistoryRow}
-          team={allAppraisalRows?.length ? allAppraisalRows : rows}
+          team={rows}
           showRequest={showRequestTab}
           canDelegate={canDelegate}
           onRequest={onRequest}

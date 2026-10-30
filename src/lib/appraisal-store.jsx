@@ -144,10 +144,11 @@ async function loadCurrentCycleFeedback() {
 
       const next = {
         costCenterClient: String(row.client ?? "").trim(),
+        managerFeedback: String(row.mf ?? "").trim(),
         clientManager: String(row.cmf ?? "").trim(),
         clientRating: formatClientRating(row.cr),
       };
-      if (next.costCenterClient || next.clientManager || next.clientRating) {
+      if (next.costCenterClient || next.managerFeedback || next.clientManager || next.clientRating) {
         client.set(key, next);
       }
     });
@@ -408,6 +409,11 @@ const mapCatalystEmployee = (employee, index) => {
         employee.cost_center_client ??
         employee.costcenter_client ??
         employee.costCenterClient ??
+        "",
+    ),
+    managerFeedback: String(
+      employee.manager_feedback ??
+        employee.managerFeedback ??
         "",
     ),
     clientManager: String(
@@ -1217,6 +1223,7 @@ export function AppraisalProvider({ children }) {
           ...(feedback
             ? {
                 costCenterClient: "",
+                managerFeedback: "",
                 clientManager: "",
                 clientRating: "",
                 ...(feedback.client.get(String(employee.empId).trim().toLowerCase()) || {}),
