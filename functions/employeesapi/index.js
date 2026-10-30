@@ -1326,6 +1326,19 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const payrollPreviousRBMonth = bonusSource ? String(firstNonEmpty(bonusSource, [
       "month_rb", "rb_month", "retention_bonus_month", "month_of_rb",
     ]) ?? "").trim() : "";
+    // Previous-cycle JB / PB / RB for the Total Bonus Hike and Total Rewards
+    // Hike calculations. Same closed Payroll_Data row as PB/RB-to-be-paid above
+    // (same-year New Joiner cycle, else latest closed Annual). Returned in the
+    // response only; these are never written to Appraisal_Sheet.
+    const payrollPreviousJoiningBonus = bonusSource ? payrollAmount(firstNonEmpty(bonusSource, [
+      "joining_bonus", "previous_year_joining_bonus", "previous_year_jb", "previous_joining_bonus",
+    ])) : 0;
+    const payrollPreviousPerformanceBonus = bonusSource ? payrollAmount(firstNonEmpty(bonusSource, [
+      "performance_bonus", "previous_year_performance_bonus", "previous_year_pb", "previous_pb", "pb_to_be_paid",
+    ])) : 0;
+    const payrollPreviousRetentionBonus = bonusSource ? payrollAmount(firstNonEmpty(bonusSource, [
+      "retention_bonus", "previous_year_retention_bonus", "previous_year_rb", "previous_rb", "rb_to_be_paid",
+    ])) : 0;
     const feedbackRRRaw = feedbackValue("revenue_released", "rr_percent", "rr");
     const feedbackRRNumber = feedbackRRRaw === undefined
       ? undefined
@@ -1411,6 +1424,9 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       gross_margin: feedbackValue("gross_margin") ?? employee.gross_margin ?? "",
       pb_to_be_paid: payrollPreviousPB,
       rb_to_be_paid: payrollPreviousRB,
+      previous_year_joining_bonus: payrollPreviousJoiningBonus,
+      previous_year_performance_bonus: payrollPreviousPerformanceBonus,
+      previous_year_retention_bonus: payrollPreviousRetentionBonus,
       month_pb: payrollPreviousPBMonth,
       month_rb: payrollPreviousRBMonth,
       target_pb_allocated_for_may: targetPBForNextYear,

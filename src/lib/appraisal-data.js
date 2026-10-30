@@ -183,25 +183,80 @@ export const totalCTCWithRewards = (r) => newBaseSalary(r) + totalBonus(r);
 export const currentRewards = (r) =>
   calculationNumber(r.rbToBePaid) + calculationNumber(r.pbToBePaid);
 
-export const totalBonusHikeAmount = (r) => totalBonus(r) - currentRewards(r);
+// ------------------------------------------------------------------
+// TOTAL BONUS / TOTAL REWARDS HIKE
+//
+// "Previous" values come from the last closed cycle's Payroll_Data row. They are
+// fetched by employeesapi on every load and are used for calculation only; none
+// of these results (or the previous_year_* inputs) are stored on Appraisal_Sheet.
+//
+//   This-year bonus (JB + PB + RB)
+//       = Joining Bonus + PB for This Year + RB for This Year
+//   Previous bonus (prev JB + prev PB + prev RB)
+//
+//   Total Bonus Hike Amount  = This-year bonus - Previous bonus
+//   Total Bonus Hike %       = (Total Bonus Hike Amount / Previous bonus) * 100, 2dp
+//
+//   Total Rewards Hike Amount = Current Annual Base Pay + Joining Bonus + PB + RB
+//                               + Hike Amount - Previous Total Rewards
+//   Total Rewards Hike %      = ((Current Annual Base Pay + PB + RB + Hike Amount
+//                               - Previous Total Rewards) / Previous Total Rewards)
+//                               * 100, 2dp
+//
+// Previous Total Rewards = previous cycle's Total CTC with Rewards
+// (previousAppraisalTotalCtcWithRewards).
+// ------------------------------------------------------------------
+
+// Round half away from zero to 2 decimals (same as Ruby's .round(2)).
+const round2 = (value) => {
+  if (!Number.isFinite(value)) return 0;
+  const rounded = Math.round((Math.abs(value) + Number.EPSILON) * 100) / 100;
+  return value < 0 ? -rounded : rounded;
+};
+
+const previousTotalRewards = (r) =>
+  calculationNumber(r.previousAppraisalTotalCtcWithRewards);
+
+const previousTotalBonus = (r) =>
+  calculationNumber(r.previousYearJoiningBonus) +
+  calculationNumber(r.previousYearPerformanceBonus) +
+  calculationNumber(r.previousYearRetentionBonus);
+
+const thisYearTotalBonus = (r) =>
+  calculationNumber(r.joiningBonus) +
+  calculationNumber(r.allocatedPBAmount) +
+  calculationNumber(r.newRB);
+
+export const totalBonusHikeAmount = (r) =>
+  thisYearTotalBonus(r) - previousTotalBonus(r);
 
 export const totalBonusHikePct = (r) => {
-  const current = currentRewards(r);
-  if (current <= 0) return 0;
+  const previous = previousTotalBonus(r);
+  if (previous <= 0) return 0;
 
-  const percentage = (totalBonusHikeAmount(r) / current) * 100;
-  return Number.isFinite(percentage) ? Number(percentage.toFixed(2)) : 0;
+  return round2((totalBonusHikeAmount(r) / previous) * 100);
 };
 
 export const totalRewardsHikeAmount = (r) =>
-  hikeAmount(r) + totalBonusHikeAmount(r);
+  calculationNumber(r.currentAnnualBasePay) +
+  calculationNumber(r.joiningBonus) +
+  calculationNumber(r.allocatedPBAmount) +
+  calculationNumber(r.newRB) +
+  hikeAmount(r) -
+  previousTotalRewards(r);
 
-// FIX: the percentage is measured against the CURRENT total rewards
-// (base pay + rewards being paid now), not against base pay alone.
 export const totalRewardsHikePct = (r) => {
-  const current = Number(r.currentAnnualBasePay || 0) + currentRewards(r);
+  const previous = previousTotalRewards(r);
+  if (previous <= 0) return 0;
 
-  return current ? (totalRewardsHikeAmount(r) / current) * 100 : 0;
+  const numerator =
+    calculationNumber(r.currentAnnualBasePay) +
+    calculationNumber(r.allocatedPBAmount) +
+    calculationNumber(r.newRB) +
+    hikeAmount(r) -
+    previous;
+
+  return round2((numerator / previous) * 100);
 };
 
 export const payoutPct = (r) => {
