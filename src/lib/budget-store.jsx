@@ -89,7 +89,6 @@ export function BudgetProvider({ children }) {
   const authenticatedUser = useCatalystUser();
   const { effectiveId, actualId } = useViewAs();
   const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
-  const isCompManagerLogin = roleText === "compmgr" || roleText === "compmanager";
   const currentUser = useMemo(
     () => ({
       name:
@@ -110,6 +109,7 @@ export function BudgetProvider({ children }) {
     roleText === "hr" ||
     roleText === "humanresources" ||
     roleText === "hroperation";
+  const isCompManagerLogin = roleText === "compmgr" || roleText === "compmanager";
   const [budgetRows, setBudgetRows] = useState([]);
   const [budgetMasterRows, setBudgetMasterRows] = useState([]);
   const [activeBudgetCycleId, setActiveBudgetCycleId] = useState("");
