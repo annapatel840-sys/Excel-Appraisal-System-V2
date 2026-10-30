@@ -1148,7 +1148,7 @@ function filterOwn(bundle, a, techEdOwners = []) {
       (ownerKey(row.comp_manager) === ownerKey(a.user?.empId) ||
        ownerKey(row.comp_manager) === ownerKey(a.user?.name) ||
        managerKeys.has(ownerKey(row.comp_manager)) ||
-       managerKeys.has(ownerKey(row.comp_manager).split(/\\s+-\\s+/)[0]))
+       managerKeys.has(ownerKey(row.comp_manager).split(/\s+-\s+/)[0]))
     );
     const cycleIds = new Set(techEd.map((row) => row.appraisal_cycle_id));
     const master = bundle.master.filter((row) => cycleIds.has(row.appraisal_cycle_id));
@@ -3009,6 +3009,20 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
       original_headcount: savedOrgOriginalCount,
     });
   }
+
+  // Pass the authoritative Appraisal Sheet roster to the access filter.
+  // Comp Manager logins need this to resolve their own employees' current
+  // Tech-Ed parent; the budget tables alone do not identify the manager's team.
+  bundle.employeeRoster = appraisalRows.map((row) => ({
+    ...row,
+    emp_id: String(row.emp_id || row.employee_id || "").trim(),
+    appraiser_tech_ed: row.appraiser_tech_ed || row.appraiser_tech_ed1 ||
+      row.appraiser_tech_ed_row_id || "",
+    appraiser_tech_ed_row_id: row.appraiser_tech_ed1 ||
+      row.appraiser_tech_ed_row_id || "",
+    comp_manager: row.comp_manager || row.comp_manager_id ||
+      row.comp_manager_name || row.director || "",
+  }));
 
   return bundle;
 }
