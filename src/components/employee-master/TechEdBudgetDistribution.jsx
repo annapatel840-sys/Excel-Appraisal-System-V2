@@ -471,7 +471,7 @@ export function TechEdBudgetDistribution() {
       const techAssignment = resolveTechAssignment(rawTechAssignment);
       if (!currentTechOwner || ownerKey(techAssignment) !== currentTechOwner) return;
       if (!isActiveAndEligible(employee)) return;
-      const rawManager = employee.comp_manager_display || employee.comp_manager_name || employee.comp_manager || employee.comp_manager_id || employee.compManager || "";
+      const rawManager = employee.comp_manager || employee.comp_manager_id || employee.compManager || employee.comp_manager_name || employee.comp_manager_display || "";
       const manager = resolveManager(rawManager);
       if (!manager) return;
       if (isCompManagerPreview && !currentUserMatchesManager(manager, user, employeeRows)) return;
@@ -607,7 +607,7 @@ export function TechEdBudgetDistribution() {
       const assignment = String(linked?.assignment || raw).trim();
       if (!(Boolean(techOwnerKey) && ownerKey(assignment) === techOwnerKey && isActiveAndEligible(employee))) return false;
       if (!isCompManagerPreview) return true;
-      const manager = employee.comp_manager_display || employee.comp_manager_name || employee.comp_manager || employee.comp_manager_id || employee.compManager || "";
+      const manager = employee.comp_manager || employee.comp_manager_id || employee.compManager || employee.comp_manager_name || employee.comp_manager_display || "";
       return Boolean(selectedCompManager) && managerIdentityMatches(manager, selectedCompManager);
     });
   }, [employeeRows, techOwnerKey, techEdOwners, activeCycleId, isCompManagerPreview, selectedCompManager]);
