@@ -507,11 +507,26 @@ export function BudgetProvider({ children }) {
             String(row.budget_distribution_id || "") !== String(ownParent.id || "")) return false;
         return matchesCurrentManager(row.comp_manager);
       });
-      const manager = managerCandidates.length === 1 ? managerCandidates[0] : null;
+      // Prefer the fully resolved parent+manager match above. If the roster
+      // assignment fields are incomplete, the saved Comp Manager child row is
+      // still authoritative when its manager identity and active-cycle parent
+      // both match uniquely. This keeps the same allocation visible across
+      // Budget Distribution, Appraisal Sheet, Bulk Edit and Detailed Screen.
+      const directManagerRows = budgetCompManagerRows.filter((row) => {
+        if (String(row.appraisal_cycle_id || "") !== activeBudgetCycleId) return false;
+        if (!matchesCurrentManager(row.comp_manager)) return false;
+        return budgetDistributionRows.some((parent) =>
+          String(parent.id || "") === String(row.budget_distribution_id || "") &&
+          String(parent.appraisal_cycle_id || "") === activeBudgetCycleId
+        );
+      });
+      const manager = managerCandidates.length === 1
+        ? managerCandidates[0]
+        : directManagerRows.length === 1 ? directManagerRows[0] : null;
       if (manager) {
         const original = number(manager.calculated_budget);
         const updated = number(manager.applied_budget);
-        const utilized = number(manager.total_utilization);
+        const utilized = number(manager.total_utilization ?? manager.budget_utilized);
         return {
           base: original, additional: 0, updated, utilized,
           remaining: updated - utilized, hasBudgetMaster: false,
