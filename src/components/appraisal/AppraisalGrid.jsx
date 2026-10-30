@@ -18,7 +18,7 @@ import { TypingHistoryPopup } from "./TypingHistoryPopup";
 import { COLUMNS, MANAGER_RATING_LABELS, formatValue, defaultInstallment } from "@/lib/appraisal-data";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { fetchAppraisalRoster } from "@/lib/employee-roster";
-import { fetchAllEmployeeMasterEmployees } from "@/lib/employee-master-data";
+import { fetchDelegationAssigneeOptions } from "@/lib/employee-master-data";
 import { useAccess } from "@/lib/access-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
@@ -978,18 +978,16 @@ function EmployeePanel({
   const [reqReason, setReqReason] = useState("");
   const [screenNote, setScreenNote] = useState("");
   const [reqSent, setReqSent] = useState("");
-  const [delegationRoster, setDelegationRoster] = useState([]);
+  const [delegationRoster, setDelegationRoster] = useState({ techEd: [], compManagers: [] });
   useEffect(() => {
     let cancelled = false;
-    // Delegation targets must come from Employee_Master, not the appraisal
-    // grid/eligible roster. This list is global and independent of filters.
-    fetchAllEmployeeMasterEmployees()
-      .then((employees) => {
-        if (!cancelled) setDelegationRoster(Array.isArray(employees) ? employees : []);
+    fetchDelegationAssigneeOptions()
+      .then((options) => {
+        if (!cancelled) setDelegationRoster(options);
       })
       .catch((error) => {
-        console.error("Failed to load Employee Master delegation targets:", error);
-        if (!cancelled) setDelegationRoster([]);
+        console.error("Failed to load delegation assignee options:", error);
+        if (!cancelled) setDelegationRoster({ techEd: [], compManagers: [] });
       });
     return () => { cancelled = true; };
   }, []);
@@ -1016,45 +1014,14 @@ function EmployeePanel({
   const currentAssignee = String(employee?.[reqField] ?? "").trim();
 
   const requestPeople = useMemo(() => {
-    const employees = Array.isArray(delegationRoster) ? delegationRoster : [];
-    const normalizeId = (value) => {
-      const text = String(value ?? "").trim();
-      const match = text.match(/^(.+?)\s+-\s+.+$/);
-      return (match ? match[1] : text).trim().toLowerCase();
-    };
-    const employeeById = new Map();
-    const employeeByName = new Map();
-    employees.forEach((employee) => {
-      const id = String(employee.empId ?? "").trim();
-      const name = String(employee.name ?? "").trim();
-      if (id && name) {
-        const label = `${id} - ${name}`;
-        employeeById.set(id.toLowerCase(), label);
-        employeeByName.set(name.toLowerCase(), label);
-      }
-    });
-
-    // Employee_Master stores the actual Tech-Ed (appraiser/super manager)
-    // and Comp Manager assigned across the workforce. Collect unique values
-    // from the matching column only, then resolve IDs/names via Employee_Master.
-    const sourceField = reqField === "appraiserTechED" ? "appraiser" : "compManager";
-    const values = new Map();
-    employees.forEach((employee) => {
-      const raw = String(employee[sourceField] ?? "").trim();
-      if (!raw) return;
-      const key = normalizeId(raw);
-      const label =
-        employeeById.get(key) ||
-        employeeByName.get(raw.toLowerCase()) ||
-        (raw.includes(" - ") ? raw : "");
-      if (label) values.set(key, label);
-    });
-
-    const currentKey = normalizeId(currentAssignee);
-    return [...values.entries()]
-      .filter(([key]) => key !== currentKey)
-      .map(([, label]) => label)
-      .sort((a, b) => a.localeCompare(b));
+    const options = reqField === "appraiserTechED"
+      ? delegationRoster.techEd
+      : delegationRoster.compManagers;
+    const current = String(currentAssignee ?? "").trim().toLowerCase();
+    return (Array.isArray(options) ? options : [])
+      .filter((person) => String(person.empId ?? "").trim().toLowerCase() !== current.split(/\\s+-\\s+/)[0])
+      .map((person) => person.label)
+      .filter(Boolean);
   }, [delegationRoster, reqField, currentAssignee]);
 
   const sendDelegation = () => {
