@@ -210,6 +210,51 @@ function requireInScope(a, empId, allowOwnRead = false) {
   }
 }
 
+const normalizeAssignment = (value) => {
+  if (value && typeof value === "object") {
+    return normalizeAssignment(value.ROWID ?? value.rowid ?? value.emp_id ??
+      value.employee_id ?? value.id ?? value.value ?? "");
+  }
+  return String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+};
+
+const assignmentParts = (value) => {
+  const normalized = normalizeAssignment(value);
+  const split = normalized.split(/\\s+-\\s+/);
+  return split.length > 1 ? [normalized, ...split] : [normalized];
+};
+
+// Comp Manager history reads are allowed only for employees currently assigned
+// to that manager in Employee_Master. This is GET-only and does not widen PATCH.
+async function compManagerCurrentlyOwnsEmployee(app, a, empId) {
+  if (a?.role !== "compMgr") return false;
+  const table = app.datastore().table("Employee_Master");
+  const employees = await getAllRowsFromTable(table);
+  const signedInId = normalizeAssignment(a?.user?.empId);
+  const signedInEmail = normalizeAssignment(a?.user?.email);
+  const manager = employees.find((row) =>
+    [row.emp_id, row.employee_id, row.emp_code, row.email_id, row.ROWID]
+      .some((value) => {
+        const candidate = normalizeAssignment(value);
+        return candidate && (candidate === signedInId || candidate === signedInEmail);
+      })
+  );
+  if (!manager) return false;
+  const managerKeys = [
+    manager.ROWID, manager.emp_id, manager.employee_id, manager.emp_code,
+    manager.emp_name, manager.name, manager.email_id,
+  ].flatMap(assignmentParts).filter(Boolean);
+  const requested = employees.find((row) =>
+    [row.emp_id, row.employee_id, row.emp_code].some((value) =>
+      normalizeAssignment(value) === normalizeAssignment(empId)
+    )
+  );
+  if (!requested) return false;
+  const assignedManager = requested.comp_manager ?? requested.comp_manager_id ??
+    requested.compManager ?? requested.comp_manager_name ?? "";
+  return assignmentParts(assignedManager).some((value) => managerKeys.includes(value));
+}
+
 /*
  * input / pair field → must be 'edit';
  * calc field (derived totals written with their inputs) → not hidden;
@@ -860,7 +905,16 @@ module.exports = async (req, res) => {
         return;
       }
 
-      access.guard(a, () => requireInScope(a, empId, true));
+      let inScope = access.inScope(a, empId);
+      if (!inScope && a.role === "compMgr") {
+        inScope = await compManagerCurrentlyOwnsEmployee(app, a, empId);
+      }
+      if (!inScope && String(a?.user?.empId || "").trim().toUpperCase() === empId.toUpperCase()) {
+        inScope = true;
+      }
+      if (!inScope) {
+        throw new access.HttpError(403, "You do not have access to employee " + empId + ".");
+      }
 
       // HR / dry-run only: include what the table contains (see getHistory).
       const diag = !a.enforced || a.role === "hr" ? {} : null;
