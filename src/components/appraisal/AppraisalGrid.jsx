@@ -1017,11 +1017,10 @@ function EmployeePanel({
     const options = reqField === "appraiserTechED"
       ? delegationRoster.techEd
       : delegationRoster.compManagers;
-    const current = String(currentAssignee ?? "").trim().toLowerCase();
+    const current = String(currentAssignee ?? "").trim().toLowerCase().split(" - ")[0];
     return (Array.isArray(options) ? options : [])
-      .filter((person) => String(person.empId ?? "").trim().toLowerCase() !== current.split(/\\s+-\\s+/)[0])
-      .map((person) => person.label)
-      .filter(Boolean);
+      .filter((person) => String(person.empId ?? "").trim().toLowerCase() !== current)
+      .filter((person) => person.empId && person.label);
   }, [delegationRoster, reqField, currentAssignee]);
 
   const sendDelegation = () => {
@@ -1385,8 +1384,8 @@ function EmployeePanel({
             >
               <option value="">Select new assignee...</option>
               {requestPeople.map((person) => (
-                <option key={person} value={person}>
-                  {person}
+                <option key={person.empId} value={person.empId}>
+                  {person.label}
                 </option>
               ))}
             </select>
