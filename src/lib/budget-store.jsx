@@ -89,6 +89,7 @@ export function BudgetProvider({ children }) {
   const authenticatedUser = useCatalystUser();
   const { effectiveId, actualId } = useViewAs();
   const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
+  const isCompManagerLogin = roleText === "compmgr" || roleText === "compmanager";
   const currentUser = useMemo(
     () => ({
       name:
@@ -441,7 +442,7 @@ export function BudgetProvider({ children }) {
     });
     const isTechEdBudgetView = roleText.includes("teched") || (!isHR && hasTechEdAllocationForLogin);
 
-    if (isCompManagerPreview) {
+    if (isCompManagerPreview || isCompManagerLogin) {
       const ownParentCandidates = budgetDistributionRows.filter((row) => {
         const raw = row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed ||
           row.appraiser_tech_ed || row.appraiser_tech_ed1 || "";
@@ -583,7 +584,7 @@ export function BudgetProvider({ children }) {
       }),
       { base: 0, additional: 0, updated: 0, utilized: 0, remaining: 0, hasBudgetMaster: false, hasAuthoritativeBudget: false },
     );
-  }, [rows, budgetMasterRows, budgetDistributionRows, budgetCompManagerRows, employeeRows, techEdOwners, currentUser, roleText, activeBudgetCycleId, isCompManagerPreview, authenticatedUser]);
+  }, [rows, budgetMasterRows, budgetDistributionRows, budgetCompManagerRows, employeeRows, techEdOwners, currentUser, roleText, activeBudgetCycleId, isCompManagerPreview, isCompManagerLogin, authenticatedUser]);
 
   const hierarchy = useMemo(() => {
     const next = {};
