@@ -228,14 +228,19 @@ const assignmentParts = (value) => {
 // to that manager in Employee_Master. This is GET-only and does not widen PATCH.
 async function compManagerCurrentlyOwnsEmployee(req, a, empId) {
   if (a?.role !== "compMgr") return false;
-  // Use the function's admin datastore scope for the authoritative master lookup;
-  // the end-user's table permissions must not block this narrow server-side check.
+
+  // Resolve both sides against the current authoritative records. Employee
+  // Master identifies the signed-in manager; Appraisal Sheet carries the
+  // current employee-to-Comp-Manager assignment used by the live roster.
   const adminApp = catalyst.initialize(req, { scope: "admin" });
-  const table = adminApp.datastore().table("Employee_Master");
-  const employees = await getAllRowsFromTable(table);
+  const [masterRows, appraisalRows] = await Promise.all([
+    getAllRowsFromTable(adminApp.datastore().table("Employee_Master")),
+    getAllRowsFromTable(adminApp.datastore().table("74008000000039094")),
+  ]);
+
   const signedInId = normalizeAssignment(a?.user?.empId);
   const signedInEmail = normalizeAssignment(a?.user?.email);
-  const manager = employees.find((row) =>
+  const manager = masterRows.find((row) =>
     [row.emp_id, row.employee_id, row.emp_code, row.email_id, row.ROWID]
       .some((value) => {
         const candidate = normalizeAssignment(value);
@@ -243,21 +248,26 @@ async function compManagerCurrentlyOwnsEmployee(req, a, empId) {
       })
   );
   if (!manager) return false;
+
   const managerKeys = [
     manager.ROWID, manager.emp_id, manager.employee_id, manager.emp_code,
     manager.emp_name, manager.name, manager.email_id,
   ].flatMap(assignmentParts).filter(Boolean);
-  const requested = employees.find((row) =>
-    [row.emp_id, row.employee_id, row.emp_code].some((value) =>
-      normalizeAssignment(value) === normalizeAssignment(empId)
-    )
+  const requestedId = normalizeAssignment(empId);
+  const requested = appraisalRows.find((row) =>
+    [row.emp_id, row.employee_id, row.emp_code]
+      .some((value) => normalizeAssignment(value) === requestedId)
+  ) || masterRows.find((row) =>
+    [row.emp_id, row.employee_id, row.emp_code]
+      .some((value) => normalizeAssignment(value) === requestedId)
   );
   if (!requested) return false;
+
   const assignedManager = requested.comp_manager ?? requested.comp_manager_id ??
-    requested.compManager ?? requested.comp_manager_name ?? "";
+    requested.compManager ?? requested.comp_manager_name ??
+    requested.comp_manager_display ?? "";
   return assignmentParts(assignedManager).some((value) => managerKeys.includes(value));
 }
-
 /*
  * input / pair field → must be 'edit';
  * calc field (derived totals written with their inputs) → not hidden;
