@@ -215,7 +215,7 @@ const normalizeAssignment = (value) => {
     return normalizeAssignment(value.ROWID ?? value.rowid ?? value.emp_id ??
       value.employee_id ?? value.id ?? value.value ?? "");
   }
-  return String(value || "").trim().toLowerCase().replace(/\\s+/g, " ");
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 };
 
 const assignmentParts = (value) => {
