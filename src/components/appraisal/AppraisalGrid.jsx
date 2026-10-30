@@ -999,15 +999,23 @@ function EmployeePanel({
   const currentAssignee = String(employee?.[reqField] ?? "").trim();
 
   const requestPeople = useMemo(() => {
-    const values = new Set();
-    // The parent passes the complete appraisal roster through the team prop.
     const sourceRows = Array.isArray(team) ? team : [];
+    const displayById = new Map();
+    const normalizeId = (value) => {
+      const text = String(value ?? "").trim();
+      const match = text.match(/^(.+?)\\s+-\\s+.+$/);
+      return (match ? match[1] : text).trim().toLowerCase();
+    };
 
     sourceRows.forEach((row) => {
-      // Support the resolved grid fields and the raw API field names. The
-      // request choices must come from the whole appraisal roster, not only
-      // the currently visible/filtered grid rows.
-      const assignments = [
+      const id = String(row.empId ?? row.emp_id ?? "").trim();
+      const name = String(row.name ?? row.empName ?? row.emp_name ?? "").trim();
+      if (id && name) displayById.set(id.toLowerCase(), `${id} - ${name}`);
+    });
+
+    const values = new Map();
+    sourceRows.forEach((row) => {
+      [
         row.appraiserTechED,
         row.appraiser_tech_ed_appraisal_sheet,
         row.appraiser_tech_ed,
@@ -1016,17 +1024,19 @@ function EmployeePanel({
         row.comp_manager_name,
         row.compManager,
         row.comp_manager,
-      ];
-
-      assignments.forEach((value) => {
+      ].forEach((value) => {
         const person = String(value ?? "").trim();
-        // Do not expose unresolved Catalyst lookup ROWIDs as assignees.
-        if (person && !/^[0-9]{6,}$/.test(person)) values.add(person);
+        if (!person || /^[0-9]{6,}$/.test(person)) return;
+        const key = normalizeId(person);
+        // Show consistent "EMPID - Name" labels when the roster knows the name.
+        values.set(key, displayById.get(key) || person);
       });
     });
 
-    return [...values]
-      .filter((person) => person !== currentAssignee)
+    const currentKey = normalizeId(currentAssignee);
+    return [...values.entries()]
+      .filter(([key]) => key !== currentKey)
+      .map(([, label]) => label)
       .sort((a, b) => a.localeCompare(b));
   }, [team, currentAssignee]);
 
