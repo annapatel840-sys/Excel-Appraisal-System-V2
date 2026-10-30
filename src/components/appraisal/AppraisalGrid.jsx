@@ -12,7 +12,6 @@ import { createPortal } from "react-dom";
 
 import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
-import { showNotice } from "@/lib/show-notice";
 import { ColumnFilter } from "./ColumnFilter";
 import { getSelectedEmpId, setSelectedEmpId } from "@/lib/selected-employee";
 import { TypingHistoryPopup } from "./TypingHistoryPopup";
@@ -1699,6 +1698,15 @@ export function AppraisalGrid({
   const [designationPopupMessage, setDesignationPopupMessage] = useState("");
 
   useEffect(() => {
+    if (!designationPopupMessage) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") setDesignationPopupMessage("");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [designationPopupMessage]);
+
+  useEffect(() => {
   let cancelled = false;
 
   async function fetchDesignationRules() {
@@ -3067,7 +3075,11 @@ export function AppraisalGrid({
       // New Title only on rows eligible for promotion.
       if (col.key === "newTitle") {
         const eligibleIds = rows
-          .filter((row) => row.eligibleForPromotion === "Yes")
+          .filter((row) => {
+            if (row.eligibleForPromotion !== "Yes") return false;
+            const rule = getNewTitleRule(row);
+            return rule.ok && rule.options.includes(value);
+          })
           .map((row) => row.id);
         const skipped = rows.length - eligibleIds.length;
 
@@ -3076,8 +3088,8 @@ export function AppraisalGrid({
         }
 
         if (skipped) {
-          showNotice(
-            `New Title was applied to ${eligibleIds.length} employee(s). ${skipped} skipped because they are not eligible for promotion.`,
+          setDesignationPopupMessage(
+            `New Title was applied to ${eligibleIds.length} employee(s). ${skipped} skipped because they are not eligible for promotion or the title is not allowed for their designation in Designation Master.`,
           );
         }
 
@@ -3110,7 +3122,7 @@ export function AppraisalGrid({
         bulkUpdate(ids, "newTitle", "set", null);
       }
     },
-    [rows, bulkUpdate, updateHikePct, updateHikeAmount],
+    [rows, bulkUpdate, updateHikePct, updateHikeAmount, designationRules, designationRulesLoading, designationRulesError],
   );
 
   // ============================================================
@@ -3501,12 +3513,34 @@ export function AppraisalGrid({
                     ? defaultInstallment(row)
                     : "",
             )}
+            onMouseDown={(event) => {
+              // New Title: a designation that is not mapped in Designation
+              // Master gets the sheet's error popup instead of a dropdown.
+              if (col.key !== "newTitle") return;
+              const rule = getNewTitleRule(row);
+              if (!rule.ok) {
+                event.preventDefault();
+                event.currentTarget.blur();
+                setDesignationPopupMessage(rule.message);
+              }
+            }}
             onFocus={() => {
               setActive(`${rowIndex}:${col.key}`);
               selectRowForEdit(row);
             }}
             onBlur={() => setActive(null)}
-            onKeyDown={(event) => onKeyDown(event, rowIndex, col.key)}
+            onKeyDown={(event) => {
+              if (
+                col.key === "newTitle" &&
+                (event.key === " " || event.key === "F4") &&
+                !getNewTitleRule(row).ok
+              ) {
+                event.preventDefault();
+                setDesignationPopupMessage(getNewTitleRule(row).message);
+                return;
+              }
+              onKeyDown(event, rowIndex, col.key);
+            }}
             onDoubleClick={(event) =>
               handleEditableDoubleClick(event, rowIndex, col.key)
             }
@@ -3578,7 +3612,7 @@ export function AppraisalGrid({
                 String(value).trim() === ""
               ) {
                 setActive(cellKey);
-                showNotice(
+                setDesignationPopupMessage(
                   "Designation is required when Promotion is Yes. Please select a designation before continuing.",
                 );
                 return;
@@ -3629,8 +3663,12 @@ export function AppraisalGrid({
 
             {(
               col.key === "newTitle"
-              ? getNewTitleRule(row).options
-              : col.options || []
+                ? (() => {
+                    const list = getNewTitleRule(row).options || [];
+                    const cur = String(row.newTitle || "");
+                    return cur && !list.includes(cur) ? [cur, ...list] : list;
+                  })()
+                : col.options || []
               ).map((option) => (
                <option key={option} value={option}>
              {option}
@@ -3881,7 +3919,7 @@ export function AppraisalGrid({
 
   if (!rule.ok) {
     event.preventDefault();
-    showNotice(rule.message);
+    setDesignationPopupMessage(rule.message);
   }
 }}
 
@@ -3895,7 +3933,7 @@ export function AppraisalGrid({
   const rule = getNewTitleRule(row);
 
   if (!rule.ok) {
-    showNotice(rule.message);
+    setDesignationPopupMessage(rule.message);
     event.currentTarget.blur();
     return;
   }
@@ -4450,6 +4488,37 @@ export function AppraisalGrid({
       }}
     >
       <style>{GRID_STYLES}</style>
+
+      {/* Sheet message popup: replaces the browser alert, same font and colours as the sheet */}
+      {designationPopupMessage &&
+        createPortal(
+          <div
+            className="fixed inset-0 flex items-start justify-center bg-[#102a43]/20 px-4 pt-[18vh]"
+            style={{ zIndex: 2147483000, fontFamily: APPRAISAL_FONT }}
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget)
+                setDesignationPopupMessage("");
+            }}
+          >
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              aria-label="Message"
+              className="relative w-full max-w-[420px] rounded-md border border-[#d5dce5] bg-white py-4 pl-5 pr-12 text-[13px] leading-[1.5] text-[#111827] shadow-[0_10px_30px_rgba(16,42,67,0.18)]"
+            >
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={() => setDesignationPopupMessage("")}
+                className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-md text-[16px] font-bold leading-none text-[#4b5563] hover:bg-[#f1f5f9] hover:text-[#102a43]"
+              >
+                ✕
+              </button>
+              {designationPopupMessage}
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {/* LEFT SIDE: NOTES BAR + GRID + PAGINATION + HISTORY */}
 
