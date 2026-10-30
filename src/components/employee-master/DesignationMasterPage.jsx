@@ -990,17 +990,6 @@ export function DesignationMasterPage() {
               >
                 Not mapped ({unmappedList.length})
               </button>
-              <label>Department
-                <select className="dmx-ctl" value={filters.dept} onChange={(e) => setFilters((f) => ({ ...f, dept: e.target.value }))}>
-                  <option value="">All</option>
-                  {depts.map((d) => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </label>
-              <label>Status
-                <select className="dmx-ctl" value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}>
-                  <option value="">All</option><option>Active</option><option>Inactive</option>
-                </select>
-              </label>
             </>
           )}
           <div className="dmx-right">
