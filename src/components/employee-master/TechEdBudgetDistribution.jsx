@@ -155,6 +155,9 @@ export function TechEdBudgetDistribution() {
   const user = useCatalystUser();
   const { effectiveId, actualId } = useViewAs();
   const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
+  const roleText = String(user?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const isCompManagerLogin = roleText === "compmgr" || roleText === "compmanager";
+  const isCompManagerView = isCompManagerPreview || isCompManagerLogin;
   const {
     budgetDistributionRows,
     budgetCompManagerRows,
@@ -297,7 +300,40 @@ export function TechEdBudgetDistribution() {
         row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed || row.appraiser_tech_ed,
       )),
     );
-    const candidates = directMatches.length ? directMatches : assignmentMatches;
+    let candidates = directMatches.length ? directMatches : assignmentMatches;
+
+    // For a real Comp Manager login, resolve the parent Tech-Ed from the
+    // manager's CURRENT Appraisal Sheet assignments, not from the manager's
+    // own login identity. This supports every manager account dynamically.
+    if (isCompManagerLogin && !candidates.length) {
+      const managerEmployees = employeeRows.filter((employee) =>
+        employee.in_appraisal_sheet === true &&
+        currentUserMatchesManager(
+          employee.comp_manager || employee.comp_manager_id || employee.compManager ||
+            employee.comp_manager_display || employee.comp_manager_name || "",
+          user,
+          employeeRows,
+        )
+      );
+      const managerTechOwners = Array.from(new Set(managerEmployees.map((employee) => {
+        const raw = employee.appraiser_tech_ed_appraisal_sheet ||
+          employee.appraiser_tech_ed || employee.appraiser_tech_ed_id ||
+          employee.appraiser_tech_ed_row_id || employee.appraiser_tech_ed1 ||
+          employee.tech_ed || employee.tech_ed_id || "";
+        const linked = techEdOwners.find((owner) =>
+          normalizeOwner(owner.row_id || owner.ROWID || "") === normalizeOwner(raw)
+        );
+        return normalizeOwner(linked?.assignment || raw);
+      }).filter(Boolean)));
+      candidates = allRows.filter((row) => {
+        const raw = row.appraiser_tech_ed_id || row.tech_ed_id || row.tech_ed ||
+          row.appraiser_tech_ed || row.appraiser_tech_ed1 || "";
+        const linked = techEdOwners.find((owner) =>
+          normalizeOwner(owner.row_id || owner.ROWID || "") === normalizeOwner(raw)
+        );
+        return managerTechOwners.includes(normalizeOwner(linked?.assignment || raw));
+      });
+    }
 
     // Cycle API and budget tables can refer to the same cycle through different
     // ID aliases. Resolve the active cycle through Budget_Master's cycle name
@@ -335,7 +371,7 @@ export function TechEdBudgetDistribution() {
     budgetDistributionRows, budgetMasterRows, cycleRows, employeeRows, techEdOwners, myName,
     user?.name, user?.display_name, user?.first_name, user?.last_name,
     user?.email, user?.email_id, user?.user_id, user?.empId, user?.employeeId, user?.employee_id,
-    activeCycleId,
+    activeCycleId, isCompManagerLogin, user?.role,
   ]);
 
   // The Tech-ED's Appraisal Sheet assignment (e.g. "EMP0051 - Ashok Kumar"),
@@ -400,10 +436,10 @@ export function TechEdBudgetDistribution() {
 
   const [pane, setPane] = useState({ mine: true, alloc: true, audit: true });
   useEffect(() => {
-    setPane(isCompManagerPreview
+    setPane(isCompManagerView
       ? { mine: true, alloc: false, audit: false }
       : { mine: true, alloc: true, audit: true });
-  }, [isCompManagerPreview]);
+  }, [isCompManagerView]);
   const [appliedOpen, setAppliedOpen] = useState(false);
   const [trailOpen, setTrailOpen] = useState({});
   const [reason, setReason] = useState("");
@@ -474,7 +510,7 @@ export function TechEdBudgetDistribution() {
       const rawManager = employee.comp_manager || employee.comp_manager_id || employee.compManager || employee.comp_manager_name || employee.comp_manager_display || "";
       const manager = resolveManager(rawManager);
       if (!manager) return;
-      if (isCompManagerPreview && !currentUserMatchesManager(manager, user, employeeRows)) return;
+      if (isCompManagerView && !currentUserMatchesManager(manager, user, employeeRows)) return;
       const key = ownerKey(manager);
       const stats = managerStats.get(key) || { count: 0, base: 0, utilized: 0, name: manager };
       stats.count += 1;
@@ -588,11 +624,11 @@ export function TechEdBudgetDistribution() {
         history,
       };
     });
-  }, [liveComps, employeeRows, techOwnerKey, log, techEdOwners, activeCycleId, isCompManagerPreview, user, liveTech]);
+  }, [liveComps, employeeRows, techOwnerKey, log, techEdOwners, activeCycleId, isCompManagerView, user, liveTech]);
 
   // A Tech-Ed preview may only see a Comp Manager allocation if the signed-in
   // employee is itself that Comp Manager. Never default to another manager.
-  const selectedManagerNode = isCompManagerPreview ? (cmNodes[0] || null) : null;
+  const selectedManagerNode = isCompManagerView ? (cmNodes[0] || null) : null;
   const selectedCompManager = selectedManagerNode?.name || "";
 
   const assignedTeam = useMemo(() => {
@@ -606,18 +642,18 @@ export function TechEdBudgetDistribution() {
       );
       const assignment = String(linked?.assignment || raw).trim();
       if (!(Boolean(techOwnerKey) && ownerKey(assignment) === techOwnerKey && isActiveAndEligible(employee))) return false;
-      if (!isCompManagerPreview) return true;
+      if (!isCompManagerView) return true;
       const manager = employee.comp_manager || employee.comp_manager_id || employee.compManager || employee.comp_manager_name || employee.comp_manager_display || "";
       return Boolean(selectedCompManager) && managerIdentityMatches(manager, selectedCompManager);
     });
-  }, [employeeRows, techOwnerKey, techEdOwners, activeCycleId, isCompManagerPreview, selectedCompManager]);
+  }, [employeeRows, techOwnerKey, techEdOwners, activeCycleId, isCompManagerView, selectedCompManager]);
   const allTeam = assignedTeam;
-  const myPct = isCompManagerPreview ? num(selectedManagerNode?.pct) : (liveTech ? num(liveTech.percentage) : 0);
+  const myPct = isCompManagerView ? num(selectedManagerNode?.pct) : (liveTech ? num(liveTech.percentage) : 0);
   // Use the same selected allocation row/value as Dashboard, Appraisal Sheet,
   // and Detail Screen so the Tech-Ed allocation cannot drift across screens.
   // A budget row can exist before HR applies a percentage. Do not present
   // that placeholder as an allocated/original budget until it has a real amount.
-  const hasLiveAllocation = isCompManagerPreview
+  const hasLiveAllocation = isCompManagerView
     ? Boolean(activeCycleId && selectedManagerNode?.liveId)
     : Boolean(
         activeCycleId &&
@@ -630,14 +666,14 @@ export function TechEdBudgetDistribution() {
         )
       );
   const myOriginal = hasLiveAllocation
-    ? (isCompManagerPreview
+    ? (isCompManagerView
         ? num(selectedManagerNode?.original)
         : sharedBudgetTotals?.budgetScope === "teched"
           ? num(sharedBudgetTotals.base)
           : num(liveTech.calculated_budget))
     : null;
   const myUpdated = hasLiveAllocation
-    ? (isCompManagerPreview
+    ? (isCompManagerView
         ? num(selectedManagerNode?.updated)
         : sharedBudgetTotals?.budgetScope === "teched"
           ? num(sharedBudgetTotals.updated)
@@ -656,12 +692,12 @@ export function TechEdBudgetDistribution() {
   const savedTeamCount = liveTech?.original_headcount;
   // Original Count is a persisted baseline. Never replace a missing baseline
   // with today's roster count, or it will appear to change with eligibility.
-  const team0 = isCompManagerPreview
+  const team0 = isCompManagerView
     ? num(selectedManagerNode?.team0)
     : savedTeamCount !== null && savedTeamCount !== undefined && String(savedTeamCount).trim() !== ""
       ? num(savedTeamCount)
       : 0;
-  const allotted = isCompManagerPreview ? 0 : cmNodes.reduce((s, n) => s + n.updated, 0);
+  const allotted = isCompManagerView ? 0 : cmNodes.reduce((s, n) => s + n.updated, 0);
   const used = assignedTeam.reduce((sum, employee) => sum + employeeUtilized(employee), 0);
   const usedPct = myUpdated ? (used / myUpdated) * 100 : 0;
   const over = usedPct > 100;
@@ -791,31 +827,31 @@ export function TechEdBudgetDistribution() {
         </span>
         <span className="sep" />
         <span>
-          {isCompManagerPreview ? "Comp Manager allocation" : "Tech-Ed allocation"} · updated {hasLiveAllocation ? lakh(myUpdated) : "—"}
+          {isCompManagerView ? "Comp Manager allocation" : "Tech-Ed allocation"} · updated {hasLiveAllocation ? lakh(myUpdated) : "—"}
         </span>
         <span className="sep" />
         <span>
-          <b>{isCompManagerPreview ? LEVELS[1] : LEVELS[0]}</b>
+          <b>{isCompManagerView ? LEVELS[1] : LEVELS[0]}</b>
         </span>
         <span className="sep" />
         <span className="applied">
-          {isCompManagerPreview ? "Comp Manager allocation" : "Budget applied by HR"}:{" "}
+          {isCompManagerView ? "Comp Manager allocation" : "Budget applied by HR"}:{" "}
           {/* Comp Managers see the amount only, never the allocation percentage. */}
-          {!isCompManagerPreview && (
+          {!isCompManagerView && (
             <>
               <b>{hasLiveAllocation ? myPct + "%" : "—"}</b> ={" "}
             </>
           )}
           <b>{hasLiveAllocation ? lakh(myUpdated) : "—"}</b> updated · original{" "}
           {hasLiveAllocation ? lakh(myOriginal) : "—"}
-          {!isCompManagerPreview && hasLiveAllocation ? (
+          {!isCompManagerView && hasLiveAllocation ? (
             <button type="button" className="dd" aria-expanded={appliedOpen} onClick={() => setAppliedOpen((v) => !v)}>
               % history {appliedOpen ? "▴" : "▾"}
             </button>
           ) : null}
         </span>
       </div>
-      {!isCompManagerPreview && appliedOpen && (
+      {!isCompManagerView && appliedOpen && (
         <div className="apdrop">
           <AuditTable list={auditFor([myName])} showName={false} />
         </div>
@@ -823,7 +859,7 @@ export function TechEdBudgetDistribution() {
 
       <div className="card">
         {paneHead("mine", "My Budget")}
-        {isCompManagerPreview && !selectedManagerNode && (
+        {isCompManagerView && !selectedManagerNode && (
           <div style={{ padding: "8px 14px", color: "#64748b" }}>
             No Comp Manager allocation is linked to the signed-in employee.
           </div>
@@ -878,7 +914,7 @@ export function TechEdBudgetDistribution() {
         )}
       </div>
 
-      {!isCompManagerPreview && <div className="card">
+      {!isCompManagerView && <div className="card">
         {paneHead("alloc", "Allocation", cmNodes.length + " " + cmLabel)}
         {pane.alloc && (
           <>
@@ -1064,7 +1100,7 @@ export function TechEdBudgetDistribution() {
         )}
       </div>}
 
-      {!isCompManagerPreview && <div className="card">
+      {!isCompManagerView && <div className="card">
         {paneHead("audit", "% Applied — audit trail (you and your " + cmLabel + ")")}
         {pane.audit && (
           <>
