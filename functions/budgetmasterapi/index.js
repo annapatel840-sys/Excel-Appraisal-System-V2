@@ -3010,19 +3010,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = []) {
     });
   }
 
-  // Pass the authoritative Appraisal Sheet roster to the access filter.
-  // Comp Manager logins need this to resolve their own employees' current
-  // Tech-Ed parent; the budget tables alone do not identify the manager's team.
-  bundle.employeeRoster = appraisalRows.map((row) => ({
-    ...row,
-    emp_id: String(row.emp_id || row.employee_id || "").trim(),
-    appraiser_tech_ed: row.appraiser_tech_ed || row.appraiser_tech_ed1 ||
-      row.appraiser_tech_ed_row_id || "",
-    appraiser_tech_ed_row_id: row.appraiser_tech_ed1 ||
-      row.appraiser_tech_ed_row_id || "",
-    comp_manager: row.comp_manager || row.comp_manager_id ||
-      row.comp_manager_name || row.director || "",
-  }));
+  // Keep the cycle-scoped, Employee_Master-enriched roster built above.
+  // Replacing it with raw Appraisal_Sheet rows here discarded the resolved
+  // Comp Manager display identity and could mix employees from other cycles.
+  // filterOwn() uses this canonical roster to resolve a Comp Manager's
+  // current employees to their Tech-Ed parent allocation.
 
   return bundle;
 }
