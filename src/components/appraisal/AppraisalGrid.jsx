@@ -3433,7 +3433,7 @@ export function AppraisalGrid({
           className="flex min-h-[38px] h-auto w-full flex-col items-end justify-center gap-px overflow-hidden px-2 py-[3px] text-right tabular-nums"
           title="Calculated automatically"
         >
-          <span className="block max-w-full truncate text-[14px] font-semibold leading-tight text-[#111827]">
+          <span className="block max-w-full truncate text-[13.25px] font-semibold leading-tight text-[#111827]">
             {col.type === "currency"
               ? displayValue.replace(/^₹\s?/, "")
               : displayValue}
@@ -3451,7 +3451,7 @@ export function AppraisalGrid({
           className={cn(
             "flex min-h-[38px] h-auto w-full items-center justify-end overflow-hidden",
             "px-2 py-1 leading-tight text-right",
-            "text-[14px] font-semibold tabular-nums",
+            "text-[13.25px] font-semibold tabular-nums",
             modified[cellKey] ? "text-slate-900" : "text-[#111827]",
           )}
           title="Calculated automatically"
@@ -3480,7 +3480,7 @@ export function AppraisalGrid({
         >
           <span
             className={cn(
-              "block max-w-full text-[14px] font-extrabold leading-tight text-[#1559a6] hover:underline",
+              "block max-w-full text-[13.25px] font-extrabold leading-tight text-[#1559a6] hover:underline",
               wraps ? "break-words" : "truncate",
             )}
           >
@@ -3533,7 +3533,7 @@ export function AppraisalGrid({
           }}
           className={cn(
             "flex min-h-[38px] h-auto w-full min-w-0 items-center overflow-hidden px-2 py-1",
-            "text-[14px] font-semibold text-[#111827] leading-tight",
+            "text-[13.25px] font-semibold text-[#111827] leading-tight",
             isMoney ? "justify-end text-right tabular-nums" : "text-left",
           )}
           title={text}
@@ -3691,7 +3691,7 @@ export function AppraisalGrid({
               );
             }}
             className={cn(
-              "h-[28px] w-full cursor-pointer rounded-[6px] border px-1 text-[14px] font-semibold outline-none",
+              "h-[28px] w-full cursor-pointer rounded-[6px] border px-1 text-[13.25px] font-semibold outline-none",
               draftClass(cellKey, isBlinking),
               col.key === "newTitle" &&
                 row.eligibleForPromotion === "Yes" &&
@@ -3862,7 +3862,7 @@ export function AppraisalGrid({
               handleEditableDoubleClick(event, rowIndex, col.key)
             }
             className={cn(
-              "min-h-[30px] w-full resize-none overflow-hidden rounded-[6px] border px-1.5 py-[5px] text-[14px] font-semibold leading-tight outline-none",
+              "min-h-[30px] w-full resize-none overflow-hidden rounded-[6px] border px-1.5 py-[5px] text-[13.25px] font-semibold leading-tight outline-none",
               !wraps && "whitespace-nowrap",
               draftClass(cellKey, isBlinking),
             )}
@@ -4091,7 +4091,7 @@ export function AppraisalGrid({
             handleEditableDoubleClick(event, rowIndex, col.key)
           }
           className={cn(
-            "h-[28px] w-full rounded-[6px] border px-1.5 text-[14px] font-semibold outline-none",
+            "h-[28px] w-full rounded-[6px] border px-1.5 text-[13.25px] font-semibold outline-none",
             draftClass(cellKey, isBlinking),
             isNumericType(col.type) && "text-right font-medium tabular-nums",
             isMonthColumn && "text-center",
@@ -4863,7 +4863,7 @@ export function AppraisalGrid({
                     <td
                       key={col.key}
                       className={cn(
-                        "overflow-hidden whitespace-nowrap border-r border-t border-[#c9d8ec] px-2 text-[14px] font-extrabold text-[#102a43]",
+                        "overflow-hidden whitespace-nowrap border-r border-t border-[#c9d8ec] px-2 text-[13.25px] font-extrabold text-[#102a43]",
                         isName ? "text-left" : "text-right tabular-nums",
                       )}
                       style={{
@@ -4974,8 +4974,8 @@ export function AppraisalGrid({
               fontFamily: APPRAISAL_FONT,
               // Kept short so more Appraisal Sheet rows stay visible; the
               // history table scrolls inside the panel.
-              height: "min(210px, 25vh)",
-              minHeight: 150,
+              height: "min(260px, 30vh)",
+              minHeight: 190,
             }}
           >
             <div className="flex h-9 items-center justify-between bg-[#173b63] px-3 text-white">
