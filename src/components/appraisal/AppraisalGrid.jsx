@@ -20,6 +20,7 @@ import { useAppraisal } from "@/lib/appraisal-store";
 import { fetchAppraisalRoster } from "@/lib/employee-roster";
 import { fetchDelegationAssigneeOptions } from "@/lib/employee-master-data";
 import { useAccess } from "@/lib/access-store";
+import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
 import { buildFeedbackEntries, cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
@@ -274,6 +275,7 @@ const GRID_STYLES = `
 
 const VIEW_KEY = "appraisal.gridView";
 const NOTES_KEY = "appraisal.myNotes";
+const WIDTH_KEY = "appraisal.columnWidths";
 const NOTE_DRAFT_KEY = "appraisal.noteDraft";
 
 const readStore = (key, fallback) => {
@@ -1941,11 +1943,44 @@ export function AppraisalGrid({
   // COLUMN RESIZE / ORDER
   // ============================================================
 
-  const [columnWidths, setColumnWidths] = useState(() =>
-    Object.fromEntries(
-      GRID_COLUMNS.map((column) => [column.key, getWidth(column)]),
-    ),
-  );
+  // Column widths are remembered per login (browser storage), so a refresh or
+  // a fresh login keeps the widths the person dragged.
+  const widthUser = useCatalystUser();
+  const widthStoreKey = `${WIDTH_KEY}:${String(
+    widthUser?.email || widthUser?.email_id || widthUser?.user_id || widthUser?.name || "me",
+  ).toLowerCase()}`;
+
+  const [columnWidths, setColumnWidths] = useState(() => {
+    const saved = readStore(widthStoreKey, {});
+
+    return Object.fromEntries(
+      GRID_COLUMNS.map((column) => {
+        const stored = Number(saved?.[column.key]);
+
+        return [
+          column.key,
+          Number.isFinite(stored) && stored >= MIN_WIDTH && stored <= MAX_WIDTH
+            ? stored
+            : getWidth(column),
+        ];
+      }),
+    );
+  });
+
+  // Save only the columns whose width differs from the default.
+  useEffect(() => {
+    const changed = {};
+
+    GRID_COLUMNS.forEach((column) => {
+      const width = columnWidths[column.key];
+
+      if (width !== undefined && width !== getWidth(column)) {
+        changed[column.key] = width;
+      }
+    });
+
+    writeStore(widthStoreKey, changed);
+  }, [columnWidths, widthStoreKey]);
 
   const resizeRef = useRef(null);
 
@@ -3412,10 +3447,13 @@ export function AppraisalGrid({
     return Number.isFinite(num) && num === 0;
   };
 
-  // Edited cell: only the input box itself is tinted peach (no full cell fill).
+  // Edited / filled cell: any input that holds a real value (not 0 / No /
+  // blank) is tinted peach - whether it was typed this session, saved in an
+  // earlier session, or came pre-filled from the data. Only the input box is
+  // tinted, not the whole cell.
   const draftClass = (cellKey, isBlinking, value) =>
     cn(
-      modified[cellKey] && !isNeutralValue(value)
+      !isNeutralValue(value)
         ? "border-[#d9822b] bg-[#ffe0c2] font-bold text-[#111827]"
         : "border-[#d1d5db] bg-white text-[#111827]",
       "focus:border-[#102a43] focus:bg-white focus:outline focus:outline-1 focus:outline-[#102a43] focus:ring-0",
