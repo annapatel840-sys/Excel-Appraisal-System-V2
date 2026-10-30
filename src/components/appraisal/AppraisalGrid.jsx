@@ -4972,8 +4972,10 @@ export function AppraisalGrid({
             className="shrink-0 border-t border-[#173b63] bg-white"
             style={{
               fontFamily: APPRAISAL_FONT,
-              height: "min(300px, 36vh)",
-              minHeight: 210,
+              // Kept short so more Appraisal Sheet rows stay visible; the
+              // history table scrolls inside the panel.
+              height: "min(210px, 25vh)",
+              minHeight: 150,
             }}
           >
             <div className="flex h-9 items-center justify-between bg-[#173b63] px-3 text-white">
