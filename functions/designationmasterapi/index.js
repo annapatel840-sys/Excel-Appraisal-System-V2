@@ -59,6 +59,36 @@ const BANDS = ["B1", "B2", "B3", "B4", "B5", "B6", "B7"];
 const SCREEN_KEY = "employeeMaster"; // HR Operations screens are HR-only
 const BATCH = 200;
 
+// Serialize this function's catalogue and roster reads within a warm instance.
+// Page-load fan-out was triggering Catalyst's shared COMPONENT concurrency cap.
+let zcqlQueue = Promise.resolve();
+async function runZcql(zcql, query, label = "designationmasterapi query") {
+  let release;
+  const previous = zcqlQueue;
+  zcqlQueue = new Promise((resolve) => { release = resolve; });
+  await previous;
+  try {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await zcql.executeZCQLQuery(query);
+      } catch (error) {
+        const status = Number(error && (error.statusCode || error.status || error.status_code));
+        const code = String(error && error.code || "").toUpperCase();
+        const message = String(error && error.message || "").toLowerCase();
+        const transient = [408, 429, 500, 502, 503, 504].includes(status) ||
+          ["TOO_MANY_REQUESTS", "COMPONENT", "ETIMEDOUT", "ECONNRESET"].includes(code) ||
+          /concurrency limit|too many requests|temporarily unavailable|timed out/.test(message);
+        if (!transient || attempt >= 4) throw error;
+        const delay = 400 * (2 ** attempt) + Math.floor(Math.random() * 250);
+        console.warn("Retrying designation ZCQL read:", label, "attempt", attempt + 1);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  } finally {
+    release();
+  }
+}
+
 /* ---------- small helpers ---------- */
 function sendJson(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -96,7 +126,7 @@ async function readAll(app, table, where = "", cols = "*") {
       `SELECT ${cols} FROM ${table} WHERE ROWID > ${last}` +
       (where ? ` AND ${where}` : "") +
       " ORDER BY ROWID ASC LIMIT 300";
-    const result = await zcql.executeZCQLQuery(q);
+    const result = await runZcql(zcql, q, table);
     const page = (result || []).map((i) => (i && (i[table] || Object.values(i)[0])) || {});
     rows.push(...page);
     if (page.length < 300) break;
@@ -128,7 +158,7 @@ async function readRecent(app, table, where, max = 1000) {
       `SELECT * FROM ${table}` +
       (where ? ` WHERE ${where}` : "") +
       ` ORDER BY ROWID DESC LIMIT ${off}, 300`;
-    const result = await zcql.executeZCQLQuery(q);
+    const result = await runZcql(zcql, q, table);
     const page = (result || []).map((i) => (i && (i[table] || Object.values(i)[0])) || {});
     rows.push(...page);
     if (page.length < 300) break;
@@ -143,9 +173,11 @@ async function readMasterPairs(app) {
   const out = [];
   try {
     for (let off = 0; off < 6000; off += 300) {
-      const result = await zcql.executeZCQLQuery(
+      const result = await runZcql(
+        zcql,
         `SELECT DISTINCT designation, department FROM ${TBL.employees} ` +
           `ORDER BY designation ASC LIMIT ${off}, 300`,
+        "Employee_Master designation pairs",
       );
       const page = (result || []).map(
         (i) => (i && (i[TBL.employees] || Object.values(i)[0])) || {},
@@ -279,7 +311,7 @@ async function resolveDesignationsTable(app) {
   if (designationsResolved) return;
   for (const name of DESIGNATION_TABLE_NAMES) {
     try {
-      await app.zcql().executeZCQLQuery(`SELECT ROWID FROM ${name} LIMIT 1`);
+      await runZcql(app.zcql(), `SELECT ROWID FROM ${name} LIMIT 1`, "designation table probe");
       TBL.designations = name;
       designationsResolved = true;
       return;
@@ -307,7 +339,7 @@ async function checkSchema(app) {
   await Promise.all(
     probes.map(async ([table, cols]) => {
       try {
-        await app.zcql().executeZCQLQuery(`SELECT ${cols} FROM ${table} LIMIT 1`);
+        await runZcql(app.zcql(), `SELECT ${cols} FROM ${table} LIMIT 1`, "schema probe " + table);
       } catch (e) {
         problems.push(`${table}: ${clip((e && e.message) || e, 160)}`);
       }
