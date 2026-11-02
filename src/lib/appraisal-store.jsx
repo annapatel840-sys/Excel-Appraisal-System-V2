@@ -367,6 +367,7 @@ const mapCatalystEmployee = (employee, index) => {
     empId: String(employee.emp_id || ""),
     name: String(employee.name || ""),
     designation: String(employee.designation || ""),
+    sourceOfHire: String(employee.source_of_hire || ""),
 
     reportingManager: String(employee.reporting_manager || ""),
     compManager: String(employee.comp_manager || ""),
