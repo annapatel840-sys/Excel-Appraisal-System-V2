@@ -508,15 +508,15 @@ const YOY_FIELDS = {
 // ============================================================
 
 const HISTORY_METRIC_COLUMNS = [
-  { key: "basePay", label: "Current Base Pay" },
-  { key: "joiningBonus", label: "Joining Bonus" },
-  { key: "performanceBonus", label: "Performance Bonus" },
-  { key: "retentionBonus", label: "Retention Bonus" },
-  { key: "totalBonus", label: "Total Bonus" },
-  { key: "hikeAmount", label: "Hike Amount" },
-  { key: "newCTC", label: "Total CTC with Rewards" },
-  { key: "targetPB", label: "Target PB" },
-  { key: "newBasePay", label: "New Base Pay" },
+  { key: "basePay", label: "Current Base Pay", formula: "A" },
+  { key: "joiningBonus", label: "Joining Bonus", formula: "B" },
+  { key: "performanceBonus", label: "Performance Bonus", formula: "C" },
+  { key: "retentionBonus", label: "Retention Bonus", formula: "D" },
+  { key: "totalBonus", label: "Total Bonus", formula: "B+C+D" },
+  { key: "hikeAmount", label: "Hike Amount", formula: "E" },
+  { key: "newCTC", label: "Total CTC with Rewards", formula: "A+B+C+D" },
+  { key: "targetPB", label: "Target PB", formula: "" },
+  { key: "newBasePay", label: "New Base Pay", formula: "A+E" },
 ];
 
 // History metric -> Appraisal grid field whose access limit applies to it.
@@ -5075,13 +5075,17 @@ export function AppraisalGrid({
               ) : (
                 <table
                   className="w-full border-collapse"
-                  style={{ tableLayout: "fixed", minWidth: 1100 }}
+                  style={{ tableLayout: "fixed" }}
                 >
                   <colgroup>
-                    <col style={{ width: 90 }} />
+                    <col style={{ width: "9%" }} />
+                    <col style={{ width: "13%" }} />
 
                     {historyMetricColumns.map((col) => (
-                      <col key={col.key} style={{ width: 120 }} />
+                      <col
+                        key={col.key}
+                        style={{ width: `${78 / historyMetricColumns.length}%` }}
+                      />
                     ))}
                   </colgroup>
 
@@ -5091,15 +5095,19 @@ export function AppraisalGrid({
                         Appraisal Cycle Name
                       </th>
 
+                      <th className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-2 py-1.5 text-center align-bottom text-[11px] font-bold text-[#24364d]">
+                        Designation
+                      </th>
+
                       {historyMetricColumns.map((col) => (
                         <th
                           key={col.key}
-                          className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-2 py-1.5 text-center align-bottom text-[11px] font-bold text-[#24364d]"
+                          className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-1.5 py-1.5 text-center align-bottom text-[11px] font-bold leading-tight text-[#24364d]"
                         >
-                          <div>{col.label}</div>
+                          <div className="break-words">{col.label}</div>
 
-                          <div className="text-[9px] font-normal text-slate-400">
-                            % change below
+                          <div className="min-h-[13px] text-[10.5px] font-bold text-[#1d4ed8]">
+                            {col.formula}
                           </div>
                         </th>
                       ))}
@@ -5124,6 +5132,10 @@ export function AppraisalGrid({
                             {isLatest ? " ★" : ""}
                           </td>
 
+                          <td className="break-words border-r border-b border-[#e0e5ec] px-1.5 py-1 text-center text-[11px] leading-tight text-[#24364d]">
+                            {item.designation || "—"}
+                          </td>
+
                           {historyMetricColumns.map((col) => {
                             const change = computeHistoryChange(
                               item[col.key],
@@ -5137,7 +5149,7 @@ export function AppraisalGrid({
                               <td
                                 key={col.key}
                                 className={cn(
-                                  "border-r border-b border-[#e0e5ec] px-2 py-1 text-right text-[12px] tabular-nums transition-colors duration-500",
+                                  "border-r border-b border-[#e0e5ec] px-1.5 py-1 text-right text-[12px] tabular-nums transition-colors duration-500",
                                   shouldFlash && "bg-[#ffd54f]",
                                 )}
                               >

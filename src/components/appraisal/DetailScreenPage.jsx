@@ -392,15 +392,15 @@ const isCurrentYearRecord = (record, currentCycleName = CURRENT_CYCLE) => {
 };
 
 const HISTORY_COLUMNS = [
-  { key: "basePay", label: "Curr Base Pay" },
-  { key: "joiningBonus", label: "Joining Bonus" },
-  { key: "performanceBonus", label: "Perf. Bonus" },
-  { key: "retentionBonus", label: "Retention Bonus" },
-  { key: "totalBonus", label: "Total Bonus" },
-  { key: "hikeAmount", label: "Hike Amount" },
-  { key: "newCTC", label: "Total CTC" },
-  { key: "targetPB", label: "Target PB" },
-  { key: "newBasePay", label: "New Base Pay" },
+  { key: "basePay", label: "Current Base Pay", formula: "A" },
+  { key: "joiningBonus", label: "Joining Bonus", formula: "B" },
+  { key: "performanceBonus", label: "Performance Bonus", formula: "C" },
+  { key: "retentionBonus", label: "Retention Bonus", formula: "D" },
+  { key: "totalBonus", label: "Total Bonus", formula: "B+C+D" },
+  { key: "hikeAmount", label: "Hike Amount", formula: "E" },
+  { key: "newCTC", label: "Total CTC with Rewards", formula: "A+B+C+D" },
+  { key: "targetPB", label: "Target PB", formula: "" },
+  { key: "newBasePay", label: "New Base Pay", formula: "A+E" },
 ];
 
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
@@ -972,7 +972,7 @@ function HistCell({ value, prev }) {
   const pct = hasPrev ? (prev ? ((value - prev) / prev) * 100 : 0) : null;
   const color = pct === null ? MUTED : pct > 0 ? GREEN : pct < 0 ? RED : MUTED;
   return (
-    <div style={{ textAlign: "right", padding: "4px 10px", lineHeight: 1.15 }}>
+    <div style={{ textAlign: "right", padding: "4px 6px", lineHeight: 1.15 }}>
       <div style={{ color: INK }}>{fmt(value)}</div>
       {pct !== null ? (
         <div style={{ fontSize: 10.5, color, fontWeight: 600 }}>
@@ -984,7 +984,8 @@ function HistCell({ value, prev }) {
   );
 }
 
-const HIST_GRID = "110px repeat(9, minmax(0, 1fr))";
+const HIST_GRID =
+  "minmax(70px, 0.9fr) minmax(90px, 1.3fr) repeat(9, minmax(0, 1fr))";
 
 /* ------------------------------------------------------------------
    PAGE
@@ -2432,12 +2433,30 @@ export function DetailScreenPage({
               }}
             >
               <div style={{ padding: "6px 10px" }}>Appraisal Cycle Name</div>
+              <div style={{ padding: "6px 6px", textAlign: "center" }}>
+                Designation
+              </div>
               {HISTORY_COLUMNS.map((c) => (
                 <div
                   key={c.key}
-                  style={{ padding: "6px 10px", textAlign: "right" }}
+                  style={{
+                    padding: "6px 6px",
+                    textAlign: "right",
+                    lineHeight: 1.2,
+                    overflowWrap: "anywhere",
+                  }}
                 >
-                  {c.label}
+                  <div>{c.label}</div>
+                  <div
+                    style={{
+                      minHeight: 14,
+                      color: "#1d4ed8",
+                      fontWeight: 700,
+                      fontSize: 11,
+                    }}
+                  >
+                    {c.formula}
+                  </div>
                 </div>
               ))}
             </div>
@@ -2477,6 +2496,17 @@ export function DetailScreenPage({
                       >
                         {currentCycleName} ★
                       </div>
+                      <div
+                        style={{
+                          padding: "4px 6px",
+                          textAlign: "center",
+                          color: INK,
+                          overflowWrap: "anywhere",
+                          lineHeight: 1.15,
+                        }}
+                      >
+                        {employee.designation || "—"}
+                      </div>
                       {cur.map((v, i) => (
                         <HistCell
                           key={i}
@@ -2509,6 +2539,17 @@ export function DetailScreenPage({
                     style={{ padding: "4px 10px", fontWeight: 700, color: INK }}
                   >
                     {h.cycleName || h.year}
+                  </div>
+                  <div
+                    style={{
+                      padding: "4px 6px",
+                      textAlign: "center",
+                      color: INK,
+                      overflowWrap: "anywhere",
+                      lineHeight: 1.15,
+                    }}
+                  >
+                    {h.designation || "—"}
                   </div>
                   {vals.map((v, c) => (
                     <HistCell
