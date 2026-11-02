@@ -2703,9 +2703,10 @@ export function EmployeeMaster() {
           <div className="em-tab-content">
             <HrConfigPage
               canEdit={isRoleHR}
-              renderCycleScreen={(defaultProcess) => (
+              renderCycleScreen={(defaultProcess, selectedLocation) => (
                 <AppraisalCycleMasterPage
                   defaultProcess={defaultProcess}
+                  selectedLocation={selectedLocation}
                   cycleStats={null}
                   onGenerateSheet={async (cycle) => {
                     const result = await payrollCycleRequest("generate-sheet", {
