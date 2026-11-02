@@ -1324,12 +1324,9 @@ export default function DelegationScreen({
           previous-cycle data for the next cycle.
         </div>
       )}
-      {!locked && pending.length > 0 && (
+      {isHR && !locked && pending.length > 0 && (
         <div className="dg-mq">
-          ⚠{" "}
-          {isHR
-            ? `${pending.length} delegation request(s) from Tech-EDs awaiting your approval.`
-            : `${pending.length} of your request(s) awaiting HR approval.`}
+          ⚠ {pending.length} delegation request(s) from Tech-EDs awaiting your approval.
         </div>
       )}
 
@@ -1381,12 +1378,7 @@ export default function DelegationScreen({
               {[
                 ["Total Employees", scoped.length, "#1f2a37", null],
                 ["Employee without Comp. Manager", withoutComp, "#94620a", null],
-                [
-                  isHR ? "Pending HR Approval" : "My Pending Requests",
-                  pending.length,
-                  "#b42318",
-                  () => setReqOpen(true),
-                ],
+                ...(isHR ? [["Pending HR Approval", pending.length, "#b42318", () => setReqOpen(true)]] : []),
               ].map(([l, v, c, onClick]) => (
                 <div
                   className={"dg-met" + (onClick ? " click" : "")}
@@ -1721,8 +1713,8 @@ export default function DelegationScreen({
           </div>
         </div>
 
-        {/* ------------------------------ side */}
-        <div className={"dg-side" + (reqOpen ? " open" : "")}>
+        {/* HR approval panel only. Tech-Ed assignments are direct saves now. */}
+        {isHR && <div className={"dg-side" + (reqOpen ? " open" : "")}>
           {reqOpen ? (
             <div className="dg-panel">
               <div className="ph">
@@ -1892,7 +1884,8 @@ export default function DelegationScreen({
               </button>
             </div>
           )}
-        </div>
+        </div>}
+
       </div>
 
       {/* ------------------------------ modals */}
