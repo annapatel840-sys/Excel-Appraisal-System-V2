@@ -58,7 +58,7 @@ function generateAuthTokenWithTimeout(auth) {
 }
 
 // Catalyst applies a shared COMPONENT concurrency limit across functions.
- // A screen mount can request the roster, cycles, budget, feedback and audit at
+// A screen mount can request the roster, cycles, budget, feedback and audit at
  // once. Keep browser-originated function calls bounded so those independent
  // providers do not overwhelm Catalyst during initial load.
 const MAX_CATALYST_REQUESTS = 3;
@@ -70,14 +70,17 @@ async function acquireCatalystSlot() {
     activeCatalystRequests += 1;
     return;
   }
+  // A queued caller inherits the slot released by the previous request.
   await new Promise((resolve) => catalystRequestQueue.push(resolve));
-  activeCatalystRequests += 1;
 }
 
 function releaseCatalystSlot() {
-  activeCatalystRequests = Math.max(0, activeCatalystRequests - 1);
   const next = catalystRequestQueue.shift();
-  if (next) next();
+  if (next) {
+    next();
+    return;
+  }
+  activeCatalystRequests = Math.max(0, activeCatalystRequests - 1);
 }
 
 function retryDelay(response, attempt) {
