@@ -246,10 +246,15 @@ function requirePayrollAccess(a, resource, method) {
     return;
   }
   if (resource === "generate-sheet" && method === "POST") {
-    // Generation is launched from Delegation by HR and Tech-Ed. Use the
-    // Delegation edit permission itself, not an exact role-key comparison or
-    // Cycle Master permission (role overrides can change the role key).
-    access.requireScreen(a, "delegation", "edit");
+    // HR / Tech-Ed may generate from Delegation. Some existing Tech-Ed role
+    // configurations grant Appraisal Sheet edit but leave Delegation at view;
+    // either explicit edit grant is sufficient for this operation.
+    const canGenerate =
+      a && a.screens &&
+      (a.screens.delegation === "edit" || a.screens.appraisalSheet === "edit");
+    if (!canGenerate) {
+      throw new access.HttpError(403, "You need Delegation or Appraisal Sheet edit access to generate the Appraisal Sheet.");
+    }
     return;
   }
   // import: the Upload screen's Payroll / Review and Feedback upload.
