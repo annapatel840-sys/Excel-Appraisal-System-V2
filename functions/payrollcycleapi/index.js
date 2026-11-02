@@ -2670,13 +2670,17 @@ function shapeFeedbackBatches(auditRows) {
     .sort((a, b) => String(b.at).localeCompare(String(a.at)));
 }
 
-async function getFeedbackData(tables, query) {
-  const [feedbackRows, masterRows, cycleRows, auditRows] = await Promise.all([
-    getAllRows(tables.feedback),
-    getAllRows(tables.employeeMaster),
-    getAllRows(tables.cycles),
-    getAllRows(tables.audit),
-  ]);
+async function getFeedbackData(tables, query, includeBatches = true) {
+  // Keep Data Store reads sequential. Running several getPagedRows calls at
+  // once can hit Catalyst's COMPONENT concurrency limit during app startup.
+  const feedbackRows = await getAllRows(tables.feedback);
+  const cycleRows = await getAllRows(tables.cycles);
+
+  // An empty Feedback_And_Rating table needs no employee lookup at all.
+  const masterRows = feedbackRows.length
+    ? await getAllRows(tables.employeeMaster)
+    : [];
+
   const masterByRowId = new Map();
   const masterByEmpId = new Map();
   masterRows.forEach((row) => {
@@ -2690,6 +2694,10 @@ async function getFeedbackData(tables, query) {
   const rows = feedbackRows
     .map((row) => shapeFeedbackRow(row, masterByRowId, masterByEmpId, cycleById))
     .filter((row) => row.cid && (!onlyCycle || row.cid === onlyCycle));
+
+  // Upload-batch history is only returned to HR/global-scope users.
+  // Team-scoped Appraisal Sheet / Detailed Screen reads do not need Audit rows.
+  const auditRows = includeBatches ? await getAllRows(tables.audit) : [];
   const batches = shapeFeedbackBatches(auditRows).filter((b) => !onlyCycle || b.cid === onlyCycle);
   return { cycles, rows, batches };
 }
@@ -2884,7 +2892,7 @@ async function routeRequest(req, res, identity, resource, a) {
   }
 
   if (resource === "feedback" && req.method === "GET") {
-    const data = await getFeedbackData(tables, query);
+    const data = await getFeedbackData(tables, query, Boolean(a && a.scope && a.scope.all));
     // HR (scope.all) gets everything. Any other login (Tech ED / Comp Manager) only
     // gets the feedback of the employees in their own team, and no upload-batch
     // history (that belongs to the HR-only Feedback & Rating Master screen).
