@@ -33,7 +33,6 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
 import { useNotices } from "@/lib/notices";
 import { buildFeedbackEntries, cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
-import { DetailMetricsTab } from "./DetailMetricsTab";
 
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#12304f";
@@ -1049,6 +1048,8 @@ export function DetailScreenPage({
 
   // Layout-only state (no effect on data)
   const { notices: liveNotices, dismissAll: dismissLiveNotices } = useNotices();
+  const [metricsOpen, setMetricsOpen] = useState(false);
+
   const [cardOpen, setCardOpen] = useState(true);
   const [feedbackWidth, setFeedbackWidth] = useState(320);
   const [fbTab, setFbTab] = useState("manager");
@@ -1457,8 +1458,9 @@ export function DetailScreenPage({
 
   const cols = [
     "minmax(0,2.25fr)",
+    metricsOpen && "minmax(150px,0.6fr)",
     cardOpen && `minmax(240px, ${feedbackWidth}px)`,
-    !cardOpen && "30px",
+    (!metricsOpen || !cardOpen) && "30px",
   ]
     .filter(Boolean)
     .join(" ");
@@ -1478,6 +1480,30 @@ export function DetailScreenPage({
   const targetPBCurrent =
     employee?.currentTargetPB ??
     baselineRef.current[employee?.id]?.targetPBNextYear;
+
+  /* ---- Metrics numbers ---------------------------------------------- */
+  const metrics = employee
+    ? [
+        [
+          "Hike %",
+          baseNow ? signedPct(((liveBase - baseNow) / baseNow) * 100) : "—",
+        ],
+        [
+          "Total CTC vs last cycle",
+          ctcCompare?.lastCtc ? signedPct(ctcCompare.pct) : "—",
+        ],
+        ["Total CTC", inr(liveCtc)],
+        [
+          "PB share of CTC",
+          liveCtc ? `${((livePB / liveCtc) * 100).toFixed(1)}%` : "—",
+        ],
+        [
+          "RB share of CTC",
+          liveCtc ? `${((liveRB / liveCtc) * 100).toFixed(1)}%` : "—",
+        ],
+        ["Total bonus", inr(liveHist?.bonus || 0)],
+      ]
+    : [];
 
   /* ---- Feedback timeline -------------------------------------------- */
   const timeline = employee
@@ -2134,6 +2160,52 @@ export function DetailScreenPage({
               </div>
             </section>
 
+            {/* METRICS */}
+            {metricsOpen && (
+            <aside className="ds-side" aria-label="Metrics">
+              <div className="ds-card">
+                {metricsOpen ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setMetricsOpen(false)}
+                      className="shrink-0 border-b px-3 py-2 text-left text-[12px] font-bold"
+                      style={{
+                        borderColor: LINE,
+                        color: INK,
+                        background: "#fff",
+                      }}
+                    >
+                      Metrics ‹
+                    </button>
+                    <div className="ds-scroll flex-1 p-3">
+                      {metrics.map(([k, v]) => (
+                        <div
+                          key={k}
+                          className="mb-2.5 rounded border px-2.5 py-2"
+                          style={{ borderColor: LINE, background: SOFT }}
+                        >
+                          <div
+                            className="text-[10.5px]"
+                            style={{ color: MUTED }}
+                          >
+                            {k}
+                          </div>
+                          <div
+                            className="text-[14px] font-extrabold"
+                            style={{ color: INK }}
+                          >
+                            {v}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
+              </div>
+            </aside>
+            )}
+
             {/* FEEDBACK */}
             {cardOpen && (
             <aside className="ds-side" aria-label="Feedback">
@@ -2202,7 +2274,6 @@ export function DetailScreenPage({
                         ["manager", "Manager"],
                         ["client", "Client"],
                         ["other", "Other"],
-                        ["metrics", "Metrics"],
                       ].map(([k, l]) => (
                         <button
                           key={k}
@@ -2226,21 +2297,7 @@ export function DetailScreenPage({
                     </div>
 
                     <div className="ds-scroll flex-1 px-4 pb-3">
-                      {fbTab === "metrics" ? (
-                        <DetailMetricsTab
-                          employee={employee}
-                          rows={rows}
-                          history={priorCycles}
-                          historyLoading={!!historyState?.loading}
-                          feedbackItems={feedbackData.items}
-                          currentCycleName={currentCycleName}
-                          live={{
-                            hikePct: baseNow ? ((liveBase - baseNow) / baseNow) * 100 : null,
-                            pb: livePB,
-                            rb: liveRB,
-                          }}
-                        />
-                      ) : feedbackEntries.length ? (
+                      {feedbackEntries.length ? (
                         <>
                           {feedbackEntries.map((t) => (
                             <div key={t.key} className="mb-3 flex gap-2.5">
@@ -2390,16 +2447,28 @@ export function DetailScreenPage({
             )}
 
             {/* Closed panels: dark tabs on the right edge, like Bulk Edit */}
-            {!cardOpen && (
+            {(!metricsOpen || !cardOpen) && (
               <aside className="ds-rail" aria-label="Side panels">
-                <button
-                  type="button"
-                  className="ds-tab"
-                  onClick={() => setCardOpen(true)}
-                  aria-label="Open feedback"
-                >
-                  Feedback ‹
-                </button>
+                {!metricsOpen && (
+                  <button
+                    type="button"
+                    className="ds-tab"
+                    onClick={() => setMetricsOpen(true)}
+                    aria-label="Open metrics"
+                  >
+                    Metrics ›
+                  </button>
+                )}
+                {!cardOpen && (
+                  <button
+                    type="button"
+                    className="ds-tab"
+                    onClick={() => setCardOpen(true)}
+                    aria-label="Open feedback"
+                  >
+                    Feedback ‹
+                  </button>
+                )}
               </aside>
             )}
           </div>
