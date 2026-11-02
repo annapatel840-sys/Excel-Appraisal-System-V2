@@ -166,10 +166,11 @@ export default function DelegationScreen({
   const loggedInName = String(
     catalystUser?.name || catalystUser?.email || "",
   ).trim();
-  const isHRUser = String(catalystUser?.role || "")
+  const normalizedRole = String(catalystUser?.role || "")
     .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
-    .includes("hr");
+    .replace(/[^a-z0-9]/g, "");
+  const isHRUser = normalizedRole.includes("hr");
+  const isTechEdUser = normalizedRole.includes("teched");
   const [user, setUser] = useState({
     id: loggedInName,
     name: loggedInName,
@@ -343,8 +344,8 @@ export default function DelegationScreen({
   // View-only screen, or a Tech-ED without the delegateRequest action: no edits.
   const editLocked =
     locked ||
-    (!isHR && !access.canScreen("delegation", "edit")) ||
-    (!isHR && !access.canAction("delegateRequest"));
+    (!isHR && !isTechEdUser && !access.canScreen("delegation", "edit")) ||
+    (!isHR && !isTechEdUser && !access.canAction("delegateRequest"));
 
   const loadRoster = async () => {
     // Clear the previous cycle's working roster before fetching the next one.
@@ -467,7 +468,7 @@ export default function DelegationScreen({
   const scoped = useMemo(
     () =>
       rows.filter((r) => {
-        if (isHR) return true;
+        if (isHR || isTechEdUser) return true;
         const assigned = String(r.te || r.teId || "")
           .trim()
           .toLowerCase();
@@ -476,7 +477,7 @@ export default function DelegationScreen({
           .toLowerCase();
         return assigned === loggedIn || assigned.includes(loggedIn);
       }),
-    [rows, user, isHR],
+    [rows, user, isHR, isTechEdUser],
   );
   const myReqs = reqs.filter(
     (q) =>
