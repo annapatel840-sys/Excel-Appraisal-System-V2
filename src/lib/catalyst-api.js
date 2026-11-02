@@ -61,7 +61,7 @@ function generateAuthTokenWithTimeout(auth) {
 // A screen mount can request the roster, cycles, budget, feedback and audit at
  // once. Keep browser-originated function calls bounded so those independent
  // providers do not overwhelm Catalyst during initial load.
-const MAX_CATALYST_REQUESTS = 3;
+const MAX_CATALYST_REQUESTS = 2;
 let activeCatalystRequests = 0;
 const catalystRequestQueue = [];
 
