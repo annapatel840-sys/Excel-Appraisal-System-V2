@@ -2504,11 +2504,13 @@ export function EmployeeMaster() {
             TABS
             ====================================================== */}
 
-        <HrOperationsNav
-          activeTab={activeTab}
-          isTabVisible={isTabVisible}
-          onSelect={goToTab}
-        />
+        {!isTechEd && (
+          <HrOperationsNav
+            activeTab={activeTab}
+            isTabVisible={isTabVisible}
+            onSelect={goToTab}
+          />
+        )}
 
         {/* ======================================================
             BANNER
