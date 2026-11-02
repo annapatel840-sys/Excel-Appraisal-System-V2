@@ -636,6 +636,9 @@ export function EmployeeMaster() {
       return access.canScreen(HR_TAB_SCREENS[tab] || "employeeMaster");
     }
     if (tab === "location-master") return isRoleHR;
+    // Without a loaded access matrix, Tech-Ed must still see only Delegation
+    // inside Employee Master—not the roster or eligibility tabs.
+    if (isTechEd) return tab === "delegation";
     if (tab === "roster" || tab === "eligibility") return true;
     if (tab === "payroll-data") return canViewPayroll;
     if (tab === "payroll-upload") return canUploadPayroll;
