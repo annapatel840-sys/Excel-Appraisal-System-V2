@@ -621,6 +621,10 @@ export function EmployeeMaster() {
   // Which HR Operations tabs to show: access rules when /me answered,
   // otherwise the role-based rules used before access control.
   const isTabVisible = (tab) => {
+    // Tech-Ed may open the existing Delegation screen without exposing the
+    // other HR Operations tabs. DelegationScreen still applies action-level
+    // permissions and routes Tech-Ed changes through HR approval.
+    if (tab === "delegation" && isTechEd) return true;
     // Historical Import is for the HR role only; access rules cannot open it
     // to other roles.
     if (tab === "historical-import") return isRoleHR;
@@ -684,7 +688,7 @@ export function EmployeeMaster() {
       ? "roster"
       : [...allowedTabs][0];
   const [activeTab, setActiveTab] = useState(
-    isTechEd && !access.ok
+    isTechEd && !access.ok && initialTab !== "delegation"
       ? "roster"
       : allowedTabs.has(initialTab)
         ? initialTab
@@ -779,7 +783,7 @@ export function EmployeeMaster() {
     const onPopState = () => {
       const tab = new URLSearchParams(window.location.search).get("tab");
 
-      if (isTechEd && !access.ok) {
+      if (isTechEd && !access.ok && tab !== "delegation") {
         setActiveTab("roster");
         return;
       }
