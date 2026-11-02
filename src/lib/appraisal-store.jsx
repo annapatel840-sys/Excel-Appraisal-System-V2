@@ -1397,29 +1397,10 @@ export function AppraisalProvider({ children }) {
           return mergeAuditEntries(currentCycleAudit(records), currentCycleAudit(previous));
         });
       } catch (err) {
-        console.error("Initial audit history load failed:", err);
-
-        if (!cancelled) {
-          setTimeout(async () => {
-            if (cancelled) {
-              return;
-            }
-
-            try {
-              const retryRecords = await fetchAuditHistoryFromCatalyst();
-
-              if (cancelled) {
-                return;
-              }
-
-              setAudit((previous) => {
-                return mergeAuditEntries(currentCycleAudit(retryRecords), currentCycleAudit(previous));
-              });
-            } catch (retryError) {
-              console.error("Audit history retry failed:", retryError);
-            }
-          }, 1000);
-        }
+        // Audit history is supplementary; keep the local audit trail and do
+        // not immediately issue a second full-history request after a 429.
+        // catalystFetch already applies bounded backoff to transient GETs.
+        console.warn("Audit history is temporarily unavailable:", err);
       }
     };
 
