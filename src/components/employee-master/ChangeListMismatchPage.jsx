@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Download, History, Menu, Search } from "lucide-react";
 
 import { ClientPager, DataGrid, useGridState, useGridView } from "./DataGrid";
@@ -121,6 +121,7 @@ export function ChangeListMismatchPage({
   eligibilityEmployees = [], // Eligibility List of the cycle
   canEdit = true,
   onNavigate,
+  onRefresh, // async () => reloads Employee Master + Eligibility List in the parent
 }) {
   const cycleName = useCurrentCycleName();
   const user = useCatalystUser();
@@ -146,6 +147,12 @@ export function ChangeListMismatchPage({
   useEffect(() => {
     setDecisions(readStore(decKey, {}));
     setAudit(readStore(audKey, []));
+    const onStorage = (event) => {
+      if (event.key === decKey) setDecisions(readStore(decKey, {}));
+      if (event.key === audKey) setAudit(readStore(audKey, []));
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, [decKey, audKey]);
 
   /* ---------- existing payroll + cycles reads (same calls Payroll Master makes) ---------- */
@@ -155,31 +162,83 @@ export function ChangeListMismatchPage({
     rows: [],
     cycles: [],
   });
-  useEffect(() => {
-    let active = true;
-    Promise.all([payrollCycleRequest("payroll"), payrollCycleRequest("cycles")])
-      .then(([rows, cycles]) => {
-        if (!active) return;
-        setPayroll({
-          loading: false,
-          error: "",
-          rows: Array.isArray(rows) ? rows : [],
-          cycles: Array.isArray(cycles) ? cycles : [],
-        });
-      })
-      .catch((error) => {
-        if (active)
-          setPayroll({
-            loading: false,
-            error: error?.message || "Could not load payroll data.",
-            rows: [],
-            cycles: [],
-          });
+  const aliveRef = useRef(true);
+  const loadPayroll = useCallback(async () => {
+    try {
+      const [rows, cycles] = await Promise.all([
+        payrollCycleRequest("payroll"),
+        payrollCycleRequest("cycles"),
+      ]);
+      if (!aliveRef.current) return;
+      setPayroll({
+        loading: false,
+        error: "",
+        rows: Array.isArray(rows) ? rows : [],
+        cycles: Array.isArray(cycles) ? cycles : [],
       });
-    return () => {
-      active = false;
-    };
+    } catch (error) {
+      if (!aliveRef.current) return;
+      // A failed background refresh keeps what is already on screen.
+      setPayroll((cur) =>
+        cur.loading
+          ? { ...cur, loading: false, error: error?.message || "Could not load payroll data." }
+          : cur,
+      );
+    }
   }, []);
+
+  /* ---------- keep everything current without a page refresh ----------
+     Re-reads payroll, cycles, Employee Master and the Eligibility List
+     (a) when this screen opens, (b) when another screen reports a save
+     (payroll upload, cycle change, feedback upload, budget change) and
+     (c) when the browser tab is used again. Background reads do not blank
+     the table; at most one runs at a time, and tab-focus reads are spaced
+     30 seconds apart. */
+  const onRefreshRef = useRef(onRefresh);
+  onRefreshRef.current = onRefresh;
+  const busyRef = useRef(false);
+  const lastRunRef = useRef(0);
+  const reloadAll = useCallback(
+    async ({ force = false } = {}) => {
+      if (busyRef.current) return;
+      if (!force && Date.now() - lastRunRef.current < 30000) return;
+      busyRef.current = true;
+      try {
+        await Promise.all([
+          loadPayroll(),
+          Promise.resolve(onRefreshRef.current?.()).catch(() => {}),
+        ]);
+      } finally {
+        lastRunRef.current = Date.now();
+        busyRef.current = false;
+      }
+    },
+    [loadPayroll],
+  );
+
+  useEffect(() => {
+    aliveRef.current = true;
+    reloadAll({ force: true });
+    const onUpdate = () => reloadAll({ force: true });
+    const onVisible = () => {
+      if (document.visibilityState === "visible") reloadAll();
+    };
+    const events = [
+      "appraisal:cycle-updated",
+      "appraisal:payroll-data-updated",
+      "appraisal:feedback-data-updated",
+      "appraisal:budget-data-updated",
+    ];
+    events.forEach((name) => window.addEventListener(name, onUpdate));
+    window.addEventListener("focus", onVisible);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      aliveRef.current = false;
+      events.forEach((name) => window.removeEventListener(name, onUpdate));
+      window.removeEventListener("focus", onVisible);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [reloadAll]);
 
   /* ---------- Change list rows ---------- */
   const changeBase = useMemo(() => {

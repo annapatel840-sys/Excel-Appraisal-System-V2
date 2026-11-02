@@ -2344,6 +2344,24 @@ export function EmployeeMaster() {
     setEligibilityCriteriaApplied(Boolean(reloaded?.cycle?.criteriaApplied));
   };
 
+  // Used by Change List & Mismatch to stay current without a page refresh:
+  // quietly re-reads the Eligibility List and the full Employee Master.
+  const refreshChangeListData = async () => {
+    if (!eligibilityCycleId || eligibilityLoading) return;
+    const [reloaded, masters] = await Promise.all([
+      fetchEligibilityEmployees({
+        page: 1,
+        limit: 100000,
+        search: "",
+        cycleId: eligibilityCycleId,
+      }),
+      fetchAllEmployeeMasterEmployees(),
+    ]);
+    setEligibilityEmployees(Array.isArray(reloaded?.data) ? reloaded.data : []);
+    setEligibilityCriteriaApplied(Boolean(reloaded?.cycle?.criteriaApplied));
+    setEligibilityMasterEmployees(Array.isArray(masters) ? masters : []);
+  };
+
   const editRegenerateEligibility = () => {
     if (!canEditEmployees || !eligibilityCycleId) return;
     setEligibilityResetConfirm(true);
@@ -2813,6 +2831,7 @@ export function EmployeeMaster() {
               eligibilityEmployees={eligibilityEmployees}
               canEdit={canEditEmployees}
               onNavigate={goToTab}
+              onRefresh={refreshChangeListData}
             />
           </div>
         )}
