@@ -101,6 +101,7 @@ const TYPING_POPUP_FIELDS = {
 const WIDTHS = {
   empId: 84,
   name: 190, // combined Employee column (id - name on top, designation below)
+  sourceOfHire: 130,
   designation: 150,
   reportingManager: 125,
   compManager: 125,
@@ -181,6 +182,7 @@ const DEFAULT_COLUMN_ORDER = (() => {
   );
   const order = [
     "name",
+    "sourceOfHire",
     "designation",
     ...head,
     ...(gross >= 0 ? AFTER_GROSS_MARGIN_ORDER : []),

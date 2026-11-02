@@ -1678,6 +1678,7 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
           row.work_location ||
           "",
       ),
+      source_of_hire: String(masterValue("source_of_hire") || row.source_of_hire || ""),
       wissen_experience: Number(
         masterValue("wissen_experience", "wissen_exp", "org_experience", "orgExp") || row.wissen_experience || 0,
       ),

@@ -301,6 +301,13 @@ export const COLUMNS = [
   },
   { key: "empId", label: "Emp ID", type: "text", editable: false, width: 90 },
   {
+    key: "sourceOfHire",
+    label: "Source of Hire",
+    type: "text",
+    editable: false,
+    width: 130,
+  },
+  {
     key: "compManager",
     label: "Comp. Manager",
     type: "text",

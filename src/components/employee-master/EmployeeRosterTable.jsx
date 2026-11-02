@@ -36,6 +36,7 @@ function getDesignation(employee) {
 function getValue(employee, key) {
   const raw = employee?.rawEmployee || {};
   const aliases = {
+    sourceOfHire: ["source_of_hire", "sourceOfHire"],
     type: ["emp_type", "employee_type", "employment_type", "type"],
     dept: ["department", "organization", "orgtn"],
     reportingManager: ["reporting_manager", "reportingManager", "manager"],
@@ -104,6 +105,7 @@ function cellText(employee, key) {
 
 /* ---------- column definitions (module level = stable) ---------- */
 const PLAIN = [
+  ["sourceOfHire", "Source of Hire", 130],
   ["type", "Emp Type", 100],
   ["dept", "Department", 140],
   ["reportingManager", "Reporting Manager", 150],
