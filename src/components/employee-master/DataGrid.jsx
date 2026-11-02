@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const OPS = [
   ["contains", "contains"],
@@ -206,6 +207,8 @@ export function DataGrid({
   allSelected = false, someSelected = false, canSelectRow,
   rowClass, actionHeader, renderAction,
   emptyText = "No rows match the current filters.",
+  fillWidth = false, // stretch columns to the full width of the grid area
+  actionWidth = 130,
 }) {
   const [menu, setMenu] = useState(null);
 
@@ -213,7 +216,7 @@ export function DataGrid({
     .map((d) => ({ d, c: grid.cols.find((x) => x.key === d.key) }))
     .filter((x) => x.c && x.c.vis);
 
-  const ACTION_W = 130;
+  const ACTION_W = actionWidth;
   const totalW = visible.reduce((s, x) => s + x.c.w, 0) + (actionHeader ? ACTION_W : 0);
   const colSpan = visible.length + (actionHeader ? 1 : 0);
 
@@ -235,7 +238,10 @@ export function DataGrid({
   return (
     <>
       <div className="emx-wrap">
-        <table className={"emx-table" + (grid.dens === "compact" ? " cmp" : "")} style={{ width: totalW }}>
+        <table
+          className={"emx-table" + (grid.dens === "compact" ? " cmp" : "")}
+          style={fillWidth ? { width: "100%", minWidth: totalW } : { width: totalW }}
+        >
           <colgroup>
             {visible.map(({ d, c }) => (
               <col key={d.key} style={{ width: c.w }} />
@@ -348,7 +354,18 @@ export function DataGrid({
   );
 }
 
-/* ---------- client-side pager (20 per page) ---------- */
+/* ---------- client-side pager (20 per page) ----------
+   Shows a sliding window of 5 page numbers with ‹ / › buttons
+   (same behaviour as the appraisal sheet). */
+const PAGER_WINDOW = 5;
+
+function pagerWindow(page, pages) {
+  const size = Math.min(pages, PAGER_WINDOW);
+  let first = page - Math.floor(PAGER_WINDOW / 2);
+  first = Math.max(1, Math.min(first, pages - size + 1));
+  return Array.from({ length: size }, (_, i) => first + i);
+}
+
 export function ClientPager({ page, pages, from, to, total, allTotal, onPage, grid }) {
   return (
     <div className="emx-pg">
@@ -365,13 +382,29 @@ export function ClientPager({ page, pages, from, to, total, allTotal, onPage, gr
       )}
 
       <span className="emx-pgs">
-        <button type="button" disabled={page <= 1} onClick={() => onPage(page - 1)}>‹</button>
-        {Array.from({ length: pages }, (_, i) => i + 1).map((p) => (
+        <button
+          type="button"
+          disabled={page <= 1}
+          onClick={() => onPage(page - 1)}
+          aria-label="Previous page"
+          title="Previous page"
+        >
+          <ChevronLeft size={14} />
+        </button>
+        {pagerWindow(page, pages).map((p) => (
           <button key={p} type="button" className={p === page ? "on" : ""} onClick={() => onPage(p)}>
             {p}
           </button>
         ))}
-        <button type="button" disabled={page >= pages} onClick={() => onPage(page + 1)}>›</button>
+        <button
+          type="button"
+          disabled={page >= pages}
+          onClick={() => onPage(page + 1)}
+          aria-label="Next page"
+          title="Next page"
+        >
+          <ChevronRight size={14} />
+        </button>
       </span>
     </div>
   );

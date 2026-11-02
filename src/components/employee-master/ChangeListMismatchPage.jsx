@@ -384,13 +384,6 @@ export function ChangeListMismatchPage({
   const allRows = isChg ? changeRows : mismatchRows;
   const openStatus = isChg ? "Pending" : "Open";
 
-  // Start each grid on its unresolved rows (same default as the design).
-  useEffect(() => {
-    chgGrid.setFilter("status", { sel: new Set(["Pending"]) });
-    misGrid.setFilter("status", { sel: new Set(["Open"]) });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const searchPre = useCallback(
     (r) => {
       const term = search.trim().toLowerCase();
@@ -500,11 +493,14 @@ export function ChangeListMismatchPage({
     detail: `${a.detail} — ${a.stamp}`,
   }));
 
+  // Nothing selected, or every selectable row selected -> export the whole
+  // current view. Some rows selected -> export only those.
   const exportView = () => {
+    const onlySelected = selectedRows.length > 0 && !allSelected;
     downloadCsv(
       `${isChg ? "Change_list" : "Mismatch"}_${text(cycleName) || "cycle"}.csv`,
       defs.map((d) => ({ label: d.label, get: d.get })),
-      view,
+      onlySelected ? selectedRows : view,
     );
   };
 
@@ -635,6 +631,9 @@ export function ChangeListMismatchPage({
                   }}
                 >
                   <Download size={14} /> Export to Excel
+                  {selectedRows.length > 0 && !allSelected
+                    ? ` (${selectedRows.length} selected)`
+                    : ""}
                 </button>
               </div>
             )}
@@ -645,14 +644,13 @@ export function ChangeListMismatchPage({
       {/* ================= TABLE + PANEL ================= */}
       <div className="emx-work">
         <div className="emx-main">
-          {canEdit && (
+          {canEdit && selectedRows.length > 0 && (
             <div className="emx-selbar">
               <b>{selectedRows.length} selected</b>
               {isChg && (
                 <button
                   type="button"
                   className="emx-mini good"
-                  disabled={!selectedRows.length}
                   onClick={() => resolve(selectedRows.map((r) => r.id), "Accepted", "")}
                 >
                   Accept selected
@@ -661,16 +659,13 @@ export function ChangeListMismatchPage({
               <button
                 type="button"
                 className="emx-mini"
-                disabled={!selectedRows.length}
                 onClick={() => askIgnore(selectedRows.map((r) => r.id))}
               >
                 Ignore selected
               </button>
-              {selectedRows.length > 0 && (
-                <button type="button" className="emx-mini" onClick={() => setSel(new Set())}>
-                  Clear selection
-                </button>
-              )}
+              <button type="button" className="emx-mini" onClick={() => setSel(new Set())}>
+                Clear selection
+              </button>
             </div>
           )}
 
@@ -740,6 +735,8 @@ export function ChangeListMismatchPage({
             canSelectRow={isOpen}
             rowClass={(r) => (r.status === "Ignored" ? "emx-dim" : "")}
             actionHeader="Action"
+            fillWidth
+            actionWidth={isChg ? 170 : 220}
             renderAction={(r) => {
               if (r.status === "Ignored") return r.remark || "Ignored";
               if (r.status === "Accepted") return "Accepted";
