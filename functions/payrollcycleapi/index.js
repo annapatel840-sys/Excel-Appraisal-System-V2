@@ -241,8 +241,13 @@ function requirePayrollAccess(a, resource, method) {
     access.requireScreen(a, "employeeMaster", "view");
     return;
   }
-  if (["eligibility", "generate-sheet"].includes(resource) && method === "POST") {
-    access.requireScreen(a, resource === "eligibility" ? "employeeMaster" : "cycleMaster", "edit");
+  if (resource === "eligibility" && method === "POST") {
+    access.requireScreen(a, "employeeMaster", "edit");
+    return;
+  }
+  if (resource === "generate-sheet" && method === "POST") {
+    if (a.role === "techEd") access.requireScreen(a, "delegation", "edit");
+    else access.requireScreen(a, "cycleMaster", "edit");
     return;
   }
   // import: the Upload screen's Payroll / Review and Feedback upload.
@@ -1389,12 +1394,13 @@ async function generateAppraisalSheet(tables, cycle, actor) {
   if (!eligibleRows.length) {
     throw new ApiError("No eligible active employees were found for this cycle. Check the Eligibility List and criteria.", 409);
   }
-  const [sheetRows, employeeMasterRows, payrollRows, feedbackRows, allCycles] = await Promise.all([
+  const [sheetRows, employeeMasterRows, payrollRows, feedbackRows, allCycles, delegationRows] = await Promise.all([
     getAllRows(tables.employees),
     getAllRows(tables.employeeMaster),
     getAllRows(tables.payroll),
     getAllRows(tables.feedback),
     getAllRows(tables.cycles),
+    getAllRows(tables.delegation),
   ]);
   const cycleKeys = new Set(
     [cycle.id, cycle.name]
@@ -1616,6 +1622,15 @@ async function generateAppraisalSheet(tables, cycle, actor) {
       feedbackByEmpId.set(empId, row);
     }
   });
+  // Saved Delegation values are applied only inside this explicit generation flow.
+  const delegationByEmployee = new Map();
+  delegationRows
+    .filter((row) => String(row.cycle_id || "") === String(cycle.id))
+    .forEach((row) => {
+      const key = String(row.emp_id || "").trim();
+      if (key) delegationByEmployee.set(key, row);
+    });
+
   const byKey = new Map();
   sheetRows.forEach((row) => {
     const rowCycle = String(row.cycle_id || "");
@@ -1661,6 +1676,9 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     const masterId = String(employee.employeeMasterRowId || "");
     const empId = String(employee.empId || "").trim();
     const existing = byKey.get(`master:${masterId}`) || byKey.get(`emp:${empId.toLowerCase()}`);
+    const savedDelegation = delegationByEmployee.get(masterId) || delegationByEmployee.get(empId);
+    const delegatedAppraiser = String(savedDelegation?.appraiser_tech_ed || "").trim();
+    const delegatedCompManager = String(savedDelegation?.comp_manager || "").trim();
     const payload = {
       ...(existing ? { ROWID: rowId(existing) } : {}),
       emp_id: empId,
@@ -1799,7 +1817,7 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     // Appraisal_Sheet.appraiser_tech_ed is a bigint lookup/reference, not a display name.
     // Resolve imported names/employee IDs to the matching Employee_Master ROWID.
     const appraiserReference = resolveEmployeeReference(
-      employee.appraiser_tech_ed,
+      delegatedAppraiser || employee.appraiser_tech_ed,
       employeeMasterRows,
     );
     if (
@@ -1819,13 +1837,14 @@ async function generateAppraisalSheet(tables, cycle, actor) {
           "compensation_manager",
         ) ?? "").trim()
       : "";
-    const compManagerText = String(employee.comp_manager ?? "").trim() ||
+    const compManagerText = delegatedCompManager ||
+      String(employee.comp_manager ?? "").trim() ||
       previousPayrollCompManager ||
       String(employee.appraiser_tech_ed ?? "").trim();
     if (
       compManagerText &&
       !/^\d+$/.test(compManagerText) &&
-      (!existing || !String(existing.comp_manager || "").trim()) &&
+      (delegatedCompManager || !existing || !String(existing.comp_manager || "").trim()) &&
       (!appraisalSheetColumns || appraisalSheetColumns.has("comp_manager"))
     ) payload.comp_manager = compManagerText.slice(0, 30);
     if (existing) {
