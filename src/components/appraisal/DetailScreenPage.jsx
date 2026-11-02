@@ -739,11 +739,14 @@ function EditInput({
         if (/[^0-9.,]/.test(t)) e.preventDefault();
       }}
       onBlur={(e) => {
+        // An emptied field (or a lone "." / ",") becomes 0 instead of
+        // staying blank, so nothing downstream ever sees an empty value.
+        let committed = e.target.value;
+        if (parseAmount(committed) === "") committed = "0";
         if (!controlled) {
-          const n = parseAmount(e.target.value);
-          e.target.value = fmtOrBlank(n);
+          e.target.value = fmtOrBlank(parseAmount(committed));
         }
-        if (onCommit) onCommit(e.target.value);
+        if (onCommit) onCommit(committed);
       }}
       onKeyDown={(e) => {
         if (e.key === "Enter") e.currentTarget.blur();
