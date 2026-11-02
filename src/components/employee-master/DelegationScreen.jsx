@@ -1214,7 +1214,9 @@ export default function DelegationScreen({
         throw new Error(payload.error || payload.message || "Unable to save Delegation changes.");
       }
       setStagedChanges({});
-      await loadRoster();
+      // The grid already reflects these staged assignments. Do not refetch the
+      // full employeesapi roster after Save; Generate Appraisal Sheet is the
+      // explicit next operation that applies the saved Delegation values.
       say("Saved " + changes.length + " delegation change(s) to Delegation for " + displayCycleName + ". Generate the Appraisal Sheet to apply them there.");
     } catch (error) {
       say(error?.message || "Unable to save Delegation.", true);
