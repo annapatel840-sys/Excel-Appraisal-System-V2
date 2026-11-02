@@ -1506,52 +1506,129 @@ app.post(
     const ap = apps(req);
     const me = await A.check(ap.user, ap.admin);
     if (me.denied) throw me.denied;
-    if (!["hr", "techEd"].includes(me.role)) throw new HttpError(403, "Only HR Admin or Tech-Ed can save Delegation assignments.");
+    if (!["hr", "techEd"].includes(me.role)) {
+      throw new HttpError(403, "Only HR Admin or Tech-Ed can save Delegation assignments.");
+    }
+
     const body = req.body || {};
     const cycleId = String(body.cycleId || "").trim();
-    const empId = String(body.empId || "").trim();
-    const field = String(body.field || "").trim().toLowerCase();
-    const assignment = String(body.assignment || "").trim();
-    if (!cycleId || !empId || !["comp", "app"].includes(field) || !assignment) throw new HttpError(422, "Cycle, employee, assignment field, and new assignment are required.");
-    if (!/^\d{1,30}$/.test(cycleId)) throw new HttpError(422, "Invalid cycle id.");
-    if (me.role !== "hr" && !A.inScope(me, empId)) throw new HttpError(403, "You do not have access to employee " + empId + ".");
+    const changes = Array.isArray(body.changes)
+      ? body.changes
+      : [{ empId: body.empId, field: body.field, assignment: body.assignment, reason: body.reason }];
+    if (!cycleId || !/^\d{1,30}$/.test(cycleId)) {
+      throw new HttpError(422, "A valid appraisal cycle is required.");
+    }
+    if (!changes.length || changes.length > 1000) {
+      throw new HttpError(422, "Provide between 1 and 1000 Delegation changes.");
+    }
+
+    const normalizedChanges = changes.map((change, index) => {
+      const empId = String(change?.empId || "").trim();
+      const field = String(change?.field || "").trim().toLowerCase();
+      const assignment = String(change?.assignment || "").trim();
+      if (!empId || !["comp", "app"].includes(field) || !assignment) {
+        throw new HttpError(422, "Change " + (index + 1) + " needs an employee, assignment field, and new assignment.");
+      }
+      if (me.role !== "hr" && !A.inScope(me, empId)) {
+        throw new HttpError(403, "You do not have access to employee " + empId + ".");
+      }
+      return { empId, field, assignment };
+    });
+
     const zcql = ap.admin.zcql();
     const d = SETTINGS.delegation;
     const e = SETTINGS.employeeMaster;
+    // Read each source table once for the whole Save operation. Previously the
+    // browser called this endpoint once per changed cell, repeating three full
+    // table scans for every employee and exhausting the shared COMPONENT limit.
     const [masters, delegationRows, cycles] = await Promise.all([
       selectAll(zcql, e.table),
       selectAll(zcql, d.table, d.cycleColumn + " = '" + q(cycleId) + "'"),
       selectAll(zcql, SETTINGS.cycle.table, SETTINGS.cycle.idColumn + " = " + cycleId),
     ]);
-    if (!cycles.length || String(cycles[0][SETTINGS.cycle.statusColumn] || "").toLowerCase() !== "active") throw new HttpError(409, "Delegation can be saved only for the Active appraisal cycle.");
-    const master = masters.find((row) => String(row[e.empId] || "").trim().toLowerCase() === empId.toLowerCase());
-    if (!master) throw new HttpError(404, "Employee " + empId + " was not found in Employee Master.");
-    const masterRowId = String(master.ROWID || master.rowid || "").trim();
-    const existing = delegationRows.find((row) => String(row[d.empId] || "").trim() === masterRowId || String(row[d.empId] || "").trim().toLowerCase() === empId.toLowerCase());
-    const assignmentParts = assignment.match(/^\s*(.*?)\s+-\s+(.*?)\s*$/);
-    const selectedEmpId = assignmentParts ? assignmentParts[1].trim() : assignment;
-    const selectedMaster = masters.find((row) => String(row[e.empId] || "").trim().toLowerCase() === selectedEmpId.toLowerCase());
-    if (!selectedMaster) throw new HttpError(422, "Selected assignment could not be matched to Employee Master.");
-    const patch = {
-      cycle_id: cycleId,
-      emp_id: masterRowId,
-      status: "Active",
-      updated_by: me.user.email || me.user.name || "",
-      updated_at: nowDT(),
-      [field === "comp" ? d.compManagerId : d.appraiserTechEdId]: assignment,
-    };
-    const table = ap.admin.datastore().table(DELEGATION_DATA_TABLE_ID);
-    if (existing) await A.whenNotBusy(() => table.updateRow({ ROWID: String(existing.ROWID || existing.rowid), ...patch }));
-    else {
-      patch.previous_comp_manager = "";
-      patch.previous_appraiser_tech_ed = "";
-      await A.whenNotBusy(() => table.insertRow(patch));
+    if (!cycles.length || String(cycles[0][SETTINGS.cycle.statusColumn] || "").toLowerCase() !== "active") {
+      throw new HttpError(409, "Delegation can be saved only for the Active appraisal cycle.");
     }
-    // No Employee_Master or Appraisal_Sheet writes occur on Save.
-    // The explicit Generate Appraisal Sheet action applies these saved values.
-    try { await A.bumpVersion(ap.admin, me.user.email || "", "Delegation saved for " + empId); }
-    catch (error) { console.error("Delegation saved; access version refresh failed:", error); }
-    send(res, { cycleId, empId, field, assignment, savedTo: "Delegation" });
+
+    const masterByEmployeeId = new Map(
+      masters.map((row) => [String(row[e.empId] || "").trim().toLowerCase(), row]).filter(([id]) => id),
+    );
+    const selectedEmployeeId = (assignment) => {
+      const parts = assignment.match(/^\s*(.*?)\s+-\s+(.*?)\s*$/);
+      return (parts ? parts[1] : assignment).trim().toLowerCase();
+    };
+    const selectedIds = new Set(normalizedChanges.map((change) => selectedEmployeeId(change.assignment)));
+    for (const id of selectedIds) {
+      if (!masterByEmployeeId.has(id)) {
+        throw new HttpError(422, "Selected assignment " + id + " could not be matched to Employee Master.");
+      }
+    }
+
+    const existingByMasterId = new Map();
+    const existingByEmployeeId = new Map();
+    delegationRows.forEach((row) => {
+      const id = String(row[d.empId] || "").trim();
+      if (!id) return;
+      if (!existingByMasterId.has(id)) existingByMasterId.set(id, row);
+      if (!existingByEmployeeId.has(id.toLowerCase())) existingByEmployeeId.set(id.toLowerCase(), row);
+    });
+
+    const patchByEmployee = new Map();
+    for (const change of normalizedChanges) {
+      const master = masterByEmployeeId.get(change.empId.toLowerCase());
+      if (!master) throw new HttpError(404, "Employee " + change.empId + " was not found in Employee Master.");
+      const masterRowId = String(master.ROWID || master.rowid || "").trim();
+      if (!masterRowId) throw new HttpError(422, "Employee Master record for " + change.empId + " has no row ID.");
+      const key = masterRowId;
+      const existing = existingByMasterId.get(masterRowId) || existingByEmployeeId.get(change.empId.toLowerCase());
+      let entry = patchByEmployee.get(key);
+      if (!entry) {
+        const patch = {
+          cycle_id: cycleId,
+          emp_id: masterRowId,
+          status: "Active",
+          updated_by: me.user.email || me.user.name || "",
+          updated_at: nowDT(),
+        };
+        if (existing) patch.ROWID = String(existing.ROWID || existing.rowid || "");
+        else {
+          patch.previous_comp_manager = "";
+          patch.previous_appraiser_tech_ed = "";
+        }
+        entry = { existing: !!existing, patch };
+        patchByEmployee.set(key, entry);
+      }
+      entry.patch[change.field === "comp" ? d.compManagerId : d.appraiserTechEdId] = change.assignment;
+      existingByMasterId.set(masterRowId, entry.patch);
+    }
+
+    const updates = [];
+    const inserts = [];
+    for (const entry of patchByEmployee.values()) {
+      if (entry.existing) updates.push(entry.patch);
+      else inserts.push(entry.patch);
+    }
+    const table = ap.admin.datastore().table(DELEGATION_DATA_TABLE_ID);
+    for (let i = 0; i < updates.length; i += BATCH) {
+      await A.whenNotBusy(() => table.updateRows(updates.slice(i, i + BATCH)));
+    }
+    for (let i = 0; i < inserts.length; i += BATCH) {
+      await A.whenNotBusy(() => table.insertRows(inserts.slice(i, i + BATCH)));
+    }
+
+    try {
+      await A.bumpVersion(ap.admin, me.user.email || "", "Delegation saved for " + normalizedChanges.length + " assignment(s)");
+    } catch (error) {
+      console.error("Delegation saved; access version refresh failed:", error);
+    }
+    send(res, {
+      cycleId,
+      savedTo: "Delegation",
+      saved: normalizedChanges.length,
+      employeesUpdated: patchByEmployee.size,
+      inserted: inserts.length,
+      updated: updates.length,
+    });
   }),
 );
 app.post(
