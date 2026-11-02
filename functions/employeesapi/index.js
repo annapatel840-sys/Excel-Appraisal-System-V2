@@ -1545,6 +1545,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     "previous_appraisal_total_ctc_with_rewards",
   );
   const targetCriteriaColumn = liveColumn("target_PB_criteria", "target_pb_criteria");
+  const lookupUpdates = [];
   for (const employee of updatedEmployees) {
     const rowId = String(employee.ROWID ?? employee.rowid ?? "").trim();
     if (!rowId) continue;
@@ -1600,11 +1601,21 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
         existingPreviousCtc !== Math.round(Number(desiredPreviousCtc))) {
       update[previousCtcColumn] = Math.round(Number(desiredPreviousCtc));
     }
-    if (Object.keys(update).length === 1) continue;
+    if (Object.keys(update).length > 1) lookupUpdates.push(update);
+  }
+
+  // Batch writes to avoid one COMPONENT request per employee on every roster
+  // read. Small sequential batches limit contention with payroll/budget calls.
+  for (let offset = 0; offset < lookupUpdates.length; offset += 50) {
+    const batch = lookupUpdates.slice(offset, offset + 50);
     try {
-      await appraisalTable.updateRow(update);
+      await withDataStoreRetry(
+        () => appraisalTable.updateRows(batch),
+        "Appraisal_Sheet payroll-derived lookup batch",
+      );
     } catch (error) {
-      console.error("Could not persist payroll-derived appraisal lookup for row", rowId, error?.message || error);
+      console.error("Could not persist payroll-derived appraisal lookup batch:",
+        error?.message || error);
     }
   }
   return updatedEmployees;
