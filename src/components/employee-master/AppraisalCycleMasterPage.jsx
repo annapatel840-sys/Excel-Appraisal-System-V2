@@ -197,6 +197,7 @@ export function AppraisalCycleMasterPage({
   cycleStats = null,
   onGenerateSheet,
   defaultProcess = null,
+  selectedLocation = null,
 }) {
   const user = useCatalystUser();
   const access = useAccess();
@@ -277,6 +278,8 @@ export function AppraisalCycleMasterPage({
     start: "",
     end: "",
     remarks: "",
+    locationCode: selectedLocation?.code || "",
+    locationName: selectedLocation?.name || "",
   };
   const [newForm, setNewForm] = useState(blankNew);
   const [confirm, setConfirm] = useState(null); // { kind, cycle }
@@ -434,6 +437,7 @@ export function AppraisalCycleMasterPage({
     const s = q.toLowerCase();
     return cycles
       .filter((c) => c.type === type)
+      .filter((c) => String(c.locationCode || "").toLowerCase() === String(selectedLocation?.code || "").toLowerCase())
       .filter((c) => showHidden || !isHidden(c))
       .filter(
         (c) =>
@@ -447,7 +451,7 @@ export function AppraisalCycleMasterPage({
           (isOpenCycle(a) ? 0 : 1) - (isOpenCycle(b) ? 0 : 1) ||
           String(b.start || "").localeCompare(String(a.start || "")),
       );
-  }, [cycles, type, showHidden, q]);
+  }, [cycles, type, showHidden, q, selectedLocation?.code]);
 
   // keep a valid selection
   useEffect(() => {
@@ -805,6 +809,9 @@ export function AppraisalCycleMasterPage({
   const createCycle = async () => {
     const f = newForm;
     const name = newName(f);
+    if (!f.locationCode || !f.locationName) {
+      return setModalError("Select an active country/location in the Location selector before setting up a cycle.");
+    }
     if (!f.effective) {
       return setModalError("The effective date is required.");
     }
@@ -851,6 +858,8 @@ export function AppraisalCycleMasterPage({
         start: f.start,
         end: f.end,
         remarks: f.remarks.trim(),
+        locationCode: f.locationCode,
+        locationName: f.locationName,
         ...(f.past ? { past: true } : {}),
       },
       f.past ? "Past cycle created" : "Cycle created",
@@ -2020,7 +2029,7 @@ export function AppraisalCycleMasterPage({
                     disabled={saving}
                     onClick={() => {
                       setModalError("");
-                      setNewForm({ ...blankNew, type, process: DPROC[type] });
+                      setNewForm({ ...blankNew, type, process: DPROC[type], locationCode: selectedLocation?.code || "", locationName: selectedLocation?.name || "" });
                       setNewCycleOpen(true);
                     }}
                   >
@@ -2325,6 +2334,9 @@ export function AppraisalCycleMasterPage({
             </>
           }
         >
+          <div className="acx-hint" style={{ marginBottom: 12 }}>
+            Country / Location: <b>{selectedLocation?.name || "Not selected"}</b> ({selectedLocation?.code || "—"}). This cycle will belong to this country.
+          </div>
           <div className="acx-row2">
             <div>
               <label className="acx-fl">Cycle Type</label>
