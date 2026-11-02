@@ -47,6 +47,7 @@ import { HistoricalImportPage } from "@/components/employee-master/HistoricalImp
 import { FeedbackRatingMasterContainer } from "@/components/employee-master/FeedbackRatingMasterContainer";
 import { UploadPage } from "@/components/employee-master/UploadPage";
 import { TeamChangesPage } from "@/components/employee-master/TeamChangesPage";
+import { ChangeListMismatchPage } from "@/components/employee-master/ChangeListMismatchPage";
 import { BudgetMasterPage } from "@/components/employee-master/BudgetMasterPage";
 import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
 import DelegationScreen from "@/components/employee-master/DelegationScreen";
@@ -630,6 +631,8 @@ export function EmployeeMaster() {
     if (tab === "historical-import") return isRoleHR;
     // HR Dashboard (dummy screen for now): HR only.
     if (tab === "hr-dashboard") return isRoleHR;
+    // Change List & Mismatch: HR only.
+    if (tab === "change-mismatch") return isRoleHR;
     if (access.ok) {
       if (tab === "location-master") return isRoleHR && access.canScreen("cycleMaster", "edit");
       if (tab === "payroll-upload") return access.canScreen("payroll", "edit");
@@ -674,6 +677,7 @@ export function EmployeeMaster() {
       "feedback-rating",
       "payroll-upload",
       "team-changes",
+      "change-mismatch",
       "budget-master",
       "budget-distribution",
       "delegation",
@@ -1184,7 +1188,9 @@ export function EmployeeMaster() {
      ============================================================ */
 
   useEffect(() => {
-    if (activeTab !== "eligibility") {
+    // Change List & Mismatch compares against this same list, so it reuses
+    // this load (same fetch, same cache).
+    if (activeTab !== "eligibility" && activeTab !== "change-mismatch") {
       return;
     }
 
@@ -2799,6 +2805,16 @@ export function EmployeeMaster() {
         )}
         {isTabVisible("team-changes") && activeTab === "team-changes" && (
           <TeamChangesPage />
+        )}
+        {isTabVisible("change-mismatch") && activeTab === "change-mismatch" && (
+          <div className="em-tab-content">
+            <ChangeListMismatchPage
+              employees={eligibilityMasterEmployees}
+              eligibilityEmployees={eligibilityEmployees}
+              canEdit={canEditEmployees}
+              onNavigate={goToTab}
+            />
+          </div>
         )}
         {isTabVisible("budget-master") && activeTab === "budget-master" && (
           <div

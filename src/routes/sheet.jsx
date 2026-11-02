@@ -45,6 +45,7 @@ import {
 } from "@/lib/appraisal-filters";
 
 import { exportToExcel } from "@/lib/export-excel";
+import { manualEditedEmpIds } from "@/lib/dashboard-overview";
 import { useAccess } from "@/lib/access-store";
 import { useSettings } from "@/lib/settings-store";
 import { NotificationBell } from "@/components/appraisal/NotificationBell";
@@ -134,12 +135,10 @@ export function SheetPage() {
 
   const editedEmployeeIds = useMemo(
     () =>
-      new Set(
-        // The store already limits the audit list to the active cycle.
-        audit
-          .map((entry) => String(entry.empId || "").trim())
-          .filter(Boolean),
-      ),
+      // Same rule as the Dashboard: employees edited by hand on the Appraisal
+      // Sheet or the Detailed Screen (the store already limits the audit list
+      // to the active cycle; bulk edits / imports are not counted).
+      manualEditedEmpIds(audit),
     [audit],
   );
 

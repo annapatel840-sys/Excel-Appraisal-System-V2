@@ -13,7 +13,7 @@ import {
   allocationFor,
   avgHikePct,
   calcHikePct,
-  editedRowIds,
+  manualEditedRowIds,
   groupRows,
   hasAtRisk,
   inr,
@@ -265,7 +265,7 @@ function PeopleList({ list, onClose }) {
 /* ---------------- main ---------------- */
 
 export function DashboardOverview() {
-  const { rows: allRows, modified, audit } = useAppraisal();
+  const { rows: allRows, audit } = useAppraisal();
   const budgetCtx = useBudget();
   const { effectiveId } = useViewAs();
   const cycleName = useCurrentCycleName();
@@ -299,7 +299,7 @@ export function DashboardOverview() {
     [rows, allocated, isEstimate],
   );
 
-  const edited = useMemo(() => editedRowIds(rows, modified), [rows, modified]);
+  const edited = useMemo(() => manualEditedRowIds(rows, audit), [rows, audit]);
   const n = rows.length;
   const editedCount = rows.filter((r) => edited.has(String(r.id))).length;
   const remaining = n - editedCount;

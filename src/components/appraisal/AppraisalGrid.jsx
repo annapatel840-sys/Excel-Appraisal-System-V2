@@ -187,8 +187,14 @@ const DEFAULT_COLUMN_ORDER = (() => {
     ...head,
     ...(gross >= 0 ? AFTER_GROSS_MARGIN_ORDER : []),
     ...tail,
-  ];
-  return order.filter((key, index) => order.indexOf(key) === index);
+  ].filter((key, index, list) => list.indexOf(key) === index);
+  // "Last Appraisal" sits at the end, straight after "Client Rating".
+  const rest = order.filter((key) => key !== "lastAppraisalDate");
+  const clientAt = rest.indexOf("clientRating");
+  if (order.includes("lastAppraisalDate")) {
+    rest.splice(clientAt >= 0 ? clientAt + 1 : rest.length, 0, "lastAppraisalDate");
+  }
+  return rest;
 })();
 
 // Columns that should NOT show the filter / group menu in the header

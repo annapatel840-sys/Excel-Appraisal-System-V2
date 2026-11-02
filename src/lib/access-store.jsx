@@ -21,6 +21,7 @@ export const HR_TAB_SCREENS = {
   "feedback-rating": "employeeMaster",
   "payroll-upload": "payroll",
   "team-changes": "teamChanges",
+  "change-mismatch": "employeeMaster",
   "budget-master": "budgetAllocation",
   "budget-distribution": "budgetDistribution",
   "designation-master": "employeeMaster",

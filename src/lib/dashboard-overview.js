@@ -32,6 +32,34 @@ export const groupRows = (rows, keyFn) => {
     .sort((a, b) => a.key.localeCompare(b.key));
 };
 
+// "Edited" employees = people someone edited by hand on the Appraisal Sheet or
+// the Detailed Screen in the current cycle (audit entries made by those two
+// screens). Bulk edits, imports and status changes are not counted. The
+// Appraisal Sheet's notification bell and the Dashboard both use this, so the
+// two numbers always agree.
+const MANUAL_EDIT_SOURCES = new Set(["inline edit", "detail screen edit", "manual"]);
+export const isManualEditEntry = (entry) =>
+  MANUAL_EDIT_SOURCES.has(String(entry?.source ?? "manual").trim().toLowerCase());
+
+export const manualEditedEmpIds = (audit) => {
+  const ids = new Set();
+  (Array.isArray(audit) ? audit : []).forEach((entry) => {
+    const empId = String(entry?.empId || "").trim();
+    if (empId && isManualEditEntry(entry)) ids.add(empId);
+  });
+  return ids;
+};
+
+// Same, as a set of grid row ids (what the Dashboard's tables use).
+export const manualEditedRowIds = (rows, audit) => {
+  const emp = manualEditedEmpIds(audit);
+  const ids = new Set();
+  (Array.isArray(rows) ? rows : []).forEach((r) => {
+    if (emp.has(String(r.empId || "").trim())) ids.add(String(r.id));
+  });
+  return ids;
+};
+
 // Rows that have at least one edited cell (live edits + audit trail).
 export const editedRowIds = (rows, modified) => {
   const ids = new Set();
