@@ -17,6 +17,9 @@ const DEFAULT_LIMIT = 20;
 // means less work.
 const MAX_LIMIT = 1000;
 const DATASTORE_PAGE_SIZE = 200;
+// How long into a roster GET the payroll-derived lookups may still be written
+// back to Appraisal_Sheet. Catalyst ends a request after ~30 s (408).
+const ROSTER_WRITE_BUDGET_MS = 18000;
 
 const EMPLOYEES_TABLE_ID = "74008000000039094";
 const EMPLOYEE_MASTER_TABLE_ID = "74008000000035727";
@@ -1075,7 +1078,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const payrollKey = empKey + "::" + payrollCycleKey;
     const priorForCycle = payrollByEmployeeAndCycle.get(payrollKey);
     if (!priorForCycle || rowTime.localeCompare(priorForCycle.rowTime, undefined, { numeric: true }) > 0) {
-      payrollByEmployeeAndCycle.set(payrollKey, { row: record, rowTime, cycle });
+      payrollByEmployeeAndCycle.set(payrollKey, { row: record, rowTime, cycle, empKey });
     }
     // Keep the active-cycle row as a compatibility fallback, but select the
     // employee-specific source below (same-year New Joiners first, then Annual).
@@ -1143,6 +1146,58 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     if (selected) bonusPayrollByEmployee.set(empKey, selected);
   });
 
+  // The per-employee lookups below used to scan every payroll, sheet and
+  // Delegation row for each employee (millions of comparisons for a 2,000-row
+  // sheet, enough to time the request out). Index them once instead; each
+  // list keeps the original row order, so ties are still broken the same way.
+  const payrollItemsByEmployee = new Map();
+  payrollByEmployeeAndCycle.forEach((item) => {
+    const list = payrollItemsByEmployee.get(item.empKey) || [];
+    list.push(item);
+    payrollItemsByEmployee.set(item.empKey, list);
+  });
+  // Closed-cycle Appraisal_Sheet rows, with the employee-independent part of
+  // the history match worked out once per row.
+  const historyByRowEmployee = new Map();
+  const historyByRowMasterId = new Map();
+  appraisalHistoryRows.forEach((row, index) => {
+    const rawCycle = historyReference(
+      row?.cycle_id ?? row?.appraisal_cycle_id ?? row?.appraisalCycleId ??
+      row?.appraisal_cycle ?? row?.appraisal_cycle_name ?? row?.cycle_name ?? row?.appraisal_year,
+    );
+    const cycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase()) ||
+      cycleRows.find((item) => {
+        const aliases = [cycleIdOf(item), historyCycleName(item)].map((v) => String(v || "").trim().toLowerCase());
+        return aliases.includes(rawCycle.toLowerCase());
+      });
+    if (!cycle) return;
+    const cycleStatus = cycleStatusOf(cycle);
+    const closed = cycle.archived === true ||
+      ["true", "1", "yes", "archived"].includes(String(cycle.archived ?? "").trim().toLowerCase()) ||
+      ["archived", "closed", "complete", "completed"].includes(cycleStatus);
+    if (!closed) return;
+    const entry = {
+      index, row, cycle, cycleId: cycleIdOf(cycle),
+      rowTime: String(row.MODIFIEDTIME || row.CREATEDTIME || row.ROWID || ""),
+    };
+    const rowEmp = rowEmployeeKey(
+      row?.emp_id ?? row?.employee_id ?? row?.emp_code ?? row?.empId,
+      employeeMasterMap,
+    );
+    const rowMasterId = historyReference(
+      row?.emp_master_row_id ?? row?.employee_master_id ?? row?.employee_master_row_id ?? row?.emp_master_id,
+    ).toLowerCase();
+    if (rowEmp) historyByRowEmployee.set(rowEmp, [...(historyByRowEmployee.get(rowEmp) || []), entry]);
+    if (rowMasterId) historyByRowMasterId.set(rowMasterId, [...(historyByRowMasterId.get(rowMasterId) || []), entry]);
+  });
+  // This cycle's saved Delegation rows: the first row for each emp_id value.
+  const currentDelegationByEmployee = new Map();
+  delegationRows.forEach((record, index) => {
+    if (historyReference(record?.cycle_id).toLowerCase() !== String(currentCycleId).toLowerCase()) return;
+    const savedEmployee = historyReference(record?.emp_id).toLowerCase();
+    if (!currentDelegationByEmployee.has(savedEmployee)) currentDelegationByEmployee.set(savedEmployee, { index, record });
+  });
+
   const appraisalTable = datastore.table(EMPLOYEES_TABLE_ID);
   const updatedEmployees = (employees || []).map((employee) => {
     const empRaw = firstNonEmpty(employee, ["emp_id", "employee_id", "emp_code", "empId"]);
@@ -1150,11 +1205,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const prior = empKey ? historyByEmployee.get(empKey) : null;
     const currentPayroll = empKey ? currentPayrollByEmployee.get(empKey)?.row : null;
     const bonusPayroll = empKey ? bonusPayrollByEmployee.get(empKey)?.row : null;
-    const employeePayrollRows = empKey
-      ? Array.from(payrollByEmployeeAndCycle.values()).filter((item) =>
-          item.row && rowEmployeeKey(firstNonEmpty(item.row, ["emp_id", "employee_id", "emp_code", "empId"]), employeeMasterMap) === empKey
-        )
-      : [];
+    const employeePayrollRows = empKey ? payrollItemsByEmployee.get(empKey) || [] : [];
     const sameYearNewJoinerPayroll = employeePayrollRows
       .filter((item) =>
         isNewJoinerCycle(item.cycle) &&
@@ -1206,41 +1257,22 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       assignmentMaster?.ROWID, assignmentMaster?.rowid, assignmentMaster?.id,
       assignmentMaster?.employee_master_id, assignmentMaster?.employee_master_row_id,
     ].map((value) => historyReference(value).toLowerCase()).filter(Boolean));
-    const historicalAssignmentRows = appraisalHistoryRows
-      .map((row) => {
-        const rawCycle = historyReference(
-          row?.cycle_id ?? row?.appraisal_cycle_id ?? row?.appraisalCycleId ??
-          row?.appraisal_cycle ?? row?.appraisal_cycle_name ?? row?.cycle_name ?? row?.appraisal_year,
-        );
-        const cycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase()) ||
-          cycleRows.find((item) => {
-            const aliases = [cycleIdOf(item), historyCycleName(item)].map((v) => String(v || "").trim().toLowerCase());
-            return aliases.includes(rawCycle.toLowerCase());
-          });
-        if (!cycle) return null;
-        const rowEmp = rowEmployeeKey(
-          row?.emp_id ?? row?.employee_id ?? row?.emp_code ?? row?.empId,
-          employeeMasterMap,
-        );
-        const rowMasterId = historyReference(
-          row?.emp_master_row_id ?? row?.employee_master_id ?? row?.employee_master_row_id ?? row?.emp_master_id,
-        ).toLowerCase();
-        const employeeMatches = Boolean((empKey && rowEmp === empKey) ||
-          (rowMasterId && assignmentMasterIds.has(rowMasterId)));
-        if (!employeeMatches) return null;
-        const cycleStatus = cycleStatusOf(cycle);
-        const closed = cycle.archived === true ||
-          ["true", "1", "yes", "archived"].includes(String(cycle.archived ?? "").trim().toLowerCase()) ||
-          ["archived", "closed", "complete", "completed"].includes(cycleStatus);
-        if (!closed) return null;
-        const cycleId = cycleIdOf(cycle);
-        const exactSelectedCycle = Boolean(
+    // Closed-cycle sheet rows of this employee (by employee ID or by any of
+    // their Employee_Master row IDs), in the original row order.
+    const matchedHistory = new Map();
+    [
+      ...(empKey ? historyByRowEmployee.get(empKey) || [] : []),
+      ...[...assignmentMasterIds].flatMap((id) => historyByRowMasterId.get(id) || []),
+    ].forEach((entry) => matchedHistory.set(entry.index, entry));
+    const historicalAssignmentRows = [...matchedHistory.values()]
+      .sort((a, b) => a.index - b.index)
+      .map(({ row, cycle, cycleId, rowTime }) => ({
+        row, cycle, cycleId, rowTime,
+        exactSelectedCycle: Boolean(
           assignmentCycleId && cycleId === assignmentCycleId ||
           assignmentCycleName && historyCycleName(cycle).toLowerCase() === assignmentCycleName
-        );
-        return { row, cycle, cycleId, exactSelectedCycle, rowTime: String(row.MODIFIEDTIME || row.CREATEDTIME || row.ROWID || "") };
-      })
-      .filter(Boolean);
+        ),
+      }));
     const sameYearJoinerHistory = historicalAssignmentRows
       .filter((item) => isNewJoinerCycle(item.cycle) && cycleYearOf(item.cycle) === currentYear)
       .sort((a, b) => historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
@@ -1266,12 +1298,11 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       return id && name ? id + " - " + name : name || id || raw;
     };
     const masterRowId = historyReference(assignmentMaster?.ROWID ?? assignmentMaster?.rowid ?? assignmentMaster?.id).toLowerCase();
-    const savedDelegation = delegationRows.find((record) => {
-      const savedCycle = historyReference(record?.cycle_id).toLowerCase();
-      const savedEmployee = historyReference(record?.emp_id).toLowerCase();
-      return savedCycle === String(currentCycleId).toLowerCase() &&
-        (savedEmployee === masterRowId || savedEmployee === String(empKey || "").toLowerCase());
-    });
+    // The first saved row (in table order) matching either identifier.
+    const savedDelegation = [
+      currentDelegationByEmployee.get(masterRowId),
+      currentDelegationByEmployee.get(String(empKey || "").toLowerCase()),
+    ].filter(Boolean).sort((a, b) => a.index - b.index)[0]?.record;
     // Uploaded Previous Delegation first, then the snapshot saved on this
     // cycle's Delegation row, then the prior cycle's sheet / payroll.
     const uploadedPrevious = previousDelegationByEmployee.get(masterRowId)?.row || null;
@@ -1523,6 +1554,10 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   // the date / target PB / base pay updates on every load. The previous-CTC
   // value is stored in previous_year_CTC_with_rewards and target criteria in
   // target_PB_criteria (live names); missing columns are skipped.
+  // Every page request enriches the whole roster, and the grid loads pages 2+
+  // in parallel with page 1: only page 1 writes, so the same rows aren't
+  // updated by several requests at once.
+  if (options.persistLookups === false) return updatedEmployees;
   const liveColumnByKey = new Map();
   try {
     (await withDataStoreRetry(
@@ -1548,6 +1583,11 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     "previous_appraisal_total_ctc_with_rewards",
   );
   const targetCriteriaColumn = liveColumn("target_PB_criteria", "target_pb_criteria");
+  const sourceRowById = new Map();
+  (employees || []).forEach((row) => {
+    const id = String(row.ROWID ?? row.rowid ?? "");
+    if (!sourceRowById.has(id)) sourceRowById.set(id, row);
+  });
   const lookupUpdates = [];
   for (const employee of updatedEmployees) {
     const rowId = String(employee.ROWID ?? employee.rowid ?? "").trim();
@@ -1557,9 +1597,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const desiredBasePay = employee.current_annual_base_pay;
     const desiredTargetCriteria = employee.target_pb_criteria;
     const desiredPreviousCtc = employee.previous_appraisal_total_ctc_with_rewards;
-    const sourceRow = employees.find((row) =>
-      String(row.ROWID ?? row.rowid ?? "") === rowId
-    );
+    const sourceRow = sourceRowById.get(rowId);
     const existingDate = String(sourceRow?.last_appraisal_date ?? "").trim();
     const existingTargetPB = Number(sourceRow?.target_pb_allocated_for_may || 0);
     const existingBasePay = Number(sourceRow?.current_annual_base_pay || 0);
@@ -1609,16 +1647,37 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
 
   // Batch writes to avoid one COMPONENT request per employee on every roster
   // read. Small sequential batches limit contention with payroll/budget calls.
+  // A batch Catalyst still rejects is retried row by row so one bad row
+  // doesn't drop the others. After a newly generated sheet nearly every row
+  // changes, so stop at writeDeadline: the response must leave before
+  // Catalyst's ~30 s request limit, and the next load writes the rest.
+  const persistRow = async (update) => {
+    try {
+      await withDataStoreRetry(() => appraisalTable.updateRow(update), "Appraisal_Sheet payroll-derived lookup");
+    } catch (error) {
+      console.error("Could not persist payroll-derived appraisal lookup for row", update.ROWID, error?.message || error);
+    }
+  };
   for (let offset = 0; offset < lookupUpdates.length; offset += 50) {
+    if (options.writeDeadline && Date.now() > options.writeDeadline) {
+      console.warn("Appraisal_Sheet lookups: " + (lookupUpdates.length - offset) +
+        " changed rows left for the next load (time limit).");
+      break;
+    }
     const batch = lookupUpdates.slice(offset, offset + 50);
+    if (typeof appraisalTable.updateRows !== "function") {
+      for (const update of batch) await persistRow(update);
+      continue;
+    }
     try {
       await withDataStoreRetry(
         () => appraisalTable.updateRows(batch),
         "Appraisal_Sheet payroll-derived lookup batch",
       );
     } catch (error) {
-      console.error("Could not persist payroll-derived appraisal lookup batch:",
+      console.error("Could not persist payroll-derived appraisal lookup batch; retrying row by row:",
         error?.message || error);
+      for (const update of batch) await persistRow(update);
     }
   }
   return updatedEmployees;
@@ -2000,6 +2059,7 @@ function filterEmployees(
    ============================================================ */
 
 async function getEmployees(req, res) {
+  const requestStartedAt = Date.now();
   // Use the server-side admin scope for Data Store reads. The request still
   // passes through accessCore below, which enforces role, screen, row-scope,
   // and hidden-field rules before the response is returned. Using the signed-in
@@ -2257,7 +2317,7 @@ async function getEmployees(req, res) {
       // The active Appraisal Sheet is strictly driven by Eligibility_List.
       // Do not keep legacy sheet rows when the employee has no eligibility
       // record, is Not Eligible, or is no longer Active in Employee_Master.
-      const masterRowsForEligibility = await employeeMasterPromise;
+      const masterRowsForEligibility = employeeMasterRows;
       const masterByRowIdForEligibility = new Map(masterRowsForEligibility.map((master) => [
         String(master.ROWID ?? master.rowid ?? master.id ?? "").trim().toLowerCase(),
         master,
@@ -2316,7 +2376,7 @@ async function getEmployees(req, res) {
           if (masterId) onSheet.add("row:" + masterId);
           if (empId) onSheet.add("emp:" + empId);
         });
-        const masterForEligibility = await employeeMasterPromise;
+        const masterForEligibility = employeeMasterRows;
         const masterByRowId = new Map(masterForEligibility.map(function (row) {
           return [String(row.ROWID || row.rowid || "").trim().toLowerCase(), row];
         }));
@@ -2393,6 +2453,8 @@ async function getEmployees(req, res) {
         cycleRows,
         eligibilityRows: cycleEligibilityRows,
       },
+      persistLookups: requestedPage === 1,
+      writeDeadline: requestStartedAt + ROSTER_WRITE_BUDGET_MS,
     },
   );
 
