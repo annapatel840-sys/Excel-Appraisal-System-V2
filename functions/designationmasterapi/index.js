@@ -62,6 +62,14 @@ const BATCH = 200;
 // Serialize this function's catalogue and roster reads within a warm instance.
 // Page-load fan-out was triggering Catalyst's shared COMPONENT concurrency cap.
 let zcqlQueue = Promise.resolve();
+function isTransientCatalystError(error) {
+  const status = Number(error && (error.statusCode || error.status || error.status_code));
+  const code = String(error && error.code || "").toUpperCase();
+  const message = String(error && error.message || "").toLowerCase();
+  return [408, 429, 500, 502, 503, 504].includes(status) ||
+    ["TOO_MANY_REQUESTS", "COMPONENT", "ETIMEDOUT", "ECONNRESET"].includes(code) ||
+    /concurrency limit|too many requests|temporarily unavailable|timed out/.test(message);
+}
 async function runZcql(zcql, query, label = "designationmasterapi query") {
   let release;
   const previous = zcqlQueue;
@@ -72,13 +80,7 @@ async function runZcql(zcql, query, label = "designationmasterapi query") {
       try {
         return await zcql.executeZCQLQuery(query);
       } catch (error) {
-        const status = Number(error && (error.statusCode || error.status || error.status_code));
-        const code = String(error && error.code || "").toUpperCase();
-        const message = String(error && error.message || "").toLowerCase();
-        const transient = [408, 429, 500, 502, 503, 504].includes(status) ||
-          ["TOO_MANY_REQUESTS", "COMPONENT", "ETIMEDOUT", "ECONNRESET"].includes(code) ||
-          /concurrency limit|too many requests|temporarily unavailable|timed out/.test(message);
-        if (!transient || attempt >= 4) throw error;
+        if (!isTransientCatalystError(error) || attempt >= 4) throw error;
         const delay = 400 * (2 ** attempt) + Math.floor(Math.random() * 250);
         console.warn("Retrying designation ZCQL read:", label, "attempt", attempt + 1);
         await new Promise((resolve) => setTimeout(resolve, delay));
@@ -143,6 +145,7 @@ async function readCycle(app, table, cycleId, cycleCol = "cycle_id") {
   try {
     return await readAll(app, table, `${cycleCol} = ${cycleId}`);
   } catch (e) {
+    if (isTransientCatalystError(e)) throw e;
     const all = await readAll(app, table);
     return all.filter((r) => refId(r[cycleCol]) === String(cycleId));
   }
@@ -187,6 +190,7 @@ async function readMasterPairs(app) {
     }
     return out;
   } catch (e) {
+    if (isTransientCatalystError(e)) throw e;
     console.error("designationmasterapi: DISTINCT read failed, scanning:", e.message);
     return readAll(app, TBL.employees, "", "ROWID, designation, department");
   }
