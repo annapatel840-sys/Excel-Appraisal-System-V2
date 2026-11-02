@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Component, useMemo, useState } from "react";
 
 import { totalRewardsHikePct, yoeRatio } from "@/lib/appraisal-data";
 import { cycleKey } from "@/lib/employee-feedback";
@@ -43,7 +43,14 @@ const num = (v) => {
 // 0 in a feedback / sheet column means "nothing recorded", not a real zero.
 const nz = (v) => (v === null || v === undefined || v === 0 ? null : v);
 const fx = (v, d = 1) => (v === null || v === undefined ? "—" : Number(v).toFixed(d));
-const lakh = (v) => (v === null || v === undefined ? "—" : `${(v / 1e5).toFixed(1)}L`);
+// Small amounts are shown in full rupees (so 8,000 is not "0.1L"); 1 lakh and
+// above is shown as lakhs.
+const lakh = (v) =>
+  v === null || v === undefined
+    ? "—"
+    : Math.abs(v) < 1e5
+      ? Math.round(v).toLocaleString("en-IN")
+      : `${(v / 1e5).toFixed(1)}L`;
 const norm = (v) => String(v ?? "").trim().toLowerCase();
 const last = (arr) => arr[arr.length - 1];
 
@@ -235,7 +242,7 @@ function DetailTable({ head, rows }) {
 
 /* ---------------- the tab ---------------- */
 
-export function DetailMetricsTab({
+function DetailMetricsTabInner({
   employee,
   rows = [],
   history = [],
@@ -327,7 +334,9 @@ export function DetailMetricsTab({
   }
 
   /* ---- reward ---- */
-  const target = nz(num(employee.targetPBAllocatedForMay));
+  // Target PB agreed last year = the newest earlier cycle's Target PB in the
+  // Employee History panel; falls back to the sheet's target column.
+  const target = nz(num(history?.[0]?.targetPB)) ?? nz(num(employee.targetPBAllocatedForMay));
   const pbPct = target ? (live.pb / target) * 100 : null;
   const remarks = String(employee.compManagerRemarks ?? "").trim();
 
@@ -626,3 +635,47 @@ const MX_CSS = `
 .mx-flag.warn{border-color:#F3C77B;background:#FFF8E8;color:#7A5B12}
 .mx-note-sm{font-size:10.5px;color:#6B7280;margin:2px 0 6px}
 `;
+
+/* Safety net: if anything in the Metrics tab fails on real data, only this tab
+   shows the message. The rest of the Detail Screen (history, Manager / Client /
+   Other feedback, the form) keeps working. */
+class MetricsBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error) {
+    // eslint-disable-next-line no-console
+    console.error("Metrics tab failed:", error);
+  }
+
+  componentDidUpdate(prev) {
+    if (this.state.error && prev.resetKey !== this.props.resetKey) {
+      this.setState({ error: null });
+    }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: "10px 4px", fontSize: 12, color: "#B42318" }}>
+          Metrics could not be shown: {String(this.state.error?.message || this.state.error)}
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+export function DetailMetricsTab(props) {
+  return (
+    <MetricsBoundary resetKey={props.employee?.id}>
+      <DetailMetricsTabInner {...props} />
+    </MetricsBoundary>
+  );
+}

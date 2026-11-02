@@ -1891,7 +1891,7 @@ export function DetailScreenPage({
                             {payErr.pb ||
                               (pbLow
                                 ? pbLowMsg
-                                : `Preloaded · less than this → ${fmt(payFloors.pbFloor)} paid`)}
+                                : `Preloaded · ${fmt(payFloors.pbFloor)} is PB to be Paid`)}
                           </span>
                         </FieldRow>
 
@@ -1949,7 +1949,7 @@ export function DetailScreenPage({
                             {payErr.rb ||
                               (rbLow
                                 ? rbLowMsg
-                                : `Preloaded · less than this → ${fmt(payFloors.rbFloor)} paid`)}
+                                : `Preloaded · ${fmt(payFloors.rbFloor)} is RB to be Paid`)}
                           </span>
                         </FieldRow>
 
@@ -2236,8 +2236,10 @@ export function DetailScreenPage({
                           currentCycleName={currentCycleName}
                           live={{
                             hikePct: baseNow ? ((liveBase - baseNow) / baseNow) * 100 : null,
-                            pb: livePB,
-                            rb: liveRB,
+                            // Same PB / RB figures as the current-cycle row of the
+                            // Employee History panel below.
+                            pb: liveHist ? liveHist.pbTotal : livePB,
+                            rb: liveHist ? liveHist.rb : liveRB,
                           }}
                         />
                       ) : feedbackEntries.length ? (
