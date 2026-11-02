@@ -246,14 +246,10 @@ function requirePayrollAccess(a, resource, method) {
     return;
   }
   if (resource === "generate-sheet" && method === "POST") {
-    // Generation is launched from the Delegation screen by HR and Tech-Ed.
-    // Permit either role's existing edit permission; do not infer the role
-    // from a single exact role-key string because role overrides may differ.
-    const canGenerateFromDelegation = a.screens &&
-      (a.screens.delegation === "edit" || a.screens.cycleMaster === "edit");
-    if (!canGenerateFromDelegation) {
-      throw new ApiError("You do not have permission to generate the Appraisal Sheet from Delegation.", 403);
-    }
+    // Generation is launched from Delegation by HR and Tech-Ed. Use the
+    // Delegation edit permission itself, not an exact role-key comparison or
+    // Cycle Master permission (role overrides can change the role key).
+    access.requireScreen(a, "delegation", "edit");
     return;
   }
   // import: the Upload screen's Payroll / Review and Feedback upload.
