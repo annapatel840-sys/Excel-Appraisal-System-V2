@@ -520,7 +520,7 @@ const HISTORY_METRIC_COLUMNS = [
     note: "(On Current Base Pay)",
     formula: "(E)",
   },
-  { key: "newCTC", label: "Total CTC with Rewards", formula: "(A+B+C+D)" },
+  { key: "newCTC", label: "Total CTC with Rewards", formula: "(A+B+C+D+E)" },
   { key: "targetPB", label: "Target PB", formula: "" },
   { key: "newBasePay", label: "New Base Pay", formula: "(A+E)" },
 ];
@@ -4878,7 +4878,7 @@ export function AppraisalGrid({
                         aria-label={`Resize ${headerLabel} column`}
                         title="Drag to resize column"
                         onPointerDown={(event) => startColumnResize(event, col)}
-                        className="absolute top-0 right-[-5px] z-[100] h-full w-[11px] cursor-col-resize touch-none bg-[linear-gradient(90deg,transparent_4px,#7c93b2_4px,#7c93b2_6px,transparent_6px)] hover:bg-[linear-gradient(90deg,transparent_2px,#2f6fed_2px,#2f6fed_9px,transparent_9px)]"
+                        className="absolute top-0 right-[-5px] z-[100] h-full w-[11px] cursor-col-resize touch-none bg-[linear-gradient(90deg,transparent_5px,#7c93b2_5px,#7c93b2_6px,transparent_6px)] hover:bg-[linear-gradient(90deg,transparent_2px,#2f6fed_2px,#2f6fed_9px,transparent_9px)]"
                       />
                     </th>
                   );

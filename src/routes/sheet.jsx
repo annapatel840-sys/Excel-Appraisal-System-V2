@@ -264,6 +264,10 @@ export function SheetPage() {
         {
           label: showEditedOnly ? "Show all ›" : "Show edited ›",
           onClick: () => {
+            // Turning "edited only" on also clears the search and column
+            // filters, so the rows shown always match the count in this
+            // notification (otherwise a leftover filter hides some of them).
+            if (!showEditedOnly) setFilters({});
             setShowEditedOnly((previous) => !previous);
             setSearch("");
           },

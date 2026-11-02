@@ -404,7 +404,7 @@ const HISTORY_COLUMNS = [
     formula: "(E)",
   },
   { key: "totalBonus", label: "Total Bonus", formula: "(B+C+D)" },
-  { key: "newCTC", label: "Total CTC with Rewards", formula: "(A+B+C+D)" },
+  { key: "newCTC", label: "Total CTC with Rewards", formula: "(A+B+C+D+E)" },
   { key: "targetPB", label: "Target PB", formula: "" },
   { key: "newBasePay", label: "New Base Pay", formula: "(A+E)" },
 ];
