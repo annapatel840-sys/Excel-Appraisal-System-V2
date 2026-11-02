@@ -1050,7 +1050,7 @@ const [locationsLoading, setLocationsLoading] = useState(true);
       {tab === "cyc" && renderCycleScreen && (
         <section className="hrc-work">
           <div className="hrc-cycle-body">
-            {renderCycleScreen(defaultProcess, currentLocation || null)}
+            {renderCycleScreen(defaultProcess)}
           </div>
         </section>
       )}
