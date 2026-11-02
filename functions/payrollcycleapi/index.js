@@ -310,6 +310,38 @@ function rowId(row) {
   return String(row.ROWID || row.rowid || "");
 }
 
+// Serialize Data Store page requests within this warm function instance.
+// Several route handlers can be active at once; their Promise.all table scans
+// must not all hit Catalyst COMPONENT simultaneously.
+let dataStoreReadQueue = Promise.resolve();
+
+async function readDataStorePage(table, options, label) {
+  let release;
+  const previous = dataStoreReadQueue;
+  dataStoreReadQueue = new Promise((resolve) => { release = resolve; });
+  await previous;
+  try {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await table.getPagedRows(options);
+      } catch (error) {
+        const status = Number(error && (error.statusCode || error.status || error.status_code));
+        const code = String(error && error.code || "").toUpperCase();
+        const message = String(error && error.message || "").toLowerCase();
+        const transient = [408, 429, 500, 502, 503, 504].includes(status) ||
+          ["TOO_MANY_REQUESTS", "COMPONENT", "ETIMEDOUT", "ECONNRESET"].includes(code) ||
+          /concurrency limit|too many requests|temporarily unavailable|timed out/.test(message);
+        if (!transient || attempt >= 3) throw error;
+        const delay = 300 * (2 ** attempt) + Math.floor(Math.random() * 200);
+        console.warn("Retrying transient Catalyst Data Store read:", label, "attempt", attempt + 1);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  } finally {
+    release();
+  }
+}
+
 async function getAllRows(table) {
   const rows = [];
   let nextToken;
@@ -317,7 +349,7 @@ async function getAllRows(table) {
   while (moreRecords) {
     const options = { maxRows: PAGE_SIZE };
     if (nextToken) options.nextToken = nextToken;
-    const result = await table.getPagedRows(options);
+    const result = await readDataStorePage(table, options, "payrollcycleapi table page");
     rows.push(...(Array.isArray(result.data) ? result.data : []));
     nextToken = result.next_token || null;
     moreRecords = result.more_records === true && Boolean(nextToken);

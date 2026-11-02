@@ -1,7 +1,7 @@
 /* The Appraisal Sheet roster (employeesapi GET) must stay within Catalyst's
    ~30 s request limit for a 2,000-employee cycle: each table is read once,
    per-employee lookups don't rescan whole tables, only page 1 writes the
-   payroll-derived lookups back, and those writes go in batches of 100.
+   payroll-derived lookups back, and those writes go in batches of 50.
    Run: node test/roster-load-scale.test.js */
 'use strict';
 
@@ -134,12 +134,12 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
     assert.ok(elapsed < 15000, 'roster took ' + elapsed + ' ms');
   });
 
-  await t('page 1 writes the lookups in batches of 100; page 2 writes nothing', async () => {
+  await t('page 1 writes the lookups in batches of 50; page 2 writes nothing', async () => {
     await get('page=2&limit=1000&view=appraisal&status=all&eligible=all');
     assert.deepStrictEqual(calls.batches, [], 'page 2 must not write');
     await get('page=1&limit=1000&view=appraisal&status=all&eligible=all');
-    assert.strictEqual(calls.batches.length, EMPLOYEES / 100);
-    assert.ok(calls.batches.every((size) => size === 100));
+    assert.strictEqual(calls.batches.length, EMPLOYEES / 50);
+    assert.ok(calls.batches.every((size) => size === 50));
     assert.deepStrictEqual(calls.rowWrites, []);
     const row = DB[T.sheet].find((x) => x.ROWID === 'S10');
     assert.strictEqual(row.previous_year_CTC_with_rewards, 560010);
@@ -150,7 +150,7 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
   await t('a rejected batch is retried row by row', async () => {
     failBatch = true;
     await get('page=1&limit=1000&view=appraisal&status=all&eligible=all');
-    assert.strictEqual(calls.rowWrites.length, 100, 'the rejected batch is written one row at a time');
+    assert.strictEqual(calls.rowWrites.length, 50, 'the rejected batch is written one row at a time');
     assert.ok(DB[T.sheet].filter((x) => x.cycle_id === 'C27').every((x) => x.target_PB_criteria === 'criteria'));
   });
 

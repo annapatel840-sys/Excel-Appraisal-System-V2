@@ -627,7 +627,7 @@ async function getAllEmployees(datastore) {
       options.nextToken = nextToken;
     }
 
-    const result = await table.getPagedRows(options);
+    const result = await withDataStoreRetry(() => table.getPagedRows(options), "Appraisal_Sheet page");
 
     const pageRows = Array.isArray(result.data) ? result.data : [];
 
@@ -668,7 +668,7 @@ async function getAllEmployeeMaster(datastore) {
       options.nextToken = nextToken;
     }
 
-    const result = await table.getPagedRows(options);
+    const result = await withDataStoreRetry(() => table.getPagedRows(options), "Employee_Master page");
 
     const pageRows = Array.isArray(result.data) ? result.data : [];
 
@@ -716,13 +716,59 @@ function buildEmployeeMasterMap(masterRows) {
    ============================================================ */
 
 
+// Catalyst Data Store COMPONENT concurrency is shared across functions. Keep
+// reads bounded and retry only transient throttling/timeouts; never retry
+// validation, permission, or schema errors.
+function isTransientDataStoreError(error) {
+  const status = Number(error && (error.statusCode || error.status || error.status_code));
+  const code = String(error && error.code || "").toUpperCase();
+  const message = String(error && error.message || "").toLowerCase();
+  return [408, 429, 500, 502, 503, 504].includes(status) ||
+    ["TOO_MANY_REQUESTS", "COMPONENT", "ETIMEDOUT", "ECONNRESET"].includes(code) ||
+    /concurrency limit|too many requests|temporarily unavailable|timed out/.test(message);
+}
+
+async function withDataStoreRetry(operation, label) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt >= 3 || !isTransientDataStoreError(error)) throw error;
+      const delay = 300 * (2 ** attempt) + Math.floor(Math.random() * 200);
+      console.warn("Retrying transient Catalyst Data Store operation:", label, "attempt", attempt + 1);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
+// Run independent table scans in small batches instead of firing every
+// Catalyst COMPONENT request simultaneously. Optional tables retain the
+// previous empty-array fallback; required tables still fail the request.
+async function readDataStoreRowsInBatches(readers, concurrency = 2) {
+  const output = {};
+  for (let offset = 0; offset < readers.length; offset += concurrency) {
+    const batch = readers.slice(offset, offset + concurrency);
+    const results = await Promise.all(batch.map(async (reader) => {
+      try {
+        return [reader.key, await reader.read()];
+      } catch (error) {
+        if (!reader.optional) throw error;
+        if (typeof reader.onError === "function") reader.onError(error);
+        return [reader.key, reader.fallback === undefined ? [] : reader.fallback];
+      }
+    }));
+    results.forEach(([key, rows]) => { output[key] = rows; });
+  }
+  return output;
+}
+
 async function readAllDataStoreRows(table) {
   const rows = [];
   let nextToken = null;
   for (let guard = 0; guard < 10000; guard += 1) {
     const options = { maxRows: DATASTORE_PAGE_SIZE };
     if (nextToken) options.nextToken = nextToken;
-    const page = await table.getPagedRows(options);
+    const page = await withDataStoreRetry(() => table.getPagedRows(options), "Data Store page");
     rows.push(...(Array.isArray(page?.data) ? page.data : []));
     if (page?.more_records !== true || !page?.next_token) break;
     nextToken = page.next_token;
@@ -877,48 +923,42 @@ async function saveDelegationRoster(datastore, employees, employeeMasterMap, cyc
   }
 }
 
-// Starts every table read the roster needs, all at once. getEmployees starts
-// them before it reads Appraisal_Sheet, so each table is read once per request
-// (the sheet, cycles and eligibility used to be read twice) and the reads
-// overlap instead of running one table after another. The no-op catches only
-// stop an early failure from being reported as unhandled; each promise is
-// awaited (and throws) where it is used.
-function startRosterReads(datastore) {
-  const reads = {
-    // Whether the Delegation read succeeded: only then can the roster be saved
-    // from it (an empty fallback would make it insert duplicates).
-    delegationReadOk: true,
-    sheetRows: readAllDataStoreRows(datastore.table(EMPLOYEES_TABLE_ID)),
-    cycleRows: readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
-    eligibilityRows: readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)).catch(() => []),
-    payrollRows: readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
-    feedbackRows: readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)).catch(() => []),
-    previousDelegationRows: readAllDataStoreRows(datastore.table(PREVIOUS_DELEGATION_TABLE_ID)).catch((error) => {
-      console.error("Could not read Previous_Delegation records:", error?.message || error);
-      return [];
-    }),
-  };
-  reads.delegationRows = readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID)).catch((error) => {
-    console.error("Could not read Delegation records:", error?.message || error);
-    reads.delegationReadOk = false;
-    return [];
-  });
-  [reads.sheetRows, reads.cycleRows, reads.payrollRows].forEach((promise) => promise.catch(() => {}));
-  return reads;
-}
-
 async function enrichPreviousAppraisalValues(datastore, employees, employeeMasterMap, options = {}) {
-  const reads = options.reads || startRosterReads(datastore);
-  const [payrollRows, cycleRows, eligibilityRows, feedbackRows, appraisalHistoryRows, delegationRows, previousDelegationRows] = await Promise.all([
-    reads.payrollRows,
-    reads.cycleRows,
-    reads.eligibilityRows,
-    reads.feedbackRows,
-    reads.sheetRows.catch(() => []),
-    reads.delegationRows,
-    reads.previousDelegationRows,
-  ]);
-  const delegationReadOk = reads.delegationReadOk;
+  // Reuse source rows already loaded by getEmployees. Only the remaining
+  // history tables are fetched here, with at most two concurrent scans.
+  let delegationReadOk = true;
+  const preloaded = options.preloadedRows || {};
+  const readers = [];
+  const addReader = (key, tableId, optional = false, onError = null) => {
+    if (Array.isArray(preloaded[key])) return;
+    readers.push({
+      key,
+      read: () => readAllDataStoreRows(datastore.table(tableId)),
+      optional,
+      fallback: [],
+      onError,
+    });
+  };
+  addReader("payrollRows", PAYROLL_DATA_TABLE_ID);
+  addReader("cycleRows", APPRAISAL_CYCLE_TABLE_ID);
+  addReader("eligibilityRows", ELIGIBILITY_TABLE_ID, true);
+  addReader("feedbackRows", FEEDBACK_RATING_TABLE_ID, true);
+  addReader("appraisalHistoryRows", EMPLOYEES_TABLE_ID, true);
+  addReader("delegationRows", DELEGATION_TABLE_ID, true, (error) => {
+    console.error("Could not read Delegation records:", error?.message || error);
+    delegationReadOk = false;
+  });
+  addReader("previousDelegationRows", PREVIOUS_DELEGATION_TABLE_ID, true, (error) => {
+    console.error("Could not read Previous_Delegation records:", error?.message || error);
+  });
+  const loaded = await readDataStoreRowsInBatches(readers, 2);
+  const payrollRows = preloaded.payrollRows || loaded.payrollRows || [];
+  const cycleRows = preloaded.cycleRows || loaded.cycleRows || [];
+  const eligibilityRows = preloaded.eligibilityRows || loaded.eligibilityRows || [];
+  const feedbackRows = preloaded.feedbackRows || loaded.feedbackRows || [];
+  const appraisalHistoryRows = preloaded.appraisalHistoryRows || loaded.appraisalHistoryRows || [];
+  const delegationRows = preloaded.delegationRows || loaded.delegationRows || [];
+  const previousDelegationRows = preloaded.previousDelegationRows || loaded.previousDelegationRows || [];
   const cycleIdOf = (cycle) => String(cycle?.ROWID ?? cycle?.rowid ?? cycle?.id ?? cycle?.ID ?? "").trim();
   const cycleStatusOf = (cycle) => String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "").trim().toLowerCase();
   const cycleById = new Map(cycleRows.map((cycle) => [cycleIdOf(cycle), cycle]).filter(([id]) => id));
@@ -1520,7 +1560,10 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   if (options.persistLookups === false) return updatedEmployees;
   const liveColumnByKey = new Map();
   try {
-    (await appraisalTable.getAllColumns()).forEach(function (column) {
+    (await withDataStoreRetry(
+      () => appraisalTable.getAllColumns(),
+      "Appraisal_Sheet column metadata",
+    )).forEach(function (column) {
       const name = String(column?.column_name || "").trim();
       if (name) liveColumnByKey.set(name.toLowerCase(), name);
     });
@@ -1545,7 +1588,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const id = String(row.ROWID ?? row.rowid ?? "");
     if (!sourceRowById.has(id)) sourceRowById.set(id, row);
   });
-  const pendingUpdates = [];
+  const lookupUpdates = [];
   for (const employee of updatedEmployees) {
     const rowId = String(employee.ROWID ?? employee.rowid ?? "").trim();
     if (!rowId) continue;
@@ -1599,37 +1642,41 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
         existingPreviousCtc !== Math.round(Number(desiredPreviousCtc))) {
       update[previousCtcColumn] = Math.round(Number(desiredPreviousCtc));
     }
-    if (Object.keys(update).length === 1) continue;
-    pendingUpdates.push(update);
+    if (Object.keys(update).length > 1) lookupUpdates.push(update);
   }
-  // Write the changed rows 100 at a time, one batch after another (parallel
-  // writes hit the COMPONENT concurrency quota). A batch Catalyst rejects is
-  // retried row by row so one bad row doesn't drop the others. After a newly
-  // generated sheet nearly every row changes, so stop at writeDeadline: the
-  // response must leave before Catalyst's ~30 s request limit, and the next
-  // load writes whatever is still different.
+
+  // Batch writes to avoid one COMPONENT request per employee on every roster
+  // read. Small sequential batches limit contention with payroll/budget calls.
+  // A batch Catalyst still rejects is retried row by row so one bad row
+  // doesn't drop the others. After a newly generated sheet nearly every row
+  // changes, so stop at writeDeadline: the response must leave before
+  // Catalyst's ~30 s request limit, and the next load writes the rest.
   const persistRow = async (update) => {
     try {
-      await appraisalTable.updateRow(update);
+      await withDataStoreRetry(() => appraisalTable.updateRow(update), "Appraisal_Sheet payroll-derived lookup");
     } catch (error) {
       console.error("Could not persist payroll-derived appraisal lookup for row", update.ROWID, error?.message || error);
     }
   };
-  for (let index = 0; index < pendingUpdates.length; index += 100) {
+  for (let offset = 0; offset < lookupUpdates.length; offset += 50) {
     if (options.writeDeadline && Date.now() > options.writeDeadline) {
-      console.warn("Appraisal_Sheet lookups: " + (pendingUpdates.length - index) +
+      console.warn("Appraisal_Sheet lookups: " + (lookupUpdates.length - offset) +
         " changed rows left for the next load (time limit).");
       break;
     }
-    const batch = pendingUpdates.slice(index, index + 100);
+    const batch = lookupUpdates.slice(offset, offset + 50);
     if (typeof appraisalTable.updateRows !== "function") {
       for (const update of batch) await persistRow(update);
       continue;
     }
     try {
-      await appraisalTable.updateRows(batch);
+      await withDataStoreRetry(
+        () => appraisalTable.updateRows(batch),
+        "Appraisal_Sheet payroll-derived lookup batch",
+      );
     } catch (error) {
-      console.error("Batch update of appraisal lookups failed; retrying row by row:", error?.message || error);
+      console.error("Could not persist payroll-derived appraisal lookup batch; retrying row by row:",
+        error?.message || error);
       for (const update of batch) await persistRow(update);
     }
   }
@@ -2165,17 +2212,30 @@ async function getEmployees(req, res) {
   // failure from being reported as unhandled; each promise is awaited (and
   // throws) where it is used.
   const isCycleView = requestedView !== "master" && requestedView !== "eligibility";
-  const employeeMasterPromise = getAllEmployeeMaster(datastore);
-  employeeMasterPromise.catch(() => {});
-  // The tables enrichPreviousAppraisalValues needs are read now, alongside
-  // these, and each only once.
-  const rosterReads = startRosterReads(datastore);
-  const cycleReadsPromise = isCycleView
-    ? Promise.all([rosterReads.cycleRows, rosterReads.eligibilityRows])
-    : null;
-  if (cycleReadsPromise) cycleReadsPromise.catch(() => {});
 
-  let appraisalRows = (await rosterReads.sheetRows).map(normalizeEmployeeResponse);
+  // Load the two core roster tables together, then the cycle/eligibility pair.
+  // This caps concurrent COMPONENT reads at two and lets enrichment reuse all
+  // four results instead of scanning them again later.
+  const [employeeMasterRows, allAppraisalRows] = await Promise.all([
+    getAllEmployeeMaster(datastore),
+    getAllEmployees(datastore),
+  ]);
+  // Keep the complete historical sheet rows for payroll/previous-CTC mapping.
+  // appraisalRows is filtered below to the active cycle for the visible grid.
+  let appraisalRows = allAppraisalRows;
+  const { cycleRows, cycleEligibilityRows } = await readDataStoreRowsInBatches([
+    {
+      key: "cycleRows",
+      read: () => readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
+      optional: false,
+    },
+    {
+      key: "cycleEligibilityRows",
+      read: () => readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)),
+      optional: true,
+      fallback: [],
+    },
+  ], 2);
 
   // Appraisal view must be isolated to the one active cycle. Appraisal_Sheet
   // intentionally retains archived cycles, so returning every row here makes
@@ -2184,7 +2244,6 @@ async function getEmployees(req, res) {
   // decisions update matching sheet rows, but an ID mismatch must not remove
   // an otherwise valid generated row from the active sheet.
   if (isCycleView) {
-    const [cycleRows, cycleEligibilityRows] = await cycleReadsPromise;
     const activeCycle = cycleRows.find((cycle) => {
       const status = String(
         cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "",
@@ -2258,7 +2317,7 @@ async function getEmployees(req, res) {
       // The active Appraisal Sheet is strictly driven by Eligibility_List.
       // Do not keep legacy sheet rows when the employee has no eligibility
       // record, is Not Eligible, or is no longer Active in Employee_Master.
-      const masterRowsForEligibility = await employeeMasterPromise;
+      const masterRowsForEligibility = employeeMasterRows;
       const masterByRowIdForEligibility = new Map(masterRowsForEligibility.map((master) => [
         String(master.ROWID ?? master.rowid ?? master.id ?? "").trim().toLowerCase(),
         master,
@@ -2317,7 +2376,7 @@ async function getEmployees(req, res) {
           if (masterId) onSheet.add("row:" + masterId);
           if (empId) onSheet.add("emp:" + empId);
         });
-        const masterForEligibility = await employeeMasterPromise;
+        const masterForEligibility = employeeMasterRows;
         const masterByRowId = new Map(masterForEligibility.map(function (row) {
           return [String(row.ROWID || row.rowid || "").trim().toLowerCase(), row];
         }));
@@ -2370,8 +2429,6 @@ async function getEmployees(req, res) {
      LOAD EMPLOYEE MASTER
      ========================================================== */
 
-  const employeeMasterRows = await employeeMasterPromise;
-
   const employeeMasterMap = buildEmployeeMasterMap(employeeMasterRows);
 
   // Join the current Appraisal_Sheet schema with Employee_Master so the
@@ -2391,7 +2448,11 @@ async function getEmployees(req, res) {
       // save/approval actions may write this cycle's roster.
       saveDelegation: false,
       updatedBy: (a && a.user && a.user.email) || currentUser?.email_id || "",
-      reads: rosterReads,
+      preloadedRows: {
+        appraisalHistoryRows: allAppraisalRows,
+        cycleRows,
+        eligibilityRows: cycleEligibilityRows,
+      },
       persistLookups: requestedPage === 1,
       writeDeadline: requestStartedAt + ROSTER_WRITE_BUDGET_MS,
     },
