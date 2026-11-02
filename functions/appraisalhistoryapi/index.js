@@ -346,13 +346,44 @@ function shapeHistoryRow(a, row) {
 GET ALL PREVIOUS APPRAISAL RECORDS
 ============================================================ */
 
+// Serialize Data Store page reads in this function instance and retry transient
+// Catalyst throttling/timeouts without repeating permission or schema failures.
+let dataStoreReadQueue = Promise.resolve();
+
+async function readDataStorePage(table, options, label) {
+  let release;
+  const previous = dataStoreReadQueue;
+  dataStoreReadQueue = new Promise((resolve) => { release = resolve; });
+  await previous;
+  try {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await table.getPagedRows(options);
+      } catch (error) {
+        const status = Number(error && (error.statusCode || error.status || error.status_code));
+        const code = String(error && error.code || "").toUpperCase();
+        const message = String(error && error.message || "").toLowerCase();
+        const transient = [408, 429, 500, 502, 503, 504].includes(status) ||
+          ["TOO_MANY_REQUESTS", "COMPONENT", "ETIMEDOUT", "ECONNRESET"].includes(code) ||
+          /concurrency limit|too many requests|temporarily unavailable|timed out/.test(message);
+        if (!transient || attempt >= 3) throw error;
+        const delay = 300 * (2 ** attempt) + Math.floor(Math.random() * 200);
+        console.warn("Retrying transient Catalyst Data Store read:", label, "attempt", attempt + 1);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  } finally {
+    release();
+  }
+}
+
 const getAllRowsFromTable = async (table) => {
   const allRows = [];
   let nextToken;
   while (true) {
     const options = { maxRows: DATASTORE_PAGE_SIZE };
     if (nextToken) options.nextToken = nextToken;
-    const result = await table.getPagedRows(options);
+    const result = await readDataStorePage(table, options, "Appraisal history table page");
     const rows = Array.isArray(result?.data) ? result.data : [];
     allRows.push(...rows);
     if (result?.more_records !== true || !result?.next_token) break;
