@@ -36,7 +36,7 @@ const DEFAULT_CYCLE_PROCESS = { Annual: "Annual", "Mid-Year": "Annual", Exceptio
 const CYCLE_MOVES = { Upcoming: ["Active"], Active: ["Closed"], Closed: ["Active"] };
 // Optional Appraisal_Cycle_Master columns. Values are saved only when the
 // column exists, so the function works before and after they are added.
-const OPTIONAL_CYCLE_COLUMNS = ["cycle_type", "process", "effective_date", "cancel_reason", "location_code", "location_name"];
+const OPTIONAL_CYCLE_COLUMNS = ["cycle_type", "process", "effective_date", "cancel_reason"];
 const BUSINESS_TZ = "Asia/Kolkata";
 
 // "YYYY-MM-DD HH:mm:ss" in the project's time zone (IST), not UTC.
@@ -364,8 +364,6 @@ function normalizeCycle(row) {
     hidden: isTruthyFlag(row.hidden),
     type: row.cycle_type || "",
     process: row.process || "",
-    locationCode: String(row.location_code || "").trim(),
-    locationName: String(row.location_name || "").trim(),
     cancelReason: row.cancel_reason || cancelReasonFromRemarks(row),
   };
 }
@@ -3159,7 +3157,7 @@ async function routeRequest(req, res, identity, resource, a) {
       else if (effective && !validDate(effective)) error = "The effective date must be a valid date (YYYY-MM-DD).";
       return { name, type, process, start: start || null, end: end || null, effective: effective || start, error };
     };
-    const optionalValues = (fields) => ({ cycle_type: fields.type, process: fields.process, effective_date: fields.effective || null, location_code: fields.locationCode, location_name: fields.locationName });
+    const optionalValues = (fields) => ({ cycle_type: fields.type, process: fields.process, effective_date: fields.effective || null });
     // Until effective_date exists, a "No process" cycle keeps its effective
     // date in start_date (the screen shows start as the effective date).
     const storedStart = (fields) => fields.start || (!columns.has("effective_date") && fields.process === "None" ? fields.effective : null);
@@ -3169,19 +3167,7 @@ async function routeRequest(req, res, identity, resource, a) {
 
     if (action === "create") {
       const fields = readCycleFields();
-      fields.locationCode = String(body.locationCode || "").trim();
-      fields.locationName = String(body.locationName || "").trim();
       const remarks = String(body.remarks || "").trim();
-      if (!fields.locationCode || !fields.locationName) {
-        return sendJson(res, 400, { success: false, message: "Select a country/location before creating the appraisal cycle." });
-      }
-      const missingLocationColumns = ["location_code", "location_name"].filter((key) => !columns.has(key));
-      if (missingLocationColumns.length) {
-        return sendJson(res, 409, { success: false, message: `Appraisal_Cycle_Master needs these columns before country-wise cycles can be saved: ${missingLocationColumns.join(", ")}. Add them in Catalyst Data Store and try again.` });
-      }
-      const locationRows = await getAllRows(tables.locations);
-      const selectedLocation = locationRows.find((row) => String(row.location_code || "").trim().toLowerCase() === fields.locationCode.toLowerCase() && String(row.location_name || "").trim().toLowerCase() === fields.locationName.toLowerCase() && String(row.status || "Active").trim().toLowerCase() === "active");
-      if (!selectedLocation) return sendJson(res, 400, { success: false, message: "The selected country/location is no longer active in Location Master. Refresh and select it again." });
       if (fields.error || remarks.length > 10000) {
         return sendJson(res, 400, { success: false, message: fields.error || "Remarks cannot exceed 10,000 characters." });
       }
@@ -3223,8 +3209,6 @@ async function routeRequest(req, res, identity, resource, a) {
     if (action === "update") {
       if (existing.archived) return sendJson(res, 409, { success: false, message: "Archived cycles are read-only." });
       const fields = readCycleFields({ ...existing, type: existing.type || cycleTypeOf(existing.name), process: cycleProcessOf(existing) });
-      fields.locationCode = String(body.locationCode || existing.locationCode || "").trim();
-      fields.locationName = String(body.locationName || existing.locationName || "").trim();
       if (fields.error) return sendJson(res, 400, { success: false, message: fields.error });
       if (cycles.some((cycle) => cycle.id !== id && cycle.name.toLowerCase() === fields.name.toLowerCase())) {
         return sendJson(res, 409, { success: false, message: "An appraisal cycle with that name already exists." });
@@ -3237,7 +3221,7 @@ async function routeRequest(req, res, identity, resource, a) {
         ROWID: id, cycle_name: fields.name, start_date: storedStart(fields), end_date: fields.end, changed_by: actor, changed_at: now,
       }, optionalValues(fields));
       await tables.cycles.updateRow(row);
-      const updated = { ...existing, name: fields.name, start: storedStart(fields) || "", end: fields.end || "", locationCode: fields.locationCode, locationName: fields.locationName, changedBy: actor, changedAt: now };
+      const updated = { ...existing, name: fields.name, start: storedStart(fields) || "", end: fields.end || "", changedBy: actor, changedAt: now };
       if (columns.has("cycle_type")) updated.type = fields.type;
       if (columns.has("process")) updated.process = fields.process;
       if (columns.has("effective_date")) updated.effective = fields.effective || "";
