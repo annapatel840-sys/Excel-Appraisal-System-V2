@@ -467,7 +467,7 @@ const getAllPreviousAppraisalRecords = async (table) => {
 
     console.log("Payroll_Data getPagedRows:", options);
 
-    const result = await table.getPagedRows(options);
+    const result = await readDataStorePage(table, options, "Payroll_Data page");
 
     const rows = Array.isArray(result?.data) ? result.data : [];
 
