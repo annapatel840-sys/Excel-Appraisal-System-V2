@@ -1541,11 +1541,17 @@ app.post(
     // Read each source table once for the whole Save operation. Previously the
     // browser called this endpoint once per changed cell, repeating three full
     // table scans for every employee and exhausting the shared COMPONENT limit.
-    const [masters, delegationRows, cycles] = await Promise.all([
-      selectAll(zcql, e.table),
-      selectAll(zcql, d.table, d.cycleColumn + " = '" + q(cycleId) + "'"),
-      selectAll(zcql, SETTINGS.cycle.table, SETTINGS.cycle.idColumn + " = " + cycleId),
-    ]);
+    const masters = await selectAll(zcql, e.table);
+    const delegationRows = await selectAll(
+      zcql,
+      d.table,
+      d.cycleColumn + " = '" + q(cycleId) + "'",
+    );
+    const cycles = await selectAll(
+      zcql,
+      SETTINGS.cycle.table,
+      SETTINGS.cycle.idColumn + " = " + cycleId,
+    );
     if (!cycles.length || String(cycles[0][SETTINGS.cycle.statusColumn] || "").toLowerCase() !== "active") {
       throw new HttpError(409, "Delegation can be saved only for the Active appraisal cycle.");
     }
