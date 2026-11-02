@@ -174,7 +174,7 @@ export default function DelegationScreen({
   const [user, setUser] = useState({
     id: loggedInName,
     name: loggedInName,
-    role: isHRUser ? "HR Admin" : "Tech-ED",
+    role: isHRUser ? "HR Admin" : isTechEdUser ? "Tech-ED" : String(catalystUser?.role || ""),
   });
   const [rows, setRows] = useState(() => initialRows || []);
   const [stagedChanges, setStagedChanges] = useState({});
@@ -1199,22 +1199,19 @@ export default function DelegationScreen({
     const changes = Object.values(stagedChanges);
     if (!changes.length) return say("No unsaved delegation changes.");
     try {
-      for (const change of changes) {
-        const response = await catalystFetch(ACCESS_API_URL + "delegation/save", {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({
-            cycleId: activeCycleId,
-            empId: change.empId,
-            field: change.field,
-            assignment: change.assignment,
-            reason: change.reason,
-          }),
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || payload.ok === false || payload.success === false) {
-          throw new Error(payload.error || payload.message || "Unable to save " + change.empId + ".");
-        }
+      const response = await catalystFetch(ACCESS_API_URL + "delegation/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          cycleId: activeCycleId,
+          changes: changes.map(({ empId, field, assignment, reason }) => ({
+            empId, field, assignment, reason,
+          })),
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.ok === false || payload.success === false) {
+        throw new Error(payload.error || payload.message || "Unable to save Delegation changes.");
       }
       setStagedChanges({});
       await loadRoster();
@@ -1717,8 +1714,8 @@ export default function DelegationScreen({
           <div className="dg-help">
             <b>How it works:</b>{" "}
             {isHR
-              ? "Tech-ED and Reporting Manager come from the Employee Master. Comp. Manager defaults to last cycle's; for new employees it defaults to the Tech-ED. Your changes apply immediately. Changes by a Tech-ED arrive as requests on the right and apply only when you approve. Save & lock is allowed only when no requests are pending."
-              : 'You see employees whose Tech-ED is you. Any change you make is sent to HR for approval; the current value stays until HR approves. You can withdraw a pending request from "My requests".'}
+              ? "Tech-ED and Reporting Manager come from the Employee Master. Comp. Manager defaults to last cycle's; for new employees it defaults to the Tech-ED. Save writes your assignment changes directly to the Delegation table. Generate Appraisal Sheet applies the saved assignments to the sheet."
+              : 'You see employees whose Tech-ED is you. Your Comp. Manager and Appraiser Tech-ED changes are saved directly to the Delegation table. Generate Appraisal Sheet applies the saved assignments to the sheet.'}
           </div>
         </div>
 
@@ -1980,13 +1977,13 @@ export default function DelegationScreen({
           <div className="note">
             {isHR
               ? "HR Admin: applied immediately."
-              : "Tech-ED: one request per employee is sent to HR for approval."}
+              : "Delegation assignments are saved directly to the Delegation table; Generate Appraisal Sheet applies them to the sheet."}
           </div>
         </Modal>
       )}
       {modal?.type === "reason" && (
         <Modal
-          title={isHR ? "Confirm change" : "Send change to HR for approval"}
+          title={directAssignment(modal.field) ? "Confirm change" : "Send change to HR for approval"}
           onClose={() => setModal(null)}
           foot={
             <>
@@ -1994,7 +1991,7 @@ export default function DelegationScreen({
                 Cancel
               </button>
               <button className="btn p" onClick={saveChange}>
-                {isHR ? "Save" : "Send to HR"}
+                {directAssignment(modal.field) ? "Save" : "Send to HR"}
               </button>
             </>
           }
