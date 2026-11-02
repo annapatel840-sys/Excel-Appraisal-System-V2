@@ -14,6 +14,36 @@ const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 const DATASTORE_PAGE_SIZE = 200;
 
+// Audit history is optional to the appraisal grid, but a transient 429 must
+// not turn its initial load into a permanent failure.
+let auditReadQueue = Promise.resolve();
+async function readAuditPage(table, options) {
+  let release;
+  const previous = auditReadQueue;
+  auditReadQueue = new Promise((resolve) => { release = resolve; });
+  await previous;
+  try {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await table.getPagedRows(options);
+      } catch (error) {
+        const status = Number(error && (error.statusCode || error.status || error.status_code));
+        const code = String(error && error.code || "").toUpperCase();
+        const message = String(error && error.message || "").toLowerCase();
+        const transient = [408, 429, 500, 502, 503, 504].includes(status) ||
+          ["TOO_MANY_REQUESTS", "COMPONENT", "ETIMEDOUT", "ECONNRESET"].includes(code) ||
+          /concurrency limit|too many requests|temporarily unavailable|timed out/.test(message);
+        if (!transient || attempt >= 4) throw error;
+        const delay = 400 * (2 ** attempt) + Math.floor(Math.random() * 250);
+        console.warn("Retrying audit Data Store read, attempt", attempt + 1);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  } finally {
+    release();
+  }
+}
+
 /* ============================================================
    SEND JSON RESPONSE
    ============================================================ */
@@ -371,7 +401,7 @@ async function getAuditHistory(req, res, a) {
       options.nextToken = nextToken;
     }
 
-    const result = await table.getPagedRows(options);
+    const result = await readAuditPage(table, options);
 
     const pageRows = Array.isArray(result.data) ? result.data : [];
 
