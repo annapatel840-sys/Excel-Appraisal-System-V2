@@ -1,3 +1,5 @@
+import wissenLogo from "@/assets/wissen-logo.png";
+import wissenMark from "@/assets/wissen-mark.png";
 import {
   LayoutDashboard,
   Table2,
@@ -193,8 +195,26 @@ export function AppShell({ children, headerActions, notifications }) {
         isCollapsed && "group-hover/nav:justify-start",
       )}
     >
-      <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary text-[10px] font-bold text-primary-foreground">
-        Wissen
+      {/* White tile with the Wissen logo. Collapsed sidebar: just the W mark;
+          otherwise the full logo. */}
+      <span
+        className={cn(
+          "flex h-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-white px-1.5",
+          isCollapsed && "size-7 px-1 group-hover/nav:size-auto group-hover/nav:h-7 group-hover/nav:px-1.5",
+        )}
+      >
+        <img
+          src={wissenLogo}
+          alt="Wissen"
+          className={cn("h-4 w-auto", isCollapsed && "hidden group-hover/nav:block")}
+        />
+        {isCollapsed && (
+          <img
+            src={wissenMark}
+            alt="Wissen"
+            className="h-4 w-auto group-hover/nav:hidden"
+          />
+        )}
       </span>
       <div
         className={cn(
