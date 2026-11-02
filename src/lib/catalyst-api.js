@@ -57,6 +57,37 @@ function generateAuthTokenWithTimeout(auth) {
   );
 }
 
+// Catalyst applies a shared COMPONENT concurrency limit across functions.
+ // A screen mount can request the roster, cycles, budget, feedback and audit at
+ // once. Keep browser-originated function calls bounded so those independent
+ // providers do not overwhelm Catalyst during initial load.
+const MAX_CATALYST_REQUESTS = 3;
+let activeCatalystRequests = 0;
+const catalystRequestQueue = [];
+
+async function acquireCatalystSlot() {
+  if (activeCatalystRequests < MAX_CATALYST_REQUESTS) {
+    activeCatalystRequests += 1;
+    return;
+  }
+  await new Promise((resolve) => catalystRequestQueue.push(resolve));
+  activeCatalystRequests += 1;
+}
+
+function releaseCatalystSlot() {
+  activeCatalystRequests = Math.max(0, activeCatalystRequests - 1);
+  const next = catalystRequestQueue.shift();
+  if (next) next();
+}
+
+function retryDelay(response, attempt) {
+  const retryAfter = Number(response?.headers?.get("Retry-After"));
+  if (Number.isFinite(retryAfter) && retryAfter > 0) {
+    return Math.min(retryAfter * 1000, 5000);
+  }
+  return 400 * (2 ** attempt) + Math.floor(Math.random() * 250);
+}
+
 export async function catalystFetch(input, options = {}) {
   const auth = window.catalyst?.auth;
   if (!auth?.generateAuthToken) {
@@ -83,13 +114,32 @@ export async function catalystFetch(input, options = {}) {
   const isWrite = method !== "GET" && method !== "HEAD";
   if (isWrite) notifyWrite();
 
+  const canRetryRead = !isWrite && !options.signal?.aborted;
   let response;
   try {
-    response = await fetch(input, {
-      ...options,
-      credentials: "include",
-      headers,
-    });
+    await acquireCatalystSlot();
+    try {
+      for (let attempt = 0; ; attempt += 1) {
+        response = await fetch(input, {
+          ...options,
+          credentials: "include",
+          headers,
+        });
+        const retryable = canRetryRead && [408, 429, 502, 503, 504].includes(response.status);
+        if (!retryable || attempt >= 3 || options.signal?.aborted) break;
+        const delay = retryDelay(response, attempt);
+        console.warn(
+          "Catalyst read throttled; retrying after backoff:",
+          response.status,
+          String(input),
+          "attempt",
+          attempt + 1,
+        );
+        await new Promise((resolve) => window.setTimeout(resolve, delay));
+      }
+    } finally {
+      releaseCatalystSlot();
+    }
   } finally {
     // Clear again once the write has landed: a read that started during the
     // write must not be shared with callers that come after it.
