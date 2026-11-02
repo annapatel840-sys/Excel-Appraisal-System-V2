@@ -1003,10 +1003,10 @@ export function EmployeeMaster() {
      ============================================================ */
 
   useEffect(() => {
-    // Tech-Ed opens EmployeeMaster only to use the Delegation tab. Do not
-    // request the HR Employee Master roster in that mode: employeesapi's
-    // master roster endpoint is HR-only and returns 403 for Tech-Ed.
-    if (isTechEd && activeTab === "delegation") {
+    // EmployeeMaster is exposed to non-HR users only as the Delegation
+    // screen. Never request the HR-only Employee Master roster for non-HR
+    // roles, regardless of initial-tab timing or query-string navigation.
+    if (!isRoleHR) {
       setAllEmployees([]);
       setRosterPagination({
         page: 1,
@@ -1114,7 +1114,7 @@ export function EmployeeMaster() {
     return () => {
       cancelled = true;
     };
-  }, [currentPage, search, statusFilter, locationFilter, refreshKey, isTechEd, activeTab]);
+  }, [currentPage, search, statusFilter, locationFilter, refreshKey, isRoleHR]);
 
   /* ============================================================
      RESET PAGE WHEN SEARCH / STATUS FILTER CHANGES
