@@ -33,6 +33,7 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
 import { useNotices } from "@/lib/notices";
 import { buildFeedbackEntries, cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
+import { useColumnResize } from "@/lib/use-column-resize";
 import { DetailMetricsTab } from "./DetailMetricsTab";
 
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
@@ -392,16 +393,39 @@ const isCurrentYearRecord = (record, currentCycleName = CURRENT_CYCLE) => {
 };
 
 const HISTORY_COLUMNS = [
-  { key: "basePay", label: "Current Base Pay", formula: "A" },
-  { key: "joiningBonus", label: "Joining Bonus", formula: "B" },
-  { key: "performanceBonus", label: "Performance Bonus", formula: "C" },
-  { key: "retentionBonus", label: "Retention Bonus", formula: "D" },
-  { key: "totalBonus", label: "Total Bonus", formula: "B+C+D" },
-  { key: "hikeAmount", label: "Hike Amount", formula: "E" },
-  { key: "newCTC", label: "Total CTC with Rewards", formula: "A+B+C+D" },
+  { key: "basePay", label: "Current Base Pay", formula: "(A)" },
+  { key: "joiningBonus", label: "Joining Bonus", formula: "(B)" },
+  { key: "performanceBonus", label: "Performance Bonus", formula: "(C)" },
+  { key: "retentionBonus", label: "Retention Bonus", formula: "(D)" },
+  {
+    key: "hikeAmount",
+    label: "Hike Amount",
+    note: "(On Current Base Pay)",
+    formula: "(E)",
+  },
+  { key: "totalBonus", label: "Total Bonus", formula: "(B+C+D)" },
+  { key: "newCTC", label: "Total CTC with Rewards", formula: "(A+B+C+D)" },
   { key: "targetPB", label: "Target PB", formula: "" },
-  { key: "newBasePay", label: "New Base Pay", formula: "A+E" },
+  { key: "newBasePay", label: "New Base Pay", formula: "(A+E)" },
 ];
+// priorVals()/the live row keep their original order (base, joining, PB, RB,
+// total bonus, hike, CTC, target PB, new base); this maps each displayed
+// column to its slot there, so Hike Amount shows before Total Bonus.
+const HIST_VAL_ORDER = [0, 1, 2, 3, 5, 4, 6, 7, 8];
+
+// Designation for a cycle comes from Feedback & Rating; falls back to the
+// history record's own designation so nothing goes blank.
+const feedbackDesignation = (items, ...cycleNames) => {
+  for (const name of cycleNames) {
+    const key = cycleKey(name);
+    if (!key) continue;
+    const hit = (items || []).find(
+      (entry) => cycleKey(entry.cycleName) === key && entry.desig,
+    );
+    if (hit) return hit.desig;
+  }
+  return "";
+};
 
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
 const lakhs = (n) => `${((Number(n) || 0) / 1e5).toFixed(2)} L`;
@@ -972,7 +996,18 @@ function HistCell({ value, prev }) {
   const pct = hasPrev ? (prev ? ((value - prev) / prev) * 100 : 0) : null;
   const color = pct === null ? MUTED : pct > 0 ? GREEN : pct < 0 ? RED : MUTED;
   return (
-    <div style={{ textAlign: "right", padding: "4px 6px", lineHeight: 1.15 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "center",
+        textAlign: "right",
+        padding: "4px 6px",
+        lineHeight: 1.15,
+        borderRight: `1px solid ${LINE}`,
+        minWidth: 0,
+      }}
+    >
       <div style={{ color: INK }}>{fmt(value)}</div>
       {pct !== null ? (
         <div style={{ fontSize: 10.5, color, fontWeight: 600 }}>
@@ -984,8 +1019,22 @@ function HistCell({ value, prev }) {
   );
 }
 
-const HIST_GRID =
-  "minmax(70px, 0.9fr) minmax(90px, 1.3fr) repeat(9, minmax(0, 1fr))";
+// Shared look of the text cells (cycle name / designation) in the history grid.
+const histTextCell = (extra = {}) => ({
+  display: "flex",
+  flexDirection: "column",
+  justifyContent: "center",
+  padding: "4px 6px",
+  lineHeight: 1.15,
+  overflowWrap: "anywhere",
+  borderRight: `1px solid ${LINE}`,
+  minWidth: 0,
+  ...extra,
+});
+
+// Column widths (percent) are state: see useColumnResize in the page.
+const HIST_DEFAULT_WIDTHS = [9, 10, ...Array(9).fill(9)];
+const histGrid = (widths) => widths.map((w) => `${w}%`).join(" ");
 
 /* ------------------------------------------------------------------
    PAGE
@@ -1095,6 +1144,12 @@ export function DetailScreenPage({
     }
   }, [selectionSynced, employee?.empId]);
   const feedbackData = useEmployeeFeedback(employee?.empId);
+  const {
+    widths: histWidths,
+    startResize: startHistResize,
+    reset: resetHistWidths,
+  } = useColumnResize(HIST_DEFAULT_WIDTHS, "detail-history");
+  const histGridRef = useRef(null);
 
 
 
@@ -1694,10 +1749,10 @@ export function DetailScreenPage({
                     const rbLow = liveRB < rbLimit;
                     const pbLowMsg = pbUsesPrev
                       ? `Below last year's PB (${fmt(prevPB)})`
-                      : `Below PB to be Paid (${fmt(payFloors.pbFloor)})`;
+                      : `${fmt(payFloors.pbFloor)} is PB to be Paid`;
                     const rbLowMsg = rbUsesPrev
                       ? `Below last year's RB (${fmt(prevRB)})`
-                      : `Below RB to be Paid (${fmt(payFloors.rbFloor)})`;
+                      : `${fmt(payFloors.rbFloor)} is RB to be Paid`;
                     const naBox = (
                       <div
                         style={{
@@ -2423,30 +2478,41 @@ export function DetailScreenPage({
           </div>
 
           <div className="ds-scroll">
+            <div ref={histGridRef}>
             <div
               className="grid text-[11.5px] font-bold"
               style={{
-                gridTemplateColumns: HIST_GRID,
+                gridTemplateColumns: histGrid(histWidths),
                 background: SOFT,
                 color: INK,
                 borderBottom: `1px solid ${LINE}`,
               }}
             >
-              <div style={{ padding: "6px 10px" }}>Appraisal Cycle Name</div>
-              <div style={{ padding: "6px 6px", textAlign: "center" }}>
-                Designation
-              </div>
-              {HISTORY_COLUMNS.map((c) => (
+              {[
+                { key: "cycle", label: "Appraisal Cycle Name", formula: "" },
+                { key: "designation", label: "Designation", formula: "" },
+                ...HISTORY_COLUMNS,
+              ].map((c, i, all) => (
                 <div
                   key={c.key}
                   style={{
+                    position: "relative",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "flex-start",
+                    textAlign: "center",
                     padding: "6px 6px",
-                    textAlign: "right",
                     lineHeight: 1.2,
                     overflowWrap: "anywhere",
+                    borderRight: `1px solid ${LINE}`,
+                    minWidth: 0,
                   }}
                 >
                   <div>{c.label}</div>
+                  {c.note ? (
+                    <div style={{ fontSize: 10, fontWeight: 400 }}>{c.note}</div>
+                  ) : null}
                   <div
                     style={{
                       minHeight: 14,
@@ -2457,6 +2523,26 @@ export function DetailScreenPage({
                   >
                     {c.formula}
                   </div>
+                  {i < all.length - 1 ? (
+                    <span
+                      role="separator"
+                      aria-orientation="vertical"
+                      title="Drag to resize · double-click to reset"
+                      onMouseDown={(e) =>
+                        startHistResize(i, e, histGridRef.current)
+                      }
+                      onDoubleClick={resetHistWidths}
+                      style={{
+                        position: "absolute",
+                        right: -3,
+                        top: 0,
+                        height: "100%",
+                        width: 6,
+                        cursor: "col-resize",
+                        zIndex: 2,
+                      }}
+                    />
+                  ) : null}
                 </div>
               ))}
             </div>
@@ -2480,37 +2566,39 @@ export function DetailScreenPage({
                   ];
                   return (
                     <div
-                      className="grid items-center text-[12px]"
+                      className="grid items-stretch text-[12px]"
                       style={{
-                        gridTemplateColumns: HIST_GRID,
+                        gridTemplateColumns: histGrid(histWidths),
                         background: "#FFF8D6",
                         borderBottom: `1px solid ${LINE}`,
                       }}
                     >
                       <div
-                        style={{
+                        style={histTextCell({
                           padding: "4px 10px",
                           color: LTEAL,
                           fontWeight: 800,
-                        }}
+                        })}
                       >
                         {currentCycleName} ★
                       </div>
                       <div
-                        style={{
-                          padding: "4px 6px",
+                        style={histTextCell({
                           textAlign: "center",
                           color: INK,
-                          overflowWrap: "anywhere",
-                          lineHeight: 1.15,
-                        }}
+                        })}
                       >
-                        {employee.designation || "—"}
+                        {feedbackDesignation(
+                          feedbackData.items,
+                          currentCycleName,
+                        ) ||
+                          employee.designation ||
+                          "—"}
                       </div>
-                      {cur.map((v, i) => (
+                      {HIST_VAL_ORDER.map((i) => (
                         <HistCell
                           key={i}
-                          value={v}
+                          value={cur[i]}
                           prev={last ? last[i] : null}
                         />
                       ))}
@@ -2528,39 +2616,46 @@ export function DetailScreenPage({
               return (
                 <div
                   key={`${normalizeYearKey(h.cycleName || h.year)}-${i}`}
-                  className="grid items-center text-[12px]"
+                  className="grid items-stretch text-[12px]"
                   style={{
-                    gridTemplateColumns: HIST_GRID,
+                    gridTemplateColumns: histGrid(histWidths),
                     background: "#fff",
                     borderBottom: `1px solid ${LINE}`,
                   }}
                 >
                   <div
-                    style={{ padding: "4px 10px", fontWeight: 700, color: INK }}
+                    style={histTextCell({
+                      padding: "4px 10px",
+                      fontWeight: 700,
+                      color: INK,
+                    })}
                   >
                     {h.cycleName || h.year}
                   </div>
                   <div
-                    style={{
-                      padding: "4px 6px",
-                      textAlign: "center",
-                      color: INK,
-                      overflowWrap: "anywhere",
-                      lineHeight: 1.15,
-                    }}
+                    style={histTextCell({ textAlign: "center", color: INK })}
                   >
-                    {h.designation || "—"}
+                    {feedbackDesignation(
+                      feedbackData.items,
+                      h.cycleName,
+                      h.year,
+                    ) ||
+                      (h.designation && h.designation !== "—"
+                        ? h.designation
+                        : "") ||
+                      "—"}
                   </div>
-                  {vals.map((v, c) => (
+                  {HIST_VAL_ORDER.map((c) => (
                     <HistCell
                       key={c}
-                      value={v}
+                      value={vals[c]}
                       prev={older ? older[c] : null}
                     />
                   ))}
                 </div>
               );
             })}
+            </div>
 
             {historyState?.loading ? (
               <div className="px-4 py-3 text-[12px]" style={{ color: MUTED }}>

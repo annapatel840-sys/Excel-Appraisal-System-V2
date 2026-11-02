@@ -24,6 +24,7 @@ import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
 import { buildFeedbackEntries, cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
+import { useColumnResize } from "@/lib/use-column-resize";
 import {
   loadDesignationRules,
   newTitleChoices,
@@ -508,16 +509,48 @@ const YOY_FIELDS = {
 // ============================================================
 
 const HISTORY_METRIC_COLUMNS = [
-  { key: "basePay", label: "Current Base Pay", formula: "A" },
-  { key: "joiningBonus", label: "Joining Bonus", formula: "B" },
-  { key: "performanceBonus", label: "Performance Bonus", formula: "C" },
-  { key: "retentionBonus", label: "Retention Bonus", formula: "D" },
-  { key: "totalBonus", label: "Total Bonus", formula: "B+C+D" },
-  { key: "hikeAmount", label: "Hike Amount", formula: "E" },
-  { key: "newCTC", label: "Total CTC with Rewards", formula: "A+B+C+D" },
+  { key: "basePay", label: "Current Base Pay", formula: "(A)" },
+  { key: "joiningBonus", label: "Joining Bonus", formula: "(B)" },
+  { key: "performanceBonus", label: "Performance Bonus", formula: "(C)" },
+  { key: "retentionBonus", label: "Retention Bonus", formula: "(D)" },
+  { key: "totalBonus", label: "Total Bonus", formula: "(B+C+D)" },
+  {
+    key: "hikeAmount",
+    label: "Hike Amount",
+    note: "(On Current Base Pay)",
+    formula: "(E)",
+  },
+  { key: "newCTC", label: "Total CTC with Rewards", formula: "(A+B+C+D)" },
   { key: "targetPB", label: "Target PB", formula: "" },
-  { key: "newBasePay", label: "New Base Pay", formula: "A+E" },
+  { key: "newBasePay", label: "New Base Pay", formula: "(A+E)" },
 ];
+
+// Column order of the bottom History panel (Hike Amount sits before Total Bonus).
+const HISTORY_PANEL_ORDER = [
+  "basePay",
+  "joiningBonus",
+  "performanceBonus",
+  "retentionBonus",
+  "hikeAmount",
+  "totalBonus",
+  "newCTC",
+  "targetPB",
+  "newBasePay",
+];
+
+// Designation for a cycle comes from Feedback & Rating; falls back to the
+// history record's own designation so nothing goes blank.
+const feedbackDesignation = (items, ...cycleNames) => {
+  for (const name of cycleNames) {
+    const key = cycleKey(name);
+    if (!key) continue;
+    const hit = (items || []).find(
+      (entry) => cycleKey(entry.cycleName) === key && entry.desig,
+    );
+    if (hit) return hit.desig;
+  }
+  return "";
+};
 
 // History metric -> Appraisal grid field whose access limit applies to it.
 const HISTORY_METRIC_FIELD = {
@@ -2541,6 +2574,25 @@ export function AppraisalGrid({
       ),
     [historyState, liveHistoryRow, currentCycleName],
   );
+
+  // History panel: Designation per cycle (Feedback & Rating), column order,
+  // and drag-to-resize widths.
+  const historyFeedback = useEmployeeFeedback(historyRow?.empId);
+  const historyPanelColumns = HISTORY_PANEL_ORDER.map((key) =>
+    historyMetricColumns.find((col) => col.key === key),
+  ).filter(Boolean);
+  const historyColKeys = historyPanelColumns.map((col) => col.key).join("|");
+  const historyDefaultWidths = useMemo(() => {
+    const metric = 81 / Math.max(historyPanelColumns.length, 1);
+    return [9, 10, ...historyPanelColumns.map(() => metric)];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [historyColKeys]);
+  const {
+    widths: historyWidths,
+    startResize: startHistoryResize,
+    reset: resetHistoryWidths,
+  } = useColumnResize(historyDefaultWidths, historyColKeys);
+  const historyTableRef = useRef(null);
 
   // ============================================================
   // CHANGE TOASTS
@@ -5074,41 +5126,57 @@ export function AppraisalGrid({
                 </div>
               ) : (
                 <table
+                  ref={historyTableRef}
                   className="w-full border-collapse"
                   style={{ tableLayout: "fixed" }}
                 >
                   <colgroup>
-                    <col style={{ width: "9%" }} />
-                    <col style={{ width: "13%" }} />
-
-                    {historyMetricColumns.map((col) => (
-                      <col
-                        key={col.key}
-                        style={{ width: `${78 / historyMetricColumns.length}%` }}
-                      />
+                    {historyWidths.map((w, i) => (
+                      <col key={i} style={{ width: `${w}%` }} />
                     ))}
                   </colgroup>
 
                   <thead>
                     <tr className="bg-[#eef2f7]">
-                      <th className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-2 py-1.5 text-center align-bottom text-[11px] font-bold text-[#24364d]">
-                        Appraisal Cycle Name
-                      </th>
-
-                      <th className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-2 py-1.5 text-center align-bottom text-[11px] font-bold text-[#24364d]">
-                        Designation
-                      </th>
-
-                      {historyMetricColumns.map((col) => (
+                      {[
+                        { key: "cycle", label: "Appraisal Cycle Name", formula: "" },
+                        { key: "designation", label: "Designation", formula: "" },
+                        ...historyPanelColumns,
+                      ].map((col, i, all) => (
                         <th
                           key={col.key}
-                          className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-1.5 py-1.5 text-center align-bottom text-[11px] font-bold leading-tight text-[#24364d]"
+                          className="sticky top-0 border-r border-b border-[#cbd5e1] bg-[#eef2f7] px-1.5 py-1.5 text-center align-top text-[11px] font-bold leading-tight text-[#24364d]"
                         >
-                          <div className="break-words">{col.label}</div>
+                          <div className="break-words text-center">
+                            {col.label}
+                          </div>
 
-                          <div className="min-h-[13px] text-[10.5px] font-bold text-[#1d4ed8]">
+                          {col.note && (
+                            <div className="break-words text-center text-[10px] font-normal text-[#24364d]">
+                              {col.note}
+                            </div>
+                          )}
+
+                          <div className="min-h-[13px] text-center text-[10.5px] font-bold text-[#1d4ed8]">
                             {col.formula}
                           </div>
+
+                          {i < all.length - 1 && (
+                            <span
+                              role="separator"
+                              aria-orientation="vertical"
+                              title="Drag to resize · double-click to reset"
+                              onMouseDown={(event) =>
+                                startHistoryResize(
+                                  i,
+                                  event,
+                                  historyTableRef.current,
+                                )
+                              }
+                              onDoubleClick={resetHistoryWidths}
+                              className="absolute right-[-3px] top-0 z-10 h-full w-[6px] cursor-col-resize hover:bg-[#1d4ed8]/30"
+                            />
+                          )}
                         </th>
                       ))}
                     </tr>
@@ -5133,10 +5201,16 @@ export function AppraisalGrid({
                           </td>
 
                           <td className="break-words border-r border-b border-[#e0e5ec] px-1.5 py-1 text-center text-[11px] leading-tight text-[#24364d]">
-                            {item.designation || "—"}
+                            {feedbackDesignation(
+                              historyFeedback.items,
+                              item.cycleName,
+                              item.year,
+                            ) ||
+                              item.designation ||
+                              "—"}
                           </td>
 
-                          {historyMetricColumns.map((col) => {
+                          {historyPanelColumns.map((col) => {
                             const change = computeHistoryChange(
                               item[col.key],
                               previous ? previous[col.key] : undefined,
