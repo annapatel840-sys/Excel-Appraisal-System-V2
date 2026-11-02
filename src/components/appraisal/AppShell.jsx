@@ -26,6 +26,7 @@ const TECH_ED_PATHS = [
   "/sheet",
   "/detail-screen",
   "/budget-distribution",
+  "/employee-master?tab=delegation",
   "/settings",
 ];
 
@@ -87,6 +88,9 @@ export function AppShell({ children, headerActions, notifications }) {
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
     { to: "/sheet", label: "Appraisal Sheet", icon: Table2 },
     { to: "/detail-screen", label: "Detailed Screen", icon: BookOpen },
+    ...(isTechEd
+      ? [{ to: "/employee-master?tab=delegation", label: "Delegation", icon: Users }]
+      : []),
     ...(!isTechEd ? [{ to: "/bulk-edit", label: "Bulk Edit", icon: SlidersHorizontal }] : []),
     ...(!isTechEd && !isCompManager
       ? [
@@ -150,6 +154,11 @@ export function AppShell({ children, headerActions, notifications }) {
           to: "/detail-screen",
           label: "Detailed Screen",
           icon: BookOpen,
+        },
+        isTechEd && {
+          to: "/employee-master?tab=delegation",
+          label: "Delegation",
+          icon: Users,
         },
         access.canAction("bulkEdit") && {
           to: "/bulk-edit",
