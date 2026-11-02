@@ -1525,7 +1525,10 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   // target_PB_criteria (live names); missing columns are skipped.
   const liveColumnByKey = new Map();
   try {
-    (await appraisalTable.getAllColumns()).forEach(function (column) {
+    (await withDataStoreRetry(
+      () => appraisalTable.getAllColumns(),
+      "Appraisal_Sheet column metadata",
+    )).forEach(function (column) {
       const name = String(column?.column_name || "").trim();
       if (name) liveColumnByKey.set(name.toLowerCase(), name);
     });
@@ -2153,10 +2156,13 @@ async function getEmployees(req, res) {
   // Load the two core roster tables together, then the cycle/eligibility pair.
   // This caps concurrent COMPONENT reads at two and lets enrichment reuse all
   // four results instead of scanning them again later.
-  const [employeeMasterRows, appraisalRows] = await Promise.all([
+  const [employeeMasterRows, allAppraisalRows] = await Promise.all([
     getAllEmployeeMaster(datastore),
     getAllEmployees(datastore),
   ]);
+  // Keep the complete historical sheet rows for payroll/previous-CTC mapping.
+  // appraisalRows is filtered below to the active cycle for the visible grid.
+  let appraisalRows = allAppraisalRows;
   const { cycleRows, cycleEligibilityRows } = await readDataStoreRowsInBatches([
     {
       key: "cycleRows",
@@ -2383,8 +2389,7 @@ async function getEmployees(req, res) {
       saveDelegation: false,
       updatedBy: (a && a.user && a.user.email) || currentUser?.email_id || "",
       preloadedRows: {
-        appraisalHistoryRows: appraisalRows,
-        employeeMasterRows,
+        appraisalHistoryRows: allAppraisalRows,
         cycleRows,
         eligibilityRows: cycleEligibilityRows,
       },
