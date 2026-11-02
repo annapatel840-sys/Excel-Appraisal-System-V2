@@ -320,6 +320,7 @@ async function resolveDesignationsTable(app) {
       designationsResolved = true;
       return;
     } catch (e) {
+      if (isTransientCatalystError(e)) throw e;
       /* try the next name */
     }
   }
@@ -345,6 +346,7 @@ async function checkSchema(app) {
       try {
         await runZcql(app.zcql(), `SELECT ${cols} FROM ${table} LIMIT 1`, "schema probe " + table);
       } catch (e) {
+        if (isTransientCatalystError(e)) throw e;
         problems.push(`${table}: ${clip((e && e.message) || e, 160)}`);
       }
     }),
