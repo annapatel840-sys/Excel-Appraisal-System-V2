@@ -646,6 +646,7 @@ export default function DelegationScreen({
   // HR assignment edits stay local until the page-level Save is clicked.
   const compDirect = (field) => field === "comp" && isHR && canApprove;
   const hrDirect = (field) => isHR && canApprove && ["comp", "app"].includes(field);
+  const directAssignment = (field) => hrDirect(field) || (isTechEdUser && ["comp", "app"].includes(field));
   const applyDirectChange = async (target, field, personId, why) => {
     const key = target.id + "::" + field;
     setStagedChanges((current) => ({
@@ -665,10 +666,10 @@ export default function DelegationScreen({
     // Reason is optional (the server needs some text, so a default is stored
     // when it is left empty).
     const whyText = reason.trim() || `${FIELDS[field]} change`;
-    if (hrDirect(field)) {
+    if (directAssignment(field)) {
       await applyDirectChange(row, field, person.id, whyText);
       setRows((rs) =>
-        applyTo(rs, row.id, field, person.id, "HR Admin", whyText, user.name),
+        applyTo(rs, row.id, field, person.id, isHR ? "HR Admin" : "Tech-ED", whyText, user.name),
       );
       log({
         emp: row.id,
@@ -678,7 +679,7 @@ export default function DelegationScreen({
         action: "Staged",
         why: whyText,
       });
-      say(FIELDS[field] + " staged for " + row.id + ". Click Save to update the backend.");
+      say(FIELDS[field] + " staged for " + row.id + ". Click Save to update Delegation.");
       setModal(null);
       return;
     }
@@ -725,18 +726,18 @@ export default function DelegationScreen({
     const done = [];
     let failed = false;
     // HR: show the new Comp Manager in the grid straight away, then save.
-    if (compDirect("comp")) {
+    if (directAssignment("comp")) {
       setRows((rs) =>
         targets.reduce(
           (acc, { r, value }) =>
-            applyTo(acc, r.id, "comp", value, "HR Admin", why, user.name),
+            applyTo(acc, r.id, "comp", value, isHR ? "HR Admin" : "Tech-ED", why, user.name),
           rs,
         ),
       );
     }
     try {
       for (const { r, value } of targets) {
-        if (compDirect("comp")) await applyDirectChange(r, "comp", value, why);
+        if (directAssignment("comp")) await applyDirectChange(r, "comp", value, why);
         else
           await submitDelegationRequest({
             empId: r.id,
@@ -754,11 +755,11 @@ export default function DelegationScreen({
       failed = true;
       say(error?.message || "Unable to set the default Comp. Manager.", true);
     }
-    if (failed && compDirect("comp")) {
+    if (failed && directAssignment("comp")) {
       // Something did not save: reload so the grid shows what is really stored.
       await loadRoster();
     }
-    if (done.length && compDirect("comp")) {
+    if (done.length && directAssignment("comp")) {
       refreshEmployees().catch(() => {});
       log({
         action: "Changed",
@@ -766,11 +767,11 @@ export default function DelegationScreen({
         to: source.label,
         why: `${done.length} employee(s): ${why}`,
       });
-      say(`Comp. Manager set to ${source.label} for ${done.length} employee(s). Click Save to keep the changes.`);
+      say(`Comp. Manager set to ${source.label} for ${done.length} employee(s). Click Save to keep the Delegation changes.`);
     } else if (done.length) {
       say(`${done.length} request(s) sent to HR for approval (${no}).`);
     }
-    await loadRequests().catch(() => {});
+    if (!directAssignment("comp")) await loadRequests().catch(() => {});
   };
 
   const applyDefaultComp = (sourceKey) => {
@@ -820,7 +821,7 @@ export default function DelegationScreen({
       return;
     }
     const loaded = await loadRoster();
-    if (Array.isArray(loaded) && loaded.length && isHR) {
+    if (Array.isArray(loaded) && loaded.length && (isHR || isTechEdUser)) {
       const targets = defaultTargets(loaded, source.key, makeResolver(loaded));
       if (targets.length) await executeDefaultComp(targets, source);
     }
@@ -846,12 +847,12 @@ export default function DelegationScreen({
     setModal({
       type: "confirm",
       title: "Bulk Assign",
-      body: compDirect(field)
-        ? `${FIELDS[field]} → ${nameOf(person)} for ${t.length} employee(s). Applied immediately; no approval needed.`
+      body: directAssignment(field)
+        ? `${FIELDS[field]} → ${nameOf(person)} for ${t.length} employee(s). Staged for saving; no approval request.`
         : `${FIELDS[field]} → ${nameOf(person)} for ${t.length} employee(s). One request per employee will be sent to HR for approval.`,
       ok: () => {
         const no = refNo("BA");
-        if (hrDirect(field)) {
+        if (directAssignment(field)) {
           (async () => {
             const done = [];
             try {
@@ -863,11 +864,11 @@ export default function DelegationScreen({
               say(error?.message || "Unable to update " + FIELDS[field] + ".", true);
             }
             if (done.length) {
-              await refreshEmployees().catch(() => {});
+              
               setRows((rs) =>
                 done.reduce(
                   (acc, r) =>
-                    applyTo(acc, r.id, field, person, "HR Admin", why.trim(), user.name),
+                    applyTo(acc, r.id, field, person, isHR ? "HR Admin" : "Tech-ED", why.trim(), user.name),
                   rs,
                 ),
               );
@@ -877,7 +878,7 @@ export default function DelegationScreen({
                 to: nameOf(person),
                 why: `${done.length} employee(s): ${why.trim()}`,
               });
-              say(FIELDS[field] + " staged for " + done.length + " employee(s). Click Save to keep the changes.");
+              say(FIELDS[field] + " staged for " + done.length + " employee(s). Click Save to keep the Delegation changes.");
             }
             await loadRequests().catch(() => {});
           })();
@@ -1158,7 +1159,7 @@ export default function DelegationScreen({
     }
   };
   const generateSheet = () => {
-    if (!isHR || !activeCycleId || sheetBusy) return;
+    if (!(isHR || isTechEdUser) || !activeCycleId || sheetBusy) return;
     const unsaved = Object.keys(stagedChanges).length;
     if (unsaved) {
       setModal({
@@ -1194,7 +1195,7 @@ export default function DelegationScreen({
   }, [stagedChanges]);
 
   const saveDelegation = async () => {
-    if (!isHR || !activeCycleId || !rows.length) return;
+    if (!(isHR || isTechEdUser) || !activeCycleId || !rows.length) return;
     const changes = Object.values(stagedChanges);
     if (!changes.length) return say("No unsaved delegation changes.");
     try {
@@ -1216,10 +1217,8 @@ export default function DelegationScreen({
         }
       }
       setStagedChanges({});
-      await refreshEmployees().catch(() => {});
       await loadRoster();
-      say("Saved " + changes.length + " delegation change(s) for " + displayCycleName + ". You can continue editing.");
-      onRefresh?.();
+      say("Saved " + changes.length + " delegation change(s) to Delegation for " + displayCycleName + ". Generate the Appraisal Sheet to apply them there.");
     } catch (error) {
       say(error?.message || "Unable to save Delegation.", true);
     }
@@ -1435,17 +1434,17 @@ export default function DelegationScreen({
             >
               Bulk Assign ({selIds.length})
             </button>
-            {isHR && (
+            {(isHR || isTechEdUser) && (
               <button
                 className="btn p"
                 disabled={editLocked || !rows.length || rosterLoading || !Object.keys(stagedChanges).length}
-                title="Save staged HR delegation changes to the backend and Appraisal Sheet"
+                title="Save staged delegation changes to the Delegation table only"
                 onClick={saveDelegation}
               >
                 Save{Object.keys(stagedChanges).length ? " (" + Object.keys(stagedChanges).length + ")" : ""}
               </button>
             )}
-            {isHR && Object.keys(stagedChanges).length > 0 && (
+            {(isHR || isTechEdUser) && Object.keys(stagedChanges).length > 0 && (
               <button
                 className="btn"
                 disabled={rosterLoading || sheetBusy}
@@ -1455,11 +1454,11 @@ export default function DelegationScreen({
                 Discard
               </button>
             )}
-            {isHR && (
+            {(isHR || isTechEdUser) && (
               <button
                 className="btn p"
                 disabled={!activeCycleId || !rows.length || rosterLoading || sheetBusy}
-                title="Create the Appraisal Sheet from this Delegation, or update the existing one with what changed"
+                title="Apply the saved Delegation changes to the Appraisal Sheet and open it"
                 onClick={generateSheet}
               >
                 {sheetBusy ? "Generating…" : "Generate Appraisal Sheet"}
