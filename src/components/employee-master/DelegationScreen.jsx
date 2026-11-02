@@ -371,13 +371,11 @@ export default function DelegationScreen({
 
       // Always fetch the enriched delegation roster from employeesapi.
       // initialRows may contain only Employee_Master values and omit previous-cycle references.
-      // Read the current cycle's Eligibility_List before fetching delegation
-      // rows. This read must not generate Delegation; only the explicit
-      // Generate Delegation action is allowed to replace/save its roster.
-      await payrollCycleRequest("eligibility", {
-        method: "GET",
-        query: { cycleId },
-      });
+      // Do not call payrollcycleapi's HR-only Eligibility endpoint here.
+      // employeesapi?view=delegation builds the roster using the active cycle's
+      // eligibility records and enforces the Tech-Ed's own employee scope.
+      // Calling the HR-only endpoint made Tech-Ed receive 403 before the
+      // delegation roster and manager dropdowns could load.
 
       // Delegation is prepared before sheet generation, so employeesapi builds
       // the working roster from the active cycle's eligible records when the
