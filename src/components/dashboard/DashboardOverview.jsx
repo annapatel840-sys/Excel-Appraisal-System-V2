@@ -385,7 +385,7 @@ export function DashboardOverview() {
     .map((g) => ({ ...g, gap: g.t.target ? ((g.t.paid - g.t.target) / g.t.target) * 100 : 0 }))
     .sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap));
 
-  const short = (v) => (v >= 1e5 ? (v / 1e7).toFixed(2) : String(Math.round(v)));
+  const short = (v) => inr(v);
 
   const Row = ({ label, mid, right, onClick }) => (
     <div
@@ -604,8 +604,8 @@ export function DashboardOverview() {
 
         <Tile>
           <Cap>Retention bonus (RB)</Cap>
-          <Big value={money(rbTotal).replace("₹ ", "")} unit="₹" />
-          <Sub>{baseTotal ? ((rbTotal / baseTotal) * 100).toFixed(2) : "0.00"}% of base · {inr(rbPeople)} people</Sub>
+          <Big value={money(rbTotal)} />
+          <Sub>{baseTotal ? ((rbTotal / baseTotal) * 100).toFixed(2) : "0.00"}% of base · {inr(rbPeople ? rbTotal / rbPeople : 0)} per person ({inr(rbPeople)} people)</Sub>
         </Tile>
       </div>
 

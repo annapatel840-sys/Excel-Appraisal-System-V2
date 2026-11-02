@@ -1,7 +1,6 @@
 // Pure helpers for the Dashboard Overview. No fetching here: everything is
 // computed from rows the existing stores already load.
 import {
-  totalOfPB,
   hikeAmount as calcHikeAmount,
   hikePct as calcHikePct,
 } from "@/lib/appraisal-data";
@@ -78,19 +77,16 @@ export const targetPair = (rows) => {
   return {
     n: withTarget.length,
     target: sumBy(withTarget, (r) => r.targetPBAllocatedForMay),
-    paid: sumBy(withTarget, totalOfPB),
+    paid: sumBy(withTarget, (r) => num(r.allocatedPBAmount)),
   };
 };
 
 export const avgHikePct = (rows) => avgBy(rows, calcHikePct);
 export { calcHikePct };
 
-// Compact money: full rupees below 1 lakh, then L, then Cr.
+// Money as a whole number (no L / Cr, no currency symbol).
 export const money = (v) => {
-  const a = Math.abs(v);
   const s = v < 0 ? "−" : "";
-  if (a >= 1e7) return `${s}₹ ${(a / 1e7).toFixed(2)} Cr`;
-  if (a >= 1e5) return `${s}₹ ${(a / 1e5).toFixed(2)} L`;
-  return `${s}₹ ${Math.round(a).toLocaleString("en-IN")}`;
+  return `${s}${Math.round(Math.abs(v)).toLocaleString("en-IN")}`;
 };
 export const inr = (v) => Math.round(num(v)).toLocaleString("en-IN");
