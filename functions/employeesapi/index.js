@@ -920,6 +920,64 @@ async function readAllDataStoreRows(table) {
   return rows;
 }
 
+/* ============================================================
+   UNCHANGED-TABLE READ CACHE (per function instance)
+
+   The roster reads whole Data Store tables 200 rows at a time. Before reusing
+   a table's rows from an earlier request, two cheap ZCQL queries check that
+   the table is unchanged: its row count and its latest MODIFIEDTIME. A table
+   that was inserted into, updated or deleted from since the cached read
+   (by this or any other function) has a different fingerprint and is read
+   again, so the roster returns exactly what a full read would. If the check
+   fails for any reason, the table is simply read as before.
+   ============================================================ */
+const TABLE_READ_CACHE = new Map(); // table id -> { fingerprint, rows, at }
+const TABLE_READ_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+
+async function tableFingerprint(zcql, tableName) {
+  const [count, latest] = await Promise.all([
+    withDataStoreRetry(
+      () => zcql.executeZCQLQuery("SELECT COUNT(ROWID) FROM " + tableName),
+      tableName + " row count",
+    ),
+    withDataStoreRetry(
+      () => zcql.executeZCQLQuery("SELECT ROWID, MODIFIEDTIME FROM " + tableName + " ORDER BY MODIFIEDTIME DESC LIMIT 1"),
+      tableName + " latest change",
+    ),
+  ]);
+  return JSON.stringify([count, latest]);
+}
+
+// Wraps a full-table read: same rows as read(), reused while the table is unchanged.
+function cachedTableRead(zcql, tableId, tableName, read) {
+  return async function () {
+    let fingerprint = null;
+    if (zcql) {
+      try {
+        fingerprint = await tableFingerprint(zcql, tableName);
+      } catch (error) {
+        fingerprint = null;
+      }
+    }
+    const hit = TABLE_READ_CACHE.get(tableId);
+    if (fingerprint && hit && hit.fingerprint === fingerprint &&
+        Date.now() - hit.at < TABLE_READ_CACHE_MAX_AGE_MS) {
+      return hit.rows.map(function (row) { return { ...row }; });
+    }
+    const rows = await read();
+    if (fingerprint) {
+      TABLE_READ_CACHE.set(tableId, {
+        fingerprint: fingerprint,
+        rows: rows.map(function (row) { return { ...row }; }),
+        at: Date.now(),
+      });
+    } else {
+      TABLE_READ_CACHE.delete(tableId);
+    }
+    return rows;
+  };
+}
+
 function historyReference(value) {
   if (value === null || value === undefined) return "";
   if (typeof value === "object") return String(value.ROWID ?? value.rowid ?? value.id ?? value.ID ?? value.value ?? value.appraisal_cycle_name ?? value.cycle_name ?? "").trim();
@@ -2391,16 +2449,18 @@ async function getEmployees(req, res) {
   const delegationRosterView = requestedView === "delegation";
   // Prefetch independent roster tables with a small worker pool. Delegation
   // tables are read only for the Delegation view; other views avoid that cost.
+  const rosterZcql = typeof adminInstance.zcql === "function" ? adminInstance.zcql() : null;
+  const cachedRead = (tableId, tableName, read) => cachedTableRead(rosterZcql, tableId, tableName, read);
   const roster = await readDataStoreRowsPooled([
-    { key: "payrollRows", read: () => readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)), optional: true, fallback: null },
-    { key: "allAppraisalRows", read: () => getAllEmployees(datastore), optional: false },
-    { key: "employeeMasterRows", read: () => getAllEmployeeMaster(datastore), optional: false },
+    { key: "payrollRows", read: cachedRead(PAYROLL_DATA_TABLE_ID, "Payroll_Data", () => readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID))), optional: true, fallback: null },
+    { key: "allAppraisalRows", read: cachedRead(EMPLOYEES_TABLE_ID, "Appraisal_Sheet", () => getAllEmployees(datastore)), optional: false },
+    { key: "employeeMasterRows", read: cachedRead(EMPLOYEE_MASTER_TABLE_ID, "Employee_Master", () => getAllEmployeeMaster(datastore)), optional: false },
     { key: "cycleRows", read: () => readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)), optional: false },
-    { key: "cycleEligibilityRows", read: () => readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)), optional: true, fallback: [] },
-    ...(delegationRosterView ? [] : [{ key: "feedbackRows", read: () => readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)), optional: true, fallback: null }]),
+    { key: "cycleEligibilityRows", read: cachedRead(ELIGIBILITY_TABLE_ID, "Eligibility_List", () => readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID))), optional: true, fallback: [] },
+    ...(delegationRosterView ? [] : [{ key: "feedbackRows", read: cachedRead(FEEDBACK_RATING_TABLE_ID, "Feedback_And_Rating", () => readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID))), optional: true, fallback: null }]),
     ...(delegationRosterView ? [
-      { key: "delegationRows", read: () => readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID)), optional: true, fallback: null },
-      { key: "previousDelegationRows", read: () => readAllDataStoreRows(datastore.table(PREVIOUS_DELEGATION_TABLE_ID)), optional: true, fallback: null },
+      { key: "delegationRows", read: cachedRead(DELEGATION_TABLE_ID, "Delegation", () => readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID))), optional: true, fallback: null },
+      { key: "previousDelegationRows", read: cachedRead(PREVIOUS_DELEGATION_TABLE_ID, "Previous_Delegation", () => readAllDataStoreRows(datastore.table(PREVIOUS_DELEGATION_TABLE_ID))), optional: true, fallback: null },
     ] : []),
   ]);
   const { employeeMasterRows, allAppraisalRows, cycleRows, cycleEligibilityRows } = roster;
