@@ -1808,17 +1808,20 @@ const BulkOperations = forwardRef(function BulkOperations(
     setFlash("");
     setPvOn(false);
     try {
+      // Rows establish the user's available roles. Keep this first request
+      // so the remaining requests use the correct role scope.
       const res = await apiCall("GET", "/rows" + q());
       setMe(res.me || null);
       const fields = res.fields || {};
       setFa(fields);
       setLocked(!!res.locked);
       setLockReason(res.lockReason || "");
-      (res.designations || []).forEach &&
-        (res.designations || []).forEach((d) => {
-          if (d && d.designation && d.band)
-            desigBand.current[d.designation] = d.band;
-        });
+      (res.designations || []).forEach((d) => {
+        if (d && d.designation && d.band) {
+          desigBand.current[d.designation] = d.band;
+        }
+      });
+
       const rows = (res.rows || []).map(mapRow);
       const rl = res.me && Array.isArray(res.me.roles) ? res.me.roles : [];
       if (rl.length > 1) {
@@ -1827,60 +1830,67 @@ const BulkOperations = forwardRef(function BulkOperations(
       } else {
         asRef.current = "";
       }
-      try {
-        const au = await apiCall("GET", "/audit" + q());
-        const list = au.audit || au.entries || au.rows || [];
-        if (Array.isArray(list))
-          list.forEach((x) => {
-            const e = rows.filter(
-              (m) => m.empId === String(x.empId || x.emp_id || ""),
-            )[0];
-            if (!e) return;
-            const s = String(x.source || "");
-            if (/^bulk/.test(s)) e.bulk = true;
-            else if (s && s !== "upload") e.hand = true;
+
+      // Audit, budget and batch history do not depend on one another.
+      // Fetch them together instead of waiting for each API call in sequence.
+      const [auditResult, budgetResult, batchesResult] = await Promise.all([
+        apiCall("GET", "/audit" + q()).catch(() => null),
+        apiCall("GET", "/budget" + q()).catch(() => null),
+        apiCall("GET", "/batches" + q()).catch(() => null),
+      ]);
+
+      if (auditResult) {
+        const list = auditResult.audit || auditResult.entries || auditResult.rows || [];
+        const rowById = new Map(rows.map((row) => [String(row.empId), row]));
+        if (Array.isArray(list)) {
+          list.forEach((entry) => {
+            const employee = rowById.get(String(entry.empId || entry.emp_id || ""));
+            if (!employee) return;
+            const source = String(entry.source || "");
+            if (/^bulk/i.test(source)) employee.bulk = true;
+            else if (source && source.toLowerCase() !== "upload") employee.hand = true;
           });
-      } catch (x) {
-        /* audit is optional */
+        }
       }
-      try {
-        const st = await apiCall("GET", "/settings");
-        const c = st && st.settings && st.settings.bulkFilters;
-        void c; /* filter list is fixed in the UI; server list is ignored */
-      } catch (x) {
-        /* optional */
+
+      if (budgetResult) {
+        sbFresh.current = true;
+        setSb(budgetResult);
+      } else {
+        setSb(null);
+        setSb0(null);
       }
-      setEmp(rows);
-      await loadBudget();
-      try {
-        const r = await apiCall("GET", "/batches" + q());
+
+      if (batchesResult) {
         setBatches(
-          (r.batches || []).map((b) => ({
-            id: b.id,
-            time: b.time || b.at || "",
-            by: b.by || "",
-            text: b.text || "",
-            rows: (b.rows || []).map((x) => ({
-              id: x.id || x.empId,
-              old: x.old || {},
-              nw: x.nw || x.new || {},
-              bulk: x.bulk,
+          (batchesResult.batches || []).map((batch) => ({
+            id: batch.id,
+            time: batch.time || batch.at || "",
+            by: batch.by || "",
+            text: batch.text || "",
+            rows: (batch.rows || []).map((entry) => ({
+              id: entry.id || entry.empId,
+              old: entry.old || {},
+              nw: entry.nw || entry.new || {},
+              bulk: entry.bulk,
             })),
-            restored: !!b.restored,
+            restored: !!batch.restored,
           })),
         );
-      } catch (x) {
-        /* optional */
+      } else {
+        setBatches([]);
       }
+
+      setEmp(rows);
       setRules((rs) => {
         const r0 = rs[0];
         const ed = (k) => !fields || (fields[k] && fields[k].access === "edit");
         if (r0 && !ed(FIELDS[r0.field].key)) {
           const f = FORDER.filter((x) => ed(FIELDS[x].key))[0];
           if (f) {
-            const c = rs.slice();
-            c[0] = newRule(r0.uid, f, false);
-            return c;
+            const next = rs.slice();
+            next[0] = newRule(r0.uid, f, false);
+            return next;
           }
         }
         return rs;
