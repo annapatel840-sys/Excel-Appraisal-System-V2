@@ -676,6 +676,9 @@ async function syncEligibilityRows(tables, cycle, actor = "", readBack = null) {
     readBack.masterRows = masterRows;
     readBack.eligibilityRows = existingRows;
     readBack.changed = rowsUpdated > 0 || toDelete.length > 0;
+    // Reuse the marker lookup already performed during this sync; the GET
+    // route must not scan the full Appraisal_Audit table a second time.
+    readBack.criteriaApplied = criteriaAlreadyApplied;
   }
 
   return {
@@ -979,7 +982,7 @@ async function getEligibilityRows(tables, cycle, actor = "") {
       .map((row) => [String(row.emp_id || "").trim().toLowerCase(), row])
       .filter(([empId]) => empId),
   );
-  return eligibilityRows
+  const records = eligibilityRows
     .filter((row) => String(row.appraisal_cycle_id || "") === String(cycle.id))
     .map((row) => {
       const master = masterById.get(String(row.employee_master_id || "")) ||
@@ -987,6 +990,11 @@ async function getEligibilityRows(tables, cycle, actor = "") {
       return master ? shapeEligibilityRow(row, master) : null;
     })
     .filter(Boolean);
+  return {
+    records,
+    masterRecords: masterRows,
+    criteriaApplied: Boolean(synced.criteriaApplied),
+  };
 }
 
 async function saveEligibilityRow(tables, body, actor) {
@@ -2827,12 +2835,17 @@ async function routeRequest(req, res, identity, resource, a) {
       });
     }
     const data = await getEligibilityRows(tables, cycle, actor);
-    const criteriaApplied = await eligibilityCriteriaWasApplied(tables, cycle.id, data);
     return sendJson(res, 200, {
       success: true,
       data: {
-        records: data,
-        meta: { cycleId: cycle.id, cycleName: cycle.name, total: data.length, criteriaApplied },
+        records: data.records,
+        masterRecords: data.masterRecords,
+        meta: {
+          cycleId: cycle.id,
+          cycleName: cycle.name,
+          total: data.records.length,
+          criteriaApplied: data.criteriaApplied,
+        },
       },
     });
   }
