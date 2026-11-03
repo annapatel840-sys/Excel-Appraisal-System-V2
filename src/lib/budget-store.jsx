@@ -171,7 +171,8 @@ export function BudgetProvider({ children }) {
   const [techEdOwners, setTechEdOwners] = useState(Array.isArray(initialBudget?.techEdOwners) ? initialBudget.techEdOwners : []);
   // Why the budget base may be 0 (from budgetmasterapi), shown to HR.
   const [budgetWarning, setBudgetWarning] = useState("");
-  // Reuse the last successful budget response immediately while refreshing it in the background.\n  const [loading, setLoading] = useState(() => !initialBudget);
+  // Reuse the last successful budget response immediately while refreshing it in the background.
+  const [loading, setLoading] = useState(() => !initialBudget);
   const [error, setError] = useState("");
 
   const runLoad = useCallback(async () => {
@@ -182,7 +183,9 @@ export function BudgetProvider({ children }) {
       budgetUrl.searchParams.set("_ts", String(Date.now()));
       // Start both independent requests immediately, but do not make the
       // Budget cards wait for the employee roster request to finish.
-      const employeeResultPromise = fetchAllEligibleEmployees(\n        String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase(),\n      ).then(
+      const employeeResultPromise = fetchAllEligibleEmployees(
+        String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase(),
+      ).then(
         (employees) => ({ employees }),
         (employeeError) => ({ employees: [], employeeError }),
       );
@@ -206,7 +209,8 @@ export function BudgetProvider({ children }) {
         throw new Error(statusText);
       }
 
-      saveBudgetSnapshot(budgetCacheScope, budgetJson);\n      const techEdRows = Array.isArray(budgetJson && budgetJson.techEd)
+      saveBudgetSnapshot(budgetCacheScope, budgetJson);
+      const techEdRows = Array.isArray(budgetJson && budgetJson.techEd)
         ? budgetJson.techEd
         : Array.isArray(budgetJson && budgetJson.data)
           ? budgetJson.data
