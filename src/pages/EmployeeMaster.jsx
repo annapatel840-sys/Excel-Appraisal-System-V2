@@ -1258,8 +1258,13 @@ export function EmployeeMaster() {
           return;
         }
 
-        setEligibilityEmployees([]);
-        setEligibilityCycleId("");
+        // If the network refresh fails, keep the last saved snapshot visible
+        // (read-only) rather than replacing useful rows with an empty screen.
+        if (!eligibilityShowingSnapshot) {
+          setEligibilityEmployees([]);
+          setEligibilityMasterEmployees([]);
+          setEligibilityCycleId("");
+        }
 
         eligibilityLoadedKeyRef.current = null;
 
@@ -2348,8 +2353,19 @@ export function EmployeeMaster() {
       search: "",
       cycleId: eligibilityCycleId,
     });
-    setEligibilityEmployees(Array.isArray(reloaded?.data) ? reloaded.data : []);
-    setEligibilityCriteriaApplied(Boolean(reloaded?.cycle?.criteriaApplied));
+    const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
+    const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
+    setEligibilityEmployees(employees);
+    setEligibilityCriteriaApplied(criteriaApplied);
+    setEligibilityShowingSnapshot(false);
+    eligibilityFreshAppliedRef.current = true;
+    void writeEligibilitySnapshot(eligibilityCacheKey, {
+      employees,
+      masterEmployees: eligibilityMasterEmployees,
+      cycleId: eligibilityCycleId,
+      cycleName: String(reloaded?.cycle?.cycleName || currentAppraisalCycleName || ""),
+      criteriaApplied,
+    });
   };
 
   // Used by Change List & Mismatch to stay current without a page refresh:
@@ -2365,9 +2381,21 @@ export function EmployeeMaster() {
       }),
       fetchAllEmployeeMasterEmployees(),
     ]);
-    setEligibilityEmployees(Array.isArray(reloaded?.data) ? reloaded.data : []);
-    setEligibilityCriteriaApplied(Boolean(reloaded?.cycle?.criteriaApplied));
-    setEligibilityMasterEmployees(Array.isArray(masters) ? masters : []);
+    const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
+    const masterEmployees = Array.isArray(masters) ? masters : [];
+    const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
+    setEligibilityEmployees(employees);
+    setEligibilityCriteriaApplied(criteriaApplied);
+    setEligibilityMasterEmployees(masterEmployees);
+    setEligibilityShowingSnapshot(false);
+    eligibilityFreshAppliedRef.current = true;
+    void writeEligibilitySnapshot(eligibilityCacheKey, {
+      employees,
+      masterEmployees,
+      cycleId: eligibilityCycleId,
+      cycleName: String(reloaded?.cycle?.cycleName || currentAppraisalCycleName || ""),
+      criteriaApplied,
+    });
   };
 
   const editRegenerateEligibility = () => {
