@@ -102,6 +102,7 @@ async function fetchRosterPage(page, viewAs) {
     data: Array.isArray(json && json.data) ? json.data : [],
     pagination: (json && json.pagination) || {},
     counts: (json && json.counts) || {},
+    activeCycle: (json && json.activeCycle) || null,
   };
 }
 
@@ -117,6 +118,7 @@ async function loadRoster(viewAs, cacheScope) {
     employees: [first, ...rest].flatMap((page) => page.data),
     counts: first.counts,
     pagination: first.pagination,
+    activeCycle: first.activeCycle,
   };
   saveCachedAppraisalRoster(roster, viewAs, cacheScope);
   return roster;
