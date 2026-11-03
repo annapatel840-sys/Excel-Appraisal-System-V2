@@ -153,6 +153,8 @@ export function ColumnFilter({
   // checkbox list draft
   const [search, setSearch] = useState("");
   const [picked, setPicked] = useState([]);
+  // Ticks as they were before a search started (restored when search is cleared).
+  const pickedBeforeSearch = useRef(null);
 
   // bulk edit draft
   const [bulkValue, setBulkValue] = useState("");
@@ -171,6 +173,7 @@ export function ColumnFilter({
   useEffect(() => {
     if (!open) return;
     setSearch("");
+    pickedBeforeSearch.current = null;
     setBulkValue("");
     setSubOpen(false);
     setPicked(
@@ -208,14 +211,36 @@ export function ColumnFilter({
     [options, useNumberFilters],
   );
 
-  const visibleOptions = sortedOptions.filter((option) => {
-    const needle = search.trim().toLowerCase();
+  const matchesSearch = (option, text) => {
+    const needle = text.trim().toLowerCase();
     if (!needle) return true;
     return (
       option.toLowerCase().includes(needle) ||
       formatOption(option).toLowerCase().includes(needle)
     );
-  });
+  };
+
+  const visibleOptions = sortedOptions.filter((option) =>
+    matchesSearch(option, search),
+  );
+
+  // Excel behaviour: typing in Search ticks exactly the matching values, so OK
+  // filters to them. Clearing the search puts the earlier ticks back.
+  const handleSearchChange = (text) => {
+    const searching = text.trim() !== "";
+
+    if (searching) {
+      if (pickedBeforeSearch.current === null) {
+        pickedBeforeSearch.current = picked;
+      }
+      setPicked(sortedOptions.filter((option) => matchesSearch(option, text)));
+    } else if (pickedBeforeSearch.current !== null) {
+      setPicked(pickedBeforeSearch.current);
+      pickedBeforeSearch.current = null;
+    }
+
+    setSearch(text);
+  };
 
   const allVisibleSelected =
     visibleOptions.length > 0 &&
@@ -242,12 +267,14 @@ export function ColumnFilter({
   };
 
   const applyPickedValues = () => {
-    if (picked.length === 0) return;
+    // Only values that exist in the list count (guards against stale ticks).
+    const chosen = sortedOptions.filter((option) => picked.includes(option));
+    if (chosen.length === 0) return;
     // Everything ticked = no filter.
     apply(
-      picked.length >= sortedOptions.length
+      chosen.length >= sortedOptions.length
         ? undefined
-        : { kind: "enum", values: picked },
+        : { kind: "enum", values: chosen },
     );
   };
 
@@ -584,7 +611,7 @@ export function ColumnFilter({
                 type="text"
                 placeholder="Search"
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => handleSearchChange(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") applyPickedValues();
                 }}
