@@ -2397,7 +2397,7 @@ async function getEmployees(req, res) {
     { key: "employeeMasterRows", read: () => getAllEmployeeMaster(datastore), optional: false },
     { key: "cycleRows", read: () => readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)), optional: false },
     { key: "cycleEligibilityRows", read: () => readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)), optional: true, fallback: [] },
-    { key: "feedbackRows", read: () => readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)), optional: true, fallback: null },
+    ...(delegationRosterView ? [] : [{ key: "feedbackRows", read: () => readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)), optional: true, fallback: null }]),
     ...(delegationRosterView ? [
       { key: "delegationRows", read: () => readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID)), optional: true, fallback: null },
       { key: "previousDelegationRows", read: () => readAllDataStoreRows(datastore.table(PREVIOUS_DELEGATION_TABLE_ID)), optional: true, fallback: null },
@@ -2408,6 +2408,8 @@ async function getEmployees(req, res) {
   ["payrollRows", "feedbackRows", "delegationRows", "previousDelegationRows"].forEach((key) => {
     if (Array.isArray(roster[key])) prefetchedEnrichmentRows[key] = roster[key];
   });
+  // The Delegation screen does not show Feedback & Rating values, so its roster skips that table scan.
+  if (delegationRosterView) prefetchedEnrichmentRows.feedbackRows = [];
   logRosterStage("roster tables loaded", {
     employeeMasterRows: employeeMasterRows.length,
     appraisalSheetRows: allAppraisalRows.length,
