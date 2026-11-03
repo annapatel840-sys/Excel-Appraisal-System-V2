@@ -2751,7 +2751,7 @@ export function EmployeeMaster() {
                       : undefined
                   }
                   criteriaApplied={eligibilityCriteriaApplied}
-                  onGenerateDelegation={generateDelegationFromEligibility}
+                  onGenerateDelegation={eligibilityShowingSnapshot ? undefined : generateDelegationFromEligibility}
                   delegationGenerated={delegationGenerated}
                 />
               </div>
