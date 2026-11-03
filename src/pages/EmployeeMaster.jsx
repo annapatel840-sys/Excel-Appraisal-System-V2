@@ -3,7 +3,7 @@ import { CheckCircle2, AlertCircle, X, History } from "lucide-react";
 
 import { AppShell } from "@/components/appraisal/AppShell";
 import { useCatalystUser } from "@/lib/catalyst-auth";
-import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "@/lib/catalyst-api";
 import { generateAppraisalSheet, payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAppraisalRefresh } from "@/lib/appraisal-store";
 import { HrConfigPage } from "@/components/employee-master/HrConfigPage";
@@ -14,6 +14,7 @@ import {
   fetchEmployeeMasterEmployees,
   fetchAllEmployeeMasterEmployees,
   fetchEligibilityEmployees,
+  prefetchEligibilityEmployees,
   updateEmployeeMasterEmployee,
   updateEmployeeEligibility,
   updateEligibilityRecords,
@@ -716,6 +717,10 @@ export function EmployeeMaster() {
   // Every tab change is a history entry (?tab=...), so Back retraces the exact
   // order visited: e.g. Dashboard -> Access -> Budget Master  =>  Back: Access -> Dashboard.
   const goToTab = (tab) => {
+    if (tab === "eligibility" || tab === "change-mismatch") {
+      // Start the shared read at click time; the tab effect joins this request.
+      void prefetchEligibilityEmployees();
+    }
     const current = new URLSearchParams(window.location.search).get("tab");
     if (window.location.pathname === "/employee-master" && current !== tab) {
       window.history.pushState({}, "", `/employee-master?tab=${tab}`);
@@ -824,6 +829,12 @@ export function EmployeeMaster() {
     window.addEventListener("appraisal:cycle-updated", onCycleChange);
     return () => window.removeEventListener("appraisal:cycle-updated", onCycleChange);
   }, []);
+
+  useEffect(() => onCatalystWrite(() => {
+    // Any successful write makes the saved Eligibility List stale. The next
+    // successful refresh writes a new snapshot.
+    void clearEligibilitySnapshot(eligibilityCacheKey);
+  }), [eligibilityCacheKey]);
 
   // Restore the last Eligibility List immediately from IndexedDB. The fresh
   // Catalyst response below always replaces this display-only snapshot.
@@ -1229,7 +1240,6 @@ export function EmployeeMaster() {
         setCurrentAppraisalCycleName(String(firstPage?.cycle?.cycleName || "").trim());
         setEligibilityCycleId(loadedCycleId);
         setEligibilityCriteriaApplied(Boolean(firstPage?.cycle?.criteriaApplied));
-        setEligibilityEmployees(Array.isArray(firstPage?.data) ? firstPage.data : []);
         const freshEligibilityEmployees = Array.isArray(firstPage?.data) ? firstPage.data : [];
         const freshEligibilityMasterEmployees = Array.isArray(firstPage?.masterEmployees) ? firstPage.masterEmployees : [];
         setEligibilityEmployees(freshEligibilityEmployees);
@@ -2675,7 +2685,7 @@ export function EmployeeMaster() {
                     setExcludedEmployees={setExcludedEmployees}
                     onApply={applyEligibilityCriteria}
                     onEditRegenerate={editRegenerateEligibility}
-                    onGenerateDelegation={generateDelegationFromEligibility}
+                    onGenerateDelegation={eligibilityShowingSnapshot ? undefined : generateDelegationFromEligibility}
                     criteriaApplied={eligibilityCriteriaApplied}
                     delegationGenerated={delegationGenerated}
                     readOnly={!eligibilityCycleId || eligibilityShowingSnapshot}
