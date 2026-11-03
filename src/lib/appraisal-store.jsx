@@ -1156,7 +1156,8 @@ export function AppraisalProvider({ children }) {
 
   const [modifiedLive, setModified] = useState({});
 
-  // A previously loaded roster is rendered immediately; the network refresh runs in the background.\n  const [loading, setLoading] = useState(() => !initialCachedRoster);
+  // A previously loaded roster is rendered immediately; the network refresh runs in the background.
+  const [loading, setLoading] = useState(() => !initialCachedRoster);
 
   const [error, setError] = useState("");
 
