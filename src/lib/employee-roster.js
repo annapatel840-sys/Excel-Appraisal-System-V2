@@ -19,11 +19,47 @@ import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "./catalyst-
 export const ROSTER_LIMIT = 1000;
 // A request started this long ago (still running or finished) is shared.
 const SHARE_WINDOW_MS = 15000;
+const ROSTER_CACHE_PREFIX = "appraisal.roster.snapshot.v1:";
+
+const cacheKeyFor = (viewAs, cacheScope) =>
+  ROSTER_CACHE_PREFIX + encodeURIComponent(String(cacheScope || "anonymous").toLowerCase()) + ":" + encodeURIComponent(String(viewAs || ""));
+
+export function readCachedAppraisalRoster({ viewAs = "", cacheScope = "" } = {}) {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage.getItem(cacheKeyFor(viewAs, cacheScope));
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    return cached && Array.isArray(cached.employees) ? cached : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+const saveCachedAppraisalRoster = (roster, viewAs, cacheScope) => {
+  try {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(cacheKeyFor(viewAs, cacheScope), JSON.stringify({
+      ...roster,
+      cachedAt: Date.now(),
+    }));
+  } catch (error) {
+    console.warn("Could not cache the Appraisal Sheet roster:", error);
+  }
+};
 
 const inFlight = new Map(); // key -> { startedAt, promise }
 
 export function invalidateEmployeeRoster() {
   inFlight.clear();
+  try {
+    if (typeof window === "undefined") return;
+    Object.keys(window.localStorage).forEach((key) => {
+      if (key.startsWith(ROSTER_CACHE_PREFIX)) window.localStorage.removeItem(key);
+    });
+  } catch (_) {
+    /* local cache is optional */
+  }
 }
 
 onCatalystWrite(invalidateEmployeeRoster);
@@ -69,7 +105,7 @@ async function fetchRosterPage(page, viewAs) {
   };
 }
 
-async function loadRoster(viewAs) {
+async function loadRoster(viewAs, cacheScope) {
   const first = await fetchRosterPage(1, viewAs);
   const totalPages = Math.max(1, Number(first.pagination.totalPages || 1));
   const rest = totalPages > 1
@@ -77,11 +113,13 @@ async function loadRoster(viewAs) {
         Array.from({ length: totalPages - 1 }, (_, index) => fetchRosterPage(index + 2, viewAs)),
       )
     : [];
-  return {
+  const roster = {
     employees: [first, ...rest].flatMap((page) => page.data),
     counts: first.counts,
     pagination: first.pagination,
   };
+  saveCachedAppraisalRoster(roster, viewAs, cacheScope);
+  return roster;
 }
 
 /* Full Appraisal-view roster: { employees, counts, pagination }.
@@ -89,12 +127,12 @@ async function loadRoster(viewAs) {
 // Each caller gets its own copy of the shared result.
 const copyOf = (roster) => JSON.parse(JSON.stringify(roster));
 
-export function fetchAppraisalRoster({ viewAs = "" } = {}) {
-  const key = String(viewAs || "");
+export function fetchAppraisalRoster({ viewAs = "", cacheScope = "" } = {}) {
+  const key = String(viewAs || "") + "::" + String(cacheScope || "anonymous").toLowerCase();
   const shared = inFlight.get(key);
   if (shared && Date.now() - shared.startedAt <= SHARE_WINDOW_MS) return shared.promise.then(copyOf);
   const entry = { startedAt: Date.now(), promise: null };
-  entry.promise = loadRoster(key).catch((error) => {
+  entry.promise = loadRoster(String(viewAs || ""), cacheScope).catch((error) => {
     // A failed load is never shared; the next caller tries again.
     if (inFlight.get(key) === entry) inFlight.delete(key);
     throw error;
