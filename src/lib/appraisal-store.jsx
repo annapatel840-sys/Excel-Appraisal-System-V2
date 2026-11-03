@@ -308,6 +308,43 @@ const normalizeHistoryValue = (key, value) => {
 CATALYST EMPLOYEE → REACT EMPLOYEE
 ============================================================ */
 
+// Comp Manager is stored in mixed shapes ("EMP060", "Ravi Rao",
+// "EMP060 - Ravi Rao"). The grid shows one consistent "ID - Name": resolve an
+// ID or a UNIQUE name against the employees that were loaded; anything that
+// cannot be resolved is shown as stored. Raw value is kept in compManagerRaw.
+const resolveCompManagers = (list) => {
+  const clean = (v) => String(v || "").trim().replace(/\s+/g, " ").toLowerCase();
+  const byId = new Map();
+  const byName = new Map();
+
+  list.forEach((e) => {
+    const id = clean(e.empId);
+    const name = clean(e.name);
+    if (id) byId.set(id, e);
+    if (name) byName.set(name, byName.has(name) ? null : e);
+  });
+
+  const label = (e) =>
+    e.empId && e.name ? `${e.empId} - ${e.name}` : e.name || e.empId;
+
+  return list.map((e) => {
+    const shown = String(e.compManagerDisplay || e.compManager || "").trim();
+    let resolved = shown;
+
+    if (shown) {
+      const leftId = clean(shown.split(/\s+-\s+/)[0]);
+      const found =
+        (shown.includes(" - ") && byId.get(leftId)) ||
+        byId.get(clean(shown)) ||
+        byName.get(clean(shown)) ||
+        null;
+      if (found) resolved = label(found);
+    }
+
+    return { ...e, compManagerRaw: e.compManager, compManager: resolved };
+  });
+};
+
 const mapCatalystEmployee = (employee, index) => {
   const id =
     employee.ROWID ||
@@ -1054,6 +1091,7 @@ export function AppraisalProvider({ children }) {
       .toLowerCase() === "hr";
 
   const rosterCacheScope = String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase();
+  const rosterCacheScope = String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase();
   const [rows, setRows] = useState([]);
 
   // While the rows on screen come from the browser's saved copy (see
@@ -1065,7 +1103,6 @@ export function AppraisalProvider({ children }) {
   // Set once a roster from the server has been applied; a saved copy read
   // after that is ignored.
   const freshAppliedRef = useRef(false);
-
   /*
   rowsRef always holds the latest rows. Every row mutation goes
   through updateRows(), which computes the next array from the
@@ -1181,7 +1218,7 @@ export function AppraisalProvider({ children }) {
         pagination: roster.pagination,
       };
       const employees = mergePendingCells(
-        result.employees.map(mapCatalystEmployee),
+        resolveCompManagers(result.employees.map(mapCatalystEmployee)),
         rowsRef.current,
         pendingCellsRef.current,
       );
