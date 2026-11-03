@@ -1736,6 +1736,163 @@ function EmployeePanel({
 // COMPONENT
 // ============================================================
 
+/* ============================================================
+   DRAFT CELLS
+   What the user is typing lives INSIDE these small components, so a keystroke
+   re-renders only the cell being typed in - not the whole grid. Nothing is
+   saved or recalculated until the cell is left (Enter / Tab / click away),
+   when `onCommit` runs the normal commit for that one row.
+   ============================================================ */
+
+function DraftInputCell({
+  inputRef,
+  inputType,
+  numeric,
+  idleValue, // shown while the cell is not being edited (formatted)
+  storedValue, // raw value the draft starts from
+  baseClass,
+  getPayError, // (raw) => message | ""
+  saving,
+  selectOnFocus,
+  rejectChange, // (value) => true to ignore this keystroke
+  onFocusCell, // return true to cancel editing (blocked cell)
+  onDraft, // (value, element) - side effects only, no state
+  onCommit, // (raw, element)
+  onKeyDown,
+  onDoubleClick,
+  onMouseDown,
+}) {
+  const [draft, setDraft] = useState(null);
+  const focused = draft !== null;
+  const rawNow = focused ? draft : storedValue;
+  const payError = getPayError ? getPayError(rawNow) : "";
+  const payNote = payError && focused ? payError : "";
+
+  return (
+    <div
+      className={cn(
+        "relative flex min-h-[30px] w-full px-1.5",
+        // With a note: 11px above the field and 11px for the note below it,
+        // so the row grows evenly and the other cells line up with the field.
+        payNote ? "flex-col justify-start pb-0 pt-[11px]" : "items-center py-1",
+      )}
+    >
+      <input
+        ref={inputRef}
+        type={inputType}
+        inputMode={numeric ? "decimal" : undefined}
+        value={focused ? draft : idleValue}
+        onMouseDown={onMouseDown}
+        onFocus={(event) => {
+          const input = event.currentTarget;
+
+          if (onFocusCell && onFocusCell(event) === true) return;
+
+          setDraft(storedValue);
+
+          if (selectOnFocus) {
+            requestAnimationFrame(() => {
+              if (document.activeElement === input) input.select();
+            });
+          }
+        }}
+        onChange={(event) => {
+          const value = event.target.value;
+
+          if (rejectChange && rejectChange(value)) return;
+
+          setDraft(value);
+          onDraft(value, event.currentTarget);
+        }}
+        onBlur={(event) => {
+          const raw = draft !== null ? draft : event.target.value;
+
+          setDraft(null);
+          onCommit(raw, event.currentTarget);
+        }}
+        onKeyDown={onKeyDown}
+        onDoubleClick={onDoubleClick}
+        className={cn(baseClass, payError && PAY_ERROR_CLASS)}
+        aria-invalid={payError ? true : undefined}
+      />
+
+      {payNote && (
+        <span
+          role="alert"
+          className="block h-[11px] whitespace-nowrap text-[10.5px] font-semibold leading-[11px] text-[#b42318]"
+        >
+          {payNote}
+        </span>
+      )}
+
+      {saving && (
+        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#16803c]">
+          <Check className="size-3" />
+        </span>
+      )}
+    </div>
+  );
+}
+
+function DraftTextareaCell({
+  inputRef,
+  storedValue,
+  wraps,
+  className,
+  onFocusCell,
+  onDraft,
+  onCommit,
+  onKeyDown,
+  onDoubleClick,
+}) {
+  const [draft, setDraft] = useState(null);
+  const focused = draft !== null;
+
+  return (
+    <div className="flex min-h-[30px] w-full items-center px-1.5 py-[2px]">
+      <textarea
+        ref={inputRef}
+        rows={1}
+        wrap={wraps ? "soft" : "off"}
+        value={focused ? draft : storedValue}
+        onFocus={(event) => {
+          onFocusCell?.(event);
+          setDraft(storedValue);
+
+          if (wraps) {
+            event.currentTarget.style.height = "auto";
+            event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
+          }
+        }}
+        onChange={(event) => {
+          const value = event.target.value;
+
+          setDraft(value);
+          onDraft(value, event.currentTarget);
+
+          if (wraps) {
+            event.target.style.height = "auto";
+            event.target.style.height = `${event.target.scrollHeight}px`;
+          }
+        }}
+        onBlur={(event) => {
+          const raw = draft !== null ? draft : event.target.value;
+
+          setDraft(null);
+          event.target.style.height = "";
+          onCommit(raw, event.currentTarget);
+        }}
+        onKeyDown={onKeyDown}
+        onDoubleClick={onDoubleClick}
+        className={className}
+      />
+    </div>
+  );
+}
+
+const PAY_ERROR_CLASS =
+  "border-[#f1a9a0] bg-[#ffe9e7] text-[#b42318] focus:border-[#d92d20] focus:bg-[#ffe9e7] focus:ring-[#d92d20]/30";
+
 export function AppraisalGrid({
   rows,
   verticalLayout = false,
@@ -1955,30 +2112,13 @@ export function AppraisalGrid({
   // LOCAL EDIT DRAFTS
   // ============================================================
 
-  const [editingValues, setEditingValues] = useState({});
+  // (What the user is typing is kept inside each cell - see DraftInputCell -
+  // so typing never re-renders the whole grid.)
 
   // Small history pop-up while typing: { rowId, colKey, raw }.
   const [typing, setTyping] = useState(null);
   const [typingClosed, setTypingClosed] = useState(false);
   const typingAnchorRef = useRef(null);
-
-  const setEditingValue = useCallback((cellKey, value) => {
-    setEditingValues((previous) => ({ ...previous, [cellKey]: value }));
-  }, []);
-
-  const clearEditingValue = useCallback((cellKey) => {
-    setEditingValues((previous) => {
-      if (!(cellKey in previous)) {
-        return previous;
-      }
-
-      const next = { ...previous };
-
-      delete next[cellKey];
-
-      return next;
-    });
-  }, []);
 
   const gridViewportRef = useRef(null);
 
@@ -3028,6 +3168,15 @@ export function AppraisalGrid({
       }
 
       if (col.key === "hikePct" || col.key === "hikeAmount") {
+        // Left empty: tell the user. (Hike calculation itself is unchanged.)
+        if (String(raw ?? "").trim() === "" && anchor) {
+          showToast({
+            mode: "error",
+            message: `${col.label} cannot be empty. Please enter 0 if there is no hike.`,
+            ...toastPosition(anchor),
+          });
+        }
+
         const outcome =
           col.key === "hikePct"
             ? updateHikePct(row, raw)
@@ -3119,6 +3268,7 @@ export function AppraisalGrid({
       flashHistoryFields,
       showYoyToast,
       showChangeToast,
+      showToast,
     ],
   );
 
@@ -3857,377 +4007,193 @@ export function AppraisalGrid({
     if (col.key === "hikePct" || col.key === "hikeAmount") {
       const basePay = Number(row.currentAnnualBasePay || 0);
       const otherKey = col.key === "hikePct" ? "hikeAmount" : "hikePct";
-      const otherDraft = editingValues[`${row.id}:${otherKey}`];
-      const otherRaw =
-        otherDraft !== undefined ? otherDraft : row[otherKey];
+      const otherRaw = row[otherKey];
       const other = Number(String(otherRaw ?? "").replace(/,/g, ""));
 
       if (basePay && String(otherRaw ?? "").trim() !== "" && Number.isFinite(other)) {
         if (col.key === "hikePct") {
           storedValue = String(hikePctFromAmount(basePay, other));
-        } else if (otherDraft !== undefined) {
-          storedValue = String(hikeAmountFromPct(basePay, roundPct(other)));
         }
       }
     }
 
+    // Shared "user typed something" bookkeeping. Runs per keystroke but only
+    // touches refs (and the one-time preview toast), never grid state.
+    const noteDraft = (value, element) => {
+      touchedCellsRef.current.add(cellKey);
+      pendingDraftRef.current = { row, col, raw: value };
+
+      const isHike = col.key === "hikePct" || col.key === "hikeAmount";
+
+      if (
+        !liveToastCellsRef.current.has(cellKey) &&
+        String(storedValue) !== String(value) &&
+        // An emptied hike cell gets the "cannot be empty" alert on leaving,
+        // not a "new value" preview.
+        !(isHike && String(value).trim() === "") &&
+        (!isNumericType(col.type) || isValidNumericInput(value))
+      ) {
+        liveToastCellsRef.current.add(cellKey);
+        if (YOY_FIELDS[col.key]) {
+          showYoyToast(element, col.key, { ...row, [col.key]: value });
+        } else if (isNumericType(col.type)) {
+          showChangeToast(
+            element,
+            col.label,
+            Number(storedValue) || 0,
+            Number(value) || 0,
+            false,
+          );
+        } else {
+          showChangeToast(
+            element,
+            col.label,
+            String(storedValue),
+            String(value),
+            true,
+          );
+        }
+      }
+    };
+
+    // Runs when the cell is left (Enter / Tab / click away): the one place a
+    // typed value is saved and that row is recalculated.
+    const finishEdit = (raw, element) => {
+      setActive(null);
+
+      pendingDraftRef.current = null;
+      liveToastCellsRef.current.delete(cellKey);
+
+      const touched = touchedCellsRef.current.delete(cellKey);
+
+      // Escape pressed: discard the draft instead of saving it.
+      if (cancelledCellsRef.current.delete(cellKey)) {
+        return;
+      }
+
+      // Hike % / Hike Amount: save only what the user typed. The other cell
+      // just shows a derived value and must not be committed back as if it
+      // had been typed.
+      if ((col.key === "hikePct" || col.key === "hikeAmount") && !touched) {
+        return;
+      }
+
+      commit(row, col, raw, element);
+    };
+
     if (col.type === "textarea") {
-      const textareaDraft =
-        editingValues[cellKey] !== undefined
-          ? editingValues[cellKey]
-          : storedValue;
-
       return (
-        <div className="flex min-h-[30px] w-full items-center px-1.5 py-[2px]">
-          <textarea
-            ref={(element) => {
-              cellRefs.current[`${rowIndex}:${col.key}`] = element;
-            }}
-            rows={1}
-            wrap={wraps ? "soft" : "off"}
-            value={textareaDraft}
-            onFocus={(event) => {
-              setActive(`${rowIndex}:${col.key}`);
-              selectRowForEdit(row);
-
-              setEditingValues((previous) => ({
-                ...previous,
-                [cellKey]: storedValue,
-              }));
-
-              if (wraps) {
-                event.currentTarget.style.height = "auto";
-                event.currentTarget.style.height = `${event.currentTarget.scrollHeight}px`;
-              }
-            }}
-            onChange={(event) => {
-              const value = event.target.value;
-              setEditingValue(cellKey, value);
-
-              pendingDraftRef.current = { row, col, raw: value };
-
-              if (
-                !liveToastCellsRef.current.has(cellKey) &&
-                String(storedValue) !== String(value)
-              ) {
-                liveToastCellsRef.current.add(cellKey);
-                if (YOY_FIELDS[col.key]) {
-                  showYoyToast(event.currentTarget, col.key, {
-                    ...row,
-                    [col.key]: value,
-                  });
-                } else {
-                  showChangeToast(
-                    event.currentTarget,
-                    col.label,
-                    String(storedValue),
-                    String(value),
-                    true,
-                  );
-                }
-              }
-
-              if (wraps) {
-                event.target.style.height = "auto";
-                event.target.style.height = `${event.target.scrollHeight}px`;
-              }
-            }}
-            onBlur={(event) => {
-              setActive(null);
-
-              pendingDraftRef.current = null;
-
-              const raw =
-                editingValues[cellKey] !== undefined
-                  ? editingValues[cellKey]
-                  : event.target.value;
-
-              clearEditingValue(cellKey);
-              liveToastCellsRef.current.delete(cellKey);
-
-              event.target.style.height = "";
-
-              // Escape pressed: discard the draft instead of saving it.
-              if (cancelledCellsRef.current.delete(cellKey)) {
-                return;
-              }
-
-              commit(row, col, raw, event.currentTarget);
-            }}
-            onKeyDown={(event) => onKeyDown(event, rowIndex, col.key)}
-            onDoubleClick={(event) =>
-              handleEditableDoubleClick(event, rowIndex, col.key)
-            }
-            className={cn(
-              "min-h-[30px] w-full resize-none overflow-hidden rounded-[6px] border px-1.5 py-[5px] text-[12.25px] font-semibold leading-tight outline-none",
-              !wraps && "whitespace-nowrap",
-              draftClass(cellKey, isBlinking, row[col.key]),
-            )}
-          />
-        </div>
-      );
-    }
-
-    const draftValue =
-      editingValues[cellKey] !== undefined
-        ? editingValues[cellKey]
-        : storedValue;
-
-    const isMonthColumn = col.key === "monthRB" || col.key === "monthPB";
-    const rawNow =
-      editingValues[cellKey] !== undefined ? editingValues[cellKey] : storedValue;
-    // Red whenever the value is below the "to be Paid" amount (even when
-    // saved); the message itself shows only while the cursor is in the cell.
-    const payError = PAY_FLOOR_FIELDS[col.key]
-      ? payFloorMessage(row, col.key, rawNow, !!modified[cellKey])
-      : "";
-    const isCellActive = active === `${rowIndex}:${col.key}`;
-    const payNote = payError && isCellActive ? payError : "";
-
-    return (
-      <div
-        className={cn(
-          "relative flex min-h-[30px] w-full px-1.5",
-          // With a note: 11px above the field and 11px for the note below it,
-          // so the row grows evenly and the other cells line up with the field.
-          payNote ? "flex-col justify-start pb-0 pt-[11px]" : "items-center py-1",
-        )}
-      >
-        {/* <input
-          ref={(element) => {
+        <DraftTextareaCell
+          inputRef={(element) => {
             cellRefs.current[`${rowIndex}:${col.key}`] = element;
           }}
-          type={col.type === "date" ? "date" : "text"}
-          inputMode={isNumericType(col.type) ? "decimal" : undefined}
-          value={
-            isNumericType(col.type) && editingValues[cellKey] === undefined
-              ? formatEditableNumeric(storedValue, col.type)
-              : draftValue
-          }
-
-          onMouseDown={(event) => {
-            const input = event.currentTarget;
-            if (document.activeElement !== input) {
-            input.dataset.selectOnMouseUp = "true";
-          }
-        }}
-          onMouseUp={(event) => {
-            const input = event.currentTarget;
-            if (input.dataset.selectOnMouseUp === "true") {
-            delete input.dataset.selectOnMouseUp;
-            event.preventDefault();
-            input.select();
-          }
-        }}
-          onFocus={(event) => {
+          storedValue={storedValue}
+          wraps={wraps}
+          onFocusCell={() => {
             setActive(`${rowIndex}:${col.key}`);
             selectRowForEdit(row);
-
-            setEditingValues((previous) => ({
-              ...previous,
-              [cellKey]: storedValue,
-            }));
-
-            if (col.type !== "date") {
-              requestAnimationFrame(() => {
-                if (document.activeElement === event.currentTarget) {
-                  event.currentTarget.select();
-                }
-              });
-            }
-          }} */}
-
-                  <input
-          ref={(element) => {
-            cellRefs.current[`${rowIndex}:${col.key}`] = element;
           }}
-          type={col.type === "date" ? "date" : "text"}
-          inputMode={isNumericType(col.type) ? "decimal" : undefined}
-          value={
-            isNumericType(col.type) && editingValues[cellKey] === undefined
-              ? formatEditableNumeric(storedValue, col.type)
-              : draftValue
-          }
-          onMouseDown={(event) => {
-            const input = event.currentTarget;
-
-            if (document.activeElement !== input) {
-              input.dataset.selectOnMouseUp = "true";
-            }
-          }}
-          onMouseUp={(event) => {
-            const input = event.currentTarget;
-
-            if (input.dataset.selectOnMouseUp === "true") {
-              delete input.dataset.selectOnMouseUp;
-              event.preventDefault();
-              input.select();
-            }
-          }}
-          onMouseDown={(event) => {
-  if (col.key !== "newTitle") return;
-
-  const rule = getNewTitleRule(row);
-
-  if (!rule.ok) {
-    event.preventDefault();
-    setDesignationPopupMessage(rule.message);
-  }
-}}
-
-
-          onFocus={(event) => {
-            const input = event.currentTarget;
-
-            setActive(`${rowIndex}:${col.key}`);
-            selectRowForEdit(row);
-            if (col.key === "newTitle") {
-  const rule = getNewTitleRule(row);
-
-  if (!rule.ok) {
-    setDesignationPopupMessage(rule.message);
-    event.currentTarget.blur();
-    return;
-  }
-}
-
-            touchedCellsRef.current.delete(cellKey);
-
-            setEditingValues((previous) => ({
-              ...previous,
-              [cellKey]: storedValue,
-            }));
-
-            if (TYPING_POPUP_FIELDS[col.key]) {
-              typingAnchorRef.current = input;
-              setTypingClosed(false);
-              setTyping({ rowId: row.id, colKey: col.key, raw: storedValue });
-              if (row.empId) loadHistory(row.empId).catch(() => {});
-            }
-
-            if (col.type !== "date") {
-              requestAnimationFrame(() => {
-                if (document.activeElement === input) {
-                  input.select();
-                }
-              });
-            }
-          }}
-          onChange={(event) => {
-            const value = event.target.value;
-
-            // Hike Amount accepts at most 2 decimal places: extra digits
-            // are simply not appended.
-            if (col.key === "hikeAmount" && /[.]\d{3,}/.test(value)) {
-              return;
-            }
-
-            touchedCellsRef.current.add(cellKey);
-            setEditingValue(cellKey, value);
-
-            if (TYPING_POPUP_FIELDS[col.key]) {
-              setTyping({ rowId: row.id, colKey: col.key, raw: value });
-            }
-
-            pendingDraftRef.current = { row, col, raw: value };
-
-            if (
-              !liveToastCellsRef.current.has(cellKey) &&
-              String(storedValue) !== String(value) &&
-              (!isNumericType(col.type) || isValidNumericInput(value))
-            ) {
-              liveToastCellsRef.current.add(cellKey);
-              if (YOY_FIELDS[col.key]) {
-                showYoyToast(event.currentTarget, col.key, {
-                  ...row,
-                  [col.key]: value,
-                });
-              } else if (isNumericType(col.type)) {
-                showChangeToast(
-                  event.currentTarget,
-                  col.label,
-                  Number(storedValue) || 0,
-                  Number(value) || 0,
-                  false,
-                );
-              } else {
-                showChangeToast(
-                  event.currentTarget,
-                  col.label,
-                  String(storedValue),
-                  String(value),
-                  true,
-                );
-              }
-            }
-          }}
-          onBlur={(event) => {
-            setActive(null);
-
-            pendingDraftRef.current = null;
-
-            if (TYPING_POPUP_FIELDS[col.key]) {
-              setTyping(null);
-              setTypingClosed(false);
-            }
-
-            const raw =
-              editingValues[cellKey] !== undefined
-                ? editingValues[cellKey]
-                : event.target.value;
-
-            clearEditingValue(cellKey);
-            liveToastCellsRef.current.delete(cellKey);
-
-            const touched = touchedCellsRef.current.delete(cellKey);
-
-            // Escape pressed: discard the draft instead of saving it.
-            if (cancelledCellsRef.current.delete(cellKey)) {
-              return;
-            }
-
-            // Hike % / Hike Amount: save only what the user typed. The
-            // other cell just shows a derived value and must not be
-            // committed back as if it had been typed.
-            if (
-              (col.key === "hikePct" || col.key === "hikeAmount") &&
-              !touched
-            ) {
-              return;
-            }
-
-            commit(row, col, raw, event.currentTarget);
-          }}
+          onDraft={noteDraft}
+          onCommit={finishEdit}
           onKeyDown={(event) => onKeyDown(event, rowIndex, col.key)}
           onDoubleClick={(event) =>
             handleEditableDoubleClick(event, rowIndex, col.key)
           }
           className={cn(
-            "h-[26px] w-full rounded-[6px] border px-1.5 text-[12.25px] font-semibold outline-none",
+            "min-h-[30px] w-full resize-none overflow-hidden rounded-[6px] border px-1.5 py-[5px] text-[12.25px] font-semibold leading-tight outline-none",
+            !wraps && "whitespace-nowrap",
             draftClass(cellKey, isBlinking, row[col.key]),
-            isNumericType(col.type) && "text-right font-medium tabular-nums",
-            isMonthColumn && "text-center",
-            payError &&
-              "border-[#f1a9a0] bg-[#ffe9e7] text-[#b42318] focus:border-[#d92d20] focus:bg-[#ffe9e7] focus:ring-[#d92d20]/30",
           )}
-          aria-invalid={payError ? true : undefined}
         />
+      );
+    }
 
-        {payNote && (
-          <span
-            role="alert"
-            className="block h-[11px] whitespace-nowrap text-[10.5px] font-semibold leading-[11px] text-[#b42318]"
-          >
-            {payNote}
-          </span>
-        )}
+    const isMonthColumn = col.key === "monthRB" || col.key === "monthPB";
 
-        {saving[cellKey] !== undefined && (
-          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[#16803c]">
-            <Check className="size-3" />
-          </span>
+    return (
+      <DraftInputCell
+        inputRef={(element) => {
+          cellRefs.current[`${rowIndex}:${col.key}`] = element;
+        }}
+        inputType={col.type === "date" ? "date" : "text"}
+        numeric={isNumericType(col.type)}
+        idleValue={
+          isNumericType(col.type)
+            ? formatEditableNumeric(storedValue, col.type)
+            : storedValue
+        }
+        storedValue={storedValue}
+        selectOnFocus={col.type !== "date"}
+        saving={saving[cellKey] !== undefined}
+        getPayError={
+          PAY_FLOOR_FIELDS[col.key]
+            ? (raw) => payFloorMessage(row, col.key, raw, !!modified[cellKey])
+            : undefined
+        }
+        // Hike Amount accepts at most 2 decimal places: extra digits are
+        // simply not appended.
+        rejectChange={(value) =>
+          col.key === "hikeAmount" && /[.]\d{3,}/.test(value)
+        }
+        onMouseDown={(event) => {
+          if (col.key !== "newTitle") return;
+
+          const rule = getNewTitleRule(row);
+
+          if (!rule.ok) {
+            event.preventDefault();
+            setDesignationPopupMessage(rule.message);
+          }
+        }}
+        onFocusCell={(event) => {
+          setActive(`${rowIndex}:${col.key}`);
+          selectRowForEdit(row);
+
+          if (col.key === "newTitle") {
+            const rule = getNewTitleRule(row);
+
+            if (!rule.ok) {
+              setDesignationPopupMessage(rule.message);
+              event.currentTarget.blur();
+              return true;
+            }
+          }
+
+          touchedCellsRef.current.delete(cellKey);
+
+          if (TYPING_POPUP_FIELDS[col.key]) {
+            typingAnchorRef.current = event.currentTarget;
+            setTypingClosed(false);
+            setTyping({ rowId: row.id, colKey: col.key, raw: storedValue });
+            if (row.empId) loadHistory(row.empId).catch(() => {});
+          }
+
+          return false;
+        }}
+        onDraft={(value, element) => {
+          if (TYPING_POPUP_FIELDS[col.key]) {
+            setTyping({ rowId: row.id, colKey: col.key, raw: value });
+          }
+          noteDraft(value, element);
+        }}
+        onCommit={(raw, element) => {
+          if (TYPING_POPUP_FIELDS[col.key]) {
+            setTyping(null);
+            setTypingClosed(false);
+          }
+          finishEdit(raw, element);
+        }}
+        onKeyDown={(event) => onKeyDown(event, rowIndex, col.key)}
+        onDoubleClick={(event) =>
+          handleEditableDoubleClick(event, rowIndex, col.key)
+        }
+        baseClass={cn(
+          "h-[26px] w-full rounded-[6px] border px-1.5 text-[12.25px] font-semibold outline-none",
+          draftClass(cellKey, isBlinking, row[col.key]),
+          isNumericType(col.type) && "text-right font-medium tabular-nums",
+          isMonthColumn && "text-center",
         )}
-      </div>
+      />
     );
   };
 
