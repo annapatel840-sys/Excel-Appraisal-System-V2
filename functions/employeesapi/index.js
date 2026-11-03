@@ -5,6 +5,7 @@
    (every Catalyst function deploys separately). Edit the accessapi copy,
    then copy it here. See docs/ACCESS_SPEC.md. */
 
+const zlib = require("zlib");
 const express = require("express");
 const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
@@ -105,7 +106,25 @@ app.use(function (req, res, next) {
    JSON RESPONSE
    ============================================================ */
 
+// Responses over this size are gzipped when the caller asks for it (gz=1)
+// and the browser accepts gzip. The 2,000-row roster is ~5 MB of JSON and
+// ~0.5 MB gzipped; level 1 compresses it in tens of milliseconds.
+const GZIP_MIN_BYTES = 32 * 1024;
+
 function sendJson(res, statusCode, body) {
+  const req = res.req;
+  const wantsGzip = req && req.query && req.query.gz === "1" &&
+    /\bgzip\b/i.test(String(req.headers["accept-encoding"] || ""));
+  if (wantsGzip) {
+    const text = JSON.stringify(body);
+    if (Buffer.byteLength(text) >= GZIP_MIN_BYTES) {
+      res.status(statusCode);
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Content-Encoding", "gzip");
+      res.setHeader("Vary", "Accept-Encoding");
+      return res.end(zlib.gzipSync(text, { level: 1 }));
+    }
+  }
   return res.status(statusCode).json(body);
 }
 

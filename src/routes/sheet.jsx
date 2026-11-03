@@ -63,6 +63,7 @@ export function SheetPage() {
     error: loadError,
     saveError,
     clearSaveError,
+    showingSaved,
   } = useAppraisal();
   const {
     totals: budgetMasterTotals,
@@ -294,6 +295,15 @@ export function SheetPage() {
                   Dismiss
                 </button>
               )}
+            </div>
+          )}
+
+          {showingSaved && !loadError && (
+            <div
+              role="status"
+              className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-[13px] text-blue-800"
+            >
+              Showing the sheet as you last saw it while the latest data loads. Editing is available once it has loaded.
             </div>
           )}
 

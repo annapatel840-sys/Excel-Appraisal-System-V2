@@ -15,7 +15,8 @@ import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 import { useCatalystUser } from "./catalyst-auth";
 import { getViewAsSelected, useViewAs } from "./view-as-store";
 import { invalidatePayrollCycleReads, payrollCycleRequest } from "./payroll-cycle-api";
-import { fetchAppraisalRoster, invalidateEmployeeRoster, isActiveEligible, readCachedAppraisalRoster } from "./employee-roster";
+import { fetchAppraisalRoster, invalidateEmployeeRoster, isActiveEligible } from "./employee-roster";
+import { readSheetSnapshot, snapshotKey, writeSheetSnapshot } from "./roster-snapshot";
 
 const CURRENT_USER = "Unknown user";
 // Set from Appraisal_Cycle_Master before loading or saving current-cycle data.
@@ -1053,19 +1054,17 @@ export function AppraisalProvider({ children }) {
       .toLowerCase() === "hr";
 
   const rosterCacheScope = String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase();
-  const cachedRosterRef = useRef(null);
-  if (cachedRosterRef.current === null) {
-    cachedRosterRef.current = readCachedAppraisalRoster({
-      viewAs: viewAsId,
-      cacheScope: rosterCacheScope,
-    });
-  }
-  const initialCachedRoster = cachedRosterRef.current;
-  const [rows, setRows] = useState(() =>
-    initialCachedRoster
-      ? initialCachedRoster.employees.filter(isActiveEligible).map(mapCatalystEmployee)
-      : [],
-  );
+  const [rows, setRows] = useState([]);
+
+  // While the rows on screen come from the browser's saved copy (see
+  // roster-snapshot.js) and the fresh roster has not arrived yet, edits are
+  // refused: they would be made against values that may have changed.
+  const [showingSaved, setShowingSaved] = useState(false);
+  const showingSavedRef = useRef(false);
+  showingSavedRef.current = showingSaved;
+  // Set once a roster from the server has been applied; a saved copy read
+  // after that is ignored.
+  const freshAppliedRef = useRef(false);
 
   /*
   rowsRef always holds the latest rows. Every row mutation goes
@@ -1112,8 +1111,7 @@ export function AppraisalProvider({ children }) {
 
   const [modifiedLive, setModified] = useState({});
 
-  // A previously loaded roster is rendered immediately; the network refresh runs in the background.
-  const [loading, setLoading] = useState(() => !initialCachedRoster);
+  const [loading, setLoading] = useState(true);
 
   const [error, setError] = useState("");
 
@@ -1122,11 +1120,7 @@ export function AppraisalProvider({ children }) {
 
   const clearSaveError = useCallback(() => setSaveError(""), []);
 
-  const [employeeCounts, setEmployeeCounts] = useState(() => ({
-    total: Number(initialCachedRoster?.counts?.total || 0),
-    active: Number(initialCachedRoster?.counts?.active || 0),
-    inactive: Number(initialCachedRoster?.counts?.inactive || 0),
-  }));
+  const [employeeCounts, setEmployeeCounts] = useState({ total: 0, active: 0, inactive: 0 });
 
   /* ==========================================================
   LOAD EMPLOYEES
@@ -1159,12 +1153,14 @@ export function AppraisalProvider({ children }) {
       // fields. Avoid a second full Feedback_And_Rating API request.
       const roster = await fetchAppraisalRoster({
         viewAs: getViewAsSelected(),
-        cacheScope: rosterCacheScope,
       });
 
       if (requestId !== loadSeqRef.current) {
         return;
       }
+
+      freshAppliedRef.current = true;
+      setShowingSaved(false);
 
       const activeCycle = roster.activeCycle;
       APPRAISAL_YEAR = String(activeCycle?.name || activeCycle?.cycle_name || activeCycle?.appraisal_year || "").trim();
@@ -1232,6 +1228,42 @@ export function AppraisalProvider({ children }) {
       loadSeqRef.current += 1;
     };
   }, [loadEmployees, dataWanted]);
+
+  // Show the saved copy while the first roster loads. Same key as the roster
+  // request: the signed-in user and the View-as choice it was loaded under.
+  const sheetSnapshotKey = snapshotKey(rosterCacheScope, getViewAsSelected());
+  useEffect(() => {
+    if (!dataWanted || freshAppliedRef.current) return undefined;
+    let cancelled = false;
+    readSheetSnapshot(sheetSnapshotKey).then((snapshot) => {
+      if (cancelled || !snapshot || freshAppliedRef.current || rowsRef.current.length) return;
+      if (!APPRAISAL_YEAR) APPRAISAL_YEAR = String(snapshot.appraisalYear || "");
+      updateRows(() => snapshot.rows);
+      setEmployeeCounts({
+        total: Number(snapshot.counts?.total || 0),
+        active: Number(snapshot.counts?.active || 0),
+        inactive: Number(snapshot.counts?.inactive || 0),
+      });
+      setShowingSaved(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [dataWanted, sheetSnapshotKey, updateRows]);
+
+  // Keep the saved copy in step with what the user sees (fresh loads and
+  // their own edits), written a moment after the rows stop changing.
+  useEffect(() => {
+    if (!freshAppliedRef.current || showingSaved) return undefined;
+    const timer = setTimeout(() => {
+      writeSheetSnapshot(sheetSnapshotKey, {
+        rows: rowsRef.current,
+        counts: employeeCounts,
+        appraisalYear: APPRAISAL_YEAR,
+      });
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [rows, employeeCounts, showingSaved, sheetSnapshotKey]);
 
   useEffect(() => {
     // Before any screen has asked for appraisal data there is nothing to
@@ -1384,6 +1416,13 @@ export function AppraisalProvider({ children }) {
     return true;
   }, []);
 
+  // Edits wait until the fresh roster has replaced the saved copy.
+  const rejectWhileShowingSaved = useCallback(() => {
+    if (!showingSavedRef.current) return false;
+    setSaveError("The latest Appraisal Sheet data is still loading. Try again in a moment.");
+    return true;
+  }, []);
+
   /* ==========================================================
   SAVE FAILURE HANDLING
 
@@ -1489,7 +1528,7 @@ export function AppraisalProvider({ children }) {
   ========================================================== */
 
   const applyEdits = useCallback((ids, key, compute, source, batchId) => {
-    if (rejectUnmappedFields([key])) {
+    if (rejectWhileShowingSaved() || rejectUnmappedFields([key])) {
       return 0;
     }
 
@@ -1610,7 +1649,7 @@ export function AppraisalProvider({ children }) {
     });
 
     return entries.length;
-  }, [currentUserName, rejectUnmappedFields, updateRows, handleSaveFailure]);
+  }, [currentUserName, rejectUnmappedFields, rejectWhileShowingSaved, updateRows, handleSaveFailure]);
 
   /* ==========================================================
   APPLY LINKED FIELDS EDIT
@@ -1623,7 +1662,7 @@ export function AppraisalProvider({ children }) {
 
   const applyLinkedFieldsEdit = useCallback(
     (id, fieldValues, source = "Inline edit", batchId) => {
-      if (rejectUnmappedFields(Object.keys(fieldValues))) {
+      if (rejectWhileShowingSaved() || rejectUnmappedFields(Object.keys(fieldValues))) {
         return 0;
       }
 
@@ -1775,7 +1814,7 @@ export function AppraisalProvider({ children }) {
 
       return entries.length;
     },
-    [currentUserName, rejectUnmappedFields, updateRows, handleSaveFailure],
+    [currentUserName, rejectUnmappedFields, rejectWhileShowingSaved, updateRows, handleSaveFailure],
   );
 
   /* ==========================================================
@@ -2153,6 +2192,7 @@ export function AppraisalProvider({ children }) {
       audit,
       modified,
       loading,
+      showingSaved,
       error,
       saveError,
       clearSaveError,
@@ -2172,6 +2212,7 @@ export function AppraisalProvider({ children }) {
       audit,
       modified,
       loading,
+      showingSaved,
       error,
       saveError,
       clearSaveError,

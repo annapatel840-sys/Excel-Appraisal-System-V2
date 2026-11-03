@@ -31,7 +31,10 @@ function isUnauthorizedError(error) {
   );
 }
 
-export function CatalystAuthGate({ children }) {
+// onSignedIn: called once the Catalyst session is confirmed, before the
+// app's session details load (used to start slow reads early).
+// onSignOut: called just before signing out.
+export function CatalystAuthGate({ children, onSignedIn, onSignOut }) {
   const [user, setUser] = useState(null);
   const [state, setState] = useState("loading");
   const [message, setMessage] = useState("");
@@ -67,6 +70,7 @@ export function CatalystAuthGate({ children }) {
           setState("signed-out");
           return;
         }
+        onSignedIn?.();
       } catch (error) {
         if (!mounted) return;
         if (isUnauthorizedError(error)) {
@@ -169,7 +173,12 @@ export function CatalystAuthGate({ children }) {
     setUser(null);
     setMessage("");
     setState("loading");
-    auth.signOut(window.location.origin);
+    // Let onSignOut's cleanup finish (at most 1 s) before leaving the page.
+    const cleanup = Promise.resolve()
+      .then(() => onSignOut?.())
+      .catch(() => {});
+    const limit = new Promise((resolve) => window.setTimeout(resolve, 1000));
+    Promise.race([cleanup, limit]).then(() => auth.signOut(window.location.origin));
   };
 
   if (state === "authenticated") {
