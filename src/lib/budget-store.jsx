@@ -136,10 +136,15 @@ export function BudgetProvider({ children }) {
     [authenticatedUser],
   );
 
-  const budgetCacheScope = String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase();
-  const cachedBudgetRef = useRef(null);
-  if (cachedBudgetRef.current === null) cachedBudgetRef.current = readBudgetSnapshot(budgetCacheScope);
-  const initialBudget = cachedBudgetRef.current;
+  // Do not read or write a shared "anonymous" budget snapshot while Catalyst
+  // authentication is still resolving. Each signed-in account gets its own cache.
+  const budgetCacheScope = String(
+    authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "",
+  ).trim().toLowerCase();
+  const initialBudget = useMemo(
+    () => budgetCacheScope ? readBudgetSnapshot(budgetCacheScope) : null,
+    [budgetCacheScope],
+  );
   const initialCycleId = String(initialBudget?.active_appraisal_cycle_id || "").trim();
   const initialTechEd = (Array.isArray(initialBudget?.techEd) ? initialBudget.techEd : Array.isArray(initialBudget?.data) ? initialBudget.data : [])
     .map(normalizeRow).filter((row) => initialCycleId && String(row.appraisal_cycle_id || "").trim() === initialCycleId);
@@ -174,6 +179,39 @@ export function BudgetProvider({ children }) {
   // Reuse the last successful budget response immediately while refreshing it in the background.
   const [loading, setLoading] = useState(() => !initialBudget);
   const [error, setError] = useState("");
+
+  // If authentication becomes available after the provider first mounts,
+  // hydrate only that account's snapshot instead of retaining anonymous data.
+  useEffect(() => {
+    if (!budgetCacheScope || !initialBudget) return;
+    const cycleId = String(initialBudget.active_appraisal_cycle_id || "").trim();
+    const techEd = (Array.isArray(initialBudget.techEd) ? initialBudget.techEd : Array.isArray(initialBudget.data) ? initialBudget.data : [])
+      .map(normalizeRow).filter((row) => cycleId && String(row.appraisal_cycle_id || "").trim() === cycleId);
+    const master = (Array.isArray(initialBudget.master) ? initialBudget.master : [])
+      .map(normalizeRow).filter((row) => cycleId && String(row.appraisal_cycle_id || "").trim() === cycleId);
+    const comp = (Array.isArray(initialBudget.compManager) ? initialBudget.compManager : [])
+      .map((row) => ({
+        ...row,
+        id: String(row.id || ""),
+        appraisal_cycle_id: String(row.appraisal_cycle_id || ""),
+        budget_distribution_id: String(row.budget_distribution_id || ""),
+        comp_manager: String(row.comp_manager || ""),
+        percentage: number(row.percentage),
+        calculated_budget: number(row.calculated_budget),
+        total_utilization: number(row.total_utilization),
+        applied_budget: number(row.applied_budget),
+        utilization_percentage: number(row.applied_budget) > 0
+          ? (number(row.total_utilization) / number(row.applied_budget)) * 100
+          : 0,
+      })).filter((row) => cycleId && String(row.appraisal_cycle_id || "").trim() === cycleId);
+    setActiveBudgetCycleId(cycleId);
+    setBudgetRows(techEd);
+    setBudgetMasterRows(master);
+    setBudgetDistributionRows(techEd);
+    setBudgetCompManagerRows(comp);
+    setEmployeeRows(Array.isArray(initialBudget.employeeRoster) ? initialBudget.employeeRoster : []);
+    setTechEdOwners(Array.isArray(initialBudget.techEdOwners) ? initialBudget.techEdOwners : []);
+  }, [budgetCacheScope, initialBudget]);
 
   const runLoad = useCallback(async () => {
     setLoading(!initialBudget);
