@@ -356,7 +356,7 @@ export default function DelegationScreen({
     try {
       const fetchRosterPage = async (pageNo, fallbackMessage) => {
         const response = await catalystFetch(
-          EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=1000&view=delegation",
+          EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=1000&view=delegation&gz=1",
           { method: "GET", cache: "no-store" },
         );
         const payload = await response.json();
