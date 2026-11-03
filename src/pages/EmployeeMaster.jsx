@@ -4,7 +4,7 @@ import { CheckCircle2, AlertCircle, X, History } from "lucide-react";
 import { AppShell } from "@/components/appraisal/AppShell";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
-import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { generateAppraisalSheet, payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAppraisalRefresh } from "@/lib/appraisal-store";
 import { HrConfigPage } from "@/components/employee-master/HrConfigPage";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
@@ -2709,10 +2709,7 @@ export function EmployeeMaster() {
                   defaultProcess={defaultProcess}
                   cycleStats={null}
                   onGenerateSheet={async (cycle) => {
-                    const result = await payrollCycleRequest("generate-sheet", {
-                      method: "POST",
-                      body: { cycleId: cycle.id },
-                    });
+                    const result = await generateAppraisalSheet(cycle.id);
                     await refreshEmployees();
                     return result;
                   }}

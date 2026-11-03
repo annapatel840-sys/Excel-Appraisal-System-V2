@@ -80,3 +80,31 @@ export async function payrollCycleRequest(
   sharedReads.set(key, entry);
   return entry.promise.then(copyOf);
 }
+
+// Generate Appraisal Sheet stops writing before Catalyst's request limit and
+// reports the rows it did not reach as `remaining`; generating again adds
+// them, since a rerun only writes what is missing or different. Runs Generate
+// until nothing remains and returns the last result with the counts added up.
+const GENERATE_MAX_RUNS = 20;
+
+export async function generateAppraisalSheet(cycleId) {
+  let total = null;
+  for (let run = 0; run < GENERATE_MAX_RUNS; run += 1) {
+    const response = await payrollCycleRequest("generate-sheet", { method: "POST", body: { cycleId } });
+    const result = response?.data || response || {};
+    total = total
+      ? {
+          ...result,
+          created: (total.created || 0) + (result.created || 0),
+          updated: (total.updated || 0) + (result.updated || 0),
+          removedStaleRows: (total.removedStaleRows || 0) + (result.removedStaleRows || 0),
+          // Up to date only if the first run already had nothing to do.
+          upToDate: false,
+        }
+      : result;
+    if (!result.partial) return total;
+  }
+  throw new Error(
+    `The Appraisal Sheet is still being generated (${total?.remaining || 0} rows left). Click Generate again to finish.`,
+  );
+}

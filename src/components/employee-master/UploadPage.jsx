@@ -226,6 +226,39 @@ const isOpenCycle = (c) =>
 const nextBatchId = () =>
   `BATCH-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${crypto.randomUUID().slice(0, 8)}`;
 
+// A file is sent in parts of this many rows, one part after another, under one
+// batch ID. One request for a whole large file ran past Catalyst's ~30 s limit;
+// the browser then resent it on its own and the rows were saved twice.
+const UPLOAD_PART_ROWS = 500;
+
+// Sends records to a payrollcycleapi upload resource in parts and returns one
+// result shaped like a single request's: rows, totals and the sheet sync added up.
+async function uploadInParts(resource, body, records) {
+  const combined = { succeeded: 0, failed: 0, total: 0, notSaved: 0, rows: [], batchId: body.batchId };
+  for (let start = 0; start < records.length; start += UPLOAD_PART_ROWS) {
+    const part = await payrollCycleRequest(resource, {
+      method: "POST",
+      body: { ...body, records: records.slice(start, start + UPLOAD_PART_ROWS) },
+    });
+    const r = part || {};
+    combined.succeeded += Number(r.succeeded) || 0;
+    combined.failed += Number(r.failed) || 0;
+    combined.total += Number(r.total) || 0;
+    combined.notSaved += Number(r.notSaved) || 0;
+    combined.rows.push(...(Array.isArray(r.rows) ? r.rows : []));
+    combined.batchId = r.batchId || combined.batchId;
+    if (r.appraisalSheetSync) {
+      const sync = combined.appraisalSheetSync || { updated: 0, matched: 0, skipped: 0 };
+      ["updated", "matched", "skipped", "notRefreshed"].forEach((key) => {
+        if (r.appraisalSheetSync[key] !== undefined) sync[key] = (sync[key] || 0) + (Number(r.appraisalSheetSync[key]) || 0);
+      });
+      if (r.appraisalSheetSync.error) sync.error = r.appraisalSheetSync.error;
+      combined.appraisalSheetSync = sync;
+    }
+  }
+  return combined;
+}
+
 function normalizeDateCell(value) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return [
@@ -947,10 +980,7 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
       let uploadErrors = [...(res?.errors || [])];
 
       if (screen === "pay") {
-        const result = await payrollCycleRequest("commit", {
-          method: "POST",
-          body: { cycleId, batchId, fileName: file.name, records },
-        });
+        const result = await uploadInParts("commit", { cycleId, batchId, fileName: file.name }, records);
         const byRow = new Map(records.map((r) => [r.row, r]));
         setRes((prev) => ({
           ...prev,
@@ -985,16 +1015,11 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
         };
       } else {
         const clientFailedRows = new Set(res.errors.map((e) => e.row));
-        const response = await payrollCycleRequest("import", {
-          method: "POST",
-          body: {
-            screen,
-            cycleId,
-            batchId,
-            fileName: file.name,
-            records: records.filter((x) => !clientFailedRows.has(x.row)),
-          },
-        });
+        const response = await uploadInParts(
+          "import",
+          { screen, cycleId, batchId, fileName: file.name },
+          records.filter((x) => !clientFailedRows.has(x.row)),
+        );
         const r = response || {};
         const responseRows = Array.isArray(r.rows) ? r.rows : [];
         const recordByRow = new Map(records.map((record) => [Number(record.row), record]));
