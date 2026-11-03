@@ -1157,22 +1157,16 @@ export function AppraisalProvider({ children }) {
       // cycle). If that table cannot be read, the sheet still loads.
       // The employeesapi roster already includes current-cycle feedback
       // fields. Avoid a second full Feedback_And_Rating API request.
-      const [cycles, roster] = await Promise.all([
-        payrollCycleRequest("cycles"),
-        fetchAppraisalRoster({ viewAs: getViewAsSelected(), cacheScope: rosterCacheScope }),
-      ]);
+      const roster = await fetchAppraisalRoster({
+        viewAs: getViewAsSelected(),
+        cacheScope: rosterCacheScope,
+      });
 
       if (requestId !== loadSeqRef.current) {
         return;
       }
 
-      const activeCycle = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
-        const status = String(cycle?.status ?? cycle?.cycle_status ?? "").trim().toLowerCase();
-        const archived = [true, 1, "true", "1", "yes"].includes(
-          typeof cycle?.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle?.archived,
-        );
-        return status === "active" && !archived && !cycle?.hidden;
-      });
+      const activeCycle = roster.activeCycle;
       APPRAISAL_YEAR = String(activeCycle?.name || activeCycle?.cycle_name || activeCycle?.appraisal_year || "").trim();
       if (!activeCycle || !APPRAISAL_YEAR) {
         updateRows(() => []);
