@@ -379,7 +379,7 @@ export function TechEdBudgetMasterPage() {
     const original = Number(live.calculated_budget) || 0;
     return {
       id: live.id,
-      name: resolveManagerLabel(live.comp_manager, live.comp_manager_display),
+      name: resolveManagerLabel(live.comp_manager_display || live.comp_manager, live.comp_manager_display),
       pct0: base > 0 ? (original / base) * 100 : Number(live.percentage) || 0,
       pct: Number(live.percentage) || 0,
       base,
