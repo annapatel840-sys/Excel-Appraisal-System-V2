@@ -25,8 +25,8 @@ const BUDGET_CACHE_PREFIX = "appraisal.budget.snapshot.v1:";
 
 function readBudgetSnapshot(scope) {
   try {
-    if (typeof window === "undefined") return null;
-    const raw = window.localStorage.getItem(BUDGET_CACHE_PREFIX + encodeURIComponent(scope || "anonymous"));
+    if (typeof window === "undefined" || !scope) return null;
+    const raw = window.localStorage.getItem(BUDGET_CACHE_PREFIX + encodeURIComponent(scope));
     if (!raw) return null;
     const cached = JSON.parse(raw);
     return cached && cached.success ? cached : null;
@@ -37,9 +37,9 @@ function readBudgetSnapshot(scope) {
 
 function saveBudgetSnapshot(scope, payload) {
   try {
-    if (typeof window === "undefined" || !payload?.success) return;
+    if (typeof window === "undefined" || !scope || !payload?.success) return;
     window.localStorage.setItem(
-      BUDGET_CACHE_PREFIX + encodeURIComponent(scope || "anonymous"),
+      BUDGET_CACHE_PREFIX + encodeURIComponent(scope),
       JSON.stringify(payload),
     );
   } catch (error) {
@@ -49,8 +49,8 @@ function saveBudgetSnapshot(scope, payload) {
 
 function invalidateBudgetSnapshot(scope) {
   try {
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(BUDGET_CACHE_PREFIX + encodeURIComponent(scope || "anonymous"));
+    if (typeof window !== "undefined" && scope) {
+      window.localStorage.removeItem(BUDGET_CACHE_PREFIX + encodeURIComponent(scope));
     }
   } catch (_) {
     /* local cache is optional */
