@@ -202,6 +202,10 @@ export function BudgetProvider({ children }) {
       setBudgetDistributionRows(normalizedTechEd);
       setBudgetCompManagerRows(normalizedComp);
 
+      // The budget response is complete. Release the Budget loading state now;
+      // employee enrichment below must not hold up Budget Allocated.
+      setLoading(false);
+
       const rosterEmployees = activeCycleId && Array.isArray(
         budgetJson && budgetJson.employeeRoster,
       )
