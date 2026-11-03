@@ -314,23 +314,23 @@ export function BudgetProvider({ children }) {
     }
   }, []);
 
-  // A full load (budget calculation + roster) is expensive. reload() from a
-  // screen that opens while a load started under 2 s ago (e.g. Budget Master
-  // opening during the first load) shares that load instead of starting a
-  // second one. Loads after a save or an update event always start fresh.
+  // Keep one shared load promise for the entire time a budget refresh is
+  // running. Every screen and refresh event receives the same result instead
+  // of starting another budgetmasterapi GET and roster request.
   const loadRef = useRef(null);
   const load = useCallback(() => {
+    if (loadRef.current) return loadRef.current;
+
     const promise = runLoad().finally(() => {
-      if (loadRef.current && loadRef.current.promise === promise) loadRef.current = null;
+      if (loadRef.current === promise) loadRef.current = null;
     });
-    loadRef.current = { startedAt: Date.now(), promise };
+    loadRef.current = promise;
     return promise;
   }, [runLoad]);
-  const reloadShared = useCallback(() => {
-    const current = loadRef.current;
-    if (current && Date.now() - current.startedAt <= 2000) return current.promise;
-    return load();
-  }, [load]);
+
+  // All callers use the same in-flight load. A new load starts only after
+  // the current one has finished (or when a later refresh is requested).
+  const reloadShared = useCallback(() => load(), [load]);
 
   // The provider wraps every screen, but only screens that use budget data
   // (useBudget) need it. Nothing loads until the first such screen mounts.
