@@ -21,6 +21,52 @@ const DATASTORE_PAGE_SIZE = 200;
 // back to Appraisal_Sheet. Catalyst ends a request after ~30 s (408).
 const ROSTER_WRITE_BUDGET_MS = 18000;
 
+// Appraisal_Sheet inputs a save checks for a concurrent change (body.expected):
+// the columns people type into that the grid shows exactly as stored. Values
+// the roster derives or rewrites on load (base pay, ratings, RR%, months,
+// target criteria, ...) are not checked - the grid's value for them is not the
+// stored one, so every save would look like a conflict.
+const CONFLICT_COLUMNS = {
+  hike_amount: "number", hike_pct: "number", allocated_pb_amount: "number",
+  pb_installment: "number", new_pb_to_be_offered: "number", new_pb_installment: "number",
+  new_rb: "number", target_pb_next_year: "number",
+  eligible_for_promotion: "text", new_title: "text", at_risk: "text", comp_manager_remarks: "text",
+};
+const CONFLICT_LABELS = {
+  hike_amount: "Hike Amount", hike_pct: "Hike %", allocated_pb_amount: "Allocated PB Amount",
+  pb_installment: "PB Installment", new_pb_to_be_offered: "New PB to be Offered",
+  new_pb_installment: "New PB Installment", new_rb: "New RB", target_pb_next_year: "Target PB for Next Year",
+  eligible_for_promotion: "Eligible for Promotion", new_title: "New Title", at_risk: "At Risk",
+  comp_manager_remarks: "Comp Manager Remarks",
+};
+
+// Columns whose stored value differs from the value the browser showed
+// before the edit. Empty and 0 are the same number, as the grid shows an empty
+// number as 0; text is compared trimmed. Returns [{ column, expected, current }].
+function findSaveConflicts(storedRow, expected, columns) {
+  if (!expected || typeof expected !== "object") return [];
+  const asNumber = function (value) {
+    const n = Number(String(value ?? "").replace(/[₹,\s]/g, ""));
+    return Number.isFinite(n) ? n : NaN;
+  };
+  const asText = function (value) {
+    return value === null || value === undefined ? "" : String(value).trim();
+  };
+  return columns.filter(function (column) {
+    const kind = CONFLICT_COLUMNS[column];
+    if (!kind || !Object.prototype.hasOwnProperty.call(expected, column)) return false;
+    if (kind === "number") {
+      const stored = asNumber(asText(storedRow[column]) === "" ? 0 : storedRow[column]);
+      const shown = asNumber(asText(expected[column]) === "" ? 0 : expected[column]);
+      if (Number.isNaN(stored) || Number.isNaN(shown)) return asText(storedRow[column]) !== asText(expected[column]);
+      return Math.abs(stored - shown) > 0.005;
+    }
+    return asText(storedRow[column]) !== asText(expected[column]);
+  }).map(function (column) {
+    return { column: column, expected: expected[column], current: asText(storedRow[column]) };
+  });
+}
+
 const EMPLOYEES_TABLE_ID = "74008000000039094";
 const EMPLOYEE_MASTER_TABLE_ID = "74008000000035727";
 const PAYROLL_DATA_TABLE_ID = "74008000000035326";
@@ -3047,6 +3093,22 @@ async function updateEmployee(req, res) {
     return sendJson(res, 404, {
       success: false,
       message: "Employee Master record " + empId + " not found.",
+    });
+  }
+
+  // Two people editing the same cell: the browser sends the value it showed
+  // before the edit (body.expected). If the stored value has changed since,
+  // someone else saved first - refuse instead of silently overwriting them.
+  const conflicts = appraisalRow ? findSaveConflicts(appraisalRow, body.expected, changedColumns) : [];
+  if (conflicts.length) {
+    return sendJson(res, 409, {
+      success: false,
+      conflict: true,
+      message: conflicts.map(function (c) {
+        return (CONFLICT_LABELS[c.column] || c.column) + " was changed by someone else to " +
+          (c.current === "" ? "(empty)" : c.current) + " after you loaded it.";
+      }).join(" ") + " Your change was not saved.",
+      conflicts: conflicts,
     });
   }
 
