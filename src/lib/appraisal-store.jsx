@@ -16,7 +16,7 @@ import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 import { useCatalystUser } from "./catalyst-auth";
 import { getViewAsSelected, useViewAs } from "./view-as-store";
 import { invalidatePayrollCycleReads, payrollCycleRequest } from "./payroll-cycle-api";
-import { fetchAppraisalRoster, invalidateEmployeeRoster, isActiveEligible } from "./employee-roster";
+import { fetchAppraisalRoster, invalidateEmployeeRoster, isActiveEligible, readCachedAppraisalRoster } from "./employee-roster";
 
 const CURRENT_USER = "Unknown user";
 // Set from Appraisal_Cycle_Master before loading or saving current-cycle data.
@@ -1096,7 +1096,20 @@ export function AppraisalProvider({ children }) {
       .trim()
       .toLowerCase() === "hr";
 
-  const [rows, setRows] = useState([]);
+  const rosterCacheScope = String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase();
+  const cachedRosterRef = useRef(null);
+  if (cachedRosterRef.current === null) {
+    cachedRosterRef.current = readCachedAppraisalRoster({
+      viewAs: viewAsId,
+      cacheScope: rosterCacheScope,
+    });
+  }
+  const initialCachedRoster = cachedRosterRef.current;
+  const [rows, setRows] = useState(() =>
+    initialCachedRoster
+      ? initialCachedRoster.employees.filter(isActiveEligible).map(mapCatalystEmployee)
+      : [],
+  );
 
   /*
   rowsRef always holds the latest rows. Every row mutation goes
@@ -1143,7 +1156,7 @@ export function AppraisalProvider({ children }) {
 
   const [modifiedLive, setModified] = useState({});
 
-  const [loading, setLoading] = useState(true);
+  // A previously loaded roster is rendered immediately; the network refresh runs in the background.\n  const [loading, setLoading] = useState(() => !initialCachedRoster);
 
   const [error, setError] = useState("");
 
@@ -1152,11 +1165,11 @@ export function AppraisalProvider({ children }) {
 
   const clearSaveError = useCallback(() => setSaveError(""), []);
 
-  const [employeeCounts, setEmployeeCounts] = useState({
-    total: 0,
-    active: 0,
-    inactive: 0,
-  });
+  const [employeeCounts, setEmployeeCounts] = useState(() => ({
+    total: Number(initialCachedRoster?.counts?.total || 0),
+    active: Number(initialCachedRoster?.counts?.active || 0),
+    inactive: Number(initialCachedRoster?.counts?.inactive || 0),
+  }));
 
   /* ==========================================================
   LOAD EMPLOYEES
