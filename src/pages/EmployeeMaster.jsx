@@ -830,6 +830,11 @@ export function EmployeeMaster() {
     return () => window.removeEventListener("appraisal:cycle-updated", onCycleChange);
   }, []);
 
+  useEffect(() => {
+    eligibilityFreshAppliedRef.current = false;
+    setEligibilityShowingSnapshot(false);
+  }, [eligibilityCacheKey]);
+
   useEffect(() => onCatalystWrite(() => {
     // Any successful write makes the saved Eligibility List stale. The next
     // successful refresh writes a new snapshot.
@@ -1319,7 +1324,7 @@ export function EmployeeMaster() {
     };
     window.addEventListener("appraisal:cycle-updated", onCycleUpdated);
     return () => window.removeEventListener("appraisal:cycle-updated", onCycleUpdated);
-  }, []);
+  }, [eligibilityCacheKey]);
 
   /* ============================================================
      FILE READING
