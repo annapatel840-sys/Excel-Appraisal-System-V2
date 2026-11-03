@@ -753,10 +753,15 @@ function readField(row, candidates) {
 }
 
 async function readTechEdOwners(app, sourceRows) {
-  // Reuse the Employee_Master and Appraisal_Sheet rows already fetched for
-  // budget calculation. This avoids scanning either table a second time.
-  const employeeRows = sourceRows.masterEmployeeRows;
-  const appraisalRows = sourceRows.appraisalRows;
+  // Reuse rows from the GET calculation when available. Write authorization
+  // paths may call this helper independently, so retain a safe sequential
+  // fallback for those requests.
+  const employeeRows = sourceRows
+    ? sourceRows.masterEmployeeRows
+    : await getAllRows(app, "Employee_Master");
+  const appraisalRows = sourceRows
+    ? sourceRows.appraisalRows
+    : await getAllRows(app, "Appraisal_Sheet");
   const employeeByRowId = new Map(
     employeeRows.map((employee) => [
       idOf(employee),
