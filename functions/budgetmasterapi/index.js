@@ -1175,11 +1175,40 @@ function ownerKey(raw) {
   return (parts.length > 1 ? parts[0] : text).trim();
 }
 
+// Each row's keys by lower-case name (the first key for each name, as a scan
+// of Object.keys would find). firstValue runs several times for every row of
+// thousands; lower-casing every key on every call was most of the budget
+// calculation's time. Keys added to a row later come after the existing ones,
+// so a found key is still the first match; a name not found is looked up again
+// once the row has gained keys.
+const rowKeyIndexes = new WeakMap();
+function ownKeyCount(row) {
+  let count = 0;
+  for (const key in row) if (Object.prototype.hasOwnProperty.call(row, key)) count += 1;
+  return count;
+}
+function findKey(row, name) {
+  if (!row || typeof row !== "object") return undefined;
+  const lower = name.toLowerCase();
+  let index = rowKeyIndexes.get(row);
+  if (index) {
+    const hit = index.byLower.get(lower);
+    if (hit !== undefined && Object.prototype.hasOwnProperty.call(row, hit)) return hit;
+    if (ownKeyCount(row) === index.size) return undefined;
+  }
+  const keys = Object.keys(row);
+  index = { size: keys.length, byLower: new Map() };
+  keys.forEach((key) => {
+    const keyLower = key.toLowerCase();
+    if (!index.byLower.has(keyLower)) index.byLower.set(keyLower, key);
+  });
+  rowKeyIndexes.set(row, index);
+  return index.byLower.get(lower);
+}
+
 function firstValue(row, names) {
   for (const name of names) {
-    const hit = Object.keys(row || {}).find(
-      (key) => key.toLowerCase() === name.toLowerCase(),
-    );
+    const hit = findKey(row, name);
     if (
       hit &&
       row[hit] !== null &&
@@ -1193,9 +1222,7 @@ function firstValue(row, names) {
 
 function firstNonZeroValue(row, names) {
   for (const name of names) {
-    const hit = Object.keys(row || {}).find(
-      (key) => key.toLowerCase() === name.toLowerCase(),
-    );
+    const hit = findKey(row, name);
     if (
       !hit ||
       row[hit] === null ||
@@ -1528,6 +1555,38 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     }
   });
 
+  // The active / previous cycle is the same for every row: work it out once
+  // (it was recomputed - a cycle sort included - for each of thousands of rows).
+  const activeCycleRow =
+    cycleRows.find(
+      (cycle) =>
+        String(cycle.status || "")
+          .trim()
+          .toLowerCase() === "active" &&
+        cycle.archived !== true &&
+        cycle.archived !== "true",
+    ) ||
+    cycleRows.slice().sort((a, b) => cycleRank(b) - cycleRank(a))[0] ||
+    null;
+  const currentCycleId =
+    cycleIdOf(activeCycleRow) ||
+    String(bundle.master[0]?.appraisal_cycle_id || "");
+  const previousCycle = previousCycleFor(currentCycleId);
+  const previousCycleId = previousCycle
+    ? cycleIdOf(previousCycle) || cycleNameOf(previousCycle).toLowerCase()
+    : "";
+  const currentCycle = currentCycleFor(currentCycleId);
+  const currentCycleName = cycleNameOf(currentCycle) || currentCycleId;
+  const currentYearFull = currentCycleName.match(/(?:19|20)\d{2}/);
+  const currentYearShort = currentCycleName.match(
+    /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*(\d{2})/i,
+  );
+  const currentYear = currentYearFull
+    ? currentYearFull[0]
+    : currentYearShort
+      ? "20" + currentYearShort[1]
+      : currentCycleName;
+
   const appraisalByEmployee = new Map();
   currentAppraisalRows.forEach((row) => {
     const rawEmployeeId = String(
@@ -1591,24 +1650,6 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
       managerId && managerName
         ? managerId + " - " + managerName
         : managerName || rawCompManager;
-    const activeCycleRow =
-      cycleRows.find(
-        (cycle) =>
-          String(cycle.status || "")
-            .trim()
-            .toLowerCase() === "active" &&
-          cycle.archived !== true &&
-          cycle.archived !== "true",
-      ) ||
-      cycleRows.slice().sort((a, b) => cycleRank(b) - cycleRank(a))[0] ||
-      null;
-    const currentCycleId =
-      cycleIdOf(activeCycleRow) ||
-      String(bundle.master[0]?.appraisal_cycle_id || "");
-    const previousCycle = previousCycleFor(currentCycleId);
-    const previousCycleId = previousCycle
-      ? cycleIdOf(previousCycle) || cycleNameOf(previousCycle).toLowerCase()
-      : "";
     const historyKey = previousCycleId + "::" + employeeId;
     const previousRecord = previousCycle
       ? historyRowsByCycleAndEmployee.get(historyKey) ||
@@ -1656,17 +1697,6 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         : storedPreviousCtc === null
           ? currentCtcValue
           : storedPreviousCtc;
-    const currentCycle = currentCycleFor(currentCycleId);
-    const currentCycleName = cycleNameOf(currentCycle) || currentCycleId;
-    const currentYearFull = currentCycleName.match(/(?:19|20)\d{2}/);
-    const currentYearShort = currentCycleName.match(
-      /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*(\d{2})/i,
-    );
-    const currentYear = currentYearFull
-      ? currentYearFull[0]
-      : currentYearShort
-        ? "20" + currentYearShort[1]
-        : currentCycleName;
     const lastAppraisalLabel = previousRecord
       ? cycleNameOf(previousCycle)
       : "New - " + currentYear;
@@ -3053,21 +3083,26 @@ module.exports = async function (req, res) {
         compManagerRows: rawBundle.compManager.length,
       });
 
-      // Read each source table once, in sequence. These same arrays are shared
-      // by budget-base calculation and Tech-Ed owner resolution. Log each scan
-      // independently so Catalyst table latency can be measured before changing
-      // the existing safe Data Store concurrency limit.
+      // Read each source table once, two tables at a time - the same limit the
+      // employee API uses for Catalyst's COMPONENT concurrency (one at a time
+      // left the reads at ~1.8 s; getAllRows retries a busy Data Store). These
+      // arrays are shared by budget-base calculation and Tech-Ed owner
+      // resolution. Each scan is still logged on its own.
       const sourceRows = {};
-      sourceRows.appraisalRows = await getAllRows(app, "Appraisal_Sheet");
-      logBudgetStage("Appraisal_Sheet loaded", { rows: sourceRows.appraisalRows.length });
-      sourceRows.masterEmployeeRows = await getAllRows(app, "Employee_Master").catch(() => []);
-      logBudgetStage("Employee_Master loaded", { rows: sourceRows.masterEmployeeRows.length });
-      sourceRows.payrollRows = await getAllRows(app, "Payroll_Data");
-      logBudgetStage("Payroll_Data loaded", { rows: sourceRows.payrollRows.length });
-      sourceRows.cycleRows = await getAllRows(app, "Appraisal_Cycle_Master");
-      logBudgetStage("Appraisal_Cycle_Master loaded", { rows: sourceRows.cycleRows.length });
-      sourceRows.eligibilityRows = await getAllRows(app, "Eligibility_List").catch(() => []);
-      logBudgetStage("Eligibility_List loaded", { rows: sourceRows.eligibilityRows.length });
+      const readSource = async (key, tableName, optional) => {
+        const read = getAllRows(app, tableName);
+        sourceRows[key] = await (optional ? read.catch(() => []) : read);
+        logBudgetStage(tableName + " loaded", { rows: sourceRows[key].length });
+      };
+      await Promise.all([
+        readSource("appraisalRows", "Appraisal_Sheet", false),
+        readSource("payrollRows", "Payroll_Data", false),
+      ]);
+      await Promise.all([
+        readSource("masterEmployeeRows", "Employee_Master", true),
+        readSource("eligibilityRows", "Eligibility_List", true),
+      ]);
+      await readSource("cycleRows", "Appraisal_Cycle_Master", false);
       const techEdOwners = await readTechEdOwners(app, sourceRows);
       logBudgetStage("Tech-Ed owners resolved", { owners: techEdOwners.length });
       let calculatedBundle = rawBundle;
