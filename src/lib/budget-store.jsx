@@ -175,7 +175,7 @@ export function BudgetProvider({ children }) {
   const [error, setError] = useState("");
 
   const runLoad = useCallback(async () => {
-    setLoading(true);
+    setLoading(!initialBudget);
     setError("");
     try {
       const budgetUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
@@ -367,13 +367,16 @@ export function BudgetProvider({ children }) {
       }
     } catch (e) {
       console.error("Failed to load Budget Master:", e);
-      setBudgetRows([]);
-      setBudgetMasterRows([]);
-      setActiveBudgetCycleId("");
-      setBudgetDistributionRows([]);
-      setBudgetCompManagerRows([]);
-      setEmployeeRows([]);
-      setTechEdOwners([]);
+      // Keep a previously cached, usable snapshot on screen if refresh fails.
+      if (!initialBudget) {
+        setBudgetRows([]);
+        setBudgetMasterRows([]);
+        setActiveBudgetCycleId("");
+        setBudgetDistributionRows([]);
+        setBudgetCompManagerRows([]);
+        setEmployeeRows([]);
+        setTechEdOwners([]);
+      }
       setError((e && e.message) || "Failed to load Budget Master.");
     } finally {
       setLoading(false);
