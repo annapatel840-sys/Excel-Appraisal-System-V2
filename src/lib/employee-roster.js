@@ -16,7 +16,8 @@ import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "./catalyst-
      sharing, so a reload after a save always reads fresh data.
    ============================================================ */
 
-export const ROSTER_LIMIT = 1000;
+// Match the backend MAX_LIMIT so an HR roster is returned in one request.
+export const ROSTER_LIMIT = 5000;
 // A request started this long ago (still running or finished) is shared.
 const SHARE_WINDOW_MS = 15000;
 const ROSTER_CACHE_PREFIX = "appraisal.roster.snapshot.v1:";
