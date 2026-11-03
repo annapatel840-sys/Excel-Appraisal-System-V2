@@ -182,9 +182,23 @@ const NUMERIC_FIELDS = new Set([
 ]);
 const MAX_TEXT_LENGTH = { empName: 100, fyYear: 20, rbMonth: 30, pbMonth: 30, tbMonth: 30, targetPbCriteria: 255 };
 
-function sendJson(res, status, body) {
-  res.writeHead(status, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(body));
+function sendJson(res, status, body, req = null) {
+  const serialized = JSON.stringify(body);
+  const wantsGzip = req &&
+    String(getQuery(req).gz || "") === "1" &&
+    /\\bgzip\\b/i.test(String(req.headers?.["accept-encoding"] || ""));
+  if (wantsGzip && Buffer.byteLength(serialized) >= 32 * 1024) {
+    const compressed = require("zlib").gzipSync(serialized, { level: 1 });
+    res.writeHead(status, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Encoding": "gzip",
+      "Content-Length": compressed.length,
+      "Vary": "Accept-Encoding",
+    });
+    return res.end(compressed);
+  }
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
+  res.end(serialized);
 }
 
 /* ============================================================
@@ -310,16 +324,29 @@ function rowId(row) {
   return String(row.ROWID || row.rowid || "");
 }
 
-// Serialize Data Store page requests within this warm function instance.
-// Several route handlers can be active at once; their Promise.all table scans
-// must not all hit Catalyst COMPONENT simultaneously.
-let dataStoreReadQueue = Promise.resolve();
+// Bound Data Store page reads across this warm function instance.
+// Independent table scans can overlap, but only two Catalyst COMPONENT reads
+// are allowed at once to avoid the concurrency errors seen with large bursts.
+const DATASTORE_READ_CONCURRENCY = 2;
+let activeDataStoreReads = 0;
+const dataStoreReadWaiters = [];
+
+async function acquireDataStoreRead() {
+  if (activeDataStoreReads < DATASTORE_READ_CONCURRENCY) {
+    activeDataStoreReads += 1;
+    return;
+  }
+  await new Promise((resolve) => dataStoreReadWaiters.push(resolve));
+}
+
+function releaseDataStoreRead() {
+  const next = dataStoreReadWaiters.shift();
+  if (next) next();
+  else activeDataStoreReads = Math.max(0, activeDataStoreReads - 1);
+}
 
 async function readDataStorePage(table, options, label) {
-  let release;
-  const previous = dataStoreReadQueue;
-  dataStoreReadQueue = new Promise((resolve) => { release = resolve; });
-  await previous;
+  await acquireDataStoreRead();
   try {
     for (let attempt = 0; ; attempt += 1) {
       try {
@@ -338,7 +365,7 @@ async function readDataStorePage(table, options, label) {
       }
     }
   } finally {
-    release();
+    releaseDataStoreRead();
   }
 }
 
@@ -3020,7 +3047,7 @@ async function routeRequest(req, res, identity, resource, a) {
           criteriaApplied: data.criteriaApplied,
         },
       },
-    });
+    }, req);
   }
 
   if (resource === "eligibility" && req.method === "POST") {
