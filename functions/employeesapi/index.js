@@ -12,10 +12,10 @@ const access = require("./accessCore");
 const app = express();
 
 const DEFAULT_LIMIT = 20;
-// One request can return the whole roster (the Appraisal Sheet and Budget
-// stores share it); every page re-runs the full table reads, so fewer pages
-// means less work.
-const MAX_LIMIT = 1000;
+// The Appraisal Sheet roster is loaded as one bounded response. Avoid splitting
+// an HR roster of 2,000+ employees into multiple requests because every page
+// repeats the same full Data Store reads and enrichment work.
+const MAX_LIMIT = 5000;
 const DATASTORE_PAGE_SIZE = 200;
 // How long into a roster GET the payroll-derived lookups may still be written
 // back to Appraisal_Sheet. Catalyst ends a request after ~30 s (408).
