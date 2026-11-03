@@ -539,7 +539,7 @@ export async function fetchEligibilityEmployees({
 } = {}) {
   const result = await payrollCycleRequest("eligibility", {
     method: "GET",
-    query: { cycleId },
+    query: { cycleId, gz: 1 },
   });
   const payload = result && !Array.isArray(result) ? result : {};
   const records = Array.isArray(payload.records) ? payload.records : [];
