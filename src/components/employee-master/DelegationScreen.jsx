@@ -5,6 +5,13 @@ import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useAppraisalRefresh } from "@/lib/appraisal-store";
 import { generateAppraisalSheet, payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import {
+  delegationGeneration,
+  delegationSnapshotKey,
+  fetchDelegationRoster,
+  readDelegationSnapshot,
+  writeDelegationSnapshot,
+} from "@/lib/delegation-roster";
 
 /* ------------------------------------------------------------------ data */
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
@@ -189,6 +196,9 @@ export default function DelegationScreen({
   const [activeCycleId, setActiveCycleId] = useState("");
   const [rosterLoading, setRosterLoading] = useState(false);
   const [showRosterLoading, setShowRosterLoading] = useState(false);
+  // True while the last roster this user saw is on screen (read-only) and the
+  // fresh roster is still loading.
+  const [showingSaved, setShowingSaved] = useState(false);
   const displayCycleName = activeCycleName || cycleName || "No active cycle";
   useEffect(() => {
     if (!rosterLoading) {
@@ -350,33 +360,43 @@ export default function DelegationScreen({
   // View-only screen, or a Tech-ED without the delegateRequest action: no edits.
   const editLocked =
     locked ||
+    showingSaved ||
     (!isHR && !isTechEdUser && !access.canScreen("delegation", "edit")) ||
     (!isHR && !isTechEdUser && !access.canAction("delegateRequest"));
 
-  const loadRoster = async () => {
+  const loadRoster = async ({ initial = false } = {}) => {
     // Clear the previous cycle's working roster before fetching the next one.
-    setRows([]);
-    setActiveCycleId("");
-    setActiveCycleName("");
+    // The first load of the screen starts empty anyway, and keeps the saved
+    // copy (below) on screen instead of blanking it.
+    if (!initial) {
+      setRows([]);
+      setActiveCycleId("");
+      setActiveCycleName("");
+    }
     setRosterLoading(true);
+    const startedGeneration = delegationGeneration();
+    const savedKey = delegationSnapshotKey(catalystUser?.email || catalystUser?.user_id || "");
+    let freshApplied = false;
     try {
-      const fetchRosterPage = async (pageNo, fallbackMessage) => {
-        const response = await catalystFetch(
-          EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=" + ROSTER_PAGE_LIMIT + "&view=delegation&gz=1",
-          { method: "GET", cache: "no-store" },
-        );
-        const payload = await response.json();
-        if (!response.ok || !payload?.success) {
-          throw new Error(payload?.message || fallbackMessage);
-        }
-        return payload;
-      };
+      // First load only: show the last roster this user saw, at once, while
+      // the fresh one loads. Never applied once the fresh roster has arrived.
+      if (initial) {
+        readDelegationSnapshot(savedKey).then((saved) => {
+          if (!saved || freshApplied) return;
+          setRows(saved.rows);
+          setActiveCycleId(String(saved.cycleId || ""));
+          setActiveCycleName(String(saved.cycleName || ""));
+          setShowingSaved(true);
+        });
+      }
       // The roster does not depend on the cycle lookup (employeesapi finds the
       // active cycle itself), so start page 1 together with the cycle list
       // instead of after it. Only page 1 writes lookups, so this is safe.
       // The roster is the slow call, so it is queued before the (tiny) cycle
       // list: catalystFetch runs at most two requests at a time.
-      const firstPromise = fetchRosterPage(1, "Unable to load appraisal employees.");
+      // The first load joins the request the sign-in prefetch already started
+      // (if any); explicit reloads always ask the server again.
+      const firstPromise = fetchDelegationRoster({ fresh: !initial });
       firstPromise.catch(() => {}); // reported where it is awaited below
       const cyclesPromise = payrollCycleRequest("cycles");
       const cycles = await cyclesPromise;
@@ -386,14 +406,16 @@ export default function DelegationScreen({
         return status === "active" && !archived && !cycle.hidden;
       });
       if (!active) {
+        freshApplied = true;
         setActiveCycleId("");
         setActiveCycleName("");
         setRows([]);
         return;
       }
       const cycleId = String(active.id || active.appraisal_cycle_id || active.cycle_id || active.ROWID || "");
+      const cycleName = String(active.name || active.cycle_name || active.appraisal_year || "");
       setActiveCycleId(cycleId);
-      setActiveCycleName(String(active.name || active.cycle_name || active.appraisal_year || ""));
+      setActiveCycleName(cycleName);
 
       // Always fetch the enriched delegation roster from employeesapi.
       // initialRows may contain only Employee_Master values and omit previous-cycle references.
@@ -406,18 +428,8 @@ export default function DelegationScreen({
       // Delegation is prepared before sheet generation, so employeesapi builds
       // the working roster from the active cycle's eligible records when the
       // Appraisal Sheet has not yet been generated.
-      const first = await firstPromise;
-      const all = Array.isArray(first.data) ? [...first.data] : [];
-      const totalPages = Math.max(1, Number(first.pagination?.totalPages || 1));
-      // Remaining pages are independent: fetch them together, not one by one.
-      const rest = await Promise.all(
-        Array.from({ length: totalPages - 1 }, (_, index) =>
-          fetchRosterPage(index + 2, "Unable to load the remaining delegation employees."),
-        ),
-      );
-      rest.forEach((payload) => {
-        if (Array.isArray(payload.data)) all.push(...payload.data);
-      });
+      // (fetchDelegationRoster reads page 1, then every remaining page together.)
+      const all = await firstPromise;
       const unique = new Map();
       all.forEach((item) => {
         const id = String(item.emp_id || item.employee_id || "").trim().toLowerCase();
@@ -442,18 +454,25 @@ export default function DelegationScreen({
         base: "",
         lastRole: "",
       }));
+      freshApplied = true;
       setRows(mapped);
+      // Keep this roster as the copy shown at once on the next visit (an empty
+      // roster replaces the old copy, so it is not shown again).
+      writeDelegationSnapshot(savedKey, { rows: mapped, cycleId, cycleName }, startedGeneration);
       return mapped;
     } catch (error) {
+      freshApplied = true;
       setRows([]);
       say(error?.message || "Unable to load appraisal employees.", true);
     } finally {
+      freshApplied = true;
+      setShowingSaved(false);
       setRosterLoading(false);
     }
   };
 
   useEffect(() => {
-    loadRoster();
+    loadRoster({ initial: true });
     const refreshRoster = () => loadRoster();
     window.addEventListener("appraisal:cycle-updated", refreshRoster);
     // Load the active cycle's roster when the Delegation screen is mounted.
@@ -1434,6 +1453,7 @@ export default function DelegationScreen({
             </label>
             <button
               className="btn"
+              disabled={showingSaved}
               onClick={() => setModal({ type: "bulk" })}
             >
               Bulk Assign ({selIds.length})
@@ -1471,9 +1491,9 @@ export default function DelegationScreen({
           </div>
 
           <div className="dg-tw">
-            {rosterLoading && showRosterLoading ? (
+            {rosterLoading && !showingSaved && showRosterLoading ? (
               <div className="empty" role="status">Loading delegation data…</div>
-            ) : rosterLoading ? null : !scoped.length ? (
+            ) : rosterLoading && !showingSaved ? null : !scoped.length ? (
               <div className="empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
                 {activeCycleId ? "No delegation rows are available for " + displayCycleName + "." : "No active appraisal cycle. Create or activate a cycle to start delegation."}
                 {activeCycleId && (
@@ -1767,7 +1787,8 @@ export default function DelegationScreen({
                       canApprove &&
                       reqTab === "Pending" &&
                       pending.length > 1 &&
-                      !locked && (
+                      !locked &&
+                      !showingSaved && (
                         <>
                           <span style={{ flex: 1 }} />
                           <button className="btn p sm" onClick={approveAll}>
@@ -1841,6 +1862,7 @@ export default function DelegationScreen({
                         </div>
                         {q.status === "Pending" &&
                           !locked &&
+                          !showingSaved &&
                           (!isHR || canApprove) &&
                           (isHR ? (
                             <>

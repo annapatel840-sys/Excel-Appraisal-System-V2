@@ -20,6 +20,7 @@ import { prefetchAppraisalRoster } from "@/lib/employee-roster";
 import { clearSheetSnapshots } from "@/lib/roster-snapshot";
 import { getViewAsSelected } from "@/lib/view-as-store";
 import { prefetchEligibilityEmployees } from "@/lib/employee-master-data";
+import { prefetchDelegationRoster } from "@/lib/delegation-roster";
 
 const TECH_ED_PATHS = ["/", "/sheet", "/detail-screen", "/budget-distribution", "/settings", "/employee-master"];
 
@@ -39,6 +40,13 @@ function prefetchForCurrentScreen() {
     )
   ) {
     prefetchEligibilityEmployees();
+  }
+  // Landing straight on the Delegation tab: start its roster request now.
+  if (
+    window.location.pathname === "/employee-master" &&
+    new URLSearchParams(window.location.search).get("tab") === "delegation"
+  ) {
+    prefetchDelegationRoster();
   }
 }
 
