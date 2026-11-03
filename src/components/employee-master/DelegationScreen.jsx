@@ -4,7 +4,7 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useAppraisalRefresh } from "@/lib/appraisal-store";
-import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { generateAppraisalSheet, payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 /* ------------------------------------------------------------------ data */
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
@@ -1111,10 +1111,7 @@ export default function DelegationScreen({
         setStagedChanges({});
         await loadRoster();
       }
-      const result = await payrollCycleRequest("generate-sheet", {
-        method: "POST",
-        body: { cycleId: activeCycleId },
-      });
+      const result = await generateAppraisalSheet(activeCycleId);
       const d = result?.data || result || {};
       if (d.upToDate) {
         setModal({

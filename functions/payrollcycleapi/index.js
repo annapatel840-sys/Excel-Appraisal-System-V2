@@ -357,6 +357,44 @@ async function getAllRows(table) {
   return rows;
 }
 
+// Catalyst ends a request after ~30 s (408) and the browser then sends the
+// same POST again on its own, so a long upload ran several times at once and
+// inserted its rows two or three times. Writes stop this long into a request;
+// the caller reports what was not saved and the browser sends it again.
+const WRITE_TIME_LIMIT_MS = 20000;
+
+// Writes rows 100 per call instead of one call per row. A batch Catalyst
+// rejects is written row by row, so one bad row doesn't fail the others.
+// Returns one { ok, error, row } per input, in order; rows not attempted
+// because the deadline passed come back as { ok: false, skipped: true }.
+async function writeRowsInBatches(table, rows, kind, deadline) {
+  const results = [];
+  for (let index = 0; index < rows.length; index += 100) {
+    const batch = rows.slice(index, index + 100);
+    if (deadline && Date.now() > deadline) {
+      batch.forEach(() => results.push({ ok: false, skipped: true }));
+      continue;
+    }
+    try {
+      const saved = kind === "insert" ? await table.insertRows(batch) : await table.updateRows(batch);
+      batch.forEach((_, i) => results.push({ ok: true, row: Array.isArray(saved) ? saved[i] : undefined }));
+    } catch (batchError) {
+      console.warn("Batch " + kind + " failed; writing the rows one by one:", batchError?.message || batchError);
+      for (const row of batch) {
+        try {
+          const saved = kind === "insert" ? await table.insertRow(row) : await table.updateRow(row);
+          results.push({ ok: true, row: saved });
+        } catch (error) {
+          results.push({ ok: false, error });
+        }
+      }
+    }
+  }
+  return results;
+}
+
+const NOT_SAVED_TIME_LIMIT = "Not saved: the upload ran out of time. Upload this row again.";
+
 // Without a cancel_reason column the reason is kept in the remarks.
 function cancelReasonFromRemarks(row) {
   if (String(row.status || "") !== "Cancelled") return "";
@@ -1418,7 +1456,7 @@ function sameSheetValue(stored, next) {
   return false;
 }
 
-async function generateAppraisalSheet(tables, cycle, actor) {
+async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0) {
   if (!cycle?.id) throw new ApiError("Select an appraisal cycle before generating the sheet.", 400);
   if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived || cycle.hidden) {
     throw new ApiError("Generate the Appraisal Sheet only for the Active appraisal cycle.", 409);
@@ -1720,6 +1758,8 @@ async function generateAppraisalSheet(tables, cycle, actor) {
   let created = 0;
   let updated = 0;
   let unchanged = 0;
+  const sheetInserts = [];
+  const sheetUpdates = [];
   // Did this cycle already have an Appraisal Sheet before this run?
   const alreadyGenerated = sheetRows.some((row) => String(row.cycle_id || "") === String(cycle.id));
   const eligibleMasterIds = new Set(
@@ -1910,15 +1950,32 @@ async function generateAppraisalSheet(tables, cycle, actor) {
         (key) => key !== "ROWID" && !sameSheetValue(existing[key], payload[key]),
       );
       if (differs) {
-        await tables.employees.updateRow(payload);
-        updated += 1;
+        sheetUpdates.push(payload);
       } else {
         unchanged += 1;
       }
     } else {
-      await tables.employees.insertRow(payload);
-      created += 1;
+      sheetInserts.push(payload);
     }
+  }
+
+  // Written 100 rows per call (one call per employee took ~80 ms each, so a
+  // 2,000-employee sheet ran past Catalyst's request limit and the browser's
+  // automatic resend generated it again). Rows left at writeDeadline are
+  // reported as remaining; the next Generate adds them, as a rerun only writes
+  // what is missing or different.
+  let remaining = 0;
+  for (const [list, kind] of [[sheetUpdates, "update"], [sheetInserts, "insert"]]) {
+    const outcomes = await writeRowsInBatches(tables.employees, list, kind, writeDeadline);
+    outcomes.forEach((outcome) => {
+      if (outcome.ok) {
+        if (kind === "insert") created += 1; else updated += 1;
+      } else if (outcome.skipped) {
+        remaining += 1;
+      } else {
+        throw outcome.error;
+      }
+    });
   }
 
   // Appraisal_Sheet must be an exact projection of this cycle's
@@ -1937,7 +1994,7 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     await tables.employees.deleteRows(staleSheetRowIds.slice(index, index + 100));
   }
 
-  const upToDate = created === 0 && updated === 0 && staleSheetRowIds.length === 0;
+  const upToDate = created === 0 && updated === 0 && staleSheetRowIds.length === 0 && remaining === 0;
   // A run that changed nothing is not worth an audit entry.
   if (!upToDate || !alreadyGenerated) {
     await writeAudit(tables.audit, {
@@ -1955,6 +2012,7 @@ async function generateAppraisalSheet(tables, cycle, actor) {
         unchanged,
         removedStaleRows: staleSheetRowIds.length,
         eligible: eligibleRows.length,
+        ...(remaining ? { remaining } : {}),
       },
     });
   }
@@ -1968,6 +2026,9 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     eligible: eligibleRows.length,
     alreadyGenerated,
     upToDate: alreadyGenerated && upToDate,
+    // Rows not written before the time limit: Generate again to add them.
+    remaining,
+    partial: remaining > 0,
   };
 }
 
@@ -2113,7 +2174,8 @@ async function validateUpload(tables, body) {
       cycleName: rowCycle?.name || "",
     };
   });
-  return { cycle: selectedCycle, rows: validated };
+  // The rows read here are passed on so commit doesn't read them again.
+  return { cycle: selectedCycle, rows: validated, masterRows, payrollRows };
 }
 async function getImportColumnSet(table) {
   const result = await table.getPagedRows({ maxRows: 1 });
@@ -2184,7 +2246,11 @@ function normalizeImportValue(key, value) {
   return String(value).trim();
 }
 
-async function syncFeedbackToAppraisalSheet(tables, cycle, actor = "", uploadedValuesByEmpId = new Map()) {
+// options.onlyEmpIds (lower-case Employee IDs): refresh only these employees'
+// sheet rows - the ones an upload changed - instead of every row of the cycle.
+// options.deadline: stop writing then; the rest is refreshed by the next
+// upload or Generate.
+async function syncFeedbackToAppraisalSheet(tables, cycle, actor = "", uploadedValuesByEmpId = new Map(), options = {}) {
   if (!cycle?.id) return { updated: 0, matched: 0, skipped: 0 };
 
   const [feedbackRows, masterRows, sheetRows, sheetColumnsRaw] = await Promise.all([
@@ -2270,11 +2336,13 @@ async function syncFeedbackToAppraisalSheet(tables, cycle, actor = "", uploadedV
   let updated = 0;
   let matched = 0;
   let skipped = 0;
+  const pendingUpdates = [];
   for (const sheetRow of sheetRows) {
     const sheetCycleId = referenceText(valueOf(sheetRow, "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name"));
     if (!cycleIds.has(sheetCycleId.toLowerCase())) continue;
     const masterId = referenceText(valueOf(sheetRow, "emp_master_row_id", "employee_master_id"));
     const empId = referenceText(valueOf(sheetRow, "emp_id", "employee_id")).toLowerCase();
+    if (options.onlyEmpIds && !options.onlyEmpIds.has(empId)) continue;
     const master = masterByRowId.get(masterId) || masterByEmpId.get(empId);
     const resolvedMasterId = master ? idOf(master) : masterId;
     const feedback = feedbackByMasterId.get(resolvedMasterId) || feedbackByEmpId.get(empId);
@@ -2304,15 +2372,23 @@ async function syncFeedbackToAppraisalSheet(tables, cycle, actor = "", uploadedV
         const experience = Number(valueOf(master, "total_experience", "total_exp", "experience")) || 0;
         if (basePay > 0 && experience > 0) value = Math.round((basePay / 100000 / experience) * 100) / 100;
       }
-      if (value !== undefined && value !== null && String(value).trim() !== "") payload[destination] = value;
+      // A value already stored is not written again: a feedback upload used
+      // to rewrite every sheet row of the cycle, one call per row.
+      if (value !== undefined && value !== null && String(value).trim() !== "" &&
+          !sameSheetValue(sheetRow[destination], value)) payload[destination] = value;
     }
     if (Object.keys(payload).length === 1) {
       skipped += 1;
       continue;
     }
-    await tables.employees.updateRow(payload);
-    updated += 1;
+    pendingUpdates.push(payload);
   }
+  const outcomes = await writeRowsInBatches(tables.employees, pendingUpdates, "update", options.deadline);
+  const notRefreshed = outcomes.filter((outcome) => outcome.skipped).length;
+  outcomes.forEach((outcome) => {
+    if (outcome.ok) updated += 1;
+    else if (!outcome.skipped) console.error("Appraisal Sheet feedback refresh failed:", outcome.error?.message || outcome.error);
+  });
 
   if (updated > 0) {
     await writeAudit(tables.audit, {
@@ -2332,10 +2408,10 @@ async function syncFeedbackToAppraisalSheet(tables, cycle, actor = "", uploadedV
       },
     });
   }
-  return { updated, matched, skipped };
+  return { updated, matched, skipped, ...(notRefreshed ? { notRefreshed } : {}) };
 }
 
-async function importRows(tables, body, actor = "") {
+async function importRows(tables, body, actor = "", writeDeadline = 0) {
   const screen = String(body.screen || "").trim().toLowerCase();
   if (!["fb", "sheet"].includes(screen)) throw new ApiError("Unsupported upload type.");
   let cycleId = String(body.cycleId || "").trim();
@@ -2406,6 +2482,29 @@ async function importRows(tables, body, actor = "") {
   const employeeRows = await getAllRows(tables.employeeMaster);
   const employeeIds = new Set(employeeRows.map((row) => String(row.emp_id || "").trim().toLowerCase()).filter(Boolean));
   const existingRows = await getAllRows(targetTable);
+  const storedReference = (value) => {
+    if (value && typeof value === "object") {
+      return String(value.ROWID ?? value.rowid ?? value.id ?? value.ID ?? value.value ?? "").trim();
+    }
+    return String(value ?? "").trim();
+  };
+  // Looked up once per row below; each map keeps the first match, as the
+  // per-row searches over the whole table did.
+  const masterByEmpId = new Map();
+  employeeRows.forEach((row) => {
+    const key = String(row.emp_id || "").trim().toLowerCase();
+    if (!masterByEmpId.has(key)) masterByEmpId.set(key, row);
+  });
+  const feedbackByKey = new Map();
+  if (screen === "fb") {
+    existingRows.forEach((row) => {
+      const key = storedReference(row.emp_ID ?? row.emp_id ?? "") + "|" + storedReference(row.appraisal_cycle_name);
+      if (!feedbackByKey.has(key)) feedbackByKey.set(key, row);
+    });
+  }
+  // One Feedback row per employee and cycle: a second row for the same pair in
+  // one upload used to be inserted as a duplicate.
+  const seenInUpload = new Set();
 
   let succeeded = 0;
   let failed = 0;
@@ -2413,6 +2512,7 @@ async function importRows(tables, body, actor = "") {
   let updatedCount = 0;
   let firstEffective = "";
   const rows = [];
+  const pendingWrites = [];
 
   for (const input of records) {
     const rowNumber = Number(input?.row) || rows.length + 2;
@@ -2433,9 +2533,7 @@ async function importRows(tables, body, actor = "") {
       : cycle;
 
     const payload = {};
-    const master = screen === "fb"
-      ? employeeRows.find((row) => String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase())
-      : null;
+    const master = screen === "fb" ? masterByEmpId.get(empId.toLowerCase()) : null;
     if (screen === "fb" && !master) errors.push("Employee ID not found in Employee Master.");
     if (!errors.length) {
       for (const [key, column] of Object.entries(fieldMap)) {
@@ -2532,45 +2630,53 @@ async function importRows(tables, body, actor = "") {
       continue;
     }
 
-    const storedReference = (value) => {
-      if (value && typeof value === "object") {
-        return String(value.ROWID ?? value.rowid ?? value.id ?? value.ID ?? value.value ?? "").trim();
+    let existing;
+    if (screen === "fb") {
+      const targetCycleId = String(rowCycle?.id || rowCycle?.sourceRowId || cycleId || "").trim();
+      const key = String(master ? rowId(master) : "").trim() + "|" + targetCycleId;
+      if (seenInUpload.has(key)) {
+        failed += 1;
+        rows.push({ row: rowNumber, ok: false, reason: "Duplicate Employee ID within this file for the same appraisal cycle.", badFields: ["empId"] });
+        continue;
       }
-      return String(value ?? "").trim();
-    };
-    const existing = existingRows.find((row) => {
-      const storedEmp = row.emp_ID ?? row.emp_id ?? "";
-      const storedEmpKey = storedReference(storedEmp);
-      const sameEmp = screen === "fb"
-        ? storedEmpKey === String(master ? rowId(master) : "").trim()
-        : storedEmpKey.toLowerCase() === empId.toLowerCase();
-      if (!sameEmp) return false;
-      if (screen === "fb") {
-        const storedCycle = storedReference(row.appraisal_cycle_name);
-        const targetCycleId = String(rowCycle?.id || rowCycle?.sourceRowId || cycleId || "").trim();
-        return storedCycle === targetCycleId;
-      }
-      if (screen !== "sheet") return true;
-      return !columns.has("appraisal_year") || String(row.appraisal_year || "").trim() === cycle.name;
-    });
-
-    try {
-      if (existing) {
-        await targetTable.updateRow({ ROWID: rowId(existing), ...payload });
-        updatedCount += 1;
-      } else {
-        await targetTable.insertRow(payload);
-        insertedCount += 1;
-      }
-      succeeded += 1;
-      if (!firstEffective && payload.Effective_Date) firstEffective = String(payload.Effective_Date);
-      rows.push({ row: rowNumber, ok: true, reason: "", badFields: [] });
-    } catch (error) {
-      failed += 1;
-      const reason = error?.message || "Feedback & Rating row could not be saved.";
-      console.error("Import row failed:", { screen, row: rowNumber, empId, reason });
-      rows.push({ row: rowNumber, ok: false, reason, badFields: [] });
+      seenInUpload.add(key);
+      existing = feedbackByKey.get(key);
+    } else {
+      existing = existingRows.find((row) => {
+        const storedEmpKey = storedReference(row.emp_ID ?? row.emp_id ?? "");
+        if (storedEmpKey.toLowerCase() !== empId.toLowerCase()) return false;
+        if (screen !== "sheet") return true;
+        return !columns.has("appraisal_year") || String(row.appraisal_year || "").trim() === cycle.name;
+      });
     }
+
+    const entry = { row: rowNumber, ok: false, reason: "", badFields: [] };
+    rows.push(entry);
+    pendingWrites.push({
+      entry, empId, payload,
+      kind: existing ? "update" : "insert",
+      data: existing ? { ROWID: rowId(existing), ...payload } : payload,
+    });
+  }
+
+  for (const kind of ["update", "insert"]) {
+    const list = pendingWrites.filter((write) => write.kind === kind);
+    const outcomes = await writeRowsInBatches(targetTable, list.map((write) => write.data), kind, writeDeadline);
+    outcomes.forEach((outcome, index) => {
+      const { entry, empId, payload } = list[index];
+      if (outcome.ok) {
+        entry.ok = true;
+        succeeded += 1;
+        if (kind === "insert") insertedCount += 1; else updatedCount += 1;
+        if (!firstEffective && payload.Effective_Date) firstEffective = String(payload.Effective_Date);
+        return;
+      }
+      failed += 1;
+      entry.reason = outcome.skipped
+        ? NOT_SAVED_TIME_LIMIT
+        : outcome.error?.message || "Feedback & Rating row could not be saved.";
+      if (!outcome.skipped) console.error("Import row failed:", { screen, row: entry.row, empId, reason: entry.reason });
+    });
   }
 
   let appraisalSheetSync = null;
@@ -2600,6 +2706,9 @@ async function importRows(tables, body, actor = "") {
         cycle,
         actor,
         uploadedValuesByEmpId,
+        // Only the employees this upload saved for the cycle. Other sheet rows
+        // keep their values (they used to be rewritten from Feedback too).
+        { onlyEmpIds: new Set(uploadedValuesByEmpId.keys()), deadline: writeDeadline },
       );
     } catch (syncError) {
       console.error("Feedback upload succeeded but Appraisal Sheet sync failed:", syncError?.message || syncError);
@@ -2772,6 +2881,7 @@ async function getFeedbackData(tables, query, includeBatches = true) {
 }
 
 async function routeRequest(req, res, identity, resource, a) {
+  const writeDeadline = Date.now() + WRITE_TIME_LIMIT_MS;
   const enforced = Boolean(a && a.enforced);
   access.guard(a, () => requirePayrollAccess(a, resource, req.method));
 
@@ -2915,7 +3025,7 @@ async function routeRequest(req, res, identity, resource, a) {
     const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
     const cycle = cycles.find((item) => item.id === cycleId);
     if (!cycle) throw new ApiError("The selected appraisal cycle was not found.", 404);
-    const result = await generateAppraisalSheet(tables, cycle, actor);
+    const result = await generateAppraisalSheet(tables, cycle, actor, writeDeadline);
     return sendJson(res, 200, { success: true, data: result });
   }
 
@@ -3031,7 +3141,17 @@ async function routeRequest(req, res, identity, resource, a) {
           cycle: details.cycleName || "",
         };
       })
-      .sort((a, b) => String(b.uploaded).localeCompare(String(a.uploaded)));
+      .sort((a, b) => String(b.uploaded).localeCompare(String(a.uploaded)))
+      // A large file is committed in parts under one batch ID, each with its
+      // own audit entry: show it as one upload with the counts added up.
+      .reduce((list, entry) => {
+        const same = entry.batchId && list.find((item) => item.batchId === entry.batchId);
+        if (!same) return [...list, entry];
+        same.succeeded += entry.succeeded;
+        same.failed += entry.failed;
+        if (same.updated !== null || entry.updated !== null) same.updated = (same.updated || 0) + (entry.updated || 0);
+        return list;
+      }, []);
     const undoneBatchIds = new Set(
       auditRows
         .filter((row) => row.source === "payroll_undo")
@@ -3092,7 +3212,8 @@ async function routeRequest(req, res, identity, resource, a) {
 
   if (resource === "validate" && req.method === "POST") {
     const body = await readBody(req);
-    const result = await validateUpload(tables, body);
+    // The table rows validateUpload passes on to commit are not sent back.
+    const { masterRows: _masterRows, payrollRows: _payrollRows, ...result } = await validateUpload(tables, body);
     return sendJson(res, 200, { success: true, data: result });
   }
 
@@ -3104,43 +3225,48 @@ async function routeRequest(req, res, identity, resource, a) {
     // after a timeout, update/insert the same Employee + Cycle rows instead of
     // returning 409 and making a successful upload look like it did nothing.
     const valid = result.rows.filter((row) => row.ok);
-    const rejected = result.rows.filter((row) => !row.ok);
-    const masterRows = await getAllRows(tables.employeeMaster);
+    const masterRows = result.masterRows;
     const masterByEmpId = new Map(masterRows.map((row) => [String(row.emp_id || "").trim().toLowerCase(), row]));
-    const existingRows = await getAllRows(tables.payroll);
-    const existingByKey = new Map(existingRows.map((row) => [
+    const masterByRowId = new Map(masterRows.map((row) => [String(row.ROWID ?? row.rowid ?? "").trim(), row]));
+    const existingByKey = new Map(result.payrollRows.map((row) => [
       `${String(row.emp_id || "").trim()}|${String(row.appraisal_cycle_name || "").trim()}`,
       row,
     ]));
 
-    let succeeded = 0;
-    let inserted = 0;
-    let updated = 0;
+    const inserts = [];
+    const updates = [];
     for (const item of valid) {
       const payrollRow = item.payrollRow;
-      const master = masterByEmpId.get(String(item.empId || payrollRow.emp_id || "").trim().toLowerCase()) || masterRows.find(
-        (row) => String(row.ROWID ?? row.rowid ?? "").trim() === String(payrollRow.emp_id).trim(),
-      );
+      const master = masterByEmpId.get(String(item.empId || payrollRow.emp_id || "").trim().toLowerCase()) ||
+        masterByRowId.get(String(payrollRow.emp_id).trim());
       if (!master) throw new ApiError(`Employee ${item.empId || payrollRow.emp_id} was removed during validation. Re-validate the file.`, 409);
       const masterRowId = String(master.ROWID ?? master.rowid ?? "").trim();
       const cycleRowId = String(payrollRow.appraisal_cycle_name ?? "").trim();
-      const key = `${masterRowId}|${cycleRowId}`;
-      const existing = existingByKey.get(key);
-      try {
-        if (existing) {
-          await tables.payroll.updateRow({ ROWID: rowId(existing), ...payrollRow });
-          updated += 1;
-        } else {
-          await tables.payroll.insertRow(payrollRow);
-          inserted += 1;
+      const existing = existingByKey.get(`${masterRowId}|${cycleRowId}`);
+      if (existing) updates.push({ item, row: { ROWID: rowId(existing), ...payrollRow } });
+      else inserts.push({ item, row: payrollRow });
+    }
+
+    let succeeded = 0;
+    let inserted = 0;
+    let updated = 0;
+    let notSaved = 0;
+    for (const [list, kind] of [[updates, "update"], [inserts, "insert"]]) {
+      const outcomes = await writeRowsInBatches(tables.payroll, list.map((entry) => entry.row), kind, writeDeadline);
+      outcomes.forEach((outcome, index) => {
+        const { item } = list[index];
+        if (outcome.ok) {
+          succeeded += 1;
+          if (kind === "insert") inserted += 1; else updated += 1;
+          return;
         }
-        succeeded += 1;
-      } catch (error) {
-        const reason = error?.message || "Payroll row could not be saved.";
+        if (outcome.skipped) notSaved += 1;
         item.ok = false;
-        item.reason = reason;
+        item.reason = outcome.skipped
+          ? NOT_SAVED_TIME_LIMIT
+          : outcome.error?.message || "Payroll row could not be saved.";
         item.badFields = [];
-      }
+      });
     }
 
     await writeAudit(tables.audit, {
@@ -3163,13 +3289,13 @@ async function routeRequest(req, res, identity, resource, a) {
     });
     return sendJson(res, 200, {
       success: true,
-      data: { succeeded, failed: result.rows.filter((row) => !row.ok).length, total: result.rows.length, batchId: body.batchId, rows: result.rows },
+      data: { succeeded, failed: result.rows.filter((row) => !row.ok).length, notSaved, total: result.rows.length, batchId: body.batchId, rows: result.rows },
     });
   }
 
   if (resource === "import" && req.method === "POST") {
     const body = await readBody(req);
-    const result = await importRows(tables, body, actor);
+    const result = await importRows(tables, body, actor, writeDeadline);
     return sendJson(res, 200, { success: true, data: result });
   }
 
