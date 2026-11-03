@@ -1091,7 +1091,6 @@ export function AppraisalProvider({ children }) {
       .toLowerCase() === "hr";
 
   const rosterCacheScope = String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase();
-  const rosterCacheScope = String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase();
   const [rows, setRows] = useState([]);
 
   // While the rows on screen come from the browser's saved copy (see
