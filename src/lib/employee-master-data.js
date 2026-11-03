@@ -574,6 +574,12 @@ export async function fetchEligibilityEmployees({
       eligible: employees.filter((employee) => employee.eligible === "Yes").length,
       notEligible: employees.filter((employee) => employee.eligible !== "Yes").length,
     },
+    // The backend already reads Employee_Master to join the eligibility
+    // records. Reuse that result for the criteria panel instead of issuing a
+    // second full Employee_Master API request when the page opens.
+    masterEmployees: Array.isArray(payload.masterRecords)
+      ? payload.masterRecords.map(mapEmployeeFromApi)
+      : [],
   };
 }
 
