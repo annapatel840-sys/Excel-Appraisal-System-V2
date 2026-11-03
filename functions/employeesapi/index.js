@@ -949,7 +949,7 @@ async function tableFingerprint(zcql, tableName) {
 }
 
 // Wraps a full-table read: same rows as read(), reused while the table is unchanged.
-function cachedTableRead(zcql, tableId, tableName, read) {
+function cachedTableRead(zcql, tableId, tableName, read, maxAgeMs = TABLE_READ_CACHE_MAX_AGE_MS) {
   return async function () {
     let fingerprint = null;
     if (zcql) {
@@ -961,7 +961,7 @@ function cachedTableRead(zcql, tableId, tableName, read) {
     }
     const hit = TABLE_READ_CACHE.get(tableId);
     if (fingerprint && hit && hit.fingerprint === fingerprint &&
-        Date.now() - hit.at < TABLE_READ_CACHE_MAX_AGE_MS) {
+        Date.now() - hit.at < maxAgeMs) {
       return hit.rows.map(function (row) { return { ...row }; });
     }
     const rows = await read();
@@ -976,6 +976,120 @@ function cachedTableRead(zcql, tableId, tableName, read) {
     }
     return rows;
   };
+}
+
+/* ============================================================
+   PARALLEL TABLE READ (Delegation view only)
+
+   readAllDataStoreRows walks a table 200 rows at a time, each page waiting for
+   the previous page's token, so the largest table (Payroll_Data and
+   Appraisal_Sheet hold a row per employee per cycle) sets the whole request's
+   time. The Delegation view reads the same tables, in the same row order,
+   with a few ZCQL "ORDER BY ROWID LIMIT offset, 300" queries running together.
+
+   It is checked before it is trusted: the first 200 rows must be identical to
+   what the paged reader returns for them, every query must return its full
+   share, and the total must equal the table's row count. If any check fails,
+   or any query errors, the table is read exactly as before. A table that fails
+   the identity check is not retried this way for a while.
+   ============================================================ */
+const ZCQL_CHUNK_ROWS = 300;
+const ZCQL_READS_IN_FLIGHT = 6;
+const ZCQL_BAD_RETRY_MS = 10 * 60 * 1000;
+const ZCQL_READ_VERDICT = new Map(); // table name -> { ok, at }
+// Delegation rarely changes; an unchanged table (checked by its fingerprint
+// above) is reused for this long instead of the default 5 minutes.
+const DELEGATION_TABLE_CACHE_MAX_AGE_MS = 30 * 60 * 1000;
+
+function makeLimiter(limit) {
+  let active = 0;
+  const waiting = [];
+  const release = function () {
+    active -= 1;
+    const next = waiting.shift();
+    if (next) next();
+  };
+  return async function (task) {
+    if (active >= limit) await new Promise(function (resolve) { waiting.push(resolve); });
+    active += 1;
+    try {
+      return await task();
+    } finally {
+      release();
+    }
+  };
+}
+
+function canonicalRowText(row) {
+  const out = {};
+  Object.keys(row || {}).sort().forEach(function (key) {
+    const value = row[key];
+    out[key] = value === null || value === undefined ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
+  });
+  return JSON.stringify(out);
+}
+
+async function readAllRowsParallel(zcql, table, tableName, sequentialRead, limiter, mapRow) {
+  if (!zcql || typeof zcql.executeZCQLQuery !== "function") return sequentialRead();
+  const verdict = ZCQL_READ_VERDICT.get(tableName);
+  if (verdict && !verdict.ok && Date.now() - verdict.at < ZCQL_BAD_RETRY_MS) return sequentialRead();
+  try {
+    const countResult = await withDataStoreRetry(
+      () => zcql.executeZCQLQuery("SELECT COUNT(ROWID) FROM " + tableName),
+      tableName + " row count",
+    );
+    const countCell = Object.values(Object.values((Array.isArray(countResult) ? countResult[0] : null) || {})[0] || {})[0];
+    const total = Number(countCell);
+    // A small table is quicker to read in one or two pages.
+    if (!Number.isFinite(total) || total <= 2 * DATASTORE_PAGE_SIZE) return sequentialRead();
+
+    const unwrap = function (item) {
+      if (item && item[tableName] && typeof item[tableName] === "object") return item[tableName];
+      const first = item && Object.values(item)[0];
+      return first && typeof first === "object" ? first : item;
+    };
+    const chunkCount = Math.ceil(total / ZCQL_CHUNK_ROWS);
+    const readChunk = function (index) {
+      const offset = index * ZCQL_CHUNK_ROWS;
+      const expected = Math.min(ZCQL_CHUNK_ROWS, total - offset);
+      return limiter(async function () {
+        const result = await withDataStoreRetry(
+          () => zcql.executeZCQLQuery(
+            "SELECT * FROM " + tableName + " ORDER BY ROWID LIMIT " + offset + ", " + ZCQL_CHUNK_ROWS,
+          ),
+          tableName + " parallel chunk",
+        );
+        const rows = (Array.isArray(result) ? result : []).map(unwrap);
+        if (rows.length !== expected) throw new Error(tableName + " chunk " + index + " returned " + rows.length + " of " + expected + " rows");
+        return rows;
+      });
+    };
+
+    // Identity check on the first chunk before the remaining chunks are spent.
+    const [sample, firstChunk] = await Promise.all([
+      withDataStoreRetry(() => table.getPagedRows({ maxRows: DATASTORE_PAGE_SIZE }), tableName + " sample page"),
+      readChunk(0),
+    ]);
+    const sampleRows = Array.isArray(sample && sample.data) ? sample.data : [];
+    const sameAsPaged = sampleRows.length > 0 && sampleRows.every(function (row, index) {
+      return firstChunk[index] && canonicalRowText(row) === canonicalRowText(firstChunk[index]);
+    });
+    if (!sameAsPaged) {
+      ZCQL_READ_VERDICT.set(tableName, { ok: false, at: Date.now() });
+      console.warn("[employeesapi] parallel read of " + tableName + " differs from the paged read; using the paged read.");
+      return sequentialRead();
+    }
+    const rest = await Promise.all(
+      Array.from({ length: chunkCount - 1 }, function (_, index) { return readChunk(index + 1); }),
+    );
+    const rows = [firstChunk, ...rest].flat();
+    if (rows.length !== total) throw new Error(tableName + " parallel read returned " + rows.length + " of " + total + " rows");
+    ZCQL_READ_VERDICT.set(tableName, { ok: true, at: Date.now() });
+    return mapRow ? rows.map(mapRow) : rows;
+  } catch (error) {
+    console.warn("[employeesapi] parallel read of " + tableName + " failed; using the paged read:", error && error.message || error);
+    return sequentialRead();
+  }
 }
 
 function historyReference(value) {
@@ -2450,17 +2564,27 @@ async function getEmployees(req, res) {
   // Prefetch independent roster tables with a small worker pool. Delegation
   // tables are read only for the Delegation view; other views avoid that cost.
   const rosterZcql = typeof adminInstance.zcql === "function" ? adminInstance.zcql() : null;
-  const cachedRead = (tableId, tableName, read) => cachedTableRead(rosterZcql, tableId, tableName, read);
+  const cachedRead = (tableId, tableName, read) => cachedTableRead(
+    rosterZcql, tableId, tableName, read,
+    delegationRosterView ? DELEGATION_TABLE_CACHE_MAX_AGE_MS : TABLE_READ_CACHE_MAX_AGE_MS,
+  );
+  // Delegation view only: read each large table with parallel ZCQL chunks
+  // (checked against the paged read, with fallback to it). Other views are
+  // unchanged and keep reading page by page.
+  const zcqlLimiter = makeLimiter(ZCQL_READS_IN_FLIGHT);
+  const tableRead = (tableId, tableName, sequentialRead, mapRow) => delegationRosterView
+    ? () => readAllRowsParallel(rosterZcql, datastore.table(tableId), tableName, sequentialRead, zcqlLimiter, mapRow)
+    : sequentialRead;
   const roster = await readDataStoreRowsPooled([
-    { key: "payrollRows", read: cachedRead(PAYROLL_DATA_TABLE_ID, "Payroll_Data", () => readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID))), optional: true, fallback: null },
-    { key: "allAppraisalRows", read: cachedRead(EMPLOYEES_TABLE_ID, "Appraisal_Sheet", () => getAllEmployees(datastore)), optional: false },
-    { key: "employeeMasterRows", read: cachedRead(EMPLOYEE_MASTER_TABLE_ID, "Employee_Master", () => getAllEmployeeMaster(datastore)), optional: false },
+    { key: "payrollRows", read: cachedRead(PAYROLL_DATA_TABLE_ID, "Payroll_Data", tableRead(PAYROLL_DATA_TABLE_ID, "Payroll_Data", () => readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)))), optional: true, fallback: null },
+    { key: "allAppraisalRows", read: cachedRead(EMPLOYEES_TABLE_ID, "Appraisal_Sheet", tableRead(EMPLOYEES_TABLE_ID, "Appraisal_Sheet", () => getAllEmployees(datastore), normalizeEmployeeResponse)), optional: false },
+    { key: "employeeMasterRows", read: cachedRead(EMPLOYEE_MASTER_TABLE_ID, "Employee_Master", tableRead(EMPLOYEE_MASTER_TABLE_ID, "Employee_Master", () => getAllEmployeeMaster(datastore))), optional: false },
     { key: "cycleRows", read: () => readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)), optional: false },
-    { key: "cycleEligibilityRows", read: cachedRead(ELIGIBILITY_TABLE_ID, "Eligibility_List", () => readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID))), optional: true, fallback: [] },
+    { key: "cycleEligibilityRows", read: cachedRead(ELIGIBILITY_TABLE_ID, "Eligibility_List", tableRead(ELIGIBILITY_TABLE_ID, "Eligibility_List", () => readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)))), optional: true, fallback: [] },
     ...(delegationRosterView ? [] : [{ key: "feedbackRows", read: cachedRead(FEEDBACK_RATING_TABLE_ID, "Feedback_And_Rating", () => readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID))), optional: true, fallback: null }]),
     ...(delegationRosterView ? [
-      { key: "delegationRows", read: cachedRead(DELEGATION_TABLE_ID, "Delegation", () => readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID))), optional: true, fallback: null },
-      { key: "previousDelegationRows", read: cachedRead(PREVIOUS_DELEGATION_TABLE_ID, "Previous_Delegation", () => readAllDataStoreRows(datastore.table(PREVIOUS_DELEGATION_TABLE_ID))), optional: true, fallback: null },
+      { key: "delegationRows", read: cachedRead(DELEGATION_TABLE_ID, "Delegation", tableRead(DELEGATION_TABLE_ID, "Delegation", () => readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID)))), optional: true, fallback: null },
+      { key: "previousDelegationRows", read: cachedRead(PREVIOUS_DELEGATION_TABLE_ID, "Previous_Delegation", tableRead(PREVIOUS_DELEGATION_TABLE_ID, "Previous_Delegation", () => readAllDataStoreRows(datastore.table(PREVIOUS_DELEGATION_TABLE_ID)))), optional: true, fallback: null },
     ] : []),
   ]);
   const { employeeMasterRows, allAppraisalRows, cycleRows, cycleEligibilityRows } = roster;
