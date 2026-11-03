@@ -1,3 +1,4 @@
+import { hikeAmountFromPct, hikePctFromAmount, roundPct } from "@/lib/hike-math";
 import {
   Fragment,
   useCallback,
@@ -2950,28 +2951,12 @@ export function AppraisalGrid({
       }
 
       const basePay = Number(row.currentAnnualBasePay || 0);
-      const pct = Number(String(raw).replace(/,/g, "")) || 0;
-
-      // The % box only shows the amount rounded to 2 decimals. If the value
-      // is just that rounded display, keep the amount exactly as typed
-      // (otherwise 35000 could turn into 35008 when the % cell is left).
-      const shownPct = basePay
-        ? Number((((Number(row.hikeAmount) || 0) / basePay) * 100).toFixed(2))
-        : 0;
-
-      if (
-        basePay &&
-        (Number(row.hikeAmount) || 0) !== 0 &&
-        pct === shownPct
-      ) {
-        if ((Number(row.hikePct) || 0) !== pct) {
-          updateLinkedCells(row.id, { hikePct: pct });
-        }
-
-        return { changed: false, hikeAmount: Number(row.hikeAmount) || 0 };
-      }
-
-      const amount = Number((basePay * (pct / 100)).toFixed(2));
+      // A typed Hike % is saved rounded to 2 decimals and drives the amount
+      // (nearest 100, half rounds up). Cells the user did not type in never
+      // reach this function (see the touched check in onBlur), so a shown
+      // 14.54 can no longer overwrite a typed 27,000.
+      const pct = roundPct(Number(String(raw).replace(/,/g, "")) || 0);
+      const amount = hikeAmountFromPct(basePay, pct);
 
       const changed =
         (Number(row.hikePct) || 0) !== pct ||
@@ -3013,7 +2998,7 @@ export function AppraisalGrid({
       const basePay = Number(row.currentAnnualBasePay || 0);
       const amount =
         Number((Number(String(raw).replace(/,/g, "")) || 0).toFixed(2));
-      const pct = basePay ? Number(((amount / basePay) * 100).toFixed(2)) : 0;
+      const pct = hikePctFromAmount(basePay, amount);
 
       const changed =
         (Number(row.hikeAmount) || 0) !== amount ||
@@ -3142,6 +3127,9 @@ export function AppraisalGrid({
   // ============================================================
 
   const cancelledCellsRef = useRef(new Set());
+  // Cells the user actually typed in. Hike % / Hike Amount only save on blur
+  // when typed in, so merely passing through a cell never rewrites its pair.
+  const touchedCellsRef = useRef(new Set());
   const pendingDraftRef = useRef(null);
   const liveToastCellsRef = useRef(new Set());
   const commitRef = useRef(commit);
@@ -3876,9 +3864,9 @@ export function AppraisalGrid({
 
       if (basePay && String(otherRaw ?? "").trim() !== "" && Number.isFinite(other)) {
         if (col.key === "hikePct") {
-          storedValue = String(Number(((other / basePay) * 100).toFixed(2)));
+          storedValue = String(hikePctFromAmount(basePay, other));
         } else if (otherDraft !== undefined) {
-          storedValue = String(Math.round(basePay * (other / 100)));
+          storedValue = String(hikeAmountFromPct(basePay, roundPct(other)));
         }
       }
     }
@@ -4103,6 +4091,8 @@ export function AppraisalGrid({
   }
 }
 
+            touchedCellsRef.current.delete(cellKey);
+
             setEditingValues((previous) => ({
               ...previous,
               [cellKey]: storedValue,
@@ -4132,6 +4122,7 @@ export function AppraisalGrid({
               return;
             }
 
+            touchedCellsRef.current.add(cellKey);
             setEditingValue(cellKey, value);
 
             if (TYPING_POPUP_FIELDS[col.key]) {
@@ -4188,8 +4179,20 @@ export function AppraisalGrid({
             clearEditingValue(cellKey);
             liveToastCellsRef.current.delete(cellKey);
 
+            const touched = touchedCellsRef.current.delete(cellKey);
+
             // Escape pressed: discard the draft instead of saving it.
             if (cancelledCellsRef.current.delete(cellKey)) {
+              return;
+            }
+
+            // Hike % / Hike Amount: save only what the user typed. The
+            // other cell just shows a derived value and must not be
+            // committed back as if it had been typed.
+            if (
+              (col.key === "hikePct" || col.key === "hikeAmount") &&
+              !touched
+            ) {
               return;
             }
 

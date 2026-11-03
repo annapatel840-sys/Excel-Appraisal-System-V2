@@ -20,6 +20,7 @@
  *     add Manrope to your app (Google Fonts / @fontsource) or it falls back to Segoe UI / Arial.
  *   - Excel export loads SheetJS from cdnjs on first use (same as the HTML). Swap for `import * as XLSX from "xlsx"` if you prefer.
  */
+import { hikeAmountFromPct, roundPct } from "@/lib/hike-math";
 import React, {
   useState,
   useMemo,
@@ -1490,7 +1491,8 @@ const BulkOperations = forwardRef(function BulkOperations(
     }
     const val = Number(r.value);
     let amt;
-    if (r.field === "hikePct") amt = (hikeBasis(e) * val) / 100;
+    if (r.field === "hikePct")
+      amt = hikeAmountFromPct(hikeBasis(e), roundPct(val)); /* nearest 100 */
     else if (r.field === "hikeAmt") amt = val;
     else amt = r.unit === "pct" ? (hikeBasis(e) * val) / 100 : val;
     if (F.floor && amt < e[F.floor]) {

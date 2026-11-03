@@ -1,3 +1,4 @@
+import { hikeAmountFromPct, hikePctFromAmount, roundPct } from "./hike-math";
 import { jsx as _jsx } from "react/jsx-runtime";
 import {
   createContext,
@@ -1062,17 +1063,17 @@ const linkedHikeValues = (row, key, value) => {
   const basePay = Number(row.currentAnnualBasePay || 0);
 
   if (key === "hikePct") {
-    const pct = Number(value) || 0;
+    const pct = roundPct(Number(value) || 0);
 
     return {
       hikePct: pct,
-      hikeAmount: Number((basePay * (pct / 100)).toFixed(2)),
+      hikeAmount: hikeAmountFromPct(basePay, pct),
     };
   }
 
   const amount = Number((Number(value) || 0).toFixed(2));
 
-  const pct = basePay ? Number(((amount / basePay) * 100).toFixed(2)) : 0;
+  const pct = hikePctFromAmount(basePay, amount);
 
   return { hikeAmount: amount, hikePct: pct };
 };

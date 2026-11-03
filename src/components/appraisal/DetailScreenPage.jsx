@@ -1,3 +1,4 @@
+import { hikeAmountFromPct, hikePctFromAmount, roundPct } from "@/lib/hike-math";
 import {
   useCallback,
   useEffect,
@@ -1419,7 +1420,7 @@ export function DetailScreenPage({
     }
     if (value === derived.newBase) return;
     const hike = value - baseNow;
-    const pct = baseNow ? Number(((hike / baseNow) * 100).toFixed(1)) : 0;
+    const pct = hikePctFromAmount(baseNow, hike);
     commitLinked({ hikeAmount: hike, hikePct: pct });
   };
 
@@ -1434,7 +1435,7 @@ export function DetailScreenPage({
       return;
     }
     setHikeErr("");
-    const pct = base ? Number(((hike / base) * 100).toFixed(2)) : 0;
+    const pct = hikePctFromAmount(base, hike);
     commitLinked({ hikeAmount: hike, hikePct: pct });
   };
   const handleHikePctChange = (raw) => {
@@ -1446,11 +1447,9 @@ export function DetailScreenPage({
     }
     setHikeErr("");
     const base = baseNow;
-    const hike = Math.round((base * Number(pctRaw)) / 100);
-    commitLinked({
-      hikeAmount: hike,
-      hikePct: Number(Number(pctRaw).toFixed(2)),
-    });
+    const pct = roundPct(Number(pctRaw));
+    const hike = hikeAmountFromPct(base, pct);
+    commitLinked({ hikeAmount: hike, hikePct: pct });
   };
 
   /* Live linking while typing (display only) */
@@ -1468,7 +1467,7 @@ export function DetailScreenPage({
   const liveHikePct = (raw) => {
     const pct = draftNum(raw);
     setHikeErr(pct > 100 ? HIKE_MAX_MSG : "");
-    const hike = Math.round((baseNow * pct) / 100);
+    const hike = hikeAmountFromPct(baseNow, roundPct(pct));
     setDraft({ pctStr: raw, hikeStr: fmt(hike), baseStr: fmt(baseNow + hike) });
   };
   const liveNewBasePay = (raw) => {

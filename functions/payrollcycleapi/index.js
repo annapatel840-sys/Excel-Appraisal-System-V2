@@ -246,15 +246,8 @@ function requirePayrollAccess(a, resource, method) {
     return;
   }
   if (resource === "generate-sheet" && method === "POST") {
-    // HR / Tech-Ed may generate from Delegation. Some existing Tech-Ed role
-    // configurations grant Appraisal Sheet edit but leave Delegation at view;
-    // either explicit edit grant is sufficient for this operation.
-    const canGenerate =
-      a && a.screens &&
-      (a.screens.delegation === "edit" || a.screens.appraisalSheet === "edit");
-    if (!canGenerate) {
-      throw new access.HttpError(403, "You need Delegation or Appraisal Sheet edit access to generate the Appraisal Sheet.");
-    }
+    if (a.role === "techEd") access.requireScreen(a, "delegation", "edit");
+    else access.requireScreen(a, "cycleMaster", "edit");
     return;
   }
   // import: the Upload screen's Payroll / Review and Feedback upload.
@@ -1217,6 +1210,22 @@ function resolveEmployeeReference(value, masterRows) {
    values (PB / RB to be paid, target PB, previous CTC) from this payroll row.
    Nothing is removed unless every row was written to Payroll_Data first. */
 const SHEET_ARCHIVE_SOURCE = "sheet_archive";
+// ---- Hike % <-> Hike Amount (same rule as src/lib/hike-math.js) ----
+function roundHikePct(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return (Math.sign(n) * Math.round(Number((Math.abs(n) * 100).toFixed(6)))) / 100;
+}
+function hikePctFromAmount(base, amount) {
+  const b = Number(base) || 0;
+  return b ? roundHikePct(((Number(amount) || 0) / b) * 100) : 0;
+}
+// Typed Hike %: amount = base x % / 100, rounded to the nearest 100 (half rounds up).
+function hikeAmountFromPct(base, pct) {
+  const hundreds = Number((((Number(base) || 0) * (Number(pct) || 0)) / 100 / 100).toFixed(8));
+  return Math.round(hundreds) * 100;
+}
+
 const SHEET_ARCHIVE_MARK = "Appraisal Sheet moved to Payroll Data";
 
 function sheetNumber(row, column) {
@@ -2492,10 +2501,22 @@ async function importRows(tables, body, actor = "") {
         if (columns.has("appraisal_cycle_name")) payload.appraisal_cycle_name = cycle.id;
         if (columns.has("total_pb")) payload.total_pb = (Number(payload.performance_bonus) || 0) + (Number(input.allocatedPBAmount) || 0);
         if (columns.has("total_bonus")) payload.total_bonus = (Number(payload.total_pb) || 0) + (Number(payload.retention_bonus) || 0);
-        if (columns.has("hike_pct") && payload.hike_amount !== undefined) {
+        if (columns.has("hike_pct") && columns.has("hike_amount") && (payload.hike_amount !== undefined || payload.hike_pct !== undefined)) {
+          // Hike % <-> Hike Amount: only the field that was supplied drives the other.
+          //  - amount supplied (alone, or with a %): the amount is kept exactly;
+          //    the % is worked out from it, rounded to 2 decimals.
+          //  - only a % supplied: the % is rounded to 2 decimals and the amount is
+          //    base x % / 100 rounded to the nearest 100 (half rounds up).
+          // The amount is never rebuilt from a stored or rounded %.
           const master = employeeRows.find((row) => String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase());
           const base = Number(master?.current_salary || master?.base_pay || 0);
-          payload.hike_pct = base > 0 ? Number(((Number(payload.hike_amount) || 0) / base * 100).toFixed(4)) : Number(payload.hike_pct || 0);
+          const hasAmount = payload.hike_amount !== undefined && payload.hike_amount !== "";
+          if (hasAmount) {
+            payload.hike_pct = base > 0 ? hikePctFromAmount(base, payload.hike_amount) : Number(payload.hike_pct || 0);
+          } else if (payload.hike_pct !== undefined && payload.hike_pct !== "" && base > 0) {
+            payload.hike_pct = roundHikePct(payload.hike_pct);
+            payload.hike_amount = hikeAmountFromPct(base, payload.hike_pct);
+          }
         }
         if (columns.has("new_ctc") && (payload.hike_amount !== undefined || payload.total_bonus !== undefined)) {
           const master = employeeRows.find((row) => String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase());

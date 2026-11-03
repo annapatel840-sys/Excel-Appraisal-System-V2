@@ -1,3 +1,4 @@
+import { hikeAmountFromPct, hikePctFromAmount, roundPct } from "@/lib/hike-math";
 import { useCallback, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Upload, X } from "lucide-react";
@@ -337,33 +338,30 @@ export function useAppraisalImport({ onDone } = {}) {
         basePayChange ? basePayChange.value : row?.currentAnnualBasePay,
       );
 
-      if ("hikePct" in entry) {
-        const pct = Number(entry.hikePct) || 0;
-
-        updateLinkedCells(
-          rowId,
-          {
-            hikePct: entry.hikePct === "" ? "" : pct,
-            hikeAmount:
-              entry.hikePct === ""
-                ? ""
-                : Math.round((basePay || 0) * (pct / 100)),
-          },
-          "Import",
-        );
-      } else {
+      // An exported file carries BOTH columns, so a changed amount comes with
+      // a (rounded) % that must not be used to rebuild it: when the amount is
+      // in the file the amount drives; a % on its own drives the amount.
+      if ("hikeAmount" in entry) {
+        const blank = entry.hikeAmount === "";
         const amount = Number(entry.hikeAmount) || 0;
 
         updateLinkedCells(
           rowId,
           {
-            hikeAmount: entry.hikeAmount === "" ? "" : amount,
-            hikePct:
-              entry.hikeAmount === ""
-                ? ""
-                : basePay
-                  ? Number(((amount / basePay) * 100).toFixed(1))
-                  : 0,
+            hikeAmount: blank ? "" : amount,
+            hikePct: blank ? "" : hikePctFromAmount(basePay, amount),
+          },
+          "Import",
+        );
+      } else {
+        const blank = entry.hikePct === "";
+        const pct = roundPct(Number(entry.hikePct) || 0);
+
+        updateLinkedCells(
+          rowId,
+          {
+            hikePct: blank ? "" : pct,
+            hikeAmount: blank ? "" : hikeAmountFromPct(basePay, pct),
           },
           "Import",
         );
