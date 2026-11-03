@@ -1200,7 +1200,7 @@ export function AppraisalProvider({ children }) {
       // cycle). If that table cannot be read, the sheet still loads.
       const [cycles, roster, feedback] = await Promise.all([
         payrollCycleRequest("cycles"),
-        fetchAppraisalRoster({ viewAs: getViewAsSelected() }),
+        fetchAppraisalRoster({ viewAs: getViewAsSelected(), cacheScope: rosterCacheScope }),
         loadCurrentCycleFeedback(),
       ]);
 
