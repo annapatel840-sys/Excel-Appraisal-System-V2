@@ -2729,7 +2729,11 @@ async function getEmployees(req, res) {
       // already-computed payroll lookup values without waiting for schema
       // metadata and batch updates. Persisting those values belongs to an
       // explicit write/generation workflow, not opening or refreshing the grid.
-      persistLookups: requestedPage === 1 && requestedView !== "appraisal",
+      // The Delegation screen shows none of these derived values, so opening
+      // it must not spend its request on the Appraisal_Sheet column lookup and
+      // row-by-row write-back (up to ROSTER_WRITE_BUDGET_MS). Any other load of
+      // the sheet roster still persists them exactly as before.
+      persistLookups: requestedPage === 1 && requestedView !== "appraisal" && requestedView !== "delegation",
       view: requestedView,
       writeDeadline: requestStartedAt + ROSTER_WRITE_BUDGET_MS,
     },

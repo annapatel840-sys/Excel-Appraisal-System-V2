@@ -25,6 +25,12 @@ const TAG = {
   [ST.PD]: "pd",
 };
 const PAGE = 50;
+// Roster rows asked for per employeesapi request (its MAX_LIMIT). Every roster
+// request re-reads and re-enriches the whole roster on the server, and page 2
+// can only start after page 1 returns, so a 1,000-row page made a 2,000-row
+// roster cost two full server passes one after the other. Larger rosters still
+// continue through the totalPages loop in loadRoster.
+const ROSTER_PAGE_LIMIT = 5000;
 /* Grid columns (header filter + drag-to-resize like the Appraisal Sheet) */
 const MIN_COL = 70;
 const MAX_COL = 520;
@@ -356,7 +362,7 @@ export default function DelegationScreen({
     try {
       const fetchRosterPage = async (pageNo, fallbackMessage) => {
         const response = await catalystFetch(
-          EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=1000&view=delegation&gz=1",
+          EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=" + ROSTER_PAGE_LIMIT + "&view=delegation&gz=1",
           { method: "GET", cache: "no-store" },
         );
         const payload = await response.json();
@@ -368,9 +374,11 @@ export default function DelegationScreen({
       // The roster does not depend on the cycle lookup (employeesapi finds the
       // active cycle itself), so start page 1 together with the cycle list
       // instead of after it. Only page 1 writes lookups, so this is safe.
-      const cyclesPromise = payrollCycleRequest("cycles");
+      // The roster is the slow call, so it is queued before the (tiny) cycle
+      // list: catalystFetch runs at most two requests at a time.
       const firstPromise = fetchRosterPage(1, "Unable to load appraisal employees.");
       firstPromise.catch(() => {}); // reported where it is awaited below
+      const cyclesPromise = payrollCycleRequest("cycles");
       const cycles = await cyclesPromise;
       const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
         const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
