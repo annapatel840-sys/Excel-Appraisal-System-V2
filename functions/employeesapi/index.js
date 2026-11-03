@@ -2335,7 +2335,15 @@ async function getEmployees(req, res) {
   // Keep the complete historical sheet rows for payroll/previous-CTC mapping.
   // appraisalRows is filtered below to the active cycle for the visible grid.
   let appraisalRows = allAppraisalRows;
-  const { cycleRows, cycleEligibilityRows } = await readDataStoreRowsInBatches([
+  // Read all independent enrichment sources in the same bounded batch
+  // pipeline. The helper processes at most two Catalyst Data Store scans at
+  // once, but avoids a separate later round-trip for Payroll and Feedback.
+  const {
+    cycleRows,
+    cycleEligibilityRows,
+    payrollRows,
+    feedbackRows,
+  } = await readDataStoreRowsInBatches([
     {
       key: "cycleRows",
       read: () => readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
@@ -2347,10 +2355,24 @@ async function getEmployees(req, res) {
       optional: true,
       fallback: [],
     },
+    {
+      key: "payrollRows",
+      read: () => readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
+      optional: true,
+      fallback: [],
+    },
+    {
+      key: "feedbackRows",
+      read: () => readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)),
+      optional: true,
+      fallback: [],
+    },
   ], 2);
-  logRosterStage("cycle and eligibility tables loaded", {
+  logRosterStage("cycle, eligibility, payroll and feedback tables loaded", {
     cycleRows: cycleRows.length,
     eligibilityRows: cycleEligibilityRows.length,
+    payrollRows: payrollRows.length,
+    feedbackRows: feedbackRows.length,
   });
 
   // Appraisal view must be isolated to the one active cycle. Appraisal_Sheet
@@ -2568,6 +2590,8 @@ async function getEmployees(req, res) {
         appraisalHistoryRows: allAppraisalRows,
         cycleRows,
         eligibilityRows: cycleEligibilityRows,
+        payrollRows,
+        feedbackRows,
       },
       // A normal Appraisal Sheet GET must remain read-only and return the
       // already-computed payroll lookup values without waiting for schema
