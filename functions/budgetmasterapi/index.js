@@ -3032,22 +3032,44 @@ module.exports = async function (req, res) {
     const app = catalyst.initialize(req, { scope: "admin" });
 
     if (method === "GET") {
+      const budgetRequestStartedAt = Date.now();
+      const logBudgetStage = (stage, details = {}) => {
+        console.info("[budgetmasterapi:get]", {
+          stage,
+          elapsedMs: Date.now() - budgetRequestStartedAt,
+          ...details,
+        });
+      };
+      logBudgetStage("request started");
+
       // Keep this endpoint limited to the three budget tables. The frontend
       // already loads the full employee roster through employeesapi; scanning
       // both employee tables again here caused Catalyst's execution timeout.
       // Avoid overlapping multiple datastore scans on the same request.
       const rawBundle = await readBundle(app);
+      logBudgetStage("budget tables loaded", {
+        masterRows: rawBundle.master.length,
+        techEdRows: rawBundle.techEd.length,
+        compManagerRows: rawBundle.compManager.length,
+      });
 
       // Read each source table once, in sequence. These same arrays are shared
-      // by budget-base calculation and Tech-Ed owner resolution.
-      const sourceRows = {
-        appraisalRows: await getAllRows(app, "Appraisal_Sheet"),
-        masterEmployeeRows: await getAllRows(app, "Employee_Master").catch(() => []),
-        payrollRows: await getAllRows(app, "Payroll_Data"),
-        cycleRows: await getAllRows(app, "Appraisal_Cycle_Master"),
-        eligibilityRows: await getAllRows(app, "Eligibility_List").catch(() => []),
-      };
+      // by budget-base calculation and Tech-Ed owner resolution. Log each scan
+      // independently so Catalyst table latency can be measured before changing
+      // the existing safe Data Store concurrency limit.
+      const sourceRows = {};
+      sourceRows.appraisalRows = await getAllRows(app, "Appraisal_Sheet");
+      logBudgetStage("Appraisal_Sheet loaded", { rows: sourceRows.appraisalRows.length });
+      sourceRows.masterEmployeeRows = await getAllRows(app, "Employee_Master").catch(() => []);
+      logBudgetStage("Employee_Master loaded", { rows: sourceRows.masterEmployeeRows.length });
+      sourceRows.payrollRows = await getAllRows(app, "Payroll_Data");
+      logBudgetStage("Payroll_Data loaded", { rows: sourceRows.payrollRows.length });
+      sourceRows.cycleRows = await getAllRows(app, "Appraisal_Cycle_Master");
+      logBudgetStage("Appraisal_Cycle_Master loaded", { rows: sourceRows.cycleRows.length });
+      sourceRows.eligibilityRows = await getAllRows(app, "Eligibility_List").catch(() => []);
+      logBudgetStage("Eligibility_List loaded", { rows: sourceRows.eligibilityRows.length });
       const techEdOwners = await readTechEdOwners(app, sourceRows);
+      logBudgetStage("Tech-Ed owners resolved", { owners: techEdOwners.length });
       let calculatedBundle = rawBundle;
       try {
         calculatedBundle = await calculateBudgetBases(
@@ -3056,6 +3078,11 @@ module.exports = async function (req, res) {
           techEdOwners,
           sourceRows,
         );
+        logBudgetStage("budget calculations and persistence complete", {
+          techEdRows: calculatedBundle.techEd.length,
+          compManagerRows: calculatedBundle.compManager.length,
+          activeCycleId: calculatedBundle.active_appraisal_cycle_id || "",
+        });
       } catch (calculationError) {
         // Never report a successful zero-budget response when source calculations
         // failed. Return the actionable source/schema error to the frontend.
@@ -3071,6 +3098,11 @@ module.exports = async function (req, res) {
         });
       }
       const bundle = filterOwn(calculatedBundle, a, techEdOwners);
+      logBudgetStage("response ready", {
+        returnedTechEdRows: bundle.techEd.length,
+        returnedCompManagerRows: bundle.compManager.length,
+        returnedRosterRows: (bundle.employeeRoster || []).length,
+      });
       return sendJson(res, 200, {
         success: true,
         data: bundle.techEd,
