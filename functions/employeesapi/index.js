@@ -2597,10 +2597,23 @@ async function getEmployees(req, res) {
     appraisalRows,
     employeeMasterMap,
   );
+
+  // Tech-Ed users only need their assigned employees. Filter the merged active
+  // roster before historical/payroll enrichment so a small team does not pay
+  // the CPU cost of enriching every HR employee. HR and other roles retain the
+  // complete roster and the existing authorization filters below.
+  const rosterUser = enforced ? a.user : currentUser;
+  const rosterUserMasterRowId = currentUserMasterRowId(rosterUser, employeeMasterRows);
+  const employeesForEnrichment = enforced && a.role === "techEd"
+    ? mergedEmployees.filter((employee) =>
+        employeeBelongsToCurrentUser(employee, rosterUser, rosterUserMasterRowId),
+      )
+    : mergedEmployees;
+
   const historyDatastore = catalyst.initialize(req, { scope: "admin" }).datastore();
   let allEmployees = await enrichPreviousAppraisalValues(
     historyDatastore,
-    mergedEmployees,
+    employeesForEnrichment,
     employeeMasterMap,
     {
       // A read of the Delegation screen must not create/update saved
@@ -2663,10 +2676,7 @@ async function getEmployees(req, res) {
   // removed BEFORE counting / searching / paginating.
   // Signed-in user's Employee_Master ROWID: a Tech-ED sees the employees
   // whose Appraiser Tech-ED lookup points to this row.
-  const myMasterRowId = currentUserMasterRowId(
-    enforced ? a.user : currentUser,
-    employeeMasterRows,
-  );
+  const myMasterRowId = rosterUserMasterRowId;
 
   const viewAsParam = String(params.viewAs || "").trim().toLowerCase();
   const roleKey = String(a.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
