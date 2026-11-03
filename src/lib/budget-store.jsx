@@ -128,16 +128,16 @@ export function BudgetProvider({ children }) {
     try {
       const budgetUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
       budgetUrl.searchParams.set("_ts", String(Date.now()));
-      const [budgetResponse, employeeResult] = await Promise.all([
-        catalystFetch(budgetUrl.toString(), {
-          cache: "no-store",
-          headers: { Accept: "application/json", "Cache-Control": "no-cache", Pragma: "no-cache" },
-        }),
-        fetchAllEligibleEmployees().then(
-          (employees) => ({ employees }),
-          (employeeError) => ({ employees: [], employeeError }),
-        ),
-      ]);
+      // Start both independent requests immediately, but do not make the
+      // Budget cards wait for the employee roster request to finish.
+      const employeeResultPromise = fetchAllEligibleEmployees().then(
+        (employees) => ({ employees }),
+        (employeeError) => ({ employees: [], employeeError }),
+      );
+      const budgetResponse = await catalystFetch(budgetUrl.toString(), {
+        cache: "no-store",
+        headers: { Accept: "application/json", "Cache-Control": "no-cache", Pragma: "no-cache" },
+      });
 
       let budgetJson = {};
       try {
@@ -202,13 +202,23 @@ export function BudgetProvider({ children }) {
       setBudgetDistributionRows(normalizedTechEd);
       setBudgetCompManagerRows(normalizedComp);
 
-      const apiEmployees = activeCycleId && Array.isArray(employeeResult.employees)
-        ? employeeResult.employees
-        : [];
       const rosterEmployees = activeCycleId && Array.isArray(
         budgetJson && budgetJson.employeeRoster,
       )
         ? budgetJson.employeeRoster
+        : [];
+
+      // Budget Master already returns its authoritative cycle-scoped roster.
+      // Publish it now so role matching and Budget Allocated do not wait for
+      // the slower supplementary employeesapi request.
+      setEmployeeRows(rosterEmployees);
+      setTechEdOwners(apiTechEdOwners);
+
+      // The full employeesapi roster is supplementary. It was started above
+      // in parallel, and is awaited only after the budget data is available.
+      const employeeResult = await employeeResultPromise;
+      const apiEmployees = activeCycleId && Array.isArray(employeeResult.employees)
+        ? employeeResult.employees
         : [];
       // Merge rather than choose one source: employeesapi supplies the full
       // employee detail where permitted, while Budget Master API guarantees
