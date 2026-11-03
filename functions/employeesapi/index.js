@@ -5,6 +5,7 @@
    (every Catalyst function deploys separately). Edit the accessapi copy,
    then copy it here. See docs/ACCESS_SPEC.md. */
 
+const zlib = require("zlib");
 const express = require("express");
 const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
@@ -105,7 +106,25 @@ app.use(function (req, res, next) {
    JSON RESPONSE
    ============================================================ */
 
+// Responses over this size are gzipped when the caller asks for it (gz=1)
+// and the browser accepts gzip. The 2,000-row roster is ~5 MB of JSON and
+// ~0.5 MB gzipped; level 1 compresses it in tens of milliseconds.
+const GZIP_MIN_BYTES = 32 * 1024;
+
 function sendJson(res, statusCode, body) {
+  const req = res.req;
+  const wantsGzip = req && req.query && req.query.gz === "1" &&
+    /\bgzip\b/i.test(String(req.headers["accept-encoding"] || ""));
+  if (wantsGzip) {
+    const text = JSON.stringify(body);
+    if (Buffer.byteLength(text) >= GZIP_MIN_BYTES) {
+      res.status(statusCode);
+      res.setHeader("Content-Type", "application/json; charset=utf-8");
+      res.setHeader("Content-Encoding", "gzip");
+      res.setHeader("Vary", "Accept-Encoding");
+      return res.end(zlib.gzipSync(text, { level: 1 }));
+    }
+  }
   return res.status(statusCode).json(body);
 }
 
@@ -853,6 +872,40 @@ async function readDataStoreRowsInBatches(readers, concurrency = 2) {
   return output;
 }
 
+// Same contract as readDataStoreRowsInBatches (optional readers fall back, required
+// readers fail the request) but keeps up to `concurrency` table scans in flight at
+// all times instead of waiting for the slowest scan of each fixed batch. Each
+// table's own pages are still read one after another (the next page token needs
+// the previous page), so the total time is set by the largest table, not by the
+// sum of several waves. Keep this small: Catalyst shares a COMPONENT concurrency
+// limit across functions.
+const ROSTER_READ_CONCURRENCY = 4;
+async function readDataStoreRowsPooled(readers, concurrency = ROSTER_READ_CONCURRENCY) {
+  const output = {};
+  let nextIndex = 0;
+  let failed = false;
+  const worker = async () => {
+    while (!failed && nextIndex < readers.length) {
+      const reader = readers[nextIndex];
+      nextIndex += 1;
+      try {
+        output[reader.key] = await reader.read();
+      } catch (error) {
+        if (!reader.optional) {
+          failed = true;
+          throw error;
+        }
+        if (typeof reader.onError === "function") reader.onError(error);
+        output[reader.key] = reader.fallback === undefined ? [] : reader.fallback;
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.max(1, Math.min(concurrency, readers.length)) }, worker),
+  );
+  return output;
+}
+
 async function readAllDataStoreRows(table) {
   const rows = [];
   let nextToken = null;
@@ -865,6 +918,64 @@ async function readAllDataStoreRows(table) {
     nextToken = page.next_token;
   }
   return rows;
+}
+
+/* ============================================================
+   UNCHANGED-TABLE READ CACHE (per function instance)
+
+   The roster reads whole Data Store tables 200 rows at a time. Before reusing
+   a table's rows from an earlier request, two cheap ZCQL queries check that
+   the table is unchanged: its row count and its latest MODIFIEDTIME. A table
+   that was inserted into, updated or deleted from since the cached read
+   (by this or any other function) has a different fingerprint and is read
+   again, so the roster returns exactly what a full read would. If the check
+   fails for any reason, the table is simply read as before.
+   ============================================================ */
+const TABLE_READ_CACHE = new Map(); // table id -> { fingerprint, rows, at }
+const TABLE_READ_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+
+async function tableFingerprint(zcql, tableName) {
+  const [count, latest] = await Promise.all([
+    withDataStoreRetry(
+      () => zcql.executeZCQLQuery("SELECT COUNT(ROWID) FROM " + tableName),
+      tableName + " row count",
+    ),
+    withDataStoreRetry(
+      () => zcql.executeZCQLQuery("SELECT ROWID, MODIFIEDTIME FROM " + tableName + " ORDER BY MODIFIEDTIME DESC LIMIT 1"),
+      tableName + " latest change",
+    ),
+  ]);
+  return JSON.stringify([count, latest]);
+}
+
+// Wraps a full-table read: same rows as read(), reused while the table is unchanged.
+function cachedTableRead(zcql, tableId, tableName, read) {
+  return async function () {
+    let fingerprint = null;
+    if (zcql) {
+      try {
+        fingerprint = await tableFingerprint(zcql, tableName);
+      } catch (error) {
+        fingerprint = null;
+      }
+    }
+    const hit = TABLE_READ_CACHE.get(tableId);
+    if (fingerprint && hit && hit.fingerprint === fingerprint &&
+        Date.now() - hit.at < TABLE_READ_CACHE_MAX_AGE_MS) {
+      return hit.rows.map(function (row) { return { ...row }; });
+    }
+    const rows = await read();
+    if (fingerprint) {
+      TABLE_READ_CACHE.set(tableId, {
+        fingerprint: fingerprint,
+        rows: rows.map(function (row) { return { ...row }; }),
+        at: Date.now(),
+      });
+    } else {
+      TABLE_READ_CACHE.delete(tableId);
+    }
+    return rows;
+  };
 }
 
 function historyReference(value) {
@@ -1696,7 +1807,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   );
   const targetCriteriaColumn = liveColumn("target_PB_criteria", "target_pb_criteria");
   const sourceRowById = new Map();
-  (employees || []).forEach((row) => {
+  (appraisalHistoryRows.length ? appraisalHistoryRows : (employees || [])).forEach((row) => {
     const id = String(row.ROWID ?? row.rowid ?? "");
     if (!sourceRowById.has(id)) sourceRowById.set(id, row);
   });
@@ -2335,56 +2446,41 @@ async function getEmployees(req, res) {
   // Load the two core roster tables together, then the cycle/eligibility pair.
   // This caps concurrent COMPONENT reads at two and lets enrichment reuse all
   // four results instead of scanning them again later.
-  const [employeeMasterRows, allAppraisalRows] = await Promise.all([
-    getAllEmployeeMaster(datastore),
-    getAllEmployees(datastore),
+  const delegationRosterView = requestedView === "delegation";
+  // Prefetch independent roster tables with a small worker pool. Delegation
+  // tables are read only for the Delegation view; other views avoid that cost.
+  const rosterZcql = typeof adminInstance.zcql === "function" ? adminInstance.zcql() : null;
+  const cachedRead = (tableId, tableName, read) => cachedTableRead(rosterZcql, tableId, tableName, read);
+  const roster = await readDataStoreRowsPooled([
+    { key: "payrollRows", read: cachedRead(PAYROLL_DATA_TABLE_ID, "Payroll_Data", () => readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID))), optional: true, fallback: null },
+    { key: "allAppraisalRows", read: cachedRead(EMPLOYEES_TABLE_ID, "Appraisal_Sheet", () => getAllEmployees(datastore)), optional: false },
+    { key: "employeeMasterRows", read: cachedRead(EMPLOYEE_MASTER_TABLE_ID, "Employee_Master", () => getAllEmployeeMaster(datastore)), optional: false },
+    { key: "cycleRows", read: () => readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)), optional: false },
+    { key: "cycleEligibilityRows", read: cachedRead(ELIGIBILITY_TABLE_ID, "Eligibility_List", () => readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID))), optional: true, fallback: [] },
+    ...(delegationRosterView ? [] : [{ key: "feedbackRows", read: cachedRead(FEEDBACK_RATING_TABLE_ID, "Feedback_And_Rating", () => readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID))), optional: true, fallback: null }]),
+    ...(delegationRosterView ? [
+      { key: "delegationRows", read: cachedRead(DELEGATION_TABLE_ID, "Delegation", () => readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID))), optional: true, fallback: null },
+      { key: "previousDelegationRows", read: cachedRead(PREVIOUS_DELEGATION_TABLE_ID, "Previous_Delegation", () => readAllDataStoreRows(datastore.table(PREVIOUS_DELEGATION_TABLE_ID))), optional: true, fallback: null },
+    ] : []),
   ]);
-  logRosterStage("core tables loaded", {
+  const { employeeMasterRows, allAppraisalRows, cycleRows, cycleEligibilityRows } = roster;
+  const prefetchedEnrichmentRows = {};
+  ["payrollRows", "feedbackRows", "delegationRows", "previousDelegationRows"].forEach((key) => {
+    if (Array.isArray(roster[key])) prefetchedEnrichmentRows[key] = roster[key];
+  });
+  // The Delegation screen does not show Feedback & Rating values, so its roster skips that table scan.
+  if (delegationRosterView) prefetchedEnrichmentRows.feedbackRows = [];
+  logRosterStage("roster tables loaded", {
     employeeMasterRows: employeeMasterRows.length,
     appraisalSheetRows: allAppraisalRows.length,
+    cycleRows: cycleRows.length,
+    eligibilityRows: cycleEligibilityRows.length,
+    payrollRows: Array.isArray(roster.payrollRows) ? roster.payrollRows.length : 0,
+    feedbackRows: Array.isArray(roster.feedbackRows) ? roster.feedbackRows.length : 0,
   });
   // Keep the complete historical sheet rows for payroll/previous-CTC mapping.
   // appraisalRows is filtered below to the active cycle for the visible grid.
   let appraisalRows = allAppraisalRows;
-  // Read all independent enrichment sources in the same bounded batch
-  // pipeline. The helper processes at most two Catalyst Data Store scans at
-  // once, but avoids a separate later round-trip for Payroll and Feedback.
-  const {
-    cycleRows,
-    cycleEligibilityRows,
-    payrollRows,
-    feedbackRows,
-  } = await readDataStoreRowsInBatches([
-    {
-      key: "cycleRows",
-      read: () => readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
-      optional: false,
-    },
-    {
-      key: "cycleEligibilityRows",
-      read: () => readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)),
-      optional: true,
-      fallback: [],
-    },
-    {
-      key: "payrollRows",
-      read: () => readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
-      optional: true,
-      fallback: [],
-    },
-    {
-      key: "feedbackRows",
-      read: () => readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)),
-      optional: true,
-      fallback: [],
-    },
-  ], 2);
-  logRosterStage("cycle, eligibility, payroll and feedback tables loaded", {
-    cycleRows: cycleRows.length,
-    eligibilityRows: cycleEligibilityRows.length,
-    payrollRows: payrollRows.length,
-    feedbackRows: feedbackRows.length,
-  });
 
   // Share the active-cycle metadata with the frontend so the Appraisal Sheet
   // does not make a second payrollcycleapi request for the same cycle table.
@@ -2625,8 +2721,9 @@ async function getEmployees(req, res) {
         appraisalHistoryRows: allAppraisalRows,
         cycleRows,
         eligibilityRows: cycleEligibilityRows,
-        payrollRows,
-        feedbackRows,
+        // Reuse prefetched tables. If an optional prefetch failed, its key is
+        // omitted so the enrichment helper performs its existing fallback read.
+        ...prefetchedEnrichmentRows,
       },
       // A normal Appraisal Sheet GET must remain read-only and return the
       // already-computed payroll lookup values without waiting for schema

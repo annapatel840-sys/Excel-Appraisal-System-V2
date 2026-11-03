@@ -1,4 +1,4 @@
-import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
+import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "./catalyst-api";
 import { payrollCycleRequest } from "./payroll-cycle-api";
 
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
@@ -531,17 +531,59 @@ export async function fetchEmployeeMasterEmployees({
  * Active + Inactive
  */
 
+// One complete eligibility response is shared between sign-in prefetch,
+ // the Eligibility tab, Change List, and import preparation. The API scans
+ // Employee_Master and Eligibility_List, so never repeat that scan for pages.
+const ELIGIBILITY_SHARE_MS = 15000;
+let eligibilityRead = null;
+
+export function invalidateEligibilityEmployees() {
+  eligibilityRead = null;
+}
+
+onCatalystWrite(invalidateEligibilityEmployees);
+if (typeof window !== "undefined") {
+  ["appraisal:cycle-updated", "appraisal:employee-master-updated"].forEach((eventName) =>
+    window.addEventListener(eventName, invalidateEligibilityEmployees),
+  );
+}
+
+function loadEligibilityPayload(cycleId = "") {
+  const key = String(cycleId || "");
+  if (
+    eligibilityRead &&
+    eligibilityRead.key === key &&
+    Date.now() - eligibilityRead.startedAt <= ELIGIBILITY_SHARE_MS
+  ) {
+    return eligibilityRead.promise;
+  }
+  const entry = {
+    key,
+    startedAt: Date.now(),
+    promise: null,
+  };
+  entry.promise = payrollCycleRequest("eligibility", {
+    method: "GET",
+    query: { cycleId: key, gz: 1 },
+  }).then((result) => result && !Array.isArray(result) ? result : {}).catch((error) => {
+    if (eligibilityRead === entry) eligibilityRead = null;
+    throw error;
+  });
+  eligibilityRead = entry;
+  return entry.promise;
+}
+
+export function prefetchEligibilityEmployees() {
+  return fetchEligibilityEmployees({ page: 1, limit: 100000, search: "" }).catch(() => null);
+}
+
 export async function fetchEligibilityEmployees({
   page = 1,
   limit = 20,
   search = "",
   cycleId = "",
 } = {}) {
-  const result = await payrollCycleRequest("eligibility", {
-    method: "GET",
-    query: { cycleId },
-  });
-  const payload = result && !Array.isArray(result) ? result : {};
+  const payload = await loadEligibilityPayload(cycleId);
   const records = Array.isArray(payload.records) ? payload.records : [];
   const term = String(search || "").trim().toLowerCase();
   const employees = records

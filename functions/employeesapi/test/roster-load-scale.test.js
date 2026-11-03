@@ -9,6 +9,7 @@ const assert = require('assert');
 const http = require('http');
 const Module = require('module');
 const path = require('path');
+const zlib = require('zlib');
 
 const T = {
   sheet: '74008000000039094', master: '74008000000035727', cycles: '74008000000034190',
@@ -84,6 +85,19 @@ function get(query) {
   });
 }
 
+// The raw response: status, headers and body bytes (not decompressed).
+function getRaw(query, headers) {
+  const handler = load();
+  return new Promise((resolve, reject) => {
+    const server = http.createServer(handler).listen(0, () => {
+      http.get({ host: '127.0.0.1', port: server.address().port, path: '/?' + query, headers }, (res) => {
+        const chunks = []; res.on('data', (c) => chunks.push(c));
+        res.on('end', () => { server.close(); resolve({ status: res.statusCode, headers: res.headers, body: Buffer.concat(chunks) }); });
+      }).on('error', reject);
+    });
+  });
+}
+
 function seed() {
   calls = { pages: {}, rowWrites: [], batches: [] };
   failBatch = false;
@@ -152,6 +166,25 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
     await get('page=1&limit=1000&view=appraisal&status=all&eligible=all');
     assert.strictEqual(calls.rowWrites.length, 50, 'the rejected batch is written one row at a time');
     assert.ok(DB[T.sheet].filter((x) => x.cycle_id === 'C27').every((x) => x.target_PB_criteria === 'criteria'));
+  });
+
+  await t('gz=1 returns the same roster gzipped; without it the response is plain', async () => {
+    const query = 'page=1&limit=5000&view=appraisal&status=all&eligible=all';
+    const plain = await getRaw(query, { 'Accept-Encoding': 'gzip' });
+    assert.strictEqual(plain.status, 200);
+    assert.strictEqual(plain.headers['content-encoding'], undefined, 'no gz=1: not compressed');
+    const zipped = await getRaw(query + '&gz=1', { 'Accept-Encoding': 'gzip, deflate, br' });
+    assert.strictEqual(zipped.status, 200);
+    assert.strictEqual(zipped.headers['content-encoding'], 'gzip');
+    assert.match(zipped.headers['content-type'], /application\/json/);
+    const unzipped = JSON.parse(zlib.gunzipSync(zipped.body).toString('utf8'));
+    const expected = JSON.parse(plain.body.toString('utf8'));
+    assert.strictEqual(unzipped.data.length, EMPLOYEES);
+    assert.deepStrictEqual(unzipped.pagination, expected.pagination);
+    assert.deepStrictEqual(unzipped.data.map((r) => r.emp_id), expected.data.map((r) => r.emp_id));
+    assert.ok(zipped.body.length * 5 < plain.body.length, 'gzipped ' + zipped.body.length + ' vs ' + plain.body.length + ' bytes');
+    const noGzip = await getRaw(query + '&gz=1', { 'Accept-Encoding': 'identity' });
+    assert.strictEqual(noGzip.headers['content-encoding'], undefined, 'a client without gzip gets plain JSON');
   });
 
   console.error = origError;

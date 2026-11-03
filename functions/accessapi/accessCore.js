@@ -355,9 +355,17 @@ async function activeCycleId(zcql) {
 async function loadDelegation(zcql, cycleId) {
   const d = SETTINGS.delegation, out = { techEd: {}, compMgr: {}, byEmp: {}, teamTechEd: {}, teamCompMgr: {} };
   const z = zq(zcql);
-  const rows = cycleId
-    ? await selectAll(z, d.table, d.cycleColumn + " = '" + q(cycleId) + "'")
-    : [];
+  // The Delegation, Employee_Master and Appraisal_Sheet scans do not depend on
+  // each other, so read them together instead of one table after another. They
+  // are still processed below in the same order as before.
+  const e = SETTINGS.employeeMaster;
+  const [rows, masterRows, sheetRows] = await Promise.all([
+    cycleId
+      ? selectAll(z, d.table, d.cycleColumn + " = '" + q(cycleId) + "'")
+      : Promise.resolve([]),
+    selectAll(z, e.table),
+    selectAll(z, SETTINGS.appraisalSheet.table),
+  ]);
 
   rows.forEach((r) => {
     const emp = String(r[d.empId] || '').trim(), t = norm(r[d.appraiserTechEdId]), c = norm(r[d.compManagerId]);
@@ -369,8 +377,6 @@ async function loadDelegation(zcql, cycleId) {
   // Compatibility fallback: Employee_Master may contain manager assignments while
   // Delegation is still empty or only partially configured. Delegation remains authoritative
   // for rows it already defines; Employee_Master fills only missing manager/team mappings.
-  const e = SETTINGS.employeeMaster;
-  const masterRows = await selectAll(z, e.table);
   const people = masterRows.map((r) => ({
     empId: String(r[e.empId] || '').trim(),
     rowId: String(r.ROWID || r.rowid || '').trim(),
@@ -419,7 +425,6 @@ async function loadDelegation(zcql, cycleId) {
   // Employee_Master/Delegation contains a missing or stale assignment. Use the
   // sheet assignment as a fallback so audit authorization follows the employee
   // assignment used by the appraisal workflow. Never broaden access to all rows.
-  const sheetRows = await selectAll(z, SETTINGS.appraisalSheet.table);
   sheetRows.forEach((r) => {
     const emp = String(r.emp_id || r.empId || '').trim();
     if (!emp) return;

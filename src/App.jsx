@@ -16,8 +16,31 @@ import BulkEditScreen from "@/components/appraisal/BulkEditScreen";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 import { SettingsProvider } from "@/lib/settings-store";
 import { AccessProvider, HR_TAB_SCREENS, NoAccessPage, PATH_SCREENS, useAccess } from "@/lib/access-store";
+import { prefetchAppraisalRoster } from "@/lib/employee-roster";
+import { clearSheetSnapshots } from "@/lib/roster-snapshot";
+import { getViewAsSelected } from "@/lib/view-as-store";
+import { prefetchEligibilityEmployees } from "@/lib/employee-master-data";
 
 const TECH_ED_PATHS = ["/", "/sheet", "/detail-screen", "/budget-distribution", "/settings", "/employee-master"];
+
+// Screens that show Appraisal Sheet data. Opening one of them starts the
+// roster request as soon as sign-in is confirmed, instead of after the
+// session, access rules and the screen itself have loaded.
+const ROSTER_PATHS = ["/", "/sheet", "/detail-screen", "/bulk-edit", "/budget-distribution"];
+
+function prefetchForCurrentScreen() {
+  if (ROSTER_PATHS.includes(window.location.pathname)) {
+    prefetchAppraisalRoster({ viewAs: getViewAsSelected() });
+  }
+  if (
+    window.location.pathname === "/employee-master" &&
+    ["eligibility", "change-mismatch"].includes(
+      new URLSearchParams(window.location.search).get("tab") || "",
+    )
+  ) {
+    prefetchEligibilityEmployees();
+  }
+}
 
 // A crash in one screen shows a message instead of blanking the whole app.
 // It is keyed by path, so navigating to another screen clears the error.
@@ -195,7 +218,7 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <CatalystAuthGate>
+    <CatalystAuthGate onSignedIn={prefetchForCurrentScreen} onSignOut={clearSheetSnapshots}>
       <AccessProvider>
         <AppRoutes />
       </AccessProvider>

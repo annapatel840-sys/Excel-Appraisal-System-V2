@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { appraisalRosterSettled } from "./employee-roster";
 import { loadFeedbackRating } from "./feedback-rating-api";
 
 /*
@@ -50,7 +51,10 @@ function groupByEmployee(data) {
 
 function loadAll() {
   if (!cachePromise) {
-    cachePromise = loadFeedbackRating()
+    // A sheet that is still loading its roster gets it first; this read is
+    // only needed when a panel is opened.
+    cachePromise = appraisalRosterSettled()
+      .then(() => loadFeedbackRating())
       .then(groupByEmployee)
       .catch((error) => {
         cachePromise = null; // allow a retry on the next mount

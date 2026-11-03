@@ -14,53 +14,38 @@ import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "./catalyst-
    - A request in flight, or a result under SHARE_WINDOW_MS old, is shared.
      Any save sent through catalystFetch and the app's update events cancel
      sharing, so a reload after a save always reads fresh data.
+   - The app starts the request as soon as the user is signed in
+     (prefetchAppraisalRoster), before the screens have rendered; the
+     sheet's own load then shares it.
+   - Other large reads on the sheet (Feedback, Budget) wait for the roster
+     to arrive (appraisalRosterSettled) so they do not compete with it.
    ============================================================ */
 
 // Match the backend MAX_LIMIT so an HR roster is returned in one request.
 export const ROSTER_LIMIT = 5000;
 // A request started this long ago (still running or finished) is shared.
 const SHARE_WINDOW_MS = 15000;
-const ROSTER_CACHE_PREFIX = "appraisal.roster.snapshot.v1:";
+// Older builds kept a raw roster copy in localStorage; it is removed on sight.
+const LEGACY_CACHE_PREFIX = "appraisal.roster.snapshot.v1:";
+// Callers waiting for the roster stop waiting after this long.
+const SETTLE_WAIT_MS = 30000;
 
-const cacheKeyFor = (viewAs, cacheScope) =>
-  ROSTER_CACHE_PREFIX + encodeURIComponent(String(cacheScope || "anonymous").toLowerCase()) + ":" + encodeURIComponent(String(viewAs || ""));
+const inFlight = new Map(); // viewAs -> { startedAt, promise, settled }
 
-export function readCachedAppraisalRoster({ viewAs = "", cacheScope = "" } = {}) {
-  try {
-    if (typeof window === "undefined") return null;
-    const raw = window.localStorage.getItem(cacheKeyFor(viewAs, cacheScope));
-    if (!raw) return null;
-    const cached = JSON.parse(raw);
-    return cached && Array.isArray(cached.employees) ? cached : null;
-  } catch (_) {
-    return null;
-  }
-}
-
-const saveCachedAppraisalRoster = (roster, viewAs, cacheScope) => {
-  try {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(cacheKeyFor(viewAs, cacheScope), JSON.stringify({
-      ...roster,
-      cachedAt: Date.now(),
-    }));
-  } catch (error) {
-    console.warn("Could not cache the Appraisal Sheet roster:", error);
-  }
-};
-
-const inFlight = new Map(); // key -> { startedAt, promise }
-
-export function invalidateEmployeeRoster() {
-  inFlight.clear();
+function removeLegacyCache() {
   try {
     if (typeof window === "undefined") return;
     Object.keys(window.localStorage).forEach((key) => {
-      if (key.startsWith(ROSTER_CACHE_PREFIX)) window.localStorage.removeItem(key);
+      if (key.startsWith(LEGACY_CACHE_PREFIX)) window.localStorage.removeItem(key);
     });
   } catch (_) {
     /* local cache is optional */
   }
+}
+removeLegacyCache();
+
+export function invalidateEmployeeRoster() {
+  inFlight.clear();
 }
 
 onCatalystWrite(invalidateEmployeeRoster);
@@ -81,6 +66,8 @@ async function fetchRosterPage(page, viewAs) {
   url.searchParams.set("status", "all");
   url.searchParams.set("eligible", "all");
   if (viewAs) url.searchParams.set("viewAs", viewAs);
+  // Ask employeesapi to gzip the (several MB) response.
+  url.searchParams.set("gz", "1");
   url.searchParams.set("_ts", String(Date.now()));
   const response = await catalystFetch(url.toString(), {
     cache: "no-store",
@@ -107,7 +94,7 @@ async function fetchRosterPage(page, viewAs) {
   };
 }
 
-async function loadRoster(viewAs, cacheScope) {
+async function loadRoster(viewAs) {
   const first = await fetchRosterPage(1, viewAs);
   const totalPages = Math.max(1, Number(first.pagination.totalPages || 1));
   const rest = totalPages > 1
@@ -115,33 +102,57 @@ async function loadRoster(viewAs, cacheScope) {
         Array.from({ length: totalPages - 1 }, (_, index) => fetchRosterPage(index + 2, viewAs)),
       )
     : [];
-  const roster = {
+  return {
     employees: [first, ...rest].flatMap((page) => page.data),
     counts: first.counts,
     pagination: first.pagination,
     activeCycle: first.activeCycle,
   };
-  saveCachedAppraisalRoster(roster, viewAs, cacheScope);
-  return roster;
 }
 
 /* Full Appraisal-view roster: { employees, counts, pagination }.
-   viewAs: the HR role preview, if any (a preview gets its own request). */
+   viewAs: the HR role preview, if any (a preview gets its own request).
+   cacheScope is accepted for older callers; one page belongs to one user. */
 // Each caller gets its own copy of the shared result.
 const copyOf = (roster) => JSON.parse(JSON.stringify(roster));
 
-export function fetchAppraisalRoster({ viewAs = "", cacheScope = "" } = {}) {
-  const key = String(viewAs || "") + "::" + String(cacheScope || "anonymous").toLowerCase();
+export function fetchAppraisalRoster({ viewAs = "" } = {}) {
+  const key = String(viewAs || "");
   const shared = inFlight.get(key);
   if (shared && Date.now() - shared.startedAt <= SHARE_WINDOW_MS) return shared.promise.then(copyOf);
-  const entry = { startedAt: Date.now(), promise: null };
-  entry.promise = loadRoster(String(viewAs || ""), cacheScope).catch((error) => {
-    // A failed load is never shared; the next caller tries again.
-    if (inFlight.get(key) === entry) inFlight.delete(key);
-    throw error;
-  });
+  const entry = { startedAt: Date.now(), promise: null, settled: false };
+  entry.promise = loadRoster(key).then(
+    (roster) => {
+      entry.settled = true;
+      return roster;
+    },
+    (error) => {
+      entry.settled = true;
+      // A failed load is never shared; the next caller tries again.
+      if (inFlight.get(key) === entry) inFlight.delete(key);
+      throw error;
+    },
+  );
   inFlight.set(key, entry);
   return entry.promise.then(copyOf);
+}
+
+// Starts the roster request early; the screens that need it share it.
+export function prefetchAppraisalRoster({ viewAs = "" } = {}) {
+  fetchAppraisalRoster({ viewAs }).catch(() => {
+    /* the screen's own load reports the error */
+  });
+}
+
+// Resolves once no roster request is running (at once if none is), never rejects.
+export function appraisalRosterSettled() {
+  const running = Array.from(inFlight.values()).filter((entry) => !entry.settled);
+  if (!running.length) return Promise.resolve();
+  const timeout = new Promise((resolve) => setTimeout(resolve, SETTLE_WAIT_MS));
+  return Promise.race([
+    Promise.all(running.map((entry) => entry.promise.catch(() => {}))),
+    timeout,
+  ]).then(() => {});
 }
 
 // Same rule as employeesapi's status=active & eligible=eligible filters.

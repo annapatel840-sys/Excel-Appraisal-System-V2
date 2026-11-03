@@ -11,7 +11,7 @@ import {
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
-import { fetchAppraisalRoster } from "@/lib/employee-roster";
+import { appraisalRosterSettled, fetchAppraisalRoster } from "@/lib/employee-roster";
 import {
   auditOwnerKey,
   auditUserKey,
@@ -217,6 +217,11 @@ export function BudgetProvider({ children }) {
     setLoading(!initialBudget);
     setError("");
     try {
+      // If a screen is loading the Appraisal Sheet roster (the sheet starts
+      // it in the same render), let it finish first: both read the same
+      // tables, and the cached budget figures stay on screen meanwhile.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await appraisalRosterSettled();
       const budgetUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
       budgetUrl.searchParams.set("_ts", String(Date.now()));
       // Start both independent requests immediately, but do not make the

@@ -3,7 +3,7 @@ import { CheckCircle2, AlertCircle, X, History } from "lucide-react";
 
 import { AppShell } from "@/components/appraisal/AppShell";
 import { useCatalystUser } from "@/lib/catalyst-auth";
-import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "@/lib/catalyst-api";
 import { generateAppraisalSheet, payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAppraisalRefresh } from "@/lib/appraisal-store";
 import { HrConfigPage } from "@/components/employee-master/HrConfigPage";
@@ -14,6 +14,7 @@ import {
   fetchEmployeeMasterEmployees,
   fetchAllEmployeeMasterEmployees,
   fetchEligibilityEmployees,
+  prefetchEligibilityEmployees,
   updateEmployeeMasterEmployee,
   updateEmployeeEligibility,
   updateEligibilityRecords,
@@ -55,6 +56,7 @@ import AccessPage from "@/components/employee-master/AccessPage";
 import { HrDashboardPage } from "@/components/employee-master/HrDashboardPage";
 import { HrOperationsNav } from "@/components/employee-master/HrOperationsNav";
 import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
+import { eligibilitySnapshotKey, readEligibilitySnapshot, writeEligibilitySnapshot, clearEligibilitySnapshot } from "@/lib/roster-snapshot";
 
 import "@/styles/employee-master.css";
 
@@ -658,6 +660,7 @@ export function EmployeeMaster() {
   // Full Employee Master (all pages). The Eligibility List starts empty for a
   // cycle, so the criteria panel and "Add An Employee" read from this list.
   const [eligibilityMasterEmployees, setEligibilityMasterEmployees] = useState([]);
+  const [eligibilityShowingSnapshot, setEligibilityShowingSnapshot] = useState(false);
 
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
 
@@ -714,6 +717,10 @@ export function EmployeeMaster() {
   // Every tab change is a history entry (?tab=...), so Back retraces the exact
   // order visited: e.g. Dashboard -> Access -> Budget Master  =>  Back: Access -> Dashboard.
   const goToTab = (tab) => {
+    if (tab === "eligibility" || tab === "change-mismatch") {
+      // Start the shared read at click time; the tab effect joins this request.
+      void prefetchEligibilityEmployees();
+    }
     const current = new URLSearchParams(window.location.search).get("tab");
     if (window.location.pathname === "/employee-master" && current !== tab) {
       window.history.pushState({}, "", `/employee-master?tab=${tab}`);
@@ -806,37 +813,50 @@ export function EmployeeMaster() {
   }, [isTechEd, access.ok, defaultTab]);
 
   const eligibilityLoadedKeyRef = useRef(null);
+  const eligibilityFreshAppliedRef = useRef(false);
+  const eligibilityCacheScope = String(catalystUser?.email || catalystUser?.id || catalystUser?.user_id || "anonymous").trim().toLowerCase();
+  const eligibilityCacheKey = eligibilitySnapshotKey(eligibilityCacheScope);
   const [currentAppraisalCycleName, setCurrentAppraisalCycleName] = useState("");
 
   useEffect(() => {
-    let cancelled = false;
-    const refreshCycle = async () => {
-      try {
-        const cycles = await payrollCycleRequest("cycles");
-        const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
-          const status = String(cycle?.status ?? cycle?.cycle_status ?? "").trim().toLowerCase();
-          const archived = [true, 1, "true", "1", "yes"].includes(
-            typeof cycle?.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle?.archived,
-          );
-          return status === "active" && !archived && !cycle?.hidden;
-        });
-        if (!cancelled) setCurrentAppraisalCycleName(String(active?.name || active?.cycle_name || ""));
-      } catch {
-        if (!cancelled) setCurrentAppraisalCycleName("");
-      }
-    };
-    refreshCycle();
+    // The Eligibility API response includes the authoritative Active cycle.
+    // Avoid a second cycles request when Employee Master opens.
     const onCycleChange = () => {
-      refreshCycle();
+      setCurrentAppraisalCycleName("");
       setEligibilityReloadKey((value) => value + 1);
       setRefreshKey((value) => value + 1);
     };
     window.addEventListener("appraisal:cycle-updated", onCycleChange);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("appraisal:cycle-updated", onCycleChange);
-    };
+    return () => window.removeEventListener("appraisal:cycle-updated", onCycleChange);
   }, []);
+
+  useEffect(() => {
+    eligibilityFreshAppliedRef.current = false;
+    setEligibilityShowingSnapshot(false);
+  }, [eligibilityCacheKey]);
+
+  useEffect(() => onCatalystWrite(() => {
+    // Any successful write makes the saved Eligibility List stale. The next
+    // successful refresh writes a new snapshot.
+    void clearEligibilitySnapshot(eligibilityCacheKey);
+  }), [eligibilityCacheKey]);
+
+  // Restore the last Eligibility List immediately from IndexedDB. The fresh
+  // Catalyst response below always replaces this display-only snapshot.
+  useEffect(() => {
+    if (!eligibilityCacheScope || eligibilityFreshAppliedRef.current) return undefined;
+    let cancelled = false;
+    readEligibilitySnapshot(eligibilityCacheKey).then((snapshot) => {
+      if (cancelled || !snapshot || eligibilityFreshAppliedRef.current) return;
+      setEligibilityEmployees(snapshot.employees);
+      setEligibilityMasterEmployees(snapshot.masterEmployees);
+      setEligibilityCycleId(String(snapshot.cycleId || ""));
+      setCurrentAppraisalCycleName(String(snapshot.cycleName || ""));
+      setEligibilityCriteriaApplied(Boolean(snapshot.criteriaApplied));
+      setEligibilityShowingSnapshot(true);
+    });
+    return () => { cancelled = true; };
+  }, [eligibilityCacheKey, eligibilityCacheScope]);
 
   useEffect(() => {
     // Eligibility decisions and their audit trail belong to one cycle. Keep
@@ -1220,12 +1240,22 @@ export function EmployeeMaster() {
         if (cancelled) return;
 
         const loadedCycleId = String(firstPage?.cycle?.cycleId || "").trim();
+        eligibilityFreshAppliedRef.current = true;
+        setEligibilityShowingSnapshot(false);
+        setCurrentAppraisalCycleName(String(firstPage?.cycle?.cycleName || "").trim());
         setEligibilityCycleId(loadedCycleId);
         setEligibilityCriteriaApplied(Boolean(firstPage?.cycle?.criteriaApplied));
-        setEligibilityEmployees(Array.isArray(firstPage?.data) ? firstPage.data : []);
-        setEligibilityMasterEmployees(
-          Array.isArray(firstPage?.masterEmployees) ? firstPage.masterEmployees : [],
-        );
+        const freshEligibilityEmployees = Array.isArray(firstPage?.data) ? firstPage.data : [];
+        const freshEligibilityMasterEmployees = Array.isArray(firstPage?.masterEmployees) ? firstPage.masterEmployees : [];
+        setEligibilityEmployees(freshEligibilityEmployees);
+        setEligibilityMasterEmployees(freshEligibilityMasterEmployees);
+        void writeEligibilitySnapshot(eligibilityCacheKey, {
+          employees: freshEligibilityEmployees,
+          masterEmployees: freshEligibilityMasterEmployees,
+          cycleId: loadedCycleId,
+          cycleName: String(firstPage?.cycle?.cycleName || "").trim(),
+          criteriaApplied: Boolean(firstPage?.cycle?.criteriaApplied),
+        });
 
         finished = true;
       } catch (error) {
@@ -1233,8 +1263,13 @@ export function EmployeeMaster() {
           return;
         }
 
-        setEligibilityEmployees([]);
-        setEligibilityCycleId("");
+        // If the network refresh fails, keep the last saved snapshot visible
+        // (read-only) rather than replacing useful rows with an empty screen.
+        if (!eligibilityShowingSnapshot) {
+          setEligibilityEmployees([]);
+          setEligibilityMasterEmployees([]);
+          setEligibilityCycleId("");
+        }
 
         eligibilityLoadedKeyRef.current = null;
 
@@ -1265,6 +1300,9 @@ export function EmployeeMaster() {
   // Force the Eligibility List to reload from Catalyst on its next view.
   const invalidateEligibilityList = () => {
     eligibilityLoadedKeyRef.current = null;
+    eligibilityFreshAppliedRef.current = false;
+    setEligibilityShowingSnapshot(false);
+    void clearEligibilitySnapshot(eligibilityCacheKey);
     setEligibilityCycleId("");
     setEligibilityCriteriaApplied(false);
     setEligibilityReloadKey((value) => value + 1);
@@ -1275,6 +1313,9 @@ export function EmployeeMaster() {
   useEffect(() => {
     const onCycleUpdated = () => {
       eligibilityLoadedKeyRef.current = null;
+      eligibilityFreshAppliedRef.current = false;
+      setEligibilityShowingSnapshot(false);
+      void clearEligibilitySnapshot(eligibilityCacheKey);
       setEligibilityCycleId("");
       setEligibilityCriteriaApplied(false);
       setDelegationGenerated(false);
@@ -1283,7 +1324,7 @@ export function EmployeeMaster() {
     };
     window.addEventListener("appraisal:cycle-updated", onCycleUpdated);
     return () => window.removeEventListener("appraisal:cycle-updated", onCycleUpdated);
-  }, []);
+  }, [eligibilityCacheKey]);
 
   /* ============================================================
      FILE READING
@@ -2317,8 +2358,19 @@ export function EmployeeMaster() {
       search: "",
       cycleId: eligibilityCycleId,
     });
-    setEligibilityEmployees(Array.isArray(reloaded?.data) ? reloaded.data : []);
-    setEligibilityCriteriaApplied(Boolean(reloaded?.cycle?.criteriaApplied));
+    const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
+    const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
+    setEligibilityEmployees(employees);
+    setEligibilityCriteriaApplied(criteriaApplied);
+    setEligibilityShowingSnapshot(false);
+    eligibilityFreshAppliedRef.current = true;
+    void writeEligibilitySnapshot(eligibilityCacheKey, {
+      employees,
+      masterEmployees: eligibilityMasterEmployees,
+      cycleId: eligibilityCycleId,
+      cycleName: String(reloaded?.cycle?.cycleName || currentAppraisalCycleName || ""),
+      criteriaApplied,
+    });
   };
 
   // Used by Change List & Mismatch to stay current without a page refresh:
@@ -2334,9 +2386,21 @@ export function EmployeeMaster() {
       }),
       fetchAllEmployeeMasterEmployees(),
     ]);
-    setEligibilityEmployees(Array.isArray(reloaded?.data) ? reloaded.data : []);
-    setEligibilityCriteriaApplied(Boolean(reloaded?.cycle?.criteriaApplied));
-    setEligibilityMasterEmployees(Array.isArray(masters) ? masters : []);
+    const employees = Array.isArray(reloaded?.data) ? reloaded.data : [];
+    const masterEmployees = Array.isArray(masters) ? masters : [];
+    const criteriaApplied = Boolean(reloaded?.cycle?.criteriaApplied);
+    setEligibilityEmployees(employees);
+    setEligibilityCriteriaApplied(criteriaApplied);
+    setEligibilityMasterEmployees(masterEmployees);
+    setEligibilityShowingSnapshot(false);
+    eligibilityFreshAppliedRef.current = true;
+    void writeEligibilitySnapshot(eligibilityCacheKey, {
+      employees,
+      masterEmployees,
+      cycleId: eligibilityCycleId,
+      cycleName: String(reloaded?.cycle?.cycleName || currentAppraisalCycleName || ""),
+      criteriaApplied,
+    });
   };
 
   const editRegenerateEligibility = () => {
@@ -2630,7 +2694,7 @@ export function EmployeeMaster() {
 
         {isTabVisible("eligibility") && activeTab === "eligibility" && (
           <div className="em-tab-content">
-            {eligibilityLoading ? (
+            {eligibilityLoading && !eligibilityShowingSnapshot ? (
               <div className="em-empty">
                 Loading all employees for Eligibility List...
               </div>
@@ -2654,10 +2718,10 @@ export function EmployeeMaster() {
                     setExcludedEmployees={setExcludedEmployees}
                     onApply={applyEligibilityCriteria}
                     onEditRegenerate={editRegenerateEligibility}
-                    onGenerateDelegation={generateDelegationFromEligibility}
+                    onGenerateDelegation={eligibilityShowingSnapshot ? undefined : generateDelegationFromEligibility}
                     criteriaApplied={eligibilityCriteriaApplied}
                     delegationGenerated={delegationGenerated}
-                    readOnly={!eligibilityCycleId}
+                    readOnly={!eligibilityCycleId || eligibilityShowingSnapshot}
                   />
                 )}
 
@@ -2670,15 +2734,15 @@ export function EmployeeMaster() {
                   filters={eligibilityFilters}
                   setFilters={setEligibilityFilters}
                   onChangeEligibility={
-                    canEditEmployees ? setEligibilityEmployee : undefined
+                    canEditEmployees && !eligibilityShowingSnapshot ? setEligibilityEmployee : undefined
                   }
                   onAddEmployee={
-                    canEditEmployees ? addEmployeeToEligibility : undefined
+                    canEditEmployees && !eligibilityShowingSnapshot ? addEmployeeToEligibility : undefined
                   }
                   masterEmployees={eligibilityMasterEmployees}
                   onDownloadTemplate={downloadEligibilityTemplate}
                   onImport={
-                    canEditEmployees ? handleEligibilityFile : undefined
+                    canEditEmployees && !eligibilityShowingSnapshot ? handleEligibilityFile : undefined
                   }
                   onExport={exportEligibilityData}
                   onAuditHistory={
@@ -2687,7 +2751,7 @@ export function EmployeeMaster() {
                       : undefined
                   }
                   criteriaApplied={eligibilityCriteriaApplied}
-                  onGenerateDelegation={generateDelegationFromEligibility}
+                  onGenerateDelegation={eligibilityShowingSnapshot ? undefined : generateDelegationFromEligibility}
                   delegationGenerated={delegationGenerated}
                 />
               </div>
