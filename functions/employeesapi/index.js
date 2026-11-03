@@ -989,10 +989,15 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   addReader("eligibilityRows", ELIGIBILITY_TABLE_ID, true);
   addReader("feedbackRows", FEEDBACK_RATING_TABLE_ID, true);
   addReader("appraisalHistoryRows", EMPLOYEES_TABLE_ID, true);
-  addReader("delegationRows", DELEGATION_TABLE_ID, true, (error) => {
-    console.error("Could not read Delegation records:", error?.message || error);
-    delegationReadOk = false;
-  });
+  // Saved current-cycle Delegation snapshots are only consumed by the
+  // Delegation view. The normal Appraisal Sheet gets current assignments from
+  // Appraisal_Sheet / Employee_Master and must not scan this extra table.
+  if (String(options.view || "").trim().toLowerCase() === "delegation") {
+    addReader("delegationRows", DELEGATION_TABLE_ID, true, (error) => {
+      console.error("Could not read Delegation records:", error?.message || error);
+      delegationReadOk = false;
+    });
+  }
   // Previous-cycle assignment history is needed by the Delegation screen only.
   // The Appraisal Sheet does not display those columns, so do not scan the
   // entire historical Delegation table on every ordinary sheet refresh.
@@ -2110,6 +2115,13 @@ function filterEmployees(
 
 async function getEmployees(req, res) {
   const requestStartedAt = Date.now();
+  const logRosterStage = (stage, details = {}) => {
+    console.info("[employeesapi:getEmployees]", {
+      stage,
+      elapsedMs: Date.now() - requestStartedAt,
+      ...details,
+    });
+  };
   // Use the server-side admin scope for Data Store reads. The request still
   // passes through accessCore below, which enforces role, screen, row-scope,
   // and hidden-field rules before the response is returned. Using the signed-in
@@ -2270,6 +2282,10 @@ async function getEmployees(req, res) {
     getAllEmployeeMaster(datastore),
     getAllEmployees(datastore),
   ]);
+  logRosterStage("core tables loaded", {
+    employeeMasterRows: employeeMasterRows.length,
+    appraisalSheetRows: allAppraisalRows.length,
+  });
   // Keep the complete historical sheet rows for payroll/previous-CTC mapping.
   // appraisalRows is filtered below to the active cycle for the visible grid.
   let appraisalRows = allAppraisalRows;
@@ -2286,6 +2302,10 @@ async function getEmployees(req, res) {
       fallback: [],
     },
   ], 2);
+  logRosterStage("cycle and eligibility tables loaded", {
+    cycleRows: cycleRows.length,
+    eligibilityRows: cycleEligibilityRows.length,
+  });
 
   // Appraisal view must be isolated to the one active cycle. Appraisal_Sheet
   // intentionally retains archived cycles, so returning every row here makes
@@ -2513,6 +2533,8 @@ async function getEmployees(req, res) {
     },
   );
 
+  logRosterStage("employee enrichment complete", { employees: allEmployees.length });
+
   // Eligibility alone must not make the Delegation screen look generated.
   // Show only employees with a persisted Delegation row for this active cycle;
   // the explicit Generate Delegation action creates those rows.
@@ -2676,6 +2698,7 @@ async function getEmployees(req, res) {
      RESPONSE
      ========================================================== */
 
+  logRosterStage("response ready", { returnedRows: data.length, filteredRows: filteredCount });
   return sendJson(res, 200, {
     success: true,
 
