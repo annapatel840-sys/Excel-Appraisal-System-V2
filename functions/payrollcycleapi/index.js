@@ -1415,7 +1415,8 @@ async function generateAppraisalSheet(tables, cycle, actor) {
     throw new ApiError("Generate the Appraisal Sheet only for the Active appraisal cycle.", 409);
   }
 
-  const cycleEligibilityRows = await getEligibilityRows(tables, cycle, actor);
+  const eligibilityResult = await getEligibilityRows(tables, cycle, actor);
+  const cycleEligibilityRows = eligibilityResult.records;
   // Only employees whose decision is still Pending should block generation.
   // Explicit Not Eligible decisions are valid and are intentionally excluded
   // from the generated sheet; legacy eligible_status/eligibility aliases are
