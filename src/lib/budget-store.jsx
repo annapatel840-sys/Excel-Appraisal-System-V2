@@ -385,7 +385,13 @@ export function BudgetProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [
+    authenticatedUser?.email,
+    authenticatedUser?.id,
+    authenticatedUser?.user_id,
+    budgetCacheScope,
+    initialBudget,
+  ]);
 
   // Keep one shared load promise for the entire time a budget refresh is
   // running. Every screen and refresh event receives the same result instead
@@ -811,10 +817,23 @@ export function BudgetProvider({ children }) {
       } catch (auditError) {
         console.error("Budget audit trail was not recorded:", auditError);
       }
-      if (refresh) await load();
+      if (refresh) {
+        // A GET started before this PUT may still be in flight. Do not reuse
+        // that pre-save response: let it finish, discard its cached snapshot,
+        // then start a new GET that reads the just-saved allocation.
+        if (loadRef.current) {
+          try {
+            await loadRef.current;
+          } catch (_) {
+            // The fresh request below is still required after a failed old GET.
+          }
+        }
+        invalidateBudgetSnapshot(budgetCacheScope);
+        await load();
+      }
       return result;
     },
-    [load],
+    [load, budgetCacheScope],
   );
 
   return (
