@@ -592,7 +592,7 @@ export function TechEdBudgetDistribution() {
     // they still exist in the current eligible Appraisal Sheet; add current
     // managers that have not yet received an allocation as dynamic rows.
     const matchingLiveComps = liveComps.filter((live) =>
-      managerStats.has(ownerKey(resolveManager(live.comp_manager)))
+      managerStats.has(ownerKey(resolveManager(live.comp_manager_display || live.comp_manager)))
     );
 
     // A Comp Manager must have only one allocation row per Tech-Ed + cycle.
@@ -602,7 +602,7 @@ export function TechEdBudgetDistribution() {
     // persisted update. Keep the chosen liveId so edits update that same row.
     const compByManager = new Map();
     matchingLiveComps.forEach((live) => {
-      const key = ownerKey(resolveManager(live.comp_manager));
+      const key = ownerKey(resolveManager(live.comp_manager_display || live.comp_manager));
       const existing = compByManager.get(key);
       const hasSnapshot = (row) =>
         row.original_headcount !== null &&
@@ -622,13 +622,13 @@ export function TechEdBudgetDistribution() {
       }
     });
     const currentLiveComps = Array.from(compByManager.values());
-    const savedKeys = new Set(currentLiveComps.map((live) => ownerKey(resolveManager(live.comp_manager))));
+    const savedKeys = new Set(currentLiveComps.map((live) => ownerKey(resolveManager(live.comp_manager_display || live.comp_manager))));
     const unsaved = Array.from(managerStats.entries())
       .filter(([key]) => key && !savedKeys.has(key))
       .map(([, stats]) => ({ id: "", comp_manager: stats.name, percentage: 0, budget_base: 0, calculated_budget: 0, applied_budget: 0, total_utilization: stats.utilized }));
     return currentLiveComps.concat(unsaved).map((live) => {
       const pct = num(live.percentage);
-      const resolvedName = resolveManager(live.comp_manager);
+      const resolvedName = resolveManager(live.comp_manager_display || live.comp_manager);
       const stats = managerStats.get(ownerKey(resolvedName)) || { count: 0, base: 0, utilized: 0, name: resolvedName || live.comp_manager };
         // Comp Manager Budget Base is the sum of Previous_Appraisal_total_CTC_with_rewards
       // for that manager's current eligible Appraisal Sheet employees, matching
