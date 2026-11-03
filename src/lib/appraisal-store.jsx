@@ -626,7 +626,9 @@ const fetchEmployeeByIdFromCatalyst = async (empId) => {
 SAVE EMPLOYEE CHANGE
 ============================================================ */
 
-const saveEmployeeChangeToCatalyst = async ({ empId, key, newValue }) => {
+// oldValue: what the grid showed before the edit. employeesapi refuses the save
+// (409) when the stored value has changed since, i.e. someone else saved first.
+const saveEmployeeChangeToCatalyst = async ({ empId, key, newValue, oldValue }) => {
   const catalystField = REACT_TO_CATALYST_FIELD[key];
 
   if (!catalystField) {
@@ -644,6 +646,7 @@ const saveEmployeeChangeToCatalyst = async ({ empId, key, newValue }) => {
     body: JSON.stringify({
       emp_id: String(empId),
       [catalystField]: catalystValue,
+      expected: { [catalystField]: normalizeValueForCatalyst(key, oldValue) },
     }),
   });
 
@@ -1601,6 +1604,7 @@ export function AppraisalProvider({ children }) {
         empId: row.empId,
         key,
         newValue: next,
+        oldValue: before,
         auditEntry: entry,
       });
 
@@ -1624,14 +1628,14 @@ export function AppraisalProvider({ children }) {
       ...touched,
     }));
 
-    persistenceQueue.forEach(({ empId, key, newValue, auditEntry }) => {
+    persistenceQueue.forEach(({ empId, key, newValue, oldValue, auditEntry }) => {
       markPendingCells(pendingCellsRef.current, empId, [key]);
 
       void queueEmployeeSave(empId, async () => {
         let employeeSaved = false;
 
         try {
-          await saveEmployeeChangeToCatalyst({ empId, key, newValue });
+          await saveEmployeeChangeToCatalyst({ empId, key, newValue, oldValue });
 
           employeeSaved = true;
 
@@ -1765,10 +1769,15 @@ export function AppraisalProvider({ children }) {
 
         try {
           const catalystPayload = {};
+          // Values shown before the edit, for employeesapi's check that no
+          // one else saved these fields in the meantime.
+          const expected = {};
 
           Object.entries(fieldValues).forEach(([key, next]) => {
             catalystPayload[REACT_TO_CATALYST_FIELD[key]] =
               normalizeValueForCatalyst(key, next);
+            expected[REACT_TO_CATALYST_FIELD[key]] =
+              normalizeValueForCatalyst(key, targetRow[key]);
           });
 
           const response = await catalystFetch(EMPLOYEE_API_URL, {
@@ -1780,6 +1789,7 @@ export function AppraisalProvider({ children }) {
             body: JSON.stringify({
               emp_id: String(empId),
               ...catalystPayload,
+              expected,
             }),
           });
 
