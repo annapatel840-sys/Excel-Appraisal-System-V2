@@ -363,6 +363,31 @@ function getCurrentUserMatchValues(user) {
 // Pass an admin-scoped datastore: app roles (HR, Tech-Ed, Comp. Manager) have
 // no permission on Appraisal_Cycle_Master. A read failure is thrown, never
 // treated as "no Active cycle", so a save cannot fall back to another row.
+// One employee's rows of Appraisal_Sheet or Employee_Master, through a single
+// ZCQL query instead of reading the whole table (ZCQL "=" ignores case, like
+// the emp_id comparisons below). Returns null when the query can't be used -
+// an ID with unexpected characters, no ZCQL, an error, or a full page - and
+// the caller then reads the whole table.
+async function zcqlRowsByEmpId(app, tableName, empId) {
+  const id = String(empId || "").trim();
+  if (!/^[A-Za-z0-9 _.-]+$/.test(id) || !app || typeof app.zcql !== "function") return null;
+  try {
+    const result = await withDataStoreRetry(
+      () => app.zcql().executeZCQLQuery(
+        "SELECT * FROM " + tableName + " WHERE emp_id = '" + id + "' ORDER BY ROWID ASC LIMIT 300",
+      ),
+      tableName + " rows of " + id,
+    );
+    const rows = (result || []).map(function (item) {
+      return (item && (item[tableName] || Object.values(item)[0])) || {};
+    });
+    return rows.length < 300 ? rows : null;
+  } catch (error) {
+    console.warn("ZCQL lookup of " + tableName + " for " + id + " failed; reading the table:", error?.message || error);
+    return null;
+  }
+}
+
 async function activeCycleRowId(datastore) {
   const cycles = await readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID));
   const active = cycles.find(function (cycle) {
@@ -389,11 +414,31 @@ function masterRowIdFor(value, masterRows) {
   return byEmpId ? rowIdOf(byEmpId) : "";
 }
 
-async function techEdOwnedEmpIds(datastore, a) {
+// onlyEmpIds (with app): the check is only needed for these employees, so only
+// their Appraisal_Sheet rows are read. Each row is judged on its own, so the
+// answer for them is the same as from the whole sheet. Employee_Master is still
+// read in full: the signed-in user and the Tech-ED / Comp Manager lookups can
+// be any row.
+async function techEdOwnedEmpIds(datastore, a, onlyEmpIds, app) {
   const owned = new Set();
   if (!a || !a.enforced || (a.scope && a.scope.all) || a.role !== "techEd") return owned;
+  const readSheetRows = async function () {
+    if (!onlyEmpIds || !onlyEmpIds.length) return getAllEmployees(datastore);
+    const found = [];
+    for (const empId of onlyEmpIds) {
+      const rows = await zcqlRowsByEmpId(app, "Appraisal_Sheet", empId);
+      if (!rows) {
+        const wanted = new Set(onlyEmpIds.map(function (id) { return String(id || "").trim().toLowerCase(); }));
+        return (await getAllEmployees(datastore)).filter(function (row) {
+          return wanted.has(String(row.emp_id || "").trim().toLowerCase());
+        });
+      }
+      found.push(...rows.map(normalizeEmployeeResponse));
+    }
+    return found;
+  };
   const [appraisalRows, masterRows] = await Promise.all([
-    getAllEmployees(datastore),
+    readSheetRows(),
     getAllEmployeeMaster(datastore),
   ]);
   const masterMap = buildEmployeeMasterMap(masterRows);
@@ -2679,9 +2724,12 @@ async function createEmployees(req, res) {
   const table = datastore.table(EMPLOYEES_TABLE_ID);
   const masterTable = datastore.table(EMPLOYEE_MASTER_TABLE_ID);
 
-  const [existingRows, masterRows] = await Promise.all([
-    table.getAllRows(),
-    masterTable.getAllRows(),
+  // Read every row, page by page: getAllRows() returned only the first 200,
+  // so an employee further down looked new and was inserted a second time.
+  const [existingRows, masterRows, currentCycleId] = await Promise.all([
+    readAllDataStoreRows(table),
+    readAllDataStoreRows(masterTable),
+    activeCycleRowId(datastore),
   ]);
   const masterByEmpId = new Map();
   (masterRows || []).forEach(function (row) {
@@ -2694,14 +2742,19 @@ async function createEmployees(req, res) {
 
   const existingByEmpId = new Map();
 
+  // An employee has a sheet row per cycle (and one without a cycle from the
+  // Employee Master import): update the Active cycle's row when there is one,
+  // otherwise the last row, as before.
   (existingRows || []).forEach(function (row) {
     const key = String(row.emp_id || "")
       .trim()
       .toLowerCase();
 
-    if (key) {
-      existingByEmpId.set(key, row);
-    }
+    if (!key) return;
+    const kept = existingByEmpId.get(key);
+    const keptIsActive = Boolean(currentCycleId) && kept &&
+      String(kept.cycle_id || "").trim() === currentCycleId;
+    if (!keptIsActive) existingByEmpId.set(key, row);
   });
 
   const rowsToInsert = [];
@@ -2878,7 +2931,8 @@ async function updateEmployee(req, res) {
       return column === "comp_manager" || column === "appraiser_tech_ed";
     });
 
-  const editOwned = await techEdOwnedEmpIds(datastore, a);
+  const adminApp = catalyst.initialize(req, { scope: "admin" });
+  const editOwned = await techEdOwnedEmpIds(datastore, a, [empId], adminApp);
   access.guard(a, function () {
     if (isDelegationAssignmentChange) {
       // HR administrators manage delegation for the whole organization. Their
@@ -2904,16 +2958,29 @@ async function updateEmployee(req, res) {
   const appraisalTable = datastore.table(EMPLOYEES_TABLE_ID);
   const masterTable = datastore.table(EMPLOYEE_MASTER_TABLE_ID);
 
-  const [appraisalRows, masterRows] = await Promise.all([
-    appraisalTable.getAllRows(),
-    masterTable.getAllRows(),
+  // Only this employee's rows are needed. getAllRows() returned just the first
+  // 200 rows of each table, so any employee further down was "not found".
+  // A ZCQL query returns this employee's rows; when it can't be used, or finds
+  // nothing, the whole table is read page by page. A Tech-ED change resolves
+  // the new Tech-ED against all of Employee_Master.
+  const empIdKey = empId.toLowerCase();
+  const isEmployee = function (row) {
+    return String(row.emp_id || "").trim().toLowerCase() === empIdKey;
+  };
+  const readOwnRows = async function (tableName, table) {
+    const rows = await zcqlRowsByEmpId(adminApp, tableName, empId);
+    if (rows && rows.some(isEmployee)) return rows;
+    return readAllDataStoreRows(table);
+  };
+  const [appraisalRows, masterRows, currentCycleId] = await Promise.all([
+    readOwnRows("Appraisal_Sheet", appraisalTable),
+    changedColumns.includes("appraiser_tech_ed")
+      ? readAllDataStoreRows(masterTable)
+      : readOwnRows("Employee_Master", masterTable),
+    // Appraisal_Sheet keeps rows of earlier cycles: edit the Active cycle's row.
+    // With an Active cycle and no row for it, the sheet is not generated yet.
+    activeCycleRowId(adminApp.datastore()),
   ]);
-
-  // Appraisal_Sheet keeps rows of earlier cycles: edit the Active cycle's row.
-  // With an Active cycle and no row for it, the sheet is not generated yet.
-  const currentCycleId = await activeCycleRowId(
-    catalyst.initialize(req, { scope: "admin" }).datastore(),
-  );
   // Only the Active cycle's row is ever edited; without an Active cycle there
   // is no current Appraisal Sheet row to change.
   const appraisalRow = currentCycleId
