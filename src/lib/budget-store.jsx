@@ -80,8 +80,8 @@ function ownerMatches(owner, identities) {
 // authorized for the Employee Master screen, so the roster is the Appraisal
 // view (the signed-in user's normal appraisal scope). The request is shared
 // with the Appraisal Sheet store when both load at the same time.
-async function fetchAllEligibleEmployees() {
-  const roster = await fetchAppraisalRoster();
+async function fetchAllEligibleEmployees(cacheScope) {
+  const roster = await fetchAppraisalRoster({ cacheScope });
   return roster.employees;
 }
 
@@ -130,7 +130,7 @@ export function BudgetProvider({ children }) {
       budgetUrl.searchParams.set("_ts", String(Date.now()));
       // Start both independent requests immediately, but do not make the
       // Budget cards wait for the employee roster request to finish.
-      const employeeResultPromise = fetchAllEligibleEmployees().then(
+      const employeeResultPromise = fetchAllEligibleEmployees(\n        String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase(),\n      ).then(
         (employees) => ({ employees }),
         (employeeError) => ({ employees: [], employeeError }),
       );
