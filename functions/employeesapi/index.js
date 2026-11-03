@@ -993,9 +993,14 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     console.error("Could not read Delegation records:", error?.message || error);
     delegationReadOk = false;
   });
-  addReader("previousDelegationRows", PREVIOUS_DELEGATION_TABLE_ID, true, (error) => {
-    console.error("Could not read Previous_Delegation records:", error?.message || error);
-  });
+  // Previous-cycle assignment history is needed by the Delegation screen only.
+  // The Appraisal Sheet does not display those columns, so do not scan the
+  // entire historical Delegation table on every ordinary sheet refresh.
+  if (String(options.view || "").trim().toLowerCase() === "delegation") {
+    addReader("previousDelegationRows", PREVIOUS_DELEGATION_TABLE_ID, true, (error) => {
+      console.error("Could not read Previous_Delegation records:", error?.message || error);
+    });
+  }
   const loaded = await readDataStoreRowsInBatches(readers, 2);
   const payrollRows = preloaded.payrollRows || loaded.payrollRows || [];
   const cycleRows = preloaded.cycleRows || loaded.cycleRows || [];
@@ -2498,7 +2503,12 @@ async function getEmployees(req, res) {
         cycleRows,
         eligibilityRows: cycleEligibilityRows,
       },
-      persistLookups: requestedPage === 1,
+      // A normal Appraisal Sheet GET must remain read-only and return the
+      // already-computed payroll lookup values without waiting for schema
+      // metadata and batch updates. Persisting those values belongs to an
+      // explicit write/generation workflow, not opening or refreshing the grid.
+      persistLookups: requestedPage === 1 && requestedView !== "appraisal",
+      view: requestedView,
       writeDeadline: requestStartedAt + ROSTER_WRITE_BUDGET_MS,
     },
   );
