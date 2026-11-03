@@ -2388,102 +2388,20 @@ async function getEmployees(req, res) {
   // Load the two core roster tables together, then the cycle/eligibility pair.
   // This caps concurrent COMPONENT reads at two and lets enrichment reuse all
   // four results instead of scanning them again later.
-<<<<<<< HEAD
-  const [employeeMasterRows, allAppraisalRows] = await Promise.all([
-    getAllEmployeeMaster(datastore),
-    getAllEmployees(datastore),
-  ]);
-  logRosterStage("core tables loaded", {
-    employeeMasterRows: employeeMasterRows.length,
-    appraisalSheetRows: allAppraisalRows.length,
-  });
-  // Keep the complete historical sheet rows for payroll/previous-CTC mapping.
-  // appraisalRows is filtered below to the active cycle for the visible grid.
-  let appraisalRows = allAppraisalRows;
-  // Read all independent enrichment sources in the same bounded batch
-  // pipeline. The helper processes at most two Catalyst Data Store scans at
-  // once, but avoids a separate later round-trip for Payroll and Feedback.
-  const {
-    cycleRows,
-    cycleEligibilityRows,
-    payrollRows,
-    feedbackRows,
-  } = await readDataStoreRowsInBatches([
-=======
   const delegationRosterView = requestedView === "delegation";
-  // Every table this request needs is independent of the others, so read them in
-  // one pooled wave (largest tables first) instead of master+sheet, then
-  // cycles+eligibility, then payroll+feedback, then delegation+previous
-  // delegation. The enrichment tables are prefetched here and handed to
-  // enrichPreviousAppraisalValues through preloadedRows; if a prefetch fails the
-  // key is left out, so enrichment reads that table itself exactly as before
-  // (same errors, same optional-table fallbacks).
+  // Prefetch independent roster tables with a small worker pool. Delegation
+  // tables are read only for the Delegation view; other views avoid that cost.
   const roster = await readDataStoreRowsPooled([
-    {
-      key: "payrollRows",
-      read: () => readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
-      optional: true,
-      fallback: null,
-    },
-    {
-      key: "allAppraisalRows",
-      read: () => getAllEmployees(datastore),
-      optional: false,
-    },
-    {
-      key: "employeeMasterRows",
-      read: () => getAllEmployeeMaster(datastore),
-      optional: false,
-    },
->>>>>>> 16b475c (Delegation Screen)
-    {
-      key: "cycleRows",
-      read: () => readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
-      optional: false,
-    },
-    {
-      key: "cycleEligibilityRows",
-      read: () => readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)),
-      optional: true,
-      fallback: [],
-    },
-    {
-<<<<<<< HEAD
-      key: "payrollRows",
-      read: () => readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
-      optional: true,
-      fallback: [],
-    },
-    {
-      key: "feedbackRows",
-      read: () => readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)),
-      optional: true,
-      fallback: [],
-    },
-  ], 2);
-  logRosterStage("cycle, eligibility, payroll and feedback tables loaded", {
-=======
-      key: "feedbackRows",
-      read: () => readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)),
-      optional: true,
-      fallback: null,
-    },
-    ...(delegationRosterView
-      ? [
-          {
-            key: "delegationRows",
-            read: () => readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID)),
-            optional: true,
-            fallback: null,
-          },
-          {
-            key: "previousDelegationRows",
-            read: () => readAllDataStoreRows(datastore.table(PREVIOUS_DELEGATION_TABLE_ID)),
-            optional: true,
-            fallback: null,
-          },
-        ]
-      : []),
+    { key: "payrollRows", read: () => readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)), optional: true, fallback: null },
+    { key: "allAppraisalRows", read: () => getAllEmployees(datastore), optional: false },
+    { key: "employeeMasterRows", read: () => getAllEmployeeMaster(datastore), optional: false },
+    { key: "cycleRows", read: () => readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)), optional: false },
+    { key: "cycleEligibilityRows", read: () => readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)), optional: true, fallback: [] },
+    { key: "feedbackRows", read: () => readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)), optional: true, fallback: null },
+    ...(delegationRosterView ? [
+      { key: "delegationRows", read: () => readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID)), optional: true, fallback: null },
+      { key: "previousDelegationRows", read: () => readAllDataStoreRows(datastore.table(PREVIOUS_DELEGATION_TABLE_ID)), optional: true, fallback: null },
+    ] : []),
   ]);
   const { employeeMasterRows, allAppraisalRows, cycleRows, cycleEligibilityRows } = roster;
   const prefetchedEnrichmentRows = {};
@@ -2493,11 +2411,10 @@ async function getEmployees(req, res) {
   logRosterStage("roster tables loaded", {
     employeeMasterRows: employeeMasterRows.length,
     appraisalSheetRows: allAppraisalRows.length,
->>>>>>> 16b475c (Delegation Screen)
     cycleRows: cycleRows.length,
     eligibilityRows: cycleEligibilityRows.length,
-    payrollRows: payrollRows.length,
-    feedbackRows: feedbackRows.length,
+    payrollRows: Array.isArray(roster.payrollRows) ? roster.payrollRows.length : 0,
+    feedbackRows: Array.isArray(roster.feedbackRows) ? roster.feedbackRows.length : 0,
   });
   // Keep the complete historical sheet rows for payroll/previous-CTC mapping.
   // appraisalRows is filtered below to the active cycle for the visible grid.
@@ -2742,15 +2659,9 @@ async function getEmployees(req, res) {
         appraisalHistoryRows: allAppraisalRows,
         cycleRows,
         eligibilityRows: cycleEligibilityRows,
-<<<<<<< HEAD
-        payrollRows,
-        feedbackRows,
-=======
-        // payroll / feedback / delegation tables already read in the pooled
-        // wave above (a table whose prefetch failed is left out and re-read
-        // by the enrichment itself).
+        // Reuse prefetched tables. If an optional prefetch failed, its key is
+        // omitted so the enrichment helper performs its existing fallback read.
         ...prefetchedEnrichmentRows,
->>>>>>> 16b475c (Delegation Screen)
       },
       // A normal Appraisal Sheet GET must remain read-only and return the
       // already-computed payroll lookup values without waiting for schema
