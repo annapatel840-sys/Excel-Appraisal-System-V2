@@ -21,6 +21,41 @@ import {
 } from "@/lib/budget-audit-local";
 
 const BudgetContext = createContext(null);
+const BUDGET_CACHE_PREFIX = "appraisal.budget.snapshot.v1:";
+
+function readBudgetSnapshot(scope) {
+  try {
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage.getItem(BUDGET_CACHE_PREFIX + encodeURIComponent(scope || "anonymous"));
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    return cached && cached.success ? cached : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function saveBudgetSnapshot(scope, payload) {
+  try {
+    if (typeof window === "undefined" || !payload?.success) return;
+    window.localStorage.setItem(
+      BUDGET_CACHE_PREFIX + encodeURIComponent(scope || "anonymous"),
+      JSON.stringify(payload),
+    );
+  } catch (error) {
+    console.warn("Could not cache Budget Master data:", error);
+  }
+}
+
+function invalidateBudgetSnapshot(scope) {
+  try {
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(BUDGET_CACHE_PREFIX + encodeURIComponent(scope || "anonymous"));
+    }
+  } catch (_) {
+    /* local cache is optional */
+  }
+}
 
 function number(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -101,6 +136,23 @@ export function BudgetProvider({ children }) {
     [authenticatedUser],
   );
 
+  const budgetCacheScope = String(authenticatedUser?.email || authenticatedUser?.id || authenticatedUser?.user_id || "anonymous").trim().toLowerCase();
+  const cachedBudgetRef = useRef(null);
+  if (cachedBudgetRef.current === null) cachedBudgetRef.current = readBudgetSnapshot(budgetCacheScope);
+  const initialBudget = cachedBudgetRef.current;
+  const initialCycleId = String(initialBudget?.active_appraisal_cycle_id || "").trim();
+  const initialTechEd = (Array.isArray(initialBudget?.techEd) ? initialBudget.techEd : Array.isArray(initialBudget?.data) ? initialBudget.data : [])
+    .map(normalizeRow).filter((row) => initialCycleId && String(row.appraisal_cycle_id || "").trim() === initialCycleId);
+  const initialMaster = (Array.isArray(initialBudget?.master) ? initialBudget.master : [])
+    .map(normalizeRow).filter((row) => initialCycleId && String(row.appraisal_cycle_id || "").trim() === initialCycleId);
+  const initialComp = (Array.isArray(initialBudget?.compManager) ? initialBudget.compManager : [])
+    .map((row) => ({ ...row, id: String(row.id || ""), appraisal_cycle_id: String(row.appraisal_cycle_id || ""),
+      budget_distribution_id: String(row.budget_distribution_id || ""), comp_manager: String(row.comp_manager || ""),
+      percentage: number(row.percentage), calculated_budget: number(row.calculated_budget),
+      total_utilization: number(row.total_utilization), applied_budget: number(row.applied_budget),
+      utilization_percentage: number(row.applied_budget) > 0 ? (number(row.total_utilization) / number(row.applied_budget)) * 100 : 0,
+    })).filter((row) => initialCycleId && String(row.appraisal_cycle_id || "").trim() === initialCycleId);
+
   const roleText = String(currentUser.role || "")
     .trim()
     .toLowerCase()
@@ -110,16 +162,16 @@ export function BudgetProvider({ children }) {
     roleText === "humanresources" ||
     roleText === "hroperation";
   const isCompManagerLogin = actualId === "compmanager" || roleText === "compmgr" || roleText === "compmanager";
-  const [budgetRows, setBudgetRows] = useState([]);
-  const [budgetMasterRows, setBudgetMasterRows] = useState([]);
-  const [activeBudgetCycleId, setActiveBudgetCycleId] = useState("");
-  const [budgetDistributionRows, setBudgetDistributionRows] = useState([]);
-  const [budgetCompManagerRows, setBudgetCompManagerRows] = useState([]);
-  const [employeeRows, setEmployeeRows] = useState([]);
-  const [techEdOwners, setTechEdOwners] = useState([]);
+  const [budgetRows, setBudgetRows] = useState(initialTechEd);
+  const [budgetMasterRows, setBudgetMasterRows] = useState(initialMaster);
+  const [activeBudgetCycleId, setActiveBudgetCycleId] = useState(initialCycleId);
+  const [budgetDistributionRows, setBudgetDistributionRows] = useState(initialTechEd);
+  const [budgetCompManagerRows, setBudgetCompManagerRows] = useState(initialComp);
+  const [employeeRows, setEmployeeRows] = useState(Array.isArray(initialBudget?.employeeRoster) ? initialBudget.employeeRoster : []);
+  const [techEdOwners, setTechEdOwners] = useState(Array.isArray(initialBudget?.techEdOwners) ? initialBudget.techEdOwners : []);
   // Why the budget base may be 0 (from budgetmasterapi), shown to HR.
   const [budgetWarning, setBudgetWarning] = useState("");
-  const [loading, setLoading] = useState(true);
+  // Reuse the last successful budget response immediately while refreshing it in the background.\n  const [loading, setLoading] = useState(() => !initialBudget);
   const [error, setError] = useState("");
 
   const runLoad = useCallback(async () => {
@@ -154,7 +206,7 @@ export function BudgetProvider({ children }) {
         throw new Error(statusText);
       }
 
-      const techEdRows = Array.isArray(budgetJson && budgetJson.techEd)
+      saveBudgetSnapshot(budgetCacheScope, budgetJson);\n      const techEdRows = Array.isArray(budgetJson && budgetJson.techEd)
         ? budgetJson.techEd
         : Array.isArray(budgetJson && budgetJson.data)
           ? budgetJson.data
@@ -368,6 +420,7 @@ export function BudgetProvider({ children }) {
     // Before any screen has asked for budget data there is nothing to
     // refresh; the first load reads current data anyway.
     const refreshBudget = () => {
+      invalidateBudgetSnapshot(budgetCacheScope);
       if (dataWantedRef.current) load();
     };
     const refreshForCycleChange = () => {
