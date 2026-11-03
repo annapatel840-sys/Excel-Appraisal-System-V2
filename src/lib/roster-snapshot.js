@@ -81,6 +81,10 @@ export function writeEligibilitySnapshot(key, snapshot) {
   ).catch(() => {});
 }
 
+export function clearEligibilitySnapshot(key) {
+  return run("readwrite", (store) => store.delete(key)).catch(() => {});
+}
+
 export function clearSheetSnapshots() {
   return run("readwrite", (store) => store.clear()).catch(() => {});
 }
