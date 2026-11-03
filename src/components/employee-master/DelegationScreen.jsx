@@ -354,7 +354,24 @@ export default function DelegationScreen({
     setActiveCycleName("");
     setRosterLoading(true);
     try {
-      const cycles = await payrollCycleRequest("cycles");
+      const fetchRosterPage = async (pageNo, fallbackMessage) => {
+        const response = await catalystFetch(
+          EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=1000&view=delegation",
+          { method: "GET", cache: "no-store" },
+        );
+        const payload = await response.json();
+        if (!response.ok || !payload?.success) {
+          throw new Error(payload?.message || fallbackMessage);
+        }
+        return payload;
+      };
+      // The roster does not depend on the cycle lookup (employeesapi finds the
+      // active cycle itself), so start page 1 together with the cycle list
+      // instead of after it. Only page 1 writes lookups, so this is safe.
+      const cyclesPromise = payrollCycleRequest("cycles");
+      const firstPromise = fetchRosterPage(1, "Unable to load appraisal employees.");
+      firstPromise.catch(() => {}); // reported where it is awaited below
+      const cycles = await cyclesPromise;
       const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
         const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
         const archived = ["true", "1", "yes"].includes(String(cycle.archived ?? "").trim().toLowerCase());
@@ -381,27 +398,18 @@ export default function DelegationScreen({
       // Delegation is prepared before sheet generation, so employeesapi builds
       // the working roster from the active cycle's eligible records when the
       // Appraisal Sheet has not yet been generated.
-      const firstResponse = await catalystFetch(
-        EMPLOYEE_API_URL + "?page=1&limit=1000&view=delegation",
-        { method: "GET", cache: "no-store" },
-      );
-      const first = await firstResponse.json();
-      if (!firstResponse.ok || !first?.success) {
-        throw new Error(first?.message || "Unable to load appraisal employees.");
-      }
+      const first = await firstPromise;
       const all = Array.isArray(first.data) ? [...first.data] : [];
       const totalPages = Math.max(1, Number(first.pagination?.totalPages || 1));
-      for (let pageNo = 2; pageNo <= totalPages; pageNo += 1) {
-        const response = await catalystFetch(
-          EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=1000&view=delegation",
-          { method: "GET", cache: "no-store" },
-        );
-        const payload = await response.json();
-        if (!response.ok || !payload?.success) {
-          throw new Error(payload?.message || "Unable to load the remaining delegation employees.");
-        }
+      // Remaining pages are independent: fetch them together, not one by one.
+      const rest = await Promise.all(
+        Array.from({ length: totalPages - 1 }, (_, index) =>
+          fetchRosterPage(index + 2, "Unable to load the remaining delegation employees."),
+        ),
+      );
+      rest.forEach((payload) => {
         if (Array.isArray(payload.data)) all.push(...payload.data);
-      }
+      });
       const unique = new Map();
       all.forEach((item) => {
         const id = String(item.emp_id || item.employee_id || "").trim().toLowerCase();
