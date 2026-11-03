@@ -318,7 +318,12 @@ app.get(
     if (a.denied) throw a.denied;
     if (!["hr", "techEd", "compMgr"].includes(a.role))
       throw new HttpError(403, "You do not have access to the request queue.");
-    const activeCycleId = String(await A.activeCycleId(ap.admin.zcql()) || "").trim();
+    // The active-cycle lookup and the AccessLog scan are independent: read them together.
+    const [activeCycleValue, rows] = await Promise.all([
+      A.activeCycleId(ap.admin.zcql()),
+      selectAll(ap.admin.zcql(), T.log),
+    ]);
+    const activeCycleId = String(activeCycleValue || "").trim();
     // Delegation requests are working data for one cycle. With no Active cycle,
     // the current request queue is intentionally empty; older cycle requests stay
     // in AccessLog for history and are never shown as current requests.
@@ -326,7 +331,6 @@ app.get(
       send(res, { requests: [] });
       return;
     }
-    const rows = await selectAll(ap.admin.zcql(), T.log);
     const latestById = new Map();
     const compareRequestEvents = (x, y) => {
       const byTime = String(x.changed_at || "").localeCompare(String(y.changed_at || ""));

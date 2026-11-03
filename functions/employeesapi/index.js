@@ -872,6 +872,40 @@ async function readDataStoreRowsInBatches(readers, concurrency = 2) {
   return output;
 }
 
+// Same contract as readDataStoreRowsInBatches (optional readers fall back, required
+// readers fail the request) but keeps up to `concurrency` table scans in flight at
+// all times instead of waiting for the slowest scan of each fixed batch. Each
+// table's own pages are still read one after another (the next page token needs
+// the previous page), so the total time is set by the largest table, not by the
+// sum of several waves. Keep this small: Catalyst shares a COMPONENT concurrency
+// limit across functions.
+const ROSTER_READ_CONCURRENCY = 4;
+async function readDataStoreRowsPooled(readers, concurrency = ROSTER_READ_CONCURRENCY) {
+  const output = {};
+  let nextIndex = 0;
+  let failed = false;
+  const worker = async () => {
+    while (!failed && nextIndex < readers.length) {
+      const reader = readers[nextIndex];
+      nextIndex += 1;
+      try {
+        output[reader.key] = await reader.read();
+      } catch (error) {
+        if (!reader.optional) {
+          failed = true;
+          throw error;
+        }
+        if (typeof reader.onError === "function") reader.onError(error);
+        output[reader.key] = reader.fallback === undefined ? [] : reader.fallback;
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.max(1, Math.min(concurrency, readers.length)) }, worker),
+  );
+  return output;
+}
+
 async function readAllDataStoreRows(table) {
   const rows = [];
   let nextToken = null;
@@ -2354,6 +2388,7 @@ async function getEmployees(req, res) {
   // Load the two core roster tables together, then the cycle/eligibility pair.
   // This caps concurrent COMPONENT reads at two and lets enrichment reuse all
   // four results instead of scanning them again later.
+<<<<<<< HEAD
   const [employeeMasterRows, allAppraisalRows] = await Promise.all([
     getAllEmployeeMaster(datastore),
     getAllEmployees(datastore),
@@ -2374,6 +2409,33 @@ async function getEmployees(req, res) {
     payrollRows,
     feedbackRows,
   } = await readDataStoreRowsInBatches([
+=======
+  const delegationRosterView = requestedView === "delegation";
+  // Every table this request needs is independent of the others, so read them in
+  // one pooled wave (largest tables first) instead of master+sheet, then
+  // cycles+eligibility, then payroll+feedback, then delegation+previous
+  // delegation. The enrichment tables are prefetched here and handed to
+  // enrichPreviousAppraisalValues through preloadedRows; if a prefetch fails the
+  // key is left out, so enrichment reads that table itself exactly as before
+  // (same errors, same optional-table fallbacks).
+  const roster = await readDataStoreRowsPooled([
+    {
+      key: "payrollRows",
+      read: () => readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
+      optional: true,
+      fallback: null,
+    },
+    {
+      key: "allAppraisalRows",
+      read: () => getAllEmployees(datastore),
+      optional: false,
+    },
+    {
+      key: "employeeMasterRows",
+      read: () => getAllEmployeeMaster(datastore),
+      optional: false,
+    },
+>>>>>>> 16b475c (Delegation Screen)
     {
       key: "cycleRows",
       read: () => readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
@@ -2386,6 +2448,7 @@ async function getEmployees(req, res) {
       fallback: [],
     },
     {
+<<<<<<< HEAD
       key: "payrollRows",
       read: () => readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
       optional: true,
@@ -2399,11 +2462,46 @@ async function getEmployees(req, res) {
     },
   ], 2);
   logRosterStage("cycle, eligibility, payroll and feedback tables loaded", {
+=======
+      key: "feedbackRows",
+      read: () => readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)),
+      optional: true,
+      fallback: null,
+    },
+    ...(delegationRosterView
+      ? [
+          {
+            key: "delegationRows",
+            read: () => readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID)),
+            optional: true,
+            fallback: null,
+          },
+          {
+            key: "previousDelegationRows",
+            read: () => readAllDataStoreRows(datastore.table(PREVIOUS_DELEGATION_TABLE_ID)),
+            optional: true,
+            fallback: null,
+          },
+        ]
+      : []),
+  ]);
+  const { employeeMasterRows, allAppraisalRows, cycleRows, cycleEligibilityRows } = roster;
+  const prefetchedEnrichmentRows = {};
+  ["payrollRows", "feedbackRows", "delegationRows", "previousDelegationRows"].forEach((key) => {
+    if (Array.isArray(roster[key])) prefetchedEnrichmentRows[key] = roster[key];
+  });
+  logRosterStage("roster tables loaded", {
+    employeeMasterRows: employeeMasterRows.length,
+    appraisalSheetRows: allAppraisalRows.length,
+>>>>>>> 16b475c (Delegation Screen)
     cycleRows: cycleRows.length,
     eligibilityRows: cycleEligibilityRows.length,
     payrollRows: payrollRows.length,
     feedbackRows: feedbackRows.length,
   });
+  // Keep the complete historical sheet rows for payroll/previous-CTC mapping.
+  // appraisalRows is filtered below to the active cycle for the visible grid.
+  let appraisalRows = allAppraisalRows;
 
   // Share the active-cycle metadata with the frontend so the Appraisal Sheet
   // does not make a second payrollcycleapi request for the same cycle table.
@@ -2644,8 +2742,15 @@ async function getEmployees(req, res) {
         appraisalHistoryRows: allAppraisalRows,
         cycleRows,
         eligibilityRows: cycleEligibilityRows,
+<<<<<<< HEAD
         payrollRows,
         feedbackRows,
+=======
+        // payroll / feedback / delegation tables already read in the pooled
+        // wave above (a table whose prefetch failed is left out and re-read
+        // by the enrichment itself).
+        ...prefetchedEnrichmentRows,
+>>>>>>> 16b475c (Delegation Screen)
       },
       // A normal Appraisal Sheet GET must remain read-only and return the
       // already-computed payroll lookup values without waiting for schema
