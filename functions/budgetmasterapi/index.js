@@ -2060,7 +2060,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         techEdKey: techKey,
         compKey,
         techEdName: employee.techEd,
-        name: employee.compManager,
+        // Keep the stable ID as the stored owner key, but return the resolved
+        // Employee ID - Name label separately for consistent UI display.
+        name: employee.comp_manager_display || employee.compManager,
       });
     }
   });
@@ -2849,6 +2851,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         current_headcount: stats.count,
         total_utilization: stats.utilized,
         original_headcount: savedOriginalCount,
+        comp_manager_display: details.name || details.compKey,
       });
     }
 
