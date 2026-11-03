@@ -1749,7 +1749,7 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   );
   const targetCriteriaColumn = liveColumn("target_PB_criteria", "target_pb_criteria");
   const sourceRowById = new Map();
-  (employees || []).forEach((row) => {
+  (appraisalHistoryRows.length ? appraisalHistoryRows : (employees || [])).forEach((row) => {
     const id = String(row.ROWID ?? row.rowid ?? "");
     if (!sourceRowById.has(id)) sourceRowById.set(id, row);
   });
