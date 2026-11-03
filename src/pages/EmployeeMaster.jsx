@@ -809,33 +809,15 @@ export function EmployeeMaster() {
   const [currentAppraisalCycleName, setCurrentAppraisalCycleName] = useState("");
 
   useEffect(() => {
-    let cancelled = false;
-    const refreshCycle = async () => {
-      try {
-        const cycles = await payrollCycleRequest("cycles");
-        const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
-          const status = String(cycle?.status ?? cycle?.cycle_status ?? "").trim().toLowerCase();
-          const archived = [true, 1, "true", "1", "yes"].includes(
-            typeof cycle?.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle?.archived,
-          );
-          return status === "active" && !archived && !cycle?.hidden;
-        });
-        if (!cancelled) setCurrentAppraisalCycleName(String(active?.name || active?.cycle_name || ""));
-      } catch {
-        if (!cancelled) setCurrentAppraisalCycleName("");
-      }
-    };
-    refreshCycle();
+    // The Eligibility API response includes the authoritative Active cycle.
+    // Avoid a second cycles request when Employee Master opens.
     const onCycleChange = () => {
-      refreshCycle();
+      setCurrentAppraisalCycleName("");
       setEligibilityReloadKey((value) => value + 1);
       setRefreshKey((value) => value + 1);
     };
     window.addEventListener("appraisal:cycle-updated", onCycleChange);
-    return () => {
-      cancelled = true;
-      window.removeEventListener("appraisal:cycle-updated", onCycleChange);
-    };
+    return () => window.removeEventListener("appraisal:cycle-updated", onCycleChange);
   }, []);
 
   useEffect(() => {
@@ -1220,6 +1202,7 @@ export function EmployeeMaster() {
         if (cancelled) return;
 
         const loadedCycleId = String(firstPage?.cycle?.cycleId || "").trim();
+        setCurrentAppraisalCycleName(String(firstPage?.cycle?.cycleName || "").trim());
         setEligibilityCycleId(loadedCycleId);
         setEligibilityCriteriaApplied(Boolean(firstPage?.cycle?.criteriaApplied));
         setEligibilityEmployees(Array.isArray(firstPage?.data) ? firstPage.data : []);
