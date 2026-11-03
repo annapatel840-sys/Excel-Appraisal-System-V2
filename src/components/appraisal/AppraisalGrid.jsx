@@ -3168,13 +3168,18 @@ export function AppraisalGrid({
       }
 
       if (col.key === "hikePct" || col.key === "hikeAmount") {
-        // Left empty: tell the user. (Hike calculation itself is unchanged.)
-        if (String(raw ?? "").trim() === "" && anchor) {
-          showToast({
-            mode: "error",
-            message: `${col.label} cannot be empty. Please enter 0 if there is no hike.`,
-            ...toastPosition(anchor),
-          });
+        // Left empty: nothing is saved (the database needs a number), the
+        // cell goes back to its previous value, and the user is told.
+        if (String(raw ?? "").trim() === "") {
+          if (anchor) {
+            showToast({
+              mode: "error",
+              message: `${col.label} cannot be empty. Enter 0 if you want no hike.`,
+              ...toastPosition(anchor),
+            });
+          }
+
+          return;
         }
 
         const outcome =
@@ -3189,7 +3194,7 @@ export function AppraisalGrid({
             flashHistoryFields(col.key);
           }
 
-          if (raw !== "") {
+          {
             showYoyToast(anchor, col.key, {
               ...row,
               hikeAmount: outcome.hikeAmount,
@@ -4581,7 +4586,10 @@ export function AppraisalGrid({
     if (!el) return undefined;
 
     const BOTTOM_GAP = 12; // matches the page's bottom padding
+    let frame = 0;
+
     const measure = () => {
+      frame = 0;
       const top = el.getBoundingClientRect().top + window.scrollY;
       const next = Math.max(360, Math.floor(window.innerHeight - top - BOTTOM_GAP));
       setFitHeight((previous) =>
@@ -4589,20 +4597,57 @@ export function AppraisalGrid({
       );
     };
 
-    measure();
-    window.addEventListener("resize", measure);
+    const schedule = () => {
+      if (!frame) frame = requestAnimationFrame(measure);
+    };
 
-    // Content above the grid can change height (budget notice dismissed,
-    // filter chips added), which moves the grid's top edge.
-    let observer = null;
+    measure();
+    window.addEventListener("resize", schedule);
+
+    // The grid's top edge moves whenever something ABOVE it changes height or
+    // appears / disappears (alerts and notices, filter chips, the budget bar,
+    // the header). The page keeps a minimum height of the screen, so the
+    // <body> size alone does not change when that content shrinks - watch the
+    // content above the grid directly.
+    let resizeObserver = null;
+    const watched = new Set();
+
+    const watchAbove = () => {
+      if (!resizeObserver) return;
+      for (let node = el; node && node !== document.body; node = node.parentElement) {
+        for (let sib = node.previousElementSibling; sib; sib = sib.previousElementSibling) {
+          if (!watched.has(sib)) {
+            watched.add(sib);
+            resizeObserver.observe(sib);
+          }
+        }
+      }
+    };
+
     if (typeof ResizeObserver !== "undefined") {
-      observer = new ResizeObserver(measure);
-      observer.observe(document.body);
+      resizeObserver = new ResizeObserver(schedule);
+      resizeObserver.observe(document.body);
+      watchAbove();
+    }
+
+    let mutationObserver = null;
+    if (typeof MutationObserver !== "undefined") {
+      mutationObserver = new MutationObserver(() => {
+        watchAbove();
+        schedule();
+      });
+      // Siblings above the grid (or above its ancestors) being added/removed.
+      for (let node = el.parentElement; node; node = node.parentElement) {
+        mutationObserver.observe(node, { childList: true });
+        if (node === document.body) break;
+      }
     }
 
     return () => {
-      window.removeEventListener("resize", measure);
-      if (observer) observer.disconnect();
+      window.removeEventListener("resize", schedule);
+      if (frame) cancelAnimationFrame(frame);
+      if (resizeObserver) resizeObserver.disconnect();
+      if (mutationObserver) mutationObserver.disconnect();
     };
   }, []);
 
