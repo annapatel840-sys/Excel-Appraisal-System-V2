@@ -204,10 +204,11 @@ const LIST = 'page=1&limit=100&view=delegation';
     assert.strictEqual(g.status, 200, JSON.stringify(g.json));
     assert.strictEqual(g.json.data.created, 4);
     assert.strictEqual(sheetRow('EMP013', 'C1').appraiser_tech_ed, ids.EMP002);
-    assert.strictEqual(sheetRow('EMP013', 'C1').comp_manager, PRABHU_T);
+    // Generate stores the Comp Manager as the Employee ID.
+    assert.strictEqual(sheetRow('EMP013', 'C1').comp_manager, 'EMP001');
     assert.strictEqual(sheetRow('EMP011', 'C1').appraiser_tech_ed, ids.EMP001);
-    assert.strictEqual(sheetRow('EMP011', 'C1').comp_manager, ASHOK_T);
-    assert.strictEqual(sheetRow('EMP001', 'C1').comp_manager, ASHOK_T, 'Comp Manager defaults to the Tech-ED');
+    assert.strictEqual(sheetRow('EMP011', 'C1').comp_manager, 'EMP002');
+    assert.strictEqual(sheetRow('EMP001', 'C1').comp_manager, 'EMP002', 'Comp Manager defaults to the Tech-ED');
     assert.ok(!sheetRow('EMP020', 'C1'), 'not eligible is not generated');
     assert.strictEqual(sheetRow('EMP011', 'C0').comp_manager, 'OLD CYCLE');
 
