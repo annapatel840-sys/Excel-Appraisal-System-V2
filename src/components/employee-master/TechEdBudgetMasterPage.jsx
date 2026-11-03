@@ -344,14 +344,32 @@ export function TechEdBudgetMasterPage() {
     isCurrentCycleRow(row) && String(row.budget_distribution_id || "") === String(liveMe.id),
   ) : [];
 
-  const resolveManagerLabel = (raw) => {
+  const resolveManagerLabel = (raw, suppliedDisplay = "") => {
+    const display = String(suppliedDisplay || "").trim();
+    if (display.includes(" - ")) return display;
+
     const candidates = new Set(ownerParts(raw));
+    // Each team employee carries the resolved manager display identity from
+    // budgetmasterapi. Match against the manager assignment, not the employee
+    // identity, so a raw manager ID never falls through as an ID-only label.
+    const teamManager = employeeRows.find((item) =>
+      item.comp_manager_display &&
+      [
+        item.comp_manager, item.comp_manager_id, item.compManager,
+        item.comp_manager_display, item.comp_manager_name,
+      ].filter(Boolean).some((alias) =>
+        ownerParts(alias).some((part) => candidates.has(part))
+      )
+    );
+    const teamDisplay = String(teamManager?.comp_manager_display || "").trim();
+    if (teamDisplay.includes(" - ")) return teamDisplay;
+
     const employee = employeeRows.find((item) => [
       item.emp_id, item.employee_id, item.employeeId, item.row_id, item.ROWID,
       item.name, item.emp_name, item.employee_name, item.email, item.email_id,
     ].filter(Boolean).some((alias) => ownerParts(alias).some((part) => candidates.has(part))));
     if (!employee) return ownerName(raw) || String(raw || "Unassigned Comp Manager");
-    const id = String(employee.emp_id || employee.employee_id || "").trim();
+    const id = String(employee.emp_id || employee.employee_id || employee.employeeId || "").trim();
     const name = String(employee.name || employee.emp_name || employee.employee_name || "").trim();
     return id && name ? id + " - " + name : name || ownerName(raw) || String(raw || "");
   };
@@ -361,7 +379,7 @@ export function TechEdBudgetMasterPage() {
     const original = Number(live.calculated_budget) || 0;
     return {
       id: live.id,
-      name: resolveManagerLabel(live.comp_manager),
+      name: resolveManagerLabel(live.comp_manager, live.comp_manager_display),
       pct0: base > 0 ? (original / base) * 100 : Number(live.percentage) || 0,
       pct: Number(live.percentage) || 0,
       base,
