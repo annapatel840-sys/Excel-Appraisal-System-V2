@@ -14,7 +14,7 @@ import { COLUMNS, normalizeManagerRating } from "./appraisal-data";
 import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 import { useCatalystUser } from "./catalyst-auth";
 import { getViewAsSelected, useViewAs } from "./view-as-store";
-import { invalidatePayrollCycleReads, payrollCycleRequest } from "./payroll-cycle-api";
+import { invalidatePayrollCycleReads } from "./payroll-cycle-api";
 import { fetchAppraisalRoster, invalidateEmployeeRoster, isActiveEligible } from "./employee-roster";
 import { readSheetSnapshot, snapshotKey, writeSheetSnapshot } from "./roster-snapshot";
 
@@ -1101,6 +1101,8 @@ export function AppraisalProvider({ children }) {
   }, []);
 
   const [audit, setAudit] = useState(() => readLocalAuditTrail());
+  // Prevent the initial remote audit fetch from running more than once.
+  const initialAuditLoadStartedRef = useRef(false);
 
   // Browser-local fallback makes the audit trail survive refreshes even when
   // appraisalauditapi or its backing table is unavailable. Remote records are
@@ -1342,53 +1344,34 @@ export function AppraisalProvider({ children }) {
   ========================================================== */
 
   useEffect(() => {
-    if (!dataWanted) return undefined;
-    let cancelled = false;
+    // Wait until the main Appraisal Sheet roster has finished loading.
+    // The active cycle name is already set by loadEmployees from employeesapi,
+    // so do not make another payrollcycleapi request just for the audit trail.
+    if (!dataWanted || loading || initialAuditLoadStartedRef.current) return;
+
+    initialAuditLoadStartedRef.current = true;
 
     const loadAudit = async () => {
-      await new Promise((resolve) => setTimeout(resolve, 150));
-
-      if (cancelled) {
+      if (!APPRAISAL_YEAR) {
+        setAudit([]);
         return;
       }
 
       try {
-        const cycles = await payrollCycleRequest("cycles");
-        const activeCycle = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
-          const status = String(cycle?.status ?? cycle?.cycle_status ?? "").trim().toLowerCase();
-          const archived = [true, 1, "true", "1", "yes"].includes(
-            typeof cycle?.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle?.archived,
-          );
-          return status === "active" && !archived && !cycle?.hidden;
-        });
-        APPRAISAL_YEAR = String(activeCycle?.name || activeCycle?.cycle_name || activeCycle?.appraisal_year || "").trim();
-        if (!APPRAISAL_YEAR) {
-          if (!cancelled) setAudit([]);
-          return;
-        }
         const records = await fetchAuditHistoryFromCatalyst();
 
-        if (cancelled) {
-          return;
-        }
-
-        setAudit((previous) => {
-          return mergeAuditEntries(currentCycleAudit(records), currentCycleAudit(previous));
-        });
+        setAudit((previous) =>
+          mergeAuditEntries(currentCycleAudit(records), currentCycleAudit(previous)),
+        );
       } catch (err) {
-        // Audit history is supplementary; keep the local audit trail and do
-        // not immediately issue a second full-history request after a 429.
-        // catalystFetch already applies bounded backoff to transient GETs.
+        // Audit history is supplementary; it must never delay the main sheet.
+        // Keep the browser-local audit trail if the remote request is unavailable.
         console.warn("Audit history is temporarily unavailable:", err);
       }
     };
 
-    loadAudit();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [dataWanted]);
+    void loadAudit();
+  }, [dataWanted, loading]);
 
   /* ==========================================================
   REJECT FIELDS WITH NO DATABASE COLUMN
