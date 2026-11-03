@@ -1609,6 +1609,17 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       // explicitly stored Appraisal_Sheet value (or leave blank/zero).
       manager_rating: feedbackValue("manager_rating") ?? employee.manager_rating ?? "",
       interview_count: feedbackValue("interview_count", "interviewCount") ?? employee.interview_count ?? "",
+      // Return all current-cycle Feedback_And_Rating fields in the roster
+      // response. The frontend must not make a second full-table feedback API
+      // request just to populate these columns.
+      CostCenter_Client: feedbackValue("CostCenter_Client", "cost_center_client") ?? "",
+      manager_feedback: feedbackValue("manager_feedback") ?? "",
+      client_manager_feedback: feedbackValue("client_manager_feedback") ?? "",
+      client_rating: (() => {
+        const value = feedbackValue("client_rating");
+        const parsed = value === undefined ? NaN : Number(String(value).replace(/,/g, "").trim());
+        return Number.isFinite(parsed) ? parsed : "";
+      })(),
       // RR% is sourced from Feedback_And_Rating.revenue_released for the
       // current cycle. Employee_Master RR% remains a fallback for older rows
       // or when feedback has not yet been uploaded for this cycle.
