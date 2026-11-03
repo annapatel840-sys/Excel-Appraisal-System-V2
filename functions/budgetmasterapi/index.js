@@ -752,13 +752,11 @@ function readField(row, candidates) {
   return "";
 }
 
-async function readTechEdOwners(app) {
-  // Appraisal_Sheet's Tech-Ed foreign key stores Employee_Master.ROWID.
-  // Resolve it to the stable Employee ID + name for display and roster deduplication.
-  const [employeeRows, unused] = await Promise.all([
-    getAllRows(app, "Employee_Master"),
-    Promise.resolve([]),
-  ]);
+async function readTechEdOwners(app, sourceRows) {
+  // Reuse the Employee_Master and Appraisal_Sheet rows already fetched for
+  // budget calculation. This avoids scanning either table a second time.
+  const employeeRows = sourceRows.masterEmployeeRows;
+  const appraisalRows = sourceRows.appraisalRows;
   const employeeByRowId = new Map(
     employeeRows.map((employee) => [
       idOf(employee),
@@ -778,63 +776,40 @@ async function readTechEdOwners(app) {
       },
     ]),
   );
-  const zcql = app.zcql();
   const owners = new Map();
-  let last = "0";
-  for (let guard = 0; guard < 10000; guard += 1) {
-    // Read all columns because Appraisal_Sheet schemas may use a legacy alias
-    // for the Tech-ED assignment. readField below handles those column names.
-    const query =
-      "SELECT * FROM Appraisal_Sheet " +
-      "WHERE ROWID > " +
-      last +
-      " ORDER BY ROWID ASC LIMIT 300";
-    const result = await zcql.executeZCQLQuery(query);
-    const rows = (result || []).map(
-      (item) =>
-        (item && (item.Appraisal_Sheet || Object.values(item)[0])) || {},
-    );
-    if (!rows.length) break;
-    let max = last;
-    rows.forEach((row) => {
-      const rowId = String(row.ROWID || "");
-      try {
-        if (BigInt(rowId) > BigInt(max)) max = rowId;
-      } catch (_) {}
-      const rawAssignment = String(
-        readField(row, [
-          "appraiser_tech_ed",
-          "appraiser_tech_ed_id",
-          "appraiser_tech_ed1",
-          "appraiser_teched",
-          "tech_ed",
-          "tech_ed_id",
-        ]) || "",
-      ).trim();
-      if (!rawAssignment) return;
+  // The rows are already complete and paged by getAllRows().
+  appraisalRows.forEach((row) => {
+    const rawAssignment = String(
+      readField(row, [
+        "appraiser_tech_ed",
+        "appraiser_tech_ed_id",
+        "appraiser_tech_ed1",
+        "appraiser_teched",
+        "tech_ed",
+        "tech_ed_id",
+      ]) || "",
+    ).trim();
+    if (!rawAssignment) return;
 
-      const employee = employeeByRowId.get(rawAssignment);
-      const assignment = employee
-        ? employee.employee_id && employee.name
-          ? employee.employee_id + " - " + employee.name
-          : employee.employee_id || employee.name || rawAssignment
-        : rawAssignment;
-      const key = employee
-        ? (employee.employee_id || employee.row_id).toLowerCase()
-        : rawAssignment.toLowerCase();
-      if (!owners.has(key)) {
-        owners.set(key, {
-          assignment,
-          row_id: employee ? employee.row_id : "",
-          employee_id: employee ? employee.employee_id : "",
-          name: employee ? employee.name : "",
-          email: employee ? employee.email : "",
-        });
-      }
-    });
-    if (rows.length < 300 || max === last) break;
-    last = max;
-  }
+    const employee = employeeByRowId.get(rawAssignment);
+    const assignment = employee
+      ? employee.employee_id && employee.name
+        ? employee.employee_id + " - " + employee.name
+        : employee.employee_id || employee.name || rawAssignment
+      : rawAssignment;
+    const key = employee
+      ? (employee.employee_id || employee.row_id).toLowerCase()
+      : rawAssignment.toLowerCase();
+    if (!owners.has(key)) {
+      owners.set(key, {
+        assignment,
+        row_id: employee ? employee.row_id : "",
+        employee_id: employee ? employee.employee_id : "",
+        name: employee ? employee.name : "",
+        email: employee ? employee.email : "",
+      });
+    }
+  });
   return Array.from(owners.values());
 }
 
@@ -1294,16 +1269,17 @@ function pickColumn(columns, candidates, fallback) {
   return candidates.find((name) => columns.has(name)) || fallback;
 }
 
-async function calculateBudgetBases(app, bundle, techEdOwners = []) {
-  // Appraisal_Sheet provides the current roster and team assignments.
-  // Payroll_Data + Appraisal_Cycle_Master provide prior-cycle CTC values.
-  // Serialize all source-table scans. Parallel paged reads can exceed the
-  // Catalyst COMPONENT concurrency limit and fail the entire budget calculation.
-  const appraisalRows = await getAllRows(app, "Appraisal_Sheet");
-  const masterEmployeeRows = await getAllRows(app, "Employee_Master").catch(() => []);
-  const payrollRows = await getAllRows(app, "Payroll_Data");
-  const cycleRows = await getAllRows(app, "Appraisal_Cycle_Master");
-  const eligibilityRows = await getAllRows(app, "Eligibility_List").catch(() => []);
+async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) {
+  // Reuse the single serialized source-table read set for both calculations
+  // and owner/employee roster construction. Do not start parallel Data Store
+  // scans: Catalyst COMPONENT limits can reject overlapping paged requests.
+  const {
+    appraisalRows,
+    masterEmployeeRows,
+    payrollRows,
+    cycleRows,
+    eligibilityRows,
+  } = sourceRows;
   if (!appraisalRows.length) {
     throw new Error(
       "Appraisal_Sheet returned no rows; cannot calculate budget bases.",
@@ -3053,13 +3029,24 @@ module.exports = async function (req, res) {
       // both employee tables again here caused Catalyst's execution timeout.
       // Avoid overlapping multiple datastore scans on the same request.
       const rawBundle = await readBundle(app);
-      const techEdOwners = await readTechEdOwners(app);
+
+      // Read each source table once, in sequence. These same arrays are shared
+      // by budget-base calculation and Tech-Ed owner resolution.
+      const sourceRows = {
+        appraisalRows: await getAllRows(app, "Appraisal_Sheet"),
+        masterEmployeeRows: await getAllRows(app, "Employee_Master").catch(() => []),
+        payrollRows: await getAllRows(app, "Payroll_Data"),
+        cycleRows: await getAllRows(app, "Appraisal_Cycle_Master"),
+        eligibilityRows: await getAllRows(app, "Eligibility_List").catch(() => []),
+      };
+      const techEdOwners = await readTechEdOwners(app, sourceRows);
       let calculatedBundle = rawBundle;
       try {
         calculatedBundle = await calculateBudgetBases(
           app,
           rawBundle,
           techEdOwners,
+          sourceRows,
         );
       } catch (calculationError) {
         // Never report a successful zero-budget response when source calculations
