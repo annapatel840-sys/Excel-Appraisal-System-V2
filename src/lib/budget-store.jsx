@@ -343,8 +343,12 @@ export function BudgetProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (dataWanted) load();
-  }, [load, dataWanted]);
+    // Budget screens also request a refresh when they mount. Route the
+    // provider's first-use load through the same in-flight deduper so the
+    // screen effect and provider effect cannot launch two full budget +
+    // employee-roster requests at the same time.
+    if (dataWanted) reloadShared();
+  }, [reloadShared, dataWanted]);
 
   useEffect(() => {
     // Before any screen has asked for budget data there is nothing to
