@@ -55,6 +55,7 @@ import AccessPage from "@/components/employee-master/AccessPage";
 import { HrDashboardPage } from "@/components/employee-master/HrDashboardPage";
 import { HrOperationsNav } from "@/components/employee-master/HrOperationsNav";
 import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
+import { eligibilitySnapshotKey, readEligibilitySnapshot, writeEligibilitySnapshot, clearEligibilitySnapshot } from "@/lib/roster-snapshot";
 
 import "@/styles/employee-master.css";
 
@@ -658,6 +659,7 @@ export function EmployeeMaster() {
   // Full Employee Master (all pages). The Eligibility List starts empty for a
   // cycle, so the criteria panel and "Add An Employee" read from this list.
   const [eligibilityMasterEmployees, setEligibilityMasterEmployees] = useState([]);
+  const [eligibilityShowingSnapshot, setEligibilityShowingSnapshot] = useState(false);
 
   const [eligibilityLoading, setEligibilityLoading] = useState(false);
 
@@ -806,6 +808,9 @@ export function EmployeeMaster() {
   }, [isTechEd, access.ok, defaultTab]);
 
   const eligibilityLoadedKeyRef = useRef(null);
+  const eligibilityFreshAppliedRef = useRef(false);
+  const eligibilityCacheScope = String(catalystUser?.email || catalystUser?.id || catalystUser?.user_id || "anonymous").trim().toLowerCase();
+  const eligibilityCacheKey = eligibilitySnapshotKey(eligibilityCacheScope);
   const [currentAppraisalCycleName, setCurrentAppraisalCycleName] = useState("");
 
   useEffect(() => {
@@ -819,6 +824,23 @@ export function EmployeeMaster() {
     window.addEventListener("appraisal:cycle-updated", onCycleChange);
     return () => window.removeEventListener("appraisal:cycle-updated", onCycleChange);
   }, []);
+
+  // Restore the last Eligibility List immediately from IndexedDB. The fresh
+  // Catalyst response below always replaces this display-only snapshot.
+  useEffect(() => {
+    if (!eligibilityCacheScope || eligibilityFreshAppliedRef.current) return undefined;
+    let cancelled = false;
+    readEligibilitySnapshot(eligibilityCacheKey).then((snapshot) => {
+      if (cancelled || !snapshot || eligibilityFreshAppliedRef.current) return;
+      setEligibilityEmployees(snapshot.employees);
+      setEligibilityMasterEmployees(snapshot.masterEmployees);
+      setEligibilityCycleId(String(snapshot.cycleId || ""));
+      setCurrentAppraisalCycleName(String(snapshot.cycleName || ""));
+      setEligibilityCriteriaApplied(Boolean(snapshot.criteriaApplied));
+      setEligibilityShowingSnapshot(true);
+    });
+    return () => { cancelled = true; };
+  }, [eligibilityCacheKey, eligibilityCacheScope]);
 
   useEffect(() => {
     // Eligibility decisions and their audit trail belong to one cycle. Keep
@@ -1202,13 +1224,23 @@ export function EmployeeMaster() {
         if (cancelled) return;
 
         const loadedCycleId = String(firstPage?.cycle?.cycleId || "").trim();
+        eligibilityFreshAppliedRef.current = true;
+        setEligibilityShowingSnapshot(false);
         setCurrentAppraisalCycleName(String(firstPage?.cycle?.cycleName || "").trim());
         setEligibilityCycleId(loadedCycleId);
         setEligibilityCriteriaApplied(Boolean(firstPage?.cycle?.criteriaApplied));
         setEligibilityEmployees(Array.isArray(firstPage?.data) ? firstPage.data : []);
-        setEligibilityMasterEmployees(
-          Array.isArray(firstPage?.masterEmployees) ? firstPage.masterEmployees : [],
-        );
+        const freshEligibilityEmployees = Array.isArray(firstPage?.data) ? firstPage.data : [];
+        const freshEligibilityMasterEmployees = Array.isArray(firstPage?.masterEmployees) ? firstPage.masterEmployees : [];
+        setEligibilityEmployees(freshEligibilityEmployees);
+        setEligibilityMasterEmployees(freshEligibilityMasterEmployees);
+        void writeEligibilitySnapshot(eligibilityCacheKey, {
+          employees: freshEligibilityEmployees,
+          masterEmployees: freshEligibilityMasterEmployees,
+          cycleId: loadedCycleId,
+          cycleName: String(firstPage?.cycle?.cycleName || "").trim(),
+          criteriaApplied: Boolean(firstPage?.cycle?.criteriaApplied),
+        });
 
         finished = true;
       } catch (error) {
@@ -1248,6 +1280,9 @@ export function EmployeeMaster() {
   // Force the Eligibility List to reload from Catalyst on its next view.
   const invalidateEligibilityList = () => {
     eligibilityLoadedKeyRef.current = null;
+    eligibilityFreshAppliedRef.current = false;
+    setEligibilityShowingSnapshot(false);
+    void clearEligibilitySnapshot(eligibilityCacheKey);
     setEligibilityCycleId("");
     setEligibilityCriteriaApplied(false);
     setEligibilityReloadKey((value) => value + 1);
@@ -1258,6 +1293,9 @@ export function EmployeeMaster() {
   useEffect(() => {
     const onCycleUpdated = () => {
       eligibilityLoadedKeyRef.current = null;
+      eligibilityFreshAppliedRef.current = false;
+      setEligibilityShowingSnapshot(false);
+      void clearEligibilitySnapshot(eligibilityCacheKey);
       setEligibilityCycleId("");
       setEligibilityCriteriaApplied(false);
       setDelegationGenerated(false);
@@ -2613,7 +2651,7 @@ export function EmployeeMaster() {
 
         {isTabVisible("eligibility") && activeTab === "eligibility" && (
           <div className="em-tab-content">
-            {eligibilityLoading ? (
+            {eligibilityLoading && !eligibilityShowingSnapshot ? (
               <div className="em-empty">
                 Loading all employees for Eligibility List...
               </div>
@@ -2640,7 +2678,7 @@ export function EmployeeMaster() {
                     onGenerateDelegation={generateDelegationFromEligibility}
                     criteriaApplied={eligibilityCriteriaApplied}
                     delegationGenerated={delegationGenerated}
-                    readOnly={!eligibilityCycleId}
+                    readOnly={!eligibilityCycleId || eligibilityShowingSnapshot}
                   />
                 )}
 
@@ -2653,15 +2691,15 @@ export function EmployeeMaster() {
                   filters={eligibilityFilters}
                   setFilters={setEligibilityFilters}
                   onChangeEligibility={
-                    canEditEmployees ? setEligibilityEmployee : undefined
+                    canEditEmployees && !eligibilityShowingSnapshot ? setEligibilityEmployee : undefined
                   }
                   onAddEmployee={
-                    canEditEmployees ? addEmployeeToEligibility : undefined
+                    canEditEmployees && !eligibilityShowingSnapshot ? addEmployeeToEligibility : undefined
                   }
                   masterEmployees={eligibilityMasterEmployees}
                   onDownloadTemplate={downloadEligibilityTemplate}
                   onImport={
-                    canEditEmployees ? handleEligibilityFile : undefined
+                    canEditEmployees && !eligibilityShowingSnapshot ? handleEligibilityFile : undefined
                   }
                   onExport={exportEligibilityData}
                   onAuditHistory={
