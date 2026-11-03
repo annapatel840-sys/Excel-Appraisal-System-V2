@@ -1209,48 +1209,25 @@ export function EmployeeMaster() {
 
         // Keep the authoritative Active cycle ID returned by the API. Do not
         // rely on each mapped employee row to carry a correctly shaped FK.
+        // The eligibility API already returns the complete cycle roster in one
+        // response. Use a large client-side page size so we do not repeat the
+        // same full Catalyst table scan once for every 100 employees.
         const firstPage = await fetchEligibilityEmployees({
           page: 1,
-          limit: 100,
+          limit: 100000,
           search: "",
         });
+        if (cancelled) return;
+
         const loadedCycleId = String(firstPage?.cycle?.cycleId || "").trim();
         setEligibilityCycleId(loadedCycleId);
         setEligibilityCriteriaApplied(Boolean(firstPage?.cycle?.criteriaApplied));
-
-        let all = Array.isArray(firstPage?.data) ? firstPage.data : [];
-
-        const totalPages = Number(firstPage?.pagination?.totalPages) || 1;
-
-        for (let page = 2; page <= totalPages; page += 1) {
-          if (cancelled) {
-            return;
-          }
-
-          const result = await fetchEligibilityEmployees({
-            page,
-            limit: 100,
-            search: "",
-            cycleId: loadedCycleId,
-          });
-
-          all = all.concat(Array.isArray(result?.data) ? result.data : []);
-        }
-
-        if (cancelled) {
-          return;
-        }
+        setEligibilityEmployees(Array.isArray(firstPage?.data) ? firstPage.data : []);
+        setEligibilityMasterEmployees(
+          Array.isArray(firstPage?.masterEmployees) ? firstPage.masterEmployees : [],
+        );
 
         finished = true;
-
-        setEligibilityEmployees(all);
-
-        try {
-          const masters = await fetchAllEmployeeMasterEmployees();
-          if (!cancelled) setEligibilityMasterEmployees(masters);
-        } catch (masterError) {
-          console.error("Employee Master load for eligibility failed:", masterError);
-        }
       } catch (error) {
         if (cancelled) {
           return;
