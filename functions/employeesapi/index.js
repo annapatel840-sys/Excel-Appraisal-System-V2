@@ -2386,6 +2386,10 @@ async function getEmployees(req, res) {
     feedbackRows: feedbackRows.length,
   });
 
+  // Share the active-cycle metadata with the frontend so the Appraisal Sheet
+  // does not make a second payrollcycleapi request for the same cycle table.
+  let responseActiveCycle = null;
+
   // Appraisal view must be isolated to the one active cycle. Appraisal_Sheet
   // intentionally retains archived cycles, so returning every row here makes
   // old employees leak into a newly generated sheet. Master/eligibility views
@@ -2406,6 +2410,13 @@ async function getEmployees(req, res) {
       return status === "active" && !archived && !hidden;
     });
     if (activeCycle) {
+      responseActiveCycle = {
+        id: String(activeCycle.ROWID ?? activeCycle.rowid ?? activeCycle.id ?? activeCycle.ID ?? "").trim(),
+        name: historyCycleName(activeCycle),
+        status: String(activeCycle.status ?? activeCycle.cycle_status ?? "Active"),
+        archived: activeCycle.archived ?? false,
+        hidden: activeCycle.hidden ?? false,
+      };
       const activeCycleId = String(
         activeCycle.ROWID ?? activeCycle.rowid ?? activeCycle.id ?? activeCycle.ID ?? "",
       ).trim();
@@ -2798,6 +2809,8 @@ async function getEmployees(req, res) {
       active: scopedActiveCount,
       inactive: scopedInactiveCount,
     },
+
+    activeCycle: responseActiveCycle,
 
     filters: {
       search: search,
