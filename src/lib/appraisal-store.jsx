@@ -11,7 +11,6 @@ import {
 } from "react";
 
 import { COLUMNS, normalizeManagerRating } from "./appraisal-data";
-import { loadFeedbackRating } from "./feedback-rating-api";
 import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
 import { useCatalystUser } from "./catalyst-auth";
 import { getViewAsSelected, useViewAs } from "./view-as-store";
@@ -112,52 +111,6 @@ function formatClientRating(rating) {
   if (rating === null || rating === undefined || String(rating).trim() === "") return "";
   const n = Number(rating);
   return Number.isFinite(n) ? String(Math.round(n * 100) / 100) : "";
-}
-
-/* Current-cycle Feedback_And_Rating data per employee (table 74008000000022041),
-   from the existing loadFeedbackRating() call. Returns
-     { ratings: Map(empId -> manager rating 1-5),
-       client:  Map(empId -> { costCenterClient, clientManager, clientRating }) }
-   or null if the table is unavailable (the sheet then loads without it).
-     costCenterClient = CostCenter_Client
-     clientManager    = client_manager_feedback
-     clientRating     = numeric client_rating only */
-async function loadCurrentCycleFeedback() {
-  try {
-    const data = await loadFeedbackRating();
-    const cycles = data?.cycles || [];
-    // Feedback ratings are current working data only for the Active cycle.
-    // Closed/archived cycles remain historical inputs, never a current fallback.
-    const current = cycles.find((c) =>
-      String(c.status ?? "").trim().toLowerCase() === "active" &&
-      !["true", "1", "yes"].includes(String(c.archived ?? "").trim().toLowerCase())
-    );
-    const ratings = new Map();
-    const client = new Map();
-    if (!current) return { ratings, client };
-    (data?.rows || []).forEach((row) => {
-      if (String(row.cid) !== String(current.id)) return;
-      const key = String(row.id || "").trim().toLowerCase();
-      if (!key) return;
-
-      const rating = normalizeManagerRating(row.mr);
-      if (rating) ratings.set(key, rating);
-
-      const next = {
-        costCenterClient: String(row.client ?? "").trim(),
-        managerFeedback: String(row.mf ?? "").trim(),
-        clientManager: String(row.cmf ?? "").trim(),
-        clientRating: formatClientRating(row.cr),
-      };
-      if (next.costCenterClient || next.managerFeedback || next.clientManager || next.clientRating) {
-        client.set(key, next);
-      }
-    });
-    return { ratings, client };
-  } catch (error) {
-    console.warn("Could not load Feedback_And_Rating data:", error);
-    return null;
-  }
 }
 
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
@@ -1202,10 +1155,11 @@ export function AppraisalProvider({ children }) {
       // here (counts are the unfiltered scope counts either way).
       // Manager Rating comes from the Feedback_And_Rating table (current
       // cycle). If that table cannot be read, the sheet still loads.
-      const [cycles, roster, feedback] = await Promise.all([
+      // The employeesapi roster already includes current-cycle feedback
+      // fields. Avoid a second full Feedback_And_Rating API request.
+      const [cycles, roster] = await Promise.all([
         payrollCycleRequest("cycles"),
         fetchAppraisalRoster({ viewAs: getViewAsSelected(), cacheScope: rosterCacheScope }),
-        loadCurrentCycleFeedback(),
       ]);
 
       if (requestId !== loadSeqRef.current) {
@@ -1234,27 +1188,8 @@ export function AppraisalProvider({ children }) {
         counts: roster.counts,
         pagination: roster.pagination,
       };
-      const ratingByEmp = feedback ? feedback.ratings : null;
-
       const employees = mergePendingCells(
-        result.employees.map(mapCatalystEmployee).map((employee) => ({
-          ...employee,
-          managerRating: ratingByEmp
-            ? ratingByEmp.get(String(employee.empId).trim().toLowerCase()) || ""
-            : employee.managerRating,
-          // Cost Center/Client, Client Manager Feedback and Client Rating come
-          // from Feedback_And_Rating (CostCenter_Client, client_manager_feedback,
-          // numeric client_rating only). Empty when the employee has no row.
-          ...(feedback
-            ? {
-                costCenterClient: "",
-                managerFeedback: "",
-                clientManager: "",
-                clientRating: "",
-                ...(feedback.client.get(String(employee.empId).trim().toLowerCase()) || {}),
-              }
-            : {}),
-        })),
+        result.employees.map(mapCatalystEmployee),
         rowsRef.current,
         pendingCellsRef.current,
       );
