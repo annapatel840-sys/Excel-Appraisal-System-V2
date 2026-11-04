@@ -33,9 +33,9 @@ import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
 import { useNotices } from "@/lib/notices";
-import { buildFeedbackEntries, cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
+import { useEmployeeFeedback } from "@/lib/employee-feedback";
 import { useColumnResize } from "@/lib/use-column-resize";
-import { DetailMetricsTab } from "./DetailMetricsTab";
+import { DetailSidePanel } from "./DetailSidePanel";
 
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#12304f";
@@ -1104,8 +1104,7 @@ export function DetailScreenPage({
   // Layout-only state (no effect on data)
   const { notices: liveNotices, dismissAll: dismissLiveNotices } = useNotices();
   const [cardOpen, setCardOpen] = useState(true);
-  const [feedbackWidth, setFeedbackWidth] = useState(320);
-  const [fbTab, setFbTab] = useState("manager");
+  const [feedbackWidth, setFeedbackWidth] = useState(360);
   const baselineRef = useRef({});
 
   // What the user is typing right now (per employee), used only to show
@@ -1366,9 +1365,10 @@ export function DetailScreenPage({
     const rbFloor = Number(employee.rbToBePaid) || 0; // sheet: RB to be Paid
     return {
       pbFloor,
-      pbMonth: employee.pbMonth ?? "", // TODO: wire the real PB payment month
+      pbMonth: employee.monthPB || employee.pbMonth || "", // sheet: Month (PB)
+      pbTarget: Number(employee.targetPBAllocatedForMay) || 0, // sheet: Target PB Set Last Year
       rbFloor,
-      rbMonth: employee.rbMonth ?? "", // TODO: wire the real RB payment month
+      rbMonth: employee.monthRB || employee.rbMonth || "", // sheet: Month (RB)
       pbDiff: (Number(proposedPB) || 0) - pbFloor,
       rbDiff: (Number(proposedRB) || 0) - rbFloor,
     };
@@ -1515,7 +1515,7 @@ export function DetailScreenPage({
 
   const cols = [
     "minmax(0,2.25fr)",
-    cardOpen && `minmax(240px, ${feedbackWidth}px)`,
+    cardOpen && `minmax(300px, ${feedbackWidth}px)`,
     !cardOpen && "30px",
   ]
     .filter(Boolean)
@@ -1536,61 +1536,6 @@ export function DetailScreenPage({
   const targetPBCurrent =
     employee?.currentTargetPB ??
     baselineRef.current[employee?.id]?.targetPBNextYear;
-
-  /* ---- Feedback timeline -------------------------------------------- */
-  const timeline = employee
-    ? [
-        {
-          year: currentCycleName,
-          current: true,
-          title: dash(employee.designation),
-          rating: dash(employee.managerRating ?? employee.rating),
-          promo: dash(employee.eligibleForPromotion),
-          note: "Feedback captured during the review.",
-        },
-        ...priorCycles.map((p) => ({
-          year: p.year,
-          current: false,
-          title: p.designation,
-          rating: p.feedback !== "—" ? p.feedback : p.rating,
-          promo: null,
-          note: null,
-        })),
-      ]
-    : [];
-
-  // Feedback & Rating table entries for the active tab (empty = use the old view).
-  const feedbackEntries = feedbackData.items.length
-    ? buildFeedbackEntries(fbTab, feedbackData.items, {
-        currentCycleName,
-        fallback:
-          fbTab === "manager"
-            ? timeline
-                // Skip history years that have nothing to show (no title and
-                // no rating) so empty placeholder years do not appear.
-                .filter(
-                  (t) =>
-                    t.current ||
-                    t.rating !== "—" ||
-                    (t.title && t.title !== "—"),
-                )
-                .map((t) => ({
-                key: `sheet-${t.year}`,
-                cycleKey: cycleKey(t.year),
-                cycle: t.year,
-                current: t.current,
-                title: t.title,
-                sub: "",
-                chips:
-                  t.rating !== "—"
-                    ? [{ label: "Manager rating", value: `${t.rating}${t.current ? " / 5" : ""}` }]
-                    : [],
-                promo: t.promo,
-                text: "",
-              }))
-            : [],
-      })
-    : [];
 
   return (
     <div
@@ -1773,21 +1718,13 @@ export function DetailScreenPage({
                         style={{ gridTemplateColumns: FIELD_COLS }}
                       >
                         <FieldHead>Description</FieldHead>
-                        <FieldHead>Previous Year</FieldHead>
-                        <FieldHead>This Year (Proposed)</FieldHead>
+                        <FieldHead>Current</FieldHead>
+                        <FieldHead>Proposed</FieldHead>
                         <FieldHead right>Diff</FieldHead>
-
-                        {/* Base Pay */}
-                        <FieldRow
-                          label="Base Pay"
-                          prev={<ReadOnlyInput value={dashPrev(last?.basePay)} />}
-                        >
-                          <ReadOnlyInput value={inr(employee.currentAnnualBasePay)} />
-                        </FieldRow>
 
                         {/* New Base Pay + hike inputs */}
                         <FieldRow
-                          label="New Base Pay"
+                          label="Base Pay"
                           prev={
                             <>
                               <div style={{ width: "62%", minWidth: 110 }}>
@@ -1949,7 +1886,7 @@ export function DetailScreenPage({
                             {payErr.pb ||
                               (pbLow
                                 ? pbLowMsg
-                                : `Preloaded · ${fmt(payFloors.pbFloor)} is PB to be Paid`)}
+                                : `PB to be Paid ${fmt(payFloors.pbFloor)}${payFloors.pbMonth ? ` · ${payFloors.pbMonth}` : ""} · Target PB allocated ${fmt(payFloors.pbTarget)}`)}
                           </span>
                         </FieldRow>
 
@@ -2007,7 +1944,7 @@ export function DetailScreenPage({
                             {payErr.rb ||
                               (rbLow
                                 ? rbLowMsg
-                                : `Preloaded · ${fmt(payFloors.rbFloor)} is RB to be Paid`)}
+                                : `RB to be Paid ${fmt(payFloors.rbFloor)}${payFloors.rbMonth ? ` · ${payFloors.rbMonth}` : ""}`)}
                           </span>
                         </FieldRow>
 
@@ -2192,260 +2129,22 @@ export function DetailScreenPage({
               </div>
             </section>
 
-            {/* FEEDBACK */}
+            {/* PANEL (was "Feedback") */}
             {cardOpen && (
-            <aside className="ds-side" aria-label="Feedback">
-              <div className="ds-card">
-                {cardOpen ? (
-                  <>
-                    <div
-                      className="flex shrink-0 items-center justify-between gap-2 px-3 py-2"
-                      style={{ background: NAVY, color: "#fff" }}
-                    >
-                      <span className="flex-1 text-center text-[14px] font-extrabold">
-                        Feedback
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setFeedbackWidth((w) => Math.max(240, w - 40))
-                          }
-                          aria-label="Decrease feedback panel width"
-                          className="h-[28px] w-[28px] rounded border font-bold"
-                          style={{
-                            borderColor: "#4A6580",
-                            color: "#fff",
-                            background: "transparent",
-                          }}
-                        >
-                          −
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setFeedbackWidth((w) => Math.min(620, w + 40))
-                          }
-                          aria-label="Increase feedback panel width"
-                          className="h-[28px] w-[28px] rounded border font-bold"
-                          style={{
-                            borderColor: "#4A6580",
-                            color: "#fff",
-                            background: "transparent",
-                          }}
-                        >
-                          +
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setCardOpen(false)}
-                        aria-label="Close feedback"
-                        className="h-[28px] w-[34px] rounded border"
-                        style={{
-                          borderColor: "#4A6580",
-                          color: "#fff",
-                          background: "transparent",
-                        }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-
-                    <div
-                      className="mb-2 flex shrink-0"
-                      style={{ background: "#FAFAFB", borderBottom: "1px solid #E5E7EB" }}
-                    >
-                      {[
-                        ["manager", "Manager"],
-                        ["client", "Client"],
-                        ["other", "Other"],
-                        ["metrics", "Metrics"],
-                      ].map(([k, l]) => (
-                        <button
-                          key={k}
-                          type="button"
-                          onClick={() => setFbTab(k)}
-                          className="flex flex-1 items-center justify-center gap-1.5 py-[10px] text-[13px]"
-                          style={{
-                            borderBottom: `2px solid ${fbTab === k ? "#2F6FED" : "transparent"}`,
-                            background: fbTab === k ? "#E8F0FE" : "transparent",
-                            color: fbTab === k ? "#1D4FA8" : "#6B7280",
-                            fontWeight: fbTab === k ? 800 : 600,
-                          }}
-                        >
-                          <span
-                            className="inline-block size-2 shrink-0 rounded-full"
-                            style={{ background: "#2F6FED" }}
-                          />
-                          {l}
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="ds-scroll flex-1 px-4 pb-3">
-                      {fbTab === "metrics" ? (
-                        <DetailMetricsTab
-                          employee={employee}
-                          rows={rows}
-                          history={priorCycles}
-                          historyLoading={!!historyState?.loading}
-                          feedbackItems={feedbackData.items}
-                          currentCycleName={currentCycleName}
-                          live={{
-                            hikePct: baseNow ? ((liveBase - baseNow) / baseNow) * 100 : null,
-                            // Same PB / RB figures as the current-cycle row of the
-                            // Employee History panel below.
-                            pb: liveHist ? liveHist.pbTotal : livePB,
-                            rb: liveHist ? liveHist.rb : liveRB,
-                          }}
-                        />
-                      ) : feedbackEntries.length ? (
-                        <>
-                          {feedbackEntries.map((t) => (
-                            <div key={t.key} className="mb-3 flex gap-2.5">
-                              <span
-                                className="mt-1.5 inline-block h-[11px] w-[11px] shrink-0 rounded-full border-2"
-                                style={{
-                                  borderColor: t.current ? LTEAL : "#C4CED6",
-                                  background: t.current ? LTEAL : "#fff",
-                                }}
-                              />
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <b className="text-[14px]" style={{ color: INK }}>
-                                    {t.cycle}
-                                  </b>
-                                  {t.current ? (
-                                    <span
-                                      className="rounded px-2 py-0.5 text-[11px] font-semibold"
-                                      style={{ background: SOFT, color: INK }}
-                                    >
-                                      This cycle
-                                    </span>
-                                  ) : null}
-                                </div>
-                                {t.title ? (
-                                  <div style={{ color: MUTED }}>{t.title}</div>
-                                ) : null}
-                                {t.sub ? (
-                                  <div className="text-[11.5px]" style={{ color: MUTED }}>
-                                    {t.sub}
-                                  </div>
-                                ) : null}
-                                <div className="mt-1 flex flex-wrap gap-1.5">
-                                  {t.chips.map((chip) => (
-                                    <span
-                                      key={chip.label}
-                                      className="rounded px-2 py-0.5 text-[11.5px]"
-                                      style={{ background: SOFT, color: INK }}
-                                    >
-                                      {chip.label} <b>{chip.value}</b>
-                                    </span>
-                                  ))}
-                                  {t.promo && t.promo !== "—" ? (
-                                    <span
-                                      className="rounded px-2 py-0.5 text-[11.5px]"
-                                      style={{ background: SOFT, color: INK }}
-                                    >
-                                      Eligible for promotion: {t.promo}
-                                    </span>
-                                  ) : null}
-                                </div>
-                                {t.text ? (
-                                  <div className="mt-1" style={{ color: "#3E4C59" }}>
-                                    {t.text}
-                                  </div>
-                                ) : null}
-                              </div>
-                            </div>
-                          ))}
-                        </>
-                      ) : fbTab !== "manager" && feedbackData.items.length ? (
-                        <div className="mt-1" style={{ color: MUTED }}>
-                          No {fbTab === "client" ? "client" : "other"} feedback recorded.
-                        </div>
-                      ) : (
-                        <>
-                      {timeline.map((t) => (
-                        <div key={t.year} className="mb-3 flex gap-2.5">
-                          <span
-                            className="mt-1.5 inline-block h-[11px] w-[11px] shrink-0 rounded-full border-2"
-                            style={{
-                              borderColor: t.current ? LTEAL : "#C4CED6",
-                              background: t.current ? LTEAL : "#fff",
-                            }}
-                          />
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <b className="text-[14px]" style={{ color: INK }}>
-                                {t.year}
-                              </b>
-                              {t.current ? (
-                                <span
-                                  className="rounded px-2 py-0.5 text-[11px] font-semibold"
-                                  style={{ background: SOFT, color: INK }}
-                                >
-                                  This cycle
-                                </span>
-                              ) : null}
-                            </div>
-                            <div style={{ color: MUTED }}>{t.title}</div>
-                            <div className="mt-1 flex flex-wrap gap-1.5">
-                              <span
-                                className="rounded px-2 py-0.5 text-[11.5px]"
-                                style={{ background: SOFT, color: INK }}
-                              >
-                                {fbTab === "manager"
-                                  ? "Manager"
-                                  : fbTab === "client"
-                                    ? "Client"
-                                    : "Other"}{" "}
-                                rating{" "}
-                                <b>{fbTab === "manager" ? t.rating : "—"}</b>
-                                {t.current &&
-                                fbTab === "manager" &&
-                                t.rating !== "—"
-                                  ? " / 5"
-                                  : ""}
-                              </span>
-                              {t.promo ? (
-                                <span
-                                  className="rounded px-2 py-0.5 text-[11.5px]"
-                                  style={{ background: SOFT, color: INK }}
-                                >
-                                  Eligible for promotion: {t.promo}
-                                </span>
-                              ) : null}
-                            </div>
-                            {t.note ? (
-                              <div
-                                className="mt-1"
-                                style={{ color: "#3E4C59" }}
-                              >
-                                {t.note}
-                              </div>
-                            ) : fbTab === "manager" && t.rating !== "—" ? (
-                              <div className="mt-1" style={{ color: MUTED }}>
-                                {t.rating} / 5
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      ))}
-                      <div
-                        className="mt-2 text-[11.5px]"
-                        style={{ color: MUTED }}
-                      >
-                        Client rating and past RR % are not in the sheet yet, so
-                        they show “—”.
-                      </div>
-                        </>
-                      )}
-                    </div>
-                  </>
-                ) : null}
-              </div>
+            <aside className="ds-side" aria-label="Panel">
+              <DetailSidePanel
+                employee={employee}
+                rows={rows}
+                priorCycles={priorCycles}
+                feedbackItems={feedbackData.items}
+                currentCycleName={currentCycleName}
+                live={{ pb: livePB, rb: liveRB }}
+                budget={{ allocated: budgetAllocated, used: budgetConsumed }}
+                onViewBudget={handleViewBudget}
+                width={feedbackWidth}
+                onWidthChange={setFeedbackWidth}
+                onClose={() => setCardOpen(false)}
+              />
             </aside>
             )}
 
@@ -2456,9 +2155,9 @@ export function DetailScreenPage({
                   type="button"
                   className="ds-tab"
                   onClick={() => setCardOpen(true)}
-                  aria-label="Open feedback"
+                  aria-label="Open panel"
                 >
-                  Feedback ‹
+                  Panel ‹
                 </button>
               </aside>
             )}
