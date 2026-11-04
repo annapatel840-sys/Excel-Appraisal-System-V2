@@ -1390,12 +1390,11 @@ export function TechEdBudgetDistribution() {
           .some((alias) => ownerMatches(alias, raw)),
       );
       const assignment = String(linked?.assignment || raw).trim();
+      // Team Size is the current generated Appraisal_Sheet roster, not
+      // the eligible payroll/budget subset. Inactive or Not Eligible employees
+      // remain in the team count while they are still on this cycle's sheet.
       if (
-        !(
-          Boolean(techOwnerKey) &&
-          ownerKey(assignment) === techOwnerKey &&
-          isActiveAndEligible(employee)
-        )
+        !(Boolean(techOwnerKey) && ownerKey(assignment) === techOwnerKey)
       )
         return false;
       if (!isCompManagerView) return true;
@@ -1477,10 +1476,11 @@ export function TechEdBudgetDistribution() {
   const allotted = isCompManagerView
     ? 0
     : cmNodes.reduce((s, n) => s + n.updated, 0);
-  const used = assignedTeam.reduce(
-    (sum, employee) => sum + employeeUtilized(employee),
-    0,
-  );
+  // Budget utilization still includes only active, eligible employees;
+  // Team Size above intentionally counts the full current Appraisal_Sheet team.
+  const used = assignedTeam
+    .filter(isActiveAndEligible)
+    .reduce((sum, employee) => sum + employeeUtilized(employee), 0);
   const usedPct = myUpdated ? (used / myUpdated) * 100 : 0;
   const over = usedPct > 100;
 
