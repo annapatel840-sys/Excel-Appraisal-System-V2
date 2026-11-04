@@ -28,16 +28,31 @@ const ROSTER_WRITE_BUDGET_MS = 18000;
 // target criteria, ...) are not checked - the grid's value for them is not the
 // stored one, so every save would look like a conflict.
 const CONFLICT_COLUMNS = {
-  hike_amount: "number", hike_pct: "number", allocated_pb_amount: "number",
-  pb_installment: "number", new_pb_to_be_offered: "number", new_pb_installment: "number",
-  new_rb: "number", target_pb_next_year: "number",
-  eligible_for_promotion: "text", new_title: "text", at_risk: "text", comp_manager_remarks: "text",
+  hike_amount: "number",
+  hike_pct: "number",
+  allocated_pb_amount: "number",
+  pb_installment: "number",
+  new_pb_to_be_offered: "number",
+  new_pb_installment: "number",
+  new_rb: "number",
+  target_pb_next_year: "number",
+  eligible_for_promotion: "text",
+  new_title: "text",
+  at_risk: "text",
+  comp_manager_remarks: "text",
 };
 const CONFLICT_LABELS = {
-  hike_amount: "Hike Amount", hike_pct: "Hike %", allocated_pb_amount: "Allocated PB Amount",
-  pb_installment: "PB Installment", new_pb_to_be_offered: "New PB to be Offered",
-  new_pb_installment: "New PB Installment", new_rb: "New RB", target_pb_next_year: "Target PB for Next Year",
-  eligible_for_promotion: "Eligible for Promotion", new_title: "New Title", at_risk: "At Risk",
+  hike_amount: "Hike Amount",
+  hike_pct: "Hike %",
+  allocated_pb_amount: "Allocated PB Amount",
+  pb_installment: "PB Installment",
+  new_pb_to_be_offered: "New PB to be Offered",
+  new_pb_installment: "New PB Installment",
+  new_rb: "New RB",
+  target_pb_next_year: "Target PB for Next Year",
+  eligible_for_promotion: "Eligible for Promotion",
+  new_title: "New Title",
+  at_risk: "At Risk",
   comp_manager_remarks: "Comp Manager Remarks",
 };
 
@@ -53,19 +68,31 @@ function findSaveConflicts(storedRow, expected, columns) {
   const asText = function (value) {
     return value === null || value === undefined ? "" : String(value).trim();
   };
-  return columns.filter(function (column) {
-    const kind = CONFLICT_COLUMNS[column];
-    if (!kind || !Object.prototype.hasOwnProperty.call(expected, column)) return false;
-    if (kind === "number") {
-      const stored = asNumber(asText(storedRow[column]) === "" ? 0 : storedRow[column]);
-      const shown = asNumber(asText(expected[column]) === "" ? 0 : expected[column]);
-      if (Number.isNaN(stored) || Number.isNaN(shown)) return asText(storedRow[column]) !== asText(expected[column]);
-      return Math.abs(stored - shown) > 0.005;
-    }
-    return asText(storedRow[column]) !== asText(expected[column]);
-  }).map(function (column) {
-    return { column: column, expected: expected[column], current: asText(storedRow[column]) };
-  });
+  return columns
+    .filter(function (column) {
+      const kind = CONFLICT_COLUMNS[column];
+      if (!kind || !Object.prototype.hasOwnProperty.call(expected, column))
+        return false;
+      if (kind === "number") {
+        const stored = asNumber(
+          asText(storedRow[column]) === "" ? 0 : storedRow[column],
+        );
+        const shown = asNumber(
+          asText(expected[column]) === "" ? 0 : expected[column],
+        );
+        if (Number.isNaN(stored) || Number.isNaN(shown))
+          return asText(storedRow[column]) !== asText(expected[column]);
+        return Math.abs(stored - shown) > 0.005;
+      }
+      return asText(storedRow[column]) !== asText(expected[column]);
+    })
+    .map(function (column) {
+      return {
+        column: column,
+        expected: expected[column],
+        current: asText(storedRow[column]),
+      };
+    });
 }
 
 const EMPLOYEES_TABLE_ID = "74008000000039094";
@@ -113,7 +140,10 @@ const GZIP_MIN_BYTES = 32 * 1024;
 
 function sendJson(res, statusCode, body) {
   const req = res.req;
-  const wantsGzip = req && req.query && req.query.gz === "1" &&
+  const wantsGzip =
+    req &&
+    req.query &&
+    req.query.gz === "1" &&
     /\bgzip\b/i.test(String(req.headers["accept-encoding"] || ""));
   if (wantsGzip) {
     const text = JSON.stringify(body);
@@ -242,7 +272,15 @@ function requireAnyScreen(a, keys, level) {
 // Tech-ED can save every row they can see even without Delegation rows.
 function requireInScope(a, empIds, owned) {
   const outside = empIds.filter(function (empId) {
-    if (owned && owned.has(String(empId || "").trim().toLowerCase())) return false;
+    if (
+      owned &&
+      owned.has(
+        String(empId || "")
+          .trim()
+          .toLowerCase(),
+      )
+    )
+      return false;
     return !access.inScope(a, empId);
   });
 
@@ -435,12 +473,20 @@ function getCurrentUserMatchValues(user) {
 // the caller then reads the whole table.
 async function zcqlRowsByEmpId(app, tableName, empId) {
   const id = String(empId || "").trim();
-  if (!/^[A-Za-z0-9 _.-]+$/.test(id) || !app || typeof app.zcql !== "function") return null;
+  if (!/^[A-Za-z0-9 _.-]+$/.test(id) || !app || typeof app.zcql !== "function")
+    return null;
   try {
     const result = await withDataStoreRetry(
-      () => app.zcql().executeZCQLQuery(
-        "SELECT * FROM " + tableName + " WHERE emp_id = '" + id + "' ORDER BY ROWID ASC LIMIT 300",
-      ),
+      () =>
+        app
+          .zcql()
+          .executeZCQLQuery(
+            "SELECT * FROM " +
+              tableName +
+              " WHERE emp_id = '" +
+              id +
+              "' ORDER BY ROWID ASC LIMIT 300",
+          ),
       tableName + " rows of " + id,
     );
     const rows = (result || []).map(function (item) {
@@ -448,17 +494,36 @@ async function zcqlRowsByEmpId(app, tableName, empId) {
     });
     return rows.length < 300 ? rows : null;
   } catch (error) {
-    console.warn("ZCQL lookup of " + tableName + " for " + id + " failed; reading the table:", error?.message || error);
+    console.warn(
+      "ZCQL lookup of " +
+        tableName +
+        " for " +
+        id +
+        " failed; reading the table:",
+      error?.message || error,
+    );
     return null;
   }
 }
 
 async function activeCycleRowId(datastore) {
-  const cycles = await readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID));
+  const cycles = await readAllDataStoreRows(
+    datastore.table(APPRAISAL_CYCLE_TABLE_ID),
+  );
   const active = cycles.find(function (cycle) {
-    const status = String(cycle?.status ?? cycle?.cycle_status ?? "").trim().toLowerCase();
-    const archived = ["true", "1", "yes"].includes(String(cycle?.archived ?? "").trim().toLowerCase());
-    const hidden = ["true", "1", "yes"].includes(String(cycle?.hidden ?? "").trim().toLowerCase());
+    const status = String(cycle?.status ?? cycle?.cycle_status ?? "")
+      .trim()
+      .toLowerCase();
+    const archived = ["true", "1", "yes"].includes(
+      String(cycle?.archived ?? "")
+        .trim()
+        .toLowerCase(),
+    );
+    const hidden = ["true", "1", "yes"].includes(
+      String(cycle?.hidden ?? "")
+        .trim()
+        .toLowerCase(),
+    );
     return status === "active" && !archived && !hidden;
   });
   return active ? String(active.ROWID ?? active.rowid ?? "").trim() : "";
@@ -469,12 +534,23 @@ async function activeCycleRowId(datastore) {
 function masterRowIdFor(value, masterRows) {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  const rowIdOf = function (row) { return String(row.ROWID || row.rowid || "").trim(); };
-  const exact = (masterRows || []).find(function (row) { return rowIdOf(row) === raw; });
+  const rowIdOf = function (row) {
+    return String(row.ROWID || row.rowid || "").trim();
+  };
+  const exact = (masterRows || []).find(function (row) {
+    return rowIdOf(row) === raw;
+  });
   if (exact) return rowIdOf(exact);
-  const empId = raw.split(/\s+-\s+/)[0].trim().toLowerCase();
+  const empId = raw
+    .split(/\s+-\s+/)[0]
+    .trim()
+    .toLowerCase();
   const byEmpId = (masterRows || []).find(function (row) {
-    return String(row.emp_id || "").trim().toLowerCase() === empId;
+    return (
+      String(row.emp_id || "")
+        .trim()
+        .toLowerCase() === empId
+    );
   });
   return byEmpId ? rowIdOf(byEmpId) : "";
 }
@@ -486,16 +562,27 @@ function masterRowIdFor(value, masterRows) {
 // be any row.
 async function techEdOwnedEmpIds(datastore, a, onlyEmpIds, app) {
   const owned = new Set();
-  if (!a || !a.enforced || (a.scope && a.scope.all) || a.role !== "techEd") return owned;
+  if (!a || !a.enforced || (a.scope && a.scope.all) || a.role !== "techEd")
+    return owned;
   const readSheetRows = async function () {
     if (!onlyEmpIds || !onlyEmpIds.length) return getAllEmployees(datastore);
     const found = [];
     for (const empId of onlyEmpIds) {
       const rows = await zcqlRowsByEmpId(app, "Appraisal_Sheet", empId);
       if (!rows) {
-        const wanted = new Set(onlyEmpIds.map(function (id) { return String(id || "").trim().toLowerCase(); }));
+        const wanted = new Set(
+          onlyEmpIds.map(function (id) {
+            return String(id || "")
+              .trim()
+              .toLowerCase();
+          }),
+        );
         return (await getAllEmployees(datastore)).filter(function (row) {
-          return wanted.has(String(row.emp_id || "").trim().toLowerCase());
+          return wanted.has(
+            String(row.emp_id || "")
+              .trim()
+              .toLowerCase(),
+          );
         });
       }
       found.push(...rows.map(normalizeEmployeeResponse));
@@ -508,11 +595,17 @@ async function techEdOwnedEmpIds(datastore, a, onlyEmpIds, app) {
   ]);
   const masterMap = buildEmployeeMasterMap(masterRows);
   const myRowId = currentUserMasterRowId(a.user, masterRows);
-  mergeEmployeeMasterIntoAppraisal(appraisalRows, masterMap).forEach(function (employee) {
-    if (employeeBelongsToCurrentUser(employee, a.user, myRowId)) {
-      owned.add(String(employee.emp_id || "").trim().toLowerCase());
-    }
-  });
+  mergeEmployeeMasterIntoAppraisal(appraisalRows, masterMap).forEach(
+    function (employee) {
+      if (employeeBelongsToCurrentUser(employee, a.user, myRowId)) {
+        owned.add(
+          String(employee.emp_id || "")
+            .trim()
+            .toLowerCase(),
+        );
+      }
+    },
+  );
   return owned;
 }
 
@@ -737,7 +830,10 @@ async function getAllEmployees(datastore) {
       options.nextToken = nextToken;
     }
 
-    const result = await withDataStoreRetry(() => table.getPagedRows(options), "Appraisal_Sheet page");
+    const result = await withDataStoreRetry(
+      () => table.getPagedRows(options),
+      "Appraisal_Sheet page",
+    );
 
     const pageRows = Array.isArray(result.data) ? result.data : [];
 
@@ -778,7 +874,10 @@ async function getAllEmployeeMaster(datastore) {
       options.nextToken = nextToken;
     }
 
-    const result = await withDataStoreRetry(() => table.getPagedRows(options), "Employee_Master page");
+    const result = await withDataStoreRetry(
+      () => table.getPagedRows(options),
+      "Employee_Master page",
+    );
 
     const pageRows = Array.isArray(result.data) ? result.data : [];
 
@@ -825,17 +924,24 @@ function buildEmployeeMasterMap(masterRows) {
    object, so join the two tables here instead of duplicating columns.
    ============================================================ */
 
-
 // Catalyst Data Store COMPONENT concurrency is shared across functions. Keep
 // reads bounded and retry only transient throttling/timeouts; never retry
 // validation, permission, or schema errors.
 function isTransientDataStoreError(error) {
-  const status = Number(error && (error.statusCode || error.status || error.status_code));
-  const code = String(error && error.code || "").toUpperCase();
-  const message = String(error && error.message || "").toLowerCase();
-  return [408, 429, 500, 502, 503, 504].includes(status) ||
-    ["TOO_MANY_REQUESTS", "COMPONENT", "ETIMEDOUT", "ECONNRESET"].includes(code) ||
-    /concurrency limit|too many requests|temporarily unavailable|timed out/.test(message);
+  const status = Number(
+    error && (error.statusCode || error.status || error.status_code),
+  );
+  const code = String((error && error.code) || "").toUpperCase();
+  const message = String((error && error.message) || "").toLowerCase();
+  return (
+    [408, 429, 500, 502, 503, 504].includes(status) ||
+    ["TOO_MANY_REQUESTS", "COMPONENT", "ETIMEDOUT", "ECONNRESET"].includes(
+      code,
+    ) ||
+    /concurrency limit|too many requests|temporarily unavailable|timed out/.test(
+      message,
+    )
+  );
 }
 
 async function withDataStoreRetry(operation, label) {
@@ -844,8 +950,13 @@ async function withDataStoreRetry(operation, label) {
       return await operation();
     } catch (error) {
       if (attempt >= 3 || !isTransientDataStoreError(error)) throw error;
-      const delay = 300 * (2 ** attempt) + Math.floor(Math.random() * 200);
-      console.warn("Retrying transient Catalyst Data Store operation:", label, "attempt", attempt + 1);
+      const delay = 300 * 2 ** attempt + Math.floor(Math.random() * 200);
+      console.warn(
+        "Retrying transient Catalyst Data Store operation:",
+        label,
+        "attempt",
+        attempt + 1,
+      );
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
   }
@@ -858,16 +969,23 @@ async function readDataStoreRowsInBatches(readers, concurrency = 2) {
   const output = {};
   for (let offset = 0; offset < readers.length; offset += concurrency) {
     const batch = readers.slice(offset, offset + concurrency);
-    const results = await Promise.all(batch.map(async (reader) => {
-      try {
-        return [reader.key, await reader.read()];
-      } catch (error) {
-        if (!reader.optional) throw error;
-        if (typeof reader.onError === "function") reader.onError(error);
-        return [reader.key, reader.fallback === undefined ? [] : reader.fallback];
-      }
-    }));
-    results.forEach(([key, rows]) => { output[key] = rows; });
+    const results = await Promise.all(
+      batch.map(async (reader) => {
+        try {
+          return [reader.key, await reader.read()];
+        } catch (error) {
+          if (!reader.optional) throw error;
+          if (typeof reader.onError === "function") reader.onError(error);
+          return [
+            reader.key,
+            reader.fallback === undefined ? [] : reader.fallback,
+          ];
+        }
+      }),
+    );
+    results.forEach(([key, rows]) => {
+      output[key] = rows;
+    });
   }
   return output;
 }
@@ -880,7 +998,10 @@ async function readDataStoreRowsInBatches(readers, concurrency = 2) {
 // sum of several waves. Keep this small: Catalyst shares a COMPONENT concurrency
 // limit across functions.
 const ROSTER_READ_CONCURRENCY = 4;
-async function readDataStoreRowsPooled(readers, concurrency = ROSTER_READ_CONCURRENCY) {
+async function readDataStoreRowsPooled(
+  readers,
+  concurrency = ROSTER_READ_CONCURRENCY,
+) {
   const output = {};
   let nextIndex = 0;
   let failed = false;
@@ -896,12 +1017,16 @@ async function readDataStoreRowsPooled(readers, concurrency = ROSTER_READ_CONCUR
           throw error;
         }
         if (typeof reader.onError === "function") reader.onError(error);
-        output[reader.key] = reader.fallback === undefined ? [] : reader.fallback;
+        output[reader.key] =
+          reader.fallback === undefined ? [] : reader.fallback;
       }
     }
   };
   await Promise.all(
-    Array.from({ length: Math.max(1, Math.min(concurrency, readers.length)) }, worker),
+    Array.from(
+      { length: Math.max(1, Math.min(concurrency, readers.length)) },
+      worker,
+    ),
   );
   return output;
 }
@@ -912,7 +1037,10 @@ async function readAllDataStoreRows(table) {
   for (let guard = 0; guard < 10000; guard += 1) {
     const options = { maxRows: DATASTORE_PAGE_SIZE };
     if (nextToken) options.nextToken = nextToken;
-    const page = await withDataStoreRetry(() => table.getPagedRows(options), "Data Store page");
+    const page = await withDataStoreRetry(
+      () => table.getPagedRows(options),
+      "Data Store page",
+    );
     rows.push(...(Array.isArray(page?.data) ? page.data : []));
     if (page?.more_records !== true || !page?.next_token) break;
     nextToken = page.next_token;
@@ -941,7 +1069,12 @@ async function tableFingerprint(zcql, tableName) {
       tableName + " row count",
     ),
     withDataStoreRetry(
-      () => zcql.executeZCQLQuery("SELECT ROWID, MODIFIEDTIME FROM " + tableName + " ORDER BY MODIFIEDTIME DESC LIMIT 1"),
+      () =>
+        zcql.executeZCQLQuery(
+          "SELECT ROWID, MODIFIEDTIME FROM " +
+            tableName +
+            " ORDER BY MODIFIEDTIME DESC LIMIT 1",
+        ),
       tableName + " latest change",
     ),
   ]);
@@ -949,7 +1082,13 @@ async function tableFingerprint(zcql, tableName) {
 }
 
 // Wraps a full-table read: same rows as read(), reused while the table is unchanged.
-function cachedTableRead(zcql, tableId, tableName, read, maxAgeMs = TABLE_READ_CACHE_MAX_AGE_MS) {
+function cachedTableRead(
+  zcql,
+  tableId,
+  tableName,
+  read,
+  maxAgeMs = TABLE_READ_CACHE_MAX_AGE_MS,
+) {
   return async function () {
     let fingerprint = null;
     if (zcql) {
@@ -960,15 +1099,23 @@ function cachedTableRead(zcql, tableId, tableName, read, maxAgeMs = TABLE_READ_C
       }
     }
     const hit = TABLE_READ_CACHE.get(tableId);
-    if (fingerprint && hit && hit.fingerprint === fingerprint &&
-        Date.now() - hit.at < maxAgeMs) {
-      return hit.rows.map(function (row) { return { ...row }; });
+    if (
+      fingerprint &&
+      hit &&
+      hit.fingerprint === fingerprint &&
+      Date.now() - hit.at < maxAgeMs
+    ) {
+      return hit.rows.map(function (row) {
+        return { ...row };
+      });
     }
     const rows = await read();
     if (fingerprint) {
       TABLE_READ_CACHE.set(tableId, {
         fingerprint: fingerprint,
-        rows: rows.map(function (row) { return { ...row }; }),
+        rows: rows.map(function (row) {
+          return { ...row };
+        }),
         at: Date.now(),
       });
     } else {
@@ -1010,7 +1157,10 @@ function makeLimiter(limit) {
     if (next) next();
   };
   return async function (task) {
-    if (active >= limit) await new Promise(function (resolve) { waiting.push(resolve); });
+    if (active >= limit)
+      await new Promise(function (resolve) {
+        waiting.push(resolve);
+      });
     active += 1;
     try {
       return await task();
@@ -1022,29 +1172,51 @@ function makeLimiter(limit) {
 
 function canonicalRowText(row) {
   const out = {};
-  Object.keys(row || {}).sort().forEach(function (key) {
-    const value = row[key];
-    out[key] = value === null || value === undefined ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
-  });
+  Object.keys(row || {})
+    .sort()
+    .forEach(function (key) {
+      const value = row[key];
+      out[key] =
+        value === null || value === undefined
+          ? ""
+          : typeof value === "object"
+            ? JSON.stringify(value)
+            : String(value);
+    });
   return JSON.stringify(out);
 }
 
-async function readAllRowsParallel(zcql, table, tableName, sequentialRead, limiter, mapRow) {
-  if (!zcql || typeof zcql.executeZCQLQuery !== "function") return sequentialRead();
+async function readAllRowsParallel(
+  zcql,
+  table,
+  tableName,
+  sequentialRead,
+  limiter,
+  mapRow,
+) {
+  if (!zcql || typeof zcql.executeZCQLQuery !== "function")
+    return sequentialRead();
   const verdict = ZCQL_READ_VERDICT.get(tableName);
-  if (verdict && !verdict.ok && Date.now() - verdict.at < ZCQL_BAD_RETRY_MS) return sequentialRead();
+  if (verdict && !verdict.ok && Date.now() - verdict.at < ZCQL_BAD_RETRY_MS)
+    return sequentialRead();
   try {
     const countResult = await withDataStoreRetry(
       () => zcql.executeZCQLQuery("SELECT COUNT(ROWID) FROM " + tableName),
       tableName + " row count",
     );
-    const countCell = Object.values(Object.values((Array.isArray(countResult) ? countResult[0] : null) || {})[0] || {})[0];
+    const countCell = Object.values(
+      Object.values(
+        (Array.isArray(countResult) ? countResult[0] : null) || {},
+      )[0] || {},
+    )[0];
     const total = Number(countCell);
     // A small table is quicker to read in one or two pages.
-    if (!Number.isFinite(total) || total <= 2 * DATASTORE_PAGE_SIZE) return sequentialRead();
+    if (!Number.isFinite(total) || total <= 2 * DATASTORE_PAGE_SIZE)
+      return sequentialRead();
 
     const unwrap = function (item) {
-      if (item && item[tableName] && typeof item[tableName] === "object") return item[tableName];
+      if (item && item[tableName] && typeof item[tableName] === "object")
+        return item[tableName];
       const first = item && Object.values(item)[0];
       return first && typeof first === "object" ? first : item;
     };
@@ -1054,64 +1226,140 @@ async function readAllRowsParallel(zcql, table, tableName, sequentialRead, limit
       const expected = Math.min(ZCQL_CHUNK_ROWS, total - offset);
       return limiter(async function () {
         const result = await withDataStoreRetry(
-          () => zcql.executeZCQLQuery(
-            "SELECT * FROM " + tableName + " ORDER BY ROWID LIMIT " + offset + ", " + ZCQL_CHUNK_ROWS,
-          ),
+          () =>
+            zcql.executeZCQLQuery(
+              "SELECT * FROM " +
+                tableName +
+                " ORDER BY ROWID LIMIT " +
+                offset +
+                ", " +
+                ZCQL_CHUNK_ROWS,
+            ),
           tableName + " parallel chunk",
         );
         const rows = (Array.isArray(result) ? result : []).map(unwrap);
-        if (rows.length !== expected) throw new Error(tableName + " chunk " + index + " returned " + rows.length + " of " + expected + " rows");
+        if (rows.length !== expected)
+          throw new Error(
+            tableName +
+              " chunk " +
+              index +
+              " returned " +
+              rows.length +
+              " of " +
+              expected +
+              " rows",
+          );
         return rows;
       });
     };
 
     // Identity check on the first chunk before the remaining chunks are spent.
     const [sample, firstChunk] = await Promise.all([
-      withDataStoreRetry(() => table.getPagedRows({ maxRows: DATASTORE_PAGE_SIZE }), tableName + " sample page"),
+      withDataStoreRetry(
+        () => table.getPagedRows({ maxRows: DATASTORE_PAGE_SIZE }),
+        tableName + " sample page",
+      ),
       readChunk(0),
     ]);
     const sampleRows = Array.isArray(sample && sample.data) ? sample.data : [];
-    const sameAsPaged = sampleRows.length > 0 && sampleRows.every(function (row, index) {
-      return firstChunk[index] && canonicalRowText(row) === canonicalRowText(firstChunk[index]);
-    });
+    const sameAsPaged =
+      sampleRows.length > 0 &&
+      sampleRows.every(function (row, index) {
+        return (
+          firstChunk[index] &&
+          canonicalRowText(row) === canonicalRowText(firstChunk[index])
+        );
+      });
     if (!sameAsPaged) {
       ZCQL_READ_VERDICT.set(tableName, { ok: false, at: Date.now() });
-      console.warn("[employeesapi] parallel read of " + tableName + " differs from the paged read; using the paged read.");
+      console.warn(
+        "[employeesapi] parallel read of " +
+          tableName +
+          " differs from the paged read; using the paged read.",
+      );
       return sequentialRead();
     }
     const rest = await Promise.all(
-      Array.from({ length: chunkCount - 1 }, function (_, index) { return readChunk(index + 1); }),
+      Array.from({ length: chunkCount - 1 }, function (_, index) {
+        return readChunk(index + 1);
+      }),
     );
     const rows = [firstChunk, ...rest].flat();
-    if (rows.length !== total) throw new Error(tableName + " parallel read returned " + rows.length + " of " + total + " rows");
+    if (rows.length !== total)
+      throw new Error(
+        tableName +
+          " parallel read returned " +
+          rows.length +
+          " of " +
+          total +
+          " rows",
+      );
     ZCQL_READ_VERDICT.set(tableName, { ok: true, at: Date.now() });
     return mapRow ? rows.map(mapRow) : rows;
   } catch (error) {
-    console.warn("[employeesapi] parallel read of " + tableName + " failed; using the paged read:", error && error.message || error);
+    console.warn(
+      "[employeesapi] parallel read of " +
+        tableName +
+        " failed; using the paged read:",
+      (error && error.message) || error,
+    );
     return sequentialRead();
   }
 }
 
 function historyReference(value) {
   if (value === null || value === undefined) return "";
-  if (typeof value === "object") return String(value.ROWID ?? value.rowid ?? value.id ?? value.ID ?? value.value ?? value.appraisal_cycle_name ?? value.cycle_name ?? "").trim();
+  if (typeof value === "object")
+    return String(
+      value.ROWID ??
+        value.rowid ??
+        value.id ??
+        value.ID ??
+        value.value ??
+        value.appraisal_cycle_name ??
+        value.cycle_name ??
+        "",
+    ).trim();
   return String(value).trim();
 }
 
 function historyCycleName(cycle) {
-  return String(cycle?.cycle_name ?? cycle?.cycleName ?? cycle?.name ?? cycle?.appraisal_year ?? cycle?.appraisalYear ?? "").trim();
+  return String(
+    cycle?.cycle_name ??
+      cycle?.cycleName ??
+      cycle?.name ??
+      cycle?.appraisal_year ??
+      cycle?.appraisalYear ??
+      "",
+  ).trim();
 }
 
 function historyCycleRank(cycle) {
-  const date = cycle?.start_date ?? cycle?.effective_date ?? cycle?.startDate ?? "";
+  const date =
+    cycle?.start_date ?? cycle?.effective_date ?? cycle?.startDate ?? "";
   if (date) {
     const timestamp = Date.parse(String(date));
     if (Number.isFinite(timestamp)) return timestamp;
   }
   const name = historyCycleName(cycle);
-  const monthYear = name.match(/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s,]*(\d{2,4})\b/i);
+  const monthYear = name.match(
+    /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*[-\s,]*(\d{2,4})\b/i,
+  );
   if (monthYear) {
-    const month = ["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"].indexOf(monthYear[1].slice(0,3).toLowerCase());
+    const month = [
+      "jan",
+      "feb",
+      "mar",
+      "apr",
+      "may",
+      "jun",
+      "jul",
+      "aug",
+      "sep",
+      "oct",
+      "nov",
+      "dec",
+    ].indexOf(monthYear[1].slice(0, 3).toLowerCase());
     let year = Number(monthYear[2]);
     if (year < 100) year += 2000;
     return new Date(year, month, 1).getTime();
@@ -1121,39 +1369,90 @@ function historyCycleRank(cycle) {
 }
 
 function rowEmployeeKey(raw, employeeMasterMap) {
-  const identity = historyReference(raw).split(/\s+-\s+/)[0].trim();
+  const identity = historyReference(raw)
+    .split(/\s+-\s+/)[0]
+    .trim();
   if (!identity) return "";
-  const master = employeeMasterMap.get(identity) || employeeMasterMap.get(identity.toLowerCase());
-  return String(master?.emp_id || identity).trim().toLowerCase();
+  const master =
+    employeeMasterMap.get(identity) ||
+    employeeMasterMap.get(identity.toLowerCase());
+  return String(master?.emp_id || identity)
+    .trim()
+    .toLowerCase();
 }
 
 function ctcFromComponents(row) {
   const fields = [
-    "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay", "base_pay", "basePay",
-    "hike_amount", "hikeAmount", "current_hike_amount",
-    "allocated_pb_amount", "allocatedPBAmount", "allocated_pb", "allocatedPB", "target_pb_allocated_for_may",
-    "new_pb_to_be_offered", "newPBToBeOffered", "performance_bonus", "total_pb",
-    "new_rb", "newRB", "retention_bonus",
+    "current_annual_base_pay",
+    "currentAnnualBasePay",
+    "current_base_pay",
+    "base_pay",
+    "basePay",
+    "hike_amount",
+    "hikeAmount",
+    "current_hike_amount",
+    "allocated_pb_amount",
+    "allocatedPBAmount",
+    "allocated_pb",
+    "allocatedPB",
+    "target_pb_allocated_for_may",
+    "new_pb_to_be_offered",
+    "newPBToBeOffered",
+    "performance_bonus",
+    "total_pb",
+    "new_rb",
+    "newRB",
+    "retention_bonus",
   ];
-  const hasComponents = fields.some((key) => row?.[key] !== undefined && row?.[key] !== null && String(row[key]).trim() !== "");
+  const hasComponents = fields.some(
+    (key) =>
+      row?.[key] !== undefined &&
+      row?.[key] !== null &&
+      String(row[key]).trim() !== "",
+  );
   if (!hasComponents) return null;
   const num = (value) => {
     const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
     return Number.isFinite(parsed) ? parsed : 0;
   };
-  const base = num(row?.current_annual_base_pay ?? row?.currentAnnualBasePay ?? row?.current_base_pay ?? row?.base_pay ?? row?.basePay);
-  const hike = num(row?.hike_amount ?? row?.hikeAmount ?? row?.current_hike_amount);
+  const base = num(
+    row?.current_annual_base_pay ??
+      row?.currentAnnualBasePay ??
+      row?.current_base_pay ??
+      row?.base_pay ??
+      row?.basePay,
+  );
+  const hike = num(
+    row?.hike_amount ?? row?.hikeAmount ?? row?.current_hike_amount,
+  );
   const storedTotalPb = row?.total_pb ?? row?.totalPB;
-  const pb = storedTotalPb !== undefined && storedTotalPb !== null && String(storedTotalPb).trim() !== ""
-    ? num(storedTotalPb)
-    : num(row?.allocated_pb_amount ?? row?.allocatedPBAmount ?? row?.allocated_pb ?? row?.target_pb_allocated_for_may) +
-      num(row?.new_pb_to_be_offered ?? row?.newPBToBeOffered ?? row?.performance_bonus);
+  const pb =
+    storedTotalPb !== undefined &&
+    storedTotalPb !== null &&
+    String(storedTotalPb).trim() !== ""
+      ? num(storedTotalPb)
+      : num(
+          row?.allocated_pb_amount ??
+            row?.allocatedPBAmount ??
+            row?.allocated_pb ??
+            row?.target_pb_allocated_for_may,
+        ) +
+        num(
+          row?.new_pb_to_be_offered ??
+            row?.newPBToBeOffered ??
+            row?.performance_bonus,
+        );
   const retention = num(row?.new_rb ?? row?.newRB ?? row?.retention_bonus);
   return base + hike + pb + retention;
 }
 
 function currentTotalCtc(row) {
-  const stored = row?.total_ctc_with_rewards ?? row?.total_CTC_with_rewards ?? row?.totalCTCWithRewards ?? row?.total_ctc ?? row?.new_ctc;
+  const stored =
+    row?.total_ctc_with_rewards ??
+    row?.total_CTC_with_rewards ??
+    row?.totalCTCWithRewards ??
+    row?.total_ctc ??
+    row?.new_ctc;
   if (stored !== undefined && stored !== null && String(stored).trim() !== "") {
     const parsed = Number(String(stored).replace(/[₹,\s]/g, ""));
     if (Number.isFinite(parsed)) return parsed;
@@ -1162,11 +1461,13 @@ function currentTotalCtc(row) {
   return ctcFromComponents(row) ?? 0;
 }
 
-
 // Data Store datetime text ("YYYY-MM-DD HH:mm:ss", IST). An ISO string is
 // rejected by datetime columns.
 function dataStoreNow(date = new Date()) {
-  return new Date(date.getTime() + 330 * 60 * 1000).toISOString().replace("T", " ").slice(0, 19);
+  return new Date(date.getTime() + 330 * 60 * 1000)
+    .toISOString()
+    .replace("T", " ")
+    .slice(0, 19);
 }
 
 // Employee ID for an assignment value (employee ID, Employee_Master ROWID or
@@ -1175,8 +1476,11 @@ function assignmentEmployeeId(value, employeeMasterMap) {
   const raw = historyReference(value);
   if (!raw) return "";
   const identity = raw.split(/\s+-\s+/)[0].trim();
-  const master = employeeMasterMap.get(raw) || employeeMasterMap.get(raw.toLowerCase()) ||
-    employeeMasterMap.get(identity) || employeeMasterMap.get(identity.toLowerCase());
+  const master =
+    employeeMasterMap.get(raw) ||
+    employeeMasterMap.get(raw.toLowerCase()) ||
+    employeeMasterMap.get(identity) ||
+    employeeMasterMap.get(identity.toLowerCase());
   return String(master?.emp_id || raw).trim();
 }
 
@@ -1185,7 +1489,14 @@ function assignmentEmployeeId(value, employeeMasterMap) {
 // that exist are the saved assignments (changed only by Delegation save,
 // approved requests or the Eligibility "Generate Delegation"), so only their
 // blank Previous columns are filled in.
-async function saveDelegationRoster(datastore, employees, employeeMasterMap, cycleId, records, actor) {
+async function saveDelegationRoster(
+  datastore,
+  employees,
+  employeeMasterMap,
+  cycleId,
+  records,
+  actor,
+) {
   const activeCycleId = String(cycleId || "").trim();
   if (!activeCycleId) return;
   const table = datastore.table(DELEGATION_TABLE_ID);
@@ -1196,33 +1507,56 @@ async function saveDelegationRoster(datastore, employees, employeeMasterMap, cyc
     const key = historyReference(record?.emp_id).toLowerCase();
     if (key && !recordByEmployee.has(key)) recordByEmployee.set(key, record);
   });
-  const text = (value) => String(value ?? "").trim().slice(0, 100);
+  const text = (value) =>
+    String(value ?? "")
+      .trim()
+      .slice(0, 100);
   const inserts = [];
   const updates = [];
   const seen = new Set();
   for (const employee of employees || []) {
-    const empId = String(employee?.emp_id || employee?.employee_id || "").trim();
+    const empId = String(
+      employee?.emp_id || employee?.employee_id || "",
+    ).trim();
     if (!empId) continue;
     const master = employeeMasterMap.get(empId.toLowerCase()) || {};
-    const masterRowId = String(master.ROWID || master.rowid || master.id || employee.emp_master_row_id || "").trim();
+    const masterRowId = String(
+      master.ROWID ||
+        master.rowid ||
+        master.id ||
+        employee.emp_master_row_id ||
+        "",
+    ).trim();
     if (!masterRowId || seen.has(masterRowId)) continue;
     seen.add(masterRowId);
     const previousComp = text(employee.previous_comp_manager);
     const previousTechEd = text(employee.previous_appraiser_tech_ed);
-    const existing = recordByEmployee.get(masterRowId.toLowerCase()) || recordByEmployee.get(empId.toLowerCase());
+    const existing =
+      recordByEmployee.get(masterRowId.toLowerCase()) ||
+      recordByEmployee.get(empId.toLowerCase());
     if (existing) {
       const patch = {};
-      if (!text(existing.previous_comp_manager) && previousComp) patch.previous_comp_manager = previousComp;
-      if (!text(existing.previous_appraiser_tech_ed) && previousTechEd) patch.previous_appraiser_tech_ed = previousTechEd;
+      if (!text(existing.previous_comp_manager) && previousComp)
+        patch.previous_comp_manager = previousComp;
+      if (!text(existing.previous_appraiser_tech_ed) && previousTechEd)
+        patch.previous_appraiser_tech_ed = previousTechEd;
       const rowId = String(existing.ROWID || existing.rowid || "").trim();
-      if (rowId && Object.keys(patch).length) updates.push({ ROWID: rowId, ...patch });
+      if (rowId && Object.keys(patch).length)
+        updates.push({ ROWID: rowId, ...patch });
       continue;
     }
     inserts.push({
       cycle_id: activeCycleId,
       emp_id: masterRowId,
-      comp_manager: text(assignmentEmployeeId(employee.delegation_comp_manager, employeeMasterMap)),
-      appraiser_tech_ed: text(assignmentEmployeeId(employee.appraiser_tech_ed, employeeMasterMap)),
+      comp_manager: text(
+        assignmentEmployeeId(
+          employee.delegation_comp_manager,
+          employeeMasterMap,
+        ),
+      ),
+      appraiser_tech_ed: text(
+        assignmentEmployeeId(employee.appraiser_tech_ed, employeeMasterMap),
+      ),
       director: text(master.director || employee.director),
       previous_comp_manager: previousComp,
       previous_appraiser_tech_ed: previousTechEd,
@@ -1239,7 +1573,12 @@ async function saveDelegationRoster(datastore, employees, employeeMasterMap, cyc
   }
 }
 
-async function enrichPreviousAppraisalValues(datastore, employees, employeeMasterMap, options = {}) {
+async function enrichPreviousAppraisalValues(
+  datastore,
+  employees,
+  employeeMasterMap,
+  options = {},
+) {
   // Reuse source rows already loaded by getEmployees. Only the remaining
   // history tables are fetched here, with at most two concurrent scans.
   let delegationReadOk = true;
@@ -1263,55 +1602,121 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   // Saved current-cycle Delegation snapshots are only consumed by the
   // Delegation view. The normal Appraisal Sheet gets current assignments from
   // Appraisal_Sheet / Employee_Master and must not scan this extra table.
-  if (String(options.view || "").trim().toLowerCase() === "delegation") {
+  if (
+    String(options.view || "")
+      .trim()
+      .toLowerCase() === "delegation"
+  ) {
     addReader("delegationRows", DELEGATION_TABLE_ID, true, (error) => {
-      console.error("Could not read Delegation records:", error?.message || error);
+      console.error(
+        "Could not read Delegation records:",
+        error?.message || error,
+      );
       delegationReadOk = false;
     });
   }
   // Previous-cycle assignment history is needed by the Delegation screen only.
   // The Appraisal Sheet does not display those columns, so do not scan the
   // entire historical Delegation table on every ordinary sheet refresh.
-  if (String(options.view || "").trim().toLowerCase() === "delegation") {
-    addReader("previousDelegationRows", PREVIOUS_DELEGATION_TABLE_ID, true, (error) => {
-      console.error("Could not read Previous_Delegation records:", error?.message || error);
-    });
+  if (
+    String(options.view || "")
+      .trim()
+      .toLowerCase() === "delegation"
+  ) {
+    addReader(
+      "previousDelegationRows",
+      PREVIOUS_DELEGATION_TABLE_ID,
+      true,
+      (error) => {
+        console.error(
+          "Could not read Previous_Delegation records:",
+          error?.message || error,
+        );
+      },
+    );
   }
   const loaded = await readDataStoreRowsInBatches(readers, 2);
   const payrollRows = preloaded.payrollRows || loaded.payrollRows || [];
   const cycleRows = preloaded.cycleRows || loaded.cycleRows || [];
-  const eligibilityRows = preloaded.eligibilityRows || loaded.eligibilityRows || [];
+  const eligibilityRows =
+    preloaded.eligibilityRows || loaded.eligibilityRows || [];
   const feedbackRows = preloaded.feedbackRows || loaded.feedbackRows || [];
-  const appraisalHistoryRows = preloaded.appraisalHistoryRows || loaded.appraisalHistoryRows || [];
-  const delegationRows = preloaded.delegationRows || loaded.delegationRows || [];
-  const previousDelegationRows = preloaded.previousDelegationRows || loaded.previousDelegationRows || [];
-  const cycleIdOf = (cycle) => String(cycle?.ROWID ?? cycle?.rowid ?? cycle?.id ?? cycle?.ID ?? "").trim();
-  const cycleStatusOf = (cycle) => String(cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "").trim().toLowerCase();
-  const cycleById = new Map(cycleRows.map((cycle) => [cycleIdOf(cycle), cycle]).filter(([id]) => id));
-  const cycleByName = new Map(cycleRows.map((cycle) => [historyCycleName(cycle).toLowerCase(), cycle]).filter(([name]) => name));
-  const currentCycle = cycleRows.find((cycle) => cycleStatusOf(cycle) === "active" && cycle.archived !== true && cycle.archived !== "true") ||
-    cycleRows.slice().sort((a, b) => historyCycleRank(b) - historyCycleRank(a))[0] || null;
+  const appraisalHistoryRows =
+    preloaded.appraisalHistoryRows || loaded.appraisalHistoryRows || [];
+  const delegationRows =
+    preloaded.delegationRows || loaded.delegationRows || [];
+  const previousDelegationRows =
+    preloaded.previousDelegationRows || loaded.previousDelegationRows || [];
+  const cycleIdOf = (cycle) =>
+    String(cycle?.ROWID ?? cycle?.rowid ?? cycle?.id ?? cycle?.ID ?? "").trim();
+  const cycleStatusOf = (cycle) =>
+    String(
+      cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "",
+    )
+      .trim()
+      .toLowerCase();
+  const cycleById = new Map(
+    cycleRows.map((cycle) => [cycleIdOf(cycle), cycle]).filter(([id]) => id),
+  );
+  const cycleByName = new Map(
+    cycleRows
+      .map((cycle) => [historyCycleName(cycle).toLowerCase(), cycle])
+      .filter(([name]) => name),
+  );
+  const currentCycle =
+    cycleRows.find(
+      (cycle) =>
+        cycleStatusOf(cycle) === "active" &&
+        cycle.archived !== true &&
+        cycle.archived !== "true",
+    ) ||
+    cycleRows
+      .slice()
+      .sort((a, b) => historyCycleRank(b) - historyCycleRank(a))[0] ||
+    null;
   const currentCycleId = currentCycle ? cycleIdOf(currentCycle) : "";
   const eligibilityByEmployee = new Map();
   eligibilityRows.forEach((record) => {
     // Lookup columns may be returned as foreign-key objects, not plain strings.
-    const rawCycle = historyReference(record?.appraisal_cycle_id ?? record?.cycle_id ?? record?.cycleId);
-    const referencedCycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
+    const rawCycle = historyReference(
+      record?.appraisal_cycle_id ?? record?.cycle_id ?? record?.cycleId,
+    );
+    const referencedCycle =
+      cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
     const cycleAliases = [
       rawCycle,
       referencedCycle ? cycleIdOf(referencedCycle) : "",
       referencedCycle ? historyCycleName(referencedCycle) : "",
-    ].filter(Boolean).map((value) => String(value).trim().toLowerCase());
+    ]
+      .filter(Boolean)
+      .map((value) => String(value).trim().toLowerCase());
     if (!cycleAliases.includes(String(currentCycleId).toLowerCase())) return;
-    const masterId = historyReference(record?.employee_master_id ?? record?.employee_master_row_id).toLowerCase();
-    const empId = rowEmployeeKey(record?.emp_id ?? record?.employee_id ?? record?.emp_code, employeeMasterMap);
-    const status = String(record?.eligibility_status ?? record?.eligible_status ?? "").trim().toLowerCase().replace(/[ _-]+/g, "");
+    const masterId = historyReference(
+      record?.employee_master_id ?? record?.employee_master_row_id,
+    ).toLowerCase();
+    const empId = rowEmployeeKey(
+      record?.emp_id ?? record?.employee_id ?? record?.emp_code,
+      employeeMasterMap,
+    );
+    const status = String(
+      record?.eligibility_status ?? record?.eligible_status ?? "",
+    )
+      .trim()
+      .toLowerCase()
+      .replace(/[ _-]+/g, "");
     if (!status) return;
     // Only an explicit Eligible decision should enter the Appraisal Sheet.
     // Pending / Awaiting criteria must not fall back to a stale Employee_Master value.
-    const normalized = ["eligible", "yes", "true", "1"].includes(status) ? "eligible" : "not eligible";
-    if (masterId) eligibilityByEmployee.set("row:" + masterId, { status: normalized, record });
-    if (empId) eligibilityByEmployee.set("emp:" + empId, { status: normalized, record });
+    const normalized = ["eligible", "yes", "true", "1"].includes(status)
+      ? "eligible"
+      : "not eligible";
+    if (masterId)
+      eligibilityByEmployee.set("row:" + masterId, {
+        status: normalized,
+        record,
+      });
+    if (empId)
+      eligibilityByEmployee.set("emp:" + empId, { status: normalized, record });
   });
   const currentRank = currentCycle ? historyCycleRank(currentCycle) : 0;
   // Each employee's Previous_Delegation row from the latest closed or
@@ -1321,16 +1726,33 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const cycle = cycleById.get(historyReference(record?.cycle_id));
     const masterId = historyReference(record?.emp_id).toLowerCase();
     if (!cycle || !masterId || cycleIdOf(cycle) === currentCycleId) return;
-    const closed = cycle.archived === true ||
-      ["true", "1", "yes"].includes(String(cycle.archived ?? "").trim().toLowerCase()) ||
-      ["archived", "closed", "complete", "completed"].includes(cycleStatusOf(cycle));
+    const closed =
+      cycle.archived === true ||
+      ["true", "1", "yes"].includes(
+        String(cycle.archived ?? "")
+          .trim()
+          .toLowerCase(),
+      ) ||
+      ["archived", "closed", "complete", "completed"].includes(
+        cycleStatusOf(cycle),
+      );
     const rank = historyCycleRank(cycle);
     if (!closed || (currentRank > 0 && rank >= currentRank)) return;
-    const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
+    const rowTime = String(
+      record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "",
+    );
     const prior = previousDelegationByEmployee.get(masterId);
-    if (!prior || rank > prior.rank ||
-        (rank === prior.rank && rowTime.localeCompare(prior.rowTime, undefined, { numeric: true }) > 0)) {
-      previousDelegationByEmployee.set(masterId, { row: record, rank, rowTime });
+    if (
+      !prior ||
+      rank > prior.rank ||
+      (rank === prior.rank &&
+        rowTime.localeCompare(prior.rowTime, undefined, { numeric: true }) > 0)
+    ) {
+      previousDelegationByEmployee.set(masterId, {
+        row: record,
+        rank,
+        rowTime,
+      });
     }
   });
   const currentCycleName = currentCycle ? historyCycleName(currentCycle) : "";
@@ -1340,30 +1762,56 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       const actual = Object.keys(record || {}).find(
         (column) => column.toLowerCase() === key.toLowerCase(),
       );
-      if (actual !== undefined && record[actual] !== null &&
-          record[actual] !== undefined && String(record[actual]).trim() !== "") {
+      if (
+        actual !== undefined &&
+        record[actual] !== null &&
+        record[actual] !== undefined &&
+        String(record[actual]).trim() !== ""
+      ) {
         return record[actual];
       }
     }
     return "";
   };
   feedbackRows.forEach((record) => {
-    const empRaw = feedbackFirstNonEmpty(record, ["emp_ID", "emp_id", "employee_id", "emp_code"]);
+    const empRaw = feedbackFirstNonEmpty(record, [
+      "emp_ID",
+      "emp_id",
+      "employee_id",
+      "emp_code",
+    ]);
     const empKey = rowEmployeeKey(empRaw, employeeMasterMap);
-    const rawCycle = historyReference(feedbackFirstNonEmpty(record, [
-      "appraisal_cycle_name", "appraisal_cycle_id", "cycle_id", "cycle_name",
-    ]));
-    const cycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
+    const rawCycle = historyReference(
+      feedbackFirstNonEmpty(record, [
+        "appraisal_cycle_name",
+        "appraisal_cycle_id",
+        "cycle_id",
+        "cycle_name",
+      ]),
+    );
+    const cycle =
+      cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
     if (!empKey || !cycle || cycleIdOf(cycle) !== currentCycleId) return;
-    const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
+    const rowTime = String(
+      record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "",
+    );
     const existing = currentFeedbackByEmployee.get(empKey);
-    if (!existing || rowTime.localeCompare(existing.rowTime, undefined, { numeric: true }) > 0) {
+    if (
+      !existing ||
+      rowTime.localeCompare(existing.rowTime, undefined, { numeric: true }) > 0
+    ) {
       currentFeedbackByEmployee.set(empKey, { row: record, rowTime });
     }
   });
   const yearMatch = currentCycleName.match(/(?:19|20)\d{2}/);
-  const shortYearMatch = currentCycleName.match(/(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*(\d{2})/i);
-  const currentYear = yearMatch ? yearMatch[0] : shortYearMatch ? "20" + shortYearMatch[1] : currentCycleName || String(new Date().getFullYear());
+  const shortYearMatch = currentCycleName.match(
+    /(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[-\s]*(\d{2})/i,
+  );
+  const currentYear = yearMatch
+    ? yearMatch[0]
+    : shortYearMatch
+      ? "20" + shortYearMatch[1]
+      : currentCycleName || String(new Date().getFullYear());
 
   const firstNonEmpty = (row, keys) => {
     for (const key of keys) {
@@ -1372,7 +1820,12 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       );
       if (actual === undefined) continue;
       const value = row[actual];
-      if (value !== undefined && value !== null && String(historyReference(value)).trim() !== "") return value;
+      if (
+        value !== undefined &&
+        value !== null &&
+        String(historyReference(value)).trim() !== ""
+      )
+        return value;
     }
     return "";
   };
@@ -1387,24 +1840,49 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const match = historyCycleName(cycle).match(/(?:19|20)\d{2}/);
     return match ? match[0] : "";
   };
-  const isNewJoinerCycle = (cycle) => /new[\s_-]*joiners?/i.test(historyCycleName(cycle));
+  const isNewJoinerCycle = (cycle) =>
+    /new[\s_-]*joiners?/i.test(historyCycleName(cycle));
   const isAnnualCycle = (cycle) => /\bannual\b/i.test(historyCycleName(cycle));
   payrollRows.forEach((record) => {
-    const empRaw = firstNonEmpty(record, ["emp_id", "employee_id", "emp_code", "empId"]);
+    const empRaw = firstNonEmpty(record, [
+      "emp_id",
+      "employee_id",
+      "emp_code",
+      "empId",
+    ]);
     const empKey = rowEmployeeKey(empRaw, employeeMasterMap);
-    const rawCycle = historyReference(firstNonEmpty(record, [
-      "appraisal_cycle_name", "appraisal_cycle_id", "appraisalCycleId", "cycle_id",
-      "appraisalCycleName", "cycle_name",
-    ]));
+    const rawCycle = historyReference(
+      firstNonEmpty(record, [
+        "appraisal_cycle_name",
+        "appraisal_cycle_id",
+        "appraisalCycleId",
+        "cycle_id",
+        "appraisalCycleName",
+        "cycle_name",
+      ]),
+    );
     if (!empKey || !rawCycle) return;
-    const cycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
+    const cycle =
+      cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase());
     if (!cycle) return;
-    const rowTime = String(record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "");
+    const rowTime = String(
+      record.MODIFIEDTIME || record.CREATEDTIME || record.ROWID || "",
+    );
     const payrollCycleKey = cycleIdOf(cycle) || rawCycle;
     const payrollKey = empKey + "::" + payrollCycleKey;
     const priorForCycle = payrollByEmployeeAndCycle.get(payrollKey);
-    if (!priorForCycle || rowTime.localeCompare(priorForCycle.rowTime, undefined, { numeric: true }) > 0) {
-      payrollByEmployeeAndCycle.set(payrollKey, { row: record, rowTime, cycle, empKey });
+    if (
+      !priorForCycle ||
+      rowTime.localeCompare(priorForCycle.rowTime, undefined, {
+        numeric: true,
+      }) > 0
+    ) {
+      payrollByEmployeeAndCycle.set(payrollKey, {
+        row: record,
+        rowTime,
+        cycle,
+        empKey,
+      });
     }
     // Keep the active-cycle row as a compatibility fallback, but select the
     // employee-specific source below (same-year New Joiners first, then Annual).
@@ -1413,13 +1891,19 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       if (
         !current ||
         rowTime.localeCompare(current.rowTime, undefined, { numeric: true }) > 0
-      ) currentPayrollByEmployee.set(empKey, { row: record, rowTime });
+      )
+        currentPayrollByEmployee.set(empKey, { row: record, rowTime });
       return;
     }
     const rank = historyCycleRank(cycle);
     const priorStatus = cycleStatusOf(cycle);
-    const archived = cycle?.archived === true ||
-      ["true", "1", "yes", "archived"].includes(String(cycle?.archived ?? "").trim().toLowerCase()) ||
+    const archived =
+      cycle?.archived === true ||
+      ["true", "1", "yes", "archived"].includes(
+        String(cycle?.archived ?? "")
+          .trim()
+          .toLowerCase(),
+      ) ||
       ["archived", "closed", "complete", "completed"].includes(priorStatus);
     if (!archived) return;
     const sameYearNewJoinerCycle =
@@ -1428,46 +1912,75 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       cycleYearOf(cycle) === currentYear;
     // Keep closed payroll rows for the employee-specific bonus source:
     // same-year closed New Joiner cycle wins; otherwise latest closed Annual.
-    if ((currentRank <= 0 || rank < currentRank) || sameYearNewJoinerCycle) {
+    if (currentRank <= 0 || rank < currentRank || sameYearNewJoinerCycle) {
       const candidates = bonusHistoryCandidatesByEmployee.get(empKey) || [];
-      candidates.push({ cycle, rank, row: record, rowTime, sameYearNewJoinerCycle });
+      candidates.push({
+        cycle,
+        rank,
+        row: record,
+        rowTime,
+        sameYearNewJoinerCycle,
+      });
       bonusHistoryCandidatesByEmployee.set(empKey, candidates);
     }
     // General previous-appraisal/CTC data remains strictly before the active
     // cycle. Same-year New Joiner payroll is used only for PB/RB mapping.
     if (currentRank > 0 && rank >= currentRank) return;
     const storedValue = firstNonEmpty(record, [
-      "total_ctc_with_rewards", "total_CTC_with_rewards", "totalCTCWithRewards",
-      "total_ctc", "new_ctc", "newCTC",
+      "total_ctc_with_rewards",
+      "total_CTC_with_rewards",
+      "totalCTCWithRewards",
+      "total_ctc",
+      "new_ctc",
+      "newCTC",
     ]);
-    const parsedRaw = storedValue !== ""
-      ? Number(String(storedValue).replace(/[₹,\s]/g, ""))
-      : ctcFromComponents(record);
+    const parsedRaw =
+      storedValue !== ""
+        ? Number(String(storedValue).replace(/[₹,\s]/g, ""))
+        : ctcFromComponents(record);
     const parsedValue = Number.isFinite(parsedRaw) ? parsedRaw : null;
     const item = { cycle, rank, value: parsedValue, row: record, rowTime };
     const current = historyByEmployee.get(empKey);
     if (
       !current ||
       item.rank > current.rank ||
-      (item.rank === current.rank && item.rowTime.localeCompare(current.rowTime, undefined, { numeric: true }) > 0)
-    ) historyByEmployee.set(empKey, item);
+      (item.rank === current.rank &&
+        item.rowTime.localeCompare(current.rowTime, undefined, {
+          numeric: true,
+        }) > 0)
+    )
+      historyByEmployee.set(empKey, item);
   });
   const bonusPayrollByEmployee = new Map();
   bonusHistoryCandidatesByEmployee.forEach((candidates, empKey) => {
     const sameYearNewJoiner = candidates
       .filter((item) => item.sameYearNewJoinerCycle)
-      .sort((a, b) => b.rank - a.rank || b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }))[0];
+      .sort(
+        (a, b) =>
+          b.rank - a.rank ||
+          b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
+      )[0];
     if (sameYearNewJoiner) {
       bonusPayrollByEmployee.set(empKey, sameYearNewJoiner);
       return;
     }
-    const priorCycles = candidates.filter((item) => currentRank <= 0 || item.rank < currentRank);
+    const priorCycles = candidates.filter(
+      (item) => currentRank <= 0 || item.rank < currentRank,
+    );
     const annual = priorCycles
       .filter((item) => isAnnualCycle(item.cycle))
-      .sort((a, b) => b.rank - a.rank || b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }))[0];
+      .sort(
+        (a, b) =>
+          b.rank - a.rank ||
+          b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
+      )[0];
     const latestPrior = priorCycles
       .slice()
-      .sort((a, b) => b.rank - a.rank || b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }))[0];
+      .sort(
+        (a, b) =>
+          b.rank - a.rank ||
+          b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
+      )[0];
     const selected = annual || latestPrior;
     if (selected) bonusPayrollByEmployee.set(empKey, selected);
   });
@@ -1488,22 +2001,41 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   const historyByRowMasterId = new Map();
   appraisalHistoryRows.forEach((row, index) => {
     const rawCycle = historyReference(
-      row?.cycle_id ?? row?.appraisal_cycle_id ?? row?.appraisalCycleId ??
-      row?.appraisal_cycle ?? row?.appraisal_cycle_name ?? row?.cycle_name ?? row?.appraisal_year,
+      row?.cycle_id ??
+        row?.appraisal_cycle_id ??
+        row?.appraisalCycleId ??
+        row?.appraisal_cycle ??
+        row?.appraisal_cycle_name ??
+        row?.cycle_name ??
+        row?.appraisal_year,
     );
-    const cycle = cycleById.get(rawCycle) || cycleByName.get(rawCycle.toLowerCase()) ||
+    const cycle =
+      cycleById.get(rawCycle) ||
+      cycleByName.get(rawCycle.toLowerCase()) ||
       cycleRows.find((item) => {
-        const aliases = [cycleIdOf(item), historyCycleName(item)].map((v) => String(v || "").trim().toLowerCase());
+        const aliases = [cycleIdOf(item), historyCycleName(item)].map((v) =>
+          String(v || "")
+            .trim()
+            .toLowerCase(),
+        );
         return aliases.includes(rawCycle.toLowerCase());
       });
     if (!cycle) return;
     const cycleStatus = cycleStatusOf(cycle);
-    const closed = cycle.archived === true ||
-      ["true", "1", "yes", "archived"].includes(String(cycle.archived ?? "").trim().toLowerCase()) ||
+    const closed =
+      cycle.archived === true ||
+      ["true", "1", "yes", "archived"].includes(
+        String(cycle.archived ?? "")
+          .trim()
+          .toLowerCase(),
+      ) ||
       ["archived", "closed", "complete", "completed"].includes(cycleStatus);
     if (!closed) return;
     const entry = {
-      index, row, cycle, cycleId: cycleIdOf(cycle),
+      index,
+      row,
+      cycle,
+      cycleId: cycleIdOf(cycle),
       rowTime: String(row.MODIFIEDTIME || row.CREATEDTIME || row.ROWID || ""),
     };
     const rowEmp = rowEmployeeKey(
@@ -1511,59 +2043,104 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       employeeMasterMap,
     );
     const rowMasterId = historyReference(
-      row?.emp_master_row_id ?? row?.employee_master_id ?? row?.employee_master_row_id ?? row?.emp_master_id,
+      row?.emp_master_row_id ??
+        row?.employee_master_id ??
+        row?.employee_master_row_id ??
+        row?.emp_master_id,
     ).toLowerCase();
-    if (rowEmp) historyByRowEmployee.set(rowEmp, [...(historyByRowEmployee.get(rowEmp) || []), entry]);
-    if (rowMasterId) historyByRowMasterId.set(rowMasterId, [...(historyByRowMasterId.get(rowMasterId) || []), entry]);
+    if (rowEmp)
+      historyByRowEmployee.set(rowEmp, [
+        ...(historyByRowEmployee.get(rowEmp) || []),
+        entry,
+      ]);
+    if (rowMasterId)
+      historyByRowMasterId.set(rowMasterId, [
+        ...(historyByRowMasterId.get(rowMasterId) || []),
+        entry,
+      ]);
   });
   // This cycle's saved Delegation rows: the first row for each emp_id value.
   const currentDelegationByEmployee = new Map();
   delegationRows.forEach((record, index) => {
-    if (historyReference(record?.cycle_id).toLowerCase() !== String(currentCycleId).toLowerCase()) return;
+    if (
+      historyReference(record?.cycle_id).toLowerCase() !==
+      String(currentCycleId).toLowerCase()
+    )
+      return;
     const savedEmployee = historyReference(record?.emp_id).toLowerCase();
-    if (!currentDelegationByEmployee.has(savedEmployee)) currentDelegationByEmployee.set(savedEmployee, { index, record });
+    if (!currentDelegationByEmployee.has(savedEmployee))
+      currentDelegationByEmployee.set(savedEmployee, { index, record });
   });
 
   const appraisalTable = datastore.table(EMPLOYEES_TABLE_ID);
   const updatedEmployees = (employees || []).map((employee) => {
-    const empRaw = firstNonEmpty(employee, ["emp_id", "employee_id", "emp_code", "empId"]);
+    const empRaw = firstNonEmpty(employee, [
+      "emp_id",
+      "employee_id",
+      "emp_code",
+      "empId",
+    ]);
     const empKey = rowEmployeeKey(empRaw, employeeMasterMap);
     const prior = empKey ? historyByEmployee.get(empKey) : null;
-    const currentPayroll = empKey ? currentPayrollByEmployee.get(empKey)?.row : null;
-    const bonusPayroll = empKey ? bonusPayrollByEmployee.get(empKey)?.row : null;
-    const employeePayrollRows = empKey ? payrollItemsByEmployee.get(empKey) || [] : [];
-    const sameYearNewJoinerPayroll = employeePayrollRows
-      .filter((item) =>
-        isNewJoinerCycle(item.cycle) &&
-        cycleYearOf(item.cycle) !== "" &&
-        cycleYearOf(item.cycle) === currentYear &&
-        (item.cycle.archived === true ||
-          ["true", "1", "yes", "archived"].includes(String(item.cycle.archived ?? "").trim().toLowerCase()) ||
-          ["archived", "closed", "complete", "completed"].includes(cycleStatusOf(item.cycle))
+    const currentPayroll = empKey
+      ? currentPayrollByEmployee.get(empKey)?.row
+      : null;
+    const bonusPayroll = empKey
+      ? bonusPayrollByEmployee.get(empKey)?.row
+      : null;
+    const employeePayrollRows = empKey
+      ? payrollItemsByEmployee.get(empKey) || []
+      : [];
+    const sameYearNewJoinerPayroll =
+      employeePayrollRows
+        .filter(
+          (item) =>
+            isNewJoinerCycle(item.cycle) &&
+            cycleYearOf(item.cycle) !== "" &&
+            cycleYearOf(item.cycle) === currentYear &&
+            (item.cycle.archived === true ||
+              ["true", "1", "yes", "archived"].includes(
+                String(item.cycle.archived ?? "")
+                  .trim()
+                  .toLowerCase(),
+              ) ||
+              ["archived", "closed", "complete", "completed"].includes(
+                cycleStatusOf(item.cycle),
+              )),
         )
-      )
-      .sort((a, b) =>
-        historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
-        b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true })
-      )[0] || null;
-    const priorAnnualPayroll = employeePayrollRows
-      .filter((item) =>
-        isAnnualCycle(item.cycle) &&
-        (currentRank <= 0 || historyCycleRank(item.cycle) < currentRank) &&
-        (item.cycle.archived === true ||
-          ["true", "1", "yes", "archived"].includes(String(item.cycle.archived ?? "").trim().toLowerCase()) ||
-          ["archived", "closed", "complete", "completed"].includes(cycleStatusOf(item.cycle))
+        .sort(
+          (a, b) =>
+            historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
+            b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
+        )[0] || null;
+    const priorAnnualPayroll =
+      employeePayrollRows
+        .filter(
+          (item) =>
+            isAnnualCycle(item.cycle) &&
+            (currentRank <= 0 || historyCycleRank(item.cycle) < currentRank) &&
+            (item.cycle.archived === true ||
+              ["true", "1", "yes", "archived"].includes(
+                String(item.cycle.archived ?? "")
+                  .trim()
+                  .toLowerCase(),
+              ) ||
+              ["archived", "closed", "complete", "completed"].includes(
+                cycleStatusOf(item.cycle),
+              )),
         )
-      )
-      .sort((a, b) =>
-        historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
-        b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true })
-      )[0] || null;
+        .sort(
+          (a, b) =>
+            historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
+            b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
+        )[0] || null;
     // New joiners use their matching New Joiners cycle for payroll-mapped
     // values and last-appraisal date/name. Existing staff use the last closed
     // Annual payroll cycle. Feedback remains separately cycle-scoped below.
-    const selectedPayrollSource = sameYearNewJoinerPayroll || priorAnnualPayroll;
-    const selectedPayroll = selectedPayrollSource?.row || currentPayroll || null;
+    const selectedPayrollSource =
+      sameYearNewJoinerPayroll || priorAnnualPayroll;
+    const selectedPayroll =
+      selectedPayrollSource?.row || currentPayroll || null;
     const selectedPayrollCycle = selectedPayrollSource?.cycle || null;
     // Delegation history must come from a closed prior-cycle payroll row,
     // never from the active-cycle upload fallback used for current payroll fields.
@@ -1575,97 +2152,181 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     // everyone else uses the most recent closed Annual sheet row.
     const assignmentCycle = selectedPayrollSource?.cycle || null;
     const assignmentCycleId = assignmentCycle ? cycleIdOf(assignmentCycle) : "";
-    const assignmentCycleName = assignmentCycle ? historyCycleName(assignmentCycle).toLowerCase() : "";
+    const assignmentCycleName = assignmentCycle
+      ? historyCycleName(assignmentCycle).toLowerCase()
+      : "";
     const assignmentMaster = empKey
-      ? (employeeMasterMap.get(empKey) || employeeMasterMap.get(String(empRaw ?? "").trim().toLowerCase()))
+      ? employeeMasterMap.get(empKey) ||
+        employeeMasterMap.get(
+          String(empRaw ?? "")
+            .trim()
+            .toLowerCase(),
+        )
       : null;
-    const assignmentMasterIds = new Set([
-      assignmentMaster?.ROWID, assignmentMaster?.rowid, assignmentMaster?.id,
-      assignmentMaster?.employee_master_id, assignmentMaster?.employee_master_row_id,
-    ].map((value) => historyReference(value).toLowerCase()).filter(Boolean));
+    const assignmentMasterIds = new Set(
+      [
+        assignmentMaster?.ROWID,
+        assignmentMaster?.rowid,
+        assignmentMaster?.id,
+        assignmentMaster?.employee_master_id,
+        assignmentMaster?.employee_master_row_id,
+      ]
+        .map((value) => historyReference(value).toLowerCase())
+        .filter(Boolean),
+    );
     // Closed-cycle sheet rows of this employee (by employee ID or by any of
     // their Employee_Master row IDs), in the original row order.
     const matchedHistory = new Map();
     [
       ...(empKey ? historyByRowEmployee.get(empKey) || [] : []),
-      ...[...assignmentMasterIds].flatMap((id) => historyByRowMasterId.get(id) || []),
+      ...[...assignmentMasterIds].flatMap(
+        (id) => historyByRowMasterId.get(id) || [],
+      ),
     ].forEach((entry) => matchedHistory.set(entry.index, entry));
     const historicalAssignmentRows = [...matchedHistory.values()]
       .sort((a, b) => a.index - b.index)
       .map(({ row, cycle, cycleId, rowTime }) => ({
-        row, cycle, cycleId, rowTime,
+        row,
+        cycle,
+        cycleId,
+        rowTime,
         exactSelectedCycle: Boolean(
-          assignmentCycleId && cycleId === assignmentCycleId ||
-          assignmentCycleName && historyCycleName(cycle).toLowerCase() === assignmentCycleName
+          (assignmentCycleId && cycleId === assignmentCycleId) ||
+          (assignmentCycleName &&
+            historyCycleName(cycle).toLowerCase() === assignmentCycleName),
         ),
       }));
-    const sameYearJoinerHistory = historicalAssignmentRows
-      .filter((item) => isNewJoinerCycle(item.cycle) && cycleYearOf(item.cycle) === currentYear)
-      .sort((a, b) => historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
-        b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }))[0] || null;
-    const annualAssignmentHistory = historicalAssignmentRows
-      .filter((item) => isAnnualCycle(item.cycle) &&
-        (currentRank <= 0 || historyCycleRank(item.cycle) < currentRank))
-      .sort((a, b) => historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
-        b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }))[0] || null;
-    const exactAssignmentHistory = historicalAssignmentRows
-      .filter((item) => item.exactSelectedCycle)
-      .sort((a, b) => b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }))[0] || null;
-    const assignmentHistoryRow = (sameYearJoinerHistory || exactAssignmentHistory || annualAssignmentHistory)?.row || null;
+    const sameYearJoinerHistory =
+      historicalAssignmentRows
+        .filter(
+          (item) =>
+            isNewJoinerCycle(item.cycle) &&
+            cycleYearOf(item.cycle) === currentYear,
+        )
+        .sort(
+          (a, b) =>
+            historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
+            b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
+        )[0] || null;
+    const annualAssignmentHistory =
+      historicalAssignmentRows
+        .filter(
+          (item) =>
+            isAnnualCycle(item.cycle) &&
+            (currentRank <= 0 || historyCycleRank(item.cycle) < currentRank),
+        )
+        .sort(
+          (a, b) =>
+            historyCycleRank(b.cycle) - historyCycleRank(a.cycle) ||
+            b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
+        )[0] || null;
+    const exactAssignmentHistory =
+      historicalAssignmentRows
+        .filter((item) => item.exactSelectedCycle)
+        .sort((a, b) =>
+          b.rowTime.localeCompare(a.rowTime, undefined, { numeric: true }),
+        )[0] || null;
+    const assignmentHistoryRow =
+      (
+        sameYearJoinerHistory ||
+        exactAssignmentHistory ||
+        annualAssignmentHistory
+      )?.row || null;
     const assignmentDisplay = (value) => {
       const raw = historyReference(value);
       if (!raw) return "";
-      const direct = employeeMasterMap.get(raw) || employeeMasterMap.get(raw.toLowerCase());
-      const empId = raw.split(/\s+-\s+/)[0].trim().toLowerCase();
+      const direct =
+        employeeMasterMap.get(raw) || employeeMasterMap.get(raw.toLowerCase());
+      const empId = raw
+        .split(/\s+-\s+/)[0]
+        .trim()
+        .toLowerCase();
       const master = direct || employeeMasterMap.get(empId);
       if (!master) return raw;
       const id = String(master.emp_id || "").trim();
       const name = String(master.emp_name || master.name || "").trim();
       return id && name ? id + " - " + name : name || id || raw;
     };
-    const masterRowId = historyReference(assignmentMaster?.ROWID ?? assignmentMaster?.rowid ?? assignmentMaster?.id).toLowerCase();
+    const masterRowId = historyReference(
+      assignmentMaster?.ROWID ??
+        assignmentMaster?.rowid ??
+        assignmentMaster?.id,
+    ).toLowerCase();
     // The first saved row (in table order) matching either identifier.
     const savedDelegation = [
       currentDelegationByEmployee.get(masterRowId),
       currentDelegationByEmployee.get(String(empKey || "").toLowerCase()),
-    ].filter(Boolean).sort((a, b) => a.index - b.index)[0]?.record;
+    ]
+      .filter(Boolean)
+      .sort((a, b) => a.index - b.index)[0]?.record;
     // Uploaded Previous Delegation first, then the snapshot saved on this
     // cycle's Delegation row, then the prior cycle's sheet / payroll.
-    const uploadedPrevious = previousDelegationByEmployee.get(masterRowId)?.row || null;
-    const previousCompManager = assignmentDisplay(uploadedPrevious?.comp_manager) ||
+    const uploadedPrevious =
+      previousDelegationByEmployee.get(masterRowId)?.row || null;
+    const previousCompManager =
+      assignmentDisplay(uploadedPrevious?.comp_manager) ||
       String(savedDelegation?.previous_comp_manager || "").trim() ||
       assignmentDisplay(
         firstNonEmpty(assignmentHistoryRow || {}, [
-          "comp_manager_id", "comp_manager", "Comp_Manager", "comp_manager_name",
-          "compManager", "compensation_manager", "compManagerName",
+          "comp_manager_id",
+          "comp_manager",
+          "Comp_Manager",
+          "comp_manager_name",
+          "compManager",
+          "compensation_manager",
+          "compManagerName",
         ]) ||
-        firstNonEmpty(previousAssignmentPayroll || {}, [
-          "comp_manager_id", "comp_manager", "Comp_Manager", "comp_manager_name",
-          "compManager", "compensation_manager", "compManagerName",
-        ]),
+          firstNonEmpty(previousAssignmentPayroll || {}, [
+            "comp_manager_id",
+            "comp_manager",
+            "Comp_Manager",
+            "comp_manager_name",
+            "compManager",
+            "compensation_manager",
+            "compManagerName",
+          ]),
       );
-    const previousAppraiserTechEd = assignmentDisplay(uploadedPrevious?.appraiser_tech_ed) ||
+    const previousAppraiserTechEd =
+      assignmentDisplay(uploadedPrevious?.appraiser_tech_ed) ||
       String(savedDelegation?.previous_appraiser_tech_ed || "").trim() ||
       assignmentDisplay(
         firstNonEmpty(assignmentHistoryRow || {}, [
-          "appraiser_tech_ed_id", "appraiser_tech_ed1", "appraiser_tech_ed", "Tech_ED",
-          "tech_ed", "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name",
+          "appraiser_tech_ed_id",
+          "appraiser_tech_ed1",
+          "appraiser_tech_ed",
+          "Tech_ED",
+          "tech_ed",
+          "appraiserTechEd",
+          "tech_ed_appraiser",
+          "appraiser_tech_ed_name",
           "appraiser_tech_ed_name1",
         ]) ||
-        firstNonEmpty(previousAssignmentPayroll || {}, [
-          "appraiser_tech_ed_id", "appraiser_tech_ed1", "appraiser_tech_ed", "Tech_ED",
-          "tech_ed", "appraiserTechEd", "tech_ed_appraiser", "appraiser_tech_ed_name",
-          "appraiser_tech_ed_name1",
-        ]),
+          firstNonEmpty(previousAssignmentPayroll || {}, [
+            "appraiser_tech_ed_id",
+            "appraiser_tech_ed1",
+            "appraiser_tech_ed",
+            "Tech_ED",
+            "tech_ed",
+            "appraiserTechEd",
+            "tech_ed_appraiser",
+            "appraiser_tech_ed_name",
+            "appraiser_tech_ed_name1",
+          ]),
       );
-    const currentFeedback = empKey ? currentFeedbackByEmployee.get(empKey)?.row : null;
+    const currentFeedback = empKey
+      ? currentFeedbackByEmployee.get(empKey)?.row
+      : null;
     const feedbackValue = (...keys) => {
       for (const key of keys) {
         const actual = Object.keys(currentFeedback || {}).find(
           (column) => column.toLowerCase() === key.toLowerCase(),
         );
-        if (actual !== undefined && currentFeedback[actual] !== null &&
-            currentFeedback[actual] !== undefined && String(currentFeedback[actual]).trim() !== "") {
+        if (
+          actual !== undefined &&
+          currentFeedback[actual] !== null &&
+          currentFeedback[actual] !== undefined &&
+          String(currentFeedback[actual]).trim() !== ""
+        ) {
           return currentFeedback[actual];
         }
       }
@@ -1673,29 +2334,50 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     };
     const payrollCtcValue = selectedPayroll
       ? firstNonEmpty(selectedPayroll, [
-          "total_ctc_with_rewards", "total_CTC_with_rewards", "totalCTCWithRewards",
-          "total_ctc", "new_ctc", "newCTC",
+          "total_ctc_with_rewards",
+          "total_CTC_with_rewards",
+          "totalCTCWithRewards",
+          "total_ctc",
+          "new_ctc",
+          "newCTC",
         ])
       : "";
-    const payrollCtcParsed = payrollCtcValue !== ""
-      ? Number(String(payrollCtcValue).replace(/[₹,\s]/g, ""))
-      : ctcFromComponents(selectedPayroll || {});
-    const previousCtc = sameYearNewJoinerPayroll && Number.isFinite(payrollCtcParsed)
-      ? payrollCtcParsed
-      : prior && prior.value !== null
-        ? prior.value
-        : currentTotalCtc(employee);
+    const payrollCtcParsed =
+      payrollCtcValue !== ""
+        ? Number(String(payrollCtcValue).replace(/[₹,\s]/g, ""))
+        : ctcFromComponents(selectedPayroll || {});
+    const previousCtc =
+      sameYearNewJoinerPayroll && Number.isFinite(payrollCtcParsed)
+        ? payrollCtcParsed
+        : prior && prior.value !== null
+          ? prior.value
+          : currentTotalCtc(employee);
     const previousCycleName = selectedPayrollCycle
       ? historyCycleName(selectedPayrollCycle)
-      : prior ? historyCycleName(prior.cycle) : "";
-    const label = previousCycleName || ("New - " + currentYear);
+      : prior
+        ? historyCycleName(prior.cycle)
+        : "";
+    const label = previousCycleName || "New - " + currentYear;
     // For a new joiner, use the matching New Joiners cycle effective date;
     // otherwise use the last closed Annual cycle effective date.
     const cycleBasedLastAppraisalDate = selectedPayrollCycle
-      ? String(selectedPayrollCycle.effective_date ?? selectedPayrollCycle.effectiveDate ?? selectedPayrollCycle.start_date ?? selectedPayrollCycle.startDate ?? "").trim()
+      ? String(
+          selectedPayrollCycle.effective_date ??
+            selectedPayrollCycle.effectiveDate ??
+            selectedPayrollCycle.start_date ??
+            selectedPayrollCycle.startDate ??
+            "",
+        ).trim()
       : prior
-        ? String(prior.cycle?.effective_date ?? prior.cycle?.effectiveDate ?? prior.cycle?.start_date ?? "").trim()
-        : String(employee.last_appraisal_date ?? employee.lastAppraisalDate ?? "").trim();
+        ? String(
+            prior.cycle?.effective_date ??
+              prior.cycle?.effectiveDate ??
+              prior.cycle?.start_date ??
+              "",
+          ).trim()
+        : String(
+            employee.last_appraisal_date ?? employee.lastAppraisalDate ?? "",
+          ).trim();
     // A new joiner has no earlier regular appraisal, so their Last Appraisal
     // date is their date of joining (Employee_Master / Employees joining date).
     // An employee is a new joiner when ANY of these hold:
@@ -1706,25 +2388,49 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     //   3. they have no prior cycle or payroll history at all.
     // Existing staff keep the closed-cycle effective date. If the joining
     // date is missing we fall back to the cycle-based date.
-    const previousCycleWasNewJoiner = Boolean(prior && isNewJoinerCycle(prior.cycle));
+    const previousCycleWasNewJoiner = Boolean(
+      prior && isNewJoinerCycle(prior.cycle),
+    );
     const isNewJoinerRow =
       Boolean(sameYearNewJoinerPayroll) ||
       previousCycleWasNewJoiner ||
       (!prior && !selectedPayrollSource);
     const joiningDateValue = (() => {
-      const master = (empKey && (employeeMasterMap.get(empKey) || employeeMasterMap.get(String(empRaw ?? "").trim().toLowerCase()))) || {};
+      const master =
+        (empKey &&
+          (employeeMasterMap.get(empKey) ||
+            employeeMasterMap.get(
+              String(empRaw ?? "")
+                .trim()
+                .toLowerCase(),
+            ))) ||
+        {};
       for (const source of [employee, master]) {
-        for (const name of ["date_of_join", "joining_date", "Joining_date", "date_of_joining", "doj"]) {
-          const actual = Object.keys(source).find((key) => key.toLowerCase() === name.toLowerCase());
-          if (actual !== undefined && source[actual] !== null && source[actual] !== undefined &&
-              String(source[actual]).trim() !== "") return String(source[actual]).trim();
+        for (const name of [
+          "date_of_join",
+          "joining_date",
+          "Joining_date",
+          "date_of_joining",
+          "doj",
+        ]) {
+          const actual = Object.keys(source).find(
+            (key) => key.toLowerCase() === name.toLowerCase(),
+          );
+          if (
+            actual !== undefined &&
+            source[actual] !== null &&
+            source[actual] !== undefined &&
+            String(source[actual]).trim() !== ""
+          )
+            return String(source[actual]).trim();
         }
       }
       return "";
     })();
-    const lastArchivedEffectiveDate = isNewJoinerRow && joiningDateValue
-      ? joiningDateValue
-      : cycleBasedLastAppraisalDate;
+    const lastArchivedEffectiveDate =
+      isNewJoinerRow && joiningDateValue
+        ? joiningDateValue
+        : cycleBasedLastAppraisalDate;
     const payrollAmount = (value) => {
       const parsed = Number(String(value ?? 0).replace(/[₹,\s]/g, ""));
       return Number.isFinite(parsed) ? parsed : 0;
@@ -1733,77 +2439,165 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     // New joiners use their same-year closed New Joiner cycle (e.g. New Joiner
     // 2027); everyone else uses the latest closed Annual cycle (e.g. Annual 2026).
     const bonusSource = bonusPayroll || null;
-    const payrollPreviousPB = bonusSource ? payrollAmount(firstNonEmpty(bonusSource, [
-      "pb_to_be_paid", "performance_bonus", "previous_year_performance_bonus", "previous_year_pb", "previous_pb",
-    ])) : 0;
-    const payrollPreviousRB = bonusSource ? payrollAmount(firstNonEmpty(bonusSource, [
-      "rb_to_be_paid", "retention_bonus", "previous_year_retention_bonus", "previous_year_rb", "previous_rb",
-    ])) : 0;
-    const payrollPreviousPBMonth = bonusSource ? String(firstNonEmpty(bonusSource, [
-      "month_pb", "pb_month", "performance_bonus_month", "month_of_pb",
-    ]) ?? "").trim() : "";
-    const payrollPreviousRBMonth = bonusSource ? String(firstNonEmpty(bonusSource, [
-      "month_rb", "rb_month", "retention_bonus_month", "month_of_rb",
-    ]) ?? "").trim() : "";
+    const payrollPreviousPB = bonusSource
+      ? payrollAmount(
+          firstNonEmpty(bonusSource, [
+            "pb_to_be_paid",
+            "performance_bonus",
+            "previous_year_performance_bonus",
+            "previous_year_pb",
+            "previous_pb",
+          ]),
+        )
+      : 0;
+    const payrollPreviousRB = bonusSource
+      ? payrollAmount(
+          firstNonEmpty(bonusSource, [
+            "rb_to_be_paid",
+            "retention_bonus",
+            "previous_year_retention_bonus",
+            "previous_year_rb",
+            "previous_rb",
+          ]),
+        )
+      : 0;
+    const payrollPreviousPBMonth = bonusSource
+      ? String(
+          firstNonEmpty(bonusSource, [
+            "month_pb",
+            "pb_month",
+            "performance_bonus_month",
+            "month_of_pb",
+          ]) ?? "",
+        ).trim()
+      : "";
+    const payrollPreviousRBMonth = bonusSource
+      ? String(
+          firstNonEmpty(bonusSource, [
+            "month_rb",
+            "rb_month",
+            "retention_bonus_month",
+            "month_of_rb",
+          ]) ?? "",
+        ).trim()
+      : "";
     // Previous-cycle JB / PB / RB for the Total Bonus Hike and Total Rewards
     // Hike calculations. Same closed Payroll_Data row as PB/RB-to-be-paid above
     // (same-year New Joiner cycle, else latest closed Annual). Returned in the
     // response only; these are never written to Appraisal_Sheet.
-    const payrollPreviousJoiningBonus = bonusSource ? payrollAmount(firstNonEmpty(bonusSource, [
-      "joining_bonus", "previous_year_joining_bonus", "previous_year_jb", "previous_joining_bonus",
-    ])) : 0;
-    const payrollPreviousPerformanceBonus = bonusSource ? payrollAmount(firstNonEmpty(bonusSource, [
-      "performance_bonus", "previous_year_performance_bonus", "previous_year_pb", "previous_pb", "pb_to_be_paid",
-    ])) : 0;
-    const payrollPreviousRetentionBonus = bonusSource ? payrollAmount(firstNonEmpty(bonusSource, [
-      "retention_bonus", "previous_year_retention_bonus", "previous_year_rb", "previous_rb", "rb_to_be_paid",
-    ])) : 0;
+    const payrollPreviousJoiningBonus = bonusSource
+      ? payrollAmount(
+          firstNonEmpty(bonusSource, [
+            "joining_bonus",
+            "previous_year_joining_bonus",
+            "previous_year_jb",
+            "previous_joining_bonus",
+          ]),
+        )
+      : 0;
+    const payrollPreviousPerformanceBonus = bonusSource
+      ? payrollAmount(
+          firstNonEmpty(bonusSource, [
+            "performance_bonus",
+            "previous_year_performance_bonus",
+            "previous_year_pb",
+            "previous_pb",
+            "pb_to_be_paid",
+          ]),
+        )
+      : 0;
+    const payrollPreviousRetentionBonus = bonusSource
+      ? payrollAmount(
+          firstNonEmpty(bonusSource, [
+            "retention_bonus",
+            "previous_year_retention_bonus",
+            "previous_year_rb",
+            "previous_rb",
+            "rb_to_be_paid",
+          ]),
+        )
+      : 0;
     const feedbackRRRaw = feedbackValue("revenue_released", "rr_percent", "rr");
-    const feedbackRRNumber = feedbackRRRaw === undefined
-      ? undefined
-      : Number(String(feedbackRRRaw).replace(/[₹,%\s,]/g, ""));
+    const feedbackRRNumber =
+      feedbackRRRaw === undefined
+        ? undefined
+        : Number(String(feedbackRRRaw).replace(/[₹,%\s,]/g, ""));
     const currentTargetPB = selectedPayroll
       ? firstNonEmpty(selectedPayroll, [
-          "target_performance_bonus_for_next_year", "target_performance_bonus_next_year",
-          "target_pb_allocated_for_may", "target_pb_allocated", "allocated_pb_amount",
+          "target_performance_bonus_for_next_year",
+          "target_performance_bonus_next_year",
+          "target_pb_allocated_for_may",
+          "target_pb_allocated",
+          "allocated_pb_amount",
         ])
       : "";
-    const targetPBForNextYear = currentTargetPB !== ""
-      ? payrollAmount(currentTargetPB)
-      : payrollAmount(employee.target_pb_allocated_for_may ?? employee.target_pb_allocated ?? 0);
+    const targetPBForNextYear =
+      currentTargetPB !== ""
+        ? payrollAmount(currentTargetPB)
+        : payrollAmount(
+            employee.target_pb_allocated_for_may ??
+              employee.target_pb_allocated ??
+              0,
+          );
     const currentTargetPBCriteria = selectedPayroll
-      ? String(firstNonEmpty(selectedPayroll, [
-          "target_pb_criteria", "target_PB_criteria", "target_performance_bonus_criteria",
-          "target_performance_bonus_for_next_year_criteria",
-        ]) ?? "").trim()
-      : String(employee.target_pb_criteria ?? employee.target_PB_criteria ?? "").trim();
+      ? String(
+          firstNonEmpty(selectedPayroll, [
+            "target_pb_criteria",
+            "target_PB_criteria",
+            "target_performance_bonus_criteria",
+            "target_performance_bonus_for_next_year_criteria",
+          ]) ?? "",
+        ).trim()
+      : String(
+          employee.target_pb_criteria ?? employee.target_PB_criteria ?? "",
+        ).trim();
     // Current Annual Base Pay for the active cycle is the NEW base pay
     // from the selected prior closed payroll cycle. Same-year New Joiner
     // payroll wins for that employee; otherwise selectedPayroll is the latest
     // closed Annual cycle. Do not use the old current/base-pay field first.
     const payrollAnnualBasePayRaw = selectedPayroll
       ? firstNonEmpty(selectedPayroll, [
-          "new_base_pay", "newBasePay",
-          "current_annual_base_pay", "currentAnnualBasePay", "current_base_pay",
-          "base_pay", "basePay", "annual_base_pay", "annualBasePay",
+          "new_base_pay",
+          "newBasePay",
+          "current_annual_base_pay",
+          "currentAnnualBasePay",
+          "current_base_pay",
+          "base_pay",
+          "basePay",
+          "annual_base_pay",
+          "annualBasePay",
         ])
       : "";
-    const payrollAnnualBasePay = payrollAnnualBasePayRaw !== ""
-      ? payrollAmount(payrollAnnualBasePayRaw)
-      : Number(employee.current_annual_base_pay || 0);
+    const payrollAnnualBasePay =
+      payrollAnnualBasePayRaw !== ""
+        ? payrollAmount(payrollAnnualBasePayRaw)
+        : Number(employee.current_annual_base_pay || 0);
     const master = empKey ? employeeMasterMap.get(empKey) : null;
-    const masterId = String(master?.ROWID ?? master?.rowid ?? master?.id ?? "").trim().toLowerCase();
-    const cycleEligibility = (masterId ? eligibilityByEmployee.get("row:" + masterId) : null) ||
+    const masterId = String(master?.ROWID ?? master?.rowid ?? master?.id ?? "")
+      .trim()
+      .toLowerCase();
+    const cycleEligibility =
+      (masterId ? eligibilityByEmployee.get("row:" + masterId) : null) ||
       (empKey ? eligibilityByEmployee.get("emp:" + empKey) : null);
     return {
       ...employee,
-      ...(cycleEligibility ? {
-        eligible_status: cycleEligibility.status,
-        eligibility_reason: String(cycleEligibility.record?.eligibility_reason || ""),
-        eligibleReason: String(cycleEligibility.record?.eligibility_reason || ""),
-        eligibility_source: String(cycleEligibility.record?.eligibility_source || ""),
-        eligibility_updated_at: String(cycleEligibility.record?.eligibility_updated_at || ""),
-      } : {}),
+      ...(cycleEligibility
+        ? {
+            eligible_status: cycleEligibility.status,
+            eligibility_reason: String(
+              cycleEligibility.record?.eligibility_reason || "",
+            ),
+            eligibleReason: String(
+              cycleEligibility.record?.eligibility_reason || "",
+            ),
+            eligibility_source: String(
+              cycleEligibility.record?.eligibility_source || "",
+            ),
+            eligibility_updated_at: String(
+              cycleEligibility.record?.eligibility_updated_at || "",
+            ),
+          }
+        : {}),
       previous_appraisal_total_ctc_with_rewards: previousCtc,
       Previous_Appraisal_total_CTC_with_rewards: previousCtc,
       previousAppraisalTotalCtcWithRewards: previousCtc,
@@ -1818,7 +2612,8 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       // employee when the request started. The Delegation screen runs its
       // one-time roster fill only while some employee has none.
       delegation_saved: Boolean(savedDelegation),
-      delegation_comp_manager: String(savedDelegation?.comp_manager || "").trim() ||
+      delegation_comp_manager:
+        String(savedDelegation?.comp_manager || "").trim() ||
         previousCompManager ||
         String(employee.comp_manager || "").trim() ||
         String(employee.appraiser_tech_ed || "").trim(),
@@ -1832,26 +2627,36 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
       // Feedback & Rating is optional during the first cycle. Populate these
       // fields from the current cycle when uploaded; otherwise retain any
       // explicitly stored Appraisal_Sheet value (or leave blank/zero).
-      manager_rating: feedbackValue("manager_rating") ?? employee.manager_rating ?? "",
-      interview_count: feedbackValue("interview_count", "interviewCount") ?? employee.interview_count ?? "",
+      manager_rating:
+        feedbackValue("manager_rating") ?? employee.manager_rating ?? "",
+      interview_count:
+        feedbackValue("interview_count", "interviewCount") ??
+        employee.interview_count ??
+        "",
       // Return all current-cycle Feedback_And_Rating fields in the roster
       // response. The frontend must not make a second full-table feedback API
       // request just to populate these columns.
-      CostCenter_Client: feedbackValue("CostCenter_Client", "cost_center_client") ?? "",
+      CostCenter_Client:
+        feedbackValue("CostCenter_Client", "cost_center_client") ?? "",
       manager_feedback: feedbackValue("manager_feedback") ?? "",
       client_manager_feedback: feedbackValue("client_manager_feedback") ?? "",
       client_rating: (() => {
         const value = feedbackValue("client_rating");
-        const parsed = value === undefined ? NaN : Number(String(value).replace(/,/g, "").trim());
+        const parsed =
+          value === undefined
+            ? NaN
+            : Number(String(value).replace(/,/g, "").trim());
         return Number.isFinite(parsed) ? parsed : "";
       })(),
       // RR% is sourced from Feedback_And_Rating.revenue_released for the
       // current cycle. Employee_Master RR% remains a fallback for older rows
       // or when feedback has not yet been uploaded for this cycle.
-      rr_percent: feedbackRRNumber !== undefined && Number.isFinite(feedbackRRNumber)
-        ? feedbackRRNumber
-        : (employee.rr_percent ?? employee.RR_percent ?? ""),
-      gross_margin: feedbackValue("gross_margin") ?? employee.gross_margin ?? "",
+      rr_percent:
+        feedbackRRNumber !== undefined && Number.isFinite(feedbackRRNumber)
+          ? feedbackRRNumber
+          : (employee.rr_percent ?? employee.RR_percent ?? ""),
+      gross_margin:
+        feedbackValue("gross_margin") ?? employee.gross_margin ?? "",
       pb_to_be_paid: payrollPreviousPB,
       rb_to_be_paid: payrollPreviousRB,
       previous_year_joining_bonus: payrollPreviousJoiningBonus,
@@ -1872,10 +2677,19 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   // insert the same employee twice. Other reads stay side-effect-free.
   if (options.saveDelegation && delegationReadOk && currentCycleId) {
     try {
-      await saveDelegationRoster(datastore, updatedEmployees, employeeMasterMap, currentCycleId,
-        delegationRows, String(options.updatedBy || "Delegation screen").slice(0, 100));
+      await saveDelegationRoster(
+        datastore,
+        updatedEmployees,
+        employeeMasterMap,
+        currentCycleId,
+        delegationRows,
+        String(options.updatedBy || "Delegation screen").slice(0, 100),
+      );
     } catch (error) {
-      console.error("Could not save the Delegation roster:", error?.message || error);
+      console.error(
+        "Could not save the Delegation roster:",
+        error?.message || error,
+      );
     }
   }
 
@@ -1897,15 +2711,20 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   if (options.persistLookups === false) return updatedEmployees;
   const liveColumnByKey = new Map();
   try {
-    (await withDataStoreRetry(
-      () => appraisalTable.getAllColumns(),
-      "Appraisal_Sheet column metadata",
-    )).forEach(function (column) {
+    (
+      await withDataStoreRetry(
+        () => appraisalTable.getAllColumns(),
+        "Appraisal_Sheet column metadata",
+      )
+    ).forEach(function (column) {
       const name = String(column?.column_name || "").trim();
       if (name) liveColumnByKey.set(name.toLowerCase(), name);
     });
   } catch (error) {
-    console.error("Could not read Appraisal_Sheet columns; skipping lookup writes:", error?.message || error);
+    console.error(
+      "Could not read Appraisal_Sheet columns; skipping lookup writes:",
+      error?.message || error,
+    );
     return updatedEmployees;
   }
   const liveColumn = function (...names) {
@@ -1919,9 +2738,15 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     "previous_year_CTC_with_rewards",
     "previous_appraisal_total_ctc_with_rewards",
   );
-  const targetCriteriaColumn = liveColumn("target_PB_criteria", "target_pb_criteria");
+  const targetCriteriaColumn = liveColumn(
+    "target_PB_criteria",
+    "target_pb_criteria",
+  );
   const sourceRowById = new Map();
-  (appraisalHistoryRows.length ? appraisalHistoryRows : (employees || [])).forEach((row) => {
+  (appraisalHistoryRows.length
+    ? appraisalHistoryRows
+    : employees || []
+  ).forEach((row) => {
     const id = String(row.ROWID ?? row.rowid ?? "");
     if (!sourceRowById.has(id)) sourceRowById.set(id, row);
   });
@@ -1933,50 +2758,73 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
     const desiredTargetPB = employee.target_pb_allocated_for_may;
     const desiredBasePay = employee.current_annual_base_pay;
     const desiredTargetCriteria = employee.target_pb_criteria;
-    const desiredPreviousCtc = employee.previous_appraisal_total_ctc_with_rewards;
+    const desiredPreviousCtc =
+      employee.previous_appraisal_total_ctc_with_rewards;
     const sourceRow = sourceRowById.get(rowId);
     const existingDate = String(sourceRow?.last_appraisal_date ?? "").trim();
-    const existingTargetPB = Number(sourceRow?.target_pb_allocated_for_may || 0);
+    const existingTargetPB = Number(
+      sourceRow?.target_pb_allocated_for_may || 0,
+    );
     const existingBasePay = Number(sourceRow?.current_annual_base_pay || 0);
     // Read the stored values from the live column names, so an unchanged value
     // is not rewritten on every load.
     const existingTargetCriteria = String(
-      (targetCriteriaColumn && sourceRow?.[targetCriteriaColumn]) ?? sourceRow?.target_pb_criteria ?? "",
+      (targetCriteriaColumn && sourceRow?.[targetCriteriaColumn]) ??
+        sourceRow?.target_pb_criteria ??
+        "",
     ).trim();
-    const existingPreviousCtcRaw = firstNonEmpty(sourceRow || {}, [
-      previousCtcColumn,
-      "previous_appraisal_total_ctc_with_rewards",
-      "Previous_Appraisal_total_CTC_with_rewards",
-      "previousAppraisalTotalCtcWithRewards",
-    ].filter(Boolean));
+    const existingPreviousCtcRaw = firstNonEmpty(
+      sourceRow || {},
+      [
+        previousCtcColumn,
+        "previous_appraisal_total_ctc_with_rewards",
+        "Previous_Appraisal_total_CTC_with_rewards",
+        "previousAppraisalTotalCtcWithRewards",
+      ].filter(Boolean),
+    );
     // Same parsing as payrollAmount in the mapping above (not in scope here).
-    const previousCtcNumber = Number(String(existingPreviousCtcRaw).replace(/[₹,\s]/g, ""));
-    const existingPreviousCtc = existingPreviousCtcRaw === ""
-      ? null
-      : Number.isFinite(previousCtcNumber) ? previousCtcNumber : 0;
+    const previousCtcNumber = Number(
+      String(existingPreviousCtcRaw).replace(/[₹,\s]/g, ""),
+    );
+    const existingPreviousCtc =
+      existingPreviousCtcRaw === ""
+        ? null
+        : Number.isFinite(previousCtcNumber)
+          ? previousCtcNumber
+          : 0;
     const update = { ROWID: rowId };
-    if (existingDate !== String(desiredDate ?? "").trim() && String(desiredDate ?? "").trim()) {
+    if (
+      existingDate !== String(desiredDate ?? "").trim() &&
+      String(desiredDate ?? "").trim()
+    ) {
       update.last_appraisal_date = desiredDate;
     }
     if (existingTargetPB !== Number(desiredTargetPB || 0)) {
       update.target_pb_allocated_for_may = desiredTargetPB;
     }
-    if (existingBasePay !== Number(desiredBasePay || 0) && Number(desiredBasePay || 0) > 0) {
+    if (
+      existingBasePay !== Number(desiredBasePay || 0) &&
+      Number(desiredBasePay || 0) > 0
+    ) {
       update.current_annual_base_pay = desiredBasePay;
     }
-    if (targetCriteriaColumn &&
-        existingTargetCriteria !== String(desiredTargetCriteria ?? "").trim() &&
-        String(desiredTargetCriteria ?? "").trim()) {
+    if (
+      targetCriteriaColumn &&
+      existingTargetCriteria !== String(desiredTargetCriteria ?? "").trim() &&
+      String(desiredTargetCriteria ?? "").trim()
+    ) {
       update[targetCriteriaColumn] = desiredTargetCriteria;
     }
     // Budget Master sums the stored Appraisal_Sheet column, not a separate
     // payroll fallback. Persist the value returned for that column so both
     // screens read the same per-employee number on subsequent requests.
     // previous_year_CTC_with_rewards is a bigint column: store whole rupees.
-    if (previousCtcColumn &&
-        Number.isFinite(Number(desiredPreviousCtc)) &&
-        Number(desiredPreviousCtc) > 0 &&
-        existingPreviousCtc !== Math.round(Number(desiredPreviousCtc))) {
+    if (
+      previousCtcColumn &&
+      Number.isFinite(Number(desiredPreviousCtc)) &&
+      Number(desiredPreviousCtc) > 0 &&
+      existingPreviousCtc !== Math.round(Number(desiredPreviousCtc))
+    ) {
       update[previousCtcColumn] = Math.round(Number(desiredPreviousCtc));
     }
     if (Object.keys(update).length > 1) lookupUpdates.push(update);
@@ -1990,15 +2838,25 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
   // Catalyst's ~30 s request limit, and the next load writes the rest.
   const persistRow = async (update) => {
     try {
-      await withDataStoreRetry(() => appraisalTable.updateRow(update), "Appraisal_Sheet payroll-derived lookup");
+      await withDataStoreRetry(
+        () => appraisalTable.updateRow(update),
+        "Appraisal_Sheet payroll-derived lookup",
+      );
     } catch (error) {
-      console.error("Could not persist payroll-derived appraisal lookup for row", update.ROWID, error?.message || error);
+      console.error(
+        "Could not persist payroll-derived appraisal lookup for row",
+        update.ROWID,
+        error?.message || error,
+      );
     }
   };
   for (let offset = 0; offset < lookupUpdates.length; offset += 50) {
     if (options.writeDeadline && Date.now() > options.writeDeadline) {
-      console.warn("Appraisal_Sheet lookups: " + (lookupUpdates.length - offset) +
-        " changed rows left for the next load (time limit).");
+      console.warn(
+        "Appraisal_Sheet lookups: " +
+          (lookupUpdates.length - offset) +
+          " changed rows left for the next load (time limit).",
+      );
       break;
     }
     const batch = lookupUpdates.slice(offset, offset + 50);
@@ -2012,8 +2870,10 @@ async function enrichPreviousAppraisalValues(datastore, employees, employeeMaste
         "Appraisal_Sheet payroll-derived lookup batch",
       );
     } catch (error) {
-      console.error("Could not persist payroll-derived appraisal lookup batch; retrying row by row:",
-        error?.message || error);
+      console.error(
+        "Could not persist payroll-derived appraisal lookup batch; retrying row by row:",
+        error?.message || error,
+      );
       for (const update of batch) await persistRow(update);
     }
   }
@@ -2029,43 +2889,79 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
     const masterValue = (...names) => {
       const keys = Object.keys(master);
       for (const name of names) {
-        const actual = keys.find((key) => key.toLowerCase() === String(name).toLowerCase());
-        if (actual !== undefined && master[actual] !== null && master[actual] !== undefined &&
-            String(master[actual]).trim() !== "") return master[actual];
+        const actual = keys.find(
+          (key) => key.toLowerCase() === String(name).toLowerCase(),
+        );
+        if (
+          actual !== undefined &&
+          master[actual] !== null &&
+          master[actual] !== undefined &&
+          String(master[actual]).trim() !== ""
+        )
+          return master[actual];
       }
       return "";
     };
 
-    const active = normalizeStatus(masterValue("emp_status", "status") || "Active");
+    const active = normalizeStatus(
+      masterValue("emp_status", "status") || "Active",
+    );
 
     return {
       ...row,
 
       name: String(masterValue("emp_name", "name") || row.name || ""),
       designation: String(
-        masterValue("designation", "title") || row.designation || row.title || "",
+        masterValue("designation", "title") ||
+          row.designation ||
+          row.title ||
+          "",
       ),
       // Expose Employee_Master-only fields on the merged roster response too.
       // Employee Master UI reads these from the Employees API's rawEmployee.
       email_id: String(masterValue("email_id", "email") || row.email_id || ""),
       last_appraisal_month_year: String(
-        masterValue("last_appraisal_month_year") || row.last_appraisal_month_year || "",
+        masterValue("last_appraisal_month_year") ||
+          row.last_appraisal_month_year ||
+          "",
       ),
       last_appraisal_date: String(
-        masterValue("last_appraisal_date", "last_appraisal", "last_appraisal_effective_date") ||
-        row.last_appraisal_date || "",
+        masterValue(
+          "last_appraisal_date",
+          "last_appraisal",
+          "last_appraisal_effective_date",
+        ) ||
+          row.last_appraisal_date ||
+          "",
       ),
       reporting_manager: String(
-        masterValue("repo_manager", "reporting_manager", "manager") || row.reporting_manager || "",
+        masterValue("repo_manager", "reporting_manager", "manager") ||
+          row.reporting_manager ||
+          "",
       ),
       // Director is sourced from Employee_Master and shown as a separate
       // read-only hierarchy column on the Delegation screen.
-      director: String(masterValue("director", "director_name", "director name", "director_full_name") || ""),
+      director: String(
+        masterValue(
+          "director",
+          "director_name",
+          "director name",
+          "director_full_name",
+        ) || "",
+      ),
       // Keep the stored Comp Manager key intact for existing matching/writes,
       // and expose a separate resolved label for display in budget screens.
-      comp_manager: String(row.comp_manager || masterValue("comp_manager", "comp_manager_name", "director") || ""),
+      comp_manager: String(
+        row.comp_manager ||
+          masterValue("comp_manager", "comp_manager_name", "director") ||
+          "",
+      ),
       comp_manager_display: (() => {
-        const raw = String(row.comp_manager || masterValue("comp_manager", "comp_manager_name", "director") || "").trim();
+        const raw = String(
+          row.comp_manager ||
+            masterValue("comp_manager", "comp_manager_name", "director") ||
+            "",
+        ).trim();
         if (!raw) return "";
         const key = raw.split(/\s+-\s+/)[0].trim();
         const manager =
@@ -2150,15 +3046,32 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
           row.work_location ||
           "",
       ),
-      source_of_hire: String(masterValue("source_of_hire") || row.source_of_hire || ""),
+      source_of_hire: String(
+        masterValue("source_of_hire") || row.source_of_hire || "",
+      ),
       wissen_experience: Number(
-        masterValue("wissen_experience", "wissen_exp", "org_experience", "orgExp") || row.wissen_experience || 0,
+        masterValue(
+          "wissen_experience",
+          "wissen_exp",
+          "org_experience",
+          "orgExp",
+        ) ||
+          row.wissen_experience ||
+          0,
       ),
       total_experience: Number(
-        masterValue("total_experience", "total_exp", "experience") || row.total_experience || 0,
+        masterValue("total_experience", "total_exp", "experience") ||
+          row.total_experience ||
+          0,
       ),
-      joining_date: String(masterValue("date_of_join", "joining_date", "joining_date") || row.joining_date || ""),
-      rr_percent: Number(masterValue("rr_percent", "rr_percent", "rr") || row.rr_percent || 0),
+      joining_date: String(
+        masterValue("date_of_join", "joining_date", "joining_date") ||
+          row.joining_date ||
+          "",
+      ),
+      rr_percent: Number(
+        masterValue("rr_percent", "rr_percent", "rr") || row.rr_percent || 0,
+      ),
       status: active,
 
       // Employee_Master is the eligibility source of truth. Preserve an
@@ -2193,7 +3106,7 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
           )
         )
           return "not eligible";
-        return "not eligible";
+        return active === "Active" ? "eligible" : "not eligible";
       })(),
 
       // Appraisal_Sheet is the source of truth for the current Apr-26 grid.
@@ -2235,7 +3148,10 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
       rating: Number(row.rating || 0),
       joining_bonus: Number(row.joining_bonus || 0),
       target_PB_criteria: String(
-        row.target_PB_criteria ?? row.target_pb_criteria ?? row.target_performance_bonus_criteria ?? "",
+        row.target_PB_criteria ??
+          row.target_pb_criteria ??
+          row.target_performance_bonus_criteria ??
+          "",
       ),
       comp_manager_remarks: String(row.comp_manager_remarks || ""),
     };
@@ -2427,7 +3343,9 @@ async function getEmployees(req, res) {
     })
     .filter(Boolean);
 
-  const requestedOwned = requestedEmpIds.length ? await techEdOwnedEmpIds(datastore, a) : null;
+  const requestedOwned = requestedEmpIds.length
+    ? await techEdOwnedEmpIds(datastore, a)
+    : null;
   access.guard(a, function () {
     requireAnyScreen(a, READ_SCREENS, "view");
     // Roster / eligibility views list every employee — HR Operations only.
@@ -2449,8 +3367,16 @@ async function getEmployees(req, res) {
       if (value === null || value === undefined) return "";
       if (typeof value === "object") {
         return String(
-          value.ROWID ?? value.rowid ?? value.emp_id ?? value.employee_id ??
-          value.id ?? value.ID ?? value.value ?? value.name ?? value.emp_name ?? "",
+          value.ROWID ??
+            value.rowid ??
+            value.emp_id ??
+            value.employee_id ??
+            value.id ??
+            value.ID ??
+            value.value ??
+            value.name ??
+            value.emp_name ??
+            "",
         ).trim();
       }
       return String(value).trim();
@@ -2467,11 +3393,14 @@ async function getEmployees(req, res) {
       const raw = lookupText(value);
       if (!raw) return null;
       const idOrName = raw.split(/\s+-\s+/)[0].trim();
-      const row = byId.get(idOrName.toLowerCase()) ||
+      const row =
+        byId.get(idOrName.toLowerCase()) ||
         byRowId.get(raw.toLowerCase()) ||
         byName.get(raw.toLowerCase());
       if (!row) return null;
-      const status = String(row.emp_status || row.status || "Active").trim().toLowerCase();
+      const status = String(row.emp_status || row.status || "Active")
+        .trim()
+        .toLowerCase();
       if (["inactive", "disabled", "terminated"].includes(status)) return null;
       const empId = String(row.emp_id || row.employee_id || "").trim();
       const name = String(row.emp_name || row.name || "").trim();
@@ -2495,7 +3424,11 @@ async function getEmployees(req, res) {
       data: {
         techEd: techEd,
         compManagers: compManagers,
-        counts: { employeeMasterRows: masterRows.length, techEd: techEd.length, compManagers: compManagers.length },
+        counts: {
+          employeeMasterRows: masterRows.length,
+          techEd: techEd.length,
+          compManagers: compManagers.length,
+        },
       },
     });
   }
@@ -2555,7 +3488,8 @@ async function getEmployees(req, res) {
   // is read once and reused below. The no-op catches only stop an early
   // failure from being reported as unhandled; each promise is awaited (and
   // throws) where it is used.
-  const isCycleView = requestedView !== "master" && requestedView !== "eligibility";
+  const isCycleView =
+    requestedView !== "master" && requestedView !== "eligibility";
 
   // Load the two core roster tables together, then the cycle/eligibility pair.
   // This caps concurrent COMPONENT reads at two and lets enrichment reuse all
@@ -2563,33 +3497,152 @@ async function getEmployees(req, res) {
   const delegationRosterView = requestedView === "delegation";
   // Prefetch independent roster tables with a small worker pool. Delegation
   // tables are read only for the Delegation view; other views avoid that cost.
-  const rosterZcql = typeof adminInstance.zcql === "function" ? adminInstance.zcql() : null;
-  const cachedRead = (tableId, tableName, read) => cachedTableRead(
-    rosterZcql, tableId, tableName, read,
-    delegationRosterView ? DELEGATION_TABLE_CACHE_MAX_AGE_MS : TABLE_READ_CACHE_MAX_AGE_MS,
-  );
+  const rosterZcql =
+    typeof adminInstance.zcql === "function" ? adminInstance.zcql() : null;
+  const cachedRead = (tableId, tableName, read) =>
+    cachedTableRead(
+      rosterZcql,
+      tableId,
+      tableName,
+      read,
+      delegationRosterView
+        ? DELEGATION_TABLE_CACHE_MAX_AGE_MS
+        : TABLE_READ_CACHE_MAX_AGE_MS,
+    );
   // Delegation view only: read each large table with parallel ZCQL chunks
   // (checked against the paged read, with fallback to it). Other views are
   // unchanged and keep reading page by page.
   const zcqlLimiter = makeLimiter(ZCQL_READS_IN_FLIGHT);
-  const tableRead = (tableId, tableName, sequentialRead, mapRow) => delegationRosterView
-    ? () => readAllRowsParallel(rosterZcql, datastore.table(tableId), tableName, sequentialRead, zcqlLimiter, mapRow)
-    : sequentialRead;
+  const tableRead = (tableId, tableName, sequentialRead, mapRow) =>
+    delegationRosterView
+      ? () =>
+          readAllRowsParallel(
+            rosterZcql,
+            datastore.table(tableId),
+            tableName,
+            sequentialRead,
+            zcqlLimiter,
+            mapRow,
+          )
+      : sequentialRead;
   const roster = await readDataStoreRowsPooled([
-    { key: "payrollRows", read: cachedRead(PAYROLL_DATA_TABLE_ID, "Payroll_Data", tableRead(PAYROLL_DATA_TABLE_ID, "Payroll_Data", () => readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)))), optional: true, fallback: null },
-    { key: "allAppraisalRows", read: cachedRead(EMPLOYEES_TABLE_ID, "Appraisal_Sheet", tableRead(EMPLOYEES_TABLE_ID, "Appraisal_Sheet", () => getAllEmployees(datastore), normalizeEmployeeResponse)), optional: false },
-    { key: "employeeMasterRows", read: cachedRead(EMPLOYEE_MASTER_TABLE_ID, "Employee_Master", tableRead(EMPLOYEE_MASTER_TABLE_ID, "Employee_Master", () => getAllEmployeeMaster(datastore))), optional: false },
-    { key: "cycleRows", read: () => readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)), optional: false },
-    { key: "cycleEligibilityRows", read: cachedRead(ELIGIBILITY_TABLE_ID, "Eligibility_List", tableRead(ELIGIBILITY_TABLE_ID, "Eligibility_List", () => readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)))), optional: true, fallback: [] },
-    ...(delegationRosterView ? [] : [{ key: "feedbackRows", read: cachedRead(FEEDBACK_RATING_TABLE_ID, "Feedback_And_Rating", () => readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID))), optional: true, fallback: null }]),
-    ...(delegationRosterView ? [
-      { key: "delegationRows", read: cachedRead(DELEGATION_TABLE_ID, "Delegation", tableRead(DELEGATION_TABLE_ID, "Delegation", () => readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID)))), optional: true, fallback: null },
-      { key: "previousDelegationRows", read: cachedRead(PREVIOUS_DELEGATION_TABLE_ID, "Previous_Delegation", tableRead(PREVIOUS_DELEGATION_TABLE_ID, "Previous_Delegation", () => readAllDataStoreRows(datastore.table(PREVIOUS_DELEGATION_TABLE_ID)))), optional: true, fallback: null },
-    ] : []),
+    {
+      key: "payrollRows",
+      read: cachedRead(
+        PAYROLL_DATA_TABLE_ID,
+        "Payroll_Data",
+        tableRead(PAYROLL_DATA_TABLE_ID, "Payroll_Data", () =>
+          readAllDataStoreRows(datastore.table(PAYROLL_DATA_TABLE_ID)),
+        ),
+      ),
+      optional: true,
+      fallback: null,
+    },
+    {
+      key: "allAppraisalRows",
+      read: cachedRead(
+        EMPLOYEES_TABLE_ID,
+        "Appraisal_Sheet",
+        tableRead(
+          EMPLOYEES_TABLE_ID,
+          "Appraisal_Sheet",
+          () => getAllEmployees(datastore),
+          normalizeEmployeeResponse,
+        ),
+      ),
+      optional: false,
+    },
+    {
+      key: "employeeMasterRows",
+      read: cachedRead(
+        EMPLOYEE_MASTER_TABLE_ID,
+        "Employee_Master",
+        tableRead(EMPLOYEE_MASTER_TABLE_ID, "Employee_Master", () =>
+          getAllEmployeeMaster(datastore),
+        ),
+      ),
+      optional: false,
+    },
+    {
+      key: "cycleRows",
+      read: () =>
+        readAllDataStoreRows(datastore.table(APPRAISAL_CYCLE_TABLE_ID)),
+      optional: false,
+    },
+    {
+      key: "cycleEligibilityRows",
+      read: cachedRead(
+        ELIGIBILITY_TABLE_ID,
+        "Eligibility_List",
+        tableRead(ELIGIBILITY_TABLE_ID, "Eligibility_List", () =>
+          readAllDataStoreRows(datastore.table(ELIGIBILITY_TABLE_ID)),
+        ),
+      ),
+      optional: true,
+      fallback: [],
+    },
+    ...(delegationRosterView
+      ? []
+      : [
+          {
+            key: "feedbackRows",
+            read: cachedRead(
+              FEEDBACK_RATING_TABLE_ID,
+              "Feedback_And_Rating",
+              () =>
+                readAllDataStoreRows(datastore.table(FEEDBACK_RATING_TABLE_ID)),
+            ),
+            optional: true,
+            fallback: null,
+          },
+        ]),
+    ...(delegationRosterView
+      ? [
+          {
+            key: "delegationRows",
+            read: cachedRead(
+              DELEGATION_TABLE_ID,
+              "Delegation",
+              tableRead(DELEGATION_TABLE_ID, "Delegation", () =>
+                readAllDataStoreRows(datastore.table(DELEGATION_TABLE_ID)),
+              ),
+            ),
+            optional: true,
+            fallback: null,
+          },
+          {
+            key: "previousDelegationRows",
+            read: cachedRead(
+              PREVIOUS_DELEGATION_TABLE_ID,
+              "Previous_Delegation",
+              tableRead(
+                PREVIOUS_DELEGATION_TABLE_ID,
+                "Previous_Delegation",
+                () =>
+                  readAllDataStoreRows(
+                    datastore.table(PREVIOUS_DELEGATION_TABLE_ID),
+                  ),
+              ),
+            ),
+            optional: true,
+            fallback: null,
+          },
+        ]
+      : []),
   ]);
-  const { employeeMasterRows, allAppraisalRows, cycleRows, cycleEligibilityRows } = roster;
+  const {
+    employeeMasterRows,
+    allAppraisalRows,
+    cycleRows,
+    cycleEligibilityRows,
+  } = roster;
   const prefetchedEnrichmentRows = {};
-  ["payrollRows", "feedbackRows", "delegationRows", "previousDelegationRows"].forEach((key) => {
+  [
+    "payrollRows",
+    "feedbackRows",
+    "delegationRows",
+    "previousDelegationRows",
+  ].forEach((key) => {
     if (Array.isArray(roster[key])) prefetchedEnrichmentRows[key] = roster[key];
   });
   // The Delegation screen does not show Feedback & Rating values, so its roster skips that table scan.
@@ -2599,8 +3652,12 @@ async function getEmployees(req, res) {
     appraisalSheetRows: allAppraisalRows.length,
     cycleRows: cycleRows.length,
     eligibilityRows: cycleEligibilityRows.length,
-    payrollRows: Array.isArray(roster.payrollRows) ? roster.payrollRows.length : 0,
-    feedbackRows: Array.isArray(roster.feedbackRows) ? roster.feedbackRows.length : 0,
+    payrollRows: Array.isArray(roster.payrollRows)
+      ? roster.payrollRows.length
+      : 0,
+    feedbackRows: Array.isArray(roster.feedbackRows)
+      ? roster.feedbackRows.length
+      : 0,
   });
   // Keep the complete historical sheet rows for payroll/previous-CTC mapping.
   // appraisalRows is filtered below to the active cycle for the visible grid.
@@ -2620,25 +3677,43 @@ async function getEmployees(req, res) {
     const activeCycle = cycleRows.find((cycle) => {
       const status = String(
         cycle?.status ?? cycle?.cycle_status ?? cycle?.appraisal_status ?? "",
-      ).trim().toLowerCase();
+      )
+        .trim()
+        .toLowerCase();
       const archived = ["true", "1", "yes"].includes(
-        String(cycle?.archived ?? "").trim().toLowerCase(),
+        String(cycle?.archived ?? "")
+          .trim()
+          .toLowerCase(),
       );
       const hidden = ["true", "1", "yes"].includes(
-        String(cycle?.hidden ?? "").trim().toLowerCase(),
+        String(cycle?.hidden ?? "")
+          .trim()
+          .toLowerCase(),
       );
       return status === "active" && !archived && !hidden;
     });
     if (activeCycle) {
       responseActiveCycle = {
-        id: String(activeCycle.ROWID ?? activeCycle.rowid ?? activeCycle.id ?? activeCycle.ID ?? "").trim(),
+        id: String(
+          activeCycle.ROWID ??
+            activeCycle.rowid ??
+            activeCycle.id ??
+            activeCycle.ID ??
+            "",
+        ).trim(),
         name: historyCycleName(activeCycle),
-        status: String(activeCycle.status ?? activeCycle.cycle_status ?? "Active"),
+        status: String(
+          activeCycle.status ?? activeCycle.cycle_status ?? "Active",
+        ),
         archived: activeCycle.archived ?? false,
         hidden: activeCycle.hidden ?? false,
       };
       const activeCycleId = String(
-        activeCycle.ROWID ?? activeCycle.rowid ?? activeCycle.id ?? activeCycle.ID ?? "",
+        activeCycle.ROWID ??
+          activeCycle.rowid ??
+          activeCycle.id ??
+          activeCycle.ID ??
+          "",
       ).trim();
       const activeCycleName = historyCycleName(activeCycle).toLowerCase();
       const eligibilityByMasterId = new Map();
@@ -2654,30 +3729,50 @@ async function getEmployees(req, res) {
         );
         const recordCycle = cycleRows.find((candidate) => {
           const candidateId = String(
-            candidate.ROWID ?? candidate.rowid ?? candidate.id ?? candidate.ID ?? "",
+            candidate.ROWID ??
+              candidate.rowid ??
+              candidate.id ??
+              candidate.ID ??
+              "",
           ).trim();
-          return candidateId === rawCycle ||
-            historyCycleName(candidate).toLowerCase() === rawCycle.toLowerCase();
+          return (
+            candidateId === rawCycle ||
+            historyCycleName(candidate).toLowerCase() === rawCycle.toLowerCase()
+          );
         });
-        const belongsToActiveCycle = rawCycle === activeCycleId ||
+        const belongsToActiveCycle =
+          rawCycle === activeCycleId ||
           (!!activeCycleName && rawCycle.toLowerCase() === activeCycleName) ||
-          (!!recordCycle && String(
-            recordCycle.ROWID ?? recordCycle.rowid ?? recordCycle.id ?? recordCycle.ID ?? "",
-          ).trim() === activeCycleId);
+          (!!recordCycle &&
+            String(
+              recordCycle.ROWID ??
+                recordCycle.rowid ??
+                recordCycle.id ??
+                recordCycle.ID ??
+                "",
+            ).trim() === activeCycleId);
         const eligibilityStatus = String(
           record?.eligibility_status ??
             record?.eligible_status ??
             record?.eligibility ??
             "",
-        ).trim().toLowerCase().replace(/[ _-]+/g, "");
+        )
+          .trim()
+          .toLowerCase()
+          .replace(/[ _-]+/g, "");
         if (!belongsToActiveCycle) return;
 
         const masterId = historyReference(
           record?.employee_master_id ?? record?.employee_master_row_id,
         ).toLowerCase();
-        const empId = String(record?.emp_id ?? record?.employee_id ?? record?.emp_code ?? "")
-          .trim().toLowerCase();
-        const eligible = ["eligible", "yes", "true", "1"].includes(eligibilityStatus);
+        const empId = String(
+          record?.emp_id ?? record?.employee_id ?? record?.emp_code ?? "",
+        )
+          .trim()
+          .toLowerCase();
+        const eligible = ["eligible", "yes", "true", "1"].includes(
+          eligibilityStatus,
+        );
         const decision = {
           eligible,
           status: eligible
@@ -2691,59 +3786,82 @@ async function getEmployees(req, res) {
         };
         if (masterId) eligibilityByMasterId.set(masterId, decision);
         if (empId) eligibilityByEmployeeId.set(empId, decision);
-        if (eligible) eligibleRecords.push({ masterId: masterId, empId: empId });
+        if (eligible)
+          eligibleRecords.push({ masterId: masterId, empId: empId });
       });
 
       // The active Appraisal Sheet is strictly driven by Eligibility_List.
       // Do not keep legacy sheet rows when the employee has no eligibility
       // record, is Not Eligible, or is no longer Active in Employee_Master.
       const masterRowsForEligibility = employeeMasterRows;
-      const masterByRowIdForEligibility = new Map(masterRowsForEligibility.map((master) => [
-        String(master.ROWID ?? master.rowid ?? master.id ?? "").trim().toLowerCase(),
-        master,
-      ]));
-      const masterByEmpIdForEligibility = new Map(masterRowsForEligibility.map((master) => [
-        String(master.emp_id ?? master.employee_id ?? "").trim().toLowerCase(),
-        master,
-      ]).filter(([empId]) => empId));
-      appraisalRows = appraisalRows.filter((row) => {
-        const rowCycle = historyReference(
-          row?.cycle_id ??
-            row?.appraisal_cycle_id ??
-            row?.appraisalCycleId ??
-            row?.appraisal_cycle ??
-            row?.appraisal_cycle_name,
-        );
-        const belongsToActiveCycle = rowCycle === activeCycleId ||
-          (!!activeCycleName && rowCycle.toLowerCase() === activeCycleName);
-        if (!belongsToActiveCycle) return false;
+      const masterByRowIdForEligibility = new Map(
+        masterRowsForEligibility.map((master) => [
+          String(master.ROWID ?? master.rowid ?? master.id ?? "")
+            .trim()
+            .toLowerCase(),
+          master,
+        ]),
+      );
+      const masterByEmpIdForEligibility = new Map(
+        masterRowsForEligibility
+          .map((master) => [
+            String(master.emp_id ?? master.employee_id ?? "")
+              .trim()
+              .toLowerCase(),
+            master,
+          ])
+          .filter(([empId]) => empId),
+      );
+      appraisalRows = appraisalRows
+        .filter((row) => {
+          const rowCycle = historyReference(
+            row?.cycle_id ??
+              row?.appraisal_cycle_id ??
+              row?.appraisalCycleId ??
+              row?.appraisal_cycle ??
+              row?.appraisal_cycle_name,
+          );
+          const belongsToActiveCycle =
+            rowCycle === activeCycleId ||
+            (!!activeCycleName && rowCycle.toLowerCase() === activeCycleName);
+          if (!belongsToActiveCycle) return false;
 
-        const masterId = historyReference(
-          row?.emp_master_row_id ?? row?.employee_master_id,
-        ).toLowerCase();
-        const empId = String(row?.emp_id ?? row?.employee_id ?? "").trim().toLowerCase();
-        const decision =
-          (masterId && eligibilityByMasterId.get(masterId)) ||
-          (empId && eligibilityByEmployeeId.get(empId));
-        if (!decision?.eligible) return false;
+          const masterId = historyReference(
+            row?.emp_master_row_id ?? row?.employee_master_id,
+          ).toLowerCase();
+          const empId = String(row?.emp_id ?? row?.employee_id ?? "")
+            .trim()
+            .toLowerCase();
+          const decision =
+            (masterId && eligibilityByMasterId.get(masterId)) ||
+            (empId && eligibilityByEmployeeId.get(empId));
+          if (!decision?.eligible) return false;
 
-        const master = (masterId && masterByRowIdForEligibility.get(masterId)) ||
-          (empId && masterByEmpIdForEligibility.get(empId));
-        if (!master) return false;
-        const masterStatus = String(master.emp_status ?? master.status ?? "Active").trim().toLowerCase();
-        if (masterStatus !== "active") return false;
+          const master =
+            (masterId && masterByRowIdForEligibility.get(masterId)) ||
+            (empId && masterByEmpIdForEligibility.get(empId));
+          if (!master) return false;
+          const masterStatus = String(
+            master.emp_status ?? master.status ?? "Active",
+          )
+            .trim()
+            .toLowerCase();
+          if (masterStatus !== "active") return false;
 
-        return true;
-      }).map((row) => {
-        const masterId = historyReference(
-          row?.emp_master_row_id ?? row?.employee_master_id,
-        ).toLowerCase();
-        const empId = String(row?.emp_id ?? row?.employee_id ?? "").trim().toLowerCase();
-        const decision =
-          (masterId && eligibilityByMasterId.get(masterId)) ||
-          (empId && eligibilityByEmployeeId.get(empId));
-        return { ...row, eligible_status: decision.status };
-      });
+          return true;
+        })
+        .map((row) => {
+          const masterId = historyReference(
+            row?.emp_master_row_id ?? row?.employee_master_id,
+          ).toLowerCase();
+          const empId = String(row?.emp_id ?? row?.employee_id ?? "")
+            .trim()
+            .toLowerCase();
+          const decision =
+            (masterId && eligibilityByMasterId.get(masterId)) ||
+            (empId && eligibilityByEmployeeId.get(empId));
+          return { ...row, eligible_status: decision.status };
+        });
 
       // Delegation runs before Generate Appraisal Sheet. Eligible employees
       // without a sheet row yet are listed from Employee_Master (Tech-ED and
@@ -2751,24 +3869,44 @@ async function getEmployees(req, res) {
       if (requestedView === "delegation") {
         const onSheet = new Set();
         appraisalRows.forEach(function (row) {
-          const masterId = historyReference(row?.emp_master_row_id).toLowerCase();
-          const empId = String(row?.emp_id || "").trim().toLowerCase();
+          const masterId = historyReference(
+            row?.emp_master_row_id,
+          ).toLowerCase();
+          const empId = String(row?.emp_id || "")
+            .trim()
+            .toLowerCase();
           if (masterId) onSheet.add("row:" + masterId);
           if (empId) onSheet.add("emp:" + empId);
         });
         const masterForEligibility = employeeMasterRows;
-        const masterByRowId = new Map(masterForEligibility.map(function (row) {
-          return [String(row.ROWID || row.rowid || "").trim().toLowerCase(), row];
-        }));
+        const masterByRowId = new Map(
+          masterForEligibility.map(function (row) {
+            return [
+              String(row.ROWID || row.rowid || "")
+                .trim()
+                .toLowerCase(),
+              row,
+            ];
+          }),
+        );
         eligibleRecords.forEach(function (record) {
-          const master = (record.masterId && masterByRowId.get(record.masterId)) ||
+          const master =
+            (record.masterId && masterByRowId.get(record.masterId)) ||
             masterForEligibility.find(function (row) {
-              return String(row.emp_id || "").trim().toLowerCase() === record.empId;
+              return (
+                String(row.emp_id || "")
+                  .trim()
+                  .toLowerCase() === record.empId
+              );
             });
           if (!master) return;
           const masterId = String(master.ROWID || master.rowid || "").trim();
           const empId = String(master.emp_id || "").trim();
-          if (onSheet.has("row:" + masterId.toLowerCase()) || onSheet.has("emp:" + empId.toLowerCase())) return;
+          if (
+            onSheet.has("row:" + masterId.toLowerCase()) ||
+            onSheet.has("emp:" + empId.toLowerCase())
+          )
+            return;
           onSheet.add("row:" + masterId.toLowerCase());
           onSheet.add("emp:" + empId.toLowerCase());
           appraisalRows.push({
@@ -2796,12 +3934,16 @@ async function getEmployees(req, res) {
     // carried the current Tech-Ed assignment.
     const uniqueCurrentRows = new Map();
     const currentRowRank = (row) =>
-      String(row?.MODIFIEDTIME || row?.CREATEDTIME || row?.ROWID || row?.rowid || "");
+      String(
+        row?.MODIFIEDTIME || row?.CREATEDTIME || row?.ROWID || row?.rowid || "",
+      );
     appraisalRows.forEach((row) => {
       const masterId = historyReference(
         row?.emp_master_row_id ?? row?.employee_master_id,
       ).toLowerCase();
-      const empId = String(row?.emp_id ?? row?.employee_id ?? "").trim().toLowerCase();
+      const empId = String(row?.emp_id ?? row?.employee_id ?? "")
+        .trim()
+        .toLowerCase();
       // Prefer the stable business employee ID: duplicate legacy rows can
       // carry different Employee_Master ROWIDs but still represent one person.
       const key = empId ? "emp:" + empId : masterId ? "master:" + masterId : "";
@@ -2837,14 +3979,24 @@ async function getEmployees(req, res) {
   // the CPU cost of enriching every HR employee. HR and other roles retain the
   // complete roster and the existing authorization filters below.
   const rosterUser = enforced ? a.user : currentUser;
-  const rosterUserMasterRowId = currentUserMasterRowId(rosterUser, employeeMasterRows);
-  const employeesForEnrichment = enforced && a.role === "techEd"
-    ? mergedEmployees.filter((employee) =>
-        employeeBelongsToCurrentUser(employee, rosterUser, rosterUserMasterRowId),
-      )
-    : mergedEmployees;
+  const rosterUserMasterRowId = currentUserMasterRowId(
+    rosterUser,
+    employeeMasterRows,
+  );
+  const employeesForEnrichment =
+    enforced && a.role === "techEd"
+      ? mergedEmployees.filter((employee) =>
+          employeeBelongsToCurrentUser(
+            employee,
+            rosterUser,
+            rosterUserMasterRowId,
+          ),
+        )
+      : mergedEmployees;
 
-  const historyDatastore = catalyst.initialize(req, { scope: "admin" }).datastore();
+  const historyDatastore = catalyst
+    .initialize(req, { scope: "admin" })
+    .datastore();
   let allEmployees = await enrichPreviousAppraisalValues(
     historyDatastore,
     employeesForEnrichment,
@@ -2871,19 +4023,26 @@ async function getEmployees(req, res) {
       // it must not spend its request on the Appraisal_Sheet column lookup and
       // row-by-row write-back (up to ROSTER_WRITE_BUDGET_MS). Any other load of
       // the sheet roster still persists them exactly as before.
-      persistLookups: requestedPage === 1 && requestedView !== "appraisal" && requestedView !== "delegation",
+      persistLookups:
+        requestedPage === 1 &&
+        requestedView !== "appraisal" &&
+        requestedView !== "delegation",
       view: requestedView,
       writeDeadline: requestStartedAt + ROSTER_WRITE_BUDGET_MS,
     },
   );
 
-  logRosterStage("employee enrichment complete", { employees: allEmployees.length });
+  logRosterStage("employee enrichment complete", {
+    employees: allEmployees.length,
+  });
 
   // Eligibility alone must not make the Delegation screen look generated.
   // Show only employees with a persisted Delegation row for this active cycle;
   // the explicit Generate Delegation action creates those rows.
   if (requestedView === "delegation") {
-    allEmployees = allEmployees.filter((employee) => employee.delegation_saved === true);
+    allEmployees = allEmployees.filter(
+      (employee) => employee.delegation_saved === true,
+    );
   }
 
   /* ==========================================================
@@ -2917,19 +4076,28 @@ async function getEmployees(req, res) {
   // whose Appraiser Tech-ED lookup points to this row.
   const myMasterRowId = rosterUserMasterRowId;
 
-  const viewAsParam = String(params.viewAs || "").trim().toLowerCase();
-  const roleKey = String(a.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const viewAsParam = String(params.viewAs || "")
+    .trim()
+    .toLowerCase();
+  const roleKey = String(a.role || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
   // Both a real Comp Manager login and an HR/Tech-Ed Comp Manager preview
   // use the same assignment-based roster rule. A preview keeps the backend
   // caller's scope; a real Comp Manager is matched to their Employee_Master row.
-  const asCompMgr = enforced && (
-    roleKey === "compmgr" ||
-    roleKey === "compmanager" ||
-    (viewAsParam === "compmanager" && roleKey === "hr")
-  );
-  const myMasterRow = (employeeMasterRows || []).find(function (row) {
-    return String(row.ROWID || row.rowid || "").trim() === String(myMasterRowId || "").trim();
-  }) || {};
+  const asCompMgr =
+    enforced &&
+    (roleKey === "compmgr" ||
+      roleKey === "compmanager" ||
+      (viewAsParam === "compmanager" && roleKey === "hr"));
+  const myMasterRow =
+    (employeeMasterRows || []).find(function (row) {
+      return (
+        String(row.ROWID || row.rowid || "").trim() ===
+        String(myMasterRowId || "").trim()
+      );
+    }) || {};
   const myCompManagerAliases = [
     a.user && (a.user.empId || a.user.emp_id),
     myMasterRow.emp_id,
@@ -2938,24 +4106,54 @@ async function getEmployees(req, res) {
     myMasterRow.email_id,
     myMasterRow.email,
     myMasterRowId,
-  ].map(function (value) { return String(value || "").trim().toLowerCase(); }).filter(Boolean);
+  ]
+    .map(function (value) {
+      return String(value || "")
+        .trim()
+        .toLowerCase();
+    })
+    .filter(Boolean);
   function belongsToCompManager(employee) {
-    const rawValue = employee.comp_manager || employee.comp_manager_id ||
-      employee.comp_manager_name || employee.comp_manager_display || "";
-    const raw = rawValue && typeof rawValue === "object"
-      ? String(rawValue.ROWID || rawValue.rowid || rawValue.emp_id ||
-          rawValue.employee_id || rawValue.id || rawValue.value || rawValue.name || "")
-      : String(rawValue || "");
+    const rawValue =
+      employee.comp_manager ||
+      employee.comp_manager_id ||
+      employee.comp_manager_name ||
+      employee.comp_manager_display ||
+      "";
+    const raw =
+      rawValue && typeof rawValue === "object"
+        ? String(
+            rawValue.ROWID ||
+              rawValue.rowid ||
+              rawValue.emp_id ||
+              rawValue.employee_id ||
+              rawValue.id ||
+              rawValue.value ||
+              rawValue.name ||
+              "",
+          )
+        : String(rawValue || "");
     if (!raw) return false;
-    const parts = raw.toLowerCase().split(/\s+-\s+/).map(function (part) { return part.trim(); });
-    const master = employeeMasterMap.get(raw.toLowerCase()) ||
+    const parts = raw
+      .toLowerCase()
+      .split(/\s+-\s+/)
+      .map(function (part) {
+        return part.trim();
+      });
+    const master =
+      employeeMasterMap.get(raw.toLowerCase()) ||
       employeeMasterMap.get(parts[0]) ||
       (parts[0] ? employeeMasterMap.get(parts[0].toLowerCase()) : null);
     if (master) {
-      parts.push(String(master.emp_id || "").toLowerCase(), String(master.emp_name || master.name || "").toLowerCase(),
-        String(master.ROWID || master.rowid || "").toLowerCase());
+      parts.push(
+        String(master.emp_id || "").toLowerCase(),
+        String(master.emp_name || master.name || "").toLowerCase(),
+        String(master.ROWID || master.rowid || "").toLowerCase(),
+      );
     }
-    return parts.some(function (part) { return myCompManagerAliases.includes(part); });
+    return parts.some(function (part) {
+      return myCompManagerAliases.includes(part);
+    });
   }
 
   const scopedEmployees = enforced
@@ -3039,7 +4237,10 @@ async function getEmployees(req, res) {
      RESPONSE
      ========================================================== */
 
-  logRosterStage("response ready", { returnedRows: data.length, filteredRows: filteredCount });
+  logRosterStage("response ready", {
+    returnedRows: data.length,
+    filteredRows: filteredCount,
+  });
   return sendJson(res, 200, {
     success: true,
 
@@ -3128,7 +4329,9 @@ async function createEmployees(req, res) {
 
     if (!key) return;
     const kept = existingByEmpId.get(key);
-    const keptIsActive = Boolean(currentCycleId) && kept &&
+    const keptIsActive =
+      Boolean(currentCycleId) &&
+      kept &&
       String(kept.cycle_id || "").trim() === currentCycleId;
     if (!keptIsActive) existingByEmpId.set(key, row);
   });
@@ -3341,7 +4544,11 @@ async function updateEmployee(req, res) {
   // the new Tech-ED against all of Employee_Master.
   const empIdKey = empId.toLowerCase();
   const isEmployee = function (row) {
-    return String(row.emp_id || "").trim().toLowerCase() === empIdKey;
+    return (
+      String(row.emp_id || "")
+        .trim()
+        .toLowerCase() === empIdKey
+    );
   };
   const readOwnRows = async function (tableName, table) {
     const rows = await zcqlRowsByEmpId(adminApp, tableName, empId);
@@ -3362,7 +4569,9 @@ async function updateEmployee(req, res) {
   const appraisalRow = currentCycleId
     ? (appraisalRows || []).find(function (row) {
         return (
-          String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase() &&
+          String(row.emp_id || "")
+            .trim()
+            .toLowerCase() === empId.toLowerCase() &&
           String(row.cycle_id || "").trim() === currentCycleId
         );
       })
@@ -3377,13 +4586,18 @@ async function updateEmployee(req, res) {
 
   // Before Generate Appraisal Sheet, Delegation (Tech-ED / Comp Manager) is
   // saved on Employee_Master; Generate copies it into the sheet.
-  const beforeGenerate = !appraisalRow && isDelegationAssignmentChange && !!masterRow;
+  const beforeGenerate =
+    !appraisalRow && isDelegationAssignmentChange && !!masterRow;
   if (!appraisalRow && !beforeGenerate) {
     return sendJson(res, currentCycleId ? 404 : 409, {
       success: false,
       message: currentCycleId
-        ? "Appraisal record " + empId + " not found in the Active appraisal cycle."
-        : "There is no Active appraisal cycle, so " + empId + " cannot be saved.",
+        ? "Appraisal record " +
+          empId +
+          " not found in the Active appraisal cycle."
+        : "There is no Active appraisal cycle, so " +
+          empId +
+          " cannot be saved.",
     });
   }
   if (!masterRow) {
@@ -3396,15 +4610,24 @@ async function updateEmployee(req, res) {
   // Two people editing the same cell: the browser sends the value it showed
   // before the edit (body.expected). If the stored value has changed since,
   // someone else saved first - refuse instead of silently overwriting them.
-  const conflicts = appraisalRow ? findSaveConflicts(appraisalRow, body.expected, changedColumns) : [];
+  const conflicts = appraisalRow
+    ? findSaveConflicts(appraisalRow, body.expected, changedColumns)
+    : [];
   if (conflicts.length) {
     return sendJson(res, 409, {
       success: false,
       conflict: true,
-      message: conflicts.map(function (c) {
-        return (CONFLICT_LABELS[c.column] || c.column) + " was changed by someone else to " +
-          (c.current === "" ? "(empty)" : c.current) + " after you loaded it.";
-      }).join(" ") + " Your change was not saved.",
+      message:
+        conflicts
+          .map(function (c) {
+            return (
+              (CONFLICT_LABELS[c.column] || c.column) +
+              " was changed by someone else to " +
+              (c.current === "" ? "(empty)" : c.current) +
+              " after you loaded it."
+            );
+          })
+          .join(" ") + " Your change was not saved.",
       conflicts: conflicts,
     });
   }
@@ -3460,7 +4683,10 @@ async function updateEmployee(req, res) {
       if (column === "appraiser_tech_ed" && appraisalRow) {
         const techEdRowId = masterRowIdFor(value, masterRows);
         if (!techEdRowId && String(value || "").trim()) {
-          throw new access.HttpError(422, "Tech-ED " + value + " was not found in Employee Master.");
+          throw new access.HttpError(
+            422,
+            "Tech-ED " + value + " was not found in Employee Master.",
+          );
         }
         appraisalUpdate.appraiser_tech_ed = techEdRowId || null;
       }
@@ -3495,12 +4721,14 @@ async function updateEmployee(req, res) {
   }
 
   const merged = mergeEmployeeMasterIntoAppraisal(
-    [updatedAppraisal || {
-      emp_id: empId,
-      emp_master_row_id: String(masterRow.ROWID || ""),
-      eligible_status: "Eligible",
-      sheet_generated: false,
-    }],
+    [
+      updatedAppraisal || {
+        emp_id: empId,
+        emp_master_row_id: String(masterRow.ROWID || ""),
+        eligible_status: "Eligible",
+        sheet_generated: false,
+      },
+    ],
     new Map([[empId.toLowerCase(), updatedMaster]]),
   )[0];
 
