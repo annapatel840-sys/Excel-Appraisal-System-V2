@@ -784,14 +784,19 @@ async function readTechEdOwners(app, sourceRows) {
   const owners = new Map();
   // The rows are already complete and paged by getAllRows().
   appraisalRows.forEach((row) => {
+    // Prefer the current Employee_Master foreign-key assignment over
+    // legacy display-text columns. The legacy text can remain populated after
+    // reassignment and otherwise makes Team Size count the employee under the
+    // previous Tech-Ed.
     const rawAssignment = String(
       readField(row, [
-        "appraiser_tech_ed",
-        "appraiser_tech_ed_id",
         "appraiser_tech_ed1",
+        "appraiser_tech_ed_row_id",
+        "appraiser_tech_ed_id",
+        "appraiser_tech_ed",
         "appraiser_teched",
-        "tech_ed",
         "tech_ed_id",
+        "tech_ed",
       ]) || "",
     ).trim();
     if (!rawAssignment) return;
@@ -910,22 +915,27 @@ async function readEmployeeRoster(app) {
         readField(row, ["emp_id", "employee_id"]) ||
           readField(master, ["emp_id", "employee_id"]),
       ).trim();
+      // Match employeesapi: the current FK is authoritative. Older text
+      // assignment columns may still contain the previous Tech-Ed after a
+      // reassignment, so they must only be used as fallbacks.
       const assignment =
         readField(row, [
-          "appraiser_tech_ed",
-          "appraiser_tech_ed_id",
           "appraiser_tech_ed1",
+          "appraiser_tech_ed_row_id",
+          "appraiser_tech_ed_id",
+          "appraiser_tech_ed",
           "appraiser_teched",
-          "tech_ed",
           "tech_ed_id",
+          "tech_ed",
         ]) ||
         readField(master, [
-          "appraiser_tech_ed",
-          "appraiser_tech_ed_id",
           "appraiser_tech_ed1",
+          "appraiser_tech_ed_row_id",
+          "appraiser_tech_ed_id",
+          "appraiser_tech_ed",
           "appraiser_teched",
-          "tech_ed",
           "tech_ed_id",
+          "tech_ed",
         ]);
       const managerRaw = String(
         readField(row, [
