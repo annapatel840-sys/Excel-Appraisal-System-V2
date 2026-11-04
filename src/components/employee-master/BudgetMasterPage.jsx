@@ -1015,7 +1015,7 @@ function HRApplyBudget() {
     } else {
       setOrgPct("");
     }
-  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, dashboardRows, selectedCycle, selectedMaster?.budget_percentage]);
+  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, dashboardRows, selectedCycle, selectedMaster?.budget_percentage, origSnap]);
 
   // budgetmasterapi calculates this cycle's Org Base from the explicit
   // Eligibility_List decisions. Prefer that authoritative total over the full
@@ -1152,7 +1152,7 @@ function HRApplyBudget() {
       setOrigSnap(all);
       writeOriginalSnapshots(all);
     }
-  }, [selectedCycle, orgApplied, derivedOrgOriginal, rows, origSnap]);
+  }, [selectedCycle, orgApplied, derivedOrgOriginal, rows, orgCurrentCount, origSnap]);
   const orgPending = orgPct !== "" && !!selectedMaster && amount(orgPct) !== Number(selectedMaster.budget_percentage || 0);
   const draftCount = rows.filter((row) =>
     Object.prototype.hasOwnProperty.call(pending, row.name) &&
