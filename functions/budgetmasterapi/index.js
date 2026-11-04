@@ -2568,10 +2568,26 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
       const compKey = ownerKey(employee.compManager);
       if (techKey) {
         techRosterCounts.set(techKey, (techRosterCounts.get(techKey) || 0) + 1);
+        const tech = techBases.get(techKey) || {
+          base: 0,
+          count: 0,
+          utilized: 0,
+        };
+        // Current Team Size counts every employee on the current generated
+        // Appraisal_Sheet for this Tech-Ed, not only active/eligible employees.
+        tech.count += 1;
+        techBases.set(techKey, tech);
       }
       if (techKey && compKey) {
         const pairKey = techKey + "::" + compKey;
         compRosterCounts.set(pairKey, (compRosterCounts.get(pairKey) || 0) + 1);
+        const comp = compBases.get(pairKey) || {
+          base: 0,
+          count: 0,
+          utilized: 0,
+        };
+        comp.count += 1;
+        compBases.set(pairKey, comp);
       }
     });
     let orgUtilized = 0;
@@ -2591,7 +2607,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
           utilized: 0,
         };
         tech.base += sheetBaseValue(employee);
-        tech.count += 1;
+        // Headcount was already counted from all current Appraisal_Sheet rows.
         tech.utilized += consumed;
         techBases.set(techKey, tech);
       }
@@ -2599,7 +2615,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         const key = techKey + "::" + compKey;
         const comp = compBases.get(key) || { base: 0, count: 0, utilized: 0 };
         comp.base += sheetBaseValue(employee);
-        comp.count += 1;
+        // Headcount was already counted from all current Appraisal_Sheet rows.
         comp.utilized += consumed;
         compBases.set(key, comp);
       }
