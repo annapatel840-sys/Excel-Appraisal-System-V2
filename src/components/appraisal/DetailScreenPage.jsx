@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  startTransition,
 } from "react";
 import { getSelectedEmpId, setSelectedEmpId } from "@/lib/selected-employee";
 import { useAppraisal } from "@/lib/appraisal-store";
@@ -1566,24 +1567,22 @@ export function DetailScreenPage({
     }
   };
 
-  // Switch the visible employee in the same interaction that commits the
-  // field being left. Queue navigation first: calling blur() first dispatches
-  // a separate React blur event and forces the full Detail Screen to render
-  // once for the save and again for navigation.
+  // Keep the current field focused until this click handler runs. Its blur
+  // commit is scheduled as a transition, while the employee switch stays
+  // urgent so the next employee appears before the save-driven roster render.
   const goTo = (next) => {
     const nextIndex = Math.max(0, Math.min(rows.length - 1, next));
     const nextEmployee = rows[nextIndex];
+    const activeElement = document.activeElement;
 
-    // Queue the next employee before blur commits the current field. React can
-    // then batch the roster edit and employee switch into one screen render.
+    if (activeElement && typeof activeElement.blur === "function") {
+      startTransition(() => activeElement.blur());
+    }
+
     setIndex(nextIndex);
     setSearch("");
 
-    if (document.activeElement && document.activeElement.blur) {
-      document.activeElement.blur();
-    }
-
-    // History is supplementary; warm its cache only after navigation is queued.
+    // History is supplementary; warm its cache without blocking navigation.
     if (nextEmployee?.empId) {
       loadHistory(nextEmployee.empId).catch(() => {});
     }
@@ -2183,6 +2182,7 @@ export function DetailScreenPage({
                   <div className="flex items-center gap-2">
                   <button
                     type="button"
+                    onMouseDown={(event) => event.preventDefault()}
                     onClick={() => goTo(safeIndex - 1)}
                     disabled={safeIndex <= 0}
                     className="rounded border px-3 py-1.5 text-[13.5px] font-semibold"
@@ -2196,6 +2196,7 @@ export function DetailScreenPage({
                   </button>
                   <button
                     type="button"
+                    onMouseDown={(event) => event.preventDefault()}
                     onClick={() => goTo(safeIndex + 1)}
                     className="rounded px-4 py-1.5 text-[13.5px] font-bold"
                     style={{ background: NAVY, color: "#fff" }}
