@@ -1457,17 +1457,11 @@ export function TechEdBudgetDistribution() {
     (num(liveTech?.percentage) > 0
       ? (num(liveTech?.calculated_budget) * 100) / num(liveTech?.percentage)
       : num(sharedBudgetTotals?.base));
-  // Current Count is recalculated by budgetmasterapi from the current
-  // Appraisal_Sheet roster and persisted in Budget_Distribution.current_headcount.
-  // Prefer that refreshed backend value so additions to Appraisal_Sheet appear
-  // even when the page's employeeRows cache has not refreshed yet.
-  const savedCurrentTeamCount = liveTech?.current_headcount;
-  const currentTeamCount =
-    savedCurrentTeamCount !== null &&
-    savedCurrentTeamCount !== undefined &&
-    String(savedCurrentTeamCount).trim() !== ""
-      ? num(savedCurrentTeamCount)
-      : allTeam.length;
+  // Current Count is the number of employees currently loaded from the
+  // active Appraisal Sheet and assigned to this Tech-Ed. Never prefer the
+  // persisted current_headcount: it can be stale after employees are added,
+  // removed, or reassigned. Original Count remains the saved snapshot below.
+  const currentTeamCount = allTeam.length;
   // Use only the immutable baseline returned by the API; headcount may
   // be a legacy/current field and must not replace Original Count here.
   const savedTeamCount = liveTech?.original_headcount;
