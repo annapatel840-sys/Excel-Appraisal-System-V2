@@ -557,7 +557,7 @@ const toNum = (v) => {
    ------------------------------------------------------------------ */
 const FIT_BASE_WIDTH = 700;
 const FIT_MIN = 0.75; // below this the table scrolls instead of shrinking
-function useFitScale() {
+function useFitScale(depKey) {
   const boxRef = useRef(null);
   const fitRef = useRef(null);
   const [scale, setScale] = useState(1);
@@ -577,10 +577,6 @@ function useFitScale() {
       );
       setScale((prev) => (Math.abs(prev - s) > 0.004 ? s : prev));
     };
-
-    // Measure synchronously only on first mount. On employee changes, let the
-    // observer measure after layout so this read cannot block the navigation
-    // paint with a forced reflow.
     calc();
     const ro = new ResizeObserver(calc);
     ro.observe(box);
@@ -590,7 +586,7 @@ function useFitScale() {
       ro.disconnect();
       window.removeEventListener("resize", calc);
     };
-  }, []);
+  }, [depKey]);
 
   return { boxRef, fitRef, scale };
 }
@@ -1274,7 +1270,7 @@ export function DetailScreenPage({
 
 
   // Measure + scale the compensation table so it fits one screen.
-  const { boxRef, fitRef, scale } = useFitScale();
+  const { boxRef, fitRef, scale } = useFitScale(employee?.id);
 
   // Remember each employee's values when first shown, so edits can be highlighted.
   if (employee && !baselineRef.current[employee.id]) {
