@@ -5,6 +5,13 @@ import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useAppraisalRefresh } from "@/lib/appraisal-store";
 import { generateAppraisalSheet, payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import {
+  delegationGeneration,
+  delegationSnapshotKey,
+  fetchDelegationRoster,
+  readDelegationSnapshot,
+  writeDelegationSnapshot,
+} from "@/lib/delegation-roster";
 
 /* ------------------------------------------------------------------ data */
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
@@ -25,6 +32,12 @@ const TAG = {
   [ST.PD]: "pd",
 };
 const PAGE = 50;
+// Roster rows asked for per employeesapi request (its MAX_LIMIT). Every roster
+// request re-reads and re-enriches the whole roster on the server, and page 2
+// can only start after page 1 returns, so a 1,000-row page made a 2,000-row
+// roster cost two full server passes one after the other. Larger rosters still
+// continue through the totalPages loop in loadRoster.
+const ROSTER_PAGE_LIMIT = 5000;
 /* Grid columns (header filter + drag-to-resize like the Appraisal Sheet) */
 const MIN_COL = 70;
 const MAX_COL = 520;
@@ -183,6 +196,9 @@ export default function DelegationScreen({
   const [activeCycleId, setActiveCycleId] = useState("");
   const [rosterLoading, setRosterLoading] = useState(false);
   const [showRosterLoading, setShowRosterLoading] = useState(false);
+  // True while the last roster this user saw is on screen (read-only) and the
+  // fresh roster is still loading.
+  const [showingSaved, setShowingSaved] = useState(false);
   const displayCycleName = activeCycleName || cycleName || "No active cycle";
   useEffect(() => {
     if (!rosterLoading) {
@@ -287,6 +303,11 @@ export default function DelegationScreen({
   const [modal, setModal] = useState(null); // {type, ...}
   const [reason, setReason] = useState("");
   const [toast, setToast] = useState(null);
+  // The one Comp. Manager / Appraiser Tech-ED dropdown (row:field) whose full
+  // list of people is rendered. Every other dropdown holds only its current
+  // value: 50 rows x 2 dropdowns x the whole roster was ~200,000 <option>
+  // elements on every render (the Appraisal Grid has no such lists).
+  const [openCell, setOpenCell] = useState("");
 
   const loadRequests = async () => {
     const response = await catalystFetch(
@@ -344,33 +365,45 @@ export default function DelegationScreen({
   // View-only screen, or a Tech-ED without the delegateRequest action: no edits.
   const editLocked =
     locked ||
+    showingSaved ||
     (!isHR && !isTechEdUser && !access.canScreen("delegation", "edit")) ||
     (!isHR && !isTechEdUser && !access.canAction("delegateRequest"));
 
-  const loadRoster = async () => {
+  const loadRoster = async ({ initial = false } = {}) => {
     // Clear the previous cycle's working roster before fetching the next one.
-    setRows([]);
-    setActiveCycleId("");
-    setActiveCycleName("");
+    // The first load of the screen starts empty anyway, and keeps the saved
+    // copy (below) on screen instead of blanking it.
+    if (!initial) {
+      setRows([]);
+      setActiveCycleId("");
+      setActiveCycleName("");
+    }
     setRosterLoading(true);
+    const startedGeneration = delegationGeneration();
+    const savedKey = delegationSnapshotKey(catalystUser?.email || catalystUser?.id || catalystUser?.user_id || "");
+    let freshApplied = false;
     try {
-      const fetchRosterPage = async (pageNo, fallbackMessage) => {
-        const response = await catalystFetch(
-          EMPLOYEE_API_URL + "?page=" + pageNo + "&limit=1000&view=delegation&gz=1",
-          { method: "GET", cache: "no-store" },
-        );
-        const payload = await response.json();
-        if (!response.ok || !payload?.success) {
-          throw new Error(payload?.message || fallbackMessage);
-        }
-        return payload;
-      };
+      // First load only: show the last roster this user saw, at once, while
+      // the fresh one loads. Never applied once the fresh roster has arrived.
+      if (initial) {
+        readDelegationSnapshot(savedKey).then((saved) => {
+          if (!saved || freshApplied) return;
+          setRows(saved.rows);
+          setActiveCycleId(String(saved.cycleId || ""));
+          setActiveCycleName(String(saved.cycleName || ""));
+          setShowingSaved(true);
+        });
+      }
       // The roster does not depend on the cycle lookup (employeesapi finds the
       // active cycle itself), so start page 1 together with the cycle list
       // instead of after it. Only page 1 writes lookups, so this is safe.
-      const cyclesPromise = payrollCycleRequest("cycles");
-      const firstPromise = fetchRosterPage(1, "Unable to load appraisal employees.");
+      // The roster is the slow call, so it is queued before the (tiny) cycle
+      // list: catalystFetch runs at most two requests at a time.
+      // The first load joins the request the sign-in prefetch already started
+      // (if any); explicit reloads always ask the server again.
+      const firstPromise = fetchDelegationRoster({ fresh: !initial });
       firstPromise.catch(() => {}); // reported where it is awaited below
+      const cyclesPromise = payrollCycleRequest("cycles");
       const cycles = await cyclesPromise;
       const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
         const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
@@ -378,14 +411,16 @@ export default function DelegationScreen({
         return status === "active" && !archived && !cycle.hidden;
       });
       if (!active) {
+        freshApplied = true;
         setActiveCycleId("");
         setActiveCycleName("");
         setRows([]);
         return;
       }
       const cycleId = String(active.id || active.appraisal_cycle_id || active.cycle_id || active.ROWID || "");
+      const cycleName = String(active.name || active.cycle_name || active.appraisal_year || "");
       setActiveCycleId(cycleId);
-      setActiveCycleName(String(active.name || active.cycle_name || active.appraisal_year || ""));
+      setActiveCycleName(cycleName);
 
       // Always fetch the enriched delegation roster from employeesapi.
       // initialRows may contain only Employee_Master values and omit previous-cycle references.
@@ -398,18 +433,8 @@ export default function DelegationScreen({
       // Delegation is prepared before sheet generation, so employeesapi builds
       // the working roster from the active cycle's eligible records when the
       // Appraisal Sheet has not yet been generated.
-      const first = await firstPromise;
-      const all = Array.isArray(first.data) ? [...first.data] : [];
-      const totalPages = Math.max(1, Number(first.pagination?.totalPages || 1));
-      // Remaining pages are independent: fetch them together, not one by one.
-      const rest = await Promise.all(
-        Array.from({ length: totalPages - 1 }, (_, index) =>
-          fetchRosterPage(index + 2, "Unable to load the remaining delegation employees."),
-        ),
-      );
-      rest.forEach((payload) => {
-        if (Array.isArray(payload.data)) all.push(...payload.data);
-      });
+      // (fetchDelegationRoster reads page 1, then every remaining page together.)
+      const all = await firstPromise;
       const unique = new Map();
       all.forEach((item) => {
         const id = String(item.emp_id || item.employee_id || "").trim().toLowerCase();
@@ -434,18 +459,25 @@ export default function DelegationScreen({
         base: "",
         lastRole: "",
       }));
+      freshApplied = true;
       setRows(mapped);
+      // Keep this roster as the copy shown at once on the next visit (an empty
+      // roster replaces the old copy, so it is not shown again).
+      writeDelegationSnapshot(savedKey, { rows: mapped, cycleId, cycleName }, startedGeneration);
       return mapped;
     } catch (error) {
+      freshApplied = true;
       setRows([]);
       say(error?.message || "Unable to load appraisal employees.", true);
     } finally {
+      freshApplied = true;
+      setShowingSaved(false);
       setRosterLoading(false);
     }
   };
 
   useEffect(() => {
-    loadRoster();
+    loadRoster({ initial: true });
     const refreshRoster = () => loadRoster();
     window.addEventListener("appraisal:cycle-updated", refreshRoster);
     // Load the active cycle's roster when the Delegation screen is mounted.
@@ -1426,6 +1458,7 @@ export default function DelegationScreen({
             </label>
             <button
               className="btn"
+              disabled={showingSaved}
               onClick={() => setModal({ type: "bulk" })}
             >
               Bulk Assign ({selIds.length})
@@ -1463,9 +1496,9 @@ export default function DelegationScreen({
           </div>
 
           <div className="dg-tw">
-            {rosterLoading && showRosterLoading ? (
+            {rosterLoading && !showingSaved && showRosterLoading ? (
               <div className="empty" role="status">Loading delegation data…</div>
-            ) : rosterLoading ? null : !scoped.length ? (
+            ) : rosterLoading && !showingSaved ? null : !scoped.length ? (
               <div className="empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
                 {activeCycleId ? "No delegation rows are available for " + displayCycleName + "." : "No active appraisal cycle. Create or activate a cycle to start delegation."}
                 {activeCycleId && (
@@ -1583,17 +1616,28 @@ export default function DelegationScreen({
                             const prev = resolveName(
                               f === "comp" ? r.prevComp : r.prevApp,
                             );
+                            const cur = resolveName(r[f]);
+                            const cellKey = r.id + ":" + f;
+                            const listOpen = openCell === cellKey;
+                            // Opened by hover / focus / touch, before the
+                            // native list pops up.
+                            const openList = () => {
+                              if (!listOpen) setOpenCell(cellKey);
+                            };
                             return (
                               <td key={f}>
                                 <select
                                   className={
                                     "in" +
-                                    (prev && resolveName(r[f]) !== prev
+                                    (prev && cur !== prev
                                       ? " c"
                                       : "")
                                   }
                                   disabled={editLocked}
-                                  value={resolveName(r[f])}
+                                  value={cur}
+                                  onMouseEnter={openList}
+                                  onFocus={openList}
+                                  onTouchStart={openList}
                                   onChange={(e) => {
                                     setReason("");
                                     setModal({
@@ -1606,24 +1650,30 @@ export default function DelegationScreen({
                                     });
                                   }}
                                 >
-                                  {resolveName(r[f]) &&
-                                    !people.some(
-                                      (p) => p.id === resolveName(r[f]),
-                                    ) && (
-                                      <option value={resolveName(r[f])}>
-                                        {resolveName(r[f])}
-                                      </option>
-                                    )}
-                                  {!resolveName(r[f]) && (
+                                  {!cur && (
                                     <option value="" disabled>
                                       — not set —
                                     </option>
                                   )}
-                                  {people.map((p) => (
-                                    <option key={p.id} value={p.id}>
-                                      {p.name}
-                                    </option>
-                                  ))}
+                                  {listOpen ? (
+                                    <>
+                                      {cur &&
+                                        !people.some((p) => p.id === cur) && (
+                                          <option value={cur}>{cur}</option>
+                                        )}
+                                      {people.map((p) => (
+                                        <option key={p.id} value={p.id}>
+                                          {p.name}
+                                        </option>
+                                      ))}
+                                    </>
+                                  ) : (
+                                    cur && (
+                                      <option key={cur} value={cur}>
+                                        {cur}
+                                      </option>
+                                    )
+                                  )}
                                 </select>
                               </td>
                             );
@@ -1759,7 +1809,8 @@ export default function DelegationScreen({
                       canApprove &&
                       reqTab === "Pending" &&
                       pending.length > 1 &&
-                      !locked && (
+                      !locked &&
+                      !showingSaved && (
                         <>
                           <span style={{ flex: 1 }} />
                           <button className="btn p sm" onClick={approveAll}>
@@ -1833,6 +1884,7 @@ export default function DelegationScreen({
                         </div>
                         {q.status === "Pending" &&
                           !locked &&
+                          !showingSaved &&
                           (!isHR || canApprove) &&
                           (isHR ? (
                             <>
