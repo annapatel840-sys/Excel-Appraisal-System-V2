@@ -29,7 +29,11 @@ import {
   sumTargetPB,
 } from "./BudgetStatsBar";
 import { useCatalystUser } from "@/lib/catalyst-auth";
-import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
+import {
+  useViewAs,
+  currentUserManagerAliases,
+  managerIdentityMatches,
+} from "@/lib/view-as-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
 import { useNotices } from "@/lib/notices";
@@ -1065,16 +1069,25 @@ export function DetailScreenPage({
   // The backend already scopes rows to what this login may see. Like the
   // Appraisal Sheet, only Active + Eligible employees are listed here, so the
   // count matches the sheet (not the whole employee master).
+  // Resolve the signed-in manager's identity once. Calling
+  // currentUserMatchesManager() for every employee repeatedly scanned the
+  // entire roster to find the linked Employee_Master row (O(n²) on large teams).
+  const managerAliases = useMemo(
+    () => currentUserManagerAliases(catalystUser, liveRows || []),
+    [catalystUser, liveRows],
+  );
   const rows = useMemo(
     () =>
       (liveRows || [])
-        .filter(
-          (row) =>
-            String(row.status || "").trim().toLowerCase() === "active" &&
-            String(row.eligibility || "").trim().toLowerCase() === "eligible" &&
-            (!isCompManagerPreview ||
-              currentUserMatchesManager(row.compManagerDisplay || row.compManager, catalystUser, liveRows || [])),
-        )
+        .filter((row) => {
+          if (
+            String(row.status || "").trim().toLowerCase() !== "active" ||
+            String(row.eligibility || "").trim().toLowerCase() !== "eligible"
+          ) return false;
+          if (!isCompManagerPreview) return true;
+          const manager = row.compManagerDisplay || row.compManager;
+          return managerAliases.some((alias) => managerIdentityMatches(manager, alias));
+        })
         // Sequential by Employee ID (EMP001, EMP002, ... EMP010), same as the sheet.
         .sort((a, b) =>
           String(a.empId || "").localeCompare(String(b.empId || ""), undefined, {
@@ -1082,7 +1095,7 @@ export function DetailScreenPage({
             sensitivity: "base",
           }),
         ),
-    [liveRows, isCompManagerPreview, catalystUser],
+    [liveRows, isCompManagerPreview, managerAliases],
   );
   const isScopedToTeam = isTechEd || rows.length > 0;
 
