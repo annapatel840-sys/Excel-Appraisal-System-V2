@@ -1566,21 +1566,27 @@ export function DetailScreenPage({
     }
   };
 
-  // Move directly to the next row from the already-loaded Appraisal Sheet
-  // roster. Start its history request in the background, but never wait for it
-  // before rendering the employee's current Appraisal Sheet values.
+  // Switch the visible employee in the same interaction that commits the
+  // field being left. Queue navigation first: calling blur() first dispatches
+  // a separate React blur event and forces the full Detail Screen to render
+  // once for the save and again for navigation.
   const goTo = (next) => {
+    const nextIndex = Math.max(0, Math.min(rows.length - 1, next));
+    const nextEmployee = rows[nextIndex];
+
+    // Queue the next employee before blur commits the current field. React can
+    // then batch the roster edit and employee switch into one screen render.
+    setIndex(nextIndex);
+    setSearch("");
+
     if (document.activeElement && document.activeElement.blur) {
       document.activeElement.blur();
     }
-    const nextIndex = Math.max(0, Math.min(rows.length - 1, next));
-    const nextEmployee = rows[nextIndex];
+
+    // History is supplementary; warm its cache only after navigation is queued.
     if (nextEmployee?.empId) {
-      // History is supplementary; warm its cache without blocking navigation.
       loadHistory(nextEmployee.empId).catch(() => {});
     }
-    setIndex(nextIndex);
-    setSearch("");
   };
   const safeIndex = Math.min(index, Math.max(rows.length - 1, 0));
 
