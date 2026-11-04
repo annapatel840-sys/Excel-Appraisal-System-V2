@@ -328,7 +328,9 @@ const resolveCompManagers = (list) => {
     e.empId && e.name ? `${e.empId} - ${e.name}` : e.name || e.empId;
 
   return list.map((e) => {
-    const shown = String(e.compManagerDisplay || e.compManager || "").trim();
+    const shown = e.compManagerChecked
+      ? String(e.compManagerDisplay || "").trim()
+      : String(e.compManagerDisplay || e.compManager || "").trim();
     let resolved = shown;
 
     if (shown) {
@@ -363,7 +365,12 @@ const mapCatalystEmployee = (employee, index) => {
 
     reportingManager: String(employee.reporting_manager || ""),
     compManager: String(employee.comp_manager || ""),
-    compManagerDisplay: String(employee.comp_manager_display || employee.comp_manager_name || employee.comp_manager || ""),
+    // The server sends comp_manager_display already checked against Employee
+    // Master ("ID - Name", or blank when not a real employee). Use it as is.
+    compManagerDisplay: "comp_manager_display" in employee
+      ? String(employee.comp_manager_display || "")
+      : String(employee.comp_manager_name || employee.comp_manager || ""),
+    compManagerChecked: "comp_manager_display" in employee,
     // appraiser_tech_ed1 is a lookup FK in some API responses; prefer the
     // resolved Appraisal Sheet assignment so the grid shows Employee ID - Name.
     // Never show a bare Employee_Master ROWID (e.g. 74008000000027046) as the name.

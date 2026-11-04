@@ -1502,6 +1502,49 @@ function employeeIdResolver(masterRows) {
   };
 }
 
+// STRICT version of employeeIdResolver, used for the Comp Manager. A person
+// counts only when they really exist in Employee_Master:
+//   - an Employee_Master ROWID or an Employee ID ("EMP002") that exists;
+//   - "EMP002 - Ashok Kumar": the ID must exist AND the name must be the same
+//     as that employee's name in Employee_Master (otherwise it is not them);
+//   - a bare name / email that belongs to exactly one employee.
+// Anything else returns "" (not assigned). Nothing is ever kept as free text.
+function strictEmployeeIdResolver(masterRows) {
+  const nameKey = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const byRowId = new Map();
+  const byEmpId = new Map();
+  const nameOfId = new Map();
+  const byOther = new Map();
+  masterRows.forEach((row) => {
+    const empId = String(row.emp_id || "").trim();
+    if (!empId) return;
+    const rowIdValue = String(row.ROWID || row.rowid || "");
+    if (rowIdValue) byRowId.set(rowIdValue, empId);
+    const idKey = normalizePersonKey(empId);
+    if (!byEmpId.has(idKey)) {
+      byEmpId.set(idKey, empId);
+      nameOfId.set(idKey, nameKey(row.emp_name || row.name || row.full_name));
+    }
+    new Set([row.name, row.emp_name, row.full_name, row.email_id, row.email]
+      .map(nameKey).filter(Boolean)).forEach((key) => {
+      byOther.set(key, byOther.has(key) && byOther.get(key) !== empId ? null : empId);
+    });
+  });
+  return (value) => {
+    const raw = String(value ?? "").trim();
+    if (!raw) return "";
+    if (byRowId.has(raw)) return byRowId.get(raw);
+    const pair = raw.match(/^\s*(.+?)\s+-\s+(.+?)\s*$/);
+    if (pair) {
+      const idKey = normalizePersonKey(pair[1]);
+      const id = byEmpId.get(idKey);
+      const masterName = nameOfId.get(idKey);
+      return id && masterName && nameKey(pair[2]) === masterName ? id : "";
+    }
+    return byEmpId.get(normalizePersonKey(raw)) || byOther.get(nameKey(raw)) || "";
+  };
+}
+
 function resolveEmployeeReference(value, masterRows) {
   const raw = String(value ?? "").trim();
   if (!raw) return "";
@@ -2043,7 +2086,9 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0) {
   let unchanged = 0;
   const sheetInserts = [];
   const sheetUpdates = [];
-  const compManagerEmployeeId = employeeIdResolver(employeeMasterRows);
+  const compManagerEmployeeId = strictEmployeeIdResolver(employeeMasterRows);
+  // Employees whose Comp Manager ended up blank (reported back to Delegation).
+  const compManagerMissing = [];
   // Did this cycle already have an Appraisal Sheet before this run?
   const alreadyGenerated = sheetRows.some((row) => String(row.cycle_id || "") === String(cycle.id));
   const eligibleMasterIds = new Set(
@@ -2208,12 +2253,13 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0) {
     ) {
       payload.appraiser_tech_ed = appraiserReference;
     }
-    // Appraisal_Sheet.comp_manager is text, set from the Delegation row first;
-    // by default the Tech-ED is the Comp Manager. A rerun keeps a Comp Manager
-    // already saved on the sheet. It is stored as the Employee ID ("EMP001"):
-    // Delegation stores IDs while other sources give "EMP001 - Name", and
-    // mixed forms made Generate rewrite unchanged assignments. A value that
-    // matches no employee is stored as it is.
+    // Appraisal_Sheet.comp_manager is text holding the Employee ID ("EMP001").
+    // It is only ever a person who exists in Employee_Master with a matching
+    // name; anything else is left blank (never kept as free text).
+    // Order: the Delegation assignment, then what the sheet already holds,
+    // then the usual defaults (Employee Master / previous cycle), and finally
+    // the Appraiser Tech-ED of this sheet row. If none of them is a real
+    // employee the Comp Manager stays blank and Delegation asks for one.
     const previousPayrollCompManager = previousPayrollBaseSource
       ? String(fieldValue(
           previousPayrollBaseSource,
@@ -2221,22 +2267,23 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0) {
           "compensation_manager",
         ) ?? "").trim()
       : "";
-    const compManagerSource = delegatedCompManager ||
-      String(employee.comp_manager ?? "").trim() ||
-      previousPayrollCompManager ||
-      String(employee.appraiser_tech_ed ?? "").trim();
-    const compManagerText = compManagerEmployeeId(compManagerSource) ||
-      (/^\d+$/.test(compManagerSource) ? "" : compManagerSource);
     const storedCompManager = String(existing?.comp_manager || "").trim();
+    const delegatedId = compManagerEmployeeId(delegatedCompManager);
+    const storedId = compManagerEmployeeId(storedCompManager);
+    const defaultId =
+      compManagerEmployeeId(String(employee.comp_manager ?? "").trim()) ||
+      compManagerEmployeeId(previousPayrollCompManager) ||
+      compManagerEmployeeId(appraiserReference) ||
+      compManagerEmployeeId(delegatedAppraiser) ||
+      compManagerEmployeeId(String(employee.appraiser_tech_ed ?? "").trim());
+    const finalCompManager = delegatedId || storedId || defaultId || "";
     if (!appraisalSheetColumns || appraisalSheetColumns.has("comp_manager")) {
-      if (compManagerText && (delegatedCompManager || !existing || !storedCompManager)) {
-        payload.comp_manager = compManagerText.slice(0, 30);
-      } else if (storedCompManager) {
-        // Kept assignment: same person, stored as their Employee ID.
-        const storedId = compManagerEmployeeId(storedCompManager);
-        if (storedId && storedId !== storedCompManager) payload.comp_manager = storedId;
+      // Write when it differs (this also blanks an old free-text value).
+      if (finalCompManager !== storedCompManager && (finalCompManager || storedCompManager)) {
+        payload.comp_manager = finalCompManager.slice(0, 30);
       }
     }
+    if (!finalCompManager) compManagerMissing.push(empId);
     if (existing) {
       // Only touch rows where something differs from what is already stored.
       const differs = Object.keys(payload).some(
@@ -2317,6 +2364,10 @@ async function generateAppraisalSheet(tables, cycle, actor, writeDeadline = 0) {
     unchanged,
     removedStaleRows: staleSheetRowIds.length,
     eligible: eligibleRows.length,
+    // Employees left without a Comp Manager (not set, or not found in
+    // Employee Master). Delegation shows an alert asking HR to set them.
+    compManagerMissing: compManagerMissing.length,
+    compManagerMissingIds: compManagerMissing.slice(0, 50),
     alreadyGenerated,
     upToDate: alreadyGenerated && upToDate,
     // Rows not written before the time limit: Generate again to add them.

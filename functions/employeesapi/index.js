@@ -916,6 +916,54 @@ function buildEmployeeMasterMap(masterRows) {
   return map;
 }
 
+// Strict person check against Employee_Master (used for the Comp Manager).
+// A value counts only when it is a real employee whose NAME ALSO MATCHES
+// Employee_Master:
+//   - a ROWID or Employee ID that exists;
+//   - "EMP002 - Ashok Kumar": the ID exists and the name is that employee's;
+//   - a bare name that belongs to exactly one employee.
+// It returns "ID - Name" for a match and "" otherwise (never free text).
+const personNameKey = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+const masterNameIndexCache = new WeakMap();
+function masterNameIndex(employeeMasterMap) {
+  let index = masterNameIndexCache.get(employeeMasterMap);
+  if (index) return index;
+  index = new Map();
+  const seen = new Set();
+  employeeMasterMap.forEach((row) => {
+    const id = String(row?.emp_id || "").trim().toLowerCase();
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    const key = personNameKey(row.emp_name || row.name);
+    if (key) index.set(key, index.has(key) ? null : row);
+  });
+  masterNameIndexCache.set(employeeMasterMap, index);
+  return index;
+}
+function matchMasterPerson(value, employeeMasterMap) {
+  const raw = historyReference(value);
+  if (!raw) return null;
+  const direct = employeeMasterMap.get(raw) || employeeMasterMap.get(raw.toLowerCase());
+  if (direct) return direct;
+  const pair = raw.match(/^\s*(.+?)\s+-\s+(.+?)\s*$/);
+  if (pair) {
+    const row =
+      employeeMasterMap.get(pair[1].trim()) ||
+      employeeMasterMap.get(pair[1].trim().toLowerCase());
+    if (!row) return null;
+    const masterName = personNameKey(row.emp_name || row.name);
+    return masterName && personNameKey(pair[2]) === masterName ? row : null;
+  }
+  return masterNameIndex(employeeMasterMap).get(personNameKey(raw)) || null;
+}
+function strictPersonLabel(value, employeeMasterMap) {
+  const row = matchMasterPerson(value, employeeMasterMap);
+  if (!row) return "";
+  const id = String(row.emp_id || "").trim();
+  const name = String(row.emp_name || row.name || "").trim();
+  return id && name ? id + " - " + name : id || name;
+}
+
 /* ============================================================
    APPRAISAL_SHEET + EMPLOYEE_MASTER → APPRAISAL API SHAPE
 
@@ -2612,11 +2660,15 @@ async function enrichPreviousAppraisalValues(
       // employee when the request started. The Delegation screen runs its
       // one-time roster fill only while some employee has none.
       delegation_saved: Boolean(savedDelegation),
+      // Only a real Employee_Master employee (name matching) counts. If the
+      // saved / previous / master value is not valid it is skipped, and the
+      // last default is the Tech-ED. If nothing is valid it is blank and the
+      // Delegation screen asks for a Comp Manager to be set.
       delegation_comp_manager:
-        String(savedDelegation?.comp_manager || "").trim() ||
-        previousCompManager ||
-        String(employee.comp_manager || "").trim() ||
-        String(employee.appraiser_tech_ed || "").trim(),
+        strictPersonLabel(savedDelegation?.comp_manager, employeeMasterMap) ||
+        strictPersonLabel(previousCompManager, employeeMasterMap) ||
+        strictPersonLabel(employee.comp_manager, employeeMasterMap) ||
+        strictPersonLabel(employee.appraiser_tech_ed, employeeMasterMap),
       current_annual_base_pay: payrollAnnualBasePay,
       // The date column is sourced from the archived cycle's effective_date,
       // never from stale demo values or the cycle-name label.
@@ -2956,24 +3008,14 @@ function mergeEmployeeMasterIntoAppraisal(appraisalRows, employeeMasterMap) {
           masterValue("comp_manager", "comp_manager_name", "director") ||
           "",
       ),
-      comp_manager_display: (() => {
-        const raw = String(
-          row.comp_manager ||
-            masterValue("comp_manager", "comp_manager_name", "director") ||
-            "",
-        ).trim();
-        if (!raw) return "";
-        const key = raw.split(/\s+-\s+/)[0].trim();
-        const manager =
-          employeeMasterMap.get(raw) ||
-          employeeMasterMap.get(raw.toLowerCase()) ||
-          employeeMasterMap.get(key) ||
-          employeeMasterMap.get(key.toLowerCase());
-        if (!manager) return raw;
-        const id = String(manager.emp_id || "").trim();
-        const name = String(manager.emp_name || manager.name || "").trim();
-        return id && name ? id + " - " + name : name || raw;
-      })(),
+      // Shown as "ID - Name" only for a real Employee_Master employee whose
+      // name matches; otherwise blank (not assigned).
+      comp_manager_display: strictPersonLabel(
+        row.comp_manager ||
+          masterValue("comp_manager", "comp_manager_name", "director") ||
+          "",
+        employeeMasterMap,
+      ),
       // appraiser_tech_ed1 is a lookup to Employee_Master.ROWID. Resolve it
       // to the actual Tech-Ed employee identity so the grid displays ID - Name
       // and the backend's Tech-Ed access filter can match the signed-in user.

@@ -1173,9 +1173,12 @@ export default function DelegationScreen({
       if (d.created) parts.push(`${d.created} added`);
       if (d.updated) parts.push(`${d.updated} updated`);
       if (d.removedStaleRows) parts.push(`${d.removedStaleRows} removed`);
-      const summary = d.alreadyGenerated
+      let summary = d.alreadyGenerated
         ? `Appraisal Sheet updated: ${parts.join(", ") || "changes applied"}.`
         : `Appraisal Sheet generated for ${d.created ?? d.eligible ?? 0} employee(s).`;
+      if (d.compManagerMissing) {
+        summary += ` ${d.compManagerMissing} employee(s) have no Comp. Manager assigned - set it in Delegation and generate again.`;
+      }
       // Load the generated / updated rows first so the sheet opens with them.
       await refreshEmployees().catch(() => {});
       onRefresh?.();
@@ -1206,6 +1209,15 @@ export default function DelegationScreen({
   const generateSheet = () => {
     if (!(isHR || isTechEdUser) || !activeCycleId || sheetBusy) return;
     const unsaved = Object.keys(stagedChanges).length;
+    if (!unsaved && withoutComp > 0) {
+      setModal({
+        type: "confirm",
+        title: "Comp. Manager not assigned",
+        body: `${withoutComp} employee(s) have no Comp. Manager (not set, or not found in Employee Master). The Appraiser Tech-ED will be used for them when the Appraisal Sheet is generated; if that is not assigned either, the Comp. Manager stays blank. Set the Comp. Manager and Save first, or continue anyway?`,
+        ok: runGenerateSheet,
+      });
+      return;
+    }
     if (unsaved) {
       setModal({
         type: "confirm",
@@ -1502,6 +1514,17 @@ export default function DelegationScreen({
               </button>
             )}
           </div>
+
+          {withoutComp > 0 && (isHR || isTechEdUser) && !rosterLoading && (
+            <div className="dg-alert" role="alert">
+              <b>Comp. Manager not assigned</b> for {withoutComp} employee
+              {withoutComp === 1 ? "" : "s"} (not set, or not found in
+              Employee Master). Please set the Comp. Manager in the grid below
+              and click Save. When the Appraisal Sheet is generated the
+              Appraiser Tech-ED is used by default; if that is not assigned
+              either, the Comp. Manager stays blank.
+            </div>
+          )}
 
           <div className="dg-tw">
             {rosterLoading && !showingSaved && showRosterLoading ? (
@@ -2217,6 +2240,8 @@ const CSS = `
 .dg-menulist{position:absolute;right:0;top:calc(100% + 6px);min-width:150px;background:#fff;border:1px solid #E5E7EB;border-radius:8px;box-shadow:0 6px 20px rgba(15,42,68,.18);padding:4px;z-index:30;text-align:left}
 .dg .dg-menulist button{display:block;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:8px 10px;font-size:12.5px;font-weight:600;color:#102A43;cursor:pointer}
 .dg .dg-menulist button:hover{background:#eef2f8}
+.dg-alert{margin:6px 0 2px;padding:8px 12px;border:1px solid #f0c36d;background:#fff8e6;color:#7a4a00;border-radius:8px;font-size:12.5px;line-height:1.4}
+.dg-alert b{color:#94620a}
 .dg-mets{display:flex;align-items:stretch;flex-wrap:wrap}
 .dg-met{display:flex;align-items:baseline;gap:6px;padding:2px 14px;border-right:1px solid #e6eaef;white-space:nowrap}
 .dg-met:first-child{padding-left:4px}.dg-met:last-child{border-right:none}
