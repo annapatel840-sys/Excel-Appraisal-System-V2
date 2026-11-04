@@ -1083,7 +1083,9 @@ const histGrid = (widths) => widths.map((w) => `${w}%`).join(" ");
 export function DetailScreenPage({
   onViewBudget,
 } = {}) {
-  const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
+  const { rows: liveRows, audit, updateCell, updateLinkedCells } = useAppraisal();
+  const cachedAudit = useDeferredValue(audit);
+  const budgetContext = useBudget();
 
   // Keep the last ready Appraisal Sheet roster available during urgent employee
   // navigation. A save may publish a new 500+ row array; rendering the next
@@ -1097,7 +1099,7 @@ export function DetailScreenPage({
     totals: budgetMasterTotals,
     loading: budgetLoading,
     error: budgetError,
-  } = useBudget();
+  } = budgetContext;
   const catalystUser = useCatalystUser();
   const { effectiveId, actualId } = useViewAs();
  
@@ -1114,17 +1116,21 @@ export function DetailScreenPage({
   // Keep the employee order stable across ordinary field edits. The Appraisal
   // Sheet roster is shared in memory; changing a salary/feedback field must not
   // re-filter and re-sort the complete team before the next employee can render.
-  const rosterOrderKey = (cachedLiveRows || [])
-    .map((row) =>
-      [
-        row.id,
-        row.empId,
-        String(row.status || "").trim().toLowerCase(),
-        String(row.eligibility || "").trim().toLowerCase(),
-        row.compManagerDisplay || row.compManager || "",
-      ].join(":"),
-    )
-    .join("|");
+  const rosterOrderKey = useMemo(
+    () =>
+      (cachedLiveRows || [])
+        .map((row) =>
+          [
+            row.id,
+            row.empId,
+            String(row.status || "").trim().toLowerCase(),
+            String(row.eligibility || "").trim().toLowerCase(),
+            row.compManagerDisplay || row.compManager || "",
+          ].join(":"),
+        )
+        .join("|"),
+    [cachedLiveRows],
+  );
 
   const orderedEmployeeIds = useMemo(
     () =>
@@ -1592,14 +1598,20 @@ export function DetailScreenPage({
       ? `${currentUser.name}'s team`
       : "No assigned team";
 
-  const handleViewBudget = () => {
+  const handleViewBudget = useCallback(() => {
     if (typeof onViewBudget === "function") onViewBudget();
     else {
       // Same in-app navigation the top menu uses (no page reload).
       window.history.pushState({}, "", BUDGET_PATH);
       window.dispatchEvent(new PopStateEvent("popstate"));
     }
-  };
+  }, [onViewBudget]);
+  const panelLive = useMemo(() => ({ pb: livePB, rb: liveRB }), [livePB, liveRB]);
+  const panelBudget = useMemo(
+    () => ({ allocated: budgetAllocated, used: budgetConsumed }),
+    [budgetAllocated, budgetConsumed],
+  );
+  const closePanel = useCallback(() => setCardOpen(false), []);
 
   // Change the selected employee immediately. Blur commits the field being
   // left in the same click; supplementary history is loaded by the employee
@@ -2244,13 +2256,15 @@ export function DetailScreenPage({
                 priorCycles={priorCycles}
                 feedbackItems={feedbackData.items}
                 currentCycleName={currentCycleName}
-                live={{ pb: livePB, rb: liveRB }}
-                budget={{ allocated: budgetAllocated, used: budgetConsumed }}
+                live={panelLive}
+                budget={panelBudget}
+                audit={cachedAudit}
+                budgetCtx={budgetContext}
                 onViewBudget={handleViewBudget}
                 width={panelWidth}
                 maxWidth={panelMax}
                 onWidthChange={setFeedbackWidth}
-                onClose={() => setCardOpen(false)}
+                onClose={closePanel}
               />
             </aside>
             )}
