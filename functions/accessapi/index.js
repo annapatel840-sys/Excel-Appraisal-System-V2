@@ -1548,11 +1548,6 @@ app.post(
       selectAll(zcql, SETTINGS.appraisalSheet.table, "cycle_id = '" + q(cycleId) + "'"),
       selectAll(zcql, SETTINGS.cycle.table, SETTINGS.cycle.idColumn + " = " + cycleId),
     ]);
-    /*
-      zcql,
-      SETTINGS.cycle.table,
-      SETTINGS.cycle.idColumn + " = " + cycleId,
-    );
     if (!cycles.length || String(cycles[0][SETTINGS.cycle.statusColumn] || "").toLowerCase() !== "active") {
       throw new HttpError(409, "Delegation can be saved only for the Active appraisal cycle.");
     }
