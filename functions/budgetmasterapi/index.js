@@ -2792,10 +2792,12 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
           );
         }
       }
-      // Current Count follows the raw Active + Eligible Appraisal_Sheet
-      // rows. Do not use stats.count here: it belongs to the deduplicated
-      // budget roster and can undercount the rows displayed on the sheet.
-      const currentSheetHeadcount = techSheetCurrentCounts.get(techKey) || 0;
+      // Current Count follows every raw Appraisal_Sheet row in this cycle,
+      // regardless of eligibility, and does not deduplicate employee IDs.
+      const currentSheetHeadcount =
+        techSheetCurrentCounts.get(canonicalTechKey(techKey)) ||
+        techSheetCurrentCounts.get(techKey) ||
+        0;
       await persistOptional(
         distributionTable,
         row.id,
