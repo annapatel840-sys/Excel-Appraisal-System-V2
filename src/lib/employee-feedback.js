@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { appraisalRosterSettled } from "./employee-roster";
 import { loadFeedbackRating } from "./feedback-rating-api";
 
 /*
@@ -51,10 +50,10 @@ function groupByEmployee(data) {
 
 function loadAll() {
   if (!cachePromise) {
-    // A sheet that is still loading its roster gets it first; this read is
-    // only needed when a panel is opened.
-    cachePromise = appraisalRosterSettled()
-      .then(() => loadFeedbackRating())
+    // Feedback & Rating is an independent source. Load it in parallel with
+    // the shared appraisal roster instead of waiting for the roster to settle;
+    // the Detailed Screen's Employee Information panel can then hydrate sooner.
+    cachePromise = loadFeedbackRating()
       .then(groupByEmployee)
       .catch((error) => {
         cachePromise = null; // allow a retry on the next mount
