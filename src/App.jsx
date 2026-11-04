@@ -16,11 +16,11 @@ import BulkEditScreen from "@/components/appraisal/BulkEditScreen";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 import { SettingsProvider } from "@/lib/settings-store";
 import { AccessProvider, HR_TAB_SCREENS, NoAccessPage, PATH_SCREENS, useAccess } from "@/lib/access-store";
-import { prefetchAppraisalRoster } from "@/lib/employee-roster";
+import { appraisalRosterSettled, prefetchAppraisalRoster } from "@/lib/employee-roster";
 import { clearSheetSnapshots } from "@/lib/roster-snapshot";
 import { getViewAsSelected } from "@/lib/view-as-store";
 import { prefetchEligibilityEmployees } from "@/lib/employee-master-data";
-import { prefetchDelegationRoster } from "@/lib/delegation-roster";
+import { prefetchDelegationRoster, scheduleDelegationPrefetch } from "@/lib/delegation-roster";
 
 const TECH_ED_PATHS = ["/", "/sheet", "/detail-screen", "/budget-distribution", "/settings", "/employee-master"];
 
@@ -150,6 +150,15 @@ function AppRoutes() {
       window.removeEventListener("popstate", onPopState);
     };
   }, []);
+
+  // Warm the Delegation roster for users who can open it, whichever screen
+  // they landed on (same idea as the Appraisal Sheet's early roster request).
+  useEffect(() => {
+    if (access.loading) return;
+    const canOpenDelegation = access.ok ? access.canScreen("delegation") || isTechEd : role.includes("hr") || isTechEd;
+    if (canOpenDelegation) scheduleDelegationPrefetch(appraisalRosterSettled);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [access.loading, access.ok]);
 
   useEffect(() => {
     if (access.loading || targetPath === null) return;

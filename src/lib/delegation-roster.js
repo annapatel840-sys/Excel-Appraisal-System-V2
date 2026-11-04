@@ -32,8 +32,11 @@ const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
 const ROSTER_PAGE_LIMIT = 5000;
 // A request started this long ago (still running or finished) is shared.
 const SHARE_WINDOW_MS = 15000;
+// A background prefetch (below) is read before anyone opens the screen, so it
+// is allowed to be a little older when the screen finally asks for it.
+const PREFETCH_SHARE_WINDOW_MS = 90000;
 
-let inFlight = null; // { startedAt, promise }
+let inFlight = null; // { startedAt, promise, windowMs }
 // Bumped on every invalidation: a roster fetched before a change must not be
 // saved as the "last seen" copy after it.
 let generation = 0;
@@ -89,11 +92,15 @@ async function loadRosterRows() {
 /* Raw Delegation roster rows. `fresh: true` skips a shared copy (used for the
    screen's explicit reloads). The rows are read-only for callers: the screen
    maps them into its own objects. */
-export function fetchDelegationRoster({ fresh = false } = {}) {
-  if (!fresh && inFlight && Date.now() - inFlight.startedAt <= SHARE_WINDOW_MS) {
+export function fetchDelegationRoster({ fresh = false, prefetch = false } = {}) {
+  if (!fresh && inFlight && Date.now() - inFlight.startedAt <= inFlight.windowMs) {
     return inFlight.promise;
   }
-  const entry = { startedAt: Date.now(), promise: null };
+  const entry = {
+    startedAt: Date.now(),
+    promise: null,
+    windowMs: prefetch ? PREFETCH_SHARE_WINDOW_MS : SHARE_WINDOW_MS,
+  };
   entry.promise = loadRosterRows().catch((error) => {
     // A failed load is never shared; the next caller tries again.
     if (inFlight === entry) inFlight = null;
@@ -105,9 +112,28 @@ export function fetchDelegationRoster({ fresh = false } = {}) {
 
 // Starts the roster request early; the screen's own load then joins it.
 export function prefetchDelegationRoster() {
-  fetchDelegationRoster().catch(() => {
+  fetchDelegationRoster({ prefetch: true }).catch(() => {
     /* the screen's own load reports the error */
   });
+}
+
+/* Warm-up for users who can open Delegation but did not land on it. The
+   Appraisal Sheet is quick because its roster is requested before the screen
+   is opened; this does the same for Delegation. It waits a moment, and for
+   any Appraisal roster request already running (`waitFor`), so it never
+   competes with the screen the user actually opened. Once per page load; a
+   save or update event discards the result like any other shared request. */
+let warmUpScheduled = false;
+export function scheduleDelegationPrefetch(waitFor) {
+  if (warmUpScheduled || typeof window === "undefined") return;
+  warmUpScheduled = true;
+  window.setTimeout(() => {
+    Promise.resolve(typeof waitFor === "function" ? waitFor() : undefined)
+      .catch(() => {})
+      .then(() => {
+        if (!inFlight) prefetchDelegationRoster();
+      });
+  }, 1500);
 }
 
 /* ------------------------------------------------------------ saved copy */

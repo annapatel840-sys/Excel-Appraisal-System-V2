@@ -375,7 +375,7 @@ export default function DelegationScreen({
     }
     setRosterLoading(true);
     const startedGeneration = delegationGeneration();
-    const savedKey = delegationSnapshotKey(catalystUser?.email || catalystUser?.user_id || "");
+    const savedKey = delegationSnapshotKey(catalystUser?.email || catalystUser?.id || catalystUser?.user_id || "");
     let freshApplied = false;
     try {
       // First load only: show the last roster this user saw, at once, while
