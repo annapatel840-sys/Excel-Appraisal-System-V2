@@ -221,7 +221,8 @@ export function BudgetProvider({ children }) {
       // it finish first (both read the same tables) while the cached budget
       // figures stay on screen. On budget screens the budget is the main
       // content, so it loads at once.
-      if (window.location.pathname === "/sheet") {
+      const currentPath = String(window.location.pathname || "").replace(/\/$/, "");
+      if (currentPath === "/sheet" || currentPath === "/detail-screen") {
         await new Promise((resolve) => setTimeout(resolve, 0));
         await appraisalRosterSettled();
       }
