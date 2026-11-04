@@ -1,7 +1,5 @@
-import { useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 
-import { useAppraisal } from "@/lib/appraisal-store";
-import { useBudget } from "@/lib/budget-store";
 import { buildChangeLog, subtreeOf, TYPE_LABEL, dateText } from "@/lib/budget-engine";
 import { manualEditedEmpIds } from "@/lib/dashboard-overview";
 import { cycleKey } from "@/lib/employee-feedback";
@@ -258,7 +256,7 @@ const Empty = ({ children }) => <div className="rp-info">{children}</div>;
    THE PANEL
 ============================================================ */
 
-export function DetailSidePanel({
+function DetailSidePanelView({
   employee,
   rows,
   priorCycles,
@@ -271,9 +269,9 @@ export function DetailSidePanel({
   maxWidth,
   onWidthChange,
   onClose,
+  audit,
+  budgetCtx,
 }) {
-  const { audit } = useAppraisal();
-  const budgetCtx = useBudget();
 
   const [tab, setTab] = useState("info");
   const [sub, setSub] = useState("budget");
@@ -409,6 +407,8 @@ export function DetailSidePanel({
     </div>
   );
 }
+
+export const DetailSidePanel = memo(DetailSidePanelView);
 
 /* ============================================================
    INFO
