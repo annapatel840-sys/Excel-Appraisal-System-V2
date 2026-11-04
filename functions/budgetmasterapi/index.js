@@ -3060,20 +3060,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
       }
     }
     await masterTable.updateRow(orgFields);
-    if (!orgOriginalCountIsSet) {
-      const saved = await persistOptional(
-        masterTable,
-        master.id,
-        masterColumns,
-        ["original_headcount", "allocation_headcount"],
-        appraisalSheetEmployees.length,
-      );
-      if (!saved) {
-        throw new Error(
-          "Cannot save the Org Original Count snapshot. Add an original_headcount (Number) column to Budget_Master, then retry the first allocation.",
-        );
-      }
-    }
+    // Org Original Count is frontend-only; never require a Budget_Master column.
     await persistOptional(
       masterTable,
       master.id,
