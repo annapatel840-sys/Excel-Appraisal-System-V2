@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { WalletCards, RefreshCw } from "lucide-react";
  
 import { useCatalystUser } from "@/lib/catalyst-auth";
@@ -609,97 +609,56 @@ export function BudgetDistributionPage() {
                     const expanded = Boolean(open[key]);
 
                     return (
-                      <tr key={key} className="tech">
-                        <td>
-                          <b>Tech-Ed</b>
-                        </td>
-                        <td>
-                          <div className="owner">{owner || row.tech_ed_id || "—"}</div>
-                          {owner && owner !== row.tech_ed_id ? (
-                            <div className="muted-small">{row.tech_ed_id}</div>
-                          ) : null}
-                        </td>
-                        <td className="num">{pct(row.budget_percentage)}</td>
-                        <td className="num">{money(row.budget_amount)}</td>
-                        <td className="num">{money(row.additional_budget)}</td>
-                        <td className="num">{money(row.updated_budget)}</td>
-                        <td className="num">{money(row.budget_utilized)}</td>
-                        <td className="num">{money(row.budget_remaining)}</td>
-                        <td className="num">{pct(row.utilization_percentage)}</td>
-                        <td>{originalCount}</td>
-                        <td>{liveCount}</td>
-                        <td>
-                          <span className="status">
-                            {row.status || "Active"}
-                          </span>
-                        </td>
-                        <td>
-                          <button
-                            type="button"
-                            className="readonly"
-                            onClick={() =>
-                              setOpen((current) => ({
-                                ...current,
-                                [key]: !expanded,
-                              }))
-                            }
-                            aria-expanded={expanded}
-                          >
-                            {expanded ? "Hide details" : "View details"}
-                          </button>
-                        </td>
-                      </tr>
+                      <Fragment key={key}>
+                        <tr className="tech">
+                          <td><b>Tech-Ed</b></td>
+                          <td>
+                            <div className="owner">{owner || row.tech_ed_id || "—"}</div>
+                            {owner && owner !== row.tech_ed_id ? <div className="muted-small">{row.tech_ed_id}</div> : null}
+                          </td>
+                          <td className="num">{pct(row.budget_percentage)}</td>
+                          <td className="num">{money(row.budget_amount)}</td>
+                          <td className="num">{money(row.additional_budget)}</td>
+                          <td className="num">{money(row.updated_budget)}</td>
+                          <td className="num">{money(row.budget_utilized)}</td>
+                          <td className="num">{money(row.budget_remaining)}</td>
+                          <td className="num">{pct(row.utilization_percentage)}</td>
+                          <td>{originalCount}</td>
+                          <td>{liveCount}</td>
+                          <td><span className="status">{row.status || "Active"}</span></td>
+                          <td>
+                            <button type="button" className="readonly"
+                              onClick={() => setOpen((current) => ({ ...current, [key]: !expanded }))}
+                              aria-expanded={expanded}>
+                              {expanded ? "Hide details" : "Show details"}
+                            </button>
+                          </td>
+                        </tr>
+                        {expanded ? (
+                          <tr className="tech-detail-row">
+                            <td colSpan={HR_COLS.length + 1}>
+                              <div className="detail">
+                                <div className="detail-grid">
+                                  <div className="detail-item"><div className="label">Tech-Ed</div><b>{owner || row.tech_ed_id || "—"}</b></div>
+                                  <div className="detail-item"><div className="label">Budget percentage</div><b>{pct(row.budget_percentage)}</b></div>
+                                  <div className="detail-item"><div className="label">Original team count</div><b>{originalCount}</b></div>
+                                  <div className="detail-item"><div className="label">Current team count</div><b>{liveCount}</b></div>
+                                  <div className="detail-item"><div className="label">Updated budget</div><b>{money(row.updated_budget)}</b></div>
+                                  <div className="detail-item"><div className="label">Utilised</div><b>{money(row.budget_utilized)}</b></div>
+                                  <div className="detail-item"><div className="label">Remaining</div><b>{money(row.budget_remaining)}</b></div>
+                                  <div className="detail-item"><div className="label">Last updated</div><b>{dateText(lastUpdatedFor(row))}</b></div>
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
                     );
                   })}
                 </tbody>
               </table>
               </div>
  
-              {rows.map((row) => {
-                const key = row.id || row.tech_ed_id;
-                if (!open[key]) return null;
-                const owner = resolveTechOwner(row.tech_ed_id);
-                return (
-                  <div className="detail" key={"detail-" + key}>
-                    <div className="detail-grid">
-                      <div className="detail-item">
-                        <div className="label">Tech-Ed</div>
-                        <b>{owner || row.tech_ed_id || "—"}</b>
-                      </div>
-                      <div className="detail-item">
-                        <div className="label">Budget percentage</div>
-                        <b>{pct(row.budget_percentage)}</b>
-                      </div>
-                      <div className="detail-item">
-                        <div className="label">Original team count</div>
-                        <b>{row.original_headcount !== null && row.original_headcount !== undefined && String(row.original_headcount).trim() !== ""
-                          ? Number(row.original_headcount) || 0
-                          : 0}</b>
-                      </div>
-                      <div className="detail-item">
-                        <div className="label">Current team count</div>
-                        <b>{countForTechOwner(row.tech_ed_id)}</b>
-                      </div>
-                      <div className="detail-item">
-                        <div className="label">Updated budget</div>
-                        <b>{money(row.updated_budget)}</b>
-                      </div>
-                      <div className="detail-item">
-                        <div className="label">Utilised</div>
-                        <b>{money(row.budget_utilized)}</b>
-                      </div>
-                      <div className="detail-item">
-                        <div className="label">Remaining</div>
-                        <b>{money(row.budget_remaining)}</b>
-                      </div>
-                      <div className="detail-item">
-                        <div className="label">Last updated</div>
-                        <b>{dateText(lastUpdatedFor(row))}</b>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           ))}
       </section>
