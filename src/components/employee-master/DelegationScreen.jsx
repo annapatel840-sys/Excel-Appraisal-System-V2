@@ -4,7 +4,6 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useAppraisalRefresh } from "@/lib/appraisal-store";
-import { useAppraisal } from "@/lib/appraisal-store";
 import { generateAppraisalSheet, payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import {
   delegationGeneration,
@@ -15,7 +14,6 @@ import {
 } from "@/lib/delegation-roster";
 
 /* ------------------------------------------------------------------ data */
-const { rows: appraisalRows = [] } = useAppraisal();
 const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
 const ACCESS_API_URL = catalystFunctionUrl("accessapi");
 const FIELDS = { comp: "Comp. Manager", app: "Appraiser Tech-ED" };
