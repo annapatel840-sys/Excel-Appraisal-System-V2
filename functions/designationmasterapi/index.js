@@ -59,9 +59,26 @@ const BANDS = ["B1", "B2", "B3", "B4", "B5", "B6", "B7"];
 const SCREEN_KEY = "employeeMaster"; // HR Operations screens are HR-only
 const BATCH = 200;
 
-// Serialize this function's catalogue and roster reads within a warm instance.
-// Page-load fan-out was triggering Catalyst's shared COMPONENT concurrency cap.
-let zcqlQueue = Promise.resolve();
+// Bound this function's catalogue and roster reads within a warm instance.
+// Page-load fan-out was triggering Catalyst's shared COMPONENT concurrency cap,
+// so reads were fully serialized; two at a time keeps below that cap (the same
+// bound the other functions use) while letting independent reads overlap.
+const ZCQL_CONCURRENCY = 2;
+let zcqlActive = 0;
+const zcqlWaiters = [];
+async function acquireZcql() {
+  if (zcqlActive < ZCQL_CONCURRENCY) {
+    zcqlActive += 1;
+    return;
+  }
+  // A queued caller inherits the slot released by the previous query.
+  await new Promise((resolve) => zcqlWaiters.push(resolve));
+}
+function releaseZcql() {
+  const next = zcqlWaiters.shift();
+  if (next) next();
+  else zcqlActive = Math.max(0, zcqlActive - 1);
+}
 function isTransientCatalystError(error) {
   const status = Number(error && (error.statusCode || error.status || error.status_code));
   const code = String(error && error.code || "").toUpperCase();
@@ -71,10 +88,7 @@ function isTransientCatalystError(error) {
     /concurrency limit|too many requests|temporarily unavailable|timed out/.test(message);
 }
 async function runZcql(zcql, query, label = "designationmasterapi query") {
-  let release;
-  const previous = zcqlQueue;
-  zcqlQueue = new Promise((resolve) => { release = resolve; });
-  await previous;
+  await acquireZcql();
   try {
     for (let attempt = 0; ; attempt += 1) {
       try {
@@ -87,7 +101,7 @@ async function runZcql(zcql, query, label = "designationmasterapi query") {
       }
     }
   } finally {
-    release();
+    releaseZcql();
   }
 }
 
@@ -155,18 +169,22 @@ async function readCycle(app, table, cycleId, cycleCol = "cycle_id") {
    grows without limit, so it is never read in full). */
 async function readRecent(app, table, where, max = 1000) {
   const zcql = app.zcql();
-  const rows = [];
-  for (let off = 0; off < max; off += 300) {
+  const readPage = async (off) => {
     const q =
       `SELECT * FROM ${table}` +
       (where ? ` WHERE ${where}` : "") +
       ` ORDER BY ROWID DESC LIMIT ${off}, 300`;
     const result = await runZcql(zcql, q, table);
-    const page = (result || []).map((i) => (i && (i[table] || Object.values(i)[0])) || {});
-    rows.push(...page);
-    if (page.length < 300) break;
-  }
-  return rows.slice(0, max);
+    return (result || []).map((i) => (i && (i[table] || Object.values(i)[0])) || {});
+  };
+  // The first page decides whether more exist; the rest are independent
+  // offsets, so they are read together instead of one after another.
+  const first = await readPage(0);
+  if (first.length < 300 || max <= 300) return first.slice(0, max);
+  const offsets = [];
+  for (let off = 300; off < max; off += 300) offsets.push(off);
+  const rest = await Promise.all(offsets.map(readPage));
+  return [first, ...rest].flat().slice(0, max);
 }
 
 /* Distinct designation + department pairs from Employee_Master. DISTINCT keeps
@@ -304,7 +322,9 @@ async function syncFromEmployeeMaster(app, cycle) {
     .filter((r) => !text(r.department) && pairs.get(lower(r.name))?.department)
     .map((r) => ({ ROWID: rowId(r), department: clip(pairs.get(lower(r.name)).department) }));
   for (const part of chunks(fill)) await table.updateRows(part);
-  return new Set(pairs.keys());
+  // desRows/changed let loadData reuse this request's read of the cycle's
+  // designations when the sync wrote nothing, instead of reading it again.
+  return { names: new Set(pairs.keys()), desRows, changed: toAdd.length > 0 || fill.length > 0 };
 }
 
 /* Checks every table this function needs and reports the REAL Catalyst error
@@ -361,13 +381,14 @@ async function checkSchema(app) {
 async function loadData(app, cycle, { sync = true, withAudit = true } = {}) {
   await checkSchema(app);
 
-  const masterNames = sync
-    ? await syncFromEmployeeMaster(app, cycle)
-    : new Set();
+  const synced = sync ? await syncFromEmployeeMaster(app, cycle) : null;
+  const masterNames = synced ? synced.names : new Set();
 
 
   const [allDes, allGroups, memberRows, nextRows, cfgRows, auditRows] = await Promise.all([
-    readCycle(app, TBL.designations, cycle.id),
+    synced && !synced.changed
+      ? Promise.resolve(synced.desRows)
+      : readCycle(app, TBL.designations, cycle.id),
     readCycle(app, TBL.groups, cycle.id),
     readAll(app, TBL.members),
     readAll(app, TBL.next),
@@ -388,6 +409,19 @@ async function loadData(app, cycle, { sync = true, withAudit = true } = {}) {
   const groupIds = new Set(groupRows.map(rowId));
   const desIds = new Set(desRows.map(rowId));
 
+  const nextByDesignation = new Map();
+  nextRows.forEach((n) => {
+    const key = refId(n.designation_id);
+    if (!nextByDesignation.has(key)) nextByDesignation.set(key, []);
+    nextByDesignation.get(key).push(refId(n.next_id));
+  });
+  const membersByGroup = new Map();
+  memberRows.forEach((m) => {
+    const key = refId(m.group_id);
+    if (!membersByGroup.has(key)) membersByGroup.set(key, []);
+    membersByGroup.get(key).push(refId(m.des_id));
+  });
+
   const designations = desRows.map((r) => {
     const id = rowId(r);
     return {
@@ -398,9 +432,7 @@ async function loadData(app, cycle, { sync = true, withAudit = true } = {}) {
       band: text(r.band),
       nextType: text(r.next_type).toUpperCase(),
       singleNextId: refId(r.single_next_designation),
-      multipleNextIds: nextRows
-        .filter((n) => refId(n.designation_id) === id)
-        .map((n) => refId(n.next_id)),
+      multipleNextIds: [...(nextByDesignation.get(id) || [])],
       groupId: refId(r.group_id),
       status: isOn(r.status) ? "Active" : "Inactive",
     };
@@ -409,9 +441,7 @@ async function loadData(app, cycle, { sync = true, withAudit = true } = {}) {
   const groups = groupRows.map((r) => ({
     id: rowId(r),
     name: text(r.group_name),
-    memberIds: memberRows
-      .filter((m) => refId(m.group_id) === rowId(r) && desIds.has(refId(m.des_id)))
-      .map((m) => refId(m.des_id)),
+    memberIds: (membersByGroup.get(rowId(r)) || []).filter((desId) => desIds.has(desId)),
   }));
 
   const options = { S: false, M: false, G: false, F: false };

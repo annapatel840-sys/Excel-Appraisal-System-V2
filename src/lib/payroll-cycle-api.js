@@ -6,7 +6,9 @@ import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "./catalyst-
    SHARED_READ_MS old, instead of calling payrollcycleapi again. Any save
    (any non-GET request) and the app's update events clear the shared copies,
    so a read after a change always goes to the server. */
-const SHARED_READ_RESOURCES = new Set(["cycles", "eligibility", "locations", "schema"]);
+const SHARED_READ_RESOURCES = new Set(["cycles", "eligibility", "locations", "schema", "feedback"]);
+// Large reads ask payrollcycleapi to gzip the response (it does so over 32 KB).
+const GZIP_READ_RESOURCES = new Set(["payroll", "audit", "feedback"]);
 const SHARED_READ_MS = 15000;
 const sharedReads = new Map(); // url -> { startedAt, promise }
 
@@ -63,6 +65,10 @@ export async function payrollCycleRequest(
       url.searchParams.set(key, String(value));
     }
   });
+
+  if (String(method).toUpperCase() === "GET" && !body && GZIP_READ_RESOURCES.has(resource)) {
+    url.searchParams.set("gz", "1");
+  }
 
   const isSharedRead =
     String(method).toUpperCase() === "GET" && !body && SHARED_READ_RESOURCES.has(resource);

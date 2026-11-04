@@ -1,4 +1,4 @@
-import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "@/lib/catalyst-api";
 
 const API_URL = catalystFunctionUrl("designationmasterapi");
 
@@ -27,8 +27,41 @@ async function request({ method = "GET", body, params } = {}) {
   return result.data;
 }
 
-export function loadDesignationMaster() {
-  return request();
+/* Shared read. Designation Master and the Eligibility Criteria panel both load
+   the same data; a request in flight, or a result under SHARED_READ_MS old, is
+   reused instead of calling designationmasterapi again. Any save (any non-GET
+   request) and the app's update events clear it, and { fresh: true } (the
+   screen's Refresh / Retry buttons) always reads from the server. */
+const SHARED_READ_MS = 15000;
+let sharedLoad = null; // { startedAt, promise }
+const copyOf = (data) => (data === undefined ? data : JSON.parse(JSON.stringify(data)));
+
+export function invalidateDesignationMasterRead() {
+  sharedLoad = null;
+}
+
+onCatalystWrite(invalidateDesignationMasterRead);
+if (typeof window !== "undefined") {
+  [
+    "appraisal:cycle-updated",
+    "appraisal:payroll-data-updated",
+    "appraisal:feedback-data-updated",
+    "appraisal:budget-data-updated",
+  ].forEach((eventName) => window.addEventListener(eventName, invalidateDesignationMasterRead));
+}
+
+export function loadDesignationMaster({ fresh = false } = {}) {
+  if (!fresh && sharedLoad && Date.now() - sharedLoad.startedAt <= SHARED_READ_MS) {
+    return sharedLoad.promise.then(copyOf);
+  }
+  const entry = { startedAt: Date.now(), promise: null };
+  entry.promise = request().catch((error) => {
+    // A failed read is never shared; the next caller tries again.
+    if (sharedLoad === entry) sharedLoad = null;
+    throw error;
+  });
+  sharedLoad = entry;
+  return entry.promise.then(copyOf);
 }
 
 export function saveDesignationMaster(data) {

@@ -125,11 +125,12 @@ export function DesignationMasterPage() {
   }, []);
 
   /* ---------- load ---------- */
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (event) => {
     setLoading(true);
     setError("");
     try {
-      const r = await loadDesignationMaster();
+      // Retry / Refresh pass their click event and always read from the server.
+      const r = await loadDesignationMaster({ fresh: Boolean(event && event.type) });
       const data = {
         ...EMPTY,
         ...r,

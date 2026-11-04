@@ -186,7 +186,7 @@ function sendJson(res, status, body, req = null) {
   const serialized = JSON.stringify(body);
   const wantsGzip = req &&
     String(getQuery(req).gz || "") === "1" &&
-    /\\bgzip\\b/i.test(String(req.headers?.["accept-encoding"] || ""));
+    /\bgzip\b/i.test(String(req.headers?.["accept-encoding"] || ""));
   if (wantsGzip && Buffer.byteLength(serialized) >= 32 * 1024) {
     const compressed = require("zlib").gzipSync(serialized, { level: 1 });
     res.writeHead(status, {
@@ -382,6 +382,228 @@ async function getAllRows(table) {
     moreRecords = result.more_records === true && Boolean(nextToken);
   }
   return rows;
+}
+
+/* ============================================================
+   FAST READS FOR THE READ-ONLY MASTER SCREENS
+   (Payroll Master, Feedback & Rating Master - GET payroll / audit / feedback)
+
+   Same approach as the Appraisal Sheet roster in employeesapi:
+   1. Unchanged-table cache. Two cheap ZCQL queries (row count + latest
+      MODIFIEDTIME) fingerprint a table; while the fingerprint is the same as
+      at the cached read, the rows are reused instead of being read again. Any
+      insert, update or delete by any function changes the fingerprint, so a
+      screen always shows what a full read would. If the check fails for any
+      reason the table is simply read as before.
+   2. Parallel chunk read. A big table is read as several ZCQL
+      "ORDER BY ROWID LIMIT offset, 300" queries together instead of 200-row
+      pages one after another. The first chunk is compared with the paged
+      reader's first page and the total must match the row count; if anything
+      differs or fails, the table is read page by page exactly as before.
+   Only GET handlers use this. Uploads, undo, generate and every other write
+   path keep reading with getAllRows.
+   ============================================================ */
+const FAST_READ_TABLE_NAMES = {
+  payroll: "Payroll_Data",
+  audit: "Appraisal_Audit",
+  feedback: "Feedback_And_Rating",
+  employeeMaster: "Employee_Master",
+  cycles: "Appraisal_Cycle_Master",
+};
+const FAST_READ_CACHE = new Map(); // table key -> { fingerprint, rows, at }
+const FAST_READ_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+const FAST_READ_CHUNK_ROWS = 300;
+const FAST_READ_IN_FLIGHT = 4;
+const FAST_READ_BAD_RETRY_MS = 10 * 60 * 1000;
+const FAST_READ_VERDICT = new Map(); // table key -> { ok, at }
+
+function makeReadLimiter(limit) {
+  let active = 0;
+  const waiting = [];
+  return async function (task) {
+    if (active >= limit) await new Promise((resolve) => waiting.push(resolve));
+    active += 1;
+    try {
+      return await task();
+    } finally {
+      active -= 1;
+      const next = waiting.shift();
+      if (next) next();
+    }
+  };
+}
+const fastReadLimiter = makeReadLimiter(FAST_READ_IN_FLIGHT);
+
+function isTransientReadError(error) {
+  const status = Number(error && (error.statusCode || error.status || error.status_code));
+  const code = String((error && error.code) || "").toUpperCase();
+  const message = String((error && error.message) || "").toLowerCase();
+  return [408, 429, 500, 502, 503, 504].includes(status) ||
+    ["TOO_MANY_REQUESTS", "COMPONENT", "ETIMEDOUT", "ECONNRESET"].includes(code) ||
+    /concurrency limit|too many requests|temporarily unavailable|timed out/.test(message);
+}
+
+async function fastReadQuery(zcql, query, label) {
+  return fastReadLimiter(async () => {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await zcql.executeZCQLQuery(query);
+      } catch (error) {
+        if (!isTransientReadError(error) || attempt >= 3) throw error;
+        const delay = 300 * (2 ** attempt) + Math.floor(Math.random() * 200);
+        console.warn("Retrying transient Catalyst ZCQL read:", label, "attempt", attempt + 1);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  });
+}
+
+function unwrapZcqlRow(item, tableName) {
+  if (item && item[tableName] && typeof item[tableName] === "object") return item[tableName];
+  const first = item && Object.values(item)[0];
+  return first && typeof first === "object" ? first : item;
+}
+
+function canonicalReadRowText(row) {
+  const out = {};
+  Object.keys(row || {}).sort().forEach((key) => {
+    const value = row[key];
+    out[key] = value === null || value === undefined
+      ? ""
+      : typeof value === "object" ? JSON.stringify(value) : String(value);
+  });
+  return JSON.stringify(out);
+}
+
+async function readTableFingerprint(zcql, tableName) {
+  const [count, latest] = await Promise.all([
+    fastReadQuery(zcql, "SELECT COUNT(ROWID) FROM " + tableName, tableName + " row count"),
+    fastReadQuery(
+      zcql,
+      "SELECT ROWID, MODIFIEDTIME FROM " + tableName + " ORDER BY MODIFIEDTIME DESC LIMIT 1",
+      tableName + " latest change",
+    ),
+  ]);
+  const countCell = Object.values(
+    Object.values((Array.isArray(count) ? count[0] : null) || {})[0] || {},
+  )[0];
+  return { total: Number(countCell), fingerprint: JSON.stringify([count, latest]) };
+}
+
+async function readChunksInParallel(tables, key, tableName, total) {
+  const zcql = tables.zcql;
+  const chunkCount = Math.ceil(total / FAST_READ_CHUNK_ROWS);
+  const readChunk = async (index) => {
+    const offset = index * FAST_READ_CHUNK_ROWS;
+    const expected = Math.min(FAST_READ_CHUNK_ROWS, total - offset);
+    const result = await fastReadQuery(
+      zcql,
+      "SELECT * FROM " + tableName + " ORDER BY ROWID LIMIT " + offset + ", " + FAST_READ_CHUNK_ROWS,
+      tableName + " parallel chunk",
+    );
+    const rows = (Array.isArray(result) ? result : []).map((item) => unwrapZcqlRow(item, tableName));
+    if (rows.length !== expected) {
+      throw new Error(tableName + " chunk " + index + " returned " + rows.length + " of " + expected + " rows");
+    }
+    return rows;
+  };
+  // Identity check on the first chunk before the other chunks are spent.
+  const [sample, firstChunk] = await Promise.all([
+    readDataStorePage(tables[key], { maxRows: PAGE_SIZE }, "payrollcycleapi sample page"),
+    readChunk(0),
+  ]);
+  const sampleRows = Array.isArray(sample && sample.data) ? sample.data : [];
+  const sameAsPaged = sampleRows.length > 0 && sampleRows.every((row, index) =>
+    firstChunk[index] && canonicalReadRowText(row) === canonicalReadRowText(firstChunk[index]));
+  if (!sameAsPaged) {
+    FAST_READ_VERDICT.set(key, { ok: false, at: Date.now() });
+    console.warn("[payrollcycleapi] parallel read of " + tableName + " differs from the paged read; using the paged read.");
+    return null;
+  }
+  const rest = await Promise.all(
+    Array.from({ length: chunkCount - 1 }, (_, index) => readChunk(index + 1)),
+  );
+  const rows = [firstChunk, ...rest].flat();
+  if (rows.length !== total) {
+    throw new Error(tableName + " parallel read returned " + rows.length + " of " + total + " rows");
+  }
+  FAST_READ_VERDICT.set(key, { ok: true, at: Date.now() });
+  return rows;
+}
+
+// Same rows as getAllRows(tables[key]); never throws where getAllRows would not.
+async function readTableFast(tables, key) {
+  const tableName = FAST_READ_TABLE_NAMES[key];
+  if (!tableName || !tables.zcql || typeof tables.zcql.executeZCQLQuery !== "function") {
+    return getAllRows(tables[key]);
+  }
+  let state = null;
+  try {
+    state = await readTableFingerprint(tables.zcql, tableName);
+  } catch (error) {
+    state = null;
+  }
+  if (!state) {
+    FAST_READ_CACHE.delete(key);
+    return getAllRows(tables[key]);
+  }
+  const hit = FAST_READ_CACHE.get(key);
+  if (hit && hit.fingerprint === state.fingerprint && Date.now() - hit.at < FAST_READ_CACHE_MAX_AGE_MS) {
+    return hit.rows.map((row) => ({ ...row }));
+  }
+
+  let rows = null;
+  const verdict = FAST_READ_VERDICT.get(key);
+  const parallelAllowed = !(verdict && !verdict.ok && Date.now() - verdict.at < FAST_READ_BAD_RETRY_MS);
+  // A small table is quicker to read in one or two pages.
+  if (parallelAllowed && Number.isFinite(state.total) && state.total > 2 * PAGE_SIZE) {
+    try {
+      rows = await readChunksInParallel(tables, key, tableName, state.total);
+    } catch (error) {
+      console.warn("[payrollcycleapi] parallel read of " + tableName + " failed; using the paged read:", (error && error.message) || error);
+      rows = null;
+    }
+  }
+  if (!rows) rows = await getAllRows(tables[key]);
+  // The fingerprint was taken before the read, so a write during the read makes
+  // the next request's fingerprint differ and the table is read again.
+  FAST_READ_CACHE.set(key, {
+    fingerprint: state.fingerprint,
+    rows: rows.map((row) => ({ ...row })),
+    at: Date.now(),
+  });
+  return rows;
+}
+
+// Appraisal_Audit rows of one source only (the feedback upload batches). The
+// filter runs inside ZCQL so the whole audit table is not downloaded; any
+// problem falls back to the full read the caller used before.
+async function readAuditBySource(tables, source) {
+  if (!tables.zcql || typeof tables.zcql.executeZCQLQuery !== "function" || !/^[A-Za-z0-9_]+$/.test(source)) {
+    return (await getAllRows(tables.audit)).filter((row) => row.source === source);
+  }
+  try {
+    const tableName = FAST_READ_TABLE_NAMES.audit;
+    const rows = [];
+    let last = "0";
+    for (let guard = 0; guard < 5000; guard += 1) {
+      const result = await fastReadQuery(
+        tables.zcql,
+        "SELECT * FROM " + tableName + " WHERE ROWID > " + last + " AND source = '" + source +
+          "' ORDER BY ROWID ASC LIMIT " + FAST_READ_CHUNK_ROWS,
+        tableName + " by source",
+      );
+      const page = (Array.isArray(result) ? result : []).map((item) => unwrapZcqlRow(item, tableName));
+      rows.push(...page);
+      if (page.length < FAST_READ_CHUNK_ROWS) break;
+      last = rowId(page[page.length - 1]);
+      if (!last) break;
+    }
+    return rows;
+  } catch (error) {
+    console.warn("[payrollcycleapi] audit read by source failed; using the full read:", (error && error.message) || error);
+    return (await getAllRows(tables.audit)).filter((row) => row.source === source);
+  }
 }
 
 // Catalyst ends a request after ~30 s (408) and the browser then sends the
@@ -632,6 +854,9 @@ async function requirePayrollTables(adminApp) {
     locations: datastore.table(TABLES.locations),
     delegation: datastore.table(TABLES.delegation),
     previousDelegation: datastore.table(TABLES.previousDelegation),
+    // Used only by the fast read-only GET paths (readTableFast); null when the
+    // SDK instance has no ZCQL, in which case those reads use the paged reader.
+    zcql: typeof adminApp.zcql === "function" ? adminApp.zcql() : null,
   };
 }
 
@@ -2917,19 +3142,20 @@ function shapeFeedbackBatches(auditRows) {
 }
 
 async function getFeedbackData(tables, query, includeBatches = true) {
-  // Keep Data Store reads sequential. Running several getPagedRows calls at
-  // once can hit Catalyst's COMPONENT concurrency limit during app startup.
-  const feedbackRows = await getAllRows(tables.feedback);
-  const cycleRows = await getAllRows(tables.cycles);
-
-  // An empty Feedback_And_Rating table needs no employee lookup at all.
-  const masterRows = feedbackRows.length
-    ? await getAllRows(tables.employeeMaster)
-    : [];
+  // The independent tables are read together (bounded by the shared read
+  // limits) through the unchanged-table cache instead of one after another.
+  // Upload batches only need the feedback_upload audit rows, so those are
+  // filtered inside ZCQL rather than downloading the whole audit table.
+  const [feedbackRows, cycleRows, masterRows, auditRows] = await Promise.all([
+    readTableFast(tables, "feedback"),
+    readTableFast(tables, "cycles"),
+    readTableFast(tables, "employeeMaster"),
+    includeBatches ? readAuditBySource(tables, "feedback_upload") : Promise.resolve([]),
+  ]);
 
   const masterByRowId = new Map();
   const masterByEmpId = new Map();
-  masterRows.forEach((row) => {
+  (feedbackRows.length ? masterRows : []).forEach((row) => {
     if (rowId(row)) masterByRowId.set(rowId(row), row);
     const business = fbText(row.emp_id).toLowerCase();
     if (business) masterByEmpId.set(business, row);
@@ -2943,7 +3169,6 @@ async function getFeedbackData(tables, query, includeBatches = true) {
 
   // Upload-batch history is only returned to HR/global-scope users.
   // Team-scoped Appraisal Sheet / Detailed Screen reads do not need Audit rows.
-  const auditRows = includeBatches ? await getAllRows(tables.audit) : [];
   const batches = shapeFeedbackBatches(auditRows).filter((b) => !onlyCycle || b.cid === onlyCycle);
   return { cycles, rows, batches };
 }
@@ -3156,16 +3381,20 @@ async function routeRequest(req, res, identity, resource, a) {
           rows: data.rows.filter((row) => access.inScope(a, row.id)),
           batches: [],
         },
-      });
+      }, req);
     }
-    return sendJson(res, 200, { success: true, data });
+    return sendJson(res, 200, { success: true, data }, req);
   }
 
   if (resource === "audit" && req.method === "GET") {
     // Historical Import keeps its undo data in the audit table; it is internal.
-    const auditRows = (await getAllRows(tables.audit))
+    const [allAuditRows, cycleRowsForAudit] = await Promise.all([
+      readTableFast(tables, "audit"),
+      readTableFast(tables, "cycles"),
+    ]);
+    const auditRows = allAuditRows
       .filter((row) => row.source !== "historical_import_undo" && row.source !== SHEET_ARCHIVE_SOURCE);
-    const cycles = (await getAllRows(tables.cycles)).map(normalizeCycle);
+    const cycles = cycleRowsForAudit.map(normalizeCycle);
     const cycleById = new Map(cycles.map((cycle) => [cycle.id, cycle]));
     const entries = auditRows.map((row) => {
       const details = auditDetails(row);
@@ -3188,7 +3417,7 @@ async function routeRequest(req, res, identity, resource, a) {
         kind: details.kind || "payroll",
       };
     }).sort((a, b) => String(b.time).localeCompare(String(a.time)));
-    return sendJson(res, 200, { success: true, data: entries });
+    return sendJson(res, 200, { success: true, data: entries }, req);
   }
 
   if (resource === "history" && req.method === "GET") {
@@ -3234,9 +3463,9 @@ async function routeRequest(req, res, identity, resource, a) {
 
   if (resource === "payroll" && req.method === "GET") {
     const [rows, cycles, masterRows] = await Promise.all([
-      getAllRows(tables.payroll),
-      getAllRows(tables.cycles),
-      getAllRows(tables.employeeMaster),
+      readTableFast(tables, "payroll"),
+      readTableFast(tables, "cycles"),
+      readTableFast(tables, "employeeMaster"),
     ]);
 
     const normalizedCycles = cycles.map((row) => normalizeCycle(row));
@@ -3275,7 +3504,7 @@ async function routeRequest(req, res, identity, resource, a) {
     return sendJson(res, 200, {
       success: true,
       data: visibleRows.map((row) => mapPayroll(row, cycleByName, cycleById, employeeById)),
-    });
+    }, req);
   }
 
   if (resource === "validate" && req.method === "POST") {
