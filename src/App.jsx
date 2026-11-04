@@ -198,13 +198,12 @@ function AppRoutes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access.loading, access.ok]);
 
-  // Preload Feedback & Rating after the Appraisal roster is ready.
+  // Feedback & Rating is an independent source. Start it alongside the
+  // already-prefetched Appraisal Sheet roster so the Detailed Screen's
+  // Employee Information panel does not wait for the roster request to finish.
   useEffect(() => {
     if (access.loading) return;
-
-    appraisalRosterSettled().then(() => {
-      prefetchEmployeeFeedback();
-    });
+    prefetchEmployeeFeedback();
   }, [access.loading]);
 
   useEffect(() => {
