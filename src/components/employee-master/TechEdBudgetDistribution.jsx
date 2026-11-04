@@ -1831,6 +1831,20 @@ export function TechEdBudgetDistribution() {
                   placeholder="Optional — saved in the audit trail"
                   onChange={(e) => setReason(e.target.value)}
                 />
+                <button
+                  type="button"
+                  className="dd"
+                  onClick={async () => {
+                    for (const node of cmNodes) {
+                      const draft = drafts[node.name];
+                      if (draft !== undefined && String(draft).trim() !== "") {
+                        await setPct(node.name, draft);
+                      }
+                    }
+                  }}
+                >
+                  Save
+                </button>
               </div>
               {err && (
                 <div className="berr" role="alert">
@@ -2064,16 +2078,6 @@ export function TechEdBudgetDistribution() {
                                   }
                                 }}
                               />
-                              <button
-                                type="button"
-                                className="dd"
-                                style={{ marginLeft: 6 }}
-                                onClick={() =>
-                                  setPct(n.name, drafts[n.name] ?? n.pct)
-                                }
-                              >
-                                Save
-                              </button>
                             </td>
                           </tr>
                           {open && (
