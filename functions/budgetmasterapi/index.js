@@ -1933,89 +1933,6 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
   });
   const employees = Array.from(appraisalByEmployee.values());
 
-  // Current Count must match the live Appraisal Sheet roster shown on the
-  // Appraisal Sheet page. Keep this row-level count separate from the
-  // deduplicated employee map above: budget calculations must remain
-  // employee-ID deduplicated, but the displayed headcount follows the actual
-  // Active + Eligible Appraisal_Sheet rows for the current cycle.
-  const techSheetCurrentCounts = new Map();
-  currentAppraisalRows.forEach((sheetRow) => {
-    const rawEmployeeId = String(
-      firstValue(sheetRow, [
-        "emp_id",
-        "empId",
-        "employee_id",
-        "employeeId",
-        "employee_id_text",
-      ]) || idOf(sheetRow),
-    ).trim();
-    const employeeId = employeeKeyFor(rawEmployeeId);
-    const masterRow =
-      masterByEmployee.get(employeeId) ||
-      masterByRowId.get(rawEmployeeId) ||
-      {};
-    const status = String(
-      firstValue(masterRow, ["emp_status", "status", "employee_status"]) ||
-        firstValue(sheetRow, ["emp_status", "status", "employee_status"]) ||
-        "",
-    )
-      .trim()
-      .toLowerCase();
-    const rawEligibility = String(
-      firstValue(sheetRow, [
-        "eligibility",
-        "eligible_status",
-        "eligibility_status",
-        "eligible",
-      ]) ||
-        firstValue(masterRow, [
-          "eligibility",
-          "eligible_status",
-          "eligibility_status",
-          "eligible",
-        ]) ||
-        "",
-    )
-      .trim()
-      .toLowerCase()
-      .replace(/[ _-]+/g, "");
-    // Match src/routes/sheet.jsx: only Active + Eligible rows are displayed.
-    if (status !== "active" || !["eligible", "yes", "true", "1"].includes(rawEligibility))
-      return;
-
-    // Use the same assignment-field precedence as the deduplicated
-    // budget roster above, so this row-level count lands on the exact same
-    // Tech-Ed key used by techLabels and Budget_Distribution.
-    const rawTechEd = String(
-      firstValue(sheetRow, [
-        "appraiser_tech_ed",
-        "appraiser_tech_ed_id",
-        "appraiser_tech_ed1",
-        "appraiser_teched",
-        "appraiserTechED",
-        "appraiserTechEd",
-        "tech_ed",
-        "tech_ed_id",
-        "techED",
-        "techEd",
-      ]) ||
-        firstValue(masterRow, [
-          "appraiser_tech_ed",
-          "appraiser_tech_ed_id",
-          "appraiser_tech_ed1",
-          "appraiser_teched",
-          "tech_ed",
-          "tech_ed_id",
-        ]) ||
-        "",
-    ).trim();
-    const techKey = ownerKey(resolvePersonId(rawTechEd));
-    if (!techKey) return;
-    techSheetCurrentCounts.set(
-      techKey,
-      (techSheetCurrentCounts.get(techKey) || 0) + 1,
-    );
-  });
   // Eligibility_List is cycle-scoped. Key by both Employee_Master ROWID and
   // business Employee ID so foreign-key and legacy rows resolve consistently.
   const eligibilityByCycleAndEmployee = new Map();
@@ -2570,6 +2487,51 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     const appraisalSheetEmployees = employees.filter(
       (employee) => employee && employee.in_appraisal_sheet,
     );
+
+    // Count the same current-cycle Appraisal_Sheet rows that the Appraisal
+    // Sheet screen displays. Eligibility_List is authoritative for the active
+    // cycle, so use cycleEligibilityFor rather than stale Employee_Master
+    // eligibility aliases. Keep this row count separate from the unique
+    // employee roster used for budget arithmetic.
+    const employeeByIdForSheetCount = new Map(
+      employees.map((employee) => [
+        String(employee.employeeId || employee.emp_id || "").trim().toLowerCase(),
+        employee,
+      ]),
+    );
+    const techSheetCurrentCounts = new Map();
+    currentAppraisalRows.forEach((sheetRow) => {
+      const rawEmployeeId = String(
+        firstValue(sheetRow, [
+          "emp_id",
+          "empId",
+          "employee_id",
+          "employeeId",
+          "employee_id_text",
+        ]) || idOf(sheetRow),
+      ).trim();
+      const employeeKey = employeeKeyFor(rawEmployeeId);
+      const employee = employeeByIdForSheetCount.get(employeeKey);
+      if (!employee || !employee.in_appraisal_sheet) return;
+
+      const employeeStatus = String(
+        employee.master_status || employee.status || "",
+      )
+        .trim()
+        .toLowerCase();
+      const cycleEligibility = cycleEligibilityFor(employee, cycleId);
+      const isEligible = cycleEligibility
+        ? cycleEligibility.eligible
+        : Boolean(employee.eligible);
+      if (employeeStatus !== "active" || !isEligible) return;
+
+      const techKey = ownerKey(employee.techEd);
+      if (!techKey) return;
+      techSheetCurrentCounts.set(
+        techKey,
+        (techSheetCurrentCounts.get(techKey) || 0) + 1,
+      );
+    });
     // Match the Appraisal Sheet page's exact roster filter (src/routes/sheet.jsx):
     // active status AND explicit Eligible value from the generated sheet roster.
     // Do not re-apply Eligibility_List through cycleEligibilityFor here; that
