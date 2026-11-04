@@ -1520,7 +1520,8 @@ export function TechEdBudgetDistribution() {
     ) return legacyCount;
     if (localCount !== null) return localCount;
     const persisted = liveTech?.original_headcount;
-    return persisted !== null && persisted !== undefined && String(persisted).trim() !== ""
+    return liveTech?.original_headcount_is_persisted === true &&
+      persisted !== null && persisted !== undefined && String(persisted).trim() !== ""
       ? num(persisted)
       : 0;
   }, [isCompManagerView, selectedManagerNode?.team0, liveTech, activeCycleId, techOwnerKey, currentTeamCount]);
