@@ -1932,6 +1932,87 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     });
   });
   const employees = Array.from(appraisalByEmployee.values());
+
+  // Current Count must match the live Appraisal Sheet roster shown on the
+  // Appraisal Sheet page. Keep this row-level count separate from the
+  // deduplicated employee map above: budget calculations must remain
+  // employee-ID deduplicated, but the displayed headcount follows the actual
+  // Active + Eligible Appraisal_Sheet rows for the current cycle.
+  const techSheetCurrentCounts = new Map();
+  currentAppraisalRows.forEach((sheetRow) => {
+    const rawEmployeeId = String(
+      firstValue(sheetRow, [
+        "emp_id",
+        "empId",
+        "employee_id",
+        "employeeId",
+        "employee_id_text",
+      ]) || idOf(sheetRow),
+    ).trim();
+    const employeeId = employeeKeyFor(rawEmployeeId);
+    const masterRow =
+      masterByEmployee.get(employeeId) ||
+      masterByRowId.get(rawEmployeeId) ||
+      {};
+    const status = String(
+      firstValue(masterRow, ["emp_status", "status", "employee_status"]) ||
+        firstValue(sheetRow, ["emp_status", "status", "employee_status"]) ||
+        "",
+    )
+      .trim()
+      .toLowerCase();
+    const rawEligibility = String(
+      firstValue(sheetRow, [
+        "eligibility",
+        "eligible_status",
+        "eligibility_status",
+        "eligible",
+      ]) ||
+        firstValue(masterRow, [
+          "eligibility",
+          "eligible_status",
+          "eligibility_status",
+          "eligible",
+        ]) ||
+        "",
+    )
+      .trim()
+      .toLowerCase()
+      .replace(/[ _-]+/g, "");
+    // Match src/routes/sheet.jsx: only Active + Eligible rows are displayed.
+    if (status !== "active" || !["eligible", "yes", "true", "1"].includes(rawEligibility))
+      return;
+
+    const rawTechEd =
+      firstValue(sheetRow, [
+        "appraiser_tech_ed1",
+        "appraiser_tech_ed_row_id",
+        "appraiser_tech_ed_id",
+        "appraiser_tech_ed",
+        "appraiser_teched",
+        "appraiserTechED",
+        "appraiserTechEd",
+        "tech_ed_id",
+        "tech_ed",
+        "techED",
+        "techEd",
+      ]) ||
+      firstValue(masterRow, [
+        "appraiser_tech_ed1",
+        "appraiser_tech_ed_row_id",
+        "appraiser_tech_ed_id",
+        "appraiser_tech_ed",
+        "appraiser_teched",
+        "tech_ed",
+        "tech_ed_id",
+      ]);
+    const techKey = ownerKey(resolvePersonId(rawTechEd));
+    if (!techKey) return;
+    techSheetCurrentCounts.set(
+      techKey,
+      (techSheetCurrentCounts.get(techKey) || 0) + 1,
+    );
+  });
   // Eligibility_List is cycle-scoped. Key by both Employee_Master ROWID and
   // business Employee ID so foreign-key and legacy rows resolve consistently.
   const eligibilityByCycleAndEmployee = new Map();
@@ -2745,12 +2826,16 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
           );
         }
       }
+      // Current Count follows the raw Active + Eligible Appraisal_Sheet
+      // rows. Do not use stats.count here: it belongs to the deduplicated
+      // budget roster and can undercount the rows displayed on the sheet.
+      const currentSheetHeadcount = techSheetCurrentCounts.get(techKey) || 0;
       await persistOptional(
         distributionTable,
         row.id,
         distributionColumns,
         ["current_headcount"],
-        stats.count,
+        currentSheetHeadcount,
       );
       await persistOptional(
         distributionTable,
@@ -2772,7 +2857,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         calculated_budget: originalBudget,
         applied_budget: updatedBudget,
         effective_percentage: effectivePct,
-        current_headcount: stats.count,
+        current_headcount: currentSheetHeadcount,
         total_utilization: stats.utilized,
         original_headcount: savedOriginalCount,
       });
