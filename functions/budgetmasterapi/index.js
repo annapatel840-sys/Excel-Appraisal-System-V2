@@ -2739,9 +2739,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
           ["original_headcount", "allocation_headcount"],
           rosterCount,
         );
-        // Older deployments may not yet have the dedicated snapshot column.
-        // Do not turn an otherwise valid budget read into HTTP 500; the schema
-        // must include original_headcount (preferred) for cross-refresh persistence.
+        if (!saved) {
+          throw new Error(
+            "Cannot save the Tech-Ed Original Count snapshot. Add an original_headcount (Number) column to Budget_Distribution, then retry the first allocation.",
+          );
+        }
       }
       await persistOptional(
         distributionTable,
@@ -2883,8 +2885,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
           ["original_headcount", "allocation_headcount"],
           rosterCount,
         );
-        // Older deployments may not yet have the dedicated snapshot column.
-        // Keep the API available while schema migration is pending.
+        if (!saved) {
+          throw new Error(
+            "Cannot save the Comp Manager Original Count snapshot. Add an original_headcount (Number) column to Budget_Distribution_Comp, then retry the first allocation.",
+          );
+        }
       }
       await persistOptional(
         compTable,
@@ -3035,8 +3040,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         ["original_headcount", "allocation_headcount"],
         appraisalSheetEmployees.length,
       );
-      // Older deployments may not yet have the dedicated snapshot column.
-      // Keep the budget calculation available while schema migration is pending.
+      if (!saved) {
+        throw new Error(
+          "Cannot save the Org Original Count snapshot. Add an original_headcount (Number) column to Budget_Master, then retry the first allocation.",
+        );
+      }
     }
     await persistOptional(
       masterTable,
