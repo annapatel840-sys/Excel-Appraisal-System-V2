@@ -1087,11 +1087,10 @@ export function DetailScreenPage({
   const cachedAudit = useDeferredValue(audit);
   const budgetContext = useBudget();
 
-  // Keep the last ready Appraisal Sheet roster available during urgent employee
-  // navigation. A save may publish a new 500+ row array; rendering the next
-  // employee should use the cached prior array first, while React reconciles
-  // the newest roster in the background.
-  const cachedLiveRows = useDeferredValue(liveRows);
+  // Detailed Screen reads the already-loaded Appraisal Sheet roster directly.
+  // Do not defer this data: the selected employee must resolve from the current
+  // in-memory rows immediately when the user navigates.
+  const cachedLiveRows = liveRows;
   const currentCycleName = useCurrentCycleName() || CURRENT_CYCLE;
   const {
     currentUser,
