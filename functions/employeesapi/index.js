@@ -1045,7 +1045,7 @@ async function readDataStoreRowsInBatches(readers, concurrency = 2) {
 // the previous page), so the total time is set by the largest table, not by the
 // sum of several waves. Keep this small: Catalyst shares a COMPONENT concurrency
 // limit across functions.
-const ROSTER_READ_CONCURRENCY = 4;
+const ROSTER_READ_CONCURRENCY = 2;
 async function readDataStoreRowsPooled(
   readers,
   concurrency = ROSTER_READ_CONCURRENCY,
@@ -1110,22 +1110,22 @@ async function readAllDataStoreRows(table) {
 const TABLE_READ_CACHE = new Map(); // table id -> { fingerprint, rows, at }
 const TABLE_READ_CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 
+// One query after the other: a table-read slot then holds at most one Data
+// Store call, keeping the roster under Catalyst's COMPONENT concurrency limit.
 async function tableFingerprint(zcql, tableName) {
-  const [count, latest] = await Promise.all([
-    withDataStoreRetry(
-      () => zcql.executeZCQLQuery("SELECT COUNT(ROWID) FROM " + tableName),
-      tableName + " row count",
-    ),
-    withDataStoreRetry(
-      () =>
-        zcql.executeZCQLQuery(
-          "SELECT ROWID, MODIFIEDTIME FROM " +
-            tableName +
-            " ORDER BY MODIFIEDTIME DESC LIMIT 1",
-        ),
-      tableName + " latest change",
-    ),
-  ]);
+  const count = await withDataStoreRetry(
+    () => zcql.executeZCQLQuery("SELECT COUNT(ROWID) FROM " + tableName),
+    tableName + " row count",
+  );
+  const latest = await withDataStoreRetry(
+    () =>
+      zcql.executeZCQLQuery(
+        "SELECT ROWID, MODIFIEDTIME FROM " +
+          tableName +
+          " ORDER BY MODIFIEDTIME DESC LIMIT 1",
+      ),
+    tableName + " latest change",
+  );
   return JSON.stringify([count, latest]);
 }
 
@@ -1189,7 +1189,7 @@ function cachedTableRead(
    the identity check is not retried this way for a while.
    ============================================================ */
 const ZCQL_CHUNK_ROWS = 300;
-const ZCQL_READS_IN_FLIGHT = 6;
+const ZCQL_READS_IN_FLIGHT = 3;
 const ZCQL_BAD_RETRY_MS = 10 * 60 * 1000;
 const ZCQL_READ_VERDICT = new Map(); // table name -> { ok, at }
 // Delegation rarely changes; an unchanged table (checked by its fingerprint
@@ -1248,9 +1248,13 @@ async function readAllRowsParallel(
   if (verdict && !verdict.ok && Date.now() - verdict.at < ZCQL_BAD_RETRY_MS)
     return sequentialRead();
   try {
-    const countResult = await withDataStoreRetry(
-      () => zcql.executeZCQLQuery("SELECT COUNT(ROWID) FROM " + tableName),
-      tableName + " row count",
+    // Every Data Store call of a parallel read (count, sample, chunks) goes
+    // through the request's shared limiter.
+    const countResult = await limiter(() =>
+      withDataStoreRetry(
+        () => zcql.executeZCQLQuery("SELECT COUNT(ROWID) FROM " + tableName),
+        tableName + " row count",
+      ),
     );
     const countCell = Object.values(
       Object.values(
@@ -1303,9 +1307,11 @@ async function readAllRowsParallel(
 
     // Identity check on the first chunk before the remaining chunks are spent.
     const [sample, firstChunk] = await Promise.all([
-      withDataStoreRetry(
-        () => table.getPagedRows({ maxRows: DATASTORE_PAGE_SIZE }),
-        tableName + " sample page",
+      limiter(() =>
+        withDataStoreRetry(
+          () => table.getPagedRows({ maxRows: DATASTORE_PAGE_SIZE }),
+          tableName + " sample page",
+        ),
       ),
       readChunk(0),
     ]);

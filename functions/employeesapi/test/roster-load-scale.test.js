@@ -30,6 +30,10 @@ function table(id) {
     getAllColumns: async () => (id === T.sheet ? SHEET_COLS : []).map((c) => ({ column_name: c })),
     getPagedRows: async (o = {}) => {
       calls.pages[id] = (calls.pages[id] || 0) + 1;
+      calls.inFlight += 1;
+      calls.maxInFlight = Math.max(calls.maxInFlight, calls.inFlight);
+      await new Promise((r) => setImmediate(r)); // let other reads start, as a real call would
+      calls.inFlight -= 1;
       const start = Number(o.nextToken || 0);
       const size = o.maxRows || 200;
       const more = start + size < rows.length;
@@ -99,7 +103,7 @@ function getRaw(query, headers) {
 }
 
 function seed() {
-  calls = { pages: {}, rowWrites: [], batches: [] };
+  calls = { pages: {}, rowWrites: [], batches: [], inFlight: 0, maxInFlight: 0 };
   failBatch = false;
   DB = {
     [T.cycles]: [
@@ -166,6 +170,13 @@ async function t(name, fn) { try { seed(); await fn(); pass++; console.log('PASS
     await get('page=1&limit=1000&view=appraisal&status=all&eligible=all');
     assert.strictEqual(calls.rowWrites.length, 50, 'the rejected batch is written one row at a time');
     assert.ok(DB[T.sheet].filter((x) => x.cycle_id === 'C27').every((x) => x.target_PB_criteria === 'criteria'));
+  });
+
+  await t('a roster request reads at most 2 Data Store pages at the same time', async () => {
+    const r = await get('page=1&limit=5000&view=appraisal&status=all&eligible=all');
+    assert.strictEqual(r.status, 200);
+    assert.ok(calls.maxInFlight >= 1);
+    assert.ok(calls.maxInFlight <= 2, calls.maxInFlight + ' table reads ran at once (Catalyst COMPONENT limit)');
   });
 
   await t('gz=1 returns the same roster gzipped; without it the response is plain', async () => {

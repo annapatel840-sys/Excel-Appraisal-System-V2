@@ -88,3 +88,28 @@ export function clearEligibilitySnapshot(key) {
 export function clearSheetSnapshots() {
   return run("readwrite", (store) => store.clear()).catch(() => {});
 }
+
+// localStorage copies that hold salary or audit data (see appraisal-store,
+// budget-store and budget-audit-local). Screen preferences are kept.
+const SIGNED_IN_DATA_PREFIXES = [
+  "appraisal.auditTrail.",
+  "appraisal.lastEdit.",
+  "appraisal.budget.snapshot.",
+  "appraisal-budget-audit-",
+];
+
+// On sign-out: nothing of this user's data stays in the browser for the next one.
+export function clearSignedInUserData() {
+  try {
+    if (typeof window !== "undefined") {
+      Object.keys(window.localStorage).forEach((key) => {
+        if (SIGNED_IN_DATA_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+          window.localStorage.removeItem(key);
+        }
+      });
+    }
+  } catch (_) {
+    /* storage unavailable: nothing to clear */
+  }
+  return clearSheetSnapshots();
+}

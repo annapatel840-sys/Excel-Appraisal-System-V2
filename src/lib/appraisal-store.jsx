@@ -21,17 +21,38 @@ import { readSheetSnapshot, snapshotKey, writeSheetSnapshot } from "./roster-sna
 const CURRENT_USER = "Unknown user";
 // Set from Appraisal_Cycle_Master before loading or saving current-cycle data.
 let APPRAISAL_YEAR = "";
-const AUDIT_LOCAL_STORAGE_KEY = "appraisal.auditTrail.v1";
+// The browser copy of the audit trail belongs to one signed-in user (it holds
+// salary changes) and is removed on sign-out (see clearBrowserData).
+export const AUDIT_LOCAL_STORAGE_PREFIX = "appraisal.auditTrail.v2:";
+// Older builds kept one copy for everybody on the browser.
+const LEGACY_AUDIT_LOCAL_STORAGE_KEY = "appraisal.auditTrail.v1";
 const AUDIT_LOCAL_STORAGE_LIMIT = 5000;
+const auditStorageKey = (scope) =>
+  AUDIT_LOCAL_STORAGE_PREFIX + String(scope || "anonymous").trim().toLowerCase();
 
-const readLocalAuditTrail = () => {
+const parseAuditEntries = (raw) => {
+  const parsed = raw ? JSON.parse(raw) : [];
+  return Array.isArray(parsed)
+    ? parsed.filter((entry) => entry && entry.empId && entry.field).slice(0, AUDIT_LOCAL_STORAGE_LIMIT)
+    : [];
+};
+
+// userName: the signed-in user's display name, to keep their own unsaved
+// entries from the shared legacy copy; everything else in it is dropped.
+const readLocalAuditTrail = (scope, userName) => {
   try {
     if (typeof window === "undefined") return [];
-    const raw = window.localStorage.getItem(AUDIT_LOCAL_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed)
-      ? parsed.filter((entry) => entry && entry.empId && entry.field).slice(0, AUDIT_LOCAL_STORAGE_LIMIT)
+    const own = parseAuditEntries(window.localStorage.getItem(auditStorageKey(scope)));
+    const legacyRaw = window.localStorage.getItem(LEGACY_AUDIT_LOCAL_STORAGE_KEY);
+    if (legacyRaw === null) return own;
+    window.localStorage.removeItem(LEGACY_AUDIT_LOCAL_STORAGE_KEY);
+    const name = String(userName || "").trim().toLowerCase();
+    const unsavedOwn = name
+      ? parseAuditEntries(legacyRaw).filter(
+          (entry) => entry.saved === false && String(entry.user || "").trim().toLowerCase() === name,
+        )
       : [];
+    return own.concat(unsavedOwn).slice(0, AUDIT_LOCAL_STORAGE_LIMIT);
   } catch (_) {
     return [];
   }
@@ -62,11 +83,11 @@ const currentCycleAudit = (entries) => {
   );
 };
 
-const writeLocalAuditTrail = (entries) => {
+const writeLocalAuditTrail = (scope, entries) => {
   try {
     if (typeof window === "undefined") return;
     const safeEntries = (Array.isArray(entries) ? entries : []).slice(0, AUDIT_LOCAL_STORAGE_LIMIT);
-    window.localStorage.setItem(AUDIT_LOCAL_STORAGE_KEY, JSON.stringify(safeEntries));
+    window.localStorage.setItem(auditStorageKey(scope), JSON.stringify(safeEntries));
   } catch (error) {
     // Keep the in-memory audit trail alive if browser storage is disabled/full.
     console.warn("Could not persist the appraisal audit trail in localStorage:", error);
@@ -1145,7 +1166,7 @@ export function AppraisalProvider({ children }) {
     setDataWanted(true);
   }, []);
 
-  const [audit, setAudit] = useState(() => readLocalAuditTrail());
+  const [audit, setAudit] = useState(() => readLocalAuditTrail(rosterCacheScope, currentUserName));
   // Prevent the initial remote audit fetch from running more than once.
   const initialAuditLoadStartedRef = useRef(false);
 
@@ -1153,8 +1174,8 @@ export function AppraisalProvider({ children }) {
   // appraisalauditapi or its backing table is unavailable. Remote records are
   // merged with these entries instead of erasing locally retained history.
   useEffect(() => {
-    writeLocalAuditTrail(audit);
-  }, [audit]);
+    writeLocalAuditTrail(rosterCacheScope, audit);
+  }, [audit, rosterCacheScope]);
 
   const [modifiedLive, setModified] = useState({});
 
@@ -1396,15 +1417,15 @@ export function AppraisalProvider({ children }) {
     // The active cycle name is already set by loadEmployees from employeesapi,
     // so do not make another payrollcycleapi request just for the audit trail.
     if (!dataWanted || loading || initialAuditLoadStartedRef.current) return;
+    // No cycle known: the roster load failed (it keeps the audit trail and
+    // shows an error) or found no Active cycle (it already cleared the trail).
+    // Either way, wait: a later successful load runs this effect again. Never
+    // empty the browser copy here - it may hold edits not yet on the server.
+    if (!APPRAISAL_YEAR) return;
 
     initialAuditLoadStartedRef.current = true;
 
     const loadAudit = async () => {
-      if (!APPRAISAL_YEAR) {
-        setAudit([]);
-        return;
-      }
-
       try {
         const records = await fetchAuditHistoryFromCatalyst();
 
@@ -1444,6 +1465,18 @@ export function AppraisalProvider({ children }) {
 
     setSaveError(message);
 
+    return true;
+  }, []);
+
+  // Hike Amount / Hike % are number columns: an empty value is refused by the
+  // Data Store, so it is never sent (every screen, import and paste included).
+  const rejectEmptyHike = useCallback((fieldValues) => {
+    const empty = ["hikeAmount", "hikePct"].filter(
+      (key) => Object.prototype.hasOwnProperty.call(fieldValues, key) &&
+        String(fieldValues[key] ?? "").trim() === "",
+    );
+    if (!empty.length) return false;
+    setSaveError(`${empty.map(labelOf).join(", ")} cannot be empty. Enter 0 if you want no hike.`);
     return true;
   }, []);
 
@@ -1854,9 +1887,10 @@ export function AppraisalProvider({ children }) {
 
   const updateCell = useCallback(
     (id, key, value, source = "Inline edit") => {
+      if (rejectEmptyHike({ [key]: value })) return 0;
       return applyEdits([id], key, () => value, source);
     },
-    [applyEdits],
+    [applyEdits, rejectEmptyHike],
   );
 
   /* ==========================================================
@@ -1865,9 +1899,10 @@ export function AppraisalProvider({ children }) {
 
   const updateLinkedCells = useCallback(
     (id, fieldValues, source = "Inline edit") => {
+      if (rejectEmptyHike(fieldValues || {})) return 0;
       return applyLinkedFieldsEdit(id, fieldValues, source);
     },
-    [applyLinkedFieldsEdit],
+    [applyLinkedFieldsEdit, rejectEmptyHike],
   );
 
   /* ==========================================================

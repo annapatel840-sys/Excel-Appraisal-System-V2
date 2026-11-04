@@ -1329,6 +1329,7 @@ export function DetailScreenPage({
     setHikeErr("");
   }, [employee?.id]);
   const HIKE_MAX_MSG = "Hike % cannot exceed 100%.";
+  const HIKE_EMPTY_MSG = "The hike cannot be empty. Enter 0 if you want no hike. Not saved.";
   const [payErr, setPayErr] = useState({ pb: "", rb: "" });
   const [payReset, setPayReset] = useState({ pb: 0, rb: 0 });
   useEffect(() => {
@@ -1444,11 +1445,10 @@ export function DetailScreenPage({
 
   const handleNewBasePayChange = (raw) => {
     const value = parseAmount(raw);
-    // Cleared input clears the hike (same as the grid's blank hike cells).
+    // Left empty: nothing is saved (the hike columns need a number) and the
+    // value goes back to the stored one - same rule as the grid.
     if (value === "") {
-      if (!isBlank(employee.hikeAmount) || !isBlank(employee.hikePct)) {
-        commitLinked({ hikeAmount: "", hikePct: "" });
-      }
+      setHikeErr(HIKE_EMPTY_MSG);
       return;
     }
     if (value === derived.newBase) return;
@@ -1461,7 +1461,10 @@ export function DetailScreenPage({
      recalculates the other off currentAnnualBasePay. */
   const handleHikeAmountChange = (raw) => {
     const hike = parseAmount(raw);
-    if (hike === "") return;
+    if (hike === "") {
+      setHikeErr(HIKE_EMPTY_MSG);
+      return;
+    }
     const base = baseNow;
     if (base && (Number(hike) / base) * 100 > 100) {
       setHikeErr(HIKE_MAX_MSG + " Not saved.");
@@ -1473,7 +1476,10 @@ export function DetailScreenPage({
   };
   const handleHikePctChange = (raw) => {
     const pctRaw = parseAmount(raw);
-    if (pctRaw === "") return;
+    if (pctRaw === "") {
+      setHikeErr(HIKE_EMPTY_MSG);
+      return;
+    }
     if (Number(pctRaw) > 100) {
       setHikeErr(HIKE_MAX_MSG + " Not saved.");
       return;

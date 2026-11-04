@@ -27,7 +27,7 @@ import {
   appraisalRosterSettled,
   prefetchAppraisalRoster,
 } from "@/lib/employee-roster";
-import { clearSheetSnapshots } from "@/lib/roster-snapshot";
+import { clearSignedInUserData } from "@/lib/roster-snapshot";
 import { getViewAsSelected } from "@/lib/view-as-store";
 import { prefetchEligibilityEmployees } from "@/lib/employee-master-data";
 import {
@@ -284,7 +284,7 @@ export default function App() {
   return (
     <CatalystAuthGate
       onSignedIn={prefetchForCurrentScreen}
-      onSignOut={clearSheetSnapshots}
+      onSignOut={clearSignedInUserData}
     >
       <AccessProvider>
         <AppRoutes />

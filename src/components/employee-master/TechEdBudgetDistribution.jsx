@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
@@ -1019,6 +1019,7 @@ export function TechEdBudgetDistribution() {
   const [err, setErr] = useState("");
   const [auditFilter, setAuditFilter] = useState("all");
   const [drafts, setDrafts] = useState({});
+  const [applyingPct, setApplyingPct] = useState(false);
   // Audit trail comes from the browser-side budget audit (budget-store.jsx),
   // limited to this Tech-ED's own row and the Comp Manager rows under it.
   const log = useMemo(() => {
@@ -1597,7 +1598,20 @@ export function TechEdBudgetDistribution() {
     return out.sort((a, b) => byDate(b, a));
   };
 
+  // One save per Comp Manager at a time: a double click, or Enter followed by
+  // Apply, would otherwise send two saves that can both create the row.
+  const pctSavesRef = useRef(new Set());
   async function setPct(name, raw) {
+    if (pctSavesRef.current.has(name)) return;
+    pctSavesRef.current.add(name);
+    try {
+      await savePct(name, raw);
+    } finally {
+      pctSavesRef.current.delete(name);
+    }
+  }
+
+  async function savePct(name, raw) {
     const node = cmNodes.find((x) => x.name === name);
     setDrafts((d) => {
       const next = { ...d };
@@ -1881,12 +1895,19 @@ export function TechEdBudgetDistribution() {
                 <button
                   type="button"
                   className="budget-save-btn"
+                  disabled={applyingPct}
                   onClick={async () => {
-                    for (const node of cmNodes) {
-                      const draft = drafts[node.name];
-                      if (draft !== undefined && String(draft).trim() !== "") {
-                        await setPct(node.name, draft);
+                    if (applyingPct) return;
+                    setApplyingPct(true);
+                    try {
+                      for (const node of cmNodes) {
+                        const draft = drafts[node.name];
+                        if (draft !== undefined && String(draft).trim() !== "") {
+                          await setPct(node.name, draft);
+                        }
                       }
+                    } finally {
+                      setApplyingPct(false);
                     }
                   }}
                 >
