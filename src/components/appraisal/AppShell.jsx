@@ -315,7 +315,11 @@ export function AppShell({ children, headerActions, notifications }) {
                         : "h-7 items-center gap-1.5 px-2 text-[11px]",
                       isCollapsed && "justify-center px-0 group-hover/nav:justify-start group-hover/nav:px-2.5",
                       (
-                        item.to === "/"
+                        item.to.includes("?")
+                          ? pathname === item.to.split("?")[0] &&
+                            new URLSearchParams(window.location.search).get("tab") ===
+                              new URLSearchParams(item.to.split("?")[1]).get("tab")
+                          : item.to === "/"
                           ? pathname === "/"
                           : pathname.startsWith(item.to)
                       )
