@@ -1833,7 +1833,8 @@ export function TechEdBudgetDistribution() {
                 />
                 <button
                   type="button"
-                  className="dd"
+                  className="budget-save-btn"
+                  style={{ marginLeft: auto }}
                   onClick={async () => {
                     for (const node of cmNodes) {
                       const draft = drafts[node.name];
@@ -2245,4 +2246,18 @@ ${filterTableCss(".tbd-root", ".bal")}
 ${filterTableCss(".tbd-root", ".trail-grid")}
 @keyframes tbd-pull { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .tbd-root .apdrop, .tbd-root .bal tr.tr td { animation: none; } }
+.budget-save-btn {
+  background: #155DFC;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 9px 20px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.budget-save-btn:hover {
+  opacity: 0.9;
+}
 `;
