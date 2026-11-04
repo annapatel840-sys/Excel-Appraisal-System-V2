@@ -1102,6 +1102,8 @@ export function AppraisalProvider({ children }) {
   // Set once a roster from the server has been applied; a saved copy read
   // after that is ignored.
   const freshAppliedRef = useRef(false);
+  // Saved-copy key (user + View-as) of the roster now on screen.
+  const loadedSnapshotKeyRef = useRef("");
   /*
   rowsRef always holds the latest rows. Every row mutation goes
   through updateRows(), which computes the next array from the
@@ -1189,15 +1191,15 @@ export function AppraisalProvider({ children }) {
       // cycle). If that table cannot be read, the sheet still loads.
       // The employeesapi roster already includes current-cycle feedback
       // fields. Avoid a second full Feedback_And_Rating API request.
-      const roster = await fetchAppraisalRoster({
-        viewAs: getViewAsSelected(),
-      });
+      const viewAs = getViewAsSelected();
+      const roster = await fetchAppraisalRoster({ viewAs });
 
       if (requestId !== loadSeqRef.current) {
         return;
       }
 
       freshAppliedRef.current = true;
+      loadedSnapshotKeyRef.current = snapshotKey(rosterCacheScope, viewAs);
       setShowingSaved(false);
 
       const activeCycle = roster.activeCycle;
@@ -1251,7 +1253,7 @@ export function AppraisalProvider({ children }) {
       }
     }
   // }, [isHRUser, updateRows]);
-  }, [isHRUser, updateRows, viewAsId]);
+  }, [isHRUser, updateRows, viewAsId, rosterCacheScope]);
 
   /* ==========================================================
   INITIAL EMPLOYEE LOAD
@@ -1290,18 +1292,21 @@ export function AppraisalProvider({ children }) {
   }, [dataWanted, sheetSnapshotKey, updateRows]);
 
   // Keep the saved copy in step with what the user sees (fresh loads and
-  // their own edits), written a moment after the rows stop changing.
+  // their own edits), written a moment after the rows stop changing. It is
+  // saved under the View-as choice the rows were loaded for, so switching
+  // View-as never files the previous role's rows under the new one.
   useEffect(() => {
-    if (!freshAppliedRef.current || showingSaved) return undefined;
+    const key = loadedSnapshotKeyRef.current;
+    if (!freshAppliedRef.current || showingSaved || !key) return undefined;
     const timer = setTimeout(() => {
-      writeSheetSnapshot(sheetSnapshotKey, {
+      writeSheetSnapshot(key, {
         rows: rowsRef.current,
         counts: employeeCounts,
         appraisalYear: APPRAISAL_YEAR,
       });
     }, 2000);
     return () => clearTimeout(timer);
-  }, [rows, employeeCounts, showingSaved, sheetSnapshotKey]);
+  }, [rows, employeeCounts, showingSaved]);
 
   useEffect(() => {
     // Before any screen has asked for appraisal data there is nothing to

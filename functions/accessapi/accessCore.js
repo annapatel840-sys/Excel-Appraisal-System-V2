@@ -351,105 +351,92 @@ async function activeCycleId(zcql) {
 /* Delegation of a cycle:
      techEd / compMgr : { normEmpId: number of employees }   (who has a team)
      byEmp            : { normEmpId: { empId, techEd, compMgr } }
-     teamTechEd / teamCompMgr : { normManagerId: [empId, …] } */
+     teamTechEd / teamCompMgr : { normManagerId: [empId, …] }
+     rowIdOf          : { normEmpId: Employee_Master ROWID }
+
+   Each employee has ONE Tech ED and ONE Comp Manager, taken per role from the
+   first source that names one:
+     1. Delegation row of the cycle (changes only when HR assigns or approves),
+     2. the cycle's Appraisal_Sheet row (approval also writes it; Generate copies it),
+     3. the employee's Appraisal_Sheet row without a cycle (left by Employee
+        Master import), then Employee_Master (before Generate).
+   A person reassigned in Delegation therefore leaves the old manager's team.
+   Sheet rows of other cycles are not used: they hold past managers. */
 async function loadDelegation(zcql, cycleId) {
-  const d = SETTINGS.delegation, out = { techEd: {}, compMgr: {}, byEmp: {}, teamTechEd: {}, teamCompMgr: {} };
+  const d = SETTINGS.delegation, out = { techEd: {}, compMgr: {}, byEmp: {}, teamTechEd: {}, teamCompMgr: {}, rowIdOf: {} };
   const z = zq(zcql);
-  // The Delegation, Employee_Master and Appraisal_Sheet scans do not depend on
-  // each other, so read them together instead of one table after another. They
-  // are still processed below in the same order as before.
-  const e = SETTINGS.employeeMaster;
+  const e = SETTINGS.employeeMaster, s = SETTINGS.appraisalSheet;
   const [rows, masterRows, sheetRows] = await Promise.all([
     cycleId
       ? selectAll(z, d.table, d.cycleColumn + " = '" + q(cycleId) + "'")
       : Promise.resolve([]),
     selectAll(z, e.table),
-    selectAll(z, SETTINGS.appraisalSheet.table),
+    selectAll(z, s.table),
   ]);
+  const cycleOf = (r) => String(r.cycle_id == null ? '' : r.cycle_id).trim();
+  const cycleSheetRows = cycleId ? sheetRows.filter((r) => cycleOf(r) === String(cycleId)) : [];
+  const noCycleSheetRows = sheetRows.filter((r) => !cycleOf(r));
 
-  rows.forEach((r) => {
-    const emp = String(r[d.empId] || '').trim(), t = norm(r[d.appraiserTechEdId]), c = norm(r[d.compManagerId]);
-    if (emp) out.byEmp[norm(emp)] = { empId: emp, techEd: t, compMgr: c };
-    if (t) { out.techEd[t] = (out.techEd[t] || 0) + 1; (out.teamTechEd[t] = out.teamTechEd[t] || []).push(emp); }
-    if (c) { out.compMgr[c] = (out.compMgr[c] || 0) + 1; (out.teamCompMgr[c] = out.teamCompMgr[c] || []).push(emp); }
+  // Employee_Master people, reachable by employee ID and by ROWID (lookup
+  // columns and Delegation.emp_id hold the ROWID).
+  const byId = new Map(), byRowId = new Map(), byEmail = new Map(), nameCount = new Map(), byName = new Map();
+  masterRows.forEach((r) => {
+    const empId = String(r[e.empId] || '').trim();
+    if (!empId) return;
+    const p = { empId, rowId: String(r.ROWID || r.rowid || '').trim() };
+    byId.set(norm(empId), p);
+    if (p.rowId) { byRowId.set(p.rowId, p); out.rowIdOf[norm(empId)] = p.rowId; }
+    const email = String(r[e.email] || '').trim().toLowerCase();
+    if (email) byEmail.set(email, p);
+    const name = String(r[e.name] || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (name) { nameCount.set(name, (nameCount.get(name) || 0) + 1); byName.set(name, p); }
   });
 
-  // Compatibility fallback: Employee_Master may contain manager assignments while
-  // Delegation is still empty or only partially configured. Delegation remains authoritative
-  // for rows it already defines; Employee_Master fills only missing manager/team mappings.
-  const people = masterRows.map((r) => ({
-    empId: String(r[e.empId] || '').trim(),
-    rowId: String(r.ROWID || r.rowid || '').trim(),
-    name: String(r[e.name] || '').trim(),
-    email: String(r[e.email] || '').trim().toLowerCase(),
-  })).filter((p) => p.empId);
-
-  const resolveManager = (value) => {
-    const raw = String(value || '').trim().toLowerCase();
-    if (!raw) return '';
-    // FIX: lookup fields may contain Employee_Master.ROWID instead of emp_id.
-    // Resolve the row ID to the stable employee ID before building team scope.
-    const person = people.find((p) =>
-      raw === p.empId.toLowerCase() ||
-      (p.rowId && raw === p.rowId.toLowerCase()) ||
-      raw.includes(p.empId.toLowerCase()) ||
-      (p.name && raw.includes(p.name.toLowerCase())) ||
-      (p.email && raw.includes(p.email))
-    );
-    return person ? norm(person.empId) : norm(value);
+  // A stored person ("EMP001", a ROWID, "EMP001 - Name", an email or a unique
+  // name) -> normalized employee ID. Exact matches only: a partial match could
+  // put an employee in the wrong manager's team ("EMP001" is inside "EMP0012").
+  const person = (value) => {
+    const raw = String(value == null ? '' : value).trim();
+    if (!raw) return null;
+    const viaId = byId.get(norm(raw)) || byRowId.get(raw);
+    if (viaId) return viaId;
+    const idPart = raw.match(/^(\S+)\s+-\s+.+$/);
+    if (idPart && byId.has(norm(idPart[1]))) return byId.get(norm(idPart[1]));
+    const lower = raw.toLowerCase().replace(/\s+/g, ' ');
+    if (byEmail.has(lower)) return byEmail.get(lower);
+    if (nameCount.get(lower) === 1) return byName.get(lower);
+    return null;
+  };
+  // Managers not in Employee_Master keep their own normalized value.
+  const managerKey = (value) => {
+    const p = person(value);
+    return p ? norm(p.empId) : norm(value);
+  };
+  const employeeOf = (value) => {
+    const p = person(value);
+    return p ? p.empId : String(value == null ? '' : value).trim();
   };
 
-  masterRows.forEach((r) => {
-    const emp = String(r[e.empId] || '').trim();
+  // Pick, per employee, the first source that names each manager.
+  const assign = (emp, techEdValue, compMgrValue) => {
     if (!emp) return;
-    const existing = out.byEmp[norm(emp)] || { empId: emp, techEd: '', compMgr: '' };
-    // Employee_Master remains the preferred source; normalize IDs, names and emails
-    // to stable employee IDs before constructing manager team scope.
-    const t = resolveManager(r.appraiser_tech_ed) || existing.techEd;
-    const c = resolveManager(r.comp_manager) || existing.compMgr;
-    out.byEmp[norm(emp)] = { empId: emp, techEd: t, compMgr: c };
-    if (t && !(out.teamTechEd[t] || []).some((id) => norm(id) === norm(emp))) {
-      out.teamTechEd[t] = out.teamTechEd[t] || [];
-      out.teamTechEd[t].push(emp);
-      out.techEd[t] = (out.techEd[t] || 0) + 1;
-    }
-    if (c && !(out.teamCompMgr[c] || []).some((id) => norm(id) === norm(emp))) {
-      out.teamCompMgr[c] = out.teamCompMgr[c] || [];
-      out.teamCompMgr[c].push(emp);
-      out.compMgr[c] = (out.compMgr[c] || 0) + 1;
-    }
-  });
+    const k = norm(emp);
+    const cur = out.byEmp[k] || (out.byEmp[k] = { empId: emp, techEd: '', compMgr: '' });
+    if (!cur.techEd) cur.techEd = managerKey(techEdValue);
+    if (!cur.compMgr) cur.compMgr = managerKey(compMgrValue);
+  };
+  rows.forEach((r) => assign(employeeOf(r[d.empId]), r[d.appraiserTechEdId], r[d.compManagerId]));
+  [cycleSheetRows, noCycleSheetRows].forEach((list) => list.forEach((r) => assign(
+    employeeOf(r[s.empId]),
+    r.appraiser_tech_ed || r.appraiser_tech_ed1,
+    r.comp_manager || r.comp_manager_id,
+  )));
+  masterRows.forEach((r) => assign(String(r[e.empId] || '').trim(), r.appraiser_tech_ed, r.comp_manager));
 
-  // FIX 1 — AUDIT/SHEET SCOPE CONSISTENCY:
-  // An employee can have a current Tech-Ed assignment on Appraisal_Sheet while
-  // Employee_Master/Delegation contains a missing or stale assignment. Use the
-  // sheet assignment as a fallback so audit authorization follows the employee
-  // assignment used by the appraisal workflow. Never broaden access to all rows.
-  sheetRows.forEach((r) => {
-    const emp = String(r.emp_id || r.empId || '').trim();
-    if (!emp) return;
-    const existing = out.byEmp[norm(emp)] || { empId: emp, techEd: '', compMgr: '' };
-    const sheetTechEd = resolveManager(
-      r.appraiser_tech_ed || r.appraiser_tech_ed1 || r.appraiserTechED
-    );
-    const sheetCompMgr = resolveManager(
-      r.comp_manager || r.comp_manager_id || r.compManager
-    );
-    const t = sheetTechEd || existing.techEd;
-    const c = sheetCompMgr || existing.compMgr;
-    out.byEmp[norm(emp)] = { empId: emp, techEd: t, compMgr: c };
-    if (t && !(out.teamTechEd[t] || []).some((id) => norm(id) === norm(emp))) {
-      out.teamTechEd[t] = out.teamTechEd[t] || [];
-      out.teamTechEd[t].push(emp);
-      out.techEd[t] = (out.techEd[t] || 0) + 1;
-    }
-    if (c && !(out.teamCompMgr[c] || []).some((id) => norm(id) === norm(emp))) {
-      out.teamCompMgr[c] = out.teamCompMgr[c] || [];
-      out.teamCompMgr[c].push(emp);
-      out.compMgr[c] = (out.compMgr[c] || 0) + 1;
-    }
+  Object.values(out.byEmp).forEach(({ empId, techEd: t, compMgr: c }) => {
+    if (t) { out.techEd[t] = (out.techEd[t] || 0) + 1; (out.teamTechEd[t] = out.teamTechEd[t] || []).push(empId); }
+    if (c) { out.compMgr[c] = (out.compMgr[c] || 0) + 1; (out.teamCompMgr[c] = out.teamCompMgr[c] || []).push(empId); }
   });
-
   return out;
 }
 function hasTeam(deleg, empId) { const k = norm(empId); return deleg.techEd[k] != null || deleg.compMgr[k] != null; }
@@ -581,9 +568,17 @@ function scopeOf(base, ro, a, person) {
   if (me && a.role === 'techEd') ids.push(...(d.teamTechEd[me] || []));
   if (me && a.role === 'compMgr') ids.push(...(d.teamCompMgr[me] || []));
   a.teams.forEach((t) => { const k = norm(t); ids.push(...(d.teamTechEd[k] || []), ...(d.teamCompMgr[k] || [])); });
-  const seen = new Set(), empIds = [];
-  ids.forEach((id) => { const k = norm(id); if (!k || k === me || seen.has(k)) return; seen.add(k); empIds.push(String(id).trim()); });
-  return { all: false, cycleId: base.cycleId, empIds };
+  const seen = new Set(), empIds = [], rowIds = [];
+  ids.forEach((id) => {
+    const k = norm(id);
+    if (!k || k === me || seen.has(k)) return;
+    seen.add(k);
+    empIds.push(String(id).trim());
+    // Payroll_Data / Feedback rows name the employee by Employee_Master ROWID.
+    const rowId = (d.rowIdOf || {})[k];
+    if (rowId) rowIds.push(rowId);
+  });
+  return { all: false, cycleId: base.cycleId, empIds, rowIds };
 }
 async function get(cat, opts) {
   // getCurrentUser() throws when the request carries no user credentials.
@@ -666,7 +661,7 @@ function inScope(a, rowOrEmpId) {
   if (!a || !a.scope) return false;
   if (a.scope.all) return true;
   let set = scopeSets.get(a.scope);
-  if (!set) { set = new Set((a.scope.empIds || []).map(norm)); scopeSets.set(a.scope, set); }
+  if (!set) { set = new Set((a.scope.empIds || []).concat(a.scope.rowIds || []).map(norm)); scopeSets.set(a.scope, set); }
   const id = rowOrEmpId && typeof rowOrEmpId === 'object' ? (rowOrEmpId.emp_id != null ? rowOrEmpId.emp_id : rowOrEmpId.empId) : rowOrEmpId;
   const k = norm(id);
   return !!k && set.has(k);
@@ -704,7 +699,7 @@ module.exports = {
   SETTINGS, T, BUILT_IN_ROLES, START_CATALOG, FIELD_COLUMNS, COLUMN_FIELDS, LEVELS, LIMITS, OV_TYPES, HttpError,
   nowDT, today, q, bool, norm, ID_RE, DATE_RE, isEnforced,
   whenNotBusy, selectAll, buildCatalog, loadCatalog, loadRoles, loadMatrix, resolveFields, activeCycleId, loadDelegation, hasTeam, emRow, findEmployee,
-  loadOverrides, live, baseRoleOf, accessOf, get, check, guard, requireScreen, requireAction, canEdit, canEditColumn, requireEditColumns,
+  loadOverrides, live, baseRoleOf, accessOf, scopeOf, get, check, guard, requireScreen, requireAction, canEdit, canEditColumn, requireEditColumns,
   fieldOfColumn, inScope, shapeRow, shapeRowByColumns, scopeRows, getVersion, currentVersion, bumpVersion, resetCache, ensureCache,
   _cache: CACHE
 };
