@@ -496,12 +496,16 @@ export function BudgetProvider({ children }) {
     if (typeof window !== "undefined") {
       window.addEventListener("appraisal:payroll-data-updated", refreshBudget);
       window.addEventListener("appraisal:budget-data-updated", refreshBudget);
+      window.addEventListener("appraisal:employee-master-updated", refreshBudget);
+      window.addEventListener("appraisal:eligibility-reset", refreshBudget);
       window.addEventListener("appraisal:cycle-updated", refreshForCycleChange);
     }
     return () => {
       if (typeof window !== "undefined") {
         window.removeEventListener("appraisal:payroll-data-updated", refreshBudget);
         window.removeEventListener("appraisal:budget-data-updated", refreshBudget);
+        window.removeEventListener("appraisal:employee-master-updated", refreshBudget);
+        window.removeEventListener("appraisal:eligibility-reset", refreshBudget);
         window.removeEventListener("appraisal:cycle-updated", refreshForCycleChange);
       }
     };
