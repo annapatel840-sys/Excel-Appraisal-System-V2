@@ -1567,6 +1567,8 @@ app.post(
       if (!raw) return "";
       const id = selectedEmployeeId(raw);
       if (masterByEmployeeId.has(id)) return id;
+      const byRowId = masterByRowId.get(raw);
+      if (byRowId) return String(byRowId[e.empId] || "").trim().toLowerCase();
       const byName = masters.filter((row) =>
         String(row[e.name] || "").trim().toLowerCase() === raw.toLowerCase()
       );
@@ -1579,7 +1581,8 @@ app.post(
     });
     const delegationByEmployeeId = new Map();
     delegationRows.forEach((row) => {
-      const master = masterByRowId.get(String(row[d.empId] || "").trim());
+      const storedEmployeeKey = String(row[d.empId] || "").trim();
+      const master = masterByRowId.get(storedEmployeeKey) || masterByEmployeeId.get(storedEmployeeKey.toLowerCase());
       const id = String(master?.[e.empId] || "").trim().toLowerCase();
       if (id && !delegationByEmployeeId.has(id)) delegationByEmployeeId.set(id, row);
     });
