@@ -79,7 +79,32 @@ export function managerIdentityMatches(value, selected) {
   return left.some((part) => right.has(part));
 }
 
-export function currentUserMatchesManager(value, user, employeeRows = []) {
+// Cache the signed-in user's aliases for each roster array. The Sheet and
+// Detailed Screen both filter the same large roster; without this cache,
+// currentUserMatchesManager() searched the full roster once per employee
+// (quadratic work for Comp Manager views).
+const managerAliasCache = new WeakMap();
+
+function getCurrentUserManagerAliases(user, employeeRows) {
+  if (!user || typeof user !== "object" || !Array.isArray(employeeRows)) {
+    return buildCurrentUserManagerAliases(user, employeeRows);
+  }
+
+  let rosterCache = managerAliasCache.get(user);
+  if (!rosterCache) {
+    rosterCache = new WeakMap();
+    managerAliasCache.set(user, rosterCache);
+  }
+
+  const cached = rosterCache.get(employeeRows);
+  if (cached) return cached;
+
+  const aliases = buildCurrentUserManagerAliases(user, employeeRows);
+  rosterCache.set(employeeRows, aliases);
+  return aliases;
+}
+
+function buildCurrentUserManagerAliases(user, employeeRows = []) {
   const aliases = [
     user?.name, user?.display_name, user?.displayName,
     user?.first_name, user?.last_name,
@@ -102,7 +127,13 @@ export function currentUserMatchesManager(value, user, employeeRows = []) {
       linkedEmployee.employee_name,
     );
   }
-  return aliases.some((alias) => managerIdentityMatches(value, alias));
+  return aliases;
+}
+
+export function currentUserMatchesManager(value, user, employeeRows = []) {
+  return getCurrentUserManagerAliases(user, employeeRows).some((alias) =>
+    managerIdentityMatches(value, alias)
+  );
 }
 
 function readSaved() {
