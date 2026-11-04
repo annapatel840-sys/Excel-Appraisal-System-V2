@@ -1491,18 +1491,39 @@ export function TechEdBudgetDistribution() {
     isCompManagerView,
     selectedCompManager,
   ]);
-  // Use only the immutable baseline returned by the API; headcount may
-  // be a legacy/current field and must not replace Original Count here.
-  const savedTeamCount = liveTech?.original_headcount;
-  // Original Count is a persisted baseline. Never replace a missing baseline
-  // with today's roster count, or it will appear to change with eligibility.
-  const team0 = isCompManagerView
-    ? num(selectedManagerNode?.team0)
-    : savedTeamCount !== null &&
-        savedTeamCount !== undefined &&
-        String(savedTeamCount).trim() !== ""
-      ? num(savedTeamCount)
+  // Original Count is frontend-only: read the same cycle/Tech-Ed snapshot
+  // saved by Budget Master. If an earlier bad browser snapshot equals today's
+  // live count, recover from the legacy baseline when it is still available.
+  const team0 = useMemo(() => {
+    if (isCompManagerView) return num(selectedManagerNode?.team0);
+    let localCount = null;
+    try {
+      const saved = JSON.parse(
+        window.localStorage.getItem("excel-appraisal-budget-original-v1") || "{}",
+      );
+      const cycleKey = String(liveTech?.appraisal_cycle_id || activeCycleId || "");
+      const raw = saved?.[cycleKey]?.teCount?.[techOwnerKey];
+      if (raw !== null && raw !== undefined && Number.isFinite(Number(raw))) {
+        localCount = Number(raw);
+      }
+    } catch (_) {
+      // Storage is optional; continue with the API's legacy values.
+    }
+    const legacyCount = Number(liveTech?.headcount);
+    const hasLegacyCount = Number.isFinite(legacyCount) && legacyCount > 0;
+    const currentCount = Number(currentTeamCount) || 0;
+    const localLooksLikeLive = localCount !== null && localCount === currentCount;
+    if (
+      hasLegacyCount &&
+      legacyCount !== currentCount &&
+      (localCount === null || localLooksLikeLive)
+    ) return legacyCount;
+    if (localCount !== null) return localCount;
+    const persisted = liveTech?.original_headcount;
+    return persisted !== null && persisted !== undefined && String(persisted).trim() !== ""
+      ? num(persisted)
       : 0;
+  }, [isCompManagerView, selectedManagerNode?.team0, liveTech, activeCycleId, techOwnerKey, currentTeamCount]);
   const allotted = isCompManagerView
     ? 0
     : cmNodes.reduce((s, n) => s + n.updated, 0);
