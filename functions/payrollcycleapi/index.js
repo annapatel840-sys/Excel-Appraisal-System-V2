@@ -261,12 +261,13 @@ function requirePayrollAccess(a, resource, method) {
   }
   if (resource === "generate-sheet" && method === "POST") {
     if (a.role === "techEd") {
-      // Tech-Ed can initiate sheet generation from Delegation, but does not
-      // need edit access to the Delegation screen itself to run this action.
-      access.requireScreen(a, "delegation", "view");
-    } else {
-      access.requireScreen(a, "cycleMaster", "edit");
+      // Generating the Appraisal Sheet is an explicit Tech-Ed workflow action.
+      // Do not gate it on the Delegation screen level: the built-in Tech-Ed
+      // role can have Delegation screen access set to "none" while the button
+      // is still available to that role.
+      return;
     }
+    access.requireScreen(a, "cycleMaster", "edit");
     return;
   }
   // import: the Upload screen's Payroll / Review and Feedback upload.
