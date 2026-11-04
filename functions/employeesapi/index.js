@@ -2790,7 +2790,13 @@ async function getEmployees(req, res) {
 
     // Defensive de-duplication: one current sheet row per employee, even if
     // older data already contains duplicate records for the same active cycle.
+    // Keep the newest record. Budget Master already resolves duplicate
+    // Appraisal_Sheet employees this way; keeping the first row here made the
+    // Appraisal Sheet and Tech-Ed budget roster disagree when a later duplicate
+    // carried the current Tech-Ed assignment.
     const uniqueCurrentRows = new Map();
+    const currentRowRank = (row) =>
+      String(row?.MODIFIEDTIME || row?.CREATEDTIME || row?.ROWID || row?.rowid || "");
     appraisalRows.forEach((row) => {
       const masterId = historyReference(
         row?.emp_master_row_id ?? row?.employee_master_id,
@@ -2800,7 +2806,15 @@ async function getEmployees(req, res) {
       // carry different Employee_Master ROWIDs but still represent one person.
       const key = empId ? "emp:" + empId : masterId ? "master:" + masterId : "";
       if (!key) return;
-      if (!uniqueCurrentRows.has(key)) uniqueCurrentRows.set(key, row);
+      const existing = uniqueCurrentRows.get(key);
+      if (
+        !existing ||
+        currentRowRank(row).localeCompare(currentRowRank(existing), undefined, {
+          numeric: true,
+        }) >= 0
+      ) {
+        uniqueCurrentRows.set(key, row);
+      }
     });
     appraisalRows = [...uniqueCurrentRows.values()];
   }
