@@ -260,8 +260,14 @@ function requirePayrollAccess(a, resource, method) {
     return;
   }
   if (resource === "generate-sheet" && method === "POST") {
-    if (a.role === "techEd") access.requireScreen(a, "delegation", "edit");
-    else access.requireScreen(a, "cycleMaster", "edit");
+    if (a.role === "techEd") {
+      // Tech-Ed can initiate sheet generation from Delegation, but does not
+      // need edit access to the Delegation screen itself to run this action.
+      access.requireScreen(a, "delegation", "view");
+      access.requireScreen(a, "appraisalSheet", "edit");
+    } else {
+      access.requireScreen(a, "cycleMaster", "edit");
+    }
     return;
   }
   // import: the Upload screen's Payroll / Review and Feedback upload.
@@ -3246,7 +3252,12 @@ async function routeRequest(req, res, identity, resource, a) {
     return sendJson(res, 403, { success: false, message: "HR, Comp. Manager, or Tech-Ed role is required for payroll access." });
   }
 
-  if (techEdUser && req.method !== "GET" && resource !== "session") {
+  if (
+    techEdUser &&
+    req.method !== "GET" &&
+    resource !== "session" &&
+    resource !== "generate-sheet"
+  ) {
     return sendJson(res, 403, { success: false, message: "Tech-Ed users have read-only payroll access." });
   }
 
