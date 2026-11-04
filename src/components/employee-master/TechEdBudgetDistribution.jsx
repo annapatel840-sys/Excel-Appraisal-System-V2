@@ -1834,7 +1834,6 @@ export function TechEdBudgetDistribution() {
                 <button
                   type="button"
                   className="budget-save-btn"
-                  style={{ marginLeft: auto }}
                   onClick={async () => {
                     for (const node of cmNodes) {
                       const draft = drafts[node.name];
@@ -2255,6 +2254,7 @@ ${filterTableCss(".tbd-root", ".trail-grid")}
   font-weight: 600;
   cursor: pointer;
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 .budget-save-btn:hover {
