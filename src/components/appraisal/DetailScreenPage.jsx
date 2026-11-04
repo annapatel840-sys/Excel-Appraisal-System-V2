@@ -1566,15 +1566,21 @@ export function DetailScreenPage({
     }
   };
 
-  // Blur first so the field being edited commits, then move.
+  // Move directly to the next row from the already-loaded Appraisal Sheet
+  // roster. Start its history request in the background, but never wait for it
+  // before rendering the employee's current Appraisal Sheet values.
   const goTo = (next) => {
     if (document.activeElement && document.activeElement.blur) {
       document.activeElement.blur();
     }
-    setTimeout(() => {
-      setIndex(() => Math.max(0, Math.min(rows.length - 1, next)));
-      setSearch("");
-    }, 0);
+    const nextIndex = Math.max(0, Math.min(rows.length - 1, next));
+    const nextEmployee = rows[nextIndex];
+    if (nextEmployee?.empId) {
+      // History is supplementary; warm its cache without blocking navigation.
+      loadHistory(nextEmployee.empId).catch(() => {});
+    }
+    setIndex(nextIndex);
+    setSearch("");
   };
   const safeIndex = Math.min(index, Math.max(rows.length - 1, 0));
 
