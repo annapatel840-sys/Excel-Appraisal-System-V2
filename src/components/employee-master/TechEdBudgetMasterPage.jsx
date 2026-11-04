@@ -621,21 +621,21 @@ export function TechEdBudgetMasterPage() {
 
   const cells = [
     [
-      "Original allotted",
+      "Original Allotted",
       money(me.original),
-      <span className="muted">Fixed at allocation</span>,
+      <span className="muted">Fixed at Allocation</span>,
     ],
-    ["Updated budget", money(me.updated), <Chg d={me.updated - me.original} />],
+    ["Updated Budget", money(me.updated), <Chg d={me.updated - me.original} />],
     [
-      "Team size",
+      "Team Size",
       me.team0 + " → " + me.team,
-      <span className="muted">At allocation → now</span>,
+      <span className="muted">At Allocation → Now</span>,
     ],
-    ["Allotted to reports", money(allotted), null],
+    ["Allotted to Reports", money(allotted), null],
     [
       "Buffer",
       money(me.updated - allotted),
-      <span className="muted">Not passed down</span>,
+      <span className="muted">Not Passed Down</span>,
     ],
   ];
 
@@ -645,17 +645,17 @@ export function TechEdBudgetMasterPage() {
 
       <div className="btop">
         <span>
-          Appraisal cycle <b>{activeCycleName || "—"}</b>
+          Appraisal Cycle <b>{activeCycleName || "—"}</b>
         </span>
         <span className="sep" />
-        <span>Budget allocation from Data Store</span>
+        <span>Budget Allocation from Data Store</span>
         <span className="sep" />
         <span>
           <b>{me.name}</b>
         </span>
         <span className="sep" />
         <span className="applied">
-          Budget applied by HR: <b>{me.pct}%</b>{" "}
+          Budget Applied by HR: <b>{me.pct}%</b>{" "}
           <span className="muted-small">(org default)</span> ={" "}
           <b>{money(me.updated)}</b> updated · original {money(me.original)}
           {canAudit && (
@@ -665,7 +665,7 @@ export function TechEdBudgetMasterPage() {
               aria-expanded={applied}
               onClick={() => setApplied((v) => !v)}
             >
-              % history {applied ? "▴" : "▾"}
+              History % {applied ? "▴" : "▾"}
             </button>
           )}
         </span>
@@ -724,7 +724,7 @@ export function TechEdBudgetMasterPage() {
           <>
             {canAllot && (
               <div className="reason">
-                <label htmlFor="te-reason">Reason for next % change</label>
+                <label htmlFor="te-reason">Reason for Next % Change</label>
                 <input
                   id="te-reason"
                   type="text"
@@ -774,7 +774,7 @@ export function TechEdBudgetMasterPage() {
       </section>
 
       {canAudit && <section className="card">
-        {head("audit", "% Applied — audit trail (you and your Comp Managers)")}
+        {head("audit", "Applied % — Audit Trail (You and Your Comp Managers)")}
         {pane.audit ? (
           <>
             <div className="reason">
