@@ -1533,9 +1533,6 @@ app.post(
       if (!empId || !["comp", "app"].includes(field) || !assignment) {
         throw new HttpError(422, "Change " + (index + 1) + " needs an employee, assignment field, and new assignment.");
       }
-      if (me.role !== "hr" && !A.inScope(me, empId)) {
-        throw new HttpError(403, "You do not have access to employee " + empId + ".");
-      }
       return { empId, field, assignment };
     });
 
@@ -1545,13 +1542,13 @@ app.post(
     // Read each source table once for the whole Save operation. Previously the
     // browser called this endpoint once per changed cell, repeating three full
     // table scans for every employee and exhausting the shared COMPONENT limit.
-    const masters = await selectAll(zcql, e.table);
-    const delegationRows = await selectAll(
-      zcql,
-      d.table,
-      d.cycleColumn + " = '" + q(cycleId) + "'",
-    );
-    const cycles = await selectAll(
+    const [masters, delegationRows, sheetRows, cycles] = await Promise.all([
+      selectAll(zcql, e.table),
+      selectAll(zcql, d.table, d.cycleColumn + " = '" + q(cycleId) + "'"),
+      selectAll(zcql, SETTINGS.appraisalSheet.table, "cycle_id = '" + q(cycleId) + "'"),
+      selectAll(zcql, SETTINGS.cycle.table, SETTINGS.cycle.idColumn + " = " + cycleId),
+    ]);
+    /*
       zcql,
       SETTINGS.cycle.table,
       SETTINGS.cycle.idColumn + " = " + cycleId,
@@ -1563,10 +1560,60 @@ app.post(
     const masterByEmployeeId = new Map(
       masters.map((row) => [String(row[e.empId] || "").trim().toLowerCase(), row]).filter(([id]) => id),
     );
+    const masterByRowId = new Map(
+      masters.map((row) => [String(row.ROWID || row.rowid || "").trim(), row]).filter(([id]) => id),
+    );
     const selectedEmployeeId = (assignment) => {
       const parts = assignment.match(/^\s*(.*?)\s+-\s+(.*?)\s*$/);
       return (parts ? parts[1] : assignment).trim().toLowerCase();
     };
+    const managerEmployeeId = (value) => {
+      const raw = String(value || "").trim();
+      if (!raw) return "";
+      const id = selectedEmployeeId(raw);
+      if (masterByEmployeeId.has(id)) return id;
+      const byName = masters.filter((row) =>
+        String(row[e.name] || "").trim().toLowerCase() === raw.toLowerCase()
+      );
+      return byName.length === 1 ? String(byName[0][e.empId] || "").trim().toLowerCase() : id;
+    };
+    const sheetByEmployeeId = new Map();
+    sheetRows.forEach((row) => {
+      const id = String(row[SETTINGS.appraisalSheet.empId] || "").trim().toLowerCase();
+      if (id && !sheetByEmployeeId.has(id)) sheetByEmployeeId.set(id, row);
+    });
+    const delegationByEmployeeId = new Map();
+    delegationRows.forEach((row) => {
+      const master = masterByRowId.get(String(row[d.empId] || "").trim());
+      const id = String(master?.[e.empId] || "").trim().toLowerCase();
+      if (id && !delegationByEmployeeId.has(id)) delegationByEmployeeId.set(id, row);
+    });
+    if (me.role === "techEd") {
+      const myEmployeeId = String(me.user.empId || "").trim().toLowerCase();
+      for (const change of normalizedChanges) {
+        const master = masterByEmployeeId.get(change.empId.toLowerCase());
+        const sheet = sheetByEmployeeId.get(change.empId.toLowerCase());
+        const delegation = master
+          ? delegationByEmployeeId.get(change.empId.toLowerCase())
+          : null;
+        const currentTechEd =
+          delegation?.[d.appraiserTechEdId] ||
+          sheet?.appraiser_tech_ed ||
+          sheet?.appraiser_tech_ed1 ||
+          master?.appraiser_tech_ed ||
+          "";
+        const assignedTechEdId = managerEmployeeId(currentTechEd);
+        if (!A.inScope(me, change.empId) && (!myEmployeeId || assignedTechEdId !== myEmployeeId)) {
+          throw new HttpError(403, "You do not have access to employee " + change.empId + ".");
+        }
+      }
+    } else if (me.role !== "hr") {
+      for (const change of normalizedChanges) {
+        if (!A.inScope(me, change.empId)) {
+          throw new HttpError(403, "You do not have access to employee " + change.empId + ".");
+        }
+      }
+    }
     const selectedIds = new Set(normalizedChanges.map((change) => selectedEmployeeId(change.assignment)));
     for (const id of selectedIds) {
       if (!masterByEmployeeId.has(id)) {
