@@ -2777,21 +2777,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
           update[overrideField] = effectivePct;
       }
       await distributionTable.updateRow(update);
-      // Save the initial count once. Every subsequent refresh only updates Current Count.
-      if (!originalCountIsSet) {
-        const saved = await persistOptional(
-          distributionTable,
-          row.id,
-          distributionColumns,
-          ["original_headcount", "allocation_headcount"],
-          rosterCount,
-        );
-        if (!saved) {
-          throw new Error(
-            "Cannot save the Tech-Ed Original Count snapshot. Add an original_headcount (Number) column to Budget_Distribution, then retry the first allocation.",
-          );
-        }
-      }
+      // Original Count is a frontend-only snapshot. Do not write it to
+      // Budget_Distribution; the browser captures the first allocation count.
       // Current Count follows every raw Appraisal_Sheet row in this cycle,
       // regardless of eligibility, and does not deduplicate employee IDs.
       const currentSheetHeadcount =
@@ -2930,20 +2917,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         }
       }
       await compTable.updateRow(update);
-      if (!originalCountIsSet) {
-        const saved = await persistOptional(
-          compTable,
-          row.id,
-          compColumns,
-          ["original_headcount", "allocation_headcount"],
-          rosterCount,
-        );
-        if (!saved) {
-          throw new Error(
-            "Cannot save the Comp Manager Original Count snapshot. Add an original_headcount (Number) column to Budget_Distribution_Comp, then retry the first allocation.",
-          );
-        }
-      }
+      // Original Count is a frontend-only snapshot. Do not write it to
+      // Budget_Distribution_Comp; the browser captures the first allocation count.
       await persistOptional(
         compTable,
         row.id,
