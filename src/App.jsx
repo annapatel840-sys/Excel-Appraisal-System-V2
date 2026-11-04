@@ -9,7 +9,7 @@ import { EmployeeMaster } from "@/pages/EmployeeMaster";
 import { SettingsPage } from "@/pages/SettingsPage";
 
 //this might be remove later (detailscreen)
-import { DetailScreenPage } from "@/components/appraisal/DetailScreenPage";
+import { DetailScreenPage, prefetchDetailHistory } from "@/components/appraisal/DetailScreenPage";
 import { AppShell } from "./components/appraisal/AppShell";
 import { BudgetMasterPage } from "@/components/employee-master/BudgetMasterPage";
 import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
@@ -29,6 +29,7 @@ import {
 } from "@/lib/employee-roster";
 import { clearSignedInUserData } from "@/lib/roster-snapshot";
 import { getViewAsSelected } from "@/lib/view-as-store";
+import { getSelectedEmpId } from "@/lib/selected-employee";
 import { prefetchEligibilityEmployees } from "@/lib/employee-master-data";
 import {
   prefetchDelegationRoster,
@@ -58,6 +59,12 @@ const ROSTER_PATHS = [
 function prefetchForCurrentScreen() {
   if (ROSTER_PATHS.includes(window.location.pathname)) {
     prefetchAppraisalRoster({ viewAs: getViewAsSelected() });
+  }
+  if (window.location.pathname === "/detail-screen") {
+    // Start independent right-panel requests at sign-in, in parallel with
+    // the Appraisal Sheet roster request and before access/screen rendering.
+    prefetchEmployeeFeedback();
+    prefetchDetailHistory(getSelectedEmpId()).catch(() => {});
   }
   if (
     window.location.pathname === "/employee-master" &&
@@ -198,13 +205,8 @@ function AppRoutes() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access.loading, access.ok]);
 
-  // Feedback & Rating is an independent source. Start it alongside the
-  // already-prefetched Appraisal Sheet roster so the Detailed Screen's
-  // Employee Information panel does not wait for the roster request to finish.
-  useEffect(() => {
-    if (access.loading) return;
-    prefetchEmployeeFeedback();
-  }, [access.loading]);
+  // Detailed Screen prefetches Feedback & Rating in onSignedIn, alongside
+  // the roster request, so the panel is ready as soon as the screen renders.
 
   useEffect(() => {
     if (access.loading || targetPath === null) return;
