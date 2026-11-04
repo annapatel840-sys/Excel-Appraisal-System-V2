@@ -933,7 +933,8 @@ function HRApplyBudget() {
           const originalCountValue = row.original_headcount;
           const savedCount = origSnap[selectedCycle]?.teCount?.[key];
           const legacyCount = row.headcount;
-          const hasApiCount = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
+          const hasApiCount = row.original_headcount_is_persisted === true &&
+            originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
           const hasLegacyCount = legacyCount !== null && legacyCount !== undefined &&
             String(legacyCount).trim() !== "" && Number(legacyCount) > 0;
           const hasLocalCount = savedCount !== null && savedCount !== undefined && Number.isFinite(Number(savedCount));
@@ -966,7 +967,8 @@ function HRApplyBudget() {
       const originalCountValue = row.original_headcount;
       const savedCount = origSnap[selectedCycle]?.teCount?.[key];
       const legacyCount = row.headcount;
-      const hasApiCount = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
+      const hasApiCount = row.original_headcount_is_persisted === true &&
+        originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
       const hasLegacyCount = legacyCount !== null && legacyCount !== undefined &&
         String(legacyCount).trim() !== "" && Number(legacyCount) > 0;
       const hasLocalCount = savedCount !== null && savedCount !== undefined && Number.isFinite(Number(savedCount));
