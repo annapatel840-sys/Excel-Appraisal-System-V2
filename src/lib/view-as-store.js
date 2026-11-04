@@ -79,7 +79,7 @@ export function managerIdentityMatches(value, selected) {
   return left.some((part) => right.has(part));
 }
 
-export function currentUserManagerAliases(user, employeeRows = []) {
+export function currentUserMatchesManager(value, user, employeeRows = []) {
   const aliases = [
     user?.name, user?.display_name, user?.displayName,
     user?.first_name, user?.last_name,
@@ -102,13 +102,7 @@ export function currentUserManagerAliases(user, employeeRows = []) {
       linkedEmployee.employee_name,
     );
   }
-  return aliases;
-}
-
-export function currentUserMatchesManager(value, user, employeeRows = []) {
-  return currentUserManagerAliases(user, employeeRows).some((alias) =>
-    managerIdentityMatches(value, alias)
-  );
+  return aliases.some((alias) => managerIdentityMatches(value, alias));
 }
 
 function readSaved() {
