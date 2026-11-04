@@ -2914,42 +2914,24 @@ const BulkOperations = forwardRef(function BulkOperations(
               {sheetHdr
                 ? sheetHdr.pending
                   ? "…"
-                  : Math.round(bPv.budget).toLocaleString("en-IN")
-                : big(bPv.budget)}
+                  : Math.round(b0.budget).toLocaleString("en-IN")
+                : big(b0.budget)}
             </strong>
           </div>
+          {/* The four header figures are fixed: they always cover ALL
+              employees and never move with this screen's filters or with a
+              rule preview. */}
           <div className="tk">
             <span>Utilisation</span>
-            {pv && Math.abs(bPv.used - b0.used) >= 0.5 ? (
-              <strong className={lvl(bPv.util)}>
-                {rupees(b0.used)} <small>→</small> {rupees(bPv.used)}
-              </strong>
-            ) : (
-              <strong className={lvl(b0.util)}>{rupees(b0.used)}</strong>
-            )}
+            <strong className={lvl(b0.util)}>{rupees(b0.used)}</strong>
           </div>
           <div className="tk">
             <span>Utilisation %</span>
-            {pv && Math.abs(pctOf(bPv) - pctOf(b0)) >= 0.05 ? (
-              <strong className={lvl(pctOf(bPv))}>
-                {pctOf(b0).toFixed(1)}% <small>→</small>{" "}
-                {pctOf(bPv).toFixed(1)}%
-              </strong>
-            ) : (
-              <strong className={lvl(pctOf(b0))}>
-                {pctOf(b0).toFixed(1)}%
-              </strong>
-            )}
+            <strong className={lvl(pctOf(b0))}>{pctOf(b0).toFixed(1)}%</strong>
           </div>
           <div className="tk">
             <span>Total Target PB</span>
-            {pv && Math.abs(inclT(bPv) - inclT(b0)) >= 0.5 ? (
-              <strong>
-                {rupees(inclT(b0))} <small>→</small> {rupees(inclT(bPv))}
-              </strong>
-            ) : (
-              <strong>{rupees(inclT(b0))}</strong>
-            )}
+            <strong>{rupees(inclT(b0))}</strong>
           </div>
         </div>
         <span className="tb-mock">Mock screen</span>

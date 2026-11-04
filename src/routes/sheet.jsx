@@ -210,9 +210,10 @@ export function SheetPage() {
   // Utilisation = Consumed as a percentage of Budget Allocated.
   // ============================================================
 
-  // In Comp Manager preview, budget figures describe the manager's whole team,
-  // not just the temporary search/filter subset currently visible in the grid.
-  const budgetRowsForStats = isCompManagerPreview ? appraisalRows : filtered;
+  // The four budget figures are fixed: they always describe ALL employees in
+  // scope and never change with the grid's column filters, search or
+  // "edited only" toggle.
+  const budgetRowsForStats = appraisalRows;
   const budgetConsumed = useMemo(() => sumBudgetConsumed(budgetRowsForStats), [budgetRowsForStats]);
   const budgetTargetPB = useMemo(() => sumTargetPB(budgetRowsForStats), [budgetRowsForStats]);
 
