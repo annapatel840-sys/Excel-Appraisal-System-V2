@@ -6,7 +6,6 @@ import {
   useMemo,
   useRef,
   useState,
-  startTransition,
 } from "react";
 import { getSelectedEmpId, setSelectedEmpId } from "@/lib/selected-employee";
 import { useAppraisal } from "@/lib/appraisal-store";
@@ -53,6 +52,10 @@ const MUTED = "#5F7482";
 const GREEN = "#12805C";
 const RED = "#B42318";
 const CURRENT_CYCLE = "Apr-26";
+const DETAIL_EMPLOYEE_COLLATOR = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: "base",
+});
 
 /* ------------------------------------------------------------------
    FRONTEND-ONLY SETTINGS (layout / banner). None of these touch data.
@@ -1101,7 +1104,22 @@ export function DetailScreenPage({
   // The backend already scopes rows to what this login may see. Like the
   // Appraisal Sheet, only Active + Eligible employees are listed here, so the
   // count matches the sheet (not the whole employee master).
-  const rows = useMemo(
+  // Keep the employee order stable across ordinary field edits. The Appraisal
+  // Sheet roster is shared in memory; changing a salary/feedback field must not
+  // re-filter and re-sort the complete team before the next employee can render.
+  const rosterOrderKey = (liveRows || [])
+    .map((row) =>
+      [
+        row.id,
+        row.empId,
+        String(row.status || "").trim().toLowerCase(),
+        String(row.eligibility || "").trim().toLowerCase(),
+        row.compManagerDisplay || row.compManager || "",
+      ].join(":"),
+    )
+    .join("|");
+
+  const orderedEmployeeIds = useMemo(
     () =>
       (liveRows || [])
         .filter(
@@ -1109,17 +1127,26 @@ export function DetailScreenPage({
             String(row.status || "").trim().toLowerCase() === "active" &&
             String(row.eligibility || "").trim().toLowerCase() === "eligible" &&
             (!isCompManagerPreview ||
-              currentUserMatchesManager(row.compManagerDisplay || row.compManager, catalystUser, liveRows || [])),
+              currentUserMatchesManager(
+                row.compManagerDisplay || row.compManager,
+                catalystUser,
+                liveRows || [],
+              )),
         )
-        // Sequential by Employee ID (EMP001, EMP002, ... EMP010), same as the sheet.
         .sort((a, b) =>
-          String(a.empId || "").localeCompare(String(b.empId || ""), undefined, {
-            numeric: true,
-            sensitivity: "base",
-          }),
-        ),
-    [liveRows, isCompManagerPreview, catalystUser],
+          DETAIL_EMPLOYEE_COLLATOR.compare(
+            String(a.empId || ""),
+            String(b.empId || ""),
+          ),
+        )
+        .map((row) => row.id),
+    [rosterOrderKey, isCompManagerPreview, catalystUser],
   );
+
+  const rows = useMemo(() => {
+    const byId = new Map((liveRows || []).map((row) => [row.id, row]));
+    return orderedEmployeeIds.map((id) => byId.get(id)).filter(Boolean);
+  }, [liveRows, orderedEmployeeIds]);
   const isScopedToTeam = isTechEd || rows.length > 0;
 
   // Budget summary shown beside the notice (same numbers as the Appraisal Sheet).
@@ -1567,24 +1594,17 @@ export function DetailScreenPage({
     }
   };
 
-  // Keep the current field focused until this click handler runs. Its blur
-  // commit is scheduled as a transition, while the employee switch stays
-  // urgent so the next employee appears before the save-driven roster render.
+  // Change the selected employee immediately. Blur commits the field being
+  // left in the same click; supplementary history is loaded by the employee
+  // effect after the next employee has rendered.
   const goTo = (next) => {
     const nextIndex = Math.max(0, Math.min(rows.length - 1, next));
-    const nextEmployee = rows[nextIndex];
-    const activeElement = document.activeElement;
-
-    if (activeElement && typeof activeElement.blur === "function") {
-      startTransition(() => activeElement.blur());
-    }
-
     setIndex(nextIndex);
     setSearch("");
 
-    // History is supplementary; warm its cache without blocking navigation.
-    if (nextEmployee?.empId) {
-      loadHistory(nextEmployee.empId).catch(() => {});
+    const activeElement = document.activeElement;
+    if (activeElement && typeof activeElement.blur === "function") {
+      activeElement.blur();
     }
   };
   const safeIndex = Math.min(index, Math.max(rows.length - 1, 0));
