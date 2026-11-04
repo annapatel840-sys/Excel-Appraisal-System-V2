@@ -64,6 +64,9 @@ function loadAll() {
 
   return cachePromise;
 }
+export function prefetchEmployeeFeedback(){
+  return loadAll().catch(() => {}); // fail quietly, the hook will retry
+}
 
 export function useEmployeeFeedback(empId) {
   const [state, setState] = useState({ status: "loading", map: null, error: "" });

@@ -1,5 +1,6 @@
 import { Component, useEffect, useState } from "react";
 
+import { prefetchEmployeeFeedback } from "@/lib/employee-feedback";
 import { AppraisalProvider } from "@/lib/appraisal-store";
 import { BudgetProvider } from "@/lib/budget-store";
 import { Dashboard } from "@/routes/index";
@@ -15,19 +16,44 @@ import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistr
 import BulkEditScreen from "@/components/appraisal/BulkEditScreen";
 import { CatalystAuthGate, useCatalystUser } from "@/lib/catalyst-auth";
 import { SettingsProvider } from "@/lib/settings-store";
-import { AccessProvider, HR_TAB_SCREENS, NoAccessPage, PATH_SCREENS, useAccess } from "@/lib/access-store";
-import { appraisalRosterSettled, prefetchAppraisalRoster } from "@/lib/employee-roster";
+import {
+  AccessProvider,
+  HR_TAB_SCREENS,
+  NoAccessPage,
+  PATH_SCREENS,
+  useAccess,
+} from "@/lib/access-store";
+import {
+  appraisalRosterSettled,
+  prefetchAppraisalRoster,
+} from "@/lib/employee-roster";
 import { clearSheetSnapshots } from "@/lib/roster-snapshot";
 import { getViewAsSelected } from "@/lib/view-as-store";
 import { prefetchEligibilityEmployees } from "@/lib/employee-master-data";
-import { prefetchDelegationRoster, scheduleDelegationPrefetch } from "@/lib/delegation-roster";
+import {
+  prefetchDelegationRoster,
+  scheduleDelegationPrefetch,
+} from "@/lib/delegation-roster";
 
-const TECH_ED_PATHS = ["/", "/sheet", "/detail-screen", "/budget-distribution", "/settings", "/employee-master"];
+const TECH_ED_PATHS = [
+  "/",
+  "/sheet",
+  "/detail-screen",
+  "/budget-distribution",
+  "/settings",
+  "/employee-master",
+];
 
 // Screens that show Appraisal Sheet data. Opening one of them starts the
 // roster request as soon as sign-in is confirmed, instead of after the
 // session, access rules and the screen itself have loaded.
-const ROSTER_PATHS = ["/", "/sheet", "/detail-screen", "/bulk-edit", "/budget-distribution"];
+const ROSTER_PATHS = [
+  "/",
+  "/sheet",
+  "/detail-screen",
+  "/bulk-edit",
+  "/budget-distribution",
+];
 
 function prefetchForCurrentScreen() {
   if (ROSTER_PATHS.includes(window.location.pathname)) {
@@ -74,7 +100,9 @@ class ScreenErrorBoundary extends Component {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-6">
         <div className="max-w-md rounded-lg border border-red-200 bg-white p-5 text-sm shadow-sm">
-          <p className="font-semibold text-red-700">This screen failed to load.</p>
+          <p className="font-semibold text-red-700">
+            This screen failed to load.
+          </p>
           <p className="mt-2 break-words text-muted-foreground">
             {String(this.state.error?.message || this.state.error)}
           </p>
@@ -86,7 +114,10 @@ class ScreenErrorBoundary extends Component {
             >
               Reload
             </button>
-            <a href="/" className="rounded-md border px-3 py-1.5 text-xs font-medium">
+            <a
+              href="/"
+              className="rounded-md border px-3 py-1.5 text-xs font-medium"
+            >
               Go to Dashboard
             </a>
           </div>
@@ -105,7 +136,9 @@ const FIRST_SCREEN_PATHS = [
 
 // With access rules (/me ok): the path to show, or null when nothing is allowed.
 function accessAllowedPath(path, access, isTechEd = false) {
-  const hrTabs = Object.keys(HR_TAB_SCREENS).filter((tab) => access.canScreen(HR_TAB_SCREENS[tab]));
+  const hrTabs = Object.keys(HR_TAB_SCREENS).filter((tab) =>
+    access.canScreen(HR_TAB_SCREENS[tab]),
+  );
   if (isTechEd && path === "/employee-master") {
     const requestedTab = new URLSearchParams(window.location.search).get("tab");
     return requestedTab === "delegation" ? path + "?tab=delegation" : "/";
@@ -129,7 +162,10 @@ function AppRoutes() {
   const [path, setPath] = useState(window.location.pathname);
   const user = useCatalystUser();
   const access = useAccess();
-  const role = String(user?.role || "").trim().toLowerCase().replace(/[^a-z0-9]/g, "");
+  const role = String(user?.role || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
   const isTechEd = role.includes("teched");
   // Access rules replace the hard-coded Tech-ED restriction only when /me answered.
   const targetPath = access.ok
@@ -155,10 +191,21 @@ function AppRoutes() {
   // they landed on (same idea as the Appraisal Sheet's early roster request).
   useEffect(() => {
     if (access.loading) return;
-    const canOpenDelegation = access.ok ? access.canScreen("delegation") || isTechEd : role.includes("hr") || isTechEd;
+    const canOpenDelegation = access.ok
+      ? access.canScreen("delegation") || isTechEd
+      : role.includes("hr") || isTechEd;
     if (canOpenDelegation) scheduleDelegationPrefetch(appraisalRosterSettled);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [access.loading, access.ok]);
+
+  // Preload Feedback & Rating after the Appraisal roster is ready.
+  useEffect(() => {
+    if (access.loading) return;
+
+    appraisalRosterSettled().then(() => {
+      prefetchEmployeeFeedback();
+    });
+  }, [access.loading]);
 
   useEffect(() => {
     if (access.loading || targetPath === null) return;
@@ -235,7 +282,10 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <CatalystAuthGate onSignedIn={prefetchForCurrentScreen} onSignOut={clearSheetSnapshots}>
+    <CatalystAuthGate
+      onSignedIn={prefetchForCurrentScreen}
+      onSignOut={clearSheetSnapshots}
+    >
       <AccessProvider>
         <AppRoutes />
       </AccessProvider>

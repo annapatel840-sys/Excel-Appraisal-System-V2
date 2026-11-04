@@ -133,7 +133,7 @@ export function scheduleDelegationPrefetch(waitFor) {
       .then(() => {
         if (!inFlight) prefetchDelegationRoster();
       });
-  }, 1500);
+  }, 0);
 }
 
 /* ------------------------------------------------------------ saved copy */
