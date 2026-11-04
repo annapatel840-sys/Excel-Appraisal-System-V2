@@ -1983,29 +1983,32 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     if (status !== "active" || !["eligible", "yes", "true", "1"].includes(rawEligibility))
       return;
 
-    const rawTechEd =
+    // Use the same assignment-field precedence as the deduplicated
+    // budget roster above, so this row-level count lands on the exact same
+    // Tech-Ed key used by techLabels and Budget_Distribution.
+    const rawTechEd = String(
       firstValue(sheetRow, [
-        "appraiser_tech_ed1",
-        "appraiser_tech_ed_row_id",
-        "appraiser_tech_ed_id",
         "appraiser_tech_ed",
+        "appraiser_tech_ed_id",
+        "appraiser_tech_ed1",
         "appraiser_teched",
         "appraiserTechED",
         "appraiserTechEd",
-        "tech_ed_id",
         "tech_ed",
+        "tech_ed_id",
         "techED",
         "techEd",
       ]) ||
-      firstValue(masterRow, [
-        "appraiser_tech_ed1",
-        "appraiser_tech_ed_row_id",
-        "appraiser_tech_ed_id",
-        "appraiser_tech_ed",
-        "appraiser_teched",
-        "tech_ed",
-        "tech_ed_id",
-      ]);
+        firstValue(masterRow, [
+          "appraiser_tech_ed",
+          "appraiser_tech_ed_id",
+          "appraiser_tech_ed1",
+          "appraiser_teched",
+          "tech_ed",
+          "tech_ed_id",
+        ]) ||
+        "",
+    ).trim();
     const techKey = ownerKey(resolvePersonId(rawTechEd));
     if (!techKey) return;
     techSheetCurrentCounts.set(
