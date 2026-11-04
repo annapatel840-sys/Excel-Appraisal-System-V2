@@ -2525,7 +2525,21 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         : Boolean(employee.eligible);
       if (employeeStatus !== "active" || !isEligible) return;
 
-      const techKey = ownerKey(employee.techEd);
+      const rawTechEd = firstValue(sheetRow, [
+        "appraiser_tech_ed",
+        "appraiser_tech_ed_id",
+        "appraiser_tech_ed1",
+        "appraiser_teched",
+        "appraiserTechED",
+        "appraiserTechEd",
+        "tech_ed",
+        "tech_ed_id",
+        "techED",
+        "techEd",
+      ]);
+      const techKey = canonicalTechKey(
+        resolvePersonId(rawTechEd || employee.techEd),
+      );
       if (!techKey) return;
       techSheetCurrentCounts.set(
         techKey,
