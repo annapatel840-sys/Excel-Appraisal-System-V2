@@ -264,7 +264,6 @@ function requirePayrollAccess(a, resource, method) {
       // Tech-Ed can initiate sheet generation from Delegation, but does not
       // need edit access to the Delegation screen itself to run this action.
       access.requireScreen(a, "delegation", "view");
-      access.requireScreen(a, "appraisalSheet", "edit");
     } else {
       access.requireScreen(a, "cycleMaster", "edit");
     }
