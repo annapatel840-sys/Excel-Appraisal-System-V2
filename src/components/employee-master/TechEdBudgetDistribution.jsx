@@ -1457,10 +1457,17 @@ export function TechEdBudgetDistribution() {
     (num(liveTech?.percentage) > 0
       ? (num(liveTech?.calculated_budget) * 100) / num(liveTech?.percentage)
       : num(sharedBudgetTotals?.base));
-  // Backend counts are calculated from the cycle-scoped eligible Appraisal Sheet
-  // roster and persisted by budgetmasterapi. Prefer them so every screen agrees.
-  // The rendered eligible Appraisal Sheet roster is the live source of truth.
-  const currentTeamCount = allTeam.length;
+  // Current Count is recalculated by budgetmasterapi from the current
+  // Appraisal_Sheet roster and persisted in Budget_Distribution.current_headcount.
+  // Prefer that refreshed backend value so additions to Appraisal_Sheet appear
+  // even when the page's employeeRows cache has not refreshed yet.
+  const savedCurrentTeamCount = liveTech?.current_headcount;
+  const currentTeamCount =
+    savedCurrentTeamCount !== null &&
+    savedCurrentTeamCount !== undefined &&
+    String(savedCurrentTeamCount).trim() !== ""
+      ? num(savedCurrentTeamCount)
+      : allTeam.length;
   // Use only the immutable baseline returned by the API; headcount may
   // be a legacy/current field and must not replace Original Count here.
   const savedTeamCount = liveTech?.original_headcount;
