@@ -1890,7 +1890,7 @@ export function TechEdBudgetDistribution() {
                     }
                   }}
                 >
-                  Save
+                  Apply
                 </button>
               </div>
               {err && (
