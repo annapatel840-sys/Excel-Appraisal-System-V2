@@ -2488,11 +2488,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
       (employee) => employee && employee.in_appraisal_sheet,
     );
 
-    // Count the same current-cycle Appraisal_Sheet rows that the Appraisal
-    // Sheet screen displays. Eligibility_List is authoritative for the active
-    // cycle, so use cycleEligibilityFor rather than stale Employee_Master
-    // eligibility aliases. Keep this row count separate from the unique
-    // employee roster used for budget arithmetic.
+    // Current Count is a literal count of rows in the active cycle's
+    // Appraisal_Sheet, grouped by the Tech-Ed assigned on each sheet row.
+    // Do not filter by Active/Eligible and do not deduplicate employee IDs:
+    // the requested Current Count is the live sheet row count. This map is
+    // separate from the deduplicated employee roster used for budget math.
     const employeeByIdForSheetCount = new Map(
       employees.map((employee) => [
         String(employee.employeeId || employee.emp_id || "").trim().toLowerCase(),
@@ -2510,36 +2510,23 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
           "employee_id_text",
         ]) || idOf(sheetRow),
       ).trim();
-      const employeeKey = employeeKeyFor(rawEmployeeId);
-      const employee = employeeByIdForSheetCount.get(employeeKey);
-      if (!employee || !employee.in_appraisal_sheet) return;
-
-      const employeeStatus = String(
-        employee.master_status || employee.status || "",
-      )
-        .trim()
-        .toLowerCase();
-      const cycleEligibility = cycleEligibilityFor(employee, cycleId);
-      const isEligible = cycleEligibility
-        ? cycleEligibility.eligible
-        : Boolean(employee.eligible);
-      if (employeeStatus !== "active" || !isEligible) return;
-
-      const rawTechEd = firstValue(sheetRow, [
-        "appraiser_tech_ed",
-        "appraiser_tech_ed_id",
-        "appraiser_tech_ed1",
-        "appraiser_teched",
-        "appraiserTechED",
-        "appraiserTechEd",
-        "tech_ed",
-        "tech_ed_id",
-        "techED",
-        "techEd",
-      ]);
-      const techKey = canonicalTechKey(
-        resolvePersonId(rawTechEd || employee.techEd),
+      const employee = employeeByIdForSheetCount.get(
+        employeeKeyFor(rawEmployeeId),
       );
+      const rawTechEd =
+        firstValue(sheetRow, [
+          "appraiser_tech_ed",
+          "appraiser_tech_ed_id",
+          "appraiser_tech_ed1",
+          "appraiser_teched",
+          "appraiserTechED",
+          "appraiserTechEd",
+          "tech_ed",
+          "tech_ed_id",
+          "techED",
+          "techEd",
+        ]) || employee?.techEd;
+      const techKey = canonicalTechKey(resolvePersonId(rawTechEd));
       if (!techKey) return;
       techSheetCurrentCounts.set(
         techKey,
