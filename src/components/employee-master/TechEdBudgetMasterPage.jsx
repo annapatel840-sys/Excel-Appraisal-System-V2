@@ -351,7 +351,8 @@ export function TechEdBudgetMasterPage() {
     const localLooksLikeLive = localCount !== null && localCount === dashboardTeamCount;
     if (hasLegacyCount && legacyCount !== dashboardTeamCount && (localCount === null || localLooksLikeLive)) return legacyCount;
     if (localCount !== null) return localCount;
-    return liveMe.original_headcount !== null && liveMe.original_headcount !== undefined
+    return liveMe.original_headcount_is_persisted === true &&
+      liveMe.original_headcount !== null && liveMe.original_headcount !== undefined
       ? Number(liveMe.original_headcount) || 0
       : 0;
   })();
