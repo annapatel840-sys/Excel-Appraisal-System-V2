@@ -1138,7 +1138,8 @@ function HRApplyBudget() {
       }
       // Count snapshots are frontend-only and captured once after the first
       // allocation. Later roster/delegation changes update Current Count only.
-      if (row.pctSet && !(Number.isFinite(Number(next.teCount[row.canonicalKey])) && next.teCount[row.canonicalKey] !== null && next.teCount[row.canonicalKey] !== undefined)) {
+      if (row.pctSet && row.team > 0 &&
+          !(Number.isFinite(Number(next.teCount[row.canonicalKey])) && next.teCount[row.canonicalKey] !== null && next.teCount[row.canonicalKey] !== undefined)) {
         next.teCount[row.canonicalKey] = amount(row.team);
         changed = true;
       }
