@@ -940,7 +940,7 @@ function HRApplyBudget() {
           // If a previous bad frontend snapshot stored today's live count,
           // recover the older baseline from the legacy headcount field.
           const localLooksLikeLive = hasLocalCount && Number(savedCount) === liveCount;
-          const useLegacyMigration = hasLegacyCount &&
+          const useLegacyMigration = !hasApiCount && hasLegacyCount &&
             (!hasLocalCount || localLooksLikeLive) && Number(legacyCount) !== liveCount;
           existing.team0 = useLegacyMigration
             ? amount(legacyCount)
@@ -950,6 +950,7 @@ function HRApplyBudget() {
                 ? amount(originalCountValue)
                 : (existing.originalCountIsSet ? existing.team0 : 0);
           existing.originalCountIsSet = Boolean(existing.originalCountIsSet || hasApiCount || hasLegacyCount || hasLocalCount);
+          existing.originalCountNeedsMigration = useLegacyMigration;
           existing.team = liveCount;
           existing.id = row.id || existing.id;
         }
@@ -970,7 +971,7 @@ function HRApplyBudget() {
         String(legacyCount).trim() !== "" && Number(legacyCount) > 0;
       const hasLocalCount = savedCount !== null && savedCount !== undefined && Number.isFinite(Number(savedCount));
       const localLooksLikeLive = hasLocalCount && Number(savedCount) === currentCount;
-      const useLegacyMigration = hasLegacyCount &&
+      const useLegacyMigration = !hasApiCount && hasLegacyCount &&
         (!hasLocalCount || localLooksLikeLive) && Number(legacyCount) !== currentCount;
       const originalCountIsSet = hasApiCount || hasLegacyCount || hasLocalCount;
       const originalCount = useLegacyMigration
@@ -996,9 +997,10 @@ function HRApplyBudget() {
         base: rowBase,
         ...deriveRowBudgets(rowBase, amount(row.percentage), rowPctSet, calculated),
         team0: originalCount,
-         team: currentCount,
-         originalCountIsSet,
-         lastChanged: "—",
+        team: currentCount,
+        originalCountIsSet,
+        originalCountNeedsMigration: useLegacyMigration,
+        lastChanged: "—",
       });
       seenOwners.add(key);
     });
@@ -1159,8 +1161,9 @@ function HRApplyBudget() {
       // allocation. Later roster/delegation changes update Current Count only.
       // Migrate only a known baseline. Never seed Original Count from the
       // live team size on page load; that caused 202 -> 512 to become 512 -> 512.
-      if (row.pctSet && row.team0 > 0 &&
-          !(Number.isFinite(Number(next.teCount[row.canonicalKey])) && next.teCount[row.canonicalKey] !== null && next.teCount[row.canonicalKey] !== undefined)) {
+      const hasStoredCount = Number.isFinite(Number(next.teCount[row.canonicalKey])) &&
+        next.teCount[row.canonicalKey] !== null && next.teCount[row.canonicalKey] !== undefined;
+      if (row.pctSet && row.team0 > 0 && (row.originalCountNeedsMigration || !hasStoredCount)) {
         next.teCount[row.canonicalKey] = amount(row.team0);
         changed = true;
       }
