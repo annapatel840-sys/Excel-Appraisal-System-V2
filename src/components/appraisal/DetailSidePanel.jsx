@@ -23,7 +23,7 @@ import { PANEL_CSS } from "./detailPanelCss";
    DETAIL SCREEN > PANEL (replaces the old "Feedback" side panel)
 
    Same layout as the reference page's right panel:
-     header   : who is open + expand / close
+     header   : "Employee Information" + width − / + and close
      tabs     : Info (with a badge for flags) · Feedback · Budget · Config
      sub-tabs : Budget has Budget / Team metrics / Hike percentile /
                 No hike / PB paid vs target / Team changes
@@ -87,10 +87,14 @@ const BUDGET_SUBS = [
   ["changes", "Team changes"],
 ];
 
-const MIN_W = 300;
+// Width limits. The maximum is not fixed: the page passes `maxWidth`, which is
+// the distance from the right edge to the divider between "Budget Allocated"
+// and "Consumed" in the budget bar above. MAX_W is only a fallback.
+export const PANEL_MIN_W = 300;
+const MIN_W = PANEL_MIN_W;
 const MAX_W = 720;
-const NORMAL_W = 360;
-const WIDE_W = 640;
+const STEP_W = 40; // each − / + click (same as the Appraisal Sheet panel)
+const WIDE_AT = 500; // at/after this width the split layout is used
 
 /* ---------- Info tab data ---------- */
 
@@ -264,6 +268,7 @@ export function DetailSidePanel({
   budget,
   onViewBudget,
   width,
+  maxWidth,
   onWidthChange,
   onClose,
 }) {
@@ -276,7 +281,8 @@ export function DetailSidePanel({
   const [dragging, setDragging] = useState(false);
   const panelRef = useRef(null);
 
-  const wide = width >= (NORMAL_W + WIDE_W) / 2;
+  const maxW = Math.max(MIN_W, Math.round(maxWidth || MAX_W));
+  const wide = width >= WIDE_AT;
 
   const updateRules = (next) => {
     setRules(next);
@@ -298,7 +304,7 @@ export function DetailSidePanel({
     const w0 = panelRef.current ? panelRef.current.getBoundingClientRect().width : width;
     setDragging(true);
     const move = (ev) =>
-      onWidthChange(Math.max(MIN_W, Math.min(MAX_W, Math.round(w0 + (x0 - ev.clientX)))));
+      onWidthChange(Math.max(MIN_W, Math.min(maxW, Math.round(w0 + (x0 - ev.clientX)))));
     const up = () => {
       document.removeEventListener("pointermove", move);
       document.removeEventListener("pointerup", up);
@@ -307,11 +313,6 @@ export function DetailSidePanel({
     document.addEventListener("pointermove", move);
     document.addEventListener("pointerup", up);
   };
-
-  /* ----- header ----- */
-  const who = employee
-    ? [employee.empId, employee.designation, employee.band, employee.primarySkill].filter(Boolean)
-    : [];
 
   return (
     <div
@@ -323,21 +324,28 @@ export function DetailSidePanel({
       <div className="rp-grip" title="Drag to resize" onPointerDown={startDrag} />
 
       <div className="rp-head">
-        {employee ? (
-          <div className="rp-who" title={`${employee.name} · ${who.join(" · ")}`}>
-            <b>{employee.name}</b> · {who.join(" · ")}
-          </div>
-        ) : (
-          <div className="rp-who rp-empty">Select an employee to see their details</div>
-        )}
+        <div className="rp-who">
+          <b>Employee Information</b>
+        </div>
         <button
           type="button"
-          className="rp-ic"
-          title={wide ? "Normal width" : "Expand"}
-          aria-pressed={wide}
-          onClick={() => onWidthChange(wide ? NORMAL_W : WIDE_W)}
+          className="rp-ic rp-zoom"
+          title="Decrease panel width"
+          aria-label="Decrease panel width"
+          disabled={width <= MIN_W}
+          onClick={() => onWidthChange(Math.max(MIN_W, width - STEP_W))}
         >
-          {wide ? "⤡" : "⤢"}
+          −
+        </button>
+        <button
+          type="button"
+          className="rp-ic rp-zoom"
+          title="Increase panel width"
+          aria-label="Increase panel width"
+          disabled={width >= maxW}
+          onClick={() => onWidthChange(Math.min(maxW, width + STEP_W))}
+        >
+          +
         </button>
         <button type="button" className="rp-ic" title="Close" aria-label="Close panel" onClick={onClose}>
           ✕

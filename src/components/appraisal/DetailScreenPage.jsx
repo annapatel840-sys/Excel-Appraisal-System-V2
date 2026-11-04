@@ -35,7 +35,7 @@ import { useCurrentCycleName } from "@/lib/current-cycle";
 import { useNotices } from "@/lib/notices";
 import { cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
 import { useColumnResize } from "@/lib/use-column-resize";
-import { DetailSidePanel } from "./DetailSidePanel";
+import { DetailSidePanel, PANEL_MIN_W } from "./DetailSidePanel";
 
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#12304f";
@@ -1105,6 +1105,39 @@ export function DetailScreenPage({
   const { notices: liveNotices, dismissAll: dismissLiveNotices } = useNotices();
   const [cardOpen, setCardOpen] = useState(true);
   const [feedbackWidth, setFeedbackWidth] = useState(360);
+
+  // The side panel may grow only up to the divider between "Budget Allocated"
+  // and "Consumed" in the budget bar above. Measure it, and keep re-measuring
+  // when the window or the bar changes size.
+  const mainRef = useRef(null);
+  const allocatedRef = useRef(null);
+  const [panelMax, setPanelMax] = useState(720);
+  const hasEmployee = Boolean(rows[Math.min(index, Math.max(rows.length - 1, 0))]);
+  useLayoutEffect(() => {
+    const main = mainRef.current;
+    const cell = allocatedRef.current;
+    if (!main || !cell) return undefined;
+    const measure = () => {
+      const padRight = parseFloat(getComputedStyle(main).paddingRight) || 0;
+      const right = main.getBoundingClientRect().right - padRight;
+      const divider = cell.getBoundingClientRect().right;
+      const next = Math.max(PANEL_MIN_W, Math.floor(right - divider));
+      setPanelMax((prev) => (prev === next ? prev : next));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    let ro = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(measure);
+      ro.observe(main);
+      ro.observe(cell);
+    }
+    return () => {
+      window.removeEventListener("resize", measure);
+      if (ro) ro.disconnect();
+    };
+  }, [hasEmployee, cardOpen, liveNotices.length]);
+  const panelWidth = Math.max(PANEL_MIN_W, Math.min(feedbackWidth, panelMax));
   const baselineRef = useRef({});
 
   // What the user is typing right now (per employee), used only to show
@@ -1515,7 +1548,7 @@ export function DetailScreenPage({
 
   const cols = [
     "minmax(0,2.25fr)",
-    cardOpen && `minmax(300px, ${feedbackWidth}px)`,
+    cardOpen && `minmax(${PANEL_MIN_W}px, ${panelWidth}px)`,
     !cardOpen && "30px",
   ]
     .filter(Boolean)
@@ -1572,6 +1605,7 @@ export function DetailScreenPage({
               consumed={budgetConsumed}
               targetPB={budgetTargetPB}
               isEstimate={budgetIsEstimate}
+              allocatedRef={allocatedRef}
             />
           </div>
         </div>
@@ -1581,7 +1615,7 @@ export function DetailScreenPage({
             No employees are visible for this login.
           </div>
         ) : (
-          <div className="ds-main" style={{ "--ds-cols": cols }}>
+          <div className="ds-main" ref={mainRef} style={{ "--ds-cols": cols }}>
             {/* LEFT - Compensation input */}
             <section
               className="ds-card ds-left"
@@ -2129,9 +2163,9 @@ export function DetailScreenPage({
               </div>
             </section>
 
-            {/* PANEL (was "Feedback") */}
+            {/* EMPLOYEE INFO panel (was "Feedback") */}
             {cardOpen && (
-            <aside className="ds-side" aria-label="Panel">
+            <aside className="ds-side" aria-label="Employee Info">
               <DetailSidePanel
                 employee={employee}
                 rows={rows}
@@ -2141,7 +2175,8 @@ export function DetailScreenPage({
                 live={{ pb: livePB, rb: liveRB }}
                 budget={{ allocated: budgetAllocated, used: budgetConsumed }}
                 onViewBudget={handleViewBudget}
-                width={feedbackWidth}
+                width={panelWidth}
+                maxWidth={panelMax}
                 onWidthChange={setFeedbackWidth}
                 onClose={() => setCardOpen(false)}
               />
@@ -2155,9 +2190,9 @@ export function DetailScreenPage({
                   type="button"
                   className="ds-tab"
                   onClick={() => setCardOpen(true)}
-                  aria-label="Open panel"
+                  aria-label="Open Employee Info"
                 >
-                  Panel ‹
+                  Employee Info ‹
                 </button>
               </aside>
             )}

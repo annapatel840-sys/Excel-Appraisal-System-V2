@@ -16,6 +16,8 @@ export const PANEL_CSS = `
 .rp-who.rp-empty { color: var(--rp-muted); }
 .rp-ic { flex: 0 0 auto; border: 1px solid #D1D5DB; background: #fff; border-radius: 6px; height: 26px; min-width: 26px; padding: 0 6px; font-size: 13px; color: #374151; cursor: pointer; }
 .rp-ic:hover { border-color: var(--rp-accent); color: var(--rp-accent); }
+.rp-zoom { font-size: 14px; font-weight: 700; line-height: 1; }
+.rp-ic:disabled { opacity: .4; cursor: not-allowed; border-color: #D1D5DB; color: #374151; }
 .rp-tabs { display: flex; border-bottom: 1px solid var(--rp-line); flex: 0 0 auto; background: #FAFAFB; }
 .rp-tabs button { flex: 1; background: none; border: 0; border-bottom: 2px solid transparent; padding: 9px 0; font: inherit; font-size: 13px; font-weight: 600; color: var(--rp-muted); cursor: pointer; }
 .rp-tabs button[aria-selected="true"] { color: var(--rp-ink); border-bottom-color: var(--rp-accent); font-weight: 800; }

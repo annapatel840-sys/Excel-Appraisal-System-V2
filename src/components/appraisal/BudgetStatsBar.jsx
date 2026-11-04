@@ -66,9 +66,10 @@ export function resolveBudgetAllocated({ totals, loading, error }) {
   return { allocated: 0, isEstimate: false };
 }
 
-function Stat({ label, value, title, valueClassName, first }) {
+function Stat({ label, value, title, valueClassName, first, statRef }) {
   return (
     <div
+      ref={statRef}
       className={cn(
         "min-w-0 flex-1 px-2 text-center",
         !first && "border-l border-[#e3e9ec]",
@@ -96,6 +97,9 @@ export function BudgetStatsBar({
   targetPB = 0,
   isEstimate = false,
   className,
+  // optional ref on the "Budget Allocated" cell; its right edge is the
+  // divider between Budget Allocated and Consumed
+  allocatedRef,
 }) {
   const utilisation = allocated ? (consumed / allocated) * 100 : 0;
   const toneFor = (pct) =>
@@ -112,6 +116,7 @@ export function BudgetStatsBar({
     >
       <Stat
         first
+        statRef={allocatedRef}
         label={isEstimate ? "Budget Allocated (est.)" : "Budget Allocated"}
         title={
           isEstimate
