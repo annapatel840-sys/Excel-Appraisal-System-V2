@@ -16,15 +16,17 @@ export const HR_TAB_SCREENS = {
   roster: "employeeMaster",
   eligibility: "employeeMaster",
   "appraisal-cycle": "cycleMaster",
-  "location-master": "cycleMaster",
+  "location-master": "locationMaster",
   "payroll-data": "payroll",
-  "feedback-rating": "employeeMaster",
+  "feedback-rating": "feedbackRatingMaster",
+  "hr-dashboard": "hrDashboard",
+  "historical-import": "historicalImport",
   "payroll-upload": "payroll",
   "team-changes": "teamChanges",
-  "change-mismatch": "employeeMaster",
+  "change-mismatch": "changeMismatch",
   "budget-master": "budgetAllocation",
   "budget-distribution": "budgetDistribution",
-  "designation-master": "employeeMaster",
+  "designation-master": "designationMaster",
   delegation: "delegation",
   access: "access",
 };
@@ -37,7 +39,7 @@ export const PATH_SCREENS = {
   "/budget-master": "budgetAllocation",
   "/budget-distribution": "budgetDistribution",
   "/settings": "settings",
-  "/bulk-edit": "appraisalSheet",
+  "/bulk-edit": "bulkEditScreen",
 };
 
 const AccessContext = createContext(null);

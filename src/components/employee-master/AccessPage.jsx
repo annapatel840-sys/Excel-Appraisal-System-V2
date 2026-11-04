@@ -531,7 +531,7 @@ function OverridesTab({ M, team, today, onNew, onToggleRemove, onUndoAdd }) {
       <div className="tools">
         <button type="button" className="btn p sm" onClick={() => onNew(team)}>+ {team ? "Extra team" : "Override"}</button>
         <span className="hint">
-          {team ? "Adds another person's team to someone, until the end date." : "An override applies to one person and wins over their role. HR Operations screens and fixed actions can’t be overridden."}
+          {team ? "Adds another person's team to someone, until the end date." : "An override applies to one person and wins over their role. HR-only screens and fixed actions can’t be overridden."}
         </span>
       </div>
       <table>
@@ -869,7 +869,7 @@ function RoleModal({ M, onSave, onClose }) {
         <div className="full">
           <label><input type="checkbox" checked={seesAll} onChange={(e) => setSeesAll(e.target.checked)} /> Sees all employees (otherwise no team unless given extra scope)</label>
         </div>
-        <div className="full derived">The new role starts with <b>None</b> on every screen and <b>No</b> on every action. HR Operations screens stay HR only.</div>
+        <div className="full derived">The new role starts with <b>None</b> on every screen and <b>No</b> on every action. The HR-only screens (Employee Master, Appraisal Cycle Master, Payroll Data, Settings, Access) stay HR only.</div>
       </div>
       {err && <div className="msg err" style={{ margin: "0 14px 10px" }}>{err}</div>}
       <div className="mfoot">

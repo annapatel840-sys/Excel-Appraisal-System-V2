@@ -153,7 +153,7 @@ function accessAllowedPath(path, access, isTechEd = false) {
   if (isTechEd && TECH_ED_PATHS.includes(path)) return path;
   const allowed =
     path === "/bulk-edit"
-      ? access.canAction("bulkEdit")
+      ? access.canScreen("bulkEditScreen")
       : path === "/employee-master"
         ? hrTabs.length > 0
         : access.canScreen(PATH_SCREENS[path] || "dashboard");

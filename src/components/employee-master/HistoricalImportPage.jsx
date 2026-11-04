@@ -44,7 +44,7 @@ function when(value) {
   return text ? text.slice(0, 16) : "—";
 }
 
-export function HistoricalImportPage() {
+export function HistoricalImportPage({ readOnly = false }) {
   const [schema, setSchema] = useState(null);
   const [cycles, setCycles] = useState([]);
   const [history, setHistory] = useState([]);
@@ -345,11 +345,13 @@ export function HistoricalImportPage() {
             Previous-year data goes straight into storage. No Eligibility, Delegation, Appraisal Sheet or budget step runs.
           </div>
         </div>
-        <span className="hi-tag warn">HR only</span>
+        <span className="hi-tag warn">{readOnly ? "View only" : "HR only"}</span>
       </div>
 
       {message && <div className={`hi-msg${message.error ? " err" : ""}`}>{message.text}</div>}
 
+      {!readOnly && (
+      <>
       <section className="hi-card">
         <div className="hi-step"><span className="hi-num">1</span>Select appraisal cycle</div>
         <select
@@ -491,11 +493,14 @@ export function HistoricalImportPage() {
         </section>
       )}
 
+      </>
+      )}
+
       <section className="hi-card">
         <div className="hi-step">Import history</div>
         <table className="hi-table">
           <thead>
-            <tr><th>When</th><th>Cycle</th><th>Data</th><th>File</th><th>Result</th><th>By</th><th /></tr>
+            <tr><th>When</th><th>Cycle</th><th>Data</th><th>File</th><th>Result</th><th>By</th>{!readOnly && <th />}</tr>
           </thead>
           <tbody>
             {history.map((h) => (
@@ -510,6 +515,7 @@ export function HistoricalImportPage() {
                   {h.chunks < h.chunkCount ? ` · incomplete (${h.chunks}/${h.chunkCount})` : ""}
                 </td>
                 <td>{h.by}</td>
+                {!readOnly && (
                 <td>
                   {h.undone ? (
                     <span className="hi-tag grey">Undone {when(h.undoneAt)}</span>
@@ -522,10 +528,11 @@ export function HistoricalImportPage() {
                     <button type="button" className="hi-btn sm" disabled={!!busy} onClick={() => setConfirmUndo(h.batchId)}>Undo</button>
                   )}
                 </td>
+                )}
               </tr>
             ))}
             {!history.length && (
-              <tr><td colSpan={7} className="hi-empty">No historical imports yet.</td></tr>
+              <tr><td colSpan={readOnly ? 6 : 7} className="hi-empty">No historical imports yet.</td></tr>
             )}
           </tbody>
         </table>

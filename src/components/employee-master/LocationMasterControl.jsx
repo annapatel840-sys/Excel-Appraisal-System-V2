@@ -26,6 +26,8 @@ export function LocationMasterControl({
   showCurrencyCode = false,
   triggerClassName = "",
   managerOnly = false,
+  // View-only (Access level "View"): no add / edit / activate controls.
+  readOnly = false,
 }) {
   const [locations, setLocations] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -147,6 +149,7 @@ export function LocationMasterControl({
               <h2>Location Master</h2>
               <p>Manage locations shared across Employee Master, Eligibility List, and Appraisal Cycle Master.</p>
             </div>
+            {!readOnly && (
             <button
               type="button"
               className="em-btn em-btn-primary"
@@ -160,11 +163,12 @@ export function LocationMasterControl({
             >
               {creating ? "Cancel Add" : "Add Location"} <Plus size={14} />
             </button>
+            )}
           </div>
 
           {error && <div className="em-location-error" role="alert">{error}</div>}
 
-          {creating && (
+          {creating && !readOnly && (
             <form
               className="em-location-form em-location-inline-form"
               onSubmit={(e) => {
@@ -213,7 +217,7 @@ export function LocationMasterControl({
             <table className="em-location-table">
               <thead>
                 <tr>
-                  <th>Location</th><th>Code</th><th>Address</th><th>Currency</th><th>Status</th><th>Actions</th>
+                  <th>Location</th><th>Code</th><th>Address</th><th>Currency</th><th>Status</th>{!readOnly && <th>Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -235,6 +239,7 @@ export function LocationMasterControl({
                         </td>
                       ))}
                       <td><span className={`em-location-status ${loc.status.toLowerCase()}`}>{loc.status}</span></td>
+                      {!readOnly && (
                       <td className="em-location-row-actions">
                         {edit ? (
                           <>
@@ -254,10 +259,11 @@ export function LocationMasterControl({
                           </>
                         )}
                       </td>
+                      )}
                     </tr>
                   );
                 })}
-                {!loading && !locations.length && <tr><td colSpan={6}>No locations found.</td></tr>}
+                {!loading && !locations.length && <tr><td colSpan={readOnly ? 5 : 6}>No locations found.</td></tr>}
               </tbody>
             </table>
           </div>

@@ -125,6 +125,18 @@ export function AppShell({ children, headerActions, notifications }) {
       ? access.canScreen(HR_TAB_SCREENS[tab])
       : tab !== "access" || isHR,
   );
+  // HR Operations screens that have no entry in the drop-down list (they are
+  // opened from the HR Operations page itself). A login that may open any of
+  // them still gets the HR Operations link.
+  const hasOtherHrScreens =
+    useAccessRules &&
+    [
+      "hr-dashboard",
+      "location-master",
+      "designation-master",
+      "historical-import",
+      "change-mismatch",
+    ].some((tab) => access.canScreen(HR_TAB_SCREENS[tab]));
   // "View as": HR previewing another role sees that role's menu.
   const previewNav = isTechEd
     ? [
@@ -160,7 +172,7 @@ export function AppShell({ children, headerActions, notifications }) {
           label: "Delegation",
           icon: Users,
         },
-        access.canAction("bulkEdit") && {
+        access.canScreen("bulkEditScreen") && {
           to: "/bulk-edit",
           label: "Bulk Edit",
           icon: SlidersHorizontal,
@@ -171,7 +183,7 @@ export function AppShell({ children, headerActions, notifications }) {
           label: "Budget Distribution",
           icon: WalletCards,
         },
-        !isTechEd && !isCompManager && hrMenuItems.length > 0 && {
+        !isTechEd && !isCompManager && (hrMenuItems.length > 0 || hasOtherHrScreens) && {
           to: "/employee-master",
           label: "HR Operations",
           icon: Users,

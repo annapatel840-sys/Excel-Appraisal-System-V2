@@ -87,7 +87,7 @@ function isUnmapped(row, options) {
 }
 
 /* ------------------------- component ------------------------- */
-export function DesignationMasterPage() {
+export function DesignationMasterPage({ readOnly = false }) {
   const [saved, setSaved] = useState(EMPTY);
   const [draft, setDraft] = useState(EMPTY);
   const [loading, setLoading] = useState(true);
@@ -223,10 +223,11 @@ export function DesignationMasterPage() {
     if (undoStack.current.length > 100) undoStack.current.shift();
   };
   const undo = useCallback(() => {
+    if (readOnly) return;
     const prev = undoStack.current.pop();
     if (!prev) return toast("Nothing to undo");
     setDraft(JSON.parse(prev));
-  }, [toast]);
+  }, [toast, readOnly]);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -241,6 +242,7 @@ export function DesignationMasterPage() {
   }, [undo]);
 
   const patchDes = (id, patch) => {
+    if (readOnly) return;
     pushUndo();
     setDraft((c) => ({
       ...c,
@@ -248,6 +250,7 @@ export function DesignationMasterPage() {
     }));
   };
   const patchGrp = (id, patch) => {
+    if (readOnly) return;
     pushUndo();
     setDraft((c) => ({
       ...c,
@@ -324,6 +327,7 @@ export function DesignationMasterPage() {
   }, [dirty]);
 
   const handleSave = async () => {
+    if (readOnly) return;
     if (badCount) return toast("Fix the red cells first");
     const names = new Set();
     for (const g of draft.groups) {
@@ -358,6 +362,7 @@ export function DesignationMasterPage() {
 
   /* ---------- add designation / group ---------- */
   const submitAdd = () => {
+    if (readOnly) return;
     const name = addForm.name.trim();
     if (!name) return setAddErr("Name is required");
     if (tab === "des") {
@@ -409,6 +414,7 @@ export function DesignationMasterPage() {
 
   /* ---------- option switches ---------- */
   const toggleOption = (t, on) => {
+    if (readOnly) return;
     if (!on && !Object.keys(draft.options).some((k) => k !== t && draft.options[k]))
       return toast("At least one option stays on");
     pushUndo();
@@ -783,6 +789,7 @@ export function DesignationMasterPage() {
   }, [menu, draft.designations, grpById, desById]);
 
   const applyMenu = (ids) => {
+    if (readOnly) return setMenu(null);
     const { kind, id } = menu;
     if (kind === "grp") patchGrp(id, { memberIds: ids });
     else if (kind === "nm") patchDes(id, { multipleNextIds: ids });
@@ -959,8 +966,11 @@ export function DesignationMasterPage() {
   );
 
   return (
-    <section className="dmx">
+    <section className={"dmx" + (readOnly ? " dmx-ro" : "")}>
       <style>{CSS}</style>
+      {readOnly && (
+        <div className="dmx-rotag" role="note">View only: you can look and export, but not change anything.</div>
+      )}
 
       <div className="dmx-tabs">
         {[["des", "Designations"], ["grp", "Groups"], ["band", "Band"], ["opt", "Options"]].map(([k, l]) => (
@@ -999,7 +1009,7 @@ export function DesignationMasterPage() {
           <span className="dmx-stat">Inactive <b>{draft.designations.filter((d) => d.status !== "Active").length}</b></span>
           <button type="button" className="emx-mini dmx-big" onClick={refresh} disabled={saving || loading}>Refresh</button>
           <button type="button" className="emx-mini dmx-big" onClick={exportXls}>Export to Excel</button>
-          {tab !== "band" && (
+          {tab !== "band" && !readOnly && (
             <button type="button" className="emx-mini emx-dashed dmx-big" onClick={() => { setAdding((a) => !a); setAddErr(""); }}>
               + Add {tab === "des" ? "designation" : "group"}
             </button>
@@ -1171,6 +1181,8 @@ function MemberMenu({ model, rect, onCancel, onApply }) {
 }
 
 const CSS = `
+.dmx-rotag{margin:0 0 6px;padding:5px 10px;border:1px solid #f0c36d;background:#fff8e6;color:#7a4a00;border-radius:6px;font-size:12px}
+.dmx-ro .emx-wrap input,.dmx-ro .emx-wrap select,.dmx-ro .dmx-panel input,.dmx-ro .dmx-panel select{pointer-events:none}
 .dmx{display:flex;flex-direction:column;flex:1;min-height:0;height:calc(100vh - 150px);min-height:420px;background:#fff;border:1px solid #E5E7EB;border-radius:12px;overflow:hidden;font-size:12.5px;color:#111827;position:relative}
 .dmx-tabs{display:flex;background:#FAFAFB;border-bottom:1px solid #E5E7EB;padding:0 14px;flex:none}
 .dmx-tabs button{background:none;border:0;border-bottom:2px solid transparent;padding:10px 4px;margin-right:24px;font:inherit;font-size:13px;font-weight:600;color:#6B7280;cursor:pointer;white-space:nowrap}

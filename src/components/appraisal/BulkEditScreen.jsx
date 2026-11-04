@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import BulkOperations from "@/components/appraisal/BulkEditPage";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { useAccess } from "@/lib/access-store";
 import "@/styles/bulk-edit-screen.css";
 
 const isActiveCycle = (cycle) =>
@@ -9,6 +10,9 @@ const isActiveCycle = (cycle) =>
   !cycle?.hidden;
 
 export default function BulkEditScreen() {
+  // "View" on the Bulk Edit screen: preview only, nothing can be applied.
+  const access = useAccess();
+  const readOnly = !access.canScreen("bulkEditScreen", "edit");
   const [cycles, setCycles] = useState([]);
   // The cycle is picked automatically (active one first); no manual selector.
   const [selectedId, setSelectedId] = useState("");
@@ -66,6 +70,7 @@ export default function BulkEditScreen() {
               location: selectedCycle.location || "",
             }}
             height="100%"
+            readOnly={readOnly}
           />
         </div>
       )}

@@ -943,7 +943,7 @@ function ColFilterPop({
 
 /* ============================== main component ============================== */
 const BulkOperations = forwardRef(function BulkOperations(
-  { apiUrl = "", cycle = DEFAULT_CYCLE, height = "100vh", onApplied },
+  { apiUrl = "", cycle = DEFAULT_CYCLE, height = "100vh", onApplied, readOnly = false },
   ref,
 ) {
   const apiMode = !!apiUrl;
@@ -2896,7 +2896,7 @@ const BulkOperations = forwardRef(function BulkOperations(
     lbArmed = lb && restoreAt.id === lb.id && Date.now() - restoreAt.t < 6000;
   // Apply is switched off for now: this screen works up to Preview.
   const APPLY_ENABLED = false;
-  const okPv = APPLY_ENABLED && !!pv && pv.n.chg > 0 && !locked && !busy;
+  const okPv = APPLY_ENABLED && !readOnly && !!pv && pv.n.chg > 0 && !locked && !busy;
 
   /* ============================== render ============================== */
   return (

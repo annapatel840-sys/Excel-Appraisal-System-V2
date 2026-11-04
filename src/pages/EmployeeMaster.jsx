@@ -618,6 +618,10 @@ export function EmployeeMaster() {
   const canEditEmployees =
     isRoleHR && access.canScreen("employeeMaster", "edit");
   // Mirrors payrollcycleapi: payroll upload is allowed for HR and Comp. Manager.
+  // Edit rights on the screens that have their own Access level. With access
+  // rules, "view" makes the screen read-only; without them HR edits.
+  const canEditScreen = (key) =>
+    access.ok ? access.canScreen(key, "edit") : isRoleHR;
   const canUploadPayroll = role === "hr" || role === "compmanager";
   // Mirrors payrollcycleapi canAccessPayroll (HR, Comp. Manager, Tech-Ed).
   const canViewPayroll = canUploadPayroll || isTechEd;
@@ -628,15 +632,15 @@ export function EmployeeMaster() {
     // other HR Operations tabs. DelegationScreen still applies action-level
     // permissions and routes Tech-Ed changes through HR approval.
     if (tab === "delegation" && isTechEd) return true;
-    // Historical Import is for the HR role only; access rules cannot open it
-    // to other roles.
-    if (tab === "historical-import") return isRoleHR;
-    // HR Dashboard (dummy screen for now): HR only.
-    if (tab === "hr-dashboard") return isRoleHR;
-    // Change List & Mismatch: HR only.
-    if (tab === "change-mismatch") return isRoleHR;
+    // Without access rules these HR Operations screens are HR only. With
+    // access rules each has its own screen (None / View / Edit), below.
+    if (
+      !access.ok &&
+      ["historical-import", "hr-dashboard", "change-mismatch"].includes(tab)
+    ) {
+      return isRoleHR;
+    }
     if (access.ok) {
-      if (tab === "location-master") return isRoleHR && access.canScreen("cycleMaster", "edit");
       if (tab === "payroll-upload") return access.canScreen("payroll", "edit");
       return access.canScreen(HR_TAB_SCREENS[tab] || "employeeMaster");
     }
@@ -2809,7 +2813,7 @@ export function EmployeeMaster() {
 
         {isTabVisible("location-master") && activeTab === "location-master" && (
           <div className="em-tab-content">
-            <LocationMasterControl managerOnly />
+            <LocationMasterControl managerOnly readOnly={!canEditScreen("locationMaster")} />
           </div>
         )}
 
@@ -2829,7 +2833,7 @@ export function EmployeeMaster() {
 
         {isTabVisible("historical-import") && activeTab === "historical-import" && (
           <div className="em-tab-content">
-            <HistoricalImportPage />
+            <HistoricalImportPage readOnly={!canEditScreen("historicalImport")} />
           </div>
         )}
 
@@ -2867,7 +2871,7 @@ export function EmployeeMaster() {
             <ChangeListMismatchPage
               employees={eligibilityMasterEmployees}
               eligibilityEmployees={eligibilityEmployees}
-              canEdit={canEditEmployees}
+              canEdit={canEditEmployees && canEditScreen("changeMismatch")}
               onNavigate={goToTab}
               onRefresh={refreshChangeListData}
             />
@@ -2924,7 +2928,7 @@ export function EmployeeMaster() {
         {isTabVisible("designation-master") &&
           activeTab === "designation-master" && (
           <div className="em-tab-content">
-          <DesignationMasterPage />
+          <DesignationMasterPage readOnly={!canEditScreen("designationMaster")} />
           </div>
         )}
 
