@@ -535,6 +535,19 @@ export function DashboardOverview() {
     .slice()
     .sort((a, b) => String(b.at).localeCompare(String(a.at)))
     .slice(0, 5);
+  // The audit "field" column keeps only 20 characters, so the stored label
+  // "Appraisal Sheet updated" arrives as "Appraisal Sheet upda". Show it
+  // whole instead of cut off.
+  const fieldLabel = (v) => {
+    const t = String(v ?? "");
+    if (t.length >= 16 && t !== "Appraisal Sheet updated" && "Appraisal Sheet updated".startsWith(t)) {
+      return "Appraisal Sheet update";
+    }
+    if (t.length >= 16 && t !== "Appraisal Sheet generated" && "Appraisal Sheet generated".startsWith(t)) {
+      return "Appraisal Sheet generated";
+    }
+    return t;
+  };
   const fmtWhen = (v) => {
     const d = new Date(v);
     return Number.isNaN(d.getTime())
@@ -691,7 +704,7 @@ export function DashboardOverview() {
               <tr key={a.id || i} className={i % 2 ? "bg-[#F6F8FA]" : "bg-white"}>
                 <td className="whitespace-nowrap px-3 py-2 font-bold text-[#102A43]">{fmtWhen(a.at)}</td>
                 <td className="px-3 py-2">{a.user}</td>
-                <td className="px-3 py-2">{a.field} edited for {a.employeeName || a.empId}{a.to !== "" ? ` (${a.from || "–"} → ${a.to})` : ""}</td>
+                <td className="px-3 py-2">{fieldLabel(a.field)} edited for {a.employeeName || a.empId}{a.to !== "" ? ` (${a.from || "–"} → ${a.to})` : ""}</td>
               </tr>
             ))}
           </tbody>

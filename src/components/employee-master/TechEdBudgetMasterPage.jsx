@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, Fragment } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useBudget } from "@/lib/budget-store";
+import { useAppraisal } from "@/lib/appraisal-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
 /* Add once in index.html <head> so the font matches the reference:
@@ -250,6 +251,8 @@ const HEADS = [
 
 export function TechEdBudgetMasterPage() {
   const user = useCatalystUser();
+  // Dashboard uses these AppraisalContext rows for its Active + Eligible headcount.
+  const { rows: dashboardRows = [] } = useAppraisal();
   const {
     budgetDistributionRows = [],
     budgetCompManagerRows = [],
@@ -320,6 +323,13 @@ export function TechEdBudgetMasterPage() {
   ].map(normalizeIdentity).filter(Boolean).flatMap((value) => ownerParts(value))), [directoryOwner, userIdentities]);
 
   const isCurrentCycleRow = (row) => budgetCycleIds.has(String(row.appraisal_cycle_id || ""));
+  const dashboardTeamCount = dashboardRows.filter((employee) => {
+    if (
+      String(employee.status || "").trim().toLowerCase() !== "active" ||
+      String(employee.eligibility || "").trim().toLowerCase() !== "eligible"
+    ) return false;
+    return ownerParts(employee.appraiserTechED || "").some((alias) => ownerAliases.has(alias));
+  }).length;
   const liveMe = budgetDistributionRows.find((row) =>
     isCurrentCycleRow(row) && ownerParts(row.appraiser_tech_ed_id || "").some((alias) => ownerAliases.has(alias)),
   ) || null;
@@ -332,12 +342,12 @@ export function TechEdBudgetMasterPage() {
     original: Number(liveMe.calculated_budget) || 0,
     updated: Number(liveMe.applied_budget) || 0,
     team0: Number(liveMe.original_headcount) || 0,
-    team: Number(liveMe.current_headcount) || 0,
+    team: dashboardTeamCount,
     utilised: Number(liveMe.total_utilization ?? liveMe.budget_utilized) || 0,
   } : {
     id: "",
     name: meName || rawName || "Tech-Ed",
-    pct: 0, original: 0, updated: 0, team0: 0, team: 0, utilised: 0,
+    pct: 0, original: 0, updated: 0, team0: 0, team: dashboardTeamCount, utilised: 0,
   };
 
   const liveKids = liveMe ? budgetCompManagerRows.filter((row) =>

@@ -1152,6 +1152,12 @@ export default function DelegationScreen({
         await loadRoster();
       }
       const result = await generateAppraisalSheet(activeCycleId);
+      // The Appraisal_Sheet row count is the source of truth for Budget
+      // Distribution Current Count. Refresh the shared budget roster as soon
+      // as generation/add/remove completes.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("appraisal:budget-data-updated"));
+      }
       const d = result?.data || result || {};
       if (d.upToDate) {
         setModal({

@@ -149,6 +149,12 @@ const GRID_COLUMNS = COLUMNS;
 
 // empId is merged into the "name" column, so it is not drawn separately.
 const FROZEN_KEYS = new Set(["name"]);
+// UI only: these columns are never drawn and are not offered in the More
+// panel (Show / Wrap). The data stays on the row (used by the Campus Hire
+// toggle and the Campus Hire tag).
+const UI_HIDDEN_KEYS = new Set(["sourceOfHire"]);
+export const isCampusHire = (row) =>
+  /campus/i.test(String(row?.sourceOfHire ?? ""));
 
 // These columns sit straight after "Gross Margin", in this order. Everything
 // else keeps its existing order (before Gross Margin / after Hike%).
@@ -2174,7 +2180,12 @@ export function AppraisalGrid({
     () =>
       columnOrder
         .map((key) => GRID_COLUMNS.find((column) => column.key === key))
-        .filter((column) => column && !access.isHidden(column.key)),
+        .filter(
+          (column) =>
+            column &&
+            !UI_HIDDEN_KEYS.has(column.key) &&
+            !access.isHidden(column.key),
+        ),
     [columnOrder, access],
   );
 
@@ -3725,13 +3736,20 @@ export function AppraisalGrid({
           className="flex min-h-[30px] h-auto w-full min-w-0 flex-col items-start justify-center overflow-hidden px-2 py-[3px] text-left"
           title={`${row.empId} - ${row.name}${row.designation ? ` · ${row.designation}` : ""}`}
         >
-          <span
-            className={cn(
-              "block max-w-full text-[12.25px] font-extrabold leading-tight text-[#1559a6] hover:underline",
-              wraps ? "break-words" : "truncate",
+          <span className="flex max-w-full min-w-0 flex-wrap items-center gap-x-1.5 gap-y-0.5">
+            <span
+              className={cn(
+                "block min-w-0 max-w-full text-[12.25px] font-extrabold leading-tight text-[#1559a6] hover:underline",
+                wraps ? "break-words" : "truncate",
+              )}
+            >
+              {row.empId} - {row.name}
+            </span>
+            {isCampusHire(row) && (
+              <span className="shrink-0 rounded-[4px] border border-[#86d5a4] bg-[#e3f6ea] px-1.5 py-px text-[9.5px] font-bold leading-tight text-[#14793f]">
+                Campus Hire
+              </span>
             )}
-          >
-            {row.empId} - {row.name}
           </span>
 
           <span
@@ -4704,29 +4722,7 @@ export function AppraisalGrid({
       {/* LEFT SIDE: NOTES BAR + GRID + PAGINATION + HISTORY */}
 
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {groupSlot &&
-          createPortal(
-            <div className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-[12px] text-[#4b5563]">
-              {(Object.keys(filters || {}).length > 0 ||
-                sortList.length > 0 ||
-                groupBy.length > 0) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClearAll?.();
-                    setSortList([]);
-                    setGroupBy([]);
-                    setCollapsedGroups({});
-                    setCurrentPage(1);
-                  }}
-                  className="h-8 rounded-md border border-[#d1d5db] bg-white px-2.5 text-[12px] font-bold text-[#102a43] hover:bg-[#f1f5f9]"
-                >
-                  Clear all filters
-                </button>
-              )}
-            </div>,
-            groupSlot,
-          )}
+
 
         {notesSlot &&
           createPortal(

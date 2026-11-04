@@ -339,6 +339,11 @@ function defaultPayrollColumnWidth(column) {
    MAIN COMPONENT
    ============================================================ */
 
+// Rows drawn at once. Drawing every payroll row x every column at once is what
+// made this screen slow to open; the Appraisal Sheet grid pages the same way.
+// Search, filters, sorting, the Records count and CSV export still use all rows.
+const PAYROLL_PAGE_SIZE = 50;
+
 export function PayrollDataPage() {
   const canAudit = useAccess().canAction("viewAudit");
   const [stored, setStored] = useState([]);
@@ -354,6 +359,10 @@ export function PayrollDataPage() {
   const [sortState, setSortState] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [auditOpen, setAuditOpen] = useState(false);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [auditError, setAuditError] = useState("");
+  const [page, setPage] = useState(1);
+  const gridWrapRef = useRef(null);
   const [openFilterCol, setOpenFilterCol] = useState(null);
   const [filterPos, setFilterPos] = useState({ left: 0, top: 0 });
   const btnRefs = useRef({});
@@ -403,16 +412,17 @@ export function PayrollDataPage() {
     let active = true;
     setLoading(true);
     setLoadError("");
+    // The audit log (the whole Appraisal_Audit table) is only needed by the
+    // Audit Trail panel, so it is read when that panel opens, not before the
+    // table can be shown.
     Promise.all([
       payrollCycleRequest("payroll"),
-      payrollCycleRequest("audit"),
       payrollCycleRequest("cycles"),
       payrollCycleRequest("schema"),
     ])
-      .then(([payroll, auditRows, cycleRows, schemaData]) => {
+      .then(([payroll, cycleRows, schemaData]) => {
         if (!active) return;
         setStored(payroll);
-        setAudit(auditRows);
         setCycles(cycleRows);
         const payrollSchema = Array.isArray(schemaData) ? schemaData.find((item) => String(item.name).toLowerCase() === "payroll") : null;
         setSchema(payrollSchema || null);
@@ -428,6 +438,26 @@ export function PayrollDataPage() {
       active = false;
     };
   }, [reloadToken]);
+
+  useEffect(() => {
+    if (!auditOpen) return undefined;
+    let active = true;
+    setAuditLoading(true);
+    setAuditError("");
+    payrollCycleRequest("audit")
+      .then((auditRows) => {
+        if (active) setAudit(auditRows);
+      })
+      .catch((error) => {
+        if (active) setAuditError(error.message || "Could not load the audit trail.");
+      })
+      .finally(() => {
+        if (active) setAuditLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [auditOpen, reloadToken]);
 
   const cycleOrder = useMemo(
     () => Object.fromEntries(
@@ -494,6 +524,23 @@ export function PayrollDataPage() {
 
     return list;
   }, [stored, search, batchFilter, columnFilters, sortState, cycleOrder, priorMap]);
+
+  const totalPages = Math.max(1, Math.ceil(rows.length / PAYROLL_PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const pageStart = (currentPage - 1) * PAYROLL_PAGE_SIZE;
+  const pageRows = useMemo(
+    () => rows.slice(pageStart, pageStart + PAYROLL_PAGE_SIZE),
+    [rows, pageStart],
+  );
+
+  // A new search / filter / sort starts again from the first page.
+  useEffect(() => {
+    setPage(1);
+  }, [search, batchFilter, columnFilters, sortState]);
+
+  useEffect(() => {
+    if (gridWrapRef.current) gridWrapRef.current.scrollTop = 0;
+  }, [currentPage]);
 
   const openColFilter = (colKey) => {
     const btn = btnRefs.current[colKey];
@@ -628,7 +675,7 @@ export function PayrollDataPage() {
         </div>
       </div>
 
-      <div className="pd-grid-wrap">
+      <div className="pd-grid-wrap" ref={gridWrapRef}>
         <table>
           <colgroup>
             {COLS.map((column) => (
@@ -685,8 +732,8 @@ export function PayrollDataPage() {
                       : "No payroll records are available yet."}
                 </td>
               </tr>
-            ) : rows.map((r, i) => (
-              <tr key={`${r.empId}-${r.cycle}-${i}`}>
+            ) : pageRows.map((r, i) => (
+              <tr key={`${r.empId}-${r.cycle}-${pageStart + i}`}>
                 {COLS.map((col) => {
                   const val = rawValueFor(r, col, priorMap);
                   if (col.isYoy) {
@@ -738,6 +785,33 @@ export function PayrollDataPage() {
           </tbody>
         </table>
       </div>
+
+      {rows.length > PAYROLL_PAGE_SIZE && (
+        <div className="pd-pager">
+          <span>
+            Rows {pageStart + 1}–{Math.min(pageStart + PAYROLL_PAGE_SIZE, rows.length)} of {rows.length}
+          </span>
+          <button
+            type="button"
+            className="pd-btn"
+            disabled={currentPage <= 1}
+            onClick={() => setPage(currentPage - 1)}
+          >
+            Previous
+          </button>
+          <span>
+            Page {currentPage} of {totalPages}
+          </span>
+          <button
+            type="button"
+            className="pd-btn"
+            disabled={currentPage >= totalPages}
+            onClick={() => setPage(currentPage + 1)}
+          >
+            Next
+          </button>
+        </div>
+      )}
 
       <div className="pd-footer-note">
         Read-only by design: the Upload screen is the only way data enters here.
@@ -813,7 +887,7 @@ export function PayrollDataPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {audit.map((a) => (
+                  {!auditLoading && !auditError && audit.map((a) => (
                     <tr key={a.id}>
                       <td>{a.time}</td>
                       <td>{a.user}</td>
@@ -827,7 +901,9 @@ export function PayrollDataPage() {
                       <td className="pd-new-val">{a.newVal || a.details || "—"}</td>
                     </tr>
                   ))}
-                  {!audit.length && <tr><td colSpan={7}>No audit history yet.</td></tr>}
+                  {auditLoading && <tr><td colSpan={7}>Loading audit trail…</td></tr>}
+                  {!auditLoading && auditError && <tr><td colSpan={7}>{auditError}</td></tr>}
+                  {!auditLoading && !auditError && !audit.length && <tr><td colSpan={7}>No audit history yet.</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -926,6 +1002,9 @@ const PAYROLL_DATA_CSS = `
 .pd-status-badge.yes { background: #e2f6e8; color: #1e7a41; }
 .pd-status-badge.no { background: #eef0f3; color: #6b7785; }
 .pd-footer-note { flex: 0 0 auto; padding: 8px 18px 16px; font-size: 11px; color: #8592a6; }
+.pd-pager { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; justify-content: flex-end; padding: 8px 18px 0; color: #5b6b82; font-size: 12px; font-weight: 600; }
+.pd-pager .pd-btn { padding: 4px 10px; font-size: 12px; }
+.pd-pager .pd-btn:disabled { opacity: .5; cursor: default; }
 .pd-modal-overlay { position: fixed; inset: 0; background: rgba(15,25,40,.45); z-index: 100; display: flex; align-items: center; justify-content: center; }
 .pd-modal { background: white; border-radius: 8px; width: 720px; max-width: 92vw; max-height: 82vh; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
 .pd-modal-head { padding: 14px 18px; border-bottom: 1px solid #edf0f4; display: flex; align-items: center; justify-content: space-between; }

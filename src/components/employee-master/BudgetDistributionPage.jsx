@@ -397,35 +397,13 @@ export function BudgetDistributionPage() {
   const countForTechOwner = (raw) => {
     const record = resolveTechRecord(raw);
     if (!record) return 0;
-    const countedEligibleEmployees = new Set();
-    return employeeRows.filter((employee) => {
-      const assignment = employee.appraiser_tech_ed_appraisal_sheet || "";
-      const resolved = resolveTechRecord(assignment);
-      const eligibility = String(
-        [
-          employee.eligibility,
-          employee.eligible_status,
-          employee.eligibility_status,
-          employee.eligible,
-        ].find((value) => value !== null && value !== undefined && String(value).trim() !== "") ?? "",
-      ).trim().toLowerCase().replace(/[ _-]+/g, "");
-      // Match Budget Master: an employee counts only when both status
-      // and eligibility are explicitly Active + Eligible.
-      const status = String(employee.emp_status ?? employee.status ?? employee.employee_status ?? "")
-        .trim().toLowerCase();
-      const active = status === "active";
-      const eligible = ["eligible", "yes", "true", "1"].includes(eligibility);
-      const inAppraisalSheet = employee.in_appraisal_sheet === true ||
-        String(employee.in_appraisal_sheet ?? "").trim().toLowerCase() === "true" ||
-        String(employee.in_appraisal_sheet ?? "").trim() === "1";
-      if (resolved?.key !== record.key || !active || !eligible || !inAppraisalSheet) return false;
-      const employeeId = normalize(
-        employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text ||
-          employee.row_id || employee.ROWID || employee.id || "",
-      );
-      if (!employeeId || countedEligibleEmployees.has(employeeId)) return false;
-      countedEligibleEmployees.add(employeeId);
-      return true;
+    // Use the same AppraisalContext rows and exact Active + Eligible filter
+    // as DashboardOverview. Dashboard counts rows, not unique Employee IDs.
+    return (appraisalAll || []).filter((employee) => {
+      const active = String(employee.status || "").trim().toLowerCase() === "active";
+      const eligible = String(employee.eligibility || "").trim().toLowerCase() === "eligible";
+      if (!active || !eligible) return false;
+      return resolveTechRecord(employee.appraiserTechED || "")?.key === record.key;
     }).length;
   };
 

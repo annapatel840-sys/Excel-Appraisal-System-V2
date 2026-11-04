@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
+import { useAppraisal } from "@/lib/appraisal-store";
 import {
   useViewAs,
   managerIdentityMatches,
@@ -433,6 +434,8 @@ const ALLOC_COLS = [
 
 export function TechEdBudgetDistribution() {
   const user = useCatalystUser();
+  // Use the exact live row set used by DashboardOverview for headcount.
+  const { rows: dashboardRows = [] } = useAppraisal();
   const { effectiveId, actualId } = useViewAs();
   const isCompManagerPreview =
     effectiveId === "compmanager" && actualId === "teched";
@@ -1457,10 +1460,36 @@ export function TechEdBudgetDistribution() {
     (num(liveTech?.percentage) > 0
       ? (num(liveTech?.calculated_budget) * 100) / num(liveTech?.percentage)
       : num(sharedBudgetTotals?.base));
-  // Backend counts are calculated from the cycle-scoped eligible Appraisal Sheet
-  // roster and persisted by budgetmasterapi. Prefer them so every screen agrees.
-  // The rendered eligible Appraisal Sheet roster is the live source of truth.
-  const currentTeamCount = allTeam.length;
+  // Match DashboardOverview exactly: current-cycle Appraisal rows,
+  // Active + Eligible only, grouped by the resolved Appraisal Sheet Tech-Ed.
+  // Do not use the persisted current_headcount because it can lag behind the
+  // live rows. Original Count remains the immutable saved snapshot.
+  const currentTeamCount = useMemo(() => {
+    const techIdentities = [
+      techOwnerKey,
+      ...ownerParts(loginTechOwner),
+      ...ownerParts(liveTech?.appraiser_tech_ed_id || ""),
+    ].map(normalizeOwner).filter(Boolean);
+    return dashboardRows.filter((employee) => {
+      const status = String(employee.status || "").trim().toLowerCase();
+      const eligibility = String(employee.eligibility || "")
+        .trim().toLowerCase();
+      if (status !== "active" || eligibility !== "eligible") return false;
+      if (!ownerMatches(employee.appraiserTechED || "", techIdentities)) return false;
+      if (isCompManagerView) {
+        return Boolean(selectedCompManager) &&
+          managerIdentityMatches(employee.compManager || "", selectedCompManager);
+      }
+      return true;
+    }).length;
+  }, [
+    dashboardRows,
+    techOwnerKey,
+    loginTechOwner,
+    liveTech?.appraiser_tech_ed_id,
+    isCompManagerView,
+    selectedCompManager,
+  ]);
   // Use only the immutable baseline returned by the API; headcount may
   // be a legacy/current field and must not replace Original Count here.
   const savedTeamCount = liveTech?.original_headcount;
@@ -1861,7 +1890,7 @@ export function TechEdBudgetDistribution() {
                     }
                   }}
                 >
-                  Save
+                  Apply
                 </button>
               </div>
               {err && (

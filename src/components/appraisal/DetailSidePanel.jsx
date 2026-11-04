@@ -820,7 +820,7 @@ function ConfigTab({ rules, onChange, rows }) {
       })}
 
       <button type="button" className="rp-link" style={{ marginTop: 8 }} onClick={add}>
-        + Add rule
+        + Add Rule
       </button>
       {rules.length ? null : <div className="rp-info">No rules yet.</div>}
     </>

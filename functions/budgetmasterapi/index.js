@@ -1932,6 +1932,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     });
   });
   const employees = Array.from(appraisalByEmployee.values());
+
   // Eligibility_List is cycle-scoped. Key by both Employee_Master ROWID and
   // business Employee ID so foreign-key and legacy rows resolve consistently.
   const eligibilityByCycleAndEmployee = new Map();
@@ -2486,6 +2487,52 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     const appraisalSheetEmployees = employees.filter(
       (employee) => employee && employee.in_appraisal_sheet,
     );
+
+    // Current Count is a literal count of rows in the active cycle's
+    // Appraisal_Sheet, grouped by the Tech-Ed assigned on each sheet row.
+    // Do not filter by Active/Eligible and do not deduplicate employee IDs:
+    // the requested Current Count is the live sheet row count. This map is
+    // separate from the deduplicated employee roster used for budget math.
+    const employeeByIdForSheetCount = new Map(
+      employees.map((employee) => [
+        String(employee.employeeId || employee.emp_id || "").trim().toLowerCase(),
+        employee,
+      ]),
+    );
+    const techSheetCurrentCounts = new Map();
+    currentAppraisalRows.forEach((sheetRow) => {
+      const rawEmployeeId = String(
+        firstValue(sheetRow, [
+          "emp_id",
+          "empId",
+          "employee_id",
+          "employeeId",
+          "employee_id_text",
+        ]) || idOf(sheetRow),
+      ).trim();
+      const employee = employeeByIdForSheetCount.get(
+        employeeKeyFor(rawEmployeeId),
+      );
+      const rawTechEd =
+        firstValue(sheetRow, [
+          "appraiser_tech_ed",
+          "appraiser_tech_ed_id",
+          "appraiser_tech_ed1",
+          "appraiser_teched",
+          "appraiserTechED",
+          "appraiserTechEd",
+          "tech_ed",
+          "tech_ed_id",
+          "techED",
+          "techEd",
+        ]) || employee?.techEd;
+      const techKey = canonicalTechKey(resolvePersonId(rawTechEd));
+      if (!techKey) return;
+      techSheetCurrentCounts.set(
+        techKey,
+        (techSheetCurrentCounts.get(techKey) || 0) + 1,
+      );
+    });
     // Match the Appraisal Sheet page's exact roster filter (src/routes/sheet.jsx):
     // active status AND explicit Eligible value from the generated sheet roster.
     // Do not re-apply Eligibility_List through cycleEligibilityFor here; that
@@ -2739,16 +2786,24 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
           ["original_headcount", "allocation_headcount"],
           rosterCount,
         );
-        // Older deployments may not yet have the dedicated snapshot column.
-        // Do not turn an otherwise valid budget read into HTTP 500; the schema
-        // must include original_headcount (preferred) for cross-refresh persistence.
+        if (!saved) {
+          throw new Error(
+            "Cannot save the Tech-Ed Original Count snapshot. Add an original_headcount (Number) column to Budget_Distribution, then retry the first allocation.",
+          );
+        }
       }
+      // Current Count follows every raw Appraisal_Sheet row in this cycle,
+      // regardless of eligibility, and does not deduplicate employee IDs.
+      const currentSheetHeadcount =
+        techSheetCurrentCounts.get(canonicalTechKey(techKey)) ||
+        techSheetCurrentCounts.get(techKey) ||
+        0;
       await persistOptional(
         distributionTable,
         row.id,
         distributionColumns,
         ["current_headcount"],
-        stats.count,
+        currentSheetHeadcount,
       );
       await persistOptional(
         distributionTable,
@@ -2770,7 +2825,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         calculated_budget: originalBudget,
         applied_budget: updatedBudget,
         effective_percentage: effectivePct,
-        current_headcount: stats.count,
+        current_headcount: currentSheetHeadcount,
         total_utilization: stats.utilized,
         original_headcount: savedOriginalCount,
       });
@@ -2883,8 +2938,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
           ["original_headcount", "allocation_headcount"],
           rosterCount,
         );
-        // Older deployments may not yet have the dedicated snapshot column.
-        // Keep the API available while schema migration is pending.
+        if (!saved) {
+          throw new Error(
+            "Cannot save the Comp Manager Original Count snapshot. Add an original_headcount (Number) column to Budget_Distribution_Comp, then retry the first allocation.",
+          );
+        }
       }
       await persistOptional(
         compTable,
@@ -3035,8 +3093,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         ["original_headcount", "allocation_headcount"],
         appraisalSheetEmployees.length,
       );
-      // Older deployments may not yet have the dedicated snapshot column.
-      // Keep the budget calculation available while schema migration is pending.
+      if (!saved) {
+        throw new Error(
+          "Cannot save the Org Original Count snapshot. Add an original_headcount (Number) column to Budget_Master, then retry the first allocation.",
+        );
+      }
     }
     await persistOptional(
       masterTable,
