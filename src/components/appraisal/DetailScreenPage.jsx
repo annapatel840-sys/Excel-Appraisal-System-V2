@@ -1,6 +1,7 @@
 import { hikeAmountFromPct, hikePctFromAmount, roundPct } from "@/lib/hike-math";
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -1083,6 +1084,12 @@ export function DetailScreenPage({
   onViewBudget,
 } = {}) {
   const { rows: liveRows, updateCell, updateLinkedCells } = useAppraisal();
+
+  // Keep the last ready Appraisal Sheet roster available during urgent employee
+  // navigation. A save may publish a new 500+ row array; rendering the next
+  // employee should use the cached prior array first, while React reconciles
+  // the newest roster in the background.
+  const cachedLiveRows = useDeferredValue(liveRows);
   const currentCycleName = useCurrentCycleName() || CURRENT_CYCLE;
   const {
     currentUser,
@@ -1107,7 +1114,7 @@ export function DetailScreenPage({
   // Keep the employee order stable across ordinary field edits. The Appraisal
   // Sheet roster is shared in memory; changing a salary/feedback field must not
   // re-filter and re-sort the complete team before the next employee can render.
-  const rosterOrderKey = (liveRows || [])
+  const rosterOrderKey = (cachedLiveRows || [])
     .map((row) =>
       [
         row.id,
@@ -1121,7 +1128,7 @@ export function DetailScreenPage({
 
   const orderedEmployeeIds = useMemo(
     () =>
-      (liveRows || [])
+      (cachedLiveRows || [])
         .filter(
           (row) =>
             String(row.status || "").trim().toLowerCase() === "active" &&
@@ -1130,7 +1137,7 @@ export function DetailScreenPage({
               currentUserMatchesManager(
                 row.compManagerDisplay || row.compManager,
                 catalystUser,
-                liveRows || [],
+                cachedLiveRows || [],
               )),
         )
         .sort((a, b) =>
@@ -1144,9 +1151,9 @@ export function DetailScreenPage({
   );
 
   const rows = useMemo(() => {
-    const byId = new Map((liveRows || []).map((row) => [row.id, row]));
+    const byId = new Map((cachedLiveRows || []).map((row) => [row.id, row]));
     return orderedEmployeeIds.map((id) => byId.get(id)).filter(Boolean);
-  }, [liveRows, orderedEmployeeIds]);
+  }, [cachedLiveRows, orderedEmployeeIds]);
   const isScopedToTeam = isTechEd || rows.length > 0;
 
   // Budget summary shown beside the notice (same numbers as the Appraisal Sheet).
