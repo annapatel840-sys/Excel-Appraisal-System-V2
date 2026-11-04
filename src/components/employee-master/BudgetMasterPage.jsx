@@ -926,41 +926,60 @@ function HRApplyBudget() {
           existing.base = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== "" ? amount(row.budget_base) : existing.base;
           existing.pctSet = row.percentage !== null && row.percentage !== undefined && String(row.percentage).trim() !== "";
           Object.assign(existing, deriveRowBudgets(existing.base, existing.pct, existing.pctSet, amount(row.calculated_budget)));
-          // The API handles legacy schemas. Never substitute a potentially
-          // live/current headcount field for the immutable Original Count.
+          const currentCountValue = dashboardCurrentCounts.get(key) || 0;
+          const liveCount = currentCountValue !== null && currentCountValue !== undefined && String(currentCountValue).trim() !== ""
+            ? amount(currentCountValue)
+            : (employeeCounts.get(key) || 0);
           const originalCountValue = row.original_headcount;
           const savedCount = origSnap[selectedCycle]?.teCount?.[key];
+          const legacyCount = row.headcount;
           const hasApiCount = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
+          const hasLegacyCount = legacyCount !== null && legacyCount !== undefined &&
+            String(legacyCount).trim() !== "" && Number(legacyCount) > 0;
           const hasLocalCount = savedCount !== null && savedCount !== undefined && Number.isFinite(Number(savedCount));
-          existing.team0 = hasLocalCount
-            ? amount(savedCount)
-            : hasApiCount
-              ? amount(originalCountValue)
-              : (existing.originalCountIsSet ? existing.team0 : 0);
-          existing.originalCountIsSet = Boolean(existing.originalCountIsSet || hasApiCount || hasLocalCount);
-          const currentCountValue = dashboardCurrentCounts.get(key) || 0;
-           existing.team = currentCountValue !== null && currentCountValue !== undefined && String(currentCountValue).trim() !== ""
-             ? amount(currentCountValue)
-             : (employeeCounts.get(key) || 0);
+          // If a previous bad frontend snapshot stored today's live count,
+          // recover the older baseline from the legacy headcount field.
+          const localLooksLikeLive = hasLocalCount && Number(savedCount) === liveCount;
+          const useLegacyMigration = hasLegacyCount &&
+            (!hasLocalCount || localLooksLikeLive) && Number(legacyCount) !== liveCount;
+          existing.team0 = useLegacyMigration
+            ? amount(legacyCount)
+            : hasLocalCount
+              ? amount(savedCount)
+              : hasApiCount
+                ? amount(originalCountValue)
+                : (existing.originalCountIsSet ? existing.team0 : 0);
+          existing.originalCountIsSet = Boolean(existing.originalCountIsSet || hasApiCount || hasLegacyCount || hasLocalCount);
+          existing.team = liveCount;
           existing.id = row.id || existing.id;
         }
         return;
       }
       const calculated = amount(row.calculated_budget);
       const assignedCount = employeeCounts.get(key) || 0;
-      // The API resolves legacy baseline columns. The UI must never fall
-      // back to headcount because that field may track the changing team.
-      const originalCountValue = row.original_headcount;
-      const savedCount = origSnap[selectedCycle]?.teCount?.[key];
-      const hasApiCount = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
-      const hasLocalCount = savedCount !== null && savedCount !== undefined && Number.isFinite(Number(savedCount));
-      const originalCountIsSet = hasApiCount || hasLocalCount;
-      const originalCount = hasLocalCount ? amount(savedCount) : hasApiCount ? amount(originalCountValue) : 0;
       // Current Count always follows the live Appraisal Sheet roster.
       const currentCountValue = dashboardCurrentCounts.get(key) || 0;
-       const currentCount = currentCountValue !== null && currentCountValue !== undefined && String(currentCountValue).trim() !== ""
-         ? amount(currentCountValue)
-         : assignedCount;
+      const currentCount = currentCountValue !== null && currentCountValue !== undefined && String(currentCountValue).trim() !== ""
+        ? amount(currentCountValue)
+        : assignedCount;
+      const originalCountValue = row.original_headcount;
+      const savedCount = origSnap[selectedCycle]?.teCount?.[key];
+      const legacyCount = row.headcount;
+      const hasApiCount = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
+      const hasLegacyCount = legacyCount !== null && legacyCount !== undefined &&
+        String(legacyCount).trim() !== "" && Number(legacyCount) > 0;
+      const hasLocalCount = savedCount !== null && savedCount !== undefined && Number.isFinite(Number(savedCount));
+      const localLooksLikeLive = hasLocalCount && Number(savedCount) === currentCount;
+      const useLegacyMigration = hasLegacyCount &&
+        (!hasLocalCount || localLooksLikeLive) && Number(legacyCount) !== currentCount;
+      const originalCountIsSet = hasApiCount || hasLegacyCount || hasLocalCount;
+      const originalCount = useLegacyMigration
+        ? amount(legacyCount)
+        : hasLocalCount
+          ? amount(savedCount)
+          : hasApiCount
+            ? amount(originalCountValue)
+            : 0;
       const storedBase = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== ""
         ? amount(row.budget_base)
         : null;
@@ -1138,16 +1157,14 @@ function HRApplyBudget() {
       }
       // Count snapshots are frontend-only and captured once after the first
       // allocation. Later roster/delegation changes update Current Count only.
-      if (row.pctSet && row.team > 0 &&
+      // Migrate only a known baseline. Never seed Original Count from the
+      // live team size on page load; that caused 202 -> 512 to become 512 -> 512.
+      if (row.pctSet && row.team0 > 0 &&
           !(Number.isFinite(Number(next.teCount[row.canonicalKey])) && next.teCount[row.canonicalKey] !== null && next.teCount[row.canonicalKey] !== undefined)) {
-        next.teCount[row.canonicalKey] = amount(row.team);
+        next.teCount[row.canonicalKey] = amount(row.team0);
         changed = true;
       }
     });
-    if (!(Number.isFinite(Number(next.orgCount)) && next.orgCount !== null && next.orgCount !== undefined) && orgCurrentCount > 0) {
-      next.orgCount = amount(orgCurrentCount);
-      changed = true;
-    }
     if (changed) {
       const all = { ...origSnap, [selectedCycle]: next };
       setOrigSnap(all);
