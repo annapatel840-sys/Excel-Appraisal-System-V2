@@ -335,13 +335,33 @@ export function TechEdBudgetMasterPage() {
   ) || null;
 
   const meName = String(directoryOwner?.name || ownerName(directoryOwner?.assignment || liveMe?.appraiser_tech_ed_id || rawName)).trim();
+  const meOriginalCount = (() => {
+    if (!liveMe) return 0;
+    let localCount = null;
+    try {
+      const saved = JSON.parse(
+        window.localStorage.getItem("excel-appraisal-budget-original-v1") || "{}",
+      );
+      const cycleKey = String(liveMe.appraisal_cycle_id || activeCycleId || "");
+      const raw = saved?.[cycleKey]?.teCount?.[ownerKey(liveMe.appraiser_tech_ed_id || "")];
+      if (raw !== null && raw !== undefined && Number.isFinite(Number(raw))) localCount = Number(raw);
+    } catch (_) {}
+    const legacyCount = Number(liveMe.headcount);
+    const hasLegacyCount = Number.isFinite(legacyCount) && legacyCount > 0;
+    const localLooksLikeLive = localCount !== null && localCount === dashboardTeamCount;
+    if (hasLegacyCount && legacyCount !== dashboardTeamCount && (localCount === null || localLooksLikeLive)) return legacyCount;
+    if (localCount !== null) return localCount;
+    return liveMe.original_headcount !== null && liveMe.original_headcount !== undefined
+      ? Number(liveMe.original_headcount) || 0
+      : 0;
+  })();
   const me = liveMe ? {
     id: liveMe.id,
     name: meName || rawName || "Tech-Ed",
     pct: liveMe.percentage === null || liveMe.percentage === undefined || String(liveMe.percentage).trim() === "" ? 0 : Number(liveMe.percentage) || 0,
     original: Number(liveMe.calculated_budget) || 0,
     updated: Number(liveMe.applied_budget) || 0,
-    team0: Number(liveMe.original_headcount) || 0,
+    team0: meOriginalCount,
     team: dashboardTeamCount,
     utilised: Number(liveMe.total_utilization ?? liveMe.budget_utilized) || 0,
   } : {
