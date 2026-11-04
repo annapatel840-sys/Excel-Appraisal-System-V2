@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useBudget } from "@/lib/budget-store";
+import { useAppraisal } from "@/lib/appraisal-store";
 import { TechEdBudgetMasterPage } from "./TechEdBudgetMasterPage";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 
@@ -684,6 +685,8 @@ function ColumnMenu({ rect, values, filter, wrap, onSort, onWrap, onApply, onCle
 
 function HRApplyBudget() {
   const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], techEdOwners = [], currentUser = {}, updateBudget, reload: reloadBudget, loading: budgetLoading, error: budgetError = "", budgetWarning = "" } = useBudget();
+  // Dashboard is the source of truth for live Active + Eligible appraisal rows.
+  const { rows: dashboardRows = [] } = useAppraisal();
   // Access rules (permissive when accessapi is unavailable).
   const access = useAccess();
   const canConfig =
@@ -845,6 +848,17 @@ function HRApplyBudget() {
       }
       return canonicalOwnerKey(text, employeeRows);
     };
+    // Same rule as DashboardOverview: Active + Eligible rows, grouped by
+    // the Appraisal Sheet Tech-Ed assignment.
+    const dashboardCurrentCounts = new Map();
+    dashboardRows.forEach((employee) => {
+      if (
+        String(employee.status || "").trim().toLowerCase() !== "active" ||
+        String(employee.eligibility || "").trim().toLowerCase() !== "eligible"
+      ) return;
+      const key = resolveTechOwnerKey(employee.appraiserTechED || "");
+      if (key) dashboardCurrentCounts.set(key, (dashboardCurrentCounts.get(key) || 0) + 1);
+    });
     (Array.isArray(employeeRows) ? employeeRows : []).forEach((employee) => {
       const assignedOwner = employee.appraiser_tech_ed_appraisal_sheet || "";
       const key = resolveTechOwnerKey(assignedOwner);
@@ -915,12 +929,7 @@ function HRApplyBudget() {
           // The API handles legacy schemas. Never substitute a potentially
           // live/current headcount field for the immutable Original Count.
           const originalCountValue = row.original_headcount;
-           const currentCountValue =
-             row.current_headcount !== null &&
-             row.current_headcount !== undefined &&
-             String(row.current_headcount).trim() !== ""
-               ? row.current_headcount
-               : employeeCounts.get(key) || 0;
+           const currentCountValue = dashboardCurrentCounts.get(key) || 0;
            const hasSavedOriginalCount = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
            // Original Count is a saved baseline, never a live roster fallback.
            // If the API has not persisted a baseline, keep it unset rather than
@@ -943,12 +952,7 @@ function HRApplyBudget() {
       const originalCountValue = row.original_headcount;
        // Always show the live eligible Appraisal Sheet count. Saved current_headcount
        // may be stale if a legacy schema lacks that column or a delegation just changed.
-       const currentCountValue =
-         row.current_headcount !== null &&
-         row.current_headcount !== undefined &&
-         String(row.current_headcount).trim() !== ""
-           ? row.current_headcount
-           : assignedCount;
+       const currentCountValue = dashboardCurrentCounts.get(key) || 0;
        const originalCountIsSet = originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
        // Do not initialize Original Count from today's Current Count in the UI.
        // The backend persists the baseline; a missing value must remain visible
@@ -997,7 +1001,7 @@ function HRApplyBudget() {
         // This is only a provisional row; Original Count must come from the
         // backend's first saved allocation snapshot, not today's live count.
         team0: 0,
-         team: employeeCounts.get(key) || 0,
+         team: dashboardCurrentCounts.get(key) || 0,
          originalCountIsSet: false,
          lastChanged: "—",
       });
@@ -1011,7 +1015,7 @@ function HRApplyBudget() {
     } else {
       setOrgPct("");
     }
-  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, selectedCycle, selectedMaster?.budget_percentage]);
+  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, dashboardRows, selectedCycle, selectedMaster?.budget_percentage]);
 
   // budgetmasterapi calculates this cycle's Org Base from the explicit
   // Eligibility_List decisions. Prefer that authoritative total over the full
