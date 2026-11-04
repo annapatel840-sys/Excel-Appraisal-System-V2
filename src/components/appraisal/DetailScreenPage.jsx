@@ -370,6 +370,41 @@ const sortHistoryDesc = (a, b) =>
   historyYearOrder(b.year) - historyYearOrder(a.year) ||
   String(b.year).localeCompare(String(a.year));
 
+/*
+ * Shared page-lifetime history cache. The App starts this request as soon as
+ * the user opens Detailed Screen (before the roster finishes loading), and
+ * the screen consumes the same promise instead of starting a second request.
+ */
+const detailHistoryPromises = new Map();
+
+export function prefetchDetailHistory(empId) {
+  const key = String(empId || "").trim();
+  if (!key) return Promise.resolve([]);
+  const existing = detailHistoryPromises.get(key);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    const response = await catalystFetch(
+      `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(key)}`,
+    );
+    if (!response.ok) {
+      throw new Error(`History request failed (${response.status}).`);
+    }
+    const result = await response.json();
+    if (!result?.success) {
+      throw new Error(result?.message || "Failed to load history.");
+    }
+    const records = Array.isArray(result?.data) ? result.data : [];
+    return records.map(normalizeHistoryRecord).sort(sortHistoryDesc);
+  })();
+
+  detailHistoryPromises.set(key, promise);
+  promise.catch(() => {
+    if (detailHistoryPromises.get(key) === promise) detailHistoryPromises.delete(key);
+  });
+  return promise;
+}
+
 const yearNumberFromCycle = (cycleName) => {
   const match = String(cycleName || "").match(/(\d{2,4})$/);
   if (!match) return null;
@@ -1155,21 +1190,28 @@ export function DetailScreenPage({
   // selection in sync as the user moves between employees here.
   const [selectionSynced, setSelectionSynced] = useState(false);
 
+  const sharedSelectedEmpId = getSelectedEmpId().toLowerCase();
+  const preferredIndex = sharedSelectedEmpId
+    ? rows.findIndex(
+        (row) => String(row.empId || "").trim().toLowerCase() === sharedSelectedEmpId,
+      )
+    : -1;
+
   useEffect(() => {
     if (selectionSynced || !rows.length) return;
-
-    const shared = getSelectedEmpId().toLowerCase();
-    const found = shared
-      ? rows.findIndex(
-          (row) => String(row.empId || "").trim().toLowerCase() === shared,
-        )
-      : -1;
-
-    if (found > -1) setIndex(found);
+    if (preferredIndex > -1) setIndex(preferredIndex);
     setSelectionSynced(true);
-  }, [rows, selectionSynced]);
+  }, [rows, selectionSynced, preferredIndex]);
 
-  const employee = rows[Math.min(index, rows.length - 1)] || rows[0];
+  // Resolve the remembered employee during the first render with roster data.
+  // This avoids briefly loading history for row 1 before switching to the
+  // employee the user actually selected on the Appraisal Sheet.
+  const activeIndex = selectionSynced
+    ? index
+    : preferredIndex > -1
+      ? preferredIndex
+      : 0;
+  const employee = rows[Math.min(activeIndex, rows.length - 1)] || rows[0];
 
   useEffect(() => {
     if (selectionSynced && employee?.empId) {
@@ -1207,33 +1249,17 @@ export function DetailScreenPage({
 
   const loadHistory = useCallback((empId) => {
     const key = String(empId || "").trim();
-    if (!key) {
-      return Promise.resolve([]);
-    }
+    if (!key) return Promise.resolve([]);
+
     const existing = historyPromiseRef.current.get(key);
-    if (existing) {
-      return existing;
-    }
+    if (existing) return existing;
+
     setHistoryByEmpId((prev) => ({
       ...prev,
       [key]: { loading: true, data: [], error: "" },
     }));
-    const promise = (async () => {
-      const response = await catalystFetch(
-        `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(key)}`,
-      );
-      if (!response.ok) {
-        throw new Error(`History request failed (${response.status}).`);
-      }
-      const result = await response.json();
-      if (!result?.success) {
-        throw new Error(result?.message || "Failed to load history.");
-      }
-      const records = Array.isArray(result?.data) ? result.data : [];
-      return records
-        .map(normalizeHistoryRecord)
-        .sort(sortHistoryDesc);
-    })();
+
+    const promise = prefetchDetailHistory(key);
     historyPromiseRef.current.set(key, promise);
     promise
       .then((data) => {
