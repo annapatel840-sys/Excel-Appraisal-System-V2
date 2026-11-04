@@ -60,10 +60,10 @@ const SETTINGS = {
     empId: 'emp_id', name: 'emp_name', email: 'email_id',
     status: 'emp_status', activeValue: 'Active'
   },
-  // Delegation holds EMPLOYEE IDs of the Comp Manager and Appraiser Tech ED.
+  // Delegation.cycle_id and emp_id are lookups; assignment fields store employee IDs as text.
   delegation: {
     table: 'Delegation', cycleColumn: 'cycle_id', empId: 'emp_id',
-    compManagerId: 'comp_manager_id', appraiserTechEdId: 'appraiser_tech_ed_id'
+    compManagerId: 'comp_manager', appraiserTechEdId: 'appraiser_tech_ed'
   },
   cycle: { table: 'Appraisal_Cycle_Master', idColumn: 'ROWID', statusColumn: 'status', activeValue: 'Active', nameColumn: 'cycle_name' },
   appraisalSheet: { table: 'Appraisal_Sheet', empId: 'emp_id' },
@@ -181,7 +181,8 @@ const BUILT_IN_KEYS = ['hr', 'techEd', 'compMgr'];
    --------------------------------------------------------------------- */
 class HttpError extends Error { constructor(status, msg) { super(msg); this.status = status; } }
 const IST_MS = 330 * 60 * 1000;
-function nowDT() { return new Date().toISOString().replace('T', ' ').slice(0, 19); }
+// Data Store datetime text in IST (the project timezone); toISOString alone is UTC.
+function nowDT() { return new Date(Date.now() + IST_MS).toISOString().replace('T', ' ').slice(0, 19); }
 /** Today's date (YYYY-MM-DD) in Asia/Kolkata — used for override end dates. */
 function today() { return new Date(Date.now() + IST_MS).toISOString().slice(0, 10); }
 function q(v) { return String(v).replace(/'/g, "''"); }
@@ -200,12 +201,23 @@ function bigOf(v) { try { return BigInt(String(v)); } catch (e) { return null; }
    ROWIDs may come back as strings; progress is checked numerically (BigInt) and
    rows are de-duplicated so a bad comparison can never loop forever. */
 const PAGE = 300;
+// Catalyst answers 429 "Concurrency limit reached" when too many Data Store
+// calls run at once; wait briefly and retry instead of failing the request.
+async function whenNotBusy(fn) {
+  for (let attempt = 0; ; attempt++) {
+    try { return await fn(); } catch (err) {
+      const busy = err && (err.statusCode === 429 || err.code === 'TOO_MANY_REQUESTS');
+      if (!busy || attempt >= 3) throw err;
+      await new Promise((r) => setTimeout(r, 250 * (attempt + 1) + Math.random() * 250));
+    }
+  }
+}
 async function selectAll(zcql, table, where) {
   const out = [], seen = new Set();
   let last = '0';
   for (let guard = 0; guard < 10000; guard++) {
     const cond = (where ? '(' + where + ') AND ' : '') + 'ROWID > ' + last;
-    const res = await zcql.executeZCQLQuery('SELECT * FROM ' + table + ' WHERE ' + cond + ' ORDER BY ROWID ASC LIMIT ' + PAGE);
+    const res = await whenNotBusy(() => zcql.executeZCQLQuery('SELECT * FROM ' + table + ' WHERE ' + cond + ' ORDER BY ROWID ASC LIMIT ' + PAGE));
     const rows = (res || []).map((r) => (r && r[table]) || (r && Object.values(r)[0]) || {});
     let max = bigOf(last), added = 0;
     for (const row of rows) {
@@ -324,75 +336,107 @@ function resolveFields(C, lim) {
    --------------------------------------------------------------------- */
 async function activeCycleId(zcql) {
   const c = SETTINGS.cycle;
-  const rows = await selectAll(zq(zcql), c.table, c.statusColumn + " = '" + q(c.activeValue) + "'");
-  return rows[0] ? String(rows[0][c.idColumn]) : null;
+  const rows = await selectAll(zq(zcql), c.table);
+  const isTruthyFlag = (value) =>
+    [true, 1, "true", "1", "yes"].includes(
+      typeof value === "string" ? value.trim().toLowerCase() : value,
+    );
+  const active = rows.find((row) =>
+    String(row[c.statusColumn] || "").trim().toLowerCase() === String(c.activeValue).toLowerCase() &&
+    !isTruthyFlag(row.archived) &&
+    !isTruthyFlag(row.hidden)
+  );
+  return active ? String(active[c.idColumn] || "") || null : null;
 }
 /* Delegation of a cycle:
      techEd / compMgr : { normEmpId: number of employees }   (who has a team)
      byEmp            : { normEmpId: { empId, techEd, compMgr } }
-     teamTechEd / teamCompMgr : { normManagerId: [empId, …] } */
-async function loadDelegation(zcql, cycleId) {
-  const d = SETTINGS.delegation, out = { techEd: {}, compMgr: {}, byEmp: {}, teamTechEd: {}, teamCompMgr: {} };
-  const z = zq(zcql);
-  const rows = cycleId
-    ? await selectAll(z, d.table, d.cycleColumn + " = '" + q(cycleId) + "'")
-    : [];
+     teamTechEd / teamCompMgr : { normManagerId: [empId, …] }
+     rowIdOf          : { normEmpId: Employee_Master ROWID }
 
-  rows.forEach((r) => {
-    const emp = String(r[d.empId] || '').trim(), t = norm(r[d.appraiserTechEdId]), c = norm(r[d.compManagerId]);
-    if (emp) out.byEmp[norm(emp)] = { empId: emp, techEd: t, compMgr: c };
-    if (t) { out.techEd[t] = (out.techEd[t] || 0) + 1; (out.teamTechEd[t] = out.teamTechEd[t] || []).push(emp); }
-    if (c) { out.compMgr[c] = (out.compMgr[c] || 0) + 1; (out.teamCompMgr[c] = out.teamCompMgr[c] || []).push(emp); }
+   Each employee has ONE Tech ED and ONE Comp Manager, taken per role from the
+   first source that names one:
+     1. Delegation row of the cycle (changes only when HR assigns or approves),
+     2. the cycle's Appraisal_Sheet row (approval also writes it; Generate copies it),
+     3. the employee's Appraisal_Sheet row without a cycle (left by Employee
+        Master import), then Employee_Master (before Generate).
+   A person reassigned in Delegation therefore leaves the old manager's team.
+   Sheet rows of other cycles are not used: they hold past managers. */
+async function loadDelegation(zcql, cycleId) {
+  const d = SETTINGS.delegation, out = { techEd: {}, compMgr: {}, byEmp: {}, teamTechEd: {}, teamCompMgr: {}, rowIdOf: {} };
+  const z = zq(zcql);
+  const e = SETTINGS.employeeMaster, s = SETTINGS.appraisalSheet;
+  const [rows, masterRows, sheetRows] = await Promise.all([
+    cycleId
+      ? selectAll(z, d.table, d.cycleColumn + " = '" + q(cycleId) + "'")
+      : Promise.resolve([]),
+    selectAll(z, e.table),
+    selectAll(z, s.table),
+  ]);
+  const cycleOf = (r) => String(r.cycle_id == null ? '' : r.cycle_id).trim();
+  const cycleSheetRows = cycleId ? sheetRows.filter((r) => cycleOf(r) === String(cycleId)) : [];
+  const noCycleSheetRows = sheetRows.filter((r) => !cycleOf(r));
+
+  // Employee_Master people, reachable by employee ID and by ROWID (lookup
+  // columns and Delegation.emp_id hold the ROWID).
+  const byId = new Map(), byRowId = new Map(), byEmail = new Map(), nameCount = new Map(), byName = new Map();
+  masterRows.forEach((r) => {
+    const empId = String(r[e.empId] || '').trim();
+    if (!empId) return;
+    const p = { empId, rowId: String(r.ROWID || r.rowid || '').trim() };
+    byId.set(norm(empId), p);
+    if (p.rowId) { byRowId.set(p.rowId, p); out.rowIdOf[norm(empId)] = p.rowId; }
+    const email = String(r[e.email] || '').trim().toLowerCase();
+    if (email) byEmail.set(email, p);
+    const name = String(r[e.name] || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (name) { nameCount.set(name, (nameCount.get(name) || 0) + 1); byName.set(name, p); }
   });
 
-  // Compatibility fallback: Employee_Master may contain manager assignments while
-  // Delegation is still empty or only partially configured. Delegation remains authoritative
-  // for rows it already defines; Employee_Master fills only missing manager/team mappings.
-  const e = SETTINGS.employeeMaster;
-  const masterRows = await selectAll(z, e.table);
-  const people = masterRows.map((r) => ({
-    empId: String(r[e.empId] || '').trim(),
-    name: String(r[e.name] || '').trim(),
-    email: String(r[e.email] || '').trim().toLowerCase(),
-  })).filter((p) => p.empId);
-
-  const resolveManager = (value) => {
-    const raw = String(value || '').trim().toLowerCase();
-    if (!raw) return '';
-    // Employee Master manager assignments can be stored as an employee ID,
-    // display name, or login email. Resolve all three to the stable employee ID
-    // before constructing team scope; otherwise a manager stored as an email
-    // is treated as a literal ID and their team history requests are denied.
-    const person = people.find((p) =>
-      raw === p.empId.toLowerCase() ||
-      raw.includes(p.empId.toLowerCase()) ||
-      (p.name && raw.includes(p.name.toLowerCase())) ||
-      (p.email && raw.includes(p.email))
-    );
-    return person ? norm(person.empId) : norm(value);
+  // A stored person ("EMP001", a ROWID, "EMP001 - Name", an email or a unique
+  // name) -> normalized employee ID. Exact matches only: a partial match could
+  // put an employee in the wrong manager's team ("EMP001" is inside "EMP0012").
+  const person = (value) => {
+    const raw = String(value == null ? '' : value).trim();
+    if (!raw) return null;
+    const viaId = byId.get(norm(raw)) || byRowId.get(raw);
+    if (viaId) return viaId;
+    const idPart = raw.match(/^(\S+)\s+-\s+.+$/);
+    if (idPart && byId.has(norm(idPart[1]))) return byId.get(norm(idPart[1]));
+    const lower = raw.toLowerCase().replace(/\s+/g, ' ');
+    if (byEmail.has(lower)) return byEmail.get(lower);
+    if (nameCount.get(lower) === 1) return byName.get(lower);
+    return null;
+  };
+  // Managers not in Employee_Master keep their own normalized value.
+  const managerKey = (value) => {
+    const p = person(value);
+    return p ? norm(p.empId) : norm(value);
+  };
+  const employeeOf = (value) => {
+    const p = person(value);
+    return p ? p.empId : String(value == null ? '' : value).trim();
   };
 
-  masterRows.forEach((r) => {
-    const emp = String(r[e.empId] || '').trim();
+  // Pick, per employee, the first source that names each manager.
+  const assign = (emp, techEdValue, compMgrValue) => {
     if (!emp) return;
-    const existing = out.byEmp[norm(emp)] || { empId: emp, techEd: '', compMgr: '' };
-    // Employee_Master is the source of truth for current manager assignment.
-    // Prefer the explicit employee fields over any stale Delegation row.
-    const t = resolveManager(r.appraiser_tech_ed) || existing.techEd;
-    const c = resolveManager(r.comp_manager) || existing.compMgr;
-    out.byEmp[norm(emp)] = { empId: emp, techEd: t, compMgr: c };
-    if (t && !(out.teamTechEd[t] || []).some((id) => norm(id) === norm(emp))) {
-      out.teamTechEd[t] = out.teamTechEd[t] || [];
-      out.teamTechEd[t].push(emp);
-      out.techEd[t] = (out.techEd[t] || 0) + 1;
-    }
-    if (c && !(out.teamCompMgr[c] || []).some((id) => norm(id) === norm(emp))) {
-      out.teamCompMgr[c] = out.teamCompMgr[c] || [];
-      out.teamCompMgr[c].push(emp);
-      out.compMgr[c] = (out.compMgr[c] || 0) + 1;
-    }
-  });
+    const k = norm(emp);
+    const cur = out.byEmp[k] || (out.byEmp[k] = { empId: emp, techEd: '', compMgr: '' });
+    if (!cur.techEd) cur.techEd = managerKey(techEdValue);
+    if (!cur.compMgr) cur.compMgr = managerKey(compMgrValue);
+  };
+  rows.forEach((r) => assign(employeeOf(r[d.empId]), r[d.appraiserTechEdId], r[d.compManagerId]));
+  [cycleSheetRows, noCycleSheetRows].forEach((list) => list.forEach((r) => assign(
+    employeeOf(r[s.empId]),
+    r.appraiser_tech_ed || r.appraiser_tech_ed1,
+    r.comp_manager || r.comp_manager_id,
+  )));
+  masterRows.forEach((r) => assign(String(r[e.empId] || '').trim(), r.appraiser_tech_ed, r.comp_manager));
 
+  Object.values(out.byEmp).forEach(({ empId, techEd: t, compMgr: c }) => {
+    if (t) { out.techEd[t] = (out.techEd[t] || 0) + 1; (out.teamTechEd[t] = out.teamTechEd[t] || []).push(empId); }
+    if (c) { out.compMgr[c] = (out.compMgr[c] || 0) + 1; (out.teamCompMgr[c] = out.teamCompMgr[c] || []).push(empId); }
+  });
   return out;
 }
 function hasTeam(deleg, empId) { const k = norm(empId); return deleg.techEd[k] != null || deleg.compMgr[k] != null; }
@@ -524,9 +568,17 @@ function scopeOf(base, ro, a, person) {
   if (me && a.role === 'techEd') ids.push(...(d.teamTechEd[me] || []));
   if (me && a.role === 'compMgr') ids.push(...(d.teamCompMgr[me] || []));
   a.teams.forEach((t) => { const k = norm(t); ids.push(...(d.teamTechEd[k] || []), ...(d.teamCompMgr[k] || [])); });
-  const seen = new Set(), empIds = [];
-  ids.forEach((id) => { const k = norm(id); if (!k || k === me || seen.has(k)) return; seen.add(k); empIds.push(String(id).trim()); });
-  return { all: false, cycleId: base.cycleId, empIds };
+  const seen = new Set(), empIds = [], rowIds = [];
+  ids.forEach((id) => {
+    const k = norm(id);
+    if (!k || k === me || seen.has(k)) return;
+    seen.add(k);
+    empIds.push(String(id).trim());
+    // Payroll_Data / Feedback rows name the employee by Employee_Master ROWID.
+    const rowId = (d.rowIdOf || {})[k];
+    if (rowId) rowIds.push(rowId);
+  });
+  return { all: false, cycleId: base.cycleId, empIds, rowIds };
 }
 async function get(cat, opts) {
   // getCurrentUser() throws when the request carries no user credentials.
@@ -609,7 +661,7 @@ function inScope(a, rowOrEmpId) {
   if (!a || !a.scope) return false;
   if (a.scope.all) return true;
   let set = scopeSets.get(a.scope);
-  if (!set) { set = new Set((a.scope.empIds || []).map(norm)); scopeSets.set(a.scope, set); }
+  if (!set) { set = new Set((a.scope.empIds || []).concat(a.scope.rowIds || []).map(norm)); scopeSets.set(a.scope, set); }
   const id = rowOrEmpId && typeof rowOrEmpId === 'object' ? (rowOrEmpId.emp_id != null ? rowOrEmpId.emp_id : rowOrEmpId.empId) : rowOrEmpId;
   const k = norm(id);
   return !!k && set.has(k);
@@ -646,8 +698,8 @@ async function bumpVersion(cat, by, why) {
 module.exports = {
   SETTINGS, T, BUILT_IN_ROLES, START_CATALOG, FIELD_COLUMNS, COLUMN_FIELDS, LEVELS, LIMITS, OV_TYPES, HttpError,
   nowDT, today, q, bool, norm, ID_RE, DATE_RE, isEnforced,
-  selectAll, buildCatalog, loadCatalog, loadRoles, loadMatrix, resolveFields, activeCycleId, loadDelegation, hasTeam, emRow, findEmployee,
-  loadOverrides, live, baseRoleOf, accessOf, get, check, guard, requireScreen, requireAction, canEdit, canEditColumn, requireEditColumns,
+  whenNotBusy, selectAll, buildCatalog, loadCatalog, loadRoles, loadMatrix, resolveFields, activeCycleId, loadDelegation, hasTeam, emRow, findEmployee,
+  loadOverrides, live, baseRoleOf, accessOf, scopeOf, get, check, guard, requireScreen, requireAction, canEdit, canEditColumn, requireEditColumns,
   fieldOfColumn, inScope, shapeRow, shapeRowByColumns, scopeRows, getVersion, currentVersion, bumpVersion, resetCache, ensureCache,
   _cache: CACHE
 };

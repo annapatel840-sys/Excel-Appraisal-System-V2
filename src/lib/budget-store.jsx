@@ -217,11 +217,14 @@ export function BudgetProvider({ children }) {
     setLoading(!initialBudget);
     setError("");
     try {
-      // If a screen is loading the Appraisal Sheet roster (the sheet starts
-      // it in the same render), let it finish first: both read the same
-      // tables, and the cached budget figures stay on screen meanwhile.
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      await appraisalRosterSettled();
+      // On the Appraisal Sheet the roster is what the user is waiting for: let
+      // it finish first (both read the same tables) while the cached budget
+      // figures stay on screen. On budget screens the budget is the main
+      // content, so it loads at once.
+      if (window.location.pathname === "/sheet") {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        await appraisalRosterSettled();
+      }
       const budgetUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
       budgetUrl.searchParams.set("_ts", String(Date.now()));
       // Start both independent requests immediately, but do not make the
