@@ -333,6 +333,35 @@ async function whenNotBusy(fn) {
   }
 }
 
+// Budget_Distribution_Comp rows of one Comp Manager under one Tech-Ed
+// allocation: keeps the oldest (lowest ROWID), deletes the rest, returns the
+// kept row's id (fallbackId if the re-read fails).
+async function keepOneCompRow(app, compTable, parentId, compName, fallbackId) {
+  let rows;
+  try {
+    rows = (await getAllRows(app, "Budget_Distribution_Comp")).filter(
+      (row) =>
+        String(value(row, "budget_distribution_id")) === String(parentId) &&
+        ownerKey(value(row, "comp_manager")) === ownerKey(compName),
+    );
+  } catch (error) {
+    console.warn("Could not re-check Comp Manager budget rows:", error?.message || error);
+    return fallbackId;
+  }
+  if (!rows.length) return fallbackId;
+  rows.sort((a, b) => (BigInt(idOf(a)) < BigInt(idOf(b)) ? -1 : 1));
+  const keep = idOf(rows[0]);
+  for (const extra of rows.slice(1)) {
+    try {
+      await compTable.deleteRow(idOf(extra));
+    } catch (error) {
+      // Another request removing the same duplicate is fine.
+      console.warn("Could not remove duplicate Comp Manager budget row " + idOf(extra) + ":", error?.message || error);
+    }
+  }
+  return keep;
+}
+
 async function getAllRows(app, tableName) {
   const rows = [];
   const zcql = app.zcql();
@@ -3427,6 +3456,11 @@ module.exports = async function (req, res) {
           total_utilization: 0,
         });
         id = idOf(created);
+        // Two saves at the same moment (double click, two tabs) can both miss
+        // the row above and both insert. Keep the oldest row for this Comp
+        // Manager under this Tech-Ed allocation and remove the others; every
+        // such request ends up updating that same row.
+        id = await keepOneCompRow(app, compTable, parentId, compName, id);
       }
     }
     if (!id)

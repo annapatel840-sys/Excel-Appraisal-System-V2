@@ -260,12 +260,13 @@ function requirePayrollAccess(a, resource, method) {
     return;
   }
   if (resource === "generate-sheet" && method === "POST") {
-    if (a.role === "techEd") {
-      // Generating the Appraisal Sheet is an explicit Tech-Ed workflow action.
-      // Do not gate it on the Delegation screen level: the built-in Tech-Ed
-      // role can have Delegation screen access set to "none" while the button
-      // is still available to that role.
-      return;
+    // Generate rebuilds the whole Active cycle's Appraisal Sheet: HR only.
+    // A Tech-Ed's Delegation Save writes their changes straight onto the
+    // Appraisal Sheet (accessapi /delegation/save), without Generate.
+    // (Dry run without a resolved role: nothing to check, like requireScreen;
+    // routeRequest still refuses a Tech-Ed write in that mode.)
+    if (a.role !== "hr" && (a.enforced || a.role)) {
+      throw new access.HttpError(403, "Only HR can generate the Appraisal Sheet.");
     }
     access.requireScreen(a, "cycleMaster", "edit");
     return;
@@ -3252,12 +3253,7 @@ async function routeRequest(req, res, identity, resource, a) {
     return sendJson(res, 403, { success: false, message: "HR, Comp. Manager, or Tech-Ed role is required for payroll access." });
   }
 
-  if (
-    techEdUser &&
-    req.method !== "GET" &&
-    resource !== "session" &&
-    resource !== "generate-sheet"
-  ) {
+  if (techEdUser && req.method !== "GET" && resource !== "session") {
     return sendJson(res, 403, { success: false, message: "Tech-Ed users have read-only payroll access." });
   }
 

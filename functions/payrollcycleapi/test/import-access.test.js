@@ -71,6 +71,23 @@ async function t(name, fn) { try { writes = []; await fn(); pass++; console.log(
     assert.deepStrictEqual(writes, []);
   });
 
+  await t('a Tech-ED cannot generate the Appraisal Sheet (HR only)', async () => {
+    const r = await call(load(techEd), 'POST', 'generate-sheet', { cycleId: 'C1' });
+    assert.strictEqual(r.status, 403, JSON.stringify(r.json));
+    assert.deepStrictEqual(writes, []);
+  });
+
+  await t('a Comp Manager cannot generate the Appraisal Sheet', async () => {
+    const cm = { enforced: true, role: 'compMgr', scope: { all: false, empIds: [] }, user: { email: 'cm@x.com' } };
+    const r = await call(load(cm), 'POST', 'generate-sheet', { cycleId: 'C1' });
+    assert.strictEqual(r.status, 403, JSON.stringify(r.json));
+  });
+
+  await t('HR passes the Generate access check', async () => {
+    const r = await call(load({ enforced: true, role: 'hr', scope: { all: true }, user: { email: 'hr@x.com' } }), 'POST', 'generate-sheet', { cycleId: 'C1' });
+    assert.notStrictEqual(r.status, 403, JSON.stringify(r.json));
+  });
+
   await t('HR passes the access check', async () => {
     const r = await call(load({ enforced: true, role: 'hr', scope: { all: true }, user: { email: 'hr@x.com' } }), 'POST', 'import', upload);
     assert.notStrictEqual(r.status, 403, JSON.stringify(r.json));

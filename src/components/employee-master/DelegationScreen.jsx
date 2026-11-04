@@ -1204,8 +1204,9 @@ export default function DelegationScreen({
       setSheetBusy(false);
     }
   };
+  // Only HR generates the Appraisal Sheet; a Tech-ED's Save updates it.
   const generateSheet = () => {
-    if (!(isHR || isTechEdUser) || !activeCycleId || sheetBusy) return;
+    if (!isHR || !activeCycleId || sheetBusy) return;
     const unsaved = Object.keys(stagedChanges).length;
     if (!unsaved && withoutComp > 0) {
       setModal({
@@ -1269,10 +1270,22 @@ export default function DelegationScreen({
         throw new Error(payload.error || payload.message || "Unable to save Delegation changes.");
       }
       setStagedChanges({});
-      // The grid already reflects these staged assignments. Do not refetch the
-      // full employeesapi roster after Save; Generate Appraisal Sheet is the
-      // explicit next operation that applies the saved Delegation values.
-      say("Saved " + changes.length + " delegation change(s) to Delegation for " + displayCycleName + ". Generate the Appraisal Sheet to apply them there.");
+      // The grid already reflects these staged assignments. Save also writes
+      // them onto the Appraisal Sheet (accessapi), so the sheet and budget
+      // screens reload their data; Generate stays an HR-only operation.
+      const sheetRows = Number(payload.sheetRowsUpdated || 0);
+      if (sheetRows > 0 && typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("appraisal:payroll-data-updated"));
+        window.dispatchEvent(new CustomEvent("appraisal:budget-data-updated"));
+      }
+      say(
+        "Saved " + changes.length + " delegation change(s) for " + displayCycleName + "." +
+          (sheetRows > 0
+            ? " The Appraisal Sheet is updated."
+            : isHR
+              ? " Generate the Appraisal Sheet to add employees who are not on it yet."
+              : ""),
+      );
     } catch (error) {
       say(error?.message || "Unable to save Delegation.", true);
     }
@@ -1501,7 +1514,7 @@ export default function DelegationScreen({
                 Discard
               </button>
             )}
-            {(isHR || isTechEdUser) && (
+            {isHR && (
               <button
                 className="btn p"
                 disabled={!activeCycleId || !rows.length || rosterLoading || sheetBusy}

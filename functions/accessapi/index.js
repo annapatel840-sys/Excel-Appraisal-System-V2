@@ -40,6 +40,7 @@ app.use(express.json({ limit: "1mb" }));
 const BATCH = 200; // Data Store insertRows / deleteRows limit
 
 const DELEGATION_DATA_TABLE_ID = "74008000000036124";
+const APPRAISAL_SHEET_TABLE_ID = "74008000000039094";
 
 async function upsertDelegationData(ap, { cycleId, empId, status, field, assignment, updatedBy }) {
   const cycleKey = String(cycleId || "").trim();
@@ -1671,6 +1672,40 @@ app.post(
       await A.whenNotBusy(() => table.insertRows(inserts.slice(i, i + BATCH)));
     }
 
+    // Apply the saved assignments to this cycle's Appraisal Sheet rows too, so
+    // a Save shows on the sheet without Generate (HR only). Same values as an
+    // approved Delegation request: Comp. Manager = the Employee ID; Appraiser
+    // Tech-ED = the Employee_Master ROWID (a lookup column). Employees without
+    // a sheet row yet get them when HR generates the sheet.
+    const sheetRowsByEmployee = new Map();
+    sheetRows.forEach((row) => {
+      const id = String(row[SETTINGS.appraisalSheet.empId] || "").trim().toLowerCase();
+      if (!id) return;
+      if (!sheetRowsByEmployee.has(id)) sheetRowsByEmployee.set(id, []);
+      sheetRowsByEmployee.get(id).push(row);
+    });
+    const sheetPatchByRowId = new Map();
+    for (const change of normalizedChanges) {
+      const selected = masterByEmployeeId.get(selectedEmployeeId(change.assignment));
+      const column = change.field === "comp" ? "comp_manager" : "appraiser_tech_ed";
+      const stored = change.field === "comp"
+        ? String(selected[e.empId] || "").trim()
+        : String(selected.ROWID || selected.rowid || "").trim();
+      if (!stored) continue;
+      for (const row of sheetRowsByEmployee.get(change.empId.toLowerCase()) || []) {
+        const rowId = String(row.ROWID || row.rowid || "").trim();
+        if (!rowId || String(row[column] ?? "").trim() === stored) continue;
+        const patch = sheetPatchByRowId.get(rowId) || { ROWID: rowId };
+        patch[column] = stored;
+        sheetPatchByRowId.set(rowId, patch);
+      }
+    }
+    const sheetUpdates = Array.from(sheetPatchByRowId.values());
+    const sheetTable = ap.admin.datastore().table(APPRAISAL_SHEET_TABLE_ID);
+    for (let i = 0; i < sheetUpdates.length; i += BATCH) {
+      await A.whenNotBusy(() => sheetTable.updateRows(sheetUpdates.slice(i, i + BATCH)));
+    }
+
     try {
       await A.bumpVersion(ap.admin, me.user.email || "", "Delegation saved for " + normalizedChanges.length + " assignment(s)");
     } catch (error) {
@@ -1683,6 +1718,7 @@ app.post(
       employeesUpdated: patchByEmployee.size,
       inserted: inserts.length,
       updated: updates.length,
+      sheetRowsUpdated: sheetUpdates.length,
     });
   }),
 );
