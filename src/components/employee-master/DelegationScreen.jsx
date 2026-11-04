@@ -303,6 +303,11 @@ export default function DelegationScreen({
   const [modal, setModal] = useState(null); // {type, ...}
   const [reason, setReason] = useState("");
   const [toast, setToast] = useState(null);
+  // The one Comp. Manager / Appraiser Tech-ED dropdown (row:field) whose full
+  // list of people is rendered. Every other dropdown holds only its current
+  // value: 50 rows x 2 dropdowns x the whole roster was ~200,000 <option>
+  // elements on every render (the Appraisal Grid has no such lists).
+  const [openCell, setOpenCell] = useState("");
 
   const loadRequests = async () => {
     const response = await catalystFetch(
@@ -1611,17 +1616,28 @@ export default function DelegationScreen({
                             const prev = resolveName(
                               f === "comp" ? r.prevComp : r.prevApp,
                             );
+                            const cur = resolveName(r[f]);
+                            const cellKey = r.id + ":" + f;
+                            const listOpen = openCell === cellKey;
+                            // Opened by hover / focus / touch, before the
+                            // native list pops up.
+                            const openList = () => {
+                              if (!listOpen) setOpenCell(cellKey);
+                            };
                             return (
                               <td key={f}>
                                 <select
                                   className={
                                     "in" +
-                                    (prev && resolveName(r[f]) !== prev
+                                    (prev && cur !== prev
                                       ? " c"
                                       : "")
                                   }
                                   disabled={editLocked}
-                                  value={resolveName(r[f])}
+                                  value={cur}
+                                  onMouseEnter={openList}
+                                  onFocus={openList}
+                                  onTouchStart={openList}
                                   onChange={(e) => {
                                     setReason("");
                                     setModal({
@@ -1634,24 +1650,30 @@ export default function DelegationScreen({
                                     });
                                   }}
                                 >
-                                  {resolveName(r[f]) &&
-                                    !people.some(
-                                      (p) => p.id === resolveName(r[f]),
-                                    ) && (
-                                      <option value={resolveName(r[f])}>
-                                        {resolveName(r[f])}
-                                      </option>
-                                    )}
-                                  {!resolveName(r[f]) && (
+                                  {!cur && (
                                     <option value="" disabled>
                                       — not set —
                                     </option>
                                   )}
-                                  {people.map((p) => (
-                                    <option key={p.id} value={p.id}>
-                                      {p.name}
-                                    </option>
-                                  ))}
+                                  {listOpen ? (
+                                    <>
+                                      {cur &&
+                                        !people.some((p) => p.id === cur) && (
+                                          <option value={cur}>{cur}</option>
+                                        )}
+                                      {people.map((p) => (
+                                        <option key={p.id} value={p.id}>
+                                          {p.name}
+                                        </option>
+                                      ))}
+                                    </>
+                                  ) : (
+                                    cur && (
+                                      <option key={cur} value={cur}>
+                                        {cur}
+                                      </option>
+                                    )
+                                  )}
                                 </select>
                               </td>
                             );
