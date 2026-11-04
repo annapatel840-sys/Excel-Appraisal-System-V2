@@ -33,7 +33,7 @@ import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
 import { useNotices } from "@/lib/notices";
-import { useEmployeeFeedback } from "@/lib/employee-feedback";
+import { cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
 import { useColumnResize } from "@/lib/use-column-resize";
 import { DetailSidePanel } from "./DetailSidePanel";
 
