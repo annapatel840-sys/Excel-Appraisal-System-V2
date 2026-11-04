@@ -2246,7 +2246,7 @@ ${filterTableCss(".tbd-root", ".trail-grid")}
 @keyframes tbd-pull { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .tbd-root .apdrop, .tbd-root .bal tr.tr td { animation: none; } }
 .budget-save-btn {
-  background: #155DFC;
+  background: #12304F;
   color: #fff;
   border: none;
   border-radius: 6px;
