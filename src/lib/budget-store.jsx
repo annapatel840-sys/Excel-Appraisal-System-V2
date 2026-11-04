@@ -217,15 +217,9 @@ export function BudgetProvider({ children }) {
     setLoading(!initialBudget);
     setError("");
     try {
-      // On the Appraisal Sheet the roster is what the user is waiting for: let
-      // it finish first (both read the same tables) while the cached budget
-      // figures stay on screen. On budget screens the budget is the main
-      // content, so it loads at once.
-      const currentPath = String(window.location.pathname || "").replace(/\/$/, "");
-      if (currentPath === "/sheet" || currentPath === "/detail-screen") {
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        await appraisalRosterSettled();
-      }
+      // Do not gate budget refresh on the appraisal roster. The Appraisal
+      // provider loads/caches the roster independently; waiting here delays
+      // first paint on both Sheet and Detailed Screen and couples two requests.
       const budgetUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
       budgetUrl.searchParams.set("_ts", String(Date.now()));
       // Start both independent requests immediately, but do not make the
