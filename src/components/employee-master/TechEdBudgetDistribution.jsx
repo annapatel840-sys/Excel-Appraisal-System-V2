@@ -941,9 +941,27 @@ export function TechEdBudgetDistribution() {
     user?.employeeId,
     user?.employee_id,
   ]);
-  const techOwnerKey =
-    ownerKey(liveTech?.appraiser_tech_ed_id) || ownerKey(loginTechOwner);
+  const techOwnerKey = useMemo(() => {
+    const raw = String(
+      liveTech?.appraiser_tech_ed_id || loginTechOwner || "",
+    ).trim();
 
+    const linkedOwner = techEdOwners.find((item) =>
+      [
+        item?.employee_id,
+        item?.row_id,
+        item?.ROWID,
+        item?.assignment,
+        item?.name,
+        item?.email,
+        item?.email_id,
+      ]
+        .filter(Boolean)
+        .some((alias) => ownerMatches(alias, raw)),
+    );
+
+    return ownerKey(linkedOwner?.assignment || loginTechOwner || raw);
+  }, [liveTech?.appraiser_tech_ed_id, loginTechOwner, techEdOwners]);
   const activeCycle = useMemo(
     () =>
       cycleRows.find(
