@@ -3726,6 +3726,9 @@ module.exports = async function (req, res) {
             message: "Budget_Distribution has no supported Original Count column. Add original_headcount or allocation_headcount in Catalyst Data Store, then retry.",
           });
         }
+        // Map the UI's logical field name to the actual physical
+        // Catalyst column so the normal update builder writes the right key.
+        body[actualColumn] = body.original_headcount;
         fields.push(actualColumn);
       }
       const fallback =
