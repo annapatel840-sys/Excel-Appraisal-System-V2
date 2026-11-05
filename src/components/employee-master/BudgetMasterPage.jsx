@@ -1782,17 +1782,22 @@ function HRApplyBudget() {
                             className="bm-text-action"
                             disabled={savingOrg}
                             title="Temporarily set Original Count to the current Appraisal Sheet count"
-                            onClick={async () => {
-                              setSavingOrg(true);
-                              setError("");
-                              try {
-                                await updateBudget(r.id, { original_headcount: Number(r.team) }, "distribution");
-                                await reloadBudget();
-                              } catch (saveError) {
-                                setError(saveError.message || "Original Count could not be updated.");
-                              } finally {
-                                setSavingOrg(false);
-                              }
+                            onClick={() => {
+                              // TEMPORARY UI-ONLY correction: keep this in the
+                              // existing browser snapshot store. Do not call the
+                              // Catalyst API or require a Data Store column.
+                              const next = {
+                                ...origSnap,
+                                [selectedCycle]: {
+                                  ...(origSnap[selectedCycle] || {}),
+                                  teCount: {
+                                    ...((origSnap[selectedCycle] || {}).teCount || {}),
+                                    [r.canonicalKey]: Number(r.team),
+                                  },
+                                },
+                              };
+                              setOrigSnap(next);
+                              writeOriginalSnapshots(next);
                             }}
                           >
                             Set to current ({r.team})
