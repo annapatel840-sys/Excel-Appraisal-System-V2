@@ -149,6 +149,32 @@ export function buildNotices({ audit = [], totals = null }) {
   return out;
 }
 
+/*
+ * A Tech-Ed viewing as Comp Manager: the shared totals above are empty in that
+ * view, so no "Budget changed" notice is built. Add it from the allocation the
+ * budget bar already shows (`useDistributionBudget()`: original vs updated).
+ * Display only; returns `notices` unchanged in every other case.
+ */
+export function withPreviewBudgetNotice(notices, distributionBudget) {
+  const list = Array.isArray(notices) ? notices : [];
+  if (list.some((notice) => notice.kind === "budget")) return list;
+  if (!distributionBudget?.applies || !distributionBudget.hasLiveAllocation) return list;
+  const original = Number(distributionBudget.myOriginal) || 0;
+  const updated = Number(distributionBudget.myUpdated) || 0;
+  if (!(original > 0 && updated > 0) || Math.abs(updated - original) < 1) return list;
+  return [
+    {
+      key: `budget:${Math.round(original)}:${Math.round(updated)}`,
+      kind: "budget",
+      tag: "Budget changed",
+      text: `Be aware: your team budget has changed from ${money(original)} to ${money(updated)}.`,
+      sub: "",
+      at: "",
+    },
+    ...list,
+  ];
+}
+
 /* Hook: the notices still to be read, plus dismiss helpers. */
 export function useNotices() {
   const { audit } = useAppraisal();

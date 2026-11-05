@@ -33,7 +33,7 @@ import { showNotice } from "@/lib/show-notice";
 import { useAppraisal, LAST_EDIT_STORAGE_KEY } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
 import { useDistributionBudget } from "@/lib/distribution-budget";
-import { useNotices } from "@/lib/notices";
+import { useNotices, withPreviewBudgetNotice } from "@/lib/notices";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
 
@@ -260,7 +260,7 @@ export function SheetPage() {
 
   // Notification bell (top bar): live notices (budget change, bulk edit,
   // data upload, employee status change) + the edited count.
-  const notificationItems = dynamicNotices.map((notice) => ({
+  const notificationItems = withPreviewBudgetNotice(dynamicNotices, distributionBudget).map((notice) => ({
     key: notice.key,
     tag: notice.tag,
     text: notice.text,

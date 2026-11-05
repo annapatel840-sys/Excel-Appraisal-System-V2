@@ -34,7 +34,7 @@ import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCurrentCycleName } from "@/lib/current-cycle";
-import { useNotices } from "@/lib/notices";
+import { useNotices, withPreviewBudgetNotice } from "@/lib/notices";
 import { cycleKey, useEmployeeFeedback } from "@/lib/employee-feedback";
 import { useColumnResize } from "@/lib/use-column-resize";
 import { DetailSidePanel, PANEL_MIN_W } from "./DetailSidePanel";
@@ -1193,29 +1193,11 @@ export function DetailScreenPage({
 
   // Layout-only state (no effect on data)
   const { notices: sharedNotices, dismissAll: dismissLiveNotices } = useNotices();
-  // A Tech-Ed viewing as Comp Manager: the shared notice is worked out from the
-  // Tech-Ed's own totals, which are empty in that view, so the "Budget changed"
-  // marquee never appears. Build it from the same allocation the budget bar
-  // above already shows (original vs updated budget). Display only.
-  const liveNotices = useMemo(() => {
-    if (sharedNotices.some((notice) => notice.kind === "budget")) return sharedNotices;
-    if (!distributionBudget.applies || !distributionBudget.hasLiveAllocation) return sharedNotices;
-    const original = Number(distributionBudget.myOriginal) || 0;
-    const updated = Number(distributionBudget.myUpdated) || 0;
-    if (!(original > 0 && updated > 0) || Math.abs(updated - original) < 1) return sharedNotices;
-    const money = (n) => Math.round(n).toLocaleString("en-IN");
-    return [
-      {
-        key: `budget:${Math.round(original)}:${Math.round(updated)}`,
-        kind: "budget",
-        tag: "Budget changed",
-        text: `Be aware: your team budget has changed from ${money(original)} to ${money(updated)}.`,
-        sub: "",
-        at: "",
-      },
-      ...sharedNotices,
-    ];
-  }, [sharedNotices, distributionBudget]);
+  // Tech-Ed viewing as Comp Manager: add the "Budget changed" notice (see notices.js).
+  const liveNotices = useMemo(
+    () => withPreviewBudgetNotice(sharedNotices, distributionBudget),
+    [sharedNotices, distributionBudget],
+  );
   const [cardOpen, setCardOpen] = useState(true);
   const [feedbackWidth, setFeedbackWidth] = useState(360);
 
