@@ -610,7 +610,16 @@ async function get(cat, opts) {
   const ro = base.roles.find((r) => r.key === a.role);
   return {
     version: base.version,
-    user: { email, empId: person ? person.empId : '', name: person ? person.name : email },
+    // Keep the Employee_Master ROWID as well as empId. Legacy
+    // Budget_Distribution_Comp rows may store the manager lookup ROWID in
+    // comp_manager; budgetmasterapi uses this identity to resolve that child
+    // allocation before following budget_distribution_id to its Tech-Ed parent.
+    user: {
+      email,
+      empId: person ? person.empId : '',
+      row_id: person ? person.row_id : '',
+      name: person ? person.name : email
+    },
     role: a.role, roleLabel: ro.label, roleFrom: a.roleOverride ? 'Override' : b.from,
     screens: a.screens, actions: a.actions, fields: a.fields, scope: scopeOf(base, ro, a, person)
   };
