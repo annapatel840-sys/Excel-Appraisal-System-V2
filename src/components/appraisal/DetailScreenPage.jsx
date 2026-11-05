@@ -1192,7 +1192,30 @@ export function DetailScreenPage({
   const historyPromiseRef = useRef(new Map());
 
   // Layout-only state (no effect on data)
-  const { notices: liveNotices, dismissAll: dismissLiveNotices } = useNotices();
+  const { notices: sharedNotices, dismissAll: dismissLiveNotices } = useNotices();
+  // A Tech-Ed viewing as Comp Manager: the shared notice is worked out from the
+  // Tech-Ed's own totals, which are empty in that view, so the "Budget changed"
+  // marquee never appears. Build it from the same allocation the budget bar
+  // above already shows (original vs updated budget). Display only.
+  const liveNotices = useMemo(() => {
+    if (sharedNotices.some((notice) => notice.kind === "budget")) return sharedNotices;
+    if (!distributionBudget.applies || !distributionBudget.hasLiveAllocation) return sharedNotices;
+    const original = Number(distributionBudget.myOriginal) || 0;
+    const updated = Number(distributionBudget.myUpdated) || 0;
+    if (!(original > 0 && updated > 0) || Math.abs(updated - original) < 1) return sharedNotices;
+    const money = (n) => Math.round(n).toLocaleString("en-IN");
+    return [
+      {
+        key: `budget:${Math.round(original)}:${Math.round(updated)}`,
+        kind: "budget",
+        tag: "Budget changed",
+        text: `Be aware: your team budget has changed from ${money(original)} to ${money(updated)}.`,
+        sub: "",
+        at: "",
+      },
+      ...sharedNotices,
+    ];
+  }, [sharedNotices, distributionBudget]);
   const [cardOpen, setCardOpen] = useState(true);
   const [feedbackWidth, setFeedbackWidth] = useState(360);
 
