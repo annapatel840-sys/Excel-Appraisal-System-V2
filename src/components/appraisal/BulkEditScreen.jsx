@@ -12,7 +12,7 @@ const isActiveCycle = (cycle) =>
 export default function BulkEditScreen() {
   // "View" on the Bulk Edit screen: preview only, nothing can be applied.
   const access = useAccess();
-  const readOnly = !access.canScreen("bulkEditScreen", "edit");
+  const readOnly = !access.canAction("bulkEdit");
   const [cycles, setCycles] = useState([]);
   // The cycle is picked automatically (active one first); no manual selector.
   const [selectedId, setSelectedId] = useState("");
