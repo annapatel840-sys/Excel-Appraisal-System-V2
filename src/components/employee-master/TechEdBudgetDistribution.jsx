@@ -416,36 +416,12 @@ export function TechEdBudgetDistribution() {
     (num(liveTech?.percentage) > 0
       ? (num(liveTech?.calculated_budget) * 100) / num(liveTech?.percentage)
       : num(sharedBudgetTotals?.base));
-  // Match DashboardOverview exactly: current-cycle Appraisal rows,
-  // Active + Eligible only, grouped by the resolved Appraisal Sheet Tech-Ed.
-  // Do not use the persisted current_headcount because it can lag behind the
-  // live rows. Original Count remains the immutable saved snapshot.
-  const currentTeamCount = useMemo(() => {
-    const techIdentities = [
-      techOwnerKey,
-      ...ownerParts(loginTechOwner),
-      ...ownerParts(liveTech?.appraiser_tech_ed_id || ""),
-    ].map(normalizeOwner).filter(Boolean);
-    return dashboardRows.filter((employee) => {
-      const status = String(employee.status || "").trim().toLowerCase();
-      const eligibility = String(employee.eligibility || "")
-        .trim().toLowerCase();
-      if (status !== "active" || eligibility !== "eligible") return false;
-      if (!ownerMatches(employee.appraiserTechED || "", techIdentities)) return false;
-      if (isCompManagerView) {
-        return Boolean(selectedCompManager) &&
-          managerIdentityMatches(employee.compManager || "", selectedCompManager);
-      }
-      return true;
-    }).length;
-  }, [
-    dashboardRows,
-    techOwnerKey,
-    loginTechOwner,
-    liveTech?.appraiser_tech_ed_id,
-    isCompManagerView,
-    selectedCompManager,
-  ]);
+  // Team Size must use the same current generated Appraisal_Sheet roster
+  // as Budget Master and the backend allocation refresh. Do not apply a second
+  // Active/Eligible filter here; that made the Tech-Ed page disagree with the
+  // persisted Tech-Ed and Comp Manager counts.
+  const currentTeamCount = assignedTeam.length;
+
   // Original Count is frontend-only: read the same cycle/Tech-Ed snapshot
   // saved by Budget Master. If an earlier bad browser snapshot equals today's
   // live count, recover from the legacy baseline when it is still available.
