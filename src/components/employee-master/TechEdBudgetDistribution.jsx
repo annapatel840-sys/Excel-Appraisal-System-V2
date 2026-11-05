@@ -470,11 +470,10 @@ export function TechEdBudgetDistribution() {
     const hasLegacyCount = Number.isFinite(legacyCount) && legacyCount > 0;
     const currentCount = Number(currentTeamCount) || 0;
     const localLooksLikeLive = localCount !== null && localCount === currentCount;
-    if (
-      hasLegacyCount &&
-      legacyCount !== currentCount &&
-      (localCount === null || localLooksLikeLive)
-    ) return legacyCount;
+    // TEMPORARY: HR correction is persisted in the shared Budget_Distribution.headcount
+    // field. It must take precedence over this browser's older local snapshot,
+    // including when the corrected value equals today's Current Count.
+    if (hasLegacyCount) return legacyCount;
     if (localCount !== null) return localCount;
     const persisted = liveTech?.original_headcount;
     return liveTech?.original_headcount_is_persisted === true &&
