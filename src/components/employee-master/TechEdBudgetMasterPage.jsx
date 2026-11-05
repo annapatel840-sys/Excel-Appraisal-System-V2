@@ -344,7 +344,8 @@ export function TechEdBudgetMasterPage() {
       );
       const cycleKey = String(liveMe.appraisal_cycle_id || activeCycleId || "");
       const raw = saved?.[cycleKey]?.teCount?.[ownerKey(liveMe.appraiser_tech_ed_id || "")];
-      if (raw !== null && raw !== undefined && Number.isFinite(Number(raw))) localCount = Number(raw);
+      if (raw !== null && raw !== undefined && Number.isFinite(Number(raw)) &&
+        (Number(raw) > 0 || dashboardTeamCount === 0)) localCount = Number(raw);
     } catch (_) {}
     const legacyCount = Number(liveMe.headcount);
     const hasLegacyCount = Number.isFinite(legacyCount) && legacyCount > 0;
@@ -352,7 +353,8 @@ export function TechEdBudgetMasterPage() {
     if (hasLegacyCount && legacyCount !== dashboardTeamCount && (localCount === null || localLooksLikeLive)) return legacyCount;
     if (localCount !== null) return localCount;
     return liveMe.original_headcount_is_persisted === true &&
-      liveMe.original_headcount !== null && liveMe.original_headcount !== undefined
+      liveMe.original_headcount !== null && liveMe.original_headcount !== undefined &&
+      (Number(liveMe.original_headcount) > 0 || dashboardTeamCount === 0)
       ? Number(liveMe.original_headcount) || 0
       : 0;
   })();
