@@ -2687,7 +2687,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
           utilized: 0,
         };
         tech.base += sheetBaseValue(employee);
-        // Headcount was already counted from all current Appraisal_Sheet rows.
+        // count (all sheet rows) seeds the Original Count above; Current Count
+        // follows the same active, eligible employees as the base and budget.
+        tech.current = (tech.current || 0) + 1;
         tech.utilized += consumed;
         techBases.set(techKey, tech);
       }
@@ -2695,7 +2697,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         const key = techKey + "::" + compKey;
         const comp = compBases.get(key) || { base: 0, count: 0, utilized: 0 };
         comp.base += sheetBaseValue(employee);
-        // Headcount was already counted from all current Appraisal_Sheet rows.
+        comp.current = (comp.current || 0) + 1;
         comp.utilized += consumed;
         compBases.set(key, comp);
       }
@@ -2826,12 +2828,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
           savedOriginalCount,
         );
       }
-      // Current Count follows every raw Appraisal_Sheet row in this cycle,
-      // regardless of eligibility, and does not deduplicate employee IDs.
-      const currentSheetHeadcount =
-        techSheetCurrentCounts.get(canonicalTechKey(techKey)) ||
-        techSheetCurrentCounts.get(techKey) ||
-        0;
+      // Current Count = active, eligible employees of this Tech-Ed: the same
+      // people as the Org Current Count, the budget base and the Appraisal
+      // Sheet grid (it used every raw sheet row from 2026-11-04 until 11-05,
+      // so an ineligible row made Org 22 vs Tech-Ed 23).
+      const currentSheetHeadcount = Number(stats.current) || 0;
       await persistOptional(
         distributionTable,
         row.id,
@@ -2860,6 +2861,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         applied_budget: updatedBudget,
         effective_percentage: effectivePct,
         current_headcount: currentSheetHeadcount,
+        // The row was read before this refresh: return the base just saved,
+        // not the previous request's value.
+        current_budget_base: stats.base,
         total_utilization: stats.utilized,
         original_headcount: savedOriginalCount,
       });
@@ -2979,7 +2983,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         row.id,
         compColumns,
         ["current_headcount"],
-        stats.count,
+        Number(stats.current) || 0,
       );
       await persistOptional(
         compTable,
@@ -2992,7 +2996,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         budget_base: stats.base,
         calculated_budget: originalBudget,
         applied_budget: updatedBudget,
-        current_headcount: stats.count,
+        current_headcount: Number(stats.current) || 0,
+        current_budget_base: stats.base,
         total_utilization: stats.utilized,
         original_headcount: savedOriginalCount,
         comp_manager_display: details.name || details.compKey,

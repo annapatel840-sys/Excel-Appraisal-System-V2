@@ -298,9 +298,10 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     });
     const cycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
     store.tables.Budget_Master[0].appraisal_cycle_id = cycleId;
+    // Rows need a ROWID: the store is read page by page by ROWID.
     store.tables.Eligibility_List.push(
-      { appraisal_cycle_id: cycleId, emp_id: 'E1', eligibility_status: 'Eligible' },
-      { appraisal_cycle_id: cycleId, emp_id: 'E2', eligibility_status: 'Eligible' },
+      { ROWID: '98001', appraisal_cycle_id: cycleId, emp_id: 'E1', eligibility_status: 'Eligible' },
+      { ROWID: '98002', appraisal_cycle_id: cycleId, emp_id: 'E2', eligibility_status: 'Eligible' },
     );
     const api = load(store);
     const initial = await get(api);
