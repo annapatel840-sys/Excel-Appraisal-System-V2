@@ -701,8 +701,40 @@ export default function DelegationScreen({
     }));
   };
 
+  // Appraiser Tech-ED validation:
+  //  1. an employee cannot be their own Appraiser Tech-ED (self assign);
+  //  2. if Sita is the Appraiser Tech-ED of Ram, Ram cannot be the Appraiser
+  //     Tech-ED of Sita (mutual assignment).
+  // Returns an error message, or "" when the assignment is allowed.
+  const appraiserConflict = (targetRows, field, personValue) => {
+    if (field !== "app" || !personValue) return "";
+    const personFull = resolveName(personValue);
+    const personKey = normText(personFull);
+    const isPerson = (x) => normText(resolveName(x.id)) === personKey;
+    const selfRows = targetRows.filter(isPerson);
+    if (selfRows.length) {
+      return `${nameOf(personFull)} cannot be the ${FIELDS.app} of themselves.`;
+    }
+    const personRow = rows.find(isPerson);
+    const personAppKey = personRow ? normText(resolveName(personRow.app)) : "";
+    if (!personAppKey) return "";
+    const mutual = targetRows.filter(
+      (x) => normText(resolveName(x.id)) === personAppKey,
+    );
+    if (mutual.length) {
+      const empFull = resolveName(mutual[0].id);
+      return `${nameOf(personFull)} cannot be the ${FIELDS.app} of ${nameOf(empFull)} because ${nameOf(empFull)} is already the ${FIELDS.app} of ${nameOf(personFull)}.`;
+    }
+    return "";
+  };
+
   const saveChange = async () => {
     const { row, field, person } = modal;
+    const conflict = appraiserConflict([row], field, person?.id);
+    if (conflict) {
+      setModal(null);
+      return say(conflict, true);
+    }
     // Reason is optional (the server needs some text, so a default is stored
     // when it is left empty).
     const whyText = reason.trim() || `${FIELDS[field]} change`;
@@ -884,6 +916,8 @@ export default function DelegationScreen({
     t = t.filter((r) => resolveName(r[field]) !== person);
     if (!t.length)
       return say("No employees to change (already assigned).", true);
+    const bulkConflict = appraiserConflict(t, field, person);
+    if (bulkConflict) return say(bulkConflict, true);
     setModal({
       type: "confirm",
       title: "Bulk Assign",
