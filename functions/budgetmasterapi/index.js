@@ -2766,17 +2766,19 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         rawPct !== null || orgPctSet ? (stats.base * effectivePct) / 100 : 0;
 
       const savedOriginalCountValue = row.original_headcount;
+      const rosterCount = techRosterCounts.get(techKey) || 0;
+      const savedOriginalCountNumber = n(savedOriginalCountValue);
+      // Repair a missing/zero baseline once from the generated roster. A
+      // positive saved baseline is immutable; later delegation/eligibility
+      // changes affect Current Count only.
       const hasSavedOriginalCount =
         savedOriginalCountValue !== null &&
         savedOriginalCountValue !== undefined &&
-        String(savedOriginalCountValue).trim() !== "";
-      const rosterCount = techRosterCounts.get(techKey) || 0;
-      // Once captured, Original Count is immutable. Do not infer corruption by
-      // comparing with today's roster or Employee_Master: approved delegation
-      // changes ownership and must only affect Current Count.
+        String(savedOriginalCountValue).trim() !== "" &&
+        (savedOriginalCountNumber > 0 || rosterCount === 0);
       const originalCountIsSet = hasSavedOriginalCount;
       const savedOriginalCount = originalCountIsSet
-        ? n(savedOriginalCountValue)
+        ? savedOriginalCountNumber
         : rosterCount;
       const update = {
         ROWID: row.id,
@@ -2808,8 +2810,17 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
           update[overrideField] = effectivePct;
       }
       await distributionTable.updateRow(update);
-      // Original Count is a frontend-only snapshot. Do not write it to
-      // Budget_Distribution; the browser captures the first allocation count.
+      // Persist the immutable Original Count centrally so every login sees
+      // the same baseline. Only initialize/repair a missing or zero value.
+      if (!hasSavedOriginalCount) {
+        await persistOptional(
+          distributionTable,
+          row.id,
+          distributionColumns,
+          ["original_headcount", "allocation_headcount"],
+          savedOriginalCount,
+        );
+      }
       // Current Count follows every raw Appraisal_Sheet row in this cycle,
       // regardless of eligibility, and does not deduplicate employee IDs.
       const currentSheetHeadcount =
@@ -2916,17 +2927,18 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         : (originalBase * pct) / 100;
       const updatedBudget = (stats.base * pct) / 100;
       const savedOriginalCountValue = row.original_headcount;
+      const rosterCount = compRosterCounts.get(pairKey) || 0;
+      const savedOriginalCountNumber = n(savedOriginalCountValue);
+      // Repair a missing/zero baseline once from the generated roster. A
+      // positive saved baseline remains immutable after delegation.
       const hasSavedOriginalCount =
         savedOriginalCountValue !== null &&
         savedOriginalCountValue !== undefined &&
-        String(savedOriginalCountValue).trim() !== "";
-      const rosterCount = compRosterCounts.get(pairKey) || 0;
-      // Preserve each Comp Manager's first saved count across delegation. The
-      // live/current count is recalculated below from eligible Appraisal Sheet
-      // rows; comparing with Employee_Master breaks the snapshot after reassignment.
+        String(savedOriginalCountValue).trim() !== "" &&
+        (savedOriginalCountNumber > 0 || rosterCount === 0);
       const originalCountIsSet = hasSavedOriginalCount;
       const savedOriginalCount = originalCountIsSet
-        ? n(savedOriginalCountValue)
+        ? savedOriginalCountNumber
         : rosterCount;
       const update = {
         ROWID: row.id,
@@ -2948,8 +2960,15 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         }
       }
       await compTable.updateRow(update);
-      // Original Count is a frontend-only snapshot. Do not write it to
-      // Budget_Distribution_Comp; the browser captures the first allocation count.
+      if (!hasSavedOriginalCount) {
+        await persistOptional(
+          compTable,
+          row.id,
+          compColumns,
+          ["original_headcount", "allocation_headcount"],
+          savedOriginalCount,
+        );
+      }
       await persistOptional(
         compTable,
         row.id,
