@@ -208,10 +208,18 @@ function mapComp(row) {
     current_budget_base: n(
       value(row, "current_budget_base") || value(row, "current_base"),
     ),
-    // Keep a missing snapshot blank. Converting blank to 0 made the refresh
-    // think an Original Count was already saved, so the real baseline was
-    // never captured and the screen showed 0 forever.
-    original_headcount: originalHeadcountValue(row),
+    // Budget_Distribution_Comp has no dedicated Original Count column in
+    // some deployments. In that schema current_headcount is the shared,
+    // one-time baseline; the live count is calculated from the roster below.
+    original_headcount:
+      originalHeadcountValue(row) !== ""
+        ? originalHeadcountValue(row)
+        : firstValue(row, ["current_headcount"]),
+    original_headcount_is_persisted:
+      (originalHeadcountValue(row) !== "" ||
+        (firstValue(row, ["current_headcount"]) !== "" &&
+          firstValue(row, ["current_headcount"]) !== null &&
+          firstValue(row, ["current_headcount"]) !== undefined)),
     headcount: firstValue(row, ["headcount"]),
     current_headcount: firstValue(row, ["current_headcount"]),
     utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
@@ -2988,13 +2996,18 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
           savedOriginalCount,
         );
       }
-      await persistOptional(
-        compTable,
-        row.id,
-        compColumns,
-        ["current_headcount"],
-        Number(stats.current) || 0,
-      );
+      // Preserve current_headcount as the shared Original Count in
+      // legacy schemas without original_headcount/allocation_headcount.
+      // Never replace that saved baseline with a live count on refresh.
+      if (!hasSavedOriginalCount) {
+        await persistOptional(
+          compTable,
+          row.id,
+          compColumns,
+          ["current_headcount"],
+          savedOriginalCount,
+        );
+      }
       await persistOptional(
         compTable,
         row.id,
@@ -3006,6 +3019,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         budget_base: stats.base,
         calculated_budget: originalBudget,
         applied_budget: updatedBudget,
+        // Return live Current Count to the response only; do not persist it
+        // over the legacy Original Count snapshot.
         current_headcount: Number(stats.current) || 0,
         current_budget_base: stats.base,
         total_utilization: stats.utilized,
