@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { useAccess } from "@/lib/access-store";
+import { useCatalystUser } from "@/lib/catalyst-auth";
+import { masterSnapshotKey, readMasterSnapshot, writeMasterSnapshot } from "@/lib/roster-snapshot";
 
 const STATIC_COL_META = {
   emp_id: { label: "Employee ID", frozen: true },
@@ -346,6 +348,9 @@ const PAYROLL_PAGE_SIZE = 50;
 
 export function PayrollDataPage() {
   const canAudit = useAccess().canAction("viewAudit");
+  const signedInUser = useCatalystUser();
+  const snapshotScope = String(signedInUser?.email || signedInUser?.id || signedInUser?.user_id || "anonymous").trim().toLowerCase();
+  const payrollSnapshotKey = masterSnapshotKey(snapshotScope, "payroll");
   const [stored, setStored] = useState([]);
   const [audit, setAudit] = useState([]);
   const [cycles, setCycles] = useState([]);
@@ -410,13 +415,17 @@ export function PayrollDataPage() {
 
   useEffect(() => {
     let active = true;
-    // Keep the previous rows on screen while a refresh is in flight.
-    // The shared API cache makes quick revisits resolve immediately.
+    let freshApplied = false;
     if (!stored.length) setLoading(true);
     setLoadError("");
-    // The audit log (the whole Appraisal_Audit table) is only needed by the
-    // Audit Trail panel, so it is read when that panel opens, not before the
-    // table can be shown.
+    // Show the last successful per-user IndexedDB copy immediately on refresh.
+    readMasterSnapshot(payrollSnapshotKey).then((snapshot) => {
+      if (!active || freshApplied || !snapshot) return;
+      setStored(Array.isArray(snapshot.payroll) ? snapshot.payroll : []);
+      setCycles(Array.isArray(snapshot.cycles) ? snapshot.cycles : []);
+      setSchema(snapshot.schema || null);
+      setLoading(false);
+    });
     Promise.all([
       payrollCycleRequest("payroll"),
       payrollCycleRequest("cycles"),
@@ -424,22 +433,23 @@ export function PayrollDataPage() {
     ])
       .then(([payroll, cycleRows, schemaData]) => {
         if (!active) return;
+        freshApplied = true;
+        const payrollSchema = Array.isArray(schemaData) ? schemaData.find((item) => String(item.name).toLowerCase() === "payroll") : null;
+        const nextSchema = payrollSchema || null;
         setStored(payroll);
         setCycles(cycleRows);
-        const payrollSchema = Array.isArray(schemaData) ? schemaData.find((item) => String(item.name).toLowerCase() === "payroll") : null;
-        setSchema(payrollSchema || null);
+        setSchema(nextSchema);
         setLoadError("");
+        writeMasterSnapshot(payrollSnapshotKey, { payroll, cycles: cycleRows, schema: nextSchema });
       })
       .catch((error) => {
-        if (active) setLoadError(error.message);
+        if (active && !stored.length) setLoadError(error.message);
       })
       .finally(() => {
         if (active) setLoading(false);
       });
-    return () => {
-      active = false;
-    };
-  }, [reloadToken]);
+    return () => { active = false; };
+  }, [reloadToken, payrollSnapshotKey]);
 
   useEffect(() => {
     if (!auditOpen) return undefined;
