@@ -411,7 +411,7 @@ export function DashboardOverview() {
   const levelCards = level ? (
     <div className="grid gap-3 lg:grid-cols-2">
       <Tile>
-        <CardHead id="comp" title={`Completion by ${level.n}`} sub="Edited vs remaining, least complete first" />
+        <CardHead id="comp" title={`Completion by ${level.n}`} sub="Edited vs Remaining, least complete first" />
         {view === "c" ? (
           <ColChart
             pct={unit === "p"}
@@ -434,7 +434,7 @@ export function DashboardOverview() {
       </Tile>
 
       <Tile>
-        <CardHead id="util" title={`Utilisation by ${level.n}`} sub="Hike + bonus used vs allocated (Budget Master)" />
+        <CardHead id="util" title={`Utilisation by ${level.n}`} sub="Hike + Bonus used vs allocated (Budget Master)" />
         {view === "c" ? (
           <ColChart
             pct={unit === "p"}
@@ -490,7 +490,7 @@ export function DashboardOverview() {
       </Tile>
 
       <Tile>
-        <CardHead id="pbt" title={`PB vs Target PB by ${level.n}`} sub={`PB paid vs target agreed last year · groups under ${MIN_GROUP} people with a target are left out`} />
+        <CardHead id="pbt" title={`PB vs Target PB by ${level.n}`} sub={`PB paid vs Target Agreed last year · groups under ${MIN_GROUP} people with a target are left out`} />
         {pbt.length === 0 ? (
           <div className="py-3 text-xs text-[#6B7280]">Not enough people with a target to compare.</div>
         ) : view === "c" ? (
@@ -580,7 +580,7 @@ export function DashboardOverview() {
       {/* KPI tiles */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <Tile>
-          <Cap>Edited vs remaining to edit</Cap>
+          <Cap>Edited vs Remaining to edit</Cap>
           <Big value={n ? ((editedCount / n) * 100).toFixed(1) : "0.0"} unit="%" />
           <Sub>{inr(editedCount)} edited · {inr(remaining)} remaining</Sub>
           <div className="mt-2.5"><SegBar parts={[{ label: "Edited", value: editedCount, color: C.pb, text: String(editedCount) }, { label: "Remaining", value: remaining, color: C.left, text: String(remaining) }]} total={n} /></div>
@@ -588,7 +588,7 @@ export function DashboardOverview() {
         </Tile>
 
         <Tile>
-          <Cap>Budget used</Cap>
+          <Cap>Budget Used</Cap>
           <Big value={usedPct.toFixed(1)} unit="%" color={usedPct > 100 ? "#C0392B" : undefined} />
           <Sub>
             {money(used)} of {money(allocated)} ·{" "}
@@ -601,10 +601,10 @@ export function DashboardOverview() {
         </Tile>
 
         <Tile>
-          <Cap>Average hike %</Cap>
+          <Cap>Average Hike %</Cap>
           <Big value={avgHike.toFixed(2)} unit="%" />
           <Sub>Across {inr(n)} people</Sub>
-          <Sub>Hike amount {money(parts.hike)}</Sub>
+          <Sub>Hike Amount {money(parts.hike)}</Sub>
         </Tile>
 
         <Tile>
@@ -616,7 +616,7 @@ export function DashboardOverview() {
         </Tile>
 
         <Tile>
-          <Cap>Retention bonus (RB)</Cap>
+          <Cap>Retention Bonus (RB)</Cap>
           <Big value={money(rbTotal)} />
           <Sub>{baseTotal ? ((rbTotal / baseTotal) * 100).toFixed(2) : "0.00"}% of base · {inr(rbPeople ? rbTotal / rbPeople : 0)} per person ({inr(rbPeople)} people)</Sub>
         </Tile>
@@ -627,7 +627,7 @@ export function DashboardOverview() {
         <div className="float-right">
           <Toggle value={ratingView} onChange={setRatingView} options={[["s", "Bar"], ["c", "Columns"], ["d", "Donut"]]} />
         </div>
-        <Cap>Ratings summary</Cap>
+        <Cap>Ratings Summary</Cap>
         <div className="h-2" />
         {ratingView === "d" ? (
           <Donut parts={ratingParts} total={n} />
