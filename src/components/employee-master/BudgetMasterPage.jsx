@@ -934,10 +934,13 @@ function HRApplyBudget() {
           const savedCount = origSnap[selectedCycle]?.teCount?.[key];
           const legacyCount = row.headcount;
           const hasApiCount = row.original_headcount_is_persisted === true &&
-            originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
+            originalCountValue !== null && originalCountValue !== undefined &&
+            String(originalCountValue).trim() !== "" &&
+            (amount(originalCountValue) > 0 || liveCount === 0);
           const hasLegacyCount = legacyCount !== null && legacyCount !== undefined &&
             String(legacyCount).trim() !== "" && Number(legacyCount) > 0;
-          const hasLocalCount = savedCount !== null && savedCount !== undefined && Number.isFinite(Number(savedCount));
+          const hasLocalCount = savedCount !== null && savedCount !== undefined &&
+            Number.isFinite(Number(savedCount)) && (Number(savedCount) > 0 || liveCount === 0);
           // If a previous bad frontend snapshot stored today's live count,
           // recover the older baseline from the legacy headcount field.
           const localLooksLikeLive = hasLocalCount && Number(savedCount) === liveCount;
@@ -968,10 +971,13 @@ function HRApplyBudget() {
       const savedCount = origSnap[selectedCycle]?.teCount?.[key];
       const legacyCount = row.headcount;
       const hasApiCount = row.original_headcount_is_persisted === true &&
-        originalCountValue !== null && originalCountValue !== undefined && String(originalCountValue).trim() !== "";
+        originalCountValue !== null && originalCountValue !== undefined &&
+        String(originalCountValue).trim() !== "" &&
+        (amount(originalCountValue) > 0 || currentCount === 0);
       const hasLegacyCount = legacyCount !== null && legacyCount !== undefined &&
         String(legacyCount).trim() !== "" && Number(legacyCount) > 0;
-      const hasLocalCount = savedCount !== null && savedCount !== undefined && Number.isFinite(Number(savedCount));
+      const hasLocalCount = savedCount !== null && savedCount !== undefined &&
+        Number.isFinite(Number(savedCount)) && (Number(savedCount) > 0 || currentCount === 0);
       const localLooksLikeLive = hasLocalCount && Number(savedCount) === currentCount;
       const useLegacyMigration = !hasApiCount && hasLegacyCount &&
         (!hasLocalCount || localLooksLikeLive) && Number(legacyCount) !== currentCount;
@@ -1164,7 +1170,8 @@ function HRApplyBudget() {
       // Migrate only a known baseline. Never seed Original Count from the
       // live team size on page load; that caused 202 -> 512 to become 512 -> 512.
       const hasStoredCount = Number.isFinite(Number(next.teCount[row.canonicalKey])) &&
-        next.teCount[row.canonicalKey] !== null && next.teCount[row.canonicalKey] !== undefined;
+        next.teCount[row.canonicalKey] !== null && next.teCount[row.canonicalKey] !== undefined &&
+        (Number(next.teCount[row.canonicalKey]) > 0 || row.team === 0);
       if (row.pctSet && row.team0 > 0 && (row.originalCountNeedsMigration || !hasStoredCount)) {
         next.teCount[row.canonicalKey] = amount(row.team0);
         changed = true;
