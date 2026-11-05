@@ -558,15 +558,18 @@ const toNum = (v) => {
    ------------------------------------------------------------------ */
 const FIT_BASE_WIDTH = 700;
 const FIT_MIN = 0.55; // below this the table scrolls instead of shrinking
-function useFitScale() {
+function useFitScale(ready = true) {
   const boxRef = useRef(null);
   const fitRef = useRef(null);
   const [scale, setScale] = useState(1);
 
   useLayoutEffect(() => {
+    // The table is only rendered once an employee is available. Re-run when
+    // it appears; otherwise the refs are still empty on first mount, nothing
+    // is observed, and the table stays at 100% (looks zoomed) forever.
     const box = boxRef.current;
     const fit = fitRef.current;
-    if (!box || !fit) return undefined;
+    if (!ready || !box || !fit) return undefined;
     const calc = () => {
       const needH = fit.offsetHeight || 1; // layout height ignores transforms
       const availH = box.clientHeight;
@@ -591,7 +594,7 @@ function useFitScale() {
       ro.disconnect();
       window.removeEventListener("resize", calc);
     };
-  }, []);
+  }, [ready]);
 
   return { boxRef, fitRef, scale };
 }
@@ -1280,7 +1283,7 @@ export function DetailScreenPage({
 
 
   // Measure + scale the compensation table so it fits one screen.
-  const { boxRef, fitRef, scale } = useFitScale();
+  const { boxRef, fitRef, scale } = useFitScale(Boolean(employee));
 
   // Remember each employee's values when first shown, so edits can be highlighted.
   if (employee && !baselineRef.current[employee.id]) {
