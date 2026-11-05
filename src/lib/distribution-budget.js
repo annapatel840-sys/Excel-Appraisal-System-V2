@@ -187,12 +187,51 @@ const employeeUtilized = (employee) => {
     previousJoining
   );
 };
+// Read the immutable Tech-Ed headcount snapshot written by HR Budget Master.
+// Match the canonical employee ID/name aliases rather than assuming every page
+// uses the same display form (ID, name, or "ID - Name").
+const readTechEdOriginalCount = (cycleId, identities) => {
+  if (typeof window === "undefined" || !cycleId) return null;
+  try {
+    const saved = JSON.parse(window.localStorage.getItem("excel-appraisal-budget-original-v1") || "{}");
+    const snapshot = saved?.[String(cycleId)]?.teCount;
+    if (!snapshot || typeof snapshot !== "object") return null;
+    const tokens = new Set();
+    const add = (value) => {
+      const parts = ownerParts(value);
+      for (const part of parts) {
+        const normalized = normalizeOwner(part);
+        if (normalized) {
+          tokens.add(normalized);
+          tokens.add(normalized.replace(/[^a-z0-9]/g, ""));
+        }
+      }
+    };
+    (Array.isArray(identities) ? identities : [identities]).forEach(add);
+    for (const [key, value] of Object.entries(snapshot)) {
+      const keyTokens = new Set();
+      for (const part of ownerParts(key)) {
+        const normalized = normalizeOwner(part);
+        if (normalized) {
+          keyTokens.add(normalized);
+          keyTokens.add(normalized.replace(/[^a-z0-9]/g, ""));
+        }
+      }
+      if ([...keyTokens].some((token) => token && tokens.has(token))) {
+        const count = Number(value);
+        return Number.isFinite(count) && count >= 0 ? count : null;
+      }
+    }
+  } catch (_) {}
+  return null;
+};
+
 const byDate = (a, b) =>
   String((a.date || "") + (a.time || "")).localeCompare(
     String((b.date || "") + (b.time || "")),
   );
 
-export { num, normalizeOwner, ownerParts, ownerKey, ownerMatches, isActiveAndEligible, employeeUtilized, byDate };
+export { num, normalizeOwner, ownerParts, ownerKey, ownerMatches, isActiveAndEligible, employeeUtilized, byDate, readTechEdOriginalCount };
 
 export function useDistributionBudget() {
   const user = useCatalystUser();
