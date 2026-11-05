@@ -448,16 +448,28 @@ async function loadDelegation(zcql, cycleId) {
     if (!cur.techEd) cur.techEd = managerKey(managerValue(techEdValues));
     if (!cur.compMgr) cur.compMgr = managerKey(managerValue(compMgrValues));
   };
+  // The active-cycle Appraisal_Sheet is the same assignment source shown to
+  // reviewers in the app. It must win when it conflicts with an older/stale
+  // Delegation row; otherwise the UI can show an employee under one Tech-Ed
+  // while the access scope silently assigns that employee to another.
+  cycleSheetRows.forEach((r) => assign(
+    employeeOf(r[s.empId]),
+    [r.appraiser_tech_ed, r.appraiser_tech_ed1, r.appraiser_tech_ed_id, r.appraiser_teched, r.appraiserTechED, r.tech_ed, r.tech_ed_id],
+    [r.comp_manager, r.comp_manager_id, r.compManager, r.comp_manager_name, r.comp_manager_display],
+  ));
+  // Delegation remains the fallback for employees without an active-cycle
+  // Appraisal_Sheet assignment.
   rows.forEach((r) => assign(
     employeeOf(r[d.empId]),
     [r[d.appraiserTechEdId], r.appraiser_tech_ed_id, r.appraiser_teched, r.tech_ed, r.tech_ed_id],
     [r[d.compManagerId], r.comp_manager_id, r.compManager, r.comp_manager_name, r.comp_manager_display],
   ));
-  [cycleSheetRows, noCycleSheetRows].forEach((list) => list.forEach((r) => assign(
+  // Legacy / imported rows are fallback-only and cannot override this cycle.
+  noCycleSheetRows.forEach((r) => assign(
     employeeOf(r[s.empId]),
     [r.appraiser_tech_ed, r.appraiser_tech_ed1, r.appraiser_tech_ed_id, r.appraiser_teched, r.appraiserTechED, r.tech_ed, r.tech_ed_id],
     [r.comp_manager, r.comp_manager_id, r.compManager, r.comp_manager_name, r.comp_manager_display],
-  )));
+  ));
   masterRows.forEach((r) => assign(
     String(r[e.empId] || '').trim(),
     [r.appraiser_tech_ed, r.appraiser_tech_ed1, r.appraiser_tech_ed_id, r.appraiser_teched, r.appraiserTechED, r.tech_ed, r.tech_ed_id],
