@@ -3687,6 +3687,9 @@ module.exports = async function (req, res) {
         "applied_budget",
         "appraisal_cycle_id",
         "appraiser_tech_ed_id",
+        // Temporary HR correction: allow Original Count to be set from the
+        // current Appraisal Sheet roster while repairing legacy zero snapshots.
+        "original_headcount",
       ],
       comp: [
         "percentage",
