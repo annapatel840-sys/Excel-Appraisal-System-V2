@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
+import { NUMBER_OPS, TEXT_OPS } from "@/lib/appraisal-filters";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
@@ -259,6 +260,9 @@ export default function DelegationScreen({
   const [locked, setLocked] = useState(false);
   const [colFilters, setColFilters] = useState({});
   const [sort, setSort] = useState({ key: "employee", dir: "asc" });
+  // The grid starts sorted by Employee, but a header only looks "sorted" once
+  // the user has picked a sort, so all header filter buttons look the same.
+  const [sortChosen, setSortChosen] = useState(false);
   const [colWidths, setColWidths] = useState(() =>
     Object.fromEntries(COLS.map((c) => [c.key, c.w])),
   );
@@ -598,6 +602,24 @@ export default function DelegationScreen({
     setPage(1);
   };
   const filtersActive = Object.keys(colFilters).length > 0;
+  // Text for a filter tag shown above the grid, e.g. "Director: EMP002 - Ashok Kumar".
+  const describeColFilter = (key, f) => {
+    const label = COLS.find((c) => c.key === key)?.label || key;
+    if (f.kind === "enum") return `${label}: ${(f.values || []).join(", ")}`;
+    const ops = f.kind === "text" ? TEXT_OPS : NUMBER_OPS;
+    const opText = (op) =>
+      (ops.find((o) => o.value === op)?.label || op).toLowerCase();
+    const one = (op, v1, v2) =>
+      op === "between"
+        ? `between ${v1} and ${v2}`
+        : f.kind === "text"
+          ? `${opText(op)} "${v1}"`
+          : `${opText(op)} ${v1}`;
+    let text = `${label} ${one(f.op, f.value, f.value2)}`;
+    if (f.op2 && String(f.value3 ?? "").trim() !== "")
+      text += ` ${f.join === "or" ? "or" : "and"} ${one(f.op2, f.value3)}`;
+    return text;
+  };
   // The Employee column ("EMP001 - Name") stays fixed on the left while scrolling.
   const fzLeft = (key) => (key === "employee" ? SELECT_W : undefined);
 
@@ -1571,6 +1593,23 @@ export default function DelegationScreen({
             </div>
           )}
 
+          {filtersActive && (
+            <div className="dg-tags" aria-label="Active filters">
+              {Object.entries(colFilters).map(([key, f]) => (
+                <button
+                  key={key}
+                  type="button"
+                  className="dg-tag"
+                  title="Remove this filter"
+                  onClick={() => setColFilter(key, undefined)}
+                >
+                  {describeColFilter(key, f)}
+                  <span aria-hidden="true">✕</span>
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="dg-tw">
             {rosterLoading && !showingSaved && showRosterLoading ? (
               <div className="empty" role="status">Loading delegation data…</div>
@@ -1651,13 +1690,17 @@ export default function DelegationScreen({
                             allValues={[]}
                             onChange={(f) => setColFilter(c.key, f)}
                             sortDirection={
-                              sort.key === c.key ? sort.dir : null
+                              sortChosen && sort.key === c.key ? sort.dir : null
                             }
-                            sortLevel={sort.key === c.key ? 1 : 0}
-                            onSortAsc={() => setSort({ key: c.key, dir: "asc" })}
-                            onSortDesc={() =>
-                              setSort({ key: c.key, dir: "desc" })
-                            }
+                            sortLevel={sortChosen && sort.key === c.key ? 1 : 0}
+                            onSortAsc={() => {
+                              setSortChosen(true);
+                              setSort({ key: c.key, dir: "asc" });
+                            }}
+                            onSortDesc={() => {
+                              setSortChosen(true);
+                              setSort({ key: c.key, dir: "desc" });
+                            }}
                           />
                         </div>
                         <div
@@ -1800,18 +1843,6 @@ export default function DelegationScreen({
             </span>
             <span>New employee → Comp. Manager defaults to Tech-ED</span>
             <span>Appraiser Tech-ED defaults to Tech-ED</span>
-            {filtersActive && (
-              <button
-                type="button"
-                className="btn sm"
-                onClick={() => {
-                  setColFilters({});
-                  setPage(1);
-                }}
-              >
-                Clear filters
-              </button>
-            )}
             <span style={{ flex: 1 }} />
             <span className="pg">
               <button
@@ -2335,6 +2366,10 @@ const CSS = `
 .dg .tag{font-size:10.5px;padding:2px 8px;border-radius:9px;font-weight:700;white-space:nowrap}
 .dg .tag.cf{background:#e8f5ee;color:#1e7a45}.dg .tag.nw{background:#e6efff;color:#1d4ed8}.dg .tag.hr{background:#fff1d6;color:#94620a}
 .dg .tag.te{background:#efe8fb;color:#6b3fb0}.dg .tag.pd{background:#fde8e6;color:#b42318}.dg .tag.gr{background:#eef1f5;color:#4b5563}
+.dg-tags{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px 2px}
+.dg-tag{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:999px;background:#e8eef6;color:#17365d;padding:3px 10px;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;max-width:100%}
+.dg-tag:hover{background:#d8e3f1}
+.dg-tag span{font-size:10px;opacity:.8}
 .dg-foot{display:flex;padding:9px 12px;font-size:11.5px;color:#6b7685;gap:18px;align-items:center;flex-wrap:wrap;border-top:1px solid #eef1f4}
 .dg .pg{display:flex;gap:6px;align-items:center}
 .dg-help{padding:9px 12px 12px;font-size:11.5px;color:#6b7685;line-height:1.6;border-top:1px solid #eef1f4;background:#fbfcfd}
