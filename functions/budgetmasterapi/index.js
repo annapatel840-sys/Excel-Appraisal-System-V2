@@ -2847,6 +2847,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
           savedOriginalCount,
         );
       }
+      // Return the live count to the UI without persisting over the shared
+      // Original Count snapshot stored in this legacy field.
+      const currentSheetHeadcount = Number(stats.current) || 0;
       await persistOptional(
         distributionTable,
         row.id,
@@ -2867,7 +2870,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         calculated_budget: originalBudget,
         applied_budget: updatedBudget,
         effective_percentage: effectivePct,
-        current_headcount: savedOriginalCount,
+        current_headcount: currentSheetHeadcount,
         // The row was read before this refresh: return the base just saved,
         // not the previous request's value.
         current_budget_base: stats.base,
