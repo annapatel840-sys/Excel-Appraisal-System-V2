@@ -895,6 +895,24 @@ export function useDistributionBudget() {
     if (!applies || !activeCycleId || !techOwnerKey) return [];
     const managerStats = new Map();
     const currentTechOwner = techOwnerKey;
+    const signedInManagerAliases = [
+      user?.id,
+      user?.row_id,
+      user?.ROWID,
+      user?.user_id,
+      user?.userId,
+      user?.empId,
+      user?.emp_id,
+      user?.employeeId,
+      user?.employee_id,
+      user?.name,
+      user?.display_name,
+      user?.email,
+      user?.email_id,
+    ].filter(Boolean).flatMap((value) => ownerParts(value));
+    const isSignedInManager = (value) =>
+      currentUserMatchesManager(value, user, employeeRows) ||
+      ownerMatches(value, signedInManagerAliases);
     const resolveTechAssignment = (raw) => {
       const text = String(raw || "").trim();
       const linked = techEdOwners.find((item) =>
@@ -988,10 +1006,8 @@ export function useDistributionBudget() {
         "";
       const manager = resolveManager(rawManager);
       if (!manager) return;
-      if (
-        isCompManagerView &&
-        !currentUserMatchesManager(manager, user, employeeRows)
-      )
+      if (isCompManagerView && !isSignedInManager(rawManager) &&
+          !isSignedInManager(manager))
         return;
       const key = ownerKey(manager);
       const stats = managerStats.get(key) || {
