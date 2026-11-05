@@ -420,7 +420,7 @@ async function loadDelegation(zcql, cycleId) {
   // Managers not in Employee_Master keep their own normalized value.
   const managerKey = (value) => {
     const p = person(value);
-    return p ? norm(p.empId) : norm(value);
+    return p ? norm(p.empId) : norm(lookupText(value));
   };
   const employeeOf = (value) => {
     const p = person(value);
