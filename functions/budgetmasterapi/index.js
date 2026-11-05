@@ -1182,7 +1182,7 @@ function matchesTechEdOwner(owner, a, techEdOwners = []) {
   });
 }
 
-function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = []) {
+function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = [], appraisalSheetRows = []) {
   if (!a || !a.enforced || (a.scope && a.scope.all)) return bundle;
 
   const employeeRoster = bundle.employeeRoster || [];
@@ -1239,33 +1239,70 @@ function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = []) {
     // This links the manager to the same child allocation shown in the
     // Tech-Ed Budget Distribution list even if Catalyst session identity uses
     // a different ID/email form from Budget_Distribution_Comp.comp_manager.
-    ownEmployees.forEach((employee) => {
-      const assignedManagers = [
-        employee.comp_manager,
-        employee.comp_manager_id,
-        employee.comp_manager_row_id,
-        employee.comp_manager_emp_id,
-        employee.comp_manager_name,
-        employee.comp_manager_display,
-        employee.compManager,
-      ].map(referenceText).filter(Boolean);
-      assignedManagers.forEach((assigned) => {
-        const text = assigned.toLowerCase();
-        managerAliases.add(text);
-        managerAliases.add(ownerKey(text));
-        const linked = employeeMasterRows.find((master) => {
-          const aliases = [
-            master.emp_id, master.employee_id, master.ROWID, master.rowid,
-            master.emp_name, master.employee_name, master.name,
-            master.email_id, master.email, master.work_email,
-          ].flatMap((value) => {
-            const alias = referenceText(value).toLowerCase();
-            return alias ? [alias, ownerKey(alias)] : [];
-          });
-          return aliases.includes(text) || aliases.includes(ownerKey(text));
+    const addAssignedManager = (rawValue) => {
+      const assigned = referenceText(rawValue);
+      if (!assigned) return;
+      const text = assigned.toLowerCase();
+      managerAliases.add(text);
+      managerAliases.add(ownerKey(text));
+      const linked = employeeMasterRows.find((master) => {
+        const aliases = [
+          master.emp_id, master.employee_id, master.ROWID, master.rowid,
+          master.emp_name, master.employee_name, master.name,
+          master.email_id, master.email, master.work_email,
+        ].flatMap((value) => {
+          const alias = referenceText(value).toLowerCase();
+          return alias ? [alias, ownerKey(alias)] : [];
         });
-        addManagerMasterAliases(linked);
+        return aliases.includes(text) || aliases.includes(ownerKey(text));
       });
+      addManagerMasterAliases(linked);
+    };
+
+    // readBundle intentionally contains only the three budget tables, so its
+    // employeeRoster is empty. Build the manager relationship from the actual
+    // active access scope + Appraisal_Sheet rows loaded for this request.
+    // This is the reliable link: scoped employee -> assigned Comp Manager ->
+    // Employee_Master identity -> Budget_Distribution_Comp child row.
+    const scopedEmployeeKeys = new Set(
+      (a.scope?.empIds || []).map((id) => referenceText(id).toLowerCase()).filter(Boolean),
+    );
+    const masterAliasesByEmployee = employeeMasterRows.map((employee) => ({
+      employee,
+      aliases: [
+        employee.emp_id, employee.employee_id, employee.ROWID, employee.rowid,
+      ].map((value) => referenceText(value).toLowerCase()).filter(Boolean),
+    }));
+    const scopedMasterRows = masterAliasesByEmployee.filter(({ aliases }) =>
+      aliases.some((alias) => scopedEmployeeKeys.has(alias)),
+    );
+    const scopedEmployeeAliases = new Set(
+      scopedMasterRows.flatMap(({ aliases }) => aliases),
+    );
+    const assignmentFields = [
+      "comp_manager", "comp_manager_id", "comp_manager_row_id",
+      "comp_manager_emp_id", "comp_manager_name", "comp_manager_display",
+      "compManager", "compManagerId",
+    ];
+    appraisalSheetRows.forEach((sheetRow) => {
+      const rawEmployee = referenceText(firstValue(sheetRow, [
+        "emp_id", "empId", "employee_id", "employeeId", "employee_id_text",
+      ]) || idOf(sheetRow)).toLowerCase();
+      const linkedEmployee = employeeMasterRows.find((employee) => {
+        const aliases = [
+          employee.emp_id, employee.employee_id, employee.ROWID, employee.rowid,
+        ].map((value) => referenceText(value).toLowerCase()).filter(Boolean);
+        return aliases.includes(rawEmployee);
+      });
+      const belongsToScope =
+        scopedEmployeeKeys.has(rawEmployee) ||
+        scopedEmployeeAliases.has(rawEmployee) ||
+        (linkedEmployee && scopedMasterRows.some((item) => item.employee === linkedEmployee));
+      if (!belongsToScope) return;
+      assignmentFields.forEach((field) => addAssignedManager(firstValue(sheetRow, [field])));
+    });
+    ownEmployees.forEach((employee) => {
+      assignmentFields.forEach((field) => addAssignedManager(employee[field]));
     });
     const isOwnCompAllocation = (row) => {
       const raw = referenceText(row.comp_manager).toLowerCase();
@@ -3474,7 +3511,7 @@ module.exports = async function (req, res) {
             ),
         });
       }
-      const bundle = filterOwn(calculatedBundle, a, techEdOwners, sourceRows.masterEmployeeRows || []);
+      const bundle = filterOwn(calculatedBundle, a, techEdOwners, sourceRows.masterEmployeeRows || [], sourceRows.appraisalRows || []);
       logBudgetStage("response ready", {
         returnedTechEdRows: bundle.techEd.length,
         returnedCompManagerRows: bundle.compManager.length,
