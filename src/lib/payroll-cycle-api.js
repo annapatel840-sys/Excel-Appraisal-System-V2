@@ -9,7 +9,7 @@ import { catalystFetch, catalystFunctionUrl, onCatalystWrite } from "./catalyst-
 const SHARED_READ_RESOURCES = new Set(["cycles", "eligibility", "locations", "schema", "feedback", "payroll"]);
 // Large reads ask payrollcycleapi to gzip the response (it does so over 32 KB).
 const GZIP_READ_RESOURCES = new Set(["payroll", "audit", "feedback"]);
-const SHARED_READ_MS = 15000;
+const SHARED_READ_MS = 60000;
 const sharedReads = new Map(); // url -> { startedAt, promise }
 
 // Each caller gets its own copy, so one screen sorting or editing the list
