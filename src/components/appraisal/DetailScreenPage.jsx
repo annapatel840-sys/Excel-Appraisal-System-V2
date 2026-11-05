@@ -1362,6 +1362,19 @@ export function DetailScreenPage({
     }
   }, [employee?.empId, loadHistory]);
 
+  // Keep the next three employees' history ready before the user presses
+  // Save & Next. Their current appraisal values already come from liveRows;
+  // this preloads only the separate historical timeline, not another roster.
+  useEffect(() => {
+    const upcomingIds = orderedEmployeeIds.slice(activeIndex + 1, activeIndex + 4);
+    if (!upcomingIds.length) return;
+    const byId = new Map((cachedLiveRows || []).map((row) => [row.id, row]));
+    upcomingIds.forEach((id) => {
+      const upcoming = byId.get(id);
+      if (upcoming?.empId) loadHistory(upcoming.empId).catch(() => {});
+    });
+  }, [activeIndex, orderedEmployeeIds, cachedLiveRows, loadHistory]);
+
   const empKey = employee ? String(employee.empId || "").trim() : "";
   const historyState = historyByEmpId[empKey];
   const historyRecords = historyState?.data || [];
@@ -1652,18 +1665,23 @@ export function DetailScreenPage({
   const goTo = (next) => {
     const nextIndex = Math.max(0, Math.min(rows.length - 1, next));
     const nextEmployee = rows[nextIndex];
-    // Start the next employee's history request before changing the screen.
-    // If a saved snapshot exists, loadHistory paints it immediately.
-    if (nextEmployee?.empId) loadHistory(nextEmployee.empId).catch(() => {});
-    setIndex(nextIndex);
-    setSearch("");
 
+    // Commit the field being edited while the current employee is still
+    // mounted. The input's onBlur handler writes its optimistic value to the
+    // shared Appraisal Sheet store before we switch employee.
     const activeElement = document.activeElement;
-    if (activeElement && typeof activeElement.blur === "function") {
+    if (activeElement && activeElement !== document.body && typeof activeElement.blur === "function") {
       activeElement.blur();
     }
+
+    // The next employee's history should already be in flight from the
+    // look-ahead prefetch above. This call also covers direct/search navigation.
+    if (nextEmployee?.empId) loadHistory(nextEmployee.empId).catch(() => {});
+    setSelectedEmpId(nextEmployee?.empId || "");
+    setSearch("");
+    setIndex(nextIndex);
   };
-  const safeIndex = Math.min(index, Math.max(rows.length - 1, 0));
+  const safeIndex = Math.min(activeIndex, Math.max(rows.length - 1, 0));
 
   const cols = [
     "minmax(0,2.25fr)",
