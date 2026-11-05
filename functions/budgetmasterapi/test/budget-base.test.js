@@ -285,6 +285,54 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     assert.strictEqual(Number(changedComp.current_headcount), 22, 'Comp Manager Current Count follows current eligible sheet rows');
   });
 
+  await t('repairs zero Tech-Ed and Comp Manager Original Count snapshots once and keeps Current Count live', async () => {
+    const store = makeStore({
+      Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 8 }],
+      Budget_Distribution: [], Budget_Distribution_Comp: [],
+      Employee_Master: [], Eligibility_List: [], Payroll_Data: [],
+      Appraisal_Cycle_Master: [{ cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' }],
+      Appraisal_Sheet: [
+        sheet('E1', 'T1', 'C1', 1000000, 0),
+        sheet('E2', 'T1', 'C1', 1000000, 0),
+      ],
+    });
+    const cycleId = store.tables.Appraisal_Cycle_Master[0].ROWID;
+    store.tables.Budget_Master[0].appraisal_cycle_id = cycleId;
+    store.tables.Eligibility_List.push(
+      { appraisal_cycle_id: cycleId, emp_id: 'E1', eligibility_status: 'Eligible' },
+      { appraisal_cycle_id: cycleId, emp_id: 'E2', eligibility_status: 'Eligible' },
+    );
+    const api = load(store);
+    const initial = await get(api);
+    assert.strictEqual(initial.status, 200, JSON.stringify(initial.json));
+    const tech = store.tables.Budget_Distribution[0];
+    const comp = store.tables.Budget_Distribution_Comp[0];
+    assert.strictEqual(Number(tech.original_headcount), 2, 'first allocation persists Tech-Ed Original Count');
+    assert.strictEqual(Number(comp.original_headcount), 2, 'first allocation persists Comp Manager Original Count');
+
+    // Simulate the existing production defect: a stale zero was stored for an
+    // already allocated team. A positive generated roster repairs it once.
+    tech.original_headcount = 0;
+    comp.original_headcount = 0;
+    const repaired = await get(api);
+    assert.strictEqual(repaired.status, 200, JSON.stringify(repaired.json));
+    const repairedTech = repaired.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1');
+    const repairedComp = repaired.json.compManager.find((row) => String(row.comp_manager).toLowerCase() === 'c1');
+    assert.strictEqual(Number(repairedTech.original_headcount), 2);
+    assert.strictEqual(Number(repairedComp.original_headcount), 2);
+    assert.strictEqual(Number(tech.original_headcount), 2, 'repaired Tech-Ed snapshot is persisted');
+    assert.strictEqual(Number(comp.original_headcount), 2, 'repaired Comp Manager snapshot is persisted');
+
+    store.tables.Eligibility_List.find((row) => row.emp_id === 'E2').eligibility_status = 'Not Eligible';
+    const changed = await get(api);
+    const changedTech = changed.json.techEd.find((row) => row.appraiser_tech_ed_id === 'T1');
+    const changedComp = changed.json.compManager.find((row) => String(row.comp_manager).toLowerCase() === 'c1');
+    assert.strictEqual(Number(changedTech.original_headcount), 2, 'Original Count does not change after eligibility changes');
+    assert.strictEqual(Number(changedComp.original_headcount), 2, 'Comp Manager Original Count does not change');
+    assert.strictEqual(Number(changedTech.current_headcount), 1, 'Current Count follows the changed eligible roster');
+    assert.strictEqual(Number(changedComp.current_headcount), 1, 'Comp Manager Current Count follows the changed eligible roster');
+  });
+
   await t('preserves saved original counts even when delegation or eligibility changes the live roster', async () => {
     const employeeMaster = Array.from({ length: 30 }, (_, i) => ({
       emp_id: 'E' + (i + 1),
