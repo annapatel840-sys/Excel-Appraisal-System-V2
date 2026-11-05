@@ -386,8 +386,27 @@ async function loadDelegation(zcql, cycleId) {
     }
     return String(value).trim();
   };
-  const cycleOf = (r) => lookupText(r.cycle_id);
-  const cycleSheetRows = cycleId ? sheetRows.filter((r) => cycleOf(r) === String(cycleId)) : [];
+  // Appraisal_Sheet schemas use appraisal_cycle_id in the current app, while
+  // older imports may use cycle_id / camelCase aliases. Resolve the first
+  // populated value so active-cycle rows are not silently omitted from scope.
+  const cycleOf = (r) => {
+    for (const value of [
+      r.cycle_id,
+      r.appraisal_cycle_id,
+      r.appraisalCycleId,
+      r.cycleId,
+      r.appraisal_cycle,
+      r.appraisal_cycle_name,
+      r.cycle_name,
+    ]) {
+      const resolved = lookupText(value);
+      if (resolved) return resolved;
+    }
+    return '';
+  };
+  const cycleSheetRows = cycleId
+    ? sheetRows.filter((r) => cycleOf(r) === String(cycleId))
+    : [];
   const noCycleSheetRows = sheetRows.filter((r) => !cycleOf(r));
 
   // Employee_Master people, reachable by employee ID and by ROWID (lookup
