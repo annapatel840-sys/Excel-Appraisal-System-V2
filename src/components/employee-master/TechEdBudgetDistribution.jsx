@@ -708,7 +708,7 @@ export function TechEdBudgetDistribution() {
     <div className="tbd-root">
       <style>{CSS}</style>
 
-      {!cycleLoading && !budgetLoading && !liveTech && !budgetError ? (
+      {!isCompManagerView && !cycleLoading && !budgetLoading && !liveTech && !budgetError ? (
         <div className="berr">
           {loginTechOwner
             ? "HR has not allocated your budget for the active appraisal cycle yet. Your Comp Managers are listed below; Allot % can be set once HR applies the budget in Budget Master."
