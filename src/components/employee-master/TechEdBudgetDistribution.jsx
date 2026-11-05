@@ -456,7 +456,27 @@ export function TechEdBudgetDistribution() {
         window.localStorage.getItem("excel-appraisal-budget-original-v1") || "{}",
       );
       const cycleKey = String(liveTech?.appraisal_cycle_id || activeCycleId || "");
-      const raw = saved?.[cycleKey]?.teCount?.[techOwnerKey];
+      const cycleSnapshot = saved?.[cycleKey]?.teCount || {};
+      // Budget Master stores the snapshot under its canonical Tech-Ed roster
+      // key, while this screen may resolve the login through a different alias
+      // (employee id, ROWID, or display label). Match all known identities so
+      // both screens always read the same saved Original Count.
+      const identities = [
+        techOwnerKey,
+        loginTechOwner,
+        liveTech?.appraiser_tech_ed_id,
+        liveTech?.appraiser_tech_ed_name,
+        liveTech?.tech_ed,
+        liveTech?.tech_ed_id,
+      ].flatMap((value) => [value, ...ownerParts(value || "")])
+        .map((value) => normalizeOwner(value))
+        .filter(Boolean);
+      const snapshotEntry = Object.entries(cycleSnapshot).find(([key]) => {
+        const normalizedKey = normalizeOwner(key);
+        return identities.includes(normalizedKey) ||
+          identities.some((identity) => ownerMatches(key, [identity]));
+      });
+      const raw = snapshotEntry ? snapshotEntry[1] : cycleSnapshot[techOwnerKey];
       // Ignore a stale zero browser snapshot when the live generated roster
       // is non-empty; the persisted API baseline is authoritative.
       if (raw !== null && raw !== undefined && Number.isFinite(Number(raw)) &&
