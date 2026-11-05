@@ -1666,9 +1666,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     if (!employeeId) return;
     const rawTechEd = String(
       firstValue(row, [
-        "appraiser_tech_ed",
-        "appraiser_tech_ed_id",
         "appraiser_tech_ed1",
+        "appraiser_tech_ed_row_id",
+        "appraiser_tech_ed_id",
+        "appraiser_tech_ed",
         "appraiser_teched",
         "appraiserTechED",
         "appraiserTechEd",
@@ -2516,9 +2517,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
             ? sheetEmployee.eligible
             : rawStatus === "active" && explicitlyEligible;
         const rawTech = firstValue(masterRow, [
-          "appraiser_tech_ed",
-          "appraiser_tech_ed_id",
           "appraiser_tech_ed1",
+          "appraiser_tech_ed_row_id",
+          "appraiser_tech_ed_id",
+          "appraiser_tech_ed",
           "appraiser_teched",
           "tech_ed",
           "tech_ed_id",
