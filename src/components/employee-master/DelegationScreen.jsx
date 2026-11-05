@@ -2338,7 +2338,7 @@ const CSS = `
 .dg-main{flex:1;min-width:0}
 .dg-ch{position:relative;background:#15365a;color:#fff;text-align:center;font-weight:800;font-size:15.5px;padding:10px}
 .dg .dg-dflt{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#15365a;white-space:nowrap}
-.dg-menu{position:absolute;right:10px;top:50%;transform:translateY(-50%)}
+.dg-menu{position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:40}
 .dg .dg-menubtn{background:#eef2f8;color:#15365a;border:1px solid #fff;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:800;cursor:pointer}
 .dg .dg-menubtn:hover{background:#fff}
 .dg-menulist{position:absolute;right:0;top:calc(100% + 6px);min-width:150px;background:#fff;border:1px solid #E5E7EB;border-radius:8px;box-shadow:0 6px 20px rgba(15,42,68,.18);padding:4px;z-index:30;text-align:left}

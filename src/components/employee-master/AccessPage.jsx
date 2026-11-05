@@ -25,12 +25,12 @@ const EMPTY_DELEG = { techEd: {}, compMgr: {} };
 
 const TABS = [
   { key: "people", label: "People", title: "People", sub: "From Catalyst roles and Delegation — nobody is added here" },
-  { key: "screens", label: "Screens", title: "Screens by role", sub: "None · View (read-only) · Edit" },
-  { key: "actions", label: "Actions", title: "Actions by role", sub: "Yes · No" },
-  { key: "fields", label: "Fields", title: "Field limits by role", sub: "Edit · Read · Hidden" },
-  { key: "overrides", label: "Overrides", title: "Personal overrides", sub: "Override → role. Locked rules always apply" },
-  { key: "scope", label: "Extra scope", title: "Extra scope", sub: "Extra teams for a set period" },
-  { key: "audit", label: "Audit trail", title: "Access audit trail", sub: "Includes role changes seen from Catalyst" },
+  { key: "screens", label: "Screens", title: "Screens By Role", sub: "None · View (read-only) · Edit" },
+  { key: "actions", label: "Actions", title: "Actions By Role", sub: "Yes · No" },
+  { key: "fields", label: "Fields", title: "Field Limits By Role", sub: "Edit · Read · Hidden" },
+  { key: "overrides", label: "Overrides", title: "Personal Overrides", sub: "Override → role. Locked rules always apply" },
+  { key: "scope", label: "Extra Scope", title: "Extra Scope", sub: "Extra teams for a set period" },
+  { key: "audit", label: "Audit Trail", title: "Access Audit Trail", sub: "Includes role changes seen from Catalyst" },
 ];
 
 function todayStr() {
@@ -371,7 +371,7 @@ function ScreensTab({ M, pending, setVal, onRetire, onAddRole }) {
           <th>Screen</th>
           <RoleHeads M={M} onRetire={onRetire} />
           <th style={{ textAlign: "right" }}>
-            <span className="addrole" role="button" tabIndex={0} onClick={onAddRole} onKeyDown={(e) => { if (e.key === "Enter") onAddRole(); }}>+ Add role</span>
+            <span className="addrole" role="button" tabIndex={0} onClick={onAddRole} onKeyDown={(e) => { if (e.key === "Enter") onAddRole(); }}>+ Add Role</span>
             {retiring.map((p) => (
               <span className="rtools" key={p.key}>
                 Retiring {M.roleLabel(p.key)} <button type="button" onClick={() => onRetire(p.key)}>Undo</button>
@@ -862,7 +862,7 @@ function RoleModal({ M, onSave, onClose }) {
     onSave({ label: l, catalystRole: c, seesAll });
   }
   return (
-    <Modal title="+ Add role" onClose={onClose}>
+    <Modal title="+ Add Role" onClose={onClose}>
       <div className="mform">
         <div><label>Display name</label><input placeholder="e.g. Comp Viewer" value={label} onChange={(e) => { setLabel(e.target.value); setErr(""); }} /></div>
         <div><label>Catalyst role (Authentication → Roles)</label><input placeholder="exact Catalyst role name" value={catalystRole} onChange={(e) => { setCatalystRole(e.target.value); setErr(""); }} /></div>
