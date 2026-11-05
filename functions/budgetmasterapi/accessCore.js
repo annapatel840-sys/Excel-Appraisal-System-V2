@@ -442,7 +442,14 @@ async function loadDelegation(zcql, cycleId) {
 function hasTeam(deleg, empId) { const k = norm(empId); return deleg.techEd[k] != null || deleg.compMgr[k] != null; }
 function emRow(r) {
   const e = SETTINGS.employeeMaster;
-  return { empId: String(r[e.empId] || '').trim(), name: r[e.name] || String(r[e.empId]), email: String(r[e.email] || '').trim().toLowerCase(), active: String(r[e.status] || '').trim().toLowerCase() === e.activeValue.toLowerCase(), inEM: true };
+  return {
+    row_id: String(r.ROWID || r.rowid || '').trim(),
+    empId: String(r[e.empId] || '').trim(),
+    name: r[e.name] || String(r[e.empId]),
+    email: String(r[e.email] || '').trim().toLowerCase(),
+    active: String(r[e.status] || '').trim().toLowerCase() === e.activeValue.toLowerCase(),
+    inEM: true
+  };
 }
 async function findEmployee(zcql, by, value) {
   const e = SETTINGS.employeeMaster, z = zq(zcql);
