@@ -590,7 +590,32 @@ export function useDistributionBudget() {
             .filter(Boolean),
         ),
       );
-      candidates = allRows.filter((row) => {
+
+      // Strong fallback for restricted Comp Manager rosters: the signed-in
+      // manager may not appear in employeeRows (which can contain only their
+      // reports). Budget_Distribution_Comp already stores the manager identity
+      // and its parent Tech-Ed allocation ID, so resolve the parent directly.
+      const managerAllocationParentIds = new Set(
+        budgetCompManagerRows
+          .filter((row) =>
+            [
+              row.comp_manager,
+              row.comp_manager_id,
+              row.comp_manager_display,
+              row.comp_manager_name,
+              row.manager_id,
+            ]
+              .filter((value) => value !== null && value !== undefined && String(value).trim() !== "")
+              .some(matchesCurrentManager),
+          )
+          .map((row) => String(row.budget_distribution_id || "").trim())
+          .filter(Boolean),
+      );
+      const compManagerParentMatches = allRows.filter((row) =>
+        managerAllocationParentIds.has(String(row.id || row.ROWID || "").trim()),
+      );
+
+      const employeeAssignmentMatches = allRows.filter((row) => {
         const rowOwners = techOwnerValues(row).map(resolveTechOwner).filter(Boolean);
         return rowOwners.some((rowOwner) =>
           managerTechOwners.some(
@@ -600,6 +625,9 @@ export function useDistributionBudget() {
           ),
         );
       });
+      candidates = compManagerParentMatches.length
+        ? compManagerParentMatches
+        : employeeAssignmentMatches;
     }
 
     // Cycle API and budget tables can refer to the same cycle through different
@@ -649,6 +677,7 @@ export function useDistributionBudget() {
     return null;
   }, [
     budgetDistributionRows,
+    budgetCompManagerRows,
     budgetMasterRows,
     cycleRows,
     employeeRows,
