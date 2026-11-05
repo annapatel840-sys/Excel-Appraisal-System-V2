@@ -1787,10 +1787,10 @@ function HRApplyBudget() {
                                 setSavingOrg(true);
                                 setError("");
                                 // TEMPORARY: persist into the existing shared
-                                // Budget_Distribution.headcount field so Tech-Ed
+                                // Budget_Distribution.current_headcount field so Tech-Ed
                                 // login reads the same corrected value.
                                 if (r.id && !String(r.id).startsWith("tech-ed-")) {
-                                  await updateBudget(r.id, { headcount: Number(r.team) }, "distribution");
+                                  await updateBudget(r.id, { current_headcount: Number(r.team) }, "distribution");
                                 }
                                 const next = {
                                   ...origSnap,
