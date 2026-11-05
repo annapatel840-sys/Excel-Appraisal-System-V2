@@ -410,7 +410,9 @@ export function PayrollDataPage() {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    // Keep the previous rows on screen while a refresh is in flight.
+    // The shared API cache makes quick revisits resolve immediately.
+    if (!stored.length) setLoading(true);
     setLoadError("");
     // The audit log (the whole Appraisal_Audit table) is only needed by the
     // Audit Trail panel, so it is read when that panel opens, not before the
