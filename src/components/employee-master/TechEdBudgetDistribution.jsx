@@ -35,7 +35,7 @@ import {
    Budget_Distribution_Comp rows. The prior UI-only sample allocations have
    been removed so this screen never displays invented team budgets. */
 
-const LEVELS = ["Tech ED", "Comp Manager"];
+const LEVELS = ["Tech-ED", "Comp Manager"];
 const UTILISED_LABEL = "Hike Amount";
 
 // Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
@@ -1202,7 +1202,18 @@ const CSS = `
 .tbd-root .bsum > div:nth-child(2) .f-label,
 .tbd-root .bsum > div:nth-child(2) .v,
 .tbd-root .bsum > div:nth-child(2) .d { color: #fff; }
-.tbd-root .bsum > div:nth-child(2) .d { opacity: .88; }
+.tbd-root .bsum > div:nth-child(2) .d { opacity: 1; }
+/* The green / orange change figure under Updated Budget sits on the green
+   tile, so it gets a white outline to stay readable. */
+.tbd-root .bsum > div:nth-child(2) .d .up,
+.tbd-root .bsum > div:nth-child(2) .d .down,
+.tbd-root .bsum > div:nth-child(2) .d .over {
+  font-weight: 700;
+  text-shadow:
+    -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff,
+    0 -1px 0 #fff, 0 1px 0 #fff, -1px 0 0 #fff, 1px 0 0 #fff,
+    0 0 3px #fff;
+}
 .tbd-root .bsum > div:last-child { border-right: 0; }
 .tbd-root .f-label { font-size: 11px; color: #5b6b80; font-weight: 500; }
 .tbd-root .bsum .v { font-size: 18px; font-weight: 600; color: #12304f; margin-top: 2px; }
