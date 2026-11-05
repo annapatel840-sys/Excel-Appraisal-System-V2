@@ -31,11 +31,15 @@ const num = (v) => {
   );
   return Number.isFinite(parsed) ? parsed : 0;
 };
-const normalizeOwner = (value) =>
-  String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, " ");
+const normalizeOwner = (value) => {
+  if (value && typeof value === "object") {
+    return normalizeOwner(
+      value.ROWID ?? value.rowid ?? value.emp_id ?? value.employee_id ??
+      value.id ?? value.value ?? value.display_value ?? value.name ?? "",
+    );
+  }
+  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+};
 // Employee IDs can themselves contain hyphens (for example WIS-1234).
 // The owner separator is the spaced delimiter " - ", not every hyphen.
 const ownerParts = (value) => {
