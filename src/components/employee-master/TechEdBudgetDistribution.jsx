@@ -435,7 +435,11 @@ export function TechEdBudgetDistribution() {
         liveTech?.tech_ed_id,
       ],
     );
-    if (savedCount !== null) return savedCount;
+    // Ignore a stale browser snapshot of 0 when the current generated
+    // Appraisal Sheet already has team members. The backend's persisted
+    // Original Count is authoritative after its one-time repair.
+    if (savedCount !== null && (savedCount > 0 || currentTeamCount === 0))
+      return savedCount;
     const legacyCount = Number(liveTech?.headcount);
     if (Number.isFinite(legacyCount) && legacyCount > 0) return legacyCount;
     const persisted = liveTech?.original_headcount;
@@ -443,7 +447,7 @@ export function TechEdBudgetDistribution() {
       persisted !== null && persisted !== undefined && String(persisted).trim() !== ""
       ? num(persisted)
       : 0;
-  }, [isCompManagerView, selectedManagerNode?.team0, liveTech, activeCycleId, techOwnerKey, loginTechOwner]);
+  }, [isCompManagerView, selectedManagerNode?.team0, liveTech, activeCycleId, techOwnerKey, loginTechOwner, currentTeamCount]);
   const allotted = isCompManagerView
     ? 0
     : cmNodes.reduce((s, n) => s + n.updated, 0);
