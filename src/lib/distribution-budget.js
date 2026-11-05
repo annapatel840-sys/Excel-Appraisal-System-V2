@@ -611,7 +611,7 @@ export function useDistributionBudget() {
           .map((row) => String(row.budget_distribution_id || "").trim())
           .filter(Boolean),
       );
-      const compManagerParentMatches = allRows.filter((row) =>
+      const compManagerParentMatches = budgetDistributionRows.filter((row) =>
         managerAllocationParentIds.has(String(row.id || row.ROWID || "").trim()),
       );
 
