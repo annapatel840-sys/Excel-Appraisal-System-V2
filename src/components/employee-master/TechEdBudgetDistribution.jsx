@@ -2,7 +2,6 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
-import { useAppraisal } from "@/lib/appraisal-store";
 import {
   useViewAs,
   managerIdentityMatches,
@@ -276,8 +275,6 @@ const ALLOC_COLS = [
 
 export function TechEdBudgetDistribution() {
   const user = useCatalystUser();
-  // Use the exact live row set used by DashboardOverview for headcount.
-  const { rows: dashboardRows = [] } = useAppraisal();
   const { effectiveId, actualId } = useViewAs();
   const isCompManagerPreview =
     effectiveId === "compmanager" && actualId === "teched";
