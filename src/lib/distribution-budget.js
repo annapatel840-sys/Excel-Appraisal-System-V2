@@ -507,6 +507,26 @@ export function useDistributionBudget() {
     if (isCompManagerLogin) {
       const matchesCurrentManager = (raw) => {
         if (currentUserMatchesManager(raw, user, employeeRows)) return true;
+        // Some Catalyst sessions expose the Employee_Master ROWID as id/row_id
+        // rather than empId. Include those direct session identifiers so a
+        // saved Comp Manager allocation can still resolve when the manager's
+        // own employee row is absent from the restricted report roster.
+        const sessionManagerAliases = [
+          user?.id,
+          user?.row_id,
+          user?.ROWID,
+          user?.user_id,
+          user?.userId,
+          user?.empId,
+          user?.emp_id,
+          user?.employeeId,
+          user?.employee_id,
+          user?.name,
+          user?.display_name,
+          user?.email,
+          user?.email_id,
+        ].filter(Boolean).flatMap((value) => ownerParts(value));
+        if (ownerMatches(raw, sessionManagerAliases)) return true;
         const rawKey = normalizeOwner(
           raw && typeof raw === "object"
             ? raw.ROWID || raw.rowid || raw.id || raw.value || ""
@@ -1041,13 +1061,45 @@ export function useDistributionBudget() {
     // Saved allocation rows are not the roster. Show saved managers only if
     // they still exist in the current eligible Appraisal Sheet; add current
     // managers that have not yet received an allocation as dynamic rows.
-    const matchingLiveComps = liveComps.filter((live) =>
-      managerStats.has(
-        ownerKey(
-          resolveManager(live.comp_manager_display || live.comp_manager),
-        ),
-      ),
-    );
+    const matchingLiveComps = liveComps.filter((live) => {
+      const resolved = resolveManager(
+        live.comp_manager_display || live.comp_manager,
+      );
+      // A Comp Manager's own saved allocation must remain visible even when
+      // the restricted Appraisal Sheet roster omits their employee row or
+      // their team temporarily has no Active + Eligible employees. Requiring
+      // managerStats here made cmNodes empty and hid all saved budget values.
+      if (isCompManagerView) {
+        const aliases = [
+          user?.id,
+          user?.row_id,
+          user?.ROWID,
+          user?.user_id,
+          user?.userId,
+          user?.empId,
+          user?.emp_id,
+          user?.employeeId,
+          user?.employee_id,
+          user?.name,
+          user?.display_name,
+          user?.email,
+          user?.email_id,
+        ].filter(Boolean).flatMap((value) => ownerParts(value));
+        return (
+          currentUserMatchesManager(
+            live.comp_manager_display || live.comp_manager,
+            user,
+            employeeRows,
+          ) ||
+          ownerMatches(
+            live.comp_manager_display || live.comp_manager,
+            aliases,
+          ) ||
+          ownerMatches(resolved, aliases)
+        );
+      }
+      return managerStats.has(ownerKey(resolved));
+    });
 
     // A Comp Manager must have only one allocation row per Tech-Ed + cycle.
     // Legacy duplicate rows can exist when the same manager was saved once by
