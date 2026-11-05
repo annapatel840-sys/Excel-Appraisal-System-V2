@@ -470,11 +470,11 @@ export function TechEdBudgetDistribution() {
     const hasLegacyCount = Number.isFinite(legacyCount) && legacyCount > 0;
     const currentCount = Number(currentTeamCount) || 0;
     const localLooksLikeLive = localCount !== null && localCount === currentCount;
-    // TEMPORARY: HR correction is persisted in the shared current_headcount
-    // field. Prefer it over browser-local snapshots on every Tech-Ed login.
-    const sharedCorrection = Number(liveTech?.current_headcount);
-    if (Number.isFinite(sharedCorrection) && sharedCorrection > 0) return sharedCorrection;
-    if (hasLegacyCount) return legacyCount;
+    if (
+      hasLegacyCount &&
+      legacyCount !== currentCount &&
+      (localCount === null || localLooksLikeLive)
+    ) return legacyCount;
     if (localCount !== null) return localCount;
     const persisted = liveTech?.original_headcount;
     return liveTech?.original_headcount_is_persisted === true &&
