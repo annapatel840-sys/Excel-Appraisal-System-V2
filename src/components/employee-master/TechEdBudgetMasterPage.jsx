@@ -350,7 +350,9 @@ export function TechEdBudgetMasterPage() {
     const legacyCount = Number(liveMe.headcount);
     const hasLegacyCount = Number.isFinite(legacyCount) && legacyCount > 0;
     const localLooksLikeLive = localCount !== null && localCount === dashboardTeamCount;
-    if (hasLegacyCount && legacyCount !== dashboardTeamCount && (localCount === null || localLooksLikeLive)) return legacyCount;
+    // TEMPORARY: HR's correction is stored in the existing shared headcount
+    // field. Accept it even when it currently equals the live team size.
+    if (hasLegacyCount && (localCount === null || localLooksLikeLive)) return legacyCount;
     if (localCount !== null) return localCount;
     return liveMe.original_headcount_is_persisted === true &&
       liveMe.original_headcount !== null && liveMe.original_headcount !== undefined &&
