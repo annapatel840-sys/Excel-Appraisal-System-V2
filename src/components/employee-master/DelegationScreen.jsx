@@ -1498,7 +1498,7 @@ export default function DelegationScreen({
               <button
                 className="btn p"
                 disabled={editLocked || !rows.length || rosterLoading || !Object.keys(stagedChanges).length}
-                title="Save staged delegation changes to the Delegation table only"
+                title="Save delegation changes and update matching existing Appraisal Sheet rows"
                 onClick={saveDelegation}
               >
                 Save{Object.keys(stagedChanges).length ? " (" + Object.keys(stagedChanges).length + ")" : ""}
