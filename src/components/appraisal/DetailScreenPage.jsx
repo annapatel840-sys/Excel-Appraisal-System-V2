@@ -60,6 +60,9 @@ const DETAIL_EMPLOYEE_COLLATOR = new Intl.Collator(undefined, {
   sensitivity: "base",
 });
 
+// Keep a rolling window of upcoming employee histories ready for Save & Next.
+const DETAIL_HISTORY_PREFETCH_COUNT = 8;
+
 /* ------------------------------------------------------------------
    FRONTEND-ONLY SETTINGS (layout / banner). None of these touch data.
    ------------------------------------------------------------------ */
@@ -1362,11 +1365,16 @@ export function DetailScreenPage({
     }
   }, [employee?.empId, loadHistory]);
 
-  // Keep the next three employees' history ready before the user presses
-  // Save & Next. Their current appraisal values already come from liveRows;
-  // this preloads only the separate historical timeline, not another roster.
+  // Maintain a rolling window of the next eight employees. Their current
+  // appraisal values and feedback/info rows are already available from the
+  // shared Appraisal Sheet roster and shared feedback map; only each employee's
+  // separate history request is prefetched here. When Save & Next advances,
+  // the window moves forward and starts fetching the next employee(s).
   useEffect(() => {
-    const upcomingIds = orderedEmployeeIds.slice(activeIndex + 1, activeIndex + 4);
+    const upcomingIds = orderedEmployeeIds.slice(
+      activeIndex + 1,
+      activeIndex + 1 + DETAIL_HISTORY_PREFETCH_COUNT,
+    );
     if (!upcomingIds.length) return;
     const byId = new Map((cachedLiveRows || []).map((row) => [row.id, row]));
     upcomingIds.forEach((id) => {
