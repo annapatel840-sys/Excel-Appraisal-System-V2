@@ -3709,26 +3709,20 @@ module.exports = async function (req, res) {
     ) {
       const columns = await getColumnNames(table);
       resourceColumns = columns;
-      // Temporary Original Count correction: use only a column confirmed by
-      // Catalyst table metadata. Some deployed schemas have allocation_headcount
-      // or legacy headcount instead of original_headcount.
+      // TEMPORARY: share the HR correction through Budget_Distribution's
+      // existing headcount field. This avoids requiring a new Catalyst column.
       if (resource === "distribution" &&
-          Object.prototype.hasOwnProperty.call(body, "original_headcount")) {
-        const candidates = ["original_headcount", "allocation_headcount", "headcount"];
+          Object.prototype.hasOwnProperty.call(body, "headcount")) {
         const actualColumn = columns && columns.size
-          ? candidates.map((candidate) =>
-              Array.from(columns).find((column) => column.toLowerCase() === candidate),
-            ).find(Boolean)
-          : null;
+          ? Array.from(columns).find((column) => column.toLowerCase() === "headcount")
+          : "headcount";
         if (!actualColumn) {
           return sendJson(res, 400, {
             success: false,
-            message: "Budget_Distribution has no supported Original Count column. Add original_headcount or allocation_headcount in Catalyst Data Store, then retry.",
+            message: "Budget_Distribution does not contain the existing headcount field.",
           });
         }
-        // Map the UI's logical field name to the actual physical
-        // Catalyst column so the normal update builder writes the right key.
-        body[actualColumn] = body.original_headcount;
+        body[actualColumn] = body.headcount;
         fields.push(actualColumn);
       }
       const fallback =
