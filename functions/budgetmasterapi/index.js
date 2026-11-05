@@ -1216,13 +1216,14 @@ function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = []) {
       });
       return aliases.some((alias) => managerAliases.has(alias));
     });
-    if (managerMasterRow) {
+    const addManagerMasterAliases = (managerRow) => {
+      if (!managerRow) return;
       [
-        managerMasterRow.emp_id, managerMasterRow.employee_id,
-        managerMasterRow.ROWID, managerMasterRow.rowid,
-        managerMasterRow.emp_name, managerMasterRow.employee_name,
-        managerMasterRow.name, managerMasterRow.email_id,
-        managerMasterRow.email, managerMasterRow.work_email,
+        managerRow.emp_id, managerRow.employee_id,
+        managerRow.ROWID, managerRow.rowid,
+        managerRow.emp_name, managerRow.employee_name,
+        managerRow.name, managerRow.email_id,
+        managerRow.email, managerRow.work_email,
       ].forEach((value) => {
         const text = referenceText(value).toLowerCase();
         if (text) {
@@ -1230,7 +1231,42 @@ function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = []) {
           managerAliases.add(ownerKey(text));
         }
       });
-    }
+    };
+    addManagerMasterAliases(managerMasterRow);
+
+    // The signed-in Comp Manager's access scope is the authoritative list of
+    // their employees. Resolve the manager assignment on those employees too.
+    // This links the manager to the same child allocation shown in the
+    // Tech-Ed Budget Distribution list even if Catalyst session identity uses
+    // a different ID/email form from Budget_Distribution_Comp.comp_manager.
+    ownEmployees.forEach((employee) => {
+      const assignedManagers = [
+        employee.comp_manager,
+        employee.comp_manager_id,
+        employee.comp_manager_row_id,
+        employee.comp_manager_emp_id,
+        employee.comp_manager_name,
+        employee.comp_manager_display,
+        employee.compManager,
+      ].map(referenceText).filter(Boolean);
+      assignedManagers.forEach((assigned) => {
+        const text = assigned.toLowerCase();
+        managerAliases.add(text);
+        managerAliases.add(ownerKey(text));
+        const linked = employeeMasterRows.find((master) => {
+          const aliases = [
+            master.emp_id, master.employee_id, master.ROWID, master.rowid,
+            master.emp_name, master.employee_name, master.name,
+            master.email_id, master.email, master.work_email,
+          ].flatMap((value) => {
+            const alias = referenceText(value).toLowerCase();
+            return alias ? [alias, ownerKey(alias)] : [];
+          });
+          return aliases.includes(text) || aliases.includes(ownerKey(text));
+        });
+        addManagerMasterAliases(linked);
+      });
+    });
     const isOwnCompAllocation = (row) => {
       const raw = referenceText(row.comp_manager).toLowerCase();
       if (!raw) return false;
@@ -1273,7 +1309,8 @@ function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = []) {
     let compManager = ownSavedCompRows.filter((row) =>
       techEd.some((parent) =>
         String(parent.id) === String(row.budget_distribution_id) &&
-        String(parent.appraisal_cycle_id) === String(row.appraisal_cycle_id),
+        (!row.appraisal_cycle_id ||
+          String(parent.appraisal_cycle_id) === String(row.appraisal_cycle_id)),
       ),
     );
 
