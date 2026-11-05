@@ -123,11 +123,23 @@ export async function catalystFetch(input, options = {}) {
     await acquireCatalystSlot();
     try {
       for (let attempt = 0; ; attempt += 1) {
-        response = await fetch(input, {
-          ...options,
-          credentials: "include",
-          headers,
-        });
+        try {
+          response = await fetch(input, {
+            ...options,
+            credentials: "include",
+            headers,
+          });
+        } catch (error) {
+          // No answer at all ("Load failed" in Safari, "Failed to fetch" in
+          // Chrome): a dropped connection, or Catalyst turning the call away
+          // without CORS headers. Reads are safe to try again; writes are not
+          // (the first one may have landed), and a cancelled call stays cancelled.
+          const aborted = error?.name === "AbortError" || options.signal?.aborted;
+          if (!canRetryRead || aborted || attempt >= 2) throw error;
+          console.warn("Catalyst read got no response; retrying:", String(input), "attempt", attempt + 1);
+          await new Promise((resolve) => window.setTimeout(resolve, retryDelay(null, attempt)));
+          continue;
+        }
         const retryable = canRetryRead && [408, 429, 502, 503, 504].includes(response.status);
         if (!retryable || attempt >= 3 || options.signal?.aborted) break;
         const delay = retryDelay(response, attempt);

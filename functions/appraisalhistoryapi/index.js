@@ -692,23 +692,40 @@ const countBy = (records, fn) => {
 // employee is commonly requested repeatedly by the rolling Detail prefetch.
 const resolvedEmployeeKeysCache = new Map();
 
+// One query per stored form of the employee: the ROWID, the bare ID, and
+// "ID - Name" (history imports store that). A query that errors (e.g. a text
+// ID against a lookup column) is skipped, not fatal. Returns null when every
+// query failed, so the caller can fall back to reading the whole table.
 const getEmployeePayrollRows = async (app, wantedKeys) => {
   const zcql = app.zcql();
   const recordsById = new Map();
-  const keys = Array.from(wantedKeys).filter(Boolean);
-  for (const key of keys) {
+  const queries = [];
+  Array.from(wantedKeys).filter(Boolean).forEach((key) => {
     const safeKey = String(key).replace(/'/g, "''");
-    const result = await zcql.executeZCQLQuery(
-      "SELECT * FROM Payroll_Data WHERE emp_id = '" + safeKey + "'",
-    );
-    (Array.isArray(result) ? result : []).forEach((item) => {
-      const row = (item && item.Payroll_Data) ||
-        (item && Object.values(item)[0]) || {};
-      const rowId = String(row.ROWID || "").trim();
-      const identity = rowId || JSON.stringify(row);
-      if (identity && !recordsById.has(identity)) recordsById.set(identity, row);
-    });
-  }
+    queries.push("SELECT * FROM Payroll_Data WHERE emp_id = '" + safeKey + "'");
+    if (!/^\d+$/.test(safeKey)) {
+      queries.push("SELECT * FROM Payroll_Data WHERE emp_id LIKE '" + safeKey + " - *'");
+    }
+  });
+  let succeeded = 0;
+  const results = await Promise.all(queries.map(async (sql) => {
+    try {
+      const result = await zcql.executeZCQLQuery(sql);
+      succeeded += 1;
+      return Array.isArray(result) ? result : [];
+    } catch (error) {
+      console.warn("History query skipped:", sql, String((error && error.message) || error).slice(0, 120));
+      return [];
+    }
+  }));
+  if (!succeeded) return null;
+  results.flat().forEach((item) => {
+    const row = (item && item.Payroll_Data) ||
+      (item && Object.values(item)[0]) || {};
+    const rowId = String(row.ROWID || "").trim();
+    const identity = rowId || JSON.stringify(row);
+    if (identity && !recordsById.has(identity)) recordsById.set(identity, row);
+  });
   return Array.from(recordsById.values());
 };
 
@@ -717,9 +734,13 @@ const getHistory = async (app, table, empId, diag) => {
   let wantedKeys = resolvedEmployeeKeysCache.get(cacheKey);
   if (!wantedKeys) {
     wantedKeys = await resolveEmpKeys(app, empId);
-    resolvedEmployeeKeysCache.set(cacheKey, wantedKeys);
-    if (resolvedEmployeeKeysCache.size > 500) {
-      resolvedEmployeeKeysCache.delete(resolvedEmployeeKeysCache.keys().next().value);
+    // Remember only a complete answer (ID + ROWID). If the ROWID lookup
+    // failed this time, caching the bare ID would hide history until restart.
+    if (wantedKeys.size > 1) {
+      resolvedEmployeeKeysCache.set(cacheKey, wantedKeys);
+      if (resolvedEmployeeKeysCache.size > 500) {
+        resolvedEmployeeKeysCache.delete(resolvedEmployeeKeysCache.keys().next().value);
+      }
     }
   }
 
@@ -727,7 +748,9 @@ const getHistory = async (app, table, empId, diag) => {
   // paged through the entire table (200 rows per request) for every employee,
   // then filtered locally. This targeted ZCQL lookup avoids unrelated payroll
   // rows and keeps rolling Detail prefetch affordable.
-  const allRecords = await getEmployeePayrollRows(app, wantedKeys);
+  const allRecords =
+    (await getEmployeePayrollRows(app, wantedKeys)) ||
+    (await getAllPreviousAppraisalRecords(table));
   const history = allRecords
     .filter((record) => {
       const recordKeys = historyEmployeeKeys(record.emp_id);
