@@ -152,8 +152,6 @@ const FROZEN_KEYS = new Set(["name"]);
 // UI only: columns listed here are never drawn and are not offered in the
 // More panel (Show / Wrap). Empty now: Source of Hire is shown again.
 const UI_HIDDEN_KEYS = new Set();
-export const isCampusHire = (row) =>
-  /campus/i.test(String(row?.sourceOfHire ?? ""));
 
 // These columns sit straight after "Gross Margin", in this order. Everything
 // else keeps its existing order (before Gross Margin / after Hike%).
@@ -446,7 +444,7 @@ const computeHistoryChange = (currentValue, previousValue) => {
 const PANEL_TABS = [
   ["feedback", "Feedback"],
   ["request", "Request"],
-  ["more", "+ More"],
+  ["more", "Config"],
 ];
 
 const PANEL_SUBS = {
@@ -1560,6 +1558,28 @@ function EmployeePanel({
             <th className="w-12 border-b border-[#e5e7eb] px-1 py-1 text-center text-[10.5px] font-bold text-[#6b7280]">
               Wrap
             </th>
+            <th className="w-16 border-b border-[#e5e7eb] px-1 py-1 text-center text-[10.5px] font-bold text-[#6b7280]">
+              <span className="inline-flex items-center gap-1">
+                Tag
+                <span className="group relative inline-flex">
+                  <span
+                    tabIndex={0}
+                    role="img"
+                    aria-label="What is a tag?"
+                    title="Tag: shows this column's value as a small tag under the Employee name."
+                    className="inline-flex h-[14px] w-[14px] cursor-help items-center justify-center rounded-full border border-[#9aa5b1] text-[9px] font-bold italic leading-none text-[#6b7280]"
+                  >
+                    i
+                  </span>
+                  <span className="pointer-events-none absolute right-0 top-full z-20 mt-1 hidden w-[210px] rounded-md border border-[#d1d5db] bg-white p-2 text-left text-[11px] font-normal normal-case leading-snug text-[#374151] shadow-lg group-hover:block group-focus-within:block">
+                    <b className="block text-[#102a43]">Tag</b>
+                    Tick Tag for a column and its value is shown as a small tag
+                    under that employee's name in the Employee column. Empty
+                    values are not tagged. Untick to remove it.
+                  </span>
+                </span>
+              </span>
+            </th>
           </tr>
         </thead>
 
@@ -1596,6 +1616,17 @@ function EmployeePanel({
                     checked={view.wrapOf(col.key)}
                     onChange={() => view.onToggleWrap(col.key)}
                     aria-label={`Wrap ${label}`}
+                    className="accent-[#102a43]"
+                  />
+                </td>
+
+                <td className="border-b border-[#f0f1f3] px-1 py-[5px] text-center">
+                  <input
+                    type="checkbox"
+                    checked={!fixed && !!view.tag[col.key]}
+                    disabled={fixed}
+                    onChange={() => view.onToggleTag(col.key)}
+                    aria-label={`Tag ${label}`}
                     className="accent-[#102a43]"
                   />
                 </td>
@@ -2020,6 +2051,7 @@ export function AppraisalGrid({
     return {
       hidden: saved.hidden || {},
       wrap: saved.wrap || {},
+      tag: saved.tag || {},
       density: saved.density === "compact" ? "compact" : "comfortable",
     };
   });
@@ -2056,6 +2088,24 @@ export function AppraisalGrid({
       const current = key in previous.wrap ? !!previous.wrap[key] : true;
 
       return { ...previous, wrap: { ...previous.wrap, [key]: !current } };
+    });
+  }, []);
+
+  const toggleTag = useCallback((key) => {
+    if (FROZEN_KEYS.has(key)) {
+      return;
+    }
+
+    setViewPrefs((previous) => {
+      const tag = { ...(previous.tag || {}) };
+
+      if (tag[key]) {
+        delete tag[key];
+      } else {
+        tag[key] = true;
+      }
+
+      return { ...previous, tag };
     });
   }, []);
 
@@ -2199,6 +2249,24 @@ export function AppraisalGrid({
       ),
     [allColumns, viewPrefs.hidden],
   );
+
+  // Columns ticked "Tag" in Config: their value is shown as a tag under the
+  // employee's name (works even when the column itself is hidden).
+  const taggedColumns = useMemo(
+    () =>
+      allColumns.filter(
+        (column) => !FROZEN_KEYS.has(column.key) && viewPrefs.tag?.[column.key],
+      ),
+    [allColumns, viewPrefs.tag],
+  );
+  const tagValueOf = (row, column) => {
+    const raw = row[column.key];
+    if (raw === null || raw === undefined || String(raw).trim() === "") return "";
+    const text = String(formatValue(row, column) ?? "")
+      .replace(/^₹\s?/, "")
+      .trim();
+    return text === "—" || text === "-" ? "" : text;
+  };
 
   const widthOf = useCallback(
     (column) =>
@@ -3745,11 +3813,18 @@ export function AppraisalGrid({
             >
               {row.empId} - {row.name}
             </span>
-            {isCampusHire(row) && (
-              <span className="shrink-0 rounded-[4px] border border-[#86d5a4] bg-[#e3f6ea] px-1.5 py-px text-[9.5px] font-bold leading-tight text-[#14793f]">
-                Campus Hire
-              </span>
-            )}
+            {taggedColumns.map((tagCol) => {
+              const tagText = tagValueOf(row, tagCol);
+              return tagText ? (
+                <span
+                  key={tagCol.key}
+                  title={`${tagCol.label}: ${tagText}`}
+                  className="max-w-full shrink-0 truncate rounded-[4px] border border-[#86d5a4] bg-[#e3f6ea] px-1.5 py-px text-[9.5px] font-bold leading-tight text-[#14793f]"
+                >
+                  {tagText}
+                </span>
+              ) : null;
+            })}
           </span>
 
           <span
@@ -4471,6 +4546,8 @@ export function AppraisalGrid({
     wrapOf,
     onToggleShow: toggleShow,
     onToggleWrap: toggleWrap,
+    tag: viewPrefs.tag || {},
+    onToggleTag: toggleTag,
     onDensity: setDensity,
     widthsSet: GRID_COLUMNS.filter(
       (column) =>

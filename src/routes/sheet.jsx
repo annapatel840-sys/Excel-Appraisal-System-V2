@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   Download,
-  GraduationCap,
   History,
   Search,
   Upload,
@@ -10,7 +9,7 @@ import {
 } from "lucide-react";
 
 import { AppShell } from "@/components/appraisal/AppShell";
-import { AppraisalGrid, isCampusHire } from "@/components/appraisal/AppraisalGrid";
+import { AppraisalGrid } from "@/components/appraisal/AppraisalGrid";
 import { AuditPanel } from "@/components/appraisal/AuditTrail";
 import {
   BudgetStatsBar,
@@ -58,6 +57,25 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 // PAGE
 // ============================================================
 
+const FILTERS_STORE_KEY = "appraisal.sheetFilters.v1";
+
+function readSavedFilters() {
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(FILTERS_STORE_KEY) || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function writeSavedFilters(filters) {
+  try {
+    window.sessionStorage.setItem(FILTERS_STORE_KEY, JSON.stringify(filters || {}));
+  } catch (_) {
+    // storage unavailable: filters still work for this visit
+  }
+}
+
 export function SheetPage() {
   const {
     rows,
@@ -88,15 +106,17 @@ export function SheetPage() {
   const canExport = access.canAction("exportGrid");
   const canViewAudit = access.canAction("viewAudit");
   const [search, setSearch] = useState("");
-  const [filters, setFilters] = useState({});
+  // Column filters are kept for the browser session, so they are still applied
+  // when the user comes back from another screen.
+  const [filters, setFilters] = useState(readSavedFilters);
+  useEffect(() => {
+    writeSavedFilters(filters);
+  }, [filters]);
   const [selected, setSelected] = useState({});
 
   // History starts hidden; the user turns it on with the toggle when needed.
   const [showHistory, setShowHistory] = useState(false);
   const [showEditedOnly, setShowEditedOnly] = useState(false);
-  // Campus Hire toggle: off = everyone; on = only employees whose Source of
-  // Hire is Campus Hire. Off by default.
-  const [campusOnly, setCampusOnly] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
@@ -155,10 +175,8 @@ export function SheetPage() {
         )
       : appraisalRows;
 
-    const scoped = campusOnly ? baseRows.filter(isCampusHire) : baseRows;
-
-    return applyFilters(scoped, filters, search);
-  }, [appraisalRows, editedEmployeeIds, filters, search, showEditedOnly, campusOnly]);
+    return applyFilters(baseRows, filters, search);
+  }, [appraisalRows, editedEmployeeIds, filters, search, showEditedOnly]);
 
   const setFilter = (key, f) =>
     setFilters((prev) => {
@@ -345,32 +363,6 @@ export function SheetPage() {
             <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
-                onClick={() => setCampusOnly((previous) => !previous)}
-                aria-pressed={campusOnly}
-                aria-label="Campus Hire"
-                className="flex h-9 shrink-0 items-center gap-1.5 rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]"
-              >
-                <GraduationCap className="size-3.5" />
-                <span>Campus Hire</span>
-                <span
-                  className={cn(
-                    "relative block h-[16px] w-[30px] rounded-full transition-colors duration-200",
-                    campusOnly ? "bg-[#3fae6a]" : "bg-[#5c7396]",
-                  )}
-                >
-                  <span
-                    className="absolute top-[2px] left-[2px] h-[12px] w-[12px] rounded-full bg-white shadow-sm transition-transform duration-200"
-                    style={{
-                      transform: campusOnly
-                        ? "translateX(14px)"
-                        : "translateX(0)",
-                    }}
-                  />
-                </span>
-              </button>
-
-              <button
-                type="button"
                 onClick={() => setShowHistory((previous) => !previous)}
                 aria-pressed={showHistory}
                 aria-label="History"
@@ -403,7 +395,6 @@ export function SheetPage() {
                   }
                   setFilters({});
                   setSearch("");
-                  setCampusOnly(false);
                   setLastEditedTarget(String(lastEditedRow.empId).trim());
                 }}
                 className="flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-[#17365d] bg-white px-3 text-[12px] font-medium text-[#17365d] hover:bg-[#f1f5f9]"
