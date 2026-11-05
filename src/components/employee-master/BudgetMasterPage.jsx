@@ -1774,7 +1774,31 @@ function HRApplyBudget() {
                       <td className="bm-n bm-calc" style={wrapStyle(3)}>{money(previewBudget(r))}</td>
                       <td className="bm-n" style={wrapStyle(4)}>{money(rowOriginal(r))}</td>
                       <td className="bm-n" style={wrapStyle(5)}>{money(r.updated)}</td>
-                      <td className="bm-n" style={wrapStyle(6)}>{r.team0}</td>
+                      <td className="bm-n" style={wrapStyle(6)}>
+                        <div>{r.team0}</div>
+                        {canConfig && r.id && !String(r.id).startsWith("tech-ed-") && Number(r.team) > 0 && Number(r.team0) !== Number(r.team) ? (
+                          <button
+                            type="button"
+                            className="bm-text-action"
+                            disabled={savingOrg}
+                            title="Temporarily set Original Count to the current Appraisal Sheet count"
+                            onClick={async () => {
+                              setSavingOrg(true);
+                              setError("");
+                              try {
+                                await updateBudget(r.id, { original_headcount: Number(r.team) }, "distribution");
+                                await reloadBudget();
+                              } catch (saveError) {
+                                setError(saveError.message || "Original Count could not be updated.");
+                              } finally {
+                                setSavingOrg(false);
+                              }
+                            }}
+                          >
+                            Set to current ({r.team})
+                          </button>
+                        ) : null}
+                      </td>
                       <td className="bm-n" style={wrapStyle(7)}>{r.team}</td>
                       <td>
                         <input
