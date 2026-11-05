@@ -64,6 +64,12 @@ export function useSelectedCompManager() {
 }
 
 export function normalizeManagerIdentity(value) {
+  if (value && typeof value === "object") {
+    return normalizeManagerIdentity(
+      value.ROWID ?? value.rowid ?? value.emp_id ?? value.employee_id ??
+      value.id ?? value.value ?? value.display_value ?? value.name ?? "",
+    );
+  }
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
