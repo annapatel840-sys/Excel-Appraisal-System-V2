@@ -61,7 +61,9 @@ const DETAIL_EMPLOYEE_COLLATOR = new Intl.Collator(undefined, {
 });
 
 // Keep a rolling window of upcoming employee histories ready for Save & Next.
-const DETAIL_HISTORY_PREFETCH_COUNT = 8;
+// Kept small: each one is a server call, and a burst of them at once slows
+// every call down (Catalyst queues them) until some time out ("Load failed").
+const DETAIL_HISTORY_PREFETCH_COUNT = 3;
 
 /* ------------------------------------------------------------------
    FRONTEND-ONLY SETTINGS (layout / banner). None of these touch data.
@@ -1365,7 +1367,7 @@ export function DetailScreenPage({
     }
   }, [employee?.empId, loadHistory]);
 
-  // Maintain a rolling window of the next eight employees. Their current
+  // Maintain a rolling window of the next few employees. Their current
   // appraisal values and feedback/info rows are already available from the
   // shared Appraisal Sheet roster and shared feedback map; only each employee's
   // separate history request is prefetched here. When Save & Next advances,

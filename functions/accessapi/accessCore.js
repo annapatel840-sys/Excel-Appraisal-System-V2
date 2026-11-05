@@ -373,6 +373,19 @@ async function loadDelegation(zcql, cycleId) {
     selectAll(z, e.table),
     selectAll(z, s.table),
   ]);
+  // A lookup value as text: Catalyst may return a ROWID or an object. Defined
+  // before cycleOf, which uses it straight away (a later const throws
+  // "Cannot access 'lookupText' before initialization").
+  const lookupText = (value) => {
+    if (value == null) return '';
+    if (typeof value === 'object') {
+      return lookupText(
+        value.ROWID ?? value.rowid ?? value.emp_id ?? value.employee_id ??
+        value.id ?? value.value ?? value.display_value ?? value.name ?? ''
+      );
+    }
+    return String(value).trim();
+  };
   const cycleOf = (r) => lookupText(r.cycle_id);
   const cycleSheetRows = cycleId ? sheetRows.filter((r) => cycleOf(r) === String(cycleId)) : [];
   const noCycleSheetRows = sheetRows.filter((r) => !cycleOf(r));
@@ -395,16 +408,6 @@ async function loadDelegation(zcql, cycleId) {
   // A stored person ("EMP001", a ROWID, "EMP001 - Name", an email or a unique
   // name) -> normalized employee ID. Exact matches only: a partial match could
   // put an employee in the wrong manager's team ("EMP001" is inside "EMP0012").
-  const lookupText = (value) => {
-    if (value == null) return '';
-    if (typeof value === 'object') {
-      return lookupText(
-        value.ROWID ?? value.rowid ?? value.emp_id ?? value.employee_id ??
-        value.id ?? value.value ?? value.display_value ?? value.name ?? ''
-      );
-    }
-    return String(value).trim();
-  };
   const person = (value) => {
     const raw = lookupText(value);
     if (!raw) return null;
