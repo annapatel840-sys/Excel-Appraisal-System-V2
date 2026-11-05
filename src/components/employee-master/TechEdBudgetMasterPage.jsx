@@ -4,6 +4,7 @@ import { useAccess } from "@/lib/access-store";
 import { useBudget } from "@/lib/budget-store";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { readTechEdOriginalCount } from "@/lib/distribution-budget";
 
 /* Add once in index.html <head> so the font matches the reference:
    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"> */
@@ -335,29 +336,28 @@ export function TechEdBudgetMasterPage() {
   ) || null;
 
   const meName = String(directoryOwner?.name || ownerName(directoryOwner?.assignment || liveMe?.appraiser_tech_ed_id || rawName)).trim();
-  const meOriginalCount = (() => {
-    if (!liveMe) return 0;
-    let localCount = null;
-    try {
-      const saved = JSON.parse(
-        window.localStorage.getItem("excel-appraisal-budget-original-v1") || "{}",
-      );
-      const cycleKey = String(liveMe.appraisal_cycle_id || activeCycleId || "");
-      const raw = saved?.[cycleKey]?.teCount?.[ownerKey(liveMe.appraiser_tech_ed_id || "")];
-      if (raw !== null && raw !== undefined && Number.isFinite(Number(raw)) &&
-        (Number(raw) > 0 || dashboardTeamCount === 0)) localCount = Number(raw);
-    } catch (_) {}
-    const legacyCount = Number(liveMe.headcount);
-    const hasLegacyCount = Number.isFinite(legacyCount) && legacyCount > 0;
-    const localLooksLikeLive = localCount !== null && localCount === dashboardTeamCount;
-    if (hasLegacyCount && legacyCount !== dashboardTeamCount && (localCount === null || localLooksLikeLive)) return legacyCount;
-    if (localCount !== null) return localCount;
-    return liveMe.original_headcount_is_persisted === true &&
-      liveMe.original_headcount !== null && liveMe.original_headcount !== undefined &&
-      (Number(liveMe.original_headcount) > 0 || dashboardTeamCount === 0)
-      ? Number(liveMe.original_headcount) || 0
-      : 0;
-  })();
+  const meOriginalCount = liveMe
+    ? (readTechEdOriginalCount(
+        liveMe.appraisal_cycle_id || activeCycleId,
+        [
+          directoryOwner?.employee_id,
+          directoryOwner?.row_id,
+          directoryOwner?.ROWID,
+          directoryOwner?.assignment,
+          directoryOwner?.name,
+          directoryOwner?.email,
+          liveMe.appraiser_tech_ed_id,
+          liveMe.appraiser_tech_ed_name,
+          rawName,
+        ],
+      ) ?? (() => {
+        const legacyCount = Number(liveMe.headcount);
+        if (Number.isFinite(legacyCount) && legacyCount > 0) return legacyCount;
+        return liveMe.original_headcount_is_persisted === true
+          ? Number(liveMe.original_headcount) || 0
+          : 0;
+      })())
+    : 0;
   const me = liveMe ? {
     id: liveMe.id,
     name: meName || rawName || "Tech-Ed",
