@@ -688,10 +688,46 @@ const countBy = (records, fn) => {
  * a missing-history problem can be read straight from the normal response
  * (meta field, HR / dry-run only). Safe to delete once history works.
  */
-const getHistory = async (app, table, empId, diag) => {
-  const allRecords = await getAllPreviousAppraisalRecords(table);
-  const wantedKeys = await resolveEmpKeys(app, empId);
+// Cache resolved employee keys within a warm function instance. The same
+// employee is commonly requested repeatedly by the rolling Detail prefetch.
+const resolvedEmployeeKeysCache = new Map();
 
+const getEmployeePayrollRows = async (app, wantedKeys) => {
+  const zcql = app.zcql();
+  const recordsById = new Map();
+  const keys = Array.from(wantedKeys).filter(Boolean);
+  for (const key of keys) {
+    const safeKey = String(key).replace(/'/g, "''");
+    const result = await zcql.executeZCQLQuery(
+      "SELECT * FROM Payroll_Data WHERE emp_id = '" + safeKey + "'",
+    );
+    (Array.isArray(result) ? result : []).forEach((item) => {
+      const row = (item && item.Payroll_Data) ||
+        (item && Object.values(item)[0]) || {};
+      const rowId = String(row.ROWID || "").trim();
+      const identity = rowId || JSON.stringify(row);
+      if (identity && !recordsById.has(identity)) recordsById.set(identity, row);
+    });
+  }
+  return Array.from(recordsById.values());
+};
+
+const getHistory = async (app, table, empId, diag) => {
+  const cacheKey = normalizeHistoryEmpId(empId);
+  let wantedKeys = resolvedEmployeeKeysCache.get(cacheKey);
+  if (!wantedKeys) {
+    wantedKeys = await resolveEmpKeys(app, empId);
+    resolvedEmployeeKeysCache.set(cacheKey, wantedKeys);
+    if (resolvedEmployeeKeysCache.size > 500) {
+      resolvedEmployeeKeysCache.delete(resolvedEmployeeKeysCache.keys().next().value);
+    }
+  }
+
+  // Fetch only this employee's Payroll_Data rows. The old implementation
+  // paged through the entire table (200 rows per request) for every employee,
+  // then filtered locally. This targeted ZCQL lookup avoids unrelated payroll
+  // rows and keeps rolling Detail prefetch affordable.
+  const allRecords = await getEmployeePayrollRows(app, wantedKeys);
   const history = allRecords
     .filter((record) => {
       const recordKeys = historyEmployeeKeys(record.emp_id);
