@@ -615,9 +615,14 @@ export function useDistributionBudget() {
       // manager may not appear in employeeRows (which can contain only their
       // reports). Budget_Distribution_Comp already stores the manager identity
       // and its parent Tech-Ed allocation ID, so resolve the parent directly.
-      const managerAllocationParentIds = new Set(
-        budgetCompManagerRows
-          .filter((row) =>
+      // For a real Comp Manager login, budgetmasterapi has already
+      // authorized and filtered Budget_Distribution_Comp to this employee.
+      // The browser session intentionally contains Catalyst user ID/name/email,
+      // not Employee_Master.emp_id, and the manager is not in their own reports
+      // roster. Re-matching the authorized rows here drops the correct row.
+      const managerAllocationRows = isCompManagerLogin
+        ? budgetCompManagerRows
+        : budgetCompManagerRows.filter((row) =>
             [
               row.comp_manager,
               row.comp_manager_id,
@@ -627,7 +632,9 @@ export function useDistributionBudget() {
             ]
               .filter((value) => value !== null && value !== undefined && String(value).trim() !== "")
               .some(matchesCurrentManager),
-          )
+          );
+      const managerAllocationParentIds = new Set(
+        managerAllocationRows
           .map((row) => String(row.budget_distribution_id || "").trim())
           .filter(Boolean),
       );
@@ -1077,7 +1084,13 @@ export function useDistributionBudget() {
     // Saved allocation rows are not the roster. Show saved managers only if
     // they still exist in the current eligible Appraisal Sheet; add current
     // managers that have not yet received an allocation as dynamic rows.
-    const matchingLiveComps = liveComps.filter((live) => {
+    // For a real Comp Manager login, liveComps is already scoped twice:
+    // budgetmasterapi authorizes the manager's saved child rows, and liveComps
+    // restricts them to the active parent Tech-Ed allocation. Do not re-check
+    // the manager identity against the reduced employee roster.
+    const matchingLiveComps = isCompManagerLogin
+      ? liveComps
+      : liveComps.filter((live) => {
       const resolved = resolveManager(
         live.comp_manager_display || live.comp_manager,
       );
