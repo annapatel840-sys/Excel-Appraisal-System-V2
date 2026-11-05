@@ -427,7 +427,7 @@ export function PayrollDataPage() {
       setLoading(false);
     });
     Promise.all([
-      payrollCycleRequest("payroll"),
+      payrollCycleRequest("payroll", { fresh: true }),
       payrollCycleRequest("cycles"),
       payrollCycleRequest("schema"),
     ])
