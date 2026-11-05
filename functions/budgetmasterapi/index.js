@@ -1692,8 +1692,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         firstValue(masterRow, ["comp_manager", "director"]) ||
         "",
     ).trim();
-    // Keep the original value for budget aggregation/matching; display label is separate.
-    const compManager = rawCompManager;
+    // Budget_Distribution_Comp stores the stable Employee ID. Appraisal
+    // Sheet may hold a lookup ROWID or a display label, so resolve it before
+    // building Tech-Ed + Comp Manager allocation keys.
+    const compManager = resolvePersonId(rawCompManager);
     const managerLookup = rawCompManager.split(/\s+-\s+/)[0].trim();
     const managerRow =
       masterByRowId.get(rawCompManager) ||
@@ -2665,33 +2667,57 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     // do not match the canonical Tech-Ed key, incorrectly producing zero here.
     // Seed the immutable baseline from the raw sheet-row count map; once saved,
     // positive snapshots are never recalculated.
+    // Team Size and Original Count must come from the raw generated
+    // Appraisal_Sheet rows. The enriched employee list is for budget math only:
+    // newly added employees can have a lookup ROWID in the sheet while their
+    // enriched Tech-Ed/Comp Manager aliases are not yet populated.
     const techRosterCounts = new Map(techSheetCurrentCounts);
     const compRosterCounts = new Map();
-    appraisalSheetEmployees.forEach((employee) => {
-      const techKey = ownerKey(employee.techEd);
-      const compKey = ownerKey(employee.compManager);
-      if (techKey) {
-        const tech = techBases.get(techKey) || {
-          base: 0,
-          count: 0,
-          utilized: 0,
-        };
-        // Current Team Size counts every employee on the current generated
-        // Appraisal_Sheet for this Tech-Ed, not only active/eligible employees.
-        tech.count += 1;
-        techBases.set(techKey, tech);
-      }
-      if (techKey && compKey) {
-        const pairKey = techKey + "::" + compKey;
-        compRosterCounts.set(pairKey, (compRosterCounts.get(pairKey) || 0) + 1);
-        const comp = compBases.get(pairKey) || {
-          base: 0,
-          count: 0,
-          utilized: 0,
-        };
-        comp.count += 1;
-        compBases.set(pairKey, comp);
-      }
+    const rawSheetEmployeeById = new Map(
+      employees.map((employee) => [
+        employeeKeyFor(employee.employeeId || employee.emp_id || ""),
+        employee,
+      ]),
+    );
+    currentAppraisalRows.forEach((sheetRow) => {
+      const rawEmployeeId = firstValue(sheetRow, [
+        "emp_id", "empId", "employee_id", "employeeId", "employee_id_text",
+      ]) || idOf(sheetRow);
+      const employee = rawSheetEmployeeById.get(employeeKeyFor(rawEmployeeId));
+      const rawTechEd = firstValue(sheetRow, [
+        "appraiser_tech_ed1",
+        "appraiser_tech_ed_row_id",
+        "appraiser_tech_ed_id",
+        "appraiser_tech_ed",
+        "appraiser_teched",
+        "appraiserTechED",
+        "appraiserTechEd",
+        "tech_ed",
+        "tech_ed_id",
+        "techED",
+        "techEd",
+      ]) || employee?.techEd;
+      const techKey = canonicalTechKey(resolvePersonId(rawTechEd));
+      const rawCompManager = firstValue(sheetRow, [
+        "comp_manager",
+        "comp_manager_id",
+        "comp_manager_row_id",
+        "comp_manager_name",
+        "comp_manager_emp_id",
+        "compManager",
+        "compManagerId",
+      ]) || employee?.compManager;
+      const compKey = ownerKey(resolvePersonId(rawCompManager));
+      if (!techKey || !compKey) return;
+      const pairKey = techKey + "::" + compKey;
+      compRosterCounts.set(pairKey, (compRosterCounts.get(pairKey) || 0) + 1);
+    });
+    // Make the Tech-Ed row count authoritative from raw sheet rows too.
+    techBases.forEach((stats, techKey) => {
+      stats.count = techRosterCounts.get(canonicalTechKey(techKey)) || 0;
+    });
+    compBases.forEach((stats, pairKey) => {
+      stats.count = compRosterCounts.get(pairKey) || 0;
     });
     let orgUtilized = 0;
 
@@ -2866,7 +2892,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
       }
       // Return the live count to the UI without persisting over the shared
       // Original Count snapshot stored in this legacy field.
-      const currentSheetHeadcount = Number(stats.current) || 0;
+      const currentSheetHeadcount =
+        techRosterCounts.get(canonicalTechKey(techKey)) || 0;
       await persistOptional(
         distributionTable,
         row.id,
@@ -3030,7 +3057,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         applied_budget: updatedBudget,
         // Return live Current Count to the response only; do not persist it
         // over the legacy Original Count snapshot.
-        current_headcount: Number(stats.current) || 0,
+        current_headcount: compRosterCounts.get(pairKey) || 0,
         current_budget_base: stats.base,
         total_utilization: stats.utilized,
         original_headcount: savedOriginalCount,
