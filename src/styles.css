@@ -265,3 +265,12 @@
     visibility: hidden !important;
   }
 }
+/* Table text (header, body and footer cells) uses Inter on every screen.
+   Page titles and the rest of the app keep Manrope. The Appraisal Sheet grid
+   already uses Inter. !important so screen-level font rules do not win. */
+table th,
+table td,
+table th *:not(svg):not(svg *),
+table td *:not(svg):not(svg *) {
+  font-family: Inter, "Segoe UI", Arial, sans-serif !important;
+}
