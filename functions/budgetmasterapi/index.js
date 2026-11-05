@@ -2824,7 +2824,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
       // Use the count accumulated in the exact same canonical Tech-Ed
       // bucket as the budget base above. This avoids a second identity lookup
       // against raw Appraisal_Sheet rows returning zero for valid owners.
-      const rosterCount = Number(stats.count) || 0;
+      // The immutable baseline must use the raw generated Appraisal_Sheet
+      // count. stats.count belongs to the enriched budget roster and can be
+      // zero for newly added employees whose lookup aliases are not enriched.
+      const rosterCount =
+        Number(techRosterCounts.get(canonicalTechKey(techKey))) || 0;
       const savedOriginalCountNumber = n(savedOriginalCountValue);
       // Repair a missing/zero baseline once from the generated roster. A
       // positive saved baseline is immutable; later delegation/eligibility
