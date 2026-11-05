@@ -537,28 +537,43 @@ export function useDistributionBudget() {
               "",
           ),
       );
+      const resolveManagerTeamTechOwner = (employee) => {
+        // Appraisal Sheet may expose the Tech-Ed relationship as a display
+        // value, employee foreign key, or the dedicated row-id field. Resolve
+        // all supported aliases through the authoritative Tech-Ed directory.
+        const raw =
+          employee.appraiser_tech_ed_appraisal_sheet ||
+          employee.appraiser_tech_ed ||
+          employee.appraiser_tech_ed_id ||
+          employee.appraiser_tech_ed_row_id ||
+          employee.appraiser_tech_ed1 ||
+          employee.appraiser_teched ||
+          employee.appraiserTechED ||
+          employee.tech_ed ||
+          employee.tech_ed_id ||
+          "";
+        const fk = normalizeOwner(
+          raw && typeof raw === "object"
+            ? raw.ROWID || raw.rowid || raw.id || raw.value || ""
+            : raw,
+        );
+        const linked = techEdOwners.find((owner) =>
+          [
+            owner?.row_id,
+            owner?.ROWID,
+            owner?.employee_id,
+            owner?.assignment,
+            owner?.name,
+            owner?.email,
+            owner?.email_id,
+          ]
+            .filter(Boolean)
+            .some((alias) => ownerMatches(alias, [fk])),
+        );
+        return normalizeOwner(linked?.assignment || raw);
+      };
       const managerTechOwners = Array.from(
-        new Set(
-          managerEmployees
-            .map((employee) => {
-              const raw =
-                employee.appraiser_tech_ed_appraisal_sheet ||
-                employee.appraiser_tech_ed ||
-                employee.appraiser_tech_ed_id ||
-                employee.appraiser_tech_ed_row_id ||
-                employee.appraiser_tech_ed1 ||
-                employee.tech_ed ||
-                employee.tech_ed_id ||
-                "";
-              const linked = techEdOwners.find(
-                (owner) =>
-                  normalizeOwner(owner.row_id || owner.ROWID || "") ===
-                  normalizeOwner(raw),
-              );
-              return normalizeOwner(linked?.assignment || raw);
-            })
-            .filter(Boolean),
-        ),
+        new Set(managerEmployees.map(resolveManagerTeamTechOwner).filter(Boolean)),
       );
       candidates = allRows.filter((row) => {
         const raw =
@@ -568,10 +583,23 @@ export function useDistributionBudget() {
           row.appraiser_tech_ed ||
           row.appraiser_tech_ed1 ||
           "";
-        const linked = techEdOwners.find(
-          (owner) =>
-            normalizeOwner(owner.row_id || owner.ROWID || "") ===
-            normalizeOwner(raw),
+        const fk = normalizeOwner(
+          raw && typeof raw === "object"
+            ? raw.ROWID || raw.rowid || raw.id || raw.value || ""
+            : raw,
+        );
+        const linked = techEdOwners.find((owner) =>
+          [
+            owner?.row_id,
+            owner?.ROWID,
+            owner?.employee_id,
+            owner?.assignment,
+            owner?.name,
+            owner?.email,
+            owner?.email_id,
+          ]
+            .filter(Boolean)
+            .some((alias) => ownerMatches(alias, [fk])),
         );
         return managerTechOwners.includes(
           normalizeOwner(linked?.assignment || raw),
