@@ -27,7 +27,7 @@ export function FeedbackRatingMasterContainer() {
         loading: current.cycles.length === 0 && current.rows.length === 0,
         error: "",
       }));
-      loadFeedbackRating()
+      loadFeedbackRating({ fresh: true })
         .then((data) => {
           if (!cancelled) {
             freshApplied = true;
