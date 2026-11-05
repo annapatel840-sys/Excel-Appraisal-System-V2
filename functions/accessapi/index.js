@@ -1504,7 +1504,7 @@ function tally(map, key, extra) {
   map.set(key, x);
 }
 
-/* POST /delegation/save — HR / Tech-Ed direct assignment save to Delegation only. */
+/* POST /delegation/save — HR / Tech-Ed save to Delegation and update existing Appraisal_Sheet rows only. Never creates sheet rows. */
 app.post(
   "/delegation/save",
   asyncRoute(async (req, res) => {
