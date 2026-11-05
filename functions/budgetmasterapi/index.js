@@ -24,6 +24,22 @@ function value(row, key) {
   return row && row[key] !== undefined && row[key] !== null ? row[key] : "";
 }
 
+// Catalyst lookup columns may be returned as a scalar ROWID or an object.
+// Normalize both forms before mapping the parent/child budget relationship.
+function referenceText(raw) {
+  if (raw === null || raw === undefined) return "";
+  if (typeof raw !== "object") return String(raw).trim();
+  for (const key of [
+    "emp_id", "employee_id", "ROWID", "rowid", "id", "value",
+    "display_value", "displayValue", "name", "assignment",
+  ]) {
+    const resolved = raw[key];
+    if (resolved !== null && resolved !== undefined && String(resolved).trim())
+      return referenceText(resolved);
+  }
+  return "";
+}
+
 // Original Count must come only from a dedicated snapshot field. Generic
 // headcount is mutable in legacy deployments and therefore cannot be treated
 // as an original baseline. If the schema has neither snapshot field, return
@@ -190,7 +206,7 @@ function mapComp(row) {
     updated_at: String(value(row, "MODIFIEDTIME") || value(row, "CREATEDTIME") || ""),
     created_at: String(value(row, "CREATEDTIME") || ""),
     id: idOf(row),
-    comp_manager: String(value(row, "comp_manager")),
+    comp_manager: referenceText(value(row, "comp_manager")),
     percentage: n(value(row, "percentage")),
     percentage_is_set:
       value(row, "percentage") !== "" &&
@@ -209,7 +225,7 @@ function mapComp(row) {
         value(row, "claculated_budget") !== undefined),
     total_utilization: utilized,
     applied_budget: applied,
-    budget_distribution_id: String(value(row, "budget_distribution_id")),
+    budget_distribution_id: referenceText(value(row, "budget_distribution_id")),
     appraisal_cycle_id: cycleReference(value(row, "appraisal_cycle_id")),
     original_budget_base: n(
       value(row, "original_budget_base") || value(row, "original_base"),
@@ -1166,7 +1182,7 @@ function matchesTechEdOwner(owner, a, techEdOwners = []) {
   });
 }
 
-function filterOwn(bundle, a, techEdOwners = []) {
+function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = []) {
   if (!a || !a.enforced || (a.scope && a.scope.all)) return bundle;
 
   const employeeRoster = bundle.employeeRoster || [];
@@ -1179,14 +1195,70 @@ function filterOwn(bundle, a, techEdOwners = []) {
     const ownEmployees = employeeRoster.filter((employee) =>
       teamIds.has(ownerKey(employee.emp_id || employee.employee_id))
     );
-    const managerKeys = new Set([
+    const managerAliases = new Set([
       a.user?.empId, a.user?.emp_id, a.user?.employeeId, a.user?.employee_id,
       a.user?.row_id, a.user?.ROWID, a.user?.name, a.user?.email, a.user?.email_id,
-    ].map(ownerKey).filter(Boolean));
+    ].flatMap((value) => {
+      const text = referenceText(value).toLowerCase();
+      return text ? [text, ownerKey(text)] : [];
+    }).filter(Boolean));
+    // Resolve the signed-in Comp Manager through Employee_Master so the child
+    // allocation can match whether comp_manager stores EMP ID, lookup ROWID,
+    // full display label, name, or email.
+    const managerMasterRow = employeeMasterRows.find((employee) => {
+      const aliases = [
+        employee.emp_id, employee.employee_id, employee.ROWID, employee.rowid,
+        employee.emp_name, employee.employee_name, employee.name,
+        employee.email_id, employee.email, employee.work_email,
+      ].flatMap((value) => {
+        const text = referenceText(value).toLowerCase();
+        return text ? [text, ownerKey(text)] : [];
+      });
+      return aliases.some((alias) => managerAliases.has(alias));
+    });
+    if (managerMasterRow) {
+      [
+        managerMasterRow.emp_id, managerMasterRow.employee_id,
+        managerMasterRow.ROWID, managerMasterRow.rowid,
+        managerMasterRow.emp_name, managerMasterRow.employee_name,
+        managerMasterRow.name, managerMasterRow.email_id,
+        managerMasterRow.email, managerMasterRow.work_email,
+      ].forEach((value) => {
+        const text = referenceText(value).toLowerCase();
+        if (text) {
+          managerAliases.add(text);
+          managerAliases.add(ownerKey(text));
+        }
+      });
+    }
     const isOwnCompAllocation = (row) => {
-      const key = ownerKey(row.comp_manager);
-      const splitKey = key.split(/\s+-\s+/)[0];
-      return managerKeys.has(key) || managerKeys.has(splitKey);
+      const raw = referenceText(row.comp_manager).toLowerCase();
+      if (!raw) return false;
+      const aliases = [raw, ownerKey(raw)];
+      // Also resolve a stored lookup ROWID/employee ID/name through the same
+      // Employee_Master directory, then compare canonical manager identities.
+      const linked = employeeMasterRows.find((employee) => {
+        const employeeAliases = [
+          employee.emp_id, employee.employee_id, employee.ROWID, employee.rowid,
+          employee.emp_name, employee.employee_name, employee.name,
+          employee.email_id, employee.email, employee.work_email,
+        ].flatMap((value) => {
+          const text = referenceText(value).toLowerCase();
+          return text ? [text, ownerKey(text)] : [];
+        });
+        return aliases.some((alias) => employeeAliases.includes(alias));
+      });
+      if (linked) {
+        [
+          linked.emp_id, linked.employee_id, linked.ROWID, linked.rowid,
+          linked.emp_name, linked.employee_name, linked.name,
+          linked.email_id, linked.email, linked.work_email,
+        ].forEach((value) => {
+          const text = referenceText(value).toLowerCase();
+          if (text) aliases.push(text, ownerKey(text));
+        });
+      }
+      return aliases.some((alias) => managerAliases.has(alias));
     };
     const ownSavedCompRows = bundle.compManager.filter(isOwnCompAllocation);
     const savedParentIds = new Set(
@@ -3365,7 +3437,7 @@ module.exports = async function (req, res) {
             ),
         });
       }
-      const bundle = filterOwn(calculatedBundle, a, techEdOwners);
+      const bundle = filterOwn(calculatedBundle, a, techEdOwners, sourceRows.masterEmployeeRows || []);
       logBudgetStage("response ready", {
         returnedTechEdRows: bundle.techEd.length,
         returnedCompManagerRows: bundle.compManager.length,
