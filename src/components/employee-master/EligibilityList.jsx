@@ -125,7 +125,7 @@ const DEFS = [
   },
   {
     key: "by",
-    label: "Set by",
+    label: "Set By",
     w: 100,
     get: (e) => {
       const source = String(
@@ -140,7 +140,7 @@ const DEFS = [
   },
   {
     key: "tag",
-    label: "Change tag",
+    label: "Change Tag",
     w: 200,
     get: (e) =>
       [tagOf(e), e.inExceptionalCycle ? "In open Exceptional cycle" : ""]
@@ -165,7 +165,7 @@ const DEFS = [
       );
     },
   },
-  { key: "upd", label: "Last updated", w: 180, get: (e) => updatedOf(e) },
+  { key: "upd", label: "Last Updated", w: 180, get: (e) => updatedOf(e) },
 ];
 
 function countBy(list, fn) {
