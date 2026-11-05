@@ -149,10 +149,9 @@ const GRID_COLUMNS = COLUMNS;
 
 // empId is merged into the "name" column, so it is not drawn separately.
 const FROZEN_KEYS = new Set(["name"]);
-// UI only: these columns are never drawn and are not offered in the More
-// panel (Show / Wrap). The data stays on the row (used by the Campus Hire
-// toggle and the Campus Hire tag).
-const UI_HIDDEN_KEYS = new Set(["sourceOfHire"]);
+// UI only: columns listed here are never drawn and are not offered in the
+// More panel (Show / Wrap). Empty now: Source of Hire is shown again.
+const UI_HIDDEN_KEYS = new Set();
 export const isCampusHire = (row) =>
   /campus/i.test(String(row?.sourceOfHire ?? ""));
 
@@ -189,18 +188,19 @@ const DEFAULT_COLUMN_ORDER = (() => {
   );
   const order = [
     "name",
-    "sourceOfHire",
     "designation",
     ...head,
     ...(gross >= 0 ? AFTER_GROSS_MARGIN_ORDER : []),
     ...tail,
   ].filter((key, index, list) => list.indexOf(key) === index);
-  // "Last Appraisal" sits at the end, straight after "Client Rating".
-  const rest = order.filter((key) => key !== "lastAppraisalDate");
-  const clientAt = rest.indexOf("clientRating");
-  if (order.includes("lastAppraisalDate")) {
-    rest.splice(clientAt >= 0 ? clientAt + 1 : rest.length, 0, "lastAppraisalDate");
-  }
+  // Client Rating sits straight after Manager Rating. "Last Appraisal" is
+  // second to last and "Source of Hire" is the very last column.
+  const rest = order.filter(
+    (key) => !["clientRating", "lastAppraisalDate", "sourceOfHire"].includes(key),
+  );
+  const ratingAt = rest.indexOf("managerRating");
+  rest.splice(ratingAt >= 0 ? ratingAt + 1 : rest.length, 0, "clientRating");
+  rest.push("lastAppraisalDate", "sourceOfHire");
   return rest;
 })();
 
@@ -3783,8 +3783,9 @@ export function AppraisalGrid({
           ? `${rawText} - ${ratingLabel}`
           : rawText;
 
-      // Client Manager Feedback: one line only, except on the active
-      // (selected / highlighted) row, where the whole text is shown.
+      // Manager / Client Manager Feedback: one line only, except on the active
+      // (selected / highlighted) row, where up to 3 lines are shown and longer
+      // text scrolls up / down inside the cell.
       const isFeedback = col.key === "clientManager" || col.key === "managerFeedback";
       const feedbackOpen = isFeedback && historyRow?.id === row.id;
       const showWrapped = isFeedback ? feedbackOpen : wraps;
@@ -3805,7 +3806,16 @@ export function AppraisalGrid({
         >
           <span
             className={
-              showWrapped ? "break-words" : "block min-w-0 max-w-full truncate"
+              feedbackOpen
+                ? "block w-full min-w-0 overflow-y-auto break-words"
+                : showWrapped
+                  ? "break-words"
+                  : "block min-w-0 max-w-full truncate"
+            }
+            style={
+              feedbackOpen
+                ? { maxHeight: "3.75em", scrollbarWidth: "thin" }
+                : undefined
             }
           >
             {text}
