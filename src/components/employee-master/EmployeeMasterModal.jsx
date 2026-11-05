@@ -48,7 +48,7 @@ export function InactiveModal({ count, onClose, onApply }) {
       }
     >
       <div className="em-field">
-        <label>Exit date (optional)</label>
+        <label>Exit Date (optional)</label>
         <input type="date" className="em-date-input" value={exitDate} onChange={(e) => setExitDate(e.target.value)} />
       </div>
       <div className="em-field">
@@ -71,7 +71,7 @@ const FIELDS = [
   { key: "band", label: "Band" },
   { key: "skillType", label: "Skill Type" },
   { key: "recordOwner", label: "Record Owner ID" },
-  { key: "exitDate", label: "Exit date", kind: "date" },
+  { key: "exitDate", label: "Exit Date", kind: "date" },
 ];
 
 export function ChangeModal({ count, suggestionsFor, onClose, onApply }) {

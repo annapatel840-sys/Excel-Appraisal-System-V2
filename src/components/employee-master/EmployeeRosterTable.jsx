@@ -132,7 +132,7 @@ const PLAIN = [
   ["recordOwner", "Record Owner ID", 120],
   ["band", "Band", 90],
   ["skillType", "Skill Type", 110],
-  ["exitDate", "Exit date", 110],
+  ["exitDate", "Exit Date", 110],
 ];
 
 const DEFS = [
