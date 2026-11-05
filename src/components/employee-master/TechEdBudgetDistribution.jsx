@@ -324,6 +324,8 @@ export function TechEdBudgetDistribution() {
   } = useDistributionBudget();
 
 
+  const [temporaryOriginalCount, setTemporaryOriginalCount] = useState(null);
+
   const cycleLabel = String(
     activeCycle?.name ||
       liveMaster?.appraisal_cycle_name ||
@@ -446,10 +448,34 @@ export function TechEdBudgetDistribution() {
     isCompManagerView,
     selectedCompManager,
   ]);
+  // Temporary one-time correction saved in the same persistent snapshot read by all budget screens.
+  function saveTemporaryOriginalCount() {
+    const cycleId = String(liveTech?.appraisal_cycle_id || activeCycleId || "").trim();
+    const count = Number(currentTeamCount);
+    if (!cycleId || !Number.isFinite(count) || count < 0 || isCompManagerView) return;
+    const storageKey = "excel-appraisal-budget-original-v1";
+    let snapshots = {};
+    try { snapshots = JSON.parse(window.localStorage.getItem(storageKey) || "{}") || {}; } catch (_) {}
+    const cycleSnapshot = snapshots[cycleId] && typeof snapshots[cycleId] === "object" ? snapshots[cycleId] : {};
+    const teCount = { ...(cycleSnapshot.teCount || {}) };
+    [
+      techOwnerKey, loginTechOwner, liveTech?.appraiser_tech_ed_id,
+      liveTech?.appraiser_tech_ed_name, liveTech?.tech_ed, liveTech?.tech_ed_id,
+    ].filter(Boolean).forEach((alias) => {
+      teCount[String(alias).trim()] = count;
+      ownerParts(alias).forEach((part) => { teCount[String(part).trim()] = count; });
+    });
+    snapshots[cycleId] = { ...cycleSnapshot, teCount };
+    window.localStorage.setItem(storageKey, JSON.stringify(snapshots));
+    setTemporaryOriginalCount(count);
+    window.dispatchEvent(new CustomEvent("appraisal:budget-original-count-updated", { detail: { cycleId, techOwnerKey, count } }));
+  }
+
   // Original Count is frontend-only: read the same cycle/Tech-Ed snapshot
   // saved by Budget Master. If an earlier bad browser snapshot equals today's
   // live count, recover from the legacy baseline when it is still available.
   const team0 = useMemo(() => {
+    if (temporaryOriginalCount !== null) return temporaryOriginalCount;
     if (isCompManagerView) return num(selectedManagerNode?.team0);
     const savedCount = readTechEdOriginalCount(
       liveTech?.appraisal_cycle_id || activeCycleId,
@@ -470,7 +496,7 @@ export function TechEdBudgetDistribution() {
       persisted !== null && persisted !== undefined && String(persisted).trim() !== ""
       ? num(persisted)
       : 0;
-  }, [isCompManagerView, selectedManagerNode?.team0, liveTech, activeCycleId, techOwnerKey, loginTechOwner]);
+  }, [temporaryOriginalCount, isCompManagerView, selectedManagerNode?.team0, liveTech, activeCycleId, techOwnerKey, loginTechOwner]);
   const allotted = isCompManagerView
     ? 0
     : cmNodes.reduce((s, n) => s + n.updated, 0);
@@ -797,6 +823,17 @@ export function TechEdBudgetDistribution() {
                   {team0} → {currentTeamCount}
                 </div>
                 <div className="d mut">At allocation → now</div>
+                {!isCompManagerView && (
+                  <button
+                    type="button"
+                    onClick={saveTemporaryOriginalCount}
+                    disabled={!activeCycleId || currentTeamCount <= 0}
+                    title="Save the current team count as this cycle's fixed Original Count"
+                    style={{ marginTop: 5, color: "#1559a6", fontSize: 11, fontWeight: 700, textDecoration: "underline" }}
+                  >
+                    Set Original Count to current ({currentTeamCount})
+                  </button>
+                )}
               </div>
               {isCompManagerView ? (
                 <div>
