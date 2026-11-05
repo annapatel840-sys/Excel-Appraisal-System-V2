@@ -1185,7 +1185,7 @@ function filterOwn(bundle, a, techEdOwners = []) {
     ].map(ownerKey).filter(Boolean));
     const isOwnCompAllocation = (row) => {
       const key = ownerKey(row.comp_manager);
-      const splitKey = key.split(/\\s+-\\s+/)[0];
+      const splitKey = key.split(/\s+-\s+/)[0];
       return managerKeys.has(key) || managerKeys.has(splitKey);
     };
     const ownSavedCompRows = bundle.compManager.filter(isOwnCompAllocation);
