@@ -1782,22 +1782,33 @@ function HRApplyBudget() {
                             className="bm-text-action"
                             disabled={savingOrg}
                             title="Temporarily set Original Count to the current Appraisal Sheet count"
-                            onClick={() => {
-                              // TEMPORARY UI-ONLY correction: keep this in the
-                              // existing browser snapshot store. Do not call the
-                              // Catalyst API or require a Data Store column.
-                              const next = {
-                                ...origSnap,
-                                [selectedCycle]: {
-                                  ...(origSnap[selectedCycle] || {}),
-                                  teCount: {
-                                    ...((origSnap[selectedCycle] || {}).teCount || {}),
-                                    [r.canonicalKey]: Number(r.team),
+                            onClick={async () => {
+                              try {
+                                setSavingOrg(true);
+                                setError("");
+                                // TEMPORARY: persist into the existing shared
+                                // Budget_Distribution.headcount field so Tech-Ed
+                                // login reads the same corrected value.
+                                if (r.id && !String(r.id).startsWith("tech-ed-")) {
+                                  await updateBudget(r.id, { headcount: Number(r.team) }, "distribution");
+                                }
+                                const next = {
+                                  ...origSnap,
+                                  [selectedCycle]: {
+                                    ...(origSnap[selectedCycle] || {}),
+                                    teCount: {
+                                      ...((origSnap[selectedCycle] || {}).teCount || {}),
+                                      [r.canonicalKey]: Number(r.team),
+                                    },
                                   },
-                                },
-                              };
-                              setOrigSnap(next);
-                              writeOriginalSnapshots(next);
+                                };
+                                setOrigSnap(next);
+                                writeOriginalSnapshots(next);
+                              } catch (saveError) {
+                                setError(saveError.message || "Could not update Original Count.");
+                              } finally {
+                                setSavingOrg(false);
+                              }
                             }}
                           >
                             Set to current ({r.team})
