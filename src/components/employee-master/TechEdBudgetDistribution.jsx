@@ -19,6 +19,7 @@ import {
   isActiveAndEligible,
   employeeUtilized,
   byDate,
+  readTechEdOriginalCount,
 } from "@/lib/distribution-budget";
 import { splitStamp } from "@/lib/budget-audit-local";
 import {
@@ -450,59 +451,26 @@ export function TechEdBudgetDistribution() {
   // live count, recover from the legacy baseline when it is still available.
   const team0 = useMemo(() => {
     if (isCompManagerView) return num(selectedManagerNode?.team0);
-    let localCount = null;
-    try {
-      const saved = JSON.parse(
-        window.localStorage.getItem("excel-appraisal-budget-original-v1") || "{}",
-      );
-      const cycleKey = String(liveTech?.appraisal_cycle_id || activeCycleId || "");
-      const cycleSnapshot = saved?.[cycleKey]?.teCount || {};
-      // Budget Master stores the snapshot under its canonical Tech-Ed roster
-      // key, while this screen may resolve the login through a different alias
-      // (employee id, ROWID, or display label). Match all known identities so
-      // both screens always read the same saved Original Count.
-      const identities = [
+    const savedCount = readTechEdOriginalCount(
+      liveTech?.appraisal_cycle_id || activeCycleId,
+      [
         techOwnerKey,
         loginTechOwner,
         liveTech?.appraiser_tech_ed_id,
         liveTech?.appraiser_tech_ed_name,
         liveTech?.tech_ed,
         liveTech?.tech_ed_id,
-      ].flatMap((value) => [value, ...ownerParts(value || "")])
-        .map((value) => normalizeOwner(value))
-        .filter(Boolean);
-      const snapshotEntry = Object.entries(cycleSnapshot).find(([key]) => {
-        const normalizedKey = normalizeOwner(key);
-        return identities.includes(normalizedKey) ||
-          identities.some((identity) => ownerMatches(key, [identity]));
-      });
-      const raw = snapshotEntry ? snapshotEntry[1] : cycleSnapshot[techOwnerKey];
-      // Ignore a stale zero browser snapshot when the live generated roster
-      // is non-empty; the persisted API baseline is authoritative.
-      if (raw !== null && raw !== undefined && Number.isFinite(Number(raw)) &&
-        (Number(raw) > 0 || Number(currentTeamCount) === 0)) {
-        localCount = Number(raw);
-      }
-    } catch (_) {
-      // Storage is optional; continue with the API's legacy values.
-    }
+      ],
+    );
+    if (savedCount !== null) return savedCount;
     const legacyCount = Number(liveTech?.headcount);
-    const hasLegacyCount = Number.isFinite(legacyCount) && legacyCount > 0;
-    const currentCount = Number(currentTeamCount) || 0;
-    const localLooksLikeLive = localCount !== null && localCount === currentCount;
-    if (
-      hasLegacyCount &&
-      legacyCount !== currentCount &&
-      (localCount === null || localLooksLikeLive)
-    ) return legacyCount;
-    if (localCount !== null) return localCount;
+    if (Number.isFinite(legacyCount) && legacyCount > 0) return legacyCount;
     const persisted = liveTech?.original_headcount;
     return liveTech?.original_headcount_is_persisted === true &&
-      persisted !== null && persisted !== undefined && String(persisted).trim() !== "" &&
-      (num(persisted) > 0 || currentCount === 0)
+      persisted !== null && persisted !== undefined && String(persisted).trim() !== ""
       ? num(persisted)
       : 0;
-  }, [isCompManagerView, selectedManagerNode?.team0, liveTech, activeCycleId, techOwnerKey, currentTeamCount]);
+  }, [isCompManagerView, selectedManagerNode?.team0, liveTech, activeCycleId, techOwnerKey, loginTechOwner]);
   const allotted = isCompManagerView
     ? 0
     : cmNodes.reduce((s, n) => s + n.updated, 0);
