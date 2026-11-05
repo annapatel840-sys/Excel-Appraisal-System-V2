@@ -78,7 +78,8 @@ function makeApp(req) {
     }),
     zcql: () => ({ executeZCQLQuery: async (sql) => execZcql(sql) }),
     datastore: () => ({
-      table: (name) => ({
+      // Some writes address a table by its Data Store ID.
+      table: (idOrName) => { const name = TABLE_IDS[idOrName] || idOrName; return {
         insertRow: async (row) => { maybeFail(name, 'insert'); return insert(name, row); },
         insertRows: async (rows) => {
           if (rows.length > 200) throw new Error('insertRows > 200');
@@ -97,10 +98,11 @@ function makeApp(req) {
           if (ids.length > 200) throw new Error('deleteRows > 200');
           const s = new Set(ids.map(String)); DB[name] = tbl(name).filter((x) => !s.has(x.ROWID)); return true;
         }
-      })
+      }; }
     })
   };
 }
+const TABLE_IDS = { '74008000000036124': 'Delegation' };
 const STUB_ID = '__zcatalyst_stub__';
 const origResolve = Module._resolveFilename;
 Module._resolveFilename = function (request, ...rest) {
@@ -130,7 +132,7 @@ em('EMP0090', 'Neha Rao', 'neha@x.com');
 em('EMP0100', 'Emp A', 'a@x.com', 'Active', 'EMP0051 - Ashok Kumar');
 em('EMP0101', 'Emp B', 'b@x.com', 'Active', 'emp0051 - Ashok Kumar');
 em('EMP0102', 'Emp C', 'c@x.com', 'Active', 'Someone Without Id');
-function del(cycle, emp, cm, te) { return insert(DEL, { cycle_id: cycle, emp_id: emp, comp_manager_id: cm, appraiser_tech_ed_id: te }); }
+function del(cycle, emp, cm, te) { return insert(DEL, { cycle_id: cycle, emp_id: emp, comp_manager: cm, appraiser_tech_ed: te }); }
 del(cAct.ROWID, 'EMP0100', 'EMP0060', 'EMP0051');
 del(cAct.ROWID, 'EMP0101', 'EMP0090', 'emp0051 ');
 del(cAct.ROWID, 'EMP0102', 'EMP0090', 'EMP0070');
@@ -180,7 +182,7 @@ const version = () => Number((tbl('AccessVersion')[0] || {}).version || 0);
     const r = await call('POST', '/seed', U.admin);
     assert.strictEqual(r.ok, true, JSON.stringify(r));
     assert.strictEqual(r.enforced, false);
-    assert.strictEqual(count('AccessCatalog'), 12 + 9 + 37);
+    assert.strictEqual(count('AccessCatalog'), 12 + 9 + 39);   // 12 screens, 9 actions, 39 fields
     assert.strictEqual(count('RoleScreen'), 7 * 3);
     assert.strictEqual(count('RoleAction'), 7 * 3);     // 2 fixed actions have no rows
     assert.strictEqual(version(), 1);
@@ -224,7 +226,8 @@ const version = () => Number((tbl('AccessVersion')[0] || {}).version || 0);
   await test('Tech ED / Comp Manager from Delegation of the Active cycle; scope excludes self', async () => {
     const t = await call('GET', '/me', U.ashok);
     assert.strictEqual(t.role, 'techEd', JSON.stringify(t)); assert.strictEqual(t.roleFrom, 'Delegation');
-    assert.deepStrictEqual(sorted(t.scope.empIds), ['EMP0100', 'EMP0101']);
+    // EMP0200 has no Delegation row: its Tech ED comes from the Appraisal Sheet.
+    assert.deepStrictEqual(sorted(t.scope.empIds), ['EMP0100', 'EMP0101', 'EMP0200']);
     assert.strictEqual(t.scope.all, false); assert.strictEqual(t.scope.cycleId, cAct.ROWID);
     assert.strictEqual(t.screens.employeeMaster, 'none'); assert.strictEqual(t.screens.delegation, 'edit');
     const c = await call('GET', '/me', U.priya);
@@ -233,13 +236,22 @@ const version = () => Number((tbl('AccessVersion')[0] || {}).version || 0);
     assert.strictEqual(c.screens.delegation, 'none'); assert.strictEqual(c.actions.allotNextLevel, true); assert.strictEqual(c.actions.viewAudit, false);
   });
 
-  await test('no Active cycle → non-HR refused, HR still in', async () => {
+  await test('no Active cycle → no Delegation teams; Employee Master / cycle-less sheet assignments still count; HR still in', async () => {
+    // Since 2026-11-04 (team-scope.test "no active cycle"): between cycles a
+    // Tech ED keeps the team named in Employee_Master (and cycle-less sheet
+    // rows); a person with only a Delegation assignment is refused.
     tbl(CYC).find((r) => r.ROWID === cAct.ROWID).status = 'Closed'; A.resetCache();
-    const t = await call('GET', '/me', U.ashok);
-    assert.strictEqual(t.ok, false); assert.strictEqual(t.status, 403);
-    assert.strictEqual((await call('GET', '/me', U.hr)).ok, true);
-    tbl(CYC).find((r) => r.ROWID === cAct.ROWID).status = 'Active'; A.resetCache();
-    assert.strictEqual((await call('GET', '/me', U.ashok)).ok, true);
+    try {
+      const t = await call('GET', '/me', U.ashok);
+      assert.strictEqual(t.ok, true, JSON.stringify(t)); assert.strictEqual(t.role, 'techEd');
+      assert.deepStrictEqual(sorted(t.scope.empIds), ['EMP0100', 'EMP0101', 'EMP0200']);
+      const n = await call('GET', '/me', { email: 'neha@x.com' });   // Comp Manager only through Delegation
+      assert.strictEqual(n.ok, false); assert.strictEqual(n.status, 403);
+      assert.strictEqual((await call('GET', '/me', U.hr)).ok, true);
+    } finally {
+      tbl(CYC).find((r) => r.ROWID === cAct.ROWID).status = 'Active'; A.resetCache();
+    }
+    assert.strictEqual((await call('GET', '/me', { email: 'neha@x.com' })).ok, true);
   });
 
   await test('inactive in Employee_Master / email not found / no team → refused', async () => {
@@ -317,7 +329,7 @@ const version = () => Number((tbl('AccessVersion')[0] || {}).version || 0);
     ] });
     assert.strictEqual(r.ok, true, JSON.stringify(r));
     const t = await call('GET', '/me', U.ashok);
-    assert.deepStrictEqual(sorted(t.scope.empIds), ['EMP0100', 'EMP0101', 'EMP0102']);
+    assert.deepStrictEqual(sorted(t.scope.empIds), ['EMP0100', 'EMP0101', 'EMP0102', 'EMP0200']);
     assert.strictEqual(t.fields.hikeAmount, 'hidden'); assert.strictEqual(t.fields.hikePct, 'hidden');
     assert.strictEqual(t.fields.newBaseSalary, 'hidden'); assert.strictEqual(t.fields.totalRewardsHikeAmount, 'hidden'); assert.strictEqual(t.fields.totalRewardsHikePct, 'hidden');
     const b = await call('GET', '/me', U.b);
@@ -378,23 +390,28 @@ const version = () => Number((tbl('AccessVersion')[0] || {}).version || 0);
 
   await test('/delegation/fill maps "EMP0051 - Ashok Kumar" and comp manager names; reports unmatched/ambiguous; replace', async () => {
     const v0 = version();
+    // Fill takes only active Employee Master people marked Eligible for the
+    // cycle: all 10 here, of whom EMP0070 is Inactive → 9 rows.
+    tbl(EM).forEach((x) => insert('Eligibility_List', { appraisal_cycle_id: cNext.ROWID, emp_id: x.emp_id, eligibility_status: 'Eligible' }));
     const r = await call('POST', '/delegation/fill', U.hr, { cycleId: cNext.ROWID, replace: true });
     assert.strictEqual(r.ok, true, JSON.stringify(r));
-    assert.strictEqual(r.employees, 11); assert.strictEqual(r.inserted, 11); assert.strictEqual(version(), v0 + 1);
+    assert.strictEqual(r.employees, 9); assert.strictEqual(r.inserted, 9); assert.strictEqual(version(), v0 + 1);
     const rows = tbl(DEL).filter((x) => x.cycle_id === cNext.ROWID);
-    const by = Object.fromEntries(rows.map((x) => [x.emp_id, x]));
-    assert.strictEqual(rows.length, 11);
-    assert.strictEqual(by.EMP0100.appraiser_tech_ed_id, 'EMP0051'); assert.strictEqual(by.EMP0101.appraiser_tech_ed_id, 'EMP0051');
-    assert.strictEqual(by.EMP0200.appraiser_tech_ed_id, 'EMP0051');
-    assert.strictEqual(by.EMP0100.comp_manager_id, 'EMP0060'); assert.strictEqual(by.EMP0101.comp_manager_id, 'EMP0060');
-    assert.strictEqual(by.EMP0102.comp_manager_id, ''); assert.strictEqual(by.EMP0102.appraiser_tech_ed_id, '');
+    // Delegation.emp_id is a lookup: it holds the Employee Master ROWID.
+    const codeOf = Object.fromEntries(tbl(EM).map((x) => [x.ROWID, x.emp_id]));
+    const by = Object.fromEntries(rows.map((x) => [codeOf[x.emp_id], x]));
+    assert.strictEqual(rows.length, 9);
+    assert.strictEqual(by.EMP0070, undefined, 'inactive employee left out');
+    assert.strictEqual(by.EMP0100.appraiser_tech_ed, 'EMP0051'); assert.strictEqual(by.EMP0101.appraiser_tech_ed, 'EMP0051');
+    assert.strictEqual(by.EMP0100.comp_manager, 'EMP0060'); assert.strictEqual(by.EMP0101.comp_manager, 'EMP0060');
+    assert.strictEqual(by.EMP0102.comp_manager, ''); assert.strictEqual(by.EMP0102.appraiser_tech_ed, '');
     assert.deepStrictEqual(r.unmatched.techEd.map((x) => x.value), ['Someone Without Id']);
-    assert.deepStrictEqual(r.unmatched.compManager.map((x) => x.name), ['Unknown Person']);
+    assert.deepStrictEqual(r.unmatched.compManager.map((x) => x.name), []);
     assert.deepStrictEqual(r.ambiguous.compManager[0].candidates.sort(), ['EMP0080', 'EMP0081']);
     const r2 = await call('POST', '/delegation/fill', U.hr, { cycleId: cNext.ROWID, replace: true });
-    assert.strictEqual(r2.deleted, 11); assert.strictEqual(count(DEL, (x) => x.cycle_id === cNext.ROWID), 11);
+    assert.strictEqual(r2.deleted, 9); assert.strictEqual(count(DEL, (x) => x.cycle_id === cNext.ROWID), 9);
     const r3 = await call('POST', '/delegation/fill', U.hr, { cycleId: cNext.ROWID, replace: false });
-    assert.strictEqual(r3.skipped, 11); assert.strictEqual(count(DEL, (x) => x.cycle_id === cNext.ROWID), 11);
+    assert.strictEqual(r3.skipped, 9); assert.strictEqual(count(DEL, (x) => x.cycle_id === cNext.ROWID), 9);
     assert.strictEqual(count(DEL, (x) => x.cycle_id === cAct.ROWID), 4, 'active cycle untouched');
     assert.strictEqual((await call('POST', '/delegation/fill', U.priya, { cycleId: cNext.ROWID })).status, 403);
   });

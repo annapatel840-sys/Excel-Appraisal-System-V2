@@ -8,33 +8,39 @@
      serves it over http on a random port.
    - ACCESS_ENFORCE='true': allowed vs 401/403, scoped lists and counts, hidden
      columns removed, read-only edits refused, HR-only screens blocked.
-   - ACCESS_ENFORCE unset (dry run): the same requests are sent to the legacy
-     index.js from git HEAD and to the new one on identical data; status codes,
-     row counts and (for reads) whole bodies must match; would-deny is logged. */
+   - ACCESS_ENFORCE unset (dry run): a request that enforcement would refuse is
+     logged as "would deny" and not refused by the access layer.
+     (Until 2026-11 this also compared every answer with the pre-access code of
+     3a88bc5; enforcement is live and the code has moved on, so that was dropped.) */
 'use strict';
 
 const Module = require('module');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const http = require('http');
 const assert = require('assert');
-const childProcess = require('child_process');
 
 const FN_ROOT = path.join(__dirname, '..', '..');          // functions/
-const REPO = path.join(FN_ROOT, '..');
 const FUNCS = ['employeesapi', 'employeemasterapi', 'appraisalhistoryapi', 'appraisalauditapi', 'payrollcycleapi', 'budgetmasterapi'];
 
 /* ------------------------------------------------------------------ */
 /* In-memory Catalyst stub                                             */
 /* ------------------------------------------------------------------ */
 const TABLE_IDS = {
-  '71873000000020001': 'Appraisal_Sheet',
-  '71873000000020438': 'Employee_Master',
-  '71873000000020833': 'Payroll_Data',
-  '71873000000030049': 'Appraisal_Cycle_Master',
-  '71873000000021235': 'Appraisal_Audit',
-  '71873000000030413': 'Budget_Master'
+  // Current project (ExcelAppraisalManagement)
+  '74008000000039094': 'Appraisal_Sheet',
+  '74008000000035727': 'Employee_Master',
+  '74008000000035326': 'Payroll_Data',
+  '74008000000034190': 'Appraisal_Cycle_Master',
+  '74008000000034940': 'Appraisal_Audit',
+  '74008000000034565': 'Budget_Master',
+  '74008000000033809': 'Budget_Distribution',
+  '74008000000023149': 'Budget_Distribution_Comp',
+  '74008000000036124': 'Delegation',
+  '74008000000057046': 'Eligibility_List',
+  '74008000000022041': 'Feedback_And_Rating',
+  '74008000000022481': 'Location_Master',
+  '74008000000096255': 'Previous_Delegation'
 };
 let DB = {};
 let nextId = 1000n;
@@ -147,16 +153,24 @@ insert(CYC, { cycle_name: 'FY2025', status: 'Closed', start_date: '2025-04-01', 
   ['EMP0090', 'Emp B', 'b@x.com'], ['EMP0100', 'Emp A1', 'a1@x.com'], ['EMP0101', 'Emp A2', 'a2@x.com'], ['EMP0102', 'Emp A3', 'a3@x.com'],
   ['EMP0103', 'Emp A4', 'a4@x.com'], ['EMP0104', 'Emp Out', 'out@x.com']]
   .forEach(([id, name, email]) => insert(EM, { emp_id: id, emp_name: name, email_id: email, emp_status: 'Active' }));
-function del(emp, cm, te) { insert(DEL, { cycle_id: cAct.ROWID, emp_id: emp, comp_manager_id: cm, appraiser_tech_ed_id: te }); }
+function del(emp, cm, te) { insert(DEL, { cycle_id: cAct.ROWID, emp_id: emp, comp_manager: cm, appraiser_tech_ed: te }); }
 del('EMP0100', 'EMP0060', 'EMP0051');
 del('EMP0101', 'EMP0060', 'EMP0051');
 del('EMP0102', '', 'EMP0051');
 del('EMP0103', 'EMP0060', '');
 del('EMP0104', '', 'EMP0099');
+// Sheet rows carry the same Comp Manager / Tech ED as Delegation (Delegation
+// Save writes both); employeesapi builds a team from the sheet row.
+const SHEET_CM = ['Priya Shah', 'Priya Shah', '', 'Priya Shah', ''];
+const SHEET_TE = ['EMP0051 - Ashok Kumar', 'EMP0051 - Ashok Kumar', 'EMP0051 - Ashok Kumar', '', 'EMP0099 - Other'];
 ['EMP0100', 'EMP0101', 'EMP0102', 'EMP0103', 'EMP0104'].forEach((id, i) => insert(SHEET, {
-  emp_id: id, name: 'Emp ' + id, designation: 'Engineer', comp_manager: i < 2 ? 'Priya Shah' : '',
-  appraiser_tech_ed: i < 3 ? 'EMP0051 - Ashok Kumar' : 'EMP0099 - Other', status: 'Active', eligible_status: 'Eligible',
+  cycle_id: cAct.ROWID, emp_id: id, name: 'Emp ' + id, designation: 'Engineer', comp_manager: SHEET_CM[i],
+  appraiser_tech_ed: SHEET_TE[i], status: 'Active', eligible_status: 'Eligible',
   hike_amount: 100 + i, hike_pct: 5, new_rb: 10 + i, wissen_experience: 3
+}));
+// The sheet lists only employees with an Eligible decision for the Active cycle.
+['EMP0100', 'EMP0101', 'EMP0102', 'EMP0103', 'EMP0104'].forEach((id) => insert('Eligibility_List', {
+  appraisal_cycle_id: cAct.ROWID, emp_id: id, eligibility_status: 'Eligible'
 }));
 // Field limits: Comp Manager cannot see Hike Amount; Tech ED may only read New RB.
 insert('FieldAccess', { role_key: 'compMgr', field_key: 'hikeAmount', access_limit: 'hidden' });
@@ -166,26 +180,16 @@ insert('Payroll_Data', { emp_id: 'EMP0104', appraisal_year: 'Apr-26', hike_amoun
 insert('Appraisal_Audit', { emp_id: 'EMP0100', field_name: 'hike_amount', old_value: '1', new_value: '2', changed_by: 'x', changed_at: '2026-09-01 10:00:00', appraisal_year: 'Apr-26' });
 insert('Appraisal_Audit', { emp_id: 'EMP0104', field_name: 'hike_amount', old_value: '1', new_value: '2', changed_by: 'x', changed_at: '2026-09-02 10:00:00', appraisal_year: 'Apr-26' });
 insert('Appraisal_Audit', { emp_id: 'CYCLE', field_name: 'Created cycle', changed_by: 'x', changed_at: '2026-09-03 10:00:00', source: 'cycle' });
-const R1 = insert('Budget_Master', { tech_ed_id: 'EMP0051 - Ashok Kumar', budget_amount: 100, status: 'Active' });
-const R2 = insert('Budget_Master', { tech_ed_id: 'EMP0099 - Other', budget_amount: 200, status: 'Active' });
-insert('Budget_Master', { tech_ed_id: 'EMP00510 - Ashok Kumar', budget_amount: 300, status: 'Active' });
+// Budget_Master: one org-level row per cycle (per-Tech-ED budgets live in
+// Budget_Distribution).
+const BM = insert('Budget_Master', { appraisal_cycle_id: cAct.ROWID, budget_percentage: 8, org_budget_base: 1000000, status: 'Active' });
 
 /* ------------------------------------------------------------------ */
-/* Functions (new + legacy from git HEAD)                              */
-// Legacy = main just before the access work was merged (3a88bc5).
-const LEGACY_REF = process.env.LEGACY_REF || '3a88bc5';
+/* Functions                                                           */
 /* ------------------------------------------------------------------ */
 const CORES = FUNCS.map((f) => require(path.join(FN_ROOT, f, 'accessCore.js')));
 const resetCaches = () => CORES.forEach((c) => c.resetCache());
-const NEW = {}, LEGACY = {};
-let legacyError = null;
-function loadLegacy(fn) {
-  const src = childProcess.execFileSync('git', ['-C', REPO, 'show', LEGACY_REF + ':functions/' + fn + '/index.js'], { encoding: 'utf8' });
-  const dir = path.join(os.tmpdir(), 'access-legacy-' + process.pid, fn);
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(path.join(dir, 'index.js'), src);
-  return require(path.join(dir, 'index.js'));
-}
+const NEW = {};
 async function serve(handler) {
   const server = http.createServer((req, res) => {
     Promise.resolve(handler(req, res)).catch((e) => { if (!res.headersSent) { res.statusCode = 599; res.end(JSON.stringify({ unhandled: e.message })); } });
@@ -230,42 +234,23 @@ async function test(name, fn) {
 }
 function snapshot() { return { db: JSON.parse(JSON.stringify(DB)), nextId }; }
 function restore(s) { DB = JSON.parse(JSON.stringify(s.db)); nextId = s.nextId; resetCaches(); }
-const VOLATILE = new Set(['changed_at', 'CREATEDTIME', 'MODIFIEDTIME']);
-function dataTables() {
-  const o = {};
-  Object.keys(DB).filter((t) => t !== 'AccessVersion' && DB[t].length).sort().forEach((t) => {
-    o[t] = DB[t].map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => !VOLATILE.has(k))));
-  });
-  return o;
-}
-
-/* Same request to legacy (git HEAD) and new code on identical data, dry run. */
-async function sameAsLegacy(fn, method, url, who, body, opts) {
-  opts = opts || {};
+/* Dry run: the request is not refused by the access layer, and the denial
+   enforcement would have made is logged. Data is put back afterwards. */
+async function dryRunLogs(fn, method, url, who, body, wouldDeny) {
   const s = snapshot();
-  const legacy = await call(LEGACY[fn], method, url, who, body);
-  const legacyDb = dataTables();
-  restore(s);
   const from = LOGS.length;
-  const now = await call(NEW[fn], method, url, who, body);
-  const nowDb = dataTables();
-  const logs = LOGS.slice(from);
+  const r = await call(NEW[fn], method, url, who, body);
+  const logs = LOGS.slice(from).filter((l) => l.startsWith('ACCESS'));
   restore(s);
   const tag = fn + ' ' + method + ' ' + url + ' as ' + (who ? who.email : 'anonymous');
-  assert.strictEqual(now.status, legacy.status, tag + ': status ' + now.status + ' vs legacy ' + legacy.status + ' ' + JSON.stringify(now.body));
-  const len = (r) => (r.body && Array.isArray(r.body.data) ? r.body.data.length : -1);
-  assert.strictEqual(len(now), len(legacy), tag + ': row count');
-  if (method === 'GET' || opts.wholeBody) assert.deepStrictEqual(now.body, legacy.body, tag + ': body');
-  else assert.strictEqual(now.body && now.body.success, legacy.body && legacy.body.success, tag + ': success');
-  assert.deepStrictEqual(nowDb, legacyDb, tag + ': data written');
-  if (opts.wouldDeny) assert.ok(logs.some((l) => l.startsWith('ACCESS dry-run: would deny ' + opts.wouldDeny)), tag + ': no would-deny log in ' + JSON.stringify(logs.filter((l) => l.startsWith('ACCESS'))));
-  return { legacy, now, logs };
+  assert.ok(!(r.body && r.body.enforced === true), tag + ': answered as enforced ' + JSON.stringify(r.body));
+  assert.ok(logs.some((l) => l.startsWith('ACCESS dry-run: would deny ' + wouldDeny)), tag + ': no would-deny log in ' + JSON.stringify(logs));
+  return r;
 }
 
 (async () => {
   for (const fn of FUNCS) {
     NEW[fn] = await serve(require(path.join(FN_ROOT, fn, 'index.js')));
-    try { LEGACY[fn] = await serve(loadLegacy(fn)); } catch (e) { legacyError = e; }
   }
 
   /* ================= ENFORCED ================= */
@@ -329,9 +314,12 @@ async function sameAsLegacy(fn, method, url, who, body, opts) {
     restore(start);
   });
 
-  await test('employeesapi POST import: appraisal columns in scope ok; out of scope / master column / new employee need HR', async () => {
-    const ok = await EMP('POST', '/', U.ashok, { employees: [{ emp_id: 'EMP0100', hike_amount: 9 }, { emp_id: 'EMP0101', hike_amount: 8 }] });
-    assert.strictEqual(ok.status, 200, JSON.stringify(ok.body)); assert.strictEqual(ok.body.data.updated, 2);
+  await test('employeesapi POST bulk upsert: HR only (Tech ED refused even in scope); HR creates and raises the access version', async () => {
+    // Bulk upsert of Appraisal_Sheet rows is HR only (Tech ED edits go
+    // through PATCH, cell by cell). Nothing is written for a refused request.
+    const before = JSON.stringify(tbl(SHEET));
+    assert.strictEqual((await EMP('POST', '/', U.ashok, { employees: [{ emp_id: 'EMP0100', hike_amount: 9 }, { emp_id: 'EMP0101', hike_amount: 8 }] })).status, 403);
+    assert.strictEqual(JSON.stringify(tbl(SHEET)), before);
     const n = tbl(SHEET).length;
     assert.strictEqual((await EMP('POST', '/', U.ashok, { employees: [{ emp_id: 'EMP0100', hike_amount: 1 }, { emp_id: 'EMP0104', hike_amount: 1 }] })).status, 403);
     assert.strictEqual((await EMP('POST', '/', U.ashok, { employees: [{ emp_id: 'EMP0100', name: 'Renamed' }] })).status, 403);
@@ -380,12 +368,15 @@ async function sameAsLegacy(fn, method, url, who, body, opts) {
     restore(start);
   });
 
-  await test('appraisalauditapi: viewAudit; rows in scope only (CYCLE rows HR only); POST scope + changed_by from login', async () => {
+  await test('appraisalauditapi: list for any appraisal user, rows in scope only (CYCLE rows HR only); POST scope + changed_by from login', async () => {
     const h = await AUDIT('GET', '/?limit=500', U.hr);
     assert.strictEqual(h.status, 200); assert.strictEqual(h.body.total, 3);
     const t = await AUDIT('GET', '/?limit=500', U.ashok);
     assert.strictEqual(t.status, 200); assert.deepStrictEqual(t.body.data.map((x) => x.emp_id), ['EMP0100']); assert.strictEqual(t.body.total, 1);
-    assert.strictEqual((await AUDIT('GET', '/', U.priya)).status, 403);                               // viewAudit off for Comp Mgr
+    // A Comp Manager loads their own team's history too (no CYCLE / other rows).
+    const p = await AUDIT('GET', '/?limit=500', U.priya);
+    assert.strictEqual(p.status, 200); assert.deepStrictEqual(p.body.data.map((x) => x.emp_id), ['EMP0100']);
+    assert.strictEqual((await AUDIT('GET', '/', U.b)).status, 403);                                   // no role
     assert.strictEqual((await AUDIT('GET', '/?emp_id=EMP0104', U.ashok)).status, 403);
     const w = await AUDIT('POST', '/', U.priya, [{ emp_id: 'EMP0100', field_name: 'hike_amount', new_value: '3', changed_by: 'spoofed' }]);
     assert.strictEqual(w.status, 200, JSON.stringify(w.body)); assert.strictEqual(w.body.data[0].changed_by, 'priya@x.com');
@@ -402,7 +393,11 @@ async function sameAsLegacy(fn, method, url, who, body, opts) {
     for (const r of ['payroll', 'audit', 'history']) assert.strictEqual((await PAY('GET', '/?resource=' + r, U.ashok)).status, 403, r);
     assert.strictEqual((await PAY('POST', '/?resource=validate', U.priya, {})).status, 403);
     assert.strictEqual((await PAY('POST', '/?resource=cycles/create', U.ashok, { name: 'X', start: '2030-01-01', end: '2030-12-31' })).status, 403);
-    assert.strictEqual((await PAY('GET', '/?resource=session', U.nobody)).status, 403);
+    // session answers any signed-in user with their own identity only.
+    const ns = await PAY('GET', '/?resource=session', U.nobody);
+    assert.strictEqual(ns.status, 200); assert.deepStrictEqual(Object.keys(ns.body.data).sort(), ['email', 'id', 'name', 'role']);
+    assert.strictEqual(ns.body.data.email, 'nobody@x.com');
+    assert.strictEqual((await PAY('GET', '/?resource=payroll', U.nobody)).status, 403);
     assert.strictEqual((await PAY('GET', '/?resource=session', U.anon)).status, 401);
     const p = await PAY('GET', '/?resource=payroll', U.hr);
     assert.strictEqual(p.status, 200); assert.strictEqual(p.body.data.length, 2);
@@ -413,22 +408,21 @@ async function sameAsLegacy(fn, method, url, who, body, opts) {
     restore(start);
   });
 
-  await test('budgetmasterapi: own Tech ED rows only (strict match); config needs changeBudgetConfig; allot needs allotNextLevel; PUT body parsed', async () => {
+  await test('budgetmasterapi: Budget Master readable by roles, 401/403 otherwise; only HR changes it (PUT body parsed)', async () => {
     const h = await BUDGET('GET', '/', U.hr);
-    assert.strictEqual(h.status, 200); assert.strictEqual(h.body.data.length, 3);
-    const t = await BUDGET('GET', '/', U.ashok);
-    assert.deepStrictEqual(t.body.data.map((r) => r.id), [R1.ROWID]);
-    const p = await BUDGET('GET', '/', U.priya);
-    assert.strictEqual(p.status, 200); assert.strictEqual(p.body.data.length, 0);
+    assert.strictEqual(h.status, 200, JSON.stringify(h.body)); assert.ok((h.body.master || []).some((r) => r.id === BM.ROWID), JSON.stringify(h.body.master));
+    assert.strictEqual((await BUDGET('GET', '/', U.ashok)).status, 200);
     assert.strictEqual((await BUDGET('GET', '/', U.b)).status, 403);
     assert.strictEqual((await BUDGET('GET', '/', U.anon)).status, 401);
-    assert.strictEqual((await BUDGET('PUT', '/', U.ashok, { id: R1.ROWID, budget_amount: 5 })).status, 403);
-    const al = await BUDGET('PUT', '/', U.ashok, { id: R1.ROWID, budget_utilized: 5 });
-    assert.strictEqual(al.status, 200, JSON.stringify(al.body)); assert.strictEqual(al.body.data.budget_utilized, 5);
-    assert.strictEqual((await BUDGET('PUT', '/', U.ashok, { id: R2.ROWID, budget_utilized: 5 })).status, 403);
-    assert.strictEqual((await BUDGET('PUT', '/', U.priya, { id: R1.ROWID, budget_utilized: 1 })).status, 403);
-    const hr = await BUDGET('PUT', '/', U.hr, { id: R2.ROWID, budget_amount: 250 });
-    assert.strictEqual(hr.status, 200, JSON.stringify(hr.body)); assert.strictEqual(row('Budget_Master', (r) => r.ROWID === R2.ROWID).budget_amount, 250);
+    const before = JSON.stringify(tbl('Budget_Master'));
+    for (const who of [U.ashok, U.priya]) {
+      const r = await BUDGET('PUT', '/', who, { resource: 'master', id: BM.ROWID, budget_percentage: 9 });
+      assert.strictEqual(r.status, 403, who.email + ' ' + JSON.stringify(r.body));
+    }
+    assert.strictEqual(JSON.stringify(tbl('Budget_Master')), before);
+    const hr = await BUDGET('PUT', '/', U.hr, { resource: 'master', id: BM.ROWID, budget_percentage: 9 });
+    assert.strictEqual(hr.status, 200, JSON.stringify(hr.body));
+    assert.strictEqual(Number(row('Budget_Master', (r) => r.ROWID === BM.ROWID).budget_percentage), 9);
     restore(start);
   });
 
@@ -436,53 +430,14 @@ async function sameAsLegacy(fn, method, url, who, body, opts) {
   delete process.env.ACCESS_ENFORCE;
   resetCaches();
 
-  await test('dry run: same responses as legacy (git HEAD) for every function', async () => {
-    if (legacyError) throw new Error('legacy code not loadable from git HEAD: ' + legacyError.message);
-    const list = [
-      ['employeesapi', 'GET', '/?page=1&limit=100', U.hr], ['employeesapi', 'GET', '/?page=1&limit=100', U.ashok],
-      ['employeesapi', 'GET', '/?page=1&limit=100', U.priya], ['employeesapi', 'GET', '/', U.b], ['employeesapi', 'GET', '/', U.anon],
-      ['employeesapi', 'GET', '/?view=master&limit=100', U.ashok], ['employeesapi', 'GET', '/?status=active&eligible=eligible', U.hr],
-      ['employeesapi', 'PATCH', '/', U.hr, { emp_id: 'EMP0100', status: 'Inactive' }],
-      ['employeesapi', 'PATCH', '/', U.priya, { emp_id: 'EMP0104', hike_amount: 1 }],
-      ['employeesapi', 'POST', '/', U.ashok, { employees: [{ emp_id: 'EMP0100', hike_amount: 3 }, { emp_id: 'EMP0777', name: 'N' }] }],
-      ['employeemasterapi', 'GET', '/?page=1&limit=20', U.hr], ['employeemasterapi', 'GET', '/?status=active', U.ashok],
-      ['employeemasterapi', 'PUT', '/', U.ashok, { emp_id: 'EMP0101', emp_status: 'Inactive' }],
-      ['appraisalhistoryapi', 'GET', '/?emp_id=EMP0100', U.priya], ['appraisalhistoryapi', 'GET', '/?emp_id=EMP0104', U.ashok],
-      ['appraisalhistoryapi', 'PATCH', '/', U.ashok, { emp_id: 'EMP0100', appraisal_year: 'Apr-26', retention_bonus: 5 }],
-      ['appraisalauditapi', 'GET', '/?limit=500', U.priya], ['appraisalauditapi', 'GET', '/?emp_id=EMP0104', U.ashok],
-      ['appraisalauditapi', 'POST', '/', U.ashok, [{ emp_id: 'CYCLE', field_name: 'x', changed_by: 'client' }]],
-      ['payrollcycleapi', 'GET', '/?resource=session', U.ashok], ['payrollcycleapi', 'GET', '/?resource=cycles', U.nobody],
-      ['payrollcycleapi', 'GET', '/?resource=payroll', U.ashok], ['payrollcycleapi', 'GET', '/?resource=payroll', U.hr],
-      ['payrollcycleapi', 'POST', '/?resource=cycles/create', U.ashok, { name: 'X', start: '2031-01-01', end: '2031-12-31' }],
-      ['budgetmasterapi', 'GET', '/', U.anon], ['budgetmasterapi', 'GET', '/', U.ashok],
-      ['budgetmasterapi', 'PUT', '/', U.ashok, { id: R1.ROWID, budget_amount: 1 }]
-    ];
-    for (const [fn, m, url, who, body] of list) await sameAsLegacy(fn, m, url, who, body);
+  await test('dry run: requests enforcement would refuse are logged as would-deny, not refused', async () => {
+    await dryRunLogs('employeesapi', 'GET', '/?page=1&limit=100', U.nobody, undefined, 'nobody@x.com');
+    await dryRunLogs('employeemasterapi', 'GET', '/', U.ashok, undefined, 'ashok@x.com');
+    await dryRunLogs('budgetmasterapi', 'GET', '/', U.b, undefined, 'b@x.com');
   });
 
-  await test('dry run: would-deny is logged while the legacy answer is kept', async () => {
-    await sameAsLegacy('employeesapi', 'GET', '/?page=1&limit=100', U.nobody, undefined, { wouldDeny: 'nobody@x.com' });
-    const r = await sameAsLegacy('employeesapi', 'PATCH', '/', U.ashok, { emp_id: 'EMP0100', new_rb: 7 }, { wouldDeny: 'ashok@x.com You cannot edit: new_rb.' });
-    assert.strictEqual(r.now.status, 200);
-    await sameAsLegacy('employeemasterapi', 'GET', '/', U.ashok, undefined, { wouldDeny: 'ashok@x.com' });
-    await sameAsLegacy('appraisalhistoryapi', 'GET', '/?emp_id=EMP0104', U.ashok, undefined, { wouldDeny: 'ashok@x.com' });
-    await sameAsLegacy('appraisalauditapi', 'GET', '/', U.priya, undefined, { wouldDeny: 'priya@x.com' });
-    await sameAsLegacy('payrollcycleapi', 'GET', '/?resource=history', U.hr);
-    await sameAsLegacy('budgetmasterapi', 'GET', '/', U.b, undefined, { wouldDeny: 'b@x.com' });
-  });
-
-  await test('dry run: only intended change — budgetmasterapi PUT reads the raw body (legacy always 400)', async () => {
-    const s = snapshot();
-    const legacy = await call(LEGACY.budgetmasterapi, 'PUT', '/', U.hr, { id: R2.ROWID, budget_amount: 260 });
-    restore(s);
-    const now = await BUDGET('PUT', '/', U.hr, { id: R2.ROWID, budget_amount: 260 });
-    assert.strictEqual(legacy.status, 400); assert.strictEqual(now.status, 200, JSON.stringify(now.body));
-    assert.strictEqual(row('Budget_Master', (r) => r.ROWID === R2.ROWID).budget_amount, 260);
-    restore(s);
-  });
-
-  for (const fn of FUNCS) { NEW[fn].server.close(); if (LEGACY[fn]) LEGACY[fn].server.close(); }
-  if (LOGS.some((l) => l.startsWith('UNHANDLED'))) out('note: legacy code produced unhandled rejections:', LOGS.filter((l) => l.startsWith('UNHANDLED')).length);
+  for (const fn of FUNCS) NEW[fn].server.close();
+  if (LOGS.some((l) => l.startsWith('UNHANDLED'))) out('note: unhandled rejections:', LOGS.filter((l) => l.startsWith('UNHANDLED')).join(' | '));
   const failed = results.filter((r) => r[0] === 'FAIL').length;
   out('\n' + (results.length - failed) + ' passed, ' + failed + ' failed');
   process.exit(failed ? 1 : 0);
