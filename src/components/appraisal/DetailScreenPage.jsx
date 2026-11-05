@@ -1801,7 +1801,9 @@ export function DetailScreenPage({
                       last && last.basePay
                         ? ((last.hikeAmount / last.basePay) * 100).toFixed(1)
                         : null;
-                    const prevTPB = Number(targetPBCurrent) || 0;
+                    // "Current" cell of Target PB for Next Year = the Target PB allocated
+                    // (sheet: Target PB Allocated for May).
+                    const prevTPB = Number(employee.targetPBAllocatedForMay) || 0;
                     const vsLast = (live, prev) => (last ? live - prev : null);
                     // Red floor alert (value is still accepted): this year's PB / RB
                     // below the "to be Paid" amount OR below last year's PB / RB.
@@ -2012,7 +2014,7 @@ export function DetailScreenPage({
                             {payErr.pb ||
                               (pbLow
                                 ? pbLowMsg
-                                : `PB to be Paid ${fmt(payFloors.pbFloor)}${payFloors.pbMonth ? ` · ${payFloors.pbMonth}` : ""} · Target PB allocated ${fmt(payFloors.pbTarget)}`)}
+                                : `PB to be Paid ${fmt(payFloors.pbFloor)}${payFloors.pbMonth ? ` · ${payFloors.pbMonth}` : ""} · Target PB set ${fmt(payFloors.pbTarget)}`)}
                           </span>
                         </FieldRow>
 
