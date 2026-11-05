@@ -767,9 +767,10 @@ function ReadOnlyInput({ value, bold }) {
       value={value}
       className="h-[36px] w-full min-w-0 rounded border px-2.5 text-[15.5px]"
       style={{
-        borderColor: "#D9E1E6",
-        background: "#F3F6F7",
-        color: bold ? INK : MUTED,
+        borderColor: "#AEBBC9",
+        background: "#D3DBE4",
+        color: "#1F2937",
+        WebkitTextFillColor: "#1F2937",
         fontWeight: bold ? 800 : 400,
       }}
     />
@@ -1831,9 +1832,9 @@ export function DetailScreenPage({
                     const naBox = (
                       <div
                         style={{
-                          border: "1px dashed #B8C4CE",
-                          background: "#F3F6F7",
-                          color: MUTED,
+                          border: "1px dashed #AEBBC9",
+                          background: "#D3DBE4",
+                          color: "#1F2937",
                           borderRadius: 4,
                           padding: "4px 8px",
                           fontSize: 13,
@@ -2208,7 +2209,7 @@ export function DetailScreenPage({
                   <span className="inline-flex items-center gap-1.5">
                     <i
                       className="inline-block h-[11px] w-[11px] rounded-[3px] border"
-                      style={{ background: "#F3F6F7", borderColor: "#D9E1E6" }}
+                      style={{ background: "#D3DBE4", borderColor: "#AEBBC9" }}
                     />
                     Read-only
                   </span>
