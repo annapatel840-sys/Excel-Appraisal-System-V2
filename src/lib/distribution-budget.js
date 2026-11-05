@@ -359,7 +359,32 @@ export function useDistributionBudget() {
         .filter(Boolean),
     );
 
-    // Resolve the signed-in person against the complete Tech-Ed directory first.
+    // A Comp Manager is a child of a Tech-Ed, not a Tech-Ed owner.
+    // budgetmasterapi has already authenticated this login and returned only
+    // its Budget_Distribution_Comp child row(s). Follow the stored parent FK
+    // directly to the active-cycle Budget_Distribution row; never try to infer
+    // this login's parent by matching the manager as a Tech-Ed employee.
+    if (isCompManagerLogin) {
+      const childRows = budgetCompManagerRows.filter((child) =>
+        (!activeCycleId ||
+          String(child.appraisal_cycle_id || "") === String(activeCycleId)) &&
+        String(child.budget_distribution_id || "").trim()
+      );
+      const parentIds = new Set(
+        childRows.map((child) => String(child.budget_distribution_id).trim()),
+      );
+      const linkedParents = budgetDistributionRows.filter((parent) =>
+        parentIds.has(String(parent.id || "").trim()) &&
+        (!activeCycleId ||
+          String(parent.appraisal_cycle_id || "") === String(activeCycleId))
+      );
+      const uniqueParents = Array.from(
+        new Map(linkedParents.map((parent) => [String(parent.id), parent])).values(),
+      );
+      if (uniqueParents.length === 1) return uniqueParents[0];
+    }
+
+    // Resolve a Tech-Ed login against the complete Tech-Ed directory first.
     // Do not depend on employeeRows containing the Tech-Ed's own employee row:
     // Tech-Ed-scoped employee APIs may return only their reports.
     const directoryOwner = techEdOwners.find((item) =>
@@ -1013,8 +1038,11 @@ export function useDistributionBudget() {
         "";
       const manager = resolveManager(rawManager);
       if (!manager) return;
-      if (isCompManagerView && !isSignedInManager(rawManager) &&
-          !isSignedInManager(manager))
+      // A real Comp Manager login receives only its own employees from
+      // budgetmasterapi. Trust that server-side scope instead of requiring a
+      // second browser identity match against a roster that omits the manager.
+      if (!isCompManagerLogin && isCompManagerView &&
+          !isSignedInManager(rawManager) && !isSignedInManager(manager))
         return;
       const key = ownerKey(manager);
       const stats = managerStats.get(key) || {
