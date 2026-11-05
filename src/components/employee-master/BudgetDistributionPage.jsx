@@ -3,7 +3,7 @@ import { WalletCards, RefreshCw } from "lucide-react";
  
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
-import { useAppraisal } from "@/lib/appraisal-store";
+import { useAppraisal, useAppraisalRefresh } from "@/lib/appraisal-store";
 import { TechEdBudgetDistribution } from "./TechEdBudgetDistribution";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { FilterStatus, FilterTh, ResizableCols, filterTableCss, resizableTableStyle, useColumnResize, useTableFilters } from "./FilterableTable";
@@ -304,6 +304,23 @@ export function BudgetDistributionPage() {
   // Performance Bonus (PB), Retention Bonus (RB) and Hike Amount totals added
   // together over the same (Active + Eligible) rows the sheet shows.
   const { rows: appraisalAll } = useAppraisal();
+  const { refreshEmployees } = useAppraisalRefresh();
+
+  // Refresh button: re-read the budget and roster data in place. The page,
+  // filters, open sections and scroll stay as they are; only the numbers update.
+  const [refreshing, setRefreshing] = useState(false);
+  const refreshData = async () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        Promise.resolve(reload?.()).catch(() => {}),
+        Promise.resolve(refreshEmployees?.()).catch(() => {}),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
   const utilised = useMemo(
     () =>
       (appraisalAll || [])
@@ -488,20 +505,20 @@ export function BudgetDistributionPage() {
         </span>
         <span className="sep" />
         <span>
-          Appraisal cycle <b>{cycleLabel || "Loading cycle…"}</b>
+          Appraisal Cycle <b>{cycleLabel || "Loading Cycle…"}</b>
         </span>
         <span className="sep" />
         <span>
-          <b>{rows.length}</b> Tech-Ed allocation{rows.length === 1 ? "" : "s"}
+          <b>{rows.length}</b> Tech-Ed Allocation{rows.length === 1 ? "" : "s"}
         </span>
-        <span className="readonly">Read only · HR</span>
+        <span className="readonly">Read Only · HR</span>
         <button
           type="button"
           className="refresh"
-          onClick={reload}
-          disabled={loading}
+          onClick={refreshData}
+          disabled={refreshing}
         >
-          <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+          <RefreshCw size={12} className={refreshing ? "animate-spin" : ""} />
           Refresh
         </button>
       </div>
@@ -515,7 +532,7 @@ export function BudgetDistributionPage() {
         >
           <span>Distribution Summary</span>
           <span className="muted-small" style={{ color: "#d6e4f5" }}>
-            All Tech-Ed budgets
+            All Tech-Ed Budgets
             <span style={{ marginLeft: 10 }}>{summaryOpen ? "▾" : "▸"}</span>
           </span>
         </button>
@@ -523,38 +540,38 @@ export function BudgetDistributionPage() {
         {summaryOpen && (
           <div className="summary">
             <div>
-              <div className="label">Tech-Ed count</div>
+              <div className="label">Tech-Ed Count</div>
               <div className="value">{rows.length}</div>
-              <div className="sub muted">Active budget records</div>
+              <div className="sub muted">Active Budget Records</div>
             </div>
             <div>
-              <div className="label">Total original budget</div>
+              <div className="label">Total Original Budget</div>
               <div className="value">{money(totals.base)}</div>
-              <div className="sub muted">Before additional budget</div>
+              <div className="sub muted">Before Additional Budget</div>
             </div>
             <div>
-              <div className="label">Additional budget</div>
+              <div className="label">Additional Budget</div>
               <div className="value">{money(totals.additional)}</div>
-              <div className="sub muted">Added to original</div>
+              <div className="sub muted">Added to Original</div>
             </div>
             <div>
-              <div className="label">Total updated budget</div>
+              <div className="label">Total Updated Budget</div>
               <div className="value">{money(totals.updated)}</div>
-              <div className="sub muted">Current allocation</div>
+              <div className="sub muted">Current Allocation</div>
             </div>
             <div>
-              <div className="label">Total utilised</div>
+              <div className="label">Total Utilised</div>
               <div className="value">{money(utilised)}</div>
               <div className="sub muted">
                 {totals.updated
-                  ? ((utilised / totals.updated) * 100).toFixed(0) + "% utilised"
+                  ? ((utilised / totals.updated) * 100).toFixed(0) + "% Utilised"
                   : "—"}
               </div>
             </div>
             <div>
-              <div className="label">Total remaining</div>
+              <div className="label">Total Remaining</div>
               <div className="value">{money(remaining)}</div>
-              <div className="sub muted">Updated budget − utilised</div>
+              <div className="sub muted">Updated Budget − Utilised</div>
             </div>
           </div>
         )}
@@ -578,7 +595,7 @@ export function BudgetDistributionPage() {
         </button>
  
         {tableOpen &&
-          (loading ? (
+          (loading && rows.length === 0 ? (
             <div className="empty">Loading Tech-Ed budget distribution…</div>
           ) : error ? (
             <div className="error">{error}</div>
