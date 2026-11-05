@@ -10,7 +10,6 @@ import {
 } from "react";
 import { getSelectedEmpId, setSelectedEmpId } from "@/lib/selected-employee";
 import { useAppraisal } from "@/lib/appraisal-store";
-import { masterSnapshotKey, readMasterSnapshot, writeMasterSnapshot } from "@/lib/roster-snapshot";
 import {
   NEW_TITLES,
   INSTALLMENT_OPTIONS,
@@ -59,11 +58,6 @@ const DETAIL_EMPLOYEE_COLLATOR = new Intl.Collator(undefined, {
   numeric: true,
   sensitivity: "base",
 });
-
-// Keep a rolling window of upcoming employee histories ready for Save & Next.
-// Kept small: each one is a server call, and a burst of them at once slows
-// every call down (Catalyst queues them) until some time out ("Load failed").
-const DETAIL_HISTORY_PREFETCH_COUNT = 3;
 
 /* ------------------------------------------------------------------
    FRONTEND-ONLY SETTINGS (layout / banner). None of these touch data.
@@ -1115,7 +1109,6 @@ export function DetailScreenPage({
     error: budgetError,
   } = budgetContext;
   const catalystUser = useCatalystUser();
-  const detailSnapshotScope = String(catalystUser?.email || catalystUser?.id || catalystUser?.user_id || "anonymous").trim().toLowerCase();
   const { effectiveId, actualId } = useViewAs();
  
   const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
@@ -1317,35 +1310,23 @@ export function DetailScreenPage({
   const loadHistory = useCallback((empId) => {
     const key = String(empId || "").trim();
     if (!key) return Promise.resolve([]);
-    const snapshotKey = masterSnapshotKey(detailSnapshotScope, "detail-history:" + key);
+
     const existing = historyPromiseRef.current.get(key);
     if (existing) return existing;
 
     setHistoryByEmpId((prev) => ({
       ...prev,
-      [key]: { loading: true, data: prev[key]?.data || [], error: "" },
+      [key]: { loading: true, data: [], error: "" },
     }));
-
-    let cachedApplied = false;
-    readMasterSnapshot(snapshotKey).then((snapshot) => {
-      if (cachedApplied || !Array.isArray(snapshot?.records)) return;
-      cachedApplied = true;
-      setHistoryByEmpId((prev) => ({
-        ...prev,
-        [key]: { loading: false, data: snapshot.records, error: "" },
-      }));
-    });
 
     const promise = prefetchDetailHistory(key);
     historyPromiseRef.current.set(key, promise);
     promise
       .then((data) => {
-        cachedApplied = true;
         setHistoryByEmpId((prev) => ({
           ...prev,
           [key]: { loading: false, data, error: "" },
         }));
-        writeMasterSnapshot(snapshotKey, { records: data });
       })
       .catch((error) => {
         historyPromiseRef.current.delete(key);
@@ -1353,37 +1334,19 @@ export function DetailScreenPage({
           ...prev,
           [key]: {
             loading: false,
-            data: prev[key]?.data || [],
-            error: prev[key]?.data?.length ? "" : (error?.message || "Unable to load history."),
+            data: [],
+            error: error?.message || "Unable to load history.",
           },
         }));
       });
     return promise;
-  }, [detailSnapshotScope]);
+  }, []);
 
   useEffect(() => {
     if (employee?.empId) {
       loadHistory(employee.empId).catch(() => {});
     }
   }, [employee?.empId, loadHistory]);
-
-  // Maintain a rolling window of the next few employees. Their current
-  // appraisal values and feedback/info rows are already available from the
-  // shared Appraisal Sheet roster and shared feedback map; only each employee's
-  // separate history request is prefetched here. When Save & Next advances,
-  // the window moves forward and starts fetching the next employee(s).
-  useEffect(() => {
-    const upcomingIds = orderedEmployeeIds.slice(
-      activeIndex + 1,
-      activeIndex + 1 + DETAIL_HISTORY_PREFETCH_COUNT,
-    );
-    if (!upcomingIds.length) return;
-    const byId = new Map((cachedLiveRows || []).map((row) => [row.id, row]));
-    upcomingIds.forEach((id) => {
-      const upcoming = byId.get(id);
-      if (upcoming?.empId) loadHistory(upcoming.empId).catch(() => {});
-    });
-  }, [activeIndex, orderedEmployeeIds, cachedLiveRows, loadHistory]);
 
   const empKey = employee ? String(employee.empId || "").trim() : "";
   const historyState = historyByEmpId[empKey];
@@ -1674,24 +1637,15 @@ export function DetailScreenPage({
   // effect after the next employee has rendered.
   const goTo = (next) => {
     const nextIndex = Math.max(0, Math.min(rows.length - 1, next));
-    const nextEmployee = rows[nextIndex];
+    setIndex(nextIndex);
+    setSearch("");
 
-    // Commit the field being edited while the current employee is still
-    // mounted. The input's onBlur handler writes its optimistic value to the
-    // shared Appraisal Sheet store before we switch employee.
     const activeElement = document.activeElement;
-    if (activeElement && activeElement !== document.body && typeof activeElement.blur === "function") {
+    if (activeElement && typeof activeElement.blur === "function") {
       activeElement.blur();
     }
-
-    // The next employee's history should already be in flight from the
-    // look-ahead prefetch above. This call also covers direct/search navigation.
-    if (nextEmployee?.empId) loadHistory(nextEmployee.empId).catch(() => {});
-    setSelectedEmpId(nextEmployee?.empId || "");
-    setSearch("");
-    setIndex(nextIndex);
   };
-  const safeIndex = Math.min(activeIndex, Math.max(rows.length - 1, 0));
+  const safeIndex = Math.min(index, Math.max(rows.length - 1, 0));
 
   const cols = [
     "minmax(0,2.25fr)",
@@ -2173,9 +2127,9 @@ export function DetailScreenPage({
                           />
                         </FieldRow>
 
-                        {/* Target PB criteria */}
+                        {/* Target PB Criteria */}
                         <FieldRow
-                          label="Target PB criteria"
+                          label="Target PB Criteria"
                           prev={
                             <ReadOnlyInput
                               value={dash(
