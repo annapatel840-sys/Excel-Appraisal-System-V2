@@ -6,12 +6,18 @@ const assert = require('assert');
 const Module = require('module');
 const path = require('path');
 
-const TABLE_IDS = { '74008000000034565': 'Budget_Master', '74008000000033809': 'Budget_Distribution', '74008000000023149': 'Budget_Distribution_Comp' };
+const TABLE_IDS = { '74008000000034565': 'Budget_Master', '74008000000033809': 'Budget_Distribution', '74008000000023149': 'Budget_Distribution_Comp', '74008000000034190': 'Appraisal_Cycle_Master' };
 
 function makeStore(data) {
   let seq = 7000;
   const tables = {};
   Object.entries(data).forEach(([name, rows]) => { tables[name] = rows.map((r) => ({ ROWID: String(++seq), ...r })); });
+  // Budget writes are checked against the Active cycle: point the budget and
+  // sheet rows at it.
+  const active = (tables.Appraisal_Cycle_Master || []).find((c) => c.status === 'Active');
+  if (active) ['Budget_Master', 'Appraisal_Sheet', 'Eligibility_List'].forEach((name) => (tables[name] || []).forEach((r) => {
+    if (name === 'Appraisal_Sheet') r.cycle_id = active.ROWID; else r.appraisal_cycle_id = active.ROWID;
+  }));
   const tableApi = (name) => ({
     getAllColumns: async () => [],
     insertRow: async (row) => { const r = { ...row, ROWID: String(++seq) }; (tables[name] = tables[name] || []).push(r); return { ...r }; },
@@ -66,14 +72,17 @@ const DRY = { dryRun: true, enforced: false, scope: { all: true } };
 const ASHOK = 'EMP0051 - Ashok Kumar';
 function data() {
   return {
+    Appraisal_Cycle_Master: [{ cycle_name: 'Apr-26', start_date: '2026-04-01', status: 'Active' }],
     Budget_Master: [{ appraisal_cycle_id: 'Apr-26', budget_percentage: 10 }],
     Budget_Distribution: [], Budget_Distribution_Comp: [],
     // Appraisal_Sheet has no comp_manager; Employee_Master.director is the Comp Manager.
     Appraisal_Sheet: [
-      { emp_id: 'E1', appraiser_tech_ed: ASHOK, current_annual_base_pay: '10,00,000', allocated_pb_amount: '0' },
-      { emp_id: 'E2', appraiser_tech_ed: ASHOK, current_annual_base_pay: '5,00,000', allocated_pb_amount: '0' },
-      { emp_id: 'E3', appraiser_tech_ed: ASHOK, current_annual_base_pay: '8,00,000', allocated_pb_amount: '0', comp_manager: 'Raj Mehta' },
+      { emp_id: 'E1', appraiser_tech_ed: ASHOK, status: 'Active', eligible_status: 'Eligible', current_annual_base_pay: '10,00,000', allocated_pb_amount: '0' },
+      { emp_id: 'E2', appraiser_tech_ed: ASHOK, status: 'Active', eligible_status: 'Eligible', current_annual_base_pay: '5,00,000', allocated_pb_amount: '0' },
+      { emp_id: 'E3', appraiser_tech_ed: ASHOK, status: 'Active', eligible_status: 'Eligible', current_annual_base_pay: '8,00,000', allocated_pb_amount: '0', comp_manager: 'Raj Mehta' },
     ],
+    // The budget base counts only employees Eligible for the Active cycle.
+    Eligibility_List: ['E1', 'E2', 'E3'].map((id) => ({ appraisal_cycle_id: 'Apr-26', emp_id: id, eligibility_status: 'Eligible' })),
     Employee_Master: [
       { emp_id: 'E1', director: 'Anita Sharma' },
       { emp_id: 'E2', director: 'Anita Sharma' },
@@ -90,19 +99,21 @@ async function t(name, fn) { try { await fn(); pass++; console.log('PASS', name)
     const store = makeStore(data());
     const r = await call(load(store, DRY), 'GET');
     assert.strictEqual(r.status, 200, JSON.stringify(r.json));
-    const names = r.json.compManager.map((c) => c.comp_manager).sort();
+    // comp_manager is the normalized match key; comp_manager_display is the name shown.
+    const names = r.json.compManager.map((c) => c.comp_manager_display).sort();
     assert.deepStrictEqual(names, ['Anita Sharma', 'Raj Mehta']); // sheet value wins for E3
-    const anita = r.json.compManager.find((c) => c.comp_manager === 'Anita Sharma');
+    assert.deepStrictEqual(r.json.compManager.map((c) => c.comp_manager).sort(), ['anita sharma', 'raj mehta']);
+    const anita = r.json.compManager.find((c) => c.comp_manager_display === 'Anita Sharma');
     assert.strictEqual(anita.budget_base, 1500000);
     assert.strictEqual(anita.calculated_budget, 150000, 'original Comp Manager budget = team CTC base × initial %');
     assert.strictEqual(anita.applied_budget, 150000);
 
     // A later percentage edit changes only the updated allocation.
-    const savedAnita = store.tables.Budget_Distribution_Comp.find((row) => row.comp_manager === 'Anita Sharma');
+    const savedAnita = store.tables.Budget_Distribution_Comp.find((row) => row.comp_manager === 'anita sharma');
     savedAnita.percentage = 8;
     const changed = await call(load(store), 'GET');
     assert.strictEqual(changed.status, 200, JSON.stringify(changed.json));
-    const changedAnita = changed.json.compManager.find((c) => c.comp_manager === 'Anita Sharma');
+    const changedAnita = changed.json.compManager.find((c) => c.comp_manager_display === 'Anita Sharma');
     assert.strictEqual(changedAnita.calculated_budget, 150000, 'original allocation must remain frozen');
     assert.strictEqual(changedAnita.applied_budget, 120000, 'updated allocation uses the new percentage');
   });
