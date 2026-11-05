@@ -2768,10 +2768,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         rawPct !== null || orgPctSet ? (stats.base * effectivePct) / 100 : 0;
 
       const savedOriginalCountValue = row.original_headcount;
-      const rosterCount =
-        techRosterCounts.get(canonicalTechKey(techKey)) ||
-        techRosterCounts.get(techKey) ||
-        0;
+      // Use the count accumulated in the exact same canonical Tech-Ed
+      // bucket as the budget base above. This avoids a second identity lookup
+      // against raw Appraisal_Sheet rows returning zero for valid owners.
+      const rosterCount = Number(stats.count) || 0;
       const savedOriginalCountNumber = n(savedOriginalCountValue);
       // Repair a missing/zero baseline once from the generated roster. A
       // positive saved baseline is immutable; later delegation/eligibility
