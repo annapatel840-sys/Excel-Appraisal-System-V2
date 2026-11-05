@@ -3709,22 +3709,6 @@ module.exports = async function (req, res) {
     ) {
       const columns = await getColumnNames(table);
       resourceColumns = columns;
-      // TEMPORARY: persist the HR correction in the existing current_headcount
-      // field. The live Current Count on screen is still calculated from Appraisal_Sheet.
-      if (resource === "distribution" &&
-          Object.prototype.hasOwnProperty.call(body, "current_headcount")) {
-        const actualColumn = columns && columns.size
-          ? Array.from(columns).find((column) => column.toLowerCase() === "current_headcount")
-          : "current_headcount";
-        if (!actualColumn) {
-          return sendJson(res, 400, {
-            success: false,
-            message: "Budget_Distribution does not contain the existing current_headcount field.",
-          });
-        }
-        body[actualColumn] = body.current_headcount;
-        fields.push(actualColumn);
-      }
       const fallback =
         resource === "distribution" ? "claculated_budget" : "calculated_budget";
       fields.push(
