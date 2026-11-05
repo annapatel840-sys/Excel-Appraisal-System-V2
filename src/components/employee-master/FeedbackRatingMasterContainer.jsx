@@ -10,9 +10,13 @@ export function FeedbackRatingMasterContainer() {
   useEffect(() => {
     let cancelled = false;
     const refresh = () => {
-      // Clear the previous cycle immediately; if the refresh fails, stale
-      // feedback rows and upload batches must not remain visible.
-      setState({ cycles: [], rows: [], batches: [], loading: true, error: "" });
+      // Keep already loaded rows visible while the shared cached request
+      // refreshes in the background; show the spinner only on first load.
+      setState((current) => ({
+        ...current,
+        loading: current.cycles.length === 0 && current.rows.length === 0,
+        error: "",
+      }));
       loadFeedbackRating()
         .then((data) => {
           if (!cancelled) setState({ ...data, loading: false, error: "" });
