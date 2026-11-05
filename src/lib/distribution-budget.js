@@ -489,10 +489,11 @@ export function useDistributionBudget() {
     );
     let candidates = directMatches.length ? directMatches : assignmentMatches;
 
-    // For a real Comp Manager login, resolve the parent Tech-Ed from the
-    // manager's CURRENT Appraisal Sheet assignments, not from the manager's
-    // own login identity. This supports every manager account dynamically.
-    if (isCompManagerLogin && !candidates.length) {
+    // For a real Comp Manager login, ALWAYS resolve the parent Tech-Ed from
+    // the manager's CURRENT Appraisal Sheet assignments. Do not retain a
+    // coincidental direct match from the manager's own identity; that can
+    // select the wrong Tech-Ed and then fail the active-cycle lookup.
+    if (isCompManagerLogin) {
       const matchesCurrentManager = (raw) => {
         if (currentUserMatchesManager(raw, user, employeeRows)) return true;
         const rawKey = normalizeOwner(
