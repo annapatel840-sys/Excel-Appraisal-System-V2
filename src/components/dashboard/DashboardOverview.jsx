@@ -434,7 +434,7 @@ export function DashboardOverview() {
       </Tile>
 
       <Tile>
-        <CardHead id="util" title={`Utilisation by ${level.n}`} sub="Hike + Bonus used vs allocated (Budget Master)" />
+        <CardHead id="util" title={`Utilisation by ${level.n}`} sub="Hike + Bonus used vs Allocated (Budget Master)" />
         {view === "c" ? (
           <ColChart
             pct={unit === "p"}
