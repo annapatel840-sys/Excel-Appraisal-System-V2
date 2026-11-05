@@ -3687,9 +3687,6 @@ module.exports = async function (req, res) {
         "applied_budget",
         "appraisal_cycle_id",
         "appraiser_tech_ed_id",
-        // Temporary HR correction: allow Original Count to be set from the
-        // current Appraisal Sheet roster while repairing legacy zero snapshots.
-        "original_headcount",
       ],
       comp: [
         "percentage",
@@ -3704,12 +3701,33 @@ module.exports = async function (req, res) {
     const fields = [
       ...fieldsByResource[resource === "compmanager" ? "comp" : resource],
     ];
+    let resourceColumns = null;
     if (
       resource === "distribution" ||
       resource === "comp" ||
       resource === "compmanager"
     ) {
       const columns = await getColumnNames(table);
+      resourceColumns = columns;
+      // Temporary Original Count correction: use only a column confirmed by
+      // Catalyst table metadata. Some deployed schemas have allocation_headcount
+      // or legacy headcount instead of original_headcount.
+      if (resource === "distribution" &&
+          Object.prototype.hasOwnProperty.call(body, "original_headcount")) {
+        const candidates = ["original_headcount", "allocation_headcount", "headcount"];
+        const actualColumn = columns && columns.size
+          ? candidates.map((candidate) =>
+              Array.from(columns).find((column) => column.toLowerCase() === candidate),
+            ).find(Boolean)
+          : null;
+        if (!actualColumn) {
+          return sendJson(res, 400, {
+            success: false,
+            message: "Budget_Distribution has no supported Original Count column. Add original_headcount or allocation_headcount in Catalyst Data Store, then retry.",
+          });
+        }
+        fields.push(actualColumn);
+      }
       const fallback =
         resource === "distribution" ? "claculated_budget" : "calculated_budget";
       fields.push(
