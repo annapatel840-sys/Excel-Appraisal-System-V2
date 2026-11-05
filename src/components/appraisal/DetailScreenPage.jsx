@@ -557,7 +557,7 @@ const toNum = (v) => {
    100%, floored at MIN. Re-measures on resize / employee / content change.
    ------------------------------------------------------------------ */
 const FIT_BASE_WIDTH = 700;
-const FIT_MIN = 0.75; // below this the table scrolls instead of shrinking
+const FIT_MIN = 0.55; // below this the table scrolls instead of shrinking
 function useFitScale() {
   const boxRef = useRef(null);
   const fitRef = useRef(null);
