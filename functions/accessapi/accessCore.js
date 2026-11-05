@@ -430,21 +430,39 @@ async function loadDelegation(zcql, cycleId) {
     return p ? p.empId : lookupText(value);
   };
 
+  // Assignment columns differ between older imports and newer generated sheets.
+  // Prefer a value that resolves to a real Employee_Master person; a stale but
+  // non-empty alias must not mask a valid assignment in another populated column.
+  const managerValue = (values) => {
+    const candidates = (Array.isArray(values) ? values : [values])
+      .filter((value) => value !== null && value !== undefined && String(lookupText(value)).trim());
+    const resolved = candidates.find((value) => !!person(value));
+    return resolved !== undefined ? resolved : (candidates[0] ?? '');
+  };
+
   // Pick, per employee, the first source that names each manager.
-  const assign = (emp, techEdValue, compMgrValue) => {
+  const assign = (emp, techEdValues, compMgrValues) => {
     if (!emp) return;
     const k = norm(emp);
     const cur = out.byEmp[k] || (out.byEmp[k] = { empId: emp, techEd: '', compMgr: '' });
-    if (!cur.techEd) cur.techEd = managerKey(techEdValue);
-    if (!cur.compMgr) cur.compMgr = managerKey(compMgrValue);
+    if (!cur.techEd) cur.techEd = managerKey(managerValue(techEdValues));
+    if (!cur.compMgr) cur.compMgr = managerKey(managerValue(compMgrValues));
   };
-  rows.forEach((r) => assign(employeeOf(r[d.empId]), r[d.appraiserTechEdId], r[d.compManagerId]));
+  rows.forEach((r) => assign(
+    employeeOf(r[d.empId]),
+    [r[d.appraiserTechEdId], r.appraiser_tech_ed_id, r.appraiser_teched, r.tech_ed, r.tech_ed_id],
+    [r[d.compManagerId], r.comp_manager_id, r.compManager, r.comp_manager_name, r.comp_manager_display],
+  ));
   [cycleSheetRows, noCycleSheetRows].forEach((list) => list.forEach((r) => assign(
     employeeOf(r[s.empId]),
-    r.appraiser_tech_ed || r.appraiser_tech_ed1,
-    r.comp_manager || r.comp_manager_id,
+    [r.appraiser_tech_ed, r.appraiser_tech_ed1, r.appraiser_tech_ed_id, r.appraiser_teched, r.appraiserTechED, r.tech_ed, r.tech_ed_id],
+    [r.comp_manager, r.comp_manager_id, r.compManager, r.comp_manager_name, r.comp_manager_display],
   )));
-  masterRows.forEach((r) => assign(String(r[e.empId] || '').trim(), r.appraiser_tech_ed, r.comp_manager));
+  masterRows.forEach((r) => assign(
+    String(r[e.empId] || '').trim(),
+    [r.appraiser_tech_ed, r.appraiser_tech_ed1, r.appraiser_tech_ed_id, r.appraiser_teched, r.appraiserTechED, r.tech_ed, r.tech_ed_id],
+    [r.comp_manager, r.comp_manager_id, r.compManager, r.comp_manager_name, r.comp_manager_display],
+  ));
 
   Object.values(out.byEmp).forEach(({ empId, techEd: t, compMgr: c }) => {
     if (t) { out.techEd[t] = (out.techEd[t] || 0) + 1; (out.teamTechEd[t] = out.teamTechEd[t] || []).push(empId); }
