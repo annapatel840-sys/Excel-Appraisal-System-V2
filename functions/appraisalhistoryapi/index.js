@@ -212,8 +212,10 @@ function requireInScope(a, empId, allowOwnRead = false) {
 
 const normalizeAssignment = (value) => {
   if (value && typeof value === "object") {
-    return normalizeAssignment(value.ROWID ?? value.rowid ?? value.emp_id ??
-      value.employee_id ?? value.id ?? value.value ?? "");
+    return normalizeAssignment(
+      value.ROWID ?? value.rowid ?? value.emp_id ?? value.employee_id ??
+      value.id ?? value.value ?? value.display_value ?? value.name ?? "",
+    );
   }
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 };
