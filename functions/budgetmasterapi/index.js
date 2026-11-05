@@ -2637,15 +2637,17 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         { base: 0, count: 0, utilized: 0 },
       ]),
     );
-    // Original Count is the generated Appraisal_Sheet roster snapshot. Keep
-    // roster counts separate from live eligible counts, which can change later.
-    const techRosterCounts = new Map();
+    // Original Count must use the same raw generated Appraisal_Sheet roster
+    // as Current Count. The enriched employee list can have owner aliases that
+    // do not match the canonical Tech-Ed key, incorrectly producing zero here.
+    // Seed the immutable baseline from the raw sheet-row count map; once saved,
+    // positive snapshots are never recalculated.
+    const techRosterCounts = new Map(techSheetCurrentCounts);
     const compRosterCounts = new Map();
     appraisalSheetEmployees.forEach((employee) => {
       const techKey = ownerKey(employee.techEd);
       const compKey = ownerKey(employee.compManager);
       if (techKey) {
-        techRosterCounts.set(techKey, (techRosterCounts.get(techKey) || 0) + 1);
         const tech = techBases.get(techKey) || {
           base: 0,
           count: 0,
@@ -2766,7 +2768,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         rawPct !== null || orgPctSet ? (stats.base * effectivePct) / 100 : 0;
 
       const savedOriginalCountValue = row.original_headcount;
-      const rosterCount = techRosterCounts.get(techKey) || 0;
+      const rosterCount =
+        techRosterCounts.get(canonicalTechKey(techKey)) ||
+        techRosterCounts.get(techKey) ||
+        0;
       const savedOriginalCountNumber = n(savedOriginalCountValue);
       // Repair a missing/zero baseline once from the generated roster. A
       // positive saved baseline is immutable; later delegation/eligibility
