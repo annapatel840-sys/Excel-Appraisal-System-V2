@@ -1774,35 +1774,7 @@ function HRApplyBudget() {
                       <td className="bm-n bm-calc" style={wrapStyle(3)}>{money(previewBudget(r))}</td>
                       <td className="bm-n" style={wrapStyle(4)}>{money(rowOriginal(r))}</td>
                       <td className="bm-n" style={wrapStyle(5)}>{money(r.updated)}</td>
-                      <td className="bm-n" style={wrapStyle(6)}>
-                        <div>{r.team0}</div>
-                        {canConfig && r.id && !String(r.id).startsWith("tech-ed-") && Number(r.team) > 0 ? (
-                          <button
-                            type="button"
-                            className="bm-text-action"
-                            disabled={savingOrg}
-                            title="Temporarily set Original Count to the current Appraisal Sheet count"
-                            onClick={() => {
-                              // TEMPORARY UI-ONLY correction: write the same
-                              // cycle/Tech-Ed snapshot key that Tech-Ed login reads.
-                              const next = {
-                                ...origSnap,
-                                [selectedCycle]: {
-                                  ...(origSnap[selectedCycle] || {}),
-                                  teCount: {
-                                    ...((origSnap[selectedCycle] || {}).teCount || {}),
-                                    [r.canonicalKey]: Number(r.team),
-                                  },
-                                },
-                              };
-                              setOrigSnap(next);
-                              writeOriginalSnapshots(next);
-                            }}
-                          >
-                            Set to current ({r.team})
-                          </button>
-                        ) : null}
-                      </td>
+                      <td className="bm-n" style={wrapStyle(6)}>{r.team0}</td>
                       <td className="bm-n" style={wrapStyle(7)}>{r.team}</td>
                       <td>
                         <input
