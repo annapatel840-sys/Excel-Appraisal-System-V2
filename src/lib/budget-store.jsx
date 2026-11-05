@@ -641,9 +641,15 @@ export function BudgetProvider({ children }) {
       // still authoritative when its manager identity and active-cycle parent
       // both match uniquely. This keeps the same allocation visible across
       // Budget Distribution, Appraisal Sheet, Bulk Edit and Detailed Screen.
+      // budgetmasterapi has already authenticated this Comp Manager and
+      // filtered Budget_Distribution_Comp to their own child rows. The browser
+      // Catalyst profile does not carry Employee_Master.emp_id/ROWID, so a
+      // second manager-name check here incorrectly drops the authorized row.
+      // Resolve the exact parent through the saved child FK instead.
       const directManagerRows = budgetCompManagerRows.filter((row) => {
         if (String(row.appraisal_cycle_id || "") !== activeBudgetCycleId) return false;
-        if (!matchesCurrentManager(row.comp_manager)) return false;
+        if (!isCompManagerPreview && !isCompManagerLogin &&
+            !matchesCurrentManager(row.comp_manager)) return false;
         return budgetDistributionRows.some((parent) =>
           String(parent.id || "") === String(row.budget_distribution_id || "") &&
           String(parent.appraisal_cycle_id || "") === activeBudgetCycleId
