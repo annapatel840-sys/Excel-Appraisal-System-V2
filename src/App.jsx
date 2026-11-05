@@ -40,6 +40,7 @@ const TECH_ED_PATHS = [
   "/",
   "/sheet",
   "/detail-screen",
+  "/bulk-edit",
   "/budget-distribution",
   "/settings",
   "/employee-master",
@@ -153,7 +154,7 @@ function accessAllowedPath(path, access, isTechEd = false) {
   if (isTechEd && TECH_ED_PATHS.includes(path)) return path;
   const allowed =
     path === "/bulk-edit"
-      ? access.canScreen("bulkEditScreen")
+      ? access.canAction("bulkEdit")
       : path === "/employee-master"
         ? hrTabs.length > 0
         : access.canScreen(PATH_SCREENS[path] || "dashboard");
