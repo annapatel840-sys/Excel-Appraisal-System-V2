@@ -57,6 +57,17 @@ export function writeSheetSnapshot(key, snapshot) {
   return run("readwrite", (store) => store.put({ ...snapshot, savedAt: Date.now() }, key)).catch(() => {});
 }
 
+export const masterSnapshotKey = (scope, resource) =>
+  "master:" + String(scope || "anonymous").trim().toLowerCase() + ":" + String(resource || "");
+
+export function readMasterSnapshot(key) {
+  return run("readonly", (store) => store.get(key)).catch(() => null);
+}
+
+export function writeMasterSnapshot(key, snapshot) {
+  return run("readwrite", (store) => store.put({ ...snapshot, savedAt: Date.now() }, key)).catch(() => {});
+}
+
 // On sign-out: salary data must not stay in the browser for the next user.
 
 // Eligibility List snapshot uses the same IndexedDB store and is scoped to
