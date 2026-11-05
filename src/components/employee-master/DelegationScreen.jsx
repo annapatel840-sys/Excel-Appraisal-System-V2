@@ -39,6 +39,25 @@ const PAGE = 50;
 // roster cost two full server passes one after the other. Larger rosters still
 // continue through the totalPages loop in loadRoster.
 const ROSTER_PAGE_LIMIT = 5000;
+/* Column filters are kept for the browser session, so they are still applied
+   when the user comes back from another tab. They go when a tag is closed. */
+const COL_FILTERS_KEY = "delegation.colFilters.v1";
+const readSavedColFilters = () => {
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(COL_FILTERS_KEY) || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+};
+const writeSavedColFilters = (filters) => {
+  try {
+    window.sessionStorage.setItem(COL_FILTERS_KEY, JSON.stringify(filters || {}));
+  } catch (_) {
+    // storage unavailable: filters still work for this visit
+  }
+};
+
 /* Grid columns (header filter + drag-to-resize like the Appraisal Sheet) */
 const MIN_COL = 70;
 const MAX_COL = 520;
@@ -214,7 +233,12 @@ export default function DelegationScreen({
     setAudit([]);
     setSel({});
     setPage(1);
-    setColFilters({});
+    // Filters survive leaving and returning to this screen; they are cleared
+    // only when the active cycle really changes to another one.
+    if (lastCycleRef.current && lastCycleRef.current !== activeCycleId) {
+      setColFilters({});
+    }
+    lastCycleRef.current = activeCycleId;
   }, [activeCycleId]);
   const normalizeRequests = (items) =>
     (Array.isArray(items) ? items : []).map((q) => ({
@@ -258,7 +282,11 @@ export default function DelegationScreen({
   const [reqs, setReqs] = useState([]);
   const [audit, setAudit] = useState([]);
   const [locked, setLocked] = useState(false);
-  const [colFilters, setColFilters] = useState({});
+  const [colFilters, setColFilters] = useState(readSavedColFilters);
+  const lastCycleRef = useRef("");
+  useEffect(() => {
+    writeSavedColFilters(colFilters);
+  }, [colFilters]);
   const [sort, setSort] = useState({ key: "employee", dir: "asc" });
   // The grid starts sorted by Employee, but a header only looks "sorted" once
   // the user has picked a sort, so all header filter buttons look the same.
