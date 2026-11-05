@@ -118,6 +118,12 @@ function mapDistribution(row) {
   const calculated = n(
     firstNonZeroValue(row, ["calculated_budget", "claculated_budget"]),
   );
+  // In the current Catalyst schema there is no dedicated Original Count
+  // column. HR's shared baseline is stored in the existing current_headcount
+  // field; do not confuse it with the live count calculated from Appraisal_Sheet.
+  const dedicatedOriginalCount = originalHeadcountValue(row);
+  const sharedOriginalCount =
+    dedicatedOriginalCount !== "" ? dedicatedOriginalCount : firstValue(row, ["current_headcount"]);
   const applied = n(value(row, "applied_budget"));
   const utilized = n(
     firstNonZeroValue(row, [
@@ -149,8 +155,8 @@ function mapDistribution(row) {
     original_base: n(value(row, "original_base")),
     current_budget_base: n(value(row, "current_budget_base")),
     current_base: n(value(row, "current_base")),
-    original_headcount: originalHeadcountValue(row),
-    original_headcount_is_persisted: originalHeadcountValue(row) !== "" && originalHeadcountValue(row) !== null && originalHeadcountValue(row) !== undefined,
+    original_headcount: sharedOriginalCount,
+    original_headcount_is_persisted: sharedOriginalCount !== "" && sharedOriginalCount !== null && sharedOriginalCount !== undefined,
     current_headcount: firstValue(row, ["current_headcount"]),
     headcount: firstValue(row, ["headcount"]),
     calculated_budget: calculated,
@@ -2828,18 +2834,19 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
           savedOriginalCount,
         );
       }
-      // Current Count = active, eligible employees of this Tech-Ed: the same
-      // people as the Org Current Count, the budget base and the Appraisal
-      // Sheet grid (it used every raw sheet row from 2026-11-04 until 11-05,
-      // so an ineligible row made Org 22 vs Tech-Ed 23).
-      const currentSheetHeadcount = Number(stats.current) || 0;
-      await persistOptional(
-        distributionTable,
-        row.id,
-        distributionColumns,
-        ["current_headcount"],
-        currentSheetHeadcount,
-      );
+      // Keep current_headcount as the shared immutable Original Count
+      // snapshot when this schema has no dedicated original_headcount field.
+      // Live Current Count is calculated from Appraisal_Sheet by each screen;
+      // writing it here would overwrite HR's baseline on every budget refresh.
+      if (!hasSavedOriginalCount) {
+        await persistOptional(
+          distributionTable,
+          row.id,
+          distributionColumns,
+          ["current_headcount"],
+          savedOriginalCount,
+        );
+      }
       await persistOptional(
         distributionTable,
         row.id,
@@ -2860,7 +2867,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         calculated_budget: originalBudget,
         applied_budget: updatedBudget,
         effective_percentage: effectivePct,
-        current_headcount: currentSheetHeadcount,
+        current_headcount: savedOriginalCount,
         // The row was read before this refresh: return the base just saved,
         // not the previous request's value.
         current_budget_base: stats.base,
