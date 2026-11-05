@@ -457,7 +457,10 @@ export function TechEdBudgetDistribution() {
       );
       const cycleKey = String(liveTech?.appraisal_cycle_id || activeCycleId || "");
       const raw = saved?.[cycleKey]?.teCount?.[techOwnerKey];
-      if (raw !== null && raw !== undefined && Number.isFinite(Number(raw))) {
+      // Ignore a stale zero browser snapshot when the live generated roster
+      // is non-empty; the persisted API baseline is authoritative.
+      if (raw !== null && raw !== undefined && Number.isFinite(Number(raw)) &&
+        (Number(raw) > 0 || Number(currentTeamCount) === 0)) {
         localCount = Number(raw);
       }
     } catch (_) {
@@ -475,7 +478,8 @@ export function TechEdBudgetDistribution() {
     if (localCount !== null) return localCount;
     const persisted = liveTech?.original_headcount;
     return liveTech?.original_headcount_is_persisted === true &&
-      persisted !== null && persisted !== undefined && String(persisted).trim() !== ""
+      persisted !== null && persisted !== undefined && String(persisted).trim() !== "" &&
+      (num(persisted) > 0 || currentCount === 0)
       ? num(persisted)
       : 0;
   }, [isCompManagerView, selectedManagerNode?.team0, liveTech, activeCycleId, techOwnerKey, currentTeamCount]);
