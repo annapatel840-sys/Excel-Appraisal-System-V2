@@ -55,7 +55,7 @@ async function sendPayrollCycleRequest(url, resource, method, body) {
 
 export async function payrollCycleRequest(
   resource,
-  { method = "GET", body, query = {} } = {},
+  { method = "GET", body, query = {}, fresh = false } = {},
 ) {
   // Advanced I/O function URLs do not include /execute.
   const url = new URL(catalystFunctionUrl("payrollcycleapi"));
@@ -76,7 +76,7 @@ export async function payrollCycleRequest(
 
   const key = url.toString();
   const shared = sharedReads.get(key);
-  if (shared && Date.now() - shared.startedAt <= SHARED_READ_MS) return shared.promise.then(copyOf);
+  if (!fresh && shared && Date.now() - shared.startedAt <= SHARED_READ_MS) return shared.promise.then(copyOf);
   const entry = { startedAt: Date.now(), promise: null };
   entry.promise = sendPayrollCycleRequest(url, resource, method, body).catch((error) => {
     // A failed read is never shared; the next caller tries again.
