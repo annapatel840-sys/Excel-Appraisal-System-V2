@@ -1776,7 +1776,7 @@ function HRApplyBudget() {
                       <td className="bm-n" style={wrapStyle(5)}>{money(r.updated)}</td>
                       <td className="bm-n" style={wrapStyle(6)}>
                         <div>{r.team0}</div>
-                        {canConfig && r.id && !String(r.id).startsWith("tech-ed-") && Number(r.team) > 0 && Number(r.team0) !== Number(r.team) ? (
+                        {canConfig && r.id && !String(r.id).startsWith("tech-ed-") && Number(r.team) > 0 ? (
                           <button
                             type="button"
                             className="bm-text-action"
