@@ -373,7 +373,7 @@ async function loadDelegation(zcql, cycleId) {
     selectAll(z, e.table),
     selectAll(z, s.table),
   ]);
-  const cycleOf = (r) => String(r.cycle_id == null ? '' : r.cycle_id).trim();
+  const cycleOf = (r) => lookupText(r.cycle_id);
   const cycleSheetRows = cycleId ? sheetRows.filter((r) => cycleOf(r) === String(cycleId)) : [];
   const noCycleSheetRows = sheetRows.filter((r) => !cycleOf(r));
 
@@ -395,8 +395,18 @@ async function loadDelegation(zcql, cycleId) {
   // A stored person ("EMP001", a ROWID, "EMP001 - Name", an email or a unique
   // name) -> normalized employee ID. Exact matches only: a partial match could
   // put an employee in the wrong manager's team ("EMP001" is inside "EMP0012").
+  const lookupText = (value) => {
+    if (value == null) return '';
+    if (typeof value === 'object') {
+      return lookupText(
+        value.ROWID ?? value.rowid ?? value.emp_id ?? value.employee_id ??
+        value.id ?? value.value ?? value.display_value ?? value.name ?? ''
+      );
+    }
+    return String(value).trim();
+  };
   const person = (value) => {
-    const raw = String(value == null ? '' : value).trim();
+    const raw = lookupText(value);
     if (!raw) return null;
     const viaId = byId.get(norm(raw)) || byRowId.get(raw);
     if (viaId) return viaId;
@@ -414,7 +424,7 @@ async function loadDelegation(zcql, cycleId) {
   };
   const employeeOf = (value) => {
     const p = person(value);
-    return p ? p.empId : String(value == null ? '' : value).trim();
+    return p ? p.empId : lookupText(value);
   };
 
   // Pick, per employee, the first source that names each manager.
