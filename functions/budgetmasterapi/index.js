@@ -94,8 +94,17 @@ function mapMaster(row) {
     current_budget_base: n(
       value(row, "current_budget_base") || value(row, "current_base"),
     ),
-    original_headcount: originalHeadcountValue(row),
-    original_headcount_is_persisted: originalHeadcountValue(row) !== "" && originalHeadcountValue(row) !== null && originalHeadcountValue(row) !== undefined,
+    // Legacy Budget_Master schemas have no dedicated snapshot column.
+    // Use current_headcount as the one-time shared Original Count in that case.
+    original_headcount:
+      originalHeadcountValue(row) !== ""
+        ? originalHeadcountValue(row)
+        : firstValue(row, ["current_headcount"]),
+    original_headcount_is_persisted:
+      originalHeadcountValue(row) !== "" ||
+      (firstValue(row, ["current_headcount"]) !== "" &&
+        firstValue(row, ["current_headcount"]) !== null &&
+        firstValue(row, ["current_headcount"]) !== undefined),
     headcount: firstValue(row, ["headcount"]),
     current_headcount: firstValue(row, ["current_headcount"]),
     budget_utilized: utilized,
@@ -3145,14 +3154,33 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
       }
     }
     await masterTable.updateRow(orgFields);
-    // Org Original Count is frontend-only; never require a Budget_Master column.
-    await persistOptional(
-      masterTable,
-      master.id,
-      masterColumns,
-      ["current_headcount"],
-      eligibleEmployees.length,
-    );
+    // In legacy schemas current_headcount is also the shared Original Count
+    // snapshot. Persist the live count only when a dedicated snapshot column
+    // exists; otherwise preserve the saved baseline and return live count below.
+    if (hasSavedOrgOriginalCount) {
+      const dedicatedOrgSnapshotField = masterColumns
+        ? ["original_headcount", "allocation_headcount"].some((name) =>
+            Array.from(masterColumns).some((column) => column.toLowerCase() === name),
+          )
+        : false;
+      if (dedicatedOrgSnapshotField) {
+        await persistOptional(
+          masterTable,
+          master.id,
+          masterColumns,
+          ["current_headcount"],
+          eligibleEmployees.length,
+        );
+      }
+    } else {
+      await persistOptional(
+        masterTable,
+        master.id,
+        masterColumns,
+        ["current_headcount"],
+        savedOrgOriginalCount,
+      );
+    }
     await persistOptional(
       masterTable,
       master.id,
