@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { showNotice } from "@/lib/show-notice";
 import { useAppraisal, LAST_EDIT_STORAGE_KEY } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
+import { useDistributionBudget } from "@/lib/distribution-budget";
 import { useNotices } from "@/lib/notices";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
@@ -223,12 +224,17 @@ export function SheetPage() {
   const budgetConsumed = useMemo(() => sumBudgetConsumed(budgetRowsForStats), [budgetRowsForStats]);
   const budgetTargetPB = useMemo(() => sumTargetPB(budgetRowsForStats), [budgetRowsForStats]);
 
+  // Tech-Ed / Comp Manager: Budget Allocated = Budget Distribution's
+  // "Updated Budget". HR keeps the organisation Budget Master figure.
+  const distributionBudget = useDistributionBudget();
   const { allocated: budgetAllocated, isEstimate: budgetIsEstimate } =
-    resolveBudgetAllocated({
-      totals: budgetMasterTotals,
-      loading: budgetLoading,
-      error: budgetError,
-    });
+    distributionBudget.applies
+      ? { allocated: distributionBudget.updatedBudget, isEstimate: false }
+      : resolveBudgetAllocated({
+          totals: budgetMasterTotals,
+          loading: budgetLoading,
+          error: budgetError,
+        });
 
   // The three budget values now sit beside the budget notice (see below),
   // no longer in the top nav.
