@@ -1,23 +1,9 @@
-import { catalystFetch, catalystFunctionUrl } from "./catalyst-api";
+import { payrollCycleRequest } from "./payroll-cycle-api";
 
-// GET feedbackratingapi/?resource=feedback  ->  { cycles, rows, batches }
+// Reuse the shared in-flight/15-second cached feedback read used by the
+// appraisal screens. Writes invalidate this cache through the common API layer.
 export async function loadFeedbackRating({ cycleId } = {}) {
-  const url = new URL(catalystFunctionUrl("payrollcycleapi"));
-  url.searchParams.set("resource", "feedback");
-  if (cycleId) url.searchParams.set("cycleId", String(cycleId));
-
-  const response = await catalystFetch(url, { method: "GET" });
-
-  let payload;
-  try {
-    payload = await response.json();
-  } catch {
-    throw new Error("The feedback service returned an invalid response.");
-  }
-  if (!response.ok || payload.success !== true) {
-    const error = new Error(payload.message || "The request failed.");
-    error.status = response.status;
-    throw error;
-  }
-  return payload.data;
+  return payrollCycleRequest("feedback", {
+    query: cycleId ? { cycleId: String(cycleId) } : {},
+  });
 }
