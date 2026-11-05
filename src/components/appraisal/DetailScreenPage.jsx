@@ -10,6 +10,7 @@ import {
 } from "react";
 import { getSelectedEmpId, setSelectedEmpId } from "@/lib/selected-employee";
 import { useAppraisal } from "@/lib/appraisal-store";
+import { masterSnapshotKey, readMasterSnapshot, writeMasterSnapshot } from "@/lib/roster-snapshot";
 import {
   NEW_TITLES,
   INSTALLMENT_OPTIONS,
@@ -1109,6 +1110,7 @@ export function DetailScreenPage({
     error: budgetError,
   } = budgetContext;
   const catalystUser = useCatalystUser();
+  const detailSnapshotScope = String(catalystUser?.email || catalystUser?.id || catalystUser?.user_id || "anonymous").trim().toLowerCase();
   const { effectiveId, actualId } = useViewAs();
  
   const isCompManagerPreview = effectiveId === "compmanager" && actualId === "teched";
@@ -1310,23 +1312,35 @@ export function DetailScreenPage({
   const loadHistory = useCallback((empId) => {
     const key = String(empId || "").trim();
     if (!key) return Promise.resolve([]);
-
+    const snapshotKey = masterSnapshotKey(detailSnapshotScope, "detail-history:" + key);
     const existing = historyPromiseRef.current.get(key);
     if (existing) return existing;
 
     setHistoryByEmpId((prev) => ({
       ...prev,
-      [key]: { loading: true, data: [], error: "" },
+      [key]: { loading: true, data: prev[key]?.data || [], error: "" },
     }));
+
+    let cachedApplied = false;
+    readMasterSnapshot(snapshotKey).then((snapshot) => {
+      if (cachedApplied || !Array.isArray(snapshot?.records)) return;
+      cachedApplied = true;
+      setHistoryByEmpId((prev) => ({
+        ...prev,
+        [key]: { loading: false, data: snapshot.records, error: "" },
+      }));
+    });
 
     const promise = prefetchDetailHistory(key);
     historyPromiseRef.current.set(key, promise);
     promise
       .then((data) => {
+        cachedApplied = true;
         setHistoryByEmpId((prev) => ({
           ...prev,
           [key]: { loading: false, data, error: "" },
         }));
+        writeMasterSnapshot(snapshotKey, { records: data });
       })
       .catch((error) => {
         historyPromiseRef.current.delete(key);
@@ -1334,13 +1348,13 @@ export function DetailScreenPage({
           ...prev,
           [key]: {
             loading: false,
-            data: [],
-            error: error?.message || "Unable to load history.",
+            data: prev[key]?.data || [],
+            error: prev[key]?.data?.length ? "" : (error?.message || "Unable to load history."),
           },
         }));
       });
     return promise;
-  }, []);
+  }, [detailSnapshotScope]);
 
   useEffect(() => {
     if (employee?.empId) {
@@ -1637,6 +1651,10 @@ export function DetailScreenPage({
   // effect after the next employee has rendered.
   const goTo = (next) => {
     const nextIndex = Math.max(0, Math.min(rows.length - 1, next));
+    const nextEmployee = rows[nextIndex];
+    // Start the next employee's history request before changing the screen.
+    // If a saved snapshot exists, loadHistory paints it immediately.
+    if (nextEmployee?.empId) loadHistory(nextEmployee.empId).catch(() => {});
     setIndex(nextIndex);
     setSearch("");
 
