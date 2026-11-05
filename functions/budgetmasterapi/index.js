@@ -2573,9 +2573,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
       );
       const rawTechEd =
         firstValue(sheetRow, [
-          "appraiser_tech_ed",
-          "appraiser_tech_ed_id",
           "appraiser_tech_ed1",
+          "appraiser_tech_ed_row_id",
+          "appraiser_tech_ed_id",
+          "appraiser_tech_ed",
           "appraiser_teched",
           "appraiserTechED",
           "appraiserTechEd",
