@@ -3060,13 +3060,23 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         applied_budget: 0,
         total_utilization: 0,
       });
-      await persistOptional(
-        compTable,
-        staleRow.id,
-        compColumns,
-        ["current_headcount"],
-        0,
-      );
+      // A stale Comp Manager can have zero live employees after delegation.
+      // In legacy schemas current_headcount is the saved Original Count, so
+      // never zero it just because the live team is now empty.
+      const hasDedicatedCompSnapshot = compColumns
+        ? ["original_headcount", "allocation_headcount"].some((name) =>
+            Array.from(compColumns).some((column) => column.toLowerCase() === name),
+          )
+        : false;
+      if (hasDedicatedCompSnapshot) {
+        await persistOptional(
+          compTable,
+          staleRow.id,
+          compColumns,
+          ["current_headcount"],
+          0,
+        );
+      }
       await persistOptional(
         compTable,
         staleRow.id,
