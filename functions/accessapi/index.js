@@ -1246,7 +1246,9 @@ app.post(
     } catch (err) {
       for (const d of done.reverse()) {
         try {
-          const t = ds.table("74008000000036124");
+          // Undo in the table this write went to (RoleScreen, FieldAccess,
+          // AccessOverride, …), not the Delegation table.
+          const t = ds.table(d.table);
           if (d.op === "insert") await t.deleteRow(d.ROWID);
           else await t.updateRow(d.before);
         } catch (e) {
