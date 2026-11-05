@@ -275,6 +275,32 @@ const writeTechEdOriginalCount = (cycleId, ownerKeyValue, count) => {
   } catch (_) {}
 };
 
+// Write-once Original Count snapshot for Comp Manager rows (same storage key as
+// Budget Master). Returns the frozen value: the saved one if present, else the
+// given seed (which is stored the first time and never changed afterwards).
+const freezeCompOriginalCount = (cycleId, rowId, seed) => {
+  const seedValue = Number(seed);
+  if (typeof window === "undefined" || !cycleId || !rowId) {
+    return Number.isFinite(seedValue) ? seedValue : 0;
+  }
+  try {
+    const storageKey = "excel-appraisal-budget-original-v1";
+    const saved =
+      JSON.parse(window.localStorage.getItem(storageKey) || "{}") || {};
+    const cycle = saved[String(cycleId)] || {};
+    const cmCount = { ...(cycle.cmCount || {}) };
+    const key = String(rowId);
+    if (Number(cmCount[key]) > 0) return Number(cmCount[key]);
+    if (!(seedValue > 0)) return 0;
+    cmCount[key] = seedValue;
+    saved[String(cycleId)] = { ...cycle, cmCount };
+    window.localStorage.setItem(storageKey, JSON.stringify(saved));
+    return seedValue;
+  } catch (_) {
+    return Number.isFinite(seedValue) ? seedValue : 0;
+  }
+};
+
 const byDate = (a, b) =>
   String((a.date || "") + (a.time || "")).localeCompare(
     String((b.date || "") + (b.time || "")),
@@ -291,6 +317,7 @@ export {
   byDate,
   readTechEdOriginalCount,
   writeTechEdOriginalCount,
+  freezeCompOriginalCount,
 };
 
 export function useDistributionBudget() {
@@ -1409,12 +1436,17 @@ export function useDistributionBudget() {
         // Original Count is the saved baseline only; never fill a missing
         // value from today's team size, which changes with eligibility/delegation.
         // The API handles legacy schemas. Never substitute a live/current count.
+        // Stored baseline wins; if the database has none, freeze today's team
+        // once in this browser (never changes afterwards).
         team0:
           live.original_headcount !== null &&
           live.original_headcount !== undefined &&
-          String(live.original_headcount).trim() !== ""
+          String(live.original_headcount).trim() !== "" &&
+          num(live.original_headcount) > 0
             ? num(live.original_headcount)
-            : 0,
+            : live.id
+              ? freezeCompOriginalCount(activeCycleId, live.id, stats.count)
+              : 0,
         // Current count follows the live eligible Appraisal Sheet roster;
         // persisted current_headcount can be stale after a delegation change.
         team: stats.count,

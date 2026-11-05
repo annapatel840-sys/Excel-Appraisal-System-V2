@@ -14,7 +14,9 @@ const BUDGET_AUDIT_STORAGE_KEY = "excel-appraisal-budget-audit-v1";
 function readBudgetAudit() {
   if (typeof window === "undefined") return { org: [], techEd: [] };
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(BUDGET_AUDIT_STORAGE_KEY) || "{}");
+    const parsed = JSON.parse(
+      window.localStorage.getItem(BUDGET_AUDIT_STORAGE_KEY) || "{}",
+    );
     return {
       org: Array.isArray(parsed.org) ? parsed.org : [],
       techEd: Array.isArray(parsed.techEd) ? parsed.techEd : [],
@@ -25,12 +27,20 @@ function readBudgetAudit() {
 }
 
 function recordBudgetAudit(kind, entries) {
-  if (typeof window === "undefined" || !Array.isArray(entries) || !entries.length) return;
+  if (
+    typeof window === "undefined" ||
+    !Array.isArray(entries) ||
+    !entries.length
+  )
+    return;
   try {
     const current = readBudgetAudit();
     const key = kind === "org" ? "org" : "techEd";
     current[key] = [...entries, ...current[key]].slice(0, 2000);
-    window.localStorage.setItem(BUDGET_AUDIT_STORAGE_KEY, JSON.stringify(current));
+    window.localStorage.setItem(
+      BUDGET_AUDIT_STORAGE_KEY,
+      JSON.stringify(current),
+    );
     window.dispatchEvent(new CustomEvent("appraisal:budget-audit-updated"));
   } catch (error) {
     // Audit-storage restrictions must not misreport a successfully saved budget as failed.
@@ -45,7 +55,9 @@ const ORIGINAL_SNAPSHOT_KEY = "excel-appraisal-budget-original-v1";
 function readOriginalSnapshots() {
   if (typeof window === "undefined") return {};
   try {
-    const parsed = JSON.parse(window.localStorage.getItem(ORIGINAL_SNAPSHOT_KEY) || "{}");
+    const parsed = JSON.parse(
+      window.localStorage.getItem(ORIGINAL_SNAPSHOT_KEY) || "{}",
+    );
     return parsed && typeof parsed === "object" ? parsed : {};
   } catch (_) {
     return {};
@@ -63,7 +75,10 @@ function writeOriginalSnapshots(value) {
 
 /* ---------- helpers ---------- */
 function normalizeOwnerKey(value) {
-  const text = String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const text = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
   // Only treat an ID-looking prefix as an ID. A plain name (including names
   // containing hyphens) must remain a searchable owner value.
   const pair = text.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
@@ -76,19 +91,33 @@ function canonicalOwnerKey(value, employees = []) {
   const pair = raw.match(/^([a-z]*\d+)\s*-\s*(.+)$/i);
   const rawId = pair ? pair[1].trim() : "";
   const rawName = pair ? pair[2].trim() : raw;
-  const valuesFor = (employee) => [
-    employee.row_id, employee.ROWID, employee.emp_id, employee.employee_id,
-    employee.name, employee.employee_name, employee.emp_name, employee.email, employee.email_id,
-  ].filter(Boolean).map(normalizeOwnerKey);
+  const valuesFor = (employee) =>
+    [
+      employee.row_id,
+      employee.ROWID,
+      employee.emp_id,
+      employee.employee_id,
+      employee.name,
+      employee.employee_name,
+      employee.emp_name,
+      employee.email,
+      employee.email_id,
+    ]
+      .filter(Boolean)
+      .map(normalizeOwnerKey);
   const matched = employees.find((employee) => {
     const values = valuesFor(employee);
-    return values.includes(normalizeOwnerKey(raw)) ||
+    return (
+      values.includes(normalizeOwnerKey(raw)) ||
       (rawId && values.includes(normalizeOwnerKey(rawId))) ||
-      (rawName && values.includes(normalizeOwnerKey(rawName)));
+      (rawName && values.includes(normalizeOwnerKey(rawName)))
+    );
   });
   if (matched) {
     const id = String(matched.emp_id || matched.employee_id || "").trim();
-    const name = String(matched.name || matched.employee_name || matched.emp_name || "").trim();
+    const name = String(
+      matched.name || matched.employee_name || matched.emp_name || "",
+    ).trim();
     return normalizeOwnerKey(id || name || raw);
   }
   return normalizeOwnerKey(rawId || raw);
@@ -102,16 +131,27 @@ function ownerName(value, employees = []) {
   const rawName = pair ? pair[2].trim() : raw;
   const person = employees.find((employee) => {
     const id = String(employee.emp_id || employee.employee_id || "").trim();
-    const name = String(employee.name || employee.employee_name || employee.emp_name || "").trim();
+    const name = String(
+      employee.name || employee.employee_name || employee.emp_name || "",
+    ).trim();
     const email = String(employee.email || employee.email_id || "").trim();
-    return [id, name, email].some((candidate) =>
-      candidate && [normalizeOwnerKey(raw), normalizeOwnerKey(rawId), normalizeOwnerKey(rawName)]
-        .filter(Boolean).includes(normalizeOwnerKey(candidate)),
+    return [id, name, email].some(
+      (candidate) =>
+        candidate &&
+        [
+          normalizeOwnerKey(raw),
+          normalizeOwnerKey(rawId),
+          normalizeOwnerKey(rawName),
+        ]
+          .filter(Boolean)
+          .includes(normalizeOwnerKey(candidate)),
     );
   });
   if (person) {
     const id = String(person.emp_id || person.employee_id || "").trim();
-    const name = String(person.name || person.employee_name || person.emp_name || "").trim();
+    const name = String(
+      person.name || person.employee_name || person.emp_name || "",
+    ).trim();
     return id && name ? id + " - " + name : name || id || raw;
   }
   return pair ? pair[2].trim() : raw;
@@ -120,12 +160,20 @@ function ownerName(value, employees = []) {
 function amount(value) {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (value === null || value === undefined || value === "") return 0;
-  const n = Number(String(value).trim().replace(/[₹,\s]/g, "").replace(/^(?:INR|Rs\.?)/i, ""));
+  const n = Number(
+    String(value)
+      .trim()
+      .replace(/[₹,\s]/g, "")
+      .replace(/^(?:INR|Rs\.?)/i, ""),
+  );
   return Number.isFinite(n) ? n : 0;
 }
 
 // Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
-const INR = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+const INR = new Intl.NumberFormat("en-IN", {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
 function money(value) {
   return INR.format(amount(value));
 }
@@ -308,7 +356,17 @@ function DateRangeFilter({ value, onChange }) {
             : "text-[#64748b] hover:bg-[#e8edf3]")
         }
       >
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
+        >
           <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
         </svg>
       </button>
@@ -382,7 +440,11 @@ function AuditTable({
   return (
     <div className="w-full overflow-x-auto">
       <table className="w-full min-w-[980px] table-fixed border-collapse text-[12px] tabular-nums">
-        <colgroup>{cols.map(([h]) => <col key={h} />)}</colgroup>
+        <colgroup>
+          {cols.map(([h]) => (
+            <col key={h} />
+          ))}
+        </colgroup>
         <thead>
           <tr>
             {cols.map(([h, right]) => (
@@ -568,7 +630,8 @@ function deltaNode(from, to) {
   const down = d < 0;
   return (
     <em className={down ? "bm-dn" : "bm-up"}>
-      {down ? "▼" : "▲"} {money(Math.abs(d))} ({(Math.abs(d) / (from || 1) * 100).toFixed(2)}%)
+      {down ? "▼" : "▲"} {money(Math.abs(d))} (
+      {((Math.abs(d) / (from || 1)) * 100).toFixed(2)}%)
     </em>
   );
 }
@@ -590,7 +653,9 @@ function cellNumber(value) {
 function compareCells(x, y) {
   const nx = cellNumber(x);
   const ny = cellNumber(y);
-  return !Number.isNaN(nx) && !Number.isNaN(ny) ? nx - ny : String(x).localeCompare(String(y));
+  return !Number.isNaN(nx) && !Number.isNaN(ny)
+    ? nx - ny
+    : String(x).localeCompare(String(y));
 }
 
 function passesColumnFilter(filter, value) {
@@ -609,12 +674,23 @@ function passesColumnFilter(filter, value) {
   return true;
 }
 
-function ColumnMenu({ rect, values, filter, wrap, onSort, onWrap, onApply, onClear }) {
+function ColumnMenu({
+  rect,
+  values,
+  filter,
+  wrap,
+  onSort,
+  onWrap,
+  onApply,
+  onClear,
+}) {
   const [op, setOp] = useState(filter?.op || "");
   const [val, setVal] = useState(filter?.val || "");
   const [search, setSearch] = useState("");
   const [checked, setChecked] = useState(() => new Set(filter?.vals || values));
-  const shown = values.filter((v) => v.toLowerCase().includes(search.toLowerCase()));
+  const shown = values.filter((v) =>
+    v.toLowerCase().includes(search.toLowerCase()),
+  );
   const allOn = shown.length > 0 && shown.every((v) => checked.has(v));
   const left = Math.max(8, Math.min(rect.left, window.innerWidth - 256));
   const top = Math.min(rect.bottom + 4, window.innerHeight - 120);
@@ -640,23 +716,51 @@ function ColumnMenu({ rect, values, filter, wrap, onSort, onWrap, onApply, onCle
 
   return (
     <div className="bm-gmenu" data-bm-menu style={{ left, top }}>
-      <button className="bm-gi" type="button" onClick={() => onSort(1)}>Sort ↑</button>
-      <button className="bm-gi" type="button" onClick={() => onSort(-1)}>Sort ↓</button>
+      <button className="bm-gi" type="button" onClick={() => onSort(1)}>
+        Sort ↑
+      </button>
+      <button className="bm-gi" type="button" onClick={() => onSort(-1)}>
+        Sort ↓
+      </button>
       <label className="bm-gi bm-gi-check">
-        <input type="checkbox" checked={wrap} onChange={(e) => onWrap(e.target.checked)} /> Wrap text in this column
+        <input
+          type="checkbox"
+          checked={wrap}
+          onChange={(e) => onWrap(e.target.checked)}
+        />{" "}
+        Wrap text in this column
       </label>
       <hr />
       <div className="bm-gl">Condition</div>
       <select value={op} onChange={(e) => setOp(e.target.value)}>
         <option value="">No condition</option>
-        {MENU_OPS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+        {MENU_OPS.map(([v, label]) => (
+          <option key={v} value={v}>
+            {label}
+          </option>
+        ))}
       </select>
-      <input type="text" placeholder="Value" value={val} onChange={(e) => setVal(e.target.value)} />
+      <input
+        type="text"
+        placeholder="Value"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+      />
       <hr />
-      <input type="text" placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} />
+      <input
+        type="text"
+        placeholder="Search"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
       <div className="bm-gck">
         <label>
-          <input type="checkbox" checked={allOn} onChange={(e) => toggleAll(e.target.checked)} /> Select all
+          <input
+            type="checkbox"
+            checked={allOn}
+            onChange={(e) => toggleAll(e.target.checked)}
+          />{" "}
+          Select all
         </label>
         {shown.map((v) => (
           <label key={v}>
@@ -666,7 +770,8 @@ function ColumnMenu({ rect, values, filter, wrap, onSort, onWrap, onApply, onCle
               onChange={(e) =>
                 setChecked((prev) => {
                   const next = new Set(prev);
-                  if (e.target.checked) next.add(v); else next.delete(v);
+                  if (e.target.checked) next.add(v);
+                  else next.delete(v);
                   return next;
                 })
               }
@@ -676,15 +781,30 @@ function ColumnMenu({ rect, values, filter, wrap, onSort, onWrap, onApply, onCle
         ))}
       </div>
       <div className="bm-gb">
-        <button className="bm-btn" type="button" onClick={onClear}>Clear</button>
-        <button className="bm-btn bm-btn-pri" type="button" onClick={apply}>Apply</button>
+        <button className="bm-btn" type="button" onClick={onClear}>
+          Clear
+        </button>
+        <button className="bm-btn bm-btn-pri" type="button" onClick={apply}>
+          Apply
+        </button>
       </div>
     </div>
   );
 }
 
 function HRApplyBudget() {
-  const { budgetMasterRows = [], budgetDistributionRows = [], employeeRows = [], techEdOwners = [], currentUser = {}, updateBudget, reload: reloadBudget, loading: budgetLoading, error: budgetError = "", budgetWarning = "" } = useBudget();
+  const {
+    budgetMasterRows = [],
+    budgetDistributionRows = [],
+    employeeRows = [],
+    techEdOwners = [],
+    currentUser = {},
+    updateBudget,
+    reload: reloadBudget,
+    loading: budgetLoading,
+    error: budgetError = "",
+    budgetWarning = "",
+  } = useBudget();
   // Dashboard is the source of truth for live Active + Eligible appraisal rows.
   const { rows: dashboardRows = [] } = useAppraisal();
   // Access rules (permissive when accessapi is unavailable).
@@ -713,7 +833,11 @@ function HRApplyBudget() {
   useEffect(() => {
     if (!colMenu) return undefined;
     const close = (event) => {
-      if (event.target.closest?.("[data-bm-menu]") || event.target.closest?.(".bm-dd")) return;
+      if (
+        event.target.closest?.("[data-bm-menu]") ||
+        event.target.closest?.(".bm-dd")
+      )
+        return;
       setColMenu(null);
     };
     document.addEventListener("mousedown", close);
@@ -730,7 +854,10 @@ function HRApplyBudget() {
     }
     return () => {
       if (typeof window !== "undefined") {
-        window.removeEventListener("appraisal:budget-audit-updated", refreshAudit);
+        window.removeEventListener(
+          "appraisal:budget-audit-updated",
+          refreshAudit,
+        );
         window.removeEventListener("storage", refreshAudit);
       }
     };
@@ -739,16 +866,24 @@ function HRApplyBudget() {
   const [activeCycle, setActiveCycle] = useState(null);
   const [cycleLoading, setCycleLoading] = useState(true);
   const appraisalCycles = useMemo(
-    () => budgetMasterRows.map((row) => ({
-      id: String(row.appraisal_cycle_id || ""),
-      label: String(row.appraisal_cycle_name || row.appraisal_cycle_id || "Unknown cycle"),
-    })).filter((cycle) => cycle.id),
+    () =>
+      budgetMasterRows
+        .map((row) => ({
+          id: String(row.appraisal_cycle_id || ""),
+          label: String(
+            row.appraisal_cycle_name ||
+              row.appraisal_cycle_id ||
+              "Unknown cycle",
+          ),
+        }))
+        .filter((cycle) => cycle.id),
     [budgetMasterRows],
   );
   const [selectedCycle, setSelectedCycle] = useState("");
-  const selectedMaster = budgetMasterRows.find(
-    (row) => String(row.appraisal_cycle_id) === String(selectedCycle),
-  ) || null;
+  const selectedMaster =
+    budgetMasterRows.find(
+      (row) => String(row.appraisal_cycle_id) === String(selectedCycle),
+    ) || null;
 
   // Re-read the backend whenever Budget Master is opened, not only when the app provider first mounts.
   useEffect(() => {
@@ -761,9 +896,13 @@ function HRApplyBudget() {
       .then((cycles) => {
         if (!mounted) return;
         const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
-          const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
+          const status = String(cycle.status ?? cycle.cycle_status ?? "")
+            .trim()
+            .toLowerCase();
           const archived = [true, 1, "true", "1", "yes"].includes(
-            typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+            typeof cycle.archived === "string"
+              ? cycle.archived.trim().toLowerCase()
+              : cycle.archived,
           );
           return status === "active" && !archived && !cycle.hidden;
         });
@@ -789,9 +928,13 @@ function HRApplyBudget() {
       payrollCycleRequest("cycles")
         .then((cycles) => {
           const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
-            const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
+            const status = String(cycle.status ?? cycle.cycle_status ?? "")
+              .trim()
+              .toLowerCase();
             const archived = [true, 1, "true", "1", "yes"].includes(
-              typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+              typeof cycle.archived === "string"
+                ? cycle.archived.trim().toLowerCase()
+                : cycle.archived,
             );
             return status === "active" && !archived && !cycle.hidden;
           });
@@ -805,7 +948,10 @@ function HRApplyBudget() {
     }
     return () => {
       if (typeof window !== "undefined") {
-        window.removeEventListener("appraisal:cycle-updated", refreshActiveCycle);
+        window.removeEventListener(
+          "appraisal:cycle-updated",
+          refreshActiveCycle,
+        );
       }
     };
   }, []);
@@ -830,12 +976,15 @@ function HRApplyBudget() {
       const key = normalizeOwnerKey(id || label);
       if (!key) return;
       // Resolve an ID-only Tech-Ed entry back to Employee_Master for display.
-      const displayName = String(item?.name || "").trim() ||
+      const displayName =
+        String(item?.name || "").trim() ||
         ownerName(label || id || rowId, employeeRows);
       ownerValues.set(key, displayName || label || id || rowId);
-      [id, label, rowId, item?.name, displayName].filter(Boolean).forEach((alias) => {
-        techOwnerByAlias.set(normalizeOwnerKey(alias), key);
-      });
+      [id, label, rowId, item?.name, displayName]
+        .filter(Boolean)
+        .forEach((alias) => {
+          techOwnerByAlias.set(normalizeOwnerKey(alias), key);
+        });
     });
     const resolveTechOwnerKey = (raw) => {
       const text = String(raw || "").trim();
@@ -853,11 +1002,20 @@ function HRApplyBudget() {
     const dashboardCurrentCounts = new Map();
     dashboardRows.forEach((employee) => {
       if (
-        String(employee.status || "").trim().toLowerCase() !== "active" ||
-        String(employee.eligibility || "").trim().toLowerCase() !== "eligible"
-      ) return;
+        String(employee.status || "")
+          .trim()
+          .toLowerCase() !== "active" ||
+        String(employee.eligibility || "")
+          .trim()
+          .toLowerCase() !== "eligible"
+      )
+        return;
       const key = resolveTechOwnerKey(employee.appraiserTechED || "");
-      if (key) dashboardCurrentCounts.set(key, (dashboardCurrentCounts.get(key) || 0) + 1);
+      if (key)
+        dashboardCurrentCounts.set(
+          key,
+          (dashboardCurrentCounts.get(key) || 0) + 1,
+        );
     });
     (Array.isArray(employeeRows) ? employeeRows : []).forEach((employee) => {
       const assignedOwner = employee.appraiser_tech_ed_appraisal_sheet || "";
@@ -871,23 +1029,50 @@ function HRApplyBudget() {
           employee.eligible_status,
           employee.eligibility_status,
           employee.eligible,
-        ].find((value) => value !== null && value !== undefined && String(value).trim() !== "") ?? "",
-      ).trim().toLowerCase().replace(/[ _-]+/g, "");
+        ].find(
+          (value) =>
+            value !== null &&
+            value !== undefined &&
+            String(value).trim() !== "",
+        ) ?? "",
+      )
+        .trim()
+        .toLowerCase()
+        .replace(/[ _-]+/g, "");
       // Budget headcount includes employees only when BOTH Employee Master
       // conditions are satisfied: Active status and Eligible eligibility.
-      const status = String(employee.emp_status ?? employee.status ?? employee.employee_status ?? "")
-        .trim().toLowerCase();
+      const status = String(
+        employee.emp_status ??
+          employee.status ??
+          employee.employee_status ??
+          "",
+      )
+        .trim()
+        .toLowerCase();
       const isActive = status === "active";
       const isEligible = ["eligible", "yes", "true", "1"].includes(eligibility);
-      const inAppraisalSheet = employee.in_appraisal_sheet === true ||
-        String(employee.in_appraisal_sheet ?? "").trim().toLowerCase() === "true" ||
+      const inAppraisalSheet =
+        employee.in_appraisal_sheet === true ||
+        String(employee.in_appraisal_sheet ?? "")
+          .trim()
+          .toLowerCase() === "true" ||
         String(employee.in_appraisal_sheet ?? "").trim() === "1";
       const eligible = isActive && isEligible && inAppraisalSheet;
 
       const employeeId = normalizeOwnerKey(
-        employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text || "",
+        employee.emp_id ||
+          employee.employee_id ||
+          employee.employeeId ||
+          employee.employee_id_text ||
+          "",
       );
-      const employeeCountKey = key + "::" + (employeeId || normalizeOwnerKey(employee.row_id || employee.ROWID || employee.id || ""));
+      const employeeCountKey =
+        key +
+        "::" +
+        (employeeId ||
+          normalizeOwnerKey(
+            employee.row_id || employee.ROWID || employee.id || "",
+          ));
       if (eligible && !countedEligibleEmployees.has(employeeCountKey)) {
         employeeCounts.set(key, (employeeCounts.get(key) || 0) + 1);
         countedEligibleEmployees.add(employeeCountKey);
@@ -897,126 +1082,238 @@ function HRApplyBudget() {
       // Budget Master API (previous base pay + previous hike/PB/RB/JB).
       // Do not rebuild it from current annual pay + allocated PB.
       const serverBase = employee.budget_base ?? employee.budgetBase;
-      const hasServerBase = serverBase !== null && serverBase !== undefined && String(serverBase).trim() !== "";
-      const base = hasServerBase ? amount(serverBase) : (
-        amount(employee.previous_year_base_pay ?? employee.previousYearBasePay ?? employee.last_year_base_pay ?? employee.lastYearBasePay ?? employee.previous_annual_base_pay) +
-        amount(employee.previous_year_hike_amount ?? employee.previousYearHikeAmount ?? employee.previous_hike_amount ?? employee.last_year_hike_amount) +
-        amount(employee.previous_year_performance_bonus ?? employee.previous_year_pb ?? employee.previous_pb ?? employee.pb_to_be_paid ?? employee.pbToBePaid) +
-        amount(employee.previous_year_retention_bonus ?? employee.previous_year_rb ?? employee.previous_rb ?? employee.rb_to_be_paid ?? employee.rbToBePaid) +
-        amount(employee.previous_year_joining_bonus ?? employee.previous_year_jb ?? employee.previous_joining_bonus ?? employee.joining_bonus_previous_year)
-      );
+      const hasServerBase =
+        serverBase !== null &&
+        serverBase !== undefined &&
+        String(serverBase).trim() !== "";
+      const base = hasServerBase
+        ? amount(serverBase)
+        : amount(
+            employee.previous_year_base_pay ??
+              employee.previousYearBasePay ??
+              employee.last_year_base_pay ??
+              employee.lastYearBasePay ??
+              employee.previous_annual_base_pay,
+          ) +
+          amount(
+            employee.previous_year_hike_amount ??
+              employee.previousYearHikeAmount ??
+              employee.previous_hike_amount ??
+              employee.last_year_hike_amount,
+          ) +
+          amount(
+            employee.previous_year_performance_bonus ??
+              employee.previous_year_pb ??
+              employee.previous_pb ??
+              employee.pb_to_be_paid ??
+              employee.pbToBePaid,
+          ) +
+          amount(
+            employee.previous_year_retention_bonus ??
+              employee.previous_year_rb ??
+              employee.previous_rb ??
+              employee.rb_to_be_paid ??
+              employee.rbToBePaid,
+          ) +
+          amount(
+            employee.previous_year_joining_bonus ??
+              employee.previous_year_jb ??
+              employee.previous_joining_bonus ??
+              employee.joining_bonus_previous_year,
+          );
       // Only eligible, active employees contribute to fallback team bases.
-      if (eligible) employeeBases.set(key, (employeeBases.get(key) || 0) + base);
+      if (eligible)
+        employeeBases.set(key, (employeeBases.get(key) || 0) + base);
     });
 
     const nextRows = [];
     const seenOwners = new Set();
     (Array.isArray(budgetDistributionRows) ? budgetDistributionRows : [])
-      .filter((row) => Boolean(selectedCycle) && String(row.appraisal_cycle_id) === String(selectedCycle))
+      .filter(
+        (row) =>
+          Boolean(selectedCycle) &&
+          String(row.appraisal_cycle_id) === String(selectedCycle),
+      )
       .forEach((row) => {
-      const owner = row.appraiser_tech_ed_id || "";
-      const key = resolveTechOwnerKey(owner);
-      if (!key || !ownerValues.has(key)) return;
-      // Multiple legacy records may point to the same Tech-Ed using ROWID,
-      // employee ID, or label. Keep one display row per canonical roster key.
-      if (seenOwners.has(key)) {
-        const existing = nextRows.find((item) => item.canonicalKey === key);
-        if (existing) {
-          existing.pct = amount(row.percentage);
-          existing.base = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== "" ? amount(row.budget_base) : existing.base;
-          existing.pctSet = row.percentage !== null && row.percentage !== undefined && String(row.percentage).trim() !== "";
-          Object.assign(existing, deriveRowBudgets(existing.base, existing.pct, existing.pctSet, amount(row.calculated_budget)));
-          const currentCountValue = dashboardCurrentCounts.get(key) || 0;
-          const liveCount = currentCountValue !== null && currentCountValue !== undefined && String(currentCountValue).trim() !== ""
-            ? amount(currentCountValue)
-            : (employeeCounts.get(key) || 0);
-          const originalCountValue = row.original_headcount;
-          const savedCount = origSnap[selectedCycle]?.teCount?.[key];
-          const legacyCount = row.headcount;
-          const hasApiCount =
-            originalCountValue !== null && originalCountValue !== undefined &&
-            String(originalCountValue).trim() !== "" &&
-            (amount(originalCountValue) > 0 || liveCount === 0);
-          const hasLegacyCount = legacyCount !== null && legacyCount !== undefined &&
-            String(legacyCount).trim() !== "" && Number(legacyCount) > 0;
-          const hasLocalCount = savedCount !== null && savedCount !== undefined &&
-            Number.isFinite(Number(savedCount)) && (Number(savedCount) > 0 || liveCount === 0);
-          // If a previous bad frontend snapshot stored today's live count,
-          // recover the older baseline from the legacy headcount field.
-          const localLooksLikeLive = hasLocalCount && Number(savedCount) === liveCount;
-          const useLegacyMigration = !hasApiCount && hasLegacyCount &&
-            (!hasLocalCount || localLooksLikeLive) && Number(legacyCount) !== liveCount;
-          existing.team0 = useLegacyMigration
-            ? amount(legacyCount)
-            : hasLocalCount
-              ? amount(savedCount)
-              : hasApiCount
-                ? amount(originalCountValue)
-                : (existing.originalCountIsSet ? existing.team0 : (existing.team0 > 0 ? existing.team0 : 0));
-          existing.originalCountIsSet = Boolean(existing.originalCountIsSet || hasApiCount || hasLegacyCount || hasLocalCount);
-          existing.originalCountNeedsMigration = useLegacyMigration;
-          existing.team = liveCount;
-          existing.id = row.id || existing.id;
+        const owner = row.appraiser_tech_ed_id || "";
+        const key = resolveTechOwnerKey(owner);
+        if (!key || !ownerValues.has(key)) return;
+        // Multiple legacy records may point to the same Tech-Ed using ROWID,
+        // employee ID, or label. Keep one display row per canonical roster key.
+        if (seenOwners.has(key)) {
+          const existing = nextRows.find((item) => item.canonicalKey === key);
+          if (existing) {
+            existing.pct = amount(row.percentage);
+            existing.base =
+              row.budget_base !== null &&
+              row.budget_base !== undefined &&
+              String(row.budget_base).trim() !== ""
+                ? amount(row.budget_base)
+                : existing.base;
+            existing.pctSet =
+              row.percentage !== null &&
+              row.percentage !== undefined &&
+              String(row.percentage).trim() !== "";
+            Object.assign(
+              existing,
+              deriveRowBudgets(
+                existing.base,
+                existing.pct,
+                existing.pctSet,
+                amount(row.calculated_budget),
+              ),
+            );
+            const currentCountValue = dashboardCurrentCounts.get(key) || 0;
+            const liveCount =
+              currentCountValue !== null &&
+              currentCountValue !== undefined &&
+              String(currentCountValue).trim() !== ""
+                ? amount(currentCountValue)
+                : employeeCounts.get(key) || 0;
+            const originalCountValue = row.original_headcount;
+            const savedCount = origSnap[selectedCycle]?.teCount?.[key];
+            const legacyCount = row.headcount;
+            const hasApiCount =
+              originalCountValue !== null &&
+              originalCountValue !== undefined &&
+              String(originalCountValue).trim() !== "" &&
+              (amount(originalCountValue) > 0 || liveCount === 0);
+            const hasLegacyCount =
+              legacyCount !== null &&
+              legacyCount !== undefined &&
+              String(legacyCount).trim() !== "" &&
+              Number(legacyCount) > 0;
+            const hasLocalCount =
+              savedCount !== null &&
+              savedCount !== undefined &&
+              Number.isFinite(Number(savedCount)) &&
+              (Number(savedCount) > 0 || liveCount === 0);
+            // If a previous bad frontend snapshot stored today's live count,
+            // recover the older baseline from the legacy headcount field.
+            const localLooksLikeLive =
+              hasLocalCount && Number(savedCount) === liveCount;
+            const useLegacyMigration =
+              !hasApiCount &&
+              hasLegacyCount &&
+              (!hasLocalCount || localLooksLikeLive) &&
+              Number(legacyCount) !== liveCount;
+            existing.team0 = useLegacyMigration
+              ? amount(legacyCount)
+              : hasLocalCount
+                ? amount(savedCount)
+                : hasApiCount
+                  ? amount(originalCountValue)
+                  : existing.originalCountIsSet
+                    ? existing.team0
+                    : existing.team0 > 0
+                      ? existing.team0
+                      : 0;
+            existing.originalCountIsSet = Boolean(
+              existing.originalCountIsSet ||
+              hasApiCount ||
+              hasLegacyCount ||
+              hasLocalCount,
+            );
+            existing.originalCountNeedsMigration = useLegacyMigration;
+            existing.team = liveCount;
+            existing.id = row.id || existing.id;
+          }
+          return;
         }
-        return;
-      }
-      const calculated = amount(row.calculated_budget);
-      const assignedCount = employeeCounts.get(key) || 0;
-      // Current Count always follows the live Appraisal Sheet roster.
-      const currentCountValue = dashboardCurrentCounts.get(key) || 0;
-      const currentCount = currentCountValue !== null && currentCountValue !== undefined && String(currentCountValue).trim() !== ""
-        ? amount(currentCountValue)
-        : assignedCount;
-      const originalCountValue = row.original_headcount;
-      const savedCount = origSnap[selectedCycle]?.teCount?.[key];
-      const legacyCount = row.headcount;
-      const hasApiCount =
-        originalCountValue !== null && originalCountValue !== undefined &&
-        String(originalCountValue).trim() !== "" &&
-        (amount(originalCountValue) > 0 || currentCount === 0);
-      const hasLegacyCount = legacyCount !== null && legacyCount !== undefined &&
-        String(legacyCount).trim() !== "" && Number(legacyCount) > 0;
-      const hasLocalCount = savedCount !== null && savedCount !== undefined &&
-        Number.isFinite(Number(savedCount)) && (Number(savedCount) > 0 || currentCount === 0);
-      const localLooksLikeLive = hasLocalCount && Number(savedCount) === currentCount;
-      const useLegacyMigration = !hasApiCount && hasLegacyCount &&
-        (!hasLocalCount || localLooksLikeLive) && Number(legacyCount) !== currentCount;
-      const originalCountIsSet = hasApiCount || hasLegacyCount || hasLocalCount;
-      const originalCount = useLegacyMigration
-        ? amount(legacyCount)
-        : hasLocalCount
-          ? amount(savedCount)
-          : hasApiCount
-            ? amount(originalCountValue)
-            // Nothing saved anywhere yet: the baseline is the roster at first
-            // allocation. Seed it once from today's count; the snapshot effect
-            // below then freezes it, so later changes move Current Count only.
-            : (row.percentage !== null && row.percentage !== undefined && String(row.percentage).trim() !== ""
+        const calculated = amount(row.calculated_budget);
+        const assignedCount = employeeCounts.get(key) || 0;
+        // Current Count always follows the live Appraisal Sheet roster.
+        const currentCountValue = dashboardCurrentCounts.get(key) || 0;
+        const currentCount =
+          currentCountValue !== null &&
+          currentCountValue !== undefined &&
+          String(currentCountValue).trim() !== ""
+            ? amount(currentCountValue)
+            : assignedCount;
+        const originalCountValue = row.original_headcount;
+        const savedCount = origSnap[selectedCycle]?.teCount?.[key];
+        const legacyCount = row.headcount;
+        const hasApiCount =
+          originalCountValue !== null &&
+          originalCountValue !== undefined &&
+          String(originalCountValue).trim() !== "" &&
+          (amount(originalCountValue) > 0 || currentCount === 0);
+        const hasLegacyCount =
+          legacyCount !== null &&
+          legacyCount !== undefined &&
+          String(legacyCount).trim() !== "" &&
+          Number(legacyCount) > 0;
+        const hasLocalCount =
+          savedCount !== null &&
+          savedCount !== undefined &&
+          Number.isFinite(Number(savedCount)) &&
+          (Number(savedCount) > 0 || currentCount === 0);
+        const localLooksLikeLive =
+          hasLocalCount && Number(savedCount) === currentCount;
+        const useLegacyMigration =
+          !hasApiCount &&
+          hasLegacyCount &&
+          (!hasLocalCount || localLooksLikeLive) &&
+          Number(legacyCount) !== currentCount;
+        const originalCountIsSet =
+          hasApiCount || hasLegacyCount || hasLocalCount;
+        const originalCount = useLegacyMigration
+          ? amount(legacyCount)
+          : hasLocalCount
+            ? amount(savedCount)
+            : hasApiCount
+              ? amount(originalCountValue)
+              : // Nothing saved anywhere yet: the baseline is the roster at first
+                // allocation. Seed it once from today's count; the snapshot effect
+                // below then freezes it, so later changes move Current Count only.
+                row.percentage !== null &&
+                  row.percentage !== undefined &&
+                  String(row.percentage).trim() !== ""
                 ? currentCount
-                : 0);
-      const storedBase = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== ""
-        ? amount(row.budget_base)
-        : null;
-      const rowPctSet = row.percentage !== null && row.percentage !== undefined && String(row.percentage).trim() !== "";
-      const rowBase = storedBase !== null ? storedBase : (employeeBases.get(key) || (Number(row.percentage) ? calculated * 100 / Number(row.percentage) : calculated));
-      nextRows.push({
-        id: row.id || "tech-ed-" + key,
-        canonicalKey: key,
-        name: ownerValues.get(key) || ownerName(owner, employeeRows),
-        pct: amount(row.percentage),
-        pctSet: row.percentage !== null && row.percentage !== undefined && String(row.percentage).trim() !== "",
-        // budgetmasterapi calculates this base from the cycle's eligible roster;
-        // prefer it over the all-employee API roster to avoid inflating Org Base.
-        base: rowBase,
-        ...deriveRowBudgets(rowBase, amount(row.percentage), rowPctSet, calculated),
-        team0: originalCount,
-        team: currentCount,
-        originalCountIsSet,
-        originalCountNeedsMigration: useLegacyMigration,
-        lastChanged: "—",
+                : 0;
+        const storedBase =
+          row.budget_base !== null &&
+          row.budget_base !== undefined &&
+          String(row.budget_base).trim() !== ""
+            ? amount(row.budget_base)
+            : null;
+        const rowPctSet =
+          row.percentage !== null &&
+          row.percentage !== undefined &&
+          String(row.percentage).trim() !== "";
+        const rowBase =
+          storedBase !== null
+            ? storedBase
+            : employeeBases.get(key) ||
+              (Number(row.percentage)
+                ? (calculated * 100) / Number(row.percentage)
+                : calculated);
+        nextRows.push({
+          id: row.id || "tech-ed-" + key,
+          canonicalKey: key,
+          name: ownerValues.get(key) || ownerName(owner, employeeRows),
+          pct: amount(row.percentage),
+          pctSet:
+            row.percentage !== null &&
+            row.percentage !== undefined &&
+            String(row.percentage).trim() !== "",
+          // budgetmasterapi calculates this base from the cycle's eligible roster;
+          // prefer it over the all-employee API roster to avoid inflating Org Base.
+          base: rowBase,
+          ...deriveRowBudgets(
+            rowBase,
+            amount(row.percentage),
+            rowPctSet,
+            calculated,
+          ),
+          team0: originalCount,
+          team: currentCount,
+          originalCountIsSet,
+          originalCountNeedsMigration: useLegacyMigration,
+          lastChanged: "—",
+        });
+        seenOwners.add(key);
       });
-      seenOwners.add(key);
-    });
 
     // Appraisal Sheet is the source of truth for the Tech-ED assignments.
     // Include every assigned Tech-ED even if no Budget_Distribution row exists yet.
@@ -1030,14 +1327,18 @@ function HRApplyBudget() {
         pct: amount(selectedMaster?.budget_percentage),
         pctSet: false,
         base: employeeBases.get(key) || 0,
-        original: selectedMaster?.budget_percentage_is_set ? bud(employeeBases.get(key) || 0, selectedMaster?.budget_percentage) : 0,
-        updated: selectedMaster?.budget_percentage_is_set ? bud(employeeBases.get(key) || 0, selectedMaster?.budget_percentage) : 0,
+        original: selectedMaster?.budget_percentage_is_set
+          ? bud(employeeBases.get(key) || 0, selectedMaster?.budget_percentage)
+          : 0,
+        updated: selectedMaster?.budget_percentage_is_set
+          ? bud(employeeBases.get(key) || 0, selectedMaster?.budget_percentage)
+          : 0,
         // This is only a provisional row; Original Count must come from the
         // backend's first saved allocation snapshot, not today's live count.
         team0: 0,
-         team: dashboardCurrentCounts.get(key) || 0,
-         originalCountIsSet: false,
-         lastChanged: "—",
+        team: dashboardCurrentCounts.get(key) || 0,
+        originalCountIsSet: false,
+        lastChanged: "—",
       });
       seenOwners.add(key);
     });
@@ -1049,7 +1350,16 @@ function HRApplyBudget() {
     } else {
       setOrgPct("");
     }
-  }, [budgetDistributionRows, budgetMasterRows, employeeRows, techEdOwners, dashboardRows, selectedCycle, selectedMaster?.budget_percentage, origSnap]);
+  }, [
+    budgetDistributionRows,
+    budgetMasterRows,
+    employeeRows,
+    techEdOwners,
+    dashboardRows,
+    selectedCycle,
+    selectedMaster?.budget_percentage,
+    origSnap,
+  ]);
 
   // budgetmasterapi calculates this cycle's Org Base from the explicit
   // Eligibility_List decisions. Prefer that authoritative total over the full
@@ -1057,7 +1367,11 @@ function HRApplyBudget() {
   // Tech-Ed assignment. Fall back to unique Tech-Ed bases only if absent.
   const orgBaseFromRoster = useMemo(() => {
     const savedBase = selectedMaster?.org_budget_base;
-    if (savedBase !== null && savedBase !== undefined && String(savedBase).trim() !== "") {
+    if (
+      savedBase !== null &&
+      savedBase !== undefined &&
+      String(savedBase).trim() !== ""
+    ) {
       return amount(savedBase);
     }
     return rows.reduce((sum, row) => sum + amount(row.base), 0);
@@ -1081,32 +1395,72 @@ function HRApplyBudget() {
   // The API handles legacy schemas. Never substitute a live/current count.
   const orgOriginalCountValue = selectedMaster?.original_headcount;
   const orgCurrentCountValue =
-    selectedMaster?.current_headcount !== null && selectedMaster?.current_headcount !== undefined && String(selectedMaster.current_headcount).trim() !== ""
+    selectedMaster?.current_headcount !== null &&
+    selectedMaster?.current_headcount !== undefined &&
+    String(selectedMaster.current_headcount).trim() !== ""
       ? selectedMaster.current_headcount
       : total.team;
   const orgRosterCurrentCount = useMemo(() => {
     const ids = new Set();
     (Array.isArray(employeeRows) ? employeeRows : []).forEach((employee) => {
-      const inSheet = employee.in_appraisal_sheet === true ||
-        String(employee.in_appraisal_sheet ?? "").trim().toLowerCase() === "true" ||
+      const inSheet =
+        employee.in_appraisal_sheet === true ||
+        String(employee.in_appraisal_sheet ?? "")
+          .trim()
+          .toLowerCase() === "true" ||
         String(employee.in_appraisal_sheet ?? "").trim() === "1";
-      const status = String(employee.emp_status ?? employee.status ?? employee.employee_status ?? "").trim().toLowerCase();
-      const eligibility = String([
-        employee.eligibility, employee.eligible_status, employee.eligibility_status, employee.eligible,
-      ].find((value) => value !== null && value !== undefined && String(value).trim() !== "") ?? "")
-        .trim().toLowerCase().replace(/[ _-]+/g, "");
-      if (!inSheet || status !== "active" || !["eligible", "yes", "true", "1"].includes(eligibility)) return;
-      const id = normalizeOwnerKey(employee.emp_id || employee.employee_id || employee.employeeId || employee.employee_id_text || "");
+      const status = String(
+        employee.emp_status ??
+          employee.status ??
+          employee.employee_status ??
+          "",
+      )
+        .trim()
+        .toLowerCase();
+      const eligibility = String(
+        [
+          employee.eligibility,
+          employee.eligible_status,
+          employee.eligibility_status,
+          employee.eligible,
+        ].find(
+          (value) =>
+            value !== null &&
+            value !== undefined &&
+            String(value).trim() !== "",
+        ) ?? "",
+      )
+        .trim()
+        .toLowerCase()
+        .replace(/[ _-]+/g, "");
+      if (
+        !inSheet ||
+        status !== "active" ||
+        !["eligible", "yes", "true", "1"].includes(eligibility)
+      )
+        return;
+      const id = normalizeOwnerKey(
+        employee.emp_id ||
+          employee.employee_id ||
+          employee.employeeId ||
+          employee.employee_id_text ||
+          "",
+      );
       if (id) ids.add(id);
     });
     return ids.size;
   }, [employeeRows]);
   const localOrgOriginalCount = origSnap[selectedCycle]?.orgCount;
-  const orgOriginalCount = localOrgOriginalCount !== null && localOrgOriginalCount !== undefined && Number.isFinite(Number(localOrgOriginalCount))
-    ? amount(localOrgOriginalCount)
-    : orgOriginalCountValue !== null && orgOriginalCountValue !== undefined && String(orgOriginalCountValue).trim() !== ""
-      ? amount(orgOriginalCountValue)
-      : total.team0;
+  const orgOriginalCount =
+    localOrgOriginalCount !== null &&
+    localOrgOriginalCount !== undefined &&
+    Number.isFinite(Number(localOrgOriginalCount))
+      ? amount(localOrgOriginalCount)
+      : orgOriginalCountValue !== null &&
+          orgOriginalCountValue !== undefined &&
+          String(orgOriginalCountValue).trim() !== ""
+        ? amount(orgOriginalCountValue)
+        : total.team0;
   const orgCurrentCount =
     orgCurrentCountValue !== null &&
     orgCurrentCountValue !== undefined &&
@@ -1118,10 +1472,15 @@ function HRApplyBudget() {
 
   // Saved Tech-Ed percentages remain independent of future Org % changes.
   const previewPct = (row) => {
-    if (Object.prototype.hasOwnProperty.call(pending, row.name)) return Number(pending[row.name]);
-    if (Object.prototype.hasOwnProperty.call(staged, row.name)) return Number(staged[row.name]);
+    if (Object.prototype.hasOwnProperty.call(pending, row.name))
+      return Number(pending[row.name]);
+    if (Object.prototype.hasOwnProperty.call(staged, row.name))
+      return Number(staged[row.name]);
     // An unset Tech-Ed percentage inherits the Org % on first allocation.
-    if (!row.pctSet) return orgPct !== "" ? amount(orgPct) : amount(selectedMaster?.budget_percentage);
+    if (!row.pctSet)
+      return orgPct !== ""
+        ? amount(orgPct)
+        : amount(selectedMaster?.budget_percentage);
     return amount(row.pct);
   };
 
@@ -1129,7 +1488,10 @@ function HRApplyBudget() {
   // The API exposes org_budget_base as the LIVE eligible prior-cycle CTC sum.
   // calculated_budget is the original budget captured on the first applied Org %;
   // do not invalidate that snapshot just because payroll/eligibility changed later.
-  const savedOrgOriginal = snapshotBudget(selectedMaster?.calculated_budget, orgBaseFromRoster);
+  const savedOrgOriginal = snapshotBudget(
+    selectedMaster?.calculated_budget,
+    orgBaseFromRoster,
+  );
   const orgApplied = Boolean(selectedMaster?.budget_percentage_is_set);
   const savedOrgPct = amount(selectedMaster?.budget_percentage);
   const orgBase = orgBaseFromRoster;
@@ -1142,10 +1504,13 @@ function HRApplyBudget() {
   const hasValidOrgSnapshot = orgApplied && savedOrgOriginal > 0;
   const derivedOrgOriginal = hasValidOrgSnapshot
     ? savedOrgOriginal
-    : (orgApplied ? savedOrgUpdated : previewOrgBudget);
+    : orgApplied
+      ? savedOrgUpdated
+      : previewOrgBudget;
   // First-marked budgets kept in this browser win over server recalculations.
   const cycleSnap = origSnap[selectedCycle] || {};
-  const originalOrgBudget = orgApplied && cycleSnap.org > 0 ? cycleSnap.org : derivedOrgOriginal;
+  const originalOrgBudget =
+    orgApplied && cycleSnap.org > 0 ? cycleSnap.org : derivedOrgOriginal;
   const rowOriginal = (row) => {
     const kept = cycleSnap.te && cycleSnap.te[row.canonicalKey];
     return kept > 0 ? kept : row.original;
@@ -1165,6 +1530,15 @@ function HRApplyBudget() {
       next.org = derivedOrgOriginal;
       changed = true;
     }
+    // Org Original Count: freeze once (stored baseline, else today's count).
+    const orgSeed =
+      amount(selectedMaster?.original_headcount) > 0
+        ? amount(selectedMaster?.original_headcount)
+        : amount(orgCurrentCount);
+    if (!(Number(next.orgCount) > 0) && orgSeed > 0) {
+      next.orgCount = orgSeed;
+      changed = true;
+    }
     rows.forEach((row) => {
       if (row.pctSet && !(next.te[row.canonicalKey] > 0) && row.original > 0) {
         next.te[row.canonicalKey] = row.original;
@@ -1174,10 +1548,16 @@ function HRApplyBudget() {
       // allocation. Later roster/delegation changes update Current Count only.
       // Migrate only a known baseline. Never seed Original Count from the
       // live team size on page load; that caused 202 -> 512 to become 512 -> 512.
-      const hasStoredCount = Number.isFinite(Number(next.teCount[row.canonicalKey])) &&
-        next.teCount[row.canonicalKey] !== null && next.teCount[row.canonicalKey] !== undefined &&
+      const hasStoredCount =
+        Number.isFinite(Number(next.teCount[row.canonicalKey])) &&
+        next.teCount[row.canonicalKey] !== null &&
+        next.teCount[row.canonicalKey] !== undefined &&
         (Number(next.teCount[row.canonicalKey]) > 0 || row.team === 0);
-      if (row.pctSet && row.team0 > 0 && (row.originalCountNeedsMigration || !hasStoredCount)) {
+      if (
+        row.pctSet &&
+        row.team0 > 0 &&
+        (row.originalCountNeedsMigration || !hasStoredCount)
+      ) {
         next.teCount[row.canonicalKey] = amount(row.team0);
         changed = true;
       }
@@ -1187,22 +1567,40 @@ function HRApplyBudget() {
       setOrigSnap(all);
       writeOriginalSnapshots(all);
     }
-  }, [selectedCycle, orgApplied, derivedOrgOriginal, rows, orgCurrentCount, origSnap]);
-  const orgPending = orgPct !== "" && !!selectedMaster && amount(orgPct) !== Number(selectedMaster.budget_percentage || 0);
-  const draftCount = rows.filter((row) =>
-    Object.prototype.hasOwnProperty.call(pending, row.name) &&
-    Number(pending[row.name]) !== Number(staged[row.name] ?? row.pct),
+  }, [
+    selectedCycle,
+    orgApplied,
+    derivedOrgOriginal,
+    rows,
+    orgCurrentCount,
+    origSnap,
+  ]);
+  const orgPending =
+    orgPct !== "" &&
+    !!selectedMaster &&
+    amount(orgPct) !== Number(selectedMaster.budget_percentage || 0);
+  const draftCount = rows.filter(
+    (row) =>
+      Object.prototype.hasOwnProperty.call(pending, row.name) &&
+      Number(pending[row.name]) !== Number(staged[row.name] ?? row.pct),
   ).length;
-  const stagedCount = rows.filter((row) =>
-    Object.prototype.hasOwnProperty.call(staged, row.name) &&
-    Number(staged[row.name]) !== Number(row.pct),
+  const stagedCount = rows.filter(
+    (row) =>
+      Object.prototype.hasOwnProperty.call(staged, row.name) &&
+      Number(staged[row.name]) !== Number(row.pct),
   ).length;
   const pendingCount = draftCount + (orgPending ? 1 : 0);
   const previewTotal = rows.reduce((s, r) => s + previewBudget(r), 0);
 
   async function applyOrgPercentage() {
     const org = Number(orgPct);
-    const cycleId = String(selectedCycle || activeCycle?.id || activeCycle?.appraisal_cycle_id || activeCycle?.ROWID || "").trim();
+    const cycleId = String(
+      selectedCycle ||
+        activeCycle?.id ||
+        activeCycle?.appraisal_cycle_id ||
+        activeCycle?.ROWID ||
+        "",
+    ).trim();
     if (!cycleId) {
       setError("Select an appraisal cycle before applying the Org %.");
       return;
@@ -1216,66 +1614,91 @@ function HRApplyBudget() {
       return;
     }
     if (draftCount || stagedCount) {
-      setError("Apply, publish, or discard Tech-Ed edits before changing the organization percentage.");
+      setError(
+        "Apply, publish, or discard Tech-Ed edits before changing the organization percentage.",
+      );
       return;
     }
     setSavingOrg(true);
     setError("");
     const orgBase = orgBaseFromRoster;
-    const originalBudget = orgApplied && cycleSnap.org > 0
-      ? cycleSnap.org
-      : (hasValidOrgSnapshot ? savedOrgOriginal : bud(orgBase, org));
+    const originalBudget =
+      orgApplied && cycleSnap.org > 0
+        ? cycleSnap.org
+        : hasValidOrgSnapshot
+          ? savedOrgOriginal
+          : bud(orgBase, org);
     const updatedBudget = bud(orgBase, org);
     const previousOrgPct = amount(selectedMaster?.budget_percentage);
     // "Before" = the Org budget currently in force (base x last saved %), not the
     // figure stored by the server, which may still use the older formula.
     const previousOrgBudget = orgApplied ? savedOrgUpdated : 0;
-    const actor = String(currentUser.name || currentUser.email || "Unknown user");
-    const reason = String(orgReason || "").trim() || "Org budget percentage updated";
+    const actor = String(
+      currentUser.name || currentUser.email || "Unknown user",
+    );
+    const reason =
+      String(orgReason || "").trim() || "Org budget percentage updated";
     try {
-      await updateBudget(selectedMaster?.id || "", {
-        appraisal_cycle_id: cycleId,
-        budget_percentage: org,
-        org_budget_base: orgBase,
-        calculated_budget: originalBudget,
-        applied_budget: updatedBudget,
-        budget_utilized: amount(selectedMaster?.budget_utilized),
-      }, "master", false);
-      recordBudgetAudit("org", [{
-        date: new Date().toISOString().slice(0, 10),
-        time: new Date().toLocaleTimeString(),
-        owner: "Org",
-        from: orgApplied ? previousOrgPct : null,
-        to: org,
-        before: orgApplied ? previousOrgBudget : null,
-        after: updatedBudget,
-        by: actor,
-        reason,
-        cycleId,
-      }]);
+      await updateBudget(
+        selectedMaster?.id || "",
+        {
+          appraisal_cycle_id: cycleId,
+          budget_percentage: org,
+          org_budget_base: orgBase,
+          calculated_budget: originalBudget,
+          applied_budget: updatedBudget,
+          budget_utilized: amount(selectedMaster?.budget_utilized),
+        },
+        "master",
+        false,
+      );
+      recordBudgetAudit("org", [
+        {
+          date: new Date().toISOString().slice(0, 10),
+          time: new Date().toLocaleTimeString(),
+          owner: "Org",
+          from: orgApplied ? previousOrgPct : null,
+          to: org,
+          before: orgApplied ? previousOrgBudget : null,
+          after: updatedBudget,
+          by: actor,
+          reason,
+          cycleId,
+        },
+      ]);
 
       // Update inherited Tech-Ed rows only. A separately configured override must
       // remain untouched when HR changes the organization default.
-      const inheritedRows = rows.filter((row) =>
-        !row.pctSet || Math.abs(amount(row.pct) - previousOrgPct) < 0.0001,
+      const inheritedRows = rows.filter(
+        (row) =>
+          !row.pctSet || Math.abs(amount(row.pct) - previousOrgPct) < 0.0001,
       );
-      await Promise.all(inheritedRows.map((row) => updateBudget(
-        row.id && !String(row.id).startsWith("tech-ed-") ? row.id : "",
-        {
-          appraisal_cycle_id: cycleId,
-          appraiser_tech_ed_id: String(row.canonicalKey || row.name || "").trim().split(/\s+-\s+/)[0].slice(0, 20),
-          percentage: org,
-          budget_base: row.base,
-          calculated_budget: rowOriginal(row) || bud(row.base, org),
-          applied_budget: bud(row.base, org),
-        },
-        "distribution",
-        false,
-      )));
+      await Promise.all(
+        inheritedRows.map((row) =>
+          updateBudget(
+            row.id && !String(row.id).startsWith("tech-ed-") ? row.id : "",
+            {
+              appraisal_cycle_id: cycleId,
+              appraiser_tech_ed_id: String(row.canonicalKey || row.name || "")
+                .trim()
+                .split(/\s+-\s+/)[0]
+                .slice(0, 20),
+              percentage: org,
+              budget_base: row.base,
+              calculated_budget: rowOriginal(row) || bud(row.base, org),
+              applied_budget: bud(row.base, org),
+            },
+            "distribution",
+            false,
+          ),
+        ),
+      );
       await reloadBudget();
       setOrgReason("");
     } catch (saveError) {
-      setError(saveError.message || "Org % and appraisal cycle could not be saved.");
+      setError(
+        saveError.message || "Org % and appraisal cycle could not be saved.",
+      );
     } finally {
       setSavingOrg(false);
     }
@@ -1295,7 +1718,8 @@ function HRApplyBudget() {
     }
     const next = {};
     rows.forEach((row) => {
-      if (Number(value) !== Number(staged[row.name] ?? row.pct)) next[row.name] = value;
+      if (Number(value) !== Number(staged[row.name] ?? row.pct))
+        next[row.name] = value;
     });
     setPending(next);
   }
@@ -1332,8 +1756,13 @@ function HRApplyBudget() {
   // apply("<name>")  -> row "Update": stage just that Tech-Ed's edit.
   async function apply(onlyName) {
     const target = typeof onlyName === "string" ? onlyName : null;
-    if (!draftCount || (target && !Object.prototype.hasOwnProperty.call(pending, target))) {
-      setError("Make a Tech-Ed percentage change before selecting Apply changes.");
+    if (
+      !draftCount ||
+      (target && !Object.prototype.hasOwnProperty.call(pending, target))
+    ) {
+      setError(
+        "Make a Tech-Ed percentage change before selecting Apply changes.",
+      );
       return;
     }
     const invalid = rows.find((row) => {
@@ -1341,29 +1770,43 @@ function HRApplyBudget() {
       return !Number.isFinite(value) || value < 0 || value > 100;
     });
     if (invalid) {
-      setError("Not applied. " + invalid.name + ": enter a valid percentage between 0 and 100.");
-      return;
-    }
-
-    const org = orgPct !== "" ? amount(orgPct) : amount(selectedMaster?.budget_percentage);
-    const available = bud(orgBaseFromRoster, org);
-    if (previewTotal > available + 0.5) {
       setError(
-        "Not applied. Tech-Ed Updated Budgets total " + money(previewTotal) +
-        ", which exceeds the Org Updated Budget of " + money(available) + ". Reduce one or more Tech-Ed percentages.",
+        "Not applied. " +
+          invalid.name +
+          ": enter a valid percentage between 0 and 100.",
       );
       return;
     }
 
-    const updates = rows.filter((row) =>
-      Object.prototype.hasOwnProperty.call(pending, row.name) && (!target || row.name === target),
+    const org =
+      orgPct !== ""
+        ? amount(orgPct)
+        : amount(selectedMaster?.budget_percentage);
+    const available = bud(orgBaseFromRoster, org);
+    if (previewTotal > available + 0.5) {
+      setError(
+        "Not applied. Tech-Ed Updated Budgets total " +
+          money(previewTotal) +
+          ", which exceeds the Org Updated Budget of " +
+          money(available) +
+          ". Reduce one or more Tech-Ed percentages.",
+      );
+      return;
+    }
+
+    const updates = rows.filter(
+      (row) =>
+        Object.prototype.hasOwnProperty.call(pending, row.name) &&
+        (!target || row.name === target),
     );
     const reasonFor = (row) =>
       String(rowReasons[row.name] || "").trim() ||
       (Number(pending[row.name]) === org ? "Reset to org %" : "Override");
     setStaged((previous) => {
       const next = { ...previous };
-      updates.forEach((row) => { next[row.name] = Number(pending[row.name]); });
+      updates.forEach((row) => {
+        next[row.name] = Number(pending[row.name]);
+      });
       return next;
     });
     setStagedReasons((previous) => {
@@ -1400,11 +1843,21 @@ function HRApplyBudget() {
       setError("Apply at least one percentage change before publishing.");
       return;
     }
-    if (target ? Object.prototype.hasOwnProperty.call(pending, target) : draftCount) {
+    if (
+      target
+        ? Object.prototype.hasOwnProperty.call(pending, target)
+        : draftCount
+    ) {
       setError("Apply pending edits before publishing staged changes.");
       return;
     }
-    const cycleId = String(selectedCycle || activeCycle?.id || activeCycle?.appraisal_cycle_id || activeCycle?.ROWID || "").trim();
+    const cycleId = String(
+      selectedCycle ||
+        activeCycle?.id ||
+        activeCycle?.appraisal_cycle_id ||
+        activeCycle?.ROWID ||
+        "",
+    ).trim();
     if (!cycleId) {
       setError("Select an appraisal cycle before publishing budget changes.");
       return;
@@ -1412,59 +1865,84 @@ function HRApplyBudget() {
     setSavingOrg(true);
     setError("");
     try {
-      const toPublish = rows.filter((row) =>
-        Object.prototype.hasOwnProperty.call(staged, row.name) && (!target || row.name === target),
+      const toPublish = rows.filter(
+        (row) =>
+          Object.prototype.hasOwnProperty.call(staged, row.name) &&
+          (!target || row.name === target),
       );
-      const actor = String(currentUser.name || currentUser.email || "Unknown user");
+      const actor = String(
+        currentUser.name || currentUser.email || "Unknown user",
+      );
       const publishedAt = new Date();
-      await Promise.all(toPublish.map((row) => {
-        const pct = Number(staged[row.name]);
-        const budget = bud(row.base, pct);
-        return updateBudget(
-          row.id && !String(row.id).startsWith("tech-ed-") ? row.id : "",
-          {
-            appraisal_cycle_id: cycleId,
-            appraiser_tech_ed_id: String(row.canonicalKey || row.name || "").trim().split(/\\s+-\\s+/)[0].slice(0, 20),
-            percentage: pct,
-            budget_base: row.base,
-            calculated_budget: String(row.id || "").startsWith("tech-ed-")
-              ? budget
-              : (rowOriginal(row) || budget),
-            applied_budget: budget,
-            change_reason: stagedReasons[row.name] || "Budget percentage published",
-          },
-          "distribution",
-          false,
-        );
-      }));
-      recordBudgetAudit("techEd", toPublish.map((row) => {
-        const pct = Number(staged[row.name]);
-        return {
-          date: publishedAt.toISOString().slice(0, 10),
-          time: publishedAt.toLocaleTimeString(),
-          owner: row.name,
-          // First % for this Tech ED has no "old" value.
-          from: row.pctSet ? amount(row.pct) : null,
-          to: pct,
-          before: row.pctSet ? bud(row.base, row.pct) : null,
-          after: bud(row.base, pct),
-          by: actor,
-          reason: stagedReasons[row.name] || "Budget percentage published",
-          cycleId,
-        };
-      }));
+      await Promise.all(
+        toPublish.map((row) => {
+          const pct = Number(staged[row.name]);
+          const budget = bud(row.base, pct);
+          return updateBudget(
+            row.id && !String(row.id).startsWith("tech-ed-") ? row.id : "",
+            {
+              appraisal_cycle_id: cycleId,
+              appraiser_tech_ed_id: String(row.canonicalKey || row.name || "")
+                .trim()
+                .split(/\\s+-\\s+/)[0]
+                .slice(0, 20),
+              percentage: pct,
+              budget_base: row.base,
+              calculated_budget: String(row.id || "").startsWith("tech-ed-")
+                ? budget
+                : rowOriginal(row) || budget,
+              applied_budget: budget,
+              change_reason:
+                stagedReasons[row.name] || "Budget percentage published",
+            },
+            "distribution",
+            false,
+          );
+        }),
+      );
+      recordBudgetAudit(
+        "techEd",
+        toPublish.map((row) => {
+          const pct = Number(staged[row.name]);
+          return {
+            date: publishedAt.toISOString().slice(0, 10),
+            time: publishedAt.toLocaleTimeString(),
+            owner: row.name,
+            // First % for this Tech ED has no "old" value.
+            from: row.pctSet ? amount(row.pct) : null,
+            to: pct,
+            before: row.pctSet ? bud(row.base, row.pct) : null,
+            after: bud(row.base, pct),
+            by: actor,
+            reason: stagedReasons[row.name] || "Budget percentage published",
+            cycleId,
+          };
+        }),
+      );
       await reloadBudget();
       setOverrides((previous) => {
         const next = { ...previous };
         toPublish.forEach((row) => {
-          if (Number(staged[row.name]) === amount(orgPct !== "" ? orgPct : selectedMaster?.budget_percentage)) delete next[row.name];
+          if (
+            Number(staged[row.name]) ===
+            amount(orgPct !== "" ? orgPct : selectedMaster?.budget_percentage)
+          )
+            delete next[row.name];
           else next[row.name] = true;
         });
         return next;
       });
       if (target) {
-        setStaged((previous) => { const next = { ...previous }; delete next[target]; return next; });
-        setStagedReasons((previous) => { const next = { ...previous }; delete next[target]; return next; });
+        setStaged((previous) => {
+          const next = { ...previous };
+          delete next[target];
+          return next;
+        });
+        setStagedReasons((previous) => {
+          const next = { ...previous };
+          delete next[target];
+          return next;
+        });
       } else {
         setStaged({});
         setStagedReasons({});
@@ -1485,25 +1963,38 @@ function HRApplyBudget() {
   // Text shown in each filterable column (used by the column menu).
   const cellText = (row, col) => {
     switch (col) {
-      case 0: return String(row.name || "");
-      case 1: return money(row.base);
-      case 2: return String(previewPct(row));
-      case 3: return money(previewBudget(row));
-      case 4: return money(rowOriginal(row));
-      case 5: return money(row.updated);
-      case 6: return String(row.team0);
-      case 7: return String(row.team);
-      default: return "";
+      case 0:
+        return String(row.name || "");
+      case 1:
+        return money(row.base);
+      case 2:
+        return String(previewPct(row));
+      case 3:
+        return money(previewBudget(row));
+      case 4:
+        return money(rowOriginal(row));
+      case 5:
+        return money(row.updated);
+      case 6:
+        return String(row.team0);
+      case 7:
+        return String(row.team);
+      default:
+        return "";
     }
   };
   const visibleRows = (() => {
     const filterEntries = Object.entries(gridFilters);
     let list = rows.filter((row) =>
-      filterEntries.every(([col, f]) => passesColumnFilter(f, cellText(row, Number(col)))),
+      filterEntries.every(([col, f]) =>
+        passesColumnFilter(f, cellText(row, Number(col))),
+      ),
     );
     if (gridSort) {
       list = [...list].sort(
-        (a, b) => compareCells(cellText(a, gridSort.c), cellText(b, gridSort.c)) * gridSort.d,
+        (a, b) =>
+          compareCells(cellText(a, gridSort.c), cellText(b, gridSort.c)) *
+          gridSort.d,
       );
     }
     return list;
@@ -1521,28 +2012,44 @@ function HRApplyBudget() {
   );
   function openColMenu(event, col) {
     const rect = event.currentTarget.getBoundingClientRect();
-    setColMenu((current) => (current && current.c === col ? null : {
-      c: col,
-      rect: { left: rect.left, bottom: rect.bottom },
-      values: [...new Set(rows.map((row) => cellText(row, col)))].sort(compareCells),
-    }));
+    setColMenu((current) =>
+      current && current.c === col
+        ? null
+        : {
+            c: col,
+            rect: { left: rect.left, bottom: rect.bottom },
+            values: [...new Set(rows.map((row) => cellText(row, col)))].sort(
+              compareCells,
+            ),
+          },
+    );
   }
 
-  const wrapStyle = (col) => (gridWrap[col] === false ? { whiteSpace: "nowrap" } : { whiteSpace: "normal" });
-  const displayedUtilized = amount(selectedMaster?.budget_utilized ?? selectedMaster?.total_utilization);
+  const wrapStyle = (col) =>
+    gridWrap[col] === false
+      ? { whiteSpace: "nowrap" }
+      : { whiteSpace: "normal" };
+  const displayedUtilized = amount(
+    selectedMaster?.budget_utilized ?? selectedMaster?.total_utilization,
+  );
   // Allotted = Tech ED budgets already applied (saved or applied-not-published).
   const appliedTotal = rows.reduce((sum, row) => {
     const appliedPct = Object.prototype.hasOwnProperty.call(staged, row.name)
       ? Number(staged[row.name])
-      : (row.pctSet ? amount(row.pct) : 0);
+      : row.pctSet
+        ? amount(row.pct)
+        : 0;
     return sum + bud(row.base, appliedPct);
   }, 0);
-  const availableAfterAllocation = (orgPending ? previewOrgBudget : displayedOrgUpdated) - previewTotal;
+  const availableAfterAllocation =
+    (orgPending ? previewOrgBudget : displayedOrgUpdated) - previewTotal;
 
   // Presentation-only flags. The Tech-Ed list is shown once an Org % has been saved.
   const cycleLabel = cycleLoading
     ? "Loading…"
-    : activeCycle?.name || selectedMaster?.appraisal_cycle_name || "No active cycle";
+    : activeCycle?.name ||
+      selectedMaster?.appraisal_cycle_name ||
+      "No active cycle";
 
   const notPublishedCount = rows.filter((row) => !row.pctSet).length;
   const stripMessage = orgPending
@@ -1557,14 +2064,24 @@ function HRApplyBudget() {
       <div className="bm-sheet">
         {budgetError || budgetWarning ? (
           <div role="alert" className="bm-alert bm-alert-warning">
-            {budgetError ? <div><b>Budget data could not be loaded:</b> {budgetError}</div> : null}
-            {budgetWarning ? <div><b>Budget base:</b> {budgetWarning}</div> : null}
+            {budgetError ? (
+              <div>
+                <b>Budget data could not be loaded:</b> {budgetError}
+              </div>
+            ) : null}
+            {budgetWarning ? (
+              <div>
+                <b>Budget base:</b> {budgetWarning}
+              </div>
+            ) : null}
           </div>
         ) : null}
         {error ? (
           <div role="alert" className="bm-alert bm-alert-error">
             <span>{error}</span>
-            <button type="button" onClick={() => setError("")}>Dismiss ×</button>
+            <button type="button" onClick={() => setError("")}>
+              Dismiss ×
+            </button>
           </div>
         ) : null}
 
@@ -1572,7 +2089,9 @@ function HRApplyBudget() {
           <div className="bm-pan">
             <div className="bm-pan-head">
               <b>Org Budget</b>
-              <span className="bm-mut">Cycle: <b>{cycleLabel}</b></span>
+              <span className="bm-mut">
+                Cycle: <b>{cycleLabel}</b>
+              </span>
             </div>
             <div className="bm-pan-row">
               <label>
@@ -1606,7 +2125,9 @@ function HRApplyBudget() {
               <button
                 type="button"
                 className="bm-btn bm-btn-main"
-                disabled={!canConfig || savingOrg || cycleLoading || !activeCycle}
+                disabled={
+                  !canConfig || savingOrg || cycleLoading || !activeCycle
+                }
                 onClick={applyOrgPercentage}
               >
                 {savingOrg ? "Saving…" : "Apply org %"}
@@ -1656,7 +2177,13 @@ function HRApplyBudget() {
               <button
                 type="button"
                 className="bm-btn bm-btn-main"
-                disabled={!canConfig || !orgApplied || !stagedCount || draftCount > 0 || savingOrg}
+                disabled={
+                  !canConfig ||
+                  !orgApplied ||
+                  !stagedCount ||
+                  draftCount > 0 ||
+                  savingOrg
+                }
                 onClick={() => publishChanges()}
               >
                 {savingOrg ? "Publishing…" : "Publish all"}
@@ -1677,32 +2204,62 @@ function HRApplyBudget() {
           <div className="bm-tile bm-tile-hl">
             <small>Updated budget</small>
             <b>{orgApplied ? money(displayedOrgUpdated) : "—"}</b>
-            {orgApplied ? deltaNode(originalOrgBudget, displayedOrgUpdated) : null}
-            {orgApplied && orgPending && Math.round(previewOrgBudget) !== Math.round(displayedOrgUpdated) ? (
-              <em className="bm-mut">After pending: {money(previewOrgBudget)}</em>
+            {orgApplied
+              ? deltaNode(originalOrgBudget, displayedOrgUpdated)
+              : null}
+            {orgApplied &&
+            orgPending &&
+            Math.round(previewOrgBudget) !== Math.round(displayedOrgUpdated) ? (
+              <em className="bm-mut">
+                After pending: {money(previewOrgBudget)}
+              </em>
             ) : null}
           </div>
           <div className="bm-tile">
             <small>Allotted to Tech EDs</small>
-            <b>{orgApplied && displayedOrgUpdated > 0 ? pct2((appliedTotal / displayedOrgUpdated) * 100) : "—"}</b>
+            <b>
+              {orgApplied && displayedOrgUpdated > 0
+                ? pct2((appliedTotal / displayedOrgUpdated) * 100)
+                : "—"}
+            </b>
             {orgApplied ? (
               <em className="bm-mut">
                 {money(appliedTotal)} of {money(displayedOrgUpdated)}
-                {Math.round(previewTotal) !== Math.round(appliedTotal) && previewOrgBudget > 0
-                  ? " · After pending: " + pct2((previewTotal / previewOrgBudget) * 100)
+                {Math.round(previewTotal) !== Math.round(appliedTotal) &&
+                previewOrgBudget > 0
+                  ? " · After pending: " +
+                    pct2((previewTotal / previewOrgBudget) * 100)
                   : ""}
-                {availableAfterAllocation < -0.5 ? " · over by " + money(-availableAfterAllocation) : ""}
+                {availableAfterAllocation < -0.5
+                  ? " · over by " + money(-availableAfterAllocation)
+                  : ""}
               </em>
             ) : null}
           </div>
           <div className="bm-tile">
             <small>Budget utilised</small>
-            <b>{orgApplied && displayedOrgUpdated > 0 ? pct2((displayedUtilized / displayedOrgUpdated) * 100) : "—"}</b>
-            {orgApplied && displayedOrgUpdated > 0 ? <em className="bm-mut">{money(displayedUtilized)} of {money(displayedOrgUpdated)}</em> : null}
+            <b>
+              {orgApplied && displayedOrgUpdated > 0
+                ? pct2((displayedUtilized / displayedOrgUpdated) * 100)
+                : "—"}
+            </b>
+            {orgApplied && displayedOrgUpdated > 0 ? (
+              <em className="bm-mut">
+                {money(displayedUtilized)} of {money(displayedOrgUpdated)}
+              </em>
+            ) : null}
           </div>
           <div className="bm-tile">
             <small>Team count</small>
-            <b>{orgApplied ? <>{orgOriginalCount} → {orgCurrentCount}</> : "—"}</b>
+            <b>
+              {orgApplied ? (
+                <>
+                  {orgOriginalCount} → {orgCurrentCount}
+                </>
+              ) : (
+                "—"
+              )}
+            </b>
           </div>
         </div>
 
@@ -1713,7 +2270,12 @@ function HRApplyBudget() {
             <thead>
               <tr>
                 {HR_COLS.map(([h, right, menu], i) => (
-                  <th key={h} className={(right ? "bm-n" : "") + (gridFilters[i] ? " bm-filt" : "")}>
+                  <th
+                    key={h}
+                    className={
+                      (right ? "bm-n" : "") + (gridFilters[i] ? " bm-filt" : "")
+                    }
+                  >
                     {h}
                     {menu ? (
                       <button
@@ -1722,7 +2284,11 @@ function HRApplyBudget() {
                         aria-label={h + " column menu"}
                         onClick={(e) => openColMenu(e, i)}
                       >
-                        {gridSort && gridSort.c === i ? (gridSort.d > 0 ? "↑" : "↓") : "▾"}
+                        {gridSort && gridSort.c === i
+                          ? gridSort.d > 0
+                            ? "↑"
+                            : "↓"
+                          : "▾"}
                       </button>
                     ) : null}
                   </th>
@@ -1730,117 +2296,194 @@ function HRApplyBudget() {
               </tr>
             </thead>
             <tbody>
-              {orgApplied && rows.length ? visibleRows.map((r, rowIdx) => {
-                const p = previewPct(r);
-                const changing = Number(p) !== r.pct;
-                const hasPending = Object.prototype.hasOwnProperty.call(pending, r.name);
-                const hasStaged = Object.prototype.hasOwnProperty.call(staged, r.name) &&
-                  Number(staged[r.name]) !== Number(r.pct);
-                const open = !!history[r.name];
-                const rowAudit = auditState.techEd.filter((a) => a.owner === r.name);
-                const sourceOverride =
-                  overrides[r.name] ||
-                  (hasPending && Number(p) !== amount(orgPct));
-                const tag = hasStaged
-                  ? (r.pctSet ? "Change applied · not published (live " + Number(r.pct).toFixed(2) + ")" : "Applied · not published")
-                  : (!r.pctSet ? "No % yet" : "");
-                return (
-                  <FragmentRow key={r.name}>
-                    <tr className={"bm-data " + (rowIdx % 2 ? "bm-be" : "bm-bo") + (hasPending ? " bm-edrow" : "")}>
-                      <td className="bm-rl" style={wrapStyle(0)}>
-                        {r.name}
-                        {tag ? <> <span className="bm-tag">{tag}</span></> : null}
-                      </td>
-                      <td className="bm-n" style={wrapStyle(1)}>{money(r.base)}</td>
-                      <td className="bm-in">
-                        <div className="bm-pin-cell">
-                          <input
-                            className={"bm-pin" + (hasPending ? " ed" : "")}
-                            type="number"
-                            min="0"
-                            max="100"
-                            step="0.1"
-                            placeholder="Enter %"
-                            value={p}
-                            disabled={!canConfig}
-                            onFocus={selectOnFocus}
-                            title={changing ? Number(r.pct).toFixed(2) + " → " + Number(p).toFixed(2) + " (not applied yet)" : undefined}
-                            onChange={(e) => setRowPct(r.name, e.target.value)}
-                            aria-label={"Percentage for " + r.name}
-                          />
-                        </div>
-                        {sourceOverride ? (
-                          <div className="bm-source">
-                            <span className="bm-source-override">Override</span>
-                            <button type="button" className="bm-text-action" onClick={() => resetRow(r.name)}>Reset to org %</button>
+              {orgApplied && rows.length ? (
+                visibleRows.map((r, rowIdx) => {
+                  const p = previewPct(r);
+                  const changing = Number(p) !== r.pct;
+                  const hasPending = Object.prototype.hasOwnProperty.call(
+                    pending,
+                    r.name,
+                  );
+                  const hasStaged =
+                    Object.prototype.hasOwnProperty.call(staged, r.name) &&
+                    Number(staged[r.name]) !== Number(r.pct);
+                  const open = !!history[r.name];
+                  const rowAudit = auditState.techEd.filter(
+                    (a) => a.owner === r.name,
+                  );
+                  const sourceOverride =
+                    overrides[r.name] ||
+                    (hasPending && Number(p) !== amount(orgPct));
+                  const tag = hasStaged
+                    ? r.pctSet
+                      ? "Change applied · not published (live " +
+                        Number(r.pct).toFixed(2) +
+                        ")"
+                      : "Applied · not published"
+                    : !r.pctSet
+                      ? "No % yet"
+                      : "";
+                  return (
+                    <FragmentRow key={r.name}>
+                      <tr
+                        className={
+                          "bm-data " +
+                          (rowIdx % 2 ? "bm-be" : "bm-bo") +
+                          (hasPending ? " bm-edrow" : "")
+                        }
+                      >
+                        <td className="bm-rl" style={wrapStyle(0)}>
+                          {r.name}
+                          {tag ? (
+                            <>
+                              {" "}
+                              <span className="bm-tag">{tag}</span>
+                            </>
+                          ) : null}
+                        </td>
+                        <td className="bm-n" style={wrapStyle(1)}>
+                          {money(r.base)}
+                        </td>
+                        <td className="bm-in">
+                          <div className="bm-pin-cell">
+                            <input
+                              className={"bm-pin" + (hasPending ? " ed" : "")}
+                              type="number"
+                              min="0"
+                              max="100"
+                              step="0.1"
+                              placeholder="Enter %"
+                              value={p}
+                              disabled={!canConfig}
+                              onFocus={selectOnFocus}
+                              title={
+                                changing
+                                  ? Number(r.pct).toFixed(2) +
+                                    " → " +
+                                    Number(p).toFixed(2) +
+                                    " (not applied yet)"
+                                  : undefined
+                              }
+                              onChange={(e) =>
+                                setRowPct(r.name, e.target.value)
+                              }
+                              aria-label={"Percentage for " + r.name}
+                            />
                           </div>
-                        ) : null}
-                      </td>
-                      <td className="bm-n bm-calc" style={wrapStyle(3)}>{money(previewBudget(r))}</td>
-                      <td className="bm-n" style={wrapStyle(4)}>{money(rowOriginal(r))}</td>
-                      <td className="bm-n" style={wrapStyle(5)}>{money(r.updated)}</td>
-                      <td className="bm-n" style={wrapStyle(6)}>{r.team0}</td>
-                      <td className="bm-n" style={wrapStyle(7)}>{r.team}</td>
-                      <td>
-                        <input
-                          type="text"
-                          className="bm-txt bm-reason"
-                          placeholder="Reason (optional)"
-                          value={rowReasons[r.name] ?? stagedReasons[r.name] ?? ""}
-                          disabled={!canConfig || (!hasPending && !hasStaged)}
-                          readOnly={!hasPending && hasStaged}
-                          onChange={(e) => setRowReasons((x) => ({ ...x, [r.name]: e.target.value }))}
-                          aria-label={"Reason for " + r.name}
-                        />
-                      </td>
-                      <td className="bm-ract">
-                        <button
-                          type="button"
-                          className="bm-hbtn bm-hbtn-apply"
-                          disabled={!canConfig || !hasPending || savingOrg}
-                          onClick={() => apply(r.name)}
-                        >
-                          Apply
-                        </button>{" "}
-                        <button
-                          type="button"
-                          className="bm-hbtn bm-hbtn-pub"
-                          disabled={!canConfig || !hasStaged || hasPending || savingOrg}
-                          onClick={() => publishChanges(r.name)}
-                        >
-                          Publish
-                        </button>
-                      </td>
-                      <td>
-                        {canAudit ? (
+                          {sourceOverride ? (
+                            <div className="bm-source">
+                              <span className="bm-source-override">
+                                Override
+                              </span>
+                              <button
+                                type="button"
+                                className="bm-text-action"
+                                onClick={() => resetRow(r.name)}
+                              >
+                                Reset to org %
+                              </button>
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="bm-n bm-calc" style={wrapStyle(3)}>
+                          {money(previewBudget(r))}
+                        </td>
+                        <td className="bm-n" style={wrapStyle(4)}>
+                          {money(rowOriginal(r))}
+                        </td>
+                        <td className="bm-n" style={wrapStyle(5)}>
+                          {money(r.updated)}
+                        </td>
+                        <td className="bm-n" style={wrapStyle(6)}>
+                          {r.team0}
+                        </td>
+                        <td className="bm-n" style={wrapStyle(7)}>
+                          {r.team}
+                        </td>
+                        <td>
+                          <input
+                            type="text"
+                            className="bm-txt bm-reason"
+                            placeholder="Reason (optional)"
+                            value={
+                              rowReasons[r.name] ?? stagedReasons[r.name] ?? ""
+                            }
+                            disabled={!canConfig || (!hasPending && !hasStaged)}
+                            readOnly={!hasPending && hasStaged}
+                            onChange={(e) =>
+                              setRowReasons((x) => ({
+                                ...x,
+                                [r.name]: e.target.value,
+                              }))
+                            }
+                            aria-label={"Reason for " + r.name}
+                          />
+                        </td>
+                        <td className="bm-ract">
                           <button
                             type="button"
-                            className="bm-hbtn"
-                            aria-expanded={open}
-                            onClick={() => setHistory((x) => ({ ...x, [r.name]: !x[r.name] }))}
+                            className="bm-hbtn bm-hbtn-apply"
+                            disabled={!canConfig || !hasPending || savingOrg}
+                            onClick={() => apply(r.name)}
                           >
-                            History {open ? "▴" : "▾"}
+                            Apply
+                          </button>{" "}
+                          <button
+                            type="button"
+                            className="bm-hbtn bm-hbtn-pub"
+                            disabled={
+                              !canConfig ||
+                              !hasStaged ||
+                              hasPending ||
+                              savingOrg
+                            }
+                            onClick={() => publishChanges(r.name)}
+                          >
+                            Publish
                           </button>
-                        ) : <span className="bm-mut">—</span>}
-                      </td>
-                    </tr>
-                    {open && canAudit ? (
-                      <tr className="bm-sub">
-                        <td colSpan={HR_COLS.length}>
-                          <div className="bm-hist"><AuditTable rows={rowAudit} /></div>
+                        </td>
+                        <td>
+                          {canAudit ? (
+                            <button
+                              type="button"
+                              className="bm-hbtn"
+                              aria-expanded={open}
+                              onClick={() =>
+                                setHistory((x) => ({
+                                  ...x,
+                                  [r.name]: !x[r.name],
+                                }))
+                              }
+                            >
+                              History {open ? "▴" : "▾"}
+                            </button>
+                          ) : (
+                            <span className="bm-mut">—</span>
+                          )}
                         </td>
                       </tr>
-                    ) : null}
-                  </FragmentRow>
-                );
-              }) : (
-                <tr><td colSpan={HR_COLS.length} className="bm-empty">
-                  {!orgApplied
-                    ? "Press Apply org % to load the Tech ED list from the Appraisal Sheet."
-                    : budgetLoading
-                      ? "Loading Tech ED budget rows…"
-                      : "No Tech ED assignments were found for this appraisal cycle."}
-                </td></tr>
+                      {open && canAudit ? (
+                        <tr className="bm-sub">
+                          <td colSpan={HR_COLS.length}>
+                            <div className="bm-hist">
+                              <AuditTable rows={rowAudit} />
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </FragmentRow>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={HR_COLS.length} className="bm-empty">
+                    {!orgApplied
+                      ? "Press Apply org % to load the Tech ED list from the Appraisal Sheet."
+                      : budgetLoading
+                        ? "Loading Tech ED budget rows…"
+                        : "No Tech ED assignments were found for this appraisal cycle."}
+                  </td>
+                </tr>
               )}
               {orgApplied && rows.length ? (
                 <tr className="bm-tot">
@@ -1868,18 +2511,26 @@ function HRApplyBudget() {
             values={colMenu.values}
             filter={gridFilters[colMenu.c]}
             wrap={gridWrap[colMenu.c] !== false}
-            onSort={(d) => { setGridSort({ c: colMenu.c, d }); setColMenu(null); }}
+            onSort={(d) => {
+              setGridSort({ c: colMenu.c, d });
+              setColMenu(null);
+            }}
             onWrap={(on) => setGridWrap((w) => ({ ...w, [colMenu.c]: on }))}
             onApply={(f) => {
               setGridFilters((cur) => {
                 const next = { ...cur };
-                if (f) next[colMenu.c] = f; else delete next[colMenu.c];
+                if (f) next[colMenu.c] = f;
+                else delete next[colMenu.c];
                 return next;
               });
               setColMenu(null);
             }}
             onClear={() => {
-              setGridFilters((cur) => { const next = { ...cur }; delete next[colMenu.c]; return next; });
+              setGridFilters((cur) => {
+                const next = { ...cur };
+                delete next[colMenu.c];
+                return next;
+              });
               setColMenu(null);
             }}
           />
@@ -1889,8 +2540,16 @@ function HRApplyBudget() {
           {!orgApplied
             ? "Apply org % first to load the Tech ED list"
             : stripMessage +
-              (stagedCount ? " · " + stagedCount + " applied, not published" : "") +
-              (notPublishedCount ? " · " + notPublishedCount + " Tech ED" + (notPublishedCount > 1 ? "s" : "") + " not published" : "")}
+              (stagedCount
+                ? " · " + stagedCount + " applied, not published"
+                : "") +
+              (notPublishedCount
+                ? " · " +
+                  notPublishedCount +
+                  " Tech ED" +
+                  (notPublishedCount > 1 ? "s" : "") +
+                  " not published"
+                : "")}
         </div>
       </div>
     </div>
@@ -1903,20 +2562,30 @@ function FragmentRow({ children }) {
 }
 
 function HRAuditTrail() {
-  const { techEdOwners = [], employeeRows = [], activeBudgetCycleId = "" } = useBudget();
+  const {
+    techEdOwners = [],
+    employeeRows = [],
+    activeBudgetCycleId = "",
+  } = useBudget();
   // The Tech-Ed filter must come from the budget roster. The old screen
   // referenced an undefined local variable named "rows" and crashed on mount.
   const rows = useMemo(() => {
     const seen = new Set();
-    return techEdOwners.map((item) => {
-      const value = ownerName(item.assignment || item.name || item.employee_id || item.row_id, employeeRows);
-      return { name: value };
-    }).filter((item) => {
-      const key = normalizeOwnerKey(item.name);
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    }).sort((a, b) => a.name.localeCompare(b.name));
+    return techEdOwners
+      .map((item) => {
+        const value = ownerName(
+          item.assignment || item.name || item.employee_id || item.row_id,
+          employeeRows,
+        );
+        return { name: value };
+      })
+      .filter((item) => {
+        const key = normalizeOwnerKey(item.name);
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [techEdOwners, employeeRows]);
   const [orgDates, setOrgDates] = useState({ from: "", to: "" });
   const [tedDates, setTedDates] = useState({ from: "", to: "" });
@@ -1932,7 +2601,10 @@ function HRAuditTrail() {
     }
     return () => {
       if (typeof window !== "undefined") {
-        window.removeEventListener("appraisal:budget-audit-updated", refreshAudit);
+        window.removeEventListener(
+          "appraisal:budget-audit-updated",
+          refreshAudit,
+        );
         window.removeEventListener("storage", refreshAudit);
       }
     };

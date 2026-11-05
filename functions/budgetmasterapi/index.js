@@ -30,8 +30,16 @@ function referenceText(raw) {
   if (raw === null || raw === undefined) return "";
   if (typeof raw !== "object") return String(raw).trim();
   for (const key of [
-    "emp_id", "employee_id", "ROWID", "rowid", "id", "value",
-    "display_value", "displayValue", "name", "assignment",
+    "emp_id",
+    "employee_id",
+    "ROWID",
+    "rowid",
+    "id",
+    "value",
+    "display_value",
+    "displayValue",
+    "name",
+    "assignment",
   ]) {
     const resolved = raw[key];
     if (resolved !== null && resolved !== undefined && String(resolved).trim())
@@ -94,7 +102,9 @@ function mapMaster(row) {
   );
   return {
     // Catalyst system columns, so every screen can show "Last updated".
-    updated_at: String(value(row, "MODIFIEDTIME") || value(row, "CREATEDTIME") || ""),
+    updated_at: String(
+      value(row, "MODIFIEDTIME") || value(row, "CREATEDTIME") || "",
+    ),
     created_at: String(value(row, "CREATEDTIME") || ""),
     id: idOf(row),
     appraisal_cycle_id: cycleReference(value(row, "appraisal_cycle_id")),
@@ -148,7 +158,9 @@ function mapDistribution(row) {
   // field; do not confuse it with the live count calculated from Appraisal_Sheet.
   const dedicatedOriginalCount = originalHeadcountValue(row);
   const sharedOriginalCount =
-    dedicatedOriginalCount !== "" ? dedicatedOriginalCount : firstValue(row, ["current_headcount"]);
+    dedicatedOriginalCount !== ""
+      ? dedicatedOriginalCount
+      : firstValue(row, ["current_headcount"]);
   const applied = n(value(row, "applied_budget"));
   const utilized = n(
     firstNonZeroValue(row, [
@@ -160,7 +172,9 @@ function mapDistribution(row) {
   );
   return {
     // Catalyst system columns, so every screen can show "Last updated".
-    updated_at: String(value(row, "MODIFIEDTIME") || value(row, "CREATEDTIME") || ""),
+    updated_at: String(
+      value(row, "MODIFIEDTIME") || value(row, "CREATEDTIME") || "",
+    ),
     created_at: String(value(row, "CREATEDTIME") || ""),
     id: idOf(row),
     appraisal_cycle_id: cycleReference(value(row, "appraisal_cycle_id")),
@@ -181,7 +195,10 @@ function mapDistribution(row) {
     current_budget_base: n(value(row, "current_budget_base")),
     current_base: n(value(row, "current_base")),
     original_headcount: sharedOriginalCount,
-    original_headcount_is_persisted: sharedOriginalCount !== "" && sharedOriginalCount !== null && sharedOriginalCount !== undefined,
+    original_headcount_is_persisted:
+      sharedOriginalCount !== "" &&
+      sharedOriginalCount !== null &&
+      sharedOriginalCount !== undefined,
     current_headcount: firstValue(row, ["current_headcount"]),
     headcount: firstValue(row, ["headcount"]),
     calculated_budget: calculated,
@@ -203,7 +220,9 @@ function mapComp(row) {
   );
   return {
     // Catalyst system columns, so every screen can show "Last updated".
-    updated_at: String(value(row, "MODIFIEDTIME") || value(row, "CREATEDTIME") || ""),
+    updated_at: String(
+      value(row, "MODIFIEDTIME") || value(row, "CREATEDTIME") || "",
+    ),
     created_at: String(value(row, "CREATEDTIME") || ""),
     id: idOf(row),
     comp_manager: referenceText(value(row, "comp_manager")),
@@ -241,10 +260,10 @@ function mapComp(row) {
         ? originalHeadcountValue(row)
         : firstValue(row, ["current_headcount"]),
     original_headcount_is_persisted:
-      (originalHeadcountValue(row) !== "" ||
-        (firstValue(row, ["current_headcount"]) !== "" &&
-          firstValue(row, ["current_headcount"]) !== null &&
-          firstValue(row, ["current_headcount"]) !== undefined)),
+      originalHeadcountValue(row) !== "" ||
+      (firstValue(row, ["current_headcount"]) !== "" &&
+        firstValue(row, ["current_headcount"]) !== null &&
+        firstValue(row, ["current_headcount"]) !== undefined),
     headcount: firstValue(row, ["headcount"]),
     current_headcount: firstValue(row, ["current_headcount"]),
     utilization_percentage: applied > 0 ? (utilized / applied) * 100 : 0,
@@ -365,9 +384,13 @@ async function whenNotBusy(fn) {
     try {
       return await fn();
     } catch (error) {
-      const busy = error && (error.statusCode === 429 || error.code === "TOO_MANY_REQUESTS");
+      const busy =
+        error &&
+        (error.statusCode === 429 || error.code === "TOO_MANY_REQUESTS");
       if (!busy || attempt >= 3) throw error;
-      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1) + Math.random() * 250));
+      await new Promise((resolve) =>
+        setTimeout(resolve, 250 * (attempt + 1) + Math.random() * 250),
+      );
     }
   }
 }
@@ -384,7 +407,10 @@ async function keepOneCompRow(app, compTable, parentId, compName, fallbackId) {
         ownerKey(value(row, "comp_manager")) === ownerKey(compName),
     );
   } catch (error) {
-    console.warn("Could not re-check Comp Manager budget rows:", error?.message || error);
+    console.warn(
+      "Could not re-check Comp Manager budget rows:",
+      error?.message || error,
+    );
     return fallbackId;
   }
   if (!rows.length) return fallbackId;
@@ -395,7 +421,12 @@ async function keepOneCompRow(app, compTable, parentId, compName, fallbackId) {
       await compTable.deleteRow(idOf(extra));
     } catch (error) {
       // Another request removing the same duplicate is fine.
-      console.warn("Could not remove duplicate Comp Manager budget row " + idOf(extra) + ":", error?.message || error);
+      console.warn(
+        "Could not remove duplicate Comp Manager budget row " +
+          idOf(extra) +
+          ":",
+        error?.message || error,
+      );
     }
   }
   return keep;
@@ -583,13 +614,23 @@ function cycleIdOf(cycle) {
 function isHistoricalCycle(cycle) {
   const status = String(
     firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "",
-  ).trim().toLowerCase();
-  const archivedValue = firstValue(cycle, ["archived", "is_archived", "isArchived"]);
+  )
+    .trim()
+    .toLowerCase();
+  const archivedValue = firstValue(cycle, [
+    "archived",
+    "is_archived",
+    "isArchived",
+  ]);
   const archived = [true, 1, "true", "1", "yes", "archived"].includes(
-    typeof archivedValue === "string" ? archivedValue.trim().toLowerCase() : archivedValue,
+    typeof archivedValue === "string"
+      ? archivedValue.trim().toLowerCase()
+      : archivedValue,
   );
   // Match employeesapi: a prior appraisal can be Closed, Archived, or Completed.
-  return archived || ["archived", "closed", "complete", "completed"].includes(status);
+  return (
+    archived || ["archived", "closed", "complete", "completed"].includes(status)
+  );
 }
 
 function cycleRank(cycle) {
@@ -898,35 +939,56 @@ async function readEmployeeRoster(app) {
   // issue multiple paged ZCQL requests.
   const allAppraisalRows = await getAllRows(app, "Appraisal_Sheet");
   const masterRows = await getAllRows(app, "Employee_Master");
-  const cycleRows = await getAllRows(app, "Appraisal_Cycle_Master").catch(() => []);
+  const cycleRows = await getAllRows(app, "Appraisal_Cycle_Master").catch(
+    () => [],
+  );
 
   // The budget roster must be sourced only from the generated Appraisal_Sheet
   // for the Active cycle. Employee_Master-only people and archived-cycle rows
   // must never create Comp Manager allocations on the Tech-Ed screen.
-  const activeCycle = cycleRows.find((cycle) =>
-    String(readField(cycle, ["status", "cycle_status", "appraisal_status"]) || "")
-      .trim().toLowerCase() === "active" &&
-    ![true, 1, "true", "1", "yes"].includes(
-      typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
-    ) &&
-    ![true, 1, "true", "1", "yes"].includes(
-      typeof cycle.hidden === "string" ? cycle.hidden.trim().toLowerCase() : cycle.hidden,
-    ),
+  const activeCycle = cycleRows.find(
+    (cycle) =>
+      String(
+        readField(cycle, ["status", "cycle_status", "appraisal_status"]) || "",
+      )
+        .trim()
+        .toLowerCase() === "active" &&
+      ![true, 1, "true", "1", "yes"].includes(
+        typeof cycle.archived === "string"
+          ? cycle.archived.trim().toLowerCase()
+          : cycle.archived,
+      ) &&
+      ![true, 1, "true", "1", "yes"].includes(
+        typeof cycle.hidden === "string"
+          ? cycle.hidden.trim().toLowerCase()
+          : cycle.hidden,
+      ),
   );
   if (!activeCycle) return [];
 
   const activeCycleId = cycleIdOf(activeCycle);
   const activeCycleName = cycleNameOf(activeCycle).toLowerCase();
-  const sheetCycleReference = (row) => cycleReference(readField(row, [
-    "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name",
-    "cycleId", "appraisalCycleId", "appraisalCycleName",
-  ]));
-  const hasTaggedRows = allAppraisalRows.some((row) => Boolean(sheetCycleReference(row)));
+  const sheetCycleReference = (row) =>
+    cycleReference(
+      readField(row, [
+        "cycle_id",
+        "appraisal_cycle_id",
+        "appraisal_cycle_name",
+        "cycleId",
+        "appraisalCycleId",
+        "appraisalCycleName",
+      ]),
+    );
+  const hasTaggedRows = allAppraisalRows.some((row) =>
+    Boolean(sheetCycleReference(row)),
+  );
   const currentAppraisalRows = allAppraisalRows.filter((row) => {
     const reference = sheetCycleReference(row);
     if (!reference) return !hasTaggedRows;
-    return reference === activeCycleId ||
-      (activeCycleName && reference.toLowerCase() === activeCycleName);
+    return (
+      reference === activeCycleId ||
+      (activeCycleName && reference.toLowerCase() === activeCycleName)
+    );
   });
 
   const masterById = new Map(
@@ -1026,7 +1088,10 @@ async function readEmployeeRoster(app) {
         .split(/\s+-\s+/)[0]
         .trim()
         .toLowerCase();
-      const managerNameKey = managerRaw.trim().toLowerCase().replace(/\s+/g, " ");
+      const managerNameKey = managerRaw
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ");
       const managerRow =
         masterById.get(managerKey) ||
         masterByRowId.get(managerKey) ||
@@ -1080,7 +1145,9 @@ async function readEmployeeRoster(app) {
             )
           ? "not eligible"
           : // normalizeStatus is not defined in this function; compare directly.
-            String(employeeStatus || "").trim().toLowerCase() === "active"
+            String(employeeStatus || "")
+                .trim()
+                .toLowerCase() === "active"
             ? "eligible"
             : "not eligible";
       return {
@@ -1182,7 +1249,13 @@ function matchesTechEdOwner(owner, a, techEdOwners = []) {
   });
 }
 
-function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = [], appraisalSheetRows = []) {
+function filterOwn(
+  bundle,
+  a,
+  techEdOwners = [],
+  employeeMasterRows = [],
+  appraisalSheetRows = [],
+) {
   if (!a || !a.enforced || (a.scope && a.scope.all)) return bundle;
 
   const employeeRoster = bundle.employeeRoster || [];
@@ -1193,23 +1266,41 @@ function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = [], apprai
     // or newly delegated employees have not entered that scope yet.
     const teamIds = new Set((a.scope?.empIds || []).map((id) => ownerKey(id)));
     const ownEmployees = employeeRoster.filter((employee) =>
-      teamIds.has(ownerKey(employee.emp_id || employee.employee_id))
+      teamIds.has(ownerKey(employee.emp_id || employee.employee_id)),
     );
-    const managerAliases = new Set([
-      a.user?.empId, a.user?.emp_id, a.user?.employeeId, a.user?.employee_id,
-      a.user?.row_id, a.user?.ROWID, a.user?.name, a.user?.email, a.user?.email_id,
-    ].flatMap((value) => {
-      const text = referenceText(value).toLowerCase();
-      return text ? [text, ownerKey(text)] : [];
-    }).filter(Boolean));
+    const managerAliases = new Set(
+      [
+        a.user?.empId,
+        a.user?.emp_id,
+        a.user?.employeeId,
+        a.user?.employee_id,
+        a.user?.row_id,
+        a.user?.ROWID,
+        a.user?.name,
+        a.user?.email,
+        a.user?.email_id,
+      ]
+        .flatMap((value) => {
+          const text = referenceText(value).toLowerCase();
+          return text ? [text, ownerKey(text)] : [];
+        })
+        .filter(Boolean),
+    );
     // Resolve the signed-in Comp Manager through Employee_Master so the child
     // allocation can match whether comp_manager stores EMP ID, lookup ROWID,
     // full display label, name, or email.
     const managerMasterRow = employeeMasterRows.find((employee) => {
       const aliases = [
-        employee.emp_id, employee.employee_id, employee.ROWID, employee.rowid,
-        employee.emp_name, employee.employee_name, employee.name,
-        employee.email_id, employee.email, employee.work_email,
+        employee.emp_id,
+        employee.employee_id,
+        employee.ROWID,
+        employee.rowid,
+        employee.emp_name,
+        employee.employee_name,
+        employee.name,
+        employee.email_id,
+        employee.email,
+        employee.work_email,
       ].flatMap((value) => {
         const text = referenceText(value).toLowerCase();
         return text ? [text, ownerKey(text)] : [];
@@ -1219,11 +1310,16 @@ function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = [], apprai
     const addManagerMasterAliases = (managerRow) => {
       if (!managerRow) return;
       [
-        managerRow.emp_id, managerRow.employee_id,
-        managerRow.ROWID, managerRow.rowid,
-        managerRow.emp_name, managerRow.employee_name,
-        managerRow.name, managerRow.email_id,
-        managerRow.email, managerRow.work_email,
+        managerRow.emp_id,
+        managerRow.employee_id,
+        managerRow.ROWID,
+        managerRow.rowid,
+        managerRow.emp_name,
+        managerRow.employee_name,
+        managerRow.name,
+        managerRow.email_id,
+        managerRow.email,
+        managerRow.work_email,
       ].forEach((value) => {
         const text = referenceText(value).toLowerCase();
         if (text) {
@@ -1247,9 +1343,16 @@ function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = [], apprai
       managerAliases.add(ownerKey(text));
       const linked = employeeMasterRows.find((master) => {
         const aliases = [
-          master.emp_id, master.employee_id, master.ROWID, master.rowid,
-          master.emp_name, master.employee_name, master.name,
-          master.email_id, master.email, master.work_email,
+          master.emp_id,
+          master.employee_id,
+          master.ROWID,
+          master.rowid,
+          master.emp_name,
+          master.employee_name,
+          master.name,
+          master.email_id,
+          master.email,
+          master.work_email,
         ].flatMap((value) => {
           const alias = referenceText(value).toLowerCase();
           return alias ? [alias, ownerKey(alias)] : [];
@@ -1265,13 +1368,20 @@ function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = [], apprai
     // This is the reliable link: scoped employee -> assigned Comp Manager ->
     // Employee_Master identity -> Budget_Distribution_Comp child row.
     const scopedEmployeeKeys = new Set(
-      (a.scope?.empIds || []).map((id) => referenceText(id).toLowerCase()).filter(Boolean),
+      (a.scope?.empIds || [])
+        .map((id) => referenceText(id).toLowerCase())
+        .filter(Boolean),
     );
     const masterAliasesByEmployee = employeeMasterRows.map((employee) => ({
       employee,
       aliases: [
-        employee.emp_id, employee.employee_id, employee.ROWID, employee.rowid,
-      ].map((value) => referenceText(value).toLowerCase()).filter(Boolean),
+        employee.emp_id,
+        employee.employee_id,
+        employee.ROWID,
+        employee.rowid,
+      ]
+        .map((value) => referenceText(value).toLowerCase())
+        .filter(Boolean),
     }));
     const scopedMasterRows = masterAliasesByEmployee.filter(({ aliases }) =>
       aliases.some((alias) => scopedEmployeeKeys.has(alias)),
@@ -1280,26 +1390,45 @@ function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = [], apprai
       scopedMasterRows.flatMap(({ aliases }) => aliases),
     );
     const assignmentFields = [
-      "comp_manager", "comp_manager_id", "comp_manager_row_id",
-      "comp_manager_emp_id", "comp_manager_name", "comp_manager_display",
-      "compManager", "compManagerId",
+      "comp_manager",
+      "comp_manager_id",
+      "comp_manager_row_id",
+      "comp_manager_emp_id",
+      "comp_manager_name",
+      "comp_manager_display",
+      "compManager",
+      "compManagerId",
     ];
     appraisalSheetRows.forEach((sheetRow) => {
-      const rawEmployee = referenceText(firstValue(sheetRow, [
-        "emp_id", "empId", "employee_id", "employeeId", "employee_id_text",
-      ]) || idOf(sheetRow)).toLowerCase();
+      const rawEmployee = referenceText(
+        firstValue(sheetRow, [
+          "emp_id",
+          "empId",
+          "employee_id",
+          "employeeId",
+          "employee_id_text",
+        ]) || idOf(sheetRow),
+      ).toLowerCase();
       const linkedEmployee = employeeMasterRows.find((employee) => {
         const aliases = [
-          employee.emp_id, employee.employee_id, employee.ROWID, employee.rowid,
-        ].map((value) => referenceText(value).toLowerCase()).filter(Boolean);
+          employee.emp_id,
+          employee.employee_id,
+          employee.ROWID,
+          employee.rowid,
+        ]
+          .map((value) => referenceText(value).toLowerCase())
+          .filter(Boolean);
         return aliases.includes(rawEmployee);
       });
       const belongsToScope =
         scopedEmployeeKeys.has(rawEmployee) ||
         scopedEmployeeAliases.has(rawEmployee) ||
-        (linkedEmployee && scopedMasterRows.some((item) => item.employee === linkedEmployee));
+        (linkedEmployee &&
+          scopedMasterRows.some((item) => item.employee === linkedEmployee));
       if (!belongsToScope) return;
-      assignmentFields.forEach((field) => addAssignedManager(firstValue(sheetRow, [field])));
+      assignmentFields.forEach((field) =>
+        addAssignedManager(firstValue(sheetRow, [field])),
+      );
     });
     ownEmployees.forEach((employee) => {
       assignmentFields.forEach((field) => addAssignedManager(employee[field]));
@@ -1312,9 +1441,16 @@ function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = [], apprai
       // Employee_Master directory, then compare canonical manager identities.
       const linked = employeeMasterRows.find((employee) => {
         const employeeAliases = [
-          employee.emp_id, employee.employee_id, employee.ROWID, employee.rowid,
-          employee.emp_name, employee.employee_name, employee.name,
-          employee.email_id, employee.email, employee.work_email,
+          employee.emp_id,
+          employee.employee_id,
+          employee.ROWID,
+          employee.rowid,
+          employee.emp_name,
+          employee.employee_name,
+          employee.name,
+          employee.email_id,
+          employee.email,
+          employee.work_email,
         ].flatMap((value) => {
           const text = referenceText(value).toLowerCase();
           return text ? [text, ownerKey(text)] : [];
@@ -1323,9 +1459,16 @@ function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = [], apprai
       });
       if (linked) {
         [
-          linked.emp_id, linked.employee_id, linked.ROWID, linked.rowid,
-          linked.emp_name, linked.employee_name, linked.name,
-          linked.email_id, linked.email, linked.work_email,
+          linked.emp_id,
+          linked.employee_id,
+          linked.ROWID,
+          linked.rowid,
+          linked.emp_name,
+          linked.employee_name,
+          linked.name,
+          linked.email_id,
+          linked.email,
+          linked.work_email,
         ].forEach((value) => {
           const text = referenceText(value).toLowerCase();
           if (text) aliases.push(text, ownerKey(text));
@@ -1335,54 +1478,80 @@ function filterOwn(bundle, a, techEdOwners = [], employeeMasterRows = [], apprai
     };
     const ownSavedCompRows = bundle.compManager.filter(isOwnCompAllocation);
     const savedParentIds = new Set(
-      ownSavedCompRows.map((row) => String(row.budget_distribution_id || "").trim()).filter(Boolean),
+      ownSavedCompRows
+        .map((row) => String(row.budget_distribution_id || "").trim())
+        .filter(Boolean),
     );
 
     // Preferred route: Budget_Distribution_Comp -> budget_distribution_id
     // -> Budget_Distribution, matching the hierarchy used by Tech-Ed.
     let techEd = savedParentIds.size
-      ? bundle.techEd.filter((row) => savedParentIds.has(String(row.id || "").trim()))
+      ? bundle.techEd.filter((row) =>
+          savedParentIds.has(String(row.id || "").trim()),
+        )
       : [];
     let compManager = ownSavedCompRows.filter((row) =>
-      techEd.some((parent) =>
-        String(parent.id) === String(row.budget_distribution_id) &&
-        (!row.appraisal_cycle_id ||
-          String(parent.appraisal_cycle_id) === String(row.appraisal_cycle_id)),
+      techEd.some(
+        (parent) =>
+          String(parent.id) === String(row.budget_distribution_id) &&
+          (!row.appraisal_cycle_id ||
+            String(parent.appraisal_cycle_id) ===
+              String(row.appraisal_cycle_id)),
       ),
     );
 
     // Compatibility fallback for older rows without a usable parent link.
     if (!techEd.length) {
-      const techOwnerKeys = new Set(ownEmployees.map((employee) => {
-        const raw = employee.appraiser_tech_ed_row_id ||
-          employee.appraiser_tech_ed_appraisal_sheet ||
-          employee.appraiser_tech_ed || employee.appraiser_tech_ed_id ||
-          employee.appraiser_tech_ed1 || "";
-        const key = ownerKey(raw);
-        const linked = techEdOwners.find((item) =>
-          [item.row_id, item.ROWID, item.employee_id, item.assignment, item.name]
-            .some((alias) => ownerKey(alias) === key)
-        );
-        return ownerKey(linked?.assignment || raw);
-      }).filter(Boolean));
+      const techOwnerKeys = new Set(
+        ownEmployees
+          .map((employee) => {
+            const raw =
+              employee.appraiser_tech_ed_row_id ||
+              employee.appraiser_tech_ed_appraisal_sheet ||
+              employee.appraiser_tech_ed ||
+              employee.appraiser_tech_ed_id ||
+              employee.appraiser_tech_ed1 ||
+              "";
+            const key = ownerKey(raw);
+            const linked = techEdOwners.find((item) =>
+              [
+                item.row_id,
+                item.ROWID,
+                item.employee_id,
+                item.assignment,
+                item.name,
+              ].some((alias) => ownerKey(alias) === key),
+            );
+            return ownerKey(linked?.assignment || raw);
+          })
+          .filter(Boolean),
+      );
       techEd = bundle.techEd.filter((row) => {
         const raw = row.appraiser_tech_ed_id || "";
         const key = ownerKey(raw);
         const linked = techEdOwners.find((item) =>
-          [item.row_id, item.ROWID, item.employee_id, item.assignment, item.name]
-            .some((alias) => ownerKey(alias) === key)
+          [
+            item.row_id,
+            item.ROWID,
+            item.employee_id,
+            item.assignment,
+            item.name,
+          ].some((alias) => ownerKey(alias) === key),
         );
         return techOwnerKeys.has(ownerKey(linked?.assignment || raw));
       });
       const allowedDistributionIds = new Set(techEd.map((row) => row.id));
-      compManager = bundle.compManager.filter((row) =>
-        allowedDistributionIds.has(String(row.budget_distribution_id)) &&
-        isOwnCompAllocation(row)
+      compManager = bundle.compManager.filter(
+        (row) =>
+          allowedDistributionIds.has(String(row.budget_distribution_id)) &&
+          isOwnCompAllocation(row),
       );
     }
 
     const cycleIds = new Set(techEd.map((row) => row.appraisal_cycle_id));
-    const master = bundle.master.filter((row) => cycleIds.has(row.appraisal_cycle_id));
+    const master = bundle.master.filter((row) =>
+      cycleIds.has(row.appraisal_cycle_id),
+    );
     return { master, techEd, compManager, employeeRoster: ownEmployees };
   }
 
@@ -1421,7 +1590,8 @@ function ownerKey(raw) {
 const rowKeyIndexes = new WeakMap();
 function ownKeyCount(row) {
   let count = 0;
-  for (const key in row) if (Object.prototype.hasOwnProperty.call(row, key)) count += 1;
+  for (const key in row)
+    if (Object.prototype.hasOwnProperty.call(row, key)) count += 1;
   return count;
 }
 function findKey(row, name) {
@@ -1430,7 +1600,8 @@ function findKey(row, name) {
   let index = rowKeyIndexes.get(row);
   if (index) {
     const hit = index.byLower.get(lower);
-    if (hit !== undefined && Object.prototype.hasOwnProperty.call(row, hit)) return hit;
+    if (hit !== undefined && Object.prototype.hasOwnProperty.call(row, hit))
+      return hit;
     if (ownKeyCount(row) === index.size) return undefined;
   }
   const keys = Object.keys(row);
@@ -1538,7 +1709,12 @@ function pickColumn(columns, candidates, fallback) {
   return candidates.find((name) => columns.has(name)) || fallback;
 }
 
-async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) {
+async function calculateBudgetBases(
+  app,
+  bundle,
+  techEdOwners = [],
+  sourceRows,
+) {
   // Reuse the single serialized source-table read set for both calculations
   // and owner/employee roster construction. Do not start parallel Data Store
   // scans: Catalyst COMPONENT limits can reject overlapping paged requests.
@@ -1604,11 +1780,17 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
   // roster to rows for the current Active cycle so old rows/duplicates cannot
   // inflate the Org Budget Base.
   const isActiveCycle = (cycle) =>
-    String(firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "")
-      .trim().toLowerCase() === "active" &&
+    String(
+      firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "",
+    )
+      .trim()
+      .toLowerCase() === "active" &&
     ![true, "true", "1", "yes"].includes(
-      typeof firstValue(cycle, ["archived", "is_archived", "isArchived"]) === "string"
-        ? String(firstValue(cycle, ["archived", "is_archived", "isArchived"])).trim().toLowerCase()
+      typeof firstValue(cycle, ["archived", "is_archived", "isArchived"]) ===
+        "string"
+        ? String(firstValue(cycle, ["archived", "is_archived", "isArchived"]))
+            .trim()
+            .toLowerCase()
         : firstValue(cycle, ["archived", "is_archived", "isArchived"]),
     );
   // Budget_Master's selected cycle is the authority for the budget screen.
@@ -1620,33 +1802,53 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
       .filter(Boolean),
   );
   const activeSheetCycle =
-    cycleRows.find((cycle) =>
-      isActiveCycle(cycle) &&
-      [cycleIdOf(cycle), cycleNameOf(cycle)].some((ref) =>
-        budgetCycleRefs.has(String(ref || "").trim().toLowerCase()),
-      ),
+    cycleRows.find(
+      (cycle) =>
+        isActiveCycle(cycle) &&
+        [cycleIdOf(cycle), cycleNameOf(cycle)].some((ref) =>
+          budgetCycleRefs.has(
+            String(ref || "")
+              .trim()
+              .toLowerCase(),
+          ),
+        ),
     ) || cycleRows.find(isActiveCycle);
-  const activeSheetCycleId = activeSheetCycle ? cycleIdOf(activeSheetCycle) : "";
-  const activeSheetCycleName = activeSheetCycle ? cycleNameOf(activeSheetCycle) : "";
+  const activeSheetCycleId = activeSheetCycle
+    ? cycleIdOf(activeSheetCycle)
+    : "";
+  const activeSheetCycleName = activeSheetCycle
+    ? cycleNameOf(activeSheetCycle)
+    : "";
   const sheetCycleFields = [
-    "cycle_id", "appraisal_cycle_id", "appraisal_cycle_name",
-    "cycleId", "appraisalCycleId", "appraisalCycleName",
-    "cycle", "appraisal_cycle",
+    "cycle_id",
+    "appraisal_cycle_id",
+    "appraisal_cycle_name",
+    "cycleId",
+    "appraisalCycleId",
+    "appraisalCycleName",
+    "cycle",
+    "appraisal_cycle",
   ];
   const cycleScopedSheetRows = activeSheetCycle
     ? appraisalRows.filter((row) => {
         const raw = cycleReference(firstValue(row, sheetCycleFields));
-        return raw && (
-          raw === activeSheetCycleId ||
-          raw.toLowerCase() === activeSheetCycleName.toLowerCase()
+        return (
+          raw &&
+          (raw === activeSheetCycleId ||
+            raw.toLowerCase() === activeSheetCycleName.toLowerCase())
         );
       })
     : [];
   // Legacy deployments may have one sheet roster with no cycle key. Use that
   // only when the Active cycle has no explicitly tagged rows.
-  const sheetCycleReference = (row) => cycleReference(firstValue(row, sheetCycleFields));
-  const hasCycleTaggedSheetRows = appraisalRows.some((row) => Boolean(sheetCycleReference(row)));
-  const unscopedSheetRows = appraisalRows.filter((row) => !sheetCycleReference(row));
+  const sheetCycleReference = (row) =>
+    cycleReference(firstValue(row, sheetCycleFields));
+  const hasCycleTaggedSheetRows = appraisalRows.some((row) =>
+    Boolean(sheetCycleReference(row)),
+  );
+  const unscopedSheetRows = appraisalRows.filter(
+    (row) => !sheetCycleReference(row),
+  );
   // Appraisal_Sheet is the generated roster for the active appraisal cycle in
   // this deployment. Some existing rows store cycle references in legacy formats
   // that do not exactly match the cycle master ID/name. If strict matching yields
@@ -1782,7 +1984,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         "",
     );
     const previousTime = previous
-      ? String(previous.MODIFIEDTIME || previous.CREATEDTIME || previous.ROWID || "")
+      ? String(
+          previous.MODIFIEDTIME || previous.CREATEDTIME || previous.ROWID || "",
+        )
       : "";
     if (
       !previous ||
@@ -1914,7 +2118,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         cycleNameOf(activeCycleRow).toLowerCase() + "::" + employeeId,
       ) ||
       null;
-    const bonusPayrollRecord = previousPayrollRecord || currentCyclePayrollRecord;
+    const bonusPayrollRecord =
+      previousPayrollRecord || currentCyclePayrollRecord;
     const currentCtcValue = currentCtc(row);
     // Appraisal_Sheet's Previous_Appraisal_total_CTC_with_rewards is the
     // canonical base. Use historical Payroll_Data only when that sheet field
@@ -1927,10 +2132,14 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
       "previousAppraisalTotalCtcWithRewards",
     ]);
     const sheetPreviousCtc =
-      sheetPreviousRaw === "" || sheetPreviousRaw === null || sheetPreviousRaw === undefined
+      sheetPreviousRaw === "" ||
+      sheetPreviousRaw === null ||
+      sheetPreviousRaw === undefined
         ? null
         : n(sheetPreviousRaw);
-    const storedPreviousCtc = previousRecord ? previousCtc(previousRecord) : null;
+    const storedPreviousCtc = previousRecord
+      ? previousCtc(previousRecord)
+      : null;
     const previousAppraisalCtc =
       sheetPreviousCtc !== null
         ? sheetPreviousCtc
@@ -1998,7 +2207,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
       .replace(/[ _-]+/g, "");
     const masterStatus = String(
       firstValue(masterRow, ["emp_status", "status", "employee_status"]) || "",
-    ).trim().toLowerCase();
+    )
+      .trim()
+      .toLowerCase();
     const rawStatus = String(
       firstValue(masterRow, ["emp_status", "status", "employee_status"]) ||
         firstValue(row, ["emp_status", "status", "employee_status"]) ||
@@ -2053,35 +2264,39 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     // current Appraisal_Sheet values belong to this cycle and must not leak
     // into the previous-year fields.
     const previousPerformance = bonusPayrollRecord
-      ? n(firstValue(bonusPayrollRecord, [
-          "pb_to_be_paid",
-          "pbToBePaid",
-          "previous_year_performance_bonus",
-          "previous_year_pb",
-          "previous_pb",
-          "performance_bonus",
-          "performance_bonus_amount",
-          "target_pb_allocated_for_may",
-          "targetPBAllocatedForMay",
-          "allocated_pb_amount",
-          "allocatedPBAmount",
-          "allocated_pb",
-          "total_pb",
-          "totalPB",
-        ]))
+      ? n(
+          firstValue(bonusPayrollRecord, [
+            "pb_to_be_paid",
+            "pbToBePaid",
+            "previous_year_performance_bonus",
+            "previous_year_pb",
+            "previous_pb",
+            "performance_bonus",
+            "performance_bonus_amount",
+            "target_pb_allocated_for_may",
+            "targetPBAllocatedForMay",
+            "allocated_pb_amount",
+            "allocatedPBAmount",
+            "allocated_pb",
+            "total_pb",
+            "totalPB",
+          ]),
+        )
       : 0;
     const previousRetention = bonusPayrollRecord
-      ? n(firstValue(bonusPayrollRecord, [
-          "rb_to_be_paid",
-          "rbToBePaid",
-          "previous_year_retention_bonus",
-          "previous_year_rb",
-          "previous_rb",
-          "retention_bonus",
-          "retention_bonus_amount",
-          "new_rb",
-          "newRB",
-        ]))
+      ? n(
+          firstValue(bonusPayrollRecord, [
+            "rb_to_be_paid",
+            "rbToBePaid",
+            "previous_year_retention_bonus",
+            "previous_year_rb",
+            "previous_rb",
+            "retention_bonus",
+            "retention_bonus_amount",
+            "new_rb",
+            "newRB",
+          ]),
+        )
       : 0;
     const previousJoining = amount([
       "previous_year_joining_bonus",
@@ -2369,8 +2584,14 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     app.datastore().table(TABLES.distribution),
     raw.distribution,
   );
-  const compTable = skipUnchangedWrites(app.datastore().table(TABLES.comp), raw.comp);
-  const masterTable = skipUnchangedWrites(app.datastore().table(TABLES.master), raw.master);
+  const compTable = skipUnchangedWrites(
+    app.datastore().table(TABLES.comp),
+    raw.comp,
+  );
+  const masterTable = skipUnchangedWrites(
+    app.datastore().table(TABLES.master),
+    raw.master,
+  );
   const [distributionColumns, compColumns, masterColumns] = await Promise.all([
     getColumnNames(distributionTable),
     getColumnNames(compTable),
@@ -2413,7 +2634,10 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     // dedicated snapshot first, then the legacy field without failing the API.
     for (const candidate of candidates) {
       try {
-        const updated = await table.updateRow({ ROWID: rowId, [candidate]: val });
+        const updated = await table.updateRow({
+          ROWID: rowId,
+          [candidate]: val,
+        });
         const returnedKey = Object.keys(updated || {}).find(
           (key) => key.toLowerCase() === candidate.toLowerCase(),
         );
@@ -2443,7 +2667,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     const currentRank = currentCycle
       ? cycleRank(currentCycle)
       : cycleRank({ cycle_name: targetCycleId });
-    const targetYear = cycleYearOf(currentCycle || { cycle_name: targetCycleId });
+    const targetYear = cycleYearOf(
+      currentCycle || { cycle_name: targetCycleId },
+    );
     const sameYearNewJoinerCycles = cycleRows
       .filter(
         (cycle) =>
@@ -2556,10 +2782,14 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         .trim()
         .toLowerCase() === "active" &&
       ![true, 1, "true", "1", "yes"].includes(
-        typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+        typeof cycle.archived === "string"
+          ? cycle.archived.trim().toLowerCase()
+          : cycle.archived,
       ) &&
       ![true, 1, "true", "1", "yes"].includes(
-        typeof cycle.hidden === "string" ? cycle.hidden.trim().toLowerCase() : cycle.hidden,
+        typeof cycle.hidden === "string"
+          ? cycle.hidden.trim().toLowerCase()
+          : cycle.hidden,
       ),
   );
   // Only an explicitly Active cycle may drive current budget screens.
@@ -2634,7 +2864,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     );
     // A cycle reference that matches no cycle row (legacy data) is still
     // calculated as before.
-    if (masterCycle && (!isActiveCycle(masterCycle) || masterCycleHidden)) continue;
+    if (masterCycle && (!isActiveCycle(masterCycle) || masterCycleHidden))
+      continue;
     const employees = employeesForBudgetCycle(cycleId);
     // Only employees eligible in THIS appraisal cycle participate in the
     // Appraisal Sheet and organization/Tech-ED budget bases. Changes in the
@@ -2651,67 +2882,65 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         employee,
       ]),
     );
-    const legacyCycleEmployees = masterEmployeeRows
-      .map((masterRow) => {
-        const empId = String(
-          firstValue(masterRow, ["emp_id", "empId", "employee_id"]) || "",
-        ).trim();
-        if (!empId) return null;
-        const sheetEmployee = currentEmployeeById.get(empId.toLowerCase());
-        const candidate = sheetEmployee || {
-          employee_master_row_id: idOf(masterRow),
-          employeeId: empId,
-          emp_id: empId,
-        };
-        const cycleEligibility = cycleEligibilityFor(candidate, cycleId);
-        const rawEligibility = String(
-          firstValue(masterRow, [
-            "eligibility",
-            "eligible_status",
-            "eligibility_status",
-            "eligible",
-          ]) || "",
-        )
-          .trim()
-          .toLowerCase()
-          .replace(/[ _-]+/g, "");
-        const rawStatus = String(
-          firstValue(masterRow, ["emp_status", "status", "employee_status"]) ||
-            "",
-        )
-          .trim()
-          .toLowerCase();
-        const explicitlyEligible = ["eligible", "yes", "true", "1"].includes(
-          rawEligibility,
-        );
-        const eligible = cycleEligibility
-          ? cycleEligibility.eligible
-          : sheetEmployee
-            ? sheetEmployee.eligible
-            : rawStatus === "active" && explicitlyEligible;
-        const rawTech = firstValue(masterRow, [
-          "appraiser_tech_ed1",
-          "appraiser_tech_ed_row_id",
-          "appraiser_tech_ed_id",
-          "appraiser_tech_ed",
-          "appraiser_teched",
-          "tech_ed",
-          "tech_ed_id",
-        ]);
-        const rawComp = firstValue(masterRow, [
-          "comp_manager",
-          "comp_manager_id",
-          "comp_manager_name",
-          "director",
-        ]);
-        return {
-          eligible,
-          inEligibilityList: Boolean(cycleEligibility),
-          techEd: sheetEmployee?.techEd || resolvePersonId(rawTech),
-          compManager:
-            sheetEmployee?.compManager || String(rawComp || "").trim(),
-        };
-      });
+    const legacyCycleEmployees = masterEmployeeRows.map((masterRow) => {
+      const empId = String(
+        firstValue(masterRow, ["emp_id", "empId", "employee_id"]) || "",
+      ).trim();
+      if (!empId) return null;
+      const sheetEmployee = currentEmployeeById.get(empId.toLowerCase());
+      const candidate = sheetEmployee || {
+        employee_master_row_id: idOf(masterRow),
+        employeeId: empId,
+        emp_id: empId,
+      };
+      const cycleEligibility = cycleEligibilityFor(candidate, cycleId);
+      const rawEligibility = String(
+        firstValue(masterRow, [
+          "eligibility",
+          "eligible_status",
+          "eligibility_status",
+          "eligible",
+        ]) || "",
+      )
+        .trim()
+        .toLowerCase()
+        .replace(/[ _-]+/g, "");
+      const rawStatus = String(
+        firstValue(masterRow, ["emp_status", "status", "employee_status"]) ||
+          "",
+      )
+        .trim()
+        .toLowerCase();
+      const explicitlyEligible = ["eligible", "yes", "true", "1"].includes(
+        rawEligibility,
+      );
+      const eligible = cycleEligibility
+        ? cycleEligibility.eligible
+        : sheetEmployee
+          ? sheetEmployee.eligible
+          : rawStatus === "active" && explicitlyEligible;
+      const rawTech = firstValue(masterRow, [
+        "appraiser_tech_ed1",
+        "appraiser_tech_ed_row_id",
+        "appraiser_tech_ed_id",
+        "appraiser_tech_ed",
+        "appraiser_teched",
+        "tech_ed",
+        "tech_ed_id",
+      ]);
+      const rawComp = firstValue(masterRow, [
+        "comp_manager",
+        "comp_manager_id",
+        "comp_manager_name",
+        "director",
+      ]);
+      return {
+        eligible,
+        inEligibilityList: Boolean(cycleEligibility),
+        techEd: sheetEmployee?.techEd || resolvePersonId(rawTech),
+        compManager: sheetEmployee?.compManager || String(rawComp || "").trim(),
+      };
+    });
     // Appraisal_Sheet defines the roster. Apply the cycle decision when present,
     // otherwise use the sheet/master eligibility fields, and always honor the
     // Employee_Master active status used by the Appraisal Sheet API.
@@ -2726,7 +2955,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     // separate from the deduplicated employee roster used for budget math.
     const employeeByIdForSheetCount = new Map(
       employees.map((employee) => [
-        String(employee.employeeId || employee.emp_id || "").trim().toLowerCase(),
+        String(employee.employeeId || employee.emp_id || "")
+          .trim()
+          .toLowerCase(),
         employee,
       ]),
     );
@@ -2770,15 +3001,19 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     // Do not re-apply Eligibility_List through cycleEligibilityFor here; that
     // second lookup can disagree with the already-generated rows and change the
     // budget total while the Appraisal Sheet's Total row stays the same.
-    const cycleFilteredEmployees = appraisalSheetEmployees.filter((employee) => {
-      const cycleEligibility = cycleEligibilityFor(employee, cycleId);
-      const employeeStatus = String(employee.master_status || employee.status)
-        .trim()
-        .toLowerCase();
-      const active = !employeeStatus || employeeStatus === "active";
-      return active &&
-        (cycleEligibility ? cycleEligibility.eligible : employee.eligible);
-    });
+    const cycleFilteredEmployees = appraisalSheetEmployees.filter(
+      (employee) => {
+        const cycleEligibility = cycleEligibilityFor(employee, cycleId);
+        const employeeStatus = String(employee.master_status || employee.status)
+          .trim()
+          .toLowerCase();
+        const active = !employeeStatus || employeeStatus === "active";
+        return (
+          active &&
+          (cycleEligibility ? cycleEligibility.eligible : employee.eligible)
+        );
+      },
+    );
     const eligibleEmployees = appraisalSheetEmployees.filter((employee) => {
       const employeeStatus = String(employee.status || employee.master_status)
         .trim()
@@ -2794,12 +3029,13 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     // column was populated by the mapping/fallback path.
     // Org and team bases must use the same active, cycle-eligible sheet roster
     // shown in the grid; a stale Eligible decision must not include inactive staff.
-    const sheetBaseValue = (employee) => n(
-      employee.previous_appraisal_total_ctc_with_rewards ??
-      employee.Previous_Appraisal_total_CTC_with_rewards ??
-      employee.sheet_previous_appraisal_ctc ??
-      employee.base,
-    );
+    const sheetBaseValue = (employee) =>
+      n(
+        employee.previous_appraisal_total_ctc_with_rewards ??
+          employee.Previous_Appraisal_total_CTC_with_rewards ??
+          employee.sheet_previous_appraisal_ctc ??
+          employee.base,
+      );
     const orgBaseRows = eligibleEmployees.map((employee) => {
       const rawCtc = employee.sheet_previous_appraisal_ctc;
       return {
@@ -2811,20 +3047,24 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     const orgBase = orgBaseRows.reduce((sum, row) => sum + row.ctc, 0);
     bundle.diagnostics = {
       ...(bundle.diagnostics || {}),
-      budgetBaseSource: "eligible Appraisal_Sheet Previous_Appraisal_total_CTC_with_rewards values",
+      budgetBaseSource:
+        "eligible Appraisal_Sheet Previous_Appraisal_total_CTC_with_rewards values",
       budgetBaseSheetRows: orgBaseRows.length,
       budgetBaseRosterEmployees: appraisalSheetEmployees.length,
       budgetBaseEligibleRows: eligibleEmployees.length,
       budgetBaseCycleEligibilityRows: cycleFilteredEmployees.length,
-      budgetBaseEligibilityFilterDelta: cycleFilteredEmployees.length - eligibleEmployees.length,
+      budgetBaseEligibilityFilterDelta:
+        cycleFilteredEmployees.length - eligibleEmployees.length,
       budgetBaseRowsWithCtc: orgBaseRows.filter((row) => row.ctc !== 0).length,
-      budgetBaseStoredCtcRows: orgBaseRows.filter((row) => row.hasStoredCtc).length,
+      budgetBaseStoredCtcRows: orgBaseRows.filter((row) => row.hasStoredCtc)
+        .length,
       budgetBaseRawCtcSum: orgBase,
       budgetBaseMissingEmployeeIds: orgBaseRows
         .filter((row) => row.ctc === 0)
         .map((row) => row.employeeId)
         .slice(0, 20),
-      budgetBaseSheetRowCountMismatch: currentAppraisalRows.length !== legacyEligibilityCount,
+      budgetBaseSheetRowCountMismatch:
+        currentAppraisalRows.length !== legacyEligibilityCount,
     };
     const techBases = new Map(
       Array.from(techLabels.keys(), (key) => [
@@ -2856,33 +3096,40 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
       ]),
     );
     currentAppraisalRows.forEach((sheetRow) => {
-      const rawEmployeeId = firstValue(sheetRow, [
-        "emp_id", "empId", "employee_id", "employeeId", "employee_id_text",
-      ]) || idOf(sheetRow);
+      const rawEmployeeId =
+        firstValue(sheetRow, [
+          "emp_id",
+          "empId",
+          "employee_id",
+          "employeeId",
+          "employee_id_text",
+        ]) || idOf(sheetRow);
       const employee = rawSheetEmployeeById.get(employeeKeyFor(rawEmployeeId));
-      const rawTechEd = firstValue(sheetRow, [
-        "appraiser_tech_ed1",
-        "appraiser_tech_ed_row_id",
-        "appraiser_tech_ed_id",
-        "appraiser_tech_ed",
-        "appraiser_teched",
-        "appraiserTechED",
-        "appraiserTechEd",
-        "tech_ed",
-        "tech_ed_id",
-        "techED",
-        "techEd",
-      ]) || employee?.techEd;
+      const rawTechEd =
+        firstValue(sheetRow, [
+          "appraiser_tech_ed1",
+          "appraiser_tech_ed_row_id",
+          "appraiser_tech_ed_id",
+          "appraiser_tech_ed",
+          "appraiser_teched",
+          "appraiserTechED",
+          "appraiserTechEd",
+          "tech_ed",
+          "tech_ed_id",
+          "techED",
+          "techEd",
+        ]) || employee?.techEd;
       const techKey = canonicalTechKey(resolvePersonId(rawTechEd));
-      const rawCompManager = firstValue(sheetRow, [
-        "comp_manager",
-        "comp_manager_id",
-        "comp_manager_row_id",
-        "comp_manager_name",
-        "comp_manager_emp_id",
-        "compManager",
-        "compManagerId",
-      ]) || employee?.compManager;
+      const rawCompManager =
+        firstValue(sheetRow, [
+          "comp_manager",
+          "comp_manager_id",
+          "comp_manager_row_id",
+          "comp_manager_name",
+          "comp_manager_emp_id",
+          "compManager",
+          "compManagerId",
+        ]) || employee?.compManager;
       const compKey = ownerKey(resolvePersonId(rawCompManager));
       if (!techKey || !compKey) return;
       const pairKey = techKey + "::" + compKey;
@@ -3048,27 +3295,35 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
       await distributionTable.updateRow(update);
       // Persist the immutable Original Count centrally so every login sees
       // the same baseline. Only initialize/repair a missing or zero value.
+      // Original Count is written ONCE (first time it is missing/zero) and is
+      // never recalculated afterwards. originalCountStored tells the UI whether
+      // the database really holds the snapshot.
+      let originalCountStored = hasSavedOriginalCount;
       if (!hasSavedOriginalCount) {
-        await persistOptional(
+        const savedDedicated = await persistOptional(
           distributionTable,
           row.id,
           distributionColumns,
           ["original_headcount", "allocation_headcount"],
           savedOriginalCount,
         );
-      }
-      // Keep current_headcount as the shared immutable Original Count
-      // snapshot when this schema has no dedicated original_headcount field.
-      // Live Current Count is calculated from Appraisal_Sheet by each screen;
-      // writing it here would overwrite HR's baseline on every budget refresh.
-      if (!hasSavedOriginalCount) {
-        await persistOptional(
+        // Keep current_headcount as the shared immutable Original Count
+        // snapshot when this schema has no dedicated original_headcount field.
+        const savedLegacy = await persistOptional(
           distributionTable,
           row.id,
           distributionColumns,
           ["current_headcount"],
           savedOriginalCount,
         );
+        originalCountStored = Boolean(savedDedicated || savedLegacy);
+        if (!originalCountStored) {
+          bundle.diagnostics = {
+            ...(bundle.diagnostics || {}),
+            originalCountNotPersisted:
+              "Budget_Distribution has no original_headcount/current_headcount column; add an Int column named original_headcount.",
+          };
+        }
       }
       // Return the live count to the UI without persisting over the shared
       // Original Count snapshot stored in this legacy field.
@@ -3099,10 +3354,11 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         // not the previous request's value.
         current_budget_base: stats.base,
         total_utilization: stats.utilized,
-        original_headcount: savedOriginalCount,
-        // The value above is the repaired/immutable snapshot. Mark it as
-        // persisted so the screens do not discard it (they gate on this flag).
-        original_headcount_is_persisted: true,
+        // Only return a baseline that is really stored. If the database could
+        // not store it, return blank (NOT today's live count) so the screens
+        // never show a baseline that moves together with Current Count.
+        original_headcount: originalCountStored ? savedOriginalCount : "",
+        original_headcount_is_persisted: originalCountStored,
       });
     }
 
@@ -3206,26 +3462,32 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         }
       }
       await compTable.updateRow(update);
+      let compOriginalCountStored = hasSavedOriginalCount;
       if (!hasSavedOriginalCount) {
-        await persistOptional(
+        const savedDedicated = await persistOptional(
           compTable,
           row.id,
           compColumns,
           ["original_headcount", "allocation_headcount"],
           savedOriginalCount,
         );
-      }
-      // Preserve current_headcount as the shared Original Count in
-      // legacy schemas without original_headcount/allocation_headcount.
-      // Never replace that saved baseline with a live count on refresh.
-      if (!hasSavedOriginalCount) {
-        await persistOptional(
+        // Preserve current_headcount as the shared Original Count in
+        // legacy schemas without original_headcount/allocation_headcount.
+        const savedLegacy = await persistOptional(
           compTable,
           row.id,
           compColumns,
           ["current_headcount"],
           savedOriginalCount,
         );
+        compOriginalCountStored = Boolean(savedDedicated || savedLegacy);
+        if (!compOriginalCountStored) {
+          bundle.diagnostics = {
+            ...(bundle.diagnostics || {}),
+            compOriginalCountNotPersisted:
+              "Budget_Distribution_Comp has no original_headcount/current_headcount column; add an Int column named original_headcount.",
+          };
+        }
       }
       await persistOptional(
         compTable,
@@ -3243,8 +3505,8 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         current_headcount: compRosterCounts.get(pairKey) || 0,
         current_budget_base: stats.base,
         total_utilization: stats.utilized,
-        original_headcount: savedOriginalCount,
-        original_headcount_is_persisted: true,
+        original_headcount: compOriginalCountStored ? savedOriginalCount : "",
+        original_headcount_is_persisted: compOriginalCountStored,
         comp_manager_display: details.name || details.compKey,
       });
     }
@@ -3276,7 +3538,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
       // never zero it just because the live team is now empty.
       const hasDedicatedCompSnapshot = compColumns
         ? ["original_headcount", "allocation_headcount"].some((name) =>
-            Array.from(compColumns).some((column) => column.toLowerCase() === name),
+            Array.from(compColumns).some(
+              (column) => column.toLowerCase() === name,
+            ),
           )
         : false;
       if (hasDedicatedCompSnapshot) {
@@ -3346,7 +3610,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     const hasSavedOrgOriginalCount =
       savedOrgOriginalCountValue !== null &&
       savedOrgOriginalCountValue !== undefined &&
-      String(savedOrgOriginalCountValue).trim() !== "";
+      String(savedOrgOriginalCountValue).trim() !== "" &&
+      (n(savedOrgOriginalCountValue) > 0 ||
+        appraisalSheetEmployees.length === 0);
     // Org Original Count is a snapshot too. Never rewrite it on GET based on
     // current eligibility or assignment data; those belong in Current Count.
     const orgOriginalCountIsSet = hasSavedOrgOriginalCount;
@@ -3378,10 +3644,13 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
     // In legacy schemas current_headcount is also the shared Original Count
     // snapshot. Persist the live count only when a dedicated snapshot column
     // exists; otherwise preserve the saved baseline and return live count below.
+    let orgOriginalCountStored = hasSavedOrgOriginalCount;
     if (hasSavedOrgOriginalCount) {
       const dedicatedOrgSnapshotField = masterColumns
         ? ["original_headcount", "allocation_headcount"].some((name) =>
-            Array.from(masterColumns).some((column) => column.toLowerCase() === name),
+            Array.from(masterColumns).some(
+              (column) => column.toLowerCase() === name,
+            ),
           )
         : false;
       if (dedicatedOrgSnapshotField) {
@@ -3394,7 +3663,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         );
       }
     } else {
-      await persistOptional(
+      orgOriginalCountStored = await persistOptional(
         masterTable,
         master.id,
         masterColumns,
@@ -3417,7 +3686,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
       budget_utilized: orgUtilized,
       current_budget_base: orgBase,
       current_headcount: eligibleEmployees.length,
-      original_headcount: savedOrgOriginalCount,
+      original_headcount: orgOriginalCountStored ? savedOrgOriginalCount : "",
     });
   }
 
@@ -3487,7 +3756,9 @@ module.exports = async function (req, res) {
       ]);
       await readSource("cycleRows", "Appraisal_Cycle_Master", false);
       const techEdOwners = await readTechEdOwners(app, sourceRows);
-      logBudgetStage("Tech-Ed owners resolved", { owners: techEdOwners.length });
+      logBudgetStage("Tech-Ed owners resolved", {
+        owners: techEdOwners.length,
+      });
       let calculatedBundle = rawBundle;
       try {
         calculatedBundle = await calculateBudgetBases(
@@ -3515,7 +3786,13 @@ module.exports = async function (req, res) {
             ),
         });
       }
-      const bundle = filterOwn(calculatedBundle, a, techEdOwners, sourceRows.masterEmployeeRows || [], sourceRows.appraisalRows || []);
+      const bundle = filterOwn(
+        calculatedBundle,
+        a,
+        techEdOwners,
+        sourceRows.masterEmployeeRows || [],
+        sourceRows.appraisalRows || [],
+      );
       logBudgetStage("response ready", {
         returnedTechEdRows: bundle.techEd.length,
         returnedCompManagerRows: bundle.compManager.length,
@@ -3553,48 +3830,84 @@ module.exports = async function (req, res) {
     // stay stored for reference, but closed/archived cycles are read-only.
     const cycleRowsForWrite = await getAllRows(app, "Appraisal_Cycle_Master");
     const activeCycleForWrite = cycleRowsForWrite.find((cycle) => {
-      const status = String(firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "")
-        .trim().toLowerCase();
+      const status = String(
+        firstValue(cycle, ["status", "cycle_status", "appraisal_status"]) || "",
+      )
+        .trim()
+        .toLowerCase();
       const archived = [true, 1, "true", "1", "yes"].includes(
-        typeof cycle.archived === "string" ? cycle.archived.trim().toLowerCase() : cycle.archived,
+        typeof cycle.archived === "string"
+          ? cycle.archived.trim().toLowerCase()
+          : cycle.archived,
       );
       const hidden = [true, 1, "true", "1", "yes"].includes(
-        typeof cycle.hidden === "string" ? cycle.hidden.trim().toLowerCase() : cycle.hidden,
+        typeof cycle.hidden === "string"
+          ? cycle.hidden.trim().toLowerCase()
+          : cycle.hidden,
       );
       return status === "active" && !archived && !hidden;
     });
-    const activeCycleIdForWrite = activeCycleForWrite ? cycleIdOf(activeCycleForWrite) : "";
+    const activeCycleIdForWrite = activeCycleForWrite
+      ? cycleIdOf(activeCycleForWrite)
+      : "";
     if (!activeCycleIdForWrite) {
-      throw new access.HttpError(409, "Budget changes require an Active appraisal cycle.");
+      throw new access.HttpError(
+        409,
+        "Budget changes require an Active appraisal cycle.",
+      );
     }
-    const activeCycleNameForWrite = cycleNameOf(activeCycleForWrite).trim().toLowerCase();
-    const requestedCycleId = String(body.appraisal_cycle_id || body.cycle_id || "").trim();
+    const activeCycleNameForWrite = cycleNameOf(activeCycleForWrite)
+      .trim()
+      .toLowerCase();
+    const requestedCycleId = String(
+      body.appraisal_cycle_id || body.cycle_id || "",
+    ).trim();
     if (
       requestedCycleId &&
       requestedCycleId !== activeCycleIdForWrite &&
       requestedCycleId.toLowerCase() !== activeCycleNameForWrite
     ) {
-      throw new access.HttpError(409, "Budget changes are allowed only for the Active appraisal cycle.");
+      throw new access.HttpError(
+        409,
+        "Budget changes are allowed only for the Active appraisal cycle.",
+      );
     }
     if (id) {
       const tableId =
-        resource === "master" ? "Budget_Master"
-        : resource === "distribution" ? "Budget_Distribution"
-        : (resource === "comp" || resource === "compmanager") ? "Budget_Distribution_Comp"
-        : "";
+        resource === "master"
+          ? "Budget_Master"
+          : resource === "distribution"
+            ? "Budget_Distribution"
+            : resource === "comp" || resource === "compmanager"
+              ? "Budget_Distribution_Comp"
+              : "";
       if (tableId) {
         const targetRows = await getAllRows(app, tableId);
         const target = targetRows.find((row) => idOf(row) === id);
-        let rowCycleId = String(value(target, "appraisal_cycle_id") || "").trim();
-        if (!rowCycleId && target && (resource === "comp" || resource === "compmanager")) {
-          const parentId = String(value(target, "budget_distribution_id") || "").trim();
-          const parent = (await getAllRows(app, "Budget_Distribution")).find((row) => idOf(row) === parentId);
+        let rowCycleId = String(
+          value(target, "appraisal_cycle_id") || "",
+        ).trim();
+        if (
+          !rowCycleId &&
+          target &&
+          (resource === "comp" || resource === "compmanager")
+        ) {
+          const parentId = String(
+            value(target, "budget_distribution_id") || "",
+          ).trim();
+          const parent = (await getAllRows(app, "Budget_Distribution")).find(
+            (row) => idOf(row) === parentId,
+          );
           rowCycleId = String(value(parent, "appraisal_cycle_id") || "").trim();
         }
-        const matchesActiveCycle = rowCycleId === activeCycleIdForWrite ||
+        const matchesActiveCycle =
+          rowCycleId === activeCycleIdForWrite ||
           rowCycleId.toLowerCase() === activeCycleNameForWrite;
         if (!target || !matchesActiveCycle) {
-          throw new access.HttpError(409, "This budget allocation belongs to a different or closed appraisal cycle.");
+          throw new access.HttpError(
+            409,
+            "This budget allocation belongs to a different or closed appraisal cycle.",
+          );
         }
       }
     }
@@ -3710,12 +4023,17 @@ module.exports = async function (req, res) {
           message: "The parent Tech-Ed budget allocation was not found.",
         });
       }
-      const parentCycleId = String(value(parent, "appraisal_cycle_id") || "").trim();
+      const parentCycleId = String(
+        value(parent, "appraisal_cycle_id") || "",
+      ).trim();
       if (
         parentCycleId !== activeCycleIdForWrite &&
         parentCycleId.toLowerCase() !== activeCycleNameForWrite
       ) {
-        throw new access.HttpError(409, "Comp Manager budgets can only be created under the Active appraisal cycle.");
+        throw new access.HttpError(
+          409,
+          "Comp Manager budgets can only be created under the Active appraisal cycle.",
+        );
       }
       const adminScope = Boolean(a && a.scope && a.scope.all);
       if (
