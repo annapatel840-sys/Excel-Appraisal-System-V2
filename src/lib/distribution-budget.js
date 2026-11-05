@@ -40,6 +40,12 @@ const normalizeOwner = (value) => {
   }
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 };
+const ownerReference = (value) => {
+  if (!value || typeof value !== "object") return value;
+  return value.ROWID ?? value.rowid ?? value.emp_id ?? value.employee_id ??
+    value.id ?? value.value ?? value.display_value ?? value.name ??
+    value.assignment ?? "";
+};
 // Employee IDs can themselves contain hyphens (for example WIS-1234).
 // The owner separator is the spaced delimiter " - ", not every hyphen.
 const ownerParts = (value) => {
@@ -426,7 +432,7 @@ export function useDistributionBudget() {
       new Set(
         employeeRows
           .map((employee) => {
-            const raw = String(
+            const raw = ownerReference(
               employee.appraiser_tech_ed_row_id ||
                 employee.appraiser_tech_ed_appraisal_sheet ||
                 employee.appraiser_tech_ed ||
@@ -437,8 +443,9 @@ export function useDistributionBudget() {
                 employee.tech_ed ||
                 employee.tech_ed_id ||
                 "",
-            ).trim();
-            return ownerByForeignKey.get(normalizeOwner(raw)) || raw;
+            );
+            const rawText = String(raw || "").trim();
+            return ownerByForeignKey.get(normalizeOwner(rawText)) || rawText;
           })
           .filter(
             (owner) => owner && ownerMatches(owner, Array.from(identities)),
@@ -454,14 +461,14 @@ export function useDistributionBudget() {
         row.appraiser_tech_ed,
     );
     const ownerForBudgetRow = (row) => {
-      const raw = String(
+      const raw = String(ownerReference(
         row.appraiser_tech_ed_id ||
           row.tech_ed_id ||
           row.tech_ed ||
           row.appraiser_tech_ed ||
           row.appraiser_tech_ed1 ||
           "",
-      ).trim();
+      ) || "").trim();
       // Budget_Distribution may store Employee_Master.ROWID as its Tech-Ed FK.
       // Convert that FK to the display assignment returned from Appraisal_Sheet.
       return ownerByForeignKey.get(normalizeOwner(raw)) || raw;
