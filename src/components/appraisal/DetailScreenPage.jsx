@@ -23,6 +23,7 @@ import {
 import { createPortal } from "react-dom";
 import { Bell } from "lucide-react";
 import { useBudget } from "@/lib/budget-store";
+import { useDistributionBudget } from "@/lib/distribution-budget";
 import {
   BudgetStatsBar,
   resolveBudgetAllocated,
@@ -557,7 +558,7 @@ const toNum = (v) => {
    ------------------------------------------------------------------ */
 const FIT_BASE_WIDTH = 700;
 const FIT_MIN = 0.75; // below this the table scrolls instead of shrinking
-function useFitScale(depKey) {
+function useFitScale() {
   const boxRef = useRef(null);
   const fitRef = useRef(null);
   const [scale, setScale] = useState(1);
@@ -577,6 +578,10 @@ function useFitScale(depKey) {
       );
       setScale((prev) => (Math.abs(prev - s) > 0.004 ? s : prev));
     };
+
+    // Measure synchronously only on first mount. On employee changes, let the
+    // observer measure after layout so this read cannot block the navigation
+    // paint with a forced reflow.
     calc();
     const ro = new ResizeObserver(calc);
     ro.observe(box);
@@ -586,7 +591,7 @@ function useFitScale(depKey) {
       ro.disconnect();
       window.removeEventListener("resize", calc);
     };
-  }, [depKey]);
+  }, []);
 
   return { boxRef, fitRef, scale };
 }
@@ -1087,10 +1092,18 @@ export function DetailScreenPage({
   const cachedAudit = useDeferredValue(audit);
   const budgetContext = useBudget();
 
+<<<<<<< HEAD
   // Detailed Screen reads the already-loaded Appraisal Sheet roster directly.
   // Do not defer this data: the selected employee must resolve from the current
   // in-memory rows immediately when the user navigates.
   const cachedLiveRows = liveRows;
+=======
+  // Keep the last ready Appraisal Sheet roster available during urgent employee
+  // navigation. A save may publish a new 500+ row array; rendering the next
+  // employee should use the cached prior array first, while React reconciles
+  // the newest roster in the background.
+  const cachedLiveRows = useDeferredValue(liveRows);
+>>>>>>> 3758791 (Update budget distribution and appraisal screens)
   const currentCycleName = useCurrentCycleName() || CURRENT_CYCLE;
   const {
     currentUser,
@@ -1164,12 +1177,18 @@ export function DetailScreenPage({
   // Budget summary shown beside the notice (same numbers as the Appraisal Sheet).
   const budgetConsumed = useMemo(() => sumBudgetConsumed(rows), [rows]);
   const budgetTargetPB = useMemo(() => sumTargetPB(rows), [rows]);
+  // Tech-Ed and Comp Manager logins: "Budget Allocated" is the Budget
+  // Distribution screen's "Updated Budget". Everyone else (HR) keeps the
+  // organisation Budget Master figure.
+  const distributionBudget = useDistributionBudget();
   const { allocated: budgetAllocated, isEstimate: budgetIsEstimate } =
-    resolveBudgetAllocated({
-      totals: budgetMasterTotals,
-      loading: budgetLoading,
-      error: budgetError,
-    });
+    distributionBudget.applies
+      ? { allocated: distributionBudget.updatedBudget, isEstimate: false }
+      : resolveBudgetAllocated({
+          totals: budgetMasterTotals,
+          loading: budgetLoading,
+          error: budgetError,
+        });
 
   const [index, setIndex] = useState(0);
   const [search, setSearch] = useState("");
@@ -1269,7 +1288,7 @@ export function DetailScreenPage({
 
 
   // Measure + scale the compensation table so it fits one screen.
-  const { boxRef, fitRef, scale } = useFitScale(employee?.id);
+  const { boxRef, fitRef, scale } = useFitScale();
 
   // Remember each employee's values when first shown, so edits can be highlighted.
   if (employee && !baselineRef.current[employee.id]) {

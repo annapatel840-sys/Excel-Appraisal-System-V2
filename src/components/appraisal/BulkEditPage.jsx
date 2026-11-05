@@ -32,6 +32,7 @@ import React, {
 } from "react";
 import { useAppraisal } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
+import { useDistributionBudget } from "@/lib/distribution-budget";
 import {
   resolveBudgetAllocated,
   sumBudgetConsumed,
@@ -1091,6 +1092,14 @@ const BulkOperations = forwardRef(function BulkOperations(
   } catch (x) {
     budgetCtx = null;
   }
+  // Tech-Ed / Comp Manager: Budget Allocated = Budget Distribution's
+  // "Updated Budget" (same hook the Distribution screen uses).
+  let distBudget = null;
+  try {
+    distBudget = useDistributionBudget();
+  } catch (x) {
+    distBudget = null;
+  }
   // Header budget numbers: for EVERY login (HR, Tech ED, Comp Manager) they
   // come from what the app already holds in memory - the shared Budget
   // context (role-aware allocation) and the Appraisal Sheet rows - exactly
@@ -1104,19 +1113,22 @@ const BulkOperations = forwardRef(function BulkOperations(
         String(r.status || "").trim().toLowerCase() === "active" &&
         String(r.eligibility || "").trim().toLowerCase() === "eligible",
     );
-    const { allocated } = resolveBudgetAllocated({
-      totals: budgetCtx.totals,
-      loading: budgetCtx.loading,
-      error: budgetCtx.error,
-    });
+    const useDist = !!distBudget && distBudget.applies;
+    const { allocated } = useDist
+      ? { allocated: distBudget.updatedBudget }
+      : resolveBudgetAllocated({
+          totals: budgetCtx.totals,
+          loading: budgetCtx.loading,
+          error: budgetCtx.error,
+        });
     return {
       allocated,
       // Still loading and nothing to show yet: the header shows "…", not 0.
-      pending: !!budgetCtx.loading && !allocated,
+      pending: (useDist ? !!distBudget.pending : !!budgetCtx.loading) && !allocated,
       used: sumBudgetConsumed(live),
       tpb: sumTargetPB(live),
     };
-  }, [budgetCtx, sheetRows]);
+  }, [budgetCtx, distBudget?.applies, distBudget?.updatedBudget, distBudget?.pending, sheetRows]);
 
   // Value of a filter field: the bulk row first, then the appraisal sheet row.
   const fVal = (e, field) => {
