@@ -933,7 +933,7 @@ function HRApplyBudget() {
           const originalCountValue = row.original_headcount;
           const savedCount = origSnap[selectedCycle]?.teCount?.[key];
           const legacyCount = row.headcount;
-          const hasApiCount = row.original_headcount_is_persisted === true &&
+          const hasApiCount =
             originalCountValue !== null && originalCountValue !== undefined &&
             String(originalCountValue).trim() !== "" &&
             (amount(originalCountValue) > 0 || liveCount === 0);
@@ -952,7 +952,7 @@ function HRApplyBudget() {
               ? amount(savedCount)
               : hasApiCount
                 ? amount(originalCountValue)
-                : (existing.originalCountIsSet ? existing.team0 : 0);
+                : (existing.originalCountIsSet ? existing.team0 : (existing.team0 > 0 ? existing.team0 : 0));
           existing.originalCountIsSet = Boolean(existing.originalCountIsSet || hasApiCount || hasLegacyCount || hasLocalCount);
           existing.originalCountNeedsMigration = useLegacyMigration;
           existing.team = liveCount;
@@ -970,7 +970,7 @@ function HRApplyBudget() {
       const originalCountValue = row.original_headcount;
       const savedCount = origSnap[selectedCycle]?.teCount?.[key];
       const legacyCount = row.headcount;
-      const hasApiCount = row.original_headcount_is_persisted === true &&
+      const hasApiCount =
         originalCountValue !== null && originalCountValue !== undefined &&
         String(originalCountValue).trim() !== "" &&
         (amount(originalCountValue) > 0 || currentCount === 0);
@@ -988,7 +988,12 @@ function HRApplyBudget() {
           ? amount(savedCount)
           : hasApiCount
             ? amount(originalCountValue)
-            : 0;
+            // Nothing saved anywhere yet: the baseline is the roster at first
+            // allocation. Seed it once from today's count; the snapshot effect
+            // below then freezes it, so later changes move Current Count only.
+            : (row.percentage !== null && row.percentage !== undefined && String(row.percentage).trim() !== ""
+                ? currentCount
+                : 0);
       const storedBase = row.budget_base !== null && row.budget_base !== undefined && String(row.budget_base).trim() !== ""
         ? amount(row.budget_base)
         : null;

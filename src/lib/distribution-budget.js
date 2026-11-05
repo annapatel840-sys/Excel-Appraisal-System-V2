@@ -2,10 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useBudget } from "@/lib/budget-store";
-import {
-  useViewAs,
-  currentUserMatchesManager,
-} from "@/lib/view-as-store";
+import { useViewAs, currentUserMatchesManager } from "@/lib/view-as-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { splitStamp } from "@/lib/budget-audit-local";
 
@@ -34,17 +31,36 @@ const num = (v) => {
 const normalizeOwner = (value) => {
   if (value && typeof value === "object") {
     return normalizeOwner(
-      value.ROWID ?? value.rowid ?? value.emp_id ?? value.employee_id ??
-      value.id ?? value.value ?? value.display_value ?? value.name ?? "",
+      value.ROWID ??
+        value.rowid ??
+        value.emp_id ??
+        value.employee_id ??
+        value.id ??
+        value.value ??
+        value.display_value ??
+        value.name ??
+        "",
     );
   }
-  return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 };
 const ownerReference = (value) => {
   if (!value || typeof value !== "object") return value;
-  return value.ROWID ?? value.rowid ?? value.emp_id ?? value.employee_id ??
-    value.id ?? value.value ?? value.display_value ?? value.name ??
-    value.assignment ?? "";
+  return (
+    value.ROWID ??
+    value.rowid ??
+    value.emp_id ??
+    value.employee_id ??
+    value.id ??
+    value.value ??
+    value.display_value ??
+    value.name ??
+    value.assignment ??
+    ""
+  );
 };
 // Employee IDs can themselves contain hyphens (for example WIS-1234).
 // The owner separator is the spaced delimiter " - ", not every hyphen.
@@ -203,7 +219,9 @@ const employeeUtilized = (employee) => {
 const readTechEdOriginalCount = (cycleId, identities) => {
   if (typeof window === "undefined" || !cycleId) return null;
   try {
-    const saved = JSON.parse(window.localStorage.getItem("excel-appraisal-budget-original-v1") || "{}");
+    const saved = JSON.parse(
+      window.localStorage.getItem("excel-appraisal-budget-original-v1") || "{}",
+    );
     const snapshot = saved?.[String(cycleId)]?.teCount;
     if (!snapshot || typeof snapshot !== "object") return null;
     const tokens = new Set();
@@ -236,12 +254,44 @@ const readTechEdOriginalCount = (cycleId, identities) => {
   return null;
 };
 
+// Freeze the Tech-Ed Original Count ONCE (same storage key/shape as Budget
+// Master). Never overwrites a positive value, so later delegation/eligibility
+// changes only move Current Count.
+const writeTechEdOriginalCount = (cycleId, ownerKeyValue, count) => {
+  if (typeof window === "undefined" || !cycleId || !ownerKeyValue) return;
+  const value = Number(count);
+  if (!Number.isFinite(value) || value <= 0) return;
+  try {
+    const storageKey = "excel-appraisal-budget-original-v1";
+    const saved =
+      JSON.parse(window.localStorage.getItem(storageKey) || "{}") || {};
+    const cycle = saved[String(cycleId)] || {};
+    const teCount = { ...(cycle.teCount || {}) };
+    const key = normalizeOwner(ownerKeyValue);
+    if (Number(teCount[key]) > 0) return;
+    teCount[key] = value;
+    saved[String(cycleId)] = { ...cycle, teCount };
+    window.localStorage.setItem(storageKey, JSON.stringify(saved));
+  } catch (_) {}
+};
+
 const byDate = (a, b) =>
   String((a.date || "") + (a.time || "")).localeCompare(
     String((b.date || "") + (b.time || "")),
   );
 
-export { num, normalizeOwner, ownerParts, ownerKey, ownerMatches, isActiveAndEligible, employeeUtilized, byDate, readTechEdOriginalCount };
+export {
+  num,
+  normalizeOwner,
+  ownerParts,
+  ownerKey,
+  ownerMatches,
+  isActiveAndEligible,
+  employeeUtilized,
+  byDate,
+  readTechEdOriginalCount,
+  writeTechEdOriginalCount,
+};
 
 export function useDistributionBudget() {
   const user = useCatalystUser();
@@ -364,24 +414,43 @@ export function useDistributionBudget() {
     // its Budget_Distribution_Comp child row(s). Follow the stored parent FK
     // directly to the active-cycle Budget_Distribution row; never try to infer
     // this login's parent by matching the manager as a Tech-Ed employee.
+    // A Comp Manager can have teams under more than one Tech-Ed. Never fail
+    // to resolve in that case: use the parent carrying the largest saved
+    // allocation for this manager as the primary parent.
+    const primaryParent = (parents) => {
+      const appliedUnder = (parent) =>
+        budgetCompManagerRows
+          .filter(
+            (child) =>
+              String(child.budget_distribution_id || "").trim() ===
+              String(parent.id || "").trim(),
+          )
+          .reduce((sum, child) => sum + num(child.applied_budget), 0);
+      return [...parents].sort((a, b) => appliedUnder(b) - appliedUnder(a))[0];
+    };
     if (isCompManagerLogin) {
-      const childRows = budgetCompManagerRows.filter((child) =>
-        (!activeCycleId ||
-          String(child.appraisal_cycle_id || "") === String(activeCycleId)) &&
-        String(child.budget_distribution_id || "").trim()
+      const childRows = budgetCompManagerRows.filter(
+        (child) =>
+          (!activeCycleId ||
+            String(child.appraisal_cycle_id || "") === String(activeCycleId)) &&
+          String(child.budget_distribution_id || "").trim(),
       );
       const parentIds = new Set(
         childRows.map((child) => String(child.budget_distribution_id).trim()),
       );
-      const linkedParents = budgetDistributionRows.filter((parent) =>
-        parentIds.has(String(parent.id || "").trim()) &&
-        (!activeCycleId ||
-          String(parent.appraisal_cycle_id || "") === String(activeCycleId))
+      const linkedParents = budgetDistributionRows.filter(
+        (parent) =>
+          parentIds.has(String(parent.id || "").trim()) &&
+          (!activeCycleId ||
+            String(parent.appraisal_cycle_id || "") === String(activeCycleId)),
       );
       const uniqueParents = Array.from(
-        new Map(linkedParents.map((parent) => [String(parent.id), parent])).values(),
+        new Map(
+          linkedParents.map((parent) => [String(parent.id), parent]),
+        ).values(),
       );
       if (uniqueParents.length === 1) return uniqueParents[0];
+      if (uniqueParents.length > 1) return primaryParent(uniqueParents);
     }
 
     // Resolve a Tech-Ed login against the complete Tech-Ed directory first.
@@ -486,14 +555,16 @@ export function useDistributionBudget() {
         row.appraiser_tech_ed,
     );
     const ownerForBudgetRow = (row) => {
-      const raw = String(ownerReference(
-        row.appraiser_tech_ed_id ||
-          row.tech_ed_id ||
-          row.tech_ed ||
-          row.appraiser_tech_ed ||
-          row.appraiser_tech_ed1 ||
-          "",
-      ) || "").trim();
+      const raw = String(
+        ownerReference(
+          row.appraiser_tech_ed_id ||
+            row.tech_ed_id ||
+            row.tech_ed ||
+            row.appraiser_tech_ed ||
+            row.appraiser_tech_ed1 ||
+            "",
+        ) || "",
+      ).trim();
       // Budget_Distribution may store Employee_Master.ROWID as its Tech-Ed FK.
       // Convert that FK to the display assignment returned from Appraisal_Sheet.
       return ownerByForeignKey.get(normalizeOwner(raw)) || raw;
@@ -550,7 +621,9 @@ export function useDistributionBudget() {
           user?.display_name,
           user?.email,
           user?.email_id,
-        ].filter(Boolean).flatMap((value) => ownerParts(value));
+        ]
+          .filter(Boolean)
+          .flatMap((value) => ownerParts(value));
         if (ownerMatches(raw, sessionManagerAliases)) return true;
         const rawKey = normalizeOwner(
           raw && typeof raw === "object"
@@ -589,27 +662,44 @@ export function useDistributionBudget() {
           employee.compManager,
           employee.comp_manager_display,
           employee.comp_manager_name,
-        ].filter((value) => value !== null && value !== undefined && String(value).trim() !== "");
+        ].filter(
+          (value) =>
+            value !== null &&
+            value !== undefined &&
+            String(value).trim() !== "",
+        );
         return (
           employee.in_appraisal_sheet !== false &&
           managerValues.some(matchesCurrentManager)
         );
       });
-      const techOwnerValues = (employee) => [
-        employee.appraiser_tech_ed_appraisal_sheet,
-        employee.appraiser_tech_ed,
-        employee.appraiser_tech_ed_id,
-        employee.appraiser_tech_ed_row_id,
-        employee.appraiser_tech_ed1,
-        employee.appraiser_teched,
-        employee.appraiserTechED,
-        employee.tech_ed,
-        employee.tech_ed_id,
-      ].filter((value) => value !== null && value !== undefined && String(value).trim() !== "");
+      const techOwnerValues = (employee) =>
+        [
+          employee.appraiser_tech_ed_appraisal_sheet,
+          employee.appraiser_tech_ed,
+          employee.appraiser_tech_ed_id,
+          employee.appraiser_tech_ed_row_id,
+          employee.appraiser_tech_ed1,
+          employee.appraiser_teched,
+          employee.appraiserTechED,
+          employee.tech_ed,
+          employee.tech_ed_id,
+        ].filter(
+          (value) =>
+            value !== null &&
+            value !== undefined &&
+            String(value).trim() !== "",
+        );
       const resolveTechOwner = (value) => {
         const raw = normalizeOwner(
           value && typeof value === "object"
-            ? value.ROWID || value.rowid || value.id || value.value || value.display_value || value.name || ""
+            ? value.ROWID ||
+                value.rowid ||
+                value.id ||
+                value.value ||
+                value.display_value ||
+                value.name ||
+                ""
             : value,
         );
         if (!raw) return "";
@@ -631,7 +721,9 @@ export function useDistributionBudget() {
       const managerTechOwners = Array.from(
         new Set(
           managerEmployees
-            .flatMap((employee) => techOwnerValues(employee).map(resolveTechOwner))
+            .flatMap((employee) =>
+              techOwnerValues(employee).map(resolveTechOwner),
+            )
             .filter(Boolean),
         ),
       );
@@ -655,7 +747,12 @@ export function useDistributionBudget() {
               row.comp_manager_name,
               row.manager_id,
             ]
-              .filter((value) => value !== null && value !== undefined && String(value).trim() !== "")
+              .filter(
+                (value) =>
+                  value !== null &&
+                  value !== undefined &&
+                  String(value).trim() !== "",
+              )
               .some(matchesCurrentManager),
           );
       const managerAllocationParentIds = new Set(
@@ -664,11 +761,15 @@ export function useDistributionBudget() {
           .filter(Boolean),
       );
       const compManagerParentMatches = budgetDistributionRows.filter((row) =>
-        managerAllocationParentIds.has(String(row.id || row.ROWID || "").trim()),
+        managerAllocationParentIds.has(
+          String(row.id || row.ROWID || "").trim(),
+        ),
       );
 
       const employeeAssignmentMatches = allRows.filter((row) => {
-        const rowOwners = techOwnerValues(row).map(resolveTechOwner).filter(Boolean);
+        const rowOwners = techOwnerValues(row)
+          .map(resolveTechOwner)
+          .filter(Boolean);
         return rowOwners.some((rowOwner) =>
           managerTechOwners.some(
             (managerOwner) =>
@@ -723,7 +824,8 @@ export function useDistributionBudget() {
         activeMasterCycleIds.has(String(row.appraisal_cycle_id)),
     );
     if (cycleMatches.length === 1) return cycleMatches[0];
-    if (cycleMatches.length > 1) return null;
+    if (cycleMatches.length > 1)
+      return isCompManagerLogin ? primaryParent(cycleMatches) : null;
 
     // Never fall back to an unscoped or archived-cycle allocation.
     return null;
@@ -890,15 +992,21 @@ export function useDistributionBudget() {
       ) || null,
     [cycleRows, liveTech?.appraisal_cycle_id, activeCycleId],
   );
-  const liveComps = useMemo(
-    () =>
-      liveTech
-        ? budgetCompManagerRows.filter(
-            (r) => String(r.budget_distribution_id) === String(liveTech.id),
-          )
-        : [],
-    [budgetCompManagerRows, liveTech],
-  );
+  const liveComps = useMemo(() => {
+    if (!liveTech) return [];
+    // budgetmasterapi already returns only this manager's own child rows, so a
+    // Comp Manager login sums across every parent Tech-Ed instead of one.
+    if (isCompManagerLogin)
+      return budgetCompManagerRows.filter(
+        (r) =>
+          !activeCycleId ||
+          String(r.appraisal_cycle_id || "") === String(activeCycleId) ||
+          String(r.budget_distribution_id) === String(liveTech.id),
+      );
+    return budgetCompManagerRows.filter(
+      (r) => String(r.budget_distribution_id) === String(liveTech.id),
+    );
+  }, [budgetCompManagerRows, liveTech, isCompManagerLogin, activeCycleId]);
   const liveMaster = useMemo(
     () =>
       liveTech
@@ -924,7 +1032,8 @@ export function useDistributionBudget() {
   }, [budgetAuditLog, liveTech]);
 
   const cmNodes = useMemo(() => {
-    if (!applies || !activeCycleId || !techOwnerKey) return [];
+    if (!applies || !activeCycleId || (!techOwnerKey && !isCompManagerLogin))
+      return [];
     const managerStats = new Map();
     const currentTechOwner = techOwnerKey;
     const signedInManagerAliases = [
@@ -941,7 +1050,9 @@ export function useDistributionBudget() {
       user?.display_name,
       user?.email,
       user?.email_id,
-    ].filter(Boolean).flatMap((value) => ownerParts(value));
+    ]
+      .filter(Boolean)
+      .flatMap((value) => ownerParts(value));
     const isSignedInManager = (value) =>
       currentUserMatchesManager(value, user, employeeRows) ||
       ownerMatches(value, signedInManagerAliases);
@@ -1026,7 +1137,12 @@ export function useDistributionBudget() {
         employee.tech_ed_id ||
         "";
       const techAssignment = resolveTechAssignment(rawTechAssignment);
-      if (!currentTechOwner || ownerKey(techAssignment) !== currentTechOwner)
+      // A Comp Manager login is already scoped server-side to its own team,
+      // which may span several Tech-Eds, so do not filter by one Tech-Ed.
+      if (
+        !isCompManagerLogin &&
+        (!currentTechOwner || ownerKey(techAssignment) !== currentTechOwner)
+      )
         return;
       if (!isActiveAndEligible(employee)) return;
       const rawManager =
@@ -1041,8 +1157,12 @@ export function useDistributionBudget() {
       // A real Comp Manager login receives only its own employees from
       // budgetmasterapi. Trust that server-side scope instead of requiring a
       // second browser identity match against a roster that omits the manager.
-      if (!isCompManagerLogin && isCompManagerView &&
-          !isSignedInManager(rawManager) && !isSignedInManager(manager))
+      if (
+        !isCompManagerLogin &&
+        isCompManagerView &&
+        !isSignedInManager(rawManager) &&
+        !isSignedInManager(manager)
+      )
         return;
       const key = ownerKey(manager);
       const stats = managerStats.get(key) || {
@@ -1119,44 +1239,46 @@ export function useDistributionBudget() {
     const matchingLiveComps = isCompManagerLogin
       ? liveComps
       : liveComps.filter((live) => {
-      const resolved = resolveManager(
-        live.comp_manager_display || live.comp_manager,
-      );
-      // A Comp Manager's own saved allocation must remain visible even when
-      // the restricted Appraisal Sheet roster omits their employee row or
-      // their team temporarily has no Active + Eligible employees. Requiring
-      // managerStats here made cmNodes empty and hid all saved budget values.
-      if (isCompManagerView) {
-        const aliases = [
-          user?.id,
-          user?.row_id,
-          user?.ROWID,
-          user?.user_id,
-          user?.userId,
-          user?.empId,
-          user?.emp_id,
-          user?.employeeId,
-          user?.employee_id,
-          user?.name,
-          user?.display_name,
-          user?.email,
-          user?.email_id,
-        ].filter(Boolean).flatMap((value) => ownerParts(value));
-        return (
-          currentUserMatchesManager(
+          const resolved = resolveManager(
             live.comp_manager_display || live.comp_manager,
-            user,
-            employeeRows,
-          ) ||
-          ownerMatches(
-            live.comp_manager_display || live.comp_manager,
-            aliases,
-          ) ||
-          ownerMatches(resolved, aliases)
-        );
-      }
-      return managerStats.has(ownerKey(resolved));
-    });
+          );
+          // A Comp Manager's own saved allocation must remain visible even when
+          // the restricted Appraisal Sheet roster omits their employee row or
+          // their team temporarily has no Active + Eligible employees. Requiring
+          // managerStats here made cmNodes empty and hid all saved budget values.
+          if (isCompManagerView) {
+            const aliases = [
+              user?.id,
+              user?.row_id,
+              user?.ROWID,
+              user?.user_id,
+              user?.userId,
+              user?.empId,
+              user?.emp_id,
+              user?.employeeId,
+              user?.employee_id,
+              user?.name,
+              user?.display_name,
+              user?.email,
+              user?.email_id,
+            ]
+              .filter(Boolean)
+              .flatMap((value) => ownerParts(value));
+            return (
+              currentUserMatchesManager(
+                live.comp_manager_display || live.comp_manager,
+                user,
+                employeeRows,
+              ) ||
+              ownerMatches(
+                live.comp_manager_display || live.comp_manager,
+                aliases,
+              ) ||
+              ownerMatches(resolved, aliases)
+            );
+          }
+          return managerStats.has(ownerKey(resolved));
+        });
 
     // A Comp Manager must have only one allocation row per Tech-Ed + cycle.
     // Legacy duplicate rows can exist when the same manager was saved once by
@@ -1187,7 +1309,18 @@ export function useDistributionBudget() {
         compByManager.set(key, live);
       }
     });
-    const currentLiveComps = Array.from(compByManager.values());
+    let currentLiveComps = Array.from(compByManager.values());
+    if (isCompManagerLogin && matchingLiveComps.length > 1) {
+      const sum = (field) =>
+        matchingLiveComps.reduce((total, row) => total + num(row[field]), 0);
+      currentLiveComps = currentLiveComps.map((row) => ({
+        ...row,
+        calculated_budget: sum("calculated_budget"),
+        applied_budget: sum("applied_budget"),
+        budget_base: sum("budget_base"),
+        original_headcount: sum("original_headcount"),
+      }));
+    }
     const savedKeys = new Set(
       currentLiveComps.map((live) =>
         ownerKey(
@@ -1306,9 +1439,36 @@ export function useDistributionBudget() {
     techEdOwners,
     activeCycleId,
     isCompManagerView,
+    isCompManagerLogin,
     user,
     liveTech,
     applies,
+  ]);
+
+  useEffect(() => {
+    if (!applies || !isCompManagerLogin || cycleLoading || budgetLoading)
+      return;
+    if (cmNodes.length) return;
+    console.warn("[Comp Manager budget] no allocation resolved", {
+      activeCycleId,
+      techOwnerKey,
+      hasLiveTech: Boolean(liveTech),
+      compRows: budgetCompManagerRows.length,
+      parentRows: budgetDistributionRows.length,
+      rosterRows: employeeRows.length,
+    });
+  }, [
+    applies,
+    isCompManagerLogin,
+    cycleLoading,
+    budgetLoading,
+    cmNodes.length,
+    activeCycleId,
+    techOwnerKey,
+    liveTech,
+    budgetCompManagerRows.length,
+    budgetDistributionRows.length,
+    employeeRows.length,
   ]);
 
   // A Tech-Ed preview may only see a Comp Manager allocation if the signed-in

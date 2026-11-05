@@ -19,6 +19,7 @@ import {
   employeeUtilized,
   byDate,
   readTechEdOriginalCount,
+  writeTechEdOriginalCount,
 } from "@/lib/distribution-budget";
 import { splitStamp } from "@/lib/budget-audit-local";
 import {
@@ -320,7 +321,6 @@ export function TechEdBudgetDistribution() {
     myUpdated,
   } = useDistributionBudget();
 
-
   const cycleLabel = String(
     activeCycle?.name ||
       liveMaster?.appraisal_cycle_name ||
@@ -344,11 +344,10 @@ export function TechEdBudgetDistribution() {
   const [drafts, setDrafts] = useState({});
   const [applyingPct, setApplyingPct] = useState(false);
 
-
   const selectedCompManager = selectedManagerNode?.name || "";
 
   const assignedTeam = useMemo(() => {
-    if (!activeCycleId || !techOwnerKey) return [];
+    if (!activeCycleId || (!techOwnerKey && !isCompManagerLogin)) return [];
     return employeeRows.filter((employee) => {
       if (employee.in_appraisal_sheet !== true) return false;
       const raw =
@@ -377,7 +376,10 @@ export function TechEdBudgetDistribution() {
       // Team Size is the current generated Appraisal_Sheet roster, not
       // the eligible payroll/budget subset. Inactive or Not Eligible employees
       // remain in the team count while they are still on this cycle's sheet.
+      // A Comp Manager login is scoped server-side to its own team (possibly
+      // across several Tech-Eds), so do not restrict it to one Tech-Ed.
       if (
+        !isCompManagerLogin &&
         !(Boolean(techOwnerKey) && ownerKey(assignment) === techOwnerKey)
       )
         return false;
@@ -400,6 +402,7 @@ export function TechEdBudgetDistribution() {
     techEdOwners,
     activeCycleId,
     isCompManagerView,
+    isCompManagerLogin,
     selectedCompManager,
   ]);
   const allTeam = assignedTeam;
@@ -443,11 +446,42 @@ export function TechEdBudgetDistribution() {
     const legacyCount = Number(liveTech?.headcount);
     if (Number.isFinite(legacyCount) && legacyCount > 0) return legacyCount;
     const persisted = liveTech?.original_headcount;
-    return liveTech?.original_headcount_is_persisted === true &&
-      persisted !== null && persisted !== undefined && String(persisted).trim() !== ""
-      ? num(persisted)
-      : 0;
-  }, [isCompManagerView, selectedManagerNode?.team0, liveTech, activeCycleId, techOwnerKey, loginTechOwner, currentTeamCount]);
+    if (
+      persisted !== null &&
+      persisted !== undefined &&
+      String(persisted).trim() !== "" &&
+      num(persisted) > 0
+    )
+      return num(persisted);
+    // Nothing saved yet: the baseline is the team at first allocation, which
+    // for now equals today's roster. It is frozen by the effect below, so
+    // later delegation/eligibility changes only move Current Count.
+    return hasLiveAllocation && currentTeamCount > 0 ? currentTeamCount : 0;
+  }, [
+    isCompManagerView,
+    selectedManagerNode?.team0,
+    liveTech,
+    activeCycleId,
+    techOwnerKey,
+    loginTechOwner,
+    currentTeamCount,
+    hasLiveAllocation,
+  ]);
+  useEffect(() => {
+    if (isCompManagerView || !hasLiveAllocation) return;
+    writeTechEdOriginalCount(
+      liveTech?.appraisal_cycle_id || activeCycleId,
+      techOwnerKey,
+      team0,
+    );
+  }, [
+    isCompManagerView,
+    hasLiveAllocation,
+    liveTech?.appraisal_cycle_id,
+    activeCycleId,
+    techOwnerKey,
+    team0,
+  ]);
   const allotted = isCompManagerView
     ? 0
     : cmNodes.reduce((s, n) => s + n.updated, 0);
@@ -685,7 +719,11 @@ export function TechEdBudgetDistribution() {
     <div className="tbd-root">
       <style>{CSS}</style>
 
-      {!isCompManagerView && !cycleLoading && !budgetLoading && !liveTech && !budgetError ? (
+      {!isCompManagerView &&
+      !cycleLoading &&
+      !budgetLoading &&
+      !liveTech &&
+      !budgetError ? (
         <div className="berr">
           {loginTechOwner
             ? "HR has not allocated your budget for the active appraisal cycle yet. Your Comp Managers are listed below; Allot % can be set once HR applies the budget in Budget Master."
@@ -847,7 +885,10 @@ export function TechEdBudgetDistribution() {
                     try {
                       for (const node of cmNodes) {
                         const draft = drafts[node.name];
-                        if (draft !== undefined && String(draft).trim() !== "") {
+                        if (
+                          draft !== undefined &&
+                          String(draft).trim() !== ""
+                        ) {
                           await setPct(node.name, draft);
                         }
                       }

@@ -3100,6 +3100,9 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         current_budget_base: stats.base,
         total_utilization: stats.utilized,
         original_headcount: savedOriginalCount,
+        // The value above is the repaired/immutable snapshot. Mark it as
+        // persisted so the screens do not discard it (they gate on this flag).
+        original_headcount_is_persisted: true,
       });
     }
 
@@ -3241,6 +3244,7 @@ async function calculateBudgetBases(app, bundle, techEdOwners = [], sourceRows) 
         current_budget_base: stats.base,
         total_utilization: stats.utilized,
         original_headcount: savedOriginalCount,
+        original_headcount_is_persisted: true,
         comp_manager_display: details.name || details.compKey,
       });
     }
