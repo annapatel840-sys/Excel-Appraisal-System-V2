@@ -456,7 +456,7 @@ const PANEL_SUBS = {
 };
 
 const REQUEST_FIELDS = [
-  ["appraiserTechED", "Appraiser Tech Ed"],
+  ["appraiserTechED", "Appraiser Tech-ED"],
   ["compManager", "Comp Manager"],
 ];
 
@@ -810,7 +810,7 @@ function PanelCard({ title, children }) {
   return (
     <div className="mt-2 rounded-[10px] border border-[#e5e7eb] px-3 py-2.5">
       {title && (
-        <h4 className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-[.04em] text-[#6b7280]">
+        <h4 className="mb-1.5 text-[10.5px] font-extrabold capitalize tracking-[.04em] text-[#6b7280]">
           {title}
         </h4>
       )}
@@ -1500,7 +1500,7 @@ function EmployeePanel({
   // ---------- MORE (My view: density, columns show / wrap) ----------
   const renderMore = () => (
     <div className="pt-1">
-      <h5 className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-[.06em] text-[#6b7280]">
+      <h5 className="mb-1.5 text-[10.5px] font-extrabold capitalize tracking-[.06em] text-[#6b7280]">
         Row density
       </h5>
 
@@ -1528,7 +1528,7 @@ function EmployeePanel({
 
       <hr className="my-3 border-[#e5e7eb]" />
 
-      <h5 className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-[.06em] text-[#6b7280]">
+      <h5 className="mb-1.5 text-[10.5px] font-extrabold capitalize tracking-[.06em] text-[#6b7280]">
         Saved with your view
       </h5>
 
@@ -1542,7 +1542,7 @@ function EmployeePanel({
 
       <hr className="my-3 border-[#e5e7eb]" />
 
-      <h5 className="mb-1.5 text-[10.5px] font-extrabold uppercase tracking-[.06em] text-[#6b7280]">
+      <h5 className="mb-1.5 text-[10.5px] font-extrabold capitalize tracking-[.06em] text-[#6b7280]">
         Columns
       </h5>
 

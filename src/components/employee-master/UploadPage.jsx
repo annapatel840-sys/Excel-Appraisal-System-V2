@@ -61,7 +61,7 @@ const EMP_FIELDS = [
   { key: "organization", label: "Department", column: "department" },
   { key: "reportingManager", label: "Reporting Manager", column: "repo_manager" },
   { key: "compManager", label: "Director", column: "director" },
-  { key: "appraiser", label: "Appraiser / Tech ED", column: "appraiser_tech_ed" },
+  { key: "appraiser", label: "Appraiser / Tech-ED", column: "appraiser_tech_ed" },
   { key: "managerMail", label: "Email ID", column: "email_id" },
   { key: "doj", label: "Date of Joining", column: "date_of_join" },
   { key: "status", label: "Status", column: "emp_status" },
@@ -121,7 +121,7 @@ const FB_FIELDS = [
   { key: "interviewCount", label: "Interview Count", column: "interview_count" },
   { key: "atRisk", label: "At Risk", column: "at_risk" },
   { key: "compManagerName", label: "Comp Manager", column: "comp_manager", uploadHeaders: ["Compensation Manager"] },
-  { key: "techEd", label: "Tech ED", column: "tech_ed", uploadHeaders: ["Tech-ED", "Tech Ed"] },
+  { key: "techEd", label: "Tech-ED", column: "tech_ed", uploadHeaders: ["Tech-ED", "Tech Ed"] },
   { key: "promo", label: "Eligible for Promotion", column: "eligible_for_promotion" },
   { key: "newTitle", label: "New Title", column: "new_title" },
   { key: "remarks", label: "Remarks", column: "remarks" },
@@ -157,7 +157,7 @@ const UPLOADS = {
       "Employees already in the master are updated; new ones are added. A new employee needs a name.",
       "Status must be Active or Inactive.",
       "Match your file's columns to the template. A field set to Skip keeps its current value.",
-      "Appraiser / Tech ED written as a bare name is matched to one employee, or left unchanged.",
+      "Appraiser / Tech-ED written as a bare name is matched to one employee, or left unchanged.",
     ],
   },
   pay: {
@@ -191,7 +191,7 @@ const UPLOADS = {
   sheet: {
     label: "Appraisal Sheet",
     short: "AS",
-    desc: "For Tech EDs who work offline. Fill the sheet, upload it back.",
+    desc: "For Tech-EDs who work offline. Fill the sheet, upload it back.",
     fields: SHEET_FIELDS,
     rules: [
       "For the current Annual cycle only (open).",
@@ -1398,7 +1398,7 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
                     <th>Row</th>
                     <th>Employee ID</th>
                     <th>Column</th>
-                    <th>What is wrong</th>
+                    <th>What Is Wrong</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1614,7 +1614,7 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
       <div className="up-work">
         <div className="up-pane up-main">
           <div className="up-ph">
-            <h2>Upload data</h2>
+            <h2>Upload Data</h2>
             <span className="note">
               {def && cycle
                 ? `${def.label} · ${cycle.name}`
@@ -1624,7 +1624,7 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
 
           {/* 1 */}
           <div className="up-sec">
-            <span className="up-chip">1 · Appraisal cycle</span>
+            <span className="up-chip" style={{ textTransform: "none" }}>1 · Appraisal Cycle</span>
             <div className="up-row" style={{ marginTop: 10 }}>
               <div>
                 <label className="up-lbl" htmlFor="up-cycle">
@@ -1637,7 +1637,7 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
                   disabled={loading || !!loadError}
                   onChange={(e) => chooseCycle(e.target.value)}
                 >
-                  <option value="">— Select appraisal cycle —</option>
+                  <option value="">— Select Appraisal Cycle —</option>
                   <optgroup label="Open cycles">
                     {openCycles.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -1677,7 +1677,7 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
 
           {/* 2 */}
           <div className="up-sec">
-            <span className="up-chip">2 · What are you uploading?</span>
+            <span className="up-chip" style={{ textTransform: "none" }}>2 · What Are You Uploading?</span>
             <div className="up-tiles">
               {ORDER.map((k) => {
                 const a = availability(k);
@@ -1713,7 +1713,7 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
 
           {/* 3 */}
           <div className="up-sec">
-            <span className="up-chip">3 · Template and file</span>
+            <span className="up-chip" style={{ textTransform: "none" }}>3 · Template and File</span>
             {!def ? (
               <div className="up-callout">
                 <div className="b">
@@ -1802,7 +1802,7 @@ export function UploadPage({ handlers = {}, initialScreen = "", initialCycleId =
 
           {/* 4 */}
           <div className="up-sec">
-            <span className="up-chip">4 · Check and upload</span>
+            <span className="up-chip" style={{ textTransform: "none" }}>4 · Check and Upload</span>
             <div style={{ marginTop: 10 }}>{renderSection4()}</div>
           </div>
         </div>
@@ -1857,7 +1857,7 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .up-main{flex:1;min-width:0}
 .up-side{width:360px;flex-shrink:0}
 .up-sec{padding:14px 18px}
-.up-chip{display:inline-block;background:#E6EEF8;color:var(--navy);border:1px solid #C9D8EC;border-radius:6px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.5px;padding:3px 9px}
+.up-chip{display:inline-block;background:#E6EEF8;color:var(--navy);border:1px solid #C9D8EC;border-radius:6px;font-size:10px;font-weight:800;text-transform:capitalize;letter-spacing:.5px;padding:3px 9px}
 .up-wc{height:9px;border-radius:5px;background:linear-gradient(90deg,#A8E6C3,#86D3D6,#9DBDEB,#BFAEE2);margin:0 18px}
 .up-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.up-row.end{justify-content:flex-end}
 .up-lbl{font-size:11px;color:var(--muted);font-weight:600;display:block;margin-bottom:4px}
@@ -1879,7 +1879,7 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .up-btn{border-radius:6px;padding:8px 14px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid #D1D5DB;background:#fff;color:var(--ink)}
 .up-btn:hover:not(:disabled){background:#F3F4F6}
 .up-btn.pri{background:var(--navy);color:#fff;border-color:var(--navy)}
-.up-btn.main{background:var(--main);color:#fff;border-color:var(--main);text-transform:uppercase;font-weight:800;letter-spacing:.4px;padding:9px 22px}
+.up-btn.main{background:var(--main);color:#fff;border-color:var(--main);text-transform:capitalize;font-weight:800;letter-spacing:.4px;padding:9px 22px}
 .up-btn.main:hover:not(:disabled){background:#2560D6}
 .up-btn.sm{padding:4px 10px;font-size:11px}
 .up-btn:disabled{opacity:.45;cursor:not-allowed}
@@ -1922,7 +1922,7 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .up-tabs button{flex:1;background:none;border:none;border-bottom:2px solid transparent;padding:10px 6px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer}
 .up-tabs button.on{color:var(--ink);font-weight:800;border-bottom-color:var(--navy)}
 .up-spb{padding:12px 14px;max-height:calc(100vh - 260px);overflow:auto}
-.up-h3{font-size:11px;font-weight:800;color:var(--navy);text-transform:uppercase;letter-spacing:.4px;margin:4px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--line)}
+.up-h3{font-size:11px;font-weight:800;color:var(--navy);text-transform:capitalize;letter-spacing:.4px;margin:4px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--line)}
 .up-blk{border:1px solid var(--line);border-left:4px solid var(--main);border-radius:8px;padding:8px 11px;margin-bottom:9px;background:#fff}
 .up-blk.a{border-left-color:var(--warn)}.up-blk.x{border-left-color:#9CA3AF}
 .up-blk .top{display:flex;align-items:center;gap:8px;margin-bottom:4px}

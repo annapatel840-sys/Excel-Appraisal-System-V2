@@ -159,7 +159,7 @@ const CSS = `
 .ds .cis-s input{flex:1;height:30px;border:1px solid #9AA7B4;border-radius:4px;padding:0 10px;font-size:12.5px}
 .ds .scope{font-size:11.5px;font-weight:600;color:#0B5F5B;background:#E6F3F2;border-radius:6px;padding:4px 9px}
 .ds table.cis{width:100%;border-collapse:collapse;table-layout:fixed}
-.ds .cis th{background:#F4F6F9;color:#6B7A89;font-size:11px;font-weight:700;text-align:left;padding:6px 10px;border-bottom:1px solid #E3E9EC;border-right:1px solid #E3E9EC;text-transform:uppercase;letter-spacing:.02em}
+.ds .cis th{background:#F4F6F9;color:#6B7A89;font-size:11px;font-weight:700;text-align:left;padding:6px 10px;border-bottom:1px solid #E3E9EC;border-right:1px solid #E3E9EC;text-transform:capitalize;letter-spacing:.02em}
 .ds .cis th.r{text-align:right}
 .ds .cis td{padding:4px 10px;border-bottom:1px solid #E3E9EC;border-right:1px solid #E3E9EC;vertical-align:top;font-size:12.75px}
 .ds .cis th:last-child,.ds .cis td:last-child{border-right:0}
@@ -216,7 +216,7 @@ const CSS = `
 .ds .chip.good{background:#ECFDF3;border-color:#B7E4C7;color:#166534;font-weight:700}.ds .chip.now{background:#EEF0F3;font-weight:700}
 .ds .rtxt{margin-top:4px;line-height:1.45}
 .ds .rc{border:1px solid #E5E7EB;border-radius:10px;padding:10px 12px;margin-top:8px}
-.ds .rc h4{margin:0 0 6px;font-size:10.5px;font-weight:800;letter-spacing:.04em;color:#6B7280;text-transform:uppercase}
+.ds .rc h4{margin:0 0 6px;font-size:10.5px;font-weight:800;letter-spacing:.04em;color:#6B7280;text-transform:capitalize}
 .ds .rrow{display:flex;justify-content:space-between;gap:8px;padding:3px 0}.ds .rrow+.rrow{border-top:1px dashed #EEF0F3}
 .ds .rbig{font-size:20px;font-weight:800}
 .ds .rbar{height:7px;border-radius:4px;background:#EEF1F4;overflow:hidden;margin:6px 0 4px}.ds .rbar i{display:block;height:100%;background:#15803D}
@@ -754,7 +754,7 @@ export function DetailScreenPage() {
               <tr>
                 <th>#</th>
                 <th>Employee</th>
-                <th className="rn">Reward hike %</th>
+                <th className="rn">Reward Hike %</th>
               </tr>
             </thead>
             <tbody>
@@ -870,7 +870,7 @@ export function DetailScreenPage() {
         {!hideAlert ? (
           <div className="alert" role="status">
             <span className="tag">
-              <i>▲</i>Budget changed
+              <i>▲</i>Budget Changed
             </span>
             <div className="vp">
               <span className="mq">

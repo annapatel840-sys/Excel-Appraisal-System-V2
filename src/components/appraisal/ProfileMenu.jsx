@@ -27,7 +27,7 @@ const initialsOf = (name, email) => {
 
 function SectionLabel({ children }) {
   return (
-    <p className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+    <p className="px-1 pb-1.5 text-[10px] font-semibold capitalize tracking-wide text-slate-500">
       {children}
     </p>
   );

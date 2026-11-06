@@ -86,7 +86,7 @@ function InfoCell({ label, value }) {
           truncate
           text-[7px]
           font-medium
-          uppercase
+          capitalize
           tracking-wide
           text-[#64748b]
         "
@@ -622,7 +622,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
                   text-left
                   text-[7px]
                   font-semibold
-                  uppercase
+                  capitalize
                   tracking-wide
                   text-[#334155]
                 "
@@ -637,7 +637,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
                   text-right
                   text-[7px]
                   font-semibold
-                  uppercase
+                  capitalize
                   tracking-wide
                   text-[#334155]
                 "
@@ -652,7 +652,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
                   text-right
                   text-[7px]
                   font-semibold
-                  uppercase
+                  capitalize
                   tracking-wide
                   text-[#334155]
                 "
@@ -667,7 +667,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
                   text-right
                   text-[7px]
                   font-semibold
-                  uppercase
+                  capitalize
                   tracking-wide
                   text-[#334155]
                 "

@@ -174,7 +174,7 @@ export function buildFeedbackEntries(tab, items, { currentCycleName, fallback = 
       title: "",
       sub: [
         item.ccm ? `Comp manager: ${item.ccm}` : "",
-        item.te ? `Tech ED: ${item.te}` : "",
+        item.te ? `Tech-ED: ${item.te}` : "",
       ]
         .filter(Boolean)
         .join(" · "),

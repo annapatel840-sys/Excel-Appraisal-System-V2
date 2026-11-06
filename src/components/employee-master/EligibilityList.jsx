@@ -358,14 +358,14 @@ export function EligibilityList({
       ],
       sections: [
         {
-          title: "Not Eligible, by reason",
+          title: "Not Eligible, by Reason",
           rows: countBy(
             notEl,
             (e) => e.eligibleReason || "Excluded by criteria",
           ),
         },
         {
-          title: "Eligible, by reason",
+          title: "Eligible, by Reason",
           rows: countBy(
             el,
             (e) => e.eligibleReason || "Criteria (no exception)",

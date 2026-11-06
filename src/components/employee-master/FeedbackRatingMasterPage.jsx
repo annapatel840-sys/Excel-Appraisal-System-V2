@@ -86,8 +86,8 @@ const COLS = [
   { k: "cf", h: "Client Feedback", t: "text", w: 250 },
   { k: "risk", h: "At Risk", t: "text", w: 80 },
   { k: "ccm", h: "Comp Manager", t: "text", w: 120 },
-  { k: "te", h: "Tech ED", t: "text", w: 100 },
-  { k: "batch", h: "Upload batch", t: "text", w: 112 },
+  { k: "te", h: "Tech-ED", t: "text", w: 100 },
+  { k: "batch", h: "Upload Batch", t: "text", w: 112 },
 ];
 const PER = 20;
 const VIEW_KEY = "fbo_view_v2";
@@ -644,7 +644,7 @@ export function FeedbackRatingMasterPage({
                 setPage(1);
               }}
             >
-              <option value="">All dates</option>
+              <option value="">All Dates</option>
               {effList.map((d) => (
                 <option key={d} value={d}>
                   {fmtDate(d)}
@@ -661,12 +661,12 @@ export function FeedbackRatingMasterPage({
                 setMenuOpen(false);
               }}
             >
-              My notes
+              My Notes
             </button>
             {notesOpen && (
               <div className="pop notes open">
                 <div className="nt-head">
-                  <h4>My notes</h4>
+                  <h4>My Notes</h4>
                   <span>Saved in this browser only · not shared</span>
                 </div>
                 <textarea value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Write a note…" />
@@ -736,8 +736,8 @@ export function FeedbackRatingMasterPage({
                 setPage(1);
               }}
             />
-            <select className="sel" aria-label="Tech ED" value={te} onChange={(e) => { setTe(e.target.value); setPage(1); }}>
-              <option value="">Tech ED: all</option>
+            <select className="sel" aria-label="Tech-ED" value={te} onChange={(e) => { setTe(e.target.value); setPage(1); }}>
+              <option value="">Tech-ED: All</option>
               {teList.map((x) => (
                 <option key={x}>{x}</option>
               ))}
@@ -972,7 +972,7 @@ export function FeedbackRatingMasterPage({
                     </div>
                   ) : (
                     <div className="rp-card">
-                      <h4>Row density</h4>
+                      <h4>Row Density</h4>
                       <label className="rp-chk">
                         <input type="radio" name="fb-dn" checked={dens === "comfortable"} onChange={() => setDens("comfortable")} /> Comfortable
                       </label>
@@ -1115,7 +1115,7 @@ const FB_CSS = `
 .fb-root .note{background:var(--info-bg);border:1px solid var(--info-border);color:var(--info);border-radius:10px;padding:9px 12px}
 .fb-root .tiles2{display:flex;gap:10px;flex-wrap:wrap;padding:12px 14px 0}
 .fb-root .tile{flex:1;min-width:150px;border:1px solid var(--line);border-radius:10px;padding:12px;border-left:5px solid var(--main)}
-.fb-root .tile small{color:var(--muted);font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;display:block}
+.fb-root .tile small{color:var(--muted);font-size:10.5px;font-weight:800;text-transform:capitalize;letter-spacing:.05em;display:block}
 .fb-root .tile b{display:block;font-size:20px;font-weight:800;color:var(--navy);margin-top:4px;font-variant-numeric:tabular-nums}.fb-root .tile em{font-style:normal;font-size:11.5px;font-weight:700}
 .fb-root .twx{border:1px solid var(--th-line);border-radius:8px;overflow:auto;margin:12px 14px 0;max-height:calc(100vh - 372px);min-height:240px}
 .fb-root table{border-collapse:collapse}
@@ -1150,7 +1150,7 @@ const FB_CSS = `
 .fb-cm .it{display:block;width:100%;text-align:left;background:none;border:0;padding:6px 8px;border-radius:6px;cursor:pointer;font:inherit;font-weight:600}.fb-cm .it:hover{background:#EAF2FF}
 .fb-cm .chk{display:flex;gap:6px;align-items:center;padding:4px 8px;font-weight:600}
 .fb-cm hr{border:0;border-top:1px solid #E5E7EB;margin:6px 0}
-.fb-cm h5{margin:4px 0;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#6B7280}
+.fb-cm h5{margin:4px 0;font-size:10px;font-weight:800;text-transform:capitalize;letter-spacing:.05em;color:#6B7280}
 .fb-cm .r{display:flex;gap:6px;margin:4px 0}.fb-cm .r select,.fb-cm .r input{min-width:0;flex:1;border:1px solid #D1D5DB;border-radius:6px;padding:5px 7px;background:#fff;font:inherit}
 .fb-cm .txt{border:1px solid #D1D5DB;border-radius:6px;padding:6px 10px;background:#fff;font:inherit}
 .fb-cm .lst{max-height:150px;overflow:auto;border:1px solid #E5E7EB;border-radius:6px;padding:4px 6px;margin-top:4px}
@@ -1177,10 +1177,10 @@ const FB_CSS = `
 .fb-root .rp-note{font-size:10.5px;color:var(--rp-muted);margin-top:4px}
 .fb-root .rp-info{border:1px solid var(--rp-line);background:#F7F8FA;border-radius:8px;padding:6px 10px;margin-top:8px;font-size:12px}
 .fb-root .rp-card{border:1px solid var(--rp-line);border-left:5px solid var(--main);border-radius:8px;padding:10px 12px;margin-top:8px}
-.fb-root .rp-card h4{margin:0 0 6px;font-size:10.5px;font-weight:800;letter-spacing:.04em;color:var(--rp-muted);text-transform:uppercase}
+.fb-root .rp-card h4{margin:0 0 6px;font-size:10.5px;font-weight:800;letter-spacing:.04em;color:var(--rp-muted);text-transform:capitalize}
 .fb-root .rp-row{display:flex;justify-content:space-between;gap:8px;padding:3px 0;font-variant-numeric:tabular-nums}.fb-root .rp-row+.rp-row{border-top:1px dashed #EEF0F3}
 .fb-root .rp-call{border:1px solid var(--rp-line);border-left:5px solid var(--main);border-radius:8px;padding:9px 12px;margin-top:8px;background:#fff}
-.fb-root .rp-call .tg{font-size:10px;font-weight:800;text-transform:uppercase;color:var(--info);background:var(--info-bg);border-radius:4px;padding:2px 7px}
+.fb-root .rp-call .tg{font-size:10px;font-weight:800;text-transform:capitalize;color:var(--info);background:var(--info-bg);border-radius:4px;padding:2px 7px}
 .fb-root .rp-call .ln{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px;font-weight:700}
 .fb-root .rp-call .sub{color:var(--rp-muted);margin-top:2px;font-weight:400;font-size:12px}
 .fb-root .rp-chk{display:flex;gap:8px;align-items:center;padding:4px 0;font-weight:600}

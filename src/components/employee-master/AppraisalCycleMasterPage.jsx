@@ -84,7 +84,7 @@ const BDESC = {
   archive:
     "The final Appraisal Sheet values move into Payroll Data for this cycle (used as last year's values next cycle) and the cycle is cleared from the Appraisal Sheet and Detail screen. The cycle becomes read-only and cannot be reopened. A window shows what is still pending first.",
   generate:
-    "One row per eligible employee; feeds the Detail screen. Comp Manager defaults to the Tech ED of each employee; Delegation can change it later. Runs once; after it, any change goes to the Change list. Nothing blocks this step.",
+    "One row per eligible employee; feeds the Detail screen. Comp Manager defaults to the Tech-ED of each employee; Delegation can change it later. Runs once; after it, any change goes to the Change list. Nothing blocks this step.",
 };
 const BTN = {
   Upcoming: { k: "activate", name: "Activate", to: "Active" },
@@ -423,7 +423,7 @@ export function AppraisalCycleMasterPage({
     if (L.gen)
       out.push({
         k: "lt",
-        label: "Letters to send",
+        label: "Letters to Send",
         n: L.toSend,
         sub: `${L.toSend} To send · ${L.sent} Sent · ${L.dropped} Dropped`,
       });
@@ -1003,7 +1003,7 @@ export function AppraisalCycleMasterPage({
             ? "Checking Delegation…"
             : dlSetup === 0
               ? "Not generated · Apply Eligibility Criteria, then use Generate Delegation in the Eligibility List"
-              : "Generated · Default Tech-Ed assignment is saved; open Delegation to review",
+              : "Generated · Default Tech-ED assignment is saved; open Delegation to review",
         !act ? "lk" : dlSetup === undefined ? "pd" : dlSetup === 0 ? "wn" : "ok",
         !act || dlSetup === undefined
           ? []
@@ -1227,9 +1227,9 @@ export function AppraisalCycleMasterPage({
               <th>ID</th>
               <th>Cycle</th>
               <th>Process</th>
-              <th>Effective date</th>
-              <th>Start date</th>
-              <th>Close date</th>
+              <th>Effective Date</th>
+              <th>Start Date</th>
+              <th>Close Date</th>
               <th>Status</th>
               <th>Next</th>
               <th>Actions</th>
@@ -2500,7 +2500,7 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .acx-btn{border:1px solid #D1D5DB;border-radius:6px;padding:6px 12px;background:#fff;font-weight:700;font-size:12px;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
 .acx-btn:hover{background:#F7F9FC}
 .acx-btn.p{background:var(--navy);color:#fff;border-color:var(--navy)}.acx-btn.p:hover{background:#1B3A5B}
-.acx-btn.cta{background:var(--cta);color:#fff;border-color:var(--cta);font-weight:800;letter-spacing:.03em;text-transform:uppercase;padding:7px 16px}
+.acx-btn.cta{background:var(--cta);color:#fff;border-color:var(--cta);font-weight:800;letter-spacing:.03em;text-transform:capitalize;padding:7px 16px}
 .acx-btn:disabled{cursor:not-allowed;color:#B6BCC6;border-color:var(--line);background:#FAFAFB}
 .acx-btn.cta:disabled{background:#A9C1F2;border-color:#A9C1F2;color:#fff}
 .acx-btn.sm{padding:3px 9px;font-size:11.5px}
@@ -2545,9 +2545,9 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .acx-sc{flex:1;border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:8px;min-width:0}
 .acx-sc.cur{border:2px solid var(--cta);background:#F5F8FF}.acx-sc.chk{border:1px solid var(--line);background:#FAFAFB}
 .acx-sc .top{display:flex;align-items:center;gap:10px}.acx-sc .top .acx-mut{margin-left:auto}
-.acx-sc .sl{display:inline-block;background:var(--hb);color:var(--navy);border:1px solid var(--hl);border-radius:5px;font-size:10px;font-weight:800;letter-spacing:.07em;padding:3px 8px;text-transform:uppercase}
+.acx-sc .sl{display:inline-block;background:var(--hb);color:var(--navy);border:1px solid var(--hl);border-radius:5px;font-size:10px;font-weight:800;letter-spacing:.07em;padding:3px 8px;text-transform:capitalize}
 .acx-sc .big{font-size:20px;font-weight:800;color:var(--cta)}.acx-sc .mut2{color:#4B5563}
-.acx-sc .h3{font-size:10.5px;font-weight:800;letter-spacing:.06em;color:var(--muted);margin-top:4px;text-transform:uppercase}
+.acx-sc .h3{font-size:10.5px;font-weight:800;letter-spacing:.06em;color:var(--muted);margin-top:4px;text-transform:capitalize}
 .acx-sc .foot{display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:10px;border-top:1px solid var(--line)}
 .acx-sc .foot .tip{font-size:11px;color:var(--muted);flex:1}
 .acx-stl{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:2px 0 4px}
@@ -2561,7 +2561,7 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .acx-vr .lb{flex:0 0 190px;color:#4B5563}.acx-vr .rs{flex:1;font-weight:700}
 .acx-vr .acx-btn.link{flex:0 0 auto}
 .acx-vr.ok .rs{color:var(--green)}.acx-vr.no .rs{color:var(--red)}
-.acx .ckg{font-size:10.5px;font-weight:800;letter-spacing:.07em;color:var(--muted);margin:10px 0 2px;text-transform:uppercase}
+.acx .ckg{font-size:10.5px;font-weight:800;letter-spacing:.07em;color:var(--muted);margin:10px 0 2px;text-transform:capitalize}
 .acx .ck{display:flex;align-items:center;gap:10px;padding:8px 6px;border-bottom:1px solid var(--row-line)}
 .acx .ck .ic{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex:0 0 22px}
 .acx .ck.ok .ic{background:var(--green-bg);color:var(--green)}.acx .ck.wn .ic{background:var(--amber-bg);color:var(--amber)}.acx .ck.lk .ic{background:#F3F4F6;color:#9AA3B0}.acx .ck.pd .ic{background:var(--hi);color:var(--info)}
@@ -2597,7 +2597,7 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .acx-co.gn{background:var(--green-bg);border-color:#BFE3CB;border-left:5px solid var(--green)}.acx-co.gn .tg{color:var(--green)}
 .acx-cd{border:1px solid #E5E7EB;border-radius:10px;padding:9px 12px;margin:8px 0;background:#fff}
 .acx-cd.cdr{display:flex;align-items:center;gap:8px}.acx-cd.cdr .cdb{flex:1;min-width:0}
-.acx-cd .hd{font-size:10.5px;font-weight:800;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:6px}
+.acx-cd .hd{font-size:10.5px;font-weight:800;text-transform:capitalize;color:var(--muted);display:flex;align-items:center;gap:6px}
 .acx-cd .hd:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--tc)}
 .acx-cd .bg{font-size:20px;font-weight:800;color:var(--navy);margin-top:2px}.acx-cd .m1{color:#4B5563;font-size:11.5px;margin-top:2px}
 .acx-au{padding:8px 0;border-bottom:1px solid var(--row-line)}.acx-au .m1{color:var(--muted);font-size:11px}

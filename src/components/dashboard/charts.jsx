@@ -115,7 +115,7 @@ export function GroupTable({ columns, rows }) {
     <div className="overflow-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="bg-muted/60 text-left text-[11px] tracking-wide text-muted-foreground uppercase">
+          <tr className="bg-muted/60 text-left text-[11px] tracking-wide text-muted-foreground capitalize">
             {columns.map((c) => (
               <th
                 key={c.key}

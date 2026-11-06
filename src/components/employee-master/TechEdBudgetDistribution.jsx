@@ -620,7 +620,7 @@ export function TechEdBudgetDistribution() {
           lakh(sum) +
           ", which is " +
           lakh(sum - myUpdated) +
-          " more than your available Tech-Ed budget of " +
+          " more than your available Tech-ED budget of " +
           lakh(myUpdated) +
           ".",
       );
@@ -628,7 +628,7 @@ export function TechEdBudgetDistribution() {
     }
     if (!liveTech?.id) {
       setErr(
-        "Your Tech-Ed budget allocation is not saved yet, so Comp Manager budgets cannot be allotted.",
+        "Your Tech-ED budget allocation is not saved yet, so Comp Manager budgets cannot be allotted.",
       );
       return;
     }
@@ -727,7 +727,7 @@ export function TechEdBudgetDistribution() {
         <div className="berr">
           {loginTechOwner
             ? "HR has not allocated your budget for the active appraisal cycle yet. Your Comp Managers are listed below; Allot % can be set once HR applies the budget in Budget Master."
-            : "No matching Tech-Ed budget was found for this login in the active appraisal cycle. Check that the signed-in account matches the Appraiser Tech-ED value in Appraisal Sheet."}
+            : "No matching Tech-ED budget was found for this login in the active appraisal cycle. Check that the signed-in account matches the Appraiser Tech-ED value in Appraisal Sheet."}
         </div>
       ) : null}
       <div className="btop">
@@ -741,7 +741,7 @@ export function TechEdBudgetDistribution() {
         </span>
         <span className="sep" />
         <span>
-          {isCompManagerView ? "Comp Manager Allocation" : "Tech-Ed Allocation"}{" "}
+          {isCompManagerView ? "Comp Manager Allocation" : "Tech-ED Allocation"}{" "}
           · updated {hasLiveAllocation ? lakh(myUpdated) : "—"}
         </span>
         <span className="sep" />
@@ -1016,7 +1016,7 @@ export function TechEdBudgetDistribution() {
                                         <th>Date</th>
                                         <th className="n">Allocated</th>
                                         <th className="n">Updated</th>
-                                        <th className="n">Team size</th>
+                                        <th className="n">Team Size</th>
                                         <th className="n">
                                           Allotted to {LEVELS[1]}s
                                         </th>
@@ -1146,7 +1146,7 @@ export function TechEdBudgetDistribution() {
                                       <th>Date</th>
                                       <th className="n">Allocated</th>
                                       <th className="n">Updated</th>
-                                      <th className="n">Team size</th>
+                                      <th className="n">Team Size</th>
                                       <th className="n">Allot %</th>
                                     </tr>
                                   </thead>

@@ -79,7 +79,7 @@ const T = {
 // Built-in roles. Their keys are fixed; labels can be changed in AccessRole.
 const BUILT_IN_ROLES = [
   { key: 'hr', label: 'HR Admin', source: 'catalyst', catalystRole: 'HR', seesAll: true, fixed: true },
-  { key: 'techEd', label: 'Tech ED', source: 'delegation', seesAll: false, fixed: true },
+  { key: 'techEd', label: 'Tech-ED', source: 'delegation', seesAll: false, fixed: true },
   { key: 'compMgr', label: 'Comp Manager', source: 'delegation', seesAll: false, fixed: true }
 ];
 

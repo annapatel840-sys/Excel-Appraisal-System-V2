@@ -126,7 +126,7 @@ export function ProfileMenu({ user, items = [], onSignOut, dark = true }) {
 
           <div className="max-h-[360px] overflow-auto p-1.5">
             <div
-              className="flex items-center gap-2 px-3 pb-1 pt-2 text-[11px] font-bold uppercase tracking-wide"
+              className="flex items-center gap-2 px-3 pb-1 pt-2 text-[11px] font-bold capitalize tracking-wide"
               style={{ color: MUTED }}
             >
               <svg

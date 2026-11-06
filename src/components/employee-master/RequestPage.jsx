@@ -20,7 +20,7 @@ export function RequestPage() {
       id: `SR-${Date.now()}`,
       employeeId: employeeId.trim(),
       details: text,
-      requestedBy: user?.name || user?.email || "Tech Ed",
+      requestedBy: user?.name || user?.email || "Tech-ED",
       requestedAt: new Date().toISOString(),
       status: "Pending",
     });
@@ -46,7 +46,7 @@ export function RequestPage() {
         newId: "Requested change",
         reason,
         byId: user?.id || user?.email || "teched",
-        byName: user?.name || user?.email || "Tech Ed",
+        byName: user?.name || user?.email || "Tech-ED",
         on: new Date().toISOString(),
         status: "Pending",
         decidedBy: "",
@@ -98,7 +98,7 @@ export function RequestPage() {
         {canDelegate && (
           <button type="button" onClick={() => setView("delegation")} className="rounded-md border border-[#cbd5e1] bg-white p-4 text-left hover:bg-slate-50">
             <div className="text-sm font-semibold text-[#173b63]">Delegation Request</div>
-            <div className="mt-1 text-[11px] text-slate-500">Request Comp Manager or Appraiser Tech Ed delegation changes for HR approval.</div>
+            <div className="mt-1 text-[11px] text-slate-500">Request Comp Manager or Appraiser Tech-ED delegation changes for HR approval.</div>
           </button>
         )}
         <button type="button" onClick={() => setView("screen")} className="rounded-md border border-[#cbd5e1] bg-white p-4 text-left hover:bg-slate-50">

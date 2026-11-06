@@ -48,7 +48,7 @@ function Tile({ className, children, ...rest }) {
 }
 
 const Cap = ({ children }) => (
-  <span className={cn(MONO, "text-[10px] font-extrabold uppercase tracking-[.08em] text-[#6B7280]")}>
+  <span className={cn(MONO, "text-[10px] font-extrabold capitalize tracking-[.08em] text-[#6B7280]")}>
     {children}
   </span>
 );
@@ -317,7 +317,7 @@ export function DashboardOverview() {
   // levels this login may look at
   const levels = useMemo(() => {
     const all = [
-      { k: "te", n: "Tech ED", of: (r) => r.appraiserTechED },
+      { k: "te", n: "Tech-ED", of: (r) => r.appraiserTechED },
       { k: "cm", n: "Comp Manager", of: (r) => r.compManager },
     ];
     if (effectiveId === "compmanager") return [];

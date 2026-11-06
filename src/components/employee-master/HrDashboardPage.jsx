@@ -192,7 +192,7 @@ export function HrDashboardPage() {
           <table className="hrd-t">
             <thead>
               <tr>
-                <th>Tech ED</th>
+                <th>Tech-ED</th>
                 <th className="n">Budget</th>
                 <th>Used</th>
                 <th className="n">Target PB</th>

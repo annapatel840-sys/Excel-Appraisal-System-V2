@@ -83,7 +83,7 @@ export function NotificationBell({ items = [] }) {
                 key={item.key}
                 className="flex flex-col gap-1.5 rounded-lg border border-[#e5e7eb] bg-white px-2.5 py-2"
               >
-                <span className="text-[10px] font-extrabold uppercase tracking-[.06em] text-[#6b7280]">
+                <span className="text-[10px] font-extrabold capitalize tracking-[.06em] text-[#6b7280]">
                   {item.tag}
                 </span>
                 <div className="text-[12.5px] font-bold leading-snug text-[#111827]">

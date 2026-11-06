@@ -27,7 +27,7 @@ const PAGE_SIZE = 20;
 const TRACKED_FIELDS = [
   ["designation", "Designation"],
   ["compManager", "Comp Manager"],
-  ["appraiser", "Tech ED"],
+  ["appraiser", "Tech-ED"],
   ["reportingManager", "Reporting Manager"],
   ["status", "Status"],
 ];
@@ -395,12 +395,12 @@ export function ChangeListMismatchPage({
           </>
         ),
       },
-      { key: "type", label: "Change type", w: 110, get: (r) => r.type, render: (r) => <Tag label={r.type} /> },
-      { key: "field", label: "Field changed", w: 130, get: (r) => r.field },
-      { key: "old", label: "Old value", w: 150, get: (r) => r.old },
+      { key: "type", label: "Change Type", w: 110, get: (r) => r.type, render: (r) => <Tag label={r.type} /> },
+      { key: "field", label: "Field Changed", w: 130, get: (r) => r.field },
+      { key: "old", label: "Old Value", w: 150, get: (r) => r.old },
       {
         key: "nw",
-        label: "New value",
+        label: "New Value",
         w: 150,
         get: (r) => r.nw,
         render: (r) => <span style={{ color: "#15803D", fontWeight: 700 }}>{r.nw}</span>,
@@ -428,8 +428,8 @@ export function ChangeListMismatchPage({
         ),
       },
       { key: "reason", label: "Reason", w: 210, get: (r) => r.reason, render: (r) => <Tag label={r.reason} /> },
-      { key: "techEd", label: "Tech ED", w: 150, get: (r) => r.techEd },
-      { key: "date", label: "Date detected", w: 120, get: (r) => r.date },
+      { key: "techEd", label: "Tech-ED", w: 150, get: (r) => r.techEd },
+      { key: "date", label: "Date Detected", w: 120, get: (r) => r.date },
       { key: "status", label: "Status", w: 100, get: (r) => r.status, render: (r) => <Tag label={r.status} /> },
     ],
     [],
@@ -572,7 +572,7 @@ export function ChangeListMismatchPage({
     ],
     sections: [
       {
-        title: "Pending changes, by type",
+        title: "Pending Changes, by Type",
         rows: ["New", "Changed", "Removed"]
           .map((t) => [t, typeCount(t)])
           .filter(([, n]) => n > 0),

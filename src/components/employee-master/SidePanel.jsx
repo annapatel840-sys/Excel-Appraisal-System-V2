@@ -50,7 +50,7 @@ export function SidePanel({
       <div className="emx-pbody">
         {current === "view" && (
           <>
-            <h5>Show / hide columns</h5>
+            <h5>Show / Hide Columns</h5>
             {defs.map((d, index) => {
               const c = grid.cols.find((x) => x.key === d.key);
               return (
@@ -68,7 +68,7 @@ export function SidePanel({
               );
             })}
 
-            <h5>Row density</h5>
+            <h5>Row Density</h5>
             {[
               ["comfortable", "Comfortable"],
               ["compact", "Compact"],
@@ -92,7 +92,7 @@ export function SidePanel({
 
         {current === "stats" && stats && (
           <>
-            <h5>Eligibility numbers</h5>
+            <h5>Eligibility Numbers</h5>
             <table className="emx-st">
               <tbody>
                 {stats.summary.map(([label, n]) => (

@@ -539,7 +539,7 @@ const BUDGET_MASTER_CSS = `
 .bm-pan-row{display:flex;align-items:flex-end;gap:10px}
 .bm-pan-row label{display:block}
 .bm-pan-row label.bm-grow{flex:1;min-width:0}
-.bm-pan-row small{display:block;margin-bottom:3px;color:var(--muted);font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.bm-pan-row small{display:block;margin-bottom:3px;color:var(--muted);font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:capitalize}
 .bm-hint{flex:1 1 auto;min-width:0;padding-bottom:9px;color:var(--muted);font-size:11.5px}
 
 .bm-pin{width:84px;border:1px solid #9CA3AF;border-radius:5px;padding:5px 8px;background:#fff;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}
@@ -554,17 +554,17 @@ const BUDGET_MASTER_CSS = `
 .bm-btn{display:inline-flex;align-items:center;justify-content:center;height:34px;border:1px solid #D1D5DB;background:#fff;border-radius:6px;padding:6px 12px;font-weight:700;white-space:nowrap;cursor:pointer}
 .bm-btn:hover:not(:disabled){background:#F9FAFB}
 .bm-btn:disabled{opacity:.45;cursor:not-allowed}
-.bm-btn-main{background:var(--main);border-color:var(--main);color:#fff;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
+.bm-btn-main{background:var(--main);border-color:var(--main);color:#fff;font-weight:800;text-transform:capitalize;letter-spacing:.03em}
 .bm-btn-main:hover:not(:disabled){background:#2560d4}
 
 .bm-tiles{display:flex;gap:8px;flex-wrap:wrap}
 .bm-tile{flex:1;min-width:110px;border:1px solid var(--line);border-radius:10px;padding:7px 10px;background:#fff}
-.bm-tile small{display:block;color:var(--muted);font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase}
+.bm-tile small{display:block;color:var(--muted);font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:capitalize}
 .bm-tile b{display:block;margin-top:2px;color:var(--navy);font-size:15px;font-weight:800;font-variant-numeric:tabular-nums}
 .bm-tile em{display:block;margin-top:2px;font-style:normal;font-size:10.5px;font-weight:700}
 .bm-tile-hl{background:var(--info-bg);border-color:var(--info-border)}
 
-.bm-chip{align-self:flex-start;display:inline-block;background:var(--th-bg);color:var(--navy);border:1px solid var(--th-line);border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase}
+.bm-chip{align-self:flex-start;display:inline-block;background:var(--th-bg);color:var(--navy);border:1px solid var(--th-line);border-radius:5px;padding:3px 9px;font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:capitalize}
 
 .bm-tw{border:1px solid var(--th-line);border-radius:8px;overflow:auto;max-height:68vh}
 .bm-table{width:100%;border-collapse:collapse}
@@ -586,7 +586,7 @@ const BUDGET_MASTER_CSS = `
 .bm-gmenu .bm-gi:hover{background:var(--row-hover)}
 .bm-gmenu .bm-gi-check{display:flex;gap:6px;align-items:center}
 .bm-gmenu hr{border:0;border-top:1px solid var(--line);margin:6px 0}
-.bm-gmenu .bm-gl{color:var(--muted);font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;margin:2px 0 4px}
+.bm-gmenu .bm-gl{color:var(--muted);font-size:10.5px;font-weight:800;text-transform:capitalize;letter-spacing:.05em;margin:2px 0 4px}
 .bm-gmenu select,.bm-gmenu input[type=text]{width:100%;border:1px solid #D1D5DB;border-radius:5px;padding:4px 6px;font-size:11.5px;margin-bottom:4px;background:#fff}
 .bm-gmenu .bm-gck{max-height:150px;overflow:auto;margin-top:2px}
 .bm-gmenu .bm-gck label{display:flex;gap:6px;align-items:center;padding:2px 4px}
@@ -1615,7 +1615,7 @@ function HRApplyBudget() {
     }
     if (draftCount || stagedCount) {
       setError(
-        "Apply, publish, or discard Tech-Ed edits before changing the organization percentage.",
+        "Apply, publish, or discard Tech-ED edits before changing the organization percentage.",
       );
       return;
     }
@@ -1761,7 +1761,7 @@ function HRApplyBudget() {
       (target && !Object.prototype.hasOwnProperty.call(pending, target))
     ) {
       setError(
-        "Make a Tech-Ed percentage change before selecting Apply changes.",
+        "Make a Tech-ED percentage change before selecting Apply changes.",
       );
       return;
     }
@@ -1785,11 +1785,11 @@ function HRApplyBudget() {
     const available = bud(orgBaseFromRoster, org);
     if (previewTotal > available + 0.5) {
       setError(
-        "Not applied. Tech-Ed Updated Budgets total " +
+        "Not applied. Tech-ED Updated Budgets total " +
           money(previewTotal) +
           ", which exceeds the Org Updated Budget of " +
           money(available) +
-          ". Reduce one or more Tech-Ed percentages.",
+          ". Reduce one or more Tech-ED percentages.",
       );
       return;
     }
@@ -2138,7 +2138,7 @@ function HRApplyBudget() {
           <div className="bm-pan">
             <div className="bm-pan-head">
               <b>Tech-ED Budget</b>
-              <span className="bm-mut">Same % for every Tech ED</span>
+              <span className="bm-mut">Same % for every Tech-ED</span>
             </div>
             <div className="bm-pan-row">
               <label>
@@ -2154,7 +2154,7 @@ function HRApplyBudget() {
                   disabled={!canConfig || !orgApplied || savingOrg}
                   onFocus={selectOnFocus}
                   onChange={(e) => applyPctToAll(e.target.value)}
-                  aria-label="Percentage for all Tech EDs"
+                  aria-label="Percentage for all Tech-EDs"
                 />
               </label>
               <span className="bm-hint"></span>
@@ -2216,7 +2216,7 @@ function HRApplyBudget() {
             ) : null}
           </div>
           <div className="bm-tile">
-            <small>Allotted to Tech EDs</small>
+            <small>Allotted to Tech-EDs</small>
             <b>
               {orgApplied && displayedOrgUpdated > 0
                 ? pct2((appliedTotal / displayedOrgUpdated) * 100)
@@ -2478,10 +2478,10 @@ function HRApplyBudget() {
                 <tr>
                   <td colSpan={HR_COLS.length} className="bm-empty">
                     {!orgApplied
-                      ? "Press Apply org % to load the Tech ED list from the Appraisal Sheet."
+                      ? "Press Apply org % to load the Tech-ED list from the Appraisal Sheet."
                       : budgetLoading
-                        ? "Loading Tech ED budget rows…"
-                        : "No Tech ED assignments were found for this appraisal cycle."}
+                        ? "Loading Tech-ED budget rows…"
+                        : "No Tech-ED assignments were found for this appraisal cycle."}
                   </td>
                 </tr>
               )}
@@ -2538,7 +2538,7 @@ function HRApplyBudget() {
 
         <div className="bm-foot">
           {!orgApplied
-            ? "Apply org % first to load the Tech ED list"
+            ? "Apply org % first to load the Tech-ED list"
             : stripMessage +
               (stagedCount
                 ? " · " + stagedCount + " applied, not published"
@@ -2546,7 +2546,7 @@ function HRApplyBudget() {
               (notPublishedCount
                 ? " · " +
                   notPublishedCount +
-                  " Tech ED" +
+                  " Tech-ED" +
                   (notPublishedCount > 1 ? "s" : "") +
                   " not published"
                 : "")}
@@ -2641,7 +2641,7 @@ function HRAuditTrail() {
           className="px-3 py-1.5 text-left text-[12.5px] font-semibold text-white"
           style={{ background: NAVY }}
         >
-          Org % — audit trail
+          Org % — Audit Trail
         </div>
         <div className="p-3.5">
           <AuditTable
@@ -2649,7 +2649,7 @@ function HRAuditTrail() {
             dateFilter={orgDates}
             onDateFilter={setOrgDates}
             showOwner={false}
-            budgetLabel="Org budget"
+            budgetLabel="Org Budget"
           />
         </div>
       </section>
@@ -2661,11 +2661,11 @@ function HRAuditTrail() {
           className="px-3 py-1.5 text-left text-[12.5px] font-semibold text-white"
           style={{ background: NAVY }}
         >
-          Tech ED % — audit trail
+          Tech-ED % — Audit Trail
         </div>
         <div className="flex items-center gap-2 border-b border-[#e1e5eb] px-3.5 py-2 text-[12px]">
           <label>
-            Tech ED
+            Tech-ED
             <select
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
@@ -2685,7 +2685,7 @@ function HRAuditTrail() {
             rows={tedRows}
             dateFilter={tedDates}
             onDateFilter={setTedDates}
-            ownerLabel="Tech ED"
+            ownerLabel="Tech-ED"
           />
         </div>
       </section>

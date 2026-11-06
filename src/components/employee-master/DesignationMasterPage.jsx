@@ -54,8 +54,8 @@ const META = {
     { key: "n", label: "Designation", w: 260 },
     { key: "dept", label: "Department", w: 170 },
     { key: "band", label: "Band", w: 90 },
-    { key: "nt", label: "Next type", w: 170 },
-    { key: "nx", label: "Next designation(s)", w: 380 },
+    { key: "nt", label: "Next Type", w: 170 },
+    { key: "nx", label: "Next Designation(s)", w: 380 },
     { key: "on", label: "Status", w: 110 },
     { key: "hist", label: "History", w: 130 },
     { key: "lmod", label: "Last Modified", w: 150 },
@@ -70,7 +70,7 @@ const META = {
   band: [
     { key: "n", label: "Band", w: 140 },
     { key: "cnt", label: "Designations", w: 110 },
-    { key: "mem", label: "Mapped designations", w: 520 },
+    { key: "mem", label: "Mapped Designations", w: 520 },
     { key: "hist", label: "History", w: 130 },
     { key: "lmod", label: "Last Modified", w: 150 },
   ],
@@ -492,7 +492,7 @@ export function DesignationMasterPage({ readOnly = false }) {
       ),
     },
     {
-      key: "nt", label: "Next type", get: (d) => TYPES[d.nextType] || "(none)",
+      key: "nt", label: "Next Type", get: (d) => TYPES[d.nextType] || "(none)",
       render: (d) => (
         <select
           className={"dmx-ctl" + (edDes(d.id, "nextType") ? " ed" : "")}
@@ -504,7 +504,7 @@ export function DesignationMasterPage({ readOnly = false }) {
       ),
     },
     {
-      key: "nx", label: "Next designation(s)", get: (d) => nxText(d),
+      key: "nx", label: "Next Designation(s)", get: (d) => nxText(d),
       render: (d) => {
         const t = d.nextType && draft.options[d.nextType] ? d.nextType : "";
         if (t === "S") {
@@ -664,7 +664,7 @@ export function DesignationMasterPage({ readOnly = false }) {
     { key: "n", label: "Band", get: (b) => b.code },
     { key: "cnt", label: "Designations", get: (b) => b.ids.length },
     {
-      key: "mem", label: "Mapped designations", get: (b) => memText(b.ids),
+      key: "mem", label: "Mapped Designations", get: (b) => memText(b.ids),
       render: (b) => (
         <div className="dmx-mem">
           <button
@@ -837,7 +837,7 @@ export function DesignationMasterPage({ readOnly = false }) {
             <div className="sub">User selects one designation</div>
           </div>
           <div className="dmx-card">
-            <h4>Dropdown shows</h4>
+            <h4>Dropdown Shows</h4>
             {act.length ? (
               act.map((d) => (
                 <div className="rw" key={d.id}><span>{d.name}</span><span className="dmx-mut">{d.department || "—"}</span></div>
@@ -906,7 +906,7 @@ export function DesignationMasterPage({ readOnly = false }) {
           })}
         </tbody>
       </table>
-      <h5>Row density</h5>
+      <h5>Row Density</h5>
       {[["compact", "Compact"], ["comfortable", "Comfortable"]].map(([k, l]) => (
         <label key={k}><input type="radio" name="dmx-dens" checked={grid.dens === k} onChange={() => grid.setDens(k)} /> {l}</label>
       ))}
@@ -950,7 +950,7 @@ export function DesignationMasterPage({ readOnly = false }) {
   /* ---------- render ---------- */
   const optionsPage = (
     <div className="dmx-opt">
-      <h3>Next designation options</h3>
+      <h3>Next Designation Options</h3>
       <p className="dmx-mut">Switch on the ways HR can set the next designation. At least one stays on.</p>
       <p className="dmx-mut">
         Everything on this screen applies to the current cycle ({draft.cycle?.name || "—"}). Past cycles and earlier Appraisal Sheets keep the mapping they were saved with.
@@ -1202,10 +1202,10 @@ const CSS = `
 .dmx-ctl.unm{border-color:#D92D20;color:#B42318;font-weight:700}
 .dmx-big{padding:6px 11px;font-size:12.5px;white-space:nowrap}
 .emx-mini.tog{background:#E6EEF8;border-color:#9DBDEB;color:#102A43}
-.dmx-main{border:1px solid #2F6FED;background:#2F6FED;color:#fff;border-radius:6px;padding:6px 14px;font:inherit;font-weight:800;text-transform:uppercase;letter-spacing:.03em;cursor:pointer}
+.dmx-main{border:1px solid #2F6FED;background:#2F6FED;color:#fff;border-radius:6px;padding:6px 14px;font:inherit;font-weight:800;text-transform:capitalize;letter-spacing:.03em;cursor:pointer}
 .dmx-main:hover{background:#2560d4}.dmx-main:disabled{opacity:.5;cursor:not-allowed}
 .dmx-addbar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding:10px 14px;background:#DCEBFF;border-bottom:1px solid #B9D3F5;flex:none}
-.dmx-addbar label{display:flex;flex-direction:column;gap:3px;font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;color:#1D4FA8}
+.dmx-addbar label{display:flex;flex-direction:column;gap:3px;font-size:10.5px;font-weight:800;text-transform:capitalize;letter-spacing:.04em;color:#1D4FA8}
 .dmx-err{color:#C0392B;font-weight:700;font-size:11.5px}
 /* message bar */
 .dmx-msg{display:flex;gap:10px;align-items:center;margin:10px 14px 0;padding:9px 12px;border-radius:8px;background:#FEF3F2;border:1px solid #FDA29B;color:#B42318;font-weight:600;flex:none}
@@ -1336,7 +1336,7 @@ const CSS = `
 .dmx .emx-panel{width:340px}
 .dmx-loading{padding:40px;text-align:center;color:#6B7280}
 .dmx-mut{color:#6B7280}
-.dmx-unmp{display:inline-block;background:#D92D20;color:#fff;border-radius:5px;padding:2px 9px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em}
+.dmx-unmp{display:inline-block;background:#D92D20;color:#fff;border-radius:5px;padding:2px 9px;font-size:11px;font-weight:800;text-transform:capitalize;letter-spacing:.04em}
 .dmx-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:5px}
 .dmx-chip{background:#E6EEF8;color:#102A43;border-radius:10px;padding:1px 8px;font-size:11px;font-weight:600}
 .dmx-chip.gi{background:#F1F5F9;color:#64748B}
@@ -1359,17 +1359,17 @@ const CSS = `
 .dmx-pvc{display:flex;gap:6px;margin-top:8px}.dmx-pvc .dmx-ctl{flex:1;min-width:0}
 .dmx-call{border:1px solid #E5E7EB;border-left:5px solid #2F6FED;border-radius:8px;padding:9px 12px;margin-top:8px;background:#fff}
 .dmx-call.am{border-left-color:#B7791F;background:#FEF6E7}.dmx-call.gr{border-left-color:#15803D;background:#ECFDF3}
-.dmx-call .tg{font-size:10px;font-weight:800;text-transform:uppercase;color:#1D4FA8;background:#DCEBFF;border-radius:4px;padding:2px 7px}
+.dmx-call .tg{font-size:10px;font-weight:800;text-transform:capitalize;color:#1D4FA8;background:#DCEBFF;border-radius:4px;padding:2px 7px}
 .dmx-call.am .tg{color:#B7791F;background:#FDEBC8}.dmx-call.gr .tg{color:#15803D;background:#D5F3E1}
 .dmx-call .ln{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:6px;font-weight:700}
 .dmx-call .sub{color:#6B7280;margin-top:2px}
 .dmx-card{border:1px solid #E5E7EB;border-left:5px solid #2F6FED;border-radius:8px;padding:10px 12px;margin-top:8px}
-.dmx-card h4{margin:0 0 6px;font-size:10.5px;font-weight:800;letter-spacing:.04em;color:#6B7280;text-transform:uppercase}
+.dmx-card h4{margin:0 0 6px;font-size:10.5px;font-weight:800;letter-spacing:.04em;color:#6B7280;text-transform:capitalize}
 .dmx-card .rw{display:flex;justify-content:space-between;gap:8px;padding:3px 0}.dmx-card .rw+.rw{border-top:1px dashed #EEF0F3}
 .dmx-note{font-size:10.5px;color:#6B7280;margin-top:4px}
 .dmx-cmp{width:100%;border-collapse:collapse}.dmx-cmp td{padding:4px 0;font-size:12px}.dmx-cmp td:first-child{width:50%}
 .dmx-mm{position:fixed;z-index:300;width:300px;background:#fff;border:1px solid #C9D8EC;border-radius:10px;box-shadow:0 8px 24px rgba(16,42,67,.18);padding:8px}
-.dmx-mm .h{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#6B7280;margin:2px 2px 6px}
+.dmx-mm .h{font-size:10px;font-weight:800;text-transform:capitalize;letter-spacing:.05em;color:#6B7280;margin:2px 2px 6px}
 .dmx-mm .lst{max-height:220px;overflow:auto;border:1px solid #E5E7EB;border-radius:6px;margin-top:6px;padding:4px}
 .dmx-mm .lst label{display:flex;gap:6px;align-items:center;padding:2px 4px;cursor:pointer}
 .dmx-mm .ft{display:flex;justify-content:space-between;margin-top:8px}

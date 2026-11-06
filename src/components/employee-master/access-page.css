@@ -47,7 +47,7 @@
 .access-screen table { width: 100%; border-collapse: collapse; }
 .access-screen th { background: var(--head); text-align: left; padding: 7px 10px; font-size: 11px; color: var(--navy2); position: sticky; top: 0; z-index: 1; white-space: nowrap; font-weight: 700; vertical-align: top; }
 .access-screen td { padding: 6px 10px; border-top: 1px solid var(--line2); vertical-align: middle; }
-.access-screen tr.grp td { background: #F7F9FC; font-weight: 800; font-size: 11px; color: var(--muted); letter-spacing: .4px; text-transform: uppercase; }
+.access-screen tr.grp td { background: #F7F9FC; font-weight: 800; font-size: 11px; color: var(--muted); letter-spacing: .4px; text-transform:capitalize; }
 .access-screen .note { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
 .access-screen .key { color: #94A3B8; font-family: Consolas, "DejaVu Sans Mono", monospace; font-size: 11px; }
 .access-screen .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
@@ -111,7 +111,7 @@
 .access-screen .sres > div { padding: 7px 10px; cursor: pointer; display: flex; justify-content: space-between; gap: 8px; font-size: 12px; }
 .access-screen .sres > div:hover { background: #F0FAFA; }
 .access-screen .qc { padding: 10px 12px; border-bottom: 1px solid var(--line2); background: #FBFCFD; }
-.access-screen .qc h4, .access-screen .sec h4 { margin: 0 0 6px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; display: flex; justify-content: space-between; }
+.access-screen .qc h4, .access-screen .sec h4 { margin: 0 0 6px; font-size: 11px; color: var(--muted); text-transform:capitalize; letter-spacing: .4px; display: flex; justify-content: space-between; }
 .access-screen .qc .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .access-screen .qc .hint { color: var(--muted); font-size: 12px; }
 .access-screen .qc select { padding: 4px 6px; border: 1px solid var(--line); border-radius: 4px; font-size: 12px; max-width: 100%; background: #fff; }

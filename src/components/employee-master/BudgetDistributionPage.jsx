@@ -57,7 +57,7 @@ const numOrBlank = (value) => {
 const HR_W = { level: 70, owner: 190, pct: 70, original: 104, additional: 104, updated: 104, utilised: 96, remaining: 96, util: 84, origCount: 70, curCount: 70, status: 76, access: 104 };
 const HR_COLS = [
   { key: "level", label: "Level", kind: "text", get: (i) => i.level },
-  { key: "owner", label: "Tech-Ed", kind: "text", get: (i) => i.owner },
+  { key: "owner", label: "Tech-ED", kind: "text", get: (i) => i.owner },
   { key: "pct", label: "Budget %", kind: "number", num: true, get: (i) => numOrBlank(i.row.budget_percentage) },
   { key: "original", label: "Original Budget", kind: "number", num: true, get: (i) => numOrBlank(i.row.budget_amount) },
   { key: "additional", label: "Additional Budget", kind: "number", num: true, get: (i) => numOrBlank(i.row.additional_budget) },
@@ -509,7 +509,7 @@ export function BudgetDistributionPage() {
               : persistedCount;
     return {
       row,
-      level: "Tech-Ed",
+      level: "Tech-ED",
       owner: resolveTechOwner(row.tech_ed_id) || row.tech_ed_id || "—",
       originalCount,
       liveCount: countForTechOwner(row.tech_ed_id),
@@ -557,7 +557,7 @@ export function BudgetDistributionPage() {
         </span>
         <span className="sep" />
         <span>
-          <b>{rows.length}</b> Tech-Ed Allocation{rows.length === 1 ? "" : "s"}
+          <b>{rows.length}</b> Tech-ED Allocation{rows.length === 1 ? "" : "s"}
         </span>
         <span className="readonly">Read Only · HR</span>
         <button
@@ -580,7 +580,7 @@ export function BudgetDistributionPage() {
         >
           <span>Distribution Summary</span>
           <span className="muted-small" style={{ color: "#d6e4f5" }}>
-            All Tech-Ed Budgets
+            All Tech-ED Budgets
             <span style={{ marginLeft: 10 }}>{summaryOpen ? "▾" : "▸"}</span>
           </span>
         </button>
@@ -588,7 +588,7 @@ export function BudgetDistributionPage() {
         {summaryOpen && (
           <div className="summary">
             <div>
-              <div className="label">Tech-Ed Count</div>
+              <div className="label">Tech-ED Count</div>
               <div className="value">{rows.length}</div>
               <div className="sub muted">Active Budget Records</div>
             </div>
@@ -633,7 +633,7 @@ export function BudgetDistributionPage() {
           aria-expanded={tableOpen}
         >
           <span>
-            Tech-Ed Budget Distribution
+            Tech-ED Budget Distribution
             <span className="cnt">{rows.length} records</span>
           </span>
           <span className="muted-small" style={{ color: "#d6e4f5" }}>
@@ -644,11 +644,11 @@ export function BudgetDistributionPage() {
  
         {tableOpen &&
           (loading && rows.length === 0 ? (
-            <div className="empty">Loading Tech-Ed budget distribution…</div>
+            <div className="empty">Loading Tech-ED budget distribution…</div>
           ) : error ? (
             <div className="error">{error}</div>
           ) : rows.length === 0 ? (
-            <div className="empty">No active Tech-Ed budget records found.</div>
+            <div className="empty">No active Tech-ED budget records found.</div>
           ) : (
             <div className="scroll">
               <FilterStatus tf={tf} noun="records" />
@@ -666,7 +666,7 @@ export function BudgetDistributionPage() {
                 <tbody>
                   {tf.rows.length === 0 && (
                     <tr className="ft-empty">
-                      <td colSpan={HR_COLS.length + 1}>No Tech-Ed records match the filters.</td>
+                      <td colSpan={HR_COLS.length + 1}>No Tech-ED records match the filters.</td>
                     </tr>
                   )}
                   {tf.rows.map(({ row, owner, originalCount, liveCount }) => {
@@ -676,7 +676,7 @@ export function BudgetDistributionPage() {
                     return (
                       <Fragment key={key}>
                         <tr className="tech">
-                          <td><b>Tech-Ed</b></td>
+                          <td><b>Tech-ED</b></td>
                           <td>
                             <div className="owner">{owner || row.tech_ed_id || "—"}</div>
                             {owner && owner !== row.tech_ed_id ? <div className="muted-small">{row.tech_ed_id}</div> : null}
@@ -704,7 +704,7 @@ export function BudgetDistributionPage() {
                             <td colSpan={HR_COLS.length + 1}>
                               <div className="detail">
                                 <div className="detail-grid">
-                                  <div className="detail-item"><div className="label">Tech-Ed</div><b>{owner || row.tech_ed_id || "—"}</b></div>
+                                  <div className="detail-item"><div className="label">Tech-ED</div><b>{owner || row.tech_ed_id || "—"}</b></div>
                                   <div className="detail-item"><div className="label">Budget percentage</div><b>{pct(row.budget_percentage)}</b></div>
                                   <div className="detail-item"><div className="label">Original team count</div><b>{originalCount}</b></div>
                                   <div className="detail-item"><div className="label">Current team count</div><b>{liveCount}</b></div>

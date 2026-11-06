@@ -561,7 +561,7 @@ function BudgetTab({ sub, employee, rows, budget, audit, budgetCtx, onViewBudget
     return (
       <>
         <div className="rp-card">
-          <h4>Current consumption</h4>
+          <h4>Current Consumption</h4>
           <div className="rp-row">
             <span>Used</span>
             <span className={`rp-big ${cls(cur)}`}>{f1(cur)}%</span>
@@ -628,13 +628,13 @@ function BudgetTab({ sub, employee, rows, budget, audit, budgetCtx, onViewBudget
     const rank = tr.length > 1 && idx > -1 ? Math.round(((tr.length - 1 - idx) / (tr.length - 1)) * 100) : 100;
     return (
       <div className="rp-card">
-        <h4>Total Reward hike % in team</h4>
+        <h4>Total Reward Hike % in Team</h4>
         <table className="rp-tbl">
           <thead>
             <tr>
               <th>#</th>
               <th>Employee</th>
-              <th className="rp-n">Reward hike %</th>
+              <th className="rp-n">Reward Hike %</th>
             </tr>
           </thead>
           <tbody>
@@ -688,7 +688,7 @@ function BudgetTab({ sub, employee, rows, budget, audit, budgetCtx, onViewBudget
     const p = pct(paid, tgt);
     return (
       <div className="rp-card">
-        <h4>PB paid vs target</h4>
+        <h4>PB Paid vs Target</h4>
         <div className="rp-row">
           <span>Paid</span>
           <span className="rp-big">{f1(p)}%</span>

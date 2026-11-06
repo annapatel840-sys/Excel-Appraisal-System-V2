@@ -1,4 +1,3 @@
-
 import { createContext, useContext, useEffect, useState } from "react";
 
 import { CATALYST_SESSION_EXPIRED_EVENT } from "./catalyst-api";
@@ -198,7 +197,7 @@ export function CatalystAuthGate({ children, onSignedIn, onSignOut }) {
               <div className="mb-8 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-600 text-xl font-bold">
                 CT
               </div>
-              <p className="text-sm font-medium uppercase tracking-[0.2em] text-blue-300">
+              <p className="text-sm font-medium capitalize tracking-[0.2em] text-blue-300">
                 Wissen Technologies
               </p>
               <h1 className="mt-4 text-4xl font-semibold leading-tight">

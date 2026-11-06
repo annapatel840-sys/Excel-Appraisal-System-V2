@@ -608,7 +608,7 @@ const MX_CSS = `
 .mx-card:hover{box-shadow:0 1px 4px rgba(16,42,67,.15)}
 .mx-card:focus-visible{outline:2px solid #2F6FED;outline-offset:1px}
 .mx-top{display:flex;justify-content:space-between;align-items:flex-start;gap:6px;margin-bottom:4px}
-.mx-name{font-size:11px;font-weight:800;color:${INK};text-transform:uppercase;letter-spacing:.02em}
+.mx-name{font-size:11px;font-weight:800;color:${INK};text-transform:capitalize;letter-spacing:.02em}
 .mx-chev{font-size:11px;color:#9CA3AF;margin-left:4px}
 .mx-cyc{font-size:10px;color:#9CA3AF;margin-top:1px;text-align:right}
 .mx-tr{margin-bottom:4px}

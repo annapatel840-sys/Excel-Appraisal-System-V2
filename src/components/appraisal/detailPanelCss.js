@@ -34,7 +34,7 @@ export const PANEL_CSS = `
 .rp-foot { flex: 0 0 auto; border-top: 1px solid var(--rp-line); padding: 8px 14px 8px 16px; }
 .rp-note { font-size: 10.5px; color: var(--rp-muted); }
 .rp-card { border: 1px solid var(--rp-line); border-radius: 10px; padding: 10px 12px; margin-top: 8px; }
-.rp-card h4 { margin: 0 0 6px; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; color: var(--rp-muted); text-transform: uppercase; }
+.rp-card h4 { margin: 0 0 6px; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; color: var(--rp-muted); text-transform:capitalize; }
 .rp-muted { color: var(--rp-muted); }
 .rp-ok { color: var(--rp-green); } .rp-warn { color: var(--rp-amber); } .rp-bad { color: var(--rp-red); }
 .rp-big { font-size: 20px; font-weight: 800; }
@@ -74,7 +74,7 @@ export const PANEL_CSS = `
 .rp-grads{background:#FFF1D6;border-color:#E8A317;color:#7A4A00;font-weight:700}
 .rp-rg td,.rp-rg th{white-space:nowrap}
 .rp-rg tr.rp-cur td{background:#F1F6FF;font-weight:600}
-.rp-fbh{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#5B6B7E;margin:14px 0 6px}
+.rp-fbh{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:capitalize;color:#5B6B7E;margin:14px 0 6px}
 .rp-flags{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
 .rp-fl{display:flex;flex-direction:column;gap:1px;padding:7px 9px;border-radius:7px;border-left:4px solid;font-size:12px}
 .rp-fl span{color:#4A5868}
@@ -84,7 +84,7 @@ export const PANEL_CSS = `
 .rp-subs:empty{display:none}
 .rp-ig{display:grid;grid-template-columns:1fr 1fr;gap:6px}
 .rp-it{border:1px solid #E3E9EC;border-radius:8px;padding:6px 9px;display:flex;flex-direction:column;gap:1px;background:#fff}
-.rp-it span{font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:#6B7A89}
+.rp-it span{font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:capitalize;color:#6B7A89}
 .rp-it b{font-size:13px;color:#102A43}
 .rp-it i{font-style:normal;font-size:10.5px;color:#6B7A89}
 .rp-it.rp-hl{background:#FFF1D6;border-color:#E8A317}.rp-it.rp-hl b{color:#7A4A00}

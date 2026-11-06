@@ -48,7 +48,7 @@ const MISM = [
   {
     id: "m4",
     name: "Delegation change",
-    src: "Tech ED or Comp Manager change, against the Delegation. HR must resolve it.",
+    src: "Tech-ED or Comp Manager change, against the Delegation. HR must resolve it.",
     sel: false,
   },
 ];
@@ -59,14 +59,14 @@ const UPS = [
   ["u4", "Appraisal Sheet", "Current Annual cycle only"],
   ["u5", "History", "Past cycles"],
 ];
-const ROLES = ["HR", "Tech ED", "Manager"];
+const ROLES = ["HR", "Tech-ED", "Manager"];
 const QBASE = [
   ["hr1", "HR", "Show employees with no payroll data", "Main row"],
   ["hr2", "HR", "Compare hike with last cycle", "Main row"],
   ["hr3", "HR", "Who is above band P75", "Under More"],
-  ["te1", "Tech ED", "My team hike vs budget", "Main row"],
-  ["te2", "Tech ED", "Employees with no rating", "Main row"],
-  ["te3", "Tech ED", "Similar experience", "Under More"],
+  ["te1", "Tech-ED", "My team hike vs budget", "Main row"],
+  ["te2", "Tech-ED", "Employees with no rating", "Main row"],
+  ["te3", "Tech-ED", "Similar experience", "Under More"],
   ["mg1", "Manager", "Show my team summary", "Main row"],
   ["mg2", "Manager", "Who has no proposal yet", "Main row"],
 ];
@@ -395,8 +395,8 @@ const [locationsLoading, setLocationsLoading] = useState(true);
       <table className="ct">
         <thead>
           <tr>
-            <th>Cycle type</th>
-            <th>Default process</th>
+            <th>Cycle Type</th>
+            <th>Default Process</th>
             <th>Note</th>
           </tr>
         </thead>
@@ -438,11 +438,11 @@ const [locationsLoading, setLocationsLoading] = useState(true);
         <thead>
           <tr>
             <th>Category</th>
-            <th>Source and what it compares</th>
+            <th>Source and What It Compares</th>
             <th>Accept</th>
             <th>Ignore</th>
-            <th>Go to screen</th>
-            <th>Ignore needs remark</th>
+            <th>Go to Screen</th>
+            <th>Ignore Needs Remark</th>
             <th>Showstopper</th>
           </tr>
         </thead>
@@ -577,9 +577,9 @@ const [locationsLoading, setLocationsLoading] = useState(true);
       <table className="ct">
         <thead>
           <tr>
-            <th>Upload screen</th>
-            <th>Cycle scope</th>
-            <th>Offered in Upload module</th>
+            <th>Upload Screen</th>
+            <th>Cycle Scope</th>
+            <th>Offered in Upload Module</th>
           </tr>
         </thead>
         <tbody>
@@ -610,7 +610,7 @@ const [locationsLoading, setLocationsLoading] = useState(true);
           <tr>
             <th>Column</th>
             <th>Type</th>
-            <th>Allowed values</th>
+            <th>Allowed Values</th>
             <th>Active</th>
           </tr>
         </thead>
@@ -759,7 +759,7 @@ const [locationsLoading, setLocationsLoading] = useState(true);
         <thead>
           <tr>
             <th>#</th>
-            <th>Button label</th>
+            <th>Button Label</th>
             <th>Placement</th>
             <th>Show</th>
             <th>Order</th>
@@ -1079,7 +1079,7 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .hrc .tabs a{padding-bottom:10px;color:var(--muted);cursor:pointer;font-weight:600}
 .hrc .tabs a.on{color:var(--ink);font-weight:800;border-bottom:2px solid var(--navy)}
 .hrc .body{padding:16px 18px;min-height:480px}
-.hrc .lbl{display:inline-block;background:var(--gutter);color:var(--navy);font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;padding:5px 10px;border-radius:5px;margin:2px 0 10px}
+.hrc .lbl{display:inline-block;background:var(--gutter);color:var(--navy);font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:capitalize;padding:5px 10px;border-radius:5px;margin:2px 0 10px}
 .hrc .sep{height:5px;border-radius:4px;background:linear-gradient(90deg,#BFD7F2,#D9CCF0 55%,#F3D9C9);margin:20px 0 14px;opacity:.85}
 .hrc table.ct{width:100%;border-collapse:collapse}
 .hrc table.ct th{background:var(--th-bg);color:var(--navy);text-align:left;font-size:10.5px;font-weight:700;padding:8px 10px;border-bottom:1px solid var(--th-line)}
@@ -1100,7 +1100,7 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .hrc .tag.ok{background:var(--ok-bg);color:var(--ok)}.hrc .tag.warn{background:var(--warn-bg);color:var(--warn)}.hrc .tag.info{background:var(--info-bg);color:var(--info)}
 .hrc .btn{border:1px solid #D1D5DB;background:#fff;color:var(--navy);border-radius:8px;padding:7px 14px;font:inherit;font-weight:700;cursor:pointer}
 .hrc .btn.p{background:var(--navy);border-color:var(--navy);color:#fff}
-.hrc .btn.main{background:var(--btn-main);border-color:var(--btn-main);color:#fff;text-transform:uppercase;font-weight:800;letter-spacing:.03em}
+.hrc .btn.main{background:var(--btn-main);border-color:var(--btn-main);color:#fff;text-transform:capitalize;font-weight:800;letter-spacing:.03em}
 .hrc .btn.add{border:1px dashed #CBD2DA;color:var(--muted);font-weight:600}
 .hrc .btn:disabled{opacity:.45;cursor:default}
 .hrc .note{color:var(--muted);font-size:12px;margin:6px 0 10px}
@@ -1137,7 +1137,7 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 @media(max-width:1100px){.hrc .wrap{grid-template-columns:1fr}}
 @media(max-width:700px){.hrc .hrc-cycle-head{align-items:flex-start;flex-direction:column}.hrc .hrc-cycle-badge{display:none}}
 .hrc .hrc-locbar{display:flex;align-items:center;gap:14px;background:var(--navy);color:#fff;border-radius:12px;padding:10px 20px;margin-bottom:12px;flex-wrap:wrap}
-.hrc .hrc-loclbl{color:#AAB4C0;font-weight:700;font-size:11px;letter-spacing:.04em;text-transform:uppercase}
+.hrc .hrc-loclbl{color:#AAB4C0;font-weight:700;font-size:11px;letter-spacing:.04em;text-transform:capitalize}
 .hrc .hrc-locsel{background:#1B3A58;border:1px solid #38577A;color:#fff;border-radius:6px;padding:6px 10px;font:inherit;font-size:12.5px;font-weight:700;min-width:120px}
 .hrc .hrc-locsel:disabled{background:#1B3A58;color:#AAB4C0;border-color:#38577A}
 .hrc .hrc-locsel option{color:var(--ink);background:#fff}

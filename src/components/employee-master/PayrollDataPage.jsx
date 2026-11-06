@@ -894,8 +894,8 @@ export function PayrollDataPage() {
                     <th>Employee</th>
                     <th>Cycle</th>
                     <th>Field</th>
-                    <th>Old value</th>
-                    <th>New value</th>
+                    <th>Old Value</th>
+                    <th>New Value</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -975,7 +975,7 @@ const PAYROLL_DATA_CSS = `
 .pd-colfilter-cond-inputs .and { font-size: 11px; color: #8592a6; align-self: center; }
 .pd-colfilter-cond button { width: 100%; padding: 6px 4px; border-radius: 4px; font-size: 11.5px; cursor: pointer; border: 1px solid #17365d; background: #17365d; color: white; }
 .pd-colfilter-cond button:hover { background: #0f2745; }
-.pd-colfilter-divider { text-align: center; font-size: 9.5px; color: #9aa5b3; text-transform: uppercase; letter-spacing: .03em; padding: 6px 8px 2px; border-bottom: 1px solid #edf0f4; }
+.pd-colfilter-divider { text-align: center; font-size: 9.5px; color: #9aa5b3; text-transform:capitalize; letter-spacing: .03em; padding: 6px 8px 2px; border-bottom: 1px solid #edf0f4; }
 .pd-colfilter-search { padding: 7px 8px; border-bottom: 1px solid #edf0f4; }
 .pd-colfilter-search input { width: 100%; padding: 6px 8px; border: 1px solid #cbd3df; border-radius: 4px; font-size: 11.5px; }
 .pd-colfilter-options { max-height: 170px; overflow: auto; padding: 4px; }

@@ -3,7 +3,7 @@
 // same math is used by DetailScreenPage, TeamChangesPage and
 // BudgetAllocationPage.
 
-export const DEFAULT_LEVELS = ["Tech ED", "Comp Manager"];
+export const DEFAULT_LEVELS = ["Tech-ED", "Comp Manager"];
 
 // Who sits at which level, and who allots budget to whom.
 // Swap this for real org-chart data (e.g. from Employee Master) once available.

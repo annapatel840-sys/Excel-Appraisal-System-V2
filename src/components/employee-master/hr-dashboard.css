@@ -5,13 +5,13 @@
 .hrd-k { border: 1px solid #e5e7eb; border-left: 5px solid #2f6fed; border-radius: 8px; padding: 10px 14px; background: #fff; min-width: 0; }
 .hrd-k.am { border-left-color: #b7791f; background: #fef6e7; }
 .hrd-k.ok { border-left-color: #15803d; }
-.hrd-k small { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; color: #6b7280; }
+.hrd-k small { display: block; font-size: 10.5px; font-weight: 800; letter-spacing: .04em; text-transform:capitalize; color: #6b7280; }
 .hrd-k b { font-size: 22px; font-weight: 800; color: #102a43; }
 .hrd-k em { display: block; font-style: normal; color: #6b7280; font-size: 11.5px; margin-top: 2px; }
 .hrd-two { display: grid; grid-template-columns: 1fr 1.25fr; gap: 14px; margin-top: 12px; }
 .hrd-two-b { grid-template-columns: 1fr 1.25fr; }
 .hrd-sec { min-width: 0; }
-.hrd-chip { display: inline-block; background: #e6eef8; color: #102a43; border: 1px solid #c9d8ec; border-radius: 5px; font-size: 10px; font-weight: 800; text-transform: uppercase; padding: 3px 9px; letter-spacing: .06em; margin-bottom: 8px; }
+.hrd-chip { display: inline-block; background: #e6eef8; color: #102a43; border: 1px solid #c9d8ec; border-radius: 5px; font-size: 10px; font-weight: 800; text-transform:capitalize; padding: 3px 9px; letter-spacing: .06em; margin-bottom: 8px; }
 .hrd-t { width: 100%; border-collapse: collapse; }
 .hrd-t th { background: #e6eef8; color: #102a43; font-size: 11px; font-weight: 700; text-align: left; padding: 7px 10px; border-bottom: 1px solid #c9d8ec; border-top: 1px solid #c9d8ec; }
 .hrd-t td { padding: 7px 10px; border-bottom: 1px solid #f0f1f3; font-size: 12.5px; }

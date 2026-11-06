@@ -198,7 +198,7 @@ function buildModel(data, pending, today, cycleName) {
     let n = 0, txt = "";
     if (!r) return { n: 0, txt: "No team", extra: [] };
     if (ro && ro.seesAll) txt = "All employees";
-    else if (r === "techEd") { n = deleg.techEd[p.empId] || 0; txt = n + " employees (Appraiser Tech ED = " + p.name + ")"; }
+    else if (r === "techEd") { n = deleg.techEd[p.empId] || 0; txt = n + " employees (Appraiser Tech-ED = " + p.name + ")"; }
     else if (r === "compMgr") { n = deleg.compMgr[p.empId] || 0; txt = n + " employees (Comp Manager = " + p.name + ")"; }
     else txt = "No team";
     const extra = ovFor(p.empId).filter((o) => o.type === "team").map((o) => { const q = personByEmp(o.key); return (q ? q.name : o.key) + "'s team"; });
@@ -219,7 +219,7 @@ function buildModel(data, pending, today, cycleName) {
     else if (!p.email) f.push(["No email", ""]);
     if (p.inEM && !p.active) f.push(["Inactive in Employee Master", "a"]);
     if (canLogIn(p) && !effRole(p).role) {
-      const inSel = listDeleg.techEd[p.empId] != null ? "Tech ED" : listDeleg.compMgr[p.empId] != null ? "Comp Manager" : "";
+      const inSel = listDeleg.techEd[p.empId] != null ? "Tech-ED" : listDeleg.compMgr[p.empId] != null ? "Comp Manager" : "";
       f.push([inSel && !listActive ? inSel + " in this cycle — cycle not Active" : "No role", "a"]);
     }
     return f;
@@ -499,10 +499,10 @@ function PeopleTab({ M, filt, setFilt, onPick, onExport, delegationHelper }) {
           <option value="_attn">Needs attention</option>
         </select>
         <button type="button" className="btn sm" onClick={onExport}>Export (CSV)</button>
-        <span className="hint">To change who is a Tech ED / Comp Manager, change Delegation. HR Admin and added roles are given in Catalyst.</span>
+        <span className="hint">To change who is a Tech-ED / Comp Manager, change Delegation. HR Admin and added roles are given in Catalyst.</span>
       </div>
       <table>
-        <thead><tr><th>Person</th><th>Role</th><th>Role from</th><th>Team</th><th>Overrides</th><th>Flags</th></tr></thead>
+        <thead><tr><th>Person</th><th>Role</th><th>Role From</th><th>Team</th><th>Overrides</th><th>Flags</th></tr></thead>
         <tbody>
           {list.map((p) => {
             const er = M.effRole(p), fl = M.flagsOf(p), t = M.teamOf(p), n = M.ovFor(p.empId).length;
@@ -535,7 +535,7 @@ function OverridesTab({ M, team, today, onNew, onToggleRemove, onUndoAdd }) {
         </span>
       </div>
       <table>
-        <thead><tr><th>Person</th><th>{team ? "Extra team" : "Override"}</th><th>Ends</th><th>Reason</th><th>Set by</th><th /></tr></thead>
+        <thead><tr><th>Person</th><th>{team ? "Extra team" : "Override"}</th><th>Ends</th><th>Reason</th><th>Set By</th><th /></tr></thead>
         <tbody>
           {rows.map((r) => {
             const p = M.personByEmp(r.o.empId), exp = r.o.to && r.o.to < today;
@@ -587,7 +587,7 @@ function AuditTab({ M, filt, setFilt }) {
         <span className="hint">Audit lines can’t be edited or deleted.</span>
       </div>
       <table>
-        <thead><tr><th>Date</th><th>Changed by</th><th>What</th><th>Role</th><th>Old</th><th>New</th><th>Reason</th></tr></thead>
+        <thead><tr><th>Date</th><th>Changed By</th><th>What</th><th>Role</th><th>Old</th><th>New</th><th>Reason</th></tr></thead>
         <tbody>
           {rows.map((l, i) => (
             <tr key={i}>
@@ -706,7 +706,7 @@ function DelegationHelper({ cyc, onFilled, noteEnforced, pick, setPick }) {
             {busy ? "Filling…" : "Fill Delegation from current hierarchy"}
           </button>
           {!cyc.activeId && (
-            <div className="banner">No Active cycle — Tech EDs and Comp Managers get no access until a cycle is set to Active in Appraisal Cycle Master.</div>
+            <div className="banner">No Active cycle — Tech-EDs and Comp Managers get no access until a cycle is set to Active in Appraisal Cycle Master.</div>
           )}
         </>
       )}
@@ -716,11 +716,11 @@ function DelegationHelper({ cyc, onFilled, noteEnforced, pick, setPick }) {
             <div className={result.unTech.length || result.unComp.length || result.amb.length ? "banner" : "msg ok"} style={{ margin: 0 }}>
               Delegation filled for {selCycle ? selCycle.name : "the cycle"}: {result.inserted} rows written
               {result.deleted ? " (" + result.deleted + " old rows replaced)" : ""}
-              {result.techEdSet != null ? " · Tech ED matched for " + result.techEdSet : ""}
+              {result.techEdSet != null ? " · Tech-ED matched for " + result.techEdSet : ""}
               {result.compManagerSet != null ? " · Comp Manager matched for " + result.compManagerSet : ""}
               {result.employees != null ? " of " + result.employees + " employees" : ""}
               {" · unmatched: " + (result.unTech.length + result.unComp.length) + (result.amb.length ? " · ambiguous: " + result.amb.length : "")}.
-              <NameList title="Tech ED not matched" names={result.unTech} />
+              <NameList title="Tech-ED not matched" names={result.unTech} />
               <NameList title="Comp Manager not matched" names={result.unComp} />
               <NameList title="Comp Manager ambiguous (same name in Employee Master)" names={result.amb} />
             </div>
@@ -736,7 +736,7 @@ function DelegationHelper({ cyc, onFilled, noteEnforced, pick, setPick }) {
               This <b>replaces all Delegation rows</b> for <b>{selCycle ? selCycle.name : "this cycle"}</b> with rows built from the current hierarchy:
             </p>
             <ul style={{ margin: "0 0 8px", paddingLeft: 18 }}>
-              <li>Tech ED from Employee Master (Appraiser Tech ED)</li>
+              <li>Tech-ED from Employee Master (Appraiser Tech-ED)</li>
               <li>Comp Manager from the Appraisal Sheet (Comp Manager name matched to Employee Master)</li>
             </ul>
             <p style={{ margin: 0 }} className="derived">
@@ -1005,7 +1005,7 @@ function QuickCheck({ M, qc, setQc, sel, shown, setShown }) {
   );
   return (
     <div className="qc">
-      <h4><span>Quick check</span></h4>
+      <h4><span style={{ textTransform: "none" }}>Quick Check</span></h4>
       <div className="row">
         <select value={n.q} onChange={(e) => change({ q: e.target.value, t: "" })}>
           {[["who", "Who has"], ["does", "Does"], ["can", "Can"], ["why", "Why does"], ["what", "What does"]].map((x) => <option key={x[0]} value={x[0]}>{x[1]}</option>)}
@@ -1104,14 +1104,14 @@ function SidePanel({ M, sel, onPick, onNewOv, onToggleRemove, onTab, qcProps }) 
       <QuickCheck M={M} sel={sel} {...qcProps} />
       {card}
       <div className="sec">
-        <h4><span>Overrides ({ovs.length})</span><span className="link" onClick={() => onTab("overrides")}>See all ›</span></h4>
+        <h4><span style={{ textTransform: "none" }}>Overrides ({ovs.length})</span><span className="link" onClick={() => onTab("overrides")}>See all ›</span></h4>
         {ovs.length ? ovs.slice(0, 5).map((o) => {
           const x = M.personByEmp(o.empId);
           return <div className="li" key={o.id} onClick={() => onPick(o.empId)}><span>{x ? x.name : o.empId}</span><span>{M.ovText(o)}{o.to ? " · " + fmtD(o.to) : ""}</span></div>;
         }) : <div className="derived">None</div>}
       </div>
       <div className="sec">
-        <h4><span>Needs attention ({attn.length})</span></h4>
+        <h4><span style={{ textTransform: "none" }}>Needs Attention ({attn.length})</span></h4>
         {attn.length ? attn.map((x, i) => (
           <div className="li" key={x.empId + "|" + x.t + "|" + i} onClick={() => onPick(x.empId)}><span>{x.name}</span><span className={"flag " + x.c}>{x.t}</span></div>
         )) : <div className="derived">Nothing</div>}
