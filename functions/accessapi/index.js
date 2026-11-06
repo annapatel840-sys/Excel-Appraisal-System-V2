@@ -1743,44 +1743,37 @@ app.post(
     const cyc = await selectAll(zcql, c.table, c.idColumn + " = " + cycleId);
     if (!cyc.length) throw new HttpError(404, "Cycle not found.");
 
-    // Appraisal_Sheet contains rows from many closed cycles. Delegation only
-    // needs assignments for this cycle's eligible employees. Reading the
-    // entire history here caused one sequential 200-row ZCQL request per page
-    // and was the main reason Generate Delegation took 10-30 seconds.
-    // Current deployments use cycle_id or appraisal_cycle_id depending on
-    // the Appraisal_Sheet schema; try the cycle-scoped columns first. Keep a
-    // full-table fallback only for legacy rows without a usable cycle key.
-    const readCycleSheetRows = async () => {
-      const cycleName = String(
-        cyc[0][c.nameColumn] || cyc[0].cycle_name || "",
-      ).trim();
-      const cycleFilters = [
-        "cycle_id = '" + q(cycleId) + "'",
-        "appraisal_cycle_id = '" + q(cycleId) + "'",
-      ];
-      if (cycleName) {
-        cycleFilters.push(
-          "appraisal_cycle_name = '" + q(cycleName) + "'",
-        );
-      }
-      for (const where of cycleFilters) {
-        try {
-          const rows = await selectAll(zcql, s.table, where);
-          if (rows.length) return rows;
-        } catch (error) {
-          // A schema may not contain this legacy/current cycle column.
-          // Try the next known cycle reference without failing generation.
-        }
-      }
-      // Compatibility for older sheets with no cycle reference populated.
-      return selectAll(zcql, s.table);
-    };
-
-    const [emRows, sheetRows, existing, eligibilityRows] = await Promise.all([
-      selectAll(zcql, e.table),
-      readCycleSheetRows(),
+    // Read the two cycle-scoped tables first. Appraisal_Sheet is historical
+    // and grows every cycle, so it must never be scanned wholesale here.
+    const [existing, eligibilityRows] = await Promise.all([
       selectAll(zcql, d.table, d.cycleColumn + " = '" + q(cycleId) + "'"),
       selectAll(zcql, "Eligibility_List", "appraisal_cycle_id = '" + q(cycleId) + "'"),
+    ]);
+
+    const requestedEligibleIds = Array.from(new Set(
+      eligibilityRows
+        .filter((row) =>
+          String(row.eligibility_status || row.eligible_status || "").trim().toLowerCase() === "eligible"
+        )
+        .map((row) => norm(row.emp_id))
+        .filter(Boolean)
+    ));
+    if (!requestedEligibleIds.length) {
+      throw new HttpError(
+        422,
+        "No employees are marked Eligible for this cycle. Apply the eligibility criteria first.",
+      );
+    }
+
+    // Keep Employee_Master for manager-name resolution, but query Appraisal_Sheet
+    // only for this cycle's eligible employees. The previous fallback fetched
+    // every historical appraisal row when cycle-column filters returned none.
+    const sheetWhere = requestedEligibleIds
+      .map((id) => s.empId + " = '" + q(id) + "'")
+      .join(" OR ");
+    const [emRows, sheetRows] = await Promise.all([
+      selectAll(zcql, e.table),
+      selectAll(zcql, s.table, sheetWhere),
     ]);
     // Employee_Master indexes
     const em = {},
