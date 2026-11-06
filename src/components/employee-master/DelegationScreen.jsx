@@ -511,10 +511,34 @@ export default function DelegationScreen({
   useEffect(() => {
     loadRoster({ initial: true });
     const refreshRoster = () => loadRoster();
+    const onGenerationStarted = (event) => {
+      const cycleId = String(event?.detail?.cycleId || "");
+      if (!cycleId || cycleId === activeCycleId) {
+        say("Delegation generation is running. This screen will refresh automatically when the assignments are saved.", false);
+      }
+    };
+    const onGenerationCompleted = (event) => {
+      const cycleId = String(event?.detail?.cycleId || "");
+      if (cycleId && activeCycleId && cycleId !== activeCycleId) return;
+      say("Delegation generated successfully. Refreshing employee assignments.", false);
+      loadRoster();
+    };
+    const onGenerationFailed = (event) => {
+      const message = String(event?.detail?.message || "Delegation generation failed.");
+      say(message, true);
+    };
     window.addEventListener("appraisal:cycle-updated", refreshRoster);
+    window.addEventListener("appraisal:delegation-generation-started", onGenerationStarted);
+    window.addEventListener("appraisal:delegation-generated", onGenerationCompleted);
+    window.addEventListener("appraisal:delegation-generation-failed", onGenerationFailed);
     // Load the active cycle's roster when the Delegation screen is mounted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    return () => window.removeEventListener("appraisal:cycle-updated", refreshRoster);
+    return () => {
+      window.removeEventListener("appraisal:cycle-updated", refreshRoster);
+      window.removeEventListener("appraisal:delegation-generation-started", onGenerationStarted);
+      window.removeEventListener("appraisal:delegation-generated", onGenerationCompleted);
+      window.removeEventListener("appraisal:delegation-generation-failed", onGenerationFailed);
+    };
   }, [initialRows]);
   const say = (msg, err) => {
     setToast({ msg, err });
