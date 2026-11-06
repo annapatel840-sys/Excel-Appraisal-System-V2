@@ -83,19 +83,9 @@ export function EligibilityModal({ employee, onClose, onSave }) {
         <div className="em-modal-body">
           <div className="em-field">
             <label>Eligibility</label>
-            <select
-              className="em-date-input"
-              value={status}
-              onChange={(event) => {
-                setStatus(event.target.value);
-                setReason("");
-                setOtherReason("");
-                setError("");
-              }}
-            >
-              <option value="Yes">Eligible</option>
-              <option value="No">Not Eligible</option>
-            </select>
+            <div className="em-date-input" aria-readonly="true">
+              {status === "Yes" ? "Eligible" : "Not Eligible"}
+            </div>
           </div>
 
           <div className="em-field">
