@@ -164,10 +164,10 @@ function pruneActive(){
 }
 function saveMine(){try{localStorage.setItem(MY_KEY,JSON.stringify(S.active))}catch(x){}}
 function loadMine(){try{var v=JSON.parse(localStorage.getItem(MY_KEY)||"null");if(Array.isArray(v)){S.active=v;pruneActive()}}catch(x){}}
-var EDITED_LBL={hand:"Edited manually",bulk:"Edited in bulk",none:"Not edited"};
+var EDITED_LBL={hand:"Edited Manually",bulk:"Edited in Bulk",none:"Not Edited"};
 function optionsFor(d){
   var sc=scope();
-  if(d.type==="rating")return [5,4,3,2,1].map(function(n){return {v:String(n),label:String(n),n:sc.filter(function(e){return bucket(e)===n}).length}}).concat([{v:"none",label:"No rating",n:sc.filter(function(e){return bucket(e)===null}).length}]);
+  if(d.type==="rating")return [5,4,3,2,1].map(function(n){return {v:String(n),label:String(n),n:sc.filter(function(e){return bucket(e)===n}).length}}).concat([{v:"none",label:"No Rating",n:sc.filter(function(e){return bucket(e)===null}).length}]);
   if(d.type==="edited")return ["hand","bulk","none"].map(function(k){return {v:k,label:EDITED_LBL[k],n:sc.filter(function(e){return k==="hand"?e.hand:k==="bulk"?e.bulk:(!e.hand&&!e.bulk)}).length}});
   if(d.type==="range"){
     var ro=d.ranges.map(function(r,i){return {v:String(i),label:rangeLabel(r),n:sc.filter(function(e){return rangeHit(e[d.field],r)}).length}});
@@ -184,7 +184,7 @@ function numPass(x,v){var n=Number(v[1]);if(x==null||x===""||isNaN(Number(x))||i
 function valLabel(d,v){
   if(d.type==="range")return rangeLabel(rangeOf(d,v));
   if(d.type==="edited")return EDITED_LBL[v]||v;
-  return v==="none"?"No rating":v;
+  return v==="none"?"No Rating":v;
 }
 function passFilters(e){
   for(var i=0;i<FDEFS.length;i++){
@@ -219,7 +219,7 @@ function updateRem(){var b=budgetOf(scope(),null),rem=Math.max(0,b.left);root.qu
 function renderFilters(){
   var q=fdef("q");
   if(!q)$("fbSearch").innerHTML="";
-  else if(!$("flt_q"))$("fbSearch").innerHTML='<input type="text" id="flt_q" placeholder="Search name / ID / designation" value="'+esc(S.filt.q||"")+'">';
+  else if(!$("flt_q"))$("fbSearch").innerHTML='<input type="text" id="flt_q" placeholder="Search Name / ID / Designation" value="'+esc(S.filt.q||"")+'">';
   renderChips();
 }
 function renderChips(){
@@ -303,22 +303,22 @@ function renderRules(){
       var dis=(taken[FIELDS[f].key]&&f!==r.field)||(!canEdit(FIELDS[f].key)&&f!==r.field);
       var cur=(f===r.field)||(f==="hikePct"&&isHike(r.field));return '<option value="'+f+'"'+(cur?' selected':'')+(dis&&!cur?' disabled':'')+'>'+esc((f==="hikePct"?"Hike":FIELDS[f].label)+(dis&&!cur?(taken[FIELDS[f].key]?" (already used)":" (no access)"):""))+'</option>';
     }).join("")+'</select></div>';
-    h+='<div class="f"><label>How</label><select data-k="method"'+(txt?' disabled':'')+'><option value="same"'+(r.method==="same"||txt?' selected':'')+'>Same value for all</option>'+(F.kind!=="txt"&&isHrView()?'<option value="ted"'+(ted?' selected':'')+'>By Tech ED</option>':'')+(F.kind==="amt"?'<option value="adj"'+(adj?' selected':'')+'>Add or reduce</option><option value="dist"'+(dist?' selected':'')+'>Distribute a total</option>':'')+'</select></div>';
-    if(isHike(r.field)&&!dist&&!adj)h+='<div class="f"><label>Value is</label><select data-k="hikeUnit"><option value="pct"'+(r.field==="hikePct"?' selected':'')+'>% of Base pay</option><option value="amt"'+(r.field==="hikeAmt"?' selected':'')+'>Amount</option></select></div>';
-    else if(F.unitPick&&!dist&&!adj)h+='<div class="f"><label>Value is</label><select data-k="unit"><option value="amt"'+(r.unit==="amt"?' selected':'')+'>Amount</option><option value="pct"'+(r.unit==="pct"?' selected':'')+'>% of Base pay</option></select></div>';
-    else if(!txt&&!dist&&!adj)h+='<div class="f"><label>Value is</label><span class="unit">Amount</span></div>';
+    h+='<div class="f"><label>How</label><select data-k="method"'+(txt?' disabled':'')+'><option value="same"'+(r.method==="same"||txt?' selected':'')+'>Same Value for All</option>'+(F.kind!=="txt"&&isHrView()?'<option value="ted"'+(ted?' selected':'')+'>By Tech ED</option>':'')+(F.kind==="amt"?'<option value="adj"'+(adj?' selected':'')+'>Add or Reduce</option><option value="dist"'+(dist?' selected':'')+'>Distribute a Total</option>':'')+'</select></div>';
+    if(isHike(r.field)&&!dist&&!adj)h+='<div class="f"><label>Value Is</label><select data-k="hikeUnit"><option value="pct"'+(r.field==="hikePct"?' selected':'')+'>% of Base Pay</option><option value="amt"'+(r.field==="hikeAmt"?' selected':'')+'>Amount</option></select></div>';
+    else if(F.unitPick&&!dist&&!adj)h+='<div class="f"><label>Value Is</label><select data-k="unit"><option value="amt"'+(r.unit==="amt"?' selected':'')+'>Amount</option><option value="pct"'+(r.unit==="pct"?' selected':'')+'>% of Base Pay</option></select></div>';
+    else if(!txt&&!dist&&!adj)h+='<div class="f"><label>Value Is</label><span class="unit">Amount</span></div>';
     if(r.field==="remarks"){
-      h+='<div class="f"><label>Remark</label><input type="text" data-k="text" style="width:260px" placeholder="Text to apply" value="'+esc(r.text)+'"></div>';
-      h+='<div class="f"><label>Existing remark</label><select data-k="textMode"><option value="replace"'+(r.textMode==="replace"?' selected':'')+'>Replace</option><option value="append"'+(r.textMode==="append"?' selected':'')+'>Add to end</option></select></div>';
+      h+='<div class="f"><label>Remark</label><input type="text" data-k="text" style="width:260px" placeholder="Text to Apply" value="'+esc(r.text)+'"></div>';
+      h+='<div class="f"><label>Existing Remark</label><select data-k="textMode"><option value="replace"'+(r.textMode==="replace"?' selected':'')+'>Replace</option><option value="append"'+(r.textMode==="append"?' selected':'')+'>Add to End</option></select></div>';
     }else if(adj){
       h+='<div class="f"><label>Change</label><select data-k="adjDir"><option value="add"'+(r.adjDir==="add"?' selected':'')+'>Add</option><option value="sub"'+(r.adjDir==="sub"?' selected':'')+'>Reduce</option></select></div>';
-      h+='<div class="f"><label>By amount</label><input type="number" data-k="adjAmt" step="any" min="0" value="'+esc(r.adjAmt)+'" style="width:130px;text-align:right"></div>';
+      h+='<div class="f"><label>By Amount</label><input type="number" data-k="adjAmt" step="any" min="0" value="'+esc(r.adjAmt)+'" style="width:130px;text-align:right"></div>';
       h+='<div class="mini" style="width:100%">Added to or taken off each row\'s current value. It never goes below 0 or below the amount to be paid.</div>';
     }else if(dist){
-      h+='<div class="f"><label>Total from</label><select data-k="distSrc"><option value="amount"'+(r.distSrc==="amount"?' selected':'')+'>An amount I enter</option><option value="remaining"'+(r.distSrc==="remaining"?' selected':'')+'>Remaining budget</option></select></div>';
-      if(r.distSrc==="amount")h+='<div class="f"><label>Total amount</label><input type="number" data-k="distAmt" step="any" min="0" value="'+esc(r.distAmt)+'" style="width:130px;text-align:right"></div>';
-      else h+='<div class="f"><label>Remaining budget</label><span class="unit"><b class="remLbl"></b></span></div>';
-      h+='<div class="f"><label>Split</label><select data-k="distBy"><option value="equal"'+(r.distBy==="equal"?' selected':'')+'>Equally</option><option value="base"'+(r.distBy==="base"?' selected':'')+'>In proportion to Base pay</option></select></div>';
+      h+='<div class="f"><label>Total from</label><select data-k="distSrc"><option value="amount"'+(r.distSrc==="amount"?' selected':'')+'>An Amount I Enter</option><option value="remaining"'+(r.distSrc==="remaining"?' selected':'')+'>Remaining Budget</option></select></div>';
+      if(r.distSrc==="amount")h+='<div class="f"><label>Total Amount</label><input type="number" data-k="distAmt" step="any" min="0" value="'+esc(r.distAmt)+'" style="width:130px;text-align:right"></div>';
+      else h+='<div class="f"><label>Remaining Budget</label><span class="unit"><b class="remLbl"></b></span></div>';
+      h+='<div class="f"><label>Split</label><select data-k="distBy"><option value="equal"'+(r.distBy==="equal"?' selected':'')+'>Equally</option><option value="base"'+(r.distBy==="base"?' selected':'')+'>In Proportion to Base Pay</option></select></div>';
       h+='<div class="mini" style="width:100%">Goes to the rows selected below. Each row\'s share is added to its current value, and the shares add up to the total.</div>';
     }else if(ted){
       var tl=tedList(),pu=(r.field==="hikePct"||r.unit==="pct")?" %":"";
@@ -444,7 +444,7 @@ function computeRow(e){
   var out={after:after,notes:notes,st:same?(hasNR?"norating":"same"):"chg"};
   if(out.st==="chg"&&(FIELDS.hikePct&&S.rules.some(function(r){return FIELDS[r.field].key==="hikeAmt"}))){
     var hp=after.hikeAmt/e.basePay*100,bm=BENCH[e.band];
-    if(bm){if(hp>bm[2])notes.push({t:"warn",k:"range",m:"Above band "+e.band+" P75 ("+bm[2]+"%)"});else if(hp<bm[0])notes.push({t:"warn",k:"range",m:"Below band "+e.band+" P25 ("+bm[0]+"%)"})}
+    if(bm){if(hp>bm[2])notes.push({t:"warn",k:"range",m:"Above Band "+e.band+" P75 ("+bm[2]+"%)"});else if(hp<bm[0])notes.push({t:"warn",k:"range",m:"Below Band "+e.band+" P25 ("+bm[0]+"%)"})}
   }
   return out;
 }
@@ -490,11 +490,11 @@ function renderHeaderBudget(){
 function renderStrip(){
   var h="";
   if(S.locked){
-    h='<div class="strip warn"><b>Cycle locked</b><span>'+esc(S.lockReason||"Edits are allowed only while the cycle is Active, Start Appraisal is done and Finalisation is not.")+' Bulk changes are switched off.</span></div>';
+    h='<div class="strip warn"><b>Cycle Locked</b><span>'+esc(S.lockReason||"Edits are allowed only while the cycle is Active, Start Appraisal is done and Finalisation is not.")+' Bulk changes are switched off.</span></div>';
   }else if(S.loading){
     h='<div class="strip info"><span>Loading employees from the server…</span></div>';
   }else if(S.err){
-    h='<div class="strip warn"><b>Not saved</b><span>'+esc(S.err)+'</span></div>';
+    h='<div class="strip warn"><b>Not Saved</b><span>'+esc(S.err)+'</span></div>';
   }else if(S.busy&&S.prog){
     var pr=S.prog,pc=pr.total?Math.round(pr.done/pr.total*100):0;
     h='<div class="strip info"><span><b>'+esc(pr.label)+'</b></span><span class="prog"><i style="width:'+pc+'%"></i></span><span><b>'+inr(pr.done)+' of '+inr(pr.total)+' done</b></span></div>';
@@ -534,11 +534,11 @@ function dispVal(r,e,v){
 }
 function showHp(){return !S.rules.some(function(r){return r.field==="hikePct"})}   // v34: the Hike % rule column already shows it
 function cols(){
-  var c=[{k:"name",t:"Employee",c:"c1"},{k:"band",t:"Band"},{k:"rating",t:"Manager Rating",r:1},{k:"basePay",t:"Base pay",r:1}];
+  var c=[{k:"name",t:"Employee",c:"c1"},{k:"band",t:"Band"},{k:"rating",t:"Manager Rating",r:1},{k:"basePay",t:"Base Pay",r:1}];
   S.rules.forEach(function(r,i){var L=FIELDS[r.field].label;
     c.push({k:"cur"+i,t:"Current · "+L,r:1},{k:"prop"+i,t:"Proposed · "+L,r:1},{k:"chg"+i,t:"Change · "+L,r:1});});
-  if(showHp())c.push({k:"hikePct",t:"Hike% (after)",r:1});
-  c.push({k:"newBase",t:"New Base Salary (after)",r:1},{k:"ctc",t:"Total CTC with Rewards (after)",r:1},{k:"note",t:"Note",ns:1});
+  if(showHp())c.push({k:"hikePct",t:"Hike% (After)",r:1});
+  c.push({k:"newBase",t:"New Base Salary (After)",r:1},{k:"ctc",t:"Total CTC with Rewards (After)",r:1},{k:"note",t:"Note",ns:1});
   return c;
 }
 
@@ -559,7 +559,7 @@ function askApply(){
 }
 onDoc("keydown",function(ev){if(ev.key==="Escape"&&S.confirmAt){S.confirmAt=0;clearTimeout(confirmT);renderButtons();renderFold()}});
 /* Checks: click a number to see only those rows in the grid (grid only, the preview itself is not changed) */
-var CK_LBL={chg:"Rows that will change",skip:"Skipped · edited manually",off:"Left out · unticked",same:"No change",range:"Out of band range",norating:"Without a Manager Rating"};
+var CK_LBL={chg:"Rows That Will Change",skip:"Skipped · Edited Manually",off:"Left Out · Unticked",same:"No Change",range:"Out of Band Range",norating:"Without a Manager Rating"};
 function ckPass(e){var r=S.pv.res[e.empId];
   switch(S.checkF){case"chg":return !!r&&r.st==="chg";case"skip":return !!r&&r.st==="skip";case"off":return !!r&&r.st==="off";case"same":return !!r&&r.st==="same";
     case"range":return !!r&&r.st==="chg"&&r.notes.some(function(x){return x.k==="range"});case"norating":return e.rating==null}
@@ -568,8 +568,8 @@ function ckPass(e){var r=S.pv.res[e.empId];
    S.colF[key] = Set of picked values, or {op,value,value2}. Values are listed from every row in scope. */
 var NUM_COLS={rating:1,basePay:1,hikePct:1,newBase:1,ctc:1};
 function isNumCol(k){return !!NUM_COLS[k]||/^(cur|prop|chg)\d+$/.test(k)}
-var NUMBER_OPS=[["gt","Greater than"],["gte","Greater than or equal to"],["lt","Less than"],["lte","Less than or equal to"],["eq","Equals"],["neq","Not equal to"],["between","Between"]];
-var TEXT_OPS=[["contains","Contains"],["notcontains","Does not contain"],["eq","Equals"],["startswith","Begins with"],["endswith","Ends with"],["blank","Is blank"],["notblank","Is not blank"]];
+var NUMBER_OPS=[["gt","Greater than"],["gte","Greater than or Equal to"],["lt","Less than"],["lte","Less than or Equal to"],["eq","Equals"],["neq","Not Equal to"],["between","Between"]];
+var TEXT_OPS=[["contains","Contains"],["notcontains","Does Not Contain"],["eq","Equals"],["startswith","Begins with"],["endswith","Ends with"],["blank","Is Blank"],["notblank","Is Not Blank"]];
 function colVal(e,k){
   if(isNumCol(k)){if(k==="rating")return e.rating==null?null:e.rating;var v=sortVal(e,k);return /^chg/.test(k)||k==="hikePct"?Math.round(v*10000)/10000:v}
   if(k==="name")return e.empId+" - "+e.name+" - "+e.designation;
@@ -596,7 +596,7 @@ function openFilterPop(k,btn){
   pop.innerHTML='<div class="filter-sort-row"><button type="button" data-s="1">↑ Sort</button><button type="button" data-s="-1">↓ Sort</button></div>'
    +'<div class="filter-wrap-row"><label><input type="checkbox" class="fwrap"'+(S.wrapC[k]?' checked':'')+'> Wrap text in this column</label></div>'
    +'<div class="filter-cond-row"><select class="cond-op">'+ops.map(function(o){return '<option value="'+o[0]+'"'+(cond&&cond.op===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join("")+'</select>'
-   +'<input class="cond-val1" placeholder="Value" value="'+esc(cond?cond.value||"":"")+'"><span class="cond-and hide">and</span><input class="cond-val2 hide" placeholder="Value" value="'+esc(cond?cond.value2||"":"")+'"><button type="button" class="cond-apply">Apply filter</button></div>'
+   +'<input class="cond-val1" placeholder="Value" value="'+esc(cond?cond.value||"":"")+'"><span class="cond-and hide">and</span><input class="cond-val2 hide" placeholder="Value" value="'+esc(cond?cond.value2||"":"")+'"><button type="button" class="cond-apply">Apply Filter</button></div>'
    +'<div class="filter-divider">or pick values</div><div class="filter-search-row"><input class="fsearch" placeholder="Search values..."></div>'
    +'<div class="filter-select-all"><label><input type="checkbox" class="fall"> (Select all)</label></div><div class="filter-values"></div>'
    +'<div class="filter-actions"><button type="button" class="fa-cl">Clear</button><button type="button" class="fa-ap">Apply</button></div>';
@@ -606,7 +606,7 @@ function openFilterPop(k,btn){
   var op=pop.querySelector(".cond-op"),v1=pop.querySelector(".cond-val1"),v2=pop.querySelector(".cond-val2"),and=pop.querySelector(".cond-and"),list=pop.querySelector(".filter-values"),all=pop.querySelector(".fall"),q=pop.querySelector(".fsearch");
   function opUI(){var o=op.value,bl=o==="blank"||o==="notblank";v1.classList.toggle("hide",bl);v2.classList.toggle("hide",o!=="between");and.classList.toggle("hide",o!=="between")}
   function drawList(){var t=q.value.toLowerCase(),vis=keys.filter(function(x){return x.toLowerCase().indexOf(t)>=0});
-    list.innerHTML=vis.length?vis.slice(0,400).map(function(x){return '<label><input type="checkbox" data-v="'+esc(x)+'"'+(picked.has(x)?' checked':'')+'> '+(x===""?"(Blanks)":esc(x))+'</label>'}).join(""):'<div class="none">No values</div>';
+    list.innerHTML=vis.length?vis.slice(0,400).map(function(x){return '<label><input type="checkbox" data-v="'+esc(x)+'"'+(picked.has(x)?' checked':'')+'> '+(x===""?"(Blanks)":esc(x))+'</label>'}).join(""):'<div class="none">No Values</div>';
     all.checked=vis.length>0&&vis.every(function(x){return picked.has(x)})}
   opUI();drawList();
   (function fit(){var h=pop.offsetHeight,room=window.innerHeight-8;
@@ -660,12 +660,12 @@ function renderGrid(){
     });
     var notes="";
     if(p){
-      if(p.st==="skip")notes+='<span class="tag t-grey">Skipped · edited manually</span>';
-      else if(p.st==="off")notes+='<span class="tag t-grey">Not selected</span>';
-      else if(p.st==="same"||p.st==="norating"){if(p.st==="same")notes+='<span class="tag t-grey">No change</span>';p.notes.forEach(function(x){notes+='<span class="tag t-'+x.t+'">'+esc(x.m)+'</span>'})}
+      if(p.st==="skip")notes+='<span class="tag t-grey">Skipped · Edited Manually</span>';
+      else if(p.st==="off")notes+='<span class="tag t-grey">Not Selected</span>';
+      else if(p.st==="same"||p.st==="norating"){if(p.st==="same")notes+='<span class="tag t-grey">No Change</span>';p.notes.forEach(function(x){notes+='<span class="tag t-'+x.t+'">'+esc(x.m)+'</span>'})}
       else if(chg)p.notes.forEach(function(x){notes+='<span class="tag t-'+x.t+'">'+esc(x.m)+'</span>'});
     }
-    if(!S.pv||!p||p.st!=="chg"){if(e.bulk)notes+='<span class="tag t-ok">Bulk applied</span>';else if(e.hand&&!(p&&p.st==="skip"))notes+='<span class="tag t-info">Edited manually</span>'}
+    if(!S.pv||!p||p.st!=="chg"){if(e.bulk)notes+='<span class="tag t-ok">Bulk Applied</span>';else if(e.hand&&!(p&&p.st==="skip"))notes+='<span class="tag t-info">Edited Manually</span>'}
     var hp=af.hikeAmt/e.basePay*100;
     b+='<tr><td class="c1" title="'+esc(e.empId+" - "+e.name+" - "+e.designation)+'"><div class="emp"><span class="eb'+(e.hand||e.bulk?'':' none')+'"></span><input type="checkbox" data-id="'+e.empId+'"'+(S.off[e.empId]?'':' checked')+'><div class="et"><span class="en">'+esc(e.empId)+' - '+esc(e.name)+'</span><span class="dsg">'+esc(e.designation)+'</span></div></div></td>'
       +'<td>'+e.band+'</td><td class="r">'+(e.rating==null?'—':e.rating.toFixed(1))+'</td><td class="r">'+inr(e.basePay)+'</td>'
@@ -689,14 +689,14 @@ function renderGrid(){
   $("ft").innerHTML=f;applyWrap();
   var selN=rows.filter(function(e){return !S.off[e.empId]}).length;
   $("pager").innerHTML='<span>Showing '+(total?from+1:0)+'–'+Math.min(total,from+PAGE)+' of '+total+'</span><span>·</span><span>'+selN+' selected</span>'+((S.checkF&&S.pv)?'<span class="tag t-info" style="margin-left:6px">Showing: '+esc(CK_LBL[S.checkF])+' <button class="btn lnk" id="bCkClr" type="button">✕ Clear</button></span>':'')
-    +'<button class="btn" id="bAll" type="button">Select all in view</button><button class="btn" id="bNone" type="button">Clear selection</button><span class="sp"></span>'
+    +'<button class="btn" id="bAll" type="button">Select All in View</button><button class="btn" id="bNone" type="button">Clear Selection</button><span class="sp"></span>'
     +'<button class="btn" id="bPrev" type="button"'+(S.page<=1?' disabled':'')+'>‹ Prev</button><span>Page '+S.page+' of '+pages+'</span><button class="btn" id="bNext" type="button"'+(S.page>=pages?' disabled':'')+'>Next ›</button>';
 }
 function renderScn(){
   var h="";
-  if(!S.scenarios.length)h='<div class="mini">No scenarios yet. Preview a rule and use “Save as scenario”.</div>';
+  if(!S.scenarios.length)h='<div class="mini">No scenarios yet. Preview a rule and use “Save as Scenario”.</div>';
   else{
-    h='<table><thead><tr><th>Name</th><th>Rule</th><th class="r">Rows to change</th><th class="r">Utilisation after</th><th></th></tr></thead><tbody>';
+    h='<table><thead><tr><th>Name</th><th>Rule</th><th class="r">Rows to Change</th><th class="r">Utilisation After</th><th></th></tr></thead><tbody>';
     S.scenarios.forEach(function(s,i){
       h+='<tr><td><b>'+esc(s.name)+'</b></td><td>'+esc(s.text)+'</td><td class="r">'+s.rows+'</td><td class="r">'+s.util.toFixed(1)+'%</td>'
         +'<td><button class="btn" data-load="'+i+'" type="button">Load</button> <button class="btn" data-del="'+i+'" type="button">Delete</button></td></tr>';
@@ -828,9 +828,9 @@ function withXLSX(fn){
   Promise.resolve(cfg.loadXLSX?cfg.loadXLSX():null).then(function(m){if(!m)throw new Error("none");XLSX=m;fn()}).catch(function(){S.flash="Excel export could not load.";render()});
 }
 function exportXlsx(){
-  var head=["Emp ID","Employee Name","Designation","Band","Manager Rating","Base pay"];
+  var head=["Emp ID","Employee Name","Designation","Band","Manager Rating","Base Pay"];
   S.rules.forEach(function(r){var L=FIELDS[r.field].label;head.push("Current · "+L,"Proposed · "+L,"Change · "+L)});
-  head.push("Hike% (after)","New Base Salary (after)","Total CTC with Rewards (after)","Note");
+  head.push("Hike% (After)","New Base Salary (After)","Total CTC with Rewards (After)","Note");
   var aoa=[head];
   viewRows().forEach(function(e){
     var p=S.pv&&S.pv.res[e.empId],chg=p&&p.st==="chg",af=chg?p.after:e;
@@ -842,13 +842,13 @@ function exportXlsx(){
       row.push(Number(c.toFixed(2)),S.pv?Number(pr.toFixed(2)):"",S.pv?Number((pr-c).toFixed(2)):"");
     });
     var note="";
-    if(p){if(p.st==="skip")note="Skipped · edited manually";else if(p.st==="off")note="Not selected";else if(p.st==="same")note="No change";
+    if(p){if(p.st==="skip")note="Skipped · Edited Manually";else if(p.st==="off")note="Not Selected";else if(p.st==="same")note="No Change";
       (p.notes||[]).forEach(function(x){note+=(note?"; ":"")+x.m})}
     row.push(Number((af.hikeAmt/e.basePay*100).toFixed(2)),e.basePay+af.hikeAmt,e.basePay+af.hikeAmt+af.newPB+af.newRB,note);
     aoa.push(row);
   });
   var ws=XLSX.utils.aoa_to_sheet(aoa);ws["!cols"]=head.map(function(){return {wch:18}});
-  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Bulk preview");
+  var wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,"Bulk Preview");
   XLSX.writeFile(wb,"bulk_operations_"+new Date().toISOString().slice(0,10)+".xlsx");
 }
 
@@ -1006,7 +1006,7 @@ function renderRestoreLast(){
   var b=lastBatch(),el=$("bRestoreLast");if(!el)return;
   var armed=b&&restoreAt.id===b.id&&Date.now()-restoreAt.t<6000;
   el.disabled=!b||S.busy||S.locked||!cfg.canApply;
-  el.textContent=!b?"Restore last apply":(armed?"Confirm restore · ":"Restore last apply · ")+b.rows.length+" row"+(b.rows.length===1?"":"s");
+  el.textContent=!b?"Restore Last Apply":(armed?"Confirm Restore · ":"Restore Last Apply · ")+b.rows.length+" row"+(b.rows.length===1?"":"s");
 }
 $("bRestoreLast").addEventListener("click",function(ev){
   var b=lastBatch();if(!b)return;
@@ -1059,7 +1059,7 @@ function card(cls,tag,bigHtml,sub){
 }
 function cardBudget(c){
   var b0=c.before,b1=c.after,u0=b0.util,u1=b1.util,left=b1.left,add=b1.used-b0.used,moved=!!c.pv&&Math.abs(u1-u0)>0.005;
-  var h=card(u1>100?"red":"",'Budget utilised',u1.toFixed(1)+'%<small>'+(moved?'from '+u0.toFixed(1)+'%':'now')+'</small>',
+  var h=card(u1>100?"red":"",'Budget Utilised',u1.toFixed(1)+'%<small>'+(moved?'from '+u0.toFixed(1)+'%':'now')+'</small>',
     '<div class="bar"><i class="af" style="width:'+Math.min(100,u1)+'%"></i>'+(moved?'<i class="bf" style="width:'+Math.min(100,u0)+'%"></i>':'')+'</div>'
     +'<div class="sb"><b>'+big(Math.abs(left))+'</b> '+(left>=0?'left':'over budget')+' of '+big(b1.budget)+' · incl. Target PB <b>'+b1.utilT.toFixed(1)+'%</b>'
     +(c.pv?'<br>This change adds <b>'+big(add)+'</b> to the amount used':'')+'</div>');
@@ -1074,7 +1074,7 @@ function cardByRating(c){
     h+='<div class="rb"><span>'+k+'</span><span class="t"><i style="width:'+Math.min(100,v/12*100)+'%"></i></span><b>'+(a.length?v.toFixed(1)+'%':'—')+'</b></div>';
   });
   if(!c.pv)h='<div class="sb">Click Preview to see the average hike % for each Manager Rating.</div>';
-  return card("green",'Average hike % by rating','',h);
+  return card("green",'Average Hike % by Rating','',h);
 }
 /* share of the budget taken by one group of fields (Hike, or PB + RB), before and after the preview */
 function shareCard(tag,cls,cols,c){
@@ -1086,15 +1086,15 @@ function shareCard(tag,cls,cols,c){
     '<div class="bar"><i class="af" style="width:'+Math.min(100,p1)+'%"></i>'+(moved?'<i class="bf" style="width:'+Math.min(100,p0)+'%"></i>':'')+'</div>'
     +'<div class="sb"><b>'+big(v1)+'</b> of '+big(c.after.budget)+(moved?' · adds <b>'+big(v1-v0)+'</b>':'')+'</div>');
 }
-function cardHikeShare(c){return shareCard("Hike as budget consumed","amber",["hikeAmt"],c)}
-function cardBonusShare(c){return shareCard("Bonus as budget consumed","violet",["newPB","newRB"],c)}
+function cardHikeShare(c){return shareCard("Hike as Budget Consumed","amber",["hikeAmt"],c)}
+function cardBonusShare(c){return shareCard("Bonus as Budget Consumed","violet",["newPB","newRB"],c)}
 /* Placeholders: empty cards that hold a place for a metric to be added later.
    To build one, replace its entry in CARDS with a real card function (see cardBudget / cardByRating). */
-function placeholder(tag){return function(){return '<div class="ic ph"><div class="tg">'+tag+'</div><div class="bn">—</div><div class="sb">Placeholder · coming soon</div></div>'}}
+function placeholder(tag){return function(){return '<div class="ic ph"><div class="tg">'+tag+'</div><div class="bn">—</div><div class="sb">Placeholder · Coming Soon</div></div>'}}
 var CARDS=[cardBudget,cardHikeShare,cardBonusShare,cardByRating];   // to add a card: write its function and add it here
 /* Target PB in the budget left: counted or not (screen option, remembered per browser) */
 var TPB_KEY="bulkIncTpb_v1";S.incTpb=false;   // v40: Target PB is outside the budget, always
-function tpbOpt(){return '<div class="tpbopt"><span>Budget left</span><select id="tpbSel"><option value="0"'+(S.incTpb?'':' selected')+'>Without Target PB</option><option value="1"'+(S.incTpb?' selected':'')+'>With Target PB</option></select></div>'}
+function tpbOpt(){return '<div class="tpbopt"><span>Budget Left</span><select id="tpbSel"><option value="0"'+(S.incTpb?'':' selected')+'>Without Target PB</option><option value="1"'+(S.incTpb?' selected':'')+'>With Target PB</option></select></div>'}
 /* Batch history: every Apply is one batch. "Restore previous values" puts back the values the batch replaced.
    A row edited by anyone after the batch is left alone and counted. Server (assumed, verify with the developer):
    POST /cells carries batch_id + batch_text; GET /batches?cycle_id= lists them; POST /batches/{id}/restore {cycle_id}
@@ -1108,7 +1108,7 @@ function historyTab(){
     var armed=restoreAt.id===x.id&&Date.now()-restoreAt.t<6000;
     h+='<div class="bhr"><div class="bht"><b>'+esc(x.time)+'</b> · '+esc(x.by||"")+' · '+x.rows.length+' row'+(x.rows.length===1?'':'s')+(x.restored?' <span class="tag t-grey">Restored</span>':'')+'</div>'
       +'<div class="mini">'+esc(x.text)+'</div>'
-      +(x.restored?'':'<button class="btn" type="button" data-restore="'+esc(x.id)+'">'+(armed?'Confirm restore · '+x.rows.length+' row'+(x.rows.length===1?'':'s'):'Restore previous values')+'</button>')+'</div>';
+      +(x.restored?'':'<button class="btn" type="button" data-restore="'+esc(x.id)+'">'+(armed?'Confirm Restore · '+x.rows.length+' row'+(x.rows.length===1?'':'s'):'Restore Previous Values')+'</button>')+'</div>';
   });
   return h+'</div>';
 }
@@ -1138,7 +1138,7 @@ function pvOK(){   // Pivot is for HR and Tech ED; a Comp Manager does not get i
 function renderImpact(){
   if(PT==="pivot"&&!pvOK())PT="summary";
   var pb=root.querySelector('#mpTabs [data-t="pivot"]');if(pb)pb.style.display=pvOK()?"":"none";
-  root.setAttribute("data-pt",PT);var lt=$("lyTog");if(lt&&PT!=="summary")lt.innerHTML=cmpSelHtml("cmpSelTop");else if(lt)lt.innerHTML=""
+  root.setAttribute("data-pt",PT);var lt=$("lyTog");if(lt)lt.innerHTML=""
   root.classList.toggle("pvOn",PT==="pivot");
   var p=S.pv,sc=scope();
   if(S.loading||!sc.length){$("imp").innerHTML="";return}
@@ -1158,7 +1158,7 @@ function groupOpts(){
   if(!seen.band)o.splice(1,0,{id:"band",label:"Band"});
   return o;
 }
-function groupKey(e,g){if(g==="rating"){var b=bucket(e);return b==null?"No rating":String(b)}var v=e[g];return v==null||v===""?"—":String(v)}
+function groupKey(e,g){if(g==="rating"){var b=bucket(e);return b==null?"No Rating":String(b)}var v=e[g];return v==null||v===""?"—":String(v)}
 function spreadTab(c){
   var opts=groupOpts();if(!opts.some(function(o){return o.id===GB}))GB="rating";
   var h='<div class="gb"><label for="gbSel">Group by</label><select id="gbSel">'+opts.map(function(o){return '<option value="'+esc(o.id)+'"'+(o.id===GB?' selected':'')+'>'+esc(o.label)+'</option>'}).join("")+'</select></div>';
@@ -1166,7 +1166,7 @@ function spreadTab(c){
   var g={};
   c.rows.forEach(function(e){var k=groupKey(e,GB);(g[k]=g[k]||[]).push(c.pv.res[e.empId].after.hikeAmt/e.basePay*100)});
   var keys=Object.keys(g);
-  keys.sort(function(a,b){if(GB==="rating"){var x=a==="No rating"?-1:+a,y=b==="No rating"?-1:+b;return y-x}return a<b?-1:a>b?1:0});
+  keys.sort(function(a,b){if(GB==="rating"){var x=a==="No Rating"?-1:+a,y=b==="No Rating"?-1:+b;return y-x}return a<b?-1:a>b?1:0});
   if(!keys.length)return h+'<div class="empty">No rows change in this preview.</div>';
   var avg=keys.map(function(k){var a=g[k];return a.reduce(function(x,y){return x+y},0)/a.length}),mx=Math.max.apply(null,avg.concat([0.01]));
   h+='<div class="gl">'+keys.map(function(k,i){return '<div class="gr"><span class="gk">'+esc(k)+'</span><span class="t"><i style="width:'+Math.round(avg[i]/mx*100)+'%"></i></span><b>'+avg[i].toFixed(1)+'%</b><span class="gn">'+g[k].length+'</span></div>'}).join("")+'</div>'
@@ -1177,23 +1177,23 @@ function kv(k,v,x){return '<div class="kv"><span>'+k+'</span><b>'+v+'</b>'+(x||'
 function budgetTabOld(c){
   var b0=c.before,b1=c.after,pv=!!c.pv,moved=pv&&Math.abs(b1.util-b0.util)>0.005,add=b1.used-b0.used,left=b1.left;
   var dl=!pv||Math.abs(add)<0.5?'':(add>0?'<span class="up">▲ '+big(add)+'</span>':'<span class="dn">▼ '+big(-add)+'</span>');
-  var h='<div class="ic'+(b1.util>100?' red':'')+'"><div class="tg">Budget utilised</div>'
+  var h='<div class="ic'+(b1.util>100?' red':'')+'"><div class="tg">Budget Utilised</div>'
     +'<div class="bn">'+b1.util.toFixed(1)+'%<small>'+(moved?'from '+b0.util.toFixed(1)+'%':'now')+'</small></div>'
     +'<div class="bar"><i class="af" style="width:'+Math.min(100,b1.util)+'%"></i>'+(moved?'<i class="bf" style="width:'+Math.min(100,b0.util)+'%"></i>':'')+'</div>'
     +'<div class="sb">incl. Target PB <b>'+b1.utilT.toFixed(1)+'%</b>'+(moved?' <small>from '+b0.utilT.toFixed(1)+'%</small>':'')+'</div></div>';
   h+='<div class="kvs">'+kv('Budget',big(b1.budget))
-    +kv('Consumed now',big(b0.used))
-    +kv('Consumed after',pv?big(b1.used):'—',dl)
-    +kv(left>=0?'Left':'Over budget',big(Math.abs(left)))+'</div>';
+    +kv('Consumed Now',big(b0.used))
+    +kv('Consumed After',pv?big(b1.used):'—',dl)
+    +kv(left>=0?'Left':'Over Budget',big(Math.abs(left)))+'</div>';
   if(pv){
     var hn=0;c.scope.forEach(function(e){hn+=Number(e.hikeAmt)||0});
-    h+='<div class="kvs">'+kv('People affected',c.pv.n.chg)+kv('Skipped · edited manually',c.pv.n.skip)+kv('Left out · unticked',c.pv.n.off)
-      +kv('Total Hike before',big(c.pv.hike.before))+kv('Total Hike after',big(c.pv.hike.after),c.pv.hike.after>c.pv.hike.before?'<span class="up">▲ '+big(c.pv.hike.after-c.pv.hike.before)+'</span>':'')+'</div>';
-    if(left<0)h+='<div class="callout warn"><b>Over budget</b><br>This change takes the budget '+big(-left)+' over. Warning only — you can still apply.</div>';
+    h+='<div class="kvs">'+kv('People Affected',c.pv.n.chg)+kv('Skipped · Edited Manually',c.pv.n.skip)+kv('Left Out · Unticked',c.pv.n.off)
+      +kv('Total Hike Before',big(c.pv.hike.before))+kv('Total Hike After',big(c.pv.hike.after),c.pv.hike.after>c.pv.hike.before?'<span class="up">▲ '+big(c.pv.hike.after-c.pv.hike.before)+'</span>':'')+'</div>';
+    if(left<0)h+='<div class="callout warn"><b>Over Budget</b><br>This change takes the budget '+big(-left)+' over. Warning only — you can still apply.</div>';
   }
   if(!pv)h+='<div class="note2" style="margin-top:0">Consumed = Hike + PB + RB. Click Preview to see the effect of this change.</div>';
   else h+='<div class="note2" style="margin-top:0">Consumed = Hike + PB + RB. Nothing is saved until Apply.</div>';
-  h+=shareCard("Hike as budget consumed","amber",["hikeAmt"],c)+shareCard("Bonus as budget consumed","violet",["newPB","newRB"],c);
+  h+=shareCard("Hike as Budget Consumed","amber",["hikeAmt"],c)+shareCard("Bonus as Budget Consumed","violet",["newPB","newRB"],c);
   h+='<div class="grad"></div><div class="chip-sec">Spread</div>'+spreadTab(c);
   return h;
 }
@@ -1223,45 +1223,45 @@ function chartsTab(c){
   /* 1 Budget fit */
   var mx=Math.max(alloc,b0.used,b1.used)*1.04||1;
   function hb(l,v,col){return '<div class="hb"><span class="l">'+l+'</span><span class="t"><i style="width:'+(v/mx*100)+'%;background:'+col+'"></i></span><b>'+big(v)+' · '+(alloc?(v/alloc*100).toFixed(1):0)+'%</b></div>'}
-  h+='<span class="wch">1 · Budget fit</span><div class="wm q">Can we afford this?</div>'+hb("Allocated",alloc,CCOL.alloc)+hb("Used now",b0.used,CCOL.before)+hb("Used after",b1.used,b1.used>alloc?CCOL.warn:CCOL.after)
+  h+='<div class="wchrow"><span class="wch">1 · Budget Fit</span>'+cmpSelHtml("cmpSelChart")+'</div><div class="wm q">Can we afford this?</div>'+hb("Allocated",alloc,CCOL.alloc)+hb("Used Now",b0.used,CCOL.before)+hb("Used After",b1.used,b1.used>alloc?CCOL.warn:CCOL.after)
     +(b1.used>alloc?'<div class="wm" style="color:#B7791F">Over the allocation by '+big(b1.used-alloc)+' · warning only</div>':'<div class="wm">'+big(alloc-b1.used)+' left after this change.</div>');
   /* 2 Performance differentiation */
   var g={};vr.forEach(function(e){var k=groupKey(e,"rating"),o=g[k]||(g[k]={n:0,b:0,a:0,l:0});o.n++;o.l+=(cmpAmt(e))/e.basePay*100;o.b+=hn(e)/e.basePay*100;o.a+=ha(e)/e.basePay*100});
-  var keys=Object.keys(g).sort(function(a,b){var x=a==="No rating"?-1:+a,y=b==="No rating"?-1:+b;return y-x});
+  var keys=Object.keys(g).sort(function(a,b){var x=a==="No Rating"?-1:+a,y=b==="No Rating"?-1:+b;return y-x});
   var avg=function(k,f){return g[k].n?g[k][f]/g[k].n:0},chLY=!!S.ly&&K0==="hikeAmt"&&EMP.some(function(e){return e.hikeLY!=null});
-  h+='<div class="wg"></div><span class="wch">2 · Performance differentiation</span><div class="wm q">Do top performers get meaningfully more? Click a bar to drill down.</div>'+lgd([["Before",CCOL.before],["After",CCOL.after]].concat(chLY?[[cmpLbl(),"#C4C9D1"]]:[]))
-    +svgBars(keys.map(function(k){return {k:k,l:k==="No rating"?"None":"Rating "+k}}),[{color:CCOL.before,vals:keys.map(function(k){return avg(k,"b")})},{color:CCOL.after,vals:keys.map(function(k){return avg(k,"a")})}].concat(chLY?[{color:"#C4C9D1",vals:keys.map(function(k){return avg(k,"l")})}]:[]),function(v){return v.toFixed(1)+"%"},true);
+  h+='<div class="wg"></div><span class="wch">2 · Performance Differentiation</span><div class="wm q">Do top performers get meaningfully more? Click a bar to drill down.</div>'+lgd([["Before",CCOL.before],["After",CCOL.after]].concat(chLY?[[cmpLbl(),"#C4C9D1"]]:[]))
+    +svgBars(keys.map(function(k){return {k:k,l:k==="No Rating"?"None":"Rating "+k}}),[{color:CCOL.before,vals:keys.map(function(k){return avg(k,"b")})},{color:CCOL.after,vals:keys.map(function(k){return avg(k,"a")})}].concat(chLY?[{color:"#C4C9D1",vals:keys.map(function(k){return avg(k,"l")})}]:[]),function(v){return v.toFixed(1)+"%"},true);
   if(g["5"]&&g["3"])h+='<div class="wm">Top rating gets <b>'+(avg("5","a")-avg("3","a")).toFixed(1)+' pp</b> more than rating 3 after this change (now '+(avg("5","b")-avg("3","b")).toFixed(1)+' pp). A flat gap means pay is not tied to performance.</div>';
   /* 4 Position in band */
   var bsum={},bn={};c.scope.forEach(function(e){bsum[e.band]=(bsum[e.band]||0)+e.basePay+e.hikeAmt;bn[e.band]=(bn[e.band]||0)+1});
   var edges=[0.85,0.95,1.05,1.15],lab=["< 0.85","0.85–0.95","0.95–1.05","1.05–1.15","> 1.15"],c0=[0,0,0,0,0],c1=[0,0,0,0,0];
   function bin(v){var i=0;while(i<edges.length&&v>=edges[i])i++;return i}
   vr.forEach(function(e){var m=bsum[e.band]/bn[e.band];if(!m)return;c0[bin((e.basePay+hn(e))/m)]++;c1[bin((e.basePay+ha(e))/m)]++});
-  h+='<div class="wg"></div><span class="wch">3 · Position in band</span><div class="wm q">Where do people sit against their band midpoint, before and after? (Demo uses the band average; Band Master midpoint when connected.)</div>'+lgd([["Before",CCOL.before],["After",CCOL.after]])
+  h+='<div class="wg"></div><span class="wch">3 · Position in Band</span><div class="wm q">Where do people sit against their band midpoint, before and after? (Demo uses the band average; Band Master midpoint when connected.)</div>'+lgd([["Before",CCOL.before],["After",CCOL.after]])
     +svgBars(lab.map(function(l){return {k:l,l:l}}),[{color:CCOL.before,vals:c0},{color:CCOL.after,vals:c1}],function(v){return String(Math.round(v))},false)
     +'<div class="wm">Above 1.15 of the band midpoint: <b>'+c0[4]+'</b> → <b>'+c1[4]+'</b> people · below 0.85: <b>'+c0[0]+'</b> → <b>'+c1[0]+'</b>.</div>';
   /* 5 Target PB vs PB paid (outside the budget) */
   var pbp=0;c.scope.forEach(function(e){pbp+=Number(e.pbPaid)||0});
   var mt=Math.max(b0.tpb,b1.tpb,pbp)*1.04||1;
   function hb2(l,v,col){return '<div class="hb"><span class="l" style="width:110px">'+l+'</span><span class="t"><i style="width:'+(v/mt*100)+'%;background:'+col+'"></i></span><b>'+big(v)+'</b></div>'}
-  h+='<div class="wg"></div><span class="wch">4 · Target PB vs PB paid</span><div class="wm q">Outside the budget: how far is the Target PB from what has been paid?</div>'+hb2("PB paid",pbp,CCOL.alloc)+hb2("Target PB now",b0.tpb,CCOL.before)+hb2("Target PB after",b1.tpb,CCOL.after)
-    +'<div class="wm">Gap (Target PB less PB paid): <b>'+big(b0.tpb-pbp)+'</b> → <b>'+big(b1.tpb-pbp)+'</b></div>';
+  h+='<div class="wg"></div><span class="wch">4 · Target PB vs PB Paid</span><div class="wm q">Outside the budget: how far is the Target PB from what has been paid?</div>'+hb2("PB Paid",pbp,CCOL.alloc)+hb2("Target PB Now",b0.tpb,CCOL.before)+hb2("Target PB After",b1.tpb,CCOL.after)
+    +'<div class="wm">Gap (Target PB Less PB Paid): <b>'+big(b0.tpb-pbp)+'</b> → <b>'+big(b1.tpb-pbp)+'</b></div>';
   /* 8 Scenario comparison */
-  var rows=[{n:"This preview",u:b1.util,avg:(function(){var bs=0;c.scope.forEach(function(e){bs+=e.basePay});return bs?p.hike.after/bs*100:null})(),r:p.n.chg,cur:1}].concat(S.scenarios.map(function(x){return {n:x.name,u:x.util,avg:x.avg==null?null:x.avg,r:x.rows}}));
+  var rows=[{n:"This Preview",u:b1.util,avg:(function(){var bs=0;c.scope.forEach(function(e){bs+=e.basePay});return bs?p.hike.after/bs*100:null})(),r:p.n.chg,cur:1}].concat(S.scenarios.map(function(x){return {n:x.name,u:x.util,avg:x.avg==null?null:x.avg,r:x.rows}}));
   var mu=Math.max.apply(null,rows.map(function(x){return x.u}).concat([100]))*1.04;
-  h+='<div class="wg"></div><span class="wch">5 · Scenario comparison</span><div class="wm q">Budget utilised and average hike % for this preview against your saved scenarios.</div>'
+  h+='<div class="wg"></div><span class="wch">5 · Scenario Comparison</span><div class="wm q">Budget utilised and average hike % for this preview against your saved scenarios.</div>'
     +rows.map(function(x){return '<div class="hb"><span class="l" title="'+esc(x.n)+'" style="width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.n)+'</span><span class="t"><i style="width:'+(x.u/mu*100)+'%;background:'+(x.cur?CCOL.after:CCOL.before)+'"></i></span><b>'+x.u.toFixed(1)+'% · avg hike '+(x.avg==null?'—':x.avg.toFixed(1)+'%')+' · '+x.r+' rows</b></div>'}).join("")
-    +(S.scenarios.length?'':'<div class="wm">No saved scenarios yet. Use the settings icon › Save as scenario to keep this one and compare options here.</div>');
+    +(S.scenarios.length?'':'<div class="wm">No saved scenarios yet. Use the settings icon › Save as Scenario to keep this one and compare options here.</div>');
   return h+'</div>';
 }
 function setPT(t){PT=t;try{localStorage.setItem(PT_KEY,t)}catch(x){}[].forEach.call($("mpTabs").children,function(b){b.classList.toggle("on",b.getAttribute("data-t")===t)});renderImpact()}
 $("imp").addEventListener("click",function(ev){var g=ev.target.closest&&ev.target.closest("[data-cg]");if(!g)return;GB="rating";S.wiDr=g.getAttribute("data-cg");setPT("budget")});
 function downloadList(){
   if(!S.pv)return;
-  var head=["Emp ID","Employee Name","Designation","Band","Manager Rating","Base pay","Status"];
+  var head=["Emp ID","Employee Name","Designation","Band","Manager Rating","Base Pay","Status"];
   S.rules.forEach(function(r){var L=FIELDS[r.field].label;head.push("Current · "+L,"Proposed · "+L)});
   head.push("Note");
-  var aoa=[head],ST={chg:"Will change",skip:"Skipped · edited manually",off:"Left out · unticked",same:"No change",norating:"No change"};
+  var aoa=[head],ST={chg:"Will Change",skip:"Skipped · Edited Manually",off:"Left Out · Unticked",same:"No Change",norating:"No Change"};
   viewRows().forEach(function(e){
     var p=S.pv.res[e.empId],chg=p&&p.st==="chg",af=chg?p.after:e;
     var row=[e.empId,e.name,e.designation,e.band,e.rating==null?"":e.rating,e.basePay,p?ST[p.st]:""];
@@ -1286,7 +1286,7 @@ function ruleKeys(p){var o=[];(p.rules||[]).forEach(function(r){var k=FIELDS[r.f
 function wiHtml(){
   if(!S.pv){var b0=budgetOf(scope(),null);
     return '<div class="wi wp"><div class="wm" style="margin:0 0 10px">Click <b>Preview</b> to see Before and After here: total Hike, budget, the split by group and the people who need attention. Nothing is saved until Apply.</div>'
-      +'<span class="wch">Now</span><table class="wt"><tbody><tr><td>Budget utilised</td><td>'+b0.util.toFixed(1)+'%</td></tr><tr><td>Budget used</td><td>'+big(b0.used)+'</td></tr><tr><td>Budget</td><td>'+big(b0.budget)+'</td></tr></tbody></table></div>'}
+      +'<div class="wchrow"><span class="wch">Now</span>'+cmpSelHtml("cmpSelWi")+'</div><table class="wt"><tbody><tr><td>Budget Utilised</td><td>'+b0.util.toFixed(1)+'%</td></tr><tr><td>Budget Used</td><td>'+big(b0.used)+'</td></tr><tr><td>Budget</td><td>'+big(b0.budget)+'</td></tr></tbody></table></div>'}
   var p=S.pv,n=p.n,b0=p.before,b1=p.after,sc=scope(),left=b1.left,base=0,vr=viewRows();
   sc.forEach(function(e){base+=e.basePay});
   var pbp=0;sc.forEach(function(e){pbp+=Number(e.pbPaid)||0});
@@ -1294,30 +1294,30 @@ function wiHtml(){
   var LYON=!!S.ly&&EMP.some(function(e){return e.hikeLY!=null}),lyT=0;sc.forEach(function(e){lyT+=cmpAmt(e)});var lyA=base?lyT/base*100:0;
   function wth(){return '<thead><tr><th></th><th>Before</th><th>After</th><th>Change</th>'+(LYON?'<th>'+cmpLbl()+'</th>':'')+'</tr></thead>'}
   function row(l,x,y,d,ly){return '<tr><td>'+l+'</td><td>'+x+'</td><td>'+y+'</td><td>'+(d||'')+'</td>'+(LYON?'<td>'+(ly==null?'—':ly)+'</td>':'')+'</tr>'}
-  var t='<div class="wc"><div><span class="wch">Before vs After</span><table class="wt'+'">'+wth()+'<tbody>'
-    +row('People affected','—',n.chg,'<span style="color:#6B7280">of '+vr.length+' in view</span>')
+  var t='<div class="wc"><div><div class="wchrow"><span class="wch">Before vs After</span>'+cmpSelHtml("cmpSelWi")+'</div><table class="wt'+'">'+wth()+'<tbody>'
+    +row('People Affected','—',n.chg,'<span style="color:#6B7280">of '+vr.length+' in view</span>')
     +RK.map(function(k){var t0=0,t1=0;sc.forEach(function(e){var r=p.res[e.empId],x=Number(e[k])||0;t0+=x;t1+=r&&r.st==="chg"?(Number(r.after[k])||0):x});
       var q0=base?t0/base*100:0,q1=base?t1/base*100:0,L=KLBL[k]||k,h=k==="hikeAmt";
       return row('Total '+L,big(t0),big(t1),wiDelta(t1-t0,big),h?big(lyT):null)+row('Average '+L+' % of base pay',q0.toFixed(1)+'%',q1.toFixed(1)+'%',wiDelta(q1-q0,pp),h?lyA.toFixed(1)+'%':null)}).join("")
-    +row('Budget used',big(b0.used),big(b1.used),wiDelta(b1.used-b0.used,big))
-    +row('Budget utilised',b0.util.toFixed(1)+'%',b1.util.toFixed(1)+'%',wiDelta(b1.util-b0.util,pp))
+    +row('Budget Used',big(b0.used),big(b1.used),wiDelta(b1.used-b0.used,big))
+    +row('Budget Utilised',b0.util.toFixed(1)+'%',b1.util.toFixed(1)+'%',wiDelta(b1.util-b0.util,pp))
     +row('Budget '+(b0.left>=0?'left':'over'),big(Math.abs(b0.left)),(left>=0?'':'over ')+big(Math.abs(left)),'')
     +'</tbody></table>'
-    +'<div style="height:12px"></div><span class="wch">Outside the budget · Target PB vs PB paid</span><table class="wt">'+wth()+'<tbody>'
+    +'<div style="height:12px"></div><span class="wch">Outside the Budget · Target PB vs PB Paid</span><table class="wt">'+wth()+'<tbody>'
     +row('Target PB',big(b0.tpb),big(b1.tpb),wiDelta(b1.tpb-b0.tpb,big))
-    +row('PB paid',big(pbp),big(pbp),'')
+    +row('PB Paid',big(pbp),big(pbp),'')
     +'</tbody></table>'
     +'<div class="wm">'+n.skip+' skipped (edited manually) · '+n.off+' left out (unticked) · '+n.same+' already at these values</div>'
-    +(left>=0?'<div class="callout ok"><b>Within budget</b><br>'+big(left)+' left of '+big(b1.budget)+' after this change.</div>'
-      :'<div class="callout warn"><b>Over budget</b><br>This change takes the budget '+big(-left)+' over. Warning only — you can still apply.</div>')
+    +(left>=0?'<div class="callout ok"><b>Within Budget</b><br>'+big(left)+' left of '+big(b1.budget)+' after this change.</div>'
+      :'<div class="callout warn"><b>Over Budget</b><br>This change takes the budget '+big(-left)+' over. Warning only — you can still apply.</div>')
     +'</div>';
   /* by group */
   var opts=groupOpts();if(!opts.some(function(o){return o.id===GB}))GB="rating";
   var g={};
   vr.forEach(function(e){var r=p.res[e.empId];if(!r||r.st!=="chg")return;var k=groupKey(e,GB),o=g[k]||(g[k]={n:0,h0:0,h1:0,b:0,ly:0});o.n++;o.ly+=cmpAmt(e);o.h0+=Number(e[K0])||0;o.h1+=Number(r.after[K0])||0;o.b+=e.basePay});
   var keys=Object.keys(g);
-  keys.sort(function(a,b){if(GB==="rating"){var x=a==="No rating"?-1:+a,y=b==="No rating"?-1:+b;return y-x}return a<b?-1:a>b?1:0});
-  t+='<div><span class="wch">By group</span><div class="wgb"><label for="wiGb">Group by</label><select id="wiGb">'+opts.map(function(o){return '<option value="'+esc(o.id)+'"'+(o.id===GB?' selected':'')+'>'+esc(o.label)+'</option>'}).join("")+'</select></div>'
+  keys.sort(function(a,b){if(GB==="rating"){var x=a==="No Rating"?-1:+a,y=b==="No Rating"?-1:+b;return y-x}return a<b?-1:a>b?1:0});
+  t+='<div><span class="wch">By Group</span><div class="wgb"><label for="wiGb">Group by</label><select id="wiGb">'+opts.map(function(o){return '<option value="'+esc(o.id)+'"'+(o.id===GB?' selected':'')+'>'+esc(o.label)+'</option>'}).join("")+'</select></div>'
     +(keys.length?'<table class="wt"><thead><tr><th>Group</th><th>People</th><th>'+L0+' before</th><th>'+L0+' after</th><th>Avg '+L0+' %</th>'+(LYON&&K0==='hikeAmt'?'<th>'+cmpLbl()+' %</th>':'')+'</tr></thead><tbody>'
       +keys.map(function(k){var o=g[k];return '<tr class="gdr'+(S.wiDr===k?' on':'')+'" data-g="'+esc(k)+'" title="Click to see the people in this group"><td>'+esc(k)+'</td><td>'+o.n+'</td><td>'+big(o.h0)+'</td><td>'+big(o.h1)+'</td><td>'+(o.b?(o.h1/o.b*100).toFixed(1):'0.0')+'%</td>'+(LYON&&K0==='hikeAmt'?'<td>'+(o.b?(o.ly/o.b*100).toFixed(1):'0.0')+'%</td>':'')+'</tr>'}).join("")+'</tbody></table>'
       :'<div class="wm">No rows change in this preview.</div>')
@@ -1329,7 +1329,7 @@ function wiHtml(){
           return '<div class="ex"><div class="n"><b>'+esc(e.empId)+' - '+esc(e.name)+'</b><i>'+esc(e.designation)+' · '+esc(e.band)+'</i></div><div>'+b.toFixed(2)+'% → <b>'+a.toFixed(2)+'%</b></div><span class="tag t-info">▲ '+big(r.after[K0]-e[K0])+'</span></div>'}).join("")
         +(rows.length>cap.length?'<div class="wm">Showing '+cap.length+' of '+rows.length+' · the rest is in the list below.</div>':'')+'</div>'})():'')
     +'</div></div>';
-  t+='<div class="wg"></div><div class="wm">Before and after for every employee: <button class="btn lnk" id="bDlList2" type="button">Download list</button></div>';
+  t+='<div class="wg"></div><div class="wm">Before and after for every employee: <button class="btn lnk" id="bDlList2" type="button">Download List</button></div>';
   return '<div class="wi wp">'+t+'</div>';
 }
 function budgetTab(c){return wiHtml()}
@@ -1344,15 +1344,15 @@ function checksTab(c){
   if(!c.pv)return '<div class="empty">Click Preview to run the checks.</div>';
   var n=c.pv.n,noR=viewRows().filter(function(e){return e.rating==null}).length,b1=c.after,left=b1.left;
   function row(key,cls,t,v){return '<div class="ck"><span class="tag t-'+cls+'">'+v+'</span><span>'+t+'</span></div>'}
-  var h='<div class="cks">'+row("chg","info","Rows will change",n.chg)
-    +row("skip","grey","Skipped · edited manually",n.skip)
-    +row("off","grey","Left out · unticked",n.off)
-    +row("same","grey","No change",n.same)
-    +row("range",n.range?"warn":"ok","Out of band range",n.range)
+  var h='<div class="cks">'+row("chg","info","Rows Will Change",n.chg)
+    +row("skip","grey","Skipped · Edited Manually",n.skip)
+    +row("off","grey","Left Out · Unticked",n.off)
+    +row("same","grey","No Change",n.same)
+    +row("range",n.range?"warn":"ok","Out of Band Range",n.range)
     +row("norating",noR?"warn":"ok","Without a Manager Rating",noR)+'</div>';
-  h+=left>=0?'<div class="callout ok"><b>Within budget</b><br>'+big(left)+' left after this change.</div>'
-            :'<div class="callout warn"><b>Over budget</b><br>This change takes the budget '+big(-left)+' over. Warning only — you can still apply.</div>';
-  h+='<div style="margin-top:12px"><button class="btn lnk" id="bDlList" type="button">Download list</button> <span class="mini">Every employee with status, current and proposed values, and notes (CSV).</span></div>';
+  h+=left>=0?'<div class="callout ok"><b>Within Budget</b><br>'+big(left)+' left after this change.</div>'
+            :'<div class="callout warn"><b>Over Budget</b><br>This change takes the budget '+big(-left)+' over. Warning only — you can still apply.</div>';
+  h+='<div style="margin-top:12px"><button class="btn lnk" id="bDlList" type="button">Download List</button> <span class="mini">Every employee with status, current and proposed values, and notes (CSV).</span></div>';
   return h;
 }
 $("mpTabs").addEventListener("click",function(ev){var t=ev.target.getAttribute&&ev.target.getAttribute("data-t");if(!t)return;PT=t;try{localStorage.setItem(PT_KEY,t)}catch(x){}
@@ -1374,23 +1374,23 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="tpbSel"){S.in
    P10/P25/P75/P90, % of total. "Set hike %" on any row writes a hike % for that group; it goes through Preview, Apply, progress and Restore. */
 var PV_R={yoe:[[0,2],[2,5],[5,10],[10,null]],rrPct:[[0,60],[60,75],[75,90],[90,100],[100,null]],grossMargin:[[0,20],[20,30],[30,40],[40,50],[50,null]]};
 var PV_F=[{id:"rating",label:"Manager Rating"},{id:"clientRating",label:"Client Rating"},{id:"band",label:"Band"},{id:"designation",label:"Designation"},
-  {id:"skillType",label:"Skill type"},{id:"costCenter",label:"Cost centre"},{id:"superManager",label:"Tech ED",hr:1},{id:"compManager",label:"Comp Manager"},
+  {id:"skillType",label:"Skill Type"},{id:"costCenter",label:"Cost Centre"},{id:"superManager",label:"Tech ED",hr:1},{id:"compManager",label:"Comp Manager"},
   {id:"source",label:"Source"},{id:"promo",label:"Promotion"},{id:"yoe",label:"YOE"},{id:"rrPct",label:"RR %"},{id:"grossMargin",label:"Gross Margin %"}];
-var PV_M=[{id:"hike",label:"Hike (% and amount)"},{id:"newBase",label:"New base pay"},{id:"newPB",label:"Performance Bonus (PB)"},{id:"newRB",label:"Retention Bonus (RB)"},
-  {id:"tpbNext",label:"Target PB for next year"},{id:"total",label:"Total reward (hike + PB + RB)"},{id:"basePay",label:"Base pay"}];
+var PV_M=[{id:"hike",label:"Hike (% and Amount)"},{id:"newBase",label:"New Base Pay"},{id:"newPB",label:"Performance Bonus (PB)"},{id:"newRB",label:"Retention Bonus (RB)"},
+  {id:"tpbNext",label:"Target PB for Next Year"},{id:"total",label:"Total Reward (Hike + PB + RB)"},{id:"basePay",label:"Base Pay"}];
 var PV_S=[{id:"count",label:"Count"},{id:"sum",label:"Sum"},{id:"avg",label:"Average"},{id:"median",label:"Median"},{id:"min",label:"Min"},{id:"max",label:"Max"},
-  {id:"sd",label:"Std dev"},{id:"p25",label:"P25"},{id:"p75",label:"P75"}];
+  {id:"sd",label:"Std Dev"},{id:"p25",label:"P25"},{id:"p75",label:"P75"}];
 var PV_PRESETS={
   rating:{label:"Rating",r1:"rating",r2:"",m:"hike",st:["count","avg","median","sd","p25","p75"]},
   contribution:{label:"Contribution",r1:"rrPct",r2:"grossMargin",m:"hike",st:["count","avg","median","sd"]},
   experience:{label:"Experience",r1:"yoe",r2:"",m:"hike",st:["count","avg","median","min","max"]},
   reward:{label:"Reward",r1:"rating",r2:"",m:"total",st:["count","sum","avg"]}};
 var PVT_KEY="bulkPivot_v1",LY_KEY="bulkCompareLY_v2";S.ly=false;S.cm="ly";try{var _c=localStorage.getItem(LY_KEY);if(_c&&_c!=="off"){S.ly=true;S.cm=_c}}catch(x){}
-var CMP_OPT=[["off","Off"],["ly","Last year"],["y2","2 years ago"],["y3","3 years ago"],["avg2","Average of last 2 years"],["avg3","Average of last 3 years"]];
+var CMP_OPT=[["off","Off"],["ly","Last Year"],["y2","2 years ago"],["y3","3 years ago"],["avg2","Average of Last 2 Years"],["avg3","Average of Last 3 Years"]];
 function cmpAmt(e,nl){var a=e.hikeLY,b=e.hikeLY2,c=e.hikeLY3,v;
   switch(S.cm){case "y2":v=b;break;case "y3":v=c;break;case "avg2":v=(a==null||b==null)?null:(a+b)/2;break;case "avg3":v=(a==null||b==null||c==null)?null:(a+b+c)/3;break;default:v=a}
   return v==null?(nl?null:0):Number(v)}
-function cmpLbl(){return {ly:"Last year",y2:"2 years ago",y3:"3 years ago",avg2:"Avg of last 2 yrs",avg3:"Avg of last 3 yrs"}[S.cm]||"Last year"}
+function cmpLbl(){return {ly:"Last Year",y2:"2 years ago",y3:"3 years ago",avg2:"Avg of Last 2 Yrs",avg3:"Avg of Last 3 Yrs"}[S.cm]||"Last Year"}
 function cmpLow(){return cmpLbl().toLowerCase().replace("avg","average")}
 function cmpShort(){return {ly:"last yr",y2:"2 yrs ago",y3:"3 yrs ago",avg2:"avg 2 yrs",avg3:"avg 3 yrs"}[S.cm]||"last yr"}
 function cmpSelHtml(id){return '<label class="cmpw">Compare to <select id="'+id+'" class="cmpsel">'+CMP_OPT.map(function(o){return '<option value="'+o[0]+'"'+((S.ly?S.cm:"off")===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join("")+'</select></label>'}
@@ -1404,9 +1404,9 @@ function pvFieldList(){return PV_F.filter(function(f){var d=FDEFS.filter(functio
 var PV_MOF={hikeAmt:"hike",newPB:"newPB",newRB:"newRB",tpbNext:"tpbNext"};
 function pvAuto(){if(!S.pv)return;var m=PV_MOF[ruleKeys(S.pv)[0]]||"hike";if(PVT.m!==m){PVT.m=m;PVT.preset="";pvSave()}}
 function pvKey(e,f){
-  if(f==="rating"){var b=bucket(e);return b==null?["No rating",1e9]:[String(b),-b]}
-  if(f==="clientRating"){var c=e.clientRating==null?null:Math.min(5,Math.max(1,Math.round(e.clientRating)));return c==null?["No rating",1e9]:[String(c),-c]}
-  if(PV_R[f]){var v=e[f];if(v==null||v==="")return["No data",1e9];var rs=PV_R[f];for(var i=0;i<rs.length;i++)if(rangeHit(v,rs[i]))return[rangeLabel(rs[i]),i];return["No data",1e9]}
+  if(f==="rating"){var b=bucket(e);return b==null?["No Rating",1e9]:[String(b),-b]}
+  if(f==="clientRating"){var c=e.clientRating==null?null:Math.min(5,Math.max(1,Math.round(e.clientRating)));return c==null?["No Rating",1e9]:[String(c),-c]}
+  if(PV_R[f]){var v=e[f];if(v==null||v==="")return["No Data",1e9];var rs=PV_R[f];for(var i=0;i<rs.length;i++)if(rangeHit(v,rs[i]))return[rangeLabel(rs[i]),i];return["No Data",1e9]}
   var x=e[f];return x==null||x===""?["—","￿"]:[String(x),String(x)];
 }
 function pvCmp(a,b){return typeof a==="number"&&typeof b==="number"?a-b:String(a).localeCompare(String(b),undefined,{numeric:true})}
@@ -1462,7 +1462,7 @@ function pvBuild(){
   var rows=viewRows(),m=PVT.m,units=null,all,l1={};
   var grand=null;
   rows.forEach(function(e){
-    var ser=pvSeries(e,afterOf(e),m);if(!units){units=ser.map(function(s){return s.u});grand=pvNewG("Grand total",0,ser.length)}
+    var ser=pvSeries(e,afterOf(e),m);if(!units){units=ser.map(function(s){return s.u});grand=pvNewG("Grand Total",0,ser.length)}
     pvAdd(grand,e,ser);
     var k1=pvKey(e,PVT.r1),g1=l1[k1[0]]||(l1[k1[0]]=pvNewG(k1[0],k1[1],ser.length));pvAdd(g1,e,ser);
     if(PVT.r2&&PVT.r2!==PVT.r1){var k2=pvKey(e,PVT.r2),g2=g1.kids[k2[0]]||(g1.kids[k2[0]]=pvNewG(k2[0],k2[1],ser.length));pvAdd(g2,e,ser)}
@@ -1530,7 +1530,7 @@ function pvTable(P){
       +cols.map(function(c){return '<td>'+pvCell(P,r.g,c)+'</td>'}).join("")
       +'</tr>';
   });
-  return h+'</tbody></table></div>'+(P.capped?'<div class="wm">Showing the biggest groups; the rest are in <b>Others</b>. Narrow the people in <b>For whom</b> to see them.</div>':'')+(P.capped?'':'')+(nfl?'<div class="wm"><b class="pvdot">●</b> '+nfl+' row'+(nfl===1?'':'s')+' where the average after is '+(P.units[0]==="pct"?'1.5 pp':'25%')+' or more away from the overall average. Hover the dot.</div>':'');
+  return h+'</tbody></table></div>'+(P.capped?'<div class="wm">Showing the biggest groups; the rest are in <b>Others</b>. Narrow the people in <b>For Whom</b> to see them.</div>':'')+(P.capped?'':'')+(nfl?'<div class="wm"><b class="pvdot">●</b> '+nfl+' row'+(nfl===1?'':'s')+' where the average after is '+(P.units[0]==="pct"?'1.5 pp':'25%')+' or more away from the overall average. Hover the dot.</div>':'');
 }
 function pivotTab(c){
   var fl=pvFieldList();
@@ -1539,16 +1539,16 @@ function pivotTab(c){
   var P=pvBuild();
   function sel(id,list,cur,none){return '<select id="'+id+'">'+(none?'<option value="">— none —</option>':'')+list.map(function(f){return '<option value="'+f.id+'"'+(f.id===cur?' selected':'')+'>'+esc(f.label)+'</option>'}).join("")+'</select>'}
   var h='<div class="wi wp pvt"><div class="pvpre"><span>Start from</span>'+Object.keys(PV_PRESETS).map(function(k){return '<button type="button" data-pvpre="'+k+'" class="'+(PVT.preset===k?'on':'')+'">'+PV_PRESETS[k].label+'</button>'}).join("")
-    +'<span class="pvsp"></span><button type="button" class="pvq" id="pvFld">Statistics '+(PVT.open?'▴':'▾')+'</button></div>'
+    +'<span class="pvmid">'+cmpSelHtml("cmpSelPv")+'<button type="button" id="pvCsv" class="pvcsv" title="Download the pivot as a CSV file (opens in Excel)">⬇ Export CSV</button></span><span class="pvsp"></span><button type="button" class="pvq" id="pvFld">Statistics '+(PVT.open?'▴':'▾')+'</button></div>'
     +'<div class="pvfl"><label>Rows'+sel("pvR1",fl,PVT.r1)+'</label><label>Then by'+sel("pvR2",fl.filter(function(f){return f.id!==PVT.r1}),PVT.r2,1)+'</label>'
     +'<label>Values'+sel("pvM",PV_M,PVT.m)+'</label>'
-    +'<label>Sort'+'<select id="pvSort">'+[["order","Group order"],["count","Count"],["avg","Average after"],["chg","Change in average"]].map(function(o){return '<option value="'+o[0]+'"'+(PVT.sort===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join("")+'</select></label></div>'
+    +'<label>Sort'+'<select id="pvSort">'+[["order","Group Order"],["count","Count"],["avg","Average After"],["chg","Change in Average"]].map(function(o){return '<option value="'+o[0]+'"'+(PVT.sort===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join("")+'</select></label></div>'
     +(PVT.open?'<div class="pvdr"><div class="pvst"><span>Statistics</span>'+PV_S.map(function(s){return '<button type="button" data-pvst="'+s.id+'" class="'+(PVT.st.indexOf(s.id)>=0?'on':'')+'">'+s.label+'</button>'}).join("")+'</div>'
     +'<div class="pvst"><span>Show</span>'+[["b","Before"],["a","After"],["c","Change"]].map(function(o){return '<button type="button" data-pvsh="'+o[0]+'" class="'+(PVT.show[o[0]]?'on':'')+'">'+o[1]+'</button>'}).join("")
-    +(PVT.m==="hike"?'<span class="pvsp"></span><span>Cell</span>'+[["both","% and amount"],["pct","% only"],["amt","Amount only"]].map(function(o){return '<button type="button" data-pvdi="'+o[0]+'" class="'+(PVT.disp===o[0]?'on':'')+'">'+o[1]+'</button>'}).join(""):'')
+    +(PVT.m==="hike"?'<span class="pvsp"></span><span>Cell</span>'+[["both","% and amount"],["pct","% only"],["amt","Amount Only"]].map(function(o){return '<button type="button" data-pvdi="'+o[0]+'" class="'+(PVT.disp===o[0]?'on':'')+'">'+o[1]+'</button>'}).join(""):'')
 +'</div></div>':'')+'';
   h+=P.grand?pvTable(P):'<div class="empty">No employees in view.</div>';
-  h+='<div class="wm">'+(c.pv?'Before = current values, After = this preview. ':'Click Preview to see After. ')+'Filters in <b>For whom</b> decide who is in the pivot. Percentiles show a dash for fewer than 5 people.</div></div>';
+  h+='<div class="wm">'+(c.pv?'Before = current values, After = this preview. ':'Click Preview to see After. ')+'Filters in <b>For Whom</b> decide who is in the pivot. Percentiles show a dash for fewer than 5 people.</div></div>';
   return h;
 }
 function pvSetOv(i,val){
@@ -1572,7 +1572,7 @@ function pvAoa(){
   return aoa;
 }
 function pvCsvText(sep){return pvAoa().map(function(r){return r.map(function(x){var t=x==null?"":(typeof x==="number"?String(Math.round(x*10000)/10000):String(x));return sep===","&&/[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t}).join(sep)}).join("\n")}
-$("mpTabs").addEventListener("click",function(ev){
+$("imp").addEventListener("click",function(ev){
   if(!ev.target.closest("#pvCsv"))return;
   var bl=new Blob(["\ufeff"+pvCsvText(",")],{type:"text/csv;charset=utf-8"}),a=document.createElement("a");a.href=URL.createObjectURL(bl);a.download="Bulk_pivot.csv";document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},500);
 });
@@ -1598,7 +1598,7 @@ $("imp").addEventListener("change",function(ev){
 var SM_COL={"5":"#2E7D5B","4":"#27548A","3":"#D99A2B","2":"#B42318","1":"#7C3AED"};
 function smLinks(){return '<div class="sm-links">'+cmpSelHtml("cmpSelSum")+'</div>'}
 function smYears(vr,p,K0){
-  var yrs=["3 years ago","2 years ago","Last year","This year (proposed)"],m=/([A-Za-z]{3})-(\d\d)/.exec(ACTIVE_CYCLE&&ACTIVE_CYCLE.name||"");
+  var yrs=["3 years ago","2 years ago","Last Year","This Year (Proposed)"],m=/([A-Za-z]{3})-(\d\d)/.exec(ACTIVE_CYCLE&&ACTIVE_CYCLE.name||"");
   if(m){var yy=Number(m[2]);yrs=[m[1]+"-"+(yy-3),m[1]+"-"+(yy-2),m[1]+"-"+(yy-1),m[1]+"-"+yy+" (proposed)"]}
   function pts(f){var n=0,a=[0,0,0,0];vr.forEach(function(e){if(!f(e))return;n++;var r=p.res[e.empId],af=r&&r.st==="chg"?r.after.hikeAmt:e.hikeAmt;
       a[0]+=(Number(e.hikeLY3)||0)/e.basePay*100;a[1]+=(Number(e.hikeLY2)||0)/e.basePay*100;a[2]+=(Number(e.hikeLY)||0)/e.basePay*100;a[3]+=af/e.basePay*100});
@@ -1619,7 +1619,7 @@ function smYears(vr,p,K0){
       if(Ln.k==="all")o+='<text x="'+X(i)+'" y="'+(Y(v)-9)+'" font-size="10" font-weight="800" fill="#102A43" text-anchor="'+(i===3?'end':'middle')+'">'+v.toFixed(1)+'%</text>'})});
   o+='</svg>';
   var lg='<div class="lg">'+lines.map(function(Ln){return '<span><i style="background:'+Ln.c+'"></i>'+Ln.l+'</span>'}).join("")+'</div>';
-  return '<div class="sm-h">Average hike % over the years</div><div class="wm" style="margin:0 0 4px">Dashed = this proposal. Demo history; the real figures come from the history table.</div>'+lg+o;
+  return '<div class="sm-h">Average Hike % Over the Years</div><div class="wm" style="margin:0 0 4px">Dashed = this proposal. Demo history; the real figures come from the history table.</div>'+lg+o;
 }
 function tedTable(sc,p){
   if(SB)return [];   // with the server, each Tech ED budget comes from Budget Config
@@ -1631,8 +1631,8 @@ function tedTable(sc,p){
 function sumTab(c){
   var p=c.pv;
   if(!p){var b=budgetOf(scope(),null);
-    return '<div class="sm"><div class="sm-empty"><b>What happens if you apply</b><span>Choose what to change and for whom, then click <b>Preview</b>. The people affected, the cost, the average and the budget show here. Nothing is saved until Apply.</span></div>'
-      +'<div class="sm-h">Budget now</div><div class="smbar"><i style="width:'+Math.min(100,b.util)+'%"></i></div><div class="wm">'+b.util.toFixed(1)+'% of '+big(b.budget)+' used · '+big(Math.max(0,b.left))+' left</div>'+smLinks()+'</div>'}
+    return '<div class="sm"><div class="sm-empty"><b>What Happens If You Apply</b><span>Choose what to change and for whom, then click <b>Preview</b>. The people affected, the cost, the average and the budget show here. Nothing is saved until Apply.</span></div>'
+      +'<div class="sm-h">Budget Now</div><div class="smbar"><i style="width:'+Math.min(100,b.util)+'%"></i></div><div class="wm">'+b.util.toFixed(1)+'% of '+big(b.budget)+' used · '+big(Math.max(0,b.left))+' left</div>'+smLinks()+'</div>'}
   var RK=ruleKeys(p),K0=RK[0],L0=KLBL[K0]||K0,b0=p.before,b1=p.after,n=p.n,vr=viewRows().filter(function(e){var r=p.res[e.empId];return r&&r.st!=="off"}),sc=c.scope,left=b1.left,over=left<0;
   var base=0,t0=0,t1=0,lyT=0;sc.forEach(function(e){var r=p.res[e.empId];base+=e.basePay;t0+=Number(e[K0])||0;t1+=r&&r.st==="chg"?(Number(r.after[K0])||0):(Number(e[K0])||0);lyT+=cmpAmt(e)});
   var a0=base?t0/base*100:0,a1=base?t1/base*100:0,lyA=base?lyT/base*100:0,LYK=!!S.ly&&K0==="hikeAmt"&&EMP.some(function(e){return e.hikeLY!=null});
@@ -1643,11 +1643,11 @@ function sumTab(c){
   /* by Tech ED (HR / top management): budget, used after, skipped */
   var TT=tedTable(sc,p);
   if(TT.length>1){
-    h+='<div class="sm-h">Budget by Tech ED</div><div class="tedt"><div class="tedr th"><b>Tech ED</b><span>People</span><span>Budget</span><span>Used now</span><span>Used after</span><span>Skipped</span><span>Status</span></div>';
+    h+='<div class="sm-h">Budget by Tech ED</div><div class="tedt"><div class="tedr th"><b>Tech ED</b><span>People</span><span>Budget</span><span>Used Now</span><span>Used After</span><span>Skipped</span><span>Status</span></div>';
     TT.forEach(function(t){h+='<div class="tedr"><b>'+esc(t.name)+'</b><span>'+t.n+'</span><span>'+big(t.b.budget)+'</span><span>'+t.b0.util.toFixed(0)+'%</span><span>'+t.b.util.toFixed(0)+'%</span><span>'+t.skip+'</span><span class="'+(t.b.left<0?'ov':'wi2')+'">'+(t.b.left<0?'Over by '+big(-t.b.left):'Within')+'</span></div>'});
     h+='</div><div class="wm">Skipped = already finalised or edited by a manager. Apply is saved as one batch; every row keeps its Tech ED in the history.</div>';
   }
-  return h+smLinks()+'</div>';
+  return h+'</div>';
 }
 $("imp").addEventListener("click",function(ev){
   var t=ev.target.closest&&ev.target.closest("[data-t],[data-sg],[data-sm],[data-fx]");if(!t||!$("imp").contains(t))return;
@@ -1660,14 +1660,14 @@ $("imp").addEventListener("click",function(ev){
 /* ---------------- Exceptions (v47): flags with limits the user sets ---------------- */
 var FL_KEY="bulkFlagLimits_v1";
 var FLAGS=[
- {id:"band",label:"Outside band range",desc:"The hike takes someone below the band's P25 or above its P75.",sev:"warn",pm:[]},
- {id:"inv",label:"Rating inversion",desc:"Someone gets a lower hike % than a person in the same band who is rated lower.",sev:"warn",pm:[{k:"gap",l:"Rating gap at least",u:"",d:1,step:0.5}]},
- {id:"big",label:"Unusually large hike",desc:"Hike % is far above the average of everyone in view.",sev:"warn",pm:[{k:"sd",l:"Above average by",u:"× std dev",d:1.5,step:0.1}]},
- {id:"comp",label:"Compression",desc:"A person with fewer years of experience ends up paid more than a more experienced person in the same band.",sev:"warn",pm:[{k:"yrs",l:"Experience gap at least",u:"yrs",d:2,step:1}]},
- {id:"promo",label:"Promotion plus a high hike",desc:"Promoted and also given a hike above the limit.",sev:"info",pm:[{k:"pct",l:"Hike above",u:"%",d:8,step:0.5}]},
- {id:"rep",label:"Repeat top hike",desc:"In the top group for hike % in each of the last years and again now.",sev:"info",pm:[{k:"top",l:"Top",u:"%",d:25,step:5},{k:"yrs",l:"Years in a row",u:"yrs",d:2,step:1,max:3}]},
- {id:"low",label:"Less than before",desc:"Hike % is lower than last year's, although the rating is the same or better.",sev:"warn",pm:[{k:"pp",l:"Lower by more than",u:"pp",d:1,step:0.5}]},
- {id:"mgr",label:"Manager pattern",desc:"A Comp Manager's average hike is far from the average of all.",sev:"info",pm:[{k:"pp",l:"Differs by more than",u:"pp",d:1,step:0.5}]},
+ {id:"band",label:"Outside Band Range",desc:"The hike takes someone below the band's P25 or above its P75.",sev:"warn",pm:[]},
+ {id:"inv",label:"Rating Inversion",desc:"Someone gets a lower hike % than a person in the same band who is rated lower.",sev:"warn",pm:[{k:"gap",l:"Rating Gap at Least",u:"",d:1,step:0.5}]},
+ {id:"big",label:"Unusually Large Hike",desc:"Hike % is far above the average of everyone in view.",sev:"warn",pm:[{k:"sd",l:"Above Average by",u:"× std dev",d:1.5,step:0.1}]},
+ {id:"comp",label:"Compression",desc:"A person with fewer years of experience ends up paid more than a more experienced person in the same band.",sev:"warn",pm:[{k:"yrs",l:"Experience Gap at Least",u:"yrs",d:2,step:1}]},
+ {id:"promo",label:"Promotion Plus a High Hike",desc:"Promoted and also given a hike above the limit.",sev:"info",pm:[{k:"pct",l:"Hike Above",u:"%",d:8,step:0.5}]},
+ {id:"rep",label:"Repeat Top Hike",desc:"In the top group for hike % in each of the last years and again now.",sev:"info",pm:[{k:"top",l:"Top",u:"%",d:25,step:5},{k:"yrs",l:"Years in a Row",u:"yrs",d:2,step:1,max:3}]},
+ {id:"low",label:"Less than Before",desc:"Hike % is lower than last year's, although the rating is the same or better.",sev:"warn",pm:[{k:"pp",l:"Lower by More than",u:"pp",d:1,step:0.5}]},
+ {id:"mgr",label:"Manager Pattern",desc:"A Comp Manager's average hike is far from the average of all.",sev:"info",pm:[{k:"pp",l:"Differs by More than",u:"pp",d:1,step:0.5}]},
  {id:"data",label:"No Manager Rating",desc:"Rating is missing, so rating-based rules skip these people.",sev:"info",pm:[]}];
 var FLS={on:{},v:{}};try{var _f=JSON.parse(localStorage.getItem(FL_KEY)||"null");if(_f)FLS=Object.assign(FLS,_f)}catch(x){}
 function flSave(){try{localStorage.setItem(FL_KEY,JSON.stringify(FLS))}catch(x){}}
@@ -1703,7 +1703,7 @@ function flCompute(p){
   return out;
 }
 function flCsv(p,FC){
-  var rows=[["Emp ID","Name","Designation","Band","Rating","Hike % now","Hike % after","Flag","Why"]];
+  var rows=[["Emp ID","Name","Designation","Band","Rating","Hike % Now","Hike % After","Flag","Why"]];
   FLAGS.forEach(function(f){if(!flOn(f.id))return;FC[f.id].forEach(function(x){var e=x.e,r=p&&p.res[e.empId],a=r&&r.st==="chg"?r.after.hikeAmt:e.hikeAmt;rows.push([e.empId,e.name,e.designation,e.band,e.rating==null?"":e.rating,(e.hikeAmt/e.basePay*100).toFixed(2),(a/e.basePay*100).toFixed(2),f.label,x.why])})});
   return rows.map(function(r){return r.map(function(x){var t=String(x==null?"":x);return /[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t}).join(",")}).join("\n");
 }
@@ -1711,11 +1711,11 @@ function excTab(c){
   var p=c.pv,FC=flCompute(p),uniq={},tot=0;
   FLAGS.forEach(function(f){if(!flOn(f.id))return;FC[f.id].forEach(function(x){uniq[x.e.empId]=1});tot+=FC[f.id].length});
   var h='<div class="wi wp ex-t"><div class="exh"><div><b>'+Object.keys(uniq).length+'</b> people flagged · '+tot+' flag'+(tot===1?'':'s')+'</div>'
-    +'<div class="exa"><button type="button" class="pvq" id="flReset">Reset limits</button><button type="button" class="pvq" id="flCsv">⬇ Download flagged</button></div></div>'
+    +'<div class="exa"><button type="button" class="pvq" id="flReset">Reset Limits</button><button type="button" class="pvq" id="flCsv">⬇ Download Flagged</button></div></div>'
     +'<div class="wm" style="margin:0 0 8px">'+(p?'Flags use the limits below and the values after your preview.':'Showing current values. Click Preview to include your change.')+' Change a limit and the counts update at once.</div>';
   FLAGS.forEach(function(f){
     var on=flOn(f.id),L=FC[f.id],n=L.length,open=S.flOpen===f.id&&on;
-    h+='<div class="fl'+(on?'':' off')+(open?' open':'')+'"><div class="flr"><label class="flsw" title="Switch this flag on or off"><input type="checkbox" data-flon="'+f.id+'"'+(on?' checked':'')+'><span></span></label>'
+    h+='<div class="fl'+(on?'':' off')+(open?' open':'')+'"><div class="flr"><label class="flsw" title="Switch This Flag on or Off"><input type="checkbox" data-flon="'+f.id+'"'+(on?' checked':'')+'><span></span></label>'
       +'<div class="fln"><b>'+esc(f.label)+'</b><i>'+esc(f.desc)+'</i></div>'
       +'<div class="fllim">'+f.pm.map(function(q){return '<label>'+esc(q.l)+'<span><input type="number" data-flp="'+f.id+'.'+q.k+'" step="'+q.step+'" min="0"'+(q.max?' max="'+q.max+'"':'')+' value="'+flv(f.id,q.k)+'"'+(on?'':' disabled')+'>'+(q.u?'<em>'+esc(q.u)+'</em>':'')+'</span></label>'}).join("")+'</div>'
       +'<button type="button" class="flc'+(on&&n?' has '+f.sev:'')+'" data-flopen="'+f.id+'"'+(on&&n?'':' disabled')+'>'+(on?n:'–')+'<span>'+(open?'▴':'▾')+'</span></button></div>';
@@ -1749,16 +1749,16 @@ function renderImpactBar(){
   if(S.loading||!sc.length){$("impBar").innerHTML="";return}
   var p=S.pv,ctx={pv:p,scope:sc,before:p?p.before:budgetOf(sc,null),after:p?p.after:budgetOf(sc,null)},b0=ctx.before,b1=ctx.after,moved=!!p&&Math.abs(b1.util-b0.util)>0.005,left=b1.left;
   $("impBar").innerHTML='<span class="tg2">Impact</span>'
-    +'<span class="k">Budget utilised <b>'+b1.util.toFixed(1)+'%</b>'+(moved?' <small>from '+b0.util.toFixed(1)+'%</small>':'')+'</span>'
-    +(p?'<span class="k">People affected <b>'+p.n.chg+'</b></span>'
+    +'<span class="k">Budget Utilised <b>'+b1.util.toFixed(1)+'%</b>'+(moved?' <small>from '+b0.util.toFixed(1)+'%</small>':'')+'</span>'
+    +(p?'<span class="k">People Affected <b>'+p.n.chg+'</b></span>'
        +'<span class="k">Skipped <b>'+p.n.skip+'</b> · Left out <b>'+p.n.off+'</b></span>'
        +'<span class="k">Total Hike <b>'+big(p.hike.before)+'</b> → <b>'+big(p.hike.after)+'</b></span>'
-       +'<span class="k">Budget used <b>'+big(b1.used)+'</b> of <b>'+big(b1.budget)+'</b></span>'
-       +(left<0?'<span class="k wn">⚠ Over budget by <b>'+big(-left)+'</b> · warning only</span>':'')
+       +'<span class="k">Budget Used <b>'+big(b1.used)+'</b> of <b>'+big(b1.budget)+'</b></span>'
+       +(left<0?'<span class="k wn">⚠ Over Budget by <b>'+big(-left)+'</b> · warning only</span>':'')
      :'<span class="k">Hike <b>'+sharePct(["hikeAmt"],ctx).toFixed(1)+'%</b></span>'
        +'<span class="k">Bonus <b>'+sharePct(["newPB","newRB"],ctx).toFixed(1)+'%</b></span>'
        +'<span class="k"><b>'+big(Math.abs(left))+'</b> '+(left>=0?'left':'over budget')+(S.incTpb?' <small>incl. Target PB</small>':'')+'</span>')
-    +'<span style="flex:1"></span><span class="k">'+(open?'Hide details ›':'‹ Details')+'</span>';
+    +'<span style="flex:1"></span><span class="k">'+(open?'Hide Details ›':'‹ Details')+'</span>';
 }
 $("impBar").addEventListener("click",function(){setImp(!root.classList.contains("impOpen"))});
 $("impBar").addEventListener("keydown",function(ev){if(ev.key==="Enter"||ev.key===" "){ev.preventDefault();setImp(!root.classList.contains("impOpen"))}});
@@ -1782,10 +1782,10 @@ function metricStrip(c){
   var by={5:[],4:[],3:[],2:[],1:[]};
   if(c.pv)c.rows.forEach(function(e){var b=bucket(e);if(b)by[b].push(c.pv.res[e.empId].after.hikeAmt/e.basePay*100)});
   var rt=[5,4,3,2,1].map(function(k){var a=by[k],v=a.length?a.reduce(function(x,y){return x+y},0)/a.length:null;return '<span><i>'+k+'</i><b>'+(v==null?'—':v.toFixed(1)+'%')+'</b></span>'}).join("");
-  return mBlock(b1.util>100?"red":"","Budget utilised",b1.util.toFixed(1)+'%',moved?b0.util.toFixed(1)+'%':null,b1.util,0,'<b>'+big(Math.abs(left))+'</b> '+(left>=0?'left':'over')+(c.pv?' · adds <b>'+big(add)+'</b>':''))
-   +mBlock("amber","Hike as budget consumed",h0.p.toFixed(1)+'%',hm?h1.p.toFixed(1)+'%':null,h0.p,0,'<b>'+big(h0.v)+'</b> of '+big(b1.budget))
-   +mBlock("violet","Bonus as budget consumed",k0.p.toFixed(1)+'%',km?k1.p.toFixed(1)+'%':null,k0.p,0,'<b>'+big(k0.v)+'</b> of '+big(b1.budget))
-   +'<div class="mt green"><div class="tg">Average hike % by rating</div><div class="rts">'+rt+'</div><div class="sb">'+(c.pv?'rows in this preview':'Click Preview to see it')+'</div></div>';
+  return mBlock(b1.util>100?"red":"","Budget Utilised",b1.util.toFixed(1)+'%',moved?b0.util.toFixed(1)+'%':null,b1.util,0,'<b>'+big(Math.abs(left))+'</b> '+(left>=0?'left':'over')+(c.pv?' · adds <b>'+big(add)+'</b>':''))
+   +mBlock("amber","Hike as Budget Consumed",h0.p.toFixed(1)+'%',hm?h1.p.toFixed(1)+'%':null,h0.p,0,'<b>'+big(h0.v)+'</b> of '+big(b1.budget))
+   +mBlock("violet","Bonus as Budget Consumed",k0.p.toFixed(1)+'%',km?k1.p.toFixed(1)+'%':null,k0.p,0,'<b>'+big(k0.v)+'</b> of '+big(b1.budget))
+   +'<div class="mt green"><div class="tg">Average Hike % by Rating</div><div class="rts">'+rt+'</div><div class="sb">'+(c.pv?'rows in this preview':'Click Preview to see it')+'</div></div>';
 }
 /* ---------------- loading from the server ---------------- */
 var NUMF=["basePay","pbPaid","rbPaid","hikeAmt","newPB","newRB","tpbNext"];
@@ -1848,13 +1848,13 @@ if(apiMode())loadAll();
 /* ===== v51: Summary main chart: the user picks the statistic, the measure and the grouping ===== */
 var HC_KEY="bulkHero_v1",HS={stat:"avg",meas:"hikePct"};
 try{var _hs=JSON.parse(localStorage.getItem(HC_KEY)||"null");if(_hs)HS=Object.assign(HS,_hs)}catch(x){}
-var HSTAT=[["avg","Average"],["med","Median"],["sd","Std deviation"],["min","Minimum"],["max","Maximum"],["p25","25th percentile"],["p75","75th percentile"],["sum","Total"]];
+var HSTAT=[["avg","Average"],["med","Median"],["sd","Std Deviation"],["min","Minimum"],["max","Maximum"],["p25","25th percentile"],["p75","75th percentile"],["sum","Total"]];
 function hav(e,a,k){return a&&a[k]!=null?Number(a[k])||0:Number(e[k])||0}
 var HMEAS={hikePct:{l:"Hike %",pct:true,f:function(e,a){return hav(e,a,"hikeAmt")/e.basePay*100}},
-  hikeAmt:{l:"Hike amount",f:function(e,a){return hav(e,a,"hikeAmt")}},
-  newBase:{l:"New base pay",f:function(e,a){return e.basePay+hav(e,a,"hikeAmt")}},
-  pb:{l:"Performance bonus",f:function(e,a){return hav(e,a,"newPB")}},
-  rb:{l:"Retention bonus",f:function(e,a){return hav(e,a,"newRB")}}};
+  hikeAmt:{l:"Hike Amount",f:function(e,a){return hav(e,a,"hikeAmt")}},
+  newBase:{l:"New Base Pay",f:function(e,a){return e.basePay+hav(e,a,"hikeAmt")}},
+  pb:{l:"Performance Bonus",f:function(e,a){return hav(e,a,"newPB")}},
+  rb:{l:"Retention Bonus",f:function(e,a){return hav(e,a,"newRB")}}};
 function hStat(arr,s){
   var n=arr.length;if(!n)return null;var sum=arr.reduce(function(x,y){return x+y},0);
   if(s==="avg")return sum/n;if(s==="sum")return sum;
@@ -1872,7 +1872,7 @@ function heroHtml(vr,p){
   var M=HMEAS[HS.meas]||HMEAS.hikePct;if(!HMEAS[HS.meas])HS.meas="hikePct";
   if(HS.stat==="sum"&&M.pct)HS.stat="avg";
   var g={};vr.forEach(function(e){var k=groupKey(e,GB),r=p.res[e.empId],a=r&&r.st==="chg"?r.after:null,o=g[k]=g[k]||{n:0,b:[],a:[]};o.n++;o.b.push(M.f(e,null));o.a.push(M.f(e,a))});
-  var keys;if(GB==="rating")keys=["5","4","3","2","1","No rating"];
+  var keys;if(GB==="rating")keys=["5","4","3","2","1","No Rating"];
   else{keys=Object.keys(g).sort(function(x,y){return g[y].n-g[x].n}).slice(0,12).sort(function(x,y){return x<y?-1:x>y?1:0})}
   var rows=keys.map(function(k){var o=g[k]||{n:0,b:[],a:[]};return {k:k,n:o.n,b:hStat(o.b,HS.stat),a:hStat(o.a,HS.stat)}});
   var mx=0;rows.forEach(function(r){if(r.b!=null)mx=Math.max(mx,r.b);if(r.a!=null)mx=Math.max(mx,r.a)});if(mx<=0)mx=1;
@@ -1880,7 +1880,7 @@ function heroHtml(vr,p){
   var H=240,L0=6,R0=50,T0=10,B0=38,W=Math.max(640,L0+R0+rows.length*90),iw=W-L0-R0,ih=H-T0-B0,gw=iw/rows.length,bw=Math.min(9,gw/4.5),gap=2;
   var s='<svg viewBox="0 0 '+W+' '+H+'"'+(W>640?' style="width:'+W+'px;height:'+H+'px;max-height:none"':'')+' role="img" aria-label="'+esc(HS.stat)+' of '+esc(M.l)+'">';
   for(var i=0;i<=4;i++){var y=T0+ih-ih*i/4;s+='<line x1="'+L0+'" x2="'+(W-R0)+'" y1="'+y+'" y2="'+y+'" stroke="'+(i?'#E5E7EB':'#9CA3AF')+'"'+(i?' stroke-dasharray="3 4"':'')+'/><text x="'+(W-R0+8)+'" y="'+(y+3)+'" font-size="9" fill="#6B7280">'+hFmt(st*i,M.pct,true)+'</text>'}
-  var lbl=GB==="rating"?function(k){return k==="No rating"?k:"Rating "+k}:function(k){return k.length>13?k.slice(0,12)+"…":k};
+  var lbl=GB==="rating"?function(k){return k==="No Rating"?k:"Rating "+k}:function(k){return k.length>13?k.slice(0,12)+"…":k};
   rows.forEach(function(r,i){var cx=L0+gw*i+gw/2,hb=r.b==null?0:ih*r.b/top,ha=r.a==null?0:ih*r.a/top,d=(r.a!=null&&r.b!=null)?r.a-r.b:null;
     var tip='<b>'+esc(lbl(r.k))+'</b> · '+r.n+' people<br>'+(r.n?'Now '+hFmt(r.b,M.pct)+' → After <b>'+hFmt(r.a,M.pct)+'</b>'+(d==null?'':' <span class="'+(d>0?'g':d<0?'r':'')+'">'+(d>0?'+':'')+(M.pct?d.toFixed(1)+' pp':hFmt(d,false))+'</span>'):'Nobody in this group');
     s+='<g class="hg" data-hgk="'+esc(r.k)+'" data-tip="'+esc(tip)+'"><rect class="hv" x="'+(cx-gw/2+3)+'" y="'+T0+'" width="'+(gw-6)+'" height="'+(ih+B0-6)+'" fill="transparent"/>';
@@ -1891,8 +1891,8 @@ function heroHtml(vr,p){
   s+='</svg>';
   var sel=function(id,o,cur){return '<select id="'+id+'">'+o.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===cur?' selected':'')+'>'+esc(x[1])+'</option>'}).join("")+'</select>'};
   return '<div class="hc"><div class="hbar">'+sel("hcStat",HSTAT.filter(function(x){return x[0]!=="sum"||!M.pct}),HS.stat)+'<span>of</span>'
-    +sel("hcMeas",Object.keys(HMEAS).map(function(k){return [k,HMEAS[k].l]}),HS.meas)+'<span>by</span>'+sel("hcGb",opts.map(function(o){return [o.id,o.label||o.l||o.id]}),GB)+'</div>'
-    +'<div class="hlg"><span><i style="background:#9DBDEB"></i>Now</span><span><i style="background:#27548A"></i>After this change</span></div>'+'<div class="hscroll">'+s+'</div></div>';
+    +sel("hcMeas",Object.keys(HMEAS).map(function(k){return [k,HMEAS[k].l]}),HS.meas)+'<span>by</span>'+sel("hcGb",opts.map(function(o){return [o.id,o.label||o.l||o.id]}),GB)+cmpSelHtml("cmpSelSum")+'</div>'
+    +'<div class="hlg"><span><i style="background:#9DBDEB"></i>Now</span><span><i style="background:#27548A"></i>After This Change</span></div>'+'<div class="hscroll">'+s+'</div></div>';
 }
 var hTip=document.createElement("div");hTip.className="htip";root.appendChild(hTip);
 $("imp").addEventListener("mousemove",function(ev){var g=ev.target.closest&&ev.target.closest(".hg");if(!g){hTip.style.display="none";return}
@@ -1907,17 +1907,17 @@ $("imp").addEventListener("click",function(ev){var g=ev.target.closest&&ev.targe
 var GRP=["Pay","Rating","Promotion","History"];
 (function(){var m={band:"Pay",big:"Pay",comp:"Pay",inv:"Rating",data:"Rating",mgr:"Rating",promo:"Promotion",rep:"History",low:"History"};FLAGS.forEach(function(f){f.grp=m[f.id]||"Pay"})})();
 FLAGS.push(
- {id:"lowgood",label:"Low hike for a good performer",desc:"Rated high, but the hike % is below the minimum.",sev:"warn",grp:"Pay",pm:[{k:"r",l:"Rating at least",u:"",d:4,step:0.5},{k:"pct",l:"Hike below",u:"%",d:4,step:0.5}]},
- {id:"lowrate",label:"Hike for a low rating",desc:"Rated low, yet given a hike above the limit.",sev:"warn",grp:"Rating",pm:[{k:"r",l:"Rating at most",u:"",d:2,step:0.5},{k:"pct",l:"Hike above",u:"%",d:0,step:0.5}]},
- {id:"promolow",label:"Promotion with a small hike",desc:"Promoted, but the hike % is below the minimum.",sev:"info",grp:"Promotion",pm:[{k:"pct",l:"Hike below",u:"%",d:5,step:0.5}]},
- {id:"nohike",label:"No hike for several cycles",desc:"No hike now and none in the earlier cycles.",sev:"info",grp:"History",pm:[{k:"yrs",l:"Cycles in a row",u:"",d:2,step:1,max:3}]},
- {id:"jump",label:"Jump above the 3-year average",desc:"Hike % is far above this person's own average of past years.",sev:"info",grp:"History",pm:[{k:"pp",l:"Above average by",u:"pp",d:3,step:0.5}]});
+ {id:"lowgood",label:"Low Hike for a Good Performer",desc:"Rated high, but the hike % is below the minimum.",sev:"warn",grp:"Pay",pm:[{k:"r",l:"Rating at Least",u:"",d:4,step:0.5},{k:"pct",l:"Hike Below",u:"%",d:4,step:0.5}]},
+ {id:"lowrate",label:"Hike for a Low Rating",desc:"Rated low, yet given a hike above the limit.",sev:"warn",grp:"Rating",pm:[{k:"r",l:"Rating at Most",u:"",d:2,step:0.5},{k:"pct",l:"Hike Above",u:"%",d:0,step:0.5}]},
+ {id:"promolow",label:"Promotion with a Small Hike",desc:"Promoted, but the hike % is below the minimum.",sev:"info",grp:"Promotion",pm:[{k:"pct",l:"Hike Below",u:"%",d:5,step:0.5}]},
+ {id:"nohike",label:"No Hike for Several Cycles",desc:"No hike now and none in the earlier cycles.",sev:"info",grp:"History",pm:[{k:"yrs",l:"Cycles in a Row",u:"",d:2,step:1,max:3}]},
+ {id:"jump",label:"Jump Above the 3-Year Average",desc:"Hike % is far above this person's own average of past years.",sev:"info",grp:"History",pm:[{k:"pp",l:"Above Average by",u:"pp",d:3,step:0.5}]});
 if(!FLS.custom)FLS.custom=[];
-var CF_FIELDS=[["hp","Hike % (after)"],["ha","Hike amount (after)"],["rt","Manager rating"],["cr","Client rating"],["yoe","Years of experience"],["rr","RR %"],["gm","Gross margin %"],["bp","Base pay"],["nb","New base pay"]],
+var CF_FIELDS=[["hp","Hike % (After)"],["ha","Hike Amount (After)"],["rt","Manager Rating"],["cr","Client Rating"],["yoe","Years of Experience"],["rr","RR %"],["gm","Gross Margin %"],["bp","Base Pay"],["nb","New Base Pay"]],
     CF_OPS=[["gt","is above"],["lt","is below"],["eq","equals"],["bt","is between"]];
 function cfName(k){return CF_FIELDS.filter(function(x){return x[0]===k})[0][1]}
 function cDesc(c){var o=CF_OPS.filter(function(x){return x[0]===c.op})[0][1];return cfName(c.field)+" "+o+" "+c.a+(c.op==="bt"?" and "+c.b:"")}
-function addCustom(c){if(FLAGS.some(function(f){return f.id===c.id}))return;FLAGS.push({id:c.id,label:c.label,desc:"Your own flag",sev:"info",grp:c.grp,pm:[],custom:true})}
+function addCustom(c){if(FLAGS.some(function(f){return f.id===c.id}))return;FLAGS.push({id:c.id,label:c.label,desc:"Your Own Flag",sev:"info",grp:c.grp,pm:[],custom:true})}
 FLS.custom.forEach(addCustom);
 function flSync(){if(!FLS.custom)FLS.custom=[];FLAGS=FLAGS.filter(function(f){return !f.custom||FLS.custom.some(function(c){return c.id===f.id})})}
 var _flc=flCompute;
@@ -1945,7 +1945,7 @@ function xDrill(f,L,p){return '<div class="flp">'+L.slice(0,10).map(function(x){
 function xRow(f,FC,p,cfg){
   var on=flOn(f.id),L=FC[f.id]||[],n=L.length,open=S.flOpen===f.id&&on,cnt='<button type="button" class="flc'+(on&&n?' has '+f.sev:'')+'" data-flopen="'+f.id+'"'+(on&&n?'':' disabled')+'>'+(on?n:'–')+'<span>'+(open?'▴':'▾')+'</span></button>';
   if(!cfg)return '<div class="fl nocfg'+(open?' open':'')+'"><div class="flr"><div class="fln"><b>'+esc(f.label)+'</b><i>'+esc(f.desc)+'</i>'+(xLim(f)?'<div class="xlim">'+esc(xLim(f))+'</div>':'')+'</div>'+cnt+'</div>'+(open?xDrill(f,L,p):'')+'</div>';
-  return '<div class="fl'+(on?'':' off')+(open?' open':'')+'"><div class="flr"><label class="flsw" title="Switch this flag on or off"><input type="checkbox" data-flon="'+f.id+'"'+(on?' checked':'')+'><span></span></label>'
+  return '<div class="fl'+(on?'':' off')+(open?' open':'')+'"><div class="flr"><label class="flsw" title="Switch This Flag on or Off"><input type="checkbox" data-flon="'+f.id+'"'+(on?' checked':'')+'><span></span></label>'
     +'<div class="fln"><b>'+esc(f.label)+'</b><i>'+esc(f.desc)+'</i>'+(f.custom?'<button type="button" class="nfdel" data-nfdel="'+f.id+'">Delete this flag</button>':'')+'</div>'
     +'<div class="fllim">'+f.pm.map(function(q){return '<label>'+esc(q.l)+'<span><input type="number" data-flp="'+f.id+'.'+q.k+'" step="'+q.step+'" min="0"'+(q.max?' max="'+q.max+'"':'')+' value="'+flv(f.id,q.k)+'"'+(on?'':' disabled')+'>'+(q.u?'<em>'+esc(q.u)+'</em>':'')+'</span></label>'}).join("")+'</div>'+cnt+'</div>'+(open?xDrill(f,L,p):'')+'</div>';
 }
@@ -1955,14 +1955,14 @@ excTab=function(c){
   FLAGS.forEach(function(f){if(!flOn(f.id))return;(FC[f.id]||[]).forEach(function(x){uniq[x.e.empId]=1});tot+=(FC[f.id]||[]).length;gc[f.grp]=(gc[f.grp]||0)+(FC[f.id]||[]).length});
   var tab=S.exTab||"Pay";if(tab!=="cfg"&&GRP.indexOf(tab)<0)tab="Pay";
   var h='<div class="wi wp ex-t"><div class="exh"><div><b>'+Object.keys(uniq).length+'</b> people flagged · '+tot+' flag'+(tot===1?'':'s')+'</div>'
-    +'<div class="exa"><button type="button" class="pvq" id="flCsv">⬇ Download flagged</button></div></div>'
+    +'<div class="exa"><button type="button" class="pvq" id="flCsv">⬇ Download Flagged</button></div></div>'
     +'<div class="xtabs">'+GRP.map(function(g){return '<button type="button" data-xt="'+g+'" class="'+(tab===g?'on':'')+'">'+g+'<i>'+gc[g]+'</i></button>'}).join("")+'<button type="button" data-xt="cfg" class="xcfg'+(tab==="cfg"?' on':'')+'">Config</button></div>';
   if(tab==="cfg"){
-    h+='<div class="nf"><b>+ New flag</b><select id="nfField">'+CF_FIELDS.map(function(x){return '<option value="'+x[0]+'">'+x[1]+'</option>'}).join("")+'</select>'
+    h+='<div class="nf"><b>+ New Flag</b><select id="nfField">'+CF_FIELDS.map(function(x){return '<option value="'+x[0]+'">'+x[1]+'</option>'}).join("")+'</select>'
       +'<select id="nfOp">'+CF_OPS.map(function(x){return '<option value="'+x[0]+'">'+x[1]+'</option>'}).join("")+'</select>'
       +'<input type="number" id="nfA" step="any" placeholder="limit"><input type="number" id="nfB" step="any" placeholder="to" style="display:none">'
       +'<input type="text" id="nfName" placeholder="Name"><select id="nfGrp">'+GRP.map(function(g){return '<option>'+g+'</option>'}).join("")+'</select><button type="button" class="btn pri" id="nfSave">Save</button></div>'
-      +'<div class="wm" style="margin:0 0 6px">Switch flags on or off and set their limits. These settings are yours; they do not change anything for other users.<button type="button" class="pvq" id="flReset" style="margin-left:8px">Reset limits</button></div>';
+      +'<div class="wm" style="margin:0 0 6px">Switch flags on or off and set their limits. These settings are yours; they do not change anything for other users.<button type="button" class="pvq" id="flReset" style="margin-left:8px">Reset Limits</button></div>';
     GRP.forEach(function(g){var fs=FLAGS.filter(function(f){return f.grp===g});if(fs.length)h+='<div class="xgh">'+g+'</div>'+fs.map(function(f){return xRow(f,FC,p,true)}).join("")});
   }else{
     var fs=FLAGS.filter(function(f){return f.grp===tab&&flOn(f.id)});
@@ -1998,7 +1998,7 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
   var ws=mk("div","ws");
   head.classList.add("wshead");ws.appendChild(head);
   /* left: inputs */
-  var pl=mk("section","pL","pane"),lt=mk("div","lTabs","ptabs",'<button type="button" data-p="rules">What to change</button><button type="button" data-p="who">For whom</button><span class="sp"></span><button type="button" class="pfold" id="lFold" title="Fold this pane">‹</button>'),lb=mk("div","lBody","pbody"),lf=mk("div","lFoot","pfoot");
+  var pl=mk("section","pL","pane"),lt=mk("div","lTabs","ptabs",'<button type="button" data-p="rules">What to Change</button><button type="button" data-p="who">For Whom</button><span class="sp"></span><button type="button" class="pfold" id="lFold" title="Fold This Pane">‹</button>'),lb=mk("div","lBody","pbody"),lf=mk("div","lFoot","pfoot");
   if(scnForm)lb.appendChild(scnForm);
   lb.appendChild(two);
   lf.appendChild(colR.querySelector("label.opt"));lf.appendChild(actRow);
@@ -2008,7 +2008,7 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
   /* centre: results + Employees + Scenarios as tabs */
   var pc=mk("section","pC","pane");metPanel.appendChild(gridCard);metPanel.appendChild(scnCard);pc.appendChild(metPanel);
   /* right: Before / After list */
-  var pr=mk("aside","pR","pane"),rt=mk("div",null,"ptabs",'<span class="ptitle">Before / After</span><span class="sp"></span><button type="button" class="pfold" id="rFold" title="Fold this pane">›</button>'),rb=mk("div","watch","pbody");rb.style.padding="0";
+  var pr=mk("aside","pR","pane"),rt=mk("div",null,"ptabs",'<span class="ptitle">Before / After</span><span class="sp"></span><button type="button" class="pfold" id="rFold" title="Fold This Pane">›</button>'),rb=mk("div","watch","pbody");rb.style.padding="0";
   pr.appendChild(rt);pr.appendChild(rb);
   pr.appendChild(mk("button",null,"pexp","‹ Before / After")).onclick=function(){st.rc=false;apply()};
   pr.appendChild(mk("div",null,"pgrip"));
@@ -2033,7 +2033,7 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
   /* centre tabs: Employees and Scenarios sit with the result tabs */
   var tEmp=mk("button",null,null,"Employees"),tScn=mk("button",null,null,"Scenarios");
   tEmp.type="button";tEmp.setAttribute("data-x","emp");tScn.type="button";tScn.setAttribute("data-x","scn");
-  mpTabs.insertBefore(tEmp,lyTog);mpTabs.insertBefore(tScn,lyTog);
+  mpTabs.insertBefore(tEmp,mpTabs.firstChild);mpTabs.insertBefore(tScn,lyTog);
   /* "+" chooses which tabs show */
   var plus=mk("button","tabPlus","tplus","＋");plus.type="button";plus.title="Choose the tabs shown in this pane";
   mpTabs.insertBefore(plus,lyTog);
@@ -2045,7 +2045,7 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
   new MutationObserver(function(){if(!scnCard.classList.contains("hide")&&ct==="res"){ct="scn";apply()}}).observe(scnCard,{attributes:true,attributeFilter:["class"]});
   var menu=mk("div","tabMenu","tmenu");pc.appendChild(menu);
   function menuFill(){
-    var h='<div class="th">Tabs in this pane</div>';
+    var h='<div class="th">Tabs in This Pane</div>';
     [].forEach.call(mpTabs.querySelectorAll("[data-t],[data-x]"),function(b){var t=b.getAttribute("data-t")||b.getAttribute("data-x"),lock=t==="summary";
       h+='<label><input type="checkbox" data-tt="'+t+'"'+(st.hid.indexOf(t)<0?" checked":"")+(lock?" disabled":"")+'>'+b.textContent.replace("‹ ","")+'</label>'});
     menu.innerHTML=h}
@@ -2072,19 +2072,19 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
     var sc=scope();
     if(S.loading||!sc.length){w.innerHTML='<div class="wempty">No rows in view.</div>';return}
     var p=S.pv,b0=p?p.before:budgetOf(sc,null),b1=p?p.after:budgetOf(sc,null),h='<div class="wh"><span>Metric</span><span>Before</span><span>After</span></div>';
-    h+=row("Budget utilised","of "+big(b1.budget),pc1(b0.util),pc1(b1.util),dl(b0.util,b1.util,true));
+    h+=row("Budget Utilised","of "+big(b1.budget),pc1(b0.util),pc1(b1.util),dl(b0.util,b1.util,true));
     var vv=viewRows().filter(function(e){var r=p&&p.res[e.empId];return !r||r.st!=="off"}),sn=0,s0=0,s1=0;
     vv.forEach(function(e){var r=p&&p.res[e.empId],a=r&&r.st==="chg"?r.after.hikeAmt:e.hikeAmt;sn++;s0+=e.hikeAmt/e.basePay*100;s1+=a/e.basePay*100});
-    if(sn)h+=row("Average hike","per person",pc1(s0/sn),pc1(s1/sn),dl(s0/sn,s1/sn,true));
-    h+=row("Budget used","",big(b0.used),big(b1.used),dl(b0.used,b1.used,false));
-    h+=row("Budget left","",big(b0.left),big(b1.left),dl(b0.left,b1.left,false));
+    if(sn)h+=row("Average Hike","per person",pc1(s0/sn),pc1(s1/sn),dl(s0/sn,s1/sn,true));
+    h+=row("Budget Used","",big(b0.used),big(b1.used),dl(b0.used,b1.used,false));
+    h+=row("Budget Left","",big(b0.left),big(b1.left),dl(b0.left,b1.left,false));
     if(p){
       h+=row("Total Hike","",big(p.hike.before),big(p.hike.after),dl(p.hike.before,p.hike.after,false));
-      h+=row("People affected","of "+sc.length+" in view","—",String(p.n.chg),"");
+      h+=row("People Affected","of "+sc.length+" in view","—",String(p.n.chg),"");
       h+=row("Skipped","edited manually","—",String(p.n.skip),"");
-      h+=row("Left out","not in filter","—",String(p.n.off),"");
+      h+=row("Left Out","not in filter","—",String(p.n.off),"");
     }else h+='<div class="wempty">Choose a rule and click Preview to see the change.</div>';
-    if(b1.left<0)h+='<div class="wnote">Over budget by '+big(-b1.left)+' · warning only</div>';
+    if(b1.left<0)h+='<div class="wnote">Over Budget by '+big(-b1.left)+' · warning only</div>';
     w.innerHTML=h;
   }
   var _rib=renderImpactBar;renderImpactBar=function(){_rib();renderWatch()};

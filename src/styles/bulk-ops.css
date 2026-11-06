@@ -777,3 +777,13 @@
 /* Summary chart: scrolls sideways when there are many groups */
 .bo .hc .hscroll{overflow-x:auto;overflow-y:hidden;max-width:100%;padding-bottom:4px}
 .bo .hc .hscroll svg{max-width:none}
+/* Compare to now sits inside each tab (Summary, What-If, Charts, Pivot) instead of the tab bar */
+.bo .lytog{display:none!important}
+.bo .wchrow{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin:0 0 9px}
+.bo .wchrow .wch{margin:0}
+.bo .hbar .cmpw{margin-left:auto}
+.bo .pvpre{flex-wrap:wrap!important;row-gap:6px}
+.bo .pvpre .pvmid{display:inline-flex;align-items:center;gap:10px;margin:0 10px}
+.bo .pvpre .pvmid .cmpw{white-space:nowrap}
+.bo .pvpre #pvCsv{border-radius:7px!important;margin:0!important;padding:3px 10px!important;font-weight:700!important;white-space:nowrap}
+.bo .pvpre button[data-pvpre="reward"]{border-radius:0 7px 7px 0!important}
