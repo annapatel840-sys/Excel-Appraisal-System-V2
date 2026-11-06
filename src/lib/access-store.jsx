@@ -18,7 +18,9 @@ export const HR_TAB_SCREENS = {
   "appraisal-cycle": "cycleMaster",
   "location-master": "locationMaster",
   "payroll-data": "payroll",
-  // Feedback & Rating Master is HR-only and uses the existing payroll screen permission.\n  // The access catalogue has no separate feedbackRatingMaster screen key.\n  "feedback-rating": "payroll",
+  // Feedback & Rating Master is HR-only and uses the existing payroll screen permission
+  // (the access catalogue has no separate feedbackRatingMaster screen key).
+  "feedback-rating": "payroll",
   "hr-dashboard": "hrDashboard",
   "historical-import": "historicalImport",
   "payroll-upload": "payroll",
@@ -30,6 +32,26 @@ export const HR_TAB_SCREENS = {
   delegation: "delegation",
   access: "access",
 };
+
+// Screen names the app asks for that the server's access catalogue does not define yet.
+// Until the server lists them, they follow an existing screen with the same audience, so the
+// tab/route is not treated as "no access" for everyone. A key the server DOES list always wins.
+//   - the five HR Operations tabs are HR-only, like Employee Master
+//   - Bulk Edit follows the Appraisal Sheet (the Apply button is still gated by the "bulkEdit" action)
+export const SCREEN_FALLBACK = {
+  hrDashboard: "employeeMaster",
+  historicalImport: "employeeMaster",
+  changeMismatch: "employeeMaster",
+  locationMaster: "employeeMaster",
+  designationMaster: "employeeMaster",
+  bulkEditScreen: "appraisalSheet",
+};
+
+export function resolveScreenLevel(screens, key) {
+  let level = screens ? screens[key] : undefined;
+  if (LEVEL_RANK[level] === undefined && SCREEN_FALLBACK[key]) level = screens?.[SCREEN_FALLBACK[key]];
+  return LEVEL_RANK[level] !== undefined ? level : "none";
+}
 
 // Top-level routes → screen key (the HR Operations page is decided per tab).
 export const PATH_SCREENS = {
@@ -128,8 +150,7 @@ export function AccessProvider({ children }) {
 
     const screenLevel = (key) => {
       if (!ok) return "edit";
-      const level = screens[key];
-      return LEVEL_RANK[level] !== undefined ? level : "none";
+      return resolveScreenLevel(screens, key);
     };
     const canScreen = (key, level = "view") =>
       LEVEL_RANK[screenLevel(key)] >= (LEVEL_RANK[level] ?? 1);
