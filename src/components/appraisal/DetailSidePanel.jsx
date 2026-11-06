@@ -183,6 +183,7 @@ function buildInfo(e, history, live, rules) {
 
   const tpbSet = targetPB || (last ? num(last.targetPB) : 0);
   const items = [
+    { label: "Effective Date", value: e.lastAppraisalDate || "" },
     { label: "Wissen exp as on 1st Jan", value: e.wissenExperience ? String(e.wissenExperience) : "", lv: levelFor(rules, ctx, "orgExp") },
     { label: "Total Experience as on 1st Jan", value: e.totalExperience ? String(e.totalExperience) : "", lv: levelFor(rules, ctx, "totalExp") },
     { label: "Date of Joining", value: ctx.doj, lv: levelFor(rules, ctx, "doj") },
