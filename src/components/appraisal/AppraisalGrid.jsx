@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { Check, ChevronLeft, ChevronRight, History, Pencil, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, History, Info, Pencil, X } from "lucide-react";
 import { createPortal } from "react-dom";
 
 import { Checkbox } from "@/components/ui/checkbox";
@@ -3821,7 +3821,7 @@ export function AppraisalGrid({
                   title={`${tagCol.label}: ${tagText}`}
                   className="max-w-full shrink-0 truncate rounded-[4px] border border-[#86d5a4] bg-[#e3f6ea] px-1.5 py-px text-[9.5px] font-bold leading-tight text-[#14793f]"
                 >
-                  {tagText}
+                  {tagCol.label} : {tagText}
                 </span>
               ) : null;
             })}
@@ -4932,6 +4932,26 @@ export function AppraisalGrid({
                         >
                           {headerLabel}
                         </span>
+
+                        {isName && (
+                          <span
+                            className="group/info relative inline-flex shrink-0 items-center"
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <Info
+                              aria-label="About the Employee column"
+                              tabIndex={0}
+                              className="size-3.5 cursor-help text-[#1559a6] outline-none"
+                              strokeWidth={2.25}
+                            />
+                            <span
+                              role="tooltip"
+                              className="pointer-events-none absolute left-[-8px] top-full z-[200] mt-1 hidden w-[190px] whitespace-normal rounded-[5px] bg-[#102a43] px-2 py-1.5 text-left text-[11px] font-normal leading-snug text-white shadow-lg group-hover/info:block group-focus-within/info:block"
+                            >
+                              Click the employee name to open the details panel.
+                            </span>
+                          </span>
+                        )}
 
                         {showFilter && (
                           <div className="shrink-0">

@@ -875,11 +875,14 @@ function demoSave(ch){
   return {saved:ch.length};
 }
 function afterSave(){return (apiMode()&&!cfg.saveChanges)?loadBudget():Promise.resolve()}
+/* Apply / Restore keep the "Saving…" state on screen for at least this long, even when the save is instant */
+var MIN_BUSY_MS=1000;
 function doApply(){
   if(!cfg.canApply||!S.pv||S.locked||S.busy||!S.pv.n.chg)return;
   var x=changesFromPreview();if(!x.changes.length)return;
   var text=S.pv.text;
   S.busy=true;S.err="";S.flash="";render();
+  var t0=Date.now();
   var bid="BO-"+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
   postChanges(x.changes,"bulk",{id:bid,text:text,label:"Applying"}).then(function(res){
     if(res.rows)mergeRows(res.rows);
@@ -892,7 +895,7 @@ function doApply(){
   }).catch(function(err){
     S.err=err.message+(err.done?" ("+err.done+" of "+err.total+" changes had already been saved; the screen is being refreshed)":" Nothing was changed.");
     if(err.done&&apiMode()&&!cfg.saveChanges)return loadAll();
-  }).then(function(){S.busy=false;S.prog=null;render()});
+  }).then(function(){var w=Math.max(0,MIN_BUSY_MS-(Date.now()-t0));return w?new Promise(function(r){setTimeout(r,w)}):0}).then(function(){S.busy=false;S.prog=null;render()});
 }
 function doReset(){   // back to the starting point: one Hike % rule at 0, everyone, nothing previewed
   if(S.busy)return;
@@ -1219,13 +1222,13 @@ function doRestore(id){
     Object.keys(r.old).forEach(function(k){ch.push({empId:r.id,field:k,value:r.old[k]})});ids.push(r.id);
   });
   if(!ch.length){S.flash="Nothing restored: every row in this batch was changed again afterwards.";render();return}
-  S.busy=true;S.err="";render();
+  var t0=Date.now();S.busy=true;S.err="";render();
   postChanges(ch,"bulk_restore",{id:b.id,text:"Restore of "+b.id,label:"Restoring"}).then(function(res){
     if(res.rows)mergeRows(res.rows);
     b.rows.forEach(function(r){if(ids.indexOf(r.id)>=0){var e=byId(r.id);if(e)e.bulk=r.bulk}});
     b.restored=true;S.pv=null;
     return afterSave().then(function(){syncBatches(false)}).then(function(){S.flash="Restored previous values on "+ids.length+" row"+(ids.length===1?"":"s")+(skipped?" · "+skipped+" skipped (changed again since)":"")+" · "+nowT()+" · source “bulk_restore” in the audit trail"});
-  }).catch(function(err){S.err=err.message+" Nothing was restored."}).then(function(){S.busy=false;S.prog=null;render()});
+  }).catch(function(err){S.err=err.message+" Nothing was restored."}).then(function(){var w=Math.max(0,MIN_BUSY_MS-(Date.now()-t0));return w?new Promise(function(r){setTimeout(r,w)}):0}).then(function(){S.busy=false;S.prog=null;render()});
 }
 function pvOK(){   // Pivot is for HR and Tech ED; a Comp Manager does not get it
   if(apiMode()){var r=String((S.as||(ME&&(ME.activeRole||ME.role))||"")).toLowerCase();return !r||!/comp/.test(r)||/hr|tech/.test(r)}
