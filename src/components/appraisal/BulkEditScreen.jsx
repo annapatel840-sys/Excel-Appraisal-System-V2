@@ -9,33 +9,44 @@ const isActiveCycle = (cycle) =>
   !cycle?.archived &&
   !cycle?.hidden;
 
+/* Remembered between visits to this tab, so coming back does not show "Loading appraisal cycles…"
+   again. The list is still refreshed quietly in the background every time. */
+let cyclesCache = null;
+let selectedCache = "";
+
+const pickCycle = (list) =>
+  list.find(isActiveCycle) || list.find((cycle) => !cycle?.archived) || list[0];
+
 export default function BulkEditScreen() {
   // "View" on the Bulk Edit screen: preview only, nothing can be applied.
   const access = useAccess();
   const readOnly = !access.canAction("bulkEdit");
-  const [cycles, setCycles] = useState([]);
+  const [cycles, setCycles] = useState(() => cyclesCache || []);
   // The cycle is picked automatically (active one first); no manual selector.
-  const [selectedId, setSelectedId] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [selectedId, setSelectedId] = useState(() => selectedCache);
+  const [loading, setLoading] = useState(() => !cyclesCache);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
+    if (!cyclesCache) setLoading(true);
     payrollCycleRequest("cycles")
       .then((data) => {
         if (!alive) return;
         const list = Array.isArray(data) ? data : [];
-        setCycles(list);
-        const preferred =
-          list.find(isActiveCycle) ||
-          list.find((cycle) => !cycle?.archived) ||
-          list[0];
-        setSelectedId((current) =>
-          current && list.some((cycle) => String(cycle.id) === current)
-            ? current
-            : String(preferred?.id || ""),
+        cyclesCache = list;
+        // Same cycles as before: keep the current array so nothing re-renders or re-mounts.
+        setCycles((previous) =>
+          JSON.stringify(previous) === JSON.stringify(list) ? previous : list,
         );
+        setSelectedId((current) => {
+          const next =
+            current && list.some((cycle) => String(cycle.id) === current)
+              ? current
+              : String(pickCycle(list)?.id || "");
+          selectedCache = next;
+          return next;
+        });
         setError("");
       })
       .catch((err) => {
