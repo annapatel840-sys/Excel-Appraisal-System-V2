@@ -4,6 +4,8 @@ import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
+import { useSelectedLocation } from "@/lib/location-store";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -200,6 +202,7 @@ export function AppraisalCycleMasterPage({
 }) {
   const user = useCatalystUser();
   const access = useAccess();
+  const [selectedLocation, setSelectedLocation] = useSelectedLocation();
   const canManageCycles =
     String(user?.role || "")
       .trim()
@@ -1928,6 +1931,15 @@ export function AppraisalCycleMasterPage({
   return (
     <div className="acx">
       <style>{CSS}</style>
+
+      <div className="acx-tbar" style={{ justifyContent: "flex-end", marginBottom: 12 }}>
+        <span className="acx-mut" style={{ fontWeight: 700 }}>System Location</span>
+        <LocationMasterControl
+          value={selectedLocation}
+          onChange={setSelectedLocation}
+          ariaLabel="Set system location for appraisal screens"
+        />
+      </div>
 
       {loading && <div className="acx-empty">Loading appraisal cycles…</div>}
       {!loading && loadError && (
