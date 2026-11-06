@@ -42,8 +42,8 @@ import { createBulkOps } from "@/components/appraisal/bulk-ops/bulkOpsEngine";
 import BULK_OPS_MARKUP from "@/components/appraisal/bulk-ops/bulkOpsMarkup";
 import "@/styles/bulk-ops.css";
 
-/* Apply is switched off for now: this screen works up to Preview. */
-const APPLY_ENABLED = false;
+/* Apply is on: changes are saved through the Appraisal Sheet store (same audit trail and save path as inline and bulk edits). */
+const APPLY_ENABLED = true;
 
 /* ---------- header formatting ---------- */
 const rupees = (n) => Math.round(Number(n) || 0).toLocaleString("en-IN");
@@ -56,6 +56,19 @@ const isLive = (r) =>
   String(r.eligibility || "").trim().toLowerCase() === "eligible";
 const num = (v) => Number(v) || 0;
 
+/* Bulk screen field -> Appraisal Sheet column key */
+const STORE_KEY = {
+  hikeAmt: "hikeAmount",
+  hikePct: "hikePct",
+  newPB: "allocatedPBAmount",
+  newRB: "newRB",
+  tpbNext: "targetPBNextYear",
+  newPBInst: "pbInstallment",
+  remarks: "compManagerRemarks",
+  promo: "eligibleForPromotion",
+  newTitle: "newTitle",
+};
+
 const BulkOperations = forwardRef(function BulkOperations(
   { apiUrl = "", cycle, height = "100%", onApplied, readOnly = false },
   ref,
@@ -67,10 +80,12 @@ const BulkOperations = forwardRef(function BulkOperations(
   /* ---------- data the app already holds ---------- */
   let sheetRows = [];
   let sheetAudit = [];
+  let storeBulkUpdate = null;
   try {
     const ctx = useAppraisal();
     sheetRows = ctx.rows || [];
     sheetAudit = ctx.audit || [];
+    storeBulkUpdate = ctx.bulkUpdate || null;
   } catch (x) {
     sheetRows = [];
     sheetAudit = [];
@@ -156,7 +171,7 @@ const BulkOperations = forwardRef(function BulkOperations(
 
   /* Latest values for the engine's callbacks (the engine is created once). */
   const live = useRef({});
-  live.current = { sheetEmp, sheetHdr, readOnly, onApplied, cycle, apiUrl };
+  live.current = { sheetEmp, sheetHdr, readOnly, onApplied, cycle, apiUrl, sheetRows, storeBulkUpdate };
 
   /* Fallback header figures (only used until the Appraisal Sheet numbers are in memory). */
   const [fallback, setFallback] = useState(null);
@@ -176,6 +191,32 @@ const BulkOperations = forwardRef(function BulkOperations(
       applyNote: readOnly
         ? "View only — you can preview but not apply."
         : "Apply is not enabled yet — preview only.",
+      /* Apply / Restore: write the changes through the Appraisal Sheet store. */
+      saveChanges: (changes, source) => {
+        const { sheetRows: rows, storeBulkUpdate: bulkUpdate } = live.current;
+        if (!bulkUpdate) throw new Error("Saving is not available right now.");
+        const idOf = {};
+        (rows || []).forEach((r) => {
+          idOf[String(r.empId)] = r.id;
+        });
+        const groups = new Map();
+        changes.forEach((c) => {
+          const key = STORE_KEY[c.field] || c.field;
+          const id = idOf[String(c.empId)];
+          if (id == null) return;
+          const gk = key + "\u0001" + String(c.value);
+          if (!groups.has(gk)) groups.set(gk, { key, value: c.value, ids: [] });
+          groups.get(gk).ids.push(id);
+        });
+        let saved = 0;
+        groups.forEach((g) => {
+          saved += Number(bulkUpdate(g.ids, g.key, "set", g.value)) || 0;
+        });
+        if (changes.length && !saved) {
+          throw new Error("Nothing could be saved (the sheet may be locked or the values did not change).");
+        }
+        return { saved, notes: [] };
+      },
       getSheetEmp: () => live.current.sheetEmp,
       getHdr: () => {
         const h = live.current.sheetHdr;

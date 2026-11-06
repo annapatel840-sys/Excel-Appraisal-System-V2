@@ -760,7 +760,7 @@ function postChanges(changes,source,meta){
   function next(){
     if(!chunks.length)return Promise.resolve({saved:saved,notes:notes,rows:lastRows,done:done,total:changes.length});
     var ch=chunks.shift();
-    var call=apiMode()?apiCall("POST","/cells",{cycle_id:ACTIVE_CYCLE.id,as_role:S.as||undefined,changes:ch,source:source,batch_id:meta&&meta.id,batch_text:meta&&meta.text}):new Promise(function(ok){setTimeout(function(){ok(demoSave(ch))},DEMO_DELAY)});
+    var call=cfg.saveChanges?Promise.resolve().then(function(){return cfg.saveChanges(ch,source,meta)}):apiMode()?apiCall("POST","/cells",{cycle_id:ACTIVE_CYCLE.id,as_role:S.as||undefined,changes:ch,source:source,batch_id:meta&&meta.id,batch_text:meta&&meta.text}):new Promise(function(ok){setTimeout(function(){ok(demoSave(ch))},DEMO_DELAY)});
     return call.then(function(res){
       saved+=Number(res.saved)||ch.length;done+=ch.length;S.prog.done+=rowsIn(ch);renderStrip();renderFold();
       (res.notes||[]).forEach(function(n){notes.push(typeof n==="string"?n:(n.message||n.m||n.note||JSON.stringify(n)))});
@@ -779,7 +779,7 @@ function demoSave(ch){
   });
   return {saved:ch.length};
 }
-function afterSave(){return apiMode()?loadBudget():Promise.resolve()}
+function afterSave(){return (apiMode()&&!cfg.saveChanges)?loadBudget():Promise.resolve()}
 function doApply(){
   if(!cfg.canApply||!S.pv||S.locked||S.busy||!S.pv.n.chg)return;
   var x=changesFromPreview();if(!x.changes.length)return;
@@ -796,7 +796,7 @@ function doApply(){
     });
   }).catch(function(err){
     S.err=err.message+(err.done?" ("+err.done+" of "+err.total+" changes had already been saved; the screen is being refreshed)":" Nothing was changed.");
-    if(err.done&&apiMode())return loadAll();
+    if(err.done&&apiMode()&&!cfg.saveChanges)return loadAll();
   }).then(function(){S.busy=false;S.prog=null;render()});
 }
 function doReset(){   // back to the starting point: one Hike % rule at 6, everyone, nothing previewed
@@ -1989,7 +1989,7 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
 
 /* ===== v50: workspace. Same elements and handlers as v48, moved into panes; nothing else changed ===== */
 (function(){
-  var K="bulkWs_v52",st={lw:440,rw:290,lc:false,rc:false,lt:"rules",hid:[]},ct="res";
+  var K="bulkWs_v52",st={lw:440,rw:290,lc:false,rc:false,lt:"rules",hid:[]},ct="emp";
   try{var s=JSON.parse(localStorage.getItem(K)||"null");if(s)for(var k in s)st[k]=s[k]}catch(x){}
   function save(){try{localStorage.setItem(K,JSON.stringify(st))}catch(x){}}
   function mk(tag,id,cls,html){var e=document.createElement(tag);if(id)e.id=id;if(cls)e.className=cls;if(html!=null)e.innerHTML=html;return e}
