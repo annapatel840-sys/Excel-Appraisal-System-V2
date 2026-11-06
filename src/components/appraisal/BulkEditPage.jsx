@@ -30,7 +30,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { useAppraisal } from "@/lib/appraisal-store";
+import { useAppraisal, keyOfLabel } from "@/lib/appraisal-store";
 import { useBudget } from "@/lib/budget-store";
 import { useDistributionBudget } from "@/lib/distribution-budget";
 import {
@@ -70,6 +70,90 @@ const STORE_KEY = {
   newTitle: "newTitle",
 };
 
+/* ---------- Bulk history, rebuilt from the audit trail ---------- */
+const APPLY_SOURCE = "Bulk edit";
+const RESTORE_SOURCE = "Bulk restore";
+const RESTORE_PREFIX = "R-";
+const BATCH_PREFIX = "BO-";
+const AUDIT_TO_ENGINE_KEY = {
+  hikeAmount: "hikeAmt",
+  allocatedPBAmount: "newPB",
+  newRB: "newRB",
+  targetPBNextYear: "tpbNext",
+};
+const textKey = (cycle) => `bulkBatchText.v1:${cycle?.id ?? ""}`;
+function loadBatchTexts(cycle) {
+  try {
+    return JSON.parse(window.localStorage.getItem(textKey(cycle)) || "{}") || {};
+  } catch (x) {
+    return {};
+  }
+}
+function rememberBatchText(cycle, id, text) {
+  try {
+    const all = loadBatchTexts(cycle);
+    all[id] = String(text).slice(0, 300);
+    window.localStorage.setItem(textKey(cycle), JSON.stringify(all));
+  } catch (x) {
+    /* the history still shows, with a generated description */
+  }
+}
+const fmtTime = (iso) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getDate())} ${d.toLocaleString("en-US", { month: "short" })} ${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const asNum = (v) => (v !== "" && Number.isFinite(Number(v)) ? Number(v) : v);
+
+function buildBatches(records, texts) {
+  const seen = new Set();
+  const groups = new Map();
+  records.forEach((r) => {
+    const src = String(r.source || "");
+    const bid = String(r.batchId || "");
+    if (src !== APPLY_SOURCE && src !== RESTORE_SOURCE) return;
+    if (!bid.startsWith(src === RESTORE_SOURCE ? RESTORE_PREFIX + BATCH_PREFIX : BATCH_PREFIX)) return;
+    const k = `${r.empId}|${r.field}|${bid}|${r.to}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    if (!groups.has(bid)) groups.set(bid, []);
+    groups.get(bid).push(r);
+  });
+  const restoredIds = new Set();
+  groups.forEach((_, bid) => {
+    if (bid.startsWith(RESTORE_PREFIX)) restoredIds.add(bid.slice(RESTORE_PREFIX.length));
+  });
+  const out = [];
+  groups.forEach((entries, bid) => {
+    if (bid.startsWith(RESTORE_PREFIX)) return;
+    const rows = new Map();
+    const labels = new Set();
+    let first = null;
+    entries.forEach((e) => {
+      const ek = AUDIT_TO_ENGINE_KEY[keyOfLabel(e.field)];
+      if (!ek) return;
+      labels.add(e.field);
+      if (!rows.has(e.empId)) rows.set(e.empId, { id: String(e.empId), old: {}, nw: {}, bulk: false });
+      const row = rows.get(e.empId);
+      row.old[ek] = asNum(e.from);
+      row.nw[ek] = asNum(e.to);
+      if (!first || new Date(e.at) < new Date(first.at)) first = e;
+    });
+    if (!rows.size || !first) return;
+    out.push({
+      id: bid,
+      at: new Date(first.at).getTime() || 0,
+      time: fmtTime(first.at),
+      by: first.user || "",
+      text: (texts && texts[bid]) || `Changed ${[...labels].join(", ")}`,
+      rows: [...rows.values()],
+      restored: restoredIds.has(bid),
+    });
+  });
+  return out.sort((a, b) => a.at - b.at);
+}
+
 const BulkOperations = forwardRef(function BulkOperations(
   { apiUrl = "", cycle, height = "100%", onApplied, readOnly = false },
   ref,
@@ -82,11 +166,13 @@ const BulkOperations = forwardRef(function BulkOperations(
   let sheetRows = [];
   let sheetAudit = [];
   let storeBulkUpdate = null;
+  let storeFetchBulkHistory = null;
   try {
     const ctx = useAppraisal();
     sheetRows = ctx.rows || [];
     sheetAudit = ctx.audit || [];
     storeBulkUpdate = ctx.bulkUpdate || null;
+    storeFetchBulkHistory = ctx.fetchBulkHistory || null;
   } catch (x) {
     sheetRows = [];
     sheetAudit = [];
@@ -172,7 +258,12 @@ const BulkOperations = forwardRef(function BulkOperations(
 
   /* Latest values for the engine's callbacks (the engine is created once). */
   const live = useRef({});
-  live.current = { sheetEmp, sheetHdr, readOnly, onApplied, cycle, apiUrl, sheetRows, storeBulkUpdate };
+  live.current = {
+    sheetEmp, sheetHdr, readOnly, onApplied, cycle, apiUrl, sheetRows, storeBulkUpdate,
+    sheetAudit, storeFetchBulkHistory,
+  };
+  /* Bulk history read from the server (kept so a screen refresh does not re-download it). */
+  const historyCache = useRef(null);
 
   /* Fallback header figures (only used until the Appraisal Sheet numbers are in memory). */
   const [fallback, setFallback] = useState(null);
@@ -194,8 +285,16 @@ const BulkOperations = forwardRef(function BulkOperations(
         ? "View only — you can preview but not apply."
         : "Apply is not enabled yet — preview only.",
       /* Apply / Restore: write the changes through the Appraisal Sheet store. */
-      saveChanges: (changes, source) => {
+      saveChanges: (changes, source, meta) => {
         const { sheetRows: rows, storeBulkUpdate: bulkUpdate } = live.current;
+        // Every Apply is one batch in the audit trail (source "Bulk edit"); every Restore is
+        // one "Bulk restore" batch pointing back at it. This is what the History tab reads.
+        const isRestore = source === "bulk_restore";
+        const opts = {
+          source: isRestore ? RESTORE_SOURCE : APPLY_SOURCE,
+          batchId: meta && meta.id ? (isRestore ? RESTORE_PREFIX : "") + meta.id : undefined,
+        };
+        if (!isRestore && meta && meta.id && meta.text) rememberBatchText(live.current.cycle, meta.id, meta.text);
         if (!bulkUpdate) throw new Error("Saving is not available right now.");
         const idOf = {};
         (rows || []).forEach((r) => {
@@ -212,12 +311,24 @@ const BulkOperations = forwardRef(function BulkOperations(
         });
         let saved = 0;
         groups.forEach((g) => {
-          saved += Number(bulkUpdate(g.ids, g.key, "set", g.value)) || 0;
+          saved += Number(bulkUpdate(g.ids, g.key, "set", g.value, opts)) || 0;
         });
         if (changes.length && !saved) {
           throw new Error("Nothing could be saved (the sheet may be locked or the values did not change).");
         }
         return { saved, notes: [] };
+      },
+      /* History of the current cycle: server audit trail + what this session just saved. */
+      loadBatches: async (force) => {
+        const { storeFetchBulkHistory: fetchHistory, sheetAudit: localAudit, cycle: cyc } = live.current;
+        if ((force || !historyCache.current) && fetchHistory) {
+          try {
+            historyCache.current = await fetchHistory();
+          } catch (x) {
+            /* keep the last copy; the session's own audit entries still show */
+          }
+        }
+        return buildBatches([...(historyCache.current || []), ...(localAudit || [])], loadBatchTexts(cyc));
       },
       getSheetEmp: () => live.current.sheetEmp,
       getHdr: () => {

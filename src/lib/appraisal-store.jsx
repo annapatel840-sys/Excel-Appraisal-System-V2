@@ -274,6 +274,13 @@ const labelOf = (key) => {
   return column?.label || String(key);
 };
 
+// Audit rows store the column label; this goes back to the column key.
+export const keyOfLabel = (label) => {
+  const column = COLUMNS.find((item) => item.label === label);
+
+  return column ? column.key : "";
+};
+
 /* ============================================================
 VALUE NORMALIZATION
 ============================================================ */
@@ -874,10 +881,18 @@ const mapAuditFromCatalyst = (record, index = 0) => {
 FETCH AUDIT HISTORY FROM CATALYST
 ============================================================ */
 
-const fetchAuditHistoryFromCatalyst = async (empId = "") => {
+const fetchAuditHistoryFromCatalyst = async (empId = "", extra = null) => {
   const url = new URL(AUDIT_API_URL);
 
-  url.searchParams.set("limit", "500");
+  url.searchParams.set("limit", String((extra && extra.limit) || 500));
+
+  if (extra && extra.source) {
+    url.searchParams.set("source", String(extra.source));
+  }
+
+  if (extra && extra.appraisalYear) {
+    url.searchParams.set("appraisal_year", String(extra.appraisalYear));
+  }
 
   if (String(empId).trim()) {
     url.searchParams.set("emp_id", String(empId).trim());
@@ -1380,6 +1395,19 @@ export function AppraisalProvider({ children }) {
   /* ==========================================================
   REFRESH AUDIT HISTORY
   ========================================================== */
+
+  /* Every Bulk Edit apply / restore of the current cycle, straight from the
+     server, so the Bulk Edit history survives a refresh or a new login. */
+  const fetchBulkHistory = useCallback(async () => {
+    if (!APPRAISAL_YEAR) return [];
+    return currentCycleAudit(
+      await fetchAuditHistoryFromCatalyst("", {
+        source: "Bulk edit,Bulk restore",
+        appraisalYear: APPRAISAL_YEAR,
+        limit: 20000,
+      }),
+    );
+  }, []);
 
   const refreshAuditHistory = useCallback(async (empId = "") => {
     try {
@@ -1913,8 +1941,11 @@ export function AppraisalProvider({ children }) {
   ========================================================== */
 
   const bulkUpdate = useCallback(
-    (ids, key, mode, value) => {
-      const batchId = nextId();
+    (ids, key, mode, value, opts) => {
+      // The Bulk Edit screen passes its own batch id and source so one Apply
+      // is one history entry (and one Restore puts the whole thing back).
+      const batchId = (opts && opts.batchId) || nextId();
+      const editSource = (opts && opts.source) || "Bulk edit";
 
       const computeNext = (row, roundValue) => {
         if (mode === "set") {
@@ -1947,7 +1978,7 @@ export function AppraisalProvider({ children }) {
             const changed = applyLinkedFieldsEdit(
               row.id,
               linkedHikeValues(row, key, computeNext(row, roundValue)),
-              "Bulk edit",
+              editSource,
               batchId,
             );
 
@@ -1963,7 +1994,7 @@ export function AppraisalProvider({ children }) {
         ids,
         key,
         (row) => computeNext(row, Math.round),
-        "Bulk edit",
+        editSource,
         batchId,
       );
     },
@@ -2271,6 +2302,7 @@ export function AppraisalProvider({ children }) {
       appraisalHistoryFor,
       refreshEmployees,
       refreshAuditHistory,
+      fetchBulkHistory,
       requestData,
     }),
     [
@@ -2291,6 +2323,7 @@ export function AppraisalProvider({ children }) {
       appraisalHistoryFor,
       refreshEmployees,
       refreshAuditHistory,
+      fetchBulkHistory,
       requestData,
     ],
   );

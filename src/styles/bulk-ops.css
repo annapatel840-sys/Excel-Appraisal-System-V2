@@ -805,3 +805,45 @@
 .bo-busy .bb-bar i{display:block;height:100%;width:0;border-radius:999px;background:#1D4ED8;transition:width .4s ease}
 .bo-busy .bb-pct{font-size:14px;font-weight:700;color:#0F172A;margin-top:-6px}
 .bo-busy .bb-msg{font-size:14px;color:#475569}
+
+/* Employee grid column filter: same menu as the Appraisal Sheet / Delegation (Excel style) */
+.bo .filter-btn{border:1px solid #9ca3af;background:#fff;color:#17365d;font-size:10px;padding:1px 4px;border-radius:2px}
+.bo .filter-btn:hover{background:#eef4fc}
+.bo .filter-pop.xfm{width:262px;padding:3px 0;border:1px solid #9ca3af;border-radius:0;box-shadow:2px 3px 8px rgba(0,0,0,.28);font-size:12px;color:#1f2f3d;overflow:visible}
+.bo .xfm hr{margin:3px 0;border:0;border-top:1px solid #d1d5db}
+.bo .xfm .xm-i{position:relative;display:block;padding:5px 10px 5px 30px;white-space:nowrap;cursor:default;font-size:12px;color:#1f2f3d}
+.bo .xfm .xm-i:hover{background:#dcebff}
+.bo .xfm .xm-i.on{background:#eef4fc;font-weight:600}
+.bo .xfm .xm-i.dis{color:#9ca3af;pointer-events:none}
+.bo .xfm .xm-ic{position:absolute;left:8px;top:4px;font-size:9px;font-weight:800;line-height:9px;color:#17365d}
+.bo .xfm .xm-wrap{display:flex;align-items:center;gap:6px;padding-left:10px;cursor:pointer}
+.bo .xfm .xm-sub{position:relative}
+.bo .xfm .xm-arr{position:absolute;right:10px}
+.bo .xfm .xm-menu{position:absolute;top:-1px;left:100%;z-index:5;width:200px;border:1px solid #9ca3af;background:#fff;padding:3px 0;box-shadow:2px 3px 8px rgba(0,0,0,.28)}
+.bo .xfm .xm-menu.left{left:auto;right:100%}
+.bo .xfm .xm-menu.hide{display:none}
+.bo .xfm .xm-menu .xm-i{padding-left:14px}
+.bo .xfm .xm-search{margin:5px 8px;border:1px solid #9ca3af;padding:3px 6px}
+.bo .xfm .xm-search input{width:100%;border:0;outline:0;font:inherit;font-size:12px;background:transparent;height:auto}
+.bo .xfm .xm-list{margin:0 8px;height:150px;overflow:auto;border:1px solid #9ca3af;padding:3px 0}
+.bo .xfm .filter-values{max-height:none;overflow:visible;padding:0}
+.bo .xfm .xm-v{display:flex;align-items:center;gap:6px;padding:2px 8px;font-size:12px;cursor:pointer;white-space:nowrap}
+.bo .xfm .xm-v:hover{background:#eef2f8}
+.bo .xfm .xm-v span{overflow:hidden;text-overflow:ellipsis}
+.bo .xfm input[type=checkbox]{width:14px;height:14px;margin:0;accent-color:#17365d}
+.bo .xfm .none{padding:8px;font-size:11px;color:#94a3b8}
+.bo .xfm .xm-btns{display:flex;justify-content:flex-end;gap:8px;padding:9px 8px 6px}
+.bo .xfm .xm-btns button{padding:3px 18px;font:inherit;font-size:12px;border:1px solid #9ca3af;background:#f3f4f6;cursor:pointer}
+.bo .xfm .xm-btns .xm-ok{background:#17365d;border-color:#17365d;color:#fff}
+.bo .xfm .xm-btns .xm-ok:disabled{opacity:.5;cursor:default}
+.bo .xf-ov{position:fixed;inset:0;z-index:80;background:rgba(15,23,42,.35);display:flex;align-items:center;justify-content:center}
+.bo .xf-dlg{width:380px;max-width:92vw;background:#fff;border-radius:8px;padding:16px;font-size:12.5px;color:#1f2f3d;box-shadow:0 10px 30px rgba(0,0,0,.25)}
+.bo .xf-dlg h3{margin:0;font-size:14px;color:#102a43}
+.bo .xf-dlg p{margin:4px 0 0;color:#6b7280}
+.bo .xf-row{display:flex;align-items:center;gap:8px;margin:8px 0}
+.bo .xf-row select,.bo .xf-row input[type=text]{height:32px;border:1px solid #d1d5db;border-radius:4px;padding:0 8px;font:inherit;background:#fff}
+.bo .xf-row input[type=text]{flex:1;min-width:0}
+.bo .xf-row label{display:flex;align-items:center;gap:6px;margin-right:12px}
+.bo .xf-b{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+.bo .xf-b button{padding:4px 18px;font:inherit;border:1px solid #9ca3af;background:#f3f4f6;cursor:pointer}
+.bo .xf-b .ok{background:#17365d;border-color:#17365d;color:#fff}

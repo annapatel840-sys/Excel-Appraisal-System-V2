@@ -74,13 +74,17 @@ var FIELDS={
   newRB:{label:"Retention Bonus (RB)",key:"newRB",kind:"amt",floor:"rbPaid",floorLbl:"RB",unitPick:true},
   tpbNext:{label:"Target PB for Next Year",key:"tpbNext",kind:"amt",unitPick:true}
 };
-var FORDER=["hikePct","newPB","newRB","tpbNext"];   // Hike is one entry: "Value is" picks % of Base pay (hikePct) or Amount (hikeAmt)
+var FORDER=["hikePct","newPB","newRB","tpbNext"];
+/* "What to change": only these fields can be picked for now. The others stay in the list, greyed out.
+   To switch the rest back on, add them here (e.g. ["hikePct","newPB","newRB","tpbNext"]). */
+var ENABLED_FIELDS=["hikePct"];
+function fieldOn(f){return ENABLED_FIELDS.indexOf(f)>=0}   // Hike is one entry: "Value is" picks % of Base pay (hikePct) or Amount (hikeAmt)
 function isHike(f){return f==="hikePct"||f==="hikeAmt"}
 var KEYS=["hikeAmt","newPB","newRB","tpbNext"];
 
 function tedList(){var m={};EMP.forEach(function(e){if(e.superManager)m[e.superManager]=1});return Object.keys(m).sort()}
 function newRule(field,first){
-  return {uid:++uidN,field:field,method:"same",unit:field==="hikePct"?"pct":"amt",value:first?"6":"",inst:"1",text:"",textMode:"replace",
+  return {uid:++uidN,field:field,method:"same",unit:field==="hikePct"?"pct":"amt",value:first?"0":"",inst:"1",text:"",textMode:"replace",
     distSrc:"amount",distAmt:"",distBy:"equal",adjDir:"add",adjAmt:"",tedVals:{}};
 }
 S.rules=[newRule("hikePct",true)];
@@ -300,8 +304,8 @@ function renderRules(){
     var F=FIELDS[r.field],txt=F.kind==="txt",dist=r.method==="dist"&&F.kind==="amt",adj=r.method==="adj"&&F.kind==="amt",ted=r.method==="ted"&&F.kind!=="txt",taken=usedKeys(r.uid);
     h+='<div class="rrow" data-uid="'+r.uid+'">';
     h+='<div class="f"><label>Field</label><select data-k="field">'+FORDER.map(function(f){
-      var dis=(taken[FIELDS[f].key]&&f!==r.field)||(!canEdit(FIELDS[f].key)&&f!==r.field);
-      var cur=(f===r.field)||(f==="hikePct"&&isHike(r.field));return '<option value="'+f+'"'+(cur?' selected':'')+(dis&&!cur?' disabled':'')+'>'+esc((f==="hikePct"?"Hike":FIELDS[f].label)+(dis&&!cur?(taken[FIELDS[f].key]?" (already used)":" (no access)"):""))+'</option>';
+      var off=!fieldOn(f)&&!(f==="hikePct"&&isHike(r.field)),dis=off||(taken[FIELDS[f].key]&&f!==r.field)||(!canEdit(FIELDS[f].key)&&f!==r.field);
+      var cur=(f===r.field)||(f==="hikePct"&&isHike(r.field));return '<option value="'+f+'"'+(cur?' selected':'')+(dis&&!cur?' disabled':'')+'>'+esc((f==="hikePct"?"Hike":FIELDS[f].label)+(dis&&!cur?(off?" (coming soon)":taken[FIELDS[f].key]?" (already used)":" (no access)"):""))+'</option>';
     }).join("")+'</select></div>';
     h+='<div class="f"><label>How</label><select data-k="method"'+(txt?' disabled':'')+'><option value="same"'+(r.method==="same"||txt?' selected':'')+'>Same Value for All</option>'+(F.kind!=="txt"&&isHrView()?'<option value="ted"'+(ted?' selected':'')+'>By Tech ED</option>':'')+(F.kind==="amt"?'<option value="adj"'+(adj?' selected':'')+'>Add or Reduce</option><option value="dist"'+(dist?' selected':'')+'>Distribute a Total</option>':'')+'</select></div>';
     if(isHike(r.field)&&!dist&&!adj)h+='<div class="f"><label>Value Is</label><select data-k="hikeUnit"><option value="pct"'+(r.field==="hikePct"?' selected':'')+'>% of Base Pay</option><option value="amt"'+(r.field==="hikeAmt"?' selected':'')+'>Amount</option></select></div>';
@@ -331,8 +335,19 @@ function renderRules(){
     h+='</div>';
   });
   $("ruleRows").innerHTML=h;
-  var free=FORDER.some(function(f){return !usedKeys(0)[FIELDS[f].key]&&canEdit(FIELDS[f].key)});
+  var free=FORDER.some(function(f){return fieldOn(f)&&!usedKeys(0)[FIELDS[f].key]&&canEdit(FIELDS[f].key)});
+  focusValue();
   $("bAddField").disabled=!free;
+}
+/* the Value box is selected as soon as the rules are drawn, so typing replaces the 0 */
+var _fvT=0;
+function focusValue(){
+  clearTimeout(_fvT);
+  _fvT=setTimeout(function(){
+    var el=root.querySelector('#ruleRows [data-k="value"]');
+    var ae=document.activeElement,free=!ae||ae===document.body||!!(ae.closest&&ae.closest("#ruleRows"));
+    if(el&&!el.disabled&&free){el.focus();try{el.select()}catch(x){}}
+  },0);
 }
 function validate(){
   var ok=true;
@@ -579,59 +594,128 @@ function ckPass(e){var r=S.pv.res[e.empId];
    S.colF[key] = Set of picked values, or {op,value,value2}. Values are listed from every row in scope. */
 var NUM_COLS={rating:1,basePay:1,hikePct:1,newBase:1,ctc:1};
 function isNumCol(k){return !!NUM_COLS[k]||/^(cur|prop|chg)\d+$/.test(k)}
-var NUMBER_OPS=[["gt","Greater than"],["gte","Greater than or Equal to"],["lt","Less than"],["lte","Less than or Equal to"],["eq","Equals"],["neq","Not Equal to"],["between","Between"]];
-var TEXT_OPS=[["contains","Contains"],["notcontains","Does Not Contain"],["eq","Equals"],["startswith","Begins with"],["endswith","Ends with"],["blank","Is Blank"],["notblank","Is Not Blank"]];
+/* Excel-style column menu: same design and options as the Appraisal Sheet / Delegation column filter.
+   S.colF[key] = Set of ticked values, or a condition {kind,op,value,op2,value3,join} (Equals, Begins with, Between, Top 10, Above / Below average, Custom). */
+var NUMBER_MENU=[["eq","Equals…"],["neq","Does Not Equal…"],"-",["gt","Greater Than…"],["gte","Greater Than Or Equal To…"],["lt","Less Than…"],["lte","Less Than Or Equal To…"],["between","Between…"],"-",["top","Top 10…"],["above","Above Average"],["below","Below Average"],"-",["custom","Custom Filter…"]];
+var TEXT_MENU=[["eq","Equals…"],["neq","Does Not Equal…"],"-",["startswith","Begins With…"],["endswith","Ends With…"],"-",["contains","Contains…"],["notcontains","Does Not Contain…"],"-",["custom","Custom Filter…"]];
+var NUMBER_OP_LABELS={eq:"equals",neq:"does not equal",gt:"is greater than",gte:"is greater than or equal to",lt:"is less than",lte:"is less than or equal to"};
+var TEXT_OP_LABELS={eq:"equals",neq:"does not equal",startswith:"begins with",endswith:"ends with",contains:"contains",notcontains:"does not contain"};
 function colVal(e,k){
   if(isNumCol(k)){if(k==="rating")return e.rating==null?null:e.rating;var v=sortVal(e,k);return /^chg/.test(k)||k==="hikePct"?Math.round(v*10000)/10000:v}
   if(k==="name")return e.empId+" - "+e.name+" - "+e.designation;
   return k==="band"?e.band:""}
 function colTxt(e,k){var v=colVal(e,k);return v==null?"":String(v)}
+function oneCond(v,op,val,num){
+  if(num){if(v==null)return false;var n=Number(val);if(isNaN(n))return false;
+    switch(op){case"eq":return Math.abs(v-n)<1e-9;case"neq":return Math.abs(v-n)>=1e-9;case"gt":return v>n;case"gte":return v>=n;case"lt":return v<n;case"lte":return v<=n}return true}
+  var t=String(v==null?"":v).toLowerCase(),q=String(val==null?"":val).toLowerCase();
+  switch(op){case"eq":return t===q;case"neq":return t!==q;case"startswith":return t.indexOf(q)===0;case"endswith":return q===""||t.slice(-q.length)===q;case"contains":return t.indexOf(q)>=0;case"notcontains":return t.indexOf(q)<0}return true}
 function condPass(v,f,num){
-  if(num){if(v==null)return false;var a=Number(f.value),b=Number(f.value2);
-    switch(f.op){case"gt":return v>a;case"gte":return v>=a;case"lt":return v<a;case"lte":return v<=a;case"eq":return v===a;case"neq":return v!==a;case"between":return v>=Math.min(a,b)&&v<=Math.max(a,b)}return true}
-  var t=String(v==null?"":v).toLowerCase(),q=String(f.value||"").toLowerCase();
-  switch(f.op){case"contains":return t.indexOf(q)>=0;case"notcontains":return t.indexOf(q)<0;case"eq":return t===q;case"startswith":return t.indexOf(q)===0;case"endswith":return q===""||t.slice(-q.length)===q;case"blank":return t==="";case"notblank":return t!==""}return true}
+  if(f.op==="between"){return oneCond(v,"gte",f.value,num)&&oneCond(v,"lte",f.value2,num)}   // older saved filter
+  var a=oneCond(v,f.op,f.value,num);
+  if(f.op2&&f.value3!=null&&String(f.value3)!=="")return f.join==="or"?(a||oneCond(v,f.op2,f.value3,num)):(a&&oneCond(v,f.op2,f.value3,num));
+  return a}
 function colPass(e,k,f){
   if(f instanceof Set)return f.has(colTxt(e,k));
   return condPass(colVal(e,k),f,isNumCol(k))}
 function gridRows(){var r=viewRows();if(S.checkF&&S.pv)r=r.filter(ckPass);
   Object.keys(S.colF).forEach(function(k){var f=S.colF[k];if(f)r=r.filter(function(e){return colPass(e,k,f)})});return r}
 function closeFilterPop(){var o=root.querySelector("#filterPop");if(o)o.remove();root.querySelectorAll(".filter-btn.active").forEach(function(b){b.classList.remove("active")})}
+function colLabel(k){var c=cols().filter(function(x){return x.k===k})[0];return c?c.t:k}
+function closeXfDlg(){var d=root.querySelector("#xfDlg");if(d)d.remove()}
 function openFilterPop(k,btn){
-  closeFilterPop();btn.classList.add("active");
-  var num=isNumCol(k),ops=num?NUMBER_OPS:TEXT_OPS,cur=S.colF[k],cond=cur&&!(cur instanceof Set)?cur:null;
+  closeFilterPop();closeXfDlg();btn.classList.add("active");
+  var num=isNumCol(k),label=colLabel(k),menu=num?NUMBER_MENU:TEXT_MENU,opL=num?NUMBER_OP_LABELS:TEXT_OP_LABELS,cur=S.colF[k],active=!!cur;
   var vals={};scope().filter(passFilters).forEach(function(e){var t=colTxt(e,k);vals[t]=colVal(e,k)});
   var keys=Object.keys(vals).sort(function(a,b){return num?(vals[a]==null?-1:vals[a])-(vals[b]==null?-1:vals[b]):(a<b?-1:a>b?1:0)});
-  var picked=cur instanceof Set?new Set(cur):new Set(keys);
-  var pop=document.createElement("div");pop.id="filterPop";pop.className="filter-pop";
-  pop.innerHTML='<div class="filter-sort-row"><button type="button" data-s="1">↑ Sort</button><button type="button" data-s="-1">↓ Sort</button></div>'
-   +'<div class="filter-wrap-row"><label><input type="checkbox" class="fwrap"'+(S.wrapC[k]?' checked':'')+'> Wrap text in this column</label></div>'
-   +'<div class="filter-cond-row"><select class="cond-op">'+ops.map(function(o){return '<option value="'+o[0]+'"'+(cond&&cond.op===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join("")+'</select>'
-   +'<input class="cond-val1" placeholder="Value" value="'+esc(cond?cond.value||"":"")+'"><span class="cond-and hide">and</span><input class="cond-val2 hide" placeholder="Value" value="'+esc(cond?cond.value2||"":"")+'"><button type="button" class="cond-apply">Apply Filter</button></div>'
-   +'<div class="filter-divider">or pick values</div><div class="filter-search-row"><input class="fsearch" placeholder="Search values..."></div>'
-   +'<div class="filter-select-all"><label><input type="checkbox" class="fall"> (Select all)</label></div><div class="filter-values"></div>'
-   +'<div class="filter-actions"><button type="button" class="fa-cl">Clear</button><button type="button" class="fa-ap">Apply</button></div>';
+  function numbers(){return scope().filter(passFilters).map(function(e){return colVal(e,k)}).filter(function(v){return v!=null&&!isNaN(v)})}
+  var picked=cur instanceof Set?new Set(cur):new Set(keys),before=null;
+  var pop=document.createElement("div");pop.id="filterPop";pop.className="filter-pop xfm";
+  function mi(cls,icon,txt,extra){return '<div class="xm-i '+cls+'"'+(extra||"")+'>'+(icon?'<span class="xm-ic">'+icon+'</span>':'')+txt+'</div>'}
+  pop.innerHTML=
+    mi('xm-sa'+(S.sort.key===k&&S.sort.dir===1?' on':''),num?'1↓<br>9':'A↓<br>Z',num?'Sort Smallest to Largest':'Sort A to Z')
+   +mi('xm-sd'+(S.sort.key===k&&S.sort.dir===-1?' on':''),num?'9↓<br>1':'Z↓<br>A',num?'Sort Largest to Smallest':'Sort Z to A')
+   +'<hr>'
+   +'<label class="xm-i xm-wrap"><input type="checkbox" class="fwrap"'+(S.wrapC[k]?' checked':'')+'> Wrap text in this column</label>'
+   +'<hr>'
+   +mi('xm-clr'+(active?'':' dis'),'','Clear Filter From "'+esc(label)+'"')
+   +'<hr><div class="xm-sub"><div class="xm-i xm-subh">'+(num?'Number Filters':'Text Filters')+'<span class="xm-arr">▸</span></div><div class="xm-menu hide">'
+   +menu.map(function(it){return it==="-"?'<hr>':'<div class="xm-i xm-f" data-f="'+it[0]+'">'+it[1]+'</div>'}).join("")+'</div></div>'
+   +'<hr><div class="xm-search"><input type="text" class="fsearch" placeholder="Search"></div>'
+   +'<div class="xm-list"><label class="xm-v"><input type="checkbox" class="fall"> <span>(Select All)</span></label><div class="filter-values"></div></div>'
+   +'<div class="xm-btns"><button type="button" class="xm-ok">OK</button><button type="button" class="xm-cx">Cancel</button></div>';
   root.appendChild(pop);
-  var r=btn.getBoundingClientRect(),w=270,L=Math.min(Math.max(8,r.left),window.innerWidth-w-8);
+  var r=btn.getBoundingClientRect(),w=262,L=Math.min(Math.max(8,r.left),window.innerWidth-w-8);
   pop.style.left=L+"px";pop.style.top=(r.bottom+4)+"px";
-  var op=pop.querySelector(".cond-op"),v1=pop.querySelector(".cond-val1"),v2=pop.querySelector(".cond-val2"),and=pop.querySelector(".cond-and"),list=pop.querySelector(".filter-values"),all=pop.querySelector(".fall"),q=pop.querySelector(".fsearch");
-  function opUI(){var o=op.value,bl=o==="blank"||o==="notblank";v1.classList.toggle("hide",bl);v2.classList.toggle("hide",o!=="between");and.classList.toggle("hide",o!=="between")}
-  function drawList(){var t=q.value.toLowerCase(),vis=keys.filter(function(x){return x.toLowerCase().indexOf(t)>=0});
-    list.innerHTML=vis.length?vis.slice(0,400).map(function(x){return '<label><input type="checkbox" data-v="'+esc(x)+'"'+(picked.has(x)?' checked':'')+'> '+(x===""?"(Blanks)":esc(x))+'</label>'}).join(""):'<div class="none">No Values</div>';
-    all.checked=vis.length>0&&vis.every(function(x){return picked.has(x)})}
-  opUI();drawList();
+  var list=pop.querySelector(".filter-values"),all=pop.querySelector(".fall"),q=pop.querySelector(".fsearch"),sub=pop.querySelector(".xm-menu");
+  function visK(){var t=q.value.toLowerCase();return keys.filter(function(x){return x.toLowerCase().indexOf(t)>=0})}
+  function drawList(){var vis=visK();
+    list.innerHTML=vis.length?vis.slice(0,400).map(function(x){return '<label class="xm-v"><input type="checkbox" data-v="'+esc(x)+'"'+(picked.has(x)?' checked':'')+'> <span>'+(x===""?"(Blanks)":esc(x))+'</span></label>'}).join(""):'<div class="none">No values match this search.</div>';
+    all.checked=vis.length>0&&vis.every(function(x){return picked.has(x)});pop.querySelector(".xm-ok").disabled=picked.size===0}
+  drawList();
   (function fit(){var h=pop.offsetHeight,room=window.innerHeight-8;
-    if(h>room-8){var ex=h-(room-8),vl=pop.querySelector(".filter-values");vl.style.maxHeight=Math.max(60,vl.offsetHeight-ex)+"px";h=pop.offsetHeight}
+    if(h>room-8){var ex=h-(room-8),vl=pop.querySelector(".xm-list");vl.style.maxHeight=Math.max(60,vl.offsetHeight-ex)+"px";h=pop.offsetHeight}
     pop.style.top=Math.max(8,Math.min(r.bottom+4,window.innerHeight-h-8))+"px"})();
-  op.addEventListener("change",opUI);q.addEventListener("input",drawList);
-  all.addEventListener("change",function(){var t=q.value.toLowerCase();keys.forEach(function(x){if(x.toLowerCase().indexOf(t)>=0){if(all.checked)picked.add(x);else picked.delete(x)}});drawList()});
-  list.addEventListener("change",function(ev){var x=ev.target.getAttribute("data-v");if(x==null)return;if(ev.target.checked)picked.add(x);else picked.delete(x);var t=q.value.toLowerCase();all.checked=keys.filter(function(y){return y.toLowerCase().indexOf(t)>=0}).every(function(y){return picked.has(y)})});
-  pop.querySelectorAll("[data-s]").forEach(function(b){b.addEventListener("click",function(){S.sort.key=k;S.sort.dir=Number(b.getAttribute("data-s"));closeFilterPop();renderGrid()})});
+  function done(){S.page=1;closeFilterPop();closeXfDlg();renderGrid()}
+  function setF(f){if(f)S.colF[k]=f;else delete S.colF[k];done()}
+  // search ticks exactly the matching values (Excel); clearing it puts the earlier ticks back
+  q.addEventListener("input",function(){
+    if(q.value){if(before===null)before=new Set(picked);picked=new Set(visK())}
+    else if(before!==null){picked=before;before=null}
+    drawList()});
+  q.addEventListener("keydown",function(ev){if(ev.key==="Enter")applyPicked()});
+  all.addEventListener("change",function(){visK().forEach(function(x){if(all.checked)picked.add(x);else picked.delete(x)});drawList()});
+  list.addEventListener("change",function(ev){var x=ev.target.getAttribute("data-v");if(x==null)return;if(ev.target.checked)picked.add(x);else picked.delete(x);var vis=visK();all.checked=vis.length>0&&vis.every(function(y){return picked.has(y)});pop.querySelector(".xm-ok").disabled=picked.size===0});
+  function applyPicked(){if(!picked.size)return;if(keys.every(function(x){return picked.has(x)}))setF(null);else setF(new Set(picked))}
+  pop.querySelector(".xm-ok").addEventListener("click",applyPicked);
+  pop.querySelector(".xm-cx").addEventListener("click",function(){closeFilterPop()});
+  pop.querySelector(".xm-sa").addEventListener("click",function(){S.sort.key=k;S.sort.dir=1;closeFilterPop();renderGrid()});
+  pop.querySelector(".xm-sd").addEventListener("click",function(){S.sort.key=k;S.sort.dir=-1;closeFilterPop();renderGrid()});
+  pop.querySelector(".xm-clr").addEventListener("click",function(){if(active)setF(null)});
   pop.querySelector(".fwrap").addEventListener("change",function(ev){if(ev.target.checked)S.wrapC[k]=1;else delete S.wrapC[k];try{localStorage.setItem(WRAPC_KEY,JSON.stringify(S.wrapC))}catch(x){}applyWrap()});
-  function done(){S.page=1;closeFilterPop();renderGrid()}
-  pop.querySelector(".cond-apply").addEventListener("click",function(){var o=op.value;if(o!=="blank"&&o!=="notblank"&&v1.value.trim()===""){v1.focus();return}if(o==="between"&&v2.value.trim()===""){v2.focus();return}S.colF[k]={op:o,value:v1.value,value2:v2.value};done()});
-  pop.querySelector(".fa-ap").addEventListener("click",function(){if(keys.every(function(x){return picked.has(x)}))delete S.colF[k];else S.colF[k]=new Set(picked);done()});
-  pop.querySelector(".fa-cl").addEventListener("click",function(){delete S.colF[k];done()});
+  // Text / Number Filters submenu
+  var sh=pop.querySelector(".xm-subh");
+  function showSub(){sub.classList.remove("hide");sub.classList.toggle("left",pop.getBoundingClientRect().right+210>window.innerWidth)}
+  sh.addEventListener("mouseenter",showSub);sh.addEventListener("click",showSub);
+  pop.querySelectorAll(".xm-i:not(.xm-subh):not(.xm-f)").forEach(function(x){x.addEventListener("mouseenter",function(){sub.classList.add("hide")})});
+  [".xm-search",".xm-list"].forEach(function(c){pop.querySelector(c).addEventListener("mouseenter",function(){sub.classList.add("hide")})});
+  sub.addEventListener("click",function(ev){
+    var it=ev.target.closest("[data-f]");if(!it)return;ev.stopPropagation();var key=it.getAttribute("data-f");
+    if(key==="above"||key==="below"){var ns=numbers(),avg=ns.reduce(function(a,b){return a+b},0)/(ns.length||1);setF({kind:"number",op:key==="above"?"gt":"lt",value:String(Math.round(avg*100)/100)});return}
+    if(key==="top"){openDlg({mode:"top",dir:"top",count:"10"});return}
+    var kind=num?"number":"text",c=cur&&!(cur instanceof Set)&&cur.kind===kind?cur:null;
+    var op1=num?"eq":"contains",v1="",op2=num?"eq":"contains",v2="",join="and";
+    if(c){if(c.op==="between"){op1="gte";v1=c.value;op2="lte";v2=c.value2}else{op1=c.op;v1=c.value;op2=c.op2||op2;v2=c.value3||"";join=c.join||"and"}}
+    if(key==="between"){op1="gte";op2="lte";join="and";if(!c){v1="";v2=""}}
+    else if(key!=="custom"){op1=key;if(!c)op2=key==="gt"?"lt":(num?"eq":"contains")}
+    openDlg({mode:"custom",kind:kind,op1:op1,v1:v1,op2:op2,v2:v2,join:join});
+  });
+  function openDlg(d){
+    closeFilterPop();var dl=document.createElement("div");dl.id="xfDlg";dl.className="xf-ov";
+    var opts=function(sel){return Object.keys(opL).map(function(o){return '<option value="'+o+'"'+(sel===o?' selected':'')+'>'+opL[o]+'</option>'}).join("")};
+    if(d.mode==="top"){
+      dl.innerHTML='<div class="xf-dlg"><h3>Top 10 AutoFilter</h3><p>Show in <b>'+esc(label)+'</b>:</p><div class="xf-row"><select id="xdDir"><option value="top">Top</option><option value="bottom"'+(d.dir==="bottom"?' selected':'')+'>Bottom</option></select><input type="text" id="xdCnt" inputmode="numeric" value="'+esc(d.count)+'" style="width:70px"><span>items</span></div><div class="xf-b"><button class="ok" type="button">OK</button><button class="cx" type="button">Cancel</button></div></div>';
+    }else{
+      dl.innerHTML='<div class="xf-dlg"><h3>Custom AutoFilter</h3><p>Show rows where <b>'+esc(label)+'</b>:</p><div class="xf-row"><select id="xdO1" style="width:160px">'+opts(d.op1)+'</select><input type="text" id="xdV1" value="'+esc(d.v1)+'"></div>'
+        +'<div class="xf-row"><label><input type="radio" name="xdJ" value="and"'+(d.join!=="or"?' checked':'')+'> And</label><label><input type="radio" name="xdJ" value="or"'+(d.join==="or"?' checked':'')+'> Or</label></div>'
+        +'<div class="xf-row"><select id="xdO2" style="width:160px">'+opts(d.op2)+'</select><input type="text" id="xdV2" value="'+esc(d.v2)+'"></div><div class="xf-b"><button class="ok" type="button">OK</button><button class="cx" type="button">Cancel</button></div></div>';
+    }
+    root.appendChild(dl);var f=dl.querySelector("input[type=text]");if(f){f.focus();f.select()}
+    function submit(){
+      if(d.mode==="top"){
+        var n=Math.max(1,parseInt(dl.querySelector("#xdCnt").value,10)||10),top=dl.querySelector("#xdDir").value==="top";
+        var ns=numbers().sort(function(a,b){return top?b-a:a-b});if(!ns.length){closeXfDlg();return}
+        setF({kind:"number",op:top?"gte":"lte",value:String(ns[Math.min(n,ns.length)-1])});return}
+      var clean=function(t){t=String(t==null?"":t);return d.kind==="number"?t.replace(/,/g,"").trim():t};
+      var a=clean(dl.querySelector("#xdV1").value),b=clean(dl.querySelector("#xdV2").value),o1=dl.querySelector("#xdO1").value,o2=dl.querySelector("#xdO2").value,j=dl.querySelector("input[name=xdJ]:checked").value,nx;
+      if(a.trim()===""&&b.trim()==="")nx=null;
+      else if(a.trim()==="")nx={kind:d.kind,op:o2,value:b};
+      else{nx={kind:d.kind,op:o1,value:a};if(b.trim()!==""){nx.op2=o2;nx.value3=b;nx.join=j}}
+      setF(nx);
+    }
+    dl.querySelector(".ok").addEventListener("click",submit);dl.querySelector(".cx").addEventListener("click",closeXfDlg);
+    dl.addEventListener("keydown",function(ev){if(ev.key==="Enter"){ev.preventDefault();submit()}else if(ev.key==="Escape")closeXfDlg()});
+  }
 }
 onDoc("mousedown",function(ev){var pp=root.querySelector("#filterPop");if(pp&&!pp.contains(ev.target)&&!ev.target.closest(".filter-btn"))closeFilterPop()});
 onDoc("keydown",function(ev){if(ev.key==="Escape")closeFilterPop()});
@@ -796,13 +880,13 @@ function doApply(){
   var x=changesFromPreview();if(!x.changes.length)return;
   var text=S.pv.text;
   S.busy=true;S.err="";S.flash="";render();
-  var bid="B"+Date.now().toString(36);
+  var bid="BO-"+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
   postChanges(x.changes,"bulk",{id:bid,text:text,label:"Applying"}).then(function(res){
     if(res.rows)mergeRows(res.rows);
-    var batch={id:bid,time:nowT(),by:(ME&&ME.name)||"You",text:text,rows:[],restored:false};
+    var batch={id:bid,at:Date.now(),time:nowT(),by:(ME&&ME.name)||"You",text:text,rows:[],restored:false};
     x.ids.forEach(function(id){var e=byId(id);batch.rows.push({id:id,old:x.old[id],nw:x.nw[id],bulk:e.bulk});e.bulk=true});
     S.batches.push(batch);S.pv=null;S.ov={};if(cfg.onApplied){try{cfg.onApplied(batch)}catch(x){}}
-    return afterSave().then(function(){
+    return afterSave().then(function(){syncBatches(false)}).then(function(){
       S.flash="Saved "+res.saved+" change"+(res.saved===1?"":"s")+" on "+x.ids.length+" rows · "+batch.time+" · source “bulk” in the audit trail"+(res.notes.length?" · Server notes: "+res.notes.join("; "):"");
     });
   }).catch(function(err){
@@ -810,9 +894,9 @@ function doApply(){
     if(err.done&&apiMode()&&!cfg.saveChanges)return loadAll();
   }).then(function(){S.busy=false;S.prog=null;render()});
 }
-function doReset(){   // back to the starting point: one Hike % rule at 6, everyone, nothing previewed
+function doReset(){   // back to the starting point: one Hike % rule at 0, everyone, nothing previewed
   if(S.busy)return;
-  var f=FORDER.filter(function(x){return canEdit(FIELDS[x].key)})[0]||"hikePct";
+  var f=FORDER.filter(function(x){return fieldOn(x)&&canEdit(FIELDS[x].key)})[0]||"hikePct";
   S.rules=[newRule(f,f==="hikePct")];S.filt={};S.off={};S.pv=null;S.ov={};S.page=1;S.flash="";S.err="";S.skipHand=true;
   $("skipHand").checked=true;var q=$("flt_q");if(q)q.value="";
   closePop();renderRules();render();
@@ -827,7 +911,8 @@ function saveScn(){
 }
 function loadScn(i){
   var s=S.scenarios[i];
-  S.rules=JSON.parse(JSON.stringify(s.rules)).filter(function(r){return FIELDS[r.field]}).map(function(r){r.uid=++uidN;return r});
+  S.rules=JSON.parse(JSON.stringify(s.rules)).filter(function(r){return FIELDS[r.field]&&fieldOn(isHike(r.field)?"hikePct":r.field)}).map(function(r){r.uid=++uidN;return r});
+  if(!S.rules.length)S.rules=[newRule("hikePct",true)];
   $("skipHand").checked=s.skip;S.skipHand=s.skip;renderRules();doPreview();
 }
 function persist(){try{localStorage.setItem("bulkScenarios_v3",JSON.stringify(S.scenarios))}catch(x){}}
@@ -991,7 +1076,7 @@ $("ruleRows").addEventListener("click",function(ev){
   S.flash="";renderRules();if(S.pv)refreshPreview();else render();
 });
 $("bAddField").addEventListener("click",function(){
-  var taken=usedKeys(0),f=FORDER.filter(function(x){return !taken[FIELDS[x].key]&&canEdit(FIELDS[x].key)})[0];
+  var taken=usedKeys(0),f=FORDER.filter(function(x){return fieldOn(x)&&!taken[FIELDS[x].key]&&canEdit(FIELDS[x].key)})[0];
   if(!f)return;S.rules.push(newRule(f,false));S.flash="";renderRules();render();
 });
 
@@ -1139,7 +1224,7 @@ function doRestore(id){
     if(res.rows)mergeRows(res.rows);
     b.rows.forEach(function(r){if(ids.indexOf(r.id)>=0){var e=byId(r.id);if(e)e.bulk=r.bulk}});
     b.restored=true;S.pv=null;
-    return afterSave().then(function(){S.flash="Restored previous values on "+ids.length+" row"+(ids.length===1?"":"s")+(skipped?" · "+skipped+" skipped (changed again since)":"")+" · "+nowT()+" · source “bulk_restore” in the audit trail"});
+    return afterSave().then(function(){syncBatches(false)}).then(function(){S.flash="Restored previous values on "+ids.length+" row"+(ids.length===1?"":"s")+(skipped?" · "+skipped+" skipped (changed again since)":"")+" · "+nowT()+" · source “bulk_restore” in the audit trail"});
   }).catch(function(err){S.err=err.message+" Nothing was restored."}).then(function(){S.busy=false;S.prog=null;render()});
 }
 function pvOK(){   // Pivot is for HR and Tech ED; a Comp Manager does not get it
@@ -1826,7 +1911,22 @@ function loadAudit(){   // who changed what: rows last touched by hand vs in bul
     });
   }).catch(function(){});
 }
+/* History = the audit trail of this cycle (cfg.loadBatches), so it survives a refresh and a new login.
+   Batches only this screen knows about (just applied, audit not echoed yet) are kept. */
+function syncBatches(force){
+  if(!cfg.loadBatches)return Promise.resolve();
+  return Promise.resolve(cfg.loadBatches(!!force)).then(function(list){
+    if(!Array.isArray(list))return;
+    var by={};list.forEach(function(b){by[b.id]=b});
+    var mine=S.batches.filter(function(b){return !by[b.id]});
+    mine.forEach(function(b){by[b.id]=b});
+    S.batches.forEach(function(b){if(b.restored&&by[b.id])by[b.id].restored=true});
+    S.batches=Object.keys(by).map(function(k){return by[k]}).sort(function(a,b){return(a.at||0)-(b.at||0)});
+    try{renderImpact()}catch(x){}
+  }).catch(function(){});
+}
 function loadBatches(){
+  if(cfg.loadBatches)return syncBatches(true);
   return apiCall("GET","/batches?cycle_id="+encodeURIComponent(ACTIVE_CYCLE.id)+asQ()).then(function(r){S.batches=(r.batches||[]).map(function(b){return {id:b.id,time:b.time||b.at||"",by:b.by||"",text:b.text||"",rows:(b.rows||[]).map(function(x){return {id:x.id||x.empId,old:x.old||{},nw:x.nw||x.new||{},bulk:x.bulk}}),restored:!!b.restored}})}).catch(function(){S.batches=[]});
 }
 function loadAll(){
@@ -1842,7 +1942,7 @@ function loadAll(){
     return Promise.all([loadAudit(),loadBudget(),loadBatches()]);
   }).then(function(){
     SC_VER++;S.loading=false;fillSelects();
-    var r0=S.rules[0];if(r0&&!canEdit(FIELDS[r0.field].key)){var f=FORDER.filter(function(x){return canEdit(FIELDS[x].key)})[0];if(f)S.rules[0]=newRule(f,false)}
+    var r0=S.rules[0];if(r0&&!canEdit(FIELDS[r0.field].key)){var f=FORDER.filter(function(x){return fieldOn(x)&&canEdit(FIELDS[x].key)})[0];if(f)S.rules[0]=newRule(f,false)}
     renderRules();render();
   }).catch(function(err){S.loading=false;EMP=[];SC_VER++;S.err="Could not load from the server: "+err.message;render()});
 }
@@ -1855,6 +1955,7 @@ if(apiMode()){
    // right-click blocked (standing rule)
 loadMine();fillSelects();restore();renderRules();render();
 if(apiMode())loadAll();
+if(cfg.loadBatches)syncBatches(true);
 
 /* ===== v51: Summary main chart: the user picks the statistic, the measure and the grouping ===== */
 var HC_KEY="bulkHero_v1",HS={stat:"avg",meas:"hikePct"};
@@ -2105,7 +2206,7 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
 
 var _renderHost=render;
 render=function(){_renderHost();updateBusy();if(cfg.onBudget){try{cfg.onBudget(budgetOf(scope(),null),{loading:S.loading})}catch(x){}}};
-PUBLIC_API.refresh=function(){SC_VER++;if(S.pv)refreshPreview();else render();renderFilters()};
+PUBLIC_API.refresh=function(){SC_VER++;syncBatches(false);if(S.pv)refreshPreview();else render();renderFilters()};
 PUBLIC_API.destroy=function(){
   if(busyEl&&busyEl.parentNode)busyEl.parentNode.removeChild(busyEl);
   clearTimeout(confirmT);
