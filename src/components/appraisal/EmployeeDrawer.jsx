@@ -540,7 +540,7 @@ export function EmployeeDrawer({ employee, onOpenChange }) {
             }
           />
 
-          <InfoCell label="Last Appraisal" value={formatAppraisalDate(employee.lastAppraisalDate)} />
+          <InfoCell label="Effective Date" value={formatAppraisalDate(employee.lastAppraisalDate)} />
 
           <InfoCell label="Manager Rating" value={employee.managerRating} />
 
