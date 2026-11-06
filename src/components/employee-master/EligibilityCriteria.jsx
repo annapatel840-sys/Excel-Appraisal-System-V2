@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Check, X, RefreshCw } from "lucide-react";
 import { loadDesignationMaster } from "@/lib/designation-master-api";
 
@@ -33,7 +33,7 @@ export function EligibilityCriteria({
   excludedEmployees,
   setExcludedEmployees,
   onApply,
-  onEditRegenerate,
+  onRegenerate,
   onGenerateDelegation,
   criteriaApplied = false,
   delegationGenerated = false,
@@ -44,6 +44,52 @@ export function EligibilityCriteria({
   const [search, setSearch] = useState("");
   const [showSuggest, setShowSuggest] = useState(false);
   const [cutoffDate, setCutoffDate] = useState("");
+  const [isEditing, setIsEditing] = useState(!criteriaApplied);
+  const [applying, setApplying] = useState(false);
+  const savedDraftRef = useRef(null);
+
+  useEffect(() => {
+    setIsEditing(!criteriaApplied);
+  }, [criteriaApplied]);
+
+  const currentDraft = () => ({
+    departments: selectedDepartments,
+    designations: selectedDesignations,
+    excludedEmployees: [...excludedEmployees],
+    cutoffDate,
+  });
+
+  const beginEdit = () => {
+    savedDraftRef.current = currentDraft();
+    setIsEditing(true);
+  };
+
+  const cancelEdit = () => {
+    const saved = savedDraftRef.current;
+    if (saved) {
+      setSelectedDepartments(saved.departments);
+      setSelectedDesignations(saved.designations);
+      setExcludedEmployees(saved.excludedEmployees);
+      setCutoffDate(saved.cutoffDate);
+    }
+    setIsEditing(false);
+  };
+
+  const applyDraft = async () => {
+    setApplying(true);
+    try {
+      const succeeded = await onApply({
+        ...currentDraft(),
+        replaceCriteria: criteriaApplied,
+      });
+      if (succeeded) {
+        savedDraftRef.current = currentDraft();
+        setIsEditing(false);
+      }
+    } finally {
+      setApplying(false);
+    }
+  };
 
   const activeEmployees = useMemo(
     () => employees.filter((employee) => employee.status === "Active"),
@@ -116,7 +162,7 @@ export function EligibilityCriteria({
         values={departments}
         selected={selectedDepartments}
         setSelected={setSelectedDepartments}
-        disabled={readOnly || criteriaApplied}
+        disabled={readOnly || !isEditing}
       />
 
       <div className="em-crit-h">Exclude by designation</div>
@@ -124,14 +170,14 @@ export function EligibilityCriteria({
         values={designations}
         selected={selectedDesignations}
         setSelected={setSelectedDesignations}
-        disabled={readOnly}
+        disabled={readOnly || !isEditing}
       />
 
       <div className="em-crit-h">Exclude specific employees</div>
       <div className="em-search-field">
         <input
           value={search}
-          disabled={readOnly}
+          disabled={readOnly || !isEditing}
           onChange={(event) => {
             setSearch(event.target.value);
             setShowSuggest(true);
@@ -169,7 +215,7 @@ export function EligibilityCriteria({
               {employee?.name ?? empId}
               <button
                 type="button"
-                disabled={readOnly}
+                disabled={readOnly || !isEditing}
                 onClick={() =>
                   setExcludedEmployees((current) =>
                     current.filter((item) => item !== empId),
@@ -189,38 +235,56 @@ export function EligibilityCriteria({
         type="date"
         className="em-date-input"
         value={cutoffDate}
-        disabled={readOnly}
+        disabled={readOnly || !isEditing}
         onChange={(event) => setCutoffDate(event.target.value)}
       />
 
       <div style={{ display: "flex", gap: 8, alignItems: "stretch", marginTop: 12, flexWrap: "wrap" }}>
-        <button
-          type="button"
-          className="em-btn em-btn-primary em-apply-btn"
-          style={{ flex: "1 1 150px", width: "auto", marginTop: 0 }}
-          disabled={readOnly || criteriaApplied}
-          onClick={() =>
-            onApply({
-              departments: selectedDepartments,
-              designations: selectedDesignations,
-              excludedEmployees,
-              cutoffDate,
-            })
-          }
-        >
-          <Check size={14} />
-          Apply Criteria
-        </button>
-        {criteriaApplied && (
+        {isEditing ? (
+          <>
+            <button
+              type="button"
+              className="em-btn em-btn-primary em-apply-btn"
+              style={{ flex: "1 1 150px", width: "auto", marginTop: 0 }}
+              disabled={readOnly || applying}
+              onClick={applyDraft}
+            >
+              <Check size={14} />
+              {applying ? "Applying..." : "Apply Criteria"}
+            </button>
+            {criteriaApplied && (
+              <button
+                type="button"
+                className="em-btn em-btn-ghost"
+                style={{ flex: "1 1 120px", width: "auto", marginTop: 0 }}
+                disabled={applying}
+                onClick={cancelEdit}
+              >
+                Cancel Edit
+              </button>
+            )}
+          </>
+        ) : (
           <button
             type="button"
             className="em-btn em-btn-primary em-apply-btn"
             style={{ flex: "1 1 150px", width: "auto", marginTop: 0 }}
             disabled={readOnly}
-            onClick={onEditRegenerate}
+            onClick={beginEdit}
+          >
+            Edit Criteria
+          </button>
+        )}
+        {criteriaApplied && (
+          <button
+            type="button"
+            className="em-btn em-btn-ghost"
+            style={{ flex: "1 1 150px", width: "auto", marginTop: 0 }}
+            disabled={readOnly || applying}
+            onClick={onRegenerate}
           >
             <RefreshCw size={14} />
-            Edit & Regenerate
+            Regenerate List
           </button>
         )}
       </div>
