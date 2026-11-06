@@ -679,12 +679,17 @@ export async function updateEmployeeMasterEmployee(empId, data = {}) {
       throw new Error("Status must be Active or Inactive.");
     }
 
-    payload.status = normalizedStatus;
+    // employeemasterapi expects the Employee_Master column name.
+    payload.emp_status = normalizedStatus;
+    delete payload.status;
   }
 
   console.log("[Employee Master] Updating employee:", payload);
 
-  const response = await catalystFetch(EMPLOYEE_API_URL, {
+  // Status changes belong to Employee_Master, not the cycle-scoped
+  // Appraisal_Sheet update endpoint. The master API also synchronizes the
+  // corresponding Employees row without requiring an active-cycle sheet row.
+  const response = await catalystFetch(EMPLOYEE_MASTER_API_URL, {
     method: "PUT",
 
     headers: {
