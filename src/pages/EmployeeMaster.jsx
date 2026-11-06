@@ -2337,7 +2337,7 @@ export function EmployeeMaster() {
           search: "",
           cycleId: eligibilityCycleId,
         });
-        if (recovered?.cycle?.criteriaApplied) {
+        if (!replaceCriteria && recovered?.cycle?.criteriaApplied) {
           setEligibilityEmployees(Array.isArray(recovered.data) ? recovered.data : []);
           setEligibilityCriteriaApplied(true);
           showBanner(
