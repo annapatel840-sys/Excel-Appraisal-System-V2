@@ -802,6 +802,7 @@ export async function applyEligibilityCriteriaToCycle(cycleId, criteria = {}) {
       designations: criteria.designations || [],
       excludedEmployees: criteria.excludedEmployees || [],
       cutoffDate: criteria.cutoffDate || "",
+      replaceCriteria: Boolean(criteria.replaceCriteria),
     },
   });
 }
