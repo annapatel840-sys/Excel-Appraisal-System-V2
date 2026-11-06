@@ -635,6 +635,31 @@ export async function fetchEligibilityEmployees({
  * This function does NOT modify eligibility.
  */
 
+export async function updateEmployeeMasterRecord(empId, data = {}) {
+  const normalizedEmpId = String(empId || "").trim();
+  if (!normalizedEmpId) throw new Error("Employee ID is required.");
+  const payload = { emp_id: normalizedEmpId, ...data };
+  const response = await catalystFetch(EMPLOYEE_MASTER_API_URL, {
+    method: "PUT",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  const responseText = await response.text();
+  let result = null;
+  try { result = responseText ? JSON.parse(responseText) : null; } catch { result = null; }
+  if (!response.ok || !result?.success) {
+    throw new Error(
+      result?.message || result?.error || responseText ||
+      `Employee Master update failed with status ${response.status}`,
+    );
+  }
+  onCatalystWrite();
+  return result;
+}
+
 export async function updateEmployeeMasterEmployee(empId, data = {}) {
   const normalizedEmpId = String(empId || "").trim();
 
