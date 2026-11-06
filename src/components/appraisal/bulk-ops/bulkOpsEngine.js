@@ -90,7 +90,7 @@ function $(id){return root.querySelector("#"+id)}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function inr(n){return Number(n).toLocaleString("en-IN",{maximumFractionDigits:2})}
 function pct(n){return Number(n).toFixed(2)+"%"}
-function big(n){return n>=10000000?"₹ "+(n/10000000).toFixed(2)+" Cr":"₹ "+(n/100000).toFixed(2)+" L"}
+function big(n){return Math.round(Number(n)||0).toLocaleString("en-IN")}   /* full amount, no symbol */
 function bucket(e){return e.rating==null?null:Math.min(5,Math.max(1,Math.round(e.rating)))}
 function nowT(){var d=new Date();return ("0"+d.getHours()).slice(-2)+":"+("0"+d.getMinutes()).slice(-2)}
 function lvl(p){return p>100?"danger":p>90?"warn":""}
@@ -322,7 +322,7 @@ function renderRules(){
       h+='<div class="mini" style="width:100%">Goes to the rows selected below. Each row\'s share is added to its current value, and the shares add up to the total.</div>';
     }else if(ted){
       var tl=tedList(),pu=(r.field==="hikePct"||r.unit==="pct")?" %":"";
-      tl.forEach(function(t){h+='<div class="f"><label>'+esc(t)+'</label><input type="number" data-k="ted" data-te="'+esc(t)+'" step="any" min="0" placeholder="'+(pu?"%":"₹")+'" value="'+esc(r.tedVals[t]==null?"":r.tedVals[t])+'" style="width:84px;text-align:right"></div>'});
+      tl.forEach(function(t){h+='<div class="f"><label>'+esc(t)+'</label><input type="number" data-k="ted" data-te="'+esc(t)+'" step="any" min="0" placeholder="'+(pu?"%":"Amount")+'" value="'+esc(r.tedVals[t]==null?"":r.tedVals[t])+'" style="width:84px;text-align:right"></div>'});
       h+='<div class="mini" style="width:100%">One value per Tech ED. A Tech ED left blank is not changed.</div>';
     }else{
       h+='<div class="f"><label>'+(r.field==="hikePct"?"Hike %":"Value")+'</label><input type="number" data-k="value" step="any" min="0" value="'+esc(r.value)+'" style="width:110px;text-align:right"></div>';
@@ -365,8 +365,8 @@ function ruleText1(r){
   if(r.field==="remarks")return t+(r.textMode==="append"?"+ “":"“")+r.text+"”";
   var u=(r.field==="hikePct"||r.unit==="pct")?"%":"";
   if(r.method==="ted"){var tv=r.tedVals||{};return t+"by Tech ED ("+Object.keys(tv).filter(function(k){return tv[k]!==""}).map(function(k){return k.split(" ")[0]+" "+tv[k]+u}).join(", ")+")"}
-  if(r.method==="adj")return t+(r.adjDir==="sub"?"reduce by ₹ ":"add ₹ ")+inr(r.adjAmt);
-  if(r.method==="dist")return t+"distribute "+(r.distSrc==="remaining"?"the remaining budget":"₹ "+inr(r.distAmt))+(r.distBy==="base"?" in proportion to Base pay":" equally");
+  if(r.method==="adj")return t+(r.adjDir==="sub"?"reduce by ":"add ")+inr(r.adjAmt);
+  if(r.method==="dist")return t+"distribute "+(r.distSrc==="remaining"?"the remaining budget":inr(r.distAmt))+(r.distBy==="base"?" in proportion to Base pay":" equally");
   return t+r.value+u;
 }
 function ruleText(rules){return rules.map(ruleText1).join(" · ")}
@@ -423,7 +423,7 @@ function computeRule(e,r,after,notes){
   if(r.method==="adj"){
     var a=Number(r.adjAmt)||0,v=(Number(e[F.key])||0)+(r.adjDir==="sub"?-a:a);
     if(v<0){v=0;notes.push({t:"warn",k:"adj",m:F.label+" limited to 0"})}
-    if(F.floor&&v<e[F.floor]){v=e[F.floor];notes.push({t:"warn",k:"adj",m:F.floorLbl+" raised to the to-be-paid amount (₹ "+inr(e[F.floor])+")"})}
+    if(F.floor&&v<e[F.floor]){v=e[F.floor];notes.push({t:"warn",k:"adj",m:F.floorLbl+" raised to the to-be-paid amount ("+inr(e[F.floor])+")"})}
     after[F.key]=v;return;
   }
   if(r.method==="dist"){after[F.key]=(Number(e[F.key])||0)+((SH[r.uid]&&SH[r.uid][e.empId])||0);return}
@@ -433,7 +433,7 @@ function computeRule(e,r,after,notes){
   if(r.field==="hikePct")amt=hikeBasis(e)*val/100;
   else if(r.field==="hikeAmt")amt=val;
   else amt=r.unit==="pct"?hikeBasis(e)*val/100:val;
-  if(F.floor&&amt<e[F.floor]){amt=e[F.floor];notes.push({t:"warn",k:"adj",m:F.floorLbl+" raised to the to-be-paid amount (₹ "+inr(e[F.floor])+")"})}
+  if(F.floor&&amt<e[F.floor]){amt=e[F.floor];notes.push({t:"warn",k:"adj",m:F.floorLbl+" raised to the to-be-paid amount ("+inr(e[F.floor])+")"})}
   after[F.key]=amt;
 }
 function computeRow(e){
@@ -1251,7 +1251,7 @@ function chartsTab(c){
   var mu=Math.max.apply(null,rows.map(function(x){return x.u}).concat([100]))*1.04;
   h+='<div class="wg"></div><span class="wch">5 · Scenario comparison</span><div class="wm q">Budget utilised and average hike % for this preview against your saved scenarios.</div>'
     +rows.map(function(x){return '<div class="hb"><span class="l" title="'+esc(x.n)+'" style="width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(x.n)+'</span><span class="t"><i style="width:'+(x.u/mu*100)+'%;background:'+(x.cur?CCOL.after:CCOL.before)+'"></i></span><b>'+x.u.toFixed(1)+'% · avg hike '+(x.avg==null?'—':x.avg.toFixed(1)+'%')+' · '+x.r+' rows</b></div>'}).join("")
-    +(S.scenarios.length?'':'<div class="wm">No saved scenarios yet. Use ⋯ More › Save as scenario to keep this one and compare options here.</div>');
+    +(S.scenarios.length?'':'<div class="wm">No saved scenarios yet. Use the settings icon › Save as scenario to keep this one and compare options here.</div>');
   return h+'</div>';
 }
 function setPT(t){PT=t;try{localStorage.setItem(PT_KEY,t)}catch(x){}[].forEach.call($("mpTabs").children,function(b){b.classList.toggle("on",b.getAttribute("data-t")===t)});renderImpact()}
@@ -1376,7 +1376,7 @@ var PV_R={yoe:[[0,2],[2,5],[5,10],[10,null]],rrPct:[[0,60],[60,75],[75,90],[90,1
 var PV_F=[{id:"rating",label:"Manager Rating"},{id:"clientRating",label:"Client Rating"},{id:"band",label:"Band"},{id:"designation",label:"Designation"},
   {id:"skillType",label:"Skill type"},{id:"costCenter",label:"Cost centre"},{id:"superManager",label:"Tech ED",hr:1},{id:"compManager",label:"Comp Manager"},
   {id:"source",label:"Source"},{id:"promo",label:"Promotion"},{id:"yoe",label:"YOE"},{id:"rrPct",label:"RR %"},{id:"grossMargin",label:"Gross Margin %"}];
-var PV_M=[{id:"hike",label:"Hike (% and ₹)"},{id:"newBase",label:"New base pay"},{id:"newPB",label:"Performance Bonus (PB)"},{id:"newRB",label:"Retention Bonus (RB)"},
+var PV_M=[{id:"hike",label:"Hike (% and amount)"},{id:"newBase",label:"New base pay"},{id:"newPB",label:"Performance Bonus (PB)"},{id:"newRB",label:"Retention Bonus (RB)"},
   {id:"tpbNext",label:"Target PB for next year"},{id:"total",label:"Total reward (hike + PB + RB)"},{id:"basePay",label:"Base pay"}];
 var PV_S=[{id:"count",label:"Count"},{id:"sum",label:"Sum"},{id:"avg",label:"Average"},{id:"median",label:"Median"},{id:"min",label:"Min"},{id:"max",label:"Max"},
   {id:"sd",label:"Std dev"},{id:"p25",label:"P25"},{id:"p75",label:"P75"}];
@@ -1435,12 +1435,12 @@ function statOf(id,a,tot){
     case "share":return tot?sum/tot*100:null;
   }return null;
 }
-function pvCmpAmt(v){var a=Math.abs(v);return a>=1e7?(v/1e7).toFixed(2)+" Cr":a>=1e5?(v/1e5).toFixed(2)+" L":inr(Math.round(v))}
+function pvCmpAmt(v){return inr(Math.round(v))}
 function pvFmt(u,st,v){
   if(v==null||isNaN(v))return "—";
   if(st==="count")return inr(v);if(st==="share")return v.toFixed(1)+"%";
   if(st==="var")return u==="pct"?v.toFixed(2):v.toExponential(2);
-  return u==="pct"?v.toFixed(2)+"%":"₹ "+pvCmpAmt(v);
+  return u==="pct"?v.toFixed(2)+"%":pvCmpAmt(v);
 }
 function pvFmtD(u,st,d){
   if(d==null||isNaN(d))return "—";
@@ -1448,7 +1448,7 @@ function pvFmtD(u,st,d){
   var z=Math.abs(d)<(u==="pct"||st==="share"?0.005:0.5),sg=z?"":d>0?"+":"−",a=Math.abs(d);
   if(st==="share")return sg+a.toFixed(1)+" pp";
   if(st==="var")return sg+(u==="pct"?a.toFixed(2):a.toExponential(2));
-  return u==="pct"?sg+a.toFixed(2)+" pp":sg+"₹ "+pvCmpAmt(a);
+  return u==="pct"?sg+a.toFixed(2)+" pp":sg+pvCmpAmt(a);
 }
 function pvNewG(label,ord,ns){var g={label:label,ord:ord,ids:[],b:[],a:[],l:[],kids:{}};for(var i=0;i<ns;i++){g.b.push([]);g.a.push([]);g.l.push([])}return g}
 function pvAdd(g,e,ser){g.ids.push(e.empId);ser.forEach(function(s,i){g.b[i].push(s.b);g.a[i].push(s.a);if(s.l!=null)g.l[i].push(s.l)})}
@@ -1525,7 +1525,7 @@ function pvTable(P){
   PVR=[];var gav=statOf("avg",P.grand.a[0],0),thr=P.units[0]==="pct"?1.5:Math.abs(gav)*0.25,nfl=0;
   P.rows.forEach(function(r){
     var i=PVR.push(r)-1,dot='';
-    if(r.lvl&&r.g.ids.length>=2){var dv=statOf("avg",r.g.a[0],0)-gav;if(Math.abs(dv)>=thr){nfl++;dot=' <b class="pvdot" title="Average after is '+(P.units[0]==="pct"?Math.abs(dv).toFixed(2)+' pp':'₹ '+pvCmpAmt(Math.abs(dv)))+(dv>0?' above':' below')+' the overall average">●</b>'}}
+    if(r.lvl&&r.g.ids.length>=2){var dv=statOf("avg",r.g.a[0],0)-gav;if(Math.abs(dv)>=thr){nfl++;dot=' <b class="pvdot" title="Average after is '+(P.units[0]==="pct"?Math.abs(dv).toFixed(2)+' pp':pvCmpAmt(Math.abs(dv)))+(dv>0?' above':' below')+' the overall average">●</b>'}}
     h+='<tr class="pvr'+r.lvl+'"><td>'+(r.lvl===2?'<span class="pvi"></span>':'')+esc(r.g.label)+'<i>'+r.g.ids.length+'</i>'+dot+'</td>'
       +cols.map(function(c){return '<td>'+pvCell(P,r.g,c)+'</td>'}).join("")
       +'</tr>';
@@ -1545,7 +1545,7 @@ function pivotTab(c){
     +'<label>Sort'+'<select id="pvSort">'+[["order","Group order"],["count","Count"],["avg","Average after"],["chg","Change in average"]].map(function(o){return '<option value="'+o[0]+'"'+(PVT.sort===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join("")+'</select></label></div>'
     +(PVT.open?'<div class="pvdr"><div class="pvst"><span>Statistics</span>'+PV_S.map(function(s){return '<button type="button" data-pvst="'+s.id+'" class="'+(PVT.st.indexOf(s.id)>=0?'on':'')+'">'+s.label+'</button>'}).join("")+'</div>'
     +'<div class="pvst"><span>Show</span>'+[["b","Before"],["a","After"],["c","Change"]].map(function(o){return '<button type="button" data-pvsh="'+o[0]+'" class="'+(PVT.show[o[0]]?'on':'')+'">'+o[1]+'</button>'}).join("")
-    +(PVT.m==="hike"?'<span class="pvsp"></span><span>Cell</span>'+[["both","% and ₹"],["pct","% only"],["amt","₹ only"]].map(function(o){return '<button type="button" data-pvdi="'+o[0]+'" class="'+(PVT.disp===o[0]?'on':'')+'">'+o[1]+'</button>'}).join(""):'')
+    +(PVT.m==="hike"?'<span class="pvsp"></span><span>Cell</span>'+[["both","% and amount"],["pct","% only"],["amt","Amount only"]].map(function(o){return '<button type="button" data-pvdi="'+o[0]+'" class="'+(PVT.disp===o[0]?'on':'')+'">'+o[1]+'</button>'}).join(""):'')
 +'</div></div>':'')+'';
   h+=P.grand?pvTable(P):'<div class="empty">No employees in view.</div>';
   h+='<div class="wm">'+(c.pv?'Before = current values, After = this preview. ':'Click Preview to see After. ')+'Filters in <b>For whom</b> decide who is in the pivot. Percentiles show a dash for fewer than 5 people.</div></div>';
@@ -1561,7 +1561,7 @@ function pvAoa(){
   var P=pvBuild(),cols=pvCols(),head=[(PV_F.filter(function(f){return f.id===PVT.r1})[0]||{}).label||"Row","Level","People"],aoa=[head];
   cols.forEach(function(c){P.units.forEach(function(u,i){
     if(P.units.length>1&&PVT.disp!=="both"&&PVT.disp!==u)return;
-    head.push(PV_S.filter(function(x){return x.id===c.st})[0].label+(c.w==="n"?"":c.w==="b"?" · Before":c.w==="a"?" · After":c.w==="l"?" · "+cmpLbl():c.w==="d"?" · vs "+cmpLow():" · Change")+(P.units.length>1?(u==="pct"?" (%)":" (₹)"):""))})});
+    head.push(PV_S.filter(function(x){return x.id===c.st})[0].label+(c.w==="n"?"":c.w==="b"?" · Before":c.w==="a"?" · After":c.w==="l"?" · "+cmpLbl():c.w==="d"?" · vs "+cmpLow():" · Change")+(P.units.length>1?(u==="pct"?" (%)":" (amount)"):""))})});
   P.rows.forEach(function(r){
     var row=[r.g.label,r.lvl===2?"Then by":r.lvl===0?"Total":"Rows",r.g.ids.length];
     cols.forEach(function(c){P.units.forEach(function(u,i){
@@ -1690,7 +1690,7 @@ function flCompute(p){
   var yg=flv("comp","yrs"),bb={};vr.forEach(function(e){if(e.yoe!=null)(bb[e.band]=bb[e.band]||[]).push(e)});
   Object.keys(bb).forEach(function(b){var a=bb[b].slice().sort(function(x,y){return x.yoe-y.yoe}),n=a.length,sm=new Array(n+1),si=new Array(n+1);sm[n]=Infinity;
     for(var i=n-1;i>=0;i--){var v=nb(a[i]);if(v<sm[i+1]){sm[i]=v;si[i]=i}else{sm[i]=sm[i+1];si[i]=si[i+1]}}
-    var k=0;a.forEach(function(e,i){while(k<n&&a[k].yoe<e.yoe+yg)k++;if(k<n&&nb(e)>sm[k]*1.01){var o=a[si[k]];out.comp.push({e:e,why:e.yoe+" yrs paid ₹ "+inr(nb(e))+" · "+o.name+" ("+o.yoe+" yrs) ₹ "+inr(nb(o))})}})});
+    var k=0;a.forEach(function(e,i){while(k<n&&a[k].yoe<e.yoe+yg)k++;if(k<n&&nb(e)>sm[k]*1.01){var o=a[si[k]];out.comp.push({e:e,why:e.yoe+" yrs paid "+inr(nb(e))+" · "+o.name+" ("+o.yoe+" yrs) "+inr(nb(o))})}})});
   var pt=flv("promo","pct");vr.forEach(function(e){if(e.promo==="Yes"&&hp(e)>=pt)out.promo.push({e:e,why:"Promoted · hike "+hp(e).toFixed(1)+"%"})});
   var ny=Math.min(3,Math.max(1,Math.round(flv("rep","yrs")))),tp=Math.min(50,Math.max(5,flv("rep","top"))),ks=["hikeLY","hikeLY2","hikeLY3"];
   function pc(arr,q){return pctile(arr,q)}
@@ -1866,7 +1866,7 @@ function hStat(arr,s){
 }
 function niceStep(x){var p=Math.pow(10,Math.floor(Math.log10(x))),m=x/p;return(m<=1?1:m<=2?2:m<=2.5?2.5:m<=5?5:10)*p}
 function hFmt(v,pct,axis){if(v==null)return "–";if(pct)return v.toFixed(axis?1:1)+"%";
-  if(Math.abs(v)>=1e7)return (v/1e7).toFixed(2)+" Cr";if(Math.abs(v)>=1e5)return (v/1e5).toFixed(axis?1:2)+" L";if(Math.abs(v)>=1e3)return (v/1e3).toFixed(axis?0:1)+"k";return String(Math.round(v))}
+  return Math.round(v).toLocaleString("en-IN")}
 function heroHtml(vr,p){
   var opts=groupOpts();if(!opts.some(function(o){return o.id===GB}))GB="rating";
   var M=HMEAS[HS.meas]||HMEAS.hikePct;if(!HMEAS[HS.meas])HS.meas="hikePct";

@@ -53,7 +53,7 @@
 .bo .rt .f{align-items:center}
 .bo .rt input{width:62px;text-align:right}
 .bo .chk{display:flex;align-items:center;gap:6px;font-size:12px;height:30px;font-weight:600}
-.bo .btn{font-family:inherit;font-size:12.5px;font-weight:700;border-radius:6px;height:32px;padding:0 14px;cursor:pointer;border:1px solid var(--input-border);background:#fff;color:var(--ink)}
+.bo .btn{font-family:inherit;font-size:12.5px;font-weight:700;border-radius:6px;height:32px;padding:0 14px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;text-align:center;line-height:1;border:1px solid var(--input-border);background:#fff;color:var(--ink)}
 .bo .btn:hover:not(:disabled){background:#F3F4F6}
 .bo .btn.pri{background:var(--navy);color:#fff;border-color:var(--navy)}
 .bo .btn.pri:hover:not(:disabled){background:#1B3B5C}
@@ -527,7 +527,9 @@
 .bo .wi .pvtb td .pvn,.bo .wi .pvtb td small.pvn{color:#B42318;font-weight:700}
 .bo .wi .pvtb td .pvp,.bo .wi .pvtb td small.pvp{color:#1B6B3A;font-weight:700}
 .bo .actrow{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #EDF1F6}
-.bo .actrow .btn{padding:9px 16px;font-weight:800}
+.bo .actrow .btn{padding:0 16px;min-height:36px;font-weight:800;text-align:center}
+.bo #bMore{width:32px;padding:0;flex:none}
+.bo #bMore svg{width:17px;height:17px;display:block;flex:none}
 .bo[data-pt=summary] .mp-tabs{display:none}
 .bo[data-pt=summary] .split{min-height:980px}
 .bo .sm{padding:2px 2px 6px}
