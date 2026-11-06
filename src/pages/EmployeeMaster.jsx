@@ -2267,6 +2267,7 @@ export function EmployeeMaster() {
     designations,
     excludedEmployees: excluded,
     cutoffDate,
+    replaceCriteria = false,
   }) => {
     if (!canEditEmployees) {
       return;
@@ -2287,6 +2288,7 @@ export function EmployeeMaster() {
         designations,
         excludedEmployees: excluded,
         cutoffDate: toIsoDate(cutoffDate),
+        replaceCriteria,
       });
 
       (result?.addedRows || []).forEach((row) =>
@@ -2322,8 +2324,9 @@ export function EmployeeMaster() {
       }
       showBanner(
         "Criteria applied",
-        `${result?.evaluated ?? 0} employee(s) evaluated: ${result?.added ?? 0} added to the Eligibility List, ${result?.excluded ?? 0} left out by the criteria. Use Add An Employee to include anyone who was left out.`,
+        `${result?.evaluated ?? 0} employee(s) evaluated: ${result?.added ?? 0} added, ${result?.updated ?? 0} updated, and ${result?.excluded ?? 0} excluded by the criteria. Existing manual decisions were preserved.`,
       );
+      return true;
     } catch (error) {
       // A network/response error can happen after Catalyst has committed the
       // writes. Re-read the authoritative cycle before showing a failure.
@@ -2341,7 +2344,7 @@ export function EmployeeMaster() {
             "Criteria applied",
             "The eligibility list was saved successfully and has been loaded on screen.",
           );
-          return;
+          return true;
         }
       } catch (recoveryError) {
         console.error("Unable to verify eligibility after apply response error:", recoveryError);
@@ -2351,6 +2354,7 @@ export function EmployeeMaster() {
         error?.message || "Unable to apply eligibility criteria.",
         true,
       );
+      return false;
     }
   };
 
@@ -2407,7 +2411,7 @@ export function EmployeeMaster() {
     });
   };
 
-  const editRegenerateEligibility = () => {
+  const regenerateEligibility = () => {
     if (!canEditEmployees || !eligibilityCycleId) return;
     setEligibilityResetConfirm(true);
   };
@@ -2721,7 +2725,7 @@ export function EmployeeMaster() {
                     excludedEmployees={excludedEmployees}
                     setExcludedEmployees={setExcludedEmployees}
                     onApply={applyEligibilityCriteria}
-                    onEditRegenerate={editRegenerateEligibility}
+                    onRegenerate={regenerateEligibility}
                     onGenerateDelegation={eligibilityShowingSnapshot ? undefined : generateDelegationFromEligibility}
                     criteriaApplied={eligibilityCriteriaApplied}
                     delegationGenerated={delegationGenerated}
@@ -2987,17 +2991,17 @@ export function EmployeeMaster() {
               }}
             >
               <h2 id="eligibility-reset-title" style={{ margin: "0 0 10px", fontSize: 18 }}>
-                Edit &amp; Regenerate Eligibility
+                Regenerate Eligibility List
               </h2>
               <p style={{ margin: "0 0 22px", color: "#475569", lineHeight: 1.5 }}>
-                This clears the generated Eligibility List for the active cycle. You can then change the criteria and apply them again.
+                This permanently clears the generated Eligibility List for the active cycle. Your current criteria selections remain available. You can then apply criteria again to generate a fresh list.
               </p>
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
                 <button type="button" className="em-btn" onClick={() => setEligibilityResetConfirm(false)}>
                   Cancel
                 </button>
                 <button type="button" className="em-btn em-btn-primary" onClick={confirmEditRegenerateEligibility}>
-                  Clear &amp; Continue
+                  Clear List &amp; Regenerate
                 </button>
               </div>
             </section>
