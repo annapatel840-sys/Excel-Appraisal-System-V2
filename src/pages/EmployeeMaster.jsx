@@ -2567,29 +2567,42 @@ export function EmployeeMaster() {
     }
   };
 
-  const generateDelegationFromEligibility = async () => {
+  const generateDelegationFromEligibility = () => {
     if (!canEditEmployees || !eligibilityCycleId || !eligibilityCriteriaApplied) return;
-    try {
-      const response = await catalystFetch(
-        catalystFunctionUrl("accessapi") + "delegation/fill",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Accept: "application/json" },
-          body: JSON.stringify({ cycleId: eligibilityCycleId, replace: true }),
+
+    const cycleId = String(eligibilityCycleId);
+    // Navigate immediately; the expensive write continues in the background.
+    // The Delegation screen displays its saved snapshot while the committed
+    // roster is being prepared, then refreshes when the completion event fires.
+    window.dispatchEvent(new CustomEvent("appraisal:delegation-generation-started", {
+      detail: { cycleId }
+    }));
+    goToTab("delegation");
+
+    void (async () => {
+      try {
+        const response = await catalystFetch(
+          catalystFunctionUrl("accessapi") + "delegation/fill",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify({ cycleId, replace: true }),
+          }
+        );
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.ok === false || payload.success === false) {
+          throw new Error(payload.error || payload.message || "Delegation generation failed.");
         }
-      );
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || payload.ok === false || payload.success === false) {
-        throw new Error(payload.error || payload.message || "Delegation generation failed.");
+        setDelegationGenerated(true);
+        window.dispatchEvent(new CustomEvent("appraisal:delegation-generated", {
+          detail: { cycleId, saved: Number(payload.inserted || 0) }
+        }));
+      } catch (error) {
+        window.dispatchEvent(new CustomEvent("appraisal:delegation-generation-failed", {
+          detail: { cycleId, message: error?.message || "Please try again." }
+        }));
       }
-      setDelegationGenerated(true);
-      window.dispatchEvent(new CustomEvent("appraisal:delegation-generated", {
-        detail: { cycleId: eligibilityCycleId }
-      }));
-      goToTab("delegation");
-    } catch (error) {
-      showBanner("Delegation generation failed", error?.message || "Please try again.", true);
-    }
+    })();
   };
 
   /* ============================================================
