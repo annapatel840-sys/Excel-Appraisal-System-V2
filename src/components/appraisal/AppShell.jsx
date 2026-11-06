@@ -446,8 +446,6 @@ import { useCurrentCycleName } from "@/lib/current-cycle";
 import { useViewAs } from "@/lib/view-as-store";
 import { ProfileMenu } from "./ProfileMenu";
 import { ViewAsSwitcher } from "./ViewAsSwitcher";
-import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
-import { useSelectedLocation } from "@/lib/location-store";
 
 const TECH_ED_PATHS = [
   "/",
@@ -495,7 +493,6 @@ export function AppShell({ children, headerActions, notifications }) {
   const { settings, saveSettings } = useSettings();
   const { effectiveId, preview } = useViewAs();
   const cycleName = useCurrentCycleName();
-  const [selectedLocation, setSelectedLocation] = useSelectedLocation();
 
   const role = preview
     ? effectiveId
@@ -854,21 +851,6 @@ export function AppShell({ children, headerActions, notifications }) {
           >
             {!isVertical && headerActions}
             {isVertical && headerActions}
-            {/* One location for the whole system: every screen, for HR,
-                Tech-ED and Comp Manager logins, follows this value. */}
-            <div
-              className={cn(
-                "text-[11px] text-white",
-                isCollapsed && "hidden group-hover/nav:block",
-              )}
-              title="Location filter (applies to every screen)"
-            >
-              <LocationMasterControl
-                value={selectedLocation}
-                onChange={setSelectedLocation}
-                ariaLabel="Location filter for all screens"
-              />
-            </div>
             <div className={cn(isCollapsed && "hidden group-hover/nav:block")}>
               <ViewAsSwitcher isVertical={isVertical} />
             </div>
