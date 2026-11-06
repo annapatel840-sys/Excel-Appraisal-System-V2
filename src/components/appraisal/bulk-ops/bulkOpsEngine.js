@@ -1877,8 +1877,8 @@ function heroHtml(vr,p){
   var rows=keys.map(function(k){var o=g[k]||{n:0,b:[],a:[]};return {k:k,n:o.n,b:hStat(o.b,HS.stat),a:hStat(o.a,HS.stat)}});
   var mx=0;rows.forEach(function(r){if(r.b!=null)mx=Math.max(mx,r.b);if(r.a!=null)mx=Math.max(mx,r.a)});if(mx<=0)mx=1;
   var st=niceStep(mx*1.08/4),top=st*4;
-  var W=640,H=240,L0=6,R0=50,T0=10,B0=38,iw=W-L0-R0,ih=H-T0-B0,gw=iw/rows.length,bw=Math.min(9,gw/4.5),gap=2;
-  var s='<svg viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(HS.stat)+' of '+esc(M.l)+'">';
+  var H=240,L0=6,R0=50,T0=10,B0=38,W=Math.max(640,L0+R0+rows.length*90),iw=W-L0-R0,ih=H-T0-B0,gw=iw/rows.length,bw=Math.min(9,gw/4.5),gap=2;
+  var s='<svg viewBox="0 0 '+W+' '+H+'"'+(W>640?' style="width:'+W+'px;height:'+H+'px;max-height:none"':'')+' role="img" aria-label="'+esc(HS.stat)+' of '+esc(M.l)+'">';
   for(var i=0;i<=4;i++){var y=T0+ih-ih*i/4;s+='<line x1="'+L0+'" x2="'+(W-R0)+'" y1="'+y+'" y2="'+y+'" stroke="'+(i?'#E5E7EB':'#9CA3AF')+'"'+(i?' stroke-dasharray="3 4"':'')+'/><text x="'+(W-R0+8)+'" y="'+(y+3)+'" font-size="9" fill="#6B7280">'+hFmt(st*i,M.pct,true)+'</text>'}
   var lbl=GB==="rating"?function(k){return k==="No rating"?k:"Rating "+k}:function(k){return k.length>13?k.slice(0,12)+"…":k};
   rows.forEach(function(r,i){var cx=L0+gw*i+gw/2,hb=r.b==null?0:ih*r.b/top,ha=r.a==null?0:ih*r.a/top,d=(r.a!=null&&r.b!=null)?r.a-r.b:null;
@@ -1892,7 +1892,7 @@ function heroHtml(vr,p){
   var sel=function(id,o,cur){return '<select id="'+id+'">'+o.map(function(x){return '<option value="'+x[0]+'"'+(x[0]===cur?' selected':'')+'>'+esc(x[1])+'</option>'}).join("")+'</select>'};
   return '<div class="hc"><div class="hbar">'+sel("hcStat",HSTAT.filter(function(x){return x[0]!=="sum"||!M.pct}),HS.stat)+'<span>of</span>'
     +sel("hcMeas",Object.keys(HMEAS).map(function(k){return [k,HMEAS[k].l]}),HS.meas)+'<span>by</span>'+sel("hcGb",opts.map(function(o){return [o.id,o.label||o.l||o.id]}),GB)+'</div>'
-    +'<div class="hlg"><span><i style="background:#9DBDEB"></i>Now</span><span><i style="background:#27548A"></i>After this change</span></div>'+s+'</div>';
+    +'<div class="hlg"><span><i style="background:#9DBDEB"></i>Now</span><span><i style="background:#27548A"></i>After this change</span></div>'+'<div class="hscroll">'+s+'</div></div>';
 }
 var hTip=document.createElement("div");hTip.className="htip";root.appendChild(hTip);
 $("imp").addEventListener("mousemove",function(ev){var g=ev.target.closest&&ev.target.closest(".hg");if(!g){hTip.style.display="none";return}

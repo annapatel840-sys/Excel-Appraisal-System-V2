@@ -259,7 +259,26 @@ const BulkOperations = forwardRef(function BulkOperations(
             <strong>{rupees(b0.tpb)}</strong>
           </div>
         </div>
-        <span className="tb-mock">Mock screen</span>
+        {/* "More" menu: same ids the screen's engine already wires (replaces the old "Mock screen" label) */}
+        <div className="more tb-more">
+          <button className="btn" id="bMore" type="button" title="More actions" aria-label="More actions">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="3" width="7" height="7" rx="1.5" />
+              <rect x="14" y="3" width="7" height="7" rx="1.5" />
+              <rect x="3" y="14" width="7" height="7" rx="1.5" />
+              <rect x="14" y="14" width="7" height="7" rx="1.5" />
+            </svg>
+            <span>More</span>
+          </button>
+          <div className="menu" id="moreM">
+            <button id="bScnSave" type="button">Save as scenario</button>
+            <button id="bScnOpen" type="button">Scenarios &amp; history ›</button>
+            <button id="bRestoreLast" type="button">Restore last apply</button>
+            <hr />
+            <button id="bExport" type="button">Export to Excel</button>
+            <button id="bReset" type="button">Reset</button>
+          </div>
+        </div>
       </div>
       <div className="bo-host" ref={hostRef} />
     </div>
