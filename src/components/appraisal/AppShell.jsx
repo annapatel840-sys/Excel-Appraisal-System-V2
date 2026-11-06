@@ -858,7 +858,7 @@ export function AppShell({ children, headerActions, notifications }) {
                 Tech-ED and Comp Manager logins, follows this value. */}
             <div
               className={cn(
-                "text-[11px] text-[#0f172a]",
+                "text-[11px] text-white",
                 isCollapsed && "hidden group-hover/nav:block",
               )}
               title="Location filter (applies to every screen)"
