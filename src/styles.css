@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
 @import "tailwindcss";
 @source "../src";
 @import "tw-animate-css";
@@ -53,7 +53,7 @@
   --color-status-progress: var(--status-progress);
   --color-status-completed: var(--status-completed);
   --color-status-submitted: var(--status-submitted);
-  --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, system-ui, sans-serif;
 }
 
@@ -219,7 +219,7 @@
 
 @layer base {
   body {
-    font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
   .num {
@@ -243,7 +243,7 @@
 
 @layer base {
   body, button, input, textarea, select, option, label, table, th, td, a {
-    font-family: "Manrope", ui-sans-serif, system-ui, sans-serif;
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
   }
 }
 
@@ -266,7 +266,7 @@
   }
 }
 /* Table text (header, body and footer cells) uses Inter on every screen.
-   Page titles and the rest of the app keep Manrope. The Appraisal Sheet grid
+   Page titles and the rest of the app keep Inter. The Appraisal Sheet grid
    already uses Inter. !important so screen-level font rules do not win. */
 table th,
 table td,

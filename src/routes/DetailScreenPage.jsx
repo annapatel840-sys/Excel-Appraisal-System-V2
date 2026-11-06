@@ -12,7 +12,7 @@ import {
 import { useBudget } from "@/lib/budget-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 
-/* index.html: <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"> */
+/* index.html: <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"> */
 const HISTORY_URL = catalystFunctionUrl("appraisalhistoryapi");
 const CYCLE = "Apr-26";
 
@@ -135,7 +135,7 @@ const HIST_COLS = [
 ];
 
 const CSS = `
-.ds{min-height:100vh;background:#F4F7F7;color:#1F2F3D;font-family:"Manrope","Segoe UI",system-ui,Arial,sans-serif;font-size:13px;font-variant-numeric:tabular-nums;padding:14px 16px 24px;-webkit-font-smoothing:antialiased}
+.ds{min-height:100vh;background:#F4F7F7;color:#1F2F3D;font-family:"Inter","Segoe UI",system-ui,Arial,sans-serif;font-size:13px;font-variant-numeric:tabular-nums;padding:14px 16px 24px;-webkit-font-smoothing:antialiased}
 .ds *,.ds *::before,.ds *::after{box-sizing:border-box}
 .ds button,.ds input,.ds select,.ds textarea{font-family:inherit}
 .ds :focus-visible{outline:2px solid #0B7A75;outline-offset:2px}

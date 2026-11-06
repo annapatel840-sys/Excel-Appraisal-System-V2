@@ -3,11 +3,11 @@ import { X } from "lucide-react";
 
 /**
  * In-app replacement for window.alert().
- * White card, Manrope font and the appraisal sheet's navy text colour,
+ * White card, Inter font and the appraisal sheet's navy text colour,
  * with a cross (X) at the top-right corner to close.
  * Usage: showNotice("Message here");
  */
-const FONT = '"Manrope", "Segoe UI", system-ui, sans-serif';
+const FONT = '"Inter", "Segoe UI", system-ui, sans-serif';
 const INK = "#102a43";
 
 let host = null;

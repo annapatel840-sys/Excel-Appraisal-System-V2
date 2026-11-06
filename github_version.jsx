@@ -15,9 +15,9 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#12304f";
 const TEAL = "#14a3a3";
-/* Ledger look: Manrope. Load it once in index.html:
-   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"> */
-const FONT = '"Manrope", "Segoe UI", system-ui, Arial, sans-serif';
+/* Ledger look: Inter. Load it once in index.html:
+   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"> */
+const FONT = '"Inter", "Segoe UI", system-ui, Arial, sans-serif';
 /* Ledger tokens used by the left pane */
 const INK = "#102A43";
 const LTEAL = "#0B7A75";
@@ -1503,4 +1503,3 @@ function HistRow({ year, vals, prev, current }) {
     </tr>
   );
 }
- 

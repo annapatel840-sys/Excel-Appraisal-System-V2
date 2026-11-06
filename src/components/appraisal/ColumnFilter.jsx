@@ -26,7 +26,7 @@ import { fieldByKey, isEmptyFilter } from "@/lib/appraisal-filters";
    - bulk edit this column  ->  ONLY for editable columns
    ============================================================ */
 
-const MANROPE = '"Manrope", "Segoe UI", system-ui, sans-serif';
+const INTER = '"Inter", "Segoe UI", system-ui, sans-serif';
 
 const TEXT_MENU = [
   ["equals", "Equals…"],
@@ -489,7 +489,7 @@ export function ColumnFilter({
             }
           }}
           className="w-[262px] overflow-visible p-0 py-[3px]"
-          style={{ fontFamily: MANROPE }}
+          style={{ fontFamily: INTER }}
         >
           {/* No overflow here: with overflow-y:auto the browser also clips the
               sideways Text/Number Filters submenu (overflow-x can't stay visible),
@@ -750,7 +750,7 @@ export function ColumnFilter({
       <Dialog open={!!dialog} onOpenChange={(next) => !next && setDialog(null)}>
         <DialogContent
           className="w-[380px] max-w-[92vw] gap-0 p-4 text-[12.5px]"
-          style={{ fontFamily: MANROPE }}
+          style={{ fontFamily: INTER }}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
               event.preventDefault();

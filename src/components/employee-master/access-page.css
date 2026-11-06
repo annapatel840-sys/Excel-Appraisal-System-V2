@@ -9,7 +9,7 @@
   --page: #EEF1F5; --line: #D7DCE3; --line2: #E1E5EB; --head: #EEF2F7; --text: #334155;
   --muted: #64748B; --edit: #EAF7EE; --editLine: #7BC496; --amberBg: #FFF7E6; --amberLine: #FFD591;
   --amber: #873800; --red: #B42318;
-  font-family: Manrope, "Segoe UI", Roboto, Arial, sans-serif;
+  font-family: Inter, "Segoe UI", Roboto, Arial, sans-serif;
   color: var(--text);
   font-size: 13px;
   line-height: 1.4;

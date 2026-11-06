@@ -518,7 +518,7 @@ const HR_COLS = [
 ];
 
 const BUDGET_MASTER_CSS = `
-.bm-root{--ink:#111827;--muted:#6B7280;--navy:#102A43;--link:#1559A6;--line:#E5E7EB;--th-bg:#E6EEF8;--th-line:#C9D8EC;--row-odd:#FBFCFE;--row-even:#F2F5F9;--row-hover:#EAF2FF;--rl-bg:#EEF3FA;--info-bg:#DCEBFF;--info-border:#B9D3F5;--info:#1D4FA8;--main:#2F6FED;--edited:#FFE066;--edited-border:#C9A400;--err:#C0392B;--ok:#15803D;width:100%;padding:12px;background:#D5DFEB;border-radius:14px;color:var(--ink);font-family:"Manrope","Segoe UI",Arial,sans-serif;font-size:12.5px;font-variant-numeric:tabular-nums}
+.bm-root{--ink:#111827;--muted:#6B7280;--navy:#102A43;--link:#1559A6;--line:#E5E7EB;--th-bg:#E6EEF8;--th-line:#C9D8EC;--row-odd:#FBFCFE;--row-even:#F2F5F9;--row-hover:#EAF2FF;--rl-bg:#EEF3FA;--info-bg:#DCEBFF;--info-border:#B9D3F5;--info:#1D4FA8;--main:#2F6FED;--edited:#FFE066;--edited-border:#C9A400;--err:#C0392B;--ok:#15803D;width:100%;padding:12px;background:#D5DFEB;border-radius:14px;color:var(--ink);font-family:"Inter","Segoe UI",Arial,sans-serif;font-size:12.5px;font-variant-numeric:tabular-nums}
 .bm-root *{box-sizing:border-box}
 .bm-root :where(button,input,select){font:inherit;color:inherit}
 .bm-root button:focus-visible,.bm-root input:focus-visible{outline:2px solid #2F6FED;outline-offset:2px}
@@ -2717,7 +2717,7 @@ export function BudgetMasterPage() {
     <div
       className="w-full"
       style={{
-        fontFamily: '"Manrope", ui-sans-serif, system-ui, sans-serif',
+        fontFamily: '"Inter", ui-sans-serif, system-ui, sans-serif',
         fontVariantNumeric: "tabular-nums",
         color: "#0f1f33",
       }}

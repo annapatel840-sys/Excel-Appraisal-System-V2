@@ -12,7 +12,7 @@
   background: #fff;
   border: 1px solid #d9dee7;
   border-radius: 8px;
-  font-family: var(--font-sans, "Manrope", ui-sans-serif, system-ui, sans-serif);
+  font-family: var(--font-sans, "Inter", ui-sans-serif, system-ui, sans-serif);
 }
 
 .hrn-group {

@@ -38,12 +38,12 @@ const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const CURRENT_APPRAISAL_YEAR = "Apr-26"; // fallback while cycle master is loading
 
 const APPRAISAL_FONT = "Arial, Helvetica, sans-serif";
-// NOTE: the table / grid used to use the earlier font (Arial / Manrope look).
-// It now uses Inter, the same font as the reference HTML. Manrope is still used
+// NOTE: the table / grid used to use the earlier font (Arial / Inter look).
+// It now uses Inter, the same font as the reference HTML. Inter is still used
 // by the right-hand feedback panel (PANEL_FONT) below.
 const TABLE_FONT = 'Inter, "Segoe UI", Arial, sans-serif';
-// Right feedback panel: Manrope only.
-const PANEL_FONT = '"Manrope", "Segoe UI", system-ui, sans-serif';
+// Right feedback panel: Inter only.
+const PANEL_FONT = '"Inter", "Segoe UI", system-ui, sans-serif';
 
 // ============================================================
 // GRID SETTINGS
@@ -239,7 +239,7 @@ const MERGED_LABELS = {
 };
 
 const GRID_STYLES = `
-.appraisal-side, .appraisal-side * { font-family: "Manrope", "Segoe UI", system-ui, sans-serif !important; }
+.appraisal-side, .appraisal-side * { font-family: "Inter", "Segoe UI", system-ui, sans-serif !important; }
 @keyframes appraisalCellBlink {
   0%, 100% { box-shadow: 0 0 0 0 rgba(201,164,0,0); }
   50% { box-shadow: 0 0 0 3px rgba(201,164,0,.55); }

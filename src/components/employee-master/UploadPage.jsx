@@ -1845,7 +1845,7 @@ export default UploadPage;
 
 const CSS = `
 .up{--ink:#111827;--muted:#6B7280;--navy:#102A43;--link:#1559A6;--gutter:#D5DFEB;--line:#E5E7EB;--pill:#27548A;--info-strip:#DCEBFF;--info-border:#B9D3F5;--th-bg:#E6EEF8;--th-line:#C9D8EC;--odd:#FBFCFE;--even:#F2F5F9;--hover:#EAF2FF;--sel:#DCEBFF;--rl:#EEF3FA;--inb:#9CA3AF;--err:#C0392B;--main:#2F6FED;--ok:#15803D;--okbg:#ECFDF3;--warn:#B7791F;--warnbg:#FEF6E7;--chg:#5B3FB0;--chgbg:#ECE7FB;--info:#1D4FA8;--infobg:#DCEBFF;--grey:#6B7280;--greybg:#F3F4F6;
-font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink);width:100%}
+font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink);width:100%}
 .up *{box-sizing:border-box}
 .up button,.up input,.up select{font-family:inherit}
 .up-strip{background:var(--info-strip);border:1px solid var(--info-border);border-radius:10px;margin:0 0 10px;padding:8px 14px;color:var(--info);font-weight:600;display:flex;gap:10px;align-items:center}

@@ -1066,7 +1066,7 @@ const CSS = `
 .hrc{--ink:#111827;--muted:#6B7280;--navy:#102A43;--link:#1559A6;--line:#E5E7EB;--gutter:#D5DFEB;--info-strip:#DCEBFF;--info-border:#B9D3F5;
 --th-bg:#E6EEF8;--th-line:#C9D8EC;--row-odd:#FBFCFE;--row-even:#F2F5F9;--row-hover:#EAF2FF;--input-border:#9CA3AF;--readonly:#F3F4F6;--edited:#FFE066;--edited-border:#C9A400;
 --btn-main:#2F6FED;--switch-on:#22A06B;--switch-off:#D1D5DB;--ok:#15803D;--ok-bg:#ECFDF3;--warn:#B7791F;--warn-bg:#FEF6E7;--info:#1D4FA8;--info-bg:#DCEBFF;--grey:#6B7280;--grey-bg:#F3F4F6;
-font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink);width:100%}
+font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink);width:100%}
 .hrc *{box-sizing:border-box}
 .hrc .wrap{display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start}
 .hrc .wrap.fold{grid-template-columns:1fr}

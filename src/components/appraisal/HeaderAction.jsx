@@ -8,7 +8,7 @@ const SOFT = "#EEF3F3";
 const MUTED = "#5F7482";
 const RED = "#B42318";
 const LTEAL = "#0B7A75";
-const FONT = '"Manrope", "Segoe UI", system-ui, Arial, sans-serif';
+const FONT = '"Inter", "Segoe UI", system-ui, Arial, sans-serif';
 
 const initialsOf = (name) =>
   String(name || "?")

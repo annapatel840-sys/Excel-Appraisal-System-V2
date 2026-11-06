@@ -2485,7 +2485,7 @@ const CSS = `
 .acx{--navy:#102A43;--active:#27548A;--cta:#2F6FED;--gutter:#D5DFEB;--line:#E5E7EB;--row-line:#F0F1F3;--ink:#111827;--muted:#6B7280;
 --hb:#E6EEF8;--hl:#C9D8EC;--odd:#FBFCFE;--even:#F2F5F9;--hover:#EAF2FF;--hi:#DCEBFF;--rowlabel:#EEF3FA;--link:#1559A6;
 --green:#15803D;--green-bg:#ECFDF3;--amber:#B7791F;--amber-bg:#FEF6E7;--violet:#5B3FB0;--violet-bg:#ECE7FB;--info:#1D4FA8;--red:#C0392B;--tt:#E8F0FE;
-font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink);width:100%}
+font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink);width:100%}
 .acx *{box-sizing:border-box}
 .acx button,.acx input,.acx select,.acx textarea{font-family:inherit;font-size:12.5px;color:inherit}
 .acx select,.acx input[type=text],.acx input[type=date],.acx textarea{border:1px solid #D1D5DB;border-radius:6px;padding:6px 9px;background:#fff;outline:none}
@@ -2608,7 +2608,7 @@ font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:var(--ink
 .acx-banner strong{display:block;margin-bottom:2px}.acx-banner span{color:#475569}
 .acx-banner .close{margin-left:auto;border:0;background:transparent;cursor:pointer;font-size:18px;line-height:1}
 .acx-ov{position:fixed;inset:0;background:rgba(15,25,40,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
-.acx-md{background:#fff;border-radius:12px;width:470px;max-width:94vw;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.3);font-family:Manrope,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:#111827}
+.acx-md{background:#fff;border-radius:12px;width:470px;max-width:94vw;max-height:86vh;display:flex;flex-direction:column;box-shadow:0 20px 50px rgba(0,0,0,.3);font-family:Inter,"Segoe UI",Arial,sans-serif;font-size:12.5px;color:#111827}
 .acx-md *{box-sizing:border-box}
 .acx-md input,.acx-md select,.acx-md textarea{font-family:inherit;font-size:12.5px;border:1px solid #D1D5DB;border-radius:6px;padding:6px 9px;background:#fff;outline:none}
 .acx-md input:disabled,.acx-md select:disabled{background:#F3F4F6;color:#6B7280}

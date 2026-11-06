@@ -42,9 +42,9 @@ import { DetailSidePanel, PANEL_MIN_W } from "./DetailSidePanel";
 const APPRAISAL_HISTORY_API_URL = catalystFunctionUrl("appraisalhistoryapi");
 const NAVY = "#12304f";
 const TEAL = "#14a3a3";
-/* Ledger look: Manrope. Load it once in index.html:
-   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"> */
-const FONT = '"Manrope", "Segoe UI", system-ui, Arial, sans-serif';
+/* Ledger look: Inter. Load it once in index.html:
+   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"> */
+const FONT = '"Inter", "Segoe UI", system-ui, Arial, sans-serif';
 /* Ledger tokens */
 const INK = "#102A43";
 const LTEAL = "#0B7A75";
@@ -269,7 +269,7 @@ const DS_CSS = `
 .ds-panel-scroll{position:relative;flex:1 1 0;min-width:0;min-height:0;overflow:hidden}
 .ds-fit{position:absolute;top:0;left:0;transform-origin:top left}
 .ds-foot{flex:0 0 auto;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:6px 12px;border-top:1px solid #E3E9EC;background:#fff}
-.ds-side,.ds-side *{font-family:"Manrope","Segoe UI",system-ui,Arial,sans-serif}
+.ds-side,.ds-side *{font-family:"Inter","Segoe UI",system-ui,Arial,sans-serif}
 .ds-side{position:relative;min-width:0;min-height:0;overflow:hidden}
 .ds-side>.ds-card{width:100%;height:100%}
 .ds-scroll{min-height:0;overflow:auto;scrollbar-width:thin;scrollbar-color:#C4CED6 transparent}

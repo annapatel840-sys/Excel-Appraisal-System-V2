@@ -2333,9 +2333,9 @@ function Modal({ title, children, foot, onClose, wide }) {
 
 /* ---------------------------------------------------------------- styles */
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 .dg,.dg *{box-sizing:border-box}
-.dg{font-family:Manrope,Arial,sans-serif;background:#f3f5f8;color:#1f2a37;font-size:13px;min-height:100%}
+.dg{font-family:Inter,Arial,sans-serif;background:#f3f5f8;color:#1f2a37;font-size:13px;min-height:100%}
 .dg button,.dg input,.dg select,.dg textarea{font-family:inherit;font-size:inherit}
 .dg-pv{background:#e8f5f1;border-bottom:1px solid #b9dcc4;color:#146b5a;padding:7px 12px;font-size:12px;font-weight:600;display:flex;gap:10px;align-items:center}
 .dg-pv select{border:1px solid #b9dcc4;border-radius:4px;padding:3px 6px;font-weight:600}

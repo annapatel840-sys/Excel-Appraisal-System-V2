@@ -1074,7 +1074,7 @@ export default FeedbackRatingMasterPage;
 
 /* ============================== styles (scoped under .fb-root) ============================== */
 const FB_CSS = `
-.fb-root{--font:"Manrope","Segoe UI",Arial,sans-serif;--ink:#111827;--muted:#6B7280;--navy:#102A43;--link:#1559A6;--gutter:#D5DFEB;--line:#E5E7EB;--info-bg:#DCEBFF;--info-border:#B9D3F5;--th-bg:#E6EEF8;--th-line:#C9D8EC;--row-odd:#FBFCFE;--row-even:#F2F5F9;--row-hover:#EAF2FF;--rl-bg:#EEF3FA;--err:#C0392B;--ok:#15803D;--warn:#B7791F;--warn-bg:#FEF6E7;--grey:#6B7280;--grey-bg:#EEF0F3;--info:#1D4FA8;--main:#2F6FED;--totals-bg:#E6EEF8;--rp-line:#E5E7EB;--rp-muted:#6B7280;--rp-accent:#102A43;--rp-accent-soft:#EEF0F3;
+.fb-root{--font:"Inter","Segoe UI",Arial,sans-serif;--ink:#111827;--muted:#6B7280;--navy:#102A43;--link:#1559A6;--gutter:#D5DFEB;--line:#E5E7EB;--info-bg:#DCEBFF;--info-border:#B9D3F5;--th-bg:#E6EEF8;--th-line:#C9D8EC;--row-odd:#FBFCFE;--row-even:#F2F5F9;--row-hover:#EAF2FF;--rl-bg:#EEF3FA;--err:#C0392B;--ok:#15803D;--warn:#B7791F;--warn-bg:#FEF6E7;--grey:#6B7280;--grey-bg:#EEF0F3;--info:#1D4FA8;--main:#2F6FED;--totals-bg:#E6EEF8;--rp-line:#E5E7EB;--rp-muted:#6B7280;--rp-accent:#102A43;--rp-accent-soft:#EEF0F3;
  font:12.5px var(--font);color:var(--ink);display:flex;flex-direction:column;min-height:100%}
 .fb-root *{box-sizing:border-box}
 .fb-root button,.fb-root input,.fb-root select,.fb-root textarea{font:inherit;color:inherit}
@@ -1145,7 +1145,7 @@ const FB_CSS = `
 .fb-root .pgr .btn{padding:3px 10px}
 .fb-root .tag2{display:inline-block;border-radius:10px;padding:2px 9px;font-size:10.5px;font-weight:700}
 .fb-root .tag2.w{background:var(--warn-bg);color:var(--warn)}.fb-root .tag2.g{background:var(--grey-bg);color:var(--grey)}
-.fb-cm{position:fixed;z-index:70;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 8px 24px rgba(16,42,67,.16);width:250px;padding:8px;font:12px "Manrope","Segoe UI",Arial,sans-serif;color:#111827}
+.fb-cm{position:fixed;z-index:70;background:#fff;border:1px solid #E5E7EB;border-radius:10px;box-shadow:0 8px 24px rgba(16,42,67,.16);width:250px;padding:8px;font:12px "Inter","Segoe UI",Arial,sans-serif;color:#111827}
 .fb-cm *{box-sizing:border-box}
 .fb-cm .it{display:block;width:100%;text-align:left;background:none;border:0;padding:6px 8px;border-radius:6px;cursor:pointer;font:inherit;font-weight:600}.fb-cm .it:hover{background:#EAF2FF}
 .fb-cm .chk{display:flex;gap:6px;align-items:center;padding:4px 8px;font-weight:600}
