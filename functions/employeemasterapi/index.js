@@ -941,24 +941,9 @@ async function updateRosterEmployee(req, res, table, employeesTable, afterWrite)
     throw new Error("Employee_Master ROWID not found for " + empId);
   }
 
-  const employeeRows = await getAllEmployees(employeesTable);
-
-  const employeeMap = buildEmployeeMap(employeeRows);
-
-  const employee = findEmployeeByEmpId(employeeMap, empId);
-
-  if (!employee) {
-    return sendJson(res, 404, {
-      success: false,
-      message: "Employee " + empId + " not found in Employees table.",
-    });
-  }
-
-  const employeeRowId = employee.ROWID || employee.rowid;
-
-  if (!employeeRowId) {
-    throw new Error("Employees ROWID not found for " + empId);
-  }
+  let employeeRows = await getAllEmployees(employeesTable);
+  let employeeMap = buildEmployeeMap(employeeRows);
+  let employee = findEmployeeByEmpId(employeeMap, empId);
 
   // ==========================================================
   // STATUS UPDATE
@@ -972,6 +957,32 @@ async function updateRosterEmployee(req, res, table, employeesTable, afterWrite)
         success: false,
         message: 'emp_status must be either "Active" or "Inactive".',
       });
+    }
+
+    // Employee_Master is the roster source of truth. Older/imported records
+    // can legitimately have no matching Employees row. Repair that missing
+    // child row from the existing master record instead of rejecting the
+    // status change with a 404.
+    if (!employee) {
+      await employeesTable.insertRows([{
+        emp_id: empId,
+        name: existingRow.emp_name || "",
+        designation: existingRow.designation || "",
+        department: existingRow.department || "",
+        status: normalized,
+        emp_master_row_id: masterRowId,
+      }]);
+
+      employeeRows = await getAllEmployees(employeesTable);
+      employeeMap = buildEmployeeMap(employeeRows);
+      employee = findEmployeeByEmpId(employeeMap, empId);
+    }
+
+    const employeeRowId = employee && (employee.ROWID || employee.rowid);
+    if (!employeeRowId) {
+      throw new Error(
+        "Unable to create or locate Employees row for " + empId,
+      );
     }
 
     await table.updateRow({
@@ -988,22 +999,38 @@ async function updateRosterEmployee(req, res, table, employeesTable, afterWrite)
       masterRowId,
     );
 
+    if (!statusSync.found) {
+      throw new Error(
+        "Employee status was not synchronized for " + empId,
+      );
+    }
+
     if (afterWrite) await afterWrite("Employee_Master status changed: " + empId);
 
     return sendJson(res, 200, {
       success: true,
-
-      message: statusSync.found
-        ? "Employee status updated and synchronized successfully."
-        : "Employee Master status updated, but matching Employees record was not found.",
-
+      message: "Employee status updated and synchronized successfully.",
       data: {
         emp_id: empId,
         emp_status: normalized,
-        employees_status: statusSync.found ? normalized : null,
+        employees_status: normalized,
         statusSync: statusSync,
       },
     });
+  }
+
+  // Non-status master edits still require an existing Employees child row.
+  if (!employee) {
+    return sendJson(res, 404, {
+      success: false,
+      message: "Employee " + empId + " not found in Employees table.",
+    });
+  }
+
+  const employeeRowId = employee.ROWID || employee.rowid;
+
+  if (!employeeRowId) {
+    throw new Error("Employees ROWID not found for " + empId);
   }
 
   // ==========================================================
