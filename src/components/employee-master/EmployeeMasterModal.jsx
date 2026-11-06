@@ -61,17 +61,22 @@ export function InactiveModal({ count, onClose, onApply }) {
 }
 
 const FIELDS = [
-  { key: "status", label: "Employee Status", kind: "status" },
-  { key: "te", label: "Tech-ED/BU Head Name" },
-  { key: "director", label: "Director" },
-  { key: "appraiser", label: "Appraiser Tech-ED" },
-  { key: "reportingManager", label: "Reporting Manager" },
-  { key: "dept", label: "Department" },
-  { key: "type", label: "Emp Type" },
-  { key: "band", label: "Band" },
-  { key: "skillType", label: "Skill Type" },
-  { key: "recordOwner", label: "Record Owner ID" },
-  { key: "exitDate", label: "Exit Date", kind: "date" },
+  { key: "status", label: "Employee Status", kind: "status", multi: true },
+  { key: "name", label: "Employee Name", multi: false },
+  { key: "designation", label: "Designation", multi: true },
+  { key: "dept", label: "Department", multi: true },
+  { key: "reportingManager", label: "Reporting Manager", multi: true },
+  { key: "director", label: "Director", multi: true },
+  { key: "appraiser", label: "Appraiser Tech-ED", multi: true },
+  { key: "type", label: "Employee Type", multi: true },
+  { key: "email", label: "Email ID", multi: false },
+  { key: "doj", label: "Date of Joining", kind: "date", multi: false },
+  { key: "location", label: "Location", multi: true },
+  { key: "costCenter", label: "Cost Center", multi: true },
+  { key: "orgExp", label: "Wissen Experience", multi: true },
+  { key: "totalExp", label: "Total Experience", multi: true },
+  { key: "currentSalary", label: "Current Salary", multi: true },
+  { key: "lastAppraisal", label: "Last Appraisal Month/Year", multi: true },
 ];
 
 export function ChangeModal({ count, suggestionsFor, onClose, onApply }) {
@@ -113,7 +118,9 @@ export function ChangeModal({ count, suggestionsFor, onClose, onApply }) {
         <label>Field</label>
         <select className="em-date-input" value={field} onChange={(e) => changeField(e.target.value)}>
           {FIELDS.map((f) => (
-            <option key={f.key} value={f.key}>{f.label}</option>
+            <option key={f.key} value={f.key} disabled={count > 1 && !f.multi}>
+              {f.label}{count > 1 && !f.multi ? " (one employee at a time)" : ""}
+            </option>
           ))}
         </select>
       </div>
