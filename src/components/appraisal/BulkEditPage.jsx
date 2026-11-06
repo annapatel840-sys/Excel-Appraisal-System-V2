@@ -70,7 +70,31 @@ const STORE_KEY = {
   newTitle: "newTitle",
 };
 
-/* ---------- Bulk history, rebuilt from the audit trail ---------- */
+/* ---------- Bulk history ----------
+   For now the history lives in this browser only (fast, nothing is read from the audit trail).
+   The audit trail is still written on every Apply, so switching to it later is a one-line change:
+   set HISTORY_FROM_AUDIT = true. */
+const HISTORY_FROM_AUDIT = false;
+const MAX_STORED_BATCHES = 30;
+const batchesKey = (cycle) => `bulkBatches.v1:${cycle?.id ?? ""}`;
+function readStoredBatches(cycle) {
+  try {
+    const list = JSON.parse(window.localStorage.getItem(batchesKey(cycle)) || "[]");
+    return Array.isArray(list) ? list : [];
+  } catch (x) {
+    return [];
+  }
+}
+function writeStoredBatches(cycle, batches) {
+  try {
+    const keep = (batches || []).slice(-MAX_STORED_BATCHES);
+    window.localStorage.setItem(batchesKey(cycle), JSON.stringify(keep));
+  } catch (x) {
+    /* storage full or blocked: the history still works for this session */
+  }
+}
+
+/* ---------- Bulk history, rebuilt from the audit trail (used only when HISTORY_FROM_AUDIT is on) ---------- */
 const APPLY_SOURCE = "Bulk edit";
 const RESTORE_SOURCE = "Bulk restore";
 const RESTORE_PREFIX = "R-";
@@ -319,7 +343,9 @@ const BulkOperations = forwardRef(function BulkOperations(
         return { saved, notes: [] };
       },
       /* History of the current cycle: server audit trail + what this session just saved. */
+      saveBatches: (batches) => writeStoredBatches(live.current.cycle, batches),
       loadBatches: async (force) => {
+        if (!HISTORY_FROM_AUDIT) return readStoredBatches(live.current.cycle);
         const { storeFetchBulkHistory: fetchHistory, sheetAudit: localAudit, cycle: cyc } = live.current;
         if ((force || !historyCache.current) && fetchHistory) {
           try {

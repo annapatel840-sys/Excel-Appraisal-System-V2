@@ -3821,7 +3821,7 @@ export function AppraisalGrid({
                   title={`${tagCol.label}: ${tagText}`}
                   className="max-w-full shrink-0 truncate rounded-[4px] border border-[#86d5a4] bg-[#e3f6ea] px-1.5 py-px text-[9.5px] font-bold leading-tight text-[#14793f]"
                 >
-                  {tagCol.label} : {tagText}
+                  {tagText}
                 </span>
               ) : null;
             })}

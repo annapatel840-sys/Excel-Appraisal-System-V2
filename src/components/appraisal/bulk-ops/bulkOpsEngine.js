@@ -889,7 +889,8 @@ function doApply(){
     var batch={id:bid,at:Date.now(),time:nowT(),by:(ME&&ME.name)||"You",text:text,rows:[],restored:false};
     x.ids.forEach(function(id){var e=byId(id);batch.rows.push({id:id,old:x.old[id],nw:x.nw[id],bulk:e.bulk});e.bulk=true});
     S.batches.push(batch);S.pv=null;S.ov={};if(cfg.onApplied){try{cfg.onApplied(batch)}catch(x){}}
-    return afterSave().then(function(){syncBatches(false)}).then(function(){
+    persistBatches();
+    return afterSave().then(function(){
       S.flash="Saved "+res.saved+" change"+(res.saved===1?"":"s")+" on "+x.ids.length+" rows · "+batch.time+" · source “bulk” in the audit trail"+(res.notes.length?" · Server notes: "+res.notes.join("; "):"");
     });
   }).catch(function(err){
@@ -1104,11 +1105,11 @@ function lastBatch(){for(var i=S.batches.length-1;i>=0;i--)if(!S.batches[i].rest
 function renderRestoreLast(){
   var b=lastBatch(),el=$("bRestoreLast");if(!el)return;
   var armed=b&&restoreAt.id===b.id&&Date.now()-restoreAt.t<6000;
-  el.disabled=!b||S.busy||S.locked||!cfg.canApply;
+  el.disabled=!b||S.busy||S.locked||!cfg.canApply||!RESTORE_ENABLED;if(!RESTORE_ENABLED)el.title="Restore is temporarily unavailable";
   el.textContent=!b?"Restore Last Apply":(armed?"Confirm Restore · ":"Restore Last Apply · ")+b.rows.length+" row"+(b.rows.length===1?"":"s");
 }
 $("bRestoreLast").addEventListener("click",function(ev){
-  var b=lastBatch();if(!b)return;
+  var b=lastBatch();if(!b||!RESTORE_ENABLED)return;
   if(restoreAt.id===b.id&&Date.now()-restoreAt.t<6000){restoreAt={id:"",t:0};$("moreM").classList.remove("on");doRestore(b.id);return}
   ev.stopPropagation();restoreAt={id:b.id,t:Date.now()};renderRestoreLast();renderImpact();
   setTimeout(function(){if(restoreAt.id===b.id&&Date.now()-restoreAt.t>=6000){restoreAt={id:"",t:0};renderRestoreLast();renderImpact()}},6100);
@@ -1199,6 +1200,8 @@ function tpbOpt(){return '<div class="tpbopt"><span>Budget Left</span><select id
    POST /cells carries batch_id + batch_text; GET /batches?cycle_id= lists them; POST /batches/{id}/restore {cycle_id}
    returns {restored, skipped, rows} and writes source "bulk_restore" to the audit trail. */
 var restoreAt={id:"",t:0};
+/* "Restore Previous Values" is switched off for now. Set to true to turn it back on (History tab and Menu). */
+var RESTORE_ENABLED=false;
 function sameVal(a,b){return String(a)===String(b)||(Number(a)===Number(b)&&!isNaN(Number(a)))}
 function historyTab(){
   if(!S.batches.length)return '<div class="mini" style="padding:6px 2px">Nothing applied yet in this cycle.</div>';
@@ -1207,12 +1210,12 @@ function historyTab(){
     var armed=restoreAt.id===x.id&&Date.now()-restoreAt.t<6000;
     h+='<div class="bhr"><div class="bht"><b>'+esc(x.time)+'</b> · '+esc(x.by||"")+' · '+x.rows.length+' row'+(x.rows.length===1?'':'s')+(x.restored?' <span class="tag t-grey">Restored</span>':'')+'</div>'
       +'<div class="mini">'+esc(x.text)+'</div>'
-      +(x.restored?'':'<button class="btn" type="button" data-restore="'+esc(x.id)+'">'+(armed?'Confirm Restore · '+x.rows.length+' row'+(x.rows.length===1?'':'s'):'Restore Previous Values')+'</button>')+'</div>';
+      +(x.restored?'':'<button class="btn" type="button" data-restore="'+esc(x.id)+'"'+(RESTORE_ENABLED?'':' disabled title="Restore is temporarily unavailable"')+'>'+(armed?'Confirm Restore · '+x.rows.length+' row'+(x.rows.length===1?'':'s'):'Restore Previous Values')+'</button>')+'</div>';
   });
   return h+'</div>';
 }
 function doRestore(id){
-  if(!cfg.canApply)return;
+  if(!cfg.canApply||!RESTORE_ENABLED)return;
   var b=S.batches.filter(function(x){return x.id===id})[0];if(!b||b.restored||S.busy||S.locked)return;
   var ch=[],skipped=0,ids=[];
   b.rows.forEach(function(r){
@@ -1227,7 +1230,8 @@ function doRestore(id){
     if(res.rows)mergeRows(res.rows);
     b.rows.forEach(function(r){if(ids.indexOf(r.id)>=0){var e=byId(r.id);if(e)e.bulk=r.bulk}});
     b.restored=true;S.pv=null;
-    return afterSave().then(function(){syncBatches(false)}).then(function(){S.flash="Restored previous values on "+ids.length+" row"+(ids.length===1?"":"s")+(skipped?" · "+skipped+" skipped (changed again since)":"")+" · "+nowT()+" · source “bulk_restore” in the audit trail"});
+    persistBatches();
+    return afterSave().then(function(){S.flash="Restored previous values on "+ids.length+" row"+(ids.length===1?"":"s")+(skipped?" · "+skipped+" skipped (changed again since)":"")+" · "+nowT()+" · source “bulk_restore” in the audit trail"});
   }).catch(function(err){S.err=err.message+" Nothing was restored."}).then(function(){var w=Math.max(0,MIN_BUSY_MS-(Date.now()-t0));return w?new Promise(function(r){setTimeout(r,w)}):0}).then(function(){S.busy=false;S.prog=null;render()});
 }
 function pvOK(){   // Pivot is for HR and Tech ED; a Comp Manager does not get it
@@ -1459,6 +1463,7 @@ $("mpTabs").addEventListener("click",function(ev){var t=ev.target.getAttribute&&
 $("imp").addEventListener("click",function(ev){
   if(ev.target.closest&&ev.target.closest("#bDlList")){downloadList();return}
   var rb=ev.target.closest&&ev.target.closest("[data-restore]");
+  if(rb&&!RESTORE_ENABLED)return;
   if(rb){var id=rb.getAttribute("data-restore");
     if(restoreAt.id===id&&Date.now()-restoreAt.t<6000){restoreAt={id:"",t:0};doRestore(id)}
     else{restoreAt={id:id,t:Date.now()};renderImpact();setTimeout(function(){if(restoreAt.id===id&&Date.now()-restoreAt.t>=6000){restoreAt={id:"",t:0};renderImpact()}},6100)}
@@ -1928,6 +1933,8 @@ function syncBatches(force){
     try{renderImpact()}catch(x){}
   }).catch(function(){});
 }
+/* History is kept in this browser for now (cfg.saveBatches / cfg.loadBatches); the audit trail still records every apply. */
+function persistBatches(){if(cfg.saveBatches){try{cfg.saveBatches(S.batches)}catch(x){}}}
 function loadBatches(){
   if(cfg.loadBatches)return syncBatches(true);
   return apiCall("GET","/batches?cycle_id="+encodeURIComponent(ACTIVE_CYCLE.id)+asQ()).then(function(r){S.batches=(r.batches||[]).map(function(b){return {id:b.id,time:b.time||b.at||"",by:b.by||"",text:b.text||"",rows:(b.rows||[]).map(function(x){return {id:x.id||x.empId,old:x.old||{},nw:x.nw||x.new||{},bulk:x.bulk}}),restored:!!b.restored}})}).catch(function(){S.batches=[]});
@@ -2209,7 +2216,7 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
 
 var _renderHost=render;
 render=function(){_renderHost();updateBusy();if(cfg.onBudget){try{cfg.onBudget(budgetOf(scope(),null),{loading:S.loading})}catch(x){}}};
-PUBLIC_API.refresh=function(){SC_VER++;syncBatches(false);if(S.pv)refreshPreview();else render();renderFilters()};
+PUBLIC_API.refresh=function(){SC_VER++;if(S.pv)refreshPreview();else render();renderFilters()};
 PUBLIC_API.destroy=function(){
   if(busyEl&&busyEl.parentNode)busyEl.parentNode.removeChild(busyEl);
   clearTimeout(confirmT);
