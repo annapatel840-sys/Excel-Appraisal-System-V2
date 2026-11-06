@@ -941,16 +941,28 @@ async function updateRosterEmployee(req, res, table, employeesTable, afterWrite)
     throw new Error("Employee_Master ROWID not found for " + empId);
   }
 
-  let employeeRows = await getAllEmployees(employeesTable);
-  let employeeMap = buildEmployeeMap(employeeRows);
-  let employee = findEmployeeByEmpId(employeeMap, empId);
+  // The table ID historically called "Employees" is the appraisal-sheet
+  // table in this project. It can contain zero, one, or several cycle rows
+  // for a master employee. Status changes must update the master regardless
+  // of whether an appraisal row exists; never create a synthetic sheet row.
+  const employeeRows = await getAllEmployees(employeesTable);
+  const matchingEmployeeRows = employeeRows.filter(function (row) {
+    return String(row.emp_id || "").trim().toLowerCase() === empId.toLowerCase();
+  });
+  const employeeMap = buildEmployeeMap(employeeRows);
+  const employee = findEmployeeByEmpId(employeeMap, empId);
 
   // ==========================================================
   // STATUS UPDATE
   // ==========================================================
 
-  if (Object.prototype.hasOwnProperty.call(body, "emp_status")) {
-    const normalized = normalizeStatus(body.emp_status);
+  const hasStatus = Object.prototype.hasOwnProperty.call(body, "emp_status") ||
+    Object.prototype.hasOwnProperty.call(body, "status");
+
+  if (hasStatus) {
+    const normalized = normalizeStatus(
+      body.emp_status !== undefined ? body.emp_status : body.status,
+    );
 
     if (!normalized) {
       return sendJson(res, 400, {
@@ -959,67 +971,42 @@ async function updateRosterEmployee(req, res, table, employeesTable, afterWrite)
       });
     }
 
-    // Employee_Master is the roster source of truth. Older/imported records
-    // can legitimately have no matching Employees row. Repair that missing
-    // child row from the existing master record instead of rejecting the
-    // status change with a 404.
-    if (!employee) {
-      await employeesTable.insertRows([{
-        emp_id: empId,
-        name: existingRow.emp_name || "",
-        designation: existingRow.designation || "",
-        department: existingRow.department || "",
-        status: normalized,
-        emp_master_row_id: masterRowId,
-      }]);
-
-      employeeRows = await getAllEmployees(employeesTable);
-      employeeMap = buildEmployeeMap(employeeRows);
-      employee = findEmployeeByEmpId(employeeMap, empId);
-    }
-
-    const employeeRowId = employee && (employee.ROWID || employee.rowid);
-    if (!employeeRowId) {
-      throw new Error(
-        "Unable to create or locate Employees row for " + empId,
-      );
-    }
-
+    // Employee_Master is the authoritative roster. Persist the status there
+    // first; Appraisal_Sheet rows are optional cycle records, not a required
+    // child employee record.
     await table.updateRow({
       ROWID: masterRowId,
-      emp_row_id: employeeRowId,
       emp_status: normalized,
     });
 
-    const statusSync = await synchronizeEmployeeStatus(
-      employeesTable,
-      employeeMap,
-      empId,
-      normalized,
-      masterRowId,
-    );
-
-    if (!statusSync.found) {
-      throw new Error(
-        "Employee status was not synchronized for " + empId,
-      );
+    let synchronizedRows = 0;
+    for (const row of matchingEmployeeRows) {
+      const rowId = row.ROWID || row.rowid;
+      if (!rowId) continue;
+      await employeesTable.updateRow({
+        ROWID: rowId,
+        status: normalized,
+      });
+      synchronizedRows += 1;
     }
 
     if (afterWrite) await afterWrite("Employee_Master status changed: " + empId);
 
     return sendJson(res, 200, {
       success: true,
-      message: "Employee status updated and synchronized successfully.",
+      message: "Employee status updated successfully.",
       data: {
         emp_id: empId,
         emp_status: normalized,
-        employees_status: normalized,
-        statusSync: statusSync,
+        employees_status: synchronizedRows ? normalized : null,
+        synchronizedRows: synchronizedRows,
       },
     });
   }
 
-  // Non-status master edits still require an existing Employees child row.
+  // Non-status master edits retain the existing requirement for an
+  // appraisal-sheet row, so this targeted status repair does not alter the
+  // behavior or validation of other Employee Master field edits.
   if (!employee) {
     return sendJson(res, 404, {
       success: false,
