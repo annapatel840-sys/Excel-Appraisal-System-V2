@@ -6,6 +6,7 @@ import { useBudget } from "@/lib/budget-store";
 import { useAppraisal, useAppraisalRefresh } from "@/lib/appraisal-store";
 import { TechEdBudgetDistribution } from "./TechEdBudgetDistribution";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { readTechEdOriginalCount } from "@/lib/distribution-budget";
 import { FilterStatus, FilterTh, ResizableCols, filterTableCss, resizableTableStyle, useColumnResize, useTableFilters } from "./FilterableTable";
  
 // Amount with Indian grouping (no lakh rounding), e.g. 12,34,567.50
@@ -453,12 +454,46 @@ export function BudgetDistributionPage() {
  
   // Header filters / sort for the table (display only; no data is refetched).
   const tableItems = rows.map((row) => {
-    // Original Count is the API's persisted baseline only.
-    // Never substitute headcount or the live roster count here.
+    // Budget Master and the Tech-Ed allocation page share the same immutable
+    // cycle/owner snapshot in localStorage. Read that first so HR's distribution
+    // table displays the exact Original Count already shown in Budget Master.
+    // Fall back to the API-persisted baseline for other browsers/sessions.
+    const ownerRecord = techEdOwners.find((item) =>
+      [
+        item?.employee_id,
+        item?.row_id,
+        item?.ROWID,
+        item?.assignment,
+        item?.name,
+        item?.email,
+        item?.email_id,
+      ].filter(Boolean).some((alias) =>
+        [row.tech_ed_id, row._ownerKey, row.appraiser_tech_ed_id]
+          .filter(Boolean)
+          .some((identity) =>
+            normalize(alias) === normalize(identity) ||
+            ownerKey(alias) === ownerKey(identity)
+          )
+      )
+    );
+    const snapshotCount = readTechEdOriginalCount(activeCycleId, [
+      row.tech_ed_id,
+      row._ownerKey,
+      row.appraiser_tech_ed_id,
+      ownerRecord?.employee_id,
+      ownerRecord?.row_id,
+      ownerRecord?.ROWID,
+      ownerRecord?.assignment,
+      ownerRecord?.name,
+      ownerRecord?.email,
+    ]);
     const saved = row.original_headcount;
-    const originalCount = saved !== null && saved !== undefined && String(saved).trim() !== ""
-      ? Number(saved) || 0
-      : 0;
+    const persistedCount =
+      saved !== null && saved !== undefined && String(saved).trim() !== ""
+        ? Number(saved) || 0
+        : 0;
+    const originalCount =
+      snapshotCount !== null ? snapshotCount : persistedCount;
     return {
       row,
       level: "Tech-Ed",
