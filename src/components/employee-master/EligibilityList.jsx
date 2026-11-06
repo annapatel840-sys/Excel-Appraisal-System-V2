@@ -324,8 +324,14 @@ export function EligibilityList({
   const bulk = (preset) => {
     if (!selectedRows.length) return;
     onChangeEligibility(Object.assign([...selectedRows], { preset }));
-    setSelectedIds(new Set());
   };
+
+  const showSetEligible = selectedRows.some(
+    (e) => eligibilityDecisionOf(e) !== "Eligible",
+  );
+  const showSetNotEligible = selectedRows.some(
+    (e) => eligibilityDecisionOf(e) === "Eligible",
+  );
 
   /* statistics tab */
   const stats = useMemo(() => {
@@ -526,20 +532,24 @@ export function EligibilityList({
           {canEdit && selectedRows.length > 0 && (
             <div className="emx-selbar">
               <b>{selectedRows.length} selected</b>
-              <button
-                type="button"
-                className="emx-mini"
-                onClick={() => bulk("Yes")}
-              >
-                Set Eligible…
-              </button>
-              <button
-                type="button"
-                className="emx-mini"
-                onClick={() => bulk("No")}
-              >
-                Set Not Eligible…
-              </button>
+              {showSetEligible && (
+                <button
+                  type="button"
+                  className="emx-mini"
+                  onClick={() => bulk("Yes")}
+                >
+                  Set Eligible…
+                </button>
+              )}
+              {showSetNotEligible && (
+                <button
+                  type="button"
+                  className="emx-mini"
+                  onClick={() => bulk("No")}
+                >
+                  Set Not Eligible…
+                </button>
+              )}
               <button
                 type="button"
                 className="emx-mini"
