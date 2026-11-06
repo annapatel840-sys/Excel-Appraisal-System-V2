@@ -81,7 +81,7 @@ export function buildNotices({ audit = [], totals = null }) {
     out.push({
       key: `budget:${Math.round(original)}:${Math.round(updated)}`,
       kind: "budget",
-      tag: "Budget changed",
+      tag: "Budget Changed",
       text: `Be aware: your team budget has changed from ${money(original)} to ${money(updated)}.`,
       sub: "",
       at: "",
@@ -139,7 +139,7 @@ export function buildNotices({ audit = [], totals = null }) {
     out.push({
       key: `status:${first.id}:${statusRows.length}`,
       kind: "status",
-      tag: "Status changed",
+      tag: "Status Changed",
       text: `Employee status changed: ${shown.join(", ")}${more > 0 ? ` and ${more} more` : ""}.`,
       sub: when(first.at),
       at: first.at,
@@ -166,7 +166,7 @@ export function withPreviewBudgetNotice(notices, distributionBudget) {
     {
       key: `budget:${Math.round(original)}:${Math.round(updated)}`,
       kind: "budget",
-      tag: "Budget changed",
+      tag: "Budget Changed",
       text: `Be aware: your team budget has changed from ${money(original)} to ${money(updated)}.`,
       sub: "",
       at: "",

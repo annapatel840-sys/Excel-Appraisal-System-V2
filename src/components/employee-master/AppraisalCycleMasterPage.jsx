@@ -666,7 +666,7 @@ export function AppraisalCycleMasterPage({
           [cycle.id]: result?.data || result || { eligible: 0 },
         }));
         showBanner(
-          "Appraisal Sheet generated",
+          "Appraisal Sheet Generated",
           `${cycle.name}: ${result?.data?.eligible ?? result?.eligible ?? "eligible"} eligible employee(s) processed.`,
         );
         setConfirm(null);
@@ -943,7 +943,7 @@ export function AppraisalCycleMasterPage({
       row(
         "Upcoming",
         "su",
-        "Set up cycle",
+        "Set Up Cycle",
         isNewJoinerWorkflow(c)
           ? `${c.name} · effective ${formatDate(c.effective)} · no start/close dates required`
           : `${c.name} · effective ${formatDate(c.effective)} · start ${formatDate(c.start)} · close ${formatDate(c.end)}`,
@@ -2024,7 +2024,7 @@ export function AppraisalCycleMasterPage({
                       setNewCycleOpen(true);
                     }}
                   >
-                    + SET UP CYCLE
+                    + Set Up Cycle
                   </button>
                 )}
                 <input
@@ -2301,7 +2301,7 @@ export function AppraisalCycleMasterPage({
 
       {newCycleOpen && (
         <Modal
-          title="Set up cycle"
+          title="Set Up Cycle"
           onClose={() => setNewCycleOpen(false)}
           error={modalError}
           footer={
@@ -2320,7 +2320,7 @@ export function AppraisalCycleMasterPage({
                 disabled={saving}
                 onClick={createCycle}
               >
-                {saving ? "Creating…" : "Set up cycle"}
+                {saving ? "Creating…" : "Set Up Cycle"}
               </button>
             </>
           }
