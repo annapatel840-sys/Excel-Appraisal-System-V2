@@ -492,8 +492,21 @@ export function BudgetDistributionPage() {
       saved !== null && saved !== undefined && String(saved).trim() !== ""
         ? Number(saved) || 0
         : 0;
+    // Tech-Ed Budget Master historically exposes the frozen baseline as
+    // headcount when the dedicated original_headcount alias is not populated.
+    // Match that page's fallback order so Distribution does not show 0 while
+    // Budget Master already has the original allocation count.
+    const legacyHeadcount = Number(row.headcount);
     const originalCount =
-      snapshotCount !== null ? snapshotCount : persistedCount;
+      snapshotCount !== null && snapshotCount > 0
+        ? snapshotCount
+        : persistedCount > 0
+          ? persistedCount
+          : Number.isFinite(legacyHeadcount) && legacyHeadcount > 0
+            ? legacyHeadcount
+            : snapshotCount !== null
+              ? snapshotCount
+              : persistedCount;
     return {
       row,
       level: "Tech-Ed",
