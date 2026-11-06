@@ -1030,8 +1030,11 @@ async function applyEligibilityCriteria(tables, body, actor) {
   if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived || cycle.hidden) {
     throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
   }
-  if (await eligibilityCriteriaWasApplied(tables, cycleId)) {
-    throw new ApiError("Apply Criteria has already been used for this appraisal cycle. It is locked for this cycle.", 409);
+  if (
+    await eligibilityCriteriaWasApplied(tables, cycleId) &&
+    body.replaceCriteria !== true
+  ) {
+    throw new ApiError("Apply Criteria has already been used for this appraisal cycle. Select Edit Criteria before applying changes.", 409);
   }
 
   // Ensure all active employees have an initial Eligible row and retain
