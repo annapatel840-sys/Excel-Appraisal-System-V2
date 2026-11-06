@@ -36,6 +36,11 @@ function getDesignation(employee) {
 function getValue(employee, key) {
   const raw = employee?.rawEmployee || {};
   const aliases = {
+    name: ["emp_name", "name"],
+    designation: ["designation"],
+    doj: ["date_of_join", "joining_date", "doj"],
+    currentSalary: ["current_salary", "currentSalary"],
+    costCenter: ["cost_center", "costCenter"],
     sourceOfHire: ["source_of_hire", "sourceOfHire"],
     type: ["emp_type", "employee_type", "employment_type", "type"],
     dept: ["department", "organization", "orgtn"],
