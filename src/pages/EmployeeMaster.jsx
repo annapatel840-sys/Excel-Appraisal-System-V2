@@ -16,6 +16,7 @@ import {
   fetchEligibilityEmployees,
   prefetchEligibilityEmployees,
   updateEmployeeMasterEmployee,
+  updateEmployeeMasterRecord,
   updateEmployeeEligibility,
   updateEligibilityRecords,
   applyEligibilityCriteriaToCycle,
@@ -941,6 +942,7 @@ export function EmployeeMaster() {
     employeeName,
     oldValue,
     newValue,
+    fieldName = "Status",
   }) => {
     const oldText = String(oldValue ?? "").trim();
     const newText = String(newValue ?? "").trim();
@@ -952,7 +954,7 @@ export function EmployeeMaster() {
     recordAudit(setEmployeeMasterAudit, AUDIT_SOURCE_STATUS, {
       empId: String(empId || "").trim(),
       employeeName: String(employeeName || "").trim(),
-      fieldName: "Status",
+      fieldName,
       oldValue: oldText,
       newValue: newText,
     });
@@ -1986,6 +1988,132 @@ export function EmployeeMaster() {
   };
 
   /* ============================================================
+     BULK EMPLOYEE MASTER FIELD CHANGE
+     ============================================================ */
+
+  const bulkUpdateEmployeeField = async ({ field, value, remark = "" }, selectedEmployees) => {
+    if (!canEditEmployees) return;
+    const fieldMap = {
+      name: { column: "emp_name", label: "Employee Name" },
+      designation: { column: "designation", label: "Designation" },
+      dept: { column: "department", label: "Department" },
+      reportingManager: { column: "repo_manager", label: "Reporting Manager" },
+      director: { column: "director", label: "Director" },
+      appraiser: { column: "appraiser_tech_ed", label: "Appraiser Tech-ED" },
+      type: { column: "emp_type", label: "Employee Type" },
+      email: { column: "email_id", label: "Email ID" },
+      doj: { column: "date_of_join", label: "Date of Joining" },
+      location: { column: "location", label: "Location" },
+      costCenter: { column: "cost_center", label: "Cost Center" },
+      orgExp: { column: "wissen_experience", label: "Wissen Experience" },
+      totalExp: { column: "total_experience", label: "Total Experience" },
+      currentSalary: { column: "current_salary", label: "Current Salary" },
+      lastAppraisal: { column: "last_appraisal_month_year", label: "Last Appraisal Month/Year" },
+    };
+    const definition = field === "status"
+      ? { column: "emp_status", label: "Employee Status" }
+      : fieldMap[field];
+    if (!definition) {
+      showBanner("Unsupported field", "This field is not available in Employee Master.", true);
+      return;
+    }
+    const nextValue = String(value ?? "").trim();
+    if (!nextValue) {
+      showBanner("Value required", "Enter a value before applying the change.", true);
+      return;
+    }
+    if (field === "email" && !/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(nextValue)) {
+      showBanner("Invalid email", "Enter a valid email address.", true);
+      return;
+    }
+    if (["orgExp", "totalExp", "currentSalary"].includes(field) &&
+        (!Number.isFinite(Number(nextValue.replace(/[₹,%\\s]/g, ""))) || Number(nextValue.replace(/[₹,%\\s]/g, "")) < 0)) {
+      showBanner("Invalid number", `${definition.label} must be a valid non-negative number.`, true);
+      return;
+    }
+    const uniqueEmployees = Array.from(new Map(
+      (Array.isArray(selectedEmployees) ? selectedEmployees : [])
+        .filter((employee) => employee?.empId)
+        .map((employee) => [normalizeEmpId(employee.empId), employee]),
+    ).values());
+    if (!uniqueEmployees.length) return;
+    if (["name", "email", "doj"].includes(field) && uniqueEmployees.length > 1) {
+      showBanner("Select one employee", `${definition.label} can only be changed for one employee at a time.`, true);
+      return;
+    }
+    const oldValueFor = (employee) => field === "status" ? employee.status : ({
+      name: employee.name,
+      designation: employee.designation,
+      dept: employee.organization,
+      reportingManager: employee.reportingManager,
+      director: employee.compManager,
+      appraiser: employee.appraiser,
+      type: employee.rawEmployee?.emp_type,
+      email: employee.rawEmployee?.email_id || employee.managerMail,
+      doj: employee.doj,
+      location: employee.location,
+      costCenter: employee.rawEmployee?.cost_center,
+      orgExp: employee.orgExp,
+      totalExp: employee.totalExp,
+      currentSalary: employee.rawEmployee?.current_salary,
+      lastAppraisal: employee.lastAppraisal,
+    })[field];
+    const employeesToUpdate = uniqueEmployees.filter(
+      (employee) => String(oldValueFor(employee) ?? "").trim() !== nextValue,
+    );
+    if (!employeesToUpdate.length) {
+      showBanner("No changes needed", "All selected employees already have this value.");
+      return;
+    }
+    try {
+      setStatusActionLoading(true);
+      const results = await Promise.allSettled(employeesToUpdate.map(async (employee) => {
+        if (field === "status") {
+          await persistStatusChange(employee.empId, nextValue);
+        } else {
+          await updateEmployeeMasterRecord(employee.empId, {
+            [definition.column]: field === "doj" ? toIsoDate(nextValue) : nextValue,
+          });
+        }
+        return { employee, oldValue: String(oldValueFor(employee) ?? ""), newValue: nextValue };
+      }));
+      const succeeded = [];
+      let failed = 0;
+      results.forEach((result) => {
+        if (result.status !== "fulfilled") {
+          failed += 1;
+          console.error("Employee Master field change failed:", result.reason);
+          return;
+        }
+        const { employee, oldValue, newValue } = result.value;
+        succeeded.push({ empId: employee.empId, status: field === "status" ? newValue : undefined });
+        addEmployeeMasterAudit({
+          empId: employee.empId,
+          employeeName: employee.name,
+          oldValue,
+          newValue,
+          fieldName: definition.label,
+        });
+      });
+      if (field === "status" && succeeded.length) {
+        applyLocalStatusChanges(succeeded);
+      } else if (succeeded.length) {
+        setRefreshKey((current) => current + 1);
+        refreshEmployees();
+      }
+      if (failed) {
+        showBanner("Change partially completed", `${succeeded.length} employee(s) updated. ${failed} failed. Check the error details and retry failed employees.`, true);
+      } else {
+        showBanner("Employee Master updated", `${definition.label} changed for ${succeeded.length} employee(s). Changes saved to Employee_Master.${remark ? ` Remark: ${remark}` : ""}`);
+      }
+    } catch (error) {
+      showBanner("Employee Master change failed", error?.message || "Unable to update selected employees.", true);
+    } finally {
+      setStatusActionLoading(false);
+    }
+  };
+
+  /* ============================================================
      LOCAL ELIGIBILITY UPDATE
      ============================================================ */
 
@@ -2689,6 +2817,7 @@ export function EmployeeMaster() {
                 totalCount={rosterPagination.totalCount}
                 onToggleStatus={toggleEmployeeStatus}
                 onBulkStatusChange={bulkUpdateEmployeeStatus}
+                onBulkFieldChange={bulkUpdateEmployeeField}
                 bulkStatusUpdating={statusActionLoading}
                 canEdit={canEditEmployees}
               />
