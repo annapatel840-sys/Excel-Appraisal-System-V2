@@ -1932,14 +1932,16 @@ export function AppraisalCycleMasterPage({
     <div className="acx">
       <style>{CSS}</style>
 
-      <div className="acx-tbar" style={{ justifyContent: "flex-end", marginBottom: 12 }}>
-        <span className="acx-mut" style={{ fontWeight: 700 }}>System Location</span>
-        <LocationMasterControl
-          value={selectedLocation}
-          onChange={setSelectedLocation}
-          ariaLabel="Set system location for appraisal screens"
-        />
-      </div>
+      {canManageCycles && (
+        <div className="acx-tbar" style={{ justifyContent: "flex-end", marginBottom: 12 }}>
+          <span className="acx-mut" style={{ fontWeight: 700 }}>System Location</span>
+          <LocationMasterControl
+            value={selectedLocation}
+            onChange={setSelectedLocation}
+            ariaLabel="Set system location for appraisal screens"
+          />
+        </div>
+      )}
 
       {loading && <div className="acx-empty">Loading appraisal cycles…</div>}
       {!loading && loadError && (
