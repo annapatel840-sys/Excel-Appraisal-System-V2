@@ -1,0 +1,126 @@
+/* ============================================================
+   Global location selection.
+
+   One value shared by every screen: "All" or a Location Master
+   value (name or code). It is kept in localStorage so it survives
+   navigation (pages are full loads) and reloads, and every mounted
+   component is notified when it changes.
+
+   The list of locations is never hard-coded. LocationMasterControl
+   loads Location Master and registers it here (registerLocations),
+   so a location added in Location Master works everywhere at once.
+   ============================================================ */
+import { useSyncExternalStore } from "react";
+
+export const ALL_LOCATIONS = "All";
+const STORAGE_KEY = "appraisal.selectedLocation.v1";
+const EVENT_NAME = "appraisal:location-changed";
+
+const norm = (value) => String(value ?? "").trim().toLowerCase();
+
+const readStored = () => {
+  try {
+    if (typeof window === "undefined") return ALL_LOCATIONS;
+    return window.localStorage.getItem(STORAGE_KEY) || ALL_LOCATIONS;
+  } catch (_) {
+    return ALL_LOCATIONS;
+  }
+};
+
+let selected = readStored();
+// Location Master rows registered by the dropdown: [{ name, code }]
+let registry = [];
+const listeners = new Set();
+const emit = () => listeners.forEach((fn) => fn());
+
+export const isAllLocations = (value) => {
+  const v = norm(value);
+  return !v || v === "all" || v === "all locations";
+};
+
+export function getSelectedLocation() {
+  return selected;
+}
+
+export function setSelectedLocation(value) {
+  const next = isAllLocations(value) ? ALL_LOCATIONS : String(value).trim();
+  if (next === selected) return;
+  selected = next;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, next);
+  } catch (_) {
+    /* storage is optional */
+  }
+  emit();
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(EVENT_NAME, { detail: next }));
+  }
+}
+
+// Called with the rows from Location Master (any casing of the field names).
+export function registerLocations(list) {
+  registry = (Array.isArray(list) ? list : [])
+    .map((x) => ({
+      name: String(x?.location_name ?? x?.name ?? "").trim(),
+      code: String(x?.location_code ?? x?.code ?? "").trim(),
+    }))
+    .filter((x) => x.name || x.code);
+  // A saved selection that no longer exists in Location Master falls back to All.
+  if (
+    !isAllLocations(selected) &&
+    registry.length &&
+    !registry.some((x) => norm(x.name) === norm(selected) || norm(x.code) === norm(selected))
+  ) {
+    setSelectedLocation(ALL_LOCATIONS);
+    return;
+  }
+  emit();
+}
+
+// Every spelling (name and code) that identifies the selected Location Master row.
+function selectedAliases(sel) {
+  const key = norm(sel);
+  const hit = registry.find((x) => norm(x.name) === key || norm(x.code) === key);
+  return new Set([key, norm(hit?.name), norm(hit?.code)].filter(Boolean));
+}
+
+// True when an employee's Employee Master location is in the selected location.
+export function matchesLocation(employeeLocation, sel = selected) {
+  if (isAllLocations(sel)) return true;
+  const loc = norm(employeeLocation);
+  if (!loc) return false;
+  return selectedAliases(sel).has(loc);
+}
+
+export function locationOfRow(row) {
+  return row?.location ?? row?.work_location ?? row?.workLocation ?? "";
+}
+
+export function filterByLocation(list, sel = selected, getter = locationOfRow) {
+  if (!Array.isArray(list) || isAllLocations(sel)) return list;
+  const aliases = selectedAliases(sel);
+  return list.filter((row) => aliases.has(norm(getter(row))));
+}
+
+const subscribe = (fn) => {
+  listeners.add(fn);
+  const onStorage = (event) => {
+    if (event.key === STORAGE_KEY) {
+      selected = event.newValue || ALL_LOCATIONS;
+      fn();
+    }
+  };
+  if (typeof window !== "undefined") window.addEventListener("storage", onStorage);
+  return () => {
+    listeners.delete(fn);
+    if (typeof window !== "undefined") window.removeEventListener("storage", onStorage);
+  };
+};
+
+// [selectedLocation, setSelectedLocation]. Re-renders on change, including
+// when Location Master finishes loading (so alias matching refreshes).
+const getSnapshot = () => selected;
+export function useSelectedLocation() {
+  const value = useSyncExternalStore(subscribe, getSnapshot, () => ALL_LOCATIONS);
+  return [value, setSelectedLocation];
+}

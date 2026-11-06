@@ -1,11 +1,2481 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
+// import { NUMBER_OPS, TEXT_OPS } from "@/lib/appraisal-filters";
+// import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
+// import { useCatalystUser } from "@/lib/catalyst-auth";
+// import { useAccess } from "@/lib/access-store";
+// import { useAppraisalRefresh } from "@/lib/appraisal-store";
+// import { generateAppraisalSheet, payrollCycleRequest } from "@/lib/payroll-cycle-api";
+// import { ProcessingOverlay } from "@/components/ui/processing-overlay";
+// import {
+//   delegationGeneration,
+//   delegationSnapshotKey,
+//   fetchDelegationRoster,
+//   readDelegationSnapshot,
+//   writeDelegationSnapshot,
+// } from "@/lib/delegation-roster";
+
+// /* ------------------------------------------------------------------ data */
+// const EMPLOYEE_API_URL = catalystFunctionUrl("employeesapi");
+// const ACCESS_API_URL = catalystFunctionUrl("accessapi");
+// const FIELDS = { comp: "Comp. Manager", app: "Appraiser Tech-ED" };
+// const ST = {
+//   CF: "Carried forward",
+//   NEW: "New – Tech-ED default",
+//   HR: "Changed – HR",
+//   TE: "Changed – Tech-ED (approved)",
+//   PD: "Pending HR approval",
+// };
+// const TAG = {
+//   [ST.CF]: "cf",
+//   [ST.NEW]: "nw",
+//   [ST.HR]: "hr",
+//   [ST.TE]: "te",
+//   [ST.PD]: "pd",
+// };
+// const PAGE = 50;
+// // Roster rows asked for per employeesapi request (its MAX_LIMIT). Every roster
+// // request re-reads and re-enriches the whole roster on the server, and page 2
+// // can only start after page 1 returns, so a 1,000-row page made a 2,000-row
+// // roster cost two full server passes one after the other. Larger rosters still
+// // continue through the totalPages loop in loadRoster.
+// const ROSTER_PAGE_LIMIT = 5000;
+// /* Column filters are kept for the browser session, so they are still applied
+//    when the user comes back from another tab. They go when a tag is closed. */
+// const COL_FILTERS_KEY = "delegation.colFilters.v1";
+// const readSavedColFilters = () => {
+//   try {
+//     const parsed = JSON.parse(window.sessionStorage.getItem(COL_FILTERS_KEY) || "{}");
+//     return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+//   } catch (_) {
+//     return {};
+//   }
+// };
+// const writeSavedColFilters = (filters) => {
+//   try {
+//     window.sessionStorage.setItem(COL_FILTERS_KEY, JSON.stringify(filters || {}));
+//   } catch (_) {
+//     // storage unavailable: filters still work for this visit
+//   }
+// };
+
+// /* Grid columns (header filter + drag-to-resize like the Appraisal Sheet) */
+// const MIN_COL = 70;
+// const MAX_COL = 520;
+// const COLS = [
+//   { key: "employee", label: "Employee", w: 250, cls: "nm" },
+//   { key: "rm", label: "Reporting Manager", w: 220 },
+//   { key: "director", label: "Director", w: 190 },
+//   { key: "te", label: "Tech-ED", w: 230 },
+//   { key: "comp", label: "Comp. Manager", w: 240, edit: true },
+//   { key: "app", label: "Appraiser Tech-ED", w: 240, edit: true },
+//   { key: "prevComp", label: "Prev. Comp. Manager", w: 220, cls: "ref" },
+//   { key: "prevApp", label: "Prev. Appraiser Tech-ED", w: 250, cls: "ref" },
+// ];
+// const SELECT_W = 40;
+// /* Bulk Assign dialog: starting values (also what "Clear all" resets to) */
+// const BULK_DEFAULT = { field: "app", scope: "sel", person: "", reason: "" };
+// /* Default Comp. Manager: copy this value from each employee's own row */
+// const DEFAULT_COMP_SOURCES = [
+//   { key: "prevComp", label: "Previous Comp. Manager" },
+//   { key: "director", label: "Director" },
+//   { key: "rm", label: "Reporting Manager" },
+//   { key: "te", label: "Tech-ED" },
+// ];
+// const testText = (raw, op, value) => {
+//   const v = String(value ?? "").trim().toLowerCase();
+//   if (!v) return true;
+//   const t = String(raw ?? "").toLowerCase();
+//   switch (op) {
+//     case "equals":
+//       return t === v;
+//     case "notEquals":
+//       return t !== v;
+//     case "startsWith":
+//       return t.startsWith(v);
+//     case "endsWith":
+//       return t.endsWith(v);
+//     case "notContains":
+//       return !t.includes(v);
+//     default:
+//       return t.includes(v);
+//   }
+// };
+// const matchesFilter = (raw, f) => {
+//   if (!f) return true;
+//   if (f.kind === "enum")
+//     return !f.values.length || f.values.includes(String(raw ?? ""));
+//   const first = testText(raw, f.op, f.value);
+//   if (!f.op2 || String(f.value3 ?? "").trim() === "") return first;
+//   const second = testText(raw, f.op2, f.value3);
+//   return f.join === "or" ? first || second : first && second;
+// };
+// const nameOf = (value) => String(value || "").trim();
+// const now = () => new Date().toISOString().replace("T", " ").slice(0, 19);
+// const fmt = (s) => {
+//   const d = new Date(String(s).replace(" ", "T"));
+//   return isNaN(d)
+//     ? s
+//     : d.toLocaleDateString("en-GB", {
+//         day: "numeric",
+//         month: "short",
+//         year: "numeric",
+//       });
+// };
+// const csvCell = (v) =>
+//   /[",\n]/.test(String(v ?? ""))
+//     ? '"' + String(v).replace(/"/g, '""') + '"'
+//     : String(v ?? "");
+// /* Show every person as "EMP001 - Name": values that arrive as only an
+//    employee ID, only a name, or in another layout ("Name (EMP001)",
+//    "Name - EMP001", "Last, First", odd spacing / dashes) are matched against
+//    the roster. Anything that cannot be matched is returned unchanged. */
+// const normText = (v) =>
+//   String(v ?? "")
+//     .replace(/[\u2010-\u2015\u2212]/g, "-")
+//     .replace(/\s+/g, " ")
+//     .trim()
+//     .toLowerCase();
+// const makeResolver = (list) => {
+//   const byId = new Map();
+//   const nameCount = new Map();
+//   const byName = new Map();
+//   (list || []).forEach((r) => {
+//     const id = String(r.id || "").trim();
+//     const name = String(r.name || "").trim();
+//     if (!id) return;
+//     const full = name ? `${id} - ${name}` : id;
+//     byId.set(normText(id), full);
+//     if (name) {
+//       const k = normText(name);
+//       nameCount.set(k, (nameCount.get(k) || 0) + 1);
+//       byName.set(k, full);
+//     }
+//   });
+//   const byUniqueName = (text) => {
+//     const k = normText(text);
+//     return k && byName.has(k) && nameCount.get(k) === 1 ? byName.get(k) : "";
+//   };
+//   return (value) => {
+//     const s0 = String(value ?? "").trim();
+//     if (!s0) return "";
+//     const low = normText(s0);
+//     // 1. Exactly an employee ID, or exactly a (unique) name.
+//     if (byId.has(low)) return byId.get(low);
+//     const exactName = byUniqueName(s0);
+//     if (exactName) return exactName;
+//     // 2. "EMP001 - Name" / "Name - EMP001" / "Name (EMP001)": find the ID part.
+//     const parts = low.split(/\s*-\s*|[()[\]|,;:/]+/).map((p) => p.trim()).filter(Boolean);
+//     for (const part of parts) if (byId.has(part)) return byId.get(part);
+//     for (const tok of low.split(/[\s()[\],;:|/]+/)) if (byId.has(tok)) return byId.get(tok);
+//     // 3. A name left over once an unknown ID prefix/suffix is removed.
+//     for (const part of parts) {
+//       const hit = byUniqueName(part);
+//       if (hit) return hit;
+//     }
+//     // 4. "Last, First" -> "First Last".
+//     const comma = s0.split(",");
+//     if (comma.length === 2) {
+//       const hit = byUniqueName(comma[1].trim() + " " + comma[0].trim());
+//       if (hit) return hit;
+//     }
+//     return s0;
+//   };
+// };
+// let seq = 1;
+// const refNo = (p) =>
+//   p +
+//   "-" +
+//   now().replace(/\D/g, "").slice(2, 12) +
+//   "-" +
+//   String(seq++).padStart(4, "0");
+// /* -------------------------------------------------------------- component */
+// export default function DelegationScreen({
+//   initialRows,
+//   cycleName = "",
+//   showRoleSwitch = false,
+//   onRefresh, // optional: () => void
+// }) {
+//   const catalystUser = useCatalystUser();
+//   const loggedInName = String(
+//     catalystUser?.name || catalystUser?.email || "",
+//   ).trim();
+//   const normalizedRole = String(catalystUser?.role || "")
+//     .toLowerCase()
+//     .replace(/[^a-z0-9]/g, "");
+//   const isHRUser = normalizedRole.includes("hr");
+//   const isTechEdUser = normalizedRole.includes("teched");
+//   const [user, setUser] = useState({
+//     id: loggedInName,
+//     name: loggedInName,
+//     role: isHRUser ? "HR Admin" : isTechEdUser ? "Tech-ED" : String(catalystUser?.role || ""),
+//   });
+//   const [rows, setRows] = useState(() => initialRows || []);
+//   const [stagedChanges, setStagedChanges] = useState({});
+//   const resolveName = useMemo(() => makeResolver(rows), [rows]);
+//   const [activeCycleName, setActiveCycleName] = useState("");
+//   const [activeCycleId, setActiveCycleId] = useState("");
+//   const [rosterLoading, setRosterLoading] = useState(false);
+//   const [showRosterLoading, setShowRosterLoading] = useState(false);
+//   // True while the last roster this user saw is on screen (read-only) and the
+//   // fresh roster is still loading.
+//   const [showingSaved, setShowingSaved] = useState(false);
+//   const displayCycleName = activeCycleName || cycleName || "No active cycle";
+//   useEffect(() => {
+//     if (!rosterLoading) {
+//       setShowRosterLoading(false);
+//       return undefined;
+//     }
+//     const timer = window.setTimeout(() => setShowRosterLoading(true), 500);
+//     return () => window.clearTimeout(timer);
+//   }, [rosterLoading]);
+//   useEffect(() => {
+//     setLocked(false);
+//     setAudit([]);
+//     setSel({});
+//     setPage(1);
+//     // Filters survive leaving and returning to this screen; they are cleared
+//     // only when the active cycle really changes to another one.
+//     if (lastCycleRef.current && lastCycleRef.current !== activeCycleId) {
+//       setColFilters({});
+//     }
+//     lastCycleRef.current = activeCycleId;
+//   }, [activeCycleId]);
+//   const normalizeRequests = (items) =>
+//     (Array.isArray(items) ? items : []).map((q) => ({
+//       ...q,
+//       field: (() => {
+//         const rawField = String(q.field || "")
+//           .trim()
+//           .toLowerCase()
+//           .replace(/[\s-]+/g, "_");
+//         if (["compmanager", "comp_manager", "comp"].includes(rawField))
+//           return "comp";
+//         if (
+//           [
+//             "appraiserteched",
+//             "appraiser_tech_ed",
+//             "app",
+//             "tech_ed_appraiser",
+//           ].includes(rawField)
+//         )
+//           return "app";
+//         if (rawField === "screen_request") return "screen";
+//         return rawField;
+//       })(),
+//       empId: q.empId || q.employee?.empId || q.rowId || "",
+//       rowId: q.empId || q.employee?.empId || q.rowId || "",
+//       status: (() => {
+//         const raw = String(q.status || "")
+//           .trim()
+//           .toLowerCase();
+//         if (["approved", "rejected", "withdrawn", "superseded"].includes(raw)) {
+//           return raw.charAt(0).toUpperCase() + raw.slice(1);
+//         }
+//         // Any submitted/requested/unknown state stays in the approval queue.
+//         // Only an explicit HR decision moves a request to Decided.
+//         return "Pending";
+//       })(),
+//       reason: q.reason || q.details || "",
+//       byName: q.byName || q.requestedBy || q.byId || "Tech-ED",
+//       no: q.no || q.id || `DR-${Date.now()}`,
+//     }));
+//   const [reqs, setReqs] = useState([]);
+//   const [audit, setAudit] = useState([]);
+//   const [locked, setLocked] = useState(false);
+//   const [colFilters, setColFilters] = useState(readSavedColFilters);
+//   const lastCycleRef = useRef("");
+//   useEffect(() => {
+//     writeSavedColFilters(colFilters);
+//   }, [colFilters]);
+//   const [sort, setSort] = useState({ key: "employee", dir: "asc" });
+//   // The grid starts sorted by Employee, but a header only looks "sorted" once
+//   // the user has picked a sort, so all header filter buttons look the same.
+//   const [sortChosen, setSortChosen] = useState(false);
+//   const [colWidths, setColWidths] = useState(() =>
+//     Object.fromEntries(COLS.map((c) => [c.key, c.w])),
+//   );
+//   const resizeRef = useRef(null);
+//   const [menuOpen, setMenuOpen] = useState(false);
+//   const [defaultComp, setDefaultComp] = useState("");
+//   useEffect(() => {
+//     // The chosen default is remembered per cycle in this browser.
+//     let saved = "";
+//     try {
+//       saved = window.localStorage.getItem("dg-default-comp:" + activeCycleId) || "";
+//     } catch (_) {}
+//     setDefaultComp(DEFAULT_COMP_SOURCES.some((o) => o.key === saved) ? saved : "");
+//   }, [activeCycleId]);
+//   const saveDefaultComp = (key) => {
+//     setDefaultComp(key);
+//     try {
+//       window.localStorage.setItem("dg-default-comp:" + activeCycleId, key);
+//     } catch (_) {}
+//   };
+//   const menuRef = useRef(null);
+//   useEffect(() => {
+//     if (!menuOpen) return undefined;
+//     const close = (e) => {
+//       if (menuRef.current && !menuRef.current.contains(e.target))
+//         setMenuOpen(false);
+//     };
+//     const esc = (e) => e.key === "Escape" && setMenuOpen(false);
+//     document.addEventListener("mousedown", close);
+//     document.addEventListener("keydown", esc);
+//     return () => {
+//       document.removeEventListener("mousedown", close);
+//       document.removeEventListener("keydown", esc);
+//     };
+//   }, [menuOpen]);
+//   const [sel, setSel] = useState({});
+//   const [page, setPage] = useState(1);
+//   const [reqTab, setReqTab] = useState("Pending");
+//   const [bulk, setBulk] = useState({ ...BULK_DEFAULT });
+//   const [reqOpen, setReqOpen] = useState(false); // ADDED: Pending approvals starts folded
+//   const [remarks, setRemarks] = useState({});
+//   const [modal, setModal] = useState(null); // {type, ...}
+//   const [reason, setReason] = useState("");
+//   const [toast, setToast] = useState(null);
+//   // The one Comp. Manager / Appraiser Tech-ED dropdown (row:field) whose full
+//   // list of people is rendered. Every other dropdown holds only its current
+//   // value: 50 rows x 2 dropdowns x the whole roster was ~200,000 <option>
+//   // elements on every render (the Appraisal Grid has no such lists).
+//   const [openCell, setOpenCell] = useState("");
+
+//   const loadRequests = async () => {
+//     const response = await catalystFetch(
+//       ACCESS_API_URL + "delegation/requests",
+//       { method: "GET", cache: "no-store" },
+//     );
+//     const payload = await response.json().catch(() => ({}));
+//     if (!response.ok || !payload.ok)
+//       throw new Error(payload.error || "Unable to load delegation requests.");
+//     setReqs(normalizeRequests(payload.requests || []));
+//   };
+
+//   useEffect(() => {
+//     let cancelled = false;
+//     let loadedAt = 0;
+//     const reloadRequests = async () => {
+//       loadedAt = Date.now();
+//       try {
+//         const response = await catalystFetch(
+//           ACCESS_API_URL + "delegation/requests",
+//           { method: "GET", cache: "no-store" },
+//         );
+//         const payload = await response.json().catch(() => ({}));
+//         if (!response.ok || !payload.ok)
+//           throw new Error(
+//             payload.error || "Unable to load delegation requests.",
+//           );
+//         if (!cancelled) setReqs(normalizeRequests(payload.requests || []));
+//       } catch (error) {
+//         if (!cancelled)
+//           say(error?.message || "Unable to load delegation requests.", true);
+//       }
+//     };
+//     // Returning to the window re-checks for new requests at most once every
+//     // 30 s; switching windows back and forth no longer reloads each time.
+//     const onFocus = () => {
+//       if (Date.now() - loadedAt >= 30000) reloadRequests();
+//     };
+//     reloadRequests();
+//     window.addEventListener("focus", onFocus);
+//     window.addEventListener("appraisal:cycle-updated", reloadRequests);
+//     return () => {
+//       cancelled = true;
+//       window.removeEventListener("focus", onFocus);
+//       window.removeEventListener("appraisal:cycle-updated", reloadRequests);
+//     };
+//   }, []);
+
+//   const isHR = user.role === "HR Admin";
+//   // Access rules (permissive when accessapi is unavailable).
+//   const access = useAccess();
+//   const { refreshEmployees } = useAppraisalRefresh();
+//   const canApprove = isHR;
+//   const canAudit = access.canAction("viewAudit");
+//   // View-only screen, or a Tech-ED without the delegateRequest action: no edits.
+//   const editLocked =
+//     locked ||
+//     showingSaved ||
+//     (!isHR && !isTechEdUser && !access.canScreen("delegation", "edit")) ||
+//     (!isHR && !isTechEdUser && !access.canAction("delegateRequest"));
+
+//   const loadRoster = async ({ initial = false } = {}) => {
+//     // Clear the previous cycle's working roster before fetching the next one.
+//     // The first load of the screen starts empty anyway, and keeps the saved
+//     // copy (below) on screen instead of blanking it.
+//     if (!initial) {
+//       setRows([]);
+//       setActiveCycleId("");
+//       setActiveCycleName("");
+//     }
+//     setRosterLoading(true);
+//     const startedGeneration = delegationGeneration();
+//     const savedKey = delegationSnapshotKey(catalystUser?.email || catalystUser?.id || catalystUser?.user_id || "");
+//     let freshApplied = false;
+//     try {
+//       // First load only: show the last roster this user saw, at once, while
+//       // the fresh one loads. Never applied once the fresh roster has arrived.
+//       if (initial) {
+//         readDelegationSnapshot(savedKey).then((saved) => {
+//           if (!saved || freshApplied) return;
+//           setRows(saved.rows);
+//           setActiveCycleId(String(saved.cycleId || ""));
+//           setActiveCycleName(String(saved.cycleName || ""));
+//           setShowingSaved(true);
+//         });
+//       }
+//       // The roster does not depend on the cycle lookup (employeesapi finds the
+//       // active cycle itself), so start page 1 together with the cycle list
+//       // instead of after it. Only page 1 writes lookups, so this is safe.
+//       // The roster is the slow call, so it is queued before the (tiny) cycle
+//       // list: catalystFetch runs at most two requests at a time.
+//       // The first load joins the request the sign-in prefetch already started
+//       // (if any); explicit reloads always ask the server again.
+//       const firstPromise = fetchDelegationRoster({ fresh: !initial });
+//       firstPromise.catch(() => {}); // reported where it is awaited below
+//       const cyclesPromise = payrollCycleRequest("cycles");
+//       const cycles = await cyclesPromise;
+//       const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
+//         const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
+//         const archived = ["true", "1", "yes"].includes(String(cycle.archived ?? "").trim().toLowerCase());
+//         return status === "active" && !archived && !cycle.hidden;
+//       });
+//       if (!active) {
+//         freshApplied = true;
+//         setActiveCycleId("");
+//         setActiveCycleName("");
+//         setRows([]);
+//         return;
+//       }
+//       const cycleId = String(active.id || active.appraisal_cycle_id || active.cycle_id || active.ROWID || "");
+//       const cycleName = String(active.name || active.cycle_name || active.appraisal_year || "");
+//       setActiveCycleId(cycleId);
+//       setActiveCycleName(cycleName);
+
+//       // Always fetch the enriched delegation roster from employeesapi.
+//       // initialRows may contain only Employee_Master values and omit previous-cycle references.
+//       // Do not call payrollcycleapi's HR-only Eligibility endpoint here.
+//       // employeesapi?view=delegation builds the roster using the active cycle's
+//       // eligibility records and enforces the Tech-Ed's own employee scope.
+//       // Calling the HR-only endpoint made Tech-Ed receive 403 before the
+//       // delegation roster and manager dropdowns could load.
+
+//       // Delegation is prepared before sheet generation, so employeesapi builds
+//       // the working roster from the active cycle's eligible records when the
+//       // Appraisal Sheet has not yet been generated.
+//       // (fetchDelegationRoster reads page 1, then every remaining page together.)
+//       const all = await firstPromise;
+//       const unique = new Map();
+//       all.forEach((item) => {
+//         const id = String(item.emp_id || item.employee_id || "").trim().toLowerCase();
+//         if (!id) return;
+//         const previous = unique.get(id);
+//         if (!previous || String(item.MODIFIEDTIME || item.CREATEDTIME || item.ROWID || "") >=
+//             String(previous.MODIFIEDTIME || previous.CREATEDTIME || previous.ROWID || "")) {
+//           unique.set(id, item);
+//         }
+//       });
+//       const mapped = Array.from(unique.values()).map((item) => ({
+//         id: String(item.emp_id || item.employee_id || item.ROWID || "").trim(),
+//         name: String(item.name || item.emp_name || item.emp_id || "").trim(),
+//         rm: String(item.reporting_manager || item.repo_manager || "").trim(),
+//         director: String(item.director || item.director_name || "").trim(),
+//         teId: String(item.appraiser_tech_ed || "").trim(),
+//         te: String(item.appraiser_tech_ed || "").trim(),
+//         comp: String(item.delegation_comp_manager || item.comp_manager || "").trim(),
+//         app: String(item.appraiser_tech_ed || "").trim(),
+//         prevComp: String(item.previous_comp_manager || item.prev_comp_manager || "").trim(),
+//         prevApp: String(item.previous_appraiser_tech_ed || item.previous_tech_ed || item.prev_appraiser_tech_ed || "").trim(),
+//         base: "",
+//         lastRole: "",
+//       }));
+//       freshApplied = true;
+//       setRows(mapped);
+//       // Keep this roster as the copy shown at once on the next visit (an empty
+//       // roster replaces the old copy, so it is not shown again).
+//       writeDelegationSnapshot(savedKey, { rows: mapped, cycleId, cycleName }, startedGeneration);
+//       return mapped;
+//     } catch (error) {
+//       freshApplied = true;
+//       setRows([]);
+//       say(error?.message || "Unable to load appraisal employees.", true);
+//     } finally {
+//       freshApplied = true;
+//       setShowingSaved(false);
+//       setRosterLoading(false);
+//     }
+//   };
+
+//   useEffect(() => {
+//     loadRoster({ initial: true });
+//     const refreshRoster = () => loadRoster();
+//     window.addEventListener("appraisal:cycle-updated", refreshRoster);
+//     // Load the active cycle's roster when the Delegation screen is mounted.
+//     // eslint-disable-next-line react-hooks/exhaustive-deps
+//     return () => window.removeEventListener("appraisal:cycle-updated", refreshRoster);
+//   }, [initialRows]);
+//   const say = (msg, err) => {
+//     setToast({ msg, err });
+//     setTimeout(() => setToast(null), err ? 6000 : 3500);
+//   };
+//   const log = (a) =>
+//     setAudit((l) => [
+//       { on: now(), by: user.name, role: user.role, ...a },
+//       ...l,
+//     ]);
+
+//   /* derived */
+//   const pendingFor = (rid, reqList = reqs) =>
+//     reqList.some((q) => q.rowId === rid && q.status === "Pending");
+//   const statusOf = (r) =>
+//     pendingFor(r.id)
+//       ? ST.PD
+//       : r.lastRole === "HR Admin"
+//         ? ST.HR
+//         : r.lastRole === "Tech-ED"
+//           ? ST.TE
+//           : r.base;
+//   const scoped = useMemo(
+//     () =>
+//       rows.filter((r) => {
+//         if (isHR || isTechEdUser) return true;
+//         const assigned = String(r.te || r.teId || "")
+//           .trim()
+//           .toLowerCase();
+//         const loggedIn = String(user.name || user.id || "")
+//           .trim()
+//           .toLowerCase();
+//         return assigned === loggedIn || assigned.includes(loggedIn);
+//       }),
+//     [rows, user, isHR, isTechEdUser],
+//   );
+//   const myReqs = reqs.filter(
+//     (q) =>
+//       (q.requestType === "screen" || FIELDS[q.field]) &&
+//       (isHR ||
+//         String(q.byId || "").toLowerCase() ===
+//           String(catalystUser?.email || "").toLowerCase()),
+//   );
+//   const people = useMemo(() => {
+//     const uniquePeople = new Map();
+//     rows.forEach((row) => {
+//       const id = String(row.id || "").trim();
+//       const name = String(row.name || "").trim();
+//       if (!id) return;
+//       const key = id.toLowerCase();
+//       const label = name ? `${id} - ${name}` : id;
+//       const existing = uniquePeople.get(key);
+//       if (!existing || (existing.name === existing.id && name)) {
+//         uniquePeople.set(key, { id: label, name: label, roles: [] });
+//       }
+//     });
+//     return Array.from(uniquePeople.values()).sort((a, b) => a.name.localeCompare(b.name));
+//   }, [rows]);
+//   const pending = myReqs.filter((q) => q.status === "Pending");
+//   const colValue = (r, key) => {
+//     switch (key) {
+//       case "comp":
+//         return resolveName(r.comp);
+//       case "app":
+//         return resolveName(r.app);
+//       case "prevComp":
+//         return resolveName(r.prevComp);
+//       case "prevApp":
+//         return resolveName(r.prevApp);
+//       case "te":
+//         return resolveName(r.te);
+//       case "employee":
+//         return r.name ? `${r.id} - ${r.name}` : String(r.id ?? "");
+//       case "rm":
+//         return resolveName(r.rm);
+//       case "director":
+//         return resolveName(r.director);
+//       case "status":
+//         return statusOf(r);
+//       default:
+//         return String(r[key] ?? "");
+//     }
+//   };
+//   const list = useMemo(() => {
+//     const active = Object.entries(colFilters);
+//     const out = scoped.filter((r) =>
+//       active.every(([key, f]) => matchesFilter(colValue(r, key), f)),
+//     );
+//     const dir = sort.dir === "desc" ? -1 : 1;
+//     return out.sort(
+//       (a, b) =>
+//         dir *
+//         colValue(a, sort.key).localeCompare(colValue(b, sort.key), undefined, {
+//           numeric: true,
+//           sensitivity: "base",
+//         }),
+//     );
+//   }, [scoped, colFilters, sort, reqs]); // eslint-disable-line
+//   const pages = Math.max(1, Math.ceil(list.length / PAGE));
+//   const cur = Math.min(page, pages);
+//   const slice = list.slice((cur - 1) * PAGE, cur * PAGE);
+//   const selIds = Object.keys(sel).filter((k) => sel[k]);
+//   const withoutComp = scoped.filter((r) => !nameOf(r.comp)).length;
+//   const optionsFor = (key) =>
+//     [...new Set(scoped.map((r) => colValue(r, key)))].sort();
+//   const setColFilter = (key, f) => {
+//     setColFilters((prev) => {
+//       const next = { ...prev };
+//       if (f) next[key] = f;
+//       else delete next[key];
+//       return next;
+//     });
+//     setPage(1);
+//   };
+//   const filtersActive = Object.keys(colFilters).length > 0;
+//   // Text for a filter tag shown above the grid, e.g. "Director: EMP002 - Ashok Kumar".
+//   const describeColFilter = (key, f) => {
+//     const label = COLS.find((c) => c.key === key)?.label || key;
+//     if (f.kind === "enum") return `${label}: ${(f.values || []).join(", ")}`;
+//     const ops = f.kind === "text" ? TEXT_OPS : NUMBER_OPS;
+//     const opText = (op) =>
+//       (ops.find((o) => o.value === op)?.label || op).toLowerCase();
+//     const one = (op, v1, v2) =>
+//       op === "between"
+//         ? `between ${v1} and ${v2}`
+//         : f.kind === "text"
+//           ? `${opText(op)} "${v1}"`
+//           : `${opText(op)} ${v1}`;
+//     let text = `${label} ${one(f.op, f.value, f.value2)}`;
+//     if (f.op2 && String(f.value3 ?? "").trim() !== "")
+//       text += ` ${f.join === "or" ? "or" : "and"} ${one(f.op2, f.value3)}`;
+//     return text;
+//   };
+//   // The Employee column ("EMP001 - Name") stays fixed on the left while scrolling.
+//   const fzLeft = (key) => (key === "employee" ? SELECT_W : undefined);
+
+//   /* drag a header edge to resize a column (same behaviour as the Appraisal Sheet) */
+//   const startColResize = useCallback(
+//     (event, col) => {
+//       event.preventDefault();
+//       event.stopPropagation();
+//       resizeRef.current = {
+//         key: col.key,
+//         startX: event.clientX,
+//         startWidth: colWidths[col.key] ?? col.w,
+//       };
+//       document.body.style.cursor = "col-resize";
+//       document.body.style.userSelect = "none";
+//     },
+//     [colWidths],
+//   );
+//   useEffect(() => {
+//     const move = (event) => {
+//       if (!resizeRef.current) return;
+//       const { key, startX, startWidth } = resizeRef.current;
+//       const next = Math.min(
+//         MAX_COL,
+//         Math.max(MIN_COL, startWidth + event.clientX - startX),
+//       );
+//       setColWidths((prev) => ({ ...prev, [key]: next }));
+//     };
+//     const up = () => {
+//       resizeRef.current = null;
+//       document.body.style.cursor = "";
+//       document.body.style.userSelect = "";
+//     };
+//     window.addEventListener("pointermove", move);
+//     window.addEventListener("pointerup", up);
+//     return () => {
+//       window.removeEventListener("pointermove", move);
+//       window.removeEventListener("pointerup", up);
+//     };
+//   }, []);
+//   const uniq = (arr) => [...new Set(arr.filter(Boolean))].sort();
+
+//   /* mutations */
+//   const applyTo = (rows0, rid, field, pid, role, why, by) =>
+//     rows0.map((r) =>
+//       r.id === rid
+//         ? {
+//             ...r,
+//             [field]: pid,
+//             lastRole: role,
+//             lastBy: by,
+//             lastOn: now(),
+//             lastWhy: why,
+//           }
+//         : r,
+//     );
+
+//   const raise = (reqList, r, field, pid, why, batch) => {
+//     const out = reqList.map((q) =>
+//       q.rowId === r.id && q.field === field && q.status === "Pending"
+//         ? { ...q, status: "Superseded", decidedOn: now() }
+//         : q,
+//     );
+//     out.push({
+//       id: `${Date.now()}${Math.random()}`,
+//       no: refNo("DR"),
+//       rowId: r.id,
+//       empId: r.id,
+//       empName: r.name,
+//       field,
+//       oldId: r[field],
+//       newId: pid,
+//       reason: why,
+//       byId: user.id,
+//       byName: user.name,
+//       on: now(),
+//       batch: batch || "",
+//       status: "Pending",
+//       decidedBy: "",
+//       decidedOn: "",
+//       remarks: "",
+//     });
+//     return out;
+//   };
+
+//   // HR assignment edits stay local until the page-level Save is clicked.
+//   const compDirect = (field) => field === "comp" && isHR && canApprove;
+//   const hrDirect = (field) => isHR && canApprove && ["comp", "app"].includes(field);
+//   const directAssignment = (field) => hrDirect(field) || (isTechEdUser && ["comp", "app"].includes(field));
+//   const applyDirectChange = async (target, field, personId, why) => {
+//     const key = target.id + "::" + field;
+//     setStagedChanges((current) => ({
+//       ...current,
+//       [key]: {
+//         empId: target.id,
+//         empName: target.name,
+//         field,
+//         assignment: personId,
+//         reason: why || FIELDS[field] + " change",
+//       },
+//     }));
+//   };
+
+//   // Appraiser Tech-ED validation:
+//   //  1. an employee cannot be their own Appraiser Tech-ED (self assign);
+//   //  2. if Sita is the Appraiser Tech-ED of Ram, Ram cannot be the Appraiser
+//   //     Tech-ED of Sita (mutual assignment).
+//   // Returns an error message, or "" when the assignment is allowed.
+//   const appraiserConflict = (targetRows, field, personValue) => {
+//     if (field !== "app" || !personValue) return "";
+//     const personFull = resolveName(personValue);
+//     const personKey = normText(personFull);
+//     const isPerson = (x) => normText(resolveName(x.id)) === personKey;
+//     const selfRows = targetRows.filter(isPerson);
+//     if (selfRows.length) {
+//       return `${nameOf(personFull)} cannot be the ${FIELDS.app} of themselves.`;
+//     }
+//     const personRow = rows.find(isPerson);
+//     const personAppKey = personRow ? normText(resolveName(personRow.app)) : "";
+//     if (!personAppKey) return "";
+//     const mutual = targetRows.filter(
+//       (x) => normText(resolveName(x.id)) === personAppKey,
+//     );
+//     if (mutual.length) {
+//       const empFull = resolveName(mutual[0].id);
+//       return `${nameOf(personFull)} cannot be the ${FIELDS.app} of ${nameOf(empFull)} because ${nameOf(empFull)} is already the ${FIELDS.app} of ${nameOf(personFull)}.`;
+//     }
+//     return "";
+//   };
+
+//   const saveChange = async () => {
+//     const { row, field, person } = modal;
+//     const conflict = appraiserConflict([row], field, person?.id);
+//     if (conflict) {
+//       setModal(null);
+//       return say(conflict, true);
+//     }
+//     // Reason is optional (the server needs some text, so a default is stored
+//     // when it is left empty).
+//     const whyText = reason.trim() || `${FIELDS[field]} change`;
+//     if (directAssignment(field)) {
+//       await applyDirectChange(row, field, person.id, whyText);
+//       setRows((rs) =>
+//         applyTo(rs, row.id, field, person.id, isHR ? "HR Admin" : "Tech-ED", whyText, user.name),
+//       );
+//       log({
+//         emp: row.id,
+//         field: FIELDS[field],
+//         from: nameOf(row[field]),
+//         to: person.name,
+//         action: "Staged",
+//         why: whyText,
+//       });
+//       say(FIELDS[field] + " staged for " + row.id + ". Click Save to update Delegation.");
+//       setModal(null);
+//       return;
+//     }
+//     try {
+//       const request = await submitDelegationRequest({
+//         empId: row.id,
+//         empName: row.name,
+//         field,
+//         oldId: row[field],
+//         newId: person.id,
+//         reason: whyText,
+//         byName: user.name,
+//       });
+//       await loadRequests();
+//       log({
+//         emp: row.id,
+//         field: FIELDS[field],
+//         from: nameOf(row[field]),
+//         to: person.name,
+//         action: "Requested",
+//         why: whyText,
+//       });
+//       say(`Request ${request?.id || "submitted"} sent to HR for approval.`);
+//     } catch (error) {
+//       return say(
+//         error?.message || "Unable to send delegation request to HR.",
+//         true,
+//       );
+//     }
+//     setModal(null);
+//   };
+
+//   // Default Comp. Manager: set Comp. Manager from the chosen source column of
+//   // each employee's own row (Previous Comp. Manager / Director / Reporting
+//   // Manager / Tech-ED).
+//   const defaultTargets = (base, sourceKey, resolve) =>
+//     base
+//       .map((r) => ({ r, value: resolve(r[sourceKey]) }))
+//       .filter(({ r, value }) => value && value !== resolve(r.comp));
+
+//   const executeDefaultComp = async (targets, source) => {
+//     const why = `Default Comp. Manager: ${source.label}`;
+//     const no = refNo("DC");
+//     const done = [];
+//     let failed = false;
+//     // HR: show the new Comp Manager in the grid straight away, then save.
+//     if (directAssignment("comp")) {
+//       setRows((rs) =>
+//         targets.reduce(
+//           (acc, { r, value }) =>
+//             applyTo(acc, r.id, "comp", value, isHR ? "HR Admin" : "Tech-ED", why, user.name),
+//           rs,
+//         ),
+//       );
+//     }
+//     try {
+//       for (const { r, value } of targets) {
+//         if (directAssignment("comp")) await applyDirectChange(r, "comp", value, why);
+//         else
+//           await submitDelegationRequest({
+//             empId: r.id,
+//             empName: r.name,
+//             field: "comp",
+//             oldId: r.comp,
+//             newId: value,
+//             reason: why,
+//             byName: user.name,
+//             batch: no,
+//           });
+//         done.push({ r, value });
+//       }
+//     } catch (error) {
+//       failed = true;
+//       say(error?.message || "Unable to set the default Comp. Manager.", true);
+//     }
+//     if (failed && directAssignment("comp")) {
+//       // Something did not save: reload so the grid shows what is really stored.
+//       await loadRoster();
+//     }
+//     if (done.length && directAssignment("comp")) {
+//       refreshEmployees().catch(() => {});
+//       log({
+//         action: "Changed",
+//         field: FIELDS.comp,
+//         to: source.label,
+//         why: `${done.length} employee(s): ${why}`,
+//       });
+//       say(`Comp. Manager set to ${source.label} for ${done.length} employee(s). Click Save to keep the Delegation changes.`);
+//     } else if (done.length) {
+//       say(`${done.length} request(s) sent to HR for approval (${no}).`);
+//     }
+//     if (!directAssignment("comp")) await loadRequests().catch(() => {});
+//   };
+
+//   const applyDefaultComp = (sourceKey) => {
+//     const source = DEFAULT_COMP_SOURCES.find((o) => o.key === sourceKey);
+//     if (!source) return;
+//     saveDefaultComp(sourceKey);
+//     if (!rows.length) {
+//       return say(
+//         `Default Comp. Manager set to ${source.label}. It is applied when the delegation data is generated.`,
+//       );
+//     }
+//     // Selected employees if any are ticked, otherwise every employee.
+//     const base = selIds.length ? scoped.filter((r) => sel[r.id]) : scoped;
+//     const targets = defaultTargets(base, sourceKey, resolveName);
+//     if (!targets.length) {
+//       return say(
+//         `Default Comp. Manager set to ${source.label}. No employees to change (empty or already the Comp. Manager).`,
+//       );
+//     }
+//     if (compDirect("comp")) {
+//       // HR: no approval needed, so it updates the grid automatically.
+//       executeDefaultComp(targets, source);
+//       setSel({});
+//       return;
+//     }
+//     setModal({
+//       type: "confirm",
+//       title: "Default Comp. Manager",
+//       body: `Set Comp. Manager to the ${source.label} for ${targets.length} employee(s). One request per employee will be sent to HR for approval.`,
+//       ok: () => {
+//         executeDefaultComp(targets, source);
+//         setSel({});
+//       },
+//     });
+//   };
+
+//   // Generate / fetch the delegation data: the default Comp. Manager must be
+//   // chosen first, and is applied to the new rows as soon as they are loaded.
+//   const generateDelegation = async () => {
+//     const source = DEFAULT_COMP_SOURCES.find((o) => o.key === defaultComp);
+//     if (!source) {
+//       setModal({
+//         type: "notice",
+//         title: "Select Default Comp. Manager",
+//         body: "Please select the Default Comp. Manager first, then generate / upload the delegation data.",
+//       });
+//       return;
+//     }
+//     const loaded = await loadRoster();
+//     if (Array.isArray(loaded) && loaded.length && (isHR || isTechEdUser)) {
+//       const targets = defaultTargets(loaded, source.key, makeResolver(loaded));
+//       if (targets.length) await executeDefaultComp(targets, source);
+//     }
+//   };
+
+//   const doBulk = () => {
+//     const { field, scope, person } = bulk;
+//     let why = bulk.reason;
+//     if (!person) return say("Choose who to assign.", true);
+//     why = why.trim() || `${FIELDS[field]} change`;
+//     let t =
+//       scope === "sel"
+//         ? scoped.filter((r) => sel[r.id])
+//         : scoped.filter((r) => r.teId === scope.slice(3));
+//     if (scope === "sel" && !t.length)
+//       return say(
+//         'Select employees in the grid, or choose "All under Tech-ED".',
+//         true,
+//       );
+//     t = t.filter((r) => resolveName(r[field]) !== person);
+//     if (!t.length)
+//       return say("No employees to change (already assigned).", true);
+//     const bulkConflict = appraiserConflict(t, field, person);
+//     if (bulkConflict) return say(bulkConflict, true);
+//     setModal({
+//       type: "confirm",
+//       title: "Bulk Assign",
+//       body: directAssignment(field)
+//         ? `${FIELDS[field]} → ${nameOf(person)} for ${t.length} employee(s). Staged for saving; no approval request.`
+//         : `${FIELDS[field]} → ${nameOf(person)} for ${t.length} employee(s). One request per employee will be sent to HR for approval.`,
+//       ok: () => {
+//         const no = refNo("BA");
+//         if (directAssignment(field)) {
+//           (async () => {
+//             const done = [];
+//             try {
+//               for (const r of t) {
+//                 await applyDirectChange(r, field, person, why.trim());
+//                 done.push(r);
+//               }
+//             } catch (error) {
+//               say(error?.message || "Unable to update " + FIELDS[field] + ".", true);
+//             }
+//             if (done.length) {
+
+//               setRows((rs) =>
+//                 done.reduce(
+//                   (acc, r) =>
+//                     applyTo(acc, r.id, field, person, isHR ? "HR Admin" : "Tech-ED", why.trim(), user.name),
+//                   rs,
+//                 ),
+//               );
+//               log({
+//                 action: "Changed",
+//                 field: FIELDS[field],
+//                 to: nameOf(person),
+//                 why: `${done.length} employee(s): ${why.trim()}`,
+//               });
+//               say(FIELDS[field] + " staged for " + done.length + " employee(s). Click Save to keep the Delegation changes.");
+//             }
+//             await loadRequests().catch(() => {});
+//           })();
+//           setSel({});
+//           setBulk({ ...bulk, person: "", reason: "" });
+//           return;
+//         }
+//         (async () => {
+//           try {
+//             for (const r of t) {
+//               await submitDelegationRequest({
+//                 empId: r.id,
+//                 empName: r.name,
+//                 field,
+//                 oldId: r[field],
+//                 newId: person,
+//                 reason: why.trim(),
+//                 byName: user.name,
+//                 batch: no,
+//               });
+//             }
+//             await loadRequests();
+//             say(`${t.length} request(s) sent to HR for approval (${no}).`);
+//           } catch (error) {
+//             await loadRequests().catch(() => {});
+//             say(
+//               error?.message || "Unable to send bulk delegation requests.",
+//               true,
+//             );
+//           }
+//         })();
+//         setSel({});
+//         setBulk({ ...bulk, person: "", reason: "" });
+//       },
+//     });
+//   };
+
+//   const submitDelegationRequest = async (request) => {
+//     const response = await catalystFetch(
+//       ACCESS_API_URL + "delegation/requests",
+//       {
+//         method: "POST",
+//         headers: {
+//           "Content-Type": "application/json",
+//           Accept: "application/json",
+//         },
+//         body: JSON.stringify({ action: "submit", ...request }),
+//       },
+//     );
+//     const payload = await response.json().catch(() => ({}));
+//     if (!response.ok || !payload.ok)
+//       throw new Error(payload.error || "Unable to submit delegation request.");
+//     return payload.request;
+//   };
+
+//   const decideDelegationRequest = async (id, status, remarksText = "") => {
+//     const response = await catalystFetch(
+//       ACCESS_API_URL + "delegation/requests",
+//       {
+//         method: "POST",
+//         headers: {
+//           "Content-Type": "application/json",
+//           Accept: "application/json",
+//         },
+//         body: JSON.stringify({
+//           action: "decide",
+//           id,
+//           status: status.toLowerCase(),
+//           remarks: remarksText,
+//         }),
+//       },
+//     );
+//     const payload = await response.json().catch(() => ({}));
+//     if (!response.ok || !payload.ok)
+//       throw new Error(payload.error || "Unable to update delegation request.");
+//     // Refresh budget counts after a delegation is approved or rejected.
+//     if (typeof window !== "undefined") {
+//       window.dispatchEvent(new CustomEvent("appraisal:budget-data-updated"));
+//     }
+//     return payload;
+//   };
+
+//   const persistFieldChange = async (empId, fieldKey, newId) => {
+//     const field = fieldKey === "comp" ? "comp_manager" : "appraiser_tech_ed";
+//     const response = await catalystFetch(EMPLOYEE_API_URL, {
+//       method: "PATCH",
+//       headers: {
+//         "Content-Type": "application/json",
+//         Accept: "application/json",
+//       },
+//       body: JSON.stringify({
+//         emp_id: String(empId || ""),
+//         [field]: String(newId || ""),
+//       }),
+//     });
+//     const payload = await response.json().catch(() => null);
+//     if (!response.ok || !payload?.success)
+//       throw new Error(payload?.message || "Delegation update failed.");
+//     return payload.data;
+//   };
+
+//   const persistDelegationChange = async (q) =>
+//     persistFieldChange(q.empId || q.rowId, q.field, q.newId);
+//   const decide = async (q, approve, rm = remarks[q.id] || "") => {
+//     if (!isHR || !canApprove)
+//       return say(
+//         "Only HR with Delegation edit access can approve or reject requests.",
+//         true,
+//       );
+//     if (!approve && !rm.trim())
+//       return say("HR remarks are mandatory when rejecting.", true);
+//     try {
+//       await decideDelegationRequest(
+//         q.id,
+//         approve ? "approved" : "rejected",
+//         rm.trim(),
+//       );
+//     } catch (error) {
+//       // The server may already have recorded a decision while this screen still
+//       // has a stale Pending row. Refresh the shared queue before showing the error.
+//       await loadRequests().catch(() => {});
+//       return say(
+//         error?.message ||
+//           "Unable to " +
+//             (approve ? "approve" : "reject") +
+//             " delegation request.",
+//         true,
+//       );
+//     }
+//     if (approve && q.requestType !== "screen") {
+//       await refreshEmployees().catch(() => {}); // saved already; don't fail the approval
+//       setRows((rs) =>
+//         applyTo(
+//           rs,
+//           q.rowId,
+//           q.field,
+//           q.newId,
+//           "HR Admin",
+//           q.reason,
+//           q.byName + " (approved by " + user.name + ")",
+//         ),
+//       );
+//     }
+//     await loadRequests().catch(() => {});
+//     log({
+//       emp: q.empId,
+//       field: q.requestType === "screen" ? "Screen Request" : FIELDS[q.field],
+//       from: nameOf(q.oldId),
+//       to: nameOf(q.newId),
+//       action: approve ? "Approved" : "Rejected",
+//       why: rm,
+//     });
+//     say("Request " + q.no + (approve ? " approved and saved." : " rejected."));
+//   };
+//   const withdraw = (q) =>
+//     setModal({
+//       type: "confirm",
+//       title: "Withdraw request",
+//       body: "Withdraw this request? The current value stays as it is.",
+//       ok: () => {
+//         setReqs((qs) =>
+//           qs.map((x) =>
+//             x.id === q.id ? { ...x, status: "Withdrawn", decidedOn: now() } : x,
+//           ),
+//         );
+//         say(`Request ${q.no} withdrawn.`);
+//       },
+//     });
+//   const approveAll = () =>
+//     setModal({
+//       type: "confirm",
+//       title: "Approve all",
+//       body: `Approve all ${pending.length} pending request(s)?`,
+//       ok: async () => {
+//         try {
+//           for (const q of pending) {
+//             await decideDelegationRequest(q.id, "approved");
+//           }
+//           await refreshEmployees();
+//         } catch (error) {
+//           await refreshEmployees().catch(() => {});
+//           say(
+//             error?.message || "Unable to approve all delegation requests.",
+//             true,
+//           );
+//           return;
+//         }
+//         let rs = rows;
+//         pending
+//           .filter((q) => q.requestType !== "screen")
+//           .forEach(
+//             (q) =>
+//               (rs = applyTo(
+//                 rs,
+//                 q.rowId,
+//                 q.field,
+//                 q.newId,
+//                 "HR Admin",
+//                 q.reason,
+//                 q.byName + " (approved by " + user.name + ")",
+//               )),
+//           );
+//         setRows(rs);
+//         const ids = new Set(pending.map((q) => q.id));
+//         setReqs((qs) =>
+//           qs.map((x) =>
+//             ids.has(x.id)
+//               ? {
+//                   ...x,
+//                   status: "Approved",
+//                   decidedBy: user.name,
+//                   decidedOn: now(),
+//                 }
+//               : x,
+//           ),
+//         );
+//         say(`${ids.size} request(s) approved.`);
+//       },
+//     });
+//   // Generate / update the Appraisal Sheet from the LAST SAVED Delegation data:
+//   // creates it the first time, otherwise updates only what changed, says so
+//   // when it is already up to date, and opens the Appraisal Sheet afterwards.
+//   // Changes that were not saved are not used; the grid goes back to the last
+//   // saved values.
+//   const [sheetBusy, setSheetBusy] = useState(false);
+//   const [sheetProgress, setSheetProgress] = useState(null);
+//   const runGenerateSheet = async () => {
+//     setSheetBusy(true);
+//     setSheetProgress(null);
+//     try {
+//       if (Object.keys(stagedChanges).length) {
+//         setStagedChanges({});
+//         await loadRoster();
+//       }
+//       const result = await generateAppraisalSheet(activeCycleId, (done, remaining) => {
+//         const all = done + remaining;
+//         if (all > 0) setSheetProgress(Math.min(95, (done / all) * 95));
+//       });
+//       // The Appraisal_Sheet row count is the source of truth for Budget
+//       // Distribution Current Count. Refresh the shared budget roster as soon
+//       // as generation/add/remove completes.
+//       if (typeof window !== "undefined") {
+//         window.dispatchEvent(new CustomEvent("appraisal:budget-data-updated"));
+//       }
+//       const d = result?.data || result || {};
+//       if (d.upToDate) {
+//         setModal({
+//           type: "notice",
+//           title: "Appraisal Sheet is up to date",
+//           body: `The Appraisal Sheet for ${displayCycleName} is already up to date. There is nothing new to add or update.`,
+//         });
+//         return;
+//       }
+//       const parts = [];
+//       if (d.created) parts.push(`${d.created} added`);
+//       if (d.updated) parts.push(`${d.updated} updated`);
+//       if (d.removedStaleRows) parts.push(`${d.removedStaleRows} removed`);
+//       let summary = d.alreadyGenerated
+//         ? `Appraisal Sheet updated: ${parts.join(", ") || "changes applied"}.`
+//         : `Appraisal Sheet generated for ${d.created ?? d.eligible ?? 0} employee(s).`;
+//       if (d.compManagerMissing) {
+//         summary += ` ${d.compManagerMissing} employee(s) have no Comp. Manager assigned - set it in Delegation and generate again.`;
+//       }
+//       // Load the generated / updated rows first so the sheet opens with them.
+//       await refreshEmployees().catch(() => {});
+//       onRefresh?.();
+//       if (access.canScreen("appraisalSheet")) {
+//         say(summary + " Opening the Appraisal Sheet…");
+//         // Same in-app navigation the rest of the app uses (no full reload).
+//         setTimeout(() => {
+//           window.history.pushState({}, "", "/sheet");
+//           window.dispatchEvent(new PopStateEvent("popstate"));
+//         }, 500);
+//       } else {
+//         setModal({
+//           type: "notice",
+//           title: d.alreadyGenerated ? "Appraisal Sheet updated" : "Appraisal Sheet generated",
+//           body: summary,
+//         });
+//       }
+//     } catch (error) {
+//       setModal({
+//         type: "notice",
+//         title: "Unable to generate the Appraisal Sheet",
+//         body: error?.message || "The request failed.",
+//       });
+//     } finally {
+//       setSheetBusy(false);
+//       setSheetProgress(null);
+//     }
+//   };
+//   // Only HR generates the Appraisal Sheet; a Tech-ED's Save updates it.
+//   const generateSheet = () => {
+//     if (!isHR || !activeCycleId || sheetBusy) return;
+//     const unsaved = Object.keys(stagedChanges).length;
+//     if (!unsaved && withoutComp > 0) {
+//       setModal({
+//         type: "confirm",
+//         title: "Comp. Manager not assigned",
+//         body: `${withoutComp} employee(s) have no Comp. Manager (not set, or not found in Employee Master). The Appraiser Tech-ED will be used for them when the Appraisal Sheet is generated; if that is not assigned either, the Comp. Manager stays blank. Set the Comp. Manager and Save first, or continue anyway?`,
+//         ok: runGenerateSheet,
+//       });
+//       return;
+//     }
+//     if (unsaved) {
+//       setModal({
+//         type: "confirm",
+//         title: "Unsaved changes",
+//         body: `You have ${unsaved} unsaved delegation change(s). They will be discarded and the Appraisal Sheet will use the last saved Delegation. To include them, click Cancel and Save first.`,
+//         ok: runGenerateSheet,
+//       });
+//       return;
+//     }
+//     runGenerateSheet();
+//   };
+
+//   // Throw away everything not saved yet: the grid goes back to the last
+//   // saved Delegation.
+//   const discardUnsaved = async () => {
+//     if (!Object.keys(stagedChanges).length) return;
+//     setStagedChanges({});
+//     setSel({});
+//     await loadRoster();
+//     say("Unsaved changes discarded. Showing the last saved Delegation.");
+//   };
+
+//   // Warn before a browser refresh / tab close while changes are unsaved.
+//   useEffect(() => {
+//     if (!Object.keys(stagedChanges).length) return undefined;
+//     const warn = (event) => {
+//       event.preventDefault();
+//       event.returnValue = "";
+//     };
+//     window.addEventListener("beforeunload", warn);
+//     return () => window.removeEventListener("beforeunload", warn);
+//   }, [stagedChanges]);
+
+//   const saveDelegation = async () => {
+//     if (!(isHR || isTechEdUser) || !activeCycleId || !rows.length) return;
+//     const changes = Object.values(stagedChanges);
+//     if (!changes.length) return say("No unsaved delegation changes.");
+//     try {
+//       const response = await catalystFetch(ACCESS_API_URL + "delegation/save", {
+//         method: "POST",
+//         headers: { "Content-Type": "application/json", Accept: "application/json" },
+//         body: JSON.stringify({
+//           cycleId: activeCycleId,
+//           changes: changes.map(({ empId, field, assignment, reason }) => ({
+//             empId, field, assignment, reason,
+//           })),
+//         }),
+//       });
+//       const payload = await response.json().catch(() => ({}));
+//       if (!response.ok || payload.ok === false || payload.success === false) {
+//         throw new Error(payload.error || payload.message || "Unable to save Delegation changes.");
+//       }
+//       setStagedChanges({});
+//       // The grid already reflects these staged assignments. Save also writes
+//       // them onto the Appraisal Sheet (accessapi), so the sheet and budget
+//       // screens reload their data; Generate stays an HR-only operation.
+//       const sheetRows = Number(payload.sheetRowsUpdated || 0);
+//       if (sheetRows > 0 && typeof window !== "undefined") {
+//         window.dispatchEvent(new CustomEvent("appraisal:payroll-data-updated"));
+//         window.dispatchEvent(new CustomEvent("appraisal:budget-data-updated"));
+//       }
+//       say(
+//         "Saved " + changes.length + " delegation change(s) for " + displayCycleName + "." +
+//           (sheetRows > 0
+//             ? " The Appraisal Sheet is updated."
+//             : isHR
+//               ? " Generate the Appraisal Sheet to add employees who are not on it yet."
+//               : ""),
+//       );
+//     } catch (error) {
+//       say(error?.message || "Unable to save Delegation.", true);
+//     }
+//   };
+
+//   const exportCsv = () => {
+//     const head = [
+//       "Employee ID",
+//       "Employee Name",
+//       "Reporting Manager",
+//       "Director",
+//       "Tech-ED",
+//       "Comp. Manager",
+//       "Appraiser Tech-ED",
+//       "Prev. Comp. Manager",
+//       "Prev. Appraiser Tech-ED",
+//     ];
+//     const chosen = list.filter((r) => sel[r.id]);
+//     const exportRows =
+//       chosen.length > 0 && chosen.length < list.length ? chosen : list;
+//     const body = exportRows.map((r) => [
+//       r.id,
+//       r.name,
+//       resolveName(r.rm),
+//       resolveName(r.director),
+//       resolveName(r.te),
+//       nameOf(r.comp),
+//       nameOf(r.app),
+//       nameOf(r.prevComp),
+//       nameOf(r.prevApp),
+//     ]);
+//     const url = URL.createObjectURL(
+//       new Blob(
+//         [
+//           "\ufeff" +
+//             [head, ...body].map((x) => x.map(csvCell).join(",")).join("\n"),
+//         ],
+//         { type: "text/csv" },
+//       ),
+//     );
+//     Object.assign(document.createElement("a"), {
+//       href: url,
+//       download: `Delegation_${displayCycleName}.csv`,
+//     }).click();
+//     URL.revokeObjectURL(url);
+//   };
+
+//   // The demo role switcher had a USERS list that was never defined; only the signed-in user remains.
+//   const USERS = [user];
+
+//   const switchUser = (id) => {
+//     setUser(USERS.find((u) => u.id === id) || user);
+//     setSel({});
+//     setPage(1);
+//     setReqTab("Pending");
+//     setColFilters({});
+//   };
+
+//   const isPendingRequest = (request) =>
+//     !["Approved", "Rejected", "Withdrawn", "Superseded"].includes(
+//       String(request.status || "")
+//         .trim()
+//         .toLowerCase()
+//         .replace(/^./, (letter) => letter.toUpperCase()),
+//     );
+//   const shownReqs = myReqs
+//     .filter((q) =>
+//       reqTab === "Pending" ? isPendingRequest(q) : !isPendingRequest(q),
+//     )
+//     .sort((a, b) => String(b.on || "").localeCompare(String(a.on || "")));
+//   const teScopes = isHR
+//     ? uniq(scoped.map((r) => r.te)).map((t) => {
+//         const rs = scoped.filter((r) => r.te === t);
+//         return {
+//           id: rs[0].teId,
+//           label: `All under Tech-ED ${t} (${rs.length})`,
+//         };
+//       })
+//     : scoped.length
+//       ? [{ id: user.id, label: `All my employees (${scoped.length})` }]
+//       : [];
+//   const allSel = slice.length > 0 && slice.every((r) => sel[r.id]);
+
+//   return (
+//     <div className="dg">
+//       <style>{CSS}</style>
+
+//       {showRoleSwitch && (
+//         <div className="dg-pv">
+//           <span>Preview data. Logged in as</span>
+//           <select value={user.id} onChange={(e) => switchUser(e.target.value)}>
+//             {USERS.map((u) => (
+//               <option key={u.id} value={u.id}>
+//                 {u.name}
+//                 {u.role === "Tech-ED" ? " · Tech-ED" : ""}
+//               </option>
+//             ))}
+//           </select>
+//         </div>
+//       )}
+//       {locked && (
+//         <div className="dg-mq lock">
+//           Delegation for {displayCycleName} is locked. It will be used as
+//           previous-cycle data for the next cycle.
+//         </div>
+//       )}
+//       {isHR && !locked && pending.length > 0 && (
+//         <div className="dg-mq">
+//           ⚠ {pending.length} delegation request(s) from Tech-EDs awaiting your approval.
+//         </div>
+//       )}
+
+//       <div className="dg-body">
+//         {/* ------------------------------ main */}
+//         <div className="dg-card dg-main">
+//           <div className="dg-ch">
+//             Delegation Screen
+//             <div className="dg-menu" ref={menuRef}>
+//               <button
+//                 type="button"
+//                 className="dg-menubtn"
+//                 aria-haspopup="menu"
+//                 aria-expanded={menuOpen}
+//                 onClick={() => setMenuOpen((v) => !v)}
+//               >
+//                 ☰ Menu
+//               </button>
+//               {menuOpen && (
+//                 <div className="dg-menulist" role="menu">
+//                   <button
+//                     type="button"
+//                     role="menuitem"
+//                     onClick={() => {
+//                       setMenuOpen(false);
+//                       exportCsv();
+//                     }}
+//                   >
+//                     Export
+//                   </button>
+//                   {isHR && canAudit && (
+//                     <button
+//                       type="button"
+//                       role="menuitem"
+//                       onClick={() => {
+//                         setMenuOpen(false);
+//                         setModal({ type: "audit" });
+//                       }}
+//                     >
+//                       Audit trail
+//                     </button>
+//                   )}
+//                 </div>
+//               )}
+//             </div>
+//           </div>
+//           <div className="dg-tb">
+//             <div className="dg-mets">
+//               {[
+//                 ["Total Employees", scoped.length, "#1f2a37", null],
+//                 ["Employee without Comp. Manager", withoutComp, "#94620a", null],
+//                 ...(isHR ? [["Pending HR Approval", pending.length, "#b42318", () => setReqOpen(true)]] : []),
+//               ].map(([l, v, c, onClick]) => (
+//                 <div
+//                   className={"dg-met" + (onClick ? " click" : "")}
+//                   key={l}
+//                   onClick={onClick || undefined}
+//                   onKeyDown={
+//                     onClick
+//                       ? (e) => (e.key === "Enter" || e.key === " ") && onClick()
+//                       : undefined
+//                   }
+//                   role={onClick ? "button" : undefined}
+//                   tabIndex={onClick ? 0 : undefined}
+//                   title={onClick ? "Open pending approvals" : undefined}
+//                 >
+//                   <span className="l">{l}</span>
+//                   <span className="v" style={{ color: c }}>
+//                     {v}
+//                   </span>
+//                 </div>
+//               ))}
+//             </div>
+//             <span style={{ flex: 1 }} />
+//             <label className="dg-dflt">
+//               <span>Default Comp. Manager</span>
+//               <select
+//                 className="f"
+//                 disabled={editLocked}
+//                 value={defaultComp}
+//                 onChange={(e) =>
+//                   e.target.value && applyDefaultComp(e.target.value)
+//                 }
+//               >
+//                 <option value="">Select</option>
+//                 {DEFAULT_COMP_SOURCES.map((o) => (
+//                   <option key={o.key} value={o.key}>
+//                     {o.label}
+//                   </option>
+//                 ))}
+//               </select>
+//             </label>
+//             <button
+//               className="btn"
+//               disabled={showingSaved}
+//               onClick={() => setModal({ type: "bulk" })}
+//             >
+//               Bulk Assign ({selIds.length})
+//             </button>
+//             {(isHR || isTechEdUser) && (
+//               <button
+//                 className="btn p"
+//                 disabled={editLocked || !rows.length || rosterLoading || !Object.keys(stagedChanges).length}
+//                 title="Save delegation changes and update matching existing Appraisal Sheet rows"
+//                 onClick={saveDelegation}
+//               >
+//                 Save{Object.keys(stagedChanges).length ? " (" + Object.keys(stagedChanges).length + ")" : ""}
+//               </button>
+//             )}
+//             {(isHR || isTechEdUser) && Object.keys(stagedChanges).length > 0 && (
+//               <button
+//                 className="btn"
+//                 disabled={rosterLoading || sheetBusy}
+//                 title="Discard unsaved changes and go back to the last saved Delegation"
+//                 onClick={discardUnsaved}
+//               >
+//                 Discard
+//               </button>
+//             )}
+//             <ProcessingOverlay open={sheetBusy} progress={sheetProgress} />
+//             {isHR && (
+//               <button
+//                 className="btn p"
+//                 disabled={!activeCycleId || !rows.length || rosterLoading || sheetBusy}
+//                 title="Apply the saved Delegation changes to the Appraisal Sheet and open it"
+//                 onClick={generateSheet}
+//               >
+//                 {sheetBusy ? "Generating…" : "Generate Appraisal Sheet"}
+//               </button>
+//             )}
+//           </div>
+
+//           {withoutComp > 0 && (isHR || isTechEdUser) && !rosterLoading && (
+//             <div className="dg-alert" role="alert">
+//               <b>Comp. Manager not assigned</b> for {withoutComp} employee
+//               {withoutComp === 1 ? "" : "s"} (not set, or not found in
+//               Employee Master). Please set the Comp. Manager in the grid below
+//               and click Save. When the Appraisal Sheet is generated the
+//               Appraiser Tech-ED is used by default; if that is not assigned
+//               either, the Comp. Manager stays blank.
+//             </div>
+//           )}
+
+//           {filtersActive && (
+//             <div className="dg-tags" aria-label="Active filters">
+//               {Object.entries(colFilters).map(([key, f]) => (
+//                 <button
+//                   key={key}
+//                   type="button"
+//                   className="dg-tag"
+//                   title="Remove this filter"
+//                   onClick={() => setColFilter(key, undefined)}
+//                 >
+//                   {describeColFilter(key, f)}
+//                   <span aria-hidden="true">✕</span>
+//                 </button>
+//               ))}
+//             </div>
+//           )}
+
+//           <div className="dg-tw">
+//             {rosterLoading && !showingSaved && showRosterLoading ? (
+//               <div className="empty" role="status">Loading delegation data…</div>
+//             ) : rosterLoading && !showingSaved ? null : !scoped.length ? (
+//               <div className="empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+//                 {activeCycleId ? "No delegation rows are available for " + displayCycleName + "." : "No active appraisal cycle. Create or activate a cycle to start delegation."}
+//                 {activeCycleId && (
+//                   <button className="btn p" type="button" onClick={generateDelegation}>
+//                     Generate / Fetch Delegation Data
+//                   </button>
+//                 )}
+//               </div>
+//             ) : (
+//               <table
+//                 className="dg-grid"
+//                 style={{
+//                   tableLayout: "fixed",
+//                   width: "max-content",
+//                   minWidth: "100%",
+//                 }}
+//               >
+//                 <colgroup>
+//                   <col style={{ width: SELECT_W }} />
+//                   {COLS.map((c) => (
+//                     <col key={c.key} style={{ width: colWidths[c.key] }} />
+//                   ))}
+//                 </colgroup>
+//                 <thead>
+//                   <tr className="grp">
+//                     <th className="g g1 fz" colSpan={2} style={{ left: 0 }}>
+//                       <span>&nbsp;</span>
+//                     </th>
+//                     <th className="g g1" colSpan={3}>
+//                       <span>From Employee Master · Read-Only</span>
+//                     </th>
+//                     <th className="g g2" colSpan={2}>
+//                       <span>This Cycle · Editable</span>
+//                     </th>
+//                     <th className="g g3" colSpan={2}>
+//                       <span>Previous Cycle · Reference</span>
+//                     </th>
+//                   </tr>
+//                   <tr className="hd">
+//                     <th className="sel fz" style={{ left: 0 }}>
+//                       <input
+//                         type="checkbox"
+//                         checked={allSel}
+//                         disabled={editLocked}
+//                         onChange={(e) => {
+//                           const n = { ...sel };
+//                           slice.forEach((r) => (n[r.id] = e.target.checked));
+//                           setSel(n);
+//                         }}
+//                       />
+//                     </th>
+//                     {COLS.map((c) => (
+//                       <th
+//                         key={c.key}
+//                         className={fzLeft(c.key) !== undefined ? "fz" : ""}
+//                         style={
+//                           fzLeft(c.key) !== undefined
+//                             ? { left: fzLeft(c.key) }
+//                             : undefined
+//                         }
+//                       >
+//                         <div className="hc">
+//                           <span className="hl" title={c.label}>
+//                             {c.label}
+//                           </span>
+//                           <ColumnFilter
+//                             boxed
+//                             columnKey={"delegation:" + c.key}
+//                             label={c.label}
+//                             allowGroup={false}
+//                             alwaysBelow
+//                             filter={colFilters[c.key]}
+//                             options={optionsFor(c.key)}
+//                             allValues={[]}
+//                             onChange={(f) => setColFilter(c.key, f)}
+//                             sortDirection={
+//                               sortChosen && sort.key === c.key ? sort.dir : null
+//                             }
+//                             sortLevel={sortChosen && sort.key === c.key ? 1 : 0}
+//                             onSortAsc={() => {
+//                               setSortChosen(true);
+//                               setSort({ key: c.key, dir: "asc" });
+//                             }}
+//                             onSortDesc={() => {
+//                               setSortChosen(true);
+//                               setSort({ key: c.key, dir: "desc" });
+//                             }}
+//                           />
+//                         </div>
+//                         <div
+//                           role="separator"
+//                           aria-label={`Resize ${c.label} column`}
+//                           title="Drag to resize column"
+//                           className="rz"
+//                           onPointerDown={(e) => startColResize(e, c)}
+//                         />
+//                       </th>
+//                     ))}
+//                   </tr>
+//                 </thead>
+//                 <tbody>
+//                   {slice.map((r) => {
+//                     const st = statusOf(r);
+//                     return (
+//                       <tr key={r.id} className={sel[r.id] ? "sel" : ""}>
+//                         <td className="sel fz" style={{ left: 0 }}>
+//                           <input
+//                             type="checkbox"
+//                             checked={!!sel[r.id]}
+//                             disabled={editLocked}
+//                             onChange={(e) =>
+//                               setSel({ ...sel, [r.id]: e.target.checked })
+//                             }
+//                           />
+//                         </td>
+//                         {COLS.map((c) => {
+//                           if (c.edit) {
+//                             const f = c.key;
+//                             const prev = resolveName(
+//                               f === "comp" ? r.prevComp : r.prevApp,
+//                             );
+//                             const cur = resolveName(r[f]);
+//                             const cellKey = r.id + ":" + f;
+//                             const listOpen = openCell === cellKey;
+//                             // Opened by hover / focus / touch, before the
+//                             // native list pops up.
+//                             const openList = () => {
+//                               if (!listOpen) setOpenCell(cellKey);
+//                             };
+//                             return (
+//                               <td key={f}>
+//                                 <select
+//                                   className={
+//                                     "in" +
+//                                     (prev && cur !== prev
+//                                       ? " c"
+//                                       : "")
+//                                   }
+//                                   disabled={editLocked}
+//                                   value={cur}
+//                                   onMouseEnter={openList}
+//                                   onFocus={openList}
+//                                   onTouchStart={openList}
+//                                   onChange={(e) => {
+//                                     setReason("");
+//                                     setModal({
+//                                       type: "reason",
+//                                       row: r,
+//                                       field: f,
+//                                       person: people.find(
+//                                         (p) => p.id === e.target.value,
+//                                       ),
+//                                     });
+//                                   }}
+//                                 >
+//                                   {!cur && (
+//                                     <option value="" disabled>
+//                                       — not set —
+//                                     </option>
+//                                   )}
+//                                   {listOpen ? (
+//                                     <>
+//                                       {cur &&
+//                                         !people.some((p) => p.id === cur) && (
+//                                           <option value={cur}>{cur}</option>
+//                                         )}
+//                                       {people.map((p) => (
+//                                         <option key={p.id} value={p.id}>
+//                                           {p.name}
+//                                         </option>
+//                                       ))}
+//                                     </>
+//                                   ) : (
+//                                     cur && (
+//                                       <option key={cur} value={cur}>
+//                                         {cur}
+//                                       </option>
+//                                     )
+//                                   )}
+//                                 </select>
+//                               </td>
+//                             );
+//                           }
+//                           if (c.key === "status")
+//                             return (
+//                               <td key={c.key}>
+//                                 <span className={`tag ${TAG[st]}`}>{st}</span>
+//                               </td>
+//                             );
+//                           const text =
+//                             c.key === "prevComp" || c.key === "prevApp"
+//                               ? colValue(r, c.key) || "—"
+//                               : colValue(r, c.key);
+//                           return (
+//                             <td
+//                               key={c.key}
+//                               className={
+//                                 (c.cls || "") +
+//                                 (fzLeft(c.key) !== undefined ? " fz" : "")
+//                               }
+//                               style={
+//                                 fzLeft(c.key) !== undefined
+//                                   ? { left: fzLeft(c.key) }
+//                                   : undefined
+//                               }
+//                               title={text}
+//                             >
+//                               {text}
+//                             </td>
+//                           );
+//                         })}
+//                       </tr>
+//                     );
+//                   })}
+//                 </tbody>
+//               </table>
+//             )}
+//             {scoped.length > 0 && !slice.length && (
+//               <div className="empty">No employees match the filters.</div>
+//             )}
+//           </div>
+
+//           <div className="dg-foot">
+//             <span>
+//               <b style={{ color: "#e0914f" }}>■</b> Orange = differs from
+//               previous cycle
+//             </span>
+//             <span>New employee → Comp. Manager defaults to Tech-ED</span>
+//             <span>Appraiser Tech-ED defaults to Tech-ED</span>
+//             <span style={{ flex: 1 }} />
+//             <span className="pg">
+//               <button
+//                 className="btn sm"
+//                 disabled={cur <= 1}
+//                 onClick={() => setPage(cur - 1)}
+//               >
+//                 ‹ Previous
+//               </button>
+//               <span>
+//                 {list.length
+//                   ? `${(cur - 1) * PAGE + 1}–${Math.min(cur * PAGE, list.length)}`
+//                   : 0}{" "}
+//                 of {list.length}
+//               </span>
+//               <button
+//                 className="btn sm"
+//                 disabled={cur >= pages}
+//                 onClick={() => setPage(cur + 1)}
+//               >
+//                 Next ›
+//               </button>
+//             </span>
+//           </div>
+//           <div className="dg-help">
+//             <b>How it works:</b>{" "}
+//             {isHR
+//               ? "Tech-ED and Reporting Manager come from the Employee Master. Comp. Manager defaults to last cycle's; for new employees it defaults to the Tech-ED. Save writes your assignment changes directly to the Delegation table. Generate Appraisal Sheet applies the saved assignments to the sheet."
+//               : 'You see employees whose Tech-ED is you. Your Comp. Manager and Appraiser Tech-ED changes are saved directly to the Delegation table. Generate Appraisal Sheet applies the saved assignments to the sheet.'}
+//           </div>
+//         </div>
+
+//         {/* HR approval panel only. Tech-Ed assignments are direct saves now. */}
+//         {isHR && <div className={"dg-side" + (reqOpen ? " open" : "")}>
+//           {reqOpen ? (
+//             <div className="dg-panel">
+//               <div className="ph">
+//                 <div>
+//                   <div className="tt">
+//                     {isHR ? "Pending approvals" : "My requests"}
+//                   </div>
+//                   <div className="ss">
+//                     {isHR
+//                       ? "Requests raised by Tech-EDs"
+//                       : "Changes you sent to HR"}
+//                   </div>
+//                 </div>
+//                 <button
+//                   type="button"
+//                   className="x"
+//                   onClick={() => setReqOpen(false)}
+//                   title="Close"
+//                   aria-label="Close pending approvals"
+//                 >
+//                   ✕
+//                 </button>
+//               </div>
+//               <div className="pb">
+//                 <div className="rtabs">
+//                     {["Pending", "Decided"].map((t) => (
+//                       <button
+//                         key={t}
+//                         type="button"
+//                         className={"ptab" + (reqTab === t ? " on" : "")}
+//                         onClick={() => setReqTab(t)}
+//                       >
+//                         {t}
+//                       </button>
+//                     ))}
+//                     {isHR &&
+//                       canApprove &&
+//                       reqTab === "Pending" &&
+//                       pending.length > 1 &&
+//                       !locked &&
+//                       !showingSaved && (
+//                         <>
+//                           <span style={{ flex: 1 }} />
+//                           <button className="btn p sm" onClick={approveAll}>
+//                             Approve all shown
+//                           </button>
+//                         </>
+//                       )}
+//                   </div>
+//                   <div className="rq-list">
+//                     {!shownReqs.length && (
+//                       <div className="none">
+//                         {reqTab === "Pending"
+//                           ? "No pending requests."
+//                           : "No decided requests yet."}
+//                       </div>
+//                     )}
+//                     {shownReqs.map((q) => (
+//                       <div className="req" key={q.id}>
+//                         <div className="n">
+//                           <span>
+//                             {q.empId} · {q.empName}
+//                           </span>
+//                           <span
+//                             className={
+//                               "tag " +
+//                               (q.status === "Approved"
+//                                 ? "cf"
+//                                 : q.status === "Pending" ||
+//                                     q.status === "Rejected"
+//                                   ? "pd"
+//                                   : "gr")
+//                             }
+//                           >
+//                             {q.status}
+//                           </span>
+//                         </div>
+//                         <div className="m">
+//                           {q.requestType === "screen"
+//                             ? "Screen Request"
+//                             : FIELDS[q.field]}
+//                           {q.requestType === "screen"
+//                             ? ""
+//                             : `: ${nameOf(q.oldId) || "—"}`}{" "}
+//                           {q.requestType !== "screen" && (
+//                             <span className="ar">→ {nameOf(q.newId)}</span>
+//                           )}
+//                           <br />
+//                           {isHR ? (
+//                             <>
+//                               Raised by <b>{q.byName}</b>
+//                               {q.requestedRole ? ` (${q.requestedRole})` : ""}
+//                             </>
+//                           ) : (
+//                             "Raised"
+//                           )}{" "}
+//                           · {fmt(q.on)} · {q.no}
+//                           <br />
+//                           Reason: {q.reason}
+//                           {q.status !== "Pending" && q.decidedBy && (
+//                             <>
+//                               <br />
+//                               {q.status} by {q.decidedBy} · {fmt(q.decidedOn)}
+//                             </>
+//                           )}
+//                           {q.remarks && (
+//                             <>
+//                               <br />
+//                               HR remarks: {q.remarks}
+//                             </>
+//                           )}
+//                         </div>
+//                         {q.status === "Pending" &&
+//                           !locked &&
+//                           !showingSaved &&
+//                           (!isHR || canApprove) &&
+//                           (isHR ? (
+//                             <>
+//                               <input
+//                                 className="fld"
+//                                 placeholder="HR remarks (mandatory if rejecting)"
+//                                 maxLength={2000}
+//                                 value={remarks[q.id] || ""}
+//                                 onChange={(e) =>
+//                                   setRemarks({
+//                                     ...remarks,
+//                                     [q.id]: e.target.value,
+//                                   })
+//                                 }
+//                               />
+//                               <button
+//                                 type="button"
+//                                 className="btn p sm"
+//                                 onClick={() => decide(q, true)}
+//                               >
+//                                 Approve
+//                               </button>{" "}
+//                               <button
+//                                 type="button"
+//                                 className="btn sm r"
+//                                 onClick={() => decide(q, false)}
+//                               >
+//                                 Reject
+//                               </button>
+//                             </>
+//                           ) : (
+//                             <button
+//                               className="btn sm r"
+//                               onClick={() => withdraw(q)}
+//                             >
+//                               Withdraw
+//                             </button>
+//                           ))}
+//                       </div>
+//                     ))}
+//                   </div>
+//               </div>
+//             </div>
+//           ) : (
+//             <div className="dg-rail">
+//               <button
+//                 type="button"
+//                 className="dg-ptab"
+//                 onClick={() => setReqOpen(true)}
+//                 title="Open pending approvals"
+//                 aria-expanded="false"
+//               >
+//                 {isHR ? "Pending approvals" : "My requests"} ({pending.length})
+//               </button>
+//             </div>
+//           )}
+//         </div>}
+
+//       </div>
+
+//       {/* ------------------------------ modals */}
+//       {modal?.type === "bulk" && (
+//         <Modal
+//           title="Bulk Assign"
+//           onClose={() => setModal(null)}
+//           foot={
+//             <>
+//               <button
+//                 className="btn"
+//                 disabled={editLocked}
+//                 onClick={() => {
+//                   // Clear everything: ticked employees and every field in the
+//                   // dialog go back to their starting values.
+//                   setSel({});
+//                   setBulk({ ...BULK_DEFAULT });
+//                 }}
+//               >
+//                 Clear all
+//               </button>
+//               <button className="btn" onClick={() => setModal(null)}>
+//                 Close
+//               </button>
+//               <button
+//                 className="btn p"
+//                 disabled={editLocked}
+//                 onClick={doBulk}
+//               >
+//                 Apply
+//               </button>
+//             </>
+//           }
+//         >
+//           <div className="note" style={{ marginTop: 0, marginBottom: 10 }}>
+//             {selIds.length} employee{selIds.length === 1 ? "" : "s"} selected
+//           </div>
+//           <div className="lb">Field to change</div>
+//           <select
+//             className="fld"
+//             disabled={editLocked}
+//             value={bulk.field}
+//             onChange={(e) => setBulk({ ...bulk, field: e.target.value })}
+//           >
+//             <option value="comp">Comp. Manager</option>
+//             <option value="app">Appraiser Tech-ED</option>
+//           </select>
+//           <div className="lb">Apply to</div>
+//           <select
+//             className="fld"
+//             disabled={editLocked}
+//             value={bulk.scope}
+//             onChange={(e) => setBulk({ ...bulk, scope: e.target.value })}
+//           >
+//             <option value="sel">Selected employees ({selIds.length})</option>
+//             {teScopes.map((s) => (
+//               <option key={s.id} value={`te:${s.id}`}>
+//                 {s.label}
+//               </option>
+//             ))}
+//           </select>
+//           <div className="lb">Assign to</div>
+//           <select
+//             className="fld"
+//             disabled={editLocked}
+//             value={bulk.person}
+//             onChange={(e) => setBulk({ ...bulk, person: e.target.value })}
+//           >
+//             <option value="">— choose —</option>
+//             {people.map((p) => (
+//               <option key={p.id} value={p.id}>
+//                 {p.name} · {p.roles.join(", ")}
+//               </option>
+//             ))}
+//           </select>
+//           <div className="lb">Reason (optional)</div>
+//           <input
+//             className="fld"
+//             disabled={editLocked}
+//             maxLength={2000}
+//             value={bulk.reason}
+//             onChange={(e) => setBulk({ ...bulk, reason: e.target.value })}
+//           />
+//           <div className="note">
+//             {isHR
+//               ? "HR Admin: applied immediately."
+//               : "Delegation assignments are saved directly to the Delegation table; Generate Appraisal Sheet applies them to the sheet."}
+//           </div>
+//         </Modal>
+//       )}
+//       {modal?.type === "reason" && (
+//         <Modal
+//           title={directAssignment(modal.field) ? "Confirm change" : "Send change to HR for approval"}
+//           onClose={() => setModal(null)}
+//           foot={
+//             <>
+//               <button className="btn" onClick={() => setModal(null)}>
+//                 Cancel
+//               </button>
+//               <button className="btn p" onClick={saveChange}>
+//                 {directAssignment(modal.field) ? "Save" : "Send to HR"}
+//               </button>
+//             </>
+//           }
+//         >
+//           <div className="chg">
+//             <b>
+//               {modal.row.id} · {modal.row.name}
+//             </b>
+//             <br />
+//             {FIELDS[modal.field]}: {nameOf(modal.row[modal.field]) || "—"}{" "}
+//             <span className="ar">→ {modal.person.name}</span>
+//           </div>
+//           <div className="lb">Reason (optional)</div>
+//           <textarea
+//             className="fld"
+//             autoFocus
+//             maxLength={2000}
+//             value={reason}
+//             onChange={(e) => setReason(e.target.value)}
+//           />
+//           <div className="note">
+//             {isHR
+//               ? "Applies immediately and is recorded in the audit trail."
+//               : "The current value stays until HR approves."}
+//           </div>
+//         </Modal>
+//       )}
+//       {modal?.type === "notice" && (
+//         <Modal
+//           title={modal.title}
+//           onClose={() => setModal(null)}
+//           foot={
+//             <button className="btn p" onClick={() => setModal(null)}>
+//               OK
+//             </button>
+//           }
+//         >
+//           {modal.body}
+//         </Modal>
+//       )}
+//       {modal?.type === "confirm" && (
+//         <Modal
+//           title={modal.title}
+//           onClose={() => setModal(null)}
+//           foot={
+//             <>
+//               <button className="btn" onClick={() => setModal(null)}>
+//                 Cancel
+//               </button>
+//               <button
+//                 className="btn p"
+//                 onClick={() => {
+//                   const ok = modal.ok;
+//                   setModal(null);
+//                   ok();
+//                 }}
+//               >
+//                 Confirm
+//               </button>
+//             </>
+//           }
+//         >
+//           {modal.body}
+//         </Modal>
+//       )}
+//       {modal?.type === "audit" && (
+//         <Modal
+//           title="Audit trail"
+//           wide
+//           onClose={() => setModal(null)}
+//           foot={
+//             <button className="btn" onClick={() => setModal(null)}>
+//               Close
+//             </button>
+//           }
+//         >
+//           {!audit.length ? (
+//             <div className="none">No entries yet.</div>
+//           ) : (
+//             <table className="aud">
+//               <thead>
+//                 <tr>
+//                   {[
+//                     "DATE & TIME",
+//                     "EMPLOYEE",
+//                     "FIELD",
+//                     "CHANGE",
+//                     "ACTION",
+//                     "BY",
+//                     "REMARKS",
+//                   ].map((h) => (
+//                     <th key={h}>{h}</th>
+//                   ))}
+//                 </tr>
+//               </thead>
+//               <tbody>
+//                 {audit.map((a, i) => (
+//                   <tr key={i}>
+//                     <td>{a.on}</td>
+//                     <td>{a.emp}</td>
+//                     <td>{a.field}</td>
+//                     <td>
+//                       {a.from || a.to
+//                         ? `${a.from || "—"} → ${a.to || "—"}`
+//                         : ""}
+//                     </td>
+//                     <td>{a.action}</td>
+//                     <td>
+//                       {a.by}
+//                       <br />
+//                       <span className="note">{a.role}</span>
+//                     </td>
+//                     <td>{a.why}</td>
+//                   </tr>
+//                 ))}
+//               </tbody>
+//             </table>
+//           )}
+//         </Modal>
+//       )}
+//       {toast && (
+//         <div className={"dg-toast " + (toast.err ? "err" : "ok")}>
+//           {toast.msg}
+//         </div>
+//       )}
+//     </div>
+//   );
+// }
+
+// function Modal({ title, children, foot, onClose, wide }) {
+//   return (
+//     <div
+//       className="dg-ov"
+//       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+//     >
+//       <div className={"mdl" + (wide ? " wide" : "")}>
+//         <div className="mh">{title}</div>
+//         <div className="mb">{children}</div>
+//         <div className="mf">{foot}</div>
+//       </div>
+//     </div>
+//   );
+// }
+
+// /* ---------------------------------------------------------------- styles */
+// const CSS = `
+// @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+// .dg,.dg *{box-sizing:border-box}
+// .dg{font-family:Inter,Arial,sans-serif;background:#f3f5f8;color:#1f2a37;font-size:13px;min-height:100%}
+// .dg button,.dg input,.dg select,.dg textarea{font-family:inherit;font-size:inherit}
+// .dg-pv{background:#e8f5f1;border-bottom:1px solid #b9dcc4;color:#146b5a;padding:7px 12px;font-size:12px;font-weight:600;display:flex;gap:10px;align-items:center}
+// .dg-pv select{border:1px solid #b9dcc4;border-radius:4px;padding:3px 6px;font-weight:600}
+// .dg-mq{background:#fff7e8;border-bottom:1px solid #f1d9a8;color:#8a5a06;padding:7px 12px;font-size:12px;font-weight:600}
+// .dg-mq.lock{background:#eef1f5;border-color:#d6dce4;color:#374151}
+// .dg-body{display:flex;gap:14px;padding:14px 12px;align-items:flex-start}
+// .dg-card{background:#fff;border:1px solid #dfe4ea;border-radius:10px;overflow:hidden}
+// .dg-main{flex:1;min-width:0}
+// .dg-ch{position:relative;background:#15365a;color:#fff;text-align:center;font-weight:800;font-size:15.5px;padding:10px}
+// .dg .dg-dflt{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#15365a;white-space:nowrap}
+// .dg-menu{position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:40}
+// .dg .dg-menubtn{background:#eef2f8;color:#15365a;border:1px solid #fff;border-radius:6px;padding:4px 12px;font-size:12px;font-weight:800;cursor:pointer}
+// .dg .dg-menubtn:hover{background:#fff}
+// .dg-menulist{position:absolute;right:0;top:calc(100% + 6px);min-width:150px;background:#fff;border:1px solid #E5E7EB;border-radius:8px;box-shadow:0 6px 20px rgba(15,42,68,.18);padding:4px;z-index:30;text-align:left}
+// .dg .dg-menulist button{display:block;width:100%;text-align:left;background:none;border:0;border-radius:6px;padding:8px 10px;font-size:12.5px;font-weight:600;color:#102A43;cursor:pointer}
+// .dg .dg-menulist button:hover{background:#eef2f8}
+// .dg-alert{margin:6px 0 2px;padding:8px 12px;border:1px solid #f0c36d;background:#fff8e6;color:#7a4a00;border-radius:8px;font-size:12.5px;line-height:1.4}
+// .dg-alert b{color:#94620a}
+// .dg-mets{display:flex;align-items:stretch;flex-wrap:wrap}
+// .dg-met{display:flex;align-items:baseline;gap:6px;padding:2px 14px;border-right:1px solid #e6eaef;white-space:nowrap}
+// .dg-met:first-child{padding-left:4px}.dg-met:last-child{border-right:none}
+// .dg-met .l{font-size:11.5px;color:#6b7685}.dg-met .v{font-size:16px;font-weight:800}
+// .dg-met.click{cursor:pointer;border-radius:5px}.dg-met.click:hover{background:#f6f8fa}.dg-met.click:focus-visible{outline:2px solid #17365d;outline-offset:-2px}
+// .dg-stats{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:1px solid #e6eaef}
+// .dg-st{padding:10px 14px;border-right:1px solid #e6eaef}.dg-st:last-child{border-right:none}
+// .dg-st .l{font-size:11.5px;color:#6b7685}.dg-st .v{font-size:17px;font-weight:800}
+// .dg-st.click{cursor:pointer}.dg-st.click:hover{background:#f6f8fa}.dg-st.click:focus-visible{outline:2px solid #17365d;outline-offset:-2px}
+// .dg-tb{display:flex;gap:8px;padding:10px 12px;align-items:center;border-bottom:1px solid #e6eaef;flex-wrap:wrap}
+// .dg .srch{border:1px solid #cfd8e1;border-radius:6px;padding:7px 11px;width:230px}
+// .dg .f{border:1px solid #cfd8e1;border-radius:6px;padding:6px 8px;color:#374151;background:#fff;max-width:190px}
+// .dg .btn{border:1px solid #cfd8e1;border-radius:6px;padding:7px 13px;font-weight:700;color:#15365a;background:#fff;cursor:pointer}
+// .dg .btn:hover{background:#f1f4f8}
+// .dg .btn.p{background:#1a8a74;border-color:#1a8a74;color:#fff}.dg .btn.p:hover{background:#157563}
+// .dg .btn.r{color:#b42318}
+// .dg .btn:disabled{opacity:.5;cursor:not-allowed}
+// .dg .btn.sm{padding:5px 12px;font-size:12px}
+// .dg-tw{overflow:auto;max-height:calc(100vh - 300px);min-height:220px;border-top:1px solid #cbd5e1}
+// .dg table{border-collapse:separate;border-spacing:0}
+// .dg table.dg-grid{font-family:Arial,Helvetica,sans-serif}
+// .dg .dg-grid th{position:sticky;background:#e9eef5;color:#24364d;font-size:11px;font-weight:700;text-align:left;padding:0;height:46px;border-right:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1;overflow:visible;z-index:3}
+// .dg .dg-grid tr.grp th{top:0;height:28px;background:#fff;text-align:center;font-size:10.5px;padding:3px 4px;border-bottom:1px solid #cbd5e1;z-index:4}
+// .dg .dg-grid tr.hd th{top:28px}
+// .dg .dg-grid th.sel,.dg .dg-grid td.sel{text-align:center;padding:0}
+// .dg .dg-grid .hc{display:flex;align-items:center;gap:4px;height:100%;padding:0 8px;min-height:46px}
+// .dg .dg-grid .hc>button{flex:0 0 auto}
+// .dg .dg-grid th.fz{position:sticky;z-index:6}
+// .dg .dg-grid tr.grp th.fz{z-index:7}
+// .dg .dg-grid td.fz{position:sticky;z-index:2;background:#fff}
+// .dg .dg-grid th:nth-child(2).fz,.dg .dg-grid td:nth-child(2).fz{border-right:2px solid #94a3b8}
+// .dg .dg-grid .hl{flex:1 1 0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+// .dg .dg-grid .rz{position:absolute;top:0;right:-2px;height:100%;width:5px;cursor:col-resize;touch-action:none;z-index:10}
+// .dg .dg-grid .rz:hover{background:rgba(23,54,93,.3)}
+// .dg th.g span{display:block;border-radius:4px;padding:3px}
+// .dg .g1 span{background:#eef1f5;color:#4b5563}.dg .g2 span{background:#e3f3ee;color:#146b5a}.dg .g3 span{background:#f3f4f6;color:#6b7280}
+// .dg .dg-grid td{padding:6px 8px;border-right:1px solid #e0e5ec;border-bottom:1px solid #e0e5ec;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:38px}
+// .dg td.ref{color:#6b7685}.dg td.nm{font-weight:700}
+// /* Row colours as on the Appraisal Sheet: banded rows, blue when selected, no hover change */
+// .dg .dg-grid tbody tr:nth-child(odd) td{background:#fbfcfe}
+// .dg .dg-grid tbody tr:nth-child(even) td{background:#f2f5f9}
+// .dg .dg-grid tbody tr.sel td{background:#dcebff}
+// .dg .in{border:1px solid #b9dcc4;background:#eff8f1;border-radius:5px;padding:4px 6px;width:100%;color:#1f2a37}
+// .dg .in.c{border-color:#e0914f;background:#fff4ea}
+// .dg .in:disabled{background:#f3f5f8;border-color:#dfe4ea;color:#4b5563}
+// .dg .tag{font-size:10.5px;padding:2px 8px;border-radius:9px;font-weight:700;white-space:nowrap}
+// .dg .tag.cf{background:#e8f5ee;color:#1e7a45}.dg .tag.nw{background:#e6efff;color:#1d4ed8}.dg .tag.hr{background:#fff1d6;color:#94620a}
+// .dg .tag.te{background:#efe8fb;color:#6b3fb0}.dg .tag.pd{background:#fde8e6;color:#b42318}.dg .tag.gr{background:#eef1f5;color:#4b5563}
+// .dg-tags{display:flex;flex-wrap:wrap;gap:6px;padding:8px 12px 2px}
+// .dg-tag{display:inline-flex;align-items:center;gap:6px;border:0;border-radius:999px;background:#e8eef6;color:#17365d;padding:3px 10px;font:inherit;font-size:11.5px;font-weight:600;cursor:pointer;max-width:100%}
+// .dg-tag:hover{background:#d8e3f1}
+// .dg-tag span{font-size:10px;opacity:.8}
+// .dg-foot{display:flex;padding:9px 12px;font-size:11.5px;color:#6b7685;gap:18px;align-items:center;flex-wrap:wrap;border-top:1px solid #eef1f4}
+// .dg .pg{display:flex;gap:6px;align-items:center}
+// .dg-help{padding:9px 12px 12px;font-size:11.5px;color:#6b7685;line-height:1.6;border-top:1px solid #eef1f4;background:#fbfcfd}
+// .dg-help b{color:#374151}
+// .dg .empty{padding:40px;text-align:center;color:#6b7685}
+// .dg-side{flex:0 0 auto;display:flex;flex-direction:row;align-self:stretch}
+// .dg-rail{display:flex;flex-direction:column;justify-content:center;align-items:stretch;min-height:160px}
+// .dg-ptab{writing-mode:vertical-rl;background:#173b63;color:#fff;border:0;border-radius:8px;padding:14px 7px;font:inherit;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap}
+// .dg-ptab:hover{background:#0c2740}
+// .dg-panel{width:280px;border:1px solid #E5E7EB;border-radius:12px;background:#fff;overflow:hidden;display:flex;flex-direction:column;align-self:flex-start}
+// .dg-panel .ph{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:10px 12px;color:#102A43}
+// .dg-panel .ph .tt{font-weight:800;font-size:14.5px}.dg-panel .ph .ss{font-size:11.5px;color:#6B7280;margin-top:2px}
+// .dg-panel .ph .x{border:none;background:none;cursor:pointer;font-size:14px;color:#6B7280;padding:2px 4px}
+// .dg-panel .ph .x:hover{color:#102A43}
+// .dg-panel .pb{padding:0 12px 12px;display:flex;flex-direction:column;min-height:0}
+// .dg .sh{padding:11px 13px;border-bottom:1px solid #e6eaef;display:flex;gap:9px;align-items:center}
+// .dg .ic{background:#1a8a74;color:#fff;border-radius:6px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 28px}
+// .dg .ic.o{background:#e0662f}
+// .dg .sh .tt{font-weight:800;font-size:14.5px}.dg .sh .ss{font-size:11.5px;color:#6b7685}
+// .dg .sb{padding:11px 13px}
+// .dg .lb{font-size:11px;color:#6b7685;margin:0 0 3px}
+// .dg .fld{border:1px solid #cfd8e1;border-radius:6px;padding:6px 9px;margin-bottom:9px;width:100%;background:#fff}
+// .dg textarea.fld{resize:vertical;min-height:54px}
+// .dg .note{font-size:11px;color:#8591a0;margin-top:7px;line-height:1.5}
+// .dg .rtabs{display:flex;align-items:center;gap:0;margin:0 -12px 10px;background:#FAFAFB;border-top:1px solid #E5E7EB;border-bottom:1px solid #E5E7EB;padding:0 12px}
+// .dg .rtabs .ptab{flex:0 0 auto;padding:9px 14px;border:none;background:none;font-size:13px;font-weight:600;color:#6B7280;cursor:pointer;border-bottom:2px solid transparent;display:flex;align-items:center;gap:6px}
+// .dg .rtabs .ptab:before{content:"";width:8px;height:8px;border-radius:50%;background:#2F6FED}
+// .dg .rtabs .ptab.on{color:#1D4FA8;font-weight:800;background:#E8F0FE;border-bottom-color:#2F6FED}
+// .dg .rq-list{max-height:calc(100vh - 360px);min-height:140px;overflow:auto}
+// .dg .req{border:1px solid #E5E7EB;border-radius:10px;padding:10px;margin-bottom:9px;background:#fff}
+// .dg .req .n{font-weight:800;color:#15365a;display:flex;justify-content:space-between;gap:6px}
+// .dg .req .m{color:#4b5563;font-size:11.8px;margin:4px 0 8px;line-height:1.5}
+// .dg .ar{color:#1a8a74;font-weight:700}
+// .dg .req .fld{font-size:11.5px;margin-bottom:7px}
+// .dg .none{color:#8591a0;font-size:12px;padding:10px 0}
+// .dg-toast{position:fixed;right:16px;bottom:16px;max-width:460px;padding:11px 14px;border-radius:8px;font-weight:600;font-size:12.5px;box-shadow:0 6px 20px rgba(15,42,68,.18);z-index:60}
+// .dg-toast.ok{background:#e8f5ee;color:#1e5c3a;border:1px solid #b9dcc4}
+// .dg-toast.err{background:#fde8e6;color:#8f1d14;border:1px solid #f3b8b1}
+// .dg-ov{position:fixed;inset:0;background:rgba(15,42,68,.45);display:flex;align-items:center;justify-content:center;z-index:50}
+// .dg .mdl{background:#fff;border-radius:10px;width:480px;max-width:94vw;max-height:88vh;overflow:auto}
+// .dg .mdl.wide{width:880px}
+// .dg .mdl .mh{background:#15365a;color:#fff;font-weight:800;padding:11px 14px;font-size:14.5px}
+// .dg .mdl .mb{padding:14px}
+// .dg .mdl .mf{padding:10px 14px;border-top:1px solid #e6eaef;display:flex;gap:8px;justify-content:flex-end}
+// .dg .chg{background:#f6f8fa;border-radius:6px;padding:9px;margin-bottom:10px;line-height:1.6}
+// .dg table.aud{width:100%;border-collapse:collapse}
+// .dg .aud th{font-size:11px;letter-spacing:.3px;color:#5b6675;text-align:left;padding:9px 8px;background:#f6f8fa;border-bottom:1px solid #e1e6ec;font-weight:700;white-space:nowrap}
+// .dg .aud td{white-space:normal;font-size:11.5px;vertical-align:top;padding:6px 8px;border-bottom:1px solid #eef1f4}
+// .dg .aud th{position:static}
+// @media(max-width:1100px){.dg-body{flex-direction:column}.dg-side{width:100%;flex:none}.dg-rail{flex-direction:row;justify-content:flex-end;min-height:0}.dg-ptab{writing-mode:horizontal-tb;padding:7px 14px}.dg-panel{width:100%}.dg-stats{grid-template-columns:1fr}}
+// `;
+
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
 import { NUMBER_OPS, TEXT_OPS } from "@/lib/appraisal-filters";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { useAppraisalRefresh } from "@/lib/appraisal-store";
-import { generateAppraisalSheet, payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { filterByLocation, useSelectedLocation } from "@/lib/location-store";
+import {
+  generateAppraisalSheet,
+  payrollCycleRequest,
+} from "@/lib/payroll-cycle-api";
 import { ProcessingOverlay } from "@/components/ui/processing-overlay";
 import {
   delegationGeneration,
@@ -45,15 +2515,22 @@ const ROSTER_PAGE_LIMIT = 5000;
 const COL_FILTERS_KEY = "delegation.colFilters.v1";
 const readSavedColFilters = () => {
   try {
-    const parsed = JSON.parse(window.sessionStorage.getItem(COL_FILTERS_KEY) || "{}");
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    const parsed = JSON.parse(
+      window.sessionStorage.getItem(COL_FILTERS_KEY) || "{}",
+    );
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
   } catch (_) {
     return {};
   }
 };
 const writeSavedColFilters = (filters) => {
   try {
-    window.sessionStorage.setItem(COL_FILTERS_KEY, JSON.stringify(filters || {}));
+    window.sessionStorage.setItem(
+      COL_FILTERS_KEY,
+      JSON.stringify(filters || {}),
+    );
   } catch (_) {
     // storage unavailable: filters still work for this visit
   }
@@ -83,7 +2560,9 @@ const DEFAULT_COMP_SOURCES = [
   { key: "te", label: "Tech-ED" },
 ];
 const testText = (raw, op, value) => {
-  const v = String(value ?? "").trim().toLowerCase();
+  const v = String(value ?? "")
+    .trim()
+    .toLowerCase();
   if (!v) return true;
   const t = String(raw ?? "").toLowerCase();
   switch (op) {
@@ -165,9 +2644,13 @@ const makeResolver = (list) => {
     const exactName = byUniqueName(s0);
     if (exactName) return exactName;
     // 2. "EMP001 - Name" / "Name - EMP001" / "Name (EMP001)": find the ID part.
-    const parts = low.split(/\s*-\s*|[()[\]|,;:/]+/).map((p) => p.trim()).filter(Boolean);
+    const parts = low
+      .split(/\s*-\s*|[()[\]|,;:/]+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
     for (const part of parts) if (byId.has(part)) return byId.get(part);
-    for (const tok of low.split(/[\s()[\],;:|/]+/)) if (byId.has(tok)) return byId.get(tok);
+    for (const tok of low.split(/[\s()[\],;:|/]+/))
+      if (byId.has(tok)) return byId.get(tok);
     // 3. A name left over once an unknown ID prefix/suffix is removed.
     for (const part of parts) {
       const hit = byUniqueName(part);
@@ -208,9 +2691,20 @@ export default function DelegationScreen({
   const [user, setUser] = useState({
     id: loggedInName,
     name: loggedInName,
-    role: isHRUser ? "HR Admin" : isTechEdUser ? "Tech-ED" : String(catalystUser?.role || ""),
+    role: isHRUser
+      ? "HR Admin"
+      : isTechEdUser
+        ? "Tech-ED"
+        : String(catalystUser?.role || ""),
   });
-  const [rows, setRows] = useState(() => initialRows || []);
+  const [allRows, setRows] = useState(() => initialRows || []);
+  // Delegation shows only the selected location's employees; saves and
+  // snapshots keep working on the complete roster (allRows).
+  const [selectedLocation] = useSelectedLocation();
+  const rows = useMemo(
+    () => filterByLocation(allRows, selectedLocation),
+    [allRows, selectedLocation],
+  );
   const [stagedChanges, setStagedChanges] = useState({});
   const resolveName = useMemo(() => makeResolver(rows), [rows]);
   const [activeCycleName, setActiveCycleName] = useState("");
@@ -302,9 +2796,12 @@ export default function DelegationScreen({
     // The chosen default is remembered per cycle in this browser.
     let saved = "";
     try {
-      saved = window.localStorage.getItem("dg-default-comp:" + activeCycleId) || "";
+      saved =
+        window.localStorage.getItem("dg-default-comp:" + activeCycleId) || "";
     } catch (_) {}
-    setDefaultComp(DEFAULT_COMP_SOURCES.some((o) => o.key === saved) ? saved : "");
+    setDefaultComp(
+      DEFAULT_COMP_SOURCES.some((o) => o.key === saved) ? saved : "",
+    );
   }, [activeCycleId]);
   const saveDefaultComp = (key) => {
     setDefaultComp(key);
@@ -413,7 +2910,9 @@ export default function DelegationScreen({
     }
     setRosterLoading(true);
     const startedGeneration = delegationGeneration();
-    const savedKey = delegationSnapshotKey(catalystUser?.email || catalystUser?.id || catalystUser?.user_id || "");
+    const savedKey = delegationSnapshotKey(
+      catalystUser?.email || catalystUser?.id || catalystUser?.user_id || "",
+    );
     let freshApplied = false;
     try {
       // First load only: show the last roster this user saw, at once, while
@@ -439,8 +2938,14 @@ export default function DelegationScreen({
       const cyclesPromise = payrollCycleRequest("cycles");
       const cycles = await cyclesPromise;
       const active = (Array.isArray(cycles) ? cycles : []).find((cycle) => {
-        const status = String(cycle.status ?? cycle.cycle_status ?? "").trim().toLowerCase();
-        const archived = ["true", "1", "yes"].includes(String(cycle.archived ?? "").trim().toLowerCase());
+        const status = String(cycle.status ?? cycle.cycle_status ?? "")
+          .trim()
+          .toLowerCase();
+        const archived = ["true", "1", "yes"].includes(
+          String(cycle.archived ?? "")
+            .trim()
+            .toLowerCase(),
+        );
         return status === "active" && !archived && !cycle.hidden;
       });
       if (!active) {
@@ -450,8 +2955,16 @@ export default function DelegationScreen({
         setRows([]);
         return;
       }
-      const cycleId = String(active.id || active.appraisal_cycle_id || active.cycle_id || active.ROWID || "");
-      const cycleName = String(active.name || active.cycle_name || active.appraisal_year || "");
+      const cycleId = String(
+        active.id ||
+          active.appraisal_cycle_id ||
+          active.cycle_id ||
+          active.ROWID ||
+          "",
+      );
+      const cycleName = String(
+        active.name || active.cycle_name || active.appraisal_year || "",
+      );
       setActiveCycleId(cycleId);
       setActiveCycleName(cycleName);
 
@@ -470,11 +2983,21 @@ export default function DelegationScreen({
       const all = await firstPromise;
       const unique = new Map();
       all.forEach((item) => {
-        const id = String(item.emp_id || item.employee_id || "").trim().toLowerCase();
+        const id = String(item.emp_id || item.employee_id || "")
+          .trim()
+          .toLowerCase();
         if (!id) return;
         const previous = unique.get(id);
-        if (!previous || String(item.MODIFIEDTIME || item.CREATEDTIME || item.ROWID || "") >=
-            String(previous.MODIFIEDTIME || previous.CREATEDTIME || previous.ROWID || "")) {
+        if (
+          !previous ||
+          String(item.MODIFIEDTIME || item.CREATEDTIME || item.ROWID || "") >=
+            String(
+              previous.MODIFIEDTIME ||
+                previous.CREATEDTIME ||
+                previous.ROWID ||
+                "",
+            )
+        ) {
           unique.set(id, item);
         }
       });
@@ -485,10 +3008,20 @@ export default function DelegationScreen({
         director: String(item.director || item.director_name || "").trim(),
         teId: String(item.appraiser_tech_ed || "").trim(),
         te: String(item.appraiser_tech_ed || "").trim(),
-        comp: String(item.delegation_comp_manager || item.comp_manager || "").trim(),
+        comp: String(
+          item.delegation_comp_manager || item.comp_manager || "",
+        ).trim(),
         app: String(item.appraiser_tech_ed || "").trim(),
-        prevComp: String(item.previous_comp_manager || item.prev_comp_manager || "").trim(),
-        prevApp: String(item.previous_appraiser_tech_ed || item.previous_tech_ed || item.prev_appraiser_tech_ed || "").trim(),
+        location: String(item.location || item.work_location || "").trim(),
+        prevComp: String(
+          item.previous_comp_manager || item.prev_comp_manager || "",
+        ).trim(),
+        prevApp: String(
+          item.previous_appraiser_tech_ed ||
+            item.previous_tech_ed ||
+            item.prev_appraiser_tech_ed ||
+            "",
+        ).trim(),
         base: "",
         lastRole: "",
       }));
@@ -496,7 +3029,11 @@ export default function DelegationScreen({
       setRows(mapped);
       // Keep this roster as the copy shown at once on the next visit (an empty
       // roster replaces the old copy, so it is not shown again).
-      writeDelegationSnapshot(savedKey, { rows: mapped, cycleId, cycleName }, startedGeneration);
+      writeDelegationSnapshot(
+        savedKey,
+        { rows: mapped, cycleId, cycleName },
+        startedGeneration,
+      );
       return mapped;
     } catch (error) {
       freshApplied = true;
@@ -515,7 +3052,8 @@ export default function DelegationScreen({
     window.addEventListener("appraisal:cycle-updated", refreshRoster);
     // Load the active cycle's roster when the Delegation screen is mounted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    return () => window.removeEventListener("appraisal:cycle-updated", refreshRoster);
+    return () =>
+      window.removeEventListener("appraisal:cycle-updated", refreshRoster);
   }, [initialRows]);
   const say = (msg, err) => {
     setToast({ msg, err });
@@ -572,7 +3110,9 @@ export default function DelegationScreen({
         uniquePeople.set(key, { id: label, name: label, roles: [] });
       }
     });
-    return Array.from(uniquePeople.values()).sort((a, b) => a.name.localeCompare(b.name));
+    return Array.from(uniquePeople.values()).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    );
   }, [rows]);
   const pending = myReqs.filter((q) => q.status === "Pending");
   const colValue = (r, key) => {
@@ -736,8 +3276,10 @@ export default function DelegationScreen({
 
   // HR assignment edits stay local until the page-level Save is clicked.
   const compDirect = (field) => field === "comp" && isHR && canApprove;
-  const hrDirect = (field) => isHR && canApprove && ["comp", "app"].includes(field);
-  const directAssignment = (field) => hrDirect(field) || (isTechEdUser && ["comp", "app"].includes(field));
+  const hrDirect = (field) =>
+    isHR && canApprove && ["comp", "app"].includes(field);
+  const directAssignment = (field) =>
+    hrDirect(field) || (isTechEdUser && ["comp", "app"].includes(field));
   const applyDirectChange = async (target, field, personId, why) => {
     const key = target.id + "::" + field;
     setStagedChanges((current) => ({
@@ -792,7 +3334,15 @@ export default function DelegationScreen({
     if (directAssignment(field)) {
       await applyDirectChange(row, field, person.id, whyText);
       setRows((rs) =>
-        applyTo(rs, row.id, field, person.id, isHR ? "HR Admin" : "Tech-ED", whyText, user.name),
+        applyTo(
+          rs,
+          row.id,
+          field,
+          person.id,
+          isHR ? "HR Admin" : "Tech-ED",
+          whyText,
+          user.name,
+        ),
       );
       log({
         emp: row.id,
@@ -802,7 +3352,12 @@ export default function DelegationScreen({
         action: "Staged",
         why: whyText,
       });
-      say(FIELDS[field] + " staged for " + row.id + ". Click Save to update Delegation.");
+      say(
+        FIELDS[field] +
+          " staged for " +
+          row.id +
+          ". Click Save to update Delegation.",
+      );
       setModal(null);
       return;
     }
@@ -853,14 +3408,23 @@ export default function DelegationScreen({
       setRows((rs) =>
         targets.reduce(
           (acc, { r, value }) =>
-            applyTo(acc, r.id, "comp", value, isHR ? "HR Admin" : "Tech-ED", why, user.name),
+            applyTo(
+              acc,
+              r.id,
+              "comp",
+              value,
+              isHR ? "HR Admin" : "Tech-ED",
+              why,
+              user.name,
+            ),
           rs,
         ),
       );
     }
     try {
       for (const { r, value } of targets) {
-        if (directAssignment("comp")) await applyDirectChange(r, "comp", value, why);
+        if (directAssignment("comp"))
+          await applyDirectChange(r, "comp", value, why);
         else
           await submitDelegationRequest({
             empId: r.id,
@@ -890,7 +3454,9 @@ export default function DelegationScreen({
         to: source.label,
         why: `${done.length} employee(s): ${why}`,
       });
-      say(`Comp. Manager set to ${source.label} for ${done.length} employee(s). Click Save to keep the Delegation changes.`);
+      say(
+        `Comp. Manager set to ${source.label} for ${done.length} employee(s). Click Save to keep the Delegation changes.`,
+      );
     } else if (done.length) {
       say(`${done.length} request(s) sent to HR for approval (${no}).`);
     }
@@ -986,14 +3552,24 @@ export default function DelegationScreen({
                 done.push(r);
               }
             } catch (error) {
-              say(error?.message || "Unable to update " + FIELDS[field] + ".", true);
+              say(
+                error?.message || "Unable to update " + FIELDS[field] + ".",
+                true,
+              );
             }
             if (done.length) {
-              
               setRows((rs) =>
                 done.reduce(
                   (acc, r) =>
-                    applyTo(acc, r.id, field, person, isHR ? "HR Admin" : "Tech-ED", why.trim(), user.name),
+                    applyTo(
+                      acc,
+                      r.id,
+                      field,
+                      person,
+                      isHR ? "HR Admin" : "Tech-ED",
+                      why.trim(),
+                      user.name,
+                    ),
                   rs,
                 ),
               );
@@ -1003,7 +3579,12 @@ export default function DelegationScreen({
                 to: nameOf(person),
                 why: `${done.length} employee(s): ${why.trim()}`,
               });
-              say(FIELDS[field] + " staged for " + done.length + " employee(s). Click Save to keep the Delegation changes.");
+              say(
+                FIELDS[field] +
+                  " staged for " +
+                  done.length +
+                  " employee(s). Click Save to keep the Delegation changes.",
+              );
             }
             await loadRequests().catch(() => {});
           })();
@@ -1191,7 +3772,7 @@ export default function DelegationScreen({
           );
           return;
         }
-        let rs = rows;
+        let rs = allRows;
         pending
           .filter((q) => q.requestType !== "screen")
           .forEach(
@@ -1238,10 +3819,13 @@ export default function DelegationScreen({
         setStagedChanges({});
         await loadRoster();
       }
-      const result = await generateAppraisalSheet(activeCycleId, (done, remaining) => {
-        const all = done + remaining;
-        if (all > 0) setSheetProgress(Math.min(95, (done / all) * 95));
-      });
+      const result = await generateAppraisalSheet(
+        activeCycleId,
+        (done, remaining) => {
+          const all = done + remaining;
+          if (all > 0) setSheetProgress(Math.min(95, (done / all) * 95));
+        },
+      );
       // The Appraisal_Sheet row count is the source of truth for Budget
       // Distribution Current Count. Refresh the shared budget roster as soon
       // as generation/add/remove completes.
@@ -1280,7 +3864,9 @@ export default function DelegationScreen({
       } else {
         setModal({
           type: "notice",
-          title: d.alreadyGenerated ? "Appraisal Sheet updated" : "Appraisal Sheet generated",
+          title: d.alreadyGenerated
+            ? "Appraisal Sheet updated"
+            : "Appraisal Sheet generated",
           body: summary,
         });
       }
@@ -1348,17 +3934,27 @@ export default function DelegationScreen({
     try {
       const response = await catalystFetch(ACCESS_API_URL + "delegation/save", {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
         body: JSON.stringify({
           cycleId: activeCycleId,
           changes: changes.map(({ empId, field, assignment, reason }) => ({
-            empId, field, assignment, reason,
+            empId,
+            field,
+            assignment,
+            reason,
           })),
         }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || payload.ok === false || payload.success === false) {
-        throw new Error(payload.error || payload.message || "Unable to save Delegation changes.");
+        throw new Error(
+          payload.error ||
+            payload.message ||
+            "Unable to save Delegation changes.",
+        );
       }
       setStagedChanges({});
       // The grid already reflects these staged assignments. Save also writes
@@ -1370,7 +3966,11 @@ export default function DelegationScreen({
         window.dispatchEvent(new CustomEvent("appraisal:budget-data-updated"));
       }
       say(
-        "Saved " + changes.length + " delegation change(s) for " + displayCycleName + "." +
+        "Saved " +
+          changes.length +
+          " delegation change(s) for " +
+          displayCycleName +
+          "." +
           (sheetRows > 0
             ? " The Appraisal Sheet is updated."
             : isHR
@@ -1485,7 +4085,8 @@ export default function DelegationScreen({
       )}
       {isHR && !locked && pending.length > 0 && (
         <div className="dg-mq">
-          ⚠ {pending.length} delegation request(s) from Tech-EDs awaiting your approval.
+          ⚠ {pending.length} delegation request(s) from Tech-EDs awaiting your
+          approval.
         </div>
       )}
 
@@ -1536,8 +4137,22 @@ export default function DelegationScreen({
             <div className="dg-mets">
               {[
                 ["Total Employees", scoped.length, "#1f2a37", null],
-                ["Employee without Comp. Manager", withoutComp, "#94620a", null],
-                ...(isHR ? [["Pending HR Approval", pending.length, "#b42318", () => setReqOpen(true)]] : []),
+                [
+                  "Employee without Comp. Manager",
+                  withoutComp,
+                  "#94620a",
+                  null,
+                ],
+                ...(isHR
+                  ? [
+                      [
+                        "Pending HR Approval",
+                        pending.length,
+                        "#b42318",
+                        () => setReqOpen(true),
+                      ],
+                    ]
+                  : []),
               ].map(([l, v, c, onClick]) => (
                 <div
                   className={"dg-met" + (onClick ? " click" : "")}
@@ -1588,28 +4203,39 @@ export default function DelegationScreen({
             {(isHR || isTechEdUser) && (
               <button
                 className="btn p"
-                disabled={editLocked || !rows.length || rosterLoading || !Object.keys(stagedChanges).length}
+                disabled={
+                  editLocked ||
+                  !rows.length ||
+                  rosterLoading ||
+                  !Object.keys(stagedChanges).length
+                }
                 title="Save delegation changes and update matching existing Appraisal Sheet rows"
                 onClick={saveDelegation}
               >
-                Save{Object.keys(stagedChanges).length ? " (" + Object.keys(stagedChanges).length + ")" : ""}
+                Save
+                {Object.keys(stagedChanges).length
+                  ? " (" + Object.keys(stagedChanges).length + ")"
+                  : ""}
               </button>
             )}
-            {(isHR || isTechEdUser) && Object.keys(stagedChanges).length > 0 && (
-              <button
-                className="btn"
-                disabled={rosterLoading || sheetBusy}
-                title="Discard unsaved changes and go back to the last saved Delegation"
-                onClick={discardUnsaved}
-              >
-                Discard
-              </button>
-            )}
+            {(isHR || isTechEdUser) &&
+              Object.keys(stagedChanges).length > 0 && (
+                <button
+                  className="btn"
+                  disabled={rosterLoading || sheetBusy}
+                  title="Discard unsaved changes and go back to the last saved Delegation"
+                  onClick={discardUnsaved}
+                >
+                  Discard
+                </button>
+              )}
             <ProcessingOverlay open={sheetBusy} progress={sheetProgress} />
             {isHR && (
               <button
                 className="btn p"
-                disabled={!activeCycleId || !rows.length || rosterLoading || sheetBusy}
+                disabled={
+                  !activeCycleId || !rows.length || rosterLoading || sheetBusy
+                }
                 title="Apply the saved Delegation changes to the Appraisal Sheet and open it"
                 onClick={generateSheet}
               >
@@ -1621,11 +4247,11 @@ export default function DelegationScreen({
           {withoutComp > 0 && (isHR || isTechEdUser) && !rosterLoading && (
             <div className="dg-alert" role="alert">
               <b>Comp. Manager not assigned</b> for {withoutComp} employee
-              {withoutComp === 1 ? "" : "s"} (not set, or not found in
-              Employee Master). Please set the Comp. Manager in the grid below
-              and click Save. When the Appraisal Sheet is generated the
-              Appraiser Tech-ED is used by default; if that is not assigned
-              either, the Comp. Manager stays blank.
+              {withoutComp === 1 ? "" : "s"} (not set, or not found in Employee
+              Master). Please set the Comp. Manager in the grid below and click
+              Save. When the Appraisal Sheet is generated the Appraiser Tech-ED
+              is used by default; if that is not assigned either, the Comp.
+              Manager stays blank.
             </div>
           )}
 
@@ -1648,12 +4274,30 @@ export default function DelegationScreen({
 
           <div className="dg-tw">
             {rosterLoading && !showingSaved && showRosterLoading ? (
-              <div className="empty" role="status">Loading delegation data…</div>
+              <div className="empty" role="status">
+                Loading delegation data…
+              </div>
             ) : rosterLoading && !showingSaved ? null : !scoped.length ? (
-              <div className="empty" style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
-                {activeCycleId ? "No delegation rows are available for " + displayCycleName + "." : "No active appraisal cycle. Create or activate a cycle to start delegation."}
+              <div
+                className="empty"
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                {activeCycleId
+                  ? "No delegation rows are available for " +
+                    displayCycleName +
+                    "."
+                  : "No active appraisal cycle. Create or activate a cycle to start delegation."}
                 {activeCycleId && (
-                  <button className="btn p" type="button" onClick={generateDelegation}>
+                  <button
+                    className="btn p"
+                    type="button"
+                    onClick={generateDelegation}
+                  >
                     Generate / Fetch Delegation Data
                   </button>
                 )}
@@ -1783,10 +4427,7 @@ export default function DelegationScreen({
                               <td key={f}>
                                 <select
                                   className={
-                                    "in" +
-                                    (prev && cur !== prev
-                                      ? " c"
-                                      : "")
+                                    "in" + (prev && cur !== prev ? " c" : "")
                                   }
                                   disabled={editLocked}
                                   value={cur}
@@ -1907,37 +4548,38 @@ export default function DelegationScreen({
             <b>How it works:</b>{" "}
             {isHR
               ? "Tech-ED and Reporting Manager come from the Employee Master. Comp. Manager defaults to last cycle's; for new employees it defaults to the Tech-ED. Save writes your assignment changes directly to the Delegation table. Generate Appraisal Sheet applies the saved assignments to the sheet."
-              : 'You see employees whose Tech-ED is you. Your Comp. Manager and Appraiser Tech-ED changes are saved directly to the Delegation table. Generate Appraisal Sheet applies the saved assignments to the sheet.'}
+              : "You see employees whose Tech-ED is you. Your Comp. Manager and Appraiser Tech-ED changes are saved directly to the Delegation table. Generate Appraisal Sheet applies the saved assignments to the sheet."}
           </div>
         </div>
 
         {/* HR approval panel only. Tech-Ed assignments are direct saves now. */}
-        {isHR && <div className={"dg-side" + (reqOpen ? " open" : "")}>
-          {reqOpen ? (
-            <div className="dg-panel">
-              <div className="ph">
-                <div>
-                  <div className="tt">
-                    {isHR ? "Pending approvals" : "My requests"}
+        {isHR && (
+          <div className={"dg-side" + (reqOpen ? " open" : "")}>
+            {reqOpen ? (
+              <div className="dg-panel">
+                <div className="ph">
+                  <div>
+                    <div className="tt">
+                      {isHR ? "Pending approvals" : "My requests"}
+                    </div>
+                    <div className="ss">
+                      {isHR
+                        ? "Requests raised by Tech-EDs"
+                        : "Changes you sent to HR"}
+                    </div>
                   </div>
-                  <div className="ss">
-                    {isHR
-                      ? "Requests raised by Tech-EDs"
-                      : "Changes you sent to HR"}
-                  </div>
+                  <button
+                    type="button"
+                    className="x"
+                    onClick={() => setReqOpen(false)}
+                    title="Close"
+                    aria-label="Close pending approvals"
+                  >
+                    ✕
+                  </button>
                 </div>
-                <button
-                  type="button"
-                  className="x"
-                  onClick={() => setReqOpen(false)}
-                  title="Close"
-                  aria-label="Close pending approvals"
-                >
-                  ✕
-                </button>
-              </div>
-              <div className="pb">
-                <div className="rtabs">
+                <div className="pb">
+                  <div className="rtabs">
                     {["Pending", "Decided"].map((t) => (
                       <button
                         key={t}
@@ -2069,23 +4711,24 @@ export default function DelegationScreen({
                       </div>
                     ))}
                   </div>
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="dg-rail">
-              <button
-                type="button"
-                className="dg-ptab"
-                onClick={() => setReqOpen(true)}
-                title="Open pending approvals"
-                aria-expanded="false"
-              >
-                {isHR ? "Pending approvals" : "My requests"} ({pending.length})
-              </button>
-            </div>
-          )}
-        </div>}
-
+            ) : (
+              <div className="dg-rail">
+                <button
+                  type="button"
+                  className="dg-ptab"
+                  onClick={() => setReqOpen(true)}
+                  title="Open pending approvals"
+                  aria-expanded="false"
+                >
+                  {isHR ? "Pending approvals" : "My requests"} ({pending.length}
+                  )
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ------------------------------ modals */}
@@ -2110,11 +4753,7 @@ export default function DelegationScreen({
               <button className="btn" onClick={() => setModal(null)}>
                 Close
               </button>
-              <button
-                className="btn p"
-                disabled={editLocked}
-                onClick={doBulk}
-              >
+              <button className="btn p" disabled={editLocked} onClick={doBulk}>
                 Apply
               </button>
             </>
@@ -2178,7 +4817,11 @@ export default function DelegationScreen({
       )}
       {modal?.type === "reason" && (
         <Modal
-          title={directAssignment(modal.field) ? "Confirm change" : "Send change to HR for approval"}
+          title={
+            directAssignment(modal.field)
+              ? "Confirm change"
+              : "Send change to HR for approval"
+          }
           onClose={() => setModal(null)}
           foot={
             <>
@@ -2333,9 +4976,9 @@ function Modal({ title, children, foot, onClose, wide }) {
 
 /* ---------------------------------------------------------------- styles */
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 .dg,.dg *{box-sizing:border-box}
-.dg{font-family:Inter,Arial,sans-serif;background:#f3f5f8;color:#1f2a37;font-size:13px;min-height:100%}
+.dg{font-family:Manrope,Arial,sans-serif;background:#f3f5f8;color:#1f2a37;font-size:13px;min-height:100%}
 .dg button,.dg input,.dg select,.dg textarea{font-family:inherit;font-size:inherit}
 .dg-pv{background:#e8f5f1;border-bottom:1px solid #b9dcc4;color:#146b5a;padding:7px 12px;font-size:12px;font-weight:600;display:flex;gap:10px;align-items:center}
 .dg-pv select{border:1px solid #b9dcc4;border-radius:4px;padding:3px 6px;font-weight:600}
