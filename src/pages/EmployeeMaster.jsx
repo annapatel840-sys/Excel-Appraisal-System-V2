@@ -2022,12 +2022,12 @@ export function EmployeeMaster() {
       showBanner("Value required", "Enter a value before applying the change.", true);
       return;
     }
-    if (field === "email" && !/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(nextValue)) {
+    if (field === "email" && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(nextValue)) {
       showBanner("Invalid email", "Enter a valid email address.", true);
       return;
     }
     if (["orgExp", "totalExp", "currentSalary"].includes(field) &&
-        (!Number.isFinite(Number(nextValue.replace(/[₹,%\\s]/g, ""))) || Number(nextValue.replace(/[₹,%\\s]/g, "")) < 0)) {
+        (!Number.isFinite(Number(nextValue.replace(/[₹,%\s]/g, ""))) || Number(nextValue.replace(/[₹,%\s]/g, "")) < 0)) {
       showBanner("Invalid number", `${definition.label} must be a valid non-negative number.`, true);
       return;
     }
