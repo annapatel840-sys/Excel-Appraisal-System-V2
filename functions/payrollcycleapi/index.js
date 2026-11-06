@@ -230,7 +230,11 @@ async function checkAccess(req) {
 function requirePayrollAccess(a, resource, method) {
   if (resource === "session") return;
   if ((resource === "cycles" || resource === "schema" || resource === "locations") && method === "GET") return;
-  if (resource.startsWith("cycles/") || (resource === "locations" && method === "POST")) {
+  if (resource === "locations" && method === "POST") {
+    access.requireScreen(a, "locationMaster", "edit");
+    return;
+  }
+  if (resource.startsWith("cycles/")) {
     access.requireScreen(a, "cycleMaster", "edit");
     return;
   }
@@ -260,15 +264,8 @@ function requirePayrollAccess(a, resource, method) {
     return;
   }
   if (resource === "generate-sheet" && method === "POST") {
-    // Generate rebuilds the whole Active cycle's Appraisal Sheet: HR only.
-    // A Tech-Ed's Delegation Save writes their changes straight onto the
-    // Appraisal Sheet (accessapi /delegation/save), without Generate.
-    // (Dry run without a resolved role: nothing to check, like requireScreen;
-    // routeRequest still refuses a Tech-Ed write in that mode.)
-    if (a.role !== "hr" && (a.enforced || a.role)) {
-      throw new access.HttpError(403, "Only HR can generate the Appraisal Sheet.");
-    }
-    access.requireScreen(a, "cycleMaster", "edit");
+    if (a.role === "techEd") access.requireScreen(a, "delegation", "edit");
+    else access.requireScreen(a, "cycleMaster", "edit");
     return;
   }
   // import: the Upload screen's Payroll / Review and Feedback upload.
@@ -1030,11 +1027,8 @@ async function applyEligibilityCriteria(tables, body, actor) {
   if (String(cycle.status || "").trim().toLowerCase() !== "active" || cycle.archived || cycle.hidden) {
     throw new ApiError("Eligibility can be changed only for the Active appraisal cycle.", 409);
   }
-  if (
-    await eligibilityCriteriaWasApplied(tables, cycleId) &&
-    body.replaceCriteria !== true
-  ) {
-    throw new ApiError("Apply Criteria has already been used for this appraisal cycle. Select Edit Criteria before applying changes.", 409);
+  if (await eligibilityCriteriaWasApplied(tables, cycleId)) {
+    throw new ApiError("Apply Criteria has already been used for this appraisal cycle. It is locked for this cycle.", 409);
   }
 
   // Ensure all active employees have an initial Eligible row and retain

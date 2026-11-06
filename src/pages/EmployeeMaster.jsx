@@ -56,6 +56,7 @@ import DelegationScreen from "@/components/employee-master/DelegationScreen";
 import AccessPage from "@/components/employee-master/AccessPage";
 import { HrDashboardPage } from "@/components/employee-master/HrDashboardPage";
 import { HrOperationsNav } from "@/components/employee-master/HrOperationsNav";
+import { ProcessingOverlay } from "@/components/ui/processing-overlay";
 import { HR_TAB_SCREENS, useAccess } from "@/lib/access-store";
 import { eligibilitySnapshotKey, readEligibilitySnapshot, writeEligibilitySnapshot, clearEligibilitySnapshot } from "@/lib/roster-snapshot";
 
@@ -662,6 +663,7 @@ export function EmployeeMaster() {
   const [eligibilityCriteriaApplied, setEligibilityCriteriaApplied] = useState(false);
   const [delegationGenerated, setDelegationGenerated] = useState(false);
   const [eligibilityResetConfirm, setEligibilityResetConfirm] = useState(false);
+  const [eligibilityBusy, setEligibilityBusy] = useState(false);
   // Full Employee Master (all pages). The Eligibility List starts empty for a
   // cycle, so the criteria panel and "Add An Employee" read from this list.
   const [eligibilityMasterEmployees, setEligibilityMasterEmployees] = useState([]);
@@ -2546,6 +2548,7 @@ export function EmployeeMaster() {
 
   const confirmEditRegenerateEligibility = async () => {
     setEligibilityResetConfirm(false);
+    setEligibilityBusy(true);
     try {
       const result = await payrollCycleRequest("eligibility", {
         method: "POST",
@@ -2564,45 +2567,37 @@ export function EmployeeMaster() {
       }));
     } catch (error) {
       showBanner("Unable to reset eligibility", error?.message || "Please try again.", true);
+    } finally {
+      setEligibilityBusy(false);
     }
   };
 
-  const generateDelegationFromEligibility = () => {
+  const generateDelegationFromEligibility = async () => {
     if (!canEditEmployees || !eligibilityCycleId || !eligibilityCriteriaApplied) return;
-
-    const cycleId = String(eligibilityCycleId);
-    // Navigate immediately; the expensive write continues in the background.
-    // The Delegation screen displays its saved snapshot while the committed
-    // roster is being prepared, then refreshes when the completion event fires.
-    window.dispatchEvent(new CustomEvent("appraisal:delegation-generation-started", {
-      detail: { cycleId }
-    }));
-    goToTab("delegation");
-
-    void (async () => {
-      try {
-        const response = await catalystFetch(
-          catalystFunctionUrl("accessapi") + "delegation/fill",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Accept: "application/json" },
-            body: JSON.stringify({ cycleId, replace: true }),
-          }
-        );
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || payload.ok === false || payload.success === false) {
-          throw new Error(payload.error || payload.message || "Delegation generation failed.");
+    setEligibilityBusy(true);
+    try {
+      const response = await catalystFetch(
+        catalystFunctionUrl("accessapi") + "delegation/fill",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Accept: "application/json" },
+          body: JSON.stringify({ cycleId: eligibilityCycleId, replace: true }),
         }
-        setDelegationGenerated(true);
-        window.dispatchEvent(new CustomEvent("appraisal:delegation-generated", {
-          detail: { cycleId, saved: Number(payload.inserted || 0) }
-        }));
-      } catch (error) {
-        window.dispatchEvent(new CustomEvent("appraisal:delegation-generation-failed", {
-          detail: { cycleId, message: error?.message || "Please try again." }
-        }));
+      );
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || payload.ok === false || payload.success === false) {
+        throw new Error(payload.error || payload.message || "Delegation generation failed.");
       }
-    })();
+      setDelegationGenerated(true);
+      window.dispatchEvent(new CustomEvent("appraisal:delegation-generated", {
+        detail: { cycleId: eligibilityCycleId }
+      }));
+      goToTab("delegation");
+    } catch (error) {
+      showBanner("Delegation generation failed", error?.message || "Please try again.", true);
+    } finally {
+      setEligibilityBusy(false);
+    }
   };
 
   /* ============================================================
@@ -3110,6 +3105,7 @@ export function EmployeeMaster() {
             EMPLOYEE MASTER AUDIT HISTORY
             ====================================================== */}
 
+        <ProcessingOverlay open={eligibilityBusy} />
         {eligibilityResetConfirm && (
           <div
             role="presentation"

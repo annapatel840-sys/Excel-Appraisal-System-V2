@@ -487,7 +487,18 @@ function renderHeaderBudget(){
   }
   kp("kUtil",b0.util,b1?b1.util:b0.util);
 }
-function renderStrip(){
+/* loading screen while Apply / Restore saves (logo, percentage bar, wait message) */
+var busyEl=null;
+function updateBusy(){
+  var on=!!(S.busy&&S.prog);
+  if(!on){if(busyEl){busyEl.style.display="none"}return}
+  if(!busyEl){busyEl=document.createElement("div");busyEl.className="bo-busy";busyEl.setAttribute("role","alertdialog");busyEl.setAttribute("aria-busy","true");
+    busyEl.innerHTML=(cfg.logoUrl?'<img src="'+esc(cfg.logoUrl)+'" alt="Wissen">':'')+'<div class="bb-bar"><i></i></div><div class="bb-pct"></div><div class="bb-msg">Please wait while this is under process</div>';
+    root.appendChild(busyEl)}
+  var tot=S.prog.total||0,pc=tot?Math.min(100,Math.round(S.prog.done/tot*100)):0;
+  busyEl.style.display="flex";busyEl.querySelector(".bb-bar i").style.width=pc+"%";busyEl.querySelector(".bb-pct").textContent=pc+"%";
+}
+function renderStrip(){updateBusy();
   var h="";
   if(S.locked){
     h='<div class="strip warn"><b>Cycle Locked</b><span>'+esc(S.lockReason||"Edits are allowed only while the cycle is Active, Start Appraisal is done and Finalisation is not.")+' Bulk changes are switched off.</span></div>';
@@ -751,7 +762,7 @@ function mergeRows(rows){
 /* one call per 500 changes, never splitting one employee's changes (each call is all-or-nothing on the server).
    The screen only shows "n of N done" (in rows); the chunking stays behind the scenes. Demo mode uses small chunks and a short pause so the bar can be seen. */
 var DEMO_CHUNK=12,DEMO_DELAY=450;
-function chunkByRow(changes,max){var out=[],cur=[],last=null;changes.forEach(function(c){if(cur.length>=max&&c.empId!==last){out.push(cur);cur=[]}cur.push(c);last=c.empId});if(cur.length)out.push(cur);return out}
+function chunkByRow(changes,max){var out=[],cur=[],seen={},rows=0;changes.forEach(function(c){if(!seen[c.empId]){if(rows>=max){out.push(cur);cur=[];seen={};rows=0}seen[c.empId]=1;rows++}cur.push(c)});if(cur.length)out.push(cur);return out}   /* max = rows per batch (500), one row is never split */
 function rowsIn(list){var m={},n=0;list.forEach(function(c){if(!m[c.empId]){m[c.empId]=1;n++}});return n}
 function postChanges(changes,source,meta){
   var chunks=chunkByRow(changes,apiMode()?500:DEMO_CHUNK);
@@ -765,7 +776,7 @@ function postChanges(changes,source,meta){
       saved+=Number(res.saved)||ch.length;done+=ch.length;S.prog.done+=rowsIn(ch);renderStrip();renderFold();
       (res.notes||[]).forEach(function(n){notes.push(typeof n==="string"?n:(n.message||n.m||n.note||JSON.stringify(n)))});
       if(res.rows)lastRows=res.rows;
-      return next();
+      return new Promise(function(r){setTimeout(r,30)}).then(next);
     },function(err){err.done=done;err.total=changes.length;throw err});
   }
   return next();
@@ -1539,7 +1550,7 @@ function pivotTab(c){
   var P=pvBuild();
   function sel(id,list,cur,none){return '<select id="'+id+'">'+(none?'<option value="">— none —</option>':'')+list.map(function(f){return '<option value="'+f.id+'"'+(f.id===cur?' selected':'')+'>'+esc(f.label)+'</option>'}).join("")+'</select>'}
   var h='<div class="wi wp pvt"><div class="pvpre"><span>Start from</span>'+Object.keys(PV_PRESETS).map(function(k){return '<button type="button" data-pvpre="'+k+'" class="'+(PVT.preset===k?'on':'')+'">'+PV_PRESETS[k].label+'</button>'}).join("")
-    +'<span class="pvmid">'+cmpSelHtml("cmpSelPv")+'<button type="button" id="pvCsv" class="pvcsv" title="Download the pivot as a CSV file (opens in Excel)">⬇ Export CSV</button></span><span class="pvsp"></span><button type="button" class="pvq" id="pvFld">Statistics '+(PVT.open?'▴':'▾')+'</button></div>'
+    +'<span class="pvmid">'+cmpSelHtml("cmpSelPv")+'</span><span class="pvsp"></span><button type="button" class="pvq" id="pvFld">Statistics '+(PVT.open?'▴':'▾')+'</button></div>'
     +'<div class="pvfl"><label>Rows'+sel("pvR1",fl,PVT.r1)+'</label><label>Then by'+sel("pvR2",fl.filter(function(f){return f.id!==PVT.r1}),PVT.r2,1)+'</label>'
     +'<label>Values'+sel("pvM",PV_M,PVT.m)+'</label>'
     +'<label>Sort'+'<select id="pvSort">'+[["order","Group Order"],["count","Count"],["avg","Average After"],["chg","Change in Average"]].map(function(o){return '<option value="'+o[0]+'"'+(PVT.sort===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join("")+'</select></label></div>'
@@ -1572,7 +1583,7 @@ function pvAoa(){
   return aoa;
 }
 function pvCsvText(sep){return pvAoa().map(function(r){return r.map(function(x){var t=x==null?"":(typeof x==="number"?String(Math.round(x*10000)/10000):String(x));return sep===","&&/[",\n]/.test(t)?'"'+t.replace(/"/g,'""')+'"':t}).join(sep)}).join("\n")}
-$("imp").addEventListener("click",function(ev){
+$("mpTabs").addEventListener("click",function(ev){
   if(!ev.target.closest("#pvCsv"))return;
   var bl=new Blob(["\ufeff"+pvCsvText(",")],{type:"text/csv;charset=utf-8"}),a=document.createElement("a");a.href=URL.createObjectURL(bl);a.download="Bulk_pivot.csv";document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove()},500);
 });
@@ -2093,9 +2104,10 @@ $("imp").addEventListener("change",function(ev){if(ev.target.id==="nfOp"){var b=
 
 
 var _renderHost=render;
-render=function(){_renderHost();if(cfg.onBudget){try{cfg.onBudget(budgetOf(scope(),null),{loading:S.loading})}catch(x){}}};
+render=function(){_renderHost();updateBusy();if(cfg.onBudget){try{cfg.onBudget(budgetOf(scope(),null),{loading:S.loading})}catch(x){}}};
 PUBLIC_API.refresh=function(){SC_VER++;if(S.pv)refreshPreview();else render();renderFilters()};
 PUBLIC_API.destroy=function(){
+  if(busyEl&&busyEl.parentNode)busyEl.parentNode.removeChild(busyEl);
   clearTimeout(confirmT);
   __docL.forEach(function(a){document.removeEventListener(a[0],a[1],a[2])});
   __winL.forEach(function(a){window.removeEventListener(a[0],a[1],a[2])});

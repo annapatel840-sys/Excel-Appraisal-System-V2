@@ -785,15 +785,23 @@
 .bo .pvpre{flex-wrap:wrap!important;row-gap:6px}
 .bo .pvpre .pvmid{display:inline-flex;align-items:center;gap:10px;margin:0 10px}
 .bo .pvpre .pvmid .cmpw{white-space:nowrap}
-.bo .pvpre #pvCsv{border-radius:7px!important;margin:0!important;padding:3px 10px!important;font-weight:700!important;white-space:nowrap}
 .bo .pvpre button[data-pvpre="reward"]{border-radius:0 7px 7px 0!important}
 
 /* Pivot toolbar: one line, Compare to styled like Start from */
-.bo .pvpre{flex-wrap:nowrap!important;overflow-x:auto;align-items:center}
+.bo .pvpre{flex-wrap:nowrap!important;overflow:visible;align-items:center}
 .bo .pvpre>span:first-child,.bo .pvpre .cmpw{font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.04em;white-space:nowrap}
 .bo .pvpre .pvmid{display:inline-flex;align-items:center;gap:10px;margin:0 10px;flex:none}
 .bo .pvpre .cmpw{gap:8px;margin:0}
 .bo .pvpre .cmpsel{width:auto!important;min-width:0;max-width:150px;height:28px;font-size:12px;font-weight:700;padding:2px 8px}
-.bo .pvpre #pvCsv{height:28px;font-size:12px;white-space:nowrap;flex:none}
 .bo .pvpre #pvFld{flex:none;white-space:nowrap}
 .bo .pvpre .pvsp{flex:1;min-width:6px}
+
+/* Export CSV: right-most corner of the tab bar, only while Pivot is open */
+.bo #pC .mp-tabs .pvexp{margin-left:auto!important;margin-bottom:0!important;white-space:nowrap}
+/* Loading screen while Apply saves */
+.bo-busy{position:fixed;inset:0;z-index:100000;display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:rgba(255,255,255,.94);backdrop-filter:blur(2px);text-align:center;padding:24px}
+.bo-busy img{height:56px;width:auto}
+.bo-busy .bb-bar{width:min(360px,80vw);height:10px;border-radius:999px;background:#E2E8F0;overflow:hidden}
+.bo-busy .bb-bar i{display:block;height:100%;width:0;border-radius:999px;background:#1D4ED8;transition:width .4s ease}
+.bo-busy .bb-pct{font-size:14px;font-weight:700;color:#0F172A;margin-top:-6px}
+.bo-busy .bb-msg{font-size:14px;color:#475569}

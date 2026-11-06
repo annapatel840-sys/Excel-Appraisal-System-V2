@@ -40,6 +40,7 @@ import {
 } from "@/components/appraisal/BudgetStatsBar";
 import { createBulkOps } from "@/components/appraisal/bulk-ops/bulkOpsEngine";
 import BULK_OPS_MARKUP from "@/components/appraisal/bulk-ops/bulkOpsMarkup";
+import logoUrl from "@/assets/wissen-logo.png";
 import "@/styles/bulk-ops.css";
 
 /* Apply is on: changes are saved through the Appraisal Sheet store (same audit trail and save path as inline and bulk edits). */
@@ -184,6 +185,7 @@ const BulkOperations = forwardRef(function BulkOperations(
     host.innerHTML = BULK_OPS_MARKUP;
     const cfg = {
       apiUrl: live.current.apiUrl,
+      logoUrl,
       cycle: live.current.cycle,
       get canApply() {
         return APPLY_ENABLED && !live.current.readOnly;
