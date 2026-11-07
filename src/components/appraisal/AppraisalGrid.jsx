@@ -1,3 +1,4 @@
+import { cycleCountText, isExceptionRecord, olderNormal } from "@/lib/history-exceptions";
 import { hikeAmountFromPct, hikePctFromAmount, roundPct } from "@/lib/hike-math";
 import {
   Fragment,
@@ -629,6 +630,7 @@ const normalizeHistoryRecord = (record) => {
 
   return {
     cycleName: cycleName || textOrDash(year),
+    cycleType: String(record?.appraisal_cycle_type ?? record?.cycle_type ?? "").trim(),
     year: textOrDash(year),
     basePay,
     joiningBonus: Number(record?.joining_bonus) || 0,
@@ -5208,8 +5210,7 @@ export function AppraisalGrid({
 
                 {historyRow && !historyLoading && (
                   <span className="text-[11px] opacity-75">
-                    {historyData.length} cycle
-                    {historyData.length === 1 ? "" : "s"}
+                    {cycleCountText(historyData)}
                   </span>
                 )}
               </div>
@@ -5309,7 +5310,9 @@ export function AppraisalGrid({
 
                   <tbody>
                     {historyData.map((item, index) => {
-                      const previous = historyData[index + 1];
+                      // The next normal cycle continues from the previous NORMAL cycle (skips exceptions).
+                      const exc = isExceptionRecord(item);
+                      const previous = exc ? undefined : olderNormal(historyData, index);
                       const isLatest = index === 0;
 
                       return (
@@ -5317,15 +5320,25 @@ export function AppraisalGrid({
                           key={`${item.year}-${index}`}
                           className={cn(
                             "h-[46px]",
-                            isLatest ? "bg-[#fff9dc]" : "bg-white",
+                            isLatest ? "bg-[#fff9dc]" : exc ? "bg-[#fbfcfd] italic" : "bg-white",
                           )}
                         >
-                          <td className="border-r border-b border-[#e0e5ec] px-2 py-1 text-center text-[12px] font-bold text-[#1859a8]">
+                          <td
+                            className={cn(
+                              "border-r border-b border-[#e0e5ec] px-2 py-1 text-center text-[12px]",
+                              exc ? "font-semibold text-[#8a4b00]" : "font-bold text-[#1859a8]",
+                            )}
+                          >
                             {item.cycleName || item.year}
                             {isLatest ? " ★" : ""}
                           </td>
 
-                          <td className="break-words border-r border-b border-[#e0e5ec] px-1.5 py-1 text-center text-[11px] leading-tight text-[#24364d]">
+                          <td
+                            className={cn(
+                              "break-words border-r border-b border-[#e0e5ec] px-1.5 py-1 text-center text-[11px] leading-tight",
+                              exc ? "text-[#5f7482]" : "text-[#24364d]",
+                            )}
+                          >
                             {feedbackDesignation(
                               historyFeedback.items,
                               item.cycleName,
@@ -5350,21 +5363,24 @@ export function AppraisalGrid({
                                 className={cn(
                                   "border-r border-b border-[#e0e5ec] px-1.5 py-1 text-right text-[12px] tabular-nums transition-colors duration-500",
                                   shouldFlash && "bg-[#ffd54f]",
+                                  exc && "text-[#5f7482]",
                                 )}
                               >
                                 <div>{formatHistoryNumber(item[col.key])}</div>
 
-                                <div
-                                  className={cn(
-                                    "text-[10px]",
-                                    change.tone === "up" && "text-[#13804a]",
-                                    change.tone === "down" && "text-[#a5432f]",
-                                    change.tone === "neutral" &&
-                                      "text-[#d97706]",
-                                  )}
-                                >
-                                  {change.label}
-                                </div>
+                                {!exc && (
+                                  <div
+                                    className={cn(
+                                      "text-[10px]",
+                                      change.tone === "up" && "text-[#13804a]",
+                                      change.tone === "down" && "text-[#a5432f]",
+                                      change.tone === "neutral" &&
+                                        "text-[#d97706]",
+                                    )}
+                                  >
+                                    {change.label}
+                                  </div>
+                                )}
                               </td>
                             );
                           })}

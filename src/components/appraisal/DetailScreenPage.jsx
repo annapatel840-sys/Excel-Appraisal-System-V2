@@ -1,3 +1,11 @@
+import {
+  EXCEPTION_NAME,
+  EXCEPTION_ROW_BG,
+  EXCEPTION_TEXT,
+  cycleCountText,
+  isExceptionRecord,
+  olderNormal,
+} from "@/lib/history-exceptions";
 import { hikeAmountFromPct, hikePctFromAmount, roundPct } from "@/lib/hike-math";
 import {
   useCallback,
@@ -335,6 +343,7 @@ const normalizeHistoryRecord = (record) => {
     getCycleName(record?.cycle_name);
   return {
     cycleName: cycleName || textOrDash(year),
+    cycleType: String(record?.appraisal_cycle_type ?? record?.cycle_type ?? "").trim(),
     year: textOrDash(year),
     basePay,
     joiningBonus: Number(record?.joining_bonus) || 0,
@@ -1041,8 +1050,8 @@ function FieldRow({ label, prev, children, diff }) {
   );
 }
 
-function HistCell({ value, prev }) {
-  const hasPrev = prev !== undefined && prev !== null;
+function HistCell({ value, prev, exc = false }) {
+  const hasPrev = !exc && prev !== undefined && prev !== null;
   const pct = hasPrev ? (prev ? ((value - prev) / prev) * 100 : 0) : null;
   const color = pct === null ? MUTED : pct > 0 ? GREEN : pct < 0 ? RED : MUTED;
   return (
@@ -1058,7 +1067,14 @@ function HistCell({ value, prev }) {
         minWidth: 0,
       }}
     >
-      <div style={{ color: INK }}>{fmt(value)}</div>
+      <div
+        style={{
+          color: exc ? EXCEPTION_TEXT : INK,
+          fontStyle: exc ? "italic" : undefined,
+        }}
+      >
+        {fmt(value)}
+      </div>
       {pct !== null ? (
         <div style={{ fontSize: 10.5, color, fontWeight: 600 }}>
           {pct >= 0 ? "+" : "−"}
@@ -1367,6 +1383,13 @@ export function DetailScreenPage({
     );
   }, [historyRecords, currentCycleName]);
 
+  // Exception cycles are listed but are not "last year": every comparison below
+  // (history %, vs last year, flags) uses the last NORMAL cycle.
+  const normalPrior = useMemo(
+    () => priorCycles.filter((record) => !isExceptionRecord(record)),
+    [priorCycles],
+  );
+
   const derived = useMemo(() => {
     if (!employee) return null;
     return {
@@ -1497,7 +1520,7 @@ export function DetailScreenPage({
   /* ---- Total CTC with Rewards vs last cycle's CTC (moves while typing) */
   const ctcCompare = useMemo(() => {
     if (!employee || !derived) return null;
-    const lastCycle = priorCycles[0];
+    const lastCycle = normalPrior[0];
     const lastCtc = lastCycle
       ? lastCycle.newBasePay +
         lastCycle.performanceBonus +
@@ -1505,7 +1528,7 @@ export function DetailScreenPage({
       : 0;
     const pct = lastCtc ? ((liveCtc - lastCtc) / lastCtc) * 100 : 0;
     return { lastCtc, pct };
-  }, [employee, derived, priorCycles, liveCtc]);
+  }, [employee, derived, normalPrior, liveCtc]);
 
   const handleSearch = (value) => {
     setSearch(value);
@@ -1804,7 +1827,7 @@ export function DetailScreenPage({
                   }}
                 >
                   {(() => {
-                    const last = priorCycles[0];
+                    const last = normalPrior[0];
                     const dashPrev = (v) => (last ? fmt(v) : "—");
                     const lastHikePct =
                       last && last.basePay
@@ -2274,7 +2297,7 @@ export function DetailScreenPage({
               <DetailSidePanel
                 employee={employee}
                 rows={rows}
-                priorCycles={priorCycles}
+                priorCycles={normalPrior}
                 feedbackItems={feedbackData.items}
                 currentCycleName={currentCycleName}
                 live={panelLive}
@@ -2314,7 +2337,8 @@ export function DetailScreenPage({
             className="shrink-0 px-4 py-2 text-[14px] font-extrabold"
             style={{ background: NAVY, color: "#fff" }}
           >
-            Employee History — {employee.name} · {priorCycles.length + 1} cycles
+            Employee History — {employee.name} ·{" "}
+            {cycleCountText([{}, ...priorCycles])}
           </div>
 
           <div className="ds-scroll">
@@ -2390,9 +2414,7 @@ export function DetailScreenPage({
             {/* current cycle row */}
             {liveHist
               ? (() => {
-                  const last = priorCycles[0]
-                    ? priorVals(priorCycles[0])
-                    : null;
+                  const last = normalPrior[0] ? priorVals(normalPrior[0]) : null;
                   const cur = [
                     baseNow,
                     0,
@@ -2450,30 +2472,35 @@ export function DetailScreenPage({
             {/* prior cycles */}
             {priorCycles.map((h, i) => {
               const vals = priorVals(h);
-              const older = priorCycles[i + 1]
-                ? priorVals(priorCycles[i + 1])
-                : null;
+              const exc = isExceptionRecord(h);
+              // The next normal cycle continues from the previous NORMAL cycle (skips exceptions).
+              const olderRec = exc ? null : olderNormal(priorCycles, i);
+              const older = olderRec ? priorVals(olderRec) : null;
               return (
                 <div
                   key={`${normalizeYearKey(h.cycleName || h.year)}-${i}`}
                   className="grid items-stretch text-[12px]"
                   style={{
                     gridTemplateColumns: histGrid(histWidths),
-                    background: "#fff",
+                    background: exc ? EXCEPTION_ROW_BG : "#fff",
+                    fontStyle: exc ? "italic" : undefined,
                     borderBottom: `1px solid ${LINE}`,
                   }}
                 >
                   <div
                     style={histTextCell({
                       padding: "4px 10px",
-                      fontWeight: 700,
-                      color: INK,
+                      fontWeight: exc ? 600 : 700,
+                      color: exc ? EXCEPTION_NAME : INK,
                     })}
                   >
                     {h.cycleName || h.year}
                   </div>
                   <div
-                    style={histTextCell({ textAlign: "center", color: INK })}
+                    style={histTextCell({
+                      textAlign: "center",
+                      color: exc ? EXCEPTION_TEXT : INK,
+                    })}
                   >
                     {feedbackDesignation(
                       feedbackData.items,
@@ -2490,6 +2517,7 @@ export function DetailScreenPage({
                       key={c}
                       value={vals[c]}
                       prev={older ? older[c] : null}
+                      exc={exc}
                     />
                   ))}
                 </div>
@@ -2541,6 +2569,15 @@ export function DetailScreenPage({
               />
               Decrease
             </span>
+            {priorCycles.some(isExceptionRecord) ? (
+              <span className="inline-flex items-center gap-1.5">
+                <i
+                  className="inline-block h-[12px] w-[12px] rounded-[3px] border"
+                  style={{ background: EXCEPTION_ROW_BG, borderColor: "#D4DBE5" }}
+                />
+                Exception (between cycles)
+              </span>
+            ) : null}
           </div>
         </section>
       ) : null}
