@@ -37,3 +37,25 @@ export const cycleCountText = (records) => {
 export const EXCEPTION_ROW_BG = "#FBFCFD";
 export const EXCEPTION_TEXT = "#5F7482";
 export const EXCEPTION_NAME = "#8A4B00";
+
+/* Base pay chain: a row's Current Base Pay is the New Base Pay of the row before it (older), which may be an
+   exception or a normal cycle. Records are newest first. Rows that follow an exception are re-based on it:
+   Current Base Pay = the exception's New Base Pay, New Base Pay = that + the row's hike, Total CTC moves with it. */
+export const chainBases = (records) => {
+  const list = Array.isArray(records) ? records.slice() : [];
+  for (let i = list.length - 2; i >= 0; i -= 1) {
+    const older = list[i + 1];
+    const base = Number(older?.newBasePay) || 0;
+    if (!isExceptionRecord(older) || base <= 0) continue;
+    const row = list[i];
+    const hike = Number(row.hikeAmount) || 0;
+    const bonuses = (Number(row.newCTC) || 0) - (Number(row.newBasePay) || 0);
+    list[i] = {
+      ...row,
+      basePay: base,
+      newBasePay: base + hike,
+      newCTC: base + hike + bonuses,
+    };
+  }
+  return list;
+};

@@ -2,6 +2,7 @@ import {
   EXCEPTION_NAME,
   EXCEPTION_ROW_BG,
   EXCEPTION_TEXT,
+  chainBases,
   cycleCountText,
   isExceptionRecord,
   olderNormal,
@@ -1373,13 +1374,16 @@ export function DetailScreenPage({
   const priorCycles = useMemo(() => {
     const legacyKey = normalizeYearKey(CURRENT_CYCLE);
     const currentKey = normalizeYearKey(currentCycleName);
-    return historyRecords.filter(
-      (record) =>
-        !isCurrentYearRecord(record, currentCycleName) &&
-        !(
-          legacyKey !== currentKey &&
-          normalizeYearKey(record.cycleName) === legacyKey
-        ),
+    // Current Base Pay of a cycle = New Base Pay of the cycle before it (exception or normal).
+    return chainBases(
+      historyRecords.filter(
+        (record) =>
+          !isCurrentYearRecord(record, currentCycleName) &&
+          !(
+            legacyKey !== currentKey &&
+            normalizeYearKey(record.cycleName) === legacyKey
+          ),
+      ),
     );
   }, [historyRecords, currentCycleName]);
 
@@ -2415,16 +2419,22 @@ export function DetailScreenPage({
             {liveHist
               ? (() => {
                   const last = normalPrior[0] ? priorVals(normalPrior[0]) : null;
+                  // The cycle right after an exception starts from the exception's New Base Pay.
+                  const excBase =
+                    priorCycles[0] && isExceptionRecord(priorCycles[0])
+                      ? Number(priorCycles[0].newBasePay) || 0
+                      : 0;
+                  const shift = excBase > 0 ? excBase - baseNow : 0;
                   const cur = [
-                    baseNow,
+                    baseNow + shift,
                     0,
                     liveHist.pbTotal,
                     liveHist.rb,
                     liveHist.bonus,
                     liveHist.hike,
-                    liveCtc,
+                    liveCtc + shift,
                     liveHist.tpb,
-                    liveBase,
+                    liveBase + shift,
                   ];
                   return (
                     <div

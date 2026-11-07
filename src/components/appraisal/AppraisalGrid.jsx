@@ -1,4 +1,4 @@
-import { cycleCountText, isExceptionRecord, olderNormal } from "@/lib/history-exceptions";
+import { chainBases, cycleCountText, isExceptionRecord, olderNormal } from "@/lib/history-exceptions";
 import { hikeAmountFromPct, hikePctFromAmount, roundPct } from "@/lib/hike-math";
 import {
   Fragment,
@@ -2795,12 +2795,15 @@ export function AppraisalGrid({
   const historyLoading = !historyState || historyState.loading;
   const historyError = historyState?.error || "";
 
+  // Current Base Pay of a cycle = New Base Pay of the cycle before it (exception or normal).
   const historyData = useMemo(
     () =>
-      buildHistoryView(
-        historyState?.data || [],
-        liveHistoryRow,
-        currentCycleName,
+      chainBases(
+        buildHistoryView(
+          historyState?.data || [],
+          liveHistoryRow,
+          currentCycleName,
+        ),
       ),
     [historyState, liveHistoryRow, currentCycleName],
   );
