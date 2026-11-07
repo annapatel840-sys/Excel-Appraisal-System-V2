@@ -777,8 +777,21 @@ const buildHistoryView = (
       ),
   );
 
+  // After an exception cycle (newer than the last normal cycle) the Current
+  // Base Pay is that exception's New Base Pay. Shown here even when the sheet
+  // still holds the previous cycle's value. No exception: row is untouched.
+  const lastNormalAt = olderRecords.findIndex((r) => !isExceptionRecord(r));
+  const newerExceptions = olderRecords
+    .slice(0, lastNormalAt < 0 ? olderRecords.length : lastNormalAt)
+    .filter(isExceptionRecord);
+  const exceptionBase = Number(newerExceptions[0]?.newBasePay) || 0;
+  const viewRow =
+    exceptionBase > 0 && Number(row.currentAnnualBasePay) !== exceptionBase
+      ? { ...row, currentAnnualBasePay: exceptionBase }
+      : row;
+
   return [
-    applyCurrentYearSheetValues(currentRecord, row, currentCycleName),
+    applyCurrentYearSheetValues(currentRecord, viewRow, currentCycleName),
     ...olderRecords,
   ];
 };

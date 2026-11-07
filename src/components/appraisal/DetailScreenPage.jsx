@@ -1414,15 +1414,33 @@ export function DetailScreenPage({
     [priorCycles],
   );
 
+  // Exceptions newer than the last normal cycle (newest first). The latest
+  // one's New Base Pay is this cycle's Current Base Pay. No exception: null,
+  // and everything below behaves exactly as before.
+  const exceptionBase = useMemo(() => {
+    const last = normalPrior[0];
+    const at = last ? priorCycles.indexOf(last) : priorCycles.length;
+    const newer = priorCycles.slice(0, at).filter(isExceptionRecord);
+    return Number(newer[0]?.newBasePay) > 0 ? Number(newer[0].newBasePay) : null;
+  }, [priorCycles, normalPrior]);
+
+  // The employee as the calculations should see it.
+  const calcEmployee = useMemo(() => {
+    if (!employee) return employee;
+    if (exceptionBase === null) return employee;
+    if (Number(employee.currentAnnualBasePay) === exceptionBase) return employee;
+    return { ...employee, currentAnnualBasePay: exceptionBase };
+  }, [employee, exceptionBase]);
+
   const derived = useMemo(() => {
-    if (!employee) return null;
+    if (!calcEmployee) return null;
     return {
-      totalPB: totalOfPB(employee),
-      bonus: calcTotalBonus(employee),
-      newBase: newBaseSalary(employee),
-      totalCtc: totalCTCWithRewards(employee),
+      totalPB: totalOfPB(calcEmployee),
+      bonus: calcTotalBonus(calcEmployee),
+      newBase: newBaseSalary(calcEmployee),
+      totalCtc: totalCTCWithRewards(calcEmployee),
     };
-  }, [employee]);
+  }, [calcEmployee]);
 
   /* ---- live (while typing) values ----------------------------------- */
   if (employee && derived && ctcOffsetRef.current[employee.id] === undefined) {
@@ -1452,7 +1470,7 @@ export function DetailScreenPage({
 
   // Current base pay used by every hike calculation.
   const baseNow =
-    toNum(employee?.currentAnnualBasePay) ||
+    toNum(calcEmployee?.currentAnnualBasePay) ||
     (derived ? toNum(derived.newBase) - toNum(employee?.hikeAmount) : 0);
 
   // Validation messages for the PB / RB proposed fields, plus a counter that
@@ -1983,7 +2001,13 @@ export function DetailScreenPage({
                               <EditInput
                                 value={
                                   draft.pctStr ??
-                                  (Number(employee.hikePct) || 0).toFixed(2)
+                                  (exceptionBase !== null && baseNow
+                                    ? (
+                                        ((Number(employee.hikeAmount) || 0) /
+                                          baseNow) *
+                                        100
+                                      ).toFixed(2)
+                                    : (Number(employee.hikePct) || 0).toFixed(2))
                                 }
                                 onLive={liveHikePct}
                                 onCommit={(v) => {
