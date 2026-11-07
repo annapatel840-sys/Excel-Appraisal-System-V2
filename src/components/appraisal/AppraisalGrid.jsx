@@ -1,4 +1,4 @@
-import { chainBases, cycleCountText, isExceptionRecord, olderNormal } from "@/lib/history-exceptions";
+import { cycleCountText, isExceptionRecord, olderNormal } from "@/lib/history-exceptions";
 import { hikeAmountFromPct, hikePctFromAmount, roundPct } from "@/lib/hike-math";
 import {
   Fragment,
@@ -802,6 +802,8 @@ const historyYearOrder = (value) => {
 
 const sortHistoryDesc = (a, b) =>
   historyYearOrder(b.year) - historyYearOrder(a.year) ||
+  // Same year: an exception happens after that year's annual cycle (newer).
+  Number(isExceptionRecord(b)) - Number(isExceptionRecord(a)) ||
   String(b.year).localeCompare(String(a.year));
 
 // ============================================================
@@ -2795,15 +2797,12 @@ export function AppraisalGrid({
   const historyLoading = !historyState || historyState.loading;
   const historyError = historyState?.error || "";
 
-  // Current Base Pay of a cycle = New Base Pay of the cycle before it (exception or normal).
   const historyData = useMemo(
     () =>
-      chainBases(
-        buildHistoryView(
-          historyState?.data || [],
-          liveHistoryRow,
-          currentCycleName,
-        ),
+      buildHistoryView(
+        historyState?.data || [],
+        liveHistoryRow,
+        currentCycleName,
       ),
     [historyState, liveHistoryRow, currentCycleName],
   );

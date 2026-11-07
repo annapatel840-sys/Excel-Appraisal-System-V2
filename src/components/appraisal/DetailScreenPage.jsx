@@ -2,13 +2,13 @@ import {
   EXCEPTION_NAME,
   EXCEPTION_ROW_BG,
   EXCEPTION_TEXT,
-  chainBases,
   cycleCountText,
   isExceptionRecord,
   olderNormal,
 } from "@/lib/history-exceptions";
 import { hikeAmountFromPct, hikePctFromAmount, roundPct } from "@/lib/hike-math";
 import {
+  Fragment,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -361,6 +361,12 @@ const normalizeHistoryRecord = (record) => {
       ) || 0,
     newCTC: Number(record?.new_ctc ?? record?.total_CTC_with_rewards) || 0,
     newBasePay: Number(record?.new_base_pay) || basePay + hike,
+    criteria: record?.target_pb_criteria ? String(record.target_pb_criteria) : "",
+    remarks: record?.comp_manager_remarks
+      ? String(record.comp_manager_remarks)
+      : record?.remarks
+        ? String(record.remarks)
+        : "",
   };
 };
 
@@ -384,6 +390,8 @@ const historyYearOrder = (value) => {
 
 const sortHistoryDesc = (a, b) =>
   historyYearOrder(b.year) - historyYearOrder(a.year) ||
+  // Same year: an exception happens after that year's annual cycle (newer).
+  Number(isExceptionRecord(b)) - Number(isExceptionRecord(a)) ||
   String(b.year).localeCompare(String(a.year));
 
 /*
@@ -977,13 +985,22 @@ function HikeDiffInputs({
 
 /* ---- Detail-screen field table: Description | Previous year | This year | Diff ---- */
 const FIELD_COLS = "minmax(150px,0.9fr) minmax(200px,1.2fr) minmax(280px,1.9fr) minmax(100px,0.6fr)";
+// One extra column per exception cycle, between Current and Proposed.
+const fieldCols = (excCount) =>
+  [
+    "minmax(150px,0.9fr)",
+    "minmax(200px,1.2fr)",
+    ...Array(excCount).fill("minmax(180px,1.1fr)"),
+    "minmax(280px,1.9fr)",
+    "minmax(100px,0.6fr)",
+  ].join(" ");
 
-function FieldHead({ children, right }) {
+function FieldHead({ children, right, exc }) {
   return (
     <div
       style={{
-        background: "#F4F7FA",
-        color: MUTED,
+        background: exc ? "#FBF3E6" : "#F4F7FA",
+        color: exc ? EXCEPTION_NAME : MUTED,
         fontWeight: 700,
         fontSize: 12.5,
         letterSpacing: ".04em",
@@ -999,10 +1016,11 @@ function FieldHead({ children, right }) {
   );
 }
 
-function FieldCell({ children, label, right, last }) {
+function FieldCell({ children, label, right, last, exc }) {
   return (
     <div
       style={{
+        background: exc ? EXCEPTION_ROW_BG : undefined,
         display: "flex",
         flexDirection: "column",
         justifyContent: label ? "flex-start" : "center",
@@ -1038,11 +1056,16 @@ function DiffValue({ value, caption }) {
   );
 }
 
-function FieldRow({ label, prev, children, diff }) {
+function FieldRow({ label, prev, children, diff, exc = [] }) {
   return (
     <>
       <FieldCell label>{label}</FieldCell>
       <FieldCell>{prev}</FieldCell>
+      {exc.map((node, i) => (
+        <FieldCell key={i} exc>
+          {node}
+        </FieldCell>
+      ))}
       <FieldCell>{children}</FieldCell>
       <FieldCell right last>
         {diff}
@@ -1374,16 +1397,13 @@ export function DetailScreenPage({
   const priorCycles = useMemo(() => {
     const legacyKey = normalizeYearKey(CURRENT_CYCLE);
     const currentKey = normalizeYearKey(currentCycleName);
-    // Current Base Pay of a cycle = New Base Pay of the cycle before it (exception or normal).
-    return chainBases(
-      historyRecords.filter(
-        (record) =>
-          !isCurrentYearRecord(record, currentCycleName) &&
-          !(
-            legacyKey !== currentKey &&
-            normalizeYearKey(record.cycleName) === legacyKey
-          ),
-      ),
+    return historyRecords.filter(
+      (record) =>
+        !isCurrentYearRecord(record, currentCycleName) &&
+        !(
+          legacyKey !== currentKey &&
+          normalizeYearKey(record.cycleName) === legacyKey
+        ),
     );
   }, [historyRecords, currentCycleName]);
 
@@ -1832,6 +1852,22 @@ export function DetailScreenPage({
                 >
                   {(() => {
                     const last = normalPrior[0];
+                    // Exception cycles NEWER than the current (last normal)
+                    // cycle, oldest first: each gets its own column between
+                    // Current and Proposed. Older exceptions (before the last
+                    // normal cycle) are already baked into it: no column.
+                    const lastAt = last ? priorCycles.indexOf(last) : priorCycles.length;
+                    const excRecs = priorCycles
+                      .slice(0, lastAt)
+                      .filter(isExceptionRecord)
+                      .reverse();
+                    const excVal = (v) => (Number(v) ? fmt(v) : "—");
+                    const excEach = (render) =>
+                      excRecs.map((rec, i) => (
+                        <Fragment key={`${rec.cycleName}-${i}`}>
+                          {render(rec)}
+                        </Fragment>
+                      ));
                     const dashPrev = (v) => (last ? fmt(v) : "—");
                     const lastHikePct =
                       last && last.basePay
@@ -1879,16 +1915,32 @@ export function DetailScreenPage({
                     return (
                       <div
                         className="grid text-[15px]"
-                        style={{ gridTemplateColumns: FIELD_COLS }}
+                        style={{ gridTemplateColumns: fieldCols(excRecs.length) }}
                       >
                         <FieldHead>Description</FieldHead>
                         <FieldHead>Current</FieldHead>
+                        {excRecs.map((rec, i) => (
+                          <FieldHead key={`h-${rec.cycleName}-${i}`} exc>
+                            {rec.cycleName}
+                          </FieldHead>
+                        ))}
                         <FieldHead>Proposed</FieldHead>
                         <FieldHead right>Diff</FieldHead>
 
                         {/* New Base Pay + hike inputs */}
                         <FieldRow
                           label="Base Pay"
+                          exc={excEach((rec) => (
+                            <>
+                              <div style={{ width: "62%", minWidth: 110 }}>
+                                <ReadOnlyInput value={fmt(rec.newBasePay)} />
+                              </div>
+                              <span style={subNote}>
+                                Exceptional {rec.hikeAmount >= 0 ? "+" : "−"}
+                                {fmt(Math.abs(rec.hikeAmount))}
+                              </span>
+                            </>
+                          ))}
                           prev={
                             <>
                               <div style={{ width: "62%", minWidth: 110 }}>
@@ -1957,6 +2009,7 @@ export function DetailScreenPage({
                         {/* Joining Bonus */}
                         <FieldRow
                           label="Joining Bonus"
+                          exc={excEach((rec) => <ReadOnlyInput value={excVal(rec.joiningBonus)} />)}
                           prev={<ReadOnlyInput value={dashPrev(last?.joiningBonus)} />}
                         >
                           {naBox}
@@ -1965,6 +2018,7 @@ export function DetailScreenPage({
                         {/* Performance Bonus / Instalment */}
                         <FieldRow
                           label="Performance Bonus (PB) / Instalment"
+                          exc={excEach((rec) => <ReadOnlyInput value={excVal(rec.performanceBonus)} />)}
                           prev={
                             <div
                               style={{
@@ -2057,6 +2111,7 @@ export function DetailScreenPage({
                         {/* Retention Bonus */}
                         <FieldRow
                           label="Retention Bonus (RB)"
+                          exc={excEach((rec) => <ReadOnlyInput value={excVal(rec.retentionBonus)} />)}
                           prev={
                             <div
                               style={{
@@ -2115,6 +2170,7 @@ export function DetailScreenPage({
                         {/* Total CTC with Rewards */}
                         <FieldRow
                           label="Total CTC with Rewards"
+                          exc={excEach((rec) => <ReadOnlyInput value={rec.newCTC ? inr(rec.newCTC) : "—"} />)}
                           prev={<ReadOnlyInput value={ctcCompare.lastCtc ? inr(ctcCompare.lastCtc) : "—"} />}
                           diff={
                             ctcCompare.lastCtc ? (
@@ -2131,6 +2187,7 @@ export function DetailScreenPage({
                         {/* Target PB for Next Year */}
                         <FieldRow
                           label="Target PB for Next Year"
+                          exc={excEach((rec) => <ReadOnlyInput value={excVal(rec.targetPB)} />)}
                           prev={<ReadOnlyInput value={fmt(prevTPB)} />}
                           diff={
                             <DiffValue
@@ -2157,6 +2214,7 @@ export function DetailScreenPage({
                         {/* Target PB Criteria */}
                         <FieldRow
                           label="Target PB Criteria"
+                          exc={excEach((rec) => <ReadOnlyInput value={dash(rec.criteria)} />)}
                           prev={
                             <ReadOnlyInput
                               value={dash(
@@ -2179,6 +2237,7 @@ export function DetailScreenPage({
                         {/* Designation / New Title */}
                         <FieldRow
                           label="Designation / New Title"
+                          exc={excEach((rec) => <ReadOnlyInput value={dash(rec.designation === "—" ? "" : rec.designation)} />)}
                           prev={<ReadOnlyInput value={dash(employee.designation)} />}
                           diff={
                             <span style={{ ...subNote, fontWeight: 600 }}>
@@ -2208,6 +2267,7 @@ export function DetailScreenPage({
                         {/* Comp Manager Remarks */}
                         <FieldRow
                           label="Comp Manager Remarks"
+                          exc={excEach((rec) => <ReadOnlyInput value={dash(rec.remarks)} />)}
                           prev={
                             <ReadOnlyInput
                               value={dash(
@@ -2419,22 +2479,16 @@ export function DetailScreenPage({
             {liveHist
               ? (() => {
                   const last = normalPrior[0] ? priorVals(normalPrior[0]) : null;
-                  // The cycle right after an exception starts from the exception's New Base Pay.
-                  const excBase =
-                    priorCycles[0] && isExceptionRecord(priorCycles[0])
-                      ? Number(priorCycles[0].newBasePay) || 0
-                      : 0;
-                  const shift = excBase > 0 ? excBase - baseNow : 0;
                   const cur = [
-                    baseNow + shift,
+                    baseNow,
                     0,
                     liveHist.pbTotal,
                     liveHist.rb,
                     liveHist.bonus,
                     liveHist.hike,
-                    liveCtc + shift,
+                    liveCtc,
                     liveHist.tpb,
-                    liveBase + shift,
+                    liveBase,
                   ];
                   return (
                     <div
