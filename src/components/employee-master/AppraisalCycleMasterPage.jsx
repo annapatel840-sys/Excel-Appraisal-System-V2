@@ -3,6 +3,7 @@ import { AlertCircle, CheckCircle2, X } from "lucide-react";
 import { useCatalystUser } from "@/lib/catalyst-auth";
 import { useAccess } from "@/lib/access-store";
 import { payrollCycleRequest } from "@/lib/payroll-cycle-api";
+import { LETTERS_DEMO, generateLettersForCycle, useLettersStats } from "@/lib/letters-store";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
 import { useSelectedLocation } from "@/lib/location-store";
@@ -350,6 +351,12 @@ export function AppraisalCycleMasterPage({
     [cycles, sel],
   );
   const statsFor = (c) => (c && cycleStats && cycleStats[c.id]) || null;
+  // Letters step: live counts from the shared Letters store (the same state the
+  // Letters screen under Operation shows). A cycleStats prop still wins if given.
+  const lettersByCycle = useLettersStats();
+  const NO_LETTERS = { gen: false, toSend: 0, sent: 0, dropped: 0, outOfDate: 0, missing: 0, total: 0 };
+  const lettersOf = (c) =>
+    statsFor(c)?.letters || (c && lettersByCycle[String(c.id)]) || NO_LETTERS;
 
   /* Whether the selected Active cycle's Eligibility List and Delegation list
      are generated, so each step shows "Generate" until it is and "Open"
@@ -399,21 +406,14 @@ export function AppraisalCycleMasterPage({
   const pendingList = (() => {
     if (pendingItems.length) return pendingItems;
     const c = current;
-    const w = statsFor(c);
-    if (
-      !c ||
-      !w ||
-      c.process !== "Annual" ||
-      c.archived ||
-      c.status === "Upcoming" ||
-      !w.emUpdated
-    )
+    if (!c || c.process !== "Annual" || c.archived || c.status === "Upcoming")
       return [];
-    const np = missingPay(w);
-    const ni = w.notIncluded || 0;
-    const L = w.letters || { gen: false, toSend: 0, sent: 0, dropped: 0 };
-    const out = [
-      {
+    const w = statsFor(c);
+    const out = [];
+    if (w && w.emUpdated) {
+      const np = missingPay(w);
+      const ni = w.notIncluded || 0;
+      out.push({
         k: "mm",
         label: "Mismatch",
         n: np + ni,
@@ -421,14 +421,15 @@ export function AppraisalCycleMasterPage({
           np + ni
             ? `${np} with no payroll data · ${ni} not included (open Exceptional cycle)`
             : "None — all clear",
-      },
-    ];
+      });
+    }
+    const L = lettersOf(c);
     if (L.gen)
       out.push({
         k: "lt",
         label: "Letters to Send",
         n: L.toSend,
-        sub: `${L.toSend} To send · ${L.sent} Sent · ${L.dropped} Dropped`,
+        sub: `${L.toSend} To send · ${L.sent} Sent · ${L.dropped} Dropped${L.outOfDate ? ` · ${L.outOfDate} Out of date` : ""}`,
       });
     return out;
   })();
@@ -899,8 +900,30 @@ export function AppraisalCycleMasterPage({
     showBanner("Not connected", "This step is not linked to a screen yet.");
   };
 
+  // Letters step -> Generate / Regenerate. Safe to repeat: it adds letters for
+  // employees who have none and replaces unsent Out-of-date ones; Reviewed and
+  // Sent letters are never touched.
+  const generateLetters = async (c) => {
+    setSaving(true);
+    try {
+      const result = await generateLettersForCycle(
+        { id: c.id, name: c.name, effective: c.effective, start: c.start },
+        user?.name || "HR",
+      );
+      showBanner(
+        "Letters generated",
+        `${c.name}: ${result.created} new, ${result.regenerated} regenerated, ${result.kept} unchanged.${LETTERS_DEMO ? " Sample data." : ""}`,
+      );
+    } catch (error) {
+      showBanner("Letters not generated", error?.message || "Unable to generate the letters.", true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const checkAct = (id, c) => {
     if (id === "gen") return openConfirm("generate", c);
+    if (id === "gen-lt") return generateLetters(c);
     if (id === "gen-el") return navTo("go-el", c);
     if (id === "gen-dl") return navTo("go-el", c);
     navTo(id, c);
@@ -921,7 +944,11 @@ export function AppraisalCycleMasterPage({
     const gen = !!w?.sheetGenerated || !!generatedResult;
     const generatedRowCount = w?.sheetRows ?? generatedResult?.eligible;
     const m = w ? missingPay(w) : 0;
-    const L = w?.letters || { gen: false, toSend: 0, sent: 0, dropped: 0 };
+    const L = lettersOf(c);
+    const canMakeLetters = c.status === "Active" && c.process === "Annual";
+    const letterTodo = (L.outOfDate || 0) + (L.missing || 0);
+    // Once letters exist the step stays open even if this session has not seen the sheet generated.
+    const lettersOpen = gen || L.gen;
     const row = (g, id, title, sub, state, acts = []) => ({
       g,
       id,
@@ -1049,13 +1076,20 @@ export function AppraisalCycleMasterPage({
         "Active",
         "lt",
         "Letters",
-        !gen
+        !lettersOpen
           ? "Available after Generate"
           : !L.gen
             ? "Annual letters not generated yet"
-            : `${L.toSend} To send · ${L.sent} Sent · ${L.dropped} Dropped`,
-        !gen ? "lk" : L.gen && L.toSend === 0 ? "ok" : "wn",
-        gen ? [{ l: "Open ›", id: "go-lt" }] : [],
+            : `${L.toSend} To send · ${L.sent} Sent · ${L.dropped} Dropped${L.outOfDate ? ` · ${L.outOfDate} Out of date` : ""}${L.missing ? ` · ${L.missing} still to generate` : ""}`,
+        !lettersOpen ? "lk" : L.gen && L.toSend === 0 && !letterTodo ? "ok" : "wn",
+        lettersOpen
+          ? [
+              ...(canMakeLetters && (!L.gen || letterTodo)
+                ? [{ l: L.gen ? "Regenerate" : "Generate", id: "gen-lt" }]
+                : []),
+              { l: "Open ›", id: "go-lt" },
+            ]
+          : [],
       ),
       row(
         "Closed",
@@ -1157,7 +1191,7 @@ export function AppraisalCycleMasterPage({
     const w = statsFor(c);
     const editable = ["Upcoming", "Active", "Closed", "Open"].includes(st);
     const canCancel =
-      ["Upcoming", "Active", "Open"].includes(st) && !w?.letters?.gen;
+      ["Upcoming", "Active", "Open"].includes(st) && !lettersOf(c).gen;
     const canDel =
       ["Upcoming", "Open"].includes(st) &&
       !(w && (w.emUpdated || (w.payHave || 0) > 0));
@@ -1472,6 +1506,7 @@ export function AppraisalCycleMasterPage({
                     {r.acts
                       .filter((a) =>
                         a.id === "gen" ||
+                        a.id === "gen-lt" ||
                         // Eligibility's Generate opens the Eligibility screen.
                         canGo(a.id === "gen-el" ? "go-el" : a.id))
                       .map((a) => (

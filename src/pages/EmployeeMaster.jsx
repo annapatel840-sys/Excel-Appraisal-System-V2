@@ -3242,6 +3242,7 @@ import { ChangeListMismatchPage } from "@/components/employee-master/ChangeListM
 import { BudgetMasterPage } from "@/components/employee-master/BudgetMasterPage";
 import { BudgetDistributionPage } from "@/components/employee-master/BudgetDistributionPage";
 import DelegationScreen from "@/components/employee-master/DelegationScreen";
+import { LettersPage } from "@/components/employee-master/LettersPage";
 import AccessPage from "@/components/employee-master/AccessPage";
 import { HrDashboardPage } from "@/components/employee-master/HrDashboardPage";
 import { HrOperationsNav } from "@/components/employee-master/HrOperationsNav";
@@ -3263,6 +3264,7 @@ const KNOWN_TABS = [
   "payroll-upload",
   "eligibility",
   "delegation",
+  "letters",
   "feedback-rating",
   "team-changes",
   "historical-import",
@@ -3833,7 +3835,9 @@ export function EmployeeMaster() {
     // access rules each has its own screen (None / View / Edit), below.
     if (
       !access.ok &&
-      ["historical-import", "hr-dashboard", "change-mismatch"].includes(tab)
+      ["historical-import", "hr-dashboard", "change-mismatch", "letters"].includes(
+        tab,
+      )
     ) {
       return isRoleHR;
     }
@@ -3890,6 +3894,7 @@ export function EmployeeMaster() {
       "budget-master",
       "budget-distribution",
       "delegation",
+      "letters",
       "historical-import",
       "access",
       "designation-master",
@@ -6402,6 +6407,21 @@ export function EmployeeMaster() {
             }}
           >
             <DelegationScreen showRoleSwitch={false} />
+          </div>
+        )}
+        {isTabVisible("letters") && activeTab === "letters" && (
+          <div
+            className="em-tab-content"
+            style={{
+              height: "calc(100vh - 140px)",
+              overflowY: "auto",
+              overflowX: "hidden",
+            }}
+          >
+            <LettersPage
+              canEdit={canEditScreen("letters")}
+              onNavigate={goToTab}
+            />
           </div>
         )}
         {isTabVisible("hr-dashboard") && activeTab === "hr-dashboard" && (

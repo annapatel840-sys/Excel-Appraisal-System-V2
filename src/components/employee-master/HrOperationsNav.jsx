@@ -33,6 +33,7 @@ const GROUPS = [
       ["change-mismatch", "Change List & Mismatch"],
       ["budget-distribution", "Budget Distribution"],
       ["delegation", "Delegation"],
+      ["letters", "Letters"],
     ],
   },
 ];

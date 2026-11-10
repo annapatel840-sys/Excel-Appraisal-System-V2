@@ -30,6 +30,7 @@ export const HR_TAB_SCREENS = {
   "budget-distribution": "budgetDistribution",
   "designation-master": "designationMaster",
   delegation: "delegation",
+  letters: "letters",
   access: "access",
 };
 
@@ -44,6 +45,7 @@ export const SCREEN_FALLBACK = {
   changeMismatch: "employeeMaster",
   locationMaster: "employeeMaster",
   designationMaster: "employeeMaster",
+  letters: "employeeMaster",
   bulkEditScreen: "appraisalSheet",
 };
 
