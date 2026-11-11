@@ -446,6 +446,7 @@ import { useCurrentCycleName } from "@/lib/current-cycle";
 import { useViewAs } from "@/lib/view-as-store";
 import { ProfileMenu } from "./ProfileMenu";
 import { ViewAsSwitcher } from "./ViewAsSwitcher";
+import { LocationSwitcher } from "./LocationSwitcher";
 
 const TECH_ED_PATHS = [
   "/",
@@ -853,6 +854,9 @@ export function AppShell({ children, headerActions, notifications }) {
             {isVertical && headerActions}
             <div className={cn(isCollapsed && "hidden group-hover/nav:block")}>
               <ViewAsSwitcher isVertical={isVertical} />
+            </div>
+            <div className={cn(isCollapsed && "hidden group-hover/nav:block")}>
+              <LocationSwitcher isVertical={isVertical} />
             </div>
             {notifications}
             <ProfileMenu

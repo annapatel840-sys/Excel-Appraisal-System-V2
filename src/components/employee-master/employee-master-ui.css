@@ -244,3 +244,7 @@
   .em-location-inline-form { grid-template-columns: minmax(0, 1fr); }
   .em-location-inline-actions { grid-column: auto; }
 }
+/* Header Location switcher (beside "View as"): same size as the View as select. */
+.app-header-location .em-location-dropdown { position: relative; }
+.app-header-location .em-location-select.app-header-location-trigger { height: 28px; min-width: 120px; max-width: 170px; padding: 0 8px; border: 1px solid rgba(255,255,255,.3); border-radius: 6px; background: #fff; color: #102a43; font-size: 11px; font-weight: 500; }
+.app-header-location .em-location-menu { z-index: 2000; }
