@@ -699,6 +699,7 @@ export function saveFields(S, draft, reason) {
 export function saveTemplate(S, id, draft, reason) {
   const t = tplOf(S, id);
   t.name = draft.name;
+  if (draft.family != null) t.family = draft.family;
   t.file = draft.file;
   t.body = draft.body;
   t.sg = draft.sg;

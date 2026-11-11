@@ -329,39 +329,70 @@ export function FieldsTab({ S, actor, ui, toast }) {
 /* ====================== Templates ====================== */
 
 function Signatory({ x, ed, onField }) {
-  const d = x.sg;
-  const f = (k, l) => (
-    <label className="lt-l">
-      {l}
-      {ed ? <input type="text" className="lt-txt" value={d[k]} onChange={(e) => onField(k, e.target.value)} /> : <div className="ro">{d[k]}</div>}
+  const d = x.sg || {};
+  const textField = (key, label, type = "text") => (
+    <label className="lt-l" key={key}>
+      <span>{label}</span>
+      {ed ? (
+        <input
+          type={type}
+          className="lt-txt"
+          value={d[key] || ""}
+          onChange={(e) => onField(key, e.target.value)}
+        />
+      ) : <div className="ro">{d[key] || "—"}</div>}
     </label>
   );
+  const imageField = (key, label, fileKey, dataKey) => (
+    <div className="lt-l" key={key}>
+      <span>{label}</span>
+      {ed ? (
+        <div className="lt-upload-row">
+          <label className="lt-upload-btn">
+            Choose File
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onField(key, { file, fileKey, dataKey });
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <span className="lt-file-name">{d[fileKey] || "No File Chosen"}</span>
+        </div>
+      ) : (
+        <div className="ro">{d[fileKey] || "—"}</div>
+      )}
+      {d[dataKey] && <img className="lt-image-preview" src={d[dataKey]} alt={label} />}
+    </div>
+  );
+
   return (
-    <>
+    <div className="lt-template-section">
+      <div className="lt-section-heading">Letterhead And Signature</div>
       <div className="lt-grid2">
-        {f("company", "Company name")}
-        {f("name", "Signatory name")}
-        {f("title", "Signatory designation")}
-        <label className="lt-l">
-          Signature image
-          {ed ? (
-            <span className="lt-file">
-              <input type="file" accept="image/*" onChange={(e) => onField("sigFile", e.target.files[0] ? e.target.files[0].name : d.sigFile)} /> {d.sigFile}
-            </span>
-          ) : (
-            <div className="ro">{d.sigFile}</div>
-          )}
-        </label>
-        {f("letterDate", "Letter date")}
-        {f("from", "Sent from (HR mailbox)")}
-        {f("cc", "cc (comma separated)")}
-        {f("subject", "Cover email subject")}
+        {textField("company", "Company Name")}
+        {textField("name", "Signatory Name")}
+        {textField("title", "Signatory Designation")}
+        {imageField("logo", "Company Logo", "logoFile", "logoData")}
+        {imageField("sig", "Signature Image", "sigFile", "sigData")}
+        {textField("letterDate", "Letter Date")}
       </div>
-      <label className="lt-l">
-        Cover email body
-        {ed ? <textarea className="lt-tbody" style={{ height: 80 }} value={d.body} onChange={(e) => onField("body", e.target.value)} /> : <div className="ro pre">{d.body}</div>}
+      <div className="lt-section-heading lt-section-heading-spaced">Cover Email</div>
+      <div className="lt-grid2">
+        {textField("from", "Sent From (HR Mailbox)", "email")}
+        {textField("cc", "CC (Comma Separated)")}
+        {textField("subject", "Cover Email Subject")}
+      </div>
+      <label className="lt-l lt-cover-body">
+        <span>Cover Email Body</span>
+        {ed ? (
+          <textarea className="lt-tbody" value={d.body || ""} onChange={(e) => onField("body", e.target.value)} />
+        ) : <div className="ro pre">{d.body || "—"}</div>}
       </label>
-    </>
+    </div>
   );
 }
 
@@ -370,6 +401,9 @@ export function TemplatesTab({ S, actor, ui, toast }) {
   const [draft, setDraft] = useState(null);
   const [errs, setErrs] = useState([]);
   const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState(false);
+  const docxRef = useRef(null);
   const taRef = useRef(null);
   const ed = !!draft;
   const t = tplOf(S, tsel);
@@ -379,9 +413,9 @@ export function TemplatesTab({ S, actor, ui, toast }) {
     { key: "name", label: "Template", w: 230, get: (x) => x.name, render: (x) => <button type="button" className="nm" onClick={() => !ed && setTsel(x.id)}>{x.name}</button> },
     { key: "family", label: "Family", w: 110, get: (x) => x.family },
     { key: "ver", label: "Version", w: 80, get: (x) => String(x.ver), sv: (x) => x.ver },
-    { key: "file", label: "Word file", w: 260, get: (x) => x.file },
-    { key: "tags", label: "Tags used", w: 90, get: (x) => String(tagsIn(x.body).length), sv: (x) => tagsIn(x.body).length },
-    { key: "used", label: "Used by rules", w: 240, get: used },
+    { key: "file", label: "Word File", w: 260, get: (x) => x.file },
+    { key: "tags", label: "Tags Used", w: 90, get: (x) => String(tagsIn(x.body).length), sv: (x) => tagsIn(x.body).length },
+    { key: "used", label: "Used By Rules", w: 240, get: used },
   ];
   const grid = useLtGrid(defs, null);
   const view = useGridView(S.tpls, defs, grid);
@@ -389,15 +423,17 @@ export function TemplatesTab({ S, actor, ui, toast }) {
   const startEdit = () => {
     const go = (why) => {
       setReason(why || "");
-      setDraft({ name: t.name, file: t.file, body: t.body, sg: copy(t.sg) });
+      setDraft({ name: t.name || "", family: t.family || "", file: t.file || "", body: t.body || "", sg: copy(t.sg || {}) });
       setErrs([]);
+      setPreview(false);
     };
-    if (lettersLocked(S)) ui.askReason("Why are you changing this template?", go);
+    if (lettersLocked(S)) ui.askReason("Why Are You Changing This Template?", go);
     else go("");
   };
   const cancel = () => {
     setDraft(null);
     setErrs([]);
+    setPreview(false);
   };
   const save = () => {
     const tm = templateMessages(S, draft, draft.body);
@@ -408,69 +444,119 @@ export function TemplatesTab({ S, actor, ui, toast }) {
     const ver = store.saveTemplate(tsel, draft, reason, actor);
     setDraft(null);
     setErrs([]);
-    toast(`Saved as version ${ver}; unsent letters are now Out of date`);
+    setPreview(false);
+    toast(`Saved As Version ${ver}; Unsent Letters Are Now Out Of Date`);
   };
-  const insertTag = (k) => {
-    const ta = taRef.current;
-    if (!ta || !draft) return;
-    const p = ta.selectionStart;
-    const q = ta.selectionEnd;
-    const ins = `{{${k}}}`;
-    setDraft({ ...draft, body: draft.body.slice(0, p) + ins + draft.body.slice(q) });
-    window.requestAnimationFrame(() => {
-      ta.focus();
-      ta.setSelectionRange(p + ins.length, p + ins.length);
+  const updateSignatory = async (key, value) => {
+    if (key === "logo" || key === "sig") {
+      try {
+        const { readImageDataUrl } = await import("@/lib/letters-docx");
+        const result = await readImageDataUrl(value.file);
+        setDraft((current) => current ? ({
+          ...current,
+          sg: { ...current.sg, [value.fileKey]: result.name, [value.dataKey]: result.data },
+        }) : current);
+      } catch (error) {
+        setErrs([error.message || "The selected image could not be read."]);
+      }
+      return;
+    }
+    setDraft((current) => current ? ({ ...current, sg: { ...current.sg, [key]: value } }) : current);
+  };
+  const importWord = async (file) => {
+    if (!file) return;
+    setBusy(true);
+    setErrs([]);
+    try {
+      const { importDocxTemplate } = await import("@/lib/letters-docx");
+      const imported = await importDocxTemplate(file);
+      setDraft((current) => current ? ({
+        ...current,
+        file: file.name,
+        body: imported.body,
+        sg: {
+          ...current.sg,
+          ...(imported.logo ? { logoFile: imported.logo.name, logoData: imported.logo.data } : {}),
+          ...(imported.signature ? { sigFile: imported.signature.name, sigData: imported.signature.data } : {}),
+        },
+      }) : current);
+      toast(`Imported ${file.name}. Review The Content, Logo And Signature Before Saving.`);
+    } catch (error) {
+      setErrs([error.message || "Could Not Read This Word File."]);
+    } finally {
+      setBusy(false);
+      if (docxRef.current) docxRef.current.value = "";
+    }
+  };
+  const insertTag = (tag) => {
+    const el = taRef.current;
+    if (!el || !draft) return;
+    const start = el.selectionStart;
+    const end = el.selectionEnd;
+    const token = `{{${tag}}}`;
+    const body = draft.body.slice(0, start) + token + draft.body.slice(end);
+    setDraft({ ...draft, body });
+    requestAnimationFrame(() => {
+      el.focus();
+      el.setSelectionRange(start + token.length, start + token.length);
     });
   };
 
   return (
     <>
-      <Toolbar title="Templates" hint="Each template carries its own signatory, signature and cover email. A new version marks unsent letters Out of date." />
+      <Toolbar title="Templates" hint="Each Template Carries Its Own Signatory, Signature And Cover Email. A New Version Marks Unsent Letters Out Of Date." />
       {ui.el}
       <div className="lt-content">
         <LockNote S={S} />
         <div className="lt-cfg tpl">
-          <DataGrid defs={defs} grid={grid} allRows={S.tpls} rows={view} rowKey={(x) => x.id} rowClass={(x) => (x.id === tsel ? "lt-act" : "")} emptyText="No templates." />
+          <DataGrid defs={defs} grid={grid} allRows={S.tpls} rows={view} rowKey={(x) => x.id} rowClass={(x) => (x.id === tsel ? "lt-act" : "")} emptyText="No Templates." />
         </div>
         {t && (
           <>
             <LtErrs errs={errs} />
-            <div className="lt-card">
-              <div className="ch">
-                <b>{t.name}</b>
-                <span className="lt-mut">version {t.ver}{ed ? ` → ${t.ver + 1}` : ""}</span>
-                <span className="lt-sp" />
-                {ed ? (
-                  <>
-                    <button type="button" className="lt-btn pri" onClick={save}>Save new version</button>
-                    <button type="button" className="lt-btn" onClick={cancel}>Cancel</button>
-                  </>
-                ) : (
-                  <button type="button" className="lt-btn pri" onClick={startEdit}>Edit template</button>
-                )}
-              </div>
-              {ed && (
-                <div className="lt-row3">
-                  <label className="lt-l">
-                    Template name
-                    <input type="text" className="lt-txt" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
-                  </label>
-                  <label className="lt-l">
-                    Word file
-                    <span className="lt-file">
-                      <input type="file" accept=".doc,.docx" onChange={(e) => setDraft({ ...draft, file: e.target.files[0] ? e.target.files[0].name : draft.file })} /> {draft.file}
-                    </span>
-                  </label>
+            <section className="lt-template-editor">
+              <header className="lt-template-editor-head">
+                <div>
+                  <b>{t.name}</b>
+                  <span className="lt-mut">Version {t.ver}{ed ? ` → ${t.ver + 1}` : ""}</span>
                 </div>
-              )}
-              <Signatory x={draft || t} ed={ed} onField={(k, v) => setDraft((d) => ({ ...d, sg: { ...d.sg, [k]: v } }))} />
-              <div className="lt-tags">
-                {allTags(S).map((k) => (
-                  <button key={k} type="button" className="lt-tg" disabled={!ed} onClick={() => insertTag(k)}>{`{{${k}}}`}</button>
-                ))}
+                <div className="lt-template-actions">
+                  {ed ? <>
+                    <button type="button" className="lt-btn" onClick={() => setPreview((v) => !v)}>{preview ? "Edit Content" : "Preview"}</button>
+                    <button type="button" className="lt-btn pri" onClick={save} disabled={busy}>Save New Version</button>
+                    <button type="button" className="lt-btn" onClick={cancel}>Cancel</button>
+                  </> : <button type="button" className="lt-btn pri" onClick={startEdit}>Edit Template</button>}
+                </div>
+              </header>
+
+              {ed && <div className="lt-template-meta">
+                <label className="lt-l"><span>Template Name</span><input className="lt-txt" value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} /></label>
+                <label className="lt-l"><span>Family</span><input className="lt-txt" value={draft.family} onChange={(e) => setDraft({ ...draft, family: e.target.value })} /></label>
+                <div className="lt-l"><span>Word File</span><div className="lt-upload-row">
+                  <label className="lt-upload-btn">Choose File<input ref={docxRef} type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => importWord(e.target.files?.[0])} /></label>
+                  <span className="lt-file-name">{busy ? "Importing Word File…" : draft.file || "No File Chosen"}</span>
+                </div></div>
+              </div>}
+
+              <div className="lt-template-workspace">
+                <div className="lt-template-main">
+                  <div className="lt-template-section">
+                    <div className="lt-section-heading">Letter Content</div>
+                    {ed && <div className="lt-tags lt-template-tags">
+                      <span className="lt-mut">Insert Field:</span>
+                      {allTags(S).map((tag) => <button key={tag} type="button" className="lt-tg" onClick={() => insertTag(tag)}>{`{{${tag}}}`}</button>)}
+                    </div>}
+                    {preview ? <div className="lt-template-preview">{draft.body || "No Letter Content Yet."}</div> : (
+                      <textarea ref={taRef} className="lt-tbody lt-template-body" readOnly={!ed} value={ed ? draft.body : t.body || ""} onChange={(e) => ed && setDraft({ ...draft, body: e.target.value })} placeholder="Upload A Word File Or Enter Letter Content Here…" />
+                    )}
+                    <p className="lt-help">Use Field Tags Such As {"{{Name}}"} And {"{{Designation}}"}. These Are Replaced With Employee Data When The Letter Is Generated.</p>
+                  </div>
+                </div>
+                <aside className="lt-template-side">
+                  <Signatory x={draft || t} ed={ed} onField={updateSignatory} />
+                </aside>
               </div>
-              <textarea ref={taRef} className="lt-tbody" readOnly={!ed} value={ed ? draft.body : t.body} onChange={(e) => ed && setDraft({ ...draft, body: e.target.value })} />
-            </div>
+            </section>
           </>
         )}
       </div>
