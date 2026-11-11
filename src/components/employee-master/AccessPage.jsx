@@ -24,7 +24,7 @@ const CACHE_KEY = "accessData.v5";
 const EMPTY_DELEG = { techEd: {}, compMgr: {} };
 
 const TABS = [
-  { key: "people", label: "People", title: "People", sub: "From Catalyst roles and Delegation — nobody is added here" },
+  { key: "people", label: "User", title: "User", sub: "Everyone who can log in to this application — nobody is added here" },
   { key: "screens", label: "Screens", title: "Screens By Role", sub: "None · View (read-only) · Edit" },
   { key: "actions", label: "Actions", title: "Actions By Role", sub: "Yes · No" },
   { key: "fields", label: "Fields", title: "Field Limits By Role", sub: "Edit · Read · Hidden" },
@@ -79,7 +79,7 @@ function buildModel(data, pending, today, cycleName) {
   const matrix = data?.matrix || { screens: {}, actions: {}, fields: {} };
   const people = data?.people || [];
   const deleg = { techEd: data?.deleg?.techEd || {}, compMgr: data?.deleg?.compMgr || {} };
-  // People-tab cycle (may not be the Active one); effective access uses deleg only.
+  // User-tab cycle (may not be the Active one); effective access uses deleg only.
   const listDeleg = { techEd: data?.listDeleg?.techEd || deleg.techEd, compMgr: data?.listDeleg?.compMgr || deleg.compMgr };
   const listActive = data?.listCycleActive !== false;
   const overrides = data?.overrides || [];
@@ -479,10 +479,12 @@ function FieldsTab({ M, setVal, onRetire, filt, setFilt }) {
   );
 }
 
-function PeopleTab({ M, filt, setFilt, onPick, onExport, delegationHelper }) {
+function PeopleTab({ M, filt, setFilt, onPick, onExport, delegationHelper, usersLoaded }) {
   const rs = M.roles();
   const q = filt.peopleSearch.toLowerCase();
+  // User tab = every login user of the application (Catalyst app users).
   const list = M.people.filter((p) => {
+    if (!p.catalystUser) return false;
     const er = M.effRole(p), fl = M.flagsOf(p);
     if (filt.peopleRole === "_attn" ? !fl.length : filt.peopleRole && er.role !== filt.peopleRole) return false;
     if (q && (p.name + " " + p.email + " " + p.empId).toLowerCase().indexOf(q) < 0) return false;
@@ -499,10 +501,10 @@ function PeopleTab({ M, filt, setFilt, onPick, onExport, delegationHelper }) {
           <option value="_attn">Needs attention</option>
         </select>
         <button type="button" className="btn sm" onClick={onExport}>Export (CSV)</button>
-        <span className="hint">To change who is a Tech-ED / Comp Manager, change Delegation. HR Admin and added roles are given in Catalyst.</span>
+        <span className="hint">{list.length} {list.length === 1 ? "user" : "users"}. To change who is a Tech-ED / Comp Manager, change Delegation. HR Admin and added roles are given in Catalyst.</span>
       </div>
       <table>
-        <thead><tr><th>Person</th><th>Role</th><th>Role From</th><th>Team</th><th>Overrides</th><th>Flags</th></tr></thead>
+        <thead><tr><th>User</th><th>Role</th><th>Role From</th><th>Team</th><th>Overrides</th><th>Flags</th></tr></thead>
         <tbody>
           {list.map((p) => {
             const er = M.effRole(p), fl = M.flagsOf(p), t = M.teamOf(p), n = M.ovFor(p.empId).length;
@@ -517,7 +519,7 @@ function PeopleTab({ M, filt, setFilt, onPick, onExport, delegationHelper }) {
               </tr>
             );
           })}
-          {!list.length && <tr><td colSpan={6} className="empty">No one matches.</td></tr>}
+          {!list.length && <tr><td colSpan={6} className="empty">{usersLoaded === false ? "Could not read the login users from Catalyst." : "No user matches."}</td></tr>}
         </tbody>
       </table>
     </>
@@ -608,7 +610,7 @@ function AuditTab({ M, filt, setFilt }) {
 }
 
 /* =====================================================================
-   Delegation helper (People tab) — active cycle, row count, fill from hierarchy
+   Delegation helper (User tab) — active cycle, row count, fill from hierarchy
    ===================================================================== */
 function nameOf(x) {
   if (x == null) return "";
@@ -1149,7 +1151,7 @@ export default function AccessPage() {
   const noteEnforced = useCallback((v) => { if (typeof v === "boolean") setEnforced(v); }, []);
 
   /* load only when changed: keep a copy for this browser session, download again only if the version changed */
-  // Cycle whose Delegation the People tab lists ("" = the Active cycle).
+  // Cycle whose Delegation the User tab lists ("" = the Active cycle).
   const [listCycle, setListCycle] = useState("");
   const listCycleRef = useRef("");
 
@@ -1170,6 +1172,7 @@ export default function AccessPage() {
         roles: d.roles || [], matrix: d.matrix || { screens: {}, actions: {}, fields: {} },
         people: d.people || [], deleg: d.deleg || EMPTY_DELEG, overrides: d.overrides || [], log: d.log || [],
         listDeleg: d.listDeleg || d.deleg || EMPTY_DELEG, listCycleId: d.listCycleId || "", listCycleActive: d.listCycleActive !== false,
+        usersLoaded: d.usersLoaded !== false,
       };
       writeCache(d.version, snap);
       setData(snap);
@@ -1283,7 +1286,7 @@ export default function AccessPage() {
 
   const exportPeople = () => {
     const rows = [["Employee ID", "Name", "Email", "Role", "Role from", "Team", "Overrides", "Flags"]];
-    M.people.forEach((p) => {
+    M.people.filter((p) => p.catalystUser).forEach((p) => {
       const er = M.effRole(p);
       rows.push([p.empId, p.name, p.email, er.role ? M.roleLabel(er.role) : "", er.from, M.teamOf(p).txt, M.ovFor(p.empId).map(M.ovText).join("; "), M.flagsOf(p).map((f) => f[0]).join("; ")]);
     });
@@ -1291,7 +1294,7 @@ export default function AccessPage() {
     const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = "access_people_" + today + ".csv";
+    a.download = "access_users_" + today + ".csv";
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1310,7 +1313,7 @@ export default function AccessPage() {
   else if (tab === "people") {
     body = (
       <PeopleTab
-        M={M} filt={filt} setFilt={setFilt} onPick={onPick} onExport={exportPeople}
+        M={M} filt={filt} setFilt={setFilt} onPick={onPick} onExport={exportPeople} usersLoaded={data.usersLoaded}
         delegationHelper={
           <DelegationHelper
             cyc={cyc}
