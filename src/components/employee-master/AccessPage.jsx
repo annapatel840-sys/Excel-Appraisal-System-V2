@@ -23,12 +23,26 @@ const KIND_LABEL = { input: "Input", master: "Master", upload: "Upload only", ca
 const CACHE_KEY = "accessData.v5";
 const EMPTY_DELEG = { techEd: {}, compMgr: {} };
 
-// Which screen(s) each field belongs to, for the Fields tab screen dropdown.
-// Field limits are enforced on the Appraisal Sheet today, so every field defaults to it.
-// To show a field under another screen, add: fieldKey: ["appraisalSheet", "detailScreen"]
-const DEFAULT_FIELD_SCREENS = ["appraisalSheet"];
-const FIELD_SCREEN_MAP = {};
-const screensOfField = (f) => FIELD_SCREEN_MAP[f.key] || DEFAULT_FIELD_SCREENS;
+// Fields tab screen dropdown: which fields each screen shows.
+// Every field is on the Appraisal Sheet. Add a field key to a list below to show it under
+// that screen too (a screen with no list shows nothing). A field's limit is per role and is
+// shared by every screen it appears on.
+const EXTRA_FIELD_SCREENS = [{ key: "bulkEdit", label: "Bulk Edit" }]; // not in the screen catalog
+const SCREEN_FIELDS = {
+  detailScreen: [
+    "name", "designation", "reportingManager", "compManager", "wissenExperience", "totalExperience", "lastAppraisalDate",
+    "managerRating", "interviewCount", "rrPercent", "grossMargin", "currentAnnualBasePay", "targetPBAllocatedForMay",
+    "rbToBePaid", "monthRB", "pbToBePaid", "monthPB", "allocatedPBAmount", "pbInstallment", "newRB", "hikeAmount", "hikePct",
+    "targetPBNextYear", "targetPBCriteria", "compManagerRemarks", "eligibleForPromotion", "newTitle", "atRisk",
+    "totalOfPB", "totalBonus", "newBaseSalary", "totalCTCWithRewards", "totalRewardsHikePct",
+  ],
+  bulkEdit: [
+    "name", "designation", "compManager", "appraiserTechED", "managerRating", "currentAnnualBasePay", "rbToBePaid", "pbToBePaid",
+    "allocatedPBAmount", "pbInstallment", "newRB", "hikeAmount", "hikePct", "targetPBNextYear", "targetPBCriteria",
+    "compManagerRemarks", "eligibleForPromotion", "newTitle", "atRisk",
+  ],
+};
+const screensOfField = (f) => ["appraisalSheet"].concat(Object.keys(SCREEN_FIELDS).filter((sc) => SCREEN_FIELDS[sc].indexOf(f.key) > -1));
 
 const TABS = [
   { key: "people", label: "Users", title: "Users", sub: "Everyone who can log in to this application — nobody is added here" },
@@ -437,7 +451,7 @@ function FieldsTab({ M, setVal, onRetire, filt, setFilt }) {
       <div className="tools">
         <select value={filt.fieldScreen} onChange={(e) => setFilt({ fieldScreen: e.target.value })}>
           <option value="">All screens</option>
-          {M.SCREENS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+          {M.SCREENS.concat(EXTRA_FIELD_SCREENS.filter((x) => !byKey(M.SCREENS, x.key))).map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
         <input type="text" placeholder="Search field" value={filt.fieldSearch} onChange={(e) => setFilt({ fieldSearch: e.target.value })} />
         <select value={filt.fieldKind} onChange={(e) => setFilt({ fieldKind: e.target.value })}>
