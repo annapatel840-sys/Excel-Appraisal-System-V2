@@ -20,14 +20,20 @@ const LIMIT_LABEL = { edit: "Edit", read: "Read", hidden: "Hidden" };
 const STRICT = { edit: 0, read: 1, hidden: 2 };
 const LEVEL_LABEL = { none: "None", view: "View", edit: "Edit" };
 const KIND_LABEL = { input: "Input", master: "Master", upload: "Upload only", calc: "Calculated", pair: "Paired" };
-const CACHE_KEY = "accessData.v5";
+const CACHE_KEY = "accessData.v6";
 const EMPTY_DELEG = { techEd: {}, compMgr: {} };
 
-// Fields tab screen dropdown: which fields each screen shows.
-// Every field is on the Appraisal Sheet. Add a field key to a list below to show it under
-// that screen too (a screen with no list shows nothing). A field's limit is per role and is
-// shared by every screen it appears on.
-const EXTRA_FIELD_SCREENS = [{ key: "bulkEdit", label: "Bulk Edit" }]; // not in the screen catalog
+// Fields tab screen dropdown, in HR Operations order. A field with a group (screen key) belongs to
+// that screen. The older appraisal fields have no group: they are on the Appraisal Sheet and are
+// also listed under the screens in SCREEN_FIELDS (a field's limit is shared by every screen it is on).
+const FIELD_SCREEN_OPTIONS = [
+  ["appraisalSheet", "Appraisal Sheet"], ["detailScreen", "Detailed Screen"], ["bulkEdit", "Bulk Edit"],
+  ["employeeMaster", "Employee Master"], ["cycleMaster", "Appraisal Cycle Master"], ["locationMaster", "Location Master"],
+  ["budgetMaster", "Budget Master"], ["payrollMaster", "Payroll Master"], ["feedbackRating", "Feedback & Rating Master"],
+  ["designationMaster", "Designation Master"], ["eligibility", "Eligibility List"], ["payrollUpload", "Upload"],
+  ["historicalImport", "Historical Import"], ["teamChanges", "Team Changes"], ["changeMismatch", "Change List & Mismatch"],
+  ["budgetDistribution", "Budget Distribution"], ["delegation", "Delegation"], ["letters", "Letters"],
+];
 const SCREEN_FIELDS = {
   detailScreen: [
     "name", "designation", "reportingManager", "compManager", "wissenExperience", "totalExperience", "lastAppraisalDate",
@@ -42,7 +48,9 @@ const SCREEN_FIELDS = {
     "compManagerRemarks", "eligibleForPromotion", "newTitle", "atRisk",
   ],
 };
-const screensOfField = (f) => ["appraisalSheet"].concat(Object.keys(SCREEN_FIELDS).filter((sc) => SCREEN_FIELDS[sc].indexOf(f.key) > -1));
+const screensOfField = (f) => (f.group
+  ? [f.group]
+  : ["appraisalSheet"].concat(Object.keys(SCREEN_FIELDS).filter((sc) => SCREEN_FIELDS[sc].indexOf(f.key) > -1)));
 
 const TABS = [
   { key: "people", label: "Users", title: "Users", sub: "Everyone who can log in to this application — nobody is added here" },
@@ -451,7 +459,7 @@ function FieldsTab({ M, setVal, onRetire, filt, setFilt }) {
       <div className="tools">
         <select value={filt.fieldScreen} onChange={(e) => setFilt({ fieldScreen: e.target.value })}>
           <option value="">All screens</option>
-          {M.SCREENS.concat(EXTRA_FIELD_SCREENS.filter((x) => !byKey(M.SCREENS, x.key))).map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+          {FIELD_SCREEN_OPTIONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
         </select>
         <input type="text" placeholder="Search field" value={filt.fieldSearch} onChange={(e) => setFilt({ fieldSearch: e.target.value })} />
         <select value={filt.fieldKind} onChange={(e) => setFilt({ fieldKind: e.target.value })}>
