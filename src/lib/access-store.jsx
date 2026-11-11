@@ -18,9 +18,7 @@ export const HR_TAB_SCREENS = {
   "appraisal-cycle": "cycleMaster",
   "location-master": "locationMaster",
   "payroll-data": "payroll",
-  // Feedback & Rating Master is HR-only and uses the existing payroll screen permission
-  // (the access catalogue has no separate feedbackRatingMaster screen key).
-  "feedback-rating": "payroll",
+  "feedback-rating": "feedbackRatingMaster",
   "hr-dashboard": "hrDashboard",
   "historical-import": "historicalImport",
   "payroll-upload": "payroll",
@@ -46,6 +44,7 @@ export const SCREEN_FALLBACK = {
   locationMaster: "employeeMaster",
   designationMaster: "employeeMaster",
   letters: "employeeMaster",
+  feedbackRatingMaster: "payroll",
   bulkEditScreen: "appraisalSheet",
 };
 
