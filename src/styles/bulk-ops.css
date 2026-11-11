@@ -855,3 +855,12 @@
 .bo .filter-btn.filtered{border-color:#102a43;background:#102a43;color:#fff}
 .bo .filter-btn.filtered:hover{background:#102a43}
 .bo .filter-btn.filtered::after{display:none}
+
+/* Employees table header: the sort arrow sits on the right, next to the filter button, centred (not under the label) */
+.bo #hdr th .th-inner{align-items:center}
+.bo #hdr th .th-t{flex:1 1 auto;min-width:0}
+.bo #hdr th.sort::after,.bo #hdr th.sort.asc::after,.bo #hdr th.sort.desc::after{content:none}
+.bo #hdr th .sarr{flex:none;display:inline-block;min-width:12px;text-align:center;line-height:1;font-size:13px;font-weight:400;color:#8DA2BC;cursor:pointer}
+.bo #hdr th.sort .sarr::before{content:"↕"}
+.bo #hdr th.sort.asc .sarr::before{content:"▲";font-size:9px;color:var(--navy)}
+.bo #hdr th.sort.desc .sarr::before{content:"▼";font-size:9px;color:var(--navy)}

@@ -746,7 +746,7 @@ function renderGrid(){
     var cls=(c.c||"")+(c.r?" r":"")+(c.ns?" nosort":" sort");
     if(S.sort.key===c.k)cls+=S.sort.dir>0?" asc":" desc";
     var fb=c.ns?'':'<button type="button" class="filter-btn'+(S.colF[c.k]?' filtered':'')+'" data-fk="'+c.k+'" title="Filter" aria-label="Filter '+esc(c.t)+'"><svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button>';
-    h+='<th class="'+cls+'" data-k="'+c.k+'"><div class="th-inner"><span>'+esc(c.t)+'</span>'+fb+'</div>'+'<div class="col-rs"></div></th>';
+    h+='<th class="'+cls+'" data-k="'+c.k+'"><div class="th-inner"><span class="th-t">'+esc(c.t)+'</span>'+(c.ns?'':'<span class="sarr" aria-hidden="true"></span>')+fb+'</div>'+'<div class="col-rs"></div></th>';
   });
   $("hdr").innerHTML=h;applyColW();
   var rows=gridRows(),total=rows.length,pages=Math.max(1,Math.ceil(total/PAGE));
