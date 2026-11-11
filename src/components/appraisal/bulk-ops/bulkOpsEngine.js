@@ -135,7 +135,7 @@ var FILTER_DEFAULT=[
   {id:"techEd",label:"Tech ED",type:"select",field:"superManager"},
   {id:"compManager",label:"Comp Manager",type:"select",field:"compManager"},
   {id:"source",label:"Source",type:"select",field:"source"},
-  {id:"rating",label:"Manager Rating",type:"num",field:"rating"},
+  {id:"rating",label:"Manager Rating",type:"rating",field:"rating"},
   {id:"clientRating",label:"Client Rating",type:"num",field:"clientRating"},
   {id:"promo",label:"Promotion",type:"select",field:"promo"},
   {id:"rrPct",label:"RR %",type:"range",field:"rrPct",ranges:[[0,60],[60,75],[75,90],[90,100],[100,null]]},
@@ -145,7 +145,8 @@ var FILTER_DEFAULT=[
 var FDEFS=FILTER_DEFAULT.slice();
 var CFG_KEY="bulkForWhomCfg_v1";
 function normFilters(list){
-  return (list||[]).filter(function(d){return d&&d.on!==false&&d.field!=="band"&&d.id!=="band"&&d.type!=="edited"&&d.type!=="rating"&&(d.type==="search"||d.type==="rating"||d.type==="edited"||d.field)})
+  return (list||[]).map(function(d){return d&&(d.field==="rating"||d.id==="rating"||d.type==="rating")?Object.assign({},d,{type:"rating",field:"rating"}):d})
+    .filter(function(d){return d&&d.on!==false&&d.field!=="band"&&d.id!=="band"&&d.type!=="edited"&&(d.type==="search"||d.type==="rating"||d.type==="edited"||d.field)})
     .map(function(d){var id=d.id||d.field||d.type;return {id:id,label:d.label||id,type:d.type||"select",field:d.field,ranges:d.ranges||[]}});
 }
 function applyFilterCfg(list){
@@ -168,10 +169,13 @@ function pruneActive(){
 }
 function saveMine(){try{localStorage.setItem(MY_KEY,JSON.stringify(S.active))}catch(x){}}
 function loadMine(){try{var v=JSON.parse(localStorage.getItem(MY_KEY)||"null");if(Array.isArray(v)){S.active=v;pruneActive()}}catch(x){}}
+/* Manager Rating names: same list as the Manager Rating column in the Appraisal Sheet (passed in by the page). */
+var RATING_LBL_DEFAULT={1:"Does Not Meets Expectation",2:"Sometimes Meets Expectations",3:"Meets Expectation",4:"Sometimes Exceeds Expectation",5:"Often Exceeds Expectation"};
+function ratingText(n){var L=(cfg&&cfg.ratingLabels)||RATING_LBL_DEFAULT,t=L[n]||RATING_LBL_DEFAULT[n];return t?n+" - "+t:String(n)}
 var EDITED_LBL={hand:"Edited Manually",bulk:"Edited in Bulk",none:"Not Edited"};
 function optionsFor(d){
   var sc=scope();
-  if(d.type==="rating")return [5,4,3,2,1].map(function(n){return {v:String(n),label:String(n),n:sc.filter(function(e){return bucket(e)===n}).length}}).concat([{v:"none",label:"No Rating",n:sc.filter(function(e){return bucket(e)===null}).length}]);
+  if(d.type==="rating")return [5,4,3,2,1].map(function(n){return {v:String(n),label:ratingText(n),n:sc.filter(function(e){return bucket(e)===n}).length}});
   if(d.type==="edited")return ["hand","bulk","none"].map(function(k){return {v:k,label:EDITED_LBL[k],n:sc.filter(function(e){return k==="hand"?e.hand:k==="bulk"?e.bulk:(!e.hand&&!e.bulk)}).length}});
   if(d.type==="range"){
     var ro=d.ranges.map(function(r,i){return {v:String(i),label:rangeLabel(r),n:sc.filter(function(e){return rangeHit(e[d.field],r)}).length}});
@@ -245,7 +249,7 @@ function renderChips(){
 /* popovers */
 function closePop(){S.pop=null;$("pop").classList.add("hide")}
 function placePop(btn){
-  var p=$("pop"),r=btn.getBoundingClientRect();p.classList.remove("hide");var dd=S.pop&&S.pop.id?fdef(S.pop.id):null;p.classList.toggle("wide",!!dd&&(dd.type==="num"||dd.type==="range"));
+  var p=$("pop"),r=btn.getBoundingClientRect();p.classList.remove("hide");var dd=S.pop&&S.pop.id?fdef(S.pop.id):null;p.classList.toggle("wide",!!dd&&(dd.type==="num"||dd.type==="range"||dd.type==="rating"));
   var w=p.offsetWidth,x=Math.min(r.left,window.innerWidth-w-10);
   p.style.left=Math.max(8,x)+"px";p.style.top=(r.bottom+6)+"px";
 }
@@ -340,15 +344,27 @@ function renderRules(){
   $("bAddField").disabled=!free;
 }
 /* the Value box is selected as soon as the rules are drawn, so typing replaces the 0 */
-var _fvT=0;
-function focusValue(){
+var _fvT=0,_fvUid=0;
+function focusValue(uid){
+  if(uid)_fvUid=uid;
   clearTimeout(_fvT);
   _fvT=setTimeout(function(){
-    var el=root.querySelector('#ruleRows [data-k="value"]');
+    var want=_fvUid;_fvUid=0;
+    /* a field just added / changed: go to ITS value box (even though a button had the focus) */
+    var el=want?root.querySelector('#ruleRows [data-uid="'+want+'"] [data-k="value"]'):null;
+    if(el&&!el.disabled){el.focus();try{el.select()}catch(x){}return}
+    el=root.querySelector('#ruleRows [data-k="value"]');
     var ae=document.activeElement,free=!ae||ae===document.body||!!(ae.closest&&ae.closest("#ruleRows"));
     if(el&&!el.disabled&&free){el.focus();try{el.select()}catch(x){}}
   },0);
 }
+/* clicking / tabbing into any value box selects what is in it, so typing replaces it */
+root.addEventListener("focusin",function(ev){
+  var el=ev.target;
+  if(!el||el.tagName!=="INPUT"||!el.closest||!el.closest("#ruleRows"))return;
+  var t=el.type;if(t!=="number"&&t!=="text")return;
+  setTimeout(function(){try{el.select()}catch(x){}},0);
+});
 function validate(){
   var ok=true;
   root.querySelectorAll("#ruleRows .err").forEach(function(el){el.classList.remove("err");el.title=""});
@@ -1062,8 +1078,8 @@ $("ruleRows").addEventListener("change",function(ev){
   var r=ruleBy(Number(row.getAttribute("data-uid")));if(!r)return;
   var k=el.getAttribute("data-k");if(!k)return;
   S.flash="";
-  if(k==="field"){if(el.value==="hikePct"&&isHike(r.field)){return}var keep=r.uid;var n=newRule(el.value,false);n.uid=keep;S.rules[S.rules.indexOf(r)]=n;renderRules()}
-  else if(k==="hikeUnit"){var keep2=r.uid,n2=newRule(el.value==="pct"?"hikePct":"hikeAmt",false);n2.uid=keep2;n2.value=r.value;S.rules[S.rules.indexOf(r)]=n2;renderRules()}
+  if(k==="field"){if(el.value==="hikePct"&&isHike(r.field)){return}var keep=r.uid;var n=newRule(el.value,false);n.uid=keep;S.rules[S.rules.indexOf(r)]=n;renderRules();focusValue(keep)}
+  else if(k==="hikeUnit"){var keep2=r.uid,n2=newRule(el.value==="pct"?"hikePct":"hikeAmt",false);n2.uid=keep2;n2.value=r.value;S.rules[S.rules.indexOf(r)]=n2;renderRules();focusValue(keep2)}
   else if(k==="method"){r.method=el.value;if(r.method==="dist"||r.method==="adj")r.unit="amt";renderRules()}
   else if(k==="distSrc"){r.distSrc=el.value;renderRules()}
   else if(k==="distBy")r.distBy=el.value;
@@ -1081,7 +1097,7 @@ $("ruleRows").addEventListener("click",function(ev){
 });
 $("bAddField").addEventListener("click",function(){
   var taken=usedKeys(0),f=FORDER.filter(function(x){return fieldOn(x)&&!taken[FIELDS[x].key]&&canEdit(FIELDS[x].key)})[0];
-  if(!f)return;S.rules.push(newRule(f,false));S.flash="";renderRules();render();
+  if(!f)return;var nr=newRule(f,false);S.rules.push(nr);S.flash="";renderRules();focusValue(nr.uid);render();
 });
 
 $("roleSel").addEventListener("change",setRole);

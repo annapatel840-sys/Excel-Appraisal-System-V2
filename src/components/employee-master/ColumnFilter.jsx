@@ -297,7 +297,7 @@ export function ColumnFilter({ column, rows, value, onChange }) {
         aria-label={`Filter ${column.label}`}
         aria-expanded={open}
       >
-        <Filter size={12} />
+        <Filter size={13} fill="currentColor" />
       </button>
 
       {/* ======================================================

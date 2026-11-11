@@ -713,27 +713,43 @@
   flex: 0 0 auto;
 }
 
+/* Same look as the Appraisal Sheet header filter: small white boxed button, filled funnel,
+   navy when a filter is applied. */
 .employee-master-page .em-filter-button {
-  width: 21px;
-  height: 21px;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
 
   display: inline-flex;
   align-items: center;
   justify-content: center;
 
-  border: 0;
-  border-radius: 3px;
+  border: 1px solid #9fb4ce;
+  border-radius: 5px;
 
-  background: transparent;
-  color: #64748b;
+  background: #fff;
+  color: #102a43;
 
   cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
 }
 
-.employee-master-page .em-filter-button:hover,
+.employee-master-page .em-filter-button:hover {
+  background: #dcebff;
+}
+
 .employee-master-page .em-filter-button.active {
-  background: #dbe6f2;
-  color: var(--em-blue);
+  border-color: #102a43;
+  background: #102a43;
+  color: #fff;
+}
+
+.employee-master-page .em-filter-button.active:hover {
+  background: #102a43;
+}
+
+.employee-master-page .em-filter-button svg {
+  fill: currentColor;
 }
 
 

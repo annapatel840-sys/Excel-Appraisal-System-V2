@@ -31,6 +31,7 @@ import React, {
   useState,
 } from "react";
 import { useAppraisal, keyOfLabel } from "@/lib/appraisal-store";
+import { MANAGER_RATING_LABELS } from "@/lib/appraisal-data";
 import { useBudget } from "@/lib/budget-store";
 import { useDistributionBudget } from "@/lib/distribution-budget";
 import {
@@ -357,6 +358,8 @@ const BulkOperations = forwardRef(function BulkOperations(
         return buildBatches([...(historyCache.current || []), ...(localAudit || [])], loadBatchTexts(cyc));
       },
       getSheetEmp: () => live.current.sheetEmp,
+      // Manager Rating names, same list as the Manager Rating column in the Appraisal Sheet.
+      ratingLabels: MANAGER_RATING_LABELS,
       getHdr: () => {
         const h = live.current.sheetHdr;
         return h ? { allocated: h.allocated, used: h.used, tpb: h.tpb } : null;
