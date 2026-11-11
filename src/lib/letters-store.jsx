@@ -114,6 +114,7 @@ export const saveRemark = (id, value, actor) => run(actor, (st) => core.setRemar
 export const saveRules = (draft, reason, actor) => run(actor, (st) => core.saveRules(st, draft, reason));
 export const saveFields = (draft, reason, actor) => run(actor, (st) => core.saveFields(st, draft, reason));
 export const saveTemplate = (id, draft, reason, actor) => run(actor, (st) => core.saveTemplate(st, id, draft, reason));
+export const createTemplate = (draft, reason, actor) => run(actor, (st) => core.createTemplate(st, draft, reason));
 
 // Demo helpers (shown only while LETTERS_DEMO is true).
 export const loadSampleLetters = (actor) => run(actor, (st) => core.loadSampleLetters(st));

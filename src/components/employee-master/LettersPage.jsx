@@ -398,7 +398,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
 
   const renderLetterTab = () => {
     const l = activeLetter;
-    if (!l) return <div className="lt-rp-info">Click a row to see the letter and the Appraisal Sheet values it was made from.</div>;
+    if (!l) return <div className="lt-rp-info">Click a row to see the letter and the Appraisal Sheet Values it was made from.</div>;
     const r = empOf(S, l);
     const mg = merge(S, l);
     const hist = S.audit.filter((a) => a.scope === "Letter" && a.ref === l.id);
@@ -423,9 +423,9 @@ export function LettersPage({ canEdit = true, onNavigate }) {
             ["Rule", l.ruleName],
             ["Template", `${tplOf(S, l.tpl).name} v${l.ver}`],
             ["Status", l.status],
-            ["Sent on", l.sentOn || "-"],
-            ["Sent by", l.sentBy || "-"],
-            ["Sent to", l.sentTo || "-"],
+            ["Sent On", l.sentOn || "-"],
+            ["Sent By", l.sentBy || "-"],
+            ["Sent To", l.sentTo || "-"],
             ["Resends", String(l.resends)],
           ].map((x) => (
             <div className="lt-rp-row" key={x[0]}>
@@ -435,7 +435,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           ))}
         </div>
         <div className="lt-rp-card">
-          <h4>Appraisal Sheet values</h4>
+          <h4>Appraisal Sheet Values</h4>
           {S.fields.map((f) => {
             const now = fmtVal(r, f.col);
             const was = fmtSnap(f.col, l.snap[f.col]);
@@ -471,7 +471,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
               </div>
             ))
           ) : (
-            <div className="lt-mut">No history.</div>
+            <div className="lt-mut">No History.</div>
           )}
         </div>
       </>
@@ -558,7 +558,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           </div>
         ))}
         <div className="lt-rp-card">
-          <h4>Not getting a letter</h4>
+          <h4>Not Getting A Letter</h4>
           {!nl.length && <div className="lt-mut">Everyone gets a letter.</div>}
         </div>
         {nl.map((n, i) => (
@@ -589,13 +589,13 @@ export function LettersPage({ canEdit = true, onNavigate }) {
         );
       })}
       <div className="lt-rp-note">
-        Saved in this browser. HR sets the default list in Letter Fields (Show in grid). Any Appraisal Sheet column can be added there.
+        Saved In This Browser. HR sets the default list in Letter Fields (Show in grid). Any Appraisal Sheet column can be added there.
       </div>
     </div>
   );
 
   const renderPanel = () => (
-    <aside className="lt-rp" ref={asideRef} style={{ width: panelW }} aria-label="Letters panel">
+    <aside className="lt-rp" ref={asideRef} style={{ width: panelW }} aria-label="Letters Panel">
       <div className="lt-rp-grip" title="Drag to resize" onMouseDown={startResize} />
       <div className="lt-rp-head">
         <div className="lt-rp-who">
@@ -632,7 +632,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
   const lettersPane = (
     <>
       <div className="lt-toolbar">
-        <input className="lt-txt search" placeholder="Search name, ID" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search letters" />
+        <input className="lt-txt search" placeholder="Search Name, ID" value={q} onChange={(e) => setQ(e.target.value)} aria-label="Search letters" />
         <span className="lt-seg">
           {SECTIONS.map((s) => (
             <button key={s} type="button" className={sec === s ? "on" : ""} onClick={() => changeSection(s)}>
@@ -649,7 +649,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
         <button type="button" className="lt-btn" disabled={!(active || selected.length)} onClick={preview}>Preview</button>
         {canEdit && (
           <>
-            <button type="button" className="lt-btn" disabled={!canReview} onClick={review}>Mark reviewed</button>
+            <button type="button" className="lt-btn" disabled={!canReview} onClick={review}>Mark Reviewed</button>
             <button type="button" className="lt-btn main" disabled={!canSend} onClick={send}>
               {confirmN != null ? `Confirm · ${confirmN} letters` : "Send"}
             </button>
@@ -658,7 +658,7 @@ export function LettersPage({ canEdit = true, onNavigate }) {
               {moreOpen && (
                 <div className="lt-pop" role="menu">
                   {[
-                    ["test", "Send test to me"],
+                    ["test", "Send Test To Me"],
                     ["resend", "Resend"],
                     ["withdraw", "Withdraw"],
                     ["replace", "Replace (correction)"],
@@ -690,16 +690,16 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           rowClass={(l) => (l.id === active ? "lt-act" : "")}
           emptyText={
             secRows.length
-              ? "No letters match the current filters."
+              ? "No Letters Match The Current Filters."
               : sec === "Annual"
-                ? "No letters yet. Annual letters are generated from the Letters step of the Appraisal Cycle Master."
-                : "No letters yet. Exceptional letters are generated from the Exceptional grid."
+                ? "No Letters Yet. Annual Letters Are Generated From The Letters Step Of The Appraisal Cycle Master."
+                : "No Letters Yet. Exceptional Letters Are Generated From The Exceptional Grid."
           }
         />
         <ClientPager page={paged.page} pages={paged.pages} from={paged.from} to={paged.to} total={view.length} allTotal={secRows.length} onPage={paged.setPage} grid={grid} />
       </div>
       <div className="lt-foot2">
-        <span><b>{view.length}</b> letters</span>
+        <span><b>{view.length}</b> Letters</span>
         {sel.size > 0 && <span><b>{sel.size}</b> selected</span>}
         {sums.map(([label, total]) => (
           <span key={label}>{label}: <b>{inr(total)}</b></span>
@@ -712,13 +712,13 @@ export function LettersPage({ canEdit = true, onNavigate }) {
     <div className="lt">
       {store.LETTERS_DEMO && (
         <div className="lt-note">
-          <span>Sample data — letters are saved in this browser only; nothing is emailed.</span>
+          <span>Sample Data — Letters Are Saved In This Browser Only; Nothing Is Emailed.</span>
           <span className="sp">
             <button type="button" className="lt-btn sm" disabled={S.letters.length > 0} onClick={() => { store.loadSampleLetters(actor); toast("Sample letters loaded"); }}>
-              Load sample history
+              Load Sample History
             </button>
             <button type="button" className="lt-btn sm" onClick={() => { store.resetSampleData(); setSel(new Set()); setActive(null); toast("Sample data reset"); }}>
-              Reset sample data
+              Reset Sample Data
             </button>
           </span>
         </div>
@@ -734,19 +734,19 @@ export function LettersPage({ canEdit = true, onNavigate }) {
           ))}
         <div className="lt-tr-right">
           <span className="lt-pw" ref={notesRef}>
-            <button type="button" className="lt-btn" onClick={() => setNotesOpen((o) => !o)}>My notes</button>
+            <button type="button" className="lt-btn" onClick={() => setNotesOpen((o) => !o)}>My Notes</button>
             {notesOpen && (
               <div className="lt-pop notes">
-                <h4>My notes</h4>
+                <h4>My Notes</h4>
                 <textarea
-                  placeholder="Write your notes here"
+                  placeholder="Write Your Notes Here"
                   value={notes}
                   onChange={(e) => {
                     setNotes(e.target.value);
                     writeText(NOTES_KEY, e.target.value);
                   }}
                 />
-                <small>Saved in this browser</small>
+                <small>Saved In This Browser</small>
               </div>
             )}
           </span>
