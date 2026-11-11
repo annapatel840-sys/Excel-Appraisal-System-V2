@@ -75,9 +75,8 @@ var FIELDS={
   tpbNext:{label:"Target PB for Next Year",key:"tpbNext",kind:"amt",unitPick:true}
 };
 var FORDER=["hikePct","newPB","newRB","tpbNext"];
-/* "What to change": only these fields can be picked for now. The others stay in the list, greyed out.
-   To switch the rest back on, add them here (e.g. ["hikePct","newPB","newRB","tpbNext"]). */
-var ENABLED_FIELDS=["hikePct"];
+/* "What to change": the fields that can be picked. A field left out of this list stays in the dropdown, greyed out. */
+var ENABLED_FIELDS=["hikePct","newPB","newRB","tpbNext"];
 function fieldOn(f){return ENABLED_FIELDS.indexOf(f)>=0}   // Hike is one entry: "Value is" picks % of Base pay (hikePct) or Amount (hikeAmt)
 function isHike(f){return f==="hikePct"||f==="hikeAmt"}
 var KEYS=["hikeAmt","newPB","newRB","tpbNext"];
