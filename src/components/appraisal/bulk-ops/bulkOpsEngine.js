@@ -746,7 +746,7 @@ function renderGrid(){
   C.forEach(function(c){
     var cls=(c.c||"")+(c.r?" r":"")+(c.ns?" nosort":" sort");
     if(S.sort.key===c.k)cls+=S.sort.dir>0?" asc":" desc";
-    var fb=c.ns?'':'<button type="button" class="filter-btn'+(S.colF[c.k]?' filtered':'')+'" data-fk="'+c.k+'" title="Filter">▾</button>';
+    var fb=c.ns?'':'<button type="button" class="filter-btn'+(S.colF[c.k]?' filtered':'')+'" data-fk="'+c.k+'" title="Filter" aria-label="Filter '+esc(c.t)+'"><svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button>';
     h+='<th class="'+cls+'" data-k="'+c.k+'"><div class="th-inner"><span>'+esc(c.t)+'</span>'+fb+'</div>'+'<div class="col-rs"></div></th>';
   });
   $("hdr").innerHTML=h;applyColW();
@@ -902,7 +902,7 @@ function doApply(){
   var bid="BO-"+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
   postChanges(x.changes,"bulk",{id:bid,text:text,label:"Applying"}).then(function(res){
     if(res.rows)mergeRows(res.rows);
-    var batch={id:bid,at:Date.now(),time:nowT(),by:(ME&&ME.name)||"You",text:text,rows:[],restored:false};
+    var batch={id:bid,at:Date.now(),startedAt:t0,time:nowT(),by:(ME&&ME.name)||"You",text:text,rows:[],restored:false};
     x.ids.forEach(function(id){var e=byId(id);batch.rows.push({id:id,old:x.old[id],nw:x.nw[id],bulk:e.bulk});e.bulk=true});
     S.batches.push(batch);S.pv=null;S.ov={};if(cfg.onApplied){try{cfg.onApplied(batch)}catch(x){}}
     persistBatches();
@@ -1216,8 +1216,8 @@ function tpbOpt(){return '<div class="tpbopt"><span>Budget Left</span><select id
    POST /cells carries batch_id + batch_text; GET /batches?cycle_id= lists them; POST /batches/{id}/restore {cycle_id}
    returns {restored, skipped, rows} and writes source "bulk_restore" to the audit trail. */
 var restoreAt={id:"",t:0};
-/* "Restore Previous Values" is switched off for now. Set to true to turn it back on (History tab and Menu). */
-var RESTORE_ENABLED=false;
+/* "Restore Previous Values" (History tab and Menu). Set to false to switch it off. */
+var RESTORE_ENABLED=true;
 function sameVal(a,b){return String(a)===String(b)||(Number(a)===Number(b)&&!isNaN(Number(a)))}
 function historyTab(){
   if(!S.batches.length)return '<div class="mini" style="padding:6px 2px">Nothing applied yet in this cycle.</div>';
@@ -1230,14 +1230,24 @@ function historyTab(){
   });
   return h+'</div>';
 }
+/* Was this row edited by anyone AFTER the batch? Uses the audit trail when the page can give it (exact, no rounding
+   issues: the saved Hike Amount can differ by a few rupees from the figure shown in the preview, which used to make
+   almost every row look "changed again" so only one row was restored). Falls back to a value check with a rounding margin. */
+function editedAfter(e,r,b){
+  if(cfg.rowEditedSince){var v=cfg.rowEditedSince(r.id,b);if(v===true||v===false)return v}
+  return Object.keys(r.old).some(function(k){
+    var a=Number(e[k]),n=Number(r.nw[k]);
+    if(!isNaN(a)&&!isNaN(n)&&String(e[k])!==""&&String(r.nw[k])!=="")return Math.abs(a-n)>Math.max(25,Math.abs(n)*0.01);
+    return !sameVal(e[k],r.nw[k]);
+  });
+}
 function doRestore(id){
   if(!cfg.canApply||!RESTORE_ENABLED)return;
   var b=S.batches.filter(function(x){return x.id===id})[0];if(!b||b.restored||S.busy||S.locked)return;
   var ch=[],skipped=0,ids=[];
   b.rows.forEach(function(r){
     var e=byId(r.id);if(!e)return;
-    var clash=Object.keys(r.old).some(function(k){return !sameVal(e[k],r.nw[k])});
-    if(clash){skipped++;return}
+    if(editedAfter(e,r,b)){skipped++;return}
     Object.keys(r.old).forEach(function(k){ch.push({empId:r.id,field:k,value:r.old[k]})});ids.push(r.id);
   });
   if(!ch.length){S.flash="Nothing restored: every row in this batch was changed again afterwards.";render();return}

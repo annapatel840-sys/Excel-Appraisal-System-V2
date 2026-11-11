@@ -358,6 +358,22 @@ const BulkOperations = forwardRef(function BulkOperations(
         return buildBatches([...(historyCache.current || []), ...(localAudit || [])], loadBatchTexts(cyc));
       },
       getSheetEmp: () => live.current.sheetEmp,
+      // Restore: true when this employee was edited by someone/something else after the batch started.
+      // Entries of the batch itself (and of its own restore) do not count. null = audit not available.
+      rowEditedSince: (empId, batch) => {
+        const audit = live.current.sheetAudit;
+        if (!Array.isArray(audit) || !batch) return null;
+        const since = Number(batch.startedAt) || (Number(batch.at) ? Number(batch.at) - 30000 : 0);
+        if (!since) return null;
+        const own = String(batch.id);
+        return audit.some((a) => {
+          if (String(a.empId) !== String(empId)) return false;
+          const bid = String(a.batchId || "");
+          if (bid === own || bid === RESTORE_PREFIX + own) return false;
+          const at = new Date(a.at).getTime();
+          return Number.isFinite(at) && at > since;
+        });
+      },
       // Manager Rating names, same list as the Manager Rating column in the Appraisal Sheet.
       ratingLabels: MANAGER_RATING_LABELS,
       getHdr: () => {

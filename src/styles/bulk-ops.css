@@ -847,3 +847,11 @@
 .bo .xf-b{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
 .bo .xf-b button{padding:4px 18px;font:inherit;border:1px solid #9ca3af;background:#f3f4f6;cursor:pointer}
 .bo .xf-b .ok{background:#17365d;border-color:#17365d;color:#fff}
+/* Column filter button: same look as the Appraisal Sheet header (white box, filled funnel, navy when a filter is on) */
+.bo .filter-btn{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;min-width:24px;padding:0;border:1px solid #9fb4ce;border-radius:5px;background:#fff;color:#102a43;font-size:0;line-height:1;transition:background-color .15s,color .15s}
+.bo .filter-btn svg{display:block;width:13px;height:13px}
+.bo .filter-btn:hover{background:#dcebff}
+.bo .filter-btn.active{background:#dcebff;color:#102a43}
+.bo .filter-btn.filtered{border-color:#102a43;background:#102a43;color:#fff}
+.bo .filter-btn.filtered:hover{background:#102a43}
+.bo .filter-btn.filtered::after{display:none}
