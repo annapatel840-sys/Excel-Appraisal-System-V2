@@ -24,7 +24,7 @@ const CACHE_KEY = "accessData.v5";
 const EMPTY_DELEG = { techEd: {}, compMgr: {} };
 
 const TABS = [
-  { key: "people", label: "User", title: "User", sub: "Everyone who can log in to this application — nobody is added here" },
+  { key: "people", label: "Users", title: "Users", sub: "Everyone who can log in to this application — nobody is added here" },
   { key: "screens", label: "Screens", title: "Screens By Role", sub: "None · View (read-only) · Edit" },
   { key: "actions", label: "Actions", title: "Actions By Role", sub: "Yes · No" },
   { key: "fields", label: "Fields", title: "Field Limits By Role", sub: "Edit · Read · Hidden" },
