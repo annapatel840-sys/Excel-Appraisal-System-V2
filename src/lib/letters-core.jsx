@@ -698,15 +698,45 @@ export function saveFields(S, draft, reason) {
 // Saving a template always makes a new version; unsent letters go Out of date.
 export function saveTemplate(S, id, draft, reason) {
   const t = tplOf(S, id);
+  if (!t) throw new Error("Template not found.");
   t.name = draft.name;
-  if (draft.family != null) t.family = draft.family;
+  t.family = draft.family || t.family || "Revision";
   t.file = draft.file;
   t.body = draft.body;
+  t.html = draft.html || t.html || "";
+  t.font = draft.font || t.font || "Inter";
+  t.fsize = Number(draft.fsize || t.fsize || 11);
+  t.lh = Number(draft.lh || t.lh || 1.15);
   t.sg = draft.sg;
   t.ver++;
+  t.status = "Published";
+  if (t.active == null) t.active = true;
   audit(S, "Templates", t.id, "New version saved", reason, t.name + " v" + t.ver, "v" + t.ver);
   refreshStale(S);
   return t.ver;
+}
+
+export function createTemplate(S, draft, reason) {
+  const id = "T" + Date.now().toString(36).toUpperCase();
+  S.tpls.push({
+    id,
+    name: draft.name,
+    family: draft.family || "Revision",
+    ver: 0,
+    file: draft.file || "",
+    body: "",
+    html: "",
+    status: "Draft",
+    active: true,
+    by: "",
+    on: "",
+    hist: [],
+    sg: draft.sg,
+    font: draft.font || "Inter",
+    fsize: Number(draft.fsize || 11),
+    lh: Number(draft.lh || 1.15),
+  });
+  return saveTemplate(S, id, draft, reason);
 }
 
 /* ---------------- sample data ---------------- */
