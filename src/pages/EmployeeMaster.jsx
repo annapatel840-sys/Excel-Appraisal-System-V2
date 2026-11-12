@@ -5695,6 +5695,9 @@ export function EmployeeMaster() {
       return;
     }
 
+    // Full-screen loading screen (logo + percentage) while criteria are applied
+    // and the list is reloaded.
+    setEligibilityBusy(true);
     try {
       if (!eligibilityCycleId) {
         throw new Error(
@@ -5785,6 +5788,8 @@ export function EmployeeMaster() {
         true,
       );
       return false;
+    } finally {
+      setEligibilityBusy(false);
     }
   };
 
