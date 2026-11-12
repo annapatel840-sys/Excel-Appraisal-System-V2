@@ -250,7 +250,7 @@
 .app-header-location .em-location-menu { z-index: 2000; }
 
 /* ---- Criteria panel: header with close, folded tab, no dead space ---- */
-.employee-master-page .em-eligibility-layout > .em-criteria-pane{border-radius:12px;padding:0 12px 12px;gap:0}
+.employee-master-page .em-eligibility-layout > .em-criteria-pane{border-radius:12px;padding:12px;gap:0}
 .em-criteria-head{display:flex;align-items:center;justify-content:space-between;padding:10px 0 6px;color:#102A43;font-size:13px;position:sticky;top:0;background:#fff;z-index:2}
 .em-criteria-head button{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border:none;background:none;border-radius:6px;cursor:pointer;color:#6B7280}
 .em-criteria-head button:hover{background:#F1F5F9;color:#102A43}
@@ -279,3 +279,13 @@
 
 .em-suggest.em-suggest-menu{z-index:10050;margin:0;overflow-y:auto;overflow-x:hidden;box-sizing:border-box;border:1px solid #CBD5E1;border-radius:8px;background:#fff;box-shadow:0 10px 28px rgba(15,23,42,.18)}
 .em-suggest.em-suggest-menu div{padding:7px 10px;font-size:12.5px}
+
+/* ---- Foldable criteria sections ---- */
+.em-crit-sec{display:flex;flex-direction:column;min-height:0;flex:0 0 auto;border-bottom:1px solid #EEF1F5;padding:2px 0 8px;margin-bottom:6px}
+.em-crit-sec.grow{flex:1 1 140px}
+.em-crit-toggle{display:flex;align-items:center;gap:6px;width:100%;padding:6px 2px;border:0;background:none;cursor:pointer;text-align:left;font:inherit;font-size:11px;font-weight:800;letter-spacing:.05em;color:#102A43}
+.em-crit-toggle:hover{color:#2F6FED}
+.em-crit-toggle span{flex:1}
+.em-crit-toggle em{font-style:normal;font-weight:700;font-size:10px;min-width:18px;text-align:center;padding:1px 6px;border-radius:999px;background:#EAF1FD;color:#1d4f91}
+.em-crit-body{display:flex;flex-direction:column;min-height:0;flex:1 1 auto;padding-top:2px}
+.em-crit-body .em-chk-list{flex:1 1 90px;min-height:80px}

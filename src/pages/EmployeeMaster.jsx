@@ -3867,8 +3867,6 @@ export function EmployeeMaster() {
   const [eligibilitySavedCriteria, setEligibilitySavedCriteria] = useState(null);
   const [eligibilityCriteriaHistory, setEligibilityCriteriaHistory] = useState([]);
   const [eligibilityBusy, setEligibilityBusy] = useState(false);
-  // The criteria panel on the left of the Eligibility List (open by default).
-  const [criteriaPanelOpen, setCriteriaPanelOpen] = useState(true);
   // Full Employee Master (all pages). The Eligibility List starts empty for a
   // cycle, so the criteria panel and "Add An Employee" read from this list.
   const [eligibilityMasterEmployees, setEligibilityMasterEmployees] = useState(
@@ -6211,11 +6209,7 @@ export function EmployeeMaster() {
               </div>
             ) : (
               <div
-                className={`em-eligibility-layout${
-                  canEditEmployees && !criteriaPanelOpen
-                    ? " em-criteria-collapsed"
-                    : ""
-                }`}
+                className="em-eligibility-layout"
                 style={
                   canEditEmployees
                     ? undefined
@@ -6233,8 +6227,6 @@ export function EmployeeMaster() {
                     setExcludedEmployees={setExcludedEmployees}
                     onApply={applyEligibilityCriteria}
                     savedCriteria={eligibilitySavedCriteria}
-                    open={criteriaPanelOpen}
-                    onOpenChange={setCriteriaPanelOpen}
                     onGenerateDelegation={
                       eligibilityShowingSnapshot
                         ? undefined

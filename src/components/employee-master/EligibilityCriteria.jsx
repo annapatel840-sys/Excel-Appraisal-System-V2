@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, X } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, X } from "lucide-react";
 import { loadDesignationMaster } from "@/lib/designation-master-api";
 
 function CheckList({ values, selected, setSelected, disabled }) {
@@ -28,6 +28,25 @@ function CheckList({ values, selected, setSelected, disabled }) {
   );
 }
 
+// One foldable criteria section (click the heading to fold / unfold).
+function Section({ title, count = 0, folded, onToggle, grow = false, children }) {
+  return (
+    <div className={`em-crit-sec${grow && !folded ? " grow" : ""}`}>
+      <button
+        type="button"
+        className="em-crit-toggle"
+        aria-expanded={!folded}
+        onClick={onToggle}
+      >
+        {folded ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+        <span>{title}</span>
+        {count > 0 && <em>{count}</em>}
+      </button>
+      {!folded && <div className="em-crit-body">{children}</div>}
+    </div>
+  );
+}
+
 export function EligibilityCriteria({
   employees,
   excludedEmployees,
@@ -35,8 +54,6 @@ export function EligibilityCriteria({
   onApply,
   onGenerateDelegation,
   savedCriteria = null, // criteria saved by the last Apply Criteria (from the server)
-  open = true,
-  onOpenChange,
   criteriaApplied = false,
   delegationGenerated = false,
   readOnly = false,
@@ -51,6 +68,9 @@ export function EligibilityCriteria({
   const [applying, setApplying] = useState(false);
   const savedDraftRef = useRef(null);
   const searchBoxRef = useRef(null);
+  const [folded, setFolded] = useState({});
+  const toggleSection = (key) =>
+    setFolded((current) => ({ ...current, [key]: !current[key] }));
   const [menuPos, setMenuPos] = useState(null);
 
   // The employee picker floats under the search box like a menu (it does not
@@ -226,140 +246,146 @@ export function EligibilityCriteria({
     setShowSuggest(false);
   };
 
-  // Folded: only a vertical tab is left, like the Eligibility List panel.
-  if (!open) {
-    return (
-      <div className="em-criteria-folded">
-        <button
-          type="button"
-          className="em-criteria-tab"
-          onClick={() => onOpenChange?.(true)}
-          title="Open the criteria panel"
-          aria-label="Open the criteria panel"
-        >
-          Criteria ›
-        </button>
-      </div>
-    );
-  }
+  const locked = readOnly || !isEditing;
 
   return (
     <div className="em-criteria-pane">
-      <div className="em-criteria-head">
-        <b>Eligibility Criteria</b>
-        <button
-          type="button"
-          onClick={() => onOpenChange?.(false)}
-          aria-label="Fold the criteria panel"
-          title="Fold the criteria panel"
-        >
-          <X size={14} />
-        </button>
-      </div>
-
-      <div className="em-crit-h">Exclude by department</div>
-      <CheckList
-        values={departments}
-        selected={selectedDepartments}
-        setSelected={setSelectedDepartments}
-        disabled={readOnly || !isEditing}
-      />
-
-      <div className="em-crit-h">Exclude by designation</div>
-      <CheckList
-        values={designations}
-        selected={selectedDesignations}
-        setSelected={setSelectedDesignations}
-        disabled={readOnly || !isEditing}
-      />
-
-      <div className="em-crit-h">Exclude by employee status</div>
-      <CheckList
-        values={statusValues}
-        selected={selectedStatuses}
-        setSelected={setSelectedStatuses}
-        disabled={readOnly || !isEditing}
-      />
-
-      <div className="em-crit-h">Exclude specific employees</div>
-      <div className="em-search-field" ref={searchBoxRef}>
-        <input
-          value={search}
-          disabled={readOnly || !isEditing}
-          onFocus={() => setShowSuggest(true)}
-          onClick={() => setShowSuggest(true)}
-          onBlur={() => setShowSuggest(false)}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            setShowSuggest(true);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && suggestions[0])
-              addExcluded(suggestions[0].empId);
-          }}
-          placeholder="Click to pick, or type name / ID"
+      <Section
+        title="Exclude by department"
+        count={selectedDepartments.length}
+        folded={folded.departments}
+        onToggle={() => toggleSection("departments")}
+        grow
+      >
+        <CheckList
+          values={departments}
+          selected={selectedDepartments}
+          setSelected={setSelectedDepartments}
+          disabled={locked}
         />
-      </div>
+      </Section>
 
-      {showSuggest && !readOnly && isEditing && menuPos && (
-        <div
-          className="em-suggest em-suggest-menu"
-          style={{
-            position: "fixed",
-            left: menuPos.left,
-            width: menuPos.width,
-            maxHeight: menuPos.maxHeight,
-            ...(menuPos.top !== undefined
-              ? { top: menuPos.top }
-              : { bottom: menuPos.bottom }),
-          }}
-        >
-          {suggestions.length ? (
-            suggestions.map((employee) => (
-              <div
-                key={employee.empId}
-                onMouseDown={() => addExcluded(employee.empId)}
-              >
-                {employee.empId} - {employee.name}
-              </div>
-            ))
-          ) : (
-            <div className="em-hint em-suggest-empty">No match</div>
-          )}
+      <Section
+        title="Exclude by designation"
+        count={selectedDesignations.length}
+        folded={folded.designations}
+        onToggle={() => toggleSection("designations")}
+        grow
+      >
+        <CheckList
+          values={designations}
+          selected={selectedDesignations}
+          setSelected={setSelectedDesignations}
+          disabled={locked}
+        />
+      </Section>
+
+      <Section
+        title="Exclude by employee status"
+        count={selectedStatuses.length}
+        folded={folded.statuses}
+        onToggle={() => toggleSection("statuses")}
+        grow
+      >
+        <CheckList
+          values={statusValues}
+          selected={selectedStatuses}
+          setSelected={setSelectedStatuses}
+          disabled={locked}
+        />
+      </Section>
+
+      <Section
+        title="Exclude specific employees"
+        count={excludedEmployees.length}
+        folded={folded.employees}
+        onToggle={() => toggleSection("employees")}
+      >
+        <div className="em-search-field" ref={searchBoxRef}>
+          <input
+            value={search}
+            disabled={locked}
+            onFocus={() => setShowSuggest(true)}
+            onClick={() => setShowSuggest(true)}
+            onBlur={() => setShowSuggest(false)}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              setShowSuggest(true);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && suggestions[0])
+                addExcluded(suggestions[0].empId);
+            }}
+            placeholder="Click to pick, or type name / ID"
+          />
         </div>
-      )}
 
-      <div className="em-chips">
-        {excludedEmployees.map((empId) => {
-          const employee = employees.find((item) => item.empId === empId);
-          return (
-            <span className="em-chip" key={empId}>
-              {employee?.name ?? empId}
-              <button
-                type="button"
-                disabled={readOnly || !isEditing}
-                onClick={() =>
-                  setExcludedEmployees((current) =>
-                    current.filter((item) => item !== empId),
-                  )
-                }
-              >
-                <X size={11} />
-              </button>
-            </span>
-          );
-        })}
-      </div>
+        {showSuggest && !readOnly && isEditing && menuPos && (
+          <div
+            className="em-suggest em-suggest-menu"
+            style={{
+              position: "fixed",
+              left: menuPos.left,
+              width: menuPos.width,
+              maxHeight: menuPos.maxHeight,
+              ...(menuPos.top !== undefined
+                ? { top: menuPos.top }
+                : { bottom: menuPos.bottom }),
+            }}
+          >
+            {suggestions.length ? (
+              suggestions.map((employee) => (
+                <div
+                  key={employee.empId}
+                  onMouseDown={() => addExcluded(employee.empId)}
+                >
+                  {employee.empId} - {employee.name}
+                </div>
+              ))
+            ) : (
+              <div className="em-hint em-suggest-empty">No match</div>
+            )}
+          </div>
+        )}
 
-      <div className="em-crit-h">Joining date cutoff</div>
-      <div className="em-hint">Exclude anyone who joined after this date</div>
-      <input
-        type="date"
-        className="em-date-input"
-        value={cutoffDate}
-        disabled={readOnly || !isEditing}
-        onChange={(event) => setCutoffDate(event.target.value)}
-      />
+        <div className="em-chips">
+          {excludedEmployees.map((empId) => {
+            const employee = employees.find((item) => item.empId === empId);
+            return (
+              <span className="em-chip" key={empId}>
+                {employee?.name ?? empId}
+                <button
+                  type="button"
+                  disabled={locked}
+                  onClick={() =>
+                    setExcludedEmployees((current) =>
+                      current.filter((item) => item !== empId),
+                    )
+                  }
+                >
+                  <X size={11} />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      </Section>
+
+      <Section
+        title="Joining date cutoff"
+        count={cutoffDate ? 1 : 0}
+        folded={folded.cutoff}
+        onToggle={() => toggleSection("cutoff")}
+      >
+        <div className="em-hint">Exclude anyone who joined after this date</div>
+        <input
+          type="date"
+          className="em-date-input"
+          value={cutoffDate}
+          disabled={locked}
+          onChange={(event) => setCutoffDate(event.target.value)}
+        />
+      </Section>
 
       <div className="em-crit-actions">
         {isEditing ? (

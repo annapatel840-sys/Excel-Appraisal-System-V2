@@ -868,7 +868,7 @@ export function EligibilityList({
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [addOpen, setAddOpen] = useState(false);
-  // Click a metric to filter the list: null | "notEligible" | "needAction"
+  // Click a metric to filter the list: null | "eligible" | "notEligible" | "needAction"
   const [quickFilter, setQuickFilter] = useState(null);
 
   const canEdit = Boolean(onChangeEligibility);
@@ -888,6 +888,7 @@ export function EligibilityList({
 
   const searchPre = useCallback(
     (e) => {
+      if (quickFilter === "eligible" && eligibilityDecisionOf(e) !== "Eligible") return false;
       if (quickFilter === "notEligible" && eligibilityDecisionOf(e) !== "Not Eligible") return false;
       if (quickFilter === "needAction" && !needsAction(e)) return false;
       const term = (search || "").trim().toLowerCase();
@@ -1063,11 +1064,8 @@ export function EligibilityList({
             <strong>{counted.length}</strong>
             <span>Total</span>
           </div>
-          <div>
-            <strong>{eligibleCount}</strong>
-            <span>Eligible</span>
-          </div>
           {[
+            ["eligible", eligibleCount, "Eligible"],
             ["notEligible", notEligibleCount, "Not Eligible"],
             ["needAction", needActionCount, "Need Action"],
           ].map(([key, count, label]) => (
