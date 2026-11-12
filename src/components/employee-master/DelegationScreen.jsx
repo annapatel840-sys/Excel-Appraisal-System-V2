@@ -5226,12 +5226,8 @@ export default function DelegationScreen({
         <Modal
           title="Audit trail"
           wide
+          closable
           onClose={() => setModal(null)}
-          foot={
-            <button className="btn" onClick={() => setModal(null)}>
-              Close
-            </button>
-          }
         >
           <div className="note" style={{ marginTop: 0, marginBottom: 8 }}>
             {isHR
@@ -5444,16 +5440,31 @@ function PersonCombobox({ value, people, disabled, className, onSelect }) {
   );
 }
 
-function Modal({ title, children, foot, onClose, wide }) {
+function Modal({ title, children, foot, onClose, wide, closable }) {
   return (
     <div
       className="dg-ov"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div className={"mdl" + (wide ? " wide" : "")}>
-        <div className="mh">{title}</div>
+      <div className={"mdl" + (wide ? " wide" : "") + (closable ? " fixhead" : "")}>
+        {closable ? (
+          <div className="mh mh-bar">
+            <span>{title}</span>
+            <button
+              type="button"
+              className="mh-x"
+              onClick={onClose}
+              title="Close"
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+        ) : (
+          <div className="mh">{title}</div>
+        )}
         <div className="mb">{children}</div>
-        <div className="mf">{foot}</div>
+        {!closable && <div className="mf">{foot}</div>}
       </div>
     </div>
   );
@@ -5565,7 +5576,8 @@ const CSS = `
 .dg .rtabs .ptab.on{color:#1D4FA8;font-weight:800;background:#E8F0FE;border-bottom-color:#2F6FED}
 .dg .rq-list{max-height:calc(100vh - 360px);min-height:140px;overflow:auto}
 .dg .req{border:1px solid #E5E7EB;border-radius:10px;padding:10px;margin-bottom:9px;background:#fff}
-.dg .req .n{font-weight:800;color:#15365a;display:flex;justify-content:space-between;gap:6px}
+.dg .req .n{font-weight:800;color:#15365a;display:flex;justify-content:space-between;align-items:flex-start;gap:6px}
+.dg .req .n .tag{align-self:flex-start;display:inline-flex;align-items:center;justify-content:center;min-height:22px;text-align:center}
 .dg .req .m{color:#4b5563;font-size:11.8px;margin:4px 0 8px;line-height:1.5}
 .dg .ar{color:#1a8a74;font-weight:700}
 .dg .req .fld{font-size:11.5px;margin-bottom:7px}
@@ -5581,6 +5593,12 @@ const CSS = `
 .dg .mdl{background:#fff;border-radius:10px;width:480px;max-width:94vw;max-height:88vh;overflow:auto}
 .dg .mdl.wide{width:880px}
 .dg .mdl .mh{background:#15365a;color:#fff;font-weight:800;padding:11px 14px;font-size:14.5px}
+.dg .mdl.fixhead{display:flex;flex-direction:column;overflow:hidden}
+.dg .mdl.fixhead .mh{flex:0 0 auto}
+.dg .mdl.fixhead .mb{flex:1 1 auto;min-height:0;overflow:auto}
+.dg .mdl .mh-bar{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.dg .mdl .mh-x{border:0;background:none;color:#fff;font-size:16px;line-height:1;cursor:pointer;padding:2px 6px;border-radius:5px}
+.dg .mdl .mh-x:hover{background:rgba(255,255,255,.18)}
 .dg .mdl .mb{padding:14px}
 .dg .mdl .mf{padding:10px 14px;border-top:1px solid #e6eaef;display:flex;gap:8px;justify-content:flex-end}
 .dg .chg{background:#f6f8fa;border-radius:6px;padding:9px;margin-bottom:10px;line-height:1.6}
