@@ -118,9 +118,13 @@ export async function catalystFetch(input, options = {}) {
   if (isWrite) notifyWrite();
 
   const canRetryRead = !isWrite && !options.signal?.aborted;
+  // A small read the user is waiting on (e.g. one employee's history) may skip
+  // the 2-request queue instead of waiting seconds behind the roster/budget
+  // loads. Writes always queue. A throttled (429) read is still retried below.
+  const skipQueue = !isWrite && options.priority === "high";
   let response;
   try {
-    await acquireCatalystSlot();
+    if (!skipQueue) await acquireCatalystSlot();
     try {
       for (let attempt = 0; ; attempt += 1) {
         try {
@@ -153,7 +157,7 @@ export async function catalystFetch(input, options = {}) {
         await new Promise((resolve) => window.setTimeout(resolve, delay));
       }
     } finally {
-      releaseCatalystSlot();
+      if (!skipQueue) releaseCatalystSlot();
     }
   } finally {
     // Clear again once the write has landed: a read that started during the

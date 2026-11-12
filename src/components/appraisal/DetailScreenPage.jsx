@@ -401,7 +401,10 @@ const sortHistoryDesc = (a, b) =>
  */
 const detailHistoryPromises = new Map();
 
-export function prefetchDetailHistory(empId) {
+// The employee on screen skips the request queue (it is one small read the user
+// is waiting on); neighbours preloaded in the background pass background: true
+// and queue normally.
+export function prefetchDetailHistory(empId, { background = false } = {}) {
   const key = String(empId || "").trim();
   if (!key) return Promise.resolve([]);
   const existing = detailHistoryPromises.get(key);
@@ -410,6 +413,7 @@ export function prefetchDetailHistory(empId) {
   const promise = (async () => {
     const response = await catalystFetch(
       `${APPRAISAL_HISTORY_API_URL}?emp_id=${encodeURIComponent(key)}`,
+      background ? {} : { priority: "high" },
     );
     if (!response.ok) {
       throw new Error(`History request failed (${response.status}).`);
@@ -1387,10 +1391,30 @@ export function DetailScreenPage({
     return promise;
   }, []);
 
+  const employeeAt = (offset) => {
+    const at = Math.min(activeIndex, rows.length - 1) + offset;
+    return at >= 0 && at < rows.length ? rows[at] : null;
+  };
+  const nextEmpId = String(employeeAt(1)?.empId || "").trim();
+  const prevEmpId = String(employeeAt(-1)?.empId || "").trim();
   useEffect(() => {
-    if (employee?.empId) {
-      loadHistory(employee.empId).catch(() => {});
-    }
+    if (!employee?.empId) return undefined;
+    let cancelled = false;
+    // Once this employee's history is in, preload the next and previous
+    // employees' history in the background so "Save & next" / "Previous"
+    // open without "Loading history…".
+    loadHistory(employee.empId)
+      .catch(() => {})
+      .then(() => {
+        if (cancelled) return;
+        [nextEmpId, prevEmpId].forEach((id) => {
+          if (id) prefetchDetailHistory(id, { background: true }).catch(() => {});
+        });
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [employee?.empId, loadHistory]);
 
   const empKey = employee ? String(employee.empId || "").trim() : "";
