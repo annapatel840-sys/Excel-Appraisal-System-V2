@@ -2465,6 +2465,7 @@ import React, {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { ColumnFilter } from "@/components/appraisal/ColumnFilter";
 import { NUMBER_OPS, TEXT_OPS } from "@/lib/appraisal-filters";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
@@ -4416,61 +4417,25 @@ export default function DelegationScreen({
                               f === "comp" ? r.prevComp : r.prevApp,
                             );
                             const cur = resolveName(r[f]);
-                            const cellKey = r.id + ":" + f;
-                            const listOpen = openCell === cellKey;
-                            // Opened by hover / focus / touch, before the
-                            // native list pops up.
-                            const openList = () => {
-                              if (!listOpen) setOpenCell(cellKey);
-                            };
                             return (
                               <td key={f}>
-                                <select
+                                <PersonCombobox
                                   className={
                                     "in" + (prev && cur !== prev ? " c" : "")
                                   }
                                   disabled={editLocked}
                                   value={cur}
-                                  onMouseEnter={openList}
-                                  onFocus={openList}
-                                  onTouchStart={openList}
-                                  onChange={(e) => {
+                                  people={people}
+                                  onSelect={(person) => {
                                     setReason("");
                                     setModal({
                                       type: "reason",
                                       row: r,
                                       field: f,
-                                      person: people.find(
-                                        (p) => p.id === e.target.value,
-                                      ),
+                                      person,
                                     });
                                   }}
-                                >
-                                  {!cur && (
-                                    <option value="" disabled>
-                                      — not set —
-                                    </option>
-                                  )}
-                                  {listOpen ? (
-                                    <>
-                                      {cur &&
-                                        !people.some((p) => p.id === cur) && (
-                                          <option value={cur}>{cur}</option>
-                                        )}
-                                      {people.map((p) => (
-                                        <option key={p.id} value={p.id}>
-                                          {p.name}
-                                        </option>
-                                      ))}
-                                    </>
-                                  ) : (
-                                    cur && (
-                                      <option key={cur} value={cur}>
-                                        {cur}
-                                      </option>
-                                    )
-                                  )}
-                                </select>
+                                />
                               </td>
                             );
                           }
@@ -4956,6 +4921,154 @@ export default function DelegationScreen({
         </div>
       )}
     </div>
+  );
+}
+
+/* Searchable person dropdown. Typing only filters the list; the field is
+   populated only when a person is picked from the list. */
+const PERSON_LIST_LIMIT = 100;
+function PersonCombobox({ value, people, disabled, className, onSelect }) {
+  const inputRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [active, setActive] = useState(0);
+  const [rect, setRect] = useState(null);
+
+  const matches = useMemo(() => {
+    if (!open) return [];
+    const q = query.trim().toLowerCase();
+    return q
+      ? people.filter((p) => p.name.toLowerCase().includes(q))
+      : people;
+  }, [open, query, people]);
+  const shown = matches.slice(0, PERSON_LIST_LIMIT);
+
+  const place = useCallback(() => {
+    if (inputRef.current) setRect(inputRef.current.getBoundingClientRect());
+  }, []);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, place]);
+
+  const close = () => {
+    setOpen(false);
+    setQuery("");
+    setActive(0);
+  };
+  const choose = (person) => {
+    close();
+    inputRef.current?.blur();
+    if (person && person.id !== value) onSelect(person);
+  };
+
+  const flip =
+    rect && typeof window !== "undefined" && rect.bottom + 250 > window.innerHeight;
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="text"
+        className={className}
+        disabled={disabled}
+        autoComplete="off"
+        role="combobox"
+        aria-expanded={open}
+        placeholder="— not set —"
+        title={value || undefined}
+        value={open ? query : value || ""}
+        onFocus={(e) => {
+          setOpen(true);
+          setQuery("");
+          setActive(0);
+          e.target.select?.();
+        }}
+        onBlur={close}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setActive(0);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setActive((i) => Math.min(i + 1, shown.length - 1));
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setActive((i) => Math.max(i - 1, 0));
+          } else if (e.key === "Enter") {
+            e.preventDefault();
+            if (shown[active]) choose(shown[active]);
+          } else if (e.key === "Escape") {
+            e.preventDefault();
+            close();
+            inputRef.current?.blur();
+          }
+        }}
+      />
+      {open &&
+        rect &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div
+            // mousedown on the list must not blur the input before the pick
+            onMouseDown={(e) => e.preventDefault()}
+            style={{
+              position: "fixed",
+              left: rect.left,
+              width: Math.max(rect.width, 240),
+              ...(flip
+                ? { bottom: window.innerHeight - rect.top + 2 }
+                : { top: rect.bottom + 2 }),
+              maxHeight: 240,
+              overflowY: "auto",
+              background: "#fff",
+              border: "1px solid #cbd5e1",
+              borderRadius: 8,
+              boxShadow: "0 10px 28px rgba(15,23,42,.18)",
+              zIndex: 10050,
+              fontSize: 12.5,
+              color: "#1f2a37",
+            }}
+          >
+            {shown.length === 0 ? (
+              <div style={{ padding: "8px 10px", color: "#6b7280" }}>
+                No matching person
+              </div>
+            ) : (
+              shown.map((p, i) => (
+                <div
+                  key={p.id}
+                  onMouseEnter={() => setActive(i)}
+                  onClick={() => choose(p)}
+                  style={{
+                    padding: "7px 10px",
+                    cursor: "pointer",
+                    background:
+                      i === active ? "#EAF1FD" : p.id === value ? "#F1F5F9" : "transparent",
+                    fontWeight: p.id === value ? 700 : 400,
+                  }}
+                >
+                  {p.name}
+                </div>
+              ))
+            )}
+            {matches.length > shown.length && (
+              <div style={{ padding: "6px 10px", color: "#6b7280", fontSize: 11.5 }}>
+                {matches.length - shown.length} more - keep typing to narrow
+              </div>
+            )}
+          </div>,
+          document.body,
+        )}
+    </>
   );
 }
 
