@@ -390,9 +390,19 @@ export function BudgetDistributionPage() {
   // cycle label or trigger redundant cycle requests.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Resolving a Tech-ED id means searching every Tech-ED and every employee, and the
+  // live counts below resolve one value per appraisal row (~3,000). Remember each
+  // answer until the Tech-ED or employee lists change, so a value is looked up once.
+  const resolveCache = useMemo(() => new Map(), [techEdOwners, employeeRows]);
   const resolveTechRecord = (raw) => {
     const text = String(raw || "").trim();
     if (!text) return null;
+    if (resolveCache.has(text)) return resolveCache.get(text);
+    const record = resolveTechRecordUncached(text);
+    resolveCache.set(text, record);
+    return record;
+  };
+  const resolveTechRecordUncached = (text) => {
     const compact = normalize(text);
     const linked = techEdOwners.find((item) => {
       const aliases = [item?.row_id, item?.ROWID, item?.employee_id, item?.assignment, item?.name].filter(Boolean);
@@ -412,17 +422,28 @@ export function BudgetDistributionPage() {
     return { key: normalize(id || text), label: id && name ? id + " - " + name : text };
   };
   const resolveTechOwner = (raw) => resolveTechRecord(raw)?.label || String(raw || "").trim();
+  // Use the same AppraisalContext rows and exact Active + Eligible filter
+  // as DashboardOverview. Dashboard counts rows, not unique Employee IDs.
+  // Counted once per Tech-ED in a single pass, instead of re-scanning every
+  // appraisal row for every Tech-ED row on every redraw.
+  const liveCountByKey = useMemo(() => {
+    const counts = new Map();
+    (appraisalAll || []).forEach((employee) => {
+      const active = String(employee.status || "").trim().toLowerCase() === "active";
+      const eligible = String(employee.eligibility || "").trim().toLowerCase() === "eligible";
+      if (!active || !eligible) return;
+      const key = resolveTechRecord(employee.appraiserTechED || "")?.key;
+      if (key === undefined) return;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    return counts;
+  // resolveTechRecord only changes with resolveCache (Tech-ED / employee lists).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [appraisalAll, resolveCache]);
   const countForTechOwner = (raw) => {
     const record = resolveTechRecord(raw);
     if (!record) return 0;
-    // Use the same AppraisalContext rows and exact Active + Eligible filter
-    // as DashboardOverview. Dashboard counts rows, not unique Employee IDs.
-    return (appraisalAll || []).filter((employee) => {
-      const active = String(employee.status || "").trim().toLowerCase() === "active";
-      const eligible = String(employee.eligibility || "").trim().toLowerCase() === "eligible";
-      if (!active || !eligible) return false;
-      return resolveTechRecord(employee.appraiserTechED || "")?.key === record.key;
-    }).length;
+    return liveCountByKey.get(record.key) || 0;
   };
 
   // Newest recorded budget change for a Tech-ED (browser audit trail), else
