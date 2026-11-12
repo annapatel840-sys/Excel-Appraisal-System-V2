@@ -3344,6 +3344,35 @@ export default function DelegationScreen({
     return "";
   };
 
+  // Picking a person in the grid updates the cell at once (no popup). The
+  // reason is asked when the Save button is clicked.
+  const applyCellChange = async (row, field, person) => {
+    const conflict = appraiserConflict([row], field, person?.id);
+    if (conflict) return say(conflict, true);
+    const whyText = `${FIELDS[field]} change`;
+    await applyDirectChange(row, field, person.id, whyText);
+    markEdited(row.id);
+    setRows((rs) =>
+      applyTo(
+        rs,
+        row.id,
+        field,
+        person.id,
+        isHR ? "HR Admin" : "Tech-ED",
+        whyText,
+        user.name,
+      ),
+    );
+    log({
+      emp: row.id,
+      field: FIELDS[field],
+      from: nameOf(row[field]),
+      to: person.name,
+      action: "Staged",
+      why: whyText,
+    });
+  };
+
   const saveChange = async () => {
     const { row, field, person } = modal;
     const conflict = appraiserConflict([row], field, person?.id);
@@ -3953,9 +3982,18 @@ export default function DelegationScreen({
     return () => window.removeEventListener("beforeunload", warn);
   }, [stagedChanges]);
 
-  const saveDelegation = async () => {
+  const saveDelegation = async (reasonText = "") => {
     if (!(isHR || isTechEdUser) || !activeCycleId || !rows.length) return;
-    const changes = Object.values(stagedChanges);
+    const typedReason = String(reasonText || "").trim();
+    // The reason typed at Save replaces only the automatic "<field> change"
+    // text; reasons written in Bulk Assign / Default Comp. Manager are kept.
+    const changes = Object.values(stagedChanges).map((change) => ({
+      ...change,
+      reason:
+        typedReason && change.reason === `${FIELDS[change.field]} change`
+          ? typedReason
+          : change.reason,
+    }));
     if (!changes.length) return say("No unsaved delegation changes.");
     try {
       const response = await catalystFetch(ACCESS_API_URL + "delegation/save", {
@@ -4236,7 +4274,10 @@ export default function DelegationScreen({
                   !Object.keys(stagedChanges).length
                 }
                 title="Save delegation changes and update matching existing Appraisal Sheet rows"
-                onClick={saveDelegation}
+                onClick={() => {
+                  setReason("");
+                  setModal({ type: "saveReason" });
+                }}
               >
                 Save
                 {Object.keys(stagedChanges).length
@@ -4452,6 +4493,10 @@ export default function DelegationScreen({
                                   value={cur}
                                   people={people}
                                   onSelect={(person) => {
+                                    if (directAssignment(f)) {
+                                      applyCellChange(r, f, person);
+                                      return;
+                                    }
                                     setReason("");
                                     setModal({
                                       type: "reason",
@@ -4847,6 +4892,54 @@ export default function DelegationScreen({
             {isHR
               ? "Applies immediately and is recorded in the audit trail."
               : "The current value stays until HR approves."}
+          </div>
+        </Modal>
+      )}
+      {modal?.type === "saveReason" && (
+        <Modal
+          title="Save delegation changes"
+          onClose={() => setModal(null)}
+          foot={
+            <>
+              <button
+                className="btn"
+                onClick={() => {
+                  setModal(null);
+                  saveDelegation("");
+                }}
+              >
+                Skip reason
+              </button>
+              <button
+                className="btn p"
+                onClick={() => {
+                  const text = reason;
+                  setModal(null);
+                  saveDelegation(text);
+                }}
+              >
+                Save
+              </button>
+            </>
+          }
+        >
+          <div className="chg">
+            <b>
+              {Object.keys(stagedChanges).length} unsaved change
+              {Object.keys(stagedChanges).length === 1 ? "" : "s"}
+            </b>
+          </div>
+          <div className="lb">Reason (optional)</div>
+          <textarea
+            className="fld"
+            autoFocus
+            maxLength={2000}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+          <div className="note">
+            Applies to the changes made in the grid and is recorded in the audit
+            trail.
           </div>
         </Modal>
       )}
