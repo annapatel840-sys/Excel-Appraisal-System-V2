@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   Download,
@@ -74,6 +74,56 @@ function writeSavedFilters(filters) {
   } catch (_) {
     // storage unavailable: filters still work for this visit
   }
+}
+
+// The search box keeps its own text so each keystroke only redraws the box.
+// Redrawing the whole sheet (grid, totals, toolbar) took ~0.25-1 s per key, so
+// the grid is filtered once typing pauses, as an interruptible transition
+// (a newer keystroke cancels a filter pass that has not finished).
+const SEARCH_COMMIT_DELAY_MS = 150;
+function SheetSearchInput({ value, onCommit }) {
+  const [text, setText] = useState(value);
+  const committedRef = useRef(value);
+  const timerRef = useRef(null);
+
+  // Follow outside changes (e.g. "Clear all" or "Edited only" resetting the search).
+  useEffect(() => {
+    if (value !== committedRef.current) {
+      committedRef.current = value;
+      window.clearTimeout(timerRef.current);
+      setText(value);
+    }
+  }, [value]);
+
+  useEffect(() => () => window.clearTimeout(timerRef.current), []);
+
+  const commit = (next) => {
+    window.clearTimeout(timerRef.current);
+    committedRef.current = next;
+    startTransition(() => onCommit(next));
+  };
+
+  return (
+    <Input
+      value={text}
+      onChange={(e) => {
+        const next = e.target.value;
+        setText(next);
+        window.clearTimeout(timerRef.current);
+        // Clearing the box shows every row again straight away.
+        if (!next) {
+          commit(next);
+          return;
+        }
+        timerRef.current = window.setTimeout(() => commit(next), SEARCH_COMMIT_DELAY_MS);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") commit(text);
+      }}
+      placeholder="Search employee name / ID / designation"
+      className="h-9 border-[#cbd3df] bg-background pl-8 text-[13px]"
+    />
+  );
 }
 
 export function SheetPage() {
@@ -344,12 +394,7 @@ export function SheetPage() {
             <div className="relative w-[240px] shrink-0">
               <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" />
 
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search employee name / ID / designation"
-                className="h-9 border-[#cbd3df] bg-background pl-8 text-[13px]"
-              />
+              <SheetSearchInput value={search} onCommit={setSearch} />
             </div>
 
             <BudgetStatsBar
