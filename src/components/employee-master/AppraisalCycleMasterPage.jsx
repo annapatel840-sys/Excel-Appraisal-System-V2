@@ -885,7 +885,6 @@ export function AppraisalCycleMasterPage({
     if (!f.location) {
       return setModalError("Select the location this appraisal cycle is for.");
     }
-    const name = newName(f);
     if (!f.effective) {
       return setModalError("The effective date is required.");
     }
@@ -901,55 +900,147 @@ export function AppraisalCycleMasterPage({
     const todayIso = new Date().toLocaleDateString("en-CA");
     if (f.past && (f.end || f.effective) >= todayIso)
       return setModalError("A past cycle must have ended before today.");
-    if (f.type !== "Exceptional") {
-      const dup = cycles.find(
-        (x) =>
-          x.name.toLowerCase() === name.toLowerCase() && x.status !== "Deleted",
+
+    // "All Locations" sets up one cycle per active Location Master location
+    // ("Dubai - Annual 2027", "India - Annual 2027", ...); a single location sets up one.
+    const targets = isAllCycleLocation(f.location) ? cycleLocations : [f.location];
+    if (!targets.length) {
+      return setModalError(
+        cycleLocationsError
+          ? `Could not load Location Master: ${cycleLocationsError}`
+          : "There are no active locations in Location Master.",
       );
-      if (dup)
-        return setModalError(
-          dup.status === "Cancelled"
-            ? `${name} was used by a cancelled cycle (ID ${dup.id}); the name cannot be reused.`
-            : `${name} already exists (ID ${dup.id}).`,
-        );
     }
-    if (ENFORCE_ONE_OPEN_ANNUAL && f.process === "Annual" && !f.past) {
-      // One open Annual cycle per location; an All Locations cycle covers every location.
-      const prev = cycles.find(
-        (c) =>
-          c.process === "Annual" &&
-          !c.archived &&
-          !isHidden(c) &&
-          sameLocationScope(c.location, f.location),
+    const plan = targets.map((location) => ({
+      location,
+      name: newName({ ...f, location }),
+    }));
+
+    // Check every location before saving any, so nothing is half set up.
+    const problems = [];
+    plan.forEach(({ location, name }) => {
+      if (f.type !== "Exceptional") {
+        const dup = cycles.find(
+          (x) => x.name.toLowerCase() === name.toLowerCase() && x.status !== "Deleted",
+        );
+        if (dup) {
+          problems.push(
+            dup.status === "Cancelled"
+              ? `${name} was used by a cancelled cycle (ID ${dup.id}); the name cannot be reused.`
+              : `${name} already exists (ID ${dup.id}).`,
+          );
+          return;
+        }
+      }
+      if (ENFORCE_ONE_OPEN_ANNUAL && f.process === "Annual" && !f.past) {
+        // One open Annual cycle per location; an older All Locations cycle covers every location.
+        const prev = cycles.find(
+          (c) =>
+            c.process === "Annual" &&
+            !c.archived &&
+            !isHidden(c) &&
+            sameLocationScope(c.location, location),
+        );
+        if (prev)
+          problems.push(
+            `${location}: archive ${prev.name} (${locationLabel(prev.location)}) first. No new Annual-process cycle for ${location} can be set up until it is archived.`,
+          );
+      }
+    });
+    if (problems.length) {
+      const unique = [...new Set(problems)];
+      return setModalError(
+        unique.length > 3
+          ? `${unique.slice(0, 3).join(" ")} (and ${unique.length - 3} more)`
+          : unique.join(" "),
       );
-      if (prev)
-        return setModalError(
-          `Archive ${prev.name} (${locationLabel(prev.location)}) first. No new Annual-process cycle for ${locationLabel(f.location)} can be set up until it is archived.`,
-        );
     }
-    const saved = await mutateCycle(
-      "cycles/create",
-      {
-        name,
-        type: f.type,
-        process: f.process,
-        effective: f.effective,
-        start: f.start,
-        end: f.end,
-        location: f.location,
-        remarks: f.remarks.trim(),
-        ...(f.past ? { past: true } : {}),
-      },
-      f.past ? "Past cycle created" : "Cycle created",
-      f.past
-        ? `${name} was saved as Closed and archived. Import its data in HR Operations → Historical Import.`
-        : `${name} was set up (${procLabel(f.process)}).`,
-    );
-    if (saved) {
-      setType(f.type);
-      setNewCycleOpen(false);
-      setNewForm(blankNew);
+
+    if (plan.length === 1) {
+      const { name, location } = plan[0];
+      const saved = await mutateCycle(
+        "cycles/create",
+        {
+          name,
+          type: f.type,
+          process: f.process,
+          effective: f.effective,
+          start: f.start,
+          end: f.end,
+          location,
+          remarks: f.remarks.trim(),
+          ...(f.past ? { past: true } : {}),
+        },
+        f.past ? "Past cycle created" : "Cycle created",
+        f.past
+          ? `${name} was saved as Closed and archived. Import its data in HR Operations → Historical Import.`
+          : `${name} was set up (${procLabel(f.process)}).`,
+      );
+      if (saved) {
+        setType(f.type);
+        setNewCycleOpen(false);
+        setNewForm(blankNew);
+      }
+      return;
     }
+
+    // One cycle per location, saved one after another.
+    if (!canManageCycles) {
+      showBanner("Permission denied", "HR role is required to administer appraisal cycles.", true);
+      return;
+    }
+    setSaving(true);
+    const created = [];
+    const failed = [];
+    for (const { name, location } of plan) {
+      try {
+        await payrollCycleRequest("cycles/create", {
+          method: "POST",
+          body: {
+            name,
+            type: f.type,
+            process: f.process,
+            effective: f.effective,
+            start: f.start,
+            end: f.end,
+            location,
+            remarks: f.remarks.trim(),
+            ...(f.past ? { past: true } : {}),
+          },
+        });
+        created.push(name);
+      } catch (error) {
+        failed.push(`${name}: ${error?.message || "could not be saved"}`);
+      }
+    }
+    if (created.length && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("appraisal:cycle-updated"));
+    }
+    try {
+      await loadData();
+    } catch (error) {
+      setRefreshError(
+        `The cycles were saved, but the latest data could not be refreshed: ${error.message}`,
+      );
+    }
+    setSaving(false);
+    if (failed.length) {
+      showBanner(
+        created.length ? "Some cycles were not set up" : "Unable to set up the cycles",
+        `${created.length ? `Set up ${created.length}: ${created.join(", ")}. ` : ""}Not set up: ${failed.join("; ")}`,
+        true,
+      );
+      // Keep the form open only when nothing was saved, so HR can fix and retry.
+      if (!created.length) return;
+    } else {
+      showBanner(
+        f.past ? "Past cycles created" : "Cycles created",
+        `${created.length} cycles were set up, one per location: ${created.join(", ")}.`,
+      );
+    }
+    setType(f.type);
+    setNewCycleOpen(false);
+    setNewForm(blankNew);
   };
 
   /* ---------------- navigation ---------------- */
@@ -2311,7 +2402,10 @@ export function AppraisalCycleMasterPage({
                     setEditForm((f) => ({ ...f, location: e.target.value }))
                   }
                 >
-                  <option value={ALL_CYCLE_LOCATIONS}>All Locations</option>
+                  {/* Only older org-wide cycles are "All Locations"; new cycles are per location. */}
+                  {isAllCycleLocation(editCycle.location) && (
+                    <option value={ALL_CYCLE_LOCATIONS}>All Locations</option>
+                  )}
                   {cycleLocations
                     .concat(
                       !isAllCycleLocation(editForm.location) &&
@@ -2505,7 +2599,9 @@ export function AppraisalCycleMasterPage({
             <option value="" disabled>
               Select the location for this cycle
             </option>
-            <option value={ALL_CYCLE_LOCATIONS}>All Locations</option>
+            <option value={ALL_CYCLE_LOCATIONS}>
+              All Locations (one cycle per location)
+            </option>
             {cycleLocations.map((name) => (
               <option key={name} value={name}>
                 {name}
@@ -2515,7 +2611,9 @@ export function AppraisalCycleMasterPage({
           <div className="acx-hint">
             {cycleLocationsError
               ? `Could not load Location Master: ${cycleLocationsError}`
-              : "Only this location's employees go on the cycle's Eligibility List. All Locations covers everyone."}
+              : isAllCycleLocation(newForm.location) && newForm.location
+                ? `Sets up ${cycleLocations.length} cycles, one for each location; each lists only that location's employees.`
+                : "Only this location's employees go on the cycle's Eligibility List."}
           </div>
           <div className="acx-row2">
             <div>
@@ -2569,8 +2667,26 @@ export function AppraisalCycleMasterPage({
               </select>
             </div>
             <div>
-              <label className="acx-fl">Cycle Name</label>
-              <input type="text" disabled value={newName(newForm)} />
+              <label className="acx-fl">
+                {isAllCycleLocation(newForm.location) && newForm.location
+                  ? `Cycle Names (${cycleLocations.length})`
+                  : "Cycle Name"}
+              </label>
+              {(() => {
+                // All Locations: one name per location, e.g. "Dubai - Annual 2027".
+                const names =
+                  isAllCycleLocation(newForm.location) && newForm.location
+                    ? cycleLocations.map((location) => newName({ ...newForm, location }))
+                    : [newName(newForm)];
+                return (
+                  <input
+                    type="text"
+                    disabled
+                    value={names.join(", ")}
+                    title={names.join("\n")}
+                  />
+                );
+              })()}
             </div>
           </div>
           <label
