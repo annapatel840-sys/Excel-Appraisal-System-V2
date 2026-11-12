@@ -36,8 +36,11 @@ const PROCESSES = [
   ["Exceptional", "Exceptional"],
   ["None", "No process"],
 ];
-// No new Annual-process cycle for a location until that location's previous one is archived.
+// No new Annual-process cycle for a location while that location's previous one is
+// still open (Upcoming or Active); once it is Closed a new one can be set up.
+// Exceptional and New Joiner cycles have no such limit.
 const ENFORCE_ONE_OPEN_ANNUAL = true;
+const OPEN_CYCLE_STATUSES = ["Upcoming", "Active"];
 
 // Each cycle is for one Location Master location or for all of them ("All").
 // Cycles saved before locations existed have no value and count as All.
@@ -788,13 +791,14 @@ export function AppraisalCycleMasterPage({
         (x) =>
           x.id !== editCycle.id &&
           x.process === "Annual" &&
+          OPEN_CYCLE_STATUSES.includes(x.status) &&
           !x.archived &&
           !isHidden(x) &&
           sameLocationScope(x.location, f.location),
       );
       if (o)
         return setModalError(
-          `${o.name} (${locationLabel(o.location)}) is already on the Annual process and not archived.`,
+          `${o.name} (${locationLabel(o.location)}) is an open Annual cycle. Close it first.`,
         );
     }
     // Keep the name's "<Location> - " prefix in step with the location.
@@ -937,13 +941,14 @@ export function AppraisalCycleMasterPage({
         const prev = cycles.find(
           (c) =>
             c.process === "Annual" &&
+            OPEN_CYCLE_STATUSES.includes(c.status) &&
             !c.archived &&
             !isHidden(c) &&
             sameLocationScope(c.location, location),
         );
         if (prev)
           problems.push(
-            `${location}: archive ${prev.name} (${locationLabel(prev.location)}) first. No new Annual-process cycle for ${location} can be set up until it is archived.`,
+            `${location}: close ${prev.name} (${locationLabel(prev.location)}) first. A new Annual cycle for ${location} can be set up once it is Closed.`,
           );
       }
     });
