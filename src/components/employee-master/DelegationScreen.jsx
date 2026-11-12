@@ -4875,7 +4875,7 @@ export default function DelegationScreen({
                         className="btn p sm aud-full"
                         onClick={() => setModal({ type: "audit" })}
                       >
-                        View full audit trail
+                        View Full Audit Trail
                       </button>
                     </>
                   ) : (
