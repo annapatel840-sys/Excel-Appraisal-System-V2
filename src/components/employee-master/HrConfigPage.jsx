@@ -1148,8 +1148,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
-import { LocationMasterControl } from "./LocationMasterControl";
-import { useSelectedLocation, isAllLocations } from "@/lib/location-store";
+import { useSelectedLocation } from "@/lib/location-store";
 
 /* ============================================================
    HR Config screen (outer part of the reference HTML).
@@ -2117,48 +2116,9 @@ export function HrConfigPage({ renderCycleScreen, canEdit = true }) {
   ];
   // const [curCode, curName] = ["", loc.split("|")[1]];
 
-  const currentLocation = isAllLocations(loc)
-    ? undefined
-    : locations.find((item) => item.code === loc || item.name === loc);
-
   return (
     <div className="hrc">
       <style>{CSS}</style>
-
-      <div className="hrc-locbar">
-        <span className="hrc-loclbl">Location</span>
-        {locationsLoading ? (
-          <select className="hrc-locsel" aria-label="Location" disabled>
-            <option>Loading locations...</option>
-          </select>
-        ) : (
-          <LocationMasterControl
-            value={loc}
-            valueKey="location_code"
-            onChange={(selectedCode) => {
-              const selectedLocation = locations.find(
-                (item) => item.code === selectedCode,
-              );
-              // Stored by Location Master name, the same value Employee Master holds.
-              setLoc(selectedLocation ? selectedLocation.name : selectedCode);
-              say(
-                selectedLocation
-                  ? `Location: ${selectedLocation.name}. Every screen now shows this location only.`
-                  : "Location: All Locations. Every screen shows all locations.",
-              );
-            }}
-            ariaLabel="Location"
-            triggerClassName="hrc-locsel"
-          />
-        )}
-        {currentLocation && (
-          <span className="hrc-cur">
-            {currentLocation.currency
-              ? `${currentLocation.currency} · ${currentLocation.code}`
-              : currentLocation.code}
-          </span>
-        )}
-      </div>
 
       {tab === "cyc" && renderCycleScreen && (
         <section className="hrc-work">

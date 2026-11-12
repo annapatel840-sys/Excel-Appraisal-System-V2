@@ -1117,9 +1117,11 @@ export function EligibilityList({
               role="button"
               tabIndex={0}
               title={
-                quickFilter === key
-                  ? "Click to show all"
-                  : `Show only ${label.toLowerCase()} employees`
+                key === "needAction"
+                  ? undefined
+                  : quickFilter === key
+                    ? "Click to show all"
+                    : `Show only ${label.toLowerCase()} employees`
               }
               onClick={() => setQuickFilter((cur) => (cur === key ? null : key))}
               onKeyDown={(event) =>
