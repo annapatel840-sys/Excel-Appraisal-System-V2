@@ -1,5 +1,6 @@
 "use strict";
 
+const zlib = require("zlib");
 const catalyst = require("zcatalyst-sdk-node");
 const access = require("./accessCore");
 
@@ -18,6 +19,30 @@ const TABLES = {
 function sendJson(res, status, body) {
   res.writeHead(status, { "Content-Type": "application/json" });
   res.end(JSON.stringify(body));
+}
+
+// The budget GET carries the ~3,000-row employee roster (~2.6 MB of JSON).
+// Gzip it when the caller asks (gz=1) and the browser accepts gzip, the same
+// way employeesapi and payrollcycleapi do; level 1 takes tens of milliseconds.
+const GZIP_MIN_BYTES = 32 * 1024;
+function sendJsonCompressed(req, res, status, body) {
+  let wantsGzip = false;
+  try {
+    wantsGzip =
+      new URL(String(req.url || "/"), "http://local").searchParams.get("gz") === "1" &&
+      /\bgzip\b/i.test(String((req.headers && req.headers["accept-encoding"]) || ""));
+  } catch (_) {}
+  const text = JSON.stringify(body);
+  if (wantsGzip && Buffer.byteLength(text) >= GZIP_MIN_BYTES) {
+    res.writeHead(status, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Content-Encoding": "gzip",
+      Vary: "Accept-Encoding",
+    });
+    return res.end(zlib.gzipSync(text, { level: 1 }));
+  }
+  res.writeHead(status, { "Content-Type": "application/json" });
+  return res.end(text);
 }
 
 function value(row, key) {
@@ -542,15 +567,49 @@ function sameStoredValue(stored, next) {
   return String(stored).trim() === String(next).trim();
 }
 
+// Per-request write counters, returned with the GET response timing so a slow
+// budget load can be traced without the function logs.
+const WRITE_STATS = { written: 0, skipped: 0, ms: 0, fields: {} };
+
+// The Data Store garbles a decimal amount of 1 crore or more that has a
+// fractional part: 29415758.4 is stored as 2.9415, 17078436.27 as 1.7078
+// (whole numbers such as 29166568 are stored correctly). That corrupted the
+// saved budgets (e.g. an Original Budget of 1.86 shown as "2") and, because
+// the stored value never matched the recalculated one, made every budget GET
+// re-save ~23 rows. Budgets are shown in whole rupees, so round such amounts
+// to whole rupees before they are written.
+const DATASTORE_SAFE_DECIMAL_LIMIT = 1e7;
+function storableRow(row) {
+  if (!row || typeof row !== "object") return row;
+  let copy = null;
+  for (const key of Object.keys(row)) {
+    const v = row[key];
+    if (
+      typeof v === "number" &&
+      Number.isFinite(v) &&
+      !Number.isInteger(v) &&
+      Math.abs(v) >= DATASTORE_SAFE_DECIMAL_LIMIT
+    ) {
+      if (!copy) copy = { ...row };
+      copy[key] = Math.round(v);
+    }
+  }
+  return copy || row;
+}
+
 function skipUnchangedWrites(table, rawById) {
   if (!rawById) return table;
   return new Proxy(table, {
     get(target, prop) {
+      if (prop === "insertRow") {
+        return (row) => target.insertRow(storableRow(row));
+      }
       if (prop !== "updateRow") {
         const member = target[prop];
         return typeof member === "function" ? member.bind(target) : member;
       }
-      return async (update) => {
+      return async (requested) => {
+        const update = storableRow(requested);
         const raw = rawById.get(String((update && update.ROWID) || ""));
         const unchanged =
           raw &&
@@ -560,8 +619,23 @@ function skipUnchangedWrites(table, rawById) {
               (Object.prototype.hasOwnProperty.call(raw, key) &&
                 sameStoredValue(raw[key], update[key])),
           );
-        if (unchanged) return { ...raw };
+        if (unchanged) {
+          WRITE_STATS.skipped += 1;
+          return { ...raw };
+        }
+        // Field names only (never values): this goes back to every budget viewer.
+        Object.keys(update).forEach((key) => {
+          if (
+            key !== "ROWID" &&
+            !(raw && Object.prototype.hasOwnProperty.call(raw, key) && sameStoredValue(raw[key], update[key]))
+          ) {
+            WRITE_STATS.fields[key] = (WRITE_STATS.fields[key] || 0) + 1;
+          }
+        });
+        const writeStartedAt = Date.now();
         const saved = await target.updateRow(update);
+        WRITE_STATS.written += 1;
+        WRITE_STATS.ms += Date.now() - writeStartedAt;
         if (raw) Object.assign(raw, update);
         return saved;
       };
@@ -1690,7 +1764,15 @@ function cycleDate(row) {
   return "";
 }
 
+// Table schemas almost never change, but fetching them is a Catalyst round trip on
+// every budget GET. Keep a successful answer for a few minutes per warm instance.
+const COLUMN_CACHE = new Map();
+const COLUMN_CACHE_MS = 5 * 60 * 1000;
 async function getColumnNames(table) {
+  const startedAt = Date.now();
+  const cacheKey = String((table && (table.identifier || table._identifier)) || "");
+  const cached = cacheKey && COLUMN_CACHE.get(cacheKey);
+  if (cached && Date.now() - cached.at < COLUMN_CACHE_MS) return cached.names;
   try {
     const columns = await table.getAllColumns();
     const names = new Set(
@@ -1698,9 +1780,12 @@ async function getColumnNames(table) {
         .map((column) => String(column.column_name || column.name || "").trim())
         .filter(Boolean),
     );
+    if (cacheKey && names.size) COLUMN_CACHE.set(cacheKey, { at: Date.now(), names });
     return names.size ? names : null;
   } catch (_) {
     return null;
+  } finally {
+    WRITE_STATS.columnsMs = Math.max(WRITE_STATS.columnsMs || 0, Date.now() - startedAt);
   }
 }
 
@@ -3715,7 +3800,14 @@ module.exports = async function (req, res) {
 
     if (method === "GET") {
       const budgetRequestStartedAt = Date.now();
+      const budgetStages = [];
+      WRITE_STATS.written = 0;
+      WRITE_STATS.skipped = 0;
+      WRITE_STATS.ms = 0;
+      WRITE_STATS.fields = {};
+      WRITE_STATS.columnsMs = 0;
       const logBudgetStage = (stage, details = {}) => {
+        budgetStages.push(stage + " @" + (Date.now() - budgetRequestStartedAt) + "ms");
         console.info("[budgetmasterapi:get]", {
           stage,
           elapsedMs: Date.now() - budgetRequestStartedAt,
@@ -3798,7 +3890,7 @@ module.exports = async function (req, res) {
         returnedCompManagerRows: bundle.compManager.length,
         returnedRosterRows: (bundle.employeeRoster || []).length,
       });
-      return sendJson(res, 200, {
+      return sendJsonCompressed(req, res, 200, {
         success: true,
         data: bundle.techEd,
         master: bundle.master,
@@ -3808,6 +3900,7 @@ module.exports = async function (req, res) {
         employeeRoster: bundle.employeeRoster || [],
         techEdCount: techEdOwners.length,
         diagnostics: calculatedBundle.diagnostics || null,
+        timing: { stages: budgetStages, writes: { ...WRITE_STATS } },
         active_appraisal_cycle_id:
           calculatedBundle.active_appraisal_cycle_id || "",
         more_records: false,

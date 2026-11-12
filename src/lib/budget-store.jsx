@@ -1258,6 +1258,8 @@ export function BudgetProvider({ children }) {
       // first paint on both Sheet and Detailed Screen and couples two requests.
       const budgetUrl = new URL(catalystFunctionUrl("budgetmasterapi"));
       budgetUrl.searchParams.set("_ts", String(Date.now()));
+      // Ask budgetmasterapi to gzip the ~2.6 MB response (employee roster).
+      budgetUrl.searchParams.set("gz", "1");
       // Start both independent requests immediately, but do not make the
       // Budget cards wait for the employee roster request to finish.
       const employeeResultPromise = fetchAllEligibleEmployees(
