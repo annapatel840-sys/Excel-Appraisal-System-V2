@@ -5,10 +5,13 @@
      - the next normal cycle is compared with the previous NORMAL cycle, skipping the exception,
      - it shows no up / down change line and has its own text colour. */
 
-/* Same rule the server uses (cycleTypeOf): the type is the start of the cycle name. */
+import { cycleNameWithoutLocation } from "@/lib/cycle-name";
+
+/* Same rule the server uses (cycleTypeOf): the type is the start of the cycle name,
+   after any "<Location> - " prefix ("Dubai - Exceptional 2027"). */
 export const isExceptionRecord = (record) =>
   /^exception/i.test(String(record?.cycleType || "").trim()) ||
-  /^exception/i.test(String(record?.cycleName || "").trim());
+  /^exception/i.test(cycleNameWithoutLocation(record?.cycleName));
 
 /* The next older record that is a normal cycle (used as "previous" for the change %). */
 export const olderNormal = (records, index) => {

@@ -8,6 +8,7 @@ import {
   createEmployeeMasterEmployees,
 } from "@/lib/employee-master-data";
 import { findFieldForHeader } from "@/lib/employee-master-utils";
+import { cycleNameWithoutLocation } from "@/lib/cycle-name";
 
 /* ============================================================
    CONFIG
@@ -217,10 +218,11 @@ const normId = (s) => sv(s).toLowerCase();
 const isNum = (v) =>
   sv(v) !== "" && !Number.isNaN(Number(sv(v).replace(/[₹,%\s]/g, "")));
 const toNum = (v) => Number(sv(v).replace(/[₹,%\s]/g, ""));
+// The type starts the name, after any "<Location> - " prefix ("Dubai - Annual 2027").
 const typeOf = (name) =>
-  /^annual/i.test(String(name || ""))
+  /^annual/i.test(cycleNameWithoutLocation(name))
     ? "Annual"
-    : String(name || "").split(" ")[0];
+    : cycleNameWithoutLocation(name).split(" ")[0];
 const isOpenCycle = (c) =>
   !!c && !c.archived && (c.status === "Upcoming" || c.status === "Active");
 const nextBatchId = () =>

@@ -36,8 +36,25 @@ const DEFAULT_CYCLE_PROCESS = { Annual: "Annual", "Mid-Year": "Annual", Exceptio
 const CYCLE_MOVES = { Upcoming: ["Active"], Active: ["Closed"], Closed: ["Active"] };
 // Optional Appraisal_Cycle_Master columns. Values are saved only when the
 // column exists, so the function works before and after they are added.
-const OPTIONAL_CYCLE_COLUMNS = ["cycle_type", "process", "effective_date", "cancel_reason"];
+const OPTIONAL_CYCLE_COLUMNS = ["cycle_type", "process", "effective_date", "cancel_reason", "location"];
 const BUSINESS_TZ = "Asia/Kolkata";
+
+// A cycle belongs to one Location Master location, or to every location
+// ("All"). Cycles saved before locations existed have no value and count as All.
+const ALL_LOCATIONS = "All";
+const cycleLocationKey = (cycle) => {
+  const value = String((cycle && cycle.location) || "").trim();
+  return !value || value.toLowerCase() === ALL_LOCATIONS.toLowerCase() || value.toLowerCase() === "all locations"
+    ? ""
+    : value.toLowerCase();
+};
+const employeeLocationKey = (master) =>
+  String((master && (master.location || master.work_location)) || "").trim().toLowerCase();
+// True when the employee belongs to the cycle's location (always true for an All cycle).
+const inCycleLocation = (cycle, master) => {
+  const key = cycleLocationKey(cycle);
+  return !key || employeeLocationKey(master) === key;
+};
 
 // "YYYY-MM-DD HH:mm:ss" in the project's time zone (IST), not UTC.
 function nowLocal(date = new Date()) {
@@ -51,8 +68,15 @@ function nowLocal(date = new Date()) {
 }
 const todayLocal = () => nowLocal().slice(0, 10);
 
+// A location cycle is named "<Location> - <Type> <Year>" ("Dubai - Annual 2027");
+// org-wide cycles stay "<Type> <Year>". Same rule as src/lib/cycle-name.js.
+function cycleNameWithoutLocation(name) {
+  const text = String(name || "").trim();
+  const match = text.match(/^(.+?)\s+-\s+(.+)$/);
+  return match && /^(annual|mid-year|exceptional|new joiner)\b/i.test(match[2]) ? match[2] : text;
+}
 function cycleTypeOf(name) {
-  const lower = String(name || "").toLowerCase();
+  const lower = cycleNameWithoutLocation(name).toLowerCase();
   return CYCLE_TYPES.find((type) => lower.startsWith(type.toLowerCase())) || "Annual";
 }
 const cycleProcessOf = (cycle) => cycle.process || DEFAULT_CYCLE_PROCESS[cycle.type || cycleTypeOf(cycle.name)] || "Annual";
@@ -693,6 +717,8 @@ function normalizeCycle(row) {
     type: row.cycle_type || "",
     process: row.process || "",
     cancelReason: row.cancel_reason || cancelReasonFromRemarks(row),
+    // "" (saved before locations existed) is shown and treated as All Locations.
+    location: String(row.location || "").trim() || ALL_LOCATIONS,
   };
 }
 
@@ -1067,6 +1093,8 @@ async function applyEligibilityCriteria(tables, body, actor) {
     const masterId = String(master.ROWID || master.rowid || "");
     const empId = String(master.emp_id || "").trim();
     if (!masterId || !empId) continue;
+    // A location cycle lists only that location's employees.
+    if (!inCycleLocation(cycle, master)) continue;
     const existing = existingByMasterId.get(masterId);
     const active = String(master.emp_status || master.status || "Active").trim().toLowerCase() === "active";
 
@@ -1309,6 +1337,9 @@ async function saveEligibilityRow(tables, body, actor) {
     String(row.appraisal_cycle_id || "") === cycleId &&
     String(row.employee_master_id || "") === masterId
   );
+  if (!existing && !inCycleLocation(cycle, master)) {
+    throw new ApiError(`${empId} works in ${String(master.location || master.work_location || "another location").trim()}; this cycle is for ${cycle.location}.`, 409);
+  }
   const rawEligible = String(body.eligible_status || body.eligible || "").trim().toLowerCase();
   const eligible = ["eligible", "yes", "true"].includes(rawEligible)
     ? "Eligible"
@@ -1376,6 +1407,12 @@ async function saveEligibilityRowsBatch(tables, body, actor) {
       if (!master) throw new ApiError(`Employee ${empId} was not found in Employee Master.`, 404);
       if (String(master.emp_status || master.status || "Active").trim().toLowerCase() !== "active") {
         throw new ApiError("Only Active employees can be saved in Eligibility List.", 409);
+      }
+      if (
+        !existingByMasterId.has(String(master.ROWID || master.rowid || "")) &&
+        !inCycleLocation(cycle, master)
+      ) {
+        throw new ApiError(`${empId} works in ${String(master.location || master.work_location || "another location").trim()}; this cycle is for ${cycle.location}.`, 409);
       }
       const rawEligible = String(record.eligible_status || record.eligible || "").trim().toLowerCase();
       const eligible = ["eligible", "yes", "true"].includes(rawEligible)
@@ -3716,6 +3753,30 @@ async function routeRequest(req, res, identity, resource, a) {
     const now = nowLocal();
     const columns = await cycleColumns(tables.cycles);
 
+    // The location the cycle is for: "All", or a Location Master location
+    // (matched by name or code, saved as its name). Undefined = not sent.
+    let requestedLocation;
+    let locationError = "";
+    if (body.location !== undefined) {
+      const raw = String(body.location ?? "").trim();
+      if (!raw) {
+        locationError = "Select the location this appraisal cycle is for.";
+      } else if (["all", "all locations"].includes(raw.toLowerCase())) {
+        requestedLocation = ALL_LOCATIONS;
+      } else {
+        const locationRows = await getAllRows(tables.locations);
+        const match = locationRows.find((row) =>
+          String(row.location_name || "").trim().toLowerCase() === raw.toLowerCase() ||
+          String(row.location_code || "").trim().toLowerCase() === raw.toLowerCase());
+        if (!match) locationError = `"${raw}" is not a location in Location Master.`;
+        else if (String(match.status || "Active").trim().toLowerCase() === "inactive") locationError = `${String(match.location_name).trim()} is inactive in Location Master.`;
+        else requestedLocation = String(match.location_name || "").trim();
+      }
+    }
+    if (body.location !== undefined && !locationError && !columns.has("location")) {
+      locationError = "Appraisal_Cycle_Master has no location column yet, so the location cannot be saved.";
+    }
+
     // Cycle fields from the screen. Cycles on "No process" need only the
     // effective date; the others need start < end (effective defaults to start).
     const readCycleFields = (fallback = {}) => {
@@ -3734,9 +3795,11 @@ async function routeRequest(req, res, identity, resource, a) {
         else if ((start || end) && !(validDate(start) && validDate(end) && end > start)) error = "If you give start and close dates, both must be valid and close must be after start.";
       } else if (!(validDate(start) && validDate(end) && end > start)) error = "Provide valid start and close dates; close must be after start.";
       else if (effective && !validDate(effective)) error = "The effective date must be a valid date (YYYY-MM-DD).";
-      return { name, type, process, start: start || null, end: end || null, effective: effective || start, error };
+      if (!error && locationError) error = locationError;
+      const location = requestedLocation !== undefined ? requestedLocation : (fallback.location || ALL_LOCATIONS);
+      return { name, type, process, start: start || null, end: end || null, effective: effective || start, location, error };
     };
-    const optionalValues = (fields) => ({ cycle_type: fields.type, process: fields.process, effective_date: fields.effective || null });
+    const optionalValues = (fields) => ({ cycle_type: fields.type, process: fields.process, effective_date: fields.effective || null, location: fields.location });
     // Until effective_date exists, a "No process" cycle keeps its effective
     // date in start_date (the screen shows start as the effective date).
     const storedStart = (fields) => fields.start || (!columns.has("effective_date") && fields.process === "None" ? fields.effective : null);
@@ -3745,6 +3808,7 @@ async function routeRequest(req, res, identity, resource, a) {
     const otherActiveCycle = (id) => cycles.find((cycle) => cycle.status === "Active" && cycle.id !== id && !cycle.archived);
 
     if (action === "create") {
+      // The screen always sends a location; older callers that do not are All Locations.
       const fields = readCycleFields();
       const remarks = String(body.remarks || "").trim();
       if (fields.error || remarks.length > 10000) {
@@ -3775,7 +3839,7 @@ async function routeRequest(req, res, identity, resource, a) {
       const cycle = normalizeCycle({ ...row, ...created });
       const message = past
         ? `Past cycle created as Closed and archived (${fields.type}) for Historical Import.`
-        : `Cycle created as Upcoming (${fields.type}, ${fields.process === "None" ? "no process" : fields.process + " process"}).`;
+        : `Cycle created as Upcoming (${fields.type}, ${fields.process === "None" ? "no process" : fields.process + " process"}, ${fields.location === ALL_LOCATIONS ? "all locations" : fields.location}).`;
       await writeAudit(tables.audit, { actor, source: "cycle", cycle, action: past ? "Created past cycle" : "Created cycle", details: { kind: "cycle", action: past ? "Created past cycle" : "Created cycle", message, cycleName: cycle.name, newRemarks: cycle.remarks } });
       return sendJson(res, 201, { success: true, data: cycle });
     }
@@ -3796,6 +3860,11 @@ async function routeRequest(req, res, identity, resource, a) {
       if (existing.status !== "Upcoming" && fields.process !== cycleProcessOf(existing)) {
         return sendJson(res, 409, { success: false, message: "The process can only be changed while the cycle is Upcoming." });
       }
+      // The location decides who is on the cycle's Eligibility List, so it is
+      // fixed once the cycle has been activated.
+      if (existing.status !== "Upcoming" && cycleLocationKey(fields) !== cycleLocationKey(existing)) {
+        return sendJson(res, 409, { success: false, message: "The location can only be changed while the cycle is Upcoming." });
+      }
       const row = withOptionalColumns(columns, {
         ROWID: id, cycle_name: fields.name, start_date: storedStart(fields), end_date: fields.end, changed_by: actor, changed_at: now,
       }, optionalValues(fields));
@@ -3804,8 +3873,9 @@ async function routeRequest(req, res, identity, resource, a) {
       if (columns.has("cycle_type")) updated.type = fields.type;
       if (columns.has("process")) updated.process = fields.process;
       if (columns.has("effective_date")) updated.effective = fields.effective || "";
-      const before = { name: existing.name, type: existing.type, process: existing.process, effective: existing.effective, start: existing.start, end: existing.end };
-      const after = { name: updated.name, type: updated.type, process: updated.process, effective: updated.effective, start: updated.start, end: updated.end };
+      if (columns.has("location")) updated.location = fields.location;
+      const before = { name: existing.name, type: existing.type, process: existing.process, effective: existing.effective, start: existing.start, end: existing.end, location: existing.location };
+      const after = { name: updated.name, type: updated.type, process: updated.process, effective: updated.effective, start: updated.start, end: updated.end, location: updated.location };
       const changed = Object.keys(before).filter((key) => String(before[key] || "") !== String(after[key] || ""));
       const describe = (v) => changed.map((key) => `${key} ${v[key] || "—"}`).join(", ");
       await writeAudit(tables.audit, {

@@ -8,6 +8,11 @@ import { catalystFetch, catalystFunctionUrl } from "@/lib/catalyst-api";
 import { LocationMasterControl } from "@/components/employee-master/LocationMasterControl";
 import { useSelectedLocation } from "@/lib/location-store";
 import {
+  cycleNameLocation,
+  cycleNameWithoutLocation,
+  withCycleLocation,
+} from "@/lib/cycle-name";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -31,8 +36,24 @@ const PROCESSES = [
   ["Exceptional", "Exceptional"],
   ["None", "No process"],
 ];
-// No new Annual-process cycle until the previous one is archived.
+// No new Annual-process cycle for a location until that location's previous one is archived.
 const ENFORCE_ONE_OPEN_ANNUAL = true;
+
+// Each cycle is for one Location Master location or for all of them ("All").
+// Cycles saved before locations existed have no value and count as All.
+const ALL_CYCLE_LOCATIONS = "All";
+const isAllCycleLocation = (value) => {
+  const v = String(value || "").trim().toLowerCase();
+  return !v || v === "all" || v === "all locations";
+};
+const locationLabel = (value) =>
+  isAllCycleLocation(value) ? "All Locations" : String(value).trim();
+// Two cycles cover the same people when either is for All Locations or both are
+// for the same location.
+const sameLocationScope = (a, b) =>
+  isAllCycleLocation(a) ||
+  isAllCycleLocation(b) ||
+  String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
 
 const MON = [
   "Jan",
@@ -55,9 +76,10 @@ const formatDate = (value) => {
   return `${p[2]} ${MON[Number(p[1]) - 1]} ${p[0]}`;
 };
 
+// The type starts the name, after any "<Location> - " prefix.
 const typeOf = (name) =>
   TYPES.find((t) =>
-    String(name || "")
+    cycleNameWithoutLocation(name)
       .toLowerCase()
       .startsWith(t.toLowerCase()),
   ) || "Annual";
@@ -265,7 +287,31 @@ export function AppraisalCycleMasterPage({
     effective: "",
     start: "",
     end: "",
+    location: ALL_CYCLE_LOCATIONS,
   });
+  // Active Location Master locations for the cycle's Location field.
+  const [cycleLocations, setCycleLocations] = useState([]);
+  const [cycleLocationsError, setCycleLocationsError] = useState("");
+  useEffect(() => {
+    let alive = true;
+    payrollCycleRequest("locations")
+      .then((rows) => {
+        if (!alive) return;
+        const names = (Array.isArray(rows) ? rows : [])
+          .filter((row) => String(row.status || "Active").toLowerCase() !== "inactive")
+          .map((row) => String(row.location_name || "").trim())
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b));
+        setCycleLocations(names);
+        setCycleLocationsError("");
+      })
+      .catch((error) => {
+        if (alive) setCycleLocationsError(error?.message || "Could not load Location Master.");
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
   const [remarksCycle, setRemarksCycle] = useState(null);
   const [remarksText, setRemarksText] = useState("");
   const [cancelCycle, setCancelCycle] = useState(null);
@@ -281,6 +327,8 @@ export function AppraisalCycleMasterPage({
     start: "",
     end: "",
     remarks: "",
+    // HR must pick the location (or All Locations) for every new cycle.
+    location: "",
   };
   const [newForm, setNewForm] = useState(blankNew);
   const [confirm, setConfirm] = useState(null); // { kind, cycle }
@@ -707,6 +755,7 @@ export function AppraisalCycleMasterPage({
       effective: c.effective || "",
       start: c.start || "",
       end: c.end || "",
+      location: isAllCycleLocation(c.location) ? ALL_CYCLE_LOCATIONS : c.location,
     });
   };
 
@@ -720,37 +769,55 @@ export function AppraisalCycleMasterPage({
     } else if (!f.effective) {
       return setModalError("The effective date is required.");
     }
+    const locationChanged =
+      String(f.location || "").toLowerCase() !==
+      String(isAllCycleLocation(editCycle.location) ? ALL_CYCLE_LOCATIONS : editCycle.location).toLowerCase();
     if (
       f.process === editCycle.process &&
       f.effective === editCycle.effective &&
       f.start === editCycle.start &&
-      f.end === editCycle.end
+      f.end === editCycle.end &&
+      !locationChanged
     )
       return setModalError("Nothing changed.");
-    if (f.process !== editCycle.process && f.process === "Annual") {
+    if (
+      f.process === "Annual" &&
+      (f.process !== editCycle.process || locationChanged)
+    ) {
       const o = cycles.find(
         (x) =>
           x.id !== editCycle.id &&
           x.process === "Annual" &&
           !x.archived &&
-          !isHidden(x),
+          !isHidden(x) &&
+          sameLocationScope(x.location, f.location),
       );
       if (o)
         return setModalError(
-          `${o.name} is already on the Annual process and not archived.`,
+          `${o.name} (${locationLabel(o.location)}) is already on the Annual process and not archived.`,
         );
     }
+    // Keep the name's "<Location> - " prefix in step with the location.
+    const editedName = locationChanged
+      ? withCycleLocation(
+          cycleNameWithoutLocation(editCycle.name),
+          f.location,
+          isAllCycleLocation(f.location),
+        )
+      : editCycle.name;
     const saved = await mutateCycle(
       `cycles/update/${editCycle.id}`,
       {
-        name: editCycle.name,
+        name: editedName,
         process: f.process,
         effective: f.effective,
         start: f.start,
         end: f.end,
+        // The location can be changed only while the cycle is Upcoming.
+        ...(editCycle.status === "Upcoming" ? { location: f.location } : {}),
       },
       "Cycle updated",
-      `${editCycle.name} was updated successfully.`,
+      `${editedName} was updated successfully.`,
     );
     if (saved) setEditCycle(null);
   };
@@ -795,19 +862,29 @@ export function AppraisalCycleMasterPage({
 
   const newName = (f) => {
     const base = `${f.type} ${f.year}`;
+    // Names are unique, so a location cycle starts with its location:
+    // "Dubai - Annual 2027". All Locations keeps the plain "Annual 2027".
+    const allLocations = !f.location || isAllCycleLocation(f.location);
+    const sameLocation = (x) =>
+      allLocations
+        ? !cycleNameLocation(x.name)
+        : cycleNameLocation(x.name).toLowerCase() === String(f.location).trim().toLowerCase();
     // Cancelled cycles keep their name (names are unique), so count them too.
-    const same = cycles.filter(
-      (x) =>
-        (x.name === base || x.name.startsWith(`${base} (`)) &&
-        x.status !== "Deleted",
-    );
-    if (f.type === "Exceptional" && same.length)
-      return `${base} (${same.length + 1})`;
-    return base;
+    const same = cycles.filter((x) => {
+      if (x.status === "Deleted" || !sameLocation(x)) return false;
+      const core = cycleNameWithoutLocation(x.name);
+      return core === base || core.startsWith(`${base} (`);
+    });
+    const name =
+      f.type === "Exceptional" && same.length ? `${base} (${same.length + 1})` : base;
+    return withCycleLocation(name, f.location, allLocations);
   };
 
   const createCycle = async () => {
     const f = newForm;
+    if (!f.location) {
+      return setModalError("Select the location this appraisal cycle is for.");
+    }
     const name = newName(f);
     if (!f.effective) {
       return setModalError("The effective date is required.");
@@ -837,12 +914,17 @@ export function AppraisalCycleMasterPage({
         );
     }
     if (ENFORCE_ONE_OPEN_ANNUAL && f.process === "Annual" && !f.past) {
+      // One open Annual cycle per location; an All Locations cycle covers every location.
       const prev = cycles.find(
-        (c) => c.process === "Annual" && !c.archived && !isHidden(c),
+        (c) =>
+          c.process === "Annual" &&
+          !c.archived &&
+          !isHidden(c) &&
+          sameLocationScope(c.location, f.location),
       );
       if (prev)
         return setModalError(
-          `Archive ${prev.name} first. No new cycle on the Annual process can be set up until the previous one is archived.`,
+          `Archive ${prev.name} (${locationLabel(prev.location)}) first. No new Annual-process cycle for ${locationLabel(f.location)} can be set up until it is archived.`,
         );
     }
     const saved = await mutateCycle(
@@ -854,6 +936,7 @@ export function AppraisalCycleMasterPage({
         effective: f.effective,
         start: f.start,
         end: f.end,
+        location: f.location,
         remarks: f.remarks.trim(),
         ...(f.past ? { past: true } : {}),
       },
@@ -1255,7 +1338,7 @@ export function AppraisalCycleMasterPage({
       <div className="acx-gwrap">
         <table className="acx-g">
           <colgroup>
-            {[70, 150, 100, 120, 120, 120, 100, 110, 110].map((w, i) => (
+            {[70, 150, 110, 100, 120, 120, 120, 100, 110, 110].map((w, i) => (
               <col key={i} style={{ width: w }} />
             ))}
           </colgroup>
@@ -1263,6 +1346,7 @@ export function AppraisalCycleMasterPage({
             <tr>
               <th>ID</th>
               <th>Cycle</th>
+              <th>Location</th>
               <th>Process</th>
               <th>Effective Date</th>
               <th>Start Date</th>
@@ -1275,7 +1359,7 @@ export function AppraisalCycleMasterPage({
           <tbody>
             {pageRows.length === 0 && (
               <tr>
-                <td colSpan={9}>
+                <td colSpan={10}>
                   <div className="acx-empty">No {type} cycles match.</div>
                 </td>
               </tr>
@@ -1292,6 +1376,7 @@ export function AppraisalCycleMasterPage({
                     {c.id}
                   </td>
                   <td title={c.name}>{c.name}</td>
+                  <td title={locationLabel(c.location)}>{locationLabel(c.location)}</td>
                   <td>
                     <span className="acx-tag pr">{procLabel(c.process)}</span>
                   </td>
@@ -2217,6 +2302,34 @@ export function AppraisalCycleMasterPage({
                     The process is locked once the cycle is activated.
                   </div>
                 )}
+                <label className="acx-fl">Location</label>
+                <select
+                  style={{ width: "100%" }}
+                  disabled={saving || editCycle.status !== "Upcoming"}
+                  value={editForm.location}
+                  onChange={(e) =>
+                    setEditForm((f) => ({ ...f, location: e.target.value }))
+                  }
+                >
+                  <option value={ALL_CYCLE_LOCATIONS}>All Locations</option>
+                  {cycleLocations
+                    .concat(
+                      !isAllCycleLocation(editForm.location) &&
+                        !cycleLocations.includes(editForm.location)
+                        ? [editForm.location]
+                        : [],
+                    )
+                    .map((name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    ))}
+                </select>
+                {editCycle.status !== "Upcoming" && (
+                  <div className="acx-hint">
+                    The location is locked once the cycle is activated.
+                  </div>
+                )}
               </>
             );
           })()}
@@ -2377,6 +2490,33 @@ export function AppraisalCycleMasterPage({
             </>
           }
         >
+          <label className="acx-fl">
+            Location <span style={{ color: "#c0392b" }}>*</span>
+          </label>
+          <select
+            style={{ width: "100%" }}
+            disabled={saving}
+            value={newForm.location}
+            aria-required="true"
+            onChange={(e) =>
+              setNewForm((f) => ({ ...f, location: e.target.value }))
+            }
+          >
+            <option value="" disabled>
+              Select the location for this cycle
+            </option>
+            <option value={ALL_CYCLE_LOCATIONS}>All Locations</option>
+            {cycleLocations.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <div className="acx-hint">
+            {cycleLocationsError
+              ? `Could not load Location Master: ${cycleLocationsError}`
+              : "Only this location's employees go on the cycle's Eligibility List. All Locations covers everyone."}
+          </div>
           <div className="acx-row2">
             <div>
               <label className="acx-fl">Cycle Type</label>
