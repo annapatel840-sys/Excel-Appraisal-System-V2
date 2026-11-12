@@ -274,6 +274,8 @@
 .employee-master-page .em-eligibility-stats .em-stat-click.on{background:#EAF1FD;border-color:#2F6FED}
 .employee-master-page .em-eligibility-stats .em-stat-click.on span{color:#1d4f91;font-weight:700}
 
+/* Eligibility List criteria panel (left): Inter font */
+.em-criteria-pane,.em-criteria-pane *,.em-criteria-tab,.em-suggest.em-suggest-menu,.em-suggest.em-suggest-menu *{font-family:Inter,"Segoe UI",Arial,sans-serif !important}
 .em-criteria-pane .em-suggest{max-height:180px;box-shadow:0 6px 18px rgba(15,23,42,.12)}
 .em-criteria-pane .em-suggest .em-suggest-empty{cursor:default}
 
