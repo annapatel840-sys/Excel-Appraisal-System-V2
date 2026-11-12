@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState } from "react";
 
 import { CATALYST_SESSION_EXPIRED_EVENT } from "./catalyst-api";
 import { payrollCycleRequest } from "./payroll-cycle-api";
+import { applyHomeLocationOnSignIn, forgetHomeLocationApplied } from "./location-store";
 
 const CatalystAuthContext = createContext(null);
 // Legacy key from an old sign-out workaround; it is only cleared now.
@@ -87,6 +88,8 @@ export function CatalystAuthGate({ children, onSignedIn, onSignOut }) {
       try {
         const session = await payrollCycleRequest("session");
         if (mounted) {
+          // Open on the user's own Employee Master location (once per sign-in session).
+          applyHomeLocationOnSignIn(session?.email || session?.id, session?.location);
           setUser(session);
           setState("authenticated");
         }
@@ -172,6 +175,7 @@ export function CatalystAuthGate({ children, onSignedIn, onSignOut }) {
     setUser(null);
     setMessage("");
     setState("loading");
+    forgetHomeLocationApplied();
     // Let onSignOut's cleanup finish (at most 1 s) before leaving the page.
     const cleanup = Promise.resolve()
       .then(() => onSignOut?.())

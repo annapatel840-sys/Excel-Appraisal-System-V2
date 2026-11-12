@@ -857,6 +857,30 @@ async function writeAudit(auditTable, {
   });
 }
 
+// Reads only the signed-in user's own Employee_Master row (matched by email),
+// so login stays fast. An Active row wins over an inactive duplicate.
+async function sessionHomeLocation(req, identity) {
+  const email = String(identity?.email || "").trim();
+  if (!email || !/^[^\s'"\\]+@[^\s'"\\]+$/.test(email)) return { location: "", empId: "" };
+  const adminApp = catalyst.initialize(req, { scope: "admin" });
+  const candidates = [...new Set([email, email.toLowerCase()])]
+    .map((value) => "email_id = '" + value + "'")
+    .join(" OR ");
+  const result = await fastReadQuery(
+    adminApp.zcql(),
+    "SELECT emp_id, location, emp_status FROM Employee_Master WHERE " + candidates + " LIMIT 10",
+    "session home location",
+  );
+  const rows = (result || []).map((item) => unwrapZcqlRow(item, "Employee_Master")).filter(Boolean);
+  const row =
+    rows.find((r) => String(r.emp_status || "Active").trim().toLowerCase() === "active" && String(r.location || "").trim()) ||
+    rows.find((r) => String(r.location || "").trim());
+  return {
+    location: row ? String(row.location || "").trim() : "",
+    empId: row ? String(row.emp_id || "").trim() : "",
+  };
+}
+
 async function requireIdentity(req) {
   const userApp = catalyst.initialize(req);
   const user = await userApp.userManagement().getCurrentUser();
@@ -3275,7 +3299,13 @@ async function routeRequest(req, res, identity, resource, a) {
     return sendJson(res, 403, { success: false, message: "HR role is required to administer appraisal cycles." });
   }
   if (resource === "session") {
-    return sendJson(res, 200, { success: true, data: { id: identity.id, name: identity.name, email: identity.email, role: identity.role } });
+    // The signed-in user's own Employee Master location, so the app can open on
+    // that location instead of All Locations. "" when they are not in Employee Master.
+    const home = await sessionHomeLocation(req, identity).catch((error) => {
+      console.warn("Session location lookup failed:", error && error.message);
+      return { location: "", empId: "" };
+    });
+    return sendJson(res, 200, { success: true, data: { id: identity.id, name: identity.name, email: identity.email, role: identity.role, location: home.location, empId: home.empId } });
   }
   const techEdUser = !enforced && isTechEd(identity.user);
 

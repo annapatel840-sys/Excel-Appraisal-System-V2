@@ -60,7 +60,15 @@ function load(store) {
   const catalystStub = {
     initialize: () => ({
       datastore: () => ({ table: (id) => store.table(id) }),
-      zcql: () => ({ executeZCQLQuery: async () => [] }),
+      zcql: () => ({
+        // Employee_Master rows whose email_id is named in the query (session home location).
+        executeZCQLQuery: async (query) =>
+          /FROM Employee_Master/.test(query)
+            ? store.table(T.employeeMaster).rows
+              .filter((r) => r.email_id && query.includes("'" + r.email_id + "'"))
+              .map((r) => ({ Employee_Master: { emp_id: r.emp_id, location: r.location, emp_status: r.emp_status } }))
+            : [],
+      }),
       userManagement: () => ({
         getCurrentUser: async () => ({ user_id: '1', first_name: 'H', last_name: 'R', email_id: 'hr@x.com', role_details: { role_name: 'HR' } }),
       }),
@@ -185,6 +193,21 @@ async function t(name, fn) {
     const r = await call(api, 'POST', 'eligibility', { cycleId: c.id, empId: 'EMP001', eligible: 'Eligible' });
     assert.strictEqual(r.status, 409, JSON.stringify(r.json));
     assert.match(r.json.message, /works in India; this cycle is for Dubai/);
+  });
+
+  await t('session returns the signed-in user\'s Employee Master location (Active row wins)', async () => {
+    const rows = store.table(T.employeeMaster).rows;
+    rows.push(
+      { ROWID: '21', emp_id: 'EMP900', emp_name: 'HR old', location: 'Dubai', emp_status: 'Inactive', email_id: 'hr@x.com' },
+      { ROWID: '22', emp_id: 'EMP901', emp_name: 'HR', location: 'India', emp_status: 'Active', email_id: 'hr@x.com' },
+    );
+    const r = await call(api, 'GET', 'session');
+    assert.strictEqual(r.status, 200, JSON.stringify(r.json));
+    assert.strictEqual(r.json.data.location, 'India');
+    assert.strictEqual(r.json.data.empId, 'EMP901');
+    rows.splice(rows.length - 2, 2);
+    const none = await call(api, 'GET', 'session');
+    assert.strictEqual(none.json.data.location, '');
   });
 
   await t('without a location column, sending a location is refused instead of silently dropped', async () => {

@@ -57,6 +57,39 @@ export function setSelectedLocation(value) {
   }
 }
 
+// At sign-in the app opens on the user's own Employee Master location instead
+// of All Locations. This happens once per browser session (tab) per user, so a
+// location the user picks afterwards in the header is kept across page loads.
+// Users not in Employee Master (no location) keep the current selection.
+const HOME_APPLIED_KEY = "appraisal.homeLocationAppliedFor.v1";
+export function applyHomeLocationOnSignIn(userKey, homeLocation) {
+  const who = norm(userKey);
+  const home = String(homeLocation ?? "").trim();
+  if (!who || !home || typeof window === "undefined") return;
+  let appliedFor = "";
+  try {
+    appliedFor = window.sessionStorage.getItem(HOME_APPLIED_KEY) || "";
+  } catch (_) {
+    appliedFor = "";
+  }
+  if (appliedFor === who) return;
+  try {
+    window.sessionStorage.setItem(HOME_APPLIED_KEY, who);
+  } catch (_) {
+    /* without storage this runs on every load; the location still follows the user */
+  }
+  setSelectedLocation(home);
+}
+
+// Sign-out: the next sign-in (same tab) opens on that user's own location again.
+export function forgetHomeLocationApplied() {
+  try {
+    window.sessionStorage.removeItem(HOME_APPLIED_KEY);
+  } catch (_) {
+    /* storage is optional */
+  }
+}
+
 // Called with the rows from Location Master (any casing of the field names).
 export function registerLocations(list) {
   registry = (Array.isArray(list) ? list : [])
